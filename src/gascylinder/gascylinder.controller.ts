@@ -1,0 +1,106 @@
+// src/gascylinder/gascylinder.controller.ts - VERSIÓN CORREGIDA
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { GasCylinderService } from './gascylinder.service';
+import { Public } from '../common/decorators/isPublic.decorator';
+import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
+import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
+import { PaginationDto } from '../common/dtos/pagination.dto';
+
+@ApiTags('Gas Cylinders')
+@Controller('gascylinder')
+export class GasCylinderController {
+  constructor(private readonly gasCylinderService: GasCylinderService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new gas cylinder type' })
+  @ApiResponse({
+    status: 201,
+    description: 'Gas cylinder created successfully',
+  })
+  create(@Body() createGasCylinderDto: CreateGasCylinderDto) {
+    return this.gasCylinderService.create(createGasCylinderDto);
+  }
+
+  @Get()
+  @Public()
+  @ApiOperation({ summary: 'Get all gas cylinders with pagination' })
+  @ApiResponse({ status: 200, description: 'List of gas cylinders' })
+  findAll(@Query() paginationDto: PaginationDto) {
+    return this.gasCylinderService.findAll(paginationDto);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get gas cylinder by ID' })
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @ApiResponse({ status: 200, description: 'Gas cylinder found' })
+  @ApiResponse({ status: 404, description: 'Gas cylinder not found' })
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.gasCylinderService.findOne(id); // <- Cambiar: usar string, no +id
+  }
+
+  @Get('type/:type')
+  @ApiOperation({ summary: 'Get gas cylinder by type' })
+  @ApiParam({
+    name: 'type',
+    description: 'Gas cylinder type (10kg, 15kg, etc)',
+  })
+  @ApiResponse({ status: 200, description: 'Gas cylinder found' })
+  findByType(@Param('type') type: string) {
+    return this.gasCylinderService.findByType(type);
+  }
+
+  @Get('available/list')
+  @Public()
+  @ApiOperation({ summary: 'Get all available gas cylinders' })
+  @ApiResponse({ status: 200, description: 'List of available gas cylinders' })
+  getAvailableCylinders() {
+    return this.gasCylinderService.getAvailableCylinders();
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update gas cylinder by ID' })
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Gas cylinder updated successfully',
+  })
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateGasCylinderDto: UpdateGasCylinderDto,
+  ) {
+    return this.gasCylinderService.update(id, updateGasCylinderDto);
+  }
+
+  @Patch(':id/stock')
+  @ApiOperation({ summary: 'Update gas cylinder stock' })
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @ApiResponse({ status: 200, description: 'Stock updated successfully' })
+  updateStock(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { quantity: number },
+  ) {
+    return this.gasCylinderService.updateStock(id, body.quantity);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete (deactivate) gas cylinder by ID' })
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Gas cylinder deactivated successfully',
+  })
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.gasCylinderService.remove(id); // <- CORREGIDO: no hay espacio en el nombre
+  }
+}

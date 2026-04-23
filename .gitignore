@@ -1,0 +1,66 @@
+# --- CLAUDE & AI TOOLS ---
+.claude/
+/docs
+.qodo/
+claude_session/
+
+# --- BASE DE DATOS LOCAL (POSTGRES) ---
+# Ignora la carpeta de datos de postgres que tenés en la raíz
+/postgres/
+postgres/
+# Ignora logs del ORM que se ven en tu captura
+ormlogs.log
+query-log.log
+
+# --- DEPENDENCIAS ---
+node_modules/
+/package-lock.json
+/yarn.lock
+/pnpm-lock.yaml
+
+# --- COMPILACIÓN Y SALIDA ---
+/dist/
+/build/
+/out/
+tsbuildinfo
+
+# --- LOGS ---
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- ENTORNO Y SECRETOS ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# Credenciales de Firebase (según tu captura)
+*firebase-adminsdk*.json
+*firebase-adminsdk*.ts
+serviceAccountKey.json
+
+# --- TEST Y COBERTURA ---
+/coverage
+/.nyc_output
+
+# --- IDEs Y EDITORES ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
+.DS_Store
+
+# --- OTROS ---
+.temp/
+.tmp/
+pids
+*.pid
+*.seed
+*.pid.lock

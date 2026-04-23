@@ -1,0 +1,69 @@
+name: CI + Deploy → Render (Garrafitas)
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Bajar el código
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. Obtener datos del commit para Slack
+      - name: Get Commit Info
+        id: vars
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+          echo "date=$(date '+%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
+          echo "message=$(git log -1 --pretty=format:'%s' | sed 's/\"/\\\\\"/g')" >> $GITHUB_OUTPUT
+          echo "files=$(git diff-tree --no-commit-id --name-only -r HEAD | head -n 5 | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      # 3. Notificar inicio a Slack
+      - name: Notify Slack START
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\": \"🚧 Deploy iniciado en Render para *Garrafitas API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # 4. Configurar Node.js (NestJS va bien con la 18 o 20)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: "npm"
+
+      # 5. Instalar dependencias
+      - name: Install dependencies
+        run: npm ci
+
+      # 6. Build de NestJS (Compila TypeScript a JS en /dist)
+      # Esto verifica que no haya errores de sintaxis antes de decirle a Render que despliegue
+      - name: Build Application
+        run: npm run build
+
+      # 7. Disparar el Deploy en Render (Solo si el build anterior pasó)
+      - name: Trigger Render Deploy
+        if: github.ref == 'refs/heads/main'
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+
+      # 8. Notificar Éxito
+      - name: Notify Slack SUCCESS
+        if: success()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\": \"🚀 Deploy completado en Render para *Garrafitas API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\n📅 Hora: ${{ steps.vars.outputs.date }}\"}" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # 9. Notificar Fallo
+      - name: Notify Slack FAILURE
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\": \"❌ Deploy falló en Render para *Garrafitas API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
