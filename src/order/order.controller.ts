@@ -29,6 +29,8 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { AuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { OrderStatus } from './entities/order.entity';
+import { withTransactionRetry } from '../common/utils/with-transaction-retry';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
 
@@ -40,11 +42,26 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new order' })
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Create a new order',
+    description:
+      'Idempotente vía header `Idempotency-Key` (UUID v4). Reintentos con la misma key retornan la respuesta cacheada por 24h.',
+  })
   @ApiResponse({ status: 201, description: 'Order created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({
+    status: 409,
+    description: 'Otro request con la misma Idempotency-Key está en curso',
+  })
   async create(@Body() createOrderDto: CreateOrderDto) {
-    const order = await this.orderService.create(createOrderDto);
+    // Retry ante deadlock / serialization_failure de PostgreSQL.
+    // Ocurre cuando dos transacciones concurrentes intentan adquirir
+    // pessimistic locks sobre las mismas garrafas en orden distinto.
+    const order = await withTransactionRetry(
+      () => this.orderService.create(createOrderDto),
+      { context: 'OrderService.create' },
+    );
     return OrderMapper.toDto(order);
   }
 
@@ -119,7 +136,12 @@ export class OrderController {
   }
 
   @Patch(':id/status')
-  @ApiOperation({ summary: 'Update order status' })
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Update order status',
+    description:
+      'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red.',
+  })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Status updated successfully' })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -192,7 +214,12 @@ export class OrderController {
 
   // 🟢 ESTE ES TU NUEVO ENDPOINT (Lógica Fina)
   @Patch(':id/cancel')
-  @ApiOperation({ summary: 'Cancelar pedido (Cliente/Chofer)' })
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Cancelar pedido (Cliente/Chofer)',
+    description:
+      'Idempotente vía header `Idempotency-Key`. Cancelaciones repetidas con la misma key son no-op.',
+  })
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
     // 👇 Agregamos 'reason' al Body

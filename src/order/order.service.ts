@@ -93,9 +93,15 @@ export class OrderService {
       const orderItems: OrderItem[] = [];
 
       for (const itemDto of createOrderDto.items) {
-        const gasCylinder = await this.gasCylinderRepository.findOne({
-          where: { gas_cylinder_id: itemDto.gasCylinderId },
-        });
+        // SELECT ... FOR UPDATE: serializa la lectura de stock con cualquier
+        // otra transacción concurrente sobre la misma garrafa. Evita oversell.
+        const gasCylinder = await queryRunner.manager
+          .createQueryBuilder(GasCylinder, 'gc')
+          .setLock('pessimistic_write')
+          .where('gc.gas_cylinder_id = :id', {
+            id: itemDto.gasCylinderId,
+          })
+          .getOne();
 
         if (!gasCylinder) {
           throw new NotFoundException(
@@ -679,9 +685,15 @@ export class OrderService {
       await queryRunner.startTransaction();
       try {
         for (const item of order.items) {
-          const cylinder = await this.gasCylinderRepository.findOne({
-            where: { gas_cylinder_id: item.gas_cylinder_id },
-          });
+          // SELECT ... FOR UPDATE en la restitución: previene que otra
+          // transacción de creación lea stock obsoleto mientras devolvemos.
+          const cylinder = await queryRunner.manager
+            .createQueryBuilder(GasCylinder, 'gc')
+            .setLock('pessimistic_write')
+            .where('gc.gas_cylinder_id = :id', {
+              id: item.gas_cylinder_id,
+            })
+            .getOne();
           if (cylinder) {
             cylinder.stock += item.quantity;
             await queryRunner.manager.save(cylinder);
@@ -690,6 +702,9 @@ export class OrderService {
         await queryRunner.commitTransaction();
       } catch (e) {
         await queryRunner.rollbackTransaction();
+        throw e;
+      } finally {
+        await queryRunner.release();
       }
     }
 

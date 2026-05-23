@@ -21,6 +21,7 @@ import { UserAddresModule } from './user-addres/user-addres.module';
 
 // Importa el interceptor de timeout
 import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { EnvConfiguration } from './common/config/env.config';
@@ -29,6 +30,7 @@ import { RedisModule } from './redis/redis.module';
 import { ClaimsModule } from './claims/claims.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { ReportsModule } from './reports/reports.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -95,11 +97,19 @@ import { ReportsModule } from './reports/reports.module';
     ClaimsModule,
     TimeSlotModule,
     ReportsModule,
+    HealthModule,
   ],
   providers: [
     {
       provide: APP_INTERCEPTOR,
       useClass: timeOutInterceptor,
+    },
+    {
+      // Idempotency interceptor global: solo actúa en handlers decorados
+      // con @Idempotent(). Backwards compatible: si el cliente no envía
+      // el header `Idempotency-Key`, el handler se ejecuta normalmente.
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
     },
   ],
 })
