@@ -1,6 +1,5 @@
 # --- CLAUDE & AI TOOLS ---
 .claude/
-/docs
 .qodo/
 claude_session/
 
