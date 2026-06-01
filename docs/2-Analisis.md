@@ -169,7 +169,7 @@ Sistema  →  Usuario : error403 ("Cuenta pendiente de validación")  ← si CHO
 
 ```
 Actor: Cliente
-Sistema: EIMO Backend
+Sistema: SPLG Backend
 
 Cliente  →  Sistema : crearPedido(customerId, addressId, timeSlotId, items[], paymentMethod, notificationToken)
 Sistema  →  Cliente : pedidoConfirmado(orderId, totalAmount, status="PENDING")

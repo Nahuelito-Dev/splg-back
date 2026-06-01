@@ -64,13 +64,14 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 ## 3. Diagrama de Casos de Uso del Sistema
 
 > **[ INSERTAR IMAGEN: diagrama-cu-sistema.png ]**
-> *(Ver guía de construcción en Doc 0 — Sección 9)*
+> *Código fuente PlantUML (con relaciones `«include»`/`«extend»`) y pasos de renderizado en `GUIA-diagramas-cu-plantuml.md` §2.*
 
 ---
 
 ## 4. Subsistemas del Proyecto
 
 > **[ INSERTAR IMAGEN: diagrama-subsistemas.png ]**
+> *Código fuente PlantUML y pasos de renderizado en `GUIA-diagramas-cu-plantuml.md` §3.*
 
 | Código | Subsistema | Descripción |
 |--------|------------|-------------|
@@ -264,37 +265,15 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 
 ---
 
-#### 🔴 CU-003 — Registrar Chofer
+#### 🔴 CU-003 — Registrar Chofer *(ver CU-031)*
+
+> **Nota de consolidación:** El alta de un chofer la realiza siempre el Administrador y pertenece al subsistema **SS-07 (Gestión de Choferes y Vehículos)**. Para evitar duplicación, su especificación expandida es **canónica en [CU-031 — Registrar Chofer](#-cu-031--registrar-chofer)**. Este código (CU-003) se conserva por las referencias cruzadas existentes en SS-01 y en la matriz de rastreabilidad, pero **no se expande aquí**: es el mismo caso de uso visto desde el flujo de gestión de usuarios.
 
 | Campo | Detalle |
 |-------|---------|
 | **Objetivos asociados** | OBJ-02, OBJ-05 |
 | **Requisitos asociados** | IRQ-01, IRQ-03 |
-| **Descripción** | El administrador crea un nuevo usuario chofer desde el Panel Web, ingresando sus datos personales. El chofer queda en estado no validado y no puede operar hasta la aprobación explícita. |
-| **Precondición** | El administrador está autenticado en el Panel Web. No existe otro chofer con el mismo email. |
-
-**Secuencia Normal**
-
-| Paso | Acción |
-|------|--------|
-| 1 | El administrador accede al Panel Web → sección "Choferes" → botón "Nuevo Chofer". |
-| 2 | Ingresa nombre completo, email, número de teléfono y contraseña temporal. |
-| 3 | El sistema valida los campos. |
-| 4 | El sistema crea el usuario en Firebase Auth. |
-| 5 | El sistema registra el usuario en la base de datos con rol `CHOFER`, crea el perfil `Delivery` con `validated = false` e `isActive = false`. |
-| 6 | El sistema retorna confirmación al administrador. |
-
-**Postcondición:** Existe un nuevo usuario con rol CHOFER con perfil Delivery creado, en estado no validado. El chofer no puede aceptar pedidos hasta CU-032.
-
-**Excepciones**
-
-| Paso | Acción |
-|------|--------|
-| 3 | Si algún campo requerido falta, el sistema informa el error. |
-| 4 | Si el email ya está registrado, el sistema informa "El email ya está en uso." |
-
-| Campo | Detalle |
-|-------|---------|
+| **Especificación expandida** | Idéntica a **CU-031** |
 | **Estabilidad** | Alta |
 
 ---
@@ -384,7 +363,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | **Objetivos asociados** | OBJ-02 |
 | **Requisitos asociados** | IRQ-02, IRQ-03 |
 | **Descripción** | Inmediatamente después de crearse un pedido, el sistema consulta en Redis los choferes activos dentro de un radio de 5 km del domicilio de entrega y les envía una notificación WebSocket con los datos del pedido. |
-| **Precondición** | Existe un pedido con estado PENDING. Al menos un chofer está conectado al WebSocket con su ubicación GPS registrada en Redis (`drivers:available`). |
+| **Precondición** | Existe un pedido con estado PENDING. Al menos un chofer está conectado al WebSocket con su ubicación GPS registrada en Redis (`drivers:locations`). |
 
 **Secuencia Normal**
 
@@ -392,7 +371,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 |------|--------|
 | 1 | El sistema recibe el evento de nuevo pedido creado (disparado al finalizar CU-005, post-commit). |
 | 2 | Extrae las coordenadas (lat/lng) de la dirección de entrega del pedido. |
-| 3 | Consulta Redis con `GEORADIUS drivers:available <lng> <lat> 5 km ASC WITHDIST` para obtener la lista de choferes activos dentro del radio, ordenados por distancia ascendente. |
+| 3 | Consulta Redis con `GEORADIUS drivers:locations <lng> <lat> 5 km ASC WITHDIST` para obtener la lista de choferes activos dentro del radio, ordenados por distancia ascendente. |
 | 4 | Para cada chofer encontrado, verifica en la base de datos que `isActive = true` y `validated = true`. |
 | 5 | Para cada chofer elegible, emite el evento `server:new-order-request` por WebSocket (sala del driverId) con los datos del pedido (ID, total, dirección, ítems, método de pago). |
 
@@ -496,7 +475,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | 1 | El `LocationService` de la App Chofer detecta un desplazamiento de al menos 10 metros y emite una nueva posición. |
 | 2 | El `HomeViewModel` recibe la posición y emite el evento `driver:update-location` por WebSocket con `{ userId, lat, lng }`. |
 | 3 | El `DriversGateway` del backend recibe el evento. |
-| 4 | Llama a `RedisService.geoAdd('drivers:available', lng, lat, driverId)`. |
+| 4 | Llama a `RedisService.geoAdd('drivers:locations', lng, lat, driverId)`. |
 | 5 | Si el chofer tiene un pedido activo en estado ON_THE_WAY, el sistema emite `driver:location` al cliente por el `CustomersGateway` para actualizar el mapa. |
 
 **Postcondición:** La ubicación del chofer en Redis está actualizada. El algoritmo de asignación puede encontrarlo. El cliente (si tiene pedido activo) ve la posición actualizada en su mapa.
@@ -604,7 +583,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | 2 | La app envía `PATCH /delivery/toggle-availability`. |
 | 3 | El backend busca el perfil Delivery del chofer por `user_id`. |
 | 4 | Actualiza el campo `isActive` al valor opuesto. |
-| 5 | Si `isActive` pasa a `false`: ejecuta `RedisService.zRem('drivers:available', deliveryId)` para eliminarlo del radar. |
+| 5 | Si `isActive` pasa a `false`: ejecuta `RedisService.zRem('drivers:locations', deliveryId)` para eliminarlo del radar. |
 | 6 | Si `isActive` pasa a `true` y tiene posición GPS disponible: ejecuta `GEOADD` para registrarlo en el radar. |
 
 **Postcondición:** El estado de disponibilidad del chofer fue actualizado. Si es inactivo, ya no recibirá nuevas asignaciones de pedidos.
@@ -704,7 +683,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | 1 | El administrador accede al Panel Web → "Choferes" → selecciona el chofer a modificar. |
 | 2 | Presiona el botón "Validar" (si `validated = false`) o "Invalidar" (si `validated = true`). |
 | 3 | El sistema actualiza el campo `Delivery.validated` al valor opuesto. |
-| 4 | Si se invalida y el chofer tiene su ubicación en Redis: el sistema ejecuta `ZREM drivers:available driverId` para eliminarlo del radar. |
+| 4 | Si se invalida y el chofer tiene su ubicación en Redis: el sistema ejecuta `ZREM drivers:locations driverId` para eliminarlo del radar. |
 | 5 | Si se valida: el chofer podrá aparecer en el radar en su próxima activación de disponibilidad (`isActive = true` + GEOADD). |
 | 6 | El sistema retorna confirmación al administrador con el estado actualizado. |
 
@@ -1444,7 +1423,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | 2 | Presiona el toggle "Activar" o "Desactivar". |
 | 3 | La app envía `PATCH /delivery/:id/toggle-active`. |
 | 4 | El backend invierte `Delivery.isActive`. |
-| 5 | Si pasó a `false`: ejecuta `RedisService.zRem('drivers:available', deliveryId)` para quitarlo del radar. |
+| 5 | Si pasó a `false`: ejecuta `RedisService.zRem('drivers:locations', deliveryId)` para quitarlo del radar. |
 | 6 | Si pasó a `true`: el chofer podrá aparecer en el radar al activar disponibilidad desde su app. |
 
 **Postcondición:** El campo `isActive` del chofer fue actualizado. Si fue desactivado, ya no recibe asignaciones automáticas.
@@ -1591,7 +1570,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | Campo | Detalle |
 |-------|---------|
 | **Objetivos asociados** | OBJ-04, OBJ-05 |
-| **Requisitos asociados** | IRQ-09 |
+| **Requisitos asociados** | IRQ-05 |
 | **Descripción** | El administrador crea una franja horaria de entrega especificando nombre descriptivo, hora de inicio, hora de fin y capacidad máxima de pedidos por día. Las franjas activas con capacidad disponible se muestran al cliente durante el checkout. |
 | **Precondición** | El administrador está autenticado en el Panel Web. |
 
@@ -1626,7 +1605,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | Campo | Detalle |
 |-------|---------|
 | **Objetivos asociados** | OBJ-04, OBJ-05 |
-| **Requisitos asociados** | IRQ-09 |
+| **Requisitos asociados** | IRQ-05 |
 | **Descripción** | El administrador actualiza la capacidad máxima de pedidos por día de una franja horaria existente para ajustarla a la disponibilidad operativa real (por ejemplo, al sumar choferes o al disminuir capacidad logística). |
 | **Precondición** | El administrador está autenticado. La franja horaria existe. |
 
@@ -1661,7 +1640,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | Campo | Detalle |
 |-------|---------|
 | **Objetivos asociados** | OBJ-01, OBJ-04 |
-| **Requisitos asociados** | IRQ-09 |
+| **Requisitos asociados** | IRQ-05 |
 | **Descripción** | Durante el checkout, el cliente debe elegir una franja horaria de entrega disponible para la fecha solicitada. El sistema muestra únicamente las franjas con capacidad remanente, calculadas en tiempo real al consultar disponibilidad (CU-045). |
 | **Precondición** | El cliente está autenticado, en `CheckoutView` con ítems en el carrito y fecha de entrega seleccionada. |
 
@@ -1695,7 +1674,7 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 | Campo | Detalle |
 |-------|---------|
 | **Objetivos asociados** | OBJ-01, OBJ-04 |
-| **Requisitos asociados** | IRQ-09 |
+| **Requisitos asociados** | IRQ-05 |
 | **Descripción** | El sistema calcula y retorna las franjas horarias con capacidad remanente para una fecha específica consultada durante el checkout. Una franja está disponible cuando el conteo de pedidos ya registrados para esa fecha y franja es estrictamente menor a su capacidad máxima. |
 | **Precondición** | El cliente está autenticado y consulta una fecha de entrega válida (≥ hoy). |
 
@@ -1724,6 +1703,37 @@ El sistema propuesto integra cuatro componentes: una **App Cliente** (Flutter) p
 |-------|---------|
 | **Rendimiento** | Cálculo de disponibilidad < 1 segundo. |
 | **Estabilidad** | Alta |
+
+---
+
+### 6.4 Relaciones entre Casos de Uso (`«include»` / `«extend»`)
+
+Las dependencias entre casos de uso se formalizan con notación UML. La representación gráfica está en el **Diagrama de Casos de Uso del Sistema** (§3) y en los diagramas por subsistema; el código fuente PlantUML está en `GUIA-diagramas-cu-plantuml.md`.
+
+**Relaciones `«include»` (comportamiento obligatorio, siempre se ejecuta):**
+
+| Caso de Uso base | `«include»` | Caso de Uso incluido | Justificación |
+|------------------|:-----------:|----------------------|---------------|
+| CU-005 Crear Pedido | → | Reservar Stock | Toda creación de pedido reserva stock dentro de la transacción PostgreSQL (`SELECT … FOR UPDATE`). |
+| CU-005 Crear Pedido | → | CU-013 Despacho Automático | Al confirmar el pedido se dispara siempre el algoritmo de despacho por proximidad. |
+| CU-044 Seleccionar Franja Horaria | → | CU-045 Consultar Franjas Disponibles | Para seleccionar una franja, el sistema siempre consulta primero las disponibles con cupo. |
+| CU-015 Aceptar Pedido | → | Notificar Cliente | La aceptación dispara siempre la notificación al cliente (WebSocket + FCM). |
+| CU-018 Marcar En Camino | → | Notificar Cliente | El cambio a "en camino" notifica siempre al cliente. |
+| CU-020 Confirmar Entrega | → | Notificar Cliente | La confirmación de entrega notifica siempre al cliente. |
+
+> *Reservar Stock* y *Notificar Cliente* son casos de uso **factorizados**: representan comportamiento común reutilizado por varios CU, por eso se modelan como CU incluidos sin código CU-XXX propio.
+
+**Relaciones `«extend»` (comportamiento opcional/condicional, en un punto de extensión):**
+
+| Caso de Uso que extiende | `«extend»` | Caso de Uso base | Punto de extensión (condición) |
+|--------------------------|:----------:|------------------|-------------------------------|
+| CU-014 Reintentar Asignación (Cron) | → | CU-013 Despacho Automático | *No hay choferes disponibles en el radio.* |
+| Aplicar Promoción | → | CU-005 Crear Pedido | *La cantidad de un ítem alcanza el umbral de promoción por volumen.* |
+| Recargo por Transferencia | → | CU-005 Crear Pedido | *El método de pago seleccionado es Transferencia.* |
+| CU-019 Avisar Llegada | → | CU-018 Marcar En Camino | *El chofer se encuentra cerca del destino.* |
+| Adjuntar Foto | → | CU-023 Registrar Reclamo | *El cliente adjunta evidencia fotográfica del reclamo.* |
+
+> La flecha de `«extend»` siempre va **desde** el caso opcional **hacia** el caso base, e indica que el comportamiento se agrega solo si se cumple la condición del punto de extensión.
 
 ---
 

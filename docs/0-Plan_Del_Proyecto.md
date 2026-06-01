@@ -155,7 +155,7 @@ No es un actor humano sino un conjunto de procesos internos del backend NestJS q
 ## 6. Diagrama de Casos de Uso del Sistema
 
 > **[ INSERTAR IMAGEN: diagrama-cu-sistema.png ]**  
-> *(Ver instrucciones de construcción en la Sección 9 de este documento)*
+> *Recomendado: usar el código PlantUML de `GUIA-diagramas-cu-plantuml.md` §2 (incluye relaciones `«include»`/`«extend»`). Alternativa manual con draw.io en la Sección 9 de este documento.*
 
 ---
 
@@ -405,14 +405,6 @@ No es un actor humano sino un conjunto de procesos internos del backend NestJS q
 
 ---
 
-**Código:** CU-031 | **Caso de Uso:** Registrar Chofer  
-**Actor/es:** Administrador (ACT-03)  
-**Subsistema:** SS-07 Gestión de Choferes y Vehículos  
-**Calificación:** Crítico  
-**Descripción:** El administrador registra un nuevo chofer desde el panel web ingresando nombre completo, email, teléfono y contraseña temporal. El sistema crea el usuario en Firebase Auth y en la base de datos con rol CHOFER y estado `validated = false`. El chofer no puede operar hasta la validación explícita (CU-032).
-
----
-
 **Código:** CU-032 | **Caso de Uso:** Validar / Invalidar Chofer  
 **Actor/es:** Administrador (ACT-03)  
 **Subsistema:** SS-07 Gestión de Choferes y Vehículos  
@@ -559,7 +551,6 @@ No es un actor humano sino un conjunto de procesos internos del backend NestJS q
 | CU-028 Ver Reporte de Ventas por Producto | SS-06 | ACT-03 | Importante |
 | CU-029 Ver Reporte por Método de Pago | SS-06 | ACT-03 | Secundario |
 | CU-030 Ver Gráfico de Ventas (últimos 7 días) | SS-06 | ACT-03 | Secundario |
-| CU-031 Registrar Chofer | SS-07 | ACT-03 | Crítico |
 | CU-032 Validar / Invalidar Chofer | SS-07 | ACT-03 | Crítico |
 | CU-033 Activar / Desactivar Chofer (Admin) | SS-07 | ACT-03 | Importante |
 | CU-034 Registrar Vehículo del Chofer | SS-07 | ACT-03 | Importante |
@@ -579,7 +570,7 @@ No es un actor humano sino un conjunto de procesos internos del backend NestJS q
 
 | Calificación | Cantidad | CU |
 |:------------:|:--------:|-----|
-| **Crítico** | 19 | CU-001, CU-002, CU-003, CU-005, CU-006, CU-013, CU-014, CU-015, CU-017, CU-018, CU-020, CU-021, CU-022, CU-031, CU-032, CU-036, CU-037, CU-038, CU-041 |
+| **Crítico** | 18 | CU-001, CU-002, CU-003, CU-005, CU-006, CU-013, CU-014, CU-015, CU-017, CU-018, CU-020, CU-021, CU-022, CU-032, CU-036, CU-037, CU-038, CU-041 |
 | **Importante** | 23 | CU-004, CU-007, CU-008, CU-009, CU-010, CU-011, CU-016, CU-019, CU-023, CU-024, CU-025, CU-026, CU-027, CU-028, CU-033, CU-034, CU-035, CU-039, CU-040, CU-042, CU-043, CU-044, CU-045 |
 | **Secundario** | 3 | CU-012, CU-029, CU-030 |
 
@@ -620,7 +611,7 @@ Usar la forma **Ellipse** con texto. Agrupar visualmente por color de fondo:
 | Amarillo claro | SS-04 Tracking | CU-017, CU-018, CU-019, CU-020, CU-021, CU-022 |
 | Rojo claro | SS-05 Reclamos | CU-023, CU-024, CU-025 |
 | Violeta claro | SS-06 Reportes | CU-026, CU-027, CU-028 |
-| Gris claro | SS-07 Choferes | CU-031, CU-032, CU-033, CU-034 |
+| Gris claro | SS-07 Choferes | CU-032, CU-033, CU-034 |
 | Marrón claro | SS-08 Productos | CU-036, CU-037, CU-038, CU-039, CU-041 |
 | Celeste claro | SS-09 Franjas | CU-042, CU-043, CU-044, CU-045 |
 
