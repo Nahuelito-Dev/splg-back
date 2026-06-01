@@ -80,50 +80,76 @@ El sistema SPLG está compuesto por **4 componentes** que trabajan en conjunto:
 
 ## 4. Calendario del Proyecto — Diagrama de Gantt
 
-| Actividad | Abr | May S1 | May S2 | Jun S1 | Jun S2 | Jul S1 | Jul S2 | Ago S1 | Sep | Oct |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **INICIO** | | | | | | | | | | |
-| Relevamiento con el cliente | ██ | | | | | | | | | |
-| Propuesta de Proyecto | ██ | | | | | | | | | |
-| Plan del Proyecto (Doc 0) | ██ | | | | | | | | | |
-| **ELABORACIÓN (E-01)** | | | | | | | | | | |
-| Análisis CU críticos — Doc 1 Requisitos | | ██ | | | | | | | | |
-| Análisis — Doc 2 Modelo Conceptual | | ██ | | | | | | | | |
-| Prototipo de arquitectura | | ██ | | | | | | | | |
-| **CONSTRUCCIÓN C-01** | | | | | | | | | | |
-| Auth + Usuarios + Base backend | | | ██ | | | | | | | |
-| Doc 3 Diseño — CU-001, CU-002, CU-003 | | | ██ | | | | | | | |
-| **CONSTRUCCIÓN C-02** | | | | | | | | | | |
-| Pedidos + Stock atómico + Despacho | | | | ██ | | | | | | |
-| Doc 3 Diseño — CU-005, CU-013, CU-014 | | | | ██ | | | | | | |
-| **CONSTRUCCIÓN C-03** | | | | | | | | | | |
-| WebSockets + Redis + App Chofer | | | | | ██ | | | | | |
-| Doc 3 Diseño — CU-015, CU-017, CU-020 | | | | | ██ | | | | | |
-| **CONSTRUCCIÓN C-04** | | | | | | | | | | |
-| Reclamos + Reportes + Panel Admin | | | | | | ██ | | | | |
-| Doc 3 Diseño — CU-023, CU-026 | | | | | | ██ | | | | |
-| **CONSTRUCCIÓN C-05** | | | | | | | | | | |
-| App Cliente (Flutter) completa | | | | | | | ██ | | | |
-| Integración final y Release 2.0 | | | | | | | | ██ | | |
-| **TRANSICIÓN (T-01)** | | | | | | | | | | |
-| Pruebas de aceptación (usuarios reales) | | | | | | | | | ██ | |
-| Corrección de defectos beta | | | | | | | | | ██ | |
-| Despliegue en producción | | | | | | | | | | ██ |
-| Manuales y documentación final | | | | | | | | | | ██ |
+El cronograma se divide en **31 semanas** (S1 a S31), desde el **07/04/2026** hasta el **10/11/2026**. La siguiente tabla indica el rango de fechas y la fase de cada semana:
 
-> **Referencias de fechas:**
-> - Abr: 07/04/2026 – 28/04/2026
-> - May S1: 28/04/2026 – 19/05/2026 (Elaboración E-01)
-> - May S2: 19/05/2026 – 02/06/2026 (Construcción C-01)
-> - Jun S1: 02/06/2026 – 23/06/2026 (Construcción C-02)
-> - Jun S2: 23/06/2026 – 14/07/2026 (Construcción C-03)
-> - Jul S1: 14/07/2026 – 04/08/2026 (Construcción C-04)
-> - Jul S2: 04/08/2026 – 25/08/2026 (Construcción C-05)
-> - Ago S1: 25/08/2026 – 08/09/2026 (Integración + Release 2.0)
-> - Sep: 08/09/2026 – 06/10/2026 (Transición — Pruebas beta)
-> - Oct: 06/10/2026 – 10/11/2026 (Transición — Producción + cierre)
->
-> Período total: **abril – noviembre 2026 (8 meses aprox.)**. Cada iteración de Construcción tiene una duración aproximada de 3 semanas.
+| Semana | Desde | Hasta | Fase |
+|:---:|:---:|:---:|---|
+| S1 | 07/04/2026 | 13/04/2026 | Inicio |
+| S2 | 14/04/2026 | 20/04/2026 | Inicio |
+| S3 | 21/04/2026 | 27/04/2026 | Inicio |
+| S4 | 28/04/2026 | 04/05/2026 | Elaboración (E-01) |
+| S5 | 05/05/2026 | 11/05/2026 | Elaboración (E-01) |
+| S6 | 12/05/2026 | 18/05/2026 | Elaboración (E-01) |
+| S7 | 19/05/2026 | 25/05/2026 | Construcción C-01 |
+| S8 | 26/05/2026 | 01/06/2026 | Construcción C-01 |
+| S9 | 02/06/2026 | 08/06/2026 | Construcción C-02 |
+| S10 | 09/06/2026 | 15/06/2026 | Construcción C-02 |
+| S11 | 16/06/2026 | 22/06/2026 | Construcción C-02 |
+| S12 | 23/06/2026 | 29/06/2026 | Construcción C-03 |
+| S13 | 30/06/2026 | 06/07/2026 | Construcción C-03 |
+| S14 | 07/07/2026 | 13/07/2026 | Construcción C-03 |
+| S15 | 14/07/2026 | 20/07/2026 | Construcción C-04 |
+| S16 | 21/07/2026 | 27/07/2026 | Construcción C-04 |
+| S17 | 28/07/2026 | 03/08/2026 | Construcción C-04 |
+| S18 | 04/08/2026 | 10/08/2026 | Construcción C-05 (App Cliente) |
+| S19 | 11/08/2026 | 17/08/2026 | Construcción C-05 (App Cliente) |
+| S20 | 18/08/2026 | 24/08/2026 | Construcción C-05 (App Cliente) |
+| S21 | 25/08/2026 | 31/08/2026 | Integración + Release 2.0 |
+| S22 | 01/09/2026 | 07/09/2026 | Integración + Release 2.0 |
+| S23 | 08/09/2026 | 14/09/2026 | Transición — Pruebas beta |
+| S24 | 15/09/2026 | 21/09/2026 | Transición — Pruebas beta |
+| S25 | 22/09/2026 | 28/09/2026 | Transición — Pruebas beta |
+| S26 | 29/09/2026 | 05/10/2026 | Transición — Pruebas beta |
+| S27 | 06/10/2026 | 12/10/2026 | Transición — Producción + cierre |
+| S28 | 13/10/2026 | 19/10/2026 | Transición — Producción + cierre |
+| S29 | 20/10/2026 | 26/10/2026 | Transición — Producción + cierre |
+| S30 | 27/10/2026 | 02/11/2026 | Transición — Producción + cierre |
+| S31 | 03/11/2026 | 10/11/2026 | Transición — Producción + cierre |
+
+### Diagrama de Gantt por semanas
+
+| Actividad | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 | S12 | S13 | S14 | S15 | S16 | S17 | S18 | S19 | S20 | S21 | S22 | S23 | S24 | S25 | S26 | S27 | S28 | S29 | S30 | S31 |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **INICIO** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Relevamiento con el cliente | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Propuesta de Proyecto | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Plan del Proyecto (Doc 0) | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| **ELABORACIÓN (E-01)** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Análisis CU críticos — Doc 1 Requisitos |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Análisis — Doc 2 Modelo Conceptual |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Prototipo de arquitectura |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| **CONSTRUCCIÓN C-01** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Auth + Usuarios + Base backend |  |  |  |  |  |  | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Doc 3 Diseño — CU-001, CU-002, CU-003 |  |  |  |  |  |  | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| **CONSTRUCCIÓN C-02** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Pedidos + Stock atómico + Despacho |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Doc 3 Diseño — CU-005, CU-013, CU-014 |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| **CONSTRUCCIÓN C-03** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| WebSockets + Redis + App Chofer |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Doc 3 Diseño — CU-015, CU-017, CU-020 |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| **CONSTRUCCIÓN C-04** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Reclamos + Reportes + Panel Admin |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Doc 3 Diseño — CU-023, CU-026 |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| **CONSTRUCCIÓN C-05** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| App Cliente (Flutter) completa |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ |  |  |  |  |  |  |  |  |  |  |  |
+| Integración final y Release 2.0 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ |  |  |  |  |  |  |  |  |  |
+| **TRANSICIÓN (T-01)** |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Pruebas de aceptación (usuarios reales) |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ | ██ |  |  |  |  |  |
+| Corrección de defectos beta |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ | ██ |  |  |  |  |  |
+| Despliegue en producción |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ | ██ | ██ |
+| Manuales y documentación final |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ██ | ██ | ██ | ██ | ██ |
+
+> **Período total:** **07/04/2026 – 10/11/2026** (31 semanas, ~8 meses). Cada iteración de Construcción dura aproximadamente 3 semanas.
 
 ---
 
