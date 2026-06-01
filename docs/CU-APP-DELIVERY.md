@@ -50,6 +50,8 @@
 | CU-002 | Registrarse como Cliente | ACT-01 | Crítico |
 | CU-003 | Registrarse como Chofer | ACT-03 | Crítico |
 | CU-004 | Gestionar Perfil de Usuario | ACT-01, ACT-02 | Importante |
+| CU-047 | Recuperar Contraseña | ACT-01, ACT-02, ACT-03 | Importante |
+| CU-050 | Bloquear / Desbloquear Usuario | ACT-03 | Secundario |
 
 ---
 
@@ -65,6 +67,8 @@
 | CU-010 | Cancelar Pedido (Administrador) | ACT-03 | Importante |
 | CU-011 | Listar Todos los Pedidos | ACT-03 | Importante |
 | CU-012 | Asignar Chofer Manualmente | ACT-03 | Secundario |
+| CU-046 | Gestionar Direcciones de Entrega | ACT-01 | Importante |
+| CU-048 | Procesar Pago con MercadoPago | ACT-04 | Crítico |
 
 ---
 
@@ -123,6 +127,8 @@
 | CU-033 | Activar / Desactivar Chofer (Admin) | ACT-03 | Importante |
 | CU-034 | Registrar Vehículo del Chofer | ACT-03 | Importante |
 | CU-035 | Consultar Listado de Choferes | ACT-03 | Importante |
+| CU-049 | Consultar Balance / Ganancias del Chofer | ACT-02, ACT-03 | Importante |
+| CU-051 | Gestionar Vehículos (editar / eliminar / consultar) | ACT-03 | Importante |
 
 ---
 
@@ -150,13 +156,68 @@
 
 ---
 
+## Casos de Uso Agregados (CU-046 a CU-051)
+
+Estos CU documentan funcionalidad ya implementada en el backend que no estaba reflejada en el listado original. Cada uno está respaldado por endpoints existentes.
+
+---
+
+**Código:** CU-046 | **Caso de Uso:** Gestionar Direcciones de Entrega  
+**Actor/es:** Cliente (ACT-01)  
+**Subsistema:** SS-02 Gestión de Pedidos  
+**Calificación:** Importante  
+**Descripción:** El cliente administra sus direcciones de entrega desde la app: crea nuevas direcciones (con coordenadas seleccionadas en el mapa), edita o elimina las existentes, consulta su listado y marca una como predeterminada. La dirección predeterminada se precarga al crear un pedido (CU-005). El sistema persiste las direcciones asociadas al usuario.
+
+---
+
+**Código:** CU-047 | **Caso de Uso:** Recuperar Contraseña  
+**Actor/es:** Cliente (ACT-01), Chofer (ACT-02), Administrador (ACT-03)  
+**Subsistema:** SS-01 Autenticación y Usuarios  
+**Calificación:** Importante  
+**Descripción:** Un usuario que olvidó su contraseña solicita el restablecimiento ingresando su email. El sistema envía un correo (vía Resend) con las instrucciones / enlace de recuperación. El usuario define una nueva contraseña y recupera el acceso. También contempla el cambio de email del usuario autenticado.
+
+---
+
+**Código:** CU-048 | **Caso de Uso:** Procesar Pago con MercadoPago  
+**Actor/es:** Sistema Automático (ACT-04)  
+**Subsistema:** SS-02 Gestión de Pedidos  
+**Calificación:** Crítico  
+**Descripción:** Cuando un pedido se paga con MercadoPago, la pasarela notifica al backend mediante un webhook. El sistema recibe la notificación, consulta el estado real del pago en MercadoPago, y actualiza el estado de pago del pedido (PENDING → PAID o rechazado) de forma idempotente. Complementa a CU-005, donde el cliente solo selecciona el método de pago.
+
+---
+
+**Código:** CU-049 | **Caso de Uso:** Consultar Balance / Ganancias del Chofer  
+**Actor/es:** Chofer (ACT-02), Administrador (ACT-03)  
+**Subsistema:** SS-07 Gestión de Choferes y Vehículos  
+**Calificación:** Importante  
+**Descripción:** El chofer consulta su balance acumulado de ganancias por entregas realizadas desde su app. El administrador puede consultar y ajustar el balance de cada chofer desde el panel. El sistema mantiene el saldo asociado al chofer y lo actualiza al confirmar entregas.
+
+---
+
+**Código:** CU-050 | **Caso de Uso:** Bloquear / Desbloquear Usuario  
+**Actor/es:** Administrador (ACT-03)  
+**Subsistema:** SS-01 Autenticación y Usuarios  
+**Calificación:** Secundario  
+**Descripción:** El administrador bloquea o desbloquea a un usuario (cliente o chofer) desde el panel web por motivos de moderación o seguridad. Un usuario bloqueado no puede iniciar sesión ni operar en el sistema hasta ser desbloqueado.
+
+---
+
+**Código:** CU-051 | **Caso de Uso:** Gestionar Vehículos (editar / eliminar / consultar)  
+**Actor/es:** Administrador (ACT-03)  
+**Subsistema:** SS-07 Gestión de Choferes y Vehículos  
+**Calificación:** Importante  
+**Descripción:** Complementa a CU-034 (Registrar Vehículo). El administrador edita los datos de un vehículo, lo elimina, consulta el listado completo o busca un vehículo por patente. El sistema mantiene la relación vehículo–chofer.
+
+---
+
 ## Resumen de Calificación
 
 | Calificación | Cantidad | CU |
 |---|---|---|
-| Crítico | 16 | CU-001, CU-002, CU-003, CU-005, CU-006, CU-013, CU-014, CU-015, CU-017, CU-018, CU-020, CU-021, CU-022, CU-031, CU-032, CU-036, CU-037, CU-038, CU-041 |
-| Importante | 22 | CU-004, CU-007, CU-008, CU-009, CU-010, CU-011, CU-016, CU-019, CU-023, CU-024, CU-025, CU-026, CU-027, CU-028, CU-033, CU-034, CU-035, CU-039, CU-040, CU-042, CU-043, CU-044, CU-045 |
-| Secundario | 4 | CU-012, CU-029, CU-030 |
+| Crítico | 20 | CU-001, CU-002, CU-003, CU-005, CU-006, CU-013, CU-014, CU-015, CU-017, CU-018, CU-020, CU-021, CU-022, CU-031, CU-032, CU-036, CU-037, CU-038, CU-041, CU-048 |
+| Importante | 26 | CU-004, CU-007, CU-008, CU-009, CU-010, CU-011, CU-016, CU-019, CU-023, CU-024, CU-025, CU-026, CU-027, CU-028, CU-033, CU-034, CU-035, CU-039, CU-040, CU-042, CU-043, CU-044, CU-045, CU-046, CU-047, CU-049, CU-051 |
+| Secundario | 5 | CU-012, CU-029, CU-030, CU-050 |
+| **Total** | **51** | |
 
 ---
 

@@ -60,6 +60,7 @@ Las flechas SIEMPRE son **punteadas** (`..>`) con el estereotipo escrito. El err
 | Recargo por Transferencia | → CU-005 Crear Pedido | *método de pago = transferencia* |
 | CU-019 Avisar Llegada | → CU-018 Marcar En Camino | *el chofer está cerca del destino* |
 | Adjuntar Foto al Reclamo | → CU-023 Registrar Reclamo | *el cliente adjunta evidencia* |
+| CU-048 Procesar Pago (MercadoPago) | → CU-005 Crear Pedido | *método de pago = MercadoPago* |
 
 > "Reservar Stock", "Notificar Cliente", "Aplicar Promoción", "Recargo por Transferencia" y "Adjuntar Foto" son **casos de uso factorizados**: no eran CU numerados, los introducimos justamente para expresar la relación. No hace falta darles un CU-XXX; alcanza con nombrarlos en el diagrama.
 
@@ -128,6 +129,14 @@ rectangle "SPLG — Sistema de Pedidos y Logística de Garrafas de Gas" {
   usecase "Seleccionar Franja"        as UC044
   usecase "Consultar Franjas"         as UC045
   usecase "Ver Dashboard"             as UC026
+
+  ' --- CU agregados (046-051) ---
+  usecase "Gestionar Direcciones\nde Entrega" as UC046
+  usecase "Recuperar Contraseña"      as UC047
+  usecase "Procesar Pago\n(MercadoPago)" as UC048
+  usecase "Consultar Balance\ndel Chofer" as UC049
+  usecase "Bloquear/Desbloquear\nUsuario" as UC050
+  usecase "Gestionar Vehículos"       as UC051
 }
 
 ' ===== Asociaciones actor – CU =====
@@ -138,6 +147,8 @@ C  -- UC006
 C  -- UC008
 C  -- UC023
 C  -- UC044
+C  -- UC046
+C  -- UC047
 
 CH -- UC001
 CH -- UC015
@@ -145,6 +156,7 @@ CH -- UC017
 CH -- UC018
 CH -- UC020
 CH -- UC022
+CH -- UC049
 
 A  -- UC001
 A  -- UC011
@@ -153,9 +165,12 @@ A  -- UC031
 A  -- UC032
 A  -- UC036
 A  -- UC026
+A  -- UC050
+A  -- UC051
 
 S  -- UC013
 S  -- UC014
+S  -- UC048
 
 ' ===== INCLUDE (siempre) =====
 UC005 ..> UCSTK : <<include>>
@@ -171,6 +186,7 @@ UCPRO ..> UC005 : <<extend>>\n(cantidad >= umbral)
 UCREC ..> UC005 : <<extend>>\n(pago = transferencia)
 UC019 ..> UC018 : <<extend>>\n(chofer cerca)
 UCFOT ..> UC023 : <<extend>>\n(adjunta evidencia)
+UC048 ..> UC005 : <<extend>>\n(pago = MercadoPago)
 
 @enduml
 ```
