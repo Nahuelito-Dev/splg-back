@@ -16,7 +16,8 @@ import { CustomersService } from './customer.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
-import { Public } from '../common/decorators/isPublic.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -24,6 +25,7 @@ export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
   @Get()
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get all customers with pagination' })
   @ApiResponse({ status: 200, description: 'List of customers' })
   async findAll(@Query() paginationDto: PaginationDto) {
@@ -61,6 +63,7 @@ export class CustomersController {
   }
 
   @Patch(':id/validate')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Validate customer' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiResponse({ status: 200, description: 'Customer validated successfully' })
@@ -70,6 +73,7 @@ export class CustomersController {
   }
 
   @Patch(':id/invalidate')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Invalidate customer' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiResponse({
@@ -94,6 +98,7 @@ export class CustomersController {
   }
 
   @Delete(':id')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete customer by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiResponse({ status: 200, description: 'Customer deleted successfully' })

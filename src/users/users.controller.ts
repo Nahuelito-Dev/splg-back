@@ -141,6 +141,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete user by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiResponse({ status: 200, description: 'User deleted successfully' })
@@ -151,6 +152,7 @@ export class UsersController {
   }
 
   @Patch(':id/block')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'ADMIN: Bloquear/Desbloquear usuario' })
   async blockUser(
     @Param('id', ParseUUIDPipe) id: string,

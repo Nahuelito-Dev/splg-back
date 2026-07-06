@@ -11,6 +11,8 @@ import { Server, Socket } from 'socket.io';
 import { RedisService } from '../redis/redis.service';
 import { Logger } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { CustomersGateway } from './customers.gateway';
+import { AdminGateway } from './admin.gateway';
 
 @WebSocketGateway({
   cors: {
@@ -27,6 +29,8 @@ export class DriversGateway
   constructor(
     private readonly redisService: RedisService,
     private readonly authService: AuthService,
+    private readonly customersGateway: CustomersGateway,
+    private readonly adminGateway: AdminGateway,
   ) { }
 
   async handleConnection(client: Socket) {
@@ -83,9 +87,25 @@ export class DriversGateway
       data.lng,
     );
 
-    this.logger.log(
-      `📍 Radar actualizado: Chofer ${data.userId} en [${data.lat}, ${data.lng}]`,
-    );
+    // Tracking en vivo: si el chofer está entregando un pedido, reenviamos su
+    // posición al cliente de ESE pedido y al panel admin. El mapping chofer→pedido
+    // lo setea updateStatus al pasar a ON_THE_WAY y lo limpia al entregar.
+    const active = await this.redisService.getDriverActiveOrder(data.userId);
+    if (active) {
+      const payload = {
+        orderId: active.orderId,
+        driverId: data.userId,
+        lat: data.lat,
+        lng: data.lng,
+        at: new Date().toISOString(),
+      };
+      this.customersGateway.notifyCustomer(
+        active.customerId,
+        'order:driver-location',
+        payload,
+      );
+      this.adminGateway.notifyAdmins('order:driver-location', payload);
+    }
   }
 
   notifyNewOrder(driverId: string, orderPayload: any) {

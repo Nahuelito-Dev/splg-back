@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './common/decorators/roles.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
@@ -66,7 +68,13 @@ import { HealthModule } from './health/health.module';
             ? { ssl: { rejectUnauthorized: false } }
             : undefined,
 
-          synchronize: true,
+          // NUNCA sincronizar el esquema en producción (puede tirar columnas/datos).
+          // En prod el esquema se gestiona con migraciones. En dev se puede forzar
+          // con DB_SYNC; por defecto sincroniza salvo en prod.
+          synchronize:
+            configService.get('DB_SYNC') !== undefined
+              ? configService.get('DB_SYNC') === 'true'
+              : !isProd,
           autoLoadEntities: true,
           migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
           cli: {
@@ -100,6 +108,17 @@ import { HealthModule } from './health/health.module';
     HealthModule,
   ],
   providers: [
+    // Guards globales. El ORDEN importa: AuthGuard autentica y setea req.user;
+    // RolesGuard lee ese req.user para autorizar por rol. Antes RolesGuard no se
+    // registraba en ningún lado → todos los @Roles() eran no-ops (agujero de authz).
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: timeOutInterceptor,

@@ -11,7 +11,7 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
-  UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,16 +23,36 @@ import {
 import { OrderService } from './order.service';
 import { OrderMapper } from './order.mapper';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
-import { AuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { OrderStatus } from './entities/order.entity';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
+
+/**
+ * Traduce el rol autenticado (RoleType) al actor que espera
+ * `OrderService.cancelOrder`. super_admin se trata como admin.
+ */
+function mapRoleToCancelActor(
+  role: RoleType,
+): 'customer' | 'driver' | 'admin' | 'superadmin' {
+  switch (role) {
+    case RoleType.CUSTOMER:
+      return 'customer';
+    case RoleType.DELIVERY:
+      return 'driver';
+    default:
+      return 'admin';
+  }
+}
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -58,11 +78,14 @@ export class OrderController {
     // Retry ante deadlock / serialization_failure de PostgreSQL.
     // Ocurre cuando dos transacciones concurrentes intentan adquirir
     // pessimistic locks sobre las mismas garrafas en orden distinto.
-    const order = await withTransactionRetry(
+    const { order, paymentUrl } = await withTransactionRetry(
       () => this.orderService.create(createOrderDto),
       { context: 'OrderService.create' },
     );
-    return OrderMapper.toDto(order);
+    const dto = OrderMapper.toDto(order);
+    // Solo presente para paymentMethod MERCADOPAGO (checkout de Checkout Pro).
+    dto.paymentUrl = paymentUrl;
+    return dto;
   }
 
   @Get()
@@ -78,13 +101,25 @@ export class OrderController {
   }
 
   @Get('customer/:customerId')
+  @Roles(
+    RoleType.CUSTOMER,
+    RoleType.DELIVERY,
+    RoleType.ADMIN,
+    RoleType.SUPER_ADMIN,
+  )
   @ApiOperation({ summary: 'Get orders by customer ID' })
   @ApiParam({ name: 'customerId', description: 'Customer UUID' })
   @ApiResponse({ status: 200, description: 'List of customer orders' })
   async findByCustomer(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Query() paginationDto: PaginationDto,
   ) {
+    // Ownership: un cliente solo puede ver SUS pedidos. Admin ve los de cualquiera.
+    // (order.customer_id es el User PK, igual que user.user_id.)
+    if (user.role === RoleType.CUSTOMER && user.user_id !== customerId) {
+      throw new ForbiddenException('No autorizado a ver pedidos de otro cliente');
+    }
     const result = await this.orderService.findByCustomer(
       customerId,
       paginationDto,
@@ -136,23 +171,80 @@ export class OrderController {
   }
 
   @Patch(':id/status')
+  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
     summary: 'Update order status',
     description:
-      'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red.',
+      'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red. Solo chofer/admin.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Status updated successfully' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async updateStatus(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { status: OrderStatus; deliveryId?: string },
+    @Body() body: UpdateOrderStatusDto,
   ) {
+    // Un chofer solo puede operar EN SU NOMBRE: ignoramos cualquier deliveryId
+    // del body y usamos su identidad autenticada (updateStatus resuelve el perfil
+    // Delivery por user_id). El admin sí puede asignar a un chofer arbitrario.
+    const isDriver = user.role === RoleType.DELIVERY;
+    const deliveryId = isDriver ? user.user_id : body.deliveryId;
+
     const order = await this.orderService.updateStatus(
       id,
       body.status,
-      body.deliveryId,
+      deliveryId,
+    );
+    return OrderMapper.toDto(order);
+  }
+
+  @Get(':id/delivery-code')
+  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Obtener el código secreto de entrega (para el QR del chofer)',
+    description:
+      'El chofer renderiza este código como QR y lo muestra al cliente al llegar. ' +
+      'Solo existe si el pedido ya fue aceptado. El chofer solo puede ver el de SUS pedidos.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiResponse({ status: 200, description: 'Código de entrega' })
+  @ApiResponse({ status: 400, description: 'El pedido aún no tiene código (no aceptado)' })
+  @ApiResponse({ status: 403, description: 'El pedido no está asignado a este chofer' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async getDeliveryCode(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.orderService.getDeliveryCode(id, user.user_id, user.role);
+  }
+
+  @Post(':id/confirm-delivery')
+  @Roles(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Confirmar entrega escaneando el QR del chofer (prueba anti-fraude)',
+    description:
+      'El cliente escanea el QR que muestra el chofer y envía el código leído. ' +
+      'Si coincide con `order.deliveryCode` y el pedido está ON_THE_WAY, se marca DELIVERED. ' +
+      'Idempotente vía header `Idempotency-Key`: reintentos de red no re-procesan la entrega.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiResponse({ status: 200, description: 'Entrega confirmada' })
+  @ApiResponse({ status: 400, description: 'Código inválido o el pedido no está en camino' })
+  @ApiResponse({ status: 403, description: 'No autorizado (pedido de otro cliente)' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async confirmDelivery(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ConfirmDeliveryDto,
+  ) {
+    const order = await this.orderService.confirmDelivery(
+      id,
+      body.code,
+      user.user_id,
+      user.role,
     );
     return OrderMapper.toDto(order);
   }
@@ -198,38 +290,37 @@ export class OrderController {
   }
 
   @Delete(':id')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cancel order (Admin Force)' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
-  async cancelOrder(@Param('id', ParseUUIDPipe) id: string) {
-    // Como es un DELETE directo, asumimos que es un ADMIN o el SISTEMA
-    // Pasamos un ID ficticio 'SYSTEM_ADMIN' y el rol 'admin'
-    const order = await this.orderService.cancelOrder(
-      id,
-      'SYSTEM_ADMIN',
-      'admin',
-    );
+  async cancelOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    // Cancelación forzada por admin. La identidad sale del token, no de un id
+    // ficticio hardcodeado.
+    const order = await this.orderService.cancelOrder(id, user.user_id, 'admin');
     return OrderMapper.toDto(order);
   }
 
-  // 🟢 ESTE ES TU NUEVO ENDPOINT (Lógica Fina)
   @Patch(':id/cancel')
+  @Roles(RoleType.CUSTOMER, RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
-    summary: 'Cancelar pedido (Cliente/Chofer)',
+    summary: 'Cancelar pedido (Cliente/Chofer/Admin)',
     description:
-      'Idempotente vía header `Idempotency-Key`. Cancelaciones repetidas con la misma key son no-op.',
+      'Idempotente vía header `Idempotency-Key`. Cancelaciones repetidas con la misma key son no-op. El actor (id + rol) sale SIEMPRE del token autenticado, nunca del body (evita IDOR).',
   })
   async cancel(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    // 👇 Agregamos 'reason' al Body
-    @Body()
-    body: { userId: string; role: 'customer' | 'driver'; reason?: string },
+    @Body() body: { reason?: string },
   ) {
     const order = await this.orderService.cancelOrder(
       id,
-      body.userId,
-      body.role,
+      user.user_id,
+      mapRoleToCancelActor(user.role),
       body.reason,
     );
     return OrderMapper.toDto(order);

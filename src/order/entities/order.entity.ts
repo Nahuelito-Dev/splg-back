@@ -8,6 +8,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -135,4 +136,24 @@ export class Order {
 
   @Column({ type: 'text', nullable: true })
   cancellationReason: string | null;
+
+  /**
+   * ID del pago en la pasarela (MercadoPago) que marcó este pedido como PAID.
+   * Índice único PARCIAL (solo cuando no es null): garantiza idempotencia del
+   * webhook — un mismo `payment.id` no puede confirmar dos pedidos, y permite
+   * detectar reintentos (si ya está seteado, no se re-despacha).
+   */
+  @Index({ unique: true, where: '"gatewayPaymentId" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  gatewayPaymentId: string | null;
+
+  /**
+   * Código secreto de la prueba de entrega con QR. Se genera al ACEPTAR el
+   * pedido (ver UpdateOrderStatusUseCase) y viaja embebido en el QR que el
+   * chofer muestra en su app. El cliente lo obtiene ÚNICAMENTE escaneando ese
+   * QR físico; si al confirmar la entrega el código matchea, es prueba de que
+   * el chofer estuvo presente (ConfirmDeliveryUseCase).
+   */
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  deliveryCode: string | null;
 }

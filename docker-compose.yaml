@@ -2,7 +2,10 @@ version: '3'
 
 services:
   db:
-    image: postgres:14.3
+    # PostGIS = Postgres 14 + extensión geoespacial (para zonas de cobertura por
+    # polígono). Drop-in del postgres:14.3 anterior: mismo major, el volumen de
+    # datos ./postgres se mantiene sin migración.
+    image: postgis/postgis:14-3.4
     restart: always
     ports:
       - "5432:5432"

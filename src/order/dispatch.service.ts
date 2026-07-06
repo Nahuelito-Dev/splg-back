@@ -1,73 +1,61 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { OrderService } from './order.service';
-import { OrderStatus } from './entities/order.entity';
 import { RedisService } from '../redis/redis.service';
-import { DriversGateway } from '../gateways/drivers.gateway';
+import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 
+/**
+ * Motor de tiempo del despacho secuencial. Corre cada 15s y, tomando un lock
+ * distribuido (una sola instancia por tick):
+ *   1. vence las ofertas que pasaron su ventana de 30s y las re-ofrece al
+ *      siguiente chofer más cercano (DispatchOrchestrator.handleExpiredOffers);
+ *   2. arranca pedidos pendientes que quedaron sin oferta activa (ej: al crearse
+ *      no había choferes cerca) con DispatchOrchestrator.ensureOffered.
+ *
+ * La lógica de a-quién-ofrecer vive en el orquestador; este servicio solo aporta
+ * el reloj y el lock multi-instancia.
+ */
 @Injectable()
 export class DispatchService {
-    private readonly logger = new Logger(DispatchService.name);
+  private readonly logger = new Logger(DispatchService.name);
 
-    constructor(
-        private readonly orderService: OrderService,
-        private readonly redisService: RedisService,
-        private readonly driversGateway: DriversGateway,
-    ) { }
+  /** No re-ofrecer pedidos recién creados (el create ya los ofreció). */
+  private static readonly MIN_AGE_MS = 60 * 1000;
 
-    @Cron(CronExpression.EVERY_MINUTE)
-    async handlePendingOrders() {
-        // Distributed lock: en multi-instancia (varios pods), solo uno
-        // ejecuta el cron por intervalo. TTL = 55s, menor al período de
-        // 60s, para que si crashea sin liberar, expire antes del próximo tick.
-        const lock = await this.redisService.acquireLock('dispatch:pending', 55000);
-        if (!lock) {
-            this.logger.debug('🔒 Otra instancia tiene el lock — skip ciclo');
-            return;
-        }
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly redisService: RedisService,
+    private readonly orchestrator: DispatchOrchestratorService,
+  ) {}
 
-        try {
-            this.logger.debug('🔎 Buscando pedidos pendientes para reprocesar...');
+  @Cron('*/15 * * * * *') // cada 15 segundos
+  async tick() {
+    // Distributed lock: solo una instancia procesa por tick. TTL 12s < 15s para
+    // que si crashea sin liberar, expire antes del próximo tick.
+    const lock = await this.redisService.acquireLock('dispatch:tick', 12000);
+    if (!lock) return;
 
-            const { orders } = await this.orderService.findAvailableOrders({ limit: 50, offset: 0 });
-            const now = new Date();
-            const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
-
-            for (const order of orders) {
-                // Ignorar pedidos creados hace menos de 2 minutos (para no spammear al inicio)
-                if (new Date(order.createdAt) > twoMinutesAgo) {
-                    continue;
-                }
-
-                this.logger.log(`🔄 Procesando Pedido Pendiente (Retry): ${order.order_id}`);
-
-                // 2. Buscar choferes nuevamente - Radio expandido a 15km
-                const nearbyDrivers = await this.redisService.getNearbyDrivers(
-                    Number(order.deliveryLatitude),
-                    Number(order.deliveryLongitude),
-                    15
-                );
-
-                if (nearbyDrivers.length > 0) {
-                    this.logger.log(`Found ${nearbyDrivers.length} drivers for retry of order ${order.order_id}`);
-                    const driverPayload = {
-                        event: 'NEW_ORDER_RETRY',
-                        orderId: order.order_id,
-                        totalAmount: order.totalAmount,
-                        paymentMethod: order.paymentMethod,
-                        distance: 'Reintento de asignación (Zona ampliada)',
-                        items: order.items,
-                    };
-
-                    for (const driverId of nearbyDrivers) {
-                        this.driversGateway.notifyNewOrder(driverId, driverPayload);
-                    }
-                }
-            }
-        } finally {
-            // Liberar el lock. Si ya expiró por TTL, release() lanza —
-            // lo ignoramos porque el efecto deseado (no overlap) está garantizado.
-            await lock.release().catch(() => undefined);
-        }
+    try {
+      await this.orchestrator.handleExpiredOffers();
+      await this.bootstrapPendingWithoutOffer();
+    } catch (err) {
+      this.logger.error(`tick de dispatch falló: ${(err as Error)?.message}`);
+    } finally {
+      await lock.release().catch(() => undefined);
     }
+  }
+
+  /** Ofrece a pedidos pendientes (con antigüedad mínima) que no tienen oferta. */
+  private async bootstrapPendingWithoutOffer(): Promise<void> {
+    const { orders } = await this.orderService.findAvailableOrders({
+      limit: 50,
+      offset: 0,
+    });
+    const staleBefore = new Date(Date.now() - DispatchService.MIN_AGE_MS);
+
+    for (const order of orders) {
+      if (new Date(order.createdAt) > staleBefore) continue;
+      await this.orchestrator.ensureOffered(order);
+    }
+  }
 }

@@ -1,0 +1,98 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
+import { WebhookSignatureValidator } from 'mercadopago';
+
+import {
+  CreateCheckoutInput,
+  CreateCheckoutResult,
+  GatewayPayment,
+  PaymentGatewayPort,
+  VerifyWebhookSignatureInput,
+} from '../domain/ports/payment-gateway.port';
+
+/**
+ * Adapter del PaymentGatewayPort sobre el SDK oficial `mercadopago` (Checkout
+ * Pro). Único lugar del dominio de pagos que conoce el SDK: el resto del
+ * módulo (use-cases, controller) habla contra el puerto.
+ */
+@Injectable()
+export class MercadoPagoAdapter extends PaymentGatewayPort {
+  private readonly logger = new Logger(MercadoPagoAdapter.name);
+  private readonly client: MercadoPagoConfig;
+
+  constructor(private readonly configService: ConfigService) {
+    super();
+    this.client = new MercadoPagoConfig({
+      accessToken: this.configService.get<string>('MP_ACCESS_TOKEN') || '',
+    });
+  }
+
+  async createCheckout(
+    input: CreateCheckoutInput,
+  ): Promise<CreateCheckoutResult> {
+    const preference = await new Preference(this.client).create({
+      body: {
+        items: input.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          currency_id: 'ARS',
+        })),
+        payer: { email: input.payerEmail },
+        external_reference: input.orderId,
+        notification_url: this.configService.get<string>('MP_NOTIFICATION_URL'),
+        back_urls: {
+          success: this.configService.get<string>('MP_SUCCESS_URL'),
+          failure: this.configService.get<string>('MP_FAILURE_URL'),
+          pending: this.configService.get<string>('MP_PENDING_URL'),
+        },
+        auto_return: 'approved',
+      },
+    });
+
+    if (!preference.init_point || !preference.id) {
+      // No debería ocurrir con un access token válido; lo tratamos como error
+      // de infraestructura (el use-case lo deja burbujear como 500).
+      throw new Error('MercadoPago no devolvió init_point/id de la preferencia');
+    }
+
+    return {
+      initPoint: preference.init_point,
+      preferenceId: preference.id,
+    };
+  }
+
+  async getPayment(paymentId: string): Promise<GatewayPayment> {
+    const payment = await new Payment(this.client).get({ id: paymentId });
+    return {
+      id: String(payment.id),
+      status: payment.status || 'unknown',
+      externalReference: payment.external_reference || null,
+    };
+  }
+
+  verifyWebhookSignature(input: VerifyWebhookSignatureInput): boolean {
+    const secret = this.configService.get<string>('MP_WEBHOOK_SECRET');
+    if (!secret) {
+      this.logger.warn(
+        'MP_WEBHOOK_SECRET no configurado: se rechaza la validación de firma',
+      );
+      return false;
+    }
+
+    try {
+      WebhookSignatureValidator.validate({
+        xSignature: input.xSignature,
+        xRequestId: input.xRequestId,
+        dataId: input.dataId,
+        secret,
+      });
+      return true;
+    } catch (error: any) {
+      this.logger.warn(`Firma de webhook MercadoPago inválida: ${error?.message}`);
+      return false;
+    }
+  }
+}

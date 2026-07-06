@@ -20,10 +20,19 @@ export async function validateUniqueness(
     );
   }
 
-  const userExists = await userService.findOneByEmail(dto.email);
-  const phoneExists = await userService.findOneByPhone(dto.phone_number);
+  // findOneByEmail LANZA NotFoundException si el email no existe (no devuelve
+  // null), así que "no encontrado" == disponible. Sin este catch, registrar un
+  // admin nuevo siempre fallaba con "User not found".
+  let emailInUse = false;
+  try {
+    emailInUse = !!(await userService.findOneByEmail(dto.email));
+  } catch {
+    emailInUse = false;
+  }
 
-  if (userExists || phoneExists) {
+  const phoneInUse = !!(await userService.findOneByPhone(dto.phone_number));
+
+  if (emailInUse || phoneInUse) {
     logger.warn(`⚠️ Email o teléfono ya en uso.`);
     throw new HttpException('Email o teléfono ya en uso', HttpStatus.CONFLICT);
   }

@@ -9,12 +9,22 @@ import {
   Delete,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CarService } from './car.service';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
 @ApiTags('Cars')
+@ApiBearerAuth()
+@Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('car')
 export class CarController {
   constructor(private readonly carService: CarService) {}

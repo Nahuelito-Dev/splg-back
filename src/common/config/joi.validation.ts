@@ -6,6 +6,14 @@ export const JoiValidationSchema = Joi.object({
   DB_HOST: Joi.required(),
   DB_PORT: Joi.number().default(5433),
   DB_USERNAME: Joi.required(),
+  // MercadoPago Checkout Pro. Opcionales para no romper entornos (tests/CI)
+  // sin credenciales sandbox configuradas; en runtime real deben setearse.
+  MP_ACCESS_TOKEN: Joi.string().optional(),
+  MP_WEBHOOK_SECRET: Joi.string().optional(),
+  MP_NOTIFICATION_URL: Joi.string().optional(),
+  MP_SUCCESS_URL: Joi.string().optional(),
+  MP_FAILURE_URL: Joi.string().optional(),
+  MP_PENDING_URL: Joi.string().optional(),
   //AWS_REGION: Joi.string().required(),
   //AWS_ACCESS_KEY_ID: Joi.string().required(),
   //AWS_SECRET_ACCESS_KEY: Joi.string().required(),

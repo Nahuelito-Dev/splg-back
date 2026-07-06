@@ -5,6 +5,8 @@
   import { ApiOperation, ApiResponse } from '@nestjs/swagger';
   import { Public } from 'src/common/decorators/isPublic.decorator';
   import { CreateAdminDto } from './dto/create-admin.dto';
+  import { Roles } from '../common/decorators/roles.decorator';
+  import { RoleType } from '../common/constants/role-type.enum';
 
   @Controller('admin')
   export class AdminController {
@@ -45,12 +47,14 @@
       return await this.adminService.registerAdmin(registerAdminDto);
     }
     @Post('register')
+    @Roles(RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Register a new admin (super_admin only)' })
     async register(@Body() registerAdminDto: RegisterAdminDto) {
       return await this.adminService.registerAdmin(registerAdminDto);
     }
 
     @Get()
+    @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Get all admins' })
     async findAll() {
       return this.adminService.findAll();

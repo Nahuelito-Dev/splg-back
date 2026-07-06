@@ -1,8 +1,12 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
 @ApiTags('Reports')
+@ApiBearerAuth()
+@Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('reports')
 export class ReportsController {
     constructor(private readonly reportsService: ReportsService) { }

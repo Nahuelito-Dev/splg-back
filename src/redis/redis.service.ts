@@ -104,6 +104,43 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // --- TRACKING: pedido activo por chofer ---
+  // Mapea el user_id del chofer → { orderId, customerId } mientras entrega. Sirve
+  // para que, al recibir su GPS, sepamos a qué cliente reenviar la ubicación sin
+  // tocar la DB en cada ping. TTL de seguridad por si no se limpia al entregar.
+
+  private driverActiveOrderKey(driverUserId: string): string {
+    return `driver:active-order:${driverUserId}`;
+  }
+
+  async setDriverActiveOrder(
+    driverUserId: string,
+    data: { orderId: string; customerId: string },
+    ttlSec = 3 * 60 * 60,
+  ): Promise<void> {
+    await this.setex(
+      this.driverActiveOrderKey(driverUserId),
+      ttlSec,
+      JSON.stringify(data),
+    );
+  }
+
+  async getDriverActiveOrder(
+    driverUserId: string,
+  ): Promise<{ orderId: string; customerId: string } | null> {
+    const raw = await this.get(this.driverActiveOrderKey(driverUserId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  async clearDriverActiveOrder(driverUserId: string): Promise<void> {
+    await this.del(this.driverActiveOrderKey(driverUserId));
+  }
+
   // --- MÉTODOS DEL RADAR (REQ 4.3.2 y 4.4.2) ---
 
   /**

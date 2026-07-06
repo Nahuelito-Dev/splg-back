@@ -2,7 +2,11 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { SeedService } from './seed.service';
 import { CreateSeedDto } from './dto/create-seed.dto';
 import { UpdateSeedDto } from './dto/update-seed.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
+// Operaciones de seeding: solo super_admin (pueden poblar/alterar datos base).
+@Roles(RoleType.SUPER_ADMIN)
 @Controller('seed')
 export class SeedController {
   constructor(private readonly seedService: SeedService) {}

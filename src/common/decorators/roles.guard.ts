@@ -3,68 +3,56 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
-  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RoleType } from '../constants/role-type.enum';
+import { ROLES_KEY } from './roles.decorator';
 
+/**
+ * Autorización por rol. Se registra como guard GLOBAL (APP_GUARD) después de
+ * `AuthGuard`, así que corre en todas las rutas: si el handler (o su controller)
+ * no declara `@Roles(...)`, deja pasar; si declara, exige que el rol del usuario
+ * autenticado esté entre los permitidos.
+ *
+ * Lee la metadata a nivel de método Y de clase (`getAllAndOverride`), lo que
+ * permite proteger un controller entero con un único `@Roles()` en la clase.
+ */
 @Injectable()
 export class RolesGuard implements CanActivate {
-  private readonly logger = new Logger(RolesGuard.name); // ← Agregar Logger
-
-  constructor(private reflector: Reflector) {}
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.get<RoleType[]>(
-      'roles',
+    // Las rutas @Public() no tienen usuario autenticado: nunca exigimos rol,
+    // aunque el controller declare @Roles a nivel de clase.
+    const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       ctx.getHandler(),
-    );
-
-    this.logger.debug(
-      `🔐 [ROLES GUARD] Required roles: ${JSON.stringify(requiredRoles)}`,
-    );
-
-    if (!requiredRoles || requiredRoles.length === 0) {
-      this.logger.debug(`✅ [ROLES GUARD] No roles required - access granted`);
+      ctx.getClass(),
+    ]);
+    if (isPublic) {
       return true;
     }
 
-    const req = ctx.switchToHttp().getRequest();
-    const user = req.user;
-
-    this.logger.debug(
-      `👤 [ROLES GUARD] User object: ${JSON.stringify({
-        email: user?.email,
-        role: user?.role,
-        user_id: user?.user_id,
-      })}`,
+    const requiredRoles = this.reflector.getAllAndOverride<RoleType[]>(
+      ROLES_KEY,
+      [ctx.getHandler(), ctx.getClass()],
     );
+
+    if (!requiredRoles || requiredRoles.length === 0) {
+      return true;
+    }
+
+    const { user } = ctx.switchToHttp().getRequest();
 
     if (!user || !user.role) {
-      this.logger.debug(
-        `❌ [ROLES GUARD] User not authenticated or missing role`,
-      );
-      throw new ForbiddenException('User not authenticated or missing role');
+      throw new ForbiddenException('Usuario no autenticado o sin rol');
     }
 
-    const userRole = user.role;
-    this.logger.debug(
-      `🎯 [ROLES GUARD] User role: ${userRole}, Required: ${requiredRoles.join(', ')}`,
-    );
-
-    // ✅ CORRECCIÓN: Verificar que userRole es un RoleType válido
-    const allowed = requiredRoles.includes(userRole as RoleType);
-
-    if (!allowed) {
-      this.logger.debug(
-        `🚫 [ROLES GUARD] Access denied. User role: ${userRole}, Required: ${requiredRoles.join(', ')}`,
-      );
+    if (!requiredRoles.includes(user.role as RoleType)) {
       throw new ForbiddenException(
-        `Insufficient role. Required: ${requiredRoles.join(', ')}, User has: ${userRole}`,
+        `Acceso denegado. Requiere rol: ${requiredRoles.join(', ')}`,
       );
     }
 
-    this.logger.debug(`✅ [ROLES GUARD] Access granted for role: ${userRole}`);
     return true;
   }
 }

@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { TimeSlotService } from './time-slot.service';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
 @ApiTags('Time Slots')
 @Controller('time-slot')
@@ -10,6 +12,7 @@ export class TimeSlotController {
     constructor(private readonly timeSlotService: TimeSlotService) { }
 
     @Post()
+    @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Create a new time slot' })
     create(@Body() createTimeSlotDto: CreateTimeSlotDto) {
         return this.timeSlotService.create(createTimeSlotDto);
@@ -29,6 +32,7 @@ export class TimeSlotController {
     }
 
     @Delete(':id')
+    @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Deactivate time slot' })
     remove(@Param('id', ParseUUIDPipe) id: string) {
         return this.timeSlotService.remove(id);

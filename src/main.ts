@@ -1,13 +1,9 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import basicAuth from 'express-basic-auth';
-import { AuthService } from './auth/auth.service';
-import { UsersService } from './users/users.service';
 
-import { AuthGuard } from './auth/guards/jwt-auth.guard';
 import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
 
 
@@ -19,13 +15,10 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  const reflector = app.get(Reflector);
-  const authService = app.get(AuthService);
-  const usersService = app.get(UsersService);
-
-  if (process.env.STAGE !== 'dev') {
-    app.useGlobalGuards(new AuthGuard(reflector, authService, usersService));
-  }
+  // Autenticación (AuthGuard) y autorización (RolesGuard) se registran como
+  // guards GLOBALES vía APP_GUARD en AppModule. Siempre activos, en todos los
+  // entornos: la seguridad NUNCA depende de STAGE. Las rutas abiertas se marcan
+  // explícitamente con @Public().
 
   app.useGlobalInterceptors(new timeOutInterceptor());
 
@@ -37,9 +30,23 @@ async function bootstrap() {
     }),
   );
 
+  // CORS restringido a una allowlist desde env (CORS_ORIGINS, separada por comas).
+  // Sin allowlist configurada: sin orígenes cross-site (política segura por defecto).
+  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: '*',
+    origin: corsOrigins.length > 0 ? corsOrigins : false,
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Source',
+      'Idempotency-Key',
+    ],
   });
 
   morgan.token('body', (req: any) => {

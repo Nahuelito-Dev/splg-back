@@ -16,6 +16,8 @@ import { Public } from '../common/decorators/isPublic.decorator';
 import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
 @ApiTags('Gas Cylinders')
 @Controller('gascylinder')
@@ -23,6 +25,7 @@ export class GasCylinderController {
   constructor(private readonly gasCylinderService: GasCylinderService) {}
 
   @Post()
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new gas cylinder type' })
   @ApiResponse({
     status: 201,
@@ -69,6 +72,7 @@ export class GasCylinderController {
   }
 
   @Patch(':id')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update gas cylinder by ID' })
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiResponse({
@@ -83,6 +87,7 @@ export class GasCylinderController {
   }
 
   @Patch(':id/stock')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update gas cylinder stock' })
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiResponse({ status: 200, description: 'Stock updated successfully' })
@@ -94,6 +99,7 @@ export class GasCylinderController {
   }
 
   @Delete(':id')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete (deactivate) gas cylinder by ID' })
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiResponse({

@@ -133,6 +133,7 @@ export class AuthGuard implements CanActivate {
       case 'customer-app':
         return RequestSource.CUSTOMER_APP;
       case 'delivery-app':
+      case 'driver-app': // alias: la app chofer manda 'driver-app'
         return RequestSource.DELIVERY_APP;
       default:
         return null;

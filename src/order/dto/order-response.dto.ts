@@ -85,4 +85,12 @@ export class OrderResponseDto {
     @Expose({ name: 'order_items' })
     @Type(() => OrderItemResponseDto)
     items: OrderItemResponseDto[];
+
+    /**
+     * URL de Checkout Pro (MercadoPago) a la que redirigir al cliente para
+     * pagar. Solo presente cuando el pedido se creó con paymentMethod
+     * MERCADOPAGO y la preferencia se pudo generar.
+     */
+    @Expose({ name: 'payment_url' })
+    paymentUrl?: string;
 }

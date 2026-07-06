@@ -2,7 +2,10 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { PaymentgatwayService } from './paymentgatway.service';
 import { CreatePaymentgatwayDto } from './dto/create-paymentgatway.dto';
 import { UpdatePaymentgatwayDto } from './dto/update-paymentgatway.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
+@Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('paymentgatway')
 export class PaymentgatwayController {
   constructor(private readonly paymentgatwayService: PaymentgatwayService) {}

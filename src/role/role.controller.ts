@@ -12,7 +12,10 @@ import {
 import { RoleService } from './role.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
+@Roles(RoleType.SUPER_ADMIN)
 @Controller('role')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
