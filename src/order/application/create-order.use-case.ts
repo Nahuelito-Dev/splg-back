@@ -31,6 +31,7 @@ import {
 } from '../domain/ports/payment-gateway.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { DistributorService } from '../../distributor/distributor.service';
+import { TimeSlotService } from '../../time-slot/time-slot.service';
 
 /** Resultado de crear un pedido: la entidad y, si es pago online, la URL de checkout. */
 export interface CreateOrderResult {
@@ -78,6 +79,7 @@ export class CreateOrderUseCase {
     private readonly realtime: RealtimeDispatchPort,
     private readonly paymentGateway: PaymentGatewayPort,
     private readonly distributorService: DistributorService,
+    private readonly timeSlotService: TimeSlotService,
   ) {}
 
   /**
@@ -94,6 +96,17 @@ export class CreateOrderUseCase {
     if (!distributorId) {
       const def = await this.distributorService.getDefault();
       distributorId = def?.distributor_id ?? null;
+    }
+
+    // Agendamiento: si el pedido trae fecha + franja, validar cupo ANTES de
+    // reservar stock (falla rápido si la franja está completa). Sin fecha, es
+    // entrega inmediata (comportamiento previo).
+    if (createOrderDto.scheduledDate && createOrderDto.timeSlotId) {
+      await this.timeSlotService.assertSlotAvailable(
+        createOrderDto.timeSlotId,
+        createOrderDto.scheduledDate,
+        distributorId,
+      );
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -195,6 +208,7 @@ export class CreateOrderUseCase {
         time_slot_id: createOrderDto.timeSlotId,
         paymentStatus: PaymentStatus.PENDING,
         totalAmount: totalAmount.toNumber(),
+        scheduled_date: createOrderDto.scheduledDate ?? null,
         notes: createOrderDto.notes,
         deliveryLatitude: address.latitude,
         deliveryLongitude: address.longitude,

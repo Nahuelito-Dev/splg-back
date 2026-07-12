@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsEnum,
   IsArray,
+  IsDateString,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -65,4 +66,15 @@ export class CreateOrderDto {
   @IsOptional()
   @IsUUID()
   timeSlotId?: string;
+
+  @ApiProperty({
+    description:
+      'Fecha agendada de entrega (YYYY-MM-DD). Con timeSlotId, agenda el pedido ' +
+      'a esa franja de ese día (valida capacidad). Omitir = entrega inmediata.',
+    required: false,
+    example: '2026-07-15',
+  })
+  @IsOptional()
+  @IsDateString()
+  scheduledDate?: string;
 }

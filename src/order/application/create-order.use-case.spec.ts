@@ -100,6 +100,10 @@ describe('CreateOrderUseCase', () => {
     const distributorService = {
       getDefault: jest.fn().mockResolvedValue({ distributor_id: 'dist-default' }),
     };
+    // Agendamiento: sin scheduledDate no se invoca; mock por si algún test lo usa.
+    const timeSlotService = {
+      assertSlotAvailable: jest.fn().mockResolvedValue(undefined),
+    };
 
     useCase = new CreateOrderUseCase(
       dataSource as any,
@@ -115,6 +119,7 @@ describe('CreateOrderUseCase', () => {
       realtime as any,
       paymentGateway as any,
       distributorService as any,
+      timeSlotService as any,
     );
   });
 

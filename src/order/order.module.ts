@@ -15,6 +15,7 @@ import { Customer } from '../customer/entities/customer.entity';
 
 import { GatewaysModule } from '../gateways/gateways.module';
 import { RedisModule } from '../redis/redis.module'; // 👈 Importar
+import { TimeSlotModule } from '../time-slot/time-slot.module';
 import { DispatchService } from './dispatch.service';
 import { OrderPricingService } from './domain/order-pricing.service';
 import { StockReservationService } from './domain/stock-reservation.service';
@@ -48,6 +49,7 @@ import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
     NotificationsModule,
     GatewaysModule,
     RedisModule, // 👈 AGREGAR ESTO AQUÍ
+    TimeSlotModule, // agendamiento: valida cupo de franja al crear pedido
   ],
   controllers: [OrderController, MercadoPagoWebhookController],
   providers: [

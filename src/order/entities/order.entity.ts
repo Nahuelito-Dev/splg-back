@@ -74,6 +74,15 @@ export class Order {
   @Column({ nullable: true })
   time_slot_id: string;
 
+  /**
+   * Fecha agendada de entrega (YYYY-MM-DD). Null = pedido inmediato ("lo antes
+   * posible", comportamiento previo). Con fecha + time_slot_id, el pedido está
+   * agendado a esa franja de ese día (valida capacidad al crear).
+   */
+  @Index()
+  @Column({ type: 'date', nullable: true })
+  scheduled_date?: string | null;
+
   @Column({ nullable: true })
   delivery_id: string | null;
 

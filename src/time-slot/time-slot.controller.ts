@@ -29,6 +29,23 @@ export class TimeSlotController {
         return this.timeSlotService.findAll(distributor);
     }
 
+    @Get('availability')
+    @Public()
+    @ApiOperation({
+        summary: 'Disponibilidad de franjas para una fecha (agendamiento)',
+        description:
+            'Devuelve cada franja activa de la distribuidora con capacidad, ' +
+            'reservados y cupos libres para la fecha dada (YYYY-MM-DD). Soporta ' +
+            'same-day. La distribuidora se pasa por ?distributor=slug|uuid.',
+    })
+    @ApiResponse({ status: 200, description: 'Disponibilidad por franja' })
+    getAvailability(
+        @Query('date') date: string,
+        @Query('distributor') distributor?: string,
+    ) {
+        return this.timeSlotService.getAvailability(date, distributor);
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'Get time slot by ID' })
     findOne(
