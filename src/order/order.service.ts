@@ -63,8 +63,21 @@ export class OrderService {
     return order;
   }
 
-  async getOne(id: string): Promise<OrderResponseDto> {
+  async getOne(
+    id: string,
+    distributorId?: string | null,
+  ): Promise<OrderResponseDto> {
     const order = await this.findOne(id);
+    // Aislamiento: si hay tenant en contexto (staff, o customer con empresa
+    // elegida), el pedido debe ser de esa distribuidora. Evita leer por PK un
+    // pedido de otra empresa (IDOR cross-tenant).
+    if (
+      distributorId &&
+      order.distributor_id &&
+      order.distributor_id !== distributorId
+    ) {
+      throw new NotFoundException(`Order with ID: ${id} not found`);
+    }
     return OrderMapper.toDto(order);
   }
 

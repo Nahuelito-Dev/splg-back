@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
+import { isTerminal } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -115,7 +116,17 @@ export class ConfirmPaymentUseCase {
         return;
       }
 
-      if (locked.gatewayPaymentId) {
+      if (isTerminal(locked.status)) {
+        // Pedido ya CANCELLED/DELIVERED: un pago que llega tarde (ej. seña de
+        // una reserva ya expirada por el cron, o pedido cancelado por el
+        // cliente antes del webhook) NO debe re-despachar ni marcar PAID — el
+        // stock ya pudo haberse restituido. No-op idempotente.
+        alreadyConfirmed = true;
+        await queryRunner.commitTransaction();
+        this.logger.warn(
+          `Pago ${paymentId} de un pedido ${locked.status} (${locked.order_id}): ignorado (sin despacho)`,
+        );
+      } else if (locked.gatewayPaymentId) {
         alreadyConfirmed = true;
         await queryRunner.commitTransaction();
       } else if (locked.status === OrderStatus.RESERVED) {

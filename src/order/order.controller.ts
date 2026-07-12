@@ -195,8 +195,11 @@ export class OrderController {
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Order found' })
   @ApiResponse({ status: 404, description: 'Order not found' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.orderService.getOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    return await this.orderService.getOne(id, distributorId);
   }
 
   @Patch(':id/status')

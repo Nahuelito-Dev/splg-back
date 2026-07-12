@@ -103,11 +103,26 @@ export class AuthGuard implements CanActivate {
   ): Promise<string | null> {
     const role = user.role?.type;
 
+    // Staff (admin/delivery) DEBE tener una distribuidora en su perfil. Si no la
+    // tiene (dato inconsistente), NO se degrada a "ve todo" (eso sería fuga
+    // cross-tenant): se rechaza. El super_admin es el único cross-tenant.
     if (role === RoleType.DELIVERY) {
-      return user.delivery?.distributor_id ?? null;
+      const id = user.delivery?.distributor_id;
+      if (!id) {
+        throw new UnauthorizedException(
+          'El chofer no tiene una distribuidora asignada',
+        );
+      }
+      return id;
     }
     if (role === RoleType.ADMIN) {
-      return user.admins?.[0]?.distributor_id ?? null;
+      const id = user.admins?.[0]?.distributor_id;
+      if (!id) {
+        throw new UnauthorizedException(
+          'El admin no tiene una distribuidora asignada',
+        );
+      }
+      return id;
     }
 
     // customer / super_admin → header opcional
