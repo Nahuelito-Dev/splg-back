@@ -24,6 +24,7 @@ import { DistributorModule } from './distributor/distributor.module';
 import { RatingModule } from './rating/rating.module';
 import { IncidentModule } from './incident/incident.module';
 import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
+import { CylinderModule } from './cylinder/cylinder.module';
 
 // Importa el interceptor de timeout
 import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
@@ -114,6 +115,7 @@ import { HealthModule } from './health/health.module';
     RatingModule,
     IncidentModule,
     CoverageZoneModule,
+    CylinderModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: AuthGuard autentica y setea req.user;
