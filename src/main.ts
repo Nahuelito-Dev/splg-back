@@ -46,6 +46,9 @@ async function bootstrap() {
       'Authorization',
       'X-Client-Source',
       'Idempotency-Key',
+      // Multi-tenant: el panel super_admin y las apps eligen distribuidora con
+      // este header; sin permitirlo, el preflight CORS bloquea la request.
+      'X-Distributor',
     ],
   });
 
