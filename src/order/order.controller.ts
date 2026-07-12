@@ -21,6 +21,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
+import { ReservationService } from './application/reservation.service';
 import { OrderMapper } from './order.mapper';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -60,7 +61,10 @@ function mapRoleToCancelActor(
 @UseInterceptors(ClassSerializerInterceptor)
 @Controller('orders')
 export class OrderController {
-  constructor(private readonly orderService: OrderService) {}
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly reservationService: ReservationService,
+  ) {}
 
   @Post()
   @Idempotent()
@@ -354,6 +358,24 @@ export class OrderController {
   @Patch(':id/arrived')
   async notifyArrival(@Param('id') id: string) {
     return this.orderService.notifyDriverArrived(id);
+  }
+
+  @Patch(':id/confirm-deposit')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Confirmar la seña de una reserva cobrada en efectivo',
+    description:
+      'Marca deposit_paid=true. Habilita la activación AUTOMÁTICA de la reserva ' +
+      '(el cron la despacha el día agendado). La seña por MercadoPago se confirma ' +
+      'sola vía webhook.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID (reserva)' })
+  async confirmDeposit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    const order = await this.reservationService.confirmDeposit(id, distributorId);
+    return OrderMapper.toDto(order);
   }
 
   @Get('stats/chart')

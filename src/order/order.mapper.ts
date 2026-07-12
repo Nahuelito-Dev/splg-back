@@ -20,6 +20,14 @@ export class OrderMapper {
         // Status Mapping
         dto.status = this.mapStatus(order.status);
 
+        // Agendamiento + reserva
+        dto.scheduledDate = order.scheduled_date ?? null;
+        dto.depositAmount = Number(order.deposit_amount ?? 0);
+        dto.depositPaid = !!order.deposit_paid;
+        // Saldo a cobrar al entregar = total menos la seña YA paga.
+        dto.remainingBalance =
+            Number(order.totalAmount) - (order.deposit_paid ? dto.depositAmount : 0);
+
         // Payment Method Mapping
         dto.paymentMethod = this.mapPaymentType(order.paymentType);
 

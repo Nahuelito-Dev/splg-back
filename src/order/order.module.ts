@@ -33,6 +33,7 @@ import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.
 import { PaymentGatewayPort } from './domain/ports/payment-gateway.port';
 import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
+import { ReservationService } from './application/reservation.service';
 import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
     ConfirmDeliveryUseCase,
     DispatchOrchestratorService,
     ConfirmPaymentUseCase,
+    ReservationService,
     // Puerto de tiempo real → adapter concreto (Redis GEO + Socket.io gateways).
     // Cambiar el transporte = cambiar solo esta línea.
     { provide: RealtimeDispatchPort, useClass: RealtimeDispatchAdapter },

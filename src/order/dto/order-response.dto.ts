@@ -93,4 +93,16 @@ export class OrderResponseDto {
      */
     @Expose({ name: 'payment_url' })
     paymentUrl?: string;
+
+    /** Fecha agendada de entrega (YYYY-MM-DD) o null si es inmediata. */
+    scheduledDate?: string | null;
+
+    /** Seña de la reserva (0 si no es reserva). */
+    depositAmount?: number;
+
+    /** Si la seña ya fue pagada. */
+    depositPaid?: boolean;
+
+    /** Saldo a cobrar al entregar (total - seña paga). */
+    remainingBalance?: number;
 }

@@ -6,7 +6,9 @@ import {
   IsOptional,
   IsEnum,
   IsArray,
+  IsBoolean,
   IsDateString,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -77,4 +79,24 @@ export class CreateOrderDto {
   @IsOptional()
   @IsDateString()
   scheduledDate?: string;
+
+  @ApiProperty({
+    description:
+      'Marca el pedido como pre-reserva: reserva stock para la fecha agendada ' +
+      'pero NO se despacha hasta que la seña esté paga y llegue el día (el ' +
+      'sistema lo activa solo). Requiere scheduledDate.',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isReservation?: boolean;
+
+  @ApiProperty({
+    description: 'Monto de la seña de la reserva (obligatorio si isReservation).',
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  depositAmount?: number;
 }

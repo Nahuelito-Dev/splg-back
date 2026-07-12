@@ -18,6 +18,12 @@ import { UserAddress } from '../../user-addres/entities/user-addres.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 
 export enum OrderStatus {
+  /**
+   * RESERVED = pre-reserva: el cliente reservó a futuro con una seña. El stock
+   * queda reservado pero NO se despacha. El sistema lo activa solo (cron) el día
+   * agendado si la seña está paga (RESERVED → PENDING).
+   */
+  RESERVED = 'reserved',
   PENDING = 'pending',
   ACCEPTED = 'accepted',
   ON_THE_WAY = 'on_the_way',
@@ -82,6 +88,14 @@ export class Order {
   @Index()
   @Column({ type: 'date', nullable: true })
   scheduled_date?: string | null;
+
+  /** Seña de la pre-reserva (0 = pedido normal, no reserva). */
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  deposit_amount: number;
+
+  /** Si la seña ya fue pagada (habilita la activación automática de la reserva). */
+  @Column({ type: 'boolean', default: false })
+  deposit_paid: boolean;
 
   @Column({ nullable: true })
   delivery_id: string | null;

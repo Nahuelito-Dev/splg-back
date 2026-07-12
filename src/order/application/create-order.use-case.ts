@@ -109,6 +109,13 @@ export class CreateOrderUseCase {
       );
     }
 
+    // Pre-reserva: requiere fecha agendada (se reserva PARA un día futuro).
+    if (createOrderDto.isReservation && !createOrderDto.scheduledDate) {
+      throw new BadRequestException(
+        'Una reserva requiere scheduledDate (fecha de entrega agendada)',
+      );
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -198,16 +205,25 @@ export class CreateOrderUseCase {
           ? PaymentType.CASH
           : PaymentType.ONLINE;
 
+      // Pre-reserva: nace RESERVED (no se despacha) con su seña; el resto nace
+      // PENDING como siempre.
+      const isReservation = !!createOrderDto.isReservation;
+      const depositAmount = isReservation
+        ? (createOrderDto.depositAmount ?? 0)
+        : 0;
+
       const order = this.orderRepository.create({
         customer_id: createOrderDto.customerId,
         distributor_id: distributorId ?? undefined,
         address_id: createOrderDto.addressId,
-        status: OrderStatus.PENDING,
+        status: isReservation ? OrderStatus.RESERVED : OrderStatus.PENDING,
         paymentMethod: createOrderDto.paymentMethod,
         paymentType,
         time_slot_id: createOrderDto.timeSlotId,
         paymentStatus: PaymentStatus.PENDING,
         totalAmount: totalAmount.toNumber(),
+        deposit_amount: depositAmount,
+        deposit_paid: false,
         scheduled_date: createOrderDto.scheduledDate ?? null,
         notes: createOrderDto.notes,
         deliveryLatitude: address.latitude,
@@ -221,7 +237,23 @@ export class CreateOrderUseCase {
       // Side-effects post-commit: best-effort, nunca rompen la creación del pedido.
       let paymentUrl: string | undefined;
 
-      if (createOrderDto.paymentMethod === PaymentMethod.MERCADOPAGO) {
+      if (isReservation) {
+        // Pre-reserva: NO se despacha (lo hará el cron el día agendado con la
+        // seña paga). Si la seña es por MP, se crea un checkout SOLO por el
+        // monto de la seña; el webhook marcará deposit_paid.
+        if (
+          createOrderDto.paymentMethod === PaymentMethod.MERCADOPAGO &&
+          depositAmount > 0
+        ) {
+          paymentUrl = await this.createDepositCheckout(
+            savedOrder,
+            depositAmount,
+            customer,
+          );
+        }
+        // Seña en efectivo: queda deposit_paid=false hasta que el admin la
+        // confirme (ReservationService.confirmDeposit).
+      } else if (createOrderDto.paymentMethod === PaymentMethod.MERCADOPAGO) {
         // Pago online: NO se despacha todavía. El pedido queda PENDING/PENDING
         // (status/paymentStatus) hasta que el webhook de MercadoPago confirme el
         // pago (ConfirmPaymentUseCase), recién ahí se ofrece a un chofer.
@@ -308,6 +340,37 @@ export class CreateOrderUseCase {
     } catch (error: any) {
       this.logger.error(
         `No se pudo crear el checkout de MercadoPago para ${savedOrder.order_id}: ${error?.message}`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * Checkout de Checkout Pro SOLO por la seña de una reserva. El webhook, al
+   * aprobarse, marca `deposit_paid` en vez de despachar (ver ConfirmPaymentUseCase).
+   */
+  private async createDepositCheckout(
+    savedOrder: Order,
+    depositAmount: number,
+    customer: User,
+  ): Promise<string | undefined> {
+    try {
+      const checkout = await this.paymentGateway.createCheckout({
+        orderId: savedOrder.order_id,
+        items: [
+          {
+            id: `deposit-${savedOrder.order_id}`,
+            title: 'Seña de reserva',
+            quantity: 1,
+            unitPrice: depositAmount,
+          },
+        ],
+        payerEmail: customer.email || '',
+      });
+      return checkout.initPoint;
+    } catch (error: any) {
+      this.logger.error(
+        `No se pudo crear el checkout de la seña para ${savedOrder.order_id}: ${error?.message}`,
       );
       return undefined;
     }

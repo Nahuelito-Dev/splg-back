@@ -16,6 +16,9 @@ import { OrderStatus } from '../entities/order.entity';
  * agreguen (Fase modelo de datos) se suman aquí sus transiciones.
  */
 export const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, OrderStatus[]>> = {
+  // RESERVED → PENDING (el sistema la activa el día agendado con seña paga) |
+  // CANCELLED (cliente/admin cancela, o el cron la expira por seña impaga).
+  [OrderStatus.RESERVED]: [OrderStatus.PENDING, OrderStatus.CANCELLED],
   [OrderStatus.PENDING]: [OrderStatus.ACCEPTED, OrderStatus.CANCELLED],
   [OrderStatus.ACCEPTED]: [
     OrderStatus.ON_THE_WAY,

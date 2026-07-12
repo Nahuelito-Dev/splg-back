@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import { Order, PaymentStatus } from '../entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -115,7 +115,22 @@ export class ConfirmPaymentUseCase {
         return;
       }
 
-      if (locked.paymentStatus === PaymentStatus.PAID || locked.gatewayPaymentId) {
+      if (locked.gatewayPaymentId) {
+        alreadyConfirmed = true;
+        await queryRunner.commitTransaction();
+      } else if (locked.status === OrderStatus.RESERVED) {
+        // Pago de la SEÑA de una reserva: se marca deposit_paid (no PAID: el
+        // saldo se cobra al entregar) y NO se despacha — el cron activará la
+        // reserva el día agendado.
+        locked.deposit_paid = true;
+        locked.gatewayPaymentId = paymentId;
+        await queryRunner.manager.save(locked);
+        await queryRunner.commitTransaction();
+        this.logger.log(
+          `Seña de la reserva ${locked.order_id} pagada (MercadoPago ${paymentId})`,
+        );
+        return; // no despachar: lo hace el cron de reservas el día agendado
+      } else if (locked.paymentStatus === PaymentStatus.PAID) {
         alreadyConfirmed = true;
         await queryRunner.commitTransaction();
       } else {
