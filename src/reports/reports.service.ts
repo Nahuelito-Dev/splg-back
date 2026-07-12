@@ -14,11 +14,17 @@ export class ReportsService {
         private readonly orderItemRepository: Repository<OrderItem>,
     ) { }
 
-    async getSalesByDriver(startDate: Date, endDate: Date) {
+    /**
+     * `distributorId` opcional: si viene (admin de distribuidora), acota el
+     * reporte a SUS pedidos. `null`/`undefined` (super_admin sin header) →
+     * sin filtro, ve todas las distribuidoras.
+     */
+    async getSalesByDriver(startDate: Date, endDate: Date, distributorId?: string | null) {
         const orders = await this.orderRepository.find({
             where: {
                 status: OrderStatus.DELIVERED,
                 deliveredAt: Between(startDate, endDate),
+                ...(distributorId ? { distributor_id: distributorId } : {}),
             },
             relations: ['delivery', 'delivery.user'],
         });
@@ -51,13 +57,20 @@ export class ReportsService {
         }));
     }
 
-    async getSalesByProduct(startDate: Date, endDate: Date) {
+    async getSalesByProduct(startDate: Date, endDate: Date, distributorId?: string | null) {
         // We need to query order items for delivered orders in the range
-        const result = await this.orderRepository.createQueryBuilder('order')
+        const query = this.orderRepository.createQueryBuilder('order')
             .innerJoinAndSelect('order.items', 'item')
             .innerJoinAndSelect('item.gasCylinder', 'product')
             .where('order.status = :status', { status: OrderStatus.DELIVERED })
-            .andWhere('order.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate })
+            .andWhere('order.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate });
+
+        // Sólo filtramos por tenant si vino distributorId (super_admin ve todo).
+        if (distributorId) {
+            query.andWhere('order.distributor_id = :distributorId', { distributorId });
+        }
+
+        const result = await query
             .select([
                 'product.type AS productType',
                 'product.description AS description',
@@ -76,13 +89,19 @@ export class ReportsService {
         }));
     }
 
-    async getSalesByPaymentMethod(startDate: Date, endDate: Date) {
-        const result = await this.orderRepository.createQueryBuilder('order')
+    async getSalesByPaymentMethod(startDate: Date, endDate: Date, distributorId?: string | null) {
+        const query = this.orderRepository.createQueryBuilder('order')
             .select('order.paymentMethod', 'method')
             .addSelect('COUNT(order.order_id)', 'count')
             .addSelect('SUM(order.totalAmount)', 'total')
             .where('order.status = :status', { status: OrderStatus.DELIVERED })
-            .andWhere('order.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate })
+            .andWhere('order.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate });
+
+        if (distributorId) {
+            query.andWhere('order.distributor_id = :distributorId', { distributorId });
+        }
+
+        const result = await query
             .groupBy('order.paymentMethod')
             .getRawMany();
 

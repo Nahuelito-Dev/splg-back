@@ -95,6 +95,11 @@ describe('CreateOrderUseCase', () => {
         preferenceId: 'pref-1',
       }),
     };
+    // Multi-tenant: sin tenant explícito, el use-case pide la distribuidora
+    // default. Devolvemos una fija para los tests.
+    const distributorService = {
+      getDefault: jest.fn().mockResolvedValue({ distributor_id: 'dist-default' }),
+    };
 
     useCase = new CreateOrderUseCase(
       dataSource as any,
@@ -109,6 +114,7 @@ describe('CreateOrderUseCase', () => {
       orders as any,
       realtime as any,
       paymentGateway as any,
+      distributorService as any,
     );
   });
 

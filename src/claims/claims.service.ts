@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, FindOptionsWhere } from 'typeorm';
 import { Claim, ClaimStatus } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { OrderService } from '../order/order.service';
@@ -26,9 +26,12 @@ export class ClaimsService {
       );
     }
 
+    // El `distributor_id` del reclamo se denormaliza desde la orden asociada:
+    // el cliente no elige distribuidora acá, hereda la del pedido reclamado.
     const claim = this.claimRepo.create({
       order_id: createClaimDto.orderId,
       customer_id: createClaimDto.customerId,
+      distributor_id: order.distributor_id,
       reason: createClaimDto.reason,
       description: createClaimDto.description,
       photoUrl: createClaimDto.photoUrl,
@@ -37,16 +40,39 @@ export class ClaimsService {
     return await this.claimRepo.save(claim);
   }
 
-  async findAll() {
+  async findAll(distributorId?: string | null) {
+    const where: FindOptionsWhere<Claim> = {};
+    if (distributorId) where.distributor_id = distributorId;
+
     return await this.claimRepo.find({
+      where,
       order: { createdAt: 'DESC' },
       relations: ['order', 'customer'],
     });
   }
 
-  async resolve(id: string, resolution: string, status: ClaimStatus) {
-    const claim = await this.claimRepo.findOne({ where: { claim_id: id } });
+  /**
+   * `distributorId` opcional: si viene, el reclamo debe pertenecer a ese
+   * tenant (evita que un admin lea/resuelva reclamos de otra distribuidora).
+   */
+  async findOne(id: string, distributorId?: string | null) {
+    const where: FindOptionsWhere<Claim> = { claim_id: id };
+    if (distributorId) where.distributor_id = distributorId;
+
+    const claim = await this.claimRepo.findOne({ where });
     if (!claim) throw new NotFoundException('Reclamo no encontrado');
+
+    return claim;
+  }
+
+  async resolve(
+    id: string,
+    resolution: string,
+    status: ClaimStatus,
+    distributorId?: string | null,
+  ) {
+    // Verifica pertenencia al tenant antes de resolver.
+    const claim = await this.findOne(id, distributorId);
 
     claim.resolutionNote = resolution;
     claim.status = status;

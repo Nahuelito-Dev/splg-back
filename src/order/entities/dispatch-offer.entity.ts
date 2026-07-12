@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { Order } from './order.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 /**
  * Estado de una oferta de pedido a UN chofer.
@@ -34,6 +35,11 @@ export enum DispatchOfferStatus {
 export class DispatchOffer {
   @PrimaryGeneratedColumn('uuid', { name: 'offer_id' })
   offer_id: string;
+
+  /** Tenant dueño del despacho (denormalizado desde la orden). */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  distributor_id?: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })

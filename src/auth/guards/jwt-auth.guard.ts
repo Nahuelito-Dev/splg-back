@@ -9,6 +9,12 @@ import { AuthService } from '../auth.service';
 import { UsersService } from '../../users/users.service';
 import { RequestSource } from '../enum/request-source.enum';
 import { User } from '../../users/entities/user.entity';
+import { DistributorService } from '../../distributor/distributor.service';
+import { RoleType } from '../../common/constants/role-type.enum';
+
+/** Un uuid v4 canónico (para distinguir header X-Distributor id vs slug). */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -16,6 +22,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly distributorService: DistributorService,
   ) {}
 
   public async canActivate(context: ExecutionContext): Promise<any> {
@@ -65,15 +72,59 @@ export class AuthGuard implements CanActivate {
 
     const local_user = await this.getUser(token_user.email, requestSource);
 
+    const distributor_id = await this.resolveDistributor(local_user, request);
+
     const user = {
       email: local_user.email,
       role: local_user.role?.type,
       user_id: local_user.user_id,
+      distributor_id,
     };
 
     request['user'] = user;
+    // Tenant efectivo de la request (lo lee @CurrentDistributor()).
+    request['distributorId'] = distributor_id;
 
     return true;
+  }
+
+  /**
+   * Resuelve el tenant (distribuidora) efectivo de la request:
+   *  - admin/delivery: se DERIVA de su perfil (server-trusted). Se ignora
+   *    cualquier header X-Distributor → un staff no puede operar otro tenant.
+   *  - customer/super_admin: del header `X-Distributor` (slug o uuid), validado
+   *    contra una distribuidora activa. Sin header → null.
+   * Devuelve null si no hay tenant en contexto (super_admin cross-tenant, o
+   * customer que aún no eligió distribuidora).
+   */
+  private async resolveDistributor(
+    user: User,
+    request: any,
+  ): Promise<string | null> {
+    const role = user.role?.type;
+
+    if (role === RoleType.DELIVERY) {
+      return user.delivery?.distributor_id ?? null;
+    }
+    if (role === RoleType.ADMIN) {
+      return user.admins?.[0]?.distributor_id ?? null;
+    }
+
+    // customer / super_admin → header opcional
+    const header = request.headers['x-distributor'];
+    if (!header || typeof header !== 'string') {
+      return null;
+    }
+    try {
+      const distributor = UUID_RE.test(header)
+        ? await this.distributorService.assertActive(header)
+        : await this.distributorService.findBySlug(header);
+      return distributor.distributor_id;
+    } catch {
+      throw new UnauthorizedException(
+        `Distribuidora '${header}' inválida o no disponible`,
+      );
+    }
   }
 
   private extractTokenFromHeader(request: any): string | null {

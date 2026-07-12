@@ -3,16 +3,28 @@ import {
   PrimaryGeneratedColumn,
   Column,
   OneToOne,
+  ManyToOne,
   JoinColumn,
   CreateDateColumn,
   DeleteDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 @Entity('delivery')
 export class Delivery {
   @PrimaryGeneratedColumn('uuid', { name: 'delivery_id' })
   delivery_id: string;
+
+  /** Distribuidora para la que trabaja el chofer. Nullable hasta backfill. */
+  @Index()
+  @ManyToOne(() => Distributor, { nullable: true })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributor_id?: string;
 
   @OneToOne(() => User, (user) => user.delivery, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

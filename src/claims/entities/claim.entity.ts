@@ -5,9 +5,11 @@ import {
   ManyToOne,
   CreateDateColumn,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 export enum ClaimStatus {
   PENDING = 'pending',
@@ -20,6 +22,15 @@ export enum ClaimStatus {
 export class Claim {
   @PrimaryGeneratedColumn('uuid')
   claim_id: string;
+
+  /** Tenant dueño del reclamo (denormalizado desde la orden). */
+  @Index()
+  @ManyToOne(() => Distributor, { nullable: true })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributor_id?: string;
 
   // Relación con la Orden
   @ManyToOne(() => Order)

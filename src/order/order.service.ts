@@ -46,13 +46,13 @@ export class OrderService {
    * Crear pedido. Delega en CreateOrderUseCase (application layer). OrderService
    * queda como fachada del módulo; el flujo transaccional vive en el use-case.
    */
-  async create(createOrderDto: CreateOrderDto) {
-    return this.createOrderUseCase.execute(createOrderDto);
+  async create(createOrderDto: CreateOrderDto, distributorId?: string | null) {
+    return this.createOrderUseCase.execute(createOrderDto, distributorId);
   }
 
-  async findAll(paginationDto: PaginationDto) {
+  async findAll(paginationDto: PaginationDto, distributorId?: string | null) {
     const { limit = 10, offset = 0 } = paginationDto;
-    return this.orders.findAllPaginated(limit, offset);
+    return this.orders.findAllPaginated(limit, offset, distributorId);
   }
 
   async findOne(id: string) {
@@ -68,19 +68,30 @@ export class OrderService {
     return OrderMapper.toDto(order);
   }
 
-  async findAvailableOrders(paginationDto: PaginationDto) {
+  async findAvailableOrders(
+    paginationDto: PaginationDto,
+    distributorId?: string | null,
+  ) {
     const { limit = 10, offset = 0 } = paginationDto;
-    return this.orders.findAvailable(limit, offset);
+    return this.orders.findAvailable(limit, offset, distributorId);
   }
 
-  async findByCustomer(customerId: string, paginationDto: PaginationDto) {
+  async findByCustomer(
+    customerId: string,
+    paginationDto: PaginationDto,
+    distributorId?: string | null,
+  ) {
     const { limit = 10, offset = 0 } = paginationDto;
-    return this.orders.findByCustomer(customerId, limit, offset);
+    return this.orders.findByCustomer(customerId, limit, offset, distributorId);
   }
 
-  async findByDelivery(deliveryId: string, paginationDto: PaginationDto) {
+  async findByDelivery(
+    deliveryId: string,
+    paginationDto: PaginationDto,
+    distributorId?: string | null,
+  ) {
     const { limit = 10, offset = 0 } = paginationDto;
-    return this.orders.findByDelivery(deliveryId, limit, offset);
+    return this.orders.findByDelivery(deliveryId, limit, offset, distributorId);
   }
 
   /**

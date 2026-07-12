@@ -5,12 +5,25 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
 } from 'typeorm';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 @Entity('gas_cylinder')
 export class GasCylinder {
   @PrimaryGeneratedColumn('uuid', { name: 'gas_cylinder_id' })
   gas_cylinder_id: string;
+
+  /** Tenant dueño de este producto. Nullable hasta backfill del seed. */
+  @Index()
+  @ManyToOne(() => Distributor, { nullable: true })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributor_id?: string;
 
   @Column({ type: 'varchar', length: 50 })
   type: string; // '10kg', '15kg', '45kg'

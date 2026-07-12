@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
+import { Delivery } from '../../delivery/entities/delivery.entity';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
@@ -29,6 +32,8 @@ export class DispatchOrchestratorService {
     private readonly dispatch: RealtimeDispatchPort,
     private readonly orders: OrderRepositoryPort,
     private readonly offers: DispatchOfferRepositoryPort,
+    @InjectRepository(Delivery)
+    private readonly deliveryRepository: Repository<Delivery>,
   ) {}
 
   /**
@@ -45,6 +50,7 @@ export class DispatchOrchestratorService {
       Number(order.deliveryLatitude),
       Number(order.deliveryLongitude),
       alreadyOffered,
+      order.distributor_id,
     );
 
     if (!candidate) {
@@ -57,7 +63,12 @@ export class DispatchOrchestratorService {
     const expiresAt = new Date(
       Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
     );
-    await this.offers.create(order.order_id, candidate, expiresAt);
+    await this.offers.create(
+      order.order_id,
+      candidate,
+      expiresAt,
+      order.distributor_id,
+    );
 
     this.dispatch.notifyDriverNewOrder(candidate, {
       event: 'NEW_ORDER',
@@ -135,17 +146,39 @@ export class DispatchOrchestratorService {
   /**
    * Primer chofer (más cercano) dentro del radio progresivo que no esté ya
    * contactado. `getNearbyDrivers` ya devuelve ordenado por cercanía (ASC).
+   * Multi-tenant: si el pedido tiene distribuidora, sólo se consideran choferes
+   * de ESA distribuidora (un chofer no recibe ofertas de otro tenant).
    */
   private async findNearestAvailable(
     lat: number,
     lng: number,
     exclude: Set<string>,
+    distributorId?: string | null,
   ): Promise<string | null> {
     for (const radiusKm of DispatchOrchestratorService.RADIUS_STEPS_KM) {
       const drivers = await this.dispatch.findNearbyDrivers(lat, lng, radiusKm);
-      const next = drivers.find((id) => !exclude.has(id));
+      const eligible = await this.filterByDistributor(drivers, distributorId);
+      const next = eligible.find((id) => !exclude.has(id));
       if (next) return next;
     }
     return null;
+  }
+
+  /**
+   * Restringe una lista de choferes (por cercanía) a los que pertenecen a la
+   * distribuidora dada, preservando el orden. Sin distribuidora, no filtra.
+   * `driver_id` de la oferta = `user_id` del chofer = `delivery.user_id`.
+   */
+  private async filterByDistributor(
+    driverIds: string[],
+    distributorId?: string | null,
+  ): Promise<string[]> {
+    if (!distributorId || driverIds.length === 0) return driverIds;
+    const rows = await this.deliveryRepository.find({
+      where: { user_id: In(driverIds), distributor_id: distributorId },
+      select: { user_id: true },
+    });
+    const allowed = new Set(rows.map((r) => r.user_id));
+    return driverIds.filter((id) => allowed.has(id));
   }
 }

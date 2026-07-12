@@ -15,9 +15,10 @@ import { GasCylinderService } from './gascylinder.service';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
-import { PaginationDto } from '../common/dtos/pagination.dto';
+import { CatalogQueryDto } from './dto/catalog-query.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Gas Cylinders')
 @Controller('gascylinder')
@@ -31,16 +32,19 @@ export class GasCylinderController {
     status: 201,
     description: 'Gas cylinder created successfully',
   })
-  create(@Body() createGasCylinderDto: CreateGasCylinderDto) {
-    return this.gasCylinderService.create(createGasCylinderDto);
+  create(
+    @Body() createGasCylinderDto: CreateGasCylinderDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ) {
+    return this.gasCylinderService.create(createGasCylinderDto, distributorId);
   }
 
   @Get()
   @Public()
   @ApiOperation({ summary: 'Get all gas cylinders with pagination' })
   @ApiResponse({ status: 200, description: 'List of gas cylinders' })
-  findAll(@Query() paginationDto: PaginationDto) {
-    return this.gasCylinderService.findAll(paginationDto);
+  findAll(@Query() query: CatalogQueryDto) {
+    return this.gasCylinderService.findAll(query, query.distributor);
   }
 
   @Get(':id')
@@ -49,7 +53,7 @@ export class GasCylinderController {
   @ApiResponse({ status: 200, description: 'Gas cylinder found' })
   @ApiResponse({ status: 404, description: 'Gas cylinder not found' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.gasCylinderService.findOne(id); // <- Cambiar: usar string, no +id
+    return this.gasCylinderService.findOne(id);
   }
 
   @Get('type/:type')
@@ -59,16 +63,19 @@ export class GasCylinderController {
     description: 'Gas cylinder type (10kg, 15kg, etc)',
   })
   @ApiResponse({ status: 200, description: 'Gas cylinder found' })
-  findByType(@Param('type') type: string) {
-    return this.gasCylinderService.findByType(type);
+  findByType(
+    @Param('type') type: string,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    return this.gasCylinderService.findByType(type, distributorId ?? undefined);
   }
 
   @Get('available/list')
   @Public()
   @ApiOperation({ summary: 'Get all available gas cylinders' })
   @ApiResponse({ status: 200, description: 'List of available gas cylinders' })
-  getAvailableCylinders() {
-    return this.gasCylinderService.getAvailableCylinders();
+  getAvailableCylinders(@Query('distributor') distributor?: string) {
+    return this.gasCylinderService.getAvailableCylinders(distributor);
   }
 
   @Patch(':id')
@@ -82,8 +89,13 @@ export class GasCylinderController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateGasCylinderDto: UpdateGasCylinderDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
-    return this.gasCylinderService.update(id, updateGasCylinderDto);
+    return this.gasCylinderService.update(
+      id,
+      updateGasCylinderDto,
+      distributorId,
+    );
   }
 
   @Patch(':id/stock')
@@ -94,8 +106,9 @@ export class GasCylinderController {
   updateStock(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { quantity: number },
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
-    return this.gasCylinderService.updateStock(id, body.quantity);
+    return this.gasCylinderService.updateStock(id, body.quantity, distributorId);
   }
 
   @Delete(':id')
@@ -106,7 +119,10 @@ export class GasCylinderController {
     status: 200,
     description: 'Gas cylinder deactivated successfully',
   })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.gasCylinderService.remove(id); // <- CORREGIDO: no hay espacio en el nombre
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ) {
+    return this.gasCylinderService.remove(id, distributorId);
   }
 }

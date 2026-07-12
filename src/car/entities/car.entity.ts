@@ -7,13 +7,24 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 @Entity('car')
 export class Car {
   @PrimaryGeneratedColumn('uuid', { name: 'car_id' })
   car_id: string;
+
+  /** Tenant dueño del vehículo. Nullable hasta backfill del seed. */
+  @Index()
+  @ManyToOne(() => Distributor, { nullable: true })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributor_id?: string;
 
   @ManyToOne(() => User, (user) => user.cars, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

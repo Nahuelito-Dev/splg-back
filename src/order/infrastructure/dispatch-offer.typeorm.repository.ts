@@ -21,10 +21,12 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     orderId: string,
     driverId: string,
     expiresAt: Date,
+    distributorId?: string | null,
   ): Promise<DispatchOffer> {
     const offer = this.repo.create({
       order_id: orderId,
       driver_id: driverId,
+      distributor_id: distributorId ?? undefined,
       expiresAt,
       status: DispatchOfferStatus.OFFERED,
     });

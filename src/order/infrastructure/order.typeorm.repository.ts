@@ -39,11 +39,21 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     });
   }
 
+  /** Agrega `distributor_id` al where sólo si se pasó un tenant (scope opcional). */
+  private scoped<T extends Record<string, unknown>>(
+    where: T,
+    distributorId?: string | null,
+  ): T {
+    return distributorId ? { ...where, distributor_id: distributorId } : where;
+  }
+
   async findAllPaginated(
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
+      where: this.scoped({}, distributorId),
       take: limit,
       skip: offset,
       relations: FULL_RELATIONS,
@@ -52,9 +62,16 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     return { orders, total, limit, offset };
   }
 
-  async findAvailable(limit: number, offset: number): Promise<PaginatedOrders> {
+  async findAvailable(
+    limit: number,
+    offset: number,
+    distributorId?: string | null,
+  ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
-      where: { status: OrderStatus.PENDING, delivery_id: IsNull() },
+      where: this.scoped(
+        { status: OrderStatus.PENDING, delivery_id: IsNull() },
+        distributorId,
+      ),
       take: limit,
       skip: offset,
       relations: [
@@ -74,9 +91,10 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     customerId: string,
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
-      where: { customer_id: customerId },
+      where: this.scoped({ customer_id: customerId }, distributorId),
       take: limit,
       skip: offset,
       relations: [
@@ -96,9 +114,10 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     deliveryId: string,
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
-      where: { delivery_id: deliveryId },
+      where: this.scoped({ delivery_id: deliveryId }, distributorId),
       take: limit,
       skip: offset,
       relations: [

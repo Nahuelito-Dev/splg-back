@@ -15,6 +15,7 @@ import { Delivery } from '../../delivery/entities/delivery.entity';
 import { OrderItem } from './order-item.entity';
 import { TimeSlot } from '../../time-slot/entities/time-slot.entity';
 import { UserAddress } from '../../user-addres/entities/user-addres.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 export enum OrderStatus {
   PENDING = 'pending',
@@ -45,6 +46,15 @@ export enum PaymentStatus {
 export class Order {
   @PrimaryGeneratedColumn('uuid', { name: 'order_id' })
   order_id: string;
+
+  /** Tenant dueño del pedido. Nullable hasta backfill del seed. */
+  @Index()
+  @ManyToOne(() => Distributor, { nullable: true })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributor_id?: string;
 
   @ManyToOne(() => User, (user) => user.customer, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'customer_id' })

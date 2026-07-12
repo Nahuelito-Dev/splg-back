@@ -20,6 +20,10 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SeedModule } from './seed/seed.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { UserAddresModule } from './user-addres/user-addres.module';
+import { DistributorModule } from './distributor/distributor.module';
+import { RatingModule } from './rating/rating.module';
+import { IncidentModule } from './incident/incident.module';
+import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
 
 // Importa el interceptor de timeout
 import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
@@ -106,6 +110,10 @@ import { HealthModule } from './health/health.module';
     TimeSlotModule,
     ReportsModule,
     HealthModule,
+    DistributorModule,
+    RatingModule,
+    IncidentModule,
+    CoverageZoneModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: AuthGuard autentica y setea req.user;

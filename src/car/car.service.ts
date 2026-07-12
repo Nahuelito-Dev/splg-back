@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, FindOptionsWhere } from 'typeorm';
 import { Car } from './entities/car.entity';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
@@ -21,7 +21,7 @@ export class CarService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async create(createCarDto: CreateCarDto) {
+  async create(createCarDto: CreateCarDto, distributorId: string) {
     const user = await this.userRepository.findOne({
       where: { user_id: createCarDto.user_id },
     });
@@ -47,20 +47,32 @@ export class CarService {
     const car = this.carRepository.create({
       ...createCarDto,
       user_id: createCarDto.user_id,
+      distributor_id: distributorId,
     });
 
     return await this.carRepository.save(car);
   }
 
-  async findAll() {
+  async findAll(distributorId?: string) {
+    const where: FindOptionsWhere<Car> = {};
+    if (distributorId) where.distributor_id = distributorId;
+
     return await this.carRepository.find({
+      where,
       relations: ['user', 'user.delivery'],
     });
   }
 
-  async findOne(id: string) {
+  /**
+   * `distributorId` opcional: si viene, el auto debe pertenecer a ese tenant
+   * (evita que un admin lea/edite vehículos de otra distribuidora).
+   */
+  async findOne(id: string, distributorId?: string | null) {
+    const where: FindOptionsWhere<Car> = { car_id: id };
+    if (distributorId) where.distributor_id = distributorId;
+
     const car = await this.carRepository.findOne({
-      where: { car_id: id },
+      where,
       relations: ['user', 'user.delivery'],
     });
 
@@ -71,16 +83,22 @@ export class CarService {
     return car;
   }
 
-  async findByUserId(userId: string) {
+  async findByUserId(userId: string, distributorId?: string | null) {
+    const where: FindOptionsWhere<Car> = { user_id: userId };
+    if (distributorId) where.distributor_id = distributorId;
+
     const cars = await this.carRepository.find({
-      where: { user_id: userId },
+      where,
       relations: ['user'],
     });
 
     return cars;
   }
 
-  async update(id: string, updateCarDto: UpdateCarDto) {
+  async update(id: string, updateCarDto: UpdateCarDto, distributorId: string) {
+    // Verifica pertenencia al tenant antes de editar.
+    await this.findOne(id, distributorId);
+
     const car = await this.carRepository.preload({
       car_id: id,
       ...updateCarDto,
@@ -105,8 +123,8 @@ export class CarService {
     return await this.carRepository.save(car);
   }
 
-  async remove(id: string) {
-    const car = await this.findOne(id);
+  async remove(id: string, distributorId: string) {
+    const car = await this.findOne(id, distributorId);
     await this.carRepository.remove(car);
 
     return {
@@ -115,9 +133,12 @@ export class CarService {
     };
   }
 
-  async findByPatent(patent: string) {
+  async findByPatent(patent: string, distributorId?: string | null) {
+    const where: FindOptionsWhere<Car> = { car_patent: patent };
+    if (distributorId) where.distributor_id = distributorId;
+
     const car = await this.carRepository.findOne({
-      where: { car_patent: patent },
+      where,
       relations: ['user', 'user.delivery'],
     });
 

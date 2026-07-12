@@ -11,6 +11,7 @@ export abstract class DispatchOfferRepositoryPort {
     orderId: string,
     driverId: string,
     expiresAt: Date,
+    distributorId?: string | null,
   ): Promise<DispatchOffer>;
 
   /** IDs de choferes YA contactados para este pedido (cualquier estado). */

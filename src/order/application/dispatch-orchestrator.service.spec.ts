@@ -85,7 +85,7 @@ describe('DispatchOrchestratorService', () => {
       const result = await orchestrator.offerToNextDriver(makeOrder());
 
       expect(result).toBe('d2');
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date));
+      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date), undefined);
     });
 
     it('radio progresivo: si en 5km todos ya fueron contactados, amplía a 10km', async () => {
@@ -135,7 +135,7 @@ describe('DispatchOrchestratorService', () => {
         'off-1',
         DispatchOfferStatus.EXPIRED,
       );
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date));
+      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date), undefined);
     });
 
     it('NO re-ofrece si el pedido ya fue aceptado (tiene delivery asignado)', async () => {
@@ -174,7 +174,7 @@ describe('DispatchOrchestratorService', () => {
       offers.hasActiveOffer.mockResolvedValue(false);
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['d1']);
       await orchestrator.ensureOffered(makeOrder());
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd1', expect.any(Date));
+      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd1', expect.any(Date), undefined);
     });
 
     it('no ofrece si el pedido no es re-ofrecible (ya asignado)', async () => {
@@ -204,7 +204,7 @@ describe('DispatchOrchestratorService', () => {
         'd1',
         DispatchOfferStatus.REJECTED,
       );
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date));
+      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date), undefined);
     });
   });
 });

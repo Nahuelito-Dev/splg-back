@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -29,6 +30,7 @@ import {
   PaymentGatewayPort,
 } from '../domain/ports/payment-gateway.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { DistributorService } from '../../distributor/distributor.service';
 
 /** Resultado de crear un pedido: la entidad y, si es pago online, la URL de checkout. */
 export interface CreateOrderResult {
@@ -75,9 +77,25 @@ export class CreateOrderUseCase {
     private readonly orders: OrderRepositoryPort,
     private readonly realtime: RealtimeDispatchPort,
     private readonly paymentGateway: PaymentGatewayPort,
+    private readonly distributorService: DistributorService,
   ) {}
 
-  async execute(createOrderDto: CreateOrderDto): Promise<CreateOrderResult> {
+  /**
+   * @param distributorId Tenant al que pertenece el pedido (la distribuidora
+   *   que el cliente eligió vía header X-Distributor). Todas las garrafas del
+   *   pedido deben ser de esta distribuidora.
+   */
+  async execute(
+    createOrderDto: CreateOrderDto,
+    distributorId?: string | null,
+  ): Promise<CreateOrderResult> {
+    // Compatibilidad: sin tenant explícito (app previa al multi-tenant), el
+    // pedido va a la distribuidora default.
+    if (!distributorId) {
+      const def = await this.distributorService.getDefault();
+      distributorId = def?.distributor_id ?? null;
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -118,6 +136,18 @@ export class CreateOrderUseCase {
           itemDto.quantity,
         );
 
+        // Aislamiento multi-tenant: la garrafa debe ser de la distribuidora del
+        // pedido. Impide armar un pedido mezclando catálogos de dos tenants.
+        if (
+          distributorId &&
+          gasCylinder.distributor_id &&
+          gasCylinder.distributor_id !== distributorId
+        ) {
+          throw new BadRequestException(
+            `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
+          );
+        }
+
         // Pricing: precio de lista (DB, nunca del cliente) + promos por volumen.
         const { unitPrice, subtotal } = this.pricing.priceItem(
           gasCylinder.price,
@@ -157,6 +187,7 @@ export class CreateOrderUseCase {
 
       const order = this.orderRepository.create({
         customer_id: createOrderDto.customerId,
+        distributor_id: distributorId ?? undefined,
         address_id: createOrderDto.addressId,
         status: OrderStatus.PENDING,
         paymentMethod: createOrderDto.paymentMethod,
@@ -198,6 +229,7 @@ export class CreateOrderUseCase {
       // Panel admin en vivo: nuevo pedido.
       this.realtime.notifyAdmins('order:created', {
         orderId: savedOrder.order_id,
+        distributorId: savedOrder.distributor_id,
         totalAmount: savedOrder.totalAmount,
         status: savedOrder.status,
         paymentMethod: savedOrder.paymentMethod,

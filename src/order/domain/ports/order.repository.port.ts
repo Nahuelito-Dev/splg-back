@@ -25,24 +25,32 @@ export abstract class OrderRepositoryPort {
   abstract findAllPaginated(
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders>;
 
-  /** Pedidos PENDING sin chofer asignado (para la app del repartidor). */
+  /**
+   * Pedidos PENDING sin chofer asignado (para la app del repartidor).
+   * Con `distributorId` se restringe al pool de esa distribuidora: un chofer
+   * NO debe ver pedidos disponibles de otro tenant.
+   */
   abstract findAvailable(
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders>;
 
   abstract findByCustomer(
     customerId: string,
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders>;
 
   abstract findByDelivery(
     deliveryId: string,
     limit: number,
     offset: number,
+    distributorId?: string | null,
   ): Promise<PaginatedOrders>;
 
   /** Guarda (crea o actualiza) un pedido ya materializado. */

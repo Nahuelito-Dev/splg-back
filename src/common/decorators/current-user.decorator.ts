@@ -16,6 +16,14 @@ export interface AuthenticatedUser {
   user_id: string;
   email: string;
   role: RoleType;
+  /**
+   * Tenant (distribuidora) efectivo de la request. Multi-tenant:
+   *  - admin/delivery: su distribuidora, derivada del perfil (server-trusted).
+   *  - customer/super_admin: la del header `X-Distributor` si se envió.
+   *  - super_admin sin header: `null` = cross-tenant (ve todas).
+   * Lo resuelve `AuthGuard`; nunca se lee del body.
+   */
+  distributor_id?: string | null;
 }
 
 /**
