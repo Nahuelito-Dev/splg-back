@@ -52,6 +52,9 @@ export class IncidentService {
 
     return this.incidentRepository.find({
       where,
+      // Trae el pedido y su cliente para que el panel muestre a quién afecta la
+      // incidencia sin llamadas extra (findAll es admin-only).
+      relations: ['order', 'order.customer'],
       order: { createdAt: 'DESC' },
     });
   }
