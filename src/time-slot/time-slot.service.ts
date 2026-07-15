@@ -4,7 +4,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Not, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { TimeSlot } from './entities/time-slot.entity';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
 import { DistributorService } from '../distributor/distributor.service';
@@ -167,6 +167,52 @@ export class TimeSlotService {
         }
 
         const booked = await this.countBooked(timeSlotId, date, distributorId);
+        if (booked >= slot.capacity) {
+            throw new BadRequestException(
+                `La franja "${slot.name}" del ${date} está completa`,
+            );
+        }
+    }
+
+    /**
+     * Igual que `assertSlotAvailable` pero DENTRO de una transacción y con lock
+     * pesimista sobre la fila de la franja. Serializa las reservas concurrentes
+     * de la MISMA franja+fecha: la 2ª transacción espera a que la 1ª commitee
+     * (liberando el lock) antes de contar, así el conteo ve el pedido recién
+     * insertado y no se supera `capacity` bajo carga. Debe llamarse con el
+     * `EntityManager` de la transacción que también inserta el pedido, para que
+     * el lock se sostenga hasta el commit.
+     */
+    async assertSlotAvailableTx(
+        manager: EntityManager,
+        timeSlotId: string,
+        date: string,
+        distributorId?: string | null,
+    ): Promise<void> {
+        const slot = await manager.findOne(TimeSlot, {
+            where: {
+                time_slot_id: timeSlotId,
+                isActive: true,
+                ...(distributorId ? { distributor_id: distributorId } : {}),
+            },
+            lock: { mode: 'pessimistic_write' },
+        });
+        if (!slot) {
+            throw new BadRequestException('Franja horaria inválida o inactiva');
+        }
+
+        const today = new Date().toISOString().slice(0, 10);
+        if (date < today) {
+            throw new BadRequestException('No se puede agendar en una fecha pasada');
+        }
+
+        const where: FindOptionsWhere<Order> = {
+            time_slot_id: timeSlotId,
+            scheduled_date: date,
+            status: Not(OrderStatus.CANCELLED),
+        };
+        if (distributorId) where.distributor_id = distributorId;
+        const booked = await manager.count(Order, { where });
         if (booked >= slot.capacity) {
             throw new BadRequestException(
                 `La franja "${slot.name}" del ${date} está completa`,

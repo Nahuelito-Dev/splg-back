@@ -76,6 +76,8 @@ describe('CreateOrderUseCase', () => {
         type: '10kg',
         price: 1000,
         promotions: null,
+        // Debe pertenecer a la distribuidora del pedido (default en estos tests).
+        distributor_id: 'dist-default',
       }),
     };
     dispatchOrchestrator = { offerToNextDriver: jest.fn().mockResolvedValue('drv-1') };
@@ -101,8 +103,11 @@ describe('CreateOrderUseCase', () => {
       getDefault: jest.fn().mockResolvedValue({ distributor_id: 'dist-default' }),
     };
     // Agendamiento: sin scheduledDate no se invoca; mock por si algún test lo usa.
+    // `assertSlotAvailableTx` es la versión transaccional con lock (la que usa el
+    // use-case cuando el pedido trae fecha + franja).
     const timeSlotService = {
       assertSlotAvailable: jest.fn().mockResolvedValue(undefined),
+      assertSlotAvailableTx: jest.fn().mockResolvedValue(undefined),
     };
 
     useCase = new CreateOrderUseCase(
@@ -137,6 +142,35 @@ describe('CreateOrderUseCase', () => {
       expect(realtime.notifyAdmins).toHaveBeenCalledWith(
         'order:created',
         expect.any(Object),
+      );
+    });
+  });
+
+  describe('aislamiento multi-tenant', () => {
+    it('rechaza una garrafa de OTRA distribuidora', async () => {
+      stock.reserve.mockResolvedValueOnce({
+        gas_cylinder_id: 'gc-x',
+        type: '10kg',
+        price: 1000,
+        promotions: null,
+        distributor_id: 'dist-OTRO',
+      });
+      await expect(useCase.execute({ ...baseDto })).rejects.toThrow(
+        /no pertenece a la distribuidora/,
+      );
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('rechaza una garrafa con distributor_id null (sin tenant)', async () => {
+      stock.reserve.mockResolvedValueOnce({
+        gas_cylinder_id: 'gc-null',
+        type: '10kg',
+        price: 1000,
+        promotions: null,
+        distributor_id: null,
+      });
+      await expect(useCase.execute({ ...baseDto })).rejects.toThrow(
+        /no pertenece a la distribuidora/,
       );
     });
   });

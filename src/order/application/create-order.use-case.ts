@@ -98,17 +98,6 @@ export class CreateOrderUseCase {
       distributorId = def?.distributor_id ?? null;
     }
 
-    // Agendamiento: si el pedido trae fecha + franja, validar cupo ANTES de
-    // reservar stock (falla rápido si la franja está completa). Sin fecha, es
-    // entrega inmediata (comportamiento previo).
-    if (createOrderDto.scheduledDate && createOrderDto.timeSlotId) {
-      await this.timeSlotService.assertSlotAvailable(
-        createOrderDto.timeSlotId,
-        createOrderDto.scheduledDate,
-        distributorId,
-      );
-    }
-
     // Pre-reserva: requiere fecha agendada (se reserva PARA un día futuro).
     if (createOrderDto.isReservation && !createOrderDto.scheduledDate) {
       throw new BadRequestException(
@@ -141,6 +130,18 @@ export class CreateOrderUseCase {
         throw new NotFoundException('Dirección no encontrada');
       }
 
+      // Agendamiento: validar cupo de la franja DENTRO de la transacción y con
+      // lock pesimista sobre la franja, para que reservas concurrentes no
+      // superen la capacidad (antes corría fuera de la tx y sin lock = race).
+      if (createOrderDto.scheduledDate && createOrderDto.timeSlotId) {
+        await this.timeSlotService.assertSlotAvailableTx(
+          queryRunner.manager,
+          createOrderDto.timeSlotId,
+          createOrderDto.scheduledDate,
+          distributorId,
+        );
+      }
+
       let totalAmount = new Decimal(0);
       const orderItems: OrderItem[] = [];
       // Ítems para el checkout de MercadoPago (título legible + precio de
@@ -156,11 +157,12 @@ export class CreateOrderUseCase {
           itemDto.quantity,
         );
 
-        // Aislamiento multi-tenant: la garrafa debe ser de la distribuidora del
-        // pedido. Impide armar un pedido mezclando catálogos de dos tenants.
+        // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
+        // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
+        // como una con `distributor_id` null (dato sin backfillear), que antes
+        // se colaba en cualquier tenant.
         if (
           distributorId &&
-          gasCylinder.distributor_id &&
           gasCylinder.distributor_id !== distributorId
         ) {
           throw new BadRequestException(
