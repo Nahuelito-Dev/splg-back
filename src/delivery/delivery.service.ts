@@ -179,9 +179,11 @@ export class DeliveryService {
 
     // 3. Gestionamos Redis (Geolocalización)
     if (!isAvailable) {
-      // IMPORTANTE: A Redis le seguimos pasando el ID del delivery para borrarlo del mapa,
-      // ya que lo obtuvimos en la consulta anterior.
-      await this.redisService.removeDriver(delivery.delivery_id);
+      // El radar `drivers:locations` se llena por `user_id` (lo setea
+      // `driver:update-location` vía `updateDriverLocation(userId,...)`), así que
+      // hay que sacarlo por `user_id`. Con `delivery_id` el ZREM era un no-op y el
+      // chofer offline seguía en el radar recibiendo ofertas (CU-022).
+      await this.redisService.removeDriver(userId);
     }
 
     return {
