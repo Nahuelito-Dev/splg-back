@@ -11,6 +11,7 @@ import {
   HttpStatus,
   HttpCode,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -24,6 +25,8 @@ import { RoleType } from 'src/common/constants/role-type.enum';
 import { CreateDeliveryDto } from 'src/delivery/dto/create-delivery.dto';
 import { RolesGuard } from '../common/decorators/roles.guard';
 import { AuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -132,12 +135,46 @@ export class UsersController {
   @ApiOperation({ summary: 'Update user by ID' })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
+  @ApiResponse({ status: 403, description: 'No autorizado a modificar este usuario' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return await this.usersService.update(id, updateUserDto);
+    const isAdmin =
+      user.role === RoleType.ADMIN || user.role === RoleType.SUPER_ADMIN;
+
+    // Ownership: un no-admin SOLO puede modificarse a sí mismo. Antes cualquier
+    // usuario autenticado podía editar a otro por id (IDOR).
+    if (!isAdmin && id !== user.user_id) {
+      throw new ForbiddenException('No podés modificar a otro usuario');
+    }
+
+    // Whitelist de campos para auto-edición: un no-admin solo puede tocar sus
+    // datos de contacto. Campos sensibles (blocked, role_id, email, password,
+    // flags de verificación, firebase_uid) quedan reservados a admin.
+    const payload = isAdmin
+      ? updateUserDto
+      : this.pickSelfEditableFields(updateUserDto);
+
+    return await this.usersService.update(id, payload);
+  }
+
+  /** Campos que un usuario puede cambiar de su propio perfil. */
+  private pickSelfEditableFields(dto: UpdateUserDto): Partial<UpdateUserDto> {
+    const allowed: Array<keyof UpdateUserDto> = [
+      'full_name',
+      'phone_number',
+      'selfie',
+    ];
+    const result: Partial<UpdateUserDto> = {};
+    for (const key of allowed) {
+      if (dto[key] !== undefined) {
+        (result as any)[key] = dto[key];
+      }
+    }
+    return result;
   }
 
   @Delete(':id')
