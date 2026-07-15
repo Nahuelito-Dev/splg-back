@@ -157,7 +157,9 @@ export class UserAddresService {
     const whereClause: any = { user_id: userId, isDefault: true };
 
     if (excludeAddressId) {
-      whereClause.address_id = { $not: excludeAddressId } as any;
+      // TypeORM (Postgres), NO Mongo: usar Not(), no `{ $not: ... }` (rompía
+      // con 500 al marcar una dirección como predeterminada).
+      whereClause.address_id = Not(excludeAddressId);
     }
 
     const defaultAddresses = await this.userAddressRepository.find({
