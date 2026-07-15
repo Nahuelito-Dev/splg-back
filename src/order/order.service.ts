@@ -19,6 +19,7 @@ import { CreateOrderUseCase } from './application/create-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
+import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 
 @Injectable()
 export class OrderService {
@@ -40,7 +41,24 @@ export class OrderService {
     private readonly updateOrderStatusUseCase: UpdateOrderStatusUseCase,
     private readonly cancelOrderUseCase: CancelOrderUseCase,
     private readonly confirmDeliveryUseCase: ConfirmDeliveryUseCase,
+    // Orquestador de despacho: para el rechazo explícito de una oferta (CU-016),
+    // que cierra la oferta del chofer y re-ofrece al siguiente de inmediato (en
+    // vez de esperar a que expire por timeout).
+    private readonly dispatchOrchestrator: DispatchOrchestratorService,
   ) {}
+
+  /**
+   * CU-016: el chofer rechaza/ignora una oferta de pedido. Cierra su oferta
+   * activa como REJECTED y re-ofrece el pedido al siguiente chofer más cercano
+   * de inmediato. Best-effort: si el pedido ya no es re-ofertable (lo tomó otro,
+   * se canceló), es un no-op silencioso.
+   */
+  async rejectOffer(orderId: string, driverId: string) {
+    const order = await this.orders.findByIdFull(orderId);
+    if (!order) return { rejected: false };
+    await this.dispatchOrchestrator.onDriverRejected(order, driverId);
+    return { rejected: true };
+  }
 
   /**
    * Crear pedido. Delega en CreateOrderUseCase (application layer). OrderService

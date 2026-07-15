@@ -232,6 +232,23 @@ export class OrderController {
     return OrderMapper.toDto(order);
   }
 
+  @Post(':id/reject')
+  @Roles(RoleType.DELIVERY)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Chofer rechaza/ignora una oferta de pedido (CU-016)',
+    description:
+      'Cierra la oferta activa del chofer como REJECTED y re-ofrece el pedido ' +
+      'al siguiente chofer más cercano de inmediato (sin esperar el timeout).',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  async rejectOffer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.orderService.rejectOffer(id, user.user_id);
+  }
+
   @Get(':id/delivery-code')
   @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
