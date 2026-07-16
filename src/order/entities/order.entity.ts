@@ -68,7 +68,15 @@ export class Order {
   @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
-  @ManyToOne(() => User, (user) => user.customer, { onDelete: 'CASCADE' })
+  /**
+   * `RESTRICT` (no `CASCADE`): `customer_id` es NOT NULL, así que `SET NULL`
+   * no aplica. Con `CASCADE`, borrar un usuario borraba en cascada TODOS sus
+   * pedidos — pérdida de historial contable. Con `RESTRICT`, Postgres rechaza
+   * el DELETE físico de un usuario que tenga pedidos (P2-10 de
+   * `docs/ARQUITECTURA-REVIEW.md`); hay que dar de baja al usuario (soft-delete/
+   * bloqueo) en vez de borrarlo.
+   */
+  @ManyToOne(() => User, (user) => user.customer, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'customer_id' })
   customer: User;
 
