@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { User } from '../users/entities/user.entity';
+import { Order } from '../order/entities/order.entity';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
@@ -26,14 +27,38 @@ export class CustomersService {
   ) { }
 
 
-  async findAll(paginationDto: PaginationDto) {
+  /**
+   * Lista clientes. Los clientes son GLOBALES (uno puede pedir a varias
+   * distribuidoras), así que el scoping por tenant no es una columna sino una
+   * relación: si viene `distributorId` (admin de empresa, o super_admin con
+   * "ver como"), devuelve solo los clientes que tienen al menos un pedido con
+   * esa distribuidora. Sin él (super_admin cross-tenant) devuelve todos.
+   */
+  async findAll(paginationDto: PaginationDto, distributorId?: string | null) {
     const { limit = 10, offset = 0 } = paginationDto;
 
-    return await this.customerRepository.find({
-      take: limit,
-      skip: offset,
-      relations: ['user', 'user.role', 'user.addresses'],
-    });
+    const qb = this.customerRepository
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.user', 'user')
+      .leftJoinAndSelect('user.role', 'role')
+      .leftJoinAndSelect('user.addresses', 'addresses')
+      .take(limit)
+      .skip(offset);
+
+    if (distributorId) {
+      qb.andWhere((sub) => {
+        const query = sub
+          .subQuery()
+          .select('1')
+          .from(Order, 'o')
+          .where('o.customer_id = customer.user_id')
+          .andWhere('o.distributor_id = :distributorId')
+          .getQuery();
+        return `EXISTS ${query}`;
+      }).setParameter('distributorId', distributorId);
+    }
+
+    return qb.getMany();
   }
 
   async findOne(id: string) {

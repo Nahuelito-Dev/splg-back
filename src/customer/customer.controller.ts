@@ -18,6 +18,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -26,10 +27,16 @@ export class CustomersController {
 
   @Get()
   @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get all customers with pagination' })
+  @ApiOperation({
+    summary:
+      'Get customers (scopeado por distribuidora: solo los que pidieron a esa empresa)',
+  })
   @ApiResponse({ status: 200, description: 'List of customers' })
-  async findAll(@Query() paginationDto: PaginationDto) {
-    return await this.customersService.findAll(paginationDto);
+  async findAll(
+    @Query() paginationDto: PaginationDto,
+    @CurrentDistributor() distributorId?: string | null,
+  ) {
+    return await this.customersService.findAll(paginationDto, distributorId);
   }
 
   @Get(':id')

@@ -55,11 +55,19 @@ export class TimeSlotService {
         return await this.timeSlotRepository.save(timeSlot);
     }
 
-    async findAll(distributor?: string) {
-        const distributorId = await this.resolveDistributor(distributor);
+    /**
+     * Lista las franjas activas. Prioridad de tenant:
+     *  - `distributorSlug` (query `?distributor=`, lo usa la app cliente por slug),
+     *  - si no, `distributorId` (el tenant del admin autenticado, @CurrentDistributor).
+     * Solo un super_admin sin ninguno de los dos ve las de todas las empresas.
+     */
+    async findAll(distributorSlug?: string, distributorId?: string | null) {
+        const effective = distributorSlug
+            ? await this.resolveDistributor(distributorSlug)
+            : distributorId ?? null;
 
         const where: FindOptionsWhere<TimeSlot> = { isActive: true };
-        if (distributorId) where.distributor_id = distributorId;
+        if (effective) where.distributor_id = effective;
 
         return await this.timeSlotRepository.find({
             where,

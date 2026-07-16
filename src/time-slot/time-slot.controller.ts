@@ -23,10 +23,17 @@ export class TimeSlotController {
     }
 
     @Get()
-    @Public()
-    @ApiOperation({ summary: 'List all active time slots' })
-    findAll(@Query('distributor') distributor?: string) {
-        return this.timeSlotService.findAll(distributor);
+    @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+    @ApiOperation({
+        summary:
+            'List active time slots (scopeado por la distribuidora del admin; ' +
+            '?distributor lo overridea para super_admin)',
+    })
+    findAll(
+        @CurrentDistributor() distributorId: string | null,
+        @Query('distributor') distributor?: string,
+    ) {
+        return this.timeSlotService.findAll(distributor, distributorId);
     }
 
     @Get('availability')

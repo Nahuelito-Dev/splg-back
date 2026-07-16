@@ -15,6 +15,8 @@ import { UserAddresService } from './user-addres.service';
 import { CreateUserAddresDto } from './dto/create-user-addres.dto'; // <- Nombre correcto
 import { UpdateUserAddresDto } from './dto/update-user-addres.dto'; // <- Nombre correcto
 import { PaginationDto } from '../common/dtos/pagination.dto';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RoleType } from '../common/constants/role-type.enum';
 
 @ApiTags('User Addresses')
 @Controller('user-address')
@@ -29,7 +31,10 @@ export class UserAddresController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all user addresses with pagination' })
+  @Roles(RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Get all user addresses (super_admin — listado global de soporte)',
+  })
   @ApiResponse({ status: 200, description: 'List of addresses' })
   findAll(@Query() paginationDto: PaginationDto) {
     return this.userAddresService.findAll(paginationDto);
