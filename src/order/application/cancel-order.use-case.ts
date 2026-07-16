@@ -6,6 +6,7 @@ import {
 import { DataSource } from 'typeorm';
 
 import { Order, OrderStatus } from '../entities/order.entity';
+import { transitionOrder } from '../domain/order-status.machine';
 import { StockReservationService } from '../domain/stock-reservation.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
@@ -81,7 +82,7 @@ export class CancelOrderUseCase {
     role: CancelActor,
   ): boolean {
     if (role === 'driver') {
-      order.status = OrderStatus.PENDING;
+      transitionOrder(order, OrderStatus.PENDING);
       order.delivery_id = null;
       order.acceptedAt = null;
       order.onTheWayAt = null;
@@ -100,7 +101,7 @@ export class CancelOrderUseCase {
     }
 
     // customer (validado) o admin/superadmin → cancelación con devolución.
-    order.status = OrderStatus.CANCELLED;
+    transitionOrder(order, OrderStatus.CANCELLED);
     return true;
   }
 

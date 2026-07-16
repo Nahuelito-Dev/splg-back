@@ -3,6 +3,7 @@ import { OrderStatus } from '../entities/order.entity';
 import {
   canTransition,
   assertTransition,
+  transitionOrder,
   isTerminal,
 } from './order-status.machine';
 
@@ -10,7 +11,7 @@ import {
  * Máquina de estados del pedido (dominio puro). Reglas del SRS:
  *  PENDING    → ACCEPTED | CANCELLED
  *  ACCEPTED   → ON_THE_WAY | PENDING (re-dispatch) | CANCELLED
- *  ON_THE_WAY → DELIVERED | CANCELLED
+ *  ON_THE_WAY → DELIVERED | CANCELLED | PENDING (el chofer no puede completar)
  *  DELIVERED / CANCELLED = terminales.
  */
 describe('order-status.machine', () => {
@@ -23,8 +24,25 @@ describe('order-status.machine', () => {
       [OrderStatus.ACCEPTED, OrderStatus.CANCELLED],
       [OrderStatus.ON_THE_WAY, OrderStatus.DELIVERED],
       [OrderStatus.ON_THE_WAY, OrderStatus.CANCELLED],
+      [OrderStatus.ON_THE_WAY, OrderStatus.PENDING], // chofer no puede completar → re-dispatch
     ])('permite %s → %s', (from, to) => {
       expect(canTransition(from, to)).toBe(true);
+    });
+  });
+
+  describe('transitionOrder — único punto de mutación', () => {
+    it('valida y aplica la transición', () => {
+      const order = { status: OrderStatus.PENDING };
+      transitionOrder(order, OrderStatus.ACCEPTED);
+      expect(order.status).toBe(OrderStatus.ACCEPTED);
+    });
+
+    it('lanza y NO muta el estado si la transición es inválida', () => {
+      const order = { status: OrderStatus.PENDING };
+      expect(() => transitionOrder(order, OrderStatus.DELIVERED)).toThrow(
+        BadRequestException,
+      );
+      expect(order.status).toBe(OrderStatus.PENDING);
     });
   });
 
@@ -34,7 +52,6 @@ describe('order-status.machine', () => {
       [OrderStatus.PENDING, OrderStatus.DELIVERED], // salto grande
       [OrderStatus.ACCEPTED, OrderStatus.DELIVERED], // salto (falta ON_THE_WAY)
       [OrderStatus.ON_THE_WAY, OrderStatus.ACCEPTED], // retroceso ilegal
-      [OrderStatus.ON_THE_WAY, OrderStatus.PENDING], // retroceso ilegal
     ])('rechaza %s → %s', (from, to) => {
       expect(canTransition(from, to)).toBe(false);
     });

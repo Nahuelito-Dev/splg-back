@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThanOrEqual, Between } from 'typeorm';
 import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
+import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderMapper } from './order.mapper';
@@ -184,7 +185,7 @@ export class OrderService {
     if (!delivery.isActive)
       throw new BadRequestException('El repartidor no está activo');
     order.delivery_id = deliveryId;
-    order.status = OrderStatus.ACCEPTED;
+    transitionOrder(order, OrderStatus.ACCEPTED);
     order.acceptedAt = new Date();
     await this.orderRepository.save(order);
     return order;
