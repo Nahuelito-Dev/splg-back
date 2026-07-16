@@ -217,8 +217,11 @@ export class UpdateOrderStatusUseCase {
             }
           : null,
       });
-    } catch {
+    } catch (error) {
       // Errores de WebSocket no rompen la actualización del pedido.
+      this.logger.warn(
+        `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.order_id}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 
@@ -236,8 +239,11 @@ export class UpdateOrderStatusUseCase {
         order.order_id,
         customer.customer.notification_token,
       );
-    } catch {
+    } catch (error) {
       // Errores de notificación no rompen la actualización del pedido.
+      this.logger.warn(
+        `No se pudo enviar la notificación push de confirmación del pedido ${order.order_id}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 }
