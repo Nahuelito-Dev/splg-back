@@ -61,11 +61,11 @@ export class Order {
 
   /** Tenant dueño del pedido. Nullable hasta backfill del seed. */
   @Index()
-  @ManyToOne(() => Distributor, { nullable: true })
+  @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
   @ManyToOne(() => User, (user) => user.customer, { onDelete: 'CASCADE' })

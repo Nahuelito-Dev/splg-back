@@ -17,11 +17,11 @@ export class TimeSlot {
 
     /** Tenant dueño de la franja. Nullable hasta backfill del seed. */
     @Index()
-    @ManyToOne(() => Distributor, { nullable: true })
+    @ManyToOne(() => Distributor, { nullable: false })
     @JoinColumn({ name: 'distributor_id' })
     distributor?: Distributor;
 
-    @Column({ type: 'uuid', nullable: true })
+    @Column({ type: 'uuid', nullable: false })
     distributor_id?: string;
 
     @Column({ type: 'varchar', length: 50 })

@@ -40,11 +40,11 @@ export class Rating {
   order_id: string;
 
   @Index()
-  @ManyToOne(() => Distributor, { nullable: true })
+  @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
   /** Usuario que emite la calificación (user_id). */

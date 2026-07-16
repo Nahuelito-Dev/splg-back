@@ -25,11 +25,11 @@ export class Claim {
 
   /** Tenant dueño del reclamo (denormalizado desde la orden). */
   @Index()
-  @ManyToOne(() => Distributor, { nullable: true })
+  @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
   // Relación con la Orden
