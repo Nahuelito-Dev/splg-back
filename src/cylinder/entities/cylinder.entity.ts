@@ -10,6 +10,7 @@ import {
   Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 /**
  * Estado del ciclo de vida FÍSICO del envase. No confundir con `OrderStatus`
@@ -77,7 +78,7 @@ export class Cylinder {
   current_order_id?: string | null;
 
   /** Monto de garantía/depósito cobrado por el envase. */
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer, default: 0 })
   deposit: number;
 
   @CreateDateColumn({ type: 'timestamptz' })

@@ -12,6 +12,7 @@ import {
   PaymentIntegration,
   LedgerPaymentStatus,
 } from '../domain/payment.enums';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 /**
  * Ledger de pagos: UN registro por INTENTO de cobro (append-friendly). No
@@ -64,7 +65,7 @@ export class Payment {
   @Column({ type: 'varchar', nullable: true })
   external_reference: string | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
   amount: number;
 
   @Column({ type: 'varchar', length: 10, default: 'ARS' })

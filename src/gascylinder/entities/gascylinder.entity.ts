@@ -10,6 +10,7 @@ import {
   Index,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 @Entity('gas_cylinder')
 export class GasCylinder {
@@ -28,10 +29,10 @@ export class GasCylinder {
   @Column({ type: 'varchar', length: 50 })
   type: string; // '10kg', '15kg', '45kg'
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
   weight: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
   price: number;
 
   @Column({ type: 'int', default: 0 })
