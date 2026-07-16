@@ -32,6 +32,11 @@ export enum DispatchOfferStatus {
  * proceso para disputas/analytics. Reemplaza el broadcast a todos sin estado.
  */
 @Entity('order_dispatch_offer')
+// Composites para las queries del despacho:
+//  - hasActiveOffer/closeActiveOffer (por pedido + estado)
+@Index('idx_offer_order_status', ['order_id', 'status'])
+//  - findExpired del cron (estado OFFERED vencido)
+@Index('idx_offer_status_expires', ['status', 'expiresAt'])
 export class DispatchOffer {
   @PrimaryGeneratedColumn('uuid', { name: 'offer_id' })
   offer_id: string;
