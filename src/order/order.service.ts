@@ -85,6 +85,7 @@ export class OrderService {
   async getOne(
     id: string,
     distributorId?: string | null,
+    customerUserId?: string | null,
   ): Promise<OrderResponseDto> {
     const order = await this.findOne(id);
     // Aislamiento: si hay tenant en contexto (staff, o customer con empresa
@@ -95,6 +96,12 @@ export class OrderService {
       order.distributor_id &&
       order.distributor_id !== distributorId
     ) {
+      throw new NotFoundException(`Order with ID: ${id} not found`);
+    }
+    // Ownership de cliente: un CUSTOMER solo puede leer SUS pedidos (evita IDOR
+    // customer-a-customer dentro de la misma distribuidora). 404 para no
+    // revelar que el pedido existe.
+    if (customerUserId && order.customer_id !== customerUserId) {
       throw new NotFoundException(`Order with ID: ${id} not found`);
     }
     return OrderMapper.toDto(order);
