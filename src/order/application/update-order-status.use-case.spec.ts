@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
+import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import {
   Order,
   OrderStatus,
@@ -71,9 +72,13 @@ describe('UpdateOrderStatusUseCase', () => {
 
   it('rechaza una transición inválida (PENDING → DELIVERED)', async () => {
     orders.findByIdFull.mockResolvedValue(makeOrder());
+    // La state machine lanza el error de DOMINIO (InvalidOrderTransitionError,
+    // no BadRequestException); el GlobalExceptionFilter lo mapea a 400 en la
+    // capa HTTP (ver global-exception.filter.spec.ts), acá el use-case no debe
+    // atrapar ni transformar nada.
     await expect(
       useCase.execute('ord-1', OrderStatus.DELIVERED),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(InvalidOrderTransitionError);
     expect(orders.save).not.toHaveBeenCalled();
   });
 

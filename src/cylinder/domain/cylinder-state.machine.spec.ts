@@ -1,10 +1,10 @@
-import { BadRequestException } from '@nestjs/common';
 import {
   canTransition,
   assertTransition,
   CYLINDER_TRANSITIONS,
 } from './cylinder-state.machine';
 import { CylinderState } from '../entities/cylinder.entity';
+import { InvalidCylinderTransitionError } from './errors/invalid-cylinder-transition.error';
 
 /**
  * Máquina de estados del ciclo físico del envase (dominio puro). Verificamos el
@@ -66,10 +66,10 @@ describe('cylinder-state.machine', () => {
     }
   });
 
-  it('assertTransition lanza 400 con mensaje claro en transición inválida', () => {
+  it('assertTransition lanza InvalidCylinderTransitionError con mensaje claro en transición inválida', () => {
     expect(() =>
       assertTransition(CylinderState.IN_DEPOT, CylinderState.WITH_CUSTOMER),
-    ).toThrow(BadRequestException);
+    ).toThrow(InvalidCylinderTransitionError);
     expect(() =>
       assertTransition(CylinderState.IN_DEPOT, CylinderState.WITH_CUSTOMER),
     ).toThrow(/Transición de envase inválida/);

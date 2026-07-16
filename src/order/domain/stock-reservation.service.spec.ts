@@ -1,7 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { StockReservationService } from './stock-reservation.service';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
+import { GasCylinderNotFoundError } from './errors/gas-cylinder-not-found.error';
+import { InsufficientStockError } from './errors/insufficient-stock.error';
 
 /**
  * StockReservationService opera SOBRE el EntityManager de la transacción del
@@ -66,21 +67,21 @@ describe('StockReservationService', () => {
       expect(manager.save).toHaveBeenCalled();
     });
 
-    it('lanza NotFoundException si la garrafa no existe (y no guarda)', async () => {
+    it('lanza GasCylinderNotFoundError si la garrafa no existe (y no guarda)', async () => {
       mockQueryBuilderReturning(null);
 
       await expect(service.reserve(manager as any, 'gc-x', 1)).rejects.toThrow(
-        NotFoundException,
+        GasCylinderNotFoundError,
       );
       expect(manager.save).not.toHaveBeenCalled();
     });
 
-    it('lanza BadRequestException por oversell y NO descuenta ni guarda', async () => {
+    it('lanza InsufficientStockError por oversell y NO descuenta ni guarda', async () => {
       const cylinder = makeCylinder({ stock: 2 });
       mockQueryBuilderReturning(cylinder);
 
       await expect(service.reserve(manager as any, 'gc-1', 3)).rejects.toThrow(
-        BadRequestException,
+        InsufficientStockError,
       );
       expect(cylinder.stock).toBe(2); // intacto
       expect(manager.save).not.toHaveBeenCalled();
