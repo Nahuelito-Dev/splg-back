@@ -30,6 +30,8 @@ export class Delivery {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
+  // Indexado: el radar/dispatch y varios findOne buscan al chofer por user_id.
+  @Index()
   @Column({ type: 'uuid' })
   user_id: string;
 

@@ -50,6 +50,11 @@ export enum PaymentStatus {
 }
 
 @Entity('order')
+// Índices compuestos para las queries calientes:
+//  - dispatch: PENDING AND delivery_id IS NULL (query central, corre por pedido + cron)
+@Index('idx_order_status_delivery', ['status', 'delivery_id'])
+//  - reports/stats scopeados por tenant y rango de fecha
+@Index('idx_order_dist_status_delivered', ['distributor_id', 'status', 'deliveredAt'])
 export class Order {
   @PrimaryGeneratedColumn('uuid', { name: 'order_id' })
   order_id: string;
@@ -67,6 +72,7 @@ export class Order {
   @JoinColumn({ name: 'customer_id' })
   customer: User;
 
+  @Index()
   @Column({ type: 'uuid' })
   customer_id: string;
 
@@ -108,6 +114,7 @@ export class Order {
   @Column({ type: 'uuid' })
   address_id: string;
 
+  @Index()
   @Column({
     type: 'enum',
     enum: OrderStatus,
@@ -156,6 +163,7 @@ export class Order {
   @Column({ type: 'timestamp', nullable: true })
   onTheWayAt: Date | null;
 
+  @Index()
   @Column({ type: 'timestamp', nullable: true })
   deliveredAt: Date | null;
 

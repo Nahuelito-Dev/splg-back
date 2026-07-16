@@ -84,13 +84,12 @@ import { HealthModule } from './health/health.module';
             ? { ssl: { rejectUnauthorized: false } }
             : undefined,
 
-          // NUNCA sincronizar el esquema en producción (puede tirar columnas/datos).
-          // En prod el esquema se gestiona con migraciones. En dev se puede forzar
-          // con DB_SYNC; por defecto sincroniza salvo en prod.
+          // El esquema se gestiona con MIGRACIONES (fuente de verdad), en todos
+          // los ambientes. `synchronize:false` por defecto para no alterar el
+          // esquema al vuelo. En dev se puede optar por sync rápido con
+          // DB_SYNC=true, pero nunca en prod (aunque se setee).
           synchronize:
-            configService.get('DB_SYNC') !== undefined
-              ? configService.get('DB_SYNC') === 'true'
-              : !isProd,
+            !isProd && configService.get('DB_SYNC') === 'true',
           autoLoadEntities: true,
           migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
           cli: {
