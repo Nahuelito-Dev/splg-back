@@ -25,10 +25,8 @@ import { OrderPricingService } from '../domain/order-pricing.service';
 import { StockReservationService } from '../domain/stock-reservation.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
-import {
-  PaymentCheckoutItem,
-  PaymentGatewayPort,
-} from '../domain/ports/payment-gateway.port';
+import { PaymentCheckoutItem } from '../../payments/domain/ports/payment-gateway.port';
+import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { DistributorService } from '../../distributor/distributor.service';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
@@ -77,7 +75,7 @@ export class CreateOrderUseCase {
     private readonly notificationService: NotificationsService,
     private readonly orders: OrderRepositoryPort,
     private readonly realtime: RealtimeDispatchPort,
-    private readonly paymentGateway: PaymentGatewayPort,
+    private readonly paymentsService: PaymentsService,
     private readonly distributorService: DistributorService,
     private readonly timeSlotService: TimeSlotService,
   ) {}
@@ -333,8 +331,11 @@ export class CreateOrderUseCase {
     customer: User,
   ): Promise<string | undefined> {
     try {
-      const checkout = await this.paymentGateway.createCheckout({
+      const checkout = await this.paymentsService.createCheckout({
         orderId: savedOrder.order_id,
+        distributorId: savedOrder.distributor_id ?? null,
+        amount: savedOrder.totalAmount,
+        isDeposit: false,
         items: checkoutItems,
         payerEmail: customer.email || '',
       });
@@ -357,8 +358,11 @@ export class CreateOrderUseCase {
     customer: User,
   ): Promise<string | undefined> {
     try {
-      const checkout = await this.paymentGateway.createCheckout({
+      const checkout = await this.paymentsService.createCheckout({
         orderId: savedOrder.order_id,
+        distributorId: savedOrder.distributor_id ?? null,
+        amount: depositAmount,
+        isDeposit: true,
         items: [
           {
             id: `deposit-${savedOrder.order_id}`,

@@ -8,20 +8,20 @@ import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
  */
 describe('MercadoPagoWebhookController', () => {
   let controller: MercadoPagoWebhookController;
-  let paymentGateway: { verifyWebhookSignature: jest.Mock };
+  let paymentsService: { verifyWebhookSignature: jest.Mock };
   let confirmPayment: { execute: jest.Mock };
 
   beforeEach(() => {
-    paymentGateway = { verifyWebhookSignature: jest.fn() };
+    paymentsService = { verifyWebhookSignature: jest.fn() };
     confirmPayment = { execute: jest.fn().mockResolvedValue(undefined) };
     controller = new MercadoPagoWebhookController(
-      paymentGateway as any,
+      paymentsService as any,
       confirmPayment as any,
     );
   });
 
   it('firma inválida: NO procesa la notificación pero responde 200', async () => {
-    paymentGateway.verifyWebhookSignature.mockReturnValue(false);
+    paymentsService.verifyWebhookSignature.mockReturnValue(false);
 
     const result = await controller.handle(
       { type: 'payment', 'data.id': 'pay-1' } as any,
@@ -34,7 +34,7 @@ describe('MercadoPagoWebhookController', () => {
   });
 
   it('firma válida: delega en ConfirmPaymentUseCase con type/dataId', async () => {
-    paymentGateway.verifyWebhookSignature.mockReturnValue(true);
+    paymentsService.verifyWebhookSignature.mockReturnValue(true);
 
     await controller.handle(
       { type: 'payment', 'data.id': 'pay-1' } as any,
@@ -51,7 +51,7 @@ describe('MercadoPagoWebhookController', () => {
   });
 
   it('un error interno del use-case no rompe la respuesta (siempre 200)', async () => {
-    paymentGateway.verifyWebhookSignature.mockReturnValue(true);
+    paymentsService.verifyWebhookSignature.mockReturnValue(true);
     confirmPayment.execute.mockRejectedValue(new Error('boom'));
 
     const result = await controller.handle(

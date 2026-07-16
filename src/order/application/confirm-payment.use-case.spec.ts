@@ -5,8 +5,11 @@ import { Order, PaymentStatus } from '../entities/order.entity';
  * Caso de uso de confirmación de pago (webhook MercadoPago). Foco: idempotencia
  * (no despachar dos veces ante reintentos de MP) y que solo `approved` dispare
  * el despacho. La validación de FIRMA vive en el controller (ver
- * mercadopago-webhook.controller.spec.ts) — este use-case asume que ya se
- * validó, según su propio doc-comment.
+ * mercadopago-webhook.controller.spec.ts), y la interpretación cruda de la
+ * pasarela + el ledger viven en `PaymentsService` (ver
+ * payments/application/payments.service.spec.ts) — acá se mockea su resultado
+ * ya NORMALIZADO. Este use-case asume que ya se validó la firma, según su
+ * propio doc-comment.
  */
 describe('ConfirmPaymentUseCase', () => {
   let useCase: ConfirmPaymentUseCase;
@@ -17,7 +20,7 @@ describe('ConfirmPaymentUseCase', () => {
   let lockedOrder: Partial<Order>;
 
   let orders: { findByIdFull: jest.Mock };
-  let paymentGateway: { getPayment: jest.Mock };
+  let paymentsService: { confirmFromGateway: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
 
   const fullOrder = {
@@ -56,7 +59,7 @@ describe('ConfirmPaymentUseCase', () => {
     dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
 
     orders = { findByIdFull: jest.fn().mockResolvedValue({ ...fullOrder }) };
-    paymentGateway = { getPayment: jest.fn() };
+    paymentsService = { confirmFromGateway: jest.fn() };
     dispatchOrchestrator = {
       offerToNextDriver: jest.fn().mockResolvedValue('drv-1'),
     };
@@ -64,21 +67,36 @@ describe('ConfirmPaymentUseCase', () => {
     useCase = new ConfirmPaymentUseCase(
       dataSource as any,
       orders as any,
-      paymentGateway as any,
+      paymentsService as any,
       dispatchOrchestrator as any,
     );
   });
 
-  it('ignora notificaciones que no son de tipo payment', async () => {
+  it('delega en PaymentsService.confirmFromGateway con type/dataId', async () => {
+    paymentsService.confirmFromGateway.mockResolvedValue(null);
+
+    await useCase.execute({ type: 'payment', dataId: '123' });
+
+    expect(paymentsService.confirmFromGateway).toHaveBeenCalledWith({
+      type: 'payment',
+      dataId: '123',
+    });
+  });
+
+  it('PaymentsService descarta la notificación (tipo irrelevante, sin dataId, etc.): no busca el pedido', async () => {
+    paymentsService.confirmFromGateway.mockResolvedValue(null);
+
     await useCase.execute({ type: 'merchant_order', dataId: '123' });
-    expect(paymentGateway.getPayment).not.toHaveBeenCalled();
+
+    expect(orders.findByIdFull).not.toHaveBeenCalled();
   });
 
   it('approved + no pagado: marca PAID, guarda gatewayPaymentId y despacha UNA vez', async () => {
-    paymentGateway.getPayment.mockResolvedValue({
-      id: 'pay-1',
-      status: 'approved',
+    paymentsService.confirmFromGateway.mockResolvedValue({
       externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
     });
 
     await useCase.execute({ type: 'payment', dataId: 'pay-1' });
@@ -96,10 +114,11 @@ describe('ConfirmPaymentUseCase', () => {
     lockedOrder.paymentStatus = PaymentStatus.PAID;
     lockedOrder.gatewayPaymentId = 'pay-1';
 
-    paymentGateway.getPayment.mockResolvedValue({
-      id: 'pay-1',
-      status: 'approved',
+    paymentsService.confirmFromGateway.mockResolvedValue({
       externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
     });
 
     await useCase.execute({ type: 'payment', dataId: 'pay-1' });
@@ -112,10 +131,11 @@ describe('ConfirmPaymentUseCase', () => {
     lockedOrder.paymentStatus = PaymentStatus.PENDING;
     lockedOrder.gatewayPaymentId = 'pay-1'; // ya confirmado por un pago previo
 
-    paymentGateway.getPayment.mockResolvedValue({
-      id: 'pay-1',
-      status: 'approved',
+    paymentsService.confirmFromGateway.mockResolvedValue({
       externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
     });
 
     await useCase.execute({ type: 'payment', dataId: 'pay-1' });
@@ -125,10 +145,11 @@ describe('ConfirmPaymentUseCase', () => {
   });
 
   it('rejected: no despacha ni marca como pagado', async () => {
-    paymentGateway.getPayment.mockResolvedValue({
-      id: 'pay-1',
-      status: 'rejected',
+    paymentsService.confirmFromGateway.mockResolvedValue({
       externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'rejected',
+      isDeposit: false,
     });
 
     await useCase.execute({ type: 'payment', dataId: 'pay-1' });
@@ -139,10 +160,11 @@ describe('ConfirmPaymentUseCase', () => {
 
   it('pedido inexistente (external_reference huérfano): no revienta, no despacha', async () => {
     orders.findByIdFull.mockResolvedValue(null);
-    paymentGateway.getPayment.mockResolvedValue({
-      id: 'pay-1',
-      status: 'approved',
+    paymentsService.confirmFromGateway.mockResolvedValue({
       externalReference: 'ord-fantasma',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
     });
 
     await expect(

@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 import { isTerminal } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
-import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
+import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 
 /** Payload que llega del webhook de MercadoPago (query params `type`/`data.id`). */
@@ -27,6 +27,12 @@ export interface ConfirmPaymentInput {
  * NO valida la firma acá (la valida el controller antes de llamar a
  * `execute`, para loguear el intento inválido sin filtrar detalles del
  * dominio) — este use-case asume que ya se validó.
+ *
+ * Tampoco habla con la pasarela ni con el ledger de pagos directamente: eso
+ * es responsabilidad de `PaymentsService` (módulo `payments`). Este use-case
+ * consume su resultado NORMALIZADO y aplica los efectos de NEGOCIO del
+ * pedido (marcar PAID/seña, despachar) — la separación evita que `order`
+ * conozca MercadoPago.
  */
 @Injectable()
 export class ConfirmPaymentUseCase {
@@ -35,42 +41,32 @@ export class ConfirmPaymentUseCase {
   constructor(
     private readonly dataSource: DataSource,
     private readonly orders: OrderRepositoryPort,
-    private readonly paymentGateway: PaymentGatewayPort,
+    private readonly paymentsService: PaymentsService,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
   ) {}
 
   async execute(input: ConfirmPaymentInput): Promise<void> {
-    if (input.type !== 'payment' || !input.dataId) {
-      // Otros tipos de notificación (merchant_order, etc.) no nos interesan.
-      this.logger.debug(`Notificación ignorada (type=${input.type})`);
-      return;
-    }
+    const payment = await this.paymentsService.confirmFromGateway({
+      type: input.type,
+      dataId: input.dataId,
+    });
 
-    let payment;
-    try {
-      payment = await this.paymentGateway.getPayment(input.dataId);
-    } catch (error: any) {
-      this.logger.error(
-        `No se pudo consultar el pago ${input.dataId} en MercadoPago: ${error?.message}`,
-      );
-      return;
-    }
-
-    if (!payment.externalReference) {
-      this.logger.warn(`Pago ${payment.id} sin external_reference, se ignora`);
+    if (!payment) {
+      // PaymentsService ya logueó el motivo (tipo irrelevante, sin dataId,
+      // consulta a la pasarela fallida, o pago sin external_reference).
       return;
     }
 
     const order = await this.orders.findByIdFull(payment.externalReference);
     if (!order) {
       this.logger.warn(
-        `Pago ${payment.id} referencia un pedido inexistente: ${payment.externalReference}`,
+        `Pago ${payment.gatewayPaymentId} referencia un pedido inexistente: ${payment.externalReference}`,
       );
       return;
     }
 
     if (payment.status === 'approved') {
-      await this.handleApproved(order, payment.id);
+      await this.handleApproved(order, payment.gatewayPaymentId);
       return;
     }
 
@@ -80,13 +76,13 @@ export class ConfirmPaymentUseCase {
       // MVP: solo lo dejamos loggeado; el pedido queda PENDING/PENDING y el
       // cliente puede reintentar el pago (o un cron de expiración lo cancela).
       this.logger.log(
-        `Pago ${payment.id} del pedido ${order.order_id} en estado ${payment.status} (sin acción, ver TODO)`,
+        `Pago ${payment.gatewayPaymentId} del pedido ${order.order_id} en estado ${payment.status} (sin acción, ver TODO)`,
       );
       return;
     }
 
     this.logger.debug(
-      `Pago ${payment.id} del pedido ${order.order_id} en estado ${payment.status} (aún no definitivo)`,
+      `Pago ${payment.gatewayPaymentId} del pedido ${order.order_id} en estado ${payment.status} (aún no definitivo)`,
     );
   }
 

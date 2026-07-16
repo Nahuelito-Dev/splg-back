@@ -30,14 +30,13 @@ import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case'
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.typeorm.repository';
-import { PaymentGatewayPort } from './domain/ports/payment-gateway.port';
-import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { ReservationService } from './application/reservation.service';
 import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
 import { CylinderModule } from '../cylinder/cylinder.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
+import { PaymentsModule } from '../payments/payments.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -55,6 +54,7 @@ import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.ad
     RedisModule, // 👈 AGREGAR ESTO AQUÍ
     TimeSlotModule, // agendamiento: valida cupo de franja al crear pedido
     CylinderModule, // ciclo del envase físico: al entregar, avanza los envases
+    PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
   ],
   controllers: [OrderController, MercadoPagoWebhookController],
   providers: [
@@ -76,8 +76,6 @@ import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.ad
     { provide: OrderRepositoryPort, useClass: OrderTypeormRepository },
     // Puerto de ofertas de despacho → adapter TypeORM.
     { provide: DispatchOfferRepositoryPort, useClass: DispatchOfferTypeormRepository },
-    // Puerto de pasarela de pago → adapter MercadoPago (Checkout Pro).
-    { provide: PaymentGatewayPort, useClass: MercadoPagoAdapter },
     // Puerto del ciclo del envase → adapter que delega en CylinderService.
     { provide: CylinderLifecyclePort, useClass: CylinderLifecycleAdapter },
   ],

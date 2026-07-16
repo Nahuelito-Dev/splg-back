@@ -1,7 +1,7 @@
 import { Controller, Post, Query, Headers, HttpCode, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { Public } from '../common/decorators/isPublic.decorator';
-import { PaymentGatewayPort } from './domain/ports/payment-gateway.port';
+import { PaymentsService } from '../payments/application/payments.service';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 
 /**
@@ -20,7 +20,7 @@ export class MercadoPagoWebhookController {
   private readonly logger = new Logger(MercadoPagoWebhookController.name);
 
   constructor(
-    private readonly paymentGateway: PaymentGatewayPort,
+    private readonly paymentsService: PaymentsService,
     private readonly confirmPayment: ConfirmPaymentUseCase,
   ) {}
 
@@ -39,7 +39,7 @@ export class MercadoPagoWebhookController {
     const dataId = query['data.id'] ?? (query as any).data?.id ?? query.id;
     const type = query.type ?? query.topic;
 
-    const isValidSignature = this.paymentGateway.verifyWebhookSignature({
+    const isValidSignature = this.paymentsService.verifyWebhookSignature({
       xSignature,
       xRequestId,
       dataId,

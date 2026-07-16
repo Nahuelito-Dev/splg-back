@@ -24,7 +24,7 @@ describe('CreateOrderUseCase', () => {
   let notificationService: { sendOrderConfirmation: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
   let realtime: { notifyAdmins: jest.Mock };
-  let paymentGateway: { createCheckout: jest.Mock };
+  let paymentsService: { createCheckout: jest.Mock };
 
   const baseDto: CreateOrderDto = {
     customerId: 'cust-1',
@@ -91,7 +91,7 @@ describe('CreateOrderUseCase', () => {
       }),
     };
     realtime = { notifyAdmins: jest.fn() };
-    paymentGateway = {
+    paymentsService = {
       createCheckout: jest.fn().mockResolvedValue({
         initPoint: 'https://mp.test/checkout',
         preferenceId: 'pref-1',
@@ -122,7 +122,7 @@ describe('CreateOrderUseCase', () => {
       notificationService as any,
       orders as any,
       realtime as any,
-      paymentGateway as any,
+      paymentsService as any,
       distributorService as any,
       timeSlotService as any,
     );
@@ -136,7 +136,7 @@ describe('CreateOrderUseCase', () => {
       });
 
       expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
-      expect(paymentGateway.createCheckout).not.toHaveBeenCalled();
+      expect(paymentsService.createCheckout).not.toHaveBeenCalled();
       expect(result.paymentUrl).toBeUndefined();
       expect(result.order.order_id).toBe('ord-1');
       expect(realtime.notifyAdmins).toHaveBeenCalledWith(
@@ -183,8 +183,11 @@ describe('CreateOrderUseCase', () => {
       });
 
       expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
-      expect(paymentGateway.createCheckout).toHaveBeenCalledWith({
+      expect(paymentsService.createCheckout).toHaveBeenCalledWith({
         orderId: 'ord-1',
+        distributorId: 'dist-default',
+        amount: 2000,
+        isDeposit: false,
         items: [
           { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
         ],
@@ -194,7 +197,7 @@ describe('CreateOrderUseCase', () => {
     });
 
     it('si la pasarela falla, el pedido queda creado igual sin paymentUrl (best-effort)', async () => {
-      paymentGateway.createCheckout.mockRejectedValue(new Error('MP caído'));
+      paymentsService.createCheckout.mockRejectedValue(new Error('MP caído'));
 
       const result = await useCase.execute({
         ...baseDto,
