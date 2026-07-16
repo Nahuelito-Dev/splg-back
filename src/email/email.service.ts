@@ -5,98 +5,73 @@ import {
   Inject,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { auth } from 'firebase-admin';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { UsersService } from '../users/users.service';
-import { Resend } from 'resend';
+import { RedisService } from '../redis/redis.service';
+import { EmailSenderPort } from './ports/email-sender.port';
+import { EmailTemplateProvider } from './email-template.provider';
 
+/**
+ * Orquestador de emails transaccionales (reset de password, cambio de
+ * email, welcome). Ya NO conoce el SDK de Resend (habla contra
+ * `EmailSenderPort`) ni carga con el HTML de los templates (delegado a
+ * `EmailTemplateProvider`).
+ *
+ * Rate-limit y cache de links viven en Redis (vía `RedisService`), no en
+ * `Map`s en memoria del proceso: antes, con más de una instancia corriendo,
+ * cada pod tenía su propio estado y el rate-limit real era
+ * `MAX_REQUESTS_PER_HOUR * cantidad_de_pods`. Con Redis el estado es
+ * compartido y el TTL lo maneja Redis solo (no hace falta un `setInterval`
+ * de limpieza).
+ */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private resend: Resend;
 
-  private linkCache = new Map<
-    string,
-    {
-      link: string;
-      timestamp: number;
-      type: 'verification' | 'reset';
-    }
-  >();
-  private readonly CACHE_TTL = 30 * 60 * 1000;
+  /** TTL del cache de links de reset (segundos). Mismo valor que el TTL en memoria original (30 min). */
+  private readonly CACHE_TTL_SEC = 30 * 60;
 
-  private requestTracker = new Map<string, number[]>();
-  private readonly MAX_REQUESTS_PER_HOUR = 10;
-  private readonly TRACKING_WINDOW = 60 * 60 * 1000;
+  /** Ventana y tope del rate-limit por email+operación. Mismos valores que el tracker en memoria original. */
+  private readonly MAX_REQUESTS_PER_WINDOW = 10;
+  private readonly TRACKING_WINDOW_SEC = 60 * 60;
 
   constructor(
-    private readonly config: ConfigService,
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     private readonly firebaseAuth: FirebaseAuthPort,
-  ) {
-    const resendApiKey = this.config.get('RESEND_API_KEY');
-    if (resendApiKey) {
-      this.resend = new Resend(resendApiKey);
-    }
+    private readonly redisService: RedisService,
+    private readonly emailSender: EmailSenderPort,
+    private readonly templates: EmailTemplateProvider,
+  ) {}
 
-    setInterval(() => this.cleanupCache(), 60 * 60 * 1000);
-    setInterval(() => this.cleanupRequestTracker(), 60 * 60 * 1000);
-  }
+  private async checkRateLimit(
+    email: string,
+    operation: string,
+  ): Promise<void> {
+    const key = `email:ratelimit:${email}:${operation}`;
+    const count = await this.redisService.incrWithExpire(
+      key,
+      this.TRACKING_WINDOW_SEC,
+    );
 
-  private cleanupCache() {
-    const now = Date.now();
-    for (const [key, value] of this.linkCache.entries()) {
-      if (now - value.timestamp > this.CACHE_TTL) {
-        this.linkCache.delete(key);
-      }
-    }
-  }
-
-  private cleanupRequestTracker() {
-    const now = Date.now();
-    const windowStart = now - this.TRACKING_WINDOW;
-
-    for (const [key, timestamps] of this.requestTracker.entries()) {
-      const recentRequests = timestamps.filter((time) => time > windowStart);
-      if (recentRequests.length === 0) {
-        this.requestTracker.delete(key);
-      } else {
-        this.requestTracker.set(key, recentRequests);
-      }
-    }
-  }
-
-  private checkRateLimit(email: string, operation: string): void {
-    const key = `${operation}:${email}`;
-    const now = Date.now();
-    const windowStart = now - this.TRACKING_WINDOW;
-
-    if (!this.requestTracker.has(key)) {
-      this.requestTracker.set(key, []);
-    }
-
-    const timestamps = this.requestTracker.get(key)!;
-
-    const recentRequests = timestamps.filter((time) => time > windowStart);
-    this.requestTracker.set(key, recentRequests);
-
-    if (recentRequests.length >= this.MAX_REQUESTS_PER_HOUR) {
+    if (count > this.MAX_REQUESTS_PER_WINDOW) {
       throw new BadRequestException(
         `Too many ${operation} attempts. Please try again later.`,
       );
     }
+  }
 
-    recentRequests.push(now);
+  private linkCacheKey(email: string): string {
+    return `email:link-cache:reset:${email}`;
   }
 
   private async generatePasswordResetLink(email: string): Promise<string> {
-    const cacheKey = `reset:${email}`;
-    const cached = this.linkCache.get(cacheKey);
+    const cacheKey = this.linkCacheKey(email);
+    const cached = await this.redisService.get(cacheKey);
 
-    if (cached && cached.type === 'reset') {
-      return cached.link;
+    if (cached) {
+      return cached;
     }
 
     try {
@@ -105,17 +80,13 @@ export class EmailService {
         handleCodeInApp: true,
       });
 
-      this.linkCache.set(cacheKey, {
-        link,
-        timestamp: Date.now(),
-        type: 'reset',
-      });
+      await this.redisService.setex(cacheKey, this.CACHE_TTL_SEC, link);
 
       return link;
     } catch (error) {
       if (error.message.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
         if (cached) {
-          return cached.link;
+          return cached;
         }
 
         throw new BadRequestException(
@@ -148,7 +119,7 @@ export class EmailService {
   }
 
   async sendPasswordResetEmail(email: string): Promise<{ message: string }> {
-    this.checkRateLimit(email, 'password_reset');
+    await this.checkRateLimit(email, 'password_reset');
 
     try {
       await this.usersService.findOneByEmail(email);
@@ -258,25 +229,13 @@ export class EmailService {
     data: any;
   }): Promise<void> {
     try {
-      if (!this.resend) {
-        return;
-      }
+      const html = this.templates.render(emailData.template, emailData.data);
 
-      const htmlContent = this.generateEmailTemplate(
-        emailData.template,
-        emailData.data,
-      );
-
-      const result = await this.resend.emails.send({
-        from: 'Yeni Gass <noreply@wagnerlabs.dev>',
+      await this.emailSender.send({
         to: emailData.to,
         subject: emailData.subject,
-        html: htmlContent,
+        html,
       });
-
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
     } catch (error) {
       // Best-effort: el envío de email nunca debe tumbar el flujo que lo
       // dispara (registro, cambio de contraseña, etc). Solo dejamos rastro.
@@ -284,170 +243,6 @@ export class EmailService {
         `No se pudo enviar el email "${emailData.subject}" a ${emailData.to}: ${error instanceof Error ? error.message : error}`,
       );
     }
-  }
-
-  private generateEmailTemplate(template: string, data: any): string {
-    const templates = {
-      welcome: `
-  <!DOCTYPE html>
-  <html>
-  <head>
-      <meta charset="utf-8">
-      <style>
-          body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f9f9f9; }
-          .container { max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #28a745; padding-bottom: 20px; }
-          .logo { font-size: 24px; font-weight: bold; color: #28a745; margin-bottom: 10px; }
-          .content { line-height: 1.8; }
-          .button { display: inline-block; padding: 14px 28px; background-color: #28a745; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
-          .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; text-align: center; color: #666; font-size: 14px; }
-          .muted { color: #6c757d; font-size: 14px; }
-      </style>
-  </head>
-  <body>
-      <div class="container">
-          <div class="header">
-              <div class="logo">${data.appName || 'Yeni Gass'}</div>
-              <h2 style="color: #333; margin: 10px 0;">Welcome!</h2>
-          </div>
-          <div class="content">
-              <p>Hello <strong>${data.displayName || 'User'}</strong>,</p>
-              <p>Thanks for creating your account. You’re all set and can start using ${data.appName || 'Yeni Gass'} right away.</p>
-
-              <p style="text-align: center; margin: 30px 0;">
-                  <a href="https://taolistic-courses.firebaseapp.com/" class="button" style="color: white;">Go to the app</a>
-              </p>
-
-              <p class="muted">
-                If you need help, reply to this email or contact us at
-                <strong>${data.supportEmail || 'support@wagnerlabs.dev'}</strong>.
-              </p>
-          </div>
-          <div class="footer">
-              <p>Thanks,<br>The ${data.appName || 'Yeni Gass'} Team</p>
-          </div>
-      </div>
-  </body>
-  </html>
-`,
-      'email-verification': `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f9f9f9; }
-                .container { max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-                .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #007bff; padding-bottom: 20px; }
-                .button { display: inline-block; padding: 14px 28px; background-color: #007bff; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
-                .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; text-align: center; color: #666; font-size: 14px; }
-                .logo { font-size: 24px; font-weight: bold; color: #007bff; margin-bottom: 10px; }
-                .content { line-height: 1.8; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">Yeni Gass</div>
-                    <h2 style="color: #333; margin: 10px 0;">Verify Your Email Address</h2>
-                </div>
-                <div class="content">
-                    <p>Hello <strong>${data.displayName}</strong>,</p>
-                    <p>Welcome to Yeni Gass! Please verify your email address to get started with your account.</p>
-                    <p style="text-align: center; margin: 30px 0;">
-                        <a href="${data.verificationLink}" class="button" style="color: white;">Verify Email Address</a>
-                    </p>
-                    <p>If the button doesn't work, copy and paste this link in your browser:</p>
-                    <p style="word-break: break-all; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 14px;">${data.verificationLink}</p>
-                    <p>If you didn't create an account with Yeni Gass, you can safely ignore this email.</p>
-                </div>
-                <div class="footer">
-                    <p>Thanks for choosing Yeni Gass!<br>Best regards,<br>The Taolistic Team</p>
-                </div>
-            </div>
-        </body>
-        </html>
-      `,
-      'password-reset': `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f9f9f9; }
-                .container { max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-                .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #dc3545; padding-bottom: 20px; }
-                .button { display: inline-block; padding: 14px 28px; background-color: #dc3545; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
-                .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; text-align: center; color: #666; font-size: 14px; }
-                .logo { font-size: 24px; font-weight: bold; color: #dc3545; margin-bottom: 10px; }
-                .content { line-height: 1.8; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">Yeni Gass</div>
-                    <h2 style="color: #333; margin: 10px 0;">Reset Your Password</h2>
-                </div>
-                <div class="content">
-                    <p>Hello,</p>
-                    <p>We received a request to reset your password for your Yeni Gass account (${data.email}).</p>
-                    <p style="text-align: center; margin: 30px 0;">
-                        <a href="${data.resetLink}" class="button" style="color: white;">Reset Password</a>
-                    </p>
-                    <p>If the button doesn't work, copy and paste this link in your browser:</p>
-                    <p style="word-break: break-all; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 14px;">${data.resetLink}</p>
-                    <p>If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.</p>
-                    <p><strong>Note:</strong> This password reset link will expire in 1 hour.</p>
-                </div>
-                <div class="footer">
-                    <p>Thanks,<br>The Yeni Gass Team</p>
-                </div>
-            </div>
-        </body>
-        </html>
-      `,
-      'email-change-notification': `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f9f9f9; }
-                .container { max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-                .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #6c757d; padding-bottom: 20px; }
-                .button { display: inline-block; padding: 14px 28px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
-                .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea; text-align: center; color: #666; font-size: 14px; }
-                .logo { font-size: 24px; font-weight: bold; color: #6c757d; margin-bottom: 10px; }
-                .content { line-height: 1.8; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="logo">Yeni Gass</div>
-                    <h2 style="color: #333; margin: 10px 0;">Email Address Changed</h2>
-                </div>
-                <div class="content">
-                    <p>Hello <strong>${data.displayName}</strong>,</p>
-                    <p>Your sign-in email for Yeni Gass was changed from this address to <strong>${data.newEmail}</strong>.</p>
-                    <p>If you made this change, no further action is required.</p>
-                    <p>If you didn't ask to change your email, please secure your account immediately:</p>
-                    <p style="text-align: center; margin: 30px 0;">
-                        <a href="https://taolistic-courses.firebaseapp.com/__/auth/action" class="button" style="color: white;">Secure Your Account</a>
-                    </p>
-                    <p>If you need assistance, please contact our support team.</p>
-                </div>
-                <div class="footer">
-                    <p>Thanks,<br>The Yeni Gass Team</p>
-                </div>
-            </div>
-        </body>
-        </html>
-      `,
-    };
-
-    return templates[template] || '<p>Email template not found</p>';
   }
 
   async sendWelcomeEmail(email: string): Promise<void> {
@@ -521,7 +316,6 @@ export class EmailService {
         resendStatus,
         cacheStats: {
           cacheEnabled: true,
-          cacheSize: this.linkCache.size,
           resetLinksEqual: resetLink1 === resetLink2,
         },
       };
