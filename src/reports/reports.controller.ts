@@ -62,4 +62,20 @@ export class ReportsController {
         const { startDate, endDate } = this.parseDates(from, to);
         return this.reportsService.getSalesByPaymentMethod(startDate, endDate, distributorId);
     }
+
+    @Get('sales-evolution')
+    @ApiOperation({ summary: 'Evolución de ventas por período (día/mes)' })
+    @ApiQuery({ name: 'from', required: false, type: String, description: 'YYYY-MM-DD' })
+    @ApiQuery({ name: 'to', required: false, type: String, description: 'YYYY-MM-DD' })
+    @ApiQuery({ name: 'granularity', required: false, enum: ['day', 'month'], description: 'Agrupación (default day)' })
+    async getSalesEvolution(
+        @Query('from') from?: string,
+        @Query('to') to?: string,
+        @Query('granularity') granularity?: string,
+        @CurrentDistributor() distributorId?: string | null,
+    ) {
+        const { startDate, endDate } = this.parseDates(from, to);
+        const gran = granularity === 'month' ? 'month' : 'day';
+        return this.reportsService.getSalesEvolution(startDate, endDate, gran, distributorId);
+    }
 }

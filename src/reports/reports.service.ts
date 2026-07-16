@@ -111,4 +111,41 @@ export class ReportsService {
             totalSales: Number(row.total)
         }));
     }
+
+    /**
+     * Evolución temporal de ventas (pedidos entregados) agrupada por día o mes,
+     * usando `date_trunc` de Postgres sobre `deliveredAt`. Devuelve los períodos
+     * ordenados cronológicamente, listos para un gráfico de líneas/barras en el
+     * panel. `granularity` = 'day' | 'month'.
+     */
+    async getSalesEvolution(
+        startDate: Date,
+        endDate: Date,
+        granularity: 'day' | 'month',
+        distributorId?: string | null,
+    ) {
+        const trunc = granularity === 'month' ? 'month' : 'day';
+
+        const query = this.orderRepository.createQueryBuilder('order')
+            .select(`date_trunc('${trunc}', order.deliveredAt)`, 'period')
+            .addSelect('COUNT(order.order_id)', 'count')
+            .addSelect('SUM(order.totalAmount)', 'total')
+            .where('order.status = :status', { status: OrderStatus.DELIVERED })
+            .andWhere('order.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate });
+
+        if (distributorId) {
+            query.andWhere('order.distributor_id = :distributorId', { distributorId });
+        }
+
+        const result = await query
+            .groupBy('period')
+            .orderBy('period', 'ASC')
+            .getRawMany();
+
+        return result.map(row => ({
+            period: row.period,
+            totalOrders: Number(row.count),
+            totalSales: Number(row.total),
+        }));
+    }
 }
