@@ -51,6 +51,10 @@ export class Delivery {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
+  /** Token FCM del dispositivo del chofer, para push de ofertas/estado. */
+  @Column({ type: 'text', nullable: true })
+  notification_token?: string;
+
   @Column({ type: 'text', nullable: true })
   isTraveling?: string;
 

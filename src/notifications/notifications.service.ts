@@ -6,6 +6,7 @@ import * as firebase from 'firebase-admin';
 import { serviceAccount } from '../auth/service-account';
 import { User } from '../users/entities/user.entity';
 import { Customer } from '../customer/entities/customer.entity';
+import { Delivery } from '../delivery/entities/delivery.entity';
 import { Order } from '../order/entities/order.entity';
 
 @Injectable()
@@ -19,6 +20,9 @@ export class NotificationsService {
 
     @InjectRepository(Customer)
     private readonly customerRepository: Repository<Customer>,
+
+    @InjectRepository(Delivery)
+    private readonly deliveryRepository: Repository<Delivery>,
   ) {
     this.adminApp = firebase.initializeApp(
       {
@@ -162,23 +166,42 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * Guarda el token FCM del dispositivo. El mismo endpoint lo usan la app
+   * cliente y la app chofer, así que buscamos el `userId` primero como Customer
+   * y, si no está, como Delivery (el chofer). Así el push le puede llegar a
+   * cualquiera de los dos lados.
+   */
   async saveNotificationToken(userId: string, token: string, platform: string) {
     try {
       const customer = await this.customerRepository.findOne({
         where: { user_id: userId },
       });
 
-      if (!customer) {
-        return { success: false, error: 'Customer not found' };
+      if (customer) {
+        customer.notification_token = token;
+        await this.customerRepository.save(customer);
+        this.logger.log(
+          `Token FCM guardado (cliente ${userId}, ${platform})`,
+        );
+        return { success: true };
       }
 
-      customer.notification_token = token;
-      await this.customerRepository.save(customer);
+      const delivery = await this.deliveryRepository.findOne({
+        where: { user_id: userId },
+      });
 
-      this.logger.log(
-        `Notification token saved for user: ${userId}, platform: ${platform}`,
-      );
-      return { success: true };
+      if (delivery) {
+        delivery.notification_token = token;
+        await this.deliveryRepository.save(delivery);
+        this.logger.log(
+          `Token FCM guardado (chofer ${userId}, ${platform})`,
+        );
+        return { success: true };
+      }
+
+      this.logger.warn(`Usuario no encontrado para token FCM: ${userId}`);
+      return { success: false, error: 'User not found' };
     } catch (error) {
       this.logger.error(`Error saving notification token: ${error.message}`);
       return { success: false, error: error.message };
