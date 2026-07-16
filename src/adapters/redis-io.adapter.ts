@@ -3,6 +3,7 @@ import { ServerOptions } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Redis } from 'ioredis';
 import { INestApplicationContext, Logger } from '@nestjs/common';
+import { redisConnectionOptions } from '../common/redis/redis-connection';
 
 export class RedisIoAdapter extends IoAdapter {
   private readonly logger = new Logger(RedisIoAdapter.name);
@@ -13,14 +14,14 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   async connectToRedis(): Promise<void> {
-    const host = process.env.REDIS_HOST || 'localhost';
-    const port = parseInt(process.env.REDIS_PORT || '6379', 10);
-
-    const pubClient = new Redis({ host, port });
+    const options = redisConnectionOptions();
+    const pubClient = new Redis(options);
     const subClient = pubClient.duplicate();
 
     this.adapterConstructor = createAdapter(pubClient, subClient);
-    this.logger.log(`✅ Redis Adapter conectado a ${host}:${port}`);
+    this.logger.log(
+      `✅ Redis Adapter conectado a ${options.host}:${options.port}`,
+    );
   }
 
   createIOServer(port: number, options?: ServerOptions): any {

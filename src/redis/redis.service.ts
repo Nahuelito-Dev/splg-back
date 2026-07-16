@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import Redlock, { Lock } from 'redlock';
+import { redisConnectionOptions } from '../common/redis/redis-connection';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -17,11 +18,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    this.client = new Redis({
-      host: this.configService.get('REDIS_HOST') || 'localhost',
-      port: parseInt(this.configService.get('REDIS_PORT') || '6379'),
-      // password: this.configService.get('REDIS_PASSWORD'), // Descomentar si usas pass
-    });
+    this.client = new Redis(redisConnectionOptions());
 
     this.client.on('connect', () =>
       this.logger.log('✅ Redis Client Conectado'),

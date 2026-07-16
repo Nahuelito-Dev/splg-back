@@ -3,6 +3,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { Redis } from 'ioredis';
+import { redisConnectionOptions } from './common/redis/redis-connection';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
@@ -51,12 +54,20 @@ import { HealthModule } from './health/health.module';
     // estricto por ruta, y el webhook de MercadoPago / health check se
     // excluyen con @SkipThrottle() (no son tráfico de usuario final).
     // Valores configurables por env; con defaults sensatos si no se setean.
-    ThrottlerModule.forRoot([
-      {
-        ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
-        limit: Number(process.env.THROTTLE_LIMIT ?? 100),
-      },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
+          limit: Number(process.env.THROTTLE_LIMIT ?? 100),
+        },
+      ],
+      // Storage en Redis: con más de una instancia, el rate-limit se cuenta de
+      // forma compartida (sin esto, cada pod tenía su propio contador en memoria
+      // y el límite efectivo era N×límite).
+      storage: new ThrottlerStorageRedisService(
+        new Redis(redisConnectionOptions()),
+      ),
+    }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
     }),
