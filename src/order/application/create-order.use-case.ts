@@ -22,6 +22,7 @@ import { UserAddress } from '../../user-addres/entities/user-addres.entity';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { OrderPricingService } from '../domain/order-pricing.service';
+import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
 import { StockReservationService } from '../domain/stock-reservation.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -78,6 +79,7 @@ export class CreateOrderUseCase {
     private readonly paymentsService: PaymentsService,
     private readonly distributorService: DistributorService,
     private readonly timeSlotService: TimeSlotService,
+    private readonly coverageZoneService: CoverageZoneService,
   ) {}
 
   /**
@@ -126,6 +128,26 @@ export class CreateOrderUseCase {
 
       if (!address) {
         throw new NotFoundException('Dirección no encontrada');
+      }
+
+      // Zona de cobertura: si la distribuidora definió zonas (PostGIS), la
+      // dirección debe caer dentro de alguna → si no, se rechaza el pedido
+      // ANTES de reservar stock. La zona puede además tener un recargo (delivery
+      // por lejanía) que se suma al total. Si la distribuidora NO definió zonas,
+      // checkCoverage devuelve covered:true / surcharge:0 (no-op).
+      let zoneSurcharge = new Decimal(0);
+      if (distributorId) {
+        const coverage = await this.coverageZoneService.checkCoverage(
+          distributorId,
+          Number(address.latitude),
+          Number(address.longitude),
+        );
+        if (!coverage.covered) {
+          throw new BadRequestException(
+            'La dirección está fuera de la zona de cobertura de la distribuidora',
+          );
+        }
+        zoneSurcharge = new Decimal(coverage.surcharge ?? 0);
       }
 
       // Agendamiento: validar cupo de la franja DENTRO de la transacción y con
@@ -194,7 +216,11 @@ export class CreateOrderUseCase {
         });
       }
 
-      // Recargo por método de pago (dominio): +10% si es TRANSFER.
+      // Recargo por zona de cobertura (delivery por lejanía), sobre el subtotal
+      // de los ítems, antes del recargo por método de pago.
+      totalAmount = totalAmount.plus(zoneSurcharge);
+
+      // Recargo por método de pago (dominio): +10% en pagos online (MP/Transfer).
       totalAmount = this.pricing.applyPaymentSurcharge(
         totalAmount,
         createOrderDto.paymentMethod,
