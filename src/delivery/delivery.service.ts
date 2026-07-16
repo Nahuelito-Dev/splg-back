@@ -5,41 +5,19 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Delivery } from './entities/delivery.entity';
-import { User } from '../users/entities/user.entity';
-import { Role } from '../role/entities/role.entity';
-import { CreateDeliveryDto } from './dto/create-delivery.dto';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
-import * as firebase from 'firebase-admin';
-import { serviceAccount } from '../auth/service-account';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class DeliveryService {
-  private adminApp: firebase.app.App;
-
   constructor(
     @InjectRepository(Delivery)
     private readonly deliveryRepository: Repository<Delivery>,
     private readonly redisService: RedisService,
-
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-
-    private readonly dataSource: DataSource,
-  ) {
-    this.adminApp = firebase.initializeApp(
-      {
-        credential: firebase.credential.cert(serviceAccount),
-      },
-      'delivery-service',
-    );
-  }
+  ) {}
 
   /** Lista choferes, scopeada por distribuidora si se pasa `distributorId`. */
   async findAll(paginationDto: PaginationDto, distributorId?: string | null) {
