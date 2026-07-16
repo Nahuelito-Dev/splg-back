@@ -190,6 +190,7 @@ export class UsersService {
 
       const delivery = this.deliveryRepository.create({
         user_id: savedUser.user_id,
+        distributor_id: createDeliveryDto.distributorId,
         calification: createDeliveryDto.calification || 0,
         latLng: createDeliveryDto.latLng,
         actual_location: createDeliveryDto.actual_location,

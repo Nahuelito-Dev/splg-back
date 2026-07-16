@@ -41,10 +41,12 @@ export class DeliveryService {
     );
   }
 
-  async findAll(paginationDto: PaginationDto) {
+  /** Lista choferes, scopeada por distribuidora si se pasa `distributorId`. */
+  async findAll(paginationDto: PaginationDto, distributorId?: string | null) {
     const { limit = 10, offset = 0 } = paginationDto;
 
     return await this.deliveryRepository.find({
+      where: distributorId ? { distributor_id: distributorId } : {},
       take: limit,
       skip: offset,
       relations: ['user', 'user.role'],

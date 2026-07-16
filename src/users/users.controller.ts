@@ -27,6 +27,7 @@ import { RolesGuard } from '../common/decorators/roles.guard';
 import { AuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -87,8 +88,27 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   async createDeliveryRegistration(
     @Body() createDeliveryDto: CreateDeliveryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId?: string | null,
   ) {
-    return await this.usersService.createDeliveryWithUser(createDeliveryDto);
+    // El chofer se asocia a una distribuidora. super_admin puede elegir (body o
+    // "ver como"); un admin de empresa lo crea SIEMPRE en su propia empresa
+    // (se ignora el distributorId del body).
+    const targetDistributor =
+      user.role === RoleType.SUPER_ADMIN
+        ? (createDeliveryDto.distributorId ?? distributorId ?? undefined)
+        : distributorId ?? undefined;
+
+    if (user.role !== RoleType.SUPER_ADMIN && !targetDistributor) {
+      throw new ForbiddenException(
+        'Tu usuario no tiene una distribuidora asociada',
+      );
+    }
+
+    return await this.usersService.createDeliveryWithUser({
+      ...createDeliveryDto,
+      distributorId: targetDistributor,
+    });
   }
 
   @Get()
