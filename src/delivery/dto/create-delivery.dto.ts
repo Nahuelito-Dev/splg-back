@@ -54,4 +54,13 @@ export class CreateDeliveryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * Distribuidora a la que pertenece el chofer. La setea el backend según quién
+   * lo crea (admin → su propia empresa; super_admin → la elegida). Sin ella el
+   * chofer no entra en el dispatch de ninguna distribuidora.
+   */
+  @IsOptional()
+  @IsUUID()
+  distributorId?: string;
 }

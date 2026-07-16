@@ -22,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
 import { CreateDeliveryDto } from './dto/create-delivery.dto';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
@@ -39,10 +40,13 @@ export class DeliveryController {
 
   @Get()
   @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
-  @ApiOperation({ summary: 'Get all deliveries with pagination' })
+  @ApiOperation({ summary: 'Get all deliveries with pagination (scopeado por distribuidora)' })
   @ApiResponse({ status: 200, description: 'List of deliveries' })
-  async findAll(@Query() paginationDto: PaginationDto) {
-    return await this.deliveryService.findAll(paginationDto);
+  async findAll(
+    @Query() paginationDto: PaginationDto,
+    @CurrentDistributor() distributorId?: string | null,
+  ) {
+    return await this.deliveryService.findAll(paginationDto, distributorId);
   }
 
   @Get('active')
