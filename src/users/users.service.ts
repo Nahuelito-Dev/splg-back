@@ -3,8 +3,6 @@ import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
-  forwardRef,
-  Inject,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,12 +13,6 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { ConfigService } from '@nestjs/config';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
-import { CompleteCustomerRegistrationDto } from 'src/customer/dto/complete-customer-registration.dto';
-import { Customer } from 'src/customer/entities/customer.entity';
-import { Role } from 'src/role/entities/role.entity';
-import { CreateDeliveryDto } from 'src/delivery/dto/create-delivery.dto';
-import { Delivery } from 'src/delivery/entities/delivery.entity';
-import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class UsersService {
@@ -30,19 +22,8 @@ export class UsersService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
 
-    @InjectRepository(Customer)
-    private readonly customerRepository: Repository<Customer>,
-
-    @InjectRepository(Delivery)
-    private readonly deliveryRepository: Repository<Delivery>,
-
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
-    @Inject(forwardRef(() => EmailService))
-    private readonly emailService: EmailService,
     private readonly firebaseAuth: FirebaseAuthPort,
   ) {}
 
@@ -62,168 +43,6 @@ export class UsersService {
     }
   }
 
-  async createCustomerWithUser(
-    createCustomerDto: CompleteCustomerRegistrationDto,
-  ) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      const existingUser = await this.userRepository.findOne({
-        where: { email: createCustomerDto.email },
-      });
-
-      if (existingUser) {
-        throw new BadRequestException('User with this email already exists');
-      }
-
-      const firebaseUser = await this.createFirebaseUser({
-        email: createCustomerDto.email,
-        password: createCustomerDto.password,
-        full_name: createCustomerDto.full_name,
-        phone_number: createCustomerDto.phone_number,
-      });
-
-      const customerRole = await this.roleRepository.findOne({
-        where: { type: 'customer' },
-      });
-
-      if (!customerRole) {
-        throw new InternalServerErrorException('Customer role not found');
-      }
-
-      const user = this.userRepository.create({
-        email: createCustomerDto.email,
-        full_name: createCustomerDto.full_name,
-        phone_number: createCustomerDto.phone_number,
-        firebase_uid: firebaseUser.uid,
-        role_id: customerRole.role_id,
-        email_verified: false,
-        phone_verified: false,
-        blocked: false,
-      });
-
-      const savedUser = await queryRunner.manager.save(user);
-
-      const customer = this.customerRepository.create({
-        user_id: savedUser.user_id,
-        notification_token: createCustomerDto.notification_token,
-        lat_lang: createCustomerDto.lat_lang,
-        validated: 'false',
-      });
-
-      await queryRunner.manager.save(customer);
-      await queryRunner.commitTransaction();
-
-      try {
-        await this.emailService.sendWelcomeEmail?.(createCustomerDto.email);
-      } catch (e) {
-        // Best-effort: el registro del customer NO debe fallar si el email
-        // de bienvenida no se pudo enviar. Solo dejamos rastro.
-        this.logger.warn(
-          `No se pudo enviar el email de bienvenida a ${createCustomerDto.email}: ${e instanceof Error ? e.message : e}`,
-        );
-      }
-
-      const result = await this.userRepository.findOne({
-        where: { user_id: savedUser.user_id },
-        relations: ['customer', 'role'],
-      });
-
-      return result;
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-
-      if (createCustomerDto.email) {
-        await this.cleanupFirebaseUser(createCustomerDto.email);
-      }
-
-      this.handleDBExceptions(error);
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
-  async createDeliveryWithUser(createDeliveryDto: CreateDeliveryDto) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      const existingUser = await this.userRepository.findOne({
-        where: { email: createDeliveryDto.email },
-      });
-
-      if (existingUser) {
-        throw new BadRequestException('User with this email already exists');
-      }
-
-      const firebaseUser = await this.createFirebaseUser({
-        email: createDeliveryDto.email,
-        password: createDeliveryDto.password,
-        full_name: createDeliveryDto.full_name,
-        phone_number: createDeliveryDto.phone_number,
-      });
-
-      const deliveryRole = await this.roleRepository.findOne({
-        where: { type: 'delivery' },
-      });
-
-      if (!deliveryRole) {
-        throw new InternalServerErrorException('Delivery role not found');
-      }
-
-      const user = this.userRepository.create({
-        email: createDeliveryDto.email,
-        full_name: createDeliveryDto.full_name,
-        phone_number: createDeliveryDto.phone_number,
-        firebase_uid: firebaseUser.uid,
-        role_id: deliveryRole.role_id,
-        email_verified: false,
-        phone_verified: false,
-        blocked: false,
-        selfie: createDeliveryDto.selfie,
-      });
-
-      const savedUser = await queryRunner.manager.save(user);
-
-      const delivery = this.deliveryRepository.create({
-        user_id: savedUser.user_id,
-        distributor_id: createDeliveryDto.distributorId,
-        calification: createDeliveryDto.calification || 0,
-        latLng: createDeliveryDto.latLng,
-        actual_location: createDeliveryDto.actual_location,
-        validated: createDeliveryDto.validated || false,
-        isActive:
-          createDeliveryDto.isActive !== undefined
-            ? createDeliveryDto.isActive
-            : true,
-        balance: 0,
-      });
-
-      await queryRunner.manager.save(delivery);
-      await queryRunner.commitTransaction();
-
-      const result = await this.userRepository.findOne({
-        where: { user_id: savedUser.user_id },
-        relations: ['delivery', 'role'],
-      });
-
-      return result;
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-
-      if (createDeliveryDto.email) {
-        await this.cleanupFirebaseUser(createDeliveryDto.email);
-      }
-
-      this.handleDBExceptions(error);
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
   private async cleanupFirebaseUser(email: string) {
     try {
       const userRecord = await this.firebaseAuth.getUserByEmail(email);
@@ -236,19 +55,6 @@ export class UsersService {
         `No se pudo limpiar el usuario Firebase de ${email}: ${error instanceof Error ? error.message : error}`,
       );
     }
-  }
-
-  private async getDefaultCustomerRoleId(): Promise<string> {
-    const roleRepository = this.dataSource.getRepository(Role);
-    const defaultRole = await roleRepository.findOne({
-      where: { type: 'customer' },
-    });
-
-    if (!defaultRole) {
-      throw new InternalServerErrorException('Default customer role not found');
-    }
-
-    return defaultRole.role_id;
   }
 
   async createFirebaseUser(createUserDto: CreateUserDto) {

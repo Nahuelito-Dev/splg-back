@@ -20,9 +20,11 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { CompleteCustomerRegistrationDto } from 'src/customer/dto/complete-customer-registration.dto';
+import { CustomersService } from 'src/customer/customer.service';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RoleType } from 'src/common/constants/role-type.enum';
 import { CreateDeliveryDto } from 'src/delivery/dto/create-delivery.dto';
+import { DeliveryService } from 'src/delivery/delivery.service';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -34,7 +36,11 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 @Controller('users')
 @UseGuards(AuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly customersService: CustomersService,
+    private readonly deliveryService: DeliveryService,
+  ) {}
 
   @Public()
   @Post()
@@ -69,7 +75,7 @@ export class UsersController {
   async createCustomerRegistration(
     @Body() completeRegistrationDto: CompleteCustomerRegistrationDto,
   ) {
-    return await this.usersService.createCustomerWithUser(
+    return await this.customersService.registerWithUser(
       completeRegistrationDto,
     );
   }
@@ -105,7 +111,7 @@ export class UsersController {
       );
     }
 
-    return await this.usersService.createDeliveryWithUser({
+    return await this.deliveryService.registerWithUser({
       ...createDeliveryDto,
       distributorId: targetDistributor,
     });

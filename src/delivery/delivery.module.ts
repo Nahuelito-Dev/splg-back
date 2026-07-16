@@ -6,13 +6,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/users/entities/user.entity';
 import { Delivery } from './entities/delivery.entity';
 import { Role } from '../role/entities/role.entity';
-import { UsersModule } from '../users/users.module';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Delivery, User, Role]),
-    UsersModule,
+    // FirebaseModule es @Global, FirebaseAuthPort ya está disponible sin importarlo.
+    // NO se importa UsersModule: DeliveryService habla con el repo de User
+    // directamente (P2-3), evitando el ciclo users↔delivery.
     RedisModule,
   ],
   controllers: [DeliveryController],
