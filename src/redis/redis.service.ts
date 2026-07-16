@@ -89,6 +89,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Incrementa un contador y le pone TTL de `windowSec` la PRIMERA vez que
+   * se crea (no lo resetea en cada incremento). Patrón "fixed window" para
+   * rate-limiting distribuido: todas las instancias comparten el mismo
+   * contador en vez de un `Map` en memoria por pod.
+   *
+   * Devuelve el valor del contador después de incrementar. El caller decide
+   * el umbral (ej. `if (count > MAX) throw ...`).
+   */
+  async incrWithExpire(key: string, windowSec: number): Promise<number> {
+    const count = await this.client.incr(key);
+    if (count === 1) {
+      await this.client.expire(key, windowSec);
+    }
+    return count;
+  }
+
+  /**
    * Verifica que el cliente Redis responda. Usado por el health check.
    * No lanza: retorna false si la conexión no responde.
    */
