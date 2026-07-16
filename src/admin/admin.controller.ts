@@ -7,20 +7,21 @@
   import { CreateAdminDto } from './dto/create-admin.dto';
   import { Roles } from '../common/decorators/roles.decorator';
   import { RoleType } from '../common/constants/role-type.enum';
+  import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
   @Controller('admin')
   export class AdminController {
     constructor(private readonly adminService: AdminService) {}
 
-    @Public()
     @Post()
+    @Roles(RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Create admin (basic)' })
     async create(@Body() createAdminDto: CreateAdminDto) {
       return await this.adminService.create(createAdminDto);
     }
 
-    @Public()
     @Get('/term/:term')
+    @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Find admin by term' })
     findOneByEmail(@Param('term') term: string) {
       return this.adminService.findAdminByTerm(term);
@@ -49,14 +50,22 @@
     @Post('register')
     @Roles(RoleType.SUPER_ADMIN)
     @ApiOperation({ summary: 'Register a new admin (super_admin only)' })
-    async register(@Body() registerAdminDto: RegisterAdminDto) {
-      return await this.adminService.registerAdmin(registerAdminDto);
+    async register(
+      @Body() registerAdminDto: RegisterAdminDto,
+      @CurrentDistributor() distributorId?: string | null,
+    ) {
+      // Si no vino distributorId explícito en el body, usa el tenant del
+      // contexto (super_admin con "ver como" una empresa). null = cross-tenant.
+      return await this.adminService.registerAdmin({
+        ...registerAdminDto,
+        distributorId: registerAdminDto.distributorId ?? distributorId ?? undefined,
+      });
     }
 
     @Get()
     @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-    @ApiOperation({ summary: 'Get all admins' })
-    async findAll() {
-      return this.adminService.findAll();
+    @ApiOperation({ summary: 'Get all admins (scopeado por distribuidora)' })
+    async findAll(@CurrentDistributor() distributorId?: string | null) {
+      return this.adminService.findAll(distributorId);
     }
   }
