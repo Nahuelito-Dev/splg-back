@@ -110,6 +110,13 @@ describe('CreateOrderUseCase', () => {
       assertSlotAvailableTx: jest.fn().mockResolvedValue(undefined),
     };
 
+    // Sin zonas definidas → cubierto, sin recargo (no-op), por defecto.
+    const coverageZoneService = {
+      checkCoverage: jest
+        .fn()
+        .mockResolvedValue({ covered: true, surcharge: 0 }),
+    };
+
     useCase = new CreateOrderUseCase(
       dataSource as any,
       userRepository as any,
@@ -125,6 +132,7 @@ describe('CreateOrderUseCase', () => {
       paymentsService as any,
       distributorService as any,
       timeSlotService as any,
+      coverageZoneService as any,
     );
   });
 

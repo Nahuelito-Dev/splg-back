@@ -34,6 +34,7 @@ import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { ReservationService } from './application/reservation.service';
 import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
 import { CylinderModule } from '../cylinder/cylinder.module';
+import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
 import { PaymentsModule } from '../payments/payments.module';
@@ -54,6 +55,7 @@ import { PaymentsModule } from '../payments/payments.module';
     RedisModule, // 👈 AGREGAR ESTO AQUÍ
     TimeSlotModule, // agendamiento: valida cupo de franja al crear pedido
     CylinderModule, // ciclo del envase físico: al entregar, avanza los envases
+    CoverageZoneModule, // valida cobertura de la dirección + recargo por zona
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
   ],
   controllers: [OrderController, MercadoPagoWebhookController],
