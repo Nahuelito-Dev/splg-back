@@ -14,6 +14,8 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Claims')
 @Controller('claims')
@@ -23,10 +25,20 @@ export class ClaimsController {
   @Post()
   @Roles(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cliente crea un reclamo' })
-  create(@Body() createClaimDto: CreateClaimDto) {
-    // El distributor_id NO sale del header: se deriva de la orden reclamada
-    // (en claims.service.create), porque el cliente no elige tenant acá.
-    return this.claimsService.create(createClaimDto);
+  create(
+    @Body() createClaimDto: CreateClaimDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    // Anti-impersonación: un cliente solo puede reclamar como SÍ MISMO (se
+    // fuerza el customerId al del token, ignorando lo que venga en el body).
+    // Un admin puede crear a nombre de un cliente (soporte). El distributor_id
+    // NO sale del header: se deriva de la orden reclamada (claims.service).
+    const isAdmin =
+      user.role === RoleType.ADMIN || user.role === RoleType.SUPER_ADMIN;
+    const dto = isAdmin
+      ? createClaimDto
+      : { ...createClaimDto, customerId: user.user_id };
+    return this.claimsService.create(dto);
   }
 
   @Get()

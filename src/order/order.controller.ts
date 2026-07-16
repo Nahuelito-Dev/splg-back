@@ -83,10 +83,22 @@ export class OrderController {
   })
   async create(
     @Body() createOrderDto: CreateOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
     // Opcional para compatibilidad: si el cliente no manda X-Distributor (apps
     // previas al multi-tenant), el use-case cae a la distribuidora default.
     @CurrentDistributor() distributorId: string | null,
   ) {
+    // Anti-impersonación: un cliente solo puede crear pedidos para SÍ MISMO
+    // (order.customer_id es el User PK = user.user_id). Admin/delivery pueden
+    // crear a nombre de un cliente (soporte / carga telefónica).
+    if (
+      user.role === RoleType.CUSTOMER &&
+      createOrderDto.customerId !== user.user_id
+    ) {
+      throw new ForbiddenException(
+        'No autorizado a crear pedidos para otro cliente',
+      );
+    }
     // Retry ante deadlock / serialization_failure de PostgreSQL.
     // Ocurre cuando dos transacciones concurrentes intentan adquirir
     // pessimistic locks sobre las mismas garrafas en orden distinto.
