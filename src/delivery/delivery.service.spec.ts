@@ -31,11 +31,12 @@ describe('DeliveryService.toggleAvailability (CU-022)', () => {
     };
     redis = { removeDriver: jest.fn().mockResolvedValue(undefined) };
     service = new DeliveryService(
-      deliveryRepo as any,
-      redis as any,
-      {} as any,
-      {} as any,
-      {} as any,
+      deliveryRepo as any, // deliveryRepository
+      redis as any, // redisService
+      {} as any, // userRepository (no usado en este caso)
+      {} as any, // roleRepository (no usado en este caso)
+      {} as any, // dataSource (no usado en este caso)
+      {} as any, // firebaseAuth (no usado en este caso)
     );
   });
 
