@@ -23,7 +23,7 @@ import { CompleteCustomerRegistrationDto } from 'src/customer/dto/complete-custo
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RoleType } from 'src/common/constants/role-type.enum';
 import { CreateDeliveryDto } from 'src/delivery/dto/create-delivery.dto';
-import { RolesGuard } from '../common/decorators/roles.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { AuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';

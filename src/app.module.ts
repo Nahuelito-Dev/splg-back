@@ -6,7 +6,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
-import { RolesGuard } from './common/decorators/roles.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
@@ -26,7 +26,7 @@ import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
 import { CylinderModule } from './cylinder/cylinder.module';
 
 // Importa el interceptor de timeout
-import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -151,7 +151,7 @@ import { HealthModule } from './health/health.module';
     },
     {
       provide: APP_INTERCEPTOR,
-      useClass: timeOutInterceptor,
+      useClass: TimeoutInterceptor,
     },
     {
       // Idempotency interceptor global: solo actúa en handlers decorados
