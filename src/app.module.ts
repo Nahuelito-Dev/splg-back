@@ -41,6 +41,7 @@ import { ClaimsModule } from './claims/claims.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { ReportsModule } from './reports/reports.module';
 import { HealthModule } from './health/health.module';
+import { FirebaseModule } from './firebase/firebase.module';
 
 @Module({
   imports: [
@@ -112,6 +113,9 @@ import { HealthModule } from './health/health.module';
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),
+    // Global: un único init del Admin SDK de Firebase para todo el proceso
+    // (ver firebase/firebase.module.ts). Provee FirebaseAuthPort y FcmPort.
+    FirebaseModule,
     UsersModule,
     AdminModule,
     AuthModule,

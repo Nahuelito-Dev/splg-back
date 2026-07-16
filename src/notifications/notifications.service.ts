@@ -2,17 +2,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as firebase from 'firebase-admin';
-import { serviceAccount } from '../auth/service-account';
 import { User } from '../users/entities/user.entity';
 import { Customer } from '../customer/entities/customer.entity';
 import { Delivery } from '../delivery/entities/delivery.entity';
 import { Order } from '../order/entities/order.entity';
+import { FcmPort } from '../firebase/ports/fcm.port';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger('NotificationService');
-  private adminApp: firebase.app.App;
 
   constructor(
     @InjectRepository(User)
@@ -23,19 +21,13 @@ export class NotificationsService {
 
     @InjectRepository(Delivery)
     private readonly deliveryRepository: Repository<Delivery>,
-  ) {
-    this.adminApp = firebase.initializeApp(
-      {
-        credential: firebase.credential.cert(serviceAccount),
-      },
-      'notification-service',
-    );
-  }
+
+    private readonly fcm: FcmPort,
+  ) {}
 
   async sendTestNotification(token: string, title: string, body: string) {
     try {
       const message = {
-        token,
         notification: {
           title,
           body,
@@ -46,7 +38,7 @@ export class NotificationsService {
         },
       };
 
-      const response = await firebase.messaging().send(message);
+      const response = await this.fcm.sendToToken(token, message);
       this.logger.log(`Test notification sent: ${response}`);
       return { success: true, messageId: response };
     } catch (error) {
@@ -81,7 +73,6 @@ export class NotificationsService {
       }
 
       const message = {
-        token: notificationToken,
         notification: {
           title: '¡Pedido Confirmado!',
           body: `Tu pedido #${orderId.substring(0, 8)} ha sido creado exitosamente.`,
@@ -93,7 +84,7 @@ export class NotificationsService {
         },
       };
 
-      const response = await firebase.messaging().send(message);
+      const response = await this.fcm.sendToToken(notificationToken, message);
       this.logger.log(`Order confirmation sent for order: ${orderId}`);
       return { success: true, messageId: response };
     } catch (error) {
@@ -123,7 +114,6 @@ export class NotificationsService {
       };
 
       const message = {
-        token,
         notification: {
           title: 'Actualización de Pedido',
           body:
@@ -136,7 +126,7 @@ export class NotificationsService {
         },
       };
 
-      const response = await firebase.messaging().send(message);
+      const response = await this.fcm.sendToToken(token, message);
       this.logger.log(`Order status update sent for order: ${order.order_id}`);
       return { success: true, messageId: response };
     } catch (error) {
@@ -189,8 +179,7 @@ export class NotificationsService {
       const token = delivery?.notification_token;
       if (!token) return;
 
-      await firebase.messaging().send({
-        token,
+      await this.fcm.sendToToken(token, {
         notification: {
           title: '¡Nuevo pedido disponible!',
           body: 'Tenés una oferta de entrega. Abrí la app para aceptarla.',

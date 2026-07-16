@@ -6,15 +6,14 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as firebase from 'firebase-admin';
-import { serviceAccount } from '../auth/service-account';
+import { auth } from 'firebase-admin';
+import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { UsersService } from '../users/users.service';
 import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private adminApp: firebase.app.App;
   private resend: Resend;
 
   private linkCache = new Map<
@@ -35,14 +34,8 @@ export class EmailService {
     private readonly config: ConfigService,
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
+    private readonly firebaseAuth: FirebaseAuthPort,
   ) {
-    this.adminApp = firebase.initializeApp(
-      {
-        credential: firebase.credential.cert(serviceAccount),
-      },
-      'email-service',
-    );
-
     const resendApiKey = this.config.get('RESEND_API_KEY');
     if (resendApiKey) {
       this.resend = new Resend(resendApiKey);
@@ -107,7 +100,7 @@ export class EmailService {
     }
 
     try {
-      const link = await this.adminApp.auth().generatePasswordResetLink(email, {
+      const link = await this.firebaseAuth.generatePasswordResetLink(email, {
         url: 'https://taolistic-courses.firebaseapp.com/__/auth/action',
         handleCodeInApp: true,
       });
@@ -138,9 +131,9 @@ export class EmailService {
 
   private async verifyIdToken(
     idToken: string,
-  ): Promise<firebase.auth.DecodedIdToken> {
+  ): Promise<auth.DecodedIdToken> {
     try {
-      return await this.adminApp.auth().verifyIdToken(idToken);
+      return await this.firebaseAuth.verifyIdToken(idToken);
     } catch (error) {
       throw new BadRequestException('Invalid token');
     }
@@ -148,7 +141,7 @@ export class EmailService {
 
   private async updateUserEmail(uid: string, newEmail: string): Promise<void> {
     try {
-      await this.adminApp.auth().updateUser(uid, { email: newEmail });
+      await this.firebaseAuth.updateUser(uid, { email: newEmail });
     } catch (error) {
       throw new BadRequestException(`Error updating email: ${error.message}`);
     }
