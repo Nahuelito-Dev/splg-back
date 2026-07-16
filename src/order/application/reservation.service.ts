@@ -44,6 +44,43 @@ export class ReservationService {
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
   ) {}
 
+  /**
+   * Lista las reservas (pedidos RESERVED) de la distribuidora para el panel,
+   * con el cliente, la fecha agendada y el estado de la seña. Ordenadas por
+   * fecha agendada ascendente (las más próximas primero).
+   */
+  async findReservations(distributorId?: string | null) {
+    const orders = await this.orderRepository.find({
+      where: {
+        status: OrderStatus.RESERVED,
+        ...(distributorId ? { distributor_id: distributorId } : {}),
+      },
+      relations: ['customer', 'items', 'items.gasCylinder'],
+      order: { scheduled_date: 'ASC', createdAt: 'DESC' },
+    });
+
+    return orders.map((order) => {
+      const depositAmount = Number(order.deposit_amount ?? 0);
+      const total = Number(order.totalAmount);
+      return {
+        id: order.order_id,
+        customerName: order.customer?.full_name ?? null,
+        customerPhone: order.customer?.phone_number ?? null,
+        scheduledDate: order.scheduled_date ?? null,
+        paymentMethod: order.paymentMethod,
+        total,
+        depositAmount,
+        depositPaid: !!order.deposit_paid,
+        remainingBalance: total - (order.deposit_paid ? depositAmount : 0),
+        createdAt: order.createdAt,
+        items: (order.items ?? []).map((item) => ({
+          quantity: item.quantity,
+          type: item.gasCylinder?.type ?? null,
+        })),
+      };
+    });
+  }
+
   /** Admin confirma la seña cobrada en efectivo. Habilita la activación automática. */
   async confirmDeposit(
     orderId: string,

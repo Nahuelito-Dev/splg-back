@@ -190,6 +190,18 @@ export class OrderController {
     };
   }
 
+  @Get('reservations')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Listar las reservas (pedidos RESERVED) con estado de seña',
+  })
+  @ApiResponse({ status: 200, description: 'Listado de reservas' })
+  async findReservations(
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    return this.reservationService.findReservations(distributorId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get order by ID' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
