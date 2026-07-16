@@ -344,10 +344,10 @@ export class OrderController {
 
   @Get('stats/summary')
   @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get order statistics' })
+  @ApiOperation({ summary: 'Get order statistics (scopeado por distribuidora)' })
   @ApiResponse({ status: 200, description: 'Statistics retrieved' })
-  async getStats() {
-    return await this.orderService.getOrderStats();
+  async getStats(@CurrentDistributor() distributorId: string | null) {
+    return await this.orderService.getOrderStats(distributorId);
   }
 
   @Delete(':id')
@@ -412,8 +412,8 @@ export class OrderController {
 
   @Get('stats/chart')
   @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get sales chart data (Last 7 days)' })
-  async getChartData() {
-    return await this.orderService.getSalesChartData();
+  @ApiOperation({ summary: 'Get sales chart data (Last 7 days, scopeado por distribuidora)' })
+  async getChartData(@CurrentDistributor() distributorId: string | null) {
+    return await this.orderService.getSalesChartData(distributorId);
   }
 }

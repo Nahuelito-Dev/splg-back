@@ -16,6 +16,7 @@ import { OrderItem } from './order-item.entity';
 import { TimeSlot } from '../../time-slot/entities/time-slot.entity';
 import { UserAddress } from '../../user-addres/entities/user-addres.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 export enum OrderStatus {
   /**
@@ -90,7 +91,7 @@ export class Order {
   scheduled_date?: string | null;
 
   /** Seña de la pre-reserva (0 = pedido normal, no reserva). */
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer, default: 0 })
   deposit_amount: number;
 
   /** Si la seña ya fue pagada (habilita la activación automática de la reserva). */
@@ -134,7 +135,7 @@ export class Order {
   })
   paymentStatus: PaymentStatus;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
   totalAmount: number;
 
   @Column({ type: 'text', nullable: true })

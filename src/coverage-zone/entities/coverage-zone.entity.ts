@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 /**
  * Zona de cobertura de una distribuidora, definida como POLÍGONO geográfico
@@ -50,7 +51,7 @@ export class CoverageZone {
   area: object;
 
   /** Recargo por reparto en esta zona (monto fijo en la moneda del pedido). */
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer, default: 0 })
   surcharge: number;
 
   @Column({ type: 'boolean', default: true })

@@ -198,118 +198,103 @@ export class OrderService {
     return order;
   }
 
-  async getOrderStats() {
+  /**
+   * KPIs del dashboard. Scopeado por distribuidora (un admin de empresa solo ve
+   * lo suyo; super_admin sin tenant ve el consolidado). Usa agregados SQL
+   * (SUM/COUNT) en vez de cargar las órdenes a memoria.
+   */
+  async getOrderStats(distributorId?: string | null) {
+    const dist = distributorId ? { distributor_id: distributorId } : {};
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
-
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
-
     const monthEnd = new Date(monthStart);
     monthEnd.setMonth(monthEnd.getMonth() + 1);
 
-    const todayOrders = await this.orderRepository.find({
-      where: {
+    const delivered = (from: Date, to: Date) => ({
+      status: OrderStatus.DELIVERED,
+      deliveredAt: Between(from, to),
+      ...dist,
+    });
+
+    const [
+      todaySales,
+      weekSales,
+      monthSales,
+      totalSales,
+      deliveredToday,
+      pending,
+      accepted,
+      onTheWay,
+      activeDeliveries,
+      cash,
+      mercadopago,
+    ] = await Promise.all([
+      this.orderRepository.sum('totalAmount', delivered(today, tomorrow)),
+      this.orderRepository.sum('totalAmount', delivered(weekStart, weekEnd)),
+      this.orderRepository.sum('totalAmount', delivered(monthStart, monthEnd)),
+      this.orderRepository.sum('totalAmount', {
         status: OrderStatus.DELIVERED,
-        deliveredAt: Between(today, tomorrow),
-      },
-    });
+        ...dist,
+      }),
+      this.orderRepository.count({ where: delivered(today, tomorrow) }),
+      this.orderRepository.count({ where: { status: OrderStatus.PENDING, ...dist } }),
+      this.orderRepository.count({ where: { status: OrderStatus.ACCEPTED, ...dist } }),
+      this.orderRepository.count({ where: { status: OrderStatus.ON_THE_WAY, ...dist } }),
+      this.deliveryRepository.count({
+        where: { isActive: true, validated: true, ...dist },
+      }),
+      this.orderRepository.count({
+        where: {
+          status: OrderStatus.DELIVERED,
+          paymentMethod: PaymentMethod.CASH,
+          deliveredAt: MoreThanOrEqual(monthStart),
+          ...dist,
+        },
+      }),
+      this.orderRepository.count({
+        where: {
+          status: OrderStatus.DELIVERED,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+          deliveredAt: MoreThanOrEqual(monthStart),
+          ...dist,
+        },
+      }),
+    ]);
 
-    const weekOrders = await this.orderRepository.find({
-      where: {
-        status: OrderStatus.DELIVERED,
-        deliveredAt: Between(weekStart, weekEnd),
-      },
-    });
-
-    const monthOrders = await this.orderRepository.find({
-      where: {
-        status: OrderStatus.DELIVERED,
-        deliveredAt: Between(monthStart, monthEnd),
-      },
-    });
-
-    const todaySales = todayOrders.reduce(
-      (sum, order) => sum + order.totalAmount,
-      0,
-    );
-    const weekSales = weekOrders.reduce(
-      (sum, order) => sum + order.totalAmount,
-      0,
-    );
-    const monthSales = monthOrders.reduce(
-      (sum, order) => sum + order.totalAmount,
-      0,
-    );
-
-    const totalSalesResult = await this.orderRepository
-      .createQueryBuilder('order')
-      .select('SUM(order.totalAmount)', 'total')
-      .where('order.status = :status', { status: OrderStatus.DELIVERED })
-      .getRawOne();
-
-    const pendingOrders = await this.orderRepository.count({
-      where: { status: OrderStatus.PENDING },
-    });
-
-    const acceptedOrders = await this.orderRepository.count({
-      where: { status: OrderStatus.ACCEPTED },
-    });
-
-    const onTheWayOrders = await this.orderRepository.count({
-      where: { status: OrderStatus.ON_THE_WAY },
-    });
-
-    const activeDeliveries = await this.deliveryRepository.count({
-      where: { isActive: true, validated: true },
-    });
+    const todaySalesN = todaySales ?? 0;
 
     return {
       ordersSummary: {
-        pending: pendingOrders,
-        accepted: acceptedOrders,
-        onTheWay: onTheWayOrders,
-        deliveredToday: todayOrders.length,
+        pending,
+        accepted,
+        onTheWay,
+        deliveredToday,
       },
       sales: {
-        today: todaySales,
-        week: weekSales,
-        month: monthSales,
-        total: parseFloat(totalSalesResult?.total || '0'),
+        today: todaySalesN,
+        week: weekSales ?? 0,
+        month: monthSales ?? 0,
+        total: totalSales ?? 0,
       },
       performance: {
-        activeDeliveries: activeDeliveries,
-        avgOrderValue:
-          todayOrders.length > 0 ? todaySales / todayOrders.length : 0,
-        ordersPerDay: todayOrders.length,
+        activeDeliveries,
+        avgOrderValue: deliveredToday > 0 ? todaySalesN / deliveredToday : 0,
+        ordersPerDay: deliveredToday,
       },
-      paymentMethods: {
-        cash: await this.orderRepository.count({
-          where: {
-            status: OrderStatus.DELIVERED,
-            paymentMethod: PaymentMethod.CASH,
-            deliveredAt: MoreThanOrEqual(monthStart),
-          },
-        }),
-        mercadopago: await this.orderRepository.count({
-          where: {
-            status: OrderStatus.DELIVERED,
-            paymentMethod: PaymentMethod.MERCADOPAGO,
-            deliveredAt: MoreThanOrEqual(monthStart),
-          },
-        }),
-      },
+      paymentMethods: { cash, mercadopago },
     };
   }
 
@@ -344,41 +329,49 @@ export class OrderService {
     return { message: 'Cliente notificado' };
   }
 
-  async getSalesChartData() {
-    // CORRECCIÓN 1: Tipar el array de fechas explícitamente
-    const days: Date[] = [];
+  /**
+   * Ventas de los últimos 7 días para el gráfico del dashboard. Scopeado por
+   * distribuidora, en UNA sola query agregada (date_trunc + GROUP BY) en vez de
+   * 7 queries secuenciales.
+   */
+  async getSalesChartData(distributorId?: string | null) {
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
 
-    // Generar últimos 7 días
+    const qb = this.orderRepository
+      .createQueryBuilder('order')
+      .select(`date_trunc('day', order.deliveredAt)`, 'day')
+      .addSelect('SUM(order.totalAmount)', 'total')
+      .where('order.status = :status', { status: OrderStatus.DELIVERED })
+      .andWhere('order.deliveredAt BETWEEN :start AND :end', { start, end });
+
+    if (distributorId) {
+      qb.andWhere('order.distributor_id = :distributorId', { distributorId });
+    }
+
+    const rows = await qb.groupBy('day').getRawMany();
+
+    // Mapa día(YYYY-MM-DD) → total, para rellenar los días sin ventas con 0.
+    const byDay = new Map<string, number>();
+    for (const r of rows) {
+      const key = new Date(r.day).toISOString().split('T')[0];
+      byDay.set(key, Number(r.total) || 0);
+    }
+
+    const chartData: { name: string; date: string; sales: number }[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      days.push(d); // Ahora funciona porque sabe que es Date[]
-    }
-
-    // CORRECCIÓN 2: Tipar la estructura del objeto de salida
-    const chartData: { name: string; date: string; sales: number }[] = [];
-
-    for (const date of days) {
-      // Definir inicio y fin del día (00:00:00 a 23:59:59)
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
-
-      // Sumar total de pedidos ENTREGADOS en ese rango
-      const total = await this.orderRepository.sum('totalAmount', {
-        status: OrderStatus.DELIVERED,
-        deliveredAt: Between(start, end),
-      });
-
-      // Formato para el gráfico (Ej: "Lun", "Mar")
-      const dayName = start.toLocaleDateString('es-ES', { weekday: 'short' });
-
+      d.setHours(0, 0, 0, 0);
+      const key = d.toISOString().split('T')[0];
+      const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' });
       chartData.push({
         name: dayName.charAt(0).toUpperCase() + dayName.slice(1),
-        date: start.toISOString().split('T')[0],
-        sales: Number(total) || 0, // Aseguramos que sea número (TypeORM a veces devuelve string en sumas)
+        date: key,
+        sales: byDay.get(key) ?? 0,
       });
     }
 
