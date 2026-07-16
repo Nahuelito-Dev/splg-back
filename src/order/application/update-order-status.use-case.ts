@@ -16,7 +16,7 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { assertTransition } from '../domain/order-status.machine';
+import { transitionOrder } from '../domain/order-status.machine';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
@@ -66,10 +66,8 @@ export class UpdateOrderStatusUseCase {
     if (!order) throw new NotFoundException(`Order with ID: ${id} not found`);
 
     // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
-    // →DELIVERED). Rechaza saltos/estados terminales con 400.
-    assertTransition(order.status, status);
-
-    order.status = status;
+    // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
+    transitionOrder(order, status);
     const deliveryUser = await this.applyStatusEffects(order, status, deliveryId);
 
     await this.orders.save(order);

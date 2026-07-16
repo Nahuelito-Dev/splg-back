@@ -15,6 +15,7 @@ import {
 } from 'typeorm';
 
 import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
+import { transitionOrder } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { StockReservationService } from '../domain/stock-reservation.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -139,7 +140,7 @@ export class ReservationService {
     this.logger.log(`Activando ${due.length} reserva(s) con día cumplido`);
     for (const order of due) {
       try {
-        order.status = OrderStatus.PENDING;
+        transitionOrder(order, OrderStatus.PENDING);
         await this.orderRepository.save(order);
         // Despacho con el pedido completo (coords + items) para armar la oferta.
         const full = await this.orders.findByIdFull(order.order_id);
@@ -181,7 +182,7 @@ export class ReservationService {
       await queryRunner.connect();
       await queryRunner.startTransaction();
       try {
-        order.status = OrderStatus.CANCELLED;
+        transitionOrder(order, OrderStatus.CANCELLED);
         await queryRunner.manager.save(order);
         await this.stock.restore(
           queryRunner.manager,
@@ -262,7 +263,7 @@ export class ReservationService {
           continue;
         }
 
-        locked.status = OrderStatus.CANCELLED;
+        transitionOrder(locked, OrderStatus.CANCELLED);
         locked.cancellationReason =
           'Pago con MercadoPago no completado dentro del plazo';
         await queryRunner.manager.save(locked);

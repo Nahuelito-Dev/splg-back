@@ -25,7 +25,13 @@ export const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, OrderStatus[]>> = {
     OrderStatus.PENDING,
     OrderStatus.CANCELLED,
   ],
-  [OrderStatus.ON_THE_WAY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+  // ON_THE_WAY → DELIVERED (entrega) | CANCELLED (admin) | PENDING (el chofer no
+  // puede completar la entrega en curso → vuelve al pool para re-despacho).
+  [OrderStatus.ON_THE_WAY]: [
+    OrderStatus.DELIVERED,
+    OrderStatus.CANCELLED,
+    OrderStatus.PENDING,
+  ],
   [OrderStatus.DELIVERED]: [],
   [OrderStatus.CANCELLED]: [],
 };
@@ -51,4 +57,18 @@ export function assertTransition(from: OrderStatus, to: OrderStatus): void {
       `Transición de pedido inválida: ${from} → ${to}`,
     );
   }
+}
+
+/**
+ * ÚNICO punto para mutar `order.status`: valida la transición contra la máquina
+ * de estados y recién ahí la aplica. Todo el código que cambie el estado de un
+ * pedido debe pasar por acá (no asignar `order.status = X` directo), para que el
+ * invariante "las transiciones son legales" se cumpla siempre.
+ */
+export function transitionOrder(
+  order: { status: OrderStatus },
+  to: OrderStatus,
+): void {
+  assertTransition(order.status, to);
+  order.status = to;
 }
