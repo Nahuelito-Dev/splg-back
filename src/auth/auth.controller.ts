@@ -8,6 +8,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto';
 import { Public } from '../common/decorators/isPublic.decorator';
@@ -23,7 +24,11 @@ export class AuthController {
     return this.authService.checkIfTokenValid();
   }
 
+  // Login = superficie de fuerza bruta / credential stuffing: límite MUCHO
+  // más estricto que el global (100/min) para frenar intentos automatizados
+  // sin afectar a un usuario real reintentando una contraseña.
   @Public()
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async Login(@Body() dto: LoginDto) {
@@ -31,12 +36,13 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login/dashboard')
   @HttpCode(HttpStatus.OK)
   async DashboardLogin(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
-    @Req() req: Request, 
+    @Req() req: Request,
   ) {
     const requestSource = req.headers['x-client-source'] as string;
 

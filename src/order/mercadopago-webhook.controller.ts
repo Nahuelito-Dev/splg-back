@@ -1,5 +1,13 @@
-import { Controller, Post, Query, Headers, HttpCode, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Query,
+  Headers,
+  HttpCode,
+  Logger,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { PaymentsService } from '../payments/application/payments.service';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
@@ -9,12 +17,17 @@ import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
  * Lo llama MercadoPago, no un usuario autenticado: por eso es `@Public()` y
  * NO se protege por rol (ver nota en webhook/webhook.controller.ts).
  *
+ * `@SkipThrottle()`: MP puede reintentar notificaciones en ráfaga (varios
+ * pedidos pagándose a la vez) y NO es tráfico de un usuario final — no debe
+ * competir con el rate limit global ni el de login.
+ *
  * Base path `webhook` para coincidir con `MP_NOTIFICATION_URL` (ej.
  * `.../api/webhook/mercadopago`). Vive en el módulo `order` (no en el CRUD
  * administrativo `WebhookModule`) porque su única responsabilidad es
  * confirmar pagos de pedidos.
  */
 @ApiTags('Webhooks')
+@SkipThrottle()
 @Controller('webhook')
 export class MercadoPagoWebhookController {
   private readonly logger = new Logger(MercadoPagoWebhookController.name);
@@ -64,7 +77,9 @@ export class MercadoPagoWebhookController {
     } catch (error: any) {
       // Nunca dejamos que un error interno haga que MP reintente en loop con
       // un 5xx: logueamos y respondemos 200 de todas formas.
-      this.logger.error(`Error procesando webhook MercadoPago: ${error?.message}`);
+      this.logger.error(
+        `Error procesando webhook MercadoPago: ${error?.message}`,
+      );
     }
 
     return { received: true };

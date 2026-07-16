@@ -7,9 +7,14 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { RedisHealthIndicator } from './redis.health';
 
+// Health checks: los pega un load balancer / orquestador cada pocos
+// segundos. No es tráfico de usuario y NO debe competir con el rate limit
+// global (con 100/min, un LB chequeando cada 5s ya se comería buena parte).
+@SkipThrottle()
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {

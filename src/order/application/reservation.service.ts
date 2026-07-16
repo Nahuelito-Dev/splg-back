@@ -6,9 +6,15 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, LessThan, LessThanOrEqual, Repository } from 'typeorm';
+import {
+  DataSource,
+  IsNull,
+  LessThan,
+  LessThanOrEqual,
+  Repository,
+} from 'typeorm';
 
-import { Order, OrderStatus } from '../entities/order.entity';
+import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { StockReservationService } from '../domain/stock-reservation.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -20,8 +26,12 @@ import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
  *  - `activateDueReservations` (cron): el día agendado, las reservas con seña
  *    paga pasan RESERVED → PENDING y se despachan solas.
  *  - `expireUnpaidReservations` (cron): las reservas cuya seña no se pagó dentro
- *    del plazo se cancelan y LIBERAN el stock reservado (tapa también el hueco
- *    de pedidos MP que quedaban colgados).
+ *    del plazo se cancelan y LIBERAN el stock reservado.
+ *  - `expireUnpaidMercadoPagoOrders` (cron): pedidos NORMALES (no reserva) con
+ *    `paymentMethod=mercadopago` cuyo checkout el cliente nunca pagó quedan
+ *    colgados en PENDING con stock reservado para siempre (ver
+ *    CreateOrderUseCase: la reserva de stock es previa al pago). Este cron los
+ *    cancela pasado un TTL corto y libera el stock.
  *
  * `confirmDeposit` es la única acción humana: el admin confirma la seña cobrada
  * en efectivo (la seña por MP la confirma el webhook automáticamente).
@@ -33,6 +43,15 @@ export class ReservationService {
   /** Horas que una reserva puede esperar el pago de la seña antes de expirar. */
   private readonly depositTtlHours = Number(
     process.env.RESERVATION_DEPOSIT_TTL_HOURS ?? 48,
+  );
+
+  /**
+   * Minutos que un pedido NORMAL (no reserva) con `paymentMethod=mercadopago`
+   * puede esperar el pago del checkout antes de expirar. Corto a propósito
+   * (el checkout de MP no dura horas) para no tener stock reservado colgado.
+   */
+  private readonly mpPendingTtlMinutes = Number(
+    process.env.ORDER_MERCADOPAGO_PENDING_TTL_MINUTES ?? 60,
   );
 
   constructor(
@@ -179,6 +198,89 @@ export class ReservationService {
         await queryRunner.rollbackTransaction();
         this.logger.error(
           `No se pudo expirar la reserva ${order.order_id}: ${error?.message}`,
+        );
+      } finally {
+        await queryRunner.release();
+      }
+    }
+  }
+
+  /**
+   * CRON: expira pedidos NORMALES (no reserva) con `paymentMethod=mercadopago`
+   * cuyo checkout de MP nunca se pagó. PENDING + `gatewayPaymentId` null
+   * (nunca confirmado por el webhook) + más viejo que el TTL → CANCELLED +
+   * restituye stock. Sin este cron, el stock reservado por `CreateOrderUseCase`
+   * al crear el pedido (ANTES de que el cliente pague, para evitar oversell)
+   * queda bloqueado para siempre si el cliente abandona el checkout.
+   *
+   * Idempotencia / carrera pago-vs-expiración: dentro de la transacción,
+   * re-lee el pedido con lock pesimista y solo lo cancela si SIGUE PENDING y
+   * sin `gatewayPaymentId` — si el webhook confirmó el pago un instante antes,
+   * no lo toca. Si el pago llegara a confirmarse recién DESPUÉS de expirado,
+   * `ConfirmPaymentUseCase.handleApproved` ve el pedido en estado terminal
+   * (CANCELLED) y no lo reactiva ni despacha (no-op idempotente, ver ese
+   * use-case).
+   */
+  @Cron('0 */30 * * * *') // cada 30 minutos
+  async expireUnpaidMercadoPagoOrders(): Promise<void> {
+    const cutoff = new Date(Date.now() - this.mpPendingTtlMinutes * 60 * 1000);
+    const stale = await this.orderRepository.find({
+      where: {
+        status: OrderStatus.PENDING,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        gatewayPaymentId: IsNull(),
+        createdAt: LessThan(cutoff),
+      },
+      relations: ['items'],
+      take: 50,
+    });
+    if (stale.length === 0) return;
+
+    this.logger.log(
+      `Expirando ${stale.length} pedido(s) MercadoPago sin pagar (TTL ${this.mpPendingTtlMinutes}min)`,
+    );
+    for (const order of stale) {
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+      try {
+        // Re-chequeo con lock pesimista: si el webhook confirmó el pago justo
+        // antes de este commit, `gatewayPaymentId` ya no es null y no tocamos
+        // el pedido (evita la carrera pago-vs-expiración).
+        const locked = await queryRunner.manager
+          .createQueryBuilder(Order, 'order')
+          .setLock('pessimistic_write')
+          .where('order.order_id = :id', { id: order.order_id })
+          .getOne();
+
+        if (
+          !locked ||
+          locked.status !== OrderStatus.PENDING ||
+          locked.gatewayPaymentId
+        ) {
+          await queryRunner.commitTransaction();
+          continue;
+        }
+
+        locked.status = OrderStatus.CANCELLED;
+        locked.cancellationReason =
+          'Pago con MercadoPago no completado dentro del plazo';
+        await queryRunner.manager.save(locked);
+        await this.stock.restore(
+          queryRunner.manager,
+          (order.items ?? []).map((it) => ({
+            gas_cylinder_id: it.gas_cylinder_id,
+            quantity: it.quantity,
+          })),
+        );
+        await queryRunner.commitTransaction();
+        this.logger.log(
+          `Pedido ${order.order_id} expirado (MercadoPago sin pagar) → cancelado + stock liberado`,
+        );
+      } catch (error: any) {
+        await queryRunner.rollbackTransaction();
+        this.logger.error(
+          `No se pudo expirar el pedido ${order.order_id}: ${error?.message}`,
         );
       } finally {
         await queryRunner.release();

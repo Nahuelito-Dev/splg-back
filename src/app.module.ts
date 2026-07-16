@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthGuard } from './auth/guards/jwt-auth.guard';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { RolesGuard } from './common/decorators/roles.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
@@ -29,6 +31,7 @@ import { CylinderModule } from './cylinder/cylinder.module';
 // Importa el interceptor de timeout
 import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
 import { EnvConfiguration } from './common/config/env.config';
@@ -46,6 +49,17 @@ import { HealthModule } from './health/health.module';
       validationSchema: JoiValidationSchema,
       isGlobal: true,
     }),
+    // Rate limiting (C4, hardening de prod). Límite GLOBAL por IP; los
+    // endpoints sensibles (login) usan @Throttle() con un límite más
+    // estricto por ruta, y el webhook de MercadoPago / health check se
+    // excluyen con @SkipThrottle() (no son tráfico de usuario final).
+    // Valores configurables por env; con defaults sensatos si no se setean.
+    ThrottlerModule.forRoot([
+      {
+        ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
+        limit: Number(process.env.THROTTLE_LIMIT ?? 100),
+      },
+    ]),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
     }),
@@ -118,9 +132,15 @@ import { HealthModule } from './health/health.module';
     CylinderModule,
   ],
   providers: [
-    // Guards globales. El ORDEN importa: AuthGuard autentica y setea req.user;
-    // RolesGuard lee ese req.user para autorizar por rol. Antes RolesGuard no se
-    // registraba en ningún lado → todos los @Roles() eran no-ops (agujero de authz).
+    // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,
+    // protege de abuso/DoS antes de gastar trabajo en auth/DB); AuthGuard
+    // autentica y setea req.user; RolesGuard lee ese req.user para autorizar
+    // por rol. Antes RolesGuard no se registraba en ningún lado → todos los
+    // @Roles() eran no-ops (agujero de authz).
+    {
+      provide: APP_GUARD,
+      useClass: AppThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: AuthGuard,
@@ -128,6 +148,12 @@ import { HealthModule } from './health/health.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      // Logging estructurado, PRIMERO en la cadena de interceptors: mide la
+      // duración TOTAL del request (envuelve también al timeout/idempotency).
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
