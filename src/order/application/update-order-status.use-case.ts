@@ -15,7 +15,7 @@ import {
 } from '../entities/order.entity';
 import { User } from '../../users/entities/user.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationPort } from '../domain/ports/notification.port';
 import { transitionOrder } from '../domain/order-status.machine';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -51,7 +51,7 @@ export class UpdateOrderStatusUseCase {
     @InjectRepository(Delivery)
     private readonly deliveryRepository: Repository<Delivery>,
     private readonly dispatch: RealtimeDispatchPort,
-    private readonly notificationService: NotificationsService,
+    private readonly notificationService: NotificationPort,
     private readonly orders: OrderRepositoryPort,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly cylinderLifecycle: CylinderLifecyclePort,
