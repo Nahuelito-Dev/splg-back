@@ -1,4 +1,7 @@
 // src/user-addres/user-addres.module.ts
+// TODO(P0-10): "user-addres" es un typo de "user-address" ya en uso como nombre
+// de módulo/rutas/tabla. Renombrarlo requiere migración de DB + actualizar
+// rutas del front → fuera de alcance del barrido de naming actual.
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserAddresController } from './user-addres.controller';

@@ -27,7 +27,7 @@ import { UpdateDeliveryDto } from './dto/update-delivery.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/decorators/roles.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { RoleType } from '../common/constants/role-type.enum';
 import { AuthGuard } from 'src/auth/guards/jwt-auth.guard'; // <--- IMPORTANTE: Importar AuthGuard
 

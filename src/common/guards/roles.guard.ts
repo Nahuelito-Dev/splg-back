@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RoleType } from '../constants/role-type.enum';
-import { ROLES_KEY } from './roles.decorator';
+import { ROLES_KEY } from '../decorators/roles.decorator';
 
 /**
  * Autorización por rol. Se registra como guard GLOBAL (APP_GUARD) después de

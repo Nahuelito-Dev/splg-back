@@ -5,6 +5,7 @@ import {
   NotFoundException,
   forwardRef,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Brackets } from 'typeorm';
@@ -24,6 +25,7 @@ import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
   private adminApp: firebase.app.App;
 
   constructor(
@@ -124,7 +126,13 @@ export class UsersService {
 
       try {
         await this.emailService.sendWelcomeEmail?.(createCustomerDto.email);
-      } catch (e) {}
+      } catch (e) {
+        // Best-effort: el registro del customer NO debe fallar si el email
+        // de bienvenida no se pudo enviar. Solo dejamos rastro.
+        this.logger.warn(
+          `No se pudo enviar el email de bienvenida a ${createCustomerDto.email}: ${e instanceof Error ? e.message : e}`,
+        );
+      }
 
       const result = await this.userRepository.findOne({
         where: { user_id: savedUser.user_id },
@@ -230,7 +238,12 @@ export class UsersService {
       const userRecord = await auth.getUserByEmail(email);
       await auth.deleteUser(userRecord.uid);
     } catch (error) {
-      // fail silently
+      // Best-effort: es un rollback de compensación (el usuario en DB ya se
+      // revirtió); si Firebase falla acá solo puede quedar un usuario
+      // huérfano en Firebase, no rompemos el flujo, pero dejamos rastro.
+      this.logger.warn(
+        `No se pudo limpiar el usuario Firebase de ${email}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 
@@ -293,7 +306,7 @@ export class UsersService {
       }
 
       // Es buena práctica loguear el error real antes de lanzar la excepción genérica
-      console.error(firebaseError);
+      this.logger.error(firebaseError);
       throw new InternalServerErrorException('Error al consultar Firebase');
     }
   }
@@ -465,13 +478,6 @@ export class UsersService {
     }
 
     return user;
-  }
-
-  async findOneByPhonee(phone: string): Promise<User | null> {
-    return this.userRepository.findOne({
-      where: { phone_number: phone },
-      relations: ['role'],
-    });
   }
 
   async toggleBlockUser(id: string, shouldBlock: boolean) {
