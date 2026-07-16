@@ -66,6 +66,16 @@ export class Cylinder {
   @Column({ type: 'uuid', nullable: true })
   current_customer_id?: string | null;
 
+  /**
+   * Pedido en el que el envase salió despachado. Se setea al asignarlo a un
+   * pedido (FILLED→DISPATCHED) y permite que, al pasar el pedido a DELIVERED,
+   * el sistema avance solo los envases de ESE pedido a WITH_CUSTOMER. Queda
+   * como referencia del último pedido en el que se entregó.
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  current_order_id?: string | null;
+
   /** Monto de garantía/depósito cobrado por el envase. */
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   deposit: number;

@@ -20,6 +20,7 @@ import { assertTransition } from '../domain/order-status.machine';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
+import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 
 /** Evento de tiempo real emitido al cliente por cada estado del pedido. */
@@ -53,6 +54,7 @@ export class UpdateOrderStatusUseCase {
     private readonly notificationService: NotificationsService,
     private readonly orders: OrderRepositoryPort,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    private readonly cylinderLifecycle: CylinderLifecyclePort,
   ) {}
 
   async execute(
@@ -164,6 +166,26 @@ export class UpdateOrderStatusUseCase {
             relations: ['user'],
           });
           if (del?.user) this.dispatch.stopTracking(del.user.user_id);
+        }
+        // Ciclo del envase: avanza los envases despachados en este pedido a
+        // WITH_CUSTOMER. Best-effort: si falla (o la distribuidora no usa
+        // envases, en cuyo caso es no-op) NO rompe la entrega del pedido.
+        try {
+          const advanced = await this.cylinderLifecycle.onOrderDelivered(
+            order.order_id,
+            order.distributor_id,
+          );
+          if (advanced > 0) {
+            this.logger.log(
+              `Pedido ${order.order_id} entregado: ${advanced} envase(s) → with_customer`,
+            );
+          }
+        } catch (err) {
+          this.logger.warn(
+            `No se pudieron avanzar los envases del pedido ${order.order_id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
         }
         return null;
       }

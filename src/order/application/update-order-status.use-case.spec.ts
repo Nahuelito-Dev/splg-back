@@ -21,6 +21,7 @@ describe('UpdateOrderStatusUseCase', () => {
   let notifications: { sendOrderConfirmation: jest.Mock };
   let orders: { findByIdFull: jest.Mock; save: jest.Mock };
   let orchestrator: { onDriverAccepted: jest.Mock };
+  let cylinderLifecycle: { onOrderDelivered: jest.Mock };
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
@@ -48,6 +49,7 @@ describe('UpdateOrderStatusUseCase', () => {
       save: jest.fn().mockImplementation(async (o) => o),
     };
     orchestrator = { onDriverAccepted: jest.fn().mockResolvedValue(undefined) };
+    cylinderLifecycle = { onOrderDelivered: jest.fn().mockResolvedValue(0) };
 
     useCase = new UpdateOrderStatusUseCase(
       userRepo as any,
@@ -56,6 +58,7 @@ describe('UpdateOrderStatusUseCase', () => {
       notifications as any,
       orders as any,
       orchestrator as any,
+      cylinderLifecycle as any,
     );
   });
 

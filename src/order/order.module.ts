@@ -35,6 +35,9 @@ import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { ReservationService } from './application/reservation.service';
 import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
+import { CylinderModule } from '../cylinder/cylinder.module';
+import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
+import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -51,6 +54,7 @@ import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
     GatewaysModule,
     RedisModule, // 👈 AGREGAR ESTO AQUÍ
     TimeSlotModule, // agendamiento: valida cupo de franja al crear pedido
+    CylinderModule, // ciclo del envase físico: al entregar, avanza los envases
   ],
   controllers: [OrderController, MercadoPagoWebhookController],
   providers: [
@@ -74,6 +78,8 @@ import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
     { provide: DispatchOfferRepositoryPort, useClass: DispatchOfferTypeormRepository },
     // Puerto de pasarela de pago → adapter MercadoPago (Checkout Pro).
     { provide: PaymentGatewayPort, useClass: MercadoPagoAdapter },
+    // Puerto del ciclo del envase → adapter que delega en CylinderService.
+    { provide: CylinderLifecyclePort, useClass: CylinderLifecycleAdapter },
   ],
   exports: [OrderService],
 })

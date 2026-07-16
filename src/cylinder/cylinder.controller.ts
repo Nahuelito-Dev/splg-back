@@ -19,6 +19,7 @@ import {
 import { CylinderService } from './cylinder.service';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
+import { AssignCylindersDto } from './dto/assign-cylinders.dto';
 import { CylinderState } from './entities/cylinder.entity';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -42,6 +43,31 @@ export class CylinderController {
     @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     return this.cylinderService.create(dto, distributorId);
+  }
+
+  @Post('assign')
+  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
+  @ApiOperation({
+    summary:
+      'Asignar envases (por serial) a un pedido y despacharlos (FILLED→DISPATCHED)',
+  })
+  @ApiResponse({ status: 201, description: 'Envases asignados y despachados' })
+  @ApiResponse({
+    status: 400,
+    description: 'Algún envase no está FILLED (no se puede despachar)',
+  })
+  @ApiResponse({ status: 404, description: 'Pedido o envase no encontrado' })
+  assign(
+    @Body() dto: AssignCylindersDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.cylinderService.assignToOrder(
+      dto.orderId,
+      dto.serials,
+      distributorId,
+      user.user_id,
+    );
   }
 
   @Get()
