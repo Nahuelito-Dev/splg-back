@@ -1,11 +1,12 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import basicAuth from 'express-basic-auth';
 
 import { timeOutInterceptor } from './common/interceptors/timeout.interceptors';
-
+import { requestIdMiddleware } from './common/middleware/request-id.middleware';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 const morgan = require('morgan');
 
@@ -19,6 +20,18 @@ async function bootstrap() {
   // guards GLOBALES vía APP_GUARD en AppModule. Siempre activos, en todos los
   // entornos: la seguridad NUNCA depende de STAGE. Las rutas abiertas se marcan
   // explícitamente con @Public().
+
+  // Observabilidad (C4): request-id por request, PRIMERO en la cadena (antes
+  // de morgan, la validación y cualquier interceptor) para que todo lo
+  // demás pueda leer req.requestId / req.startTime.
+  app.use(requestIdMiddleware);
+
+  // Exception filter global: loguea toda excepción no manejada con su
+  // request-id y delega en el formateo default de Nest (mismo shape de
+  // respuesta de siempre). Se instancia así (no como APP_FILTER) porque
+  // extiende BaseExceptionFilter y necesita el httpAdapter real.
+  const { httpAdapter } = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
   app.useGlobalInterceptors(new timeOutInterceptor());
 
@@ -49,8 +62,19 @@ async function bootstrap() {
       // Multi-tenant: el panel super_admin y las apps eligen distribuidora con
       // este header; sin permitirlo, el preflight CORS bloquea la request.
       'X-Distributor',
+      // Observabilidad: si el front propaga un request-id propio (ej. para
+      // correlacionar con Sentry/logs propios), el preflight debe permitirlo.
+      'X-Request-Id',
     ],
+    // El request-id que genera/normaliza el backend viaja en la respuesta;
+    // sin exponerlo, el JS del front no puede leerlo en un request cross-site.
+    exposedHeaders: ['X-Request-Id'],
   });
+
+  morgan.token(
+    'reqId',
+    (req: any) => req.requestId ?? req.headers?.['x-request-id'] ?? '-',
+  );
 
   morgan.token('body', (req: any) => {
     try {
@@ -91,7 +115,7 @@ async function bootstrap() {
 
   app.use(
     morgan(
-      ':date :method :url :status :res[content-length] - :response-time ms :body',
+      ':date [:reqId] :method :url :status :res[content-length] - :response-time ms :body',
     ),
   );
 
