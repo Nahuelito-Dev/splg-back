@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { OrderStatus } from '../entities/order.entity';
 import {
   canTransition,
@@ -6,6 +5,7 @@ import {
   transitionOrder,
   isTerminal,
 } from './order-status.machine';
+import { InvalidOrderTransitionError } from './errors/invalid-order-transition.error';
 
 /**
  * Máquina de estados del pedido (dominio puro). Reglas del SRS:
@@ -40,7 +40,7 @@ describe('order-status.machine', () => {
     it('lanza y NO muta el estado si la transición es inválida', () => {
       const order = { status: OrderStatus.PENDING };
       expect(() => transitionOrder(order, OrderStatus.DELIVERED)).toThrow(
-        BadRequestException,
+        InvalidOrderTransitionError,
       );
       expect(order.status).toBe(OrderStatus.PENDING);
     });
@@ -100,10 +100,10 @@ describe('order-status.machine', () => {
       ).not.toThrow();
     });
 
-    it('lanza BadRequestException con mensaje claro en una inválida', () => {
+    it('lanza InvalidOrderTransitionError con mensaje claro en una inválida', () => {
       expect(() =>
         assertTransition(OrderStatus.PENDING, OrderStatus.DELIVERED),
-      ).toThrow(BadRequestException);
+      ).toThrow(InvalidOrderTransitionError);
       expect(() =>
         assertTransition(OrderStatus.PENDING, OrderStatus.DELIVERED),
       ).toThrow(/inválida: pending → delivered/);

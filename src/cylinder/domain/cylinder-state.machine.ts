@@ -1,5 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
 import { CylinderState } from '../entities/cylinder.entity';
+import { InvalidCylinderTransitionError } from './errors/invalid-cylinder-transition.error';
 
 /**
  * Máquina de estados del ciclo de vida FÍSICO del envase (dominio puro).
@@ -24,21 +24,17 @@ export const CYLINDER_TRANSITIONS: Readonly<
   [CylinderState.EMPTY_RETURNED]: [CylinderState.IN_DEPOT],
 };
 
-export function canTransition(
-  from: CylinderState,
-  to: CylinderState,
-): boolean {
+export function canTransition(from: CylinderState, to: CylinderState): boolean {
   return (CYLINDER_TRANSITIONS[from] ?? []).includes(to);
 }
 
-/** Igual que canTransition pero lanza 400 con mensaje claro si es inválida. */
-export function assertTransition(
-  from: CylinderState,
-  to: CylinderState,
-): void {
+/**
+ * Igual que canTransition pero lanza `InvalidCylinderTransitionError` (dominio
+ * puro) con mensaje claro si es inválida. `GlobalExceptionFilter` la mapea a
+ * 400, así que el status HTTP no cambia para los callers.
+ */
+export function assertTransition(from: CylinderState, to: CylinderState): void {
   if (!canTransition(from, to)) {
-    throw new BadRequestException(
-      `Transición de envase inválida: ${from} → ${to}`,
-    );
+    throw new InvalidCylinderTransitionError(from, to);
   }
 }

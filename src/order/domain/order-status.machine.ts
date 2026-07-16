@@ -1,5 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
 import { OrderStatus } from '../entities/order.entity';
+import { InvalidOrderTransitionError } from './errors/invalid-order-transition.error';
 
 /**
  * Máquina de estados del pedido (dominio puro). Centraliza las transiciones
@@ -50,12 +50,14 @@ export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
   return (ORDER_TRANSITIONS[from] ?? []).includes(to);
 }
 
-/** Igual que canTransition pero lanza 400 con mensaje claro si es inválida. */
+/**
+ * Igual que canTransition pero lanza `InvalidOrderTransitionError` (dominio
+ * puro) con mensaje claro si es inválida. `GlobalExceptionFilter` la mapea a
+ * 400, así que el status HTTP no cambia para los callers.
+ */
 export function assertTransition(from: OrderStatus, to: OrderStatus): void {
   if (!canTransition(from, to)) {
-    throw new BadRequestException(
-      `Transición de pedido inválida: ${from} → ${to}`,
-    );
+    throw new InvalidOrderTransitionError(from, to);
   }
 }
 

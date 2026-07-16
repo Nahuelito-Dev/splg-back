@@ -1,11 +1,17 @@
 import {
   ArgumentsHost,
+  BadRequestException,
   Catch,
   HttpException,
   HttpStatus,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
+import {
+  BadRequestDomainError,
+  NotFoundDomainError,
+} from '../errors/domain.error';
 
 /**
  * Exception filter GLOBAL (observabilidad, C4): loguea toda excepción no
@@ -29,6 +35,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
 
   catch(exception: unknown, host: ArgumentsHost): void {
+    // Errores de DOMINIO (state machines, stock — dominio puro, sin
+    // @nestjs/common, ver `common/errors/domain.error.ts`, P2-9): se convierten
+    // acá a la MISMA HttpException que el código lanzaba antes de extraerlos a
+    // `domain/errors/`, para que el status y el mensaje de la respuesta NO
+    // cambien.
+    exception = this.mapDomainError(exception);
+
     const ctx = host.switchToHttp();
     const request: any = ctx.getRequest();
     const requestId =
@@ -59,5 +72,21 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
 
     super.catch(exception, host);
+  }
+
+  /**
+   * Convierte un error de DOMINIO (`BadRequestDomainError`/`NotFoundDomainError`)
+   * a la `HttpException` equivalente, con el MISMO mensaje. Cualquier otra
+   * excepción (incluidas las `HttpException` que el código sigue lanzando
+   * directo) pasa sin tocar.
+   */
+  private mapDomainError(exception: unknown): unknown {
+    if (exception instanceof NotFoundDomainError) {
+      return new NotFoundException(exception.message);
+    }
+    if (exception instanceof BadRequestDomainError) {
+      return new BadRequestException(exception.message);
+    }
+    return exception;
   }
 }

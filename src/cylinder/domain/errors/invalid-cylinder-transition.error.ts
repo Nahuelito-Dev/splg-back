@@ -1,0 +1,14 @@
+import { BadRequestDomainError } from '../../../common/errors/domain.error';
+import { CylinderState } from '../../entities/cylinder.entity';
+
+/**
+ * Se intentó una transición de estado de envase no permitida por
+ * `CYLINDER_TRANSITIONS` (`cylinder-state.machine.ts`). El
+ * `GlobalExceptionFilter` la mapea a 400, mismo status/mensaje que antes
+ * lanzaba `BadRequestException` directo desde la state machine.
+ */
+export class InvalidCylinderTransitionError extends BadRequestDomainError {
+  constructor(from: CylinderState, to: CylinderState) {
+    super(`Transición de envase inválida: ${from} → ${to}`);
+  }
+}

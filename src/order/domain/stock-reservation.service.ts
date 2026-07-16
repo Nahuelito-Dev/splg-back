@@ -1,10 +1,8 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
+import { GasCylinderNotFoundError } from './errors/gas-cylinder-not-found.error';
+import { InsufficientStockError } from './errors/insufficient-stock.error';
 
 /** Ítem mínimo necesario para mover stock (garrafa + cantidad). */
 export interface StockMovementItem {
@@ -30,8 +28,8 @@ export class StockReservationService {
    * lectura con cualquier otra transacción sobre la misma garrafa → evita
    * oversell. Devuelve la garrafa bloqueada (para que el caller lea precio/promos).
    *
-   * @throws NotFoundException si la garrafa no existe.
-   * @throws BadRequestException si no hay stock suficiente.
+   * @throws GasCylinderNotFoundError si la garrafa no existe (mapeado a 404).
+   * @throws InsufficientStockError si no hay stock suficiente (mapeado a 400).
    */
   async reserve(
     manager: EntityManager,
@@ -45,13 +43,11 @@ export class StockReservationService {
       .getOne();
 
     if (!gasCylinder) {
-      throw new NotFoundException(`Garrafa no encontrada: ${gasCylinderId}`);
+      throw new GasCylinderNotFoundError(gasCylinderId);
     }
 
     if (gasCylinder.stock < quantity) {
-      throw new BadRequestException(
-        `Stock insuficiente para ${gasCylinder.type}`,
-      );
+      throw new InsufficientStockError(gasCylinder.type);
     }
 
     gasCylinder.stock -= quantity;
