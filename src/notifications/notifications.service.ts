@@ -172,6 +172,43 @@ export class NotificationsService {
    * y, si no está, como Delivery (el chofer). Así el push le puede llegar a
    * cualquiera de los dos lados.
    */
+  /**
+   * Push de "nueva oferta de pedido" al chofer. Best-effort y complementario al
+   * socket: si el chofer tiene la app cerrada/en background, el socket no llega
+   * pero el push sí (siempre que haya registrado su token FCM). No-op si el
+   * chofer no tiene token. Nunca lanza (no debe romper el dispatch).
+   */
+  async sendOfferPushToDriver(
+    driverUserId: string,
+    orderId: string,
+  ): Promise<void> {
+    try {
+      const delivery = await this.deliveryRepository.findOne({
+        where: { user_id: driverUserId },
+      });
+      const token = delivery?.notification_token;
+      if (!token) return;
+
+      await firebase.messaging().send({
+        token,
+        notification: {
+          title: '¡Nuevo pedido disponible!',
+          body: 'Tenés una oferta de entrega. Abrí la app para aceptarla.',
+        },
+        data: { event: 'NEW_ORDER', orderId },
+        android: { priority: 'high' },
+        apns: { headers: { 'apns-priority': '10' } },
+      });
+      this.logger.log(
+        `Push de oferta enviado al chofer ${driverUserId} (pedido ${orderId})`,
+      );
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo enviar push de oferta al chofer ${driverUserId}: ${error?.message}`,
+      );
+    }
+  }
+
   async saveNotificationToken(userId: string, token: string, platform: string) {
     try {
       const customer = await this.customerRepository.findOne({

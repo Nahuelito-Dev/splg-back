@@ -49,10 +49,16 @@ describe('DispatchOrchestratorService', () => {
       updateStatus: jest.fn().mockResolvedValue(undefined),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
     };
+    const deliveryRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    const notifications = {
+      sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
+    };
     orchestrator = new DispatchOrchestratorService(
       dispatch as any,
       orders as any,
       offers as any,
+      deliveryRepo as any,
+      notifications as any,
     );
   });
 

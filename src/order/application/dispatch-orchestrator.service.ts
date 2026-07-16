@@ -7,6 +7,7 @@ import { Delivery } from '../../delivery/entities/delivery.entity';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 /**
  * Orquestador de despacho SECUENCIAL con timeout (SRS): un pedido se ofrece al
@@ -34,6 +35,7 @@ export class DispatchOrchestratorService {
     private readonly offers: DispatchOfferRepositoryPort,
     @InjectRepository(Delivery)
     private readonly deliveryRepository: Repository<Delivery>,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -78,6 +80,10 @@ export class DispatchOrchestratorService {
       expiresAt: expiresAt.toISOString(),
       items: order.items,
     });
+
+    // Push FCM complementario: si el chofer tiene la app cerrada/en background,
+    // el socket no llega pero el push sí. Best-effort, no bloquea el dispatch.
+    void this.notifications.sendOfferPushToDriver(candidate, order.order_id);
 
     this.logger.log(
       `Pedido ${order.order_id} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
