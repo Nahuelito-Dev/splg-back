@@ -43,49 +43,23 @@ export class UsersService {
     }
   }
 
+  /**
+   * Best-effort, delega el mapeo de errores en `FirebaseAuthPort` (antes
+   * duplicado acá, en `CustomersService` y en `DeliveryService`; ver punto 4
+   * de `docs/ARQUITECTURA-REVIEW.md`).
+   */
   private async cleanupFirebaseUser(email: string) {
-    try {
-      const userRecord = await this.firebaseAuth.getUserByEmail(email);
-      await this.firebaseAuth.deleteUser(userRecord.uid);
-    } catch (error) {
-      // Best-effort: es un rollback de compensación (el usuario en DB ya se
-      // revirtió); si Firebase falla acá solo puede quedar un usuario
-      // huérfano en Firebase, no rompemos el flujo, pero dejamos rastro.
-      this.logger.warn(
-        `No se pudo limpiar el usuario Firebase de ${email}: ${error instanceof Error ? error.message : error}`,
-      );
-    }
+    await this.firebaseAuth.deleteUserByEmailSafe(email, this.logger);
   }
 
+  /**
+   * Método PÚBLICO (lo usan `admin-registration.helper.ts` y
+   * `user-registration.helper.ts`). Delega el create + mapeo de errores en
+   * `FirebaseAuthPort.createUserSafe` (antes duplicado acá, en
+   * `CustomersService` y en `DeliveryService`).
+   */
   async createFirebaseUser(createUserDto: CreateUserDto) {
-    try {
-      const userRecord = await this.firebaseAuth.createUser({
-        email: createUserDto.email,
-        password: createUserDto.password,
-        displayName: createUserDto.full_name,
-        phoneNumber: createUserDto.phone_number,
-      });
-
-      return userRecord;
-    } catch (error) {
-      // CORRECCIÓN AQUÍ: Casteamos a 'any' para acceder a .code y .message
-      const firebaseError = error as any;
-
-      let errorMessage = `Error creating Firebase user: ${firebaseError.message}`;
-
-      if (firebaseError.code === 'auth/weak-password') {
-        errorMessage = 'Password is too weak. Use at least 6 characters.';
-      } else if (firebaseError.code === 'auth/email-already-exists') {
-        errorMessage = 'Email already exists in Firebase.';
-      } else if (firebaseError.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email format.';
-      } else if (firebaseError.code === 'auth/invalid-phone-number') {
-        errorMessage =
-          'Invalid phone number format. Use E.164 format: +1234567890';
-      }
-
-      throw new BadRequestException(errorMessage);
-    }
+    return this.firebaseAuth.createUserSafe(createUserDto);
   }
 
   async findFbUserByEmail(email: string): Promise<boolean> {

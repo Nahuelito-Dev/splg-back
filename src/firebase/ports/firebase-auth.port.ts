@@ -1,14 +1,36 @@
+import { BadRequestException, Logger } from '@nestjs/common';
 import { auth } from 'firebase-admin';
 
 /**
+ * Datos para crear un usuario de Firebase Auth (email/password). Opcionales
+ * (igual que `auth.CreateRequest` del SDK) para aceptar tanto los DTOs de
+ * registro (todos requeridos en la práctica) como `CreateUserDto` (todos
+ * opcionales, lo usa `UsersService.createFirebaseUser`).
+ */
+export interface CreateFirebaseUserProps {
+  email?: string;
+  password?: string;
+  full_name?: string;
+  phone_number?: string;
+}
+
+/**
  * PUERTO de autenticación de Firebase (Admin SDK). Los services de dominio
- * (auth, users, email) hablan con ESTA interfaz, no con `firebase-admin`
- * directo: "verificá este token" / "creá este usuario" se expresan acá, y
- * `FirebaseAuthAdapter` (infrastructure) implementa el cómo contra el SDK.
+ * (auth, users, customer, delivery) hablan con ESTA interfaz, no con
+ * `firebase-admin` directo: "verificá este token" / "creá este usuario" se
+ * expresan acá, y `FirebaseAuthAdapter` (infrastructure) implementa el cómo
+ * contra el SDK.
  *
  * Se declara como clase abstracta porque en NestJS es el token de inyección
  * idiomático para puertos (las interfaces no existen en runtime). Ver
  * FirebaseAuthAdapter (infrastructure) para la implementación concreta.
+ *
+ * `createUserSafe`/`deleteUserByEmailSafe` son métodos CONCRETOS (no
+ * abstractos): consolidan acá el mapeo de errores que antes estaba duplicado,
+ * idéntico, en `UsersService`, `CustomersService` y `DeliveryService`
+ * (`createFirebaseUser`/`cleanupFirebaseUser`, ver ARQUITECTURA-REVIEW.md
+ * punto 4). Se apoyan en `createUser`/`getUserByEmail`/`deleteUser` (los
+ * abstractos), así que valen para cualquier adapter.
  */
 export abstract class FirebaseAuthPort {
   /** Verifica y decodifica un ID token de Firebase. Usado por el AuthGuard en CADA request autenticado. */
@@ -34,4 +56,59 @@ export abstract class FirebaseAuthPort {
     email: string,
     actionCodeSettings?: auth.ActionCodeSettings,
   ): Promise<string>;
+
+  /**
+   * Crea un usuario de Firebase Auth mapeando los errores comunes del SDK a
+   * mensajes claros (mismo mapeo que antes duplicaban Users/Customers/
+   * DeliveryService). Lanza `BadRequestException` con el mensaje mapeado —
+   * el registro (User+Customer/Delivery) que llama a esto debe rollbackear su
+   * propia transacción en el catch, igual que antes.
+   */
+  async createUserSafe(
+    props: CreateFirebaseUserProps,
+  ): Promise<auth.UserRecord> {
+    try {
+      return await this.createUser({
+        email: props.email,
+        password: props.password,
+        displayName: props.full_name,
+        phoneNumber: props.phone_number,
+      });
+    } catch (error) {
+      const firebaseError = error as any;
+
+      let errorMessage = `Error creating Firebase user: ${firebaseError.message}`;
+
+      if (firebaseError.code === 'auth/weak-password') {
+        errorMessage = 'Password is too weak. Use at least 6 characters.';
+      } else if (firebaseError.code === 'auth/email-already-exists') {
+        errorMessage = 'Email already exists in Firebase.';
+      } else if (firebaseError.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email format.';
+      } else if (firebaseError.code === 'auth/invalid-phone-number') {
+        errorMessage =
+          'Invalid phone number format. Use E.164 format: +1234567890';
+      }
+
+      throw new BadRequestException(errorMessage);
+    }
+  }
+
+  /**
+   * Borra un usuario de Firebase Auth por email. Best-effort: es un rollback
+   * de compensación (el registro en DB ya se revirtió); si Firebase falla acá
+   * solo puede quedar un usuario huérfano en Firebase — nunca lanza, solo
+   * loguea con el `logger` del caller (para que el log salga con el contexto
+   * del service, como antes).
+   */
+  async deleteUserByEmailSafe(email: string, logger: Logger): Promise<void> {
+    try {
+      const userRecord = await this.getUserByEmail(email);
+      await this.deleteUser(userRecord.uid);
+    } catch (error) {
+      logger.warn(
+        `No se pudo limpiar el usuario Firebase de ${email}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
 }

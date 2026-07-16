@@ -51,7 +51,7 @@ export class DeliveryService {
         throw new BadRequestException('User with this email already exists');
       }
 
-      const firebaseUser = await this.createFirebaseUser({
+      const firebaseUser = await this.firebaseAuth.createUserSafe({
         email: createDeliveryDto.email,
         password: createDeliveryDto.password,
         full_name: createDeliveryDto.full_name,
@@ -107,61 +107,15 @@ export class DeliveryService {
       await queryRunner.rollbackTransaction();
 
       if (createDeliveryDto.email) {
-        await this.cleanupFirebaseUser(createDeliveryDto.email);
+        await this.firebaseAuth.deleteUserByEmailSafe(
+          createDeliveryDto.email,
+          this.logger,
+        );
       }
 
       this.handleDBExceptions(error);
     } finally {
       await queryRunner.release();
-    }
-  }
-
-  private async createFirebaseUser(props: {
-    email: string;
-    password: string;
-    full_name: string;
-    phone_number: string;
-  }) {
-    try {
-      const userRecord = await this.firebaseAuth.createUser({
-        email: props.email,
-        password: props.password,
-        displayName: props.full_name,
-        phoneNumber: props.phone_number,
-      });
-
-      return userRecord;
-    } catch (error) {
-      const firebaseError = error as any;
-
-      let errorMessage = `Error creating Firebase user: ${firebaseError.message}`;
-
-      if (firebaseError.code === 'auth/weak-password') {
-        errorMessage = 'Password is too weak. Use at least 6 characters.';
-      } else if (firebaseError.code === 'auth/email-already-exists') {
-        errorMessage = 'Email already exists in Firebase.';
-      } else if (firebaseError.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email format.';
-      } else if (firebaseError.code === 'auth/invalid-phone-number') {
-        errorMessage =
-          'Invalid phone number format. Use E.164 format: +1234567890';
-      }
-
-      throw new BadRequestException(errorMessage);
-    }
-  }
-
-  private async cleanupFirebaseUser(email: string) {
-    try {
-      const userRecord = await this.firebaseAuth.getUserByEmail(email);
-      await this.firebaseAuth.deleteUser(userRecord.uid);
-    } catch (error) {
-      // Best-effort: es un rollback de compensación (el usuario en DB ya se
-      // revirtió); si Firebase falla acá solo puede quedar un usuario
-      // huérfano en Firebase, no rompemos el flujo, pero dejamos rastro.
-      this.logger.warn(
-        `No se pudo limpiar el usuario Firebase de ${email}: ${error instanceof Error ? error.message : error}`,
-      );
     }
   }
 
