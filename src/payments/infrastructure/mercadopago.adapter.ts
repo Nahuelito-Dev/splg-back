@@ -25,6 +25,9 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
     super();
     this.client = new MercadoPagoConfig({
       accessToken: this.configService.get<string>('MP_ACCESS_TOKEN') || '',
+      // Timeout explícito para que una demora de MP no cuelgue el webhook
+      // (getPayment) reteniendo conexiones.
+      options: { timeout: 5000 },
     });
   }
 

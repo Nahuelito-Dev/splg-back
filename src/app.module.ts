@@ -11,7 +11,6 @@ import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { CarModule } from './car/car.module';
-import { PaymentgatwayModule } from './paymentgatway/paymentgatway.module';
 import { RoleModule } from './role/role.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { CustomersModule } from './customer/customer.module';
@@ -19,8 +18,6 @@ import { OrderModule } from './order/order.module';
 import { GasCylinderModule } from './gascylinder/gascylinder.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { SeedModule } from './seed/seed.module';
-import { WebhookModule } from './webhook/webhook.module';
 import { UserAddresModule } from './user-addres/user-addres.module';
 import { DistributorModule } from './distributor/distributor.module';
 import { RatingModule } from './rating/rating.module';
@@ -109,7 +106,6 @@ import { HealthModule } from './health/health.module';
     AdminModule,
     AuthModule,
     CarModule,
-    PaymentgatwayModule,
     RoleModule,
     DeliveryModule,
     CustomersModule,
@@ -117,8 +113,6 @@ import { HealthModule } from './health/health.module';
     GasCylinderModule,
     EmailModule,
     NotificationsModule,
-    SeedModule,
-    WebhookModule,
     UserAddresModule,
     RedisModule,
     ClaimsModule,

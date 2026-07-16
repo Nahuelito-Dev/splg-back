@@ -56,7 +56,20 @@ export class DriversGateway
   }
 
   async handleDisconnect(client: Socket) {
-    // this.logger.log(`❌ Chofer desconectado: ${client.id}`);
+    // Al desconectarse, sacamos al chofer del radar GEO para que el dispatch no
+    // le ofrezca pedidos y espere 30s a que expire (choferes fantasma). El
+    // member del GEO es el userId (ver handleDriverLocation).
+    const id = (client as any).userId ?? (client as any).driverId;
+    if (id) {
+      try {
+        await this.redisService.removeDriver(id);
+        this.logger.log(`❌ Chofer ${id} desconectado y sacado del radar`);
+      } catch (err) {
+        this.logger.warn(
+          `No se pudo sacar del radar al chofer ${id}: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   @SubscribeMessage('driver:join')
@@ -76,10 +89,14 @@ export class DriversGateway
     @MessageBody() data: { userId: string; lat: number; lng: number },
     @ConnectedSocket() client: Socket,
   ) {
-    if (!data.userId || !data.lat || !data.lng) {
+    // `== null` (no `!`) para no descartar lat/lng = 0 (ecuador/meridiano).
+    if (!data.userId || data.lat == null || data.lng == null) {
       this.logger.error('❌ Datos de ubicación inválidos:', data);
       return;
     }
+
+    // Recordamos el userId en el socket para poder sacarlo del radar al desconectar.
+    (client as any).userId = data.userId;
 
     await this.redisService.updateDriverLocation(
       data.userId,
