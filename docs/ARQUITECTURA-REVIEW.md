@@ -4,6 +4,23 @@ _Revisión hecha por 3 arquitectos en paralelo (lentes: SOLID/estructura, DDD/he
 
 ---
 
+## ✅ ESTADO DE RESOLUCIÓN (2026-07-16)
+
+**Toda la revisión fue RESUELTA en esta iteración, verificada en runtime y pusheada a `feat/f1-features`.**
+
+- **P0 (10/10)** — bugs, fugas de tenant, bug de plata (decimals string), módulos muertos, choferes fantasma, recargo MP, DTOs, errores, naming.
+- **P1 (6/6)** — Socket.io Redis (escala multi-instancia), disciplina de migraciones + índices calientes, `synchronize:false`, throttler con storage Redis, factory única de config Redis.
+- **P2 (todos)** — P2-1 FirebaseModule único + `FirebaseAuthPort`/`FcmPort` · P2-2 EmailService descompuesto (rate-limit/cache → Redis + puerto Resend + template provider) · P2-3 creación cross-domain fuera de UsersService (corta forwardRef) · P2-4 invariante de estado del pedido en `transitionOrder` · P2-5 `distributor_id` NOT NULL + backfill · P2-6 coverage-zone integrado al pricing · P2-8 NotificationPort · P2-9 errores de dominio propios + mapeo HTTP · P2-10 onDelete RESTRICT (protege historial). **Único salteado a propósito:** rename `GasCylinder`/`Cylinder` (cosmético, alta churn).
+- **Extra — sweep de seguridad/authz**: cerrados IDOR en user-address y customer, impersonación en create de claims/orders, secuestro de token en notifications, IDOR de lectura en `GET /orders/:id`. Ver el commit `68cd95d` y siguientes.
+
+Suite backend **148 tests verde**. Migraciones aplicadas: `AddHotIndexes`, `DistributorIdNotNull`, `OrderCustomerRestrictOnDelete` (ver `docs/MIGRATIONS.md`).
+
+**Follow-ups menores pendientes** (no bloqueantes): rename de entidades GasCylinder/Cylinder; `GET /users/email|:id|phone` permiten enumeración básica (se usan en el login de las apps); mapear a 409 finito si algún flujo dependía de hard-delete de usuarios; y los diferidos de prod en `../PENDIENTES-PROD.md` (AFIP, iOS APNs, rename de package a wagnerlabs, hosting de legales, rotar secretos, MP Fase 2).
+
+_El detalle original de los hallazgos (cómo se detectaron y las recomendaciones) queda abajo como referencia histórica._
+
+---
+
 ## Veredicto general
 
 **El núcleo transaccional (`order` + `payments` + `cylinder`) es de calidad de producción** y no hay que tocarlo salvo para endurecerlo: arquitectura hexagonal real (puertos como `abstract class`, adapters de infra, domain services puros, state machines testeadas), reserva de stock atómica con lock pesimista, webhook MP idempotente (lock + índice único parcial + manejo de carrera pago-vs-expiración), despacho secuencial durable con lock distribuido y radio progresivo, `decimal.js` para plata, `QueryRunner` siempre liberado.
