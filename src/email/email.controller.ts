@@ -11,6 +11,9 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { EmailService } from './email.service';
 import { Public } from '../common/decorators/isPublic.decorator';
+import { SendPasswordResetDto } from './dto/send-password-reset.dto';
+import { ChangeEmailDto } from './dto/change-email.dto';
+import { TestEmailDto } from './dto/test-email.dto';
 
 @ApiTags('Email')
 @Controller('email')
@@ -25,7 +28,7 @@ export class EmailController {
     description: 'Password reset email sent successfully',
   })
   @HttpCode(HttpStatus.OK)
-  async sendPasswordReset(@Body() body: { email: string }) {
+  async sendPasswordReset(@Body() body: SendPasswordResetDto) {
     return await this.emailService.sendPasswordResetEmail(body.email);
   }
 
@@ -35,9 +38,7 @@ export class EmailController {
     status: 200,
     description: 'Email change initiated successfully',
   })
-  async changeEmail(
-    @Body() body: { currentEmail: string; newEmail: string; idToken: string },
-  ) {
+  async changeEmail(@Body() body: ChangeEmailDto) {
     return await this.emailService.changeEmail(
       body.currentEmail,
       body.newEmail,
@@ -49,7 +50,7 @@ export class EmailController {
   @Public()
   @Post('test')
   @ApiOperation({ summary: 'Test email service functionality' })
-  async testEmailService(@Body() body: { email: string }) {
+  async testEmailService(@Body() body: TestEmailDto) {
     return await this.emailService.testEmailService(body.email);
   }
 }

@@ -26,6 +26,8 @@ import { OrderMapper } from './order.mapper';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
+import { CancelOrderDto } from './dto/cancel-order.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -332,7 +334,7 @@ export class OrderController {
   @ApiResponse({ status: 200, description: 'Location updated successfully' })
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { lat: string; lng: string },
+    @Body() body: UpdateLocationDto,
   ) {
     const order = await this.orderService.updateLocation(
       id,
@@ -376,7 +378,7 @@ export class OrderController {
   async cancel(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { reason?: string },
+    @Body() body: CancelOrderDto,
   ) {
     const order = await this.orderService.cancelOrder(
       id,
@@ -388,7 +390,17 @@ export class OrderController {
   }
 
   @Patch(':id/arrived')
-  async notifyArrival(@Param('id') id: string) {
+  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Avisar al cliente que el repartidor llegó',
+    description:
+      'El chofer la dispara al llegar al domicilio (pedido ON_THE_WAY). Notifica ' +
+      'al cliente por socket, no cambia el estado del pedido.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiResponse({ status: 200, description: 'Cliente notificado' })
+  @ApiResponse({ status: 400, description: 'El pedido no está en camino' })
+  async notifyArrival(@Param('id', ParseUUIDPipe) id: string) {
     return this.orderService.notifyDriverArrived(id);
   }
 
