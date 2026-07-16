@@ -223,9 +223,13 @@ export class OrderController {
   @ApiResponse({ status: 404, description: 'Order not found' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ) {
-    return await this.orderService.getOne(id, distributorId);
+    // Un CUSTOMER solo lee SUS pedidos (ownership); staff scopea por tenant.
+    const customerScope =
+      user.role === RoleType.CUSTOMER ? user.user_id : undefined;
+    return await this.orderService.getOne(id, distributorId, customerScope);
   }
 
   @Patch(':id/status')
