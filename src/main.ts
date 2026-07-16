@@ -7,6 +7,7 @@ import basicAuth from 'express-basic-auth';
 import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { RedisIoAdapter } from './adapters/redis-io.adapter';
 
 const morgan = require('morgan');
 
@@ -151,6 +152,14 @@ async function bootstrap() {
       filter: true,
     },
   });
+
+  // Adapter Redis para Socket.io: imprescindible para escalar a MÁS DE UNA
+  // instancia. Sin esto, las rooms (driver_<id>, customer_<id>) viven solo en
+  // la memoria del pod que aceptó el socket, y un emit en el pod A no llega al
+  // cliente conectado al pod B (despacho/tracking se rompen en silencio).
+  const redisIoAdapter = new RedisIoAdapter(app);
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
