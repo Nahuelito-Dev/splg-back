@@ -20,7 +20,7 @@ import { OrderItem } from '../entities/order-item.entity';
 import { User } from '../../users/entities/user.entity';
 import { UserAddress } from '../../user-addres/entities/user-addres.entity';
 import { CreateOrderDto } from '../dto/create-order.dto';
-import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationPort } from '../domain/ports/notification.port';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
 import { StockReservationService } from '../domain/stock-reservation.service';
@@ -73,7 +73,7 @@ export class CreateOrderUseCase {
     private readonly pricing: OrderPricingService,
     private readonly stock: StockReservationService,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
-    private readonly notificationService: NotificationsService,
+    private readonly notificationService: NotificationPort,
     private readonly orders: OrderRepositoryPort,
     private readonly realtime: RealtimeDispatchPort,
     private readonly paymentsService: PaymentsService,

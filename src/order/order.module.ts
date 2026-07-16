@@ -38,6 +38,8 @@ import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
 import { PaymentsModule } from '../payments/payments.module';
+import { NotificationPort } from './domain/ports/notification.port';
+import { NotificationAdapter } from './infrastructure/notification.adapter';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -77,10 +79,15 @@ import { PaymentsModule } from '../payments/payments.module';
     // Puerto de persistencia → adapter TypeORM.
     { provide: OrderRepositoryPort, useClass: OrderTypeormRepository },
     // Puerto de ofertas de despacho → adapter TypeORM.
-    { provide: DispatchOfferRepositoryPort, useClass: DispatchOfferTypeormRepository },
+    {
+      provide: DispatchOfferRepositoryPort,
+      useClass: DispatchOfferTypeormRepository,
+    },
     // Puerto del ciclo del envase → adapter que delega en CylinderService.
     { provide: CylinderLifecyclePort, useClass: CylinderLifecycleAdapter },
+    // Puerto de notificación al cliente → adapter que delega en NotificationsService.
+    { provide: NotificationPort, useClass: NotificationAdapter },
   ],
   exports: [OrderService],
 })
-export class OrderModule { }
+export class OrderModule {}
