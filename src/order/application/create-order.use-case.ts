@@ -312,8 +312,11 @@ export class CreateOrderUseCase {
         orderId,
         dto.notificationToken,
       );
-    } catch {
-      // Ignorar errores de notificación.
+    } catch (error) {
+      // Best-effort: errores de notificación no rompen la creación del pedido.
+      this.logger.warn(
+        `No se pudo enviar la notificación de confirmación del pedido ${orderId}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 

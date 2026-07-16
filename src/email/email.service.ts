@@ -3,6 +3,7 @@ import {
   BadRequestException,
   forwardRef,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as firebase from 'firebase-admin';
@@ -12,6 +13,7 @@ import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
   private adminApp: firebase.app.App;
   private resend: Resend;
 
@@ -283,7 +285,11 @@ export class EmailService {
         throw new Error(result.error.message);
       }
     } catch (error) {
-      // Fail silently
+      // Best-effort: el envío de email nunca debe tumbar el flujo que lo
+      // dispara (registro, cambio de contraseña, etc). Solo dejamos rastro.
+      this.logger.warn(
+        `No se pudo enviar el email "${emailData.subject}" a ${emailData.to}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 
@@ -457,8 +463,12 @@ export class EmailService {
       try {
         const user = await this.usersService.findOneByEmail(email);
         displayName = user.full_name || 'User';
-      } catch {
-        // Ignorar si no se encuentra el usuario
+      } catch (error) {
+        // Best-effort: si no se encuentra el usuario igual mandamos el
+        // welcome email con un displayName genérico.
+        this.logger.warn(
+          `No se pudo resolver el nombre del usuario ${email} para el welcome email: ${error instanceof Error ? error.message : error}`,
+        );
       }
 
       await this.sendEmail({
@@ -472,7 +482,11 @@ export class EmailService {
         },
       });
     } catch (error) {
-      // No interrumpir el flujo
+      // Best-effort: el welcome email nunca debe interrumpir el flujo que lo
+      // dispara (createCustomerWithUser). Solo dejamos rastro.
+      this.logger.warn(
+        `Falló el envío del welcome email a ${email}: ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 

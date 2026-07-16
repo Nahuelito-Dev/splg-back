@@ -119,7 +119,7 @@ export class AdminService {
   }
 
   async findAdminByTerm(term: string) {
-    console.log(`🔍 Buscando admin con term: ${term}`);
+    this.logger.debug(`🔍 Buscando admin con term: ${term}`);
 
     const queryBuilder = this.adminRepository
       .createQueryBuilder('admin')
@@ -134,7 +134,7 @@ export class AdminService {
           .where('user.email = :email', { email: term }) // ✅ CORRECTO - busca en user.email
           .getOne();
 
-    console.log(`🔍 Resultado de búsqueda:`, admin);
+    this.logger.debug(`🔍 Resultado de búsqueda: ${JSON.stringify(admin)}`);
 
     if (!admin) throw new NotFoundException(`Admin with ${term} not found`);
 
@@ -147,7 +147,7 @@ export class AdminService {
       uid: admin.user?.firebase_uid, // ✅ Del User
     };
 
-    console.log(`🔍 Datos formateados:`, result);
+    this.logger.debug(`🔍 Datos formateados: ${JSON.stringify(result)}`);
     return result;
   }
 
