@@ -14,8 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { ConfigService } from '@nestjs/config';
-import * as firebase from 'firebase-admin';
-import { serviceAccount } from '../auth/service-account';
+import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { CompleteCustomerRegistrationDto } from 'src/customer/dto/complete-customer-registration.dto';
 import { Customer } from 'src/customer/entities/customer.entity';
 import { Role } from 'src/role/entities/role.entity';
@@ -26,7 +25,6 @@ import { EmailService } from 'src/email/email.service';
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
-  private adminApp: firebase.app.App;
 
   constructor(
     @InjectRepository(User)
@@ -45,14 +43,8 @@ export class UsersService {
     private readonly config: ConfigService,
     @Inject(forwardRef(() => EmailService))
     private readonly emailService: EmailService,
-  ) {
-    this.adminApp = firebase.initializeApp(
-      {
-        credential: firebase.credential.cert(serviceAccount),
-      },
-      'users',
-    );
-  }
+    private readonly firebaseAuth: FirebaseAuthPort,
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     try {
@@ -234,9 +226,8 @@ export class UsersService {
 
   private async cleanupFirebaseUser(email: string) {
     try {
-      const auth = this.adminApp.auth();
-      const userRecord = await auth.getUserByEmail(email);
-      await auth.deleteUser(userRecord.uid);
+      const userRecord = await this.firebaseAuth.getUserByEmail(email);
+      await this.firebaseAuth.deleteUser(userRecord.uid);
     } catch (error) {
       // Best-effort: es un rollback de compensación (el usuario en DB ya se
       // revirtió); si Firebase falla acá solo puede quedar un usuario
@@ -261,9 +252,8 @@ export class UsersService {
   }
 
   async createFirebaseUser(createUserDto: CreateUserDto) {
-    const auth = this.adminApp.auth();
     try {
-      const userRecord = await auth.createUser({
+      const userRecord = await this.firebaseAuth.createUser({
         email: createUserDto.email,
         password: createUserDto.password,
         displayName: createUserDto.full_name,
@@ -293,9 +283,8 @@ export class UsersService {
   }
 
   async findFbUserByEmail(email: string): Promise<boolean> {
-    const auth = this.adminApp.auth();
     try {
-      await auth.getUserByEmail(email);
+      await this.firebaseAuth.getUserByEmail(email);
       return true;
     } catch (error) {
       // CORRECCIÓN AQUÍ: Casteamos a 'any' para acceder a .code

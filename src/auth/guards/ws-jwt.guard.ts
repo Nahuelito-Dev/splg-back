@@ -6,8 +6,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import * as firebase from 'firebase-admin';
-import { serviceAccount } from '../service-account';
 import { Socket } from 'socket.io';
 import { AuthService } from '../auth.service';
 

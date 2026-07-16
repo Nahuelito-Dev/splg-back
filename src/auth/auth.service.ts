@@ -6,39 +6,34 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as firebase from 'firebase-admin';
 import {
   getAuth,
   signInWithEmailAndPassword,
   UserCredential,
 } from 'firebase/auth';
-import { serviceAccount } from './service-account';
 import { LoginDto } from './dto';
 import { initializeApp } from 'firebase/app';
 import { ConfigService } from '@nestjs/config';
 import { AdminService } from '../admin/admin.service';
 import { UsersService } from '../users/users.service';
+import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 
 @Injectable()
 export class AuthService {
   private defaultApp: any;
-  private adminApp: firebase.app.App;
 
   public constructor(
     private readonly config: ConfigService,
     @Inject(forwardRef(() => AdminService))
     private readonly adminService: AdminService,
     private readonly usersService: UsersService,
+    private readonly firebaseAuth: FirebaseAuthPort,
   ) {
     if (config.get('FIREBASE_APP_API_KEY')) {
       this.defaultApp = initializeApp({
         apiKey: config.get('FIREBASE_APP_API_KEY'),
       });
     }
-
-    this.adminApp = firebase.initializeApp({
-      credential: firebase.credential.cert(serviceAccount),
-    });
   }
 
   checkIfTokenValid() {
@@ -65,7 +60,7 @@ export class AuthService {
 
   public async decodeToken(token: string) {
     try {
-      const decodedToken = await this.adminApp.auth().verifyIdToken(token);
+      const decodedToken = await this.firebaseAuth.verifyIdToken(token);
 
       const user = {
         email: decodedToken.email || '',
