@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { User } from '../../users/entities/user.entity';
 
 /** Quién emite la calificación (define a quién califica: el otro lado del pedido). */
 export enum RaterRole {
@@ -49,6 +50,11 @@ export class Rating {
   /** Usuario que emite la calificación (user_id). */
   @Column({ type: 'uuid' })
   from_user_id: string;
+
+  /** Relación al usuario que califica (para mostrar su nombre en el panel). */
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'from_user_id' })
+  fromUser?: User;
 
   /** Usuario calificado (el otro lado del pedido) (user_id). */
   @Index()

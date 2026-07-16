@@ -108,7 +108,13 @@ export class RatingService {
     return saved;
   }
 
-  /** Promedio + cantidad de calificaciones recibidas por un usuario (como chofer). */
+  /**
+   * Promedio + cantidad de calificaciones RECIBIDAS por un usuario. Simétrico:
+   * sirve tanto para un chofer (recibe de clientes) como para un cliente
+   * (recibe de choferes) — el `to_user_id` ya determina de qué lado vienen las
+   * calificaciones, así que NO se filtra por `from_role` (filtrarlo por CUSTOMER
+   * daba 0 para los clientes).
+   */
   async getSummaryForUser(
     toUserId: string,
     distributorId?: string | null,
@@ -117,8 +123,7 @@ export class RatingService {
       .createQueryBuilder('r')
       .select('COALESCE(AVG(r.stars), 0)', 'average')
       .addSelect('COUNT(r.rating_id)', 'count')
-      .where('r.to_user_id = :toUserId', { toUserId })
-      .andWhere('r.from_role = :role', { role: RaterRole.CUSTOMER });
+      .where('r.to_user_id = :toUserId', { toUserId });
 
     if (distributorId) {
       qb.andWhere('r.distributor_id = :distributorId', { distributorId });
@@ -141,6 +146,7 @@ export class RatingService {
         to_user_id: toUserId,
         ...(distributorId ? { distributor_id: distributorId } : {}),
       },
+      relations: ['fromUser'],
       order: { createdAt: 'DESC' },
     });
   }
