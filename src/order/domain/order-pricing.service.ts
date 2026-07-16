@@ -28,7 +28,8 @@ export interface ItemPricing {
 @Injectable()
 export class OrderPricingService {
   /** Recargo multiplicativo para pagos por transferencia (+10%). */
-  private static readonly TRANSFER_SURCHARGE_FACTOR = new Decimal('1.1');
+  /** Recargo +10% para pagos online (MercadoPago y Transferencia). Efectivo 0%. */
+  private static readonly ONLINE_SURCHARGE_FACTOR = new Decimal('1.1');
 
   /**
    * Precio unitario (con la mejor promo aplicable) y subtotal de un ítem.
@@ -53,10 +54,16 @@ export class OrderPricingService {
     return { unitPrice, subtotal };
   }
 
-  /** Aplica el recargo del método de pago sobre el total. */
+  /**
+   * Aplica el recargo del método de pago sobre el total. MercadoPago y
+   * Transferencia = +10% (pagos online); Efectivo = sin recargo.
+   */
   applyPaymentSurcharge(total: Decimal, method: PaymentMethod): Decimal {
-    if (method === PaymentMethod.TRANSFER) {
-      return total.times(OrderPricingService.TRANSFER_SURCHARGE_FACTOR);
+    if (
+      method === PaymentMethod.MERCADOPAGO ||
+      method === PaymentMethod.TRANSFER
+    ) {
+      return total.times(OrderPricingService.ONLINE_SURCHARGE_FACTOR);
     }
     return total;
   }
