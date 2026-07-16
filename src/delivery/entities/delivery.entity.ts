@@ -19,11 +19,11 @@ export class Delivery {
 
   /** Distribuidora para la que trabaja el chofer. Nullable hasta backfill. */
   @Index()
-  @ManyToOne(() => Distributor, { nullable: true })
+  @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
   @OneToOne(() => User, (user) => user.delivery, { onDelete: 'CASCADE' })

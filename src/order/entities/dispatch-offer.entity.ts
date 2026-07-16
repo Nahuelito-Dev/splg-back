@@ -43,7 +43,7 @@ export class DispatchOffer {
 
   /** Tenant dueño del despacho (denormalizado desde la orden). */
   @Index()
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })

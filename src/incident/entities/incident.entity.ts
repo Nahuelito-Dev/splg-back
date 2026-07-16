@@ -43,11 +43,11 @@ export class Incident {
   order_id: string;
 
   @Index()
-  @ManyToOne(() => Distributor, { nullable: true })
+  @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
   /** Usuario que reporta la incidencia (user_id), normalmente el chofer. */
