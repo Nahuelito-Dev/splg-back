@@ -3,6 +3,7 @@ import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -172,18 +173,27 @@ export class UsersService {
   }
 
   async remove(id: string) {
-    // 1. Buscamos el usuario antes de borrarlo para tener su email
     const user = await this.findOne(id);
 
-    // 2. Borrar de Firebase (Si tiene email asociado)
+    // Borramos de la DB PRIMERO. Order→User es RESTRICT (P2-10): si el usuario
+    // tiene pedidos, el DELETE falla acá con FK violation → devolvemos 409 y NO
+    // tocamos Firebase (evita dejar el usuario huérfano en Firebase). Customer/
+    // Delivery sí cascadean desde User, así que un usuario sin pedidos se borra ok.
+    try {
+      await this.userRepository.delete({ user_id: id });
+    } catch (error: any) {
+      if (error?.code === '23503') {
+        throw new ConflictException(
+          'No se puede eliminar el usuario porque tiene pedidos u otros registros asociados. Bloquéalo en lugar de eliminarlo.',
+        );
+      }
+      throw error;
+    }
+
+    // Recién si se borró de la DB, lo sacamos de Firebase.
     if (user.email) {
       await this.cleanupFirebaseUser(user.email);
     }
-
-    // 3. Borrado FÍSICO de la base de datos (DELETE real)
-    // Nota: Esto fallará si hay relaciones (FK) sin "ON DELETE CASCADE".
-    // Asegúrate de que tus entidades Customer/Delivery tengan onDelete: 'CASCADE'
-    await this.userRepository.delete({ user_id: id });
 
     return { message: 'Usuario eliminado permanentemente de DB y Firebase' };
   }
