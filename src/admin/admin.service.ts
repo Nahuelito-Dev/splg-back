@@ -42,10 +42,12 @@ export class AdminService {
       this.usersService,
     );
 
-    // 4. Crear entidad Admin (user_id se obtiene del user creado)
+    // 4. Crear entidad Admin (user_id se obtiene del user creado). El
+    // distributor_id define el tenant del admin (null = super_admin cross-tenant).
     const adminData: CreateAdminDto = {
       user_id: user.user_id, // ✅ Se obtiene del user recién creado
       role_id: registerAdminDto.role_id,
+      distributor_id: registerAdminDto.distributorId,
     };
 
     const admin = await this.create(adminData);
@@ -63,9 +65,15 @@ export class AdminService {
     return await this.adminRepository.save(admin);
   }
 
-  async findAll() {
+  /**
+   * Lista admins. Scopeado por tenant: si viene `distributorId` (admin de
+   * distribuidora, o super_admin con "ver como") devuelve solo los de esa
+   * empresa; sin él (super_admin cross-tenant) devuelve todos.
+   */
+  async findAll(distributorId?: string | null) {
     return await this.adminRepository.find({
-      relations: ['user', 'role'],
+      where: distributorId ? { distributor_id: distributorId } : {},
+      relations: ['user', 'role', 'distributor'],
     });
   }
 

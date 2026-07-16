@@ -1,4 +1,4 @@
-import { IsUUID } from 'class-validator';
+import { IsOptional, IsUUID } from 'class-validator';
 
 export class CreateAdminDto {
   @IsUUID()
@@ -6,4 +6,8 @@ export class CreateAdminDto {
 
   @IsUUID()
   role_id: string;
+
+  @IsOptional()
+  @IsUUID()
+  distributor_id?: string;
 }
