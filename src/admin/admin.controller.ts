@@ -8,6 +8,8 @@
   import { Roles } from '../common/decorators/roles.decorator';
   import { RoleType } from '../common/constants/role-type.enum';
   import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+  import { CurrentUser } from '../common/decorators/current-user.decorator';
+  import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
   @Controller('admin')
   export class AdminController {
@@ -48,17 +50,41 @@
       return await this.adminService.registerAdmin(registerAdminDto);
     }
     @Post('register')
-    @Roles(RoleType.SUPER_ADMIN)
-    @ApiOperation({ summary: 'Register a new admin (super_admin only)' })
+    @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+    @ApiOperation({
+      summary:
+        'Registrar un admin. super_admin: cualquier empresa/rol. admin: solo ' +
+        'admins de SU propia empresa y sin poder crear super_admins.',
+    })
     async register(
       @Body() registerAdminDto: RegisterAdminDto,
+      @CurrentUser() user: AuthenticatedUser,
       @CurrentDistributor() distributorId?: string | null,
     ) {
-      // Si no vino distributorId explícito en el body, usa el tenant del
-      // contexto (super_admin con "ver como" una empresa). null = cross-tenant.
+      if (user.role === RoleType.SUPER_ADMIN) {
+        // super_admin: elige empresa (body o "ver como"); null = cross-tenant.
+        return await this.adminService.registerAdmin({
+          ...registerAdminDto,
+          distributorId:
+            registerAdminDto.distributorId ?? distributorId ?? undefined,
+        });
+      }
+
+      // ADMIN de empresa: solo puede crear admins de SU propia distribuidora
+      // (se ignora cualquier distributorId del body) y NO super_admins.
+      if (!distributorId) {
+        throw new ForbiddenException(
+          'Tu usuario no tiene una distribuidora asociada',
+        );
+      }
+      if (await this.adminService.isSuperAdminRole(registerAdminDto.role_id)) {
+        throw new ForbiddenException(
+          'No podés crear un super administrador',
+        );
+      }
       return await this.adminService.registerAdmin({
         ...registerAdminDto,
-        distributorId: registerAdminDto.distributorId ?? distributorId ?? undefined,
+        distributorId,
       });
     }
 

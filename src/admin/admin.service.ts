@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Admin } from './entities/admin.entity';
+import { Role } from '../role/entities/role.entity';
+import { RoleType } from '../common/constants/role-type.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { UsersService } from '../users/users.service';
 import { RegisterAdminDto } from './dto/register-admin.dto';
@@ -16,8 +18,18 @@ export class AdminService {
   constructor(
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
+    @InjectRepository(Role)
+    private readonly roleRepository: Repository<Role>,
     private readonly usersService: UsersService,
   ) {}
+
+  /** True si el role_id corresponde al rol super_admin (para evitar escalada). */
+  async isSuperAdminRole(roleId: string): Promise<boolean> {
+    const role = await this.roleRepository.findOne({
+      where: { role_id: roleId },
+    });
+    return role?.type === RoleType.SUPER_ADMIN;
+  }
 
   // ✅ CORREGIR el tipo del parámetro
   async registerAdmin(registerAdminDto: RegisterAdminDto) {
