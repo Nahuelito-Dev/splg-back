@@ -86,12 +86,12 @@ describe('OrderPricingService', () => {
       expect(total.toNumber()).toBe(1000);
     });
 
-    it('no toca el total en MERCADOPAGO', () => {
+    it('suma +10% cuando el método es MERCADOPAGO (pago online)', () => {
       const total = pricing.applyPaymentSurcharge(
         new Decimal(1000),
         PaymentMethod.MERCADOPAGO,
       );
-      expect(total.toNumber()).toBe(1000);
+      expect(total.toNumber()).toBe(1100);
     });
   });
 
