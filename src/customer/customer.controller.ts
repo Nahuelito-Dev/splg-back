@@ -19,6 +19,15 @@ import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+
+/** Ownership (anti-IDOR): un cliente solo accede a SUS datos; admin a cualquiera. */
+function scope(user: AuthenticatedUser): string | undefined {
+  return user.role === RoleType.ADMIN || user.role === RoleType.SUPER_ADMIN
+    ? undefined
+    : user.user_id;
+}
 
 @ApiTags('Customers')
 @Controller('customers')
@@ -44,8 +53,11 @@ export class CustomersController {
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiResponse({ status: 200, description: 'Customer found' })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.customersService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return await this.customersService.findOne(id, scope(user));
   }
 
   @Get('user/:userId')
@@ -53,8 +65,11 @@ export class CustomersController {
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiResponse({ status: 200, description: 'Customer found' })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  async findOneByUserId(@Param('userId', ParseUUIDPipe) userId: string) {
-    return await this.customersService.findOneByUserId(userId);
+  async findOneByUserId(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return await this.customersService.findOneByUserId(userId, scope(user));
   }
 
   @Patch(':id')
@@ -65,8 +80,9 @@ export class CustomersController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return await this.customersService.update(id, updateCustomerDto);
+    return await this.customersService.update(id, updateCustomerDto, scope(user));
   }
 
   @Patch(':id/validate')
@@ -100,8 +116,9 @@ export class CustomersController {
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { latLng: string },
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return await this.customersService.updateLocation(id, body.latLng);
+    return await this.customersService.updateLocation(id, body.latLng, scope(user));
   }
 
   @Delete(':id')

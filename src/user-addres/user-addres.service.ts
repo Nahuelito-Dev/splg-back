@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
@@ -22,7 +23,35 @@ export class UserAddresService {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  async create(createUserAddressDto: CreateUserAddresDto) {
+  /**
+   * Enforcement de ownership (anti-IDOR): si `requesterUserId` viene (rol NO
+   * admin), el dueño de la dirección debe ser ese usuario; si no, 403. Los
+   * admins pasan `undefined`/`null` y saltan el check.
+   */
+  private assertOwnership(
+    ownerUserId: string,
+    requesterUserId?: string | null,
+  ): void {
+    if (requesterUserId && ownerUserId !== requesterUserId) {
+      throw new ForbiddenException(
+        'No autorizado a acceder a direcciones de otro usuario',
+      );
+    }
+  }
+
+  async create(
+    createUserAddressDto: CreateUserAddresDto,
+    requesterUserId?: string | null,
+  ) {
+    // Un cliente solo puede crear direcciones PARA SÍ MISMO: si no es admin,
+    // se fuerza el user_id al del que pide (ignora lo que venga en el body).
+    if (requesterUserId) {
+      createUserAddressDto = {
+        ...createUserAddressDto,
+        user_id: requesterUserId,
+      };
+    }
+
     const user = await this.userRepository.findOne({
       where: { user_id: createUserAddressDto.user_id },
     });
@@ -59,7 +88,7 @@ export class UserAddresService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requesterUserId?: string | null) {
     const address = await this.userAddressRepository.findOne({
       where: { address_id: id },
       relations: ['user'],
@@ -69,10 +98,12 @@ export class UserAddresService {
       throw new NotFoundException(`Address with ID: ${id} not found`);
     }
 
+    this.assertOwnership(address.user_id, requesterUserId);
     return address;
   }
 
-  async findByUserId(userId: string) {
+  async findByUserId(userId: string, requesterUserId?: string | null) {
+    this.assertOwnership(userId, requesterUserId);
     const addresses = await this.userAddressRepository.find({
       where: { user_id: userId },
       relations: ['user'],
@@ -82,7 +113,8 @@ export class UserAddresService {
     return addresses;
   }
 
-  async findDefaultByUserId(userId: string) {
+  async findDefaultByUserId(userId: string, requesterUserId?: string | null) {
+    this.assertOwnership(userId, requesterUserId);
     const address = await this.userAddressRepository.findOne({
       where: { user_id: userId, isDefault: true },
       relations: ['user'],
@@ -99,7 +131,14 @@ export class UserAddresService {
     return address;
   }
 
-  async update(id: string, updateUserAddressDto: UpdateUserAddresDto) {
+  async update(
+    id: string,
+    updateUserAddressDto: UpdateUserAddresDto,
+    requesterUserId?: string | null,
+  ) {
+    // Ownership: valida que la dirección sea del que pide (si no es admin).
+    await this.findOne(id, requesterUserId);
+
     const address = await this.userAddressRepository.preload({
       address_id: id,
       ...updateUserAddressDto,
@@ -116,8 +155,8 @@ export class UserAddresService {
     return await this.userAddressRepository.save(address);
   }
 
-  async remove(id: string) {
-    const address = await this.findOne(id);
+  async remove(id: string, requesterUserId?: string | null) {
+    const address = await this.findOne(id, requesterUserId);
 
     if (address.isDefault) {
       const otherAddresses = await this.userAddressRepository.find({
@@ -142,8 +181,8 @@ export class UserAddresService {
     };
   }
 
-  async setAsDefault(id: string) {
-    const address = await this.findOne(id);
+  async setAsDefault(id: string, requesterUserId?: string | null) {
+    const address = await this.findOne(id, requesterUserId);
     await this.removeDefaultFromOtherAddresses(address.user_id, id);
 
     address.isDefault = true;

@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -155,7 +156,22 @@ export class CustomersService {
     return qb.getMany();
   }
 
-  async findOne(id: string) {
+  /**
+   * Ownership (anti-IDOR): si `requesterUserId` viene (rol NO admin), el cliente
+   * debe ser el del que pide; si no, 403. Los admin pasan undefined y saltan.
+   */
+  private assertOwnership(
+    customerUserId: string,
+    requesterUserId?: string | null,
+  ): void {
+    if (requesterUserId && customerUserId !== requesterUserId) {
+      throw new ForbiddenException(
+        'No autorizado a acceder a datos de otro cliente',
+      );
+    }
+  }
+
+  async findOne(id: string, requesterUserId?: string | null) {
     const customer = await this.customerRepository.findOne({
       where: { customer_id: id },
       relations: ['user', 'user.role', 'user.addresses'],
@@ -165,10 +181,12 @@ export class CustomersService {
       throw new NotFoundException(`Customer with ID: ${id} not found`);
     }
 
+    this.assertOwnership(customer.user_id, requesterUserId);
     return customer;
   }
 
-  async findOneByUserId(userId: string) {
+  async findOneByUserId(userId: string, requesterUserId?: string | null) {
+    this.assertOwnership(userId, requesterUserId);
     const customer = await this.customerRepository.findOne({
       where: { user_id: userId },
       relations: ['user', 'user.role', 'user.addresses'],
@@ -198,7 +216,14 @@ export class CustomersService {
     return customer;
   }
 
-  async update(id: string, updateCustomerDto: UpdateCustomerDto) {
+  async update(
+    id: string,
+    updateCustomerDto: UpdateCustomerDto,
+    requesterUserId?: string | null,
+  ) {
+    // Ownership: valida que el cliente sea del que pide (si no es admin).
+    await this.findOne(id, requesterUserId);
+
     const customer = await this.customerRepository.preload({
       customer_id: id,
       ...updateCustomerDto,
@@ -232,8 +257,12 @@ export class CustomersService {
     return customer;
   }
 
-  async updateLocation(id: string, latLng: string) {
-    const customer = await this.findOne(id);
+  async updateLocation(
+    id: string,
+    latLng: string,
+    requesterUserId?: string | null,
+  ) {
+    const customer = await this.findOne(id, requesterUserId);
     customer.lat_lang = latLng;
     await this.customerRepository.save(customer);
     return customer;
