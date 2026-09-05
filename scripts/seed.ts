@@ -119,22 +119,9 @@ async function bootstrap() {
       roleIdByType[type] = role.role_id;
     }
 
-    // 2) Usuarios de prueba ────────────────────────────────────────────────
-    for (const u of TEST_USERS) {
-      results.push(
-        await ensureUser(
-          u,
-          usersService,
-          adminService,
-          roleIdByType,
-          customersService,
-          deliveryService,
-        ),
-      );
-    }
-
-    // 3) Multi-tenant: distribuidora default + backfill ────────────────────
-    // Distribuidora principal = tenant al que pertenece TODO lo pre-existente.
+    // 2) Multi-tenant: distribuidora default ───────────────────────────────
+    // Se crea ANTES que los usuarios: delivery.distributor_id es NOT NULL, asi
+    // que el chofer necesita su tenant ya existente al momento del alta.
     const jenyGas = await ensureDistributor(distributorService, {
       name: 'Jeny Gas',
       slug: 'jeny-gas',
@@ -145,6 +132,22 @@ async function bootstrap() {
     });
     logger.log(`✅ Distribuidora default: ${jenyGas.name} (${jenyGas.slug})`);
 
+    // 3) Usuarios de prueba ────────────────────────────────────────────────
+    for (const u of TEST_USERS) {
+      results.push(
+        await ensureUser(
+          u,
+          usersService,
+          adminService,
+          roleIdByType,
+          customersService,
+          deliveryService,
+          jenyGas.distributor_id,
+        ),
+      );
+    }
+
+    // 4) Backfill de datos pre-multi-tenant ────────────────────────────────
     // Backfill: todas las filas scopeadas sin tenant → distribuidora default.
     // Corre ANTES de crear la 2da distribuidora para no pisar su staff.
     for (const table of SCOPED_TABLES) {
@@ -175,6 +178,7 @@ async function bootstrap() {
           roleIdByType,
           customersService,
           deliveryService,
+          gasAndino.distributor_id,
         ),
       );
       await assignStaffToDistributor(
@@ -205,6 +209,7 @@ async function ensureUser(
   roleIdByType: Record<string, string>,
   customersService: CustomersService,
   deliveryService: DeliveryService,
+  distributorId: string,
 ): Promise<{ email: string; role: string; status: string }> {
   if (await userExists(usersService, u.email)) {
     return { email: u.email, role: u.role, status: 'ya existía ⏭️' };
@@ -225,6 +230,7 @@ async function ensureUser(
         phone_number: u.phone_number,
         validated: true,
         isActive: true,
+        distributorId,
       } as any);
     } else {
       await adminService.registerAdmin({
