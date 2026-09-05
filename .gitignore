@@ -57,4 +57,5 @@ serviceAccountKey.json
 pids
 *.pid
 *.seed
-*.pid.lock.env.bak*
+*.pid.lock
+.env.bak*
