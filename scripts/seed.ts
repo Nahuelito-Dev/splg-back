@@ -19,6 +19,8 @@ import { RoleService } from '../src/role/role.service';
 import { UsersService } from '../src/users/users.service';
 import { AdminService } from '../src/admin/admin.service';
 import { DistributorService } from '../src/distributor/distributor.service';
+import { CustomersService } from '../src/customer/customer.service';
+import { DeliveryService } from '../src/delivery/delivery.service';
 import { Distributor } from '../src/distributor/entities/distributor.entity';
 
 const PASSWORD = 'Test1234'; // Firebase exige >= 6 caracteres.
@@ -99,6 +101,8 @@ async function bootstrap() {
   const usersService = app.get(UsersService);
   const adminService = app.get(AdminService);
   const distributorService = app.get(DistributorService);
+  const customersService = app.get(CustomersService);
+  const deliveryService = app.get(DeliveryService);
   const dataSource = app.get(DataSource);
 
   const results: Array<{ email: string; role: string; status: string }> = [];
@@ -118,7 +122,14 @@ async function bootstrap() {
     // 2) Usuarios de prueba ────────────────────────────────────────────────
     for (const u of TEST_USERS) {
       results.push(
-        await ensureUser(u, usersService, adminService, roleIdByType),
+        await ensureUser(
+          u,
+          usersService,
+          adminService,
+          roleIdByType,
+          customersService,
+          deliveryService,
+        ),
       );
     }
 
@@ -157,7 +168,14 @@ async function bootstrap() {
 
     for (const u of DEMO_STAFF) {
       results.push(
-        await ensureUser(u, usersService, adminService, roleIdByType),
+        await ensureUser(
+          u,
+          usersService,
+          adminService,
+          roleIdByType,
+          customersService,
+          deliveryService,
+        ),
       );
       await assignStaffToDistributor(
         dataSource,
@@ -185,20 +203,22 @@ async function ensureUser(
   usersService: UsersService,
   adminService: AdminService,
   roleIdByType: Record<string, string>,
+  customersService: CustomersService,
+  deliveryService: DeliveryService,
 ): Promise<{ email: string; role: string; status: string }> {
   if (await userExists(usersService, u.email)) {
     return { email: u.email, role: u.role, status: 'ya existía ⏭️' };
   }
   try {
     if (u.role === 'customer') {
-      await usersService.createCustomerWithUser({
+      await customersService.registerWithUser({
         email: u.email,
         password: PASSWORD,
         full_name: u.full_name,
         phone_number: u.phone_number,
       });
     } else if (u.role === 'delivery') {
-      await usersService.createDeliveryWithUser({
+      await deliveryService.registerWithUser({
         email: u.email,
         password: PASSWORD,
         full_name: u.full_name,
