@@ -10,7 +10,7 @@ El backend está altamente desarrollado y contiene la lógica central del negoci
 
 ---
 
-## 1. Backend API (`jennygas-app-backend` - NestJS)
+## 1. Backend API (`splg-app-backend` - NestJS)
 **Estado General: 90% Completado**
 
 | Subsistema | Requisito | Estado | Porcentaje | Notas |
@@ -27,7 +27,7 @@ El backend está altamente desarrollado y contiene la lógica central del negoci
 
 ---
 
-## 2. Panel Administrativo (`garrafitas_admin` - React)
+## 2. Panel Administrativo (`splg-app-admin` - React)
 **Estado General: 60% Completado**
 
 *   **Estructura Base:** 100% (React configurado).
@@ -37,7 +37,7 @@ El backend está altamente desarrollado y contiene la lógica central del negoci
 
 ---
 
-## 3. App Chofer (`jennygas-app-chofer` - Flutter)
+## 3. App Chofer (`splg-app-chofer` - Flutter)
 **Estado General: 50% Completado**
 
 *   **Configuración y Dependencias:** 100% (`geolocator`, `google_maps_flutter`, WebSockets).
@@ -47,7 +47,7 @@ El backend está altamente desarrollado y contiene la lógica central del negoci
 
 ---
 
-## 4. App Cliente (`jennygas-app-cliente` - Flutter)
+## 4. App Cliente (`splg-app-cliente` - Flutter)
 **Estado General: 60% Completado**
 
 *   **Configuración y Dependencias:** 100% (Mapas, Geolocalización, WebSockets).
@@ -63,5 +63,5 @@ El backend está altamente desarrollado y contiene la lógica central del negoci
 Para avanzar de manera eficiente, sugiero atacar una de las siguientes áreas críticas:
 
 1.  **Completar el Flujo Core (End-to-End):** Asegurar que un pedido creado desde la *App Cliente* sea recibido por el *Backend*, despachado vía WebSocket a la *App Chofer*, aceptado, y finalizado correctamente. Esto validará la comunicación entre las 3 partes.
-2.  **Integración Frontend-Backend del Panel Admin:** Conectar la gestión de inventario, franjas horarias y reclamos en `garrafitas_admin` con el backend.
+2.  **Integración Frontend-Backend del Panel Admin:** Conectar la gestión de inventario, franjas horarias y reclamos en `splg-app-admin` con el backend.
 3.  **Pulir la Lógica de WebSockets:** Verificar la reconexión automática y el manejo de estado cuando las apps móviles pierden conexión a internet.
