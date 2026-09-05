@@ -1,4 +1,4 @@
-name: CI + Deploy → Render (Garrafitas)
+name: CI + Deploy → Render (SPLG)
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
       - name: Notify Slack START
         run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"🚧 Deploy iniciado en Render para *Garrafitas API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
+          --data "{\"text\": \"🚧 Deploy iniciado en Render para *SPLG API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
           ${{ secrets.SLACK_WEBHOOK_URL }}
 
       # 4. Configurar Node.js (NestJS va bien con la 18 o 20)
@@ -57,7 +57,7 @@ jobs:
         if: success()
         run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"🚀 Deploy completado en Render para *Garrafitas API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\n📅 Hora: ${{ steps.vars.outputs.date }}\"}" \
+          --data "{\"text\": \"🚀 Deploy completado en Render para *SPLG API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\n📅 Hora: ${{ steps.vars.outputs.date }}\"}" \
           ${{ secrets.SLACK_WEBHOOK_URL }}
 
       # 9. Notificar Fallo
@@ -65,5 +65,5 @@ jobs:
         if: failure()
         run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"❌ Deploy falló en Render para *Garrafitas API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
+          --data "{\"text\": \"❌ Deploy falló en Render para *SPLG API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
           ${{ secrets.SLACK_WEBHOOK_URL }}

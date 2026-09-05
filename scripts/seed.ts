@@ -44,25 +44,25 @@ interface TestUser {
 const TEST_USERS: TestUser[] = [
   {
     role: 'super_admin',
-    email: 'superadmin@jennygas.com',
+    email: 'superadmin@splg.com',
     full_name: 'Super Admin',
     phone_number: '+5493815550001',
   },
   {
     role: 'admin',
-    email: 'admin@jennygas.com',
+    email: 'admin@splg.com',
     full_name: 'Admin Jeny',
     phone_number: '+5493815550002',
   },
   {
     role: 'customer',
-    email: 'cliente@jennygas.com',
+    email: 'cliente@splg.com',
     full_name: 'Cliente Prueba',
     phone_number: '+5493815550003',
   },
   {
     role: 'delivery',
-    email: 'chofer@jennygas.com',
+    email: 'chofer@splg.com',
     full_name: 'Chofer Prueba',
     phone_number: '+5493815550004',
   },
@@ -129,7 +129,7 @@ async function bootstrap() {
       slug: 'jeny-gas',
       legal_name: 'Jeny Gas S.R.L.',
       tax_id: '30-11111111-1',
-      email: 'contacto@jennygas.com',
+      email: 'contacto@splg.com',
       phone: '+543764000001',
     });
     logger.log(`✅ Distribuidora default: ${jenyGas.name} (${jenyGas.slug})`);
