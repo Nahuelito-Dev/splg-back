@@ -107,7 +107,10 @@ import { FirebaseModule } from './firebase/firebase.module';
           cli: {
             migrationsDir: __dirname + '/migrations/',
           },
-          logging: !isProd,
+          // En dev se registra cada consulta, que es lo que se quiere cuando
+          // se está depurando. Con DB_LOGGING=false se apaga sin salir de dev:
+          // sirve para demostrar el panel sin que la consola se llene de SQL.
+          logging: !isProd && configService.get('DB_LOGGING') !== 'false',
         };
       },
       inject: [ConfigService],
