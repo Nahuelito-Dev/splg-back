@@ -1,0 +1,17 @@
+[
+ "POST /api/admin/first-superadmin",
+ "POST /api/auth/login",
+ "POST /api/auth/login/dashboard",
+ "POST /api/email/password-reset",
+ "POST /api/email/test",
+ "GET /api/gascylinder",
+ "GET /api/gascylinder/available/list",
+ "GET /api/health",
+ "GET /api/health/live",
+ "GET /api/health/ready",
+ "GET /api/time-slot/availability",
+ "POST /api/users",
+ "POST /api/users/check-exists",
+ "POST /api/users/customer-registration",
+ "GET /api/users/email/{email}"
+]
