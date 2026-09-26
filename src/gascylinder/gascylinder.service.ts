@@ -5,7 +5,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, FindOptionsWhere, EntityManager } from 'typeorm';
+import {
+  Repository,
+  MoreThan,
+  FindOptionsWhere,
+  EntityManager,
+  ILike,
+} from 'typeorm';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { GasCylinderPromotion } from './entities/gascylinder-promotion.entity';
 import { PromocionDto } from './dto/create-gascylinder.dto';
@@ -110,8 +116,17 @@ export class GasCylinderService {
     const { limit = 10, offset = 0 } = paginationDto;
     const distributorId = await this.resolveDistributor(distributor);
 
-    const where: FindOptionsWhere<GasCylinder> = { isActive: true };
-    if (distributorId) where.distributorId = distributorId;
+    const base: FindOptionsWhere<GasCylinder> = { isActive: true };
+    if (distributorId) base.distributorId = distributorId;
+    // `term` busca por tipo o descripción; las dos condiciones llevan el mismo
+    // filtro de distribuidora, así el OR no abre el catálogo de otra.
+    const term = paginationDto.term?.trim();
+    const where = term
+      ? [
+          { ...base, type: ILike(`%${term}%`) },
+          { ...base, description: ILike(`%${term}%`) },
+        ]
+      : base;
 
     const [gasCylinders, total] = await this.gasCylinderRepository.findAndCount(
       {
