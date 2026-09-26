@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   ParseUUIDPipe,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -26,6 +27,7 @@ import { CreateDistributorDto } from './dto/create-distributor.dto';
 import { UpdateDistributorDto } from './dto/update-distributor.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 /**
  * Gestión de distribuidoras (tenants). Es una operación de PLATAFORMA:
@@ -59,6 +61,27 @@ export class DistributorController {
   async findAll(): Promise<DistributorResponseDto[]> {
     const all = await this.distributorService.findAll();
     return all.map((d) => DistributorMapper.toDto(d));
+  }
+
+  @Get('current')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'La distribuidora de la sesión',
+    description:
+      'Un admin recibe la suya; el super admin, la que eligió con ' +
+      'X-Distributor. Sin distribuidora elegida contesta 404.',
+  })
+  @ApiOkResponse({ type: DistributorResponseDto })
+  @ApiNotFoundResponse({ description: 'No hay una distribuidora elegida' })
+  async findCurrent(
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DistributorResponseDto> {
+    if (!distributorId) {
+      throw new NotFoundException('No hay una distribuidora elegida');
+    }
+    return DistributorMapper.toDto(
+      await this.distributorService.findOne(distributorId),
+    );
   }
 
   @Get(':id')
