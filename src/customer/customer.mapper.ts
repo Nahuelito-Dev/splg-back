@@ -6,8 +6,8 @@ import { UserMapper } from '../users/user.mapper';
 export class CustomerMapper {
   static toDto(customer: Customer): CustomerResponseDto {
     const dto = new CustomerResponseDto();
-    dto.customer_id = customer.customer_id;
-    dto.user_id = customer.user_id;
+    dto.customer_id = customer.customerId;
+    dto.user_id = customer.userId;
     dto.lat_lang = latLngDesdePunto(customer.location);
     dto.validated = customer.validated;
     dto.createdAt = customer.createdAt;

@@ -3,7 +3,7 @@ import { Repository } from 'typeorm';
 import { CylinderService } from './cylinder.service';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
-import { Order } from '../order/entities/order.entity';
+import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 
@@ -21,19 +21,19 @@ describe('CylinderService', () => {
   let movementRepo: jest.Mocked<
     Pick<Repository<CylinderMovement>, 'create' | 'save' | 'find'>
   >;
-  let orderRepo: jest.Mocked<Pick<Repository<Order>, 'findOne'>>;
+  let orderRepo: { findRef: jest.Mock };
 
   const DIST = 'dist-1';
 
   const makeCylinder = (over: Partial<Cylinder> = {}): Cylinder =>
     ({
-      cylinder_id: 'cyl-1',
-      distributor_id: DIST,
+      cylinderId: 'cyl-1',
+      distributorId: DIST,
       serial: 'SN-001',
       state: CylinderState.IN_DEPOT,
       deposit: 0,
-      current_customer_id: null,
-      current_order_id: null,
+      currentCustomerId: null,
+      currentOrderId: null,
       ...over,
     }) as Cylinder;
 
@@ -52,12 +52,12 @@ describe('CylinderService', () => {
         .mockImplementation((e: CylinderMovement) => Promise.resolve(e)),
       find: jest.fn(),
     } as unknown as typeof movementRepo;
-    orderRepo = { findOne: jest.fn() } as unknown as typeof orderRepo;
+    orderRepo = { findRef: jest.fn() };
 
     service = new CylinderService(
       cylinderRepo as unknown as Repository<Cylinder>,
       movementRepo as unknown as Repository<CylinderMovement>,
-      orderRepo as unknown as Repository<Order>,
+      orderRepo as unknown as OrderLookupService,
     );
   });
 
@@ -70,7 +70,7 @@ describe('CylinderService', () => {
 
       expect(cylinderRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          distributor_id: DIST,
+          distributorId: DIST,
           serial: 'SN-001',
           state: CylinderState.IN_DEPOT,
           deposit: 500,
@@ -79,9 +79,9 @@ describe('CylinderService', () => {
       // Movimiento de alta: from null → in_depot.
       expect(movementRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          from_state: null,
-          to_state: CylinderState.IN_DEPOT,
-          distributor_id: DIST,
+          fromState: null,
+          toState: CylinderState.IN_DEPOT,
+          distributorId: DIST,
         }),
       );
     });
@@ -119,9 +119,9 @@ describe('CylinderService', () => {
       expect(result.state).toBe(CylinderState.FILLED);
       expect(movementRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          from_state: CylinderState.IN_DEPOT,
-          to_state: CylinderState.FILLED,
-          actor_user_id: 'actor-1',
+          fromState: CylinderState.IN_DEPOT,
+          toState: CylinderState.FILLED,
+          actorUserId: 'actor-1',
         }),
       );
     });
@@ -147,10 +147,10 @@ describe('CylinderService', () => {
       cylinderRepo.findOne.mockResolvedValue(
         makeCylinder({ state: CylinderState.DISPATCHED }),
       );
-      orderRepo.findOne.mockResolvedValue({
-        order_id: 'ord-1',
-        customer_id: 'cust-9',
-      } as Order);
+      orderRepo.findRef.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: 'cust-9',
+      });
 
       const result = await service.transition(
         'cyl-1',
@@ -161,14 +161,14 @@ describe('CylinderService', () => {
         DIST,
       );
 
-      expect(result.current_customer_id).toBe('cust-9');
+      expect(result.currentCustomerId).toBe('cust-9');
     });
 
     it('al pasar a EMPTY_RETURNED limpia el cliente', async () => {
       cylinderRepo.findOne.mockResolvedValue(
         makeCylinder({
           state: CylinderState.WITH_CUSTOMER,
-          current_customer_id: 'cust-9',
+          currentCustomerId: 'cust-9',
         }),
       );
 
@@ -178,27 +178,48 @@ describe('CylinderService', () => {
         DIST,
       );
 
-      expect(result.current_customer_id).toBeNull();
+      expect(result.currentCustomerId).toBeNull();
+    });
+  });
+
+  describe('transition con pedido de otra distribuidora (H-90)', () => {
+    it('responde 404 y no toma el cliente del pedido ajeno', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.DISPATCHED }),
+      );
+      orderRepo.findRef.mockResolvedValue(null);
+      await expect(
+        service.transition(
+          'cyl-1',
+          {
+            toState: CylinderState.WITH_CUSTOMER,
+            orderId: 'ord-de-otra',
+          } as TransitionCylinderDto,
+          DIST,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(orderRepo.findRef).toHaveBeenCalledWith('ord-de-otra', DIST);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
     });
   });
 
   describe('assignToOrder', () => {
     it('despacha cada envase (FILLED→DISPATCHED) y lo vincula al pedido', async () => {
-      orderRepo.findOne.mockResolvedValue({
-        order_id: 'ord-1',
-        customer_id: 'cust-1',
-      } as Order);
+      orderRepo.findRef.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: 'cust-1',
+      });
       cylinderRepo.findOne
         .mockResolvedValueOnce(
           makeCylinder({
-            cylinder_id: 'cyl-1',
+            cylinderId: 'cyl-1',
             serial: 'SN-001',
             state: CylinderState.FILLED,
           }),
         )
         .mockResolvedValueOnce(
           makeCylinder({
-            cylinder_id: 'cyl-2',
+            cylinderId: 'cyl-2',
             serial: 'SN-002',
             state: CylinderState.FILLED,
           }),
@@ -215,22 +236,31 @@ describe('CylinderService', () => {
       expect(result.every((c) => c.state === CylinderState.DISPATCHED)).toBe(
         true,
       );
-      expect(result.every((c) => c.current_order_id === 'ord-1')).toBe(true);
+      expect(result.every((c) => c.currentOrderId === 'ord-1')).toBe(true);
       expect(movementRepo.save).toHaveBeenCalledTimes(2);
     });
 
     it('lanza 404 si el pedido no existe', async () => {
-      orderRepo.findOne.mockResolvedValue(null);
+      orderRepo.findRef.mockResolvedValue(null);
       await expect(
         service.assignToOrder('nope', ['SN-001'], DIST),
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('busca el pedido dentro de la distribuidora del envase (H-90)', async () => {
+      orderRepo.findRef.mockResolvedValue(null);
+      await expect(
+        service.assignToOrder('ord-de-otra', ['SN-001'], DIST),
+      ).rejects.toThrow(NotFoundException);
+      expect(orderRepo.findRef).toHaveBeenCalledWith('ord-de-otra', DIST);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+    });
+
     it('propaga el 400 si un envase no está FILLED (no se puede despachar)', async () => {
-      orderRepo.findOne.mockResolvedValue({
-        order_id: 'ord-1',
-        customer_id: 'cust-1',
-      } as Order);
+      orderRepo.findRef.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: 'cust-1',
+      });
       cylinderRepo.findOne.mockResolvedValue(
         makeCylinder({ state: CylinderState.IN_DEPOT }),
       );
@@ -245,20 +275,20 @@ describe('CylinderService', () => {
     it('avanza los envases despachados del pedido a WITH_CUSTOMER y devuelve el conteo', async () => {
       cylinderRepo.find.mockResolvedValue([
         makeCylinder({
-          cylinder_id: 'cyl-1',
+          cylinderId: 'cyl-1',
           state: CylinderState.DISPATCHED,
-          current_order_id: 'ord-1',
+          currentOrderId: 'ord-1',
         }),
         makeCylinder({
-          cylinder_id: 'cyl-2',
+          cylinderId: 'cyl-2',
           state: CylinderState.DISPATCHED,
-          current_order_id: 'ord-1',
+          currentOrderId: 'ord-1',
         }),
       ]);
-      orderRepo.findOne.mockResolvedValue({
-        order_id: 'ord-1',
-        customer_id: 'cust-7',
-      } as Order);
+      orderRepo.findRef.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: 'cust-7',
+      });
 
       const count = await service.onOrderDelivered('ord-1', DIST);
 
@@ -267,7 +297,7 @@ describe('CylinderService', () => {
       expect(cylinderRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           state: CylinderState.WITH_CUSTOMER,
-          current_customer_id: 'cust-7',
+          currentCustomerId: 'cust-7',
         }),
       );
     });
@@ -280,7 +310,7 @@ describe('CylinderService', () => {
       expect(count).toBe(0);
       expect(cylinderRepo.save).not.toHaveBeenCalled();
       // Ni siquiera consulta el pedido si no hay envases.
-      expect(orderRepo.findOne).not.toHaveBeenCalled();
+      expect(orderRepo.findRef).not.toHaveBeenCalled();
     });
   });
 });

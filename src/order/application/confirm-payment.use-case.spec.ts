@@ -38,17 +38,16 @@ describe('ConfirmPaymentUseCase', () => {
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
 
   const fullOrder = {
-    order_id: 'ord-1',
+    orderId: 'ord-1',
     paymentStatus: PaymentStatus.PENDING,
     gatewayPaymentId: null,
-    deliveryLatitude: '-34.6',
-    deliveryLongitude: '-58.4',
+    deliveryPoint: { type: 'Point', coordinates: [-58.4, -34.6] },
     items: [],
   } as unknown as Order;
 
   beforeEach(() => {
     lockedOrder = {
-      order_id: 'ord-1',
+      orderId: 'ord-1',
       paymentStatus: PaymentStatus.PENDING,
       gatewayPaymentId: null,
     };

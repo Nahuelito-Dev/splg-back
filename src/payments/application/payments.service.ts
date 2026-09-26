@@ -80,13 +80,13 @@ export class PaymentsService {
   ): Promise<CreateCheckoutResult> {
     const ledgerPayment = await this.paymentRepository.save(
       this.paymentRepository.create({
-        order_id: input.orderId,
-        distributor_id: input.distributorId ?? null,
+        orderId: input.orderId,
+        distributorId: input.distributorId ?? null,
         gateway: PaymentGateway.MERCADOPAGO,
         integration: PaymentIntegration.CHECKOUT_PRO,
-        external_reference: input.orderId,
+        externalReference: input.orderId,
         amount: input.amount,
-        is_deposit: input.isDeposit,
+        isDeposit: input.isDeposit,
         status: LedgerPaymentStatus.PENDING,
       }),
     );
@@ -97,7 +97,7 @@ export class PaymentsService {
       payerEmail: input.payerEmail,
     });
 
-    ledgerPayment.payment_url = checkout.initPoint;
+    ledgerPayment.paymentUrl = checkout.initPoint;
     ledgerPayment.metadata = { preferenceId: checkout.preferenceId };
     await this.paymentRepository.save(ledgerPayment);
 
@@ -162,14 +162,14 @@ export class PaymentsService {
    */
   private async updateLedger(gatewayPayment: GatewayPayment): Promise<boolean> {
     let ledgerPayment = await this.paymentRepository.findOne({
-      where: { gateway_payment_id: gatewayPayment.id },
+      where: { gatewayPaymentId: gatewayPayment.id },
     });
 
     if (!ledgerPayment) {
       ledgerPayment = await this.paymentRepository.findOne({
         where: {
-          external_reference: gatewayPayment.externalReference ?? undefined,
-          gateway_payment_id: IsNull(),
+          externalReference: gatewayPayment.externalReference ?? undefined,
+          gatewayPaymentId: IsNull(),
         },
         order: { createdAt: 'DESC' },
       });
@@ -184,7 +184,7 @@ export class PaymentsService {
       return false;
     }
 
-    ledgerPayment.gateway_payment_id = gatewayPayment.id;
+    ledgerPayment.gatewayPaymentId = gatewayPayment.id;
     ledgerPayment.status = this.toLedgerStatus(gatewayPayment.status);
     ledgerPayment.metadata = {
       ...(ledgerPayment.metadata ?? {}),
@@ -192,7 +192,7 @@ export class PaymentsService {
     };
     await this.paymentRepository.save(ledgerPayment);
 
-    return ledgerPayment.is_deposit;
+    return ledgerPayment.isDeposit;
   }
 
   private toLedgerStatus(gatewayStatus: string): LedgerPaymentStatus {

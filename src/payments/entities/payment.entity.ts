@@ -31,12 +31,15 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 @Entity('payment')
 export class Payment {
   @PrimaryGeneratedColumn('uuid', { name: 'payment_id' })
-  payment_id!: string;
+  paymentId!: string;
 
   /** Pedido al que pertenece este intento de cobro. */
   @Index()
-  @Column({ type: 'uuid' })
-  order_id!: string;
+  @Column({
+    name: 'order_id',
+    type: 'uuid',
+  })
+  orderId!: string;
 
   /** Registro contable: borrar el pedido no puede llevarse sus pagos. */
   @ManyToOne(() => Order, { nullable: false, onDelete: 'RESTRICT' })
@@ -45,8 +48,12 @@ export class Payment {
 
   /** Tenant dueño del pago (igual que el pedido). Nullable hasta backfill. */
   @Index()
-  @Column({ type: 'uuid', nullable: true })
-  distributor_id!: string | null;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  distributorId!: string | null;
 
   @ManyToOne(() => Distributor, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
@@ -70,12 +77,21 @@ export class Payment {
    * del ledger, igual que el índice análogo en `order.gatewayPaymentId`.
    */
   @Index({ unique: true, where: '"gateway_payment_id" IS NOT NULL' })
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  gateway_payment_id!: string | null;
+  @Column({
+    name: 'gateway_payment_id',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  gatewayPaymentId!: string | null;
 
   /** Referencia externa enviada a la pasarela (= order_id). */
-  @Column({ type: 'varchar', nullable: true })
-  external_reference!: string | null;
+  @Column({
+    name: 'external_reference',
+    type: 'varchar',
+    nullable: true,
+  })
+  externalReference!: string | null;
 
   @Column({
     type: 'decimal',
@@ -96,12 +112,20 @@ export class Payment {
   status!: LedgerPaymentStatus;
 
   /** URL de checkout devuelta por la pasarela (Checkout Pro init_point). */
-  @Column({ type: 'text', nullable: true })
-  payment_url!: string | null;
+  @Column({
+    name: 'payment_url',
+    type: 'text',
+    nullable: true,
+  })
+  paymentUrl!: string | null;
 
   /** true = este intento cobra la SEÑA de una reserva, no el pedido completo. */
-  @Column({ type: 'boolean', default: false })
-  is_deposit!: boolean;
+  @Column({
+    name: 'is_deposit',
+    type: 'boolean',
+    default: false,
+  })
+  isDeposit!: boolean;
 
   /** Datos crudos/auxiliares de la pasarela (preferenceId, status crudo, etc.). */
   @Column({ type: 'jsonb', nullable: true })

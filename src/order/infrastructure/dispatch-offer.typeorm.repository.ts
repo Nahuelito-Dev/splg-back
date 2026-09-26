@@ -24,9 +24,9 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     distributorId?: string | null,
   ): Promise<DispatchOffer> {
     const offer = this.repo.create({
-      order_id: orderId,
-      driver_id: driverId,
-      distributor_id: distributorId ?? undefined,
+      orderId,
+      driverId,
+      distributorId: distributorId ?? undefined,
       expiresAt,
       status: DispatchOfferStatus.OFFERED,
     });
@@ -35,15 +35,15 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
 
   async findOfferedDriverIds(orderId: string): Promise<string[]> {
     const rows = await this.repo.find({
-      where: { order_id: orderId },
-      select: { driver_id: true },
+      where: { orderId },
+      select: { driverId: true },
     });
-    return rows.map((r) => r.driver_id);
+    return rows.map((r) => r.driverId);
   }
 
   async hasActiveOffer(orderId: string): Promise<boolean> {
     const count = await this.repo.count({
-      where: { order_id: orderId, status: DispatchOfferStatus.OFFERED },
+      where: { orderId, status: DispatchOfferStatus.OFFERED },
     });
     return count > 0;
   }
@@ -62,7 +62,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     offerId: string,
     status: DispatchOfferStatus,
   ): Promise<void> {
-    await this.repo.update({ offer_id: offerId }, { status });
+    await this.repo.update({ offerId }, { status });
   }
 
   async closeActiveOffer(
@@ -72,8 +72,8 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
   ): Promise<boolean> {
     const result = await this.repo.update(
       {
-        order_id: orderId,
-        driver_id: driverId,
+        orderId,
+        driverId,
         status: DispatchOfferStatus.OFFERED,
       },
       { status },

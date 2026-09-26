@@ -4,8 +4,8 @@ import { TimeSlotResponseDto } from './dto/time-slot-response.dto';
 export class TimeSlotMapper {
   static toDto(t: TimeSlot): TimeSlotResponseDto {
     const dto = new TimeSlotResponseDto();
-    dto.time_slot_id = t.time_slot_id;
-    dto.distributor_id = t.distributor_id;
+    dto.time_slot_id = t.timeSlotId;
+    dto.distributor_id = t.distributorId;
     dto.name = t.name;
     dto.startTime = t.startTime;
     dto.endTime = t.endTime;

@@ -72,7 +72,7 @@ export class SocketIdentityService {
     }
 
     const identidad: IdentidadDeSocket = {
-      userId: user.user_id,
+      userId: user.userId,
       email,
       // Un usuario sin rol no puede operar: el gateway lo rechaza por rol.
       role: user.role?.type as RoleType,

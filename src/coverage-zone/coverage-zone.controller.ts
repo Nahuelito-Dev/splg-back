@@ -16,6 +16,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { CoverageZoneService } from './coverage-zone.service';
 import { CoverageZoneMapper } from './coverage-zone.mapper';
@@ -41,6 +42,10 @@ export class CoverageZoneController {
     summary: 'Crear una zona de cobertura (polígono) de la distribuidora',
   })
   @ApiCreatedResponse({ type: CoverageZoneResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: polygon: tiene que ser una lista de puntos; polygon must contain at least 3 elements)',
+  })
   async create(
     @Body() dto: CreateCoverageZoneDto,
     @CurrentDistributor({ required: true }) distributorId: string,

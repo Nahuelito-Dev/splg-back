@@ -6,12 +6,12 @@ import { UserMapper } from '../users/user.mapper';
 export class DeliveryMapper {
   static toDto(d: Delivery): DeliveryResponseDto {
     const dto = new DeliveryResponseDto();
-    dto.delivery_id = d.delivery_id;
-    dto.distributor_id = d.distributor_id;
-    dto.user_id = d.user_id;
+    dto.delivery_id = d.deliveryId;
+    dto.distributor_id = d.distributorId;
+    dto.user_id = d.userId;
     dto.calification = d.calification ?? null;
     dto.latLng = latLngDesdePunto(d.location);
-    dto.actual_location = d.actual_location ?? null;
+    dto.actual_location = d.actualLocation ?? null;
     dto.cancelledCharge = d.cancelledCharge ?? null;
     dto.validated = d.validated;
     dto.isActive = d.isActive;

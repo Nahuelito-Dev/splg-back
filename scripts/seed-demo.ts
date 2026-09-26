@@ -46,7 +46,8 @@ const azar = (): number => {
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
-const entre = (min: number, max: number) => min + Math.floor(azar() * (max - min + 1));
+const entre = (min: number, max: number) =>
+  min + Math.floor(azar() * (max - min + 1));
 const alguno = <T>(xs: readonly T[]): T => xs[Math.floor(azar() * xs.length)];
 /** true con probabilidad p. */
 const quizas = (p: number) => azar() < p;
@@ -55,24 +56,98 @@ const quizas = (p: number) => azar() < p;
 // Datos de referencia: Posadas, Misiones.
 // ─────────────────────────────────────────────────────────────────────────────
 const NOMBRES = [
-  'Sofía', 'Mateo', 'Valentina', 'Benjamín', 'Camila', 'Thiago', 'Martina',
-  'Lautaro', 'Emilia', 'Joaquín', 'Catalina', 'Bautista', 'Julieta', 'Santino',
-  'Renata', 'Ignacio', 'Delfina', 'Tomás', 'Guadalupe', 'Facundo', 'Agustina',
-  'Lorenzo', 'Pilar', 'Ramiro', 'Zoe', 'Nicolás', 'Abril', 'Franco', 'Malena',
+  'Sofía',
+  'Mateo',
+  'Valentina',
+  'Benjamín',
+  'Camila',
+  'Thiago',
+  'Martina',
+  'Lautaro',
+  'Emilia',
+  'Joaquín',
+  'Catalina',
+  'Bautista',
+  'Julieta',
+  'Santino',
+  'Renata',
+  'Ignacio',
+  'Delfina',
+  'Tomás',
+  'Guadalupe',
+  'Facundo',
+  'Agustina',
+  'Lorenzo',
+  'Pilar',
+  'Ramiro',
+  'Zoe',
+  'Nicolás',
+  'Abril',
+  'Franco',
+  'Malena',
   'Gonzalo',
 ];
 const APELLIDOS = [
-  'Gómez', 'Fernández', 'Rodríguez', 'López', 'Martínez', 'Sosa', 'Benítez',
-  'Acosta', 'Silva', 'Cabrera', 'Ramírez', 'Duarte', 'Villalba', 'Ojeda',
-  'Vera', 'Aguirre', 'Escobar', 'Maidana', 'Ferreyra', 'Zaracho', 'Insaurralde',
-  'Rojas', 'Coronel', 'Britos', 'Almirón', 'Núñez', 'Paredes', 'Segovia',
+  'Gómez',
+  'Fernández',
+  'Rodríguez',
+  'López',
+  'Martínez',
+  'Sosa',
+  'Benítez',
+  'Acosta',
+  'Silva',
+  'Cabrera',
+  'Ramírez',
+  'Duarte',
+  'Villalba',
+  'Ojeda',
+  'Vera',
+  'Aguirre',
+  'Escobar',
+  'Maidana',
+  'Ferreyra',
+  'Zaracho',
+  'Insaurralde',
+  'Rojas',
+  'Coronel',
+  'Britos',
+  'Almirón',
+  'Núñez',
+  'Paredes',
+  'Segovia',
 ];
 const CALLES = [
-  'Bolívar', 'Ayacucho', 'Junín', 'Córdoba', 'Colón', 'San Lorenzo',
-  'Buenos Aires', 'La Rioja', 'Sarmiento', 'Tucumán', 'Santa Fe', 'Entre Ríos',
-  'Corrientes', 'Salta', 'Jujuy', 'Catamarca', 'San Martín', 'Uruguay',
-  'Rivadavia', 'Mitre', 'Belgrano', 'French', 'Alberdi', 'Azara', 'Tacuarí',
-  'Chacabuco', 'Alvear', 'Roque Pérez', 'Larrea', 'Santiago del Estero',
+  'Bolívar',
+  'Ayacucho',
+  'Junín',
+  'Córdoba',
+  'Colón',
+  'San Lorenzo',
+  'Buenos Aires',
+  'La Rioja',
+  'Sarmiento',
+  'Tucumán',
+  'Santa Fe',
+  'Entre Ríos',
+  'Corrientes',
+  'Salta',
+  'Jujuy',
+  'Catamarca',
+  'San Martín',
+  'Uruguay',
+  'Rivadavia',
+  'Mitre',
+  'Belgrano',
+  'French',
+  'Alberdi',
+  'Azara',
+  'Tacuarí',
+  'Chacabuco',
+  'Alvear',
+  'Roque Pérez',
+  'Larrea',
+  'Santiago del Estero',
 ];
 const INDICACIONES = [
   'Portón negro, tocar timbre dos veces',
@@ -91,31 +166,71 @@ const INDICACIONES = [
  * si mañana se crea un pedido desde la app, la validación pasa.
  */
 const BARRIOS = [
-  { nombre: 'Centro', lngMin: -55.91, lngMax: -55.88, latMin: -27.38, latMax: -27.355, recargo: 0 },
-  { nombre: 'Villa Cabello', lngMin: -55.94, lngMax: -55.905, latMin: -27.41, latMax: -27.38, recargo: 900 },
-  { nombre: 'Itaembé Miní', lngMin: -55.99, lngMax: -55.94, latMin: -27.43, latMax: -27.39, recargo: 1800 },
+  {
+    nombre: 'Centro',
+    lngMin: -55.91,
+    lngMax: -55.88,
+    latMin: -27.38,
+    latMax: -27.355,
+    recargo: 0,
+  },
+  {
+    nombre: 'Villa Cabello',
+    lngMin: -55.94,
+    lngMax: -55.905,
+    latMin: -27.41,
+    latMax: -27.38,
+    recargo: 900,
+  },
+  {
+    nombre: 'Itaembé Miní',
+    lngMin: -55.99,
+    lngMax: -55.94,
+    latMin: -27.43,
+    latMax: -27.39,
+    recargo: 1800,
+  },
 ];
 
 /** El catálogo que pidió el negocio: 5, 10, 15 y 25 kg. */
 const CATALOGO = [
   {
-    type: 'Garrafa 5kg', weight: 5, price: 8500, stock: 140,
-    description: 'Envase de 5 kg. El más chico, para consumo puntual, camping o un anafe.',
+    type: 'Garrafa 5kg',
+    weight: 5,
+    price: 8500,
+    stock: 140,
+    description:
+      'Envase de 5 kg. El más chico, para consumo puntual, camping o un anafe.',
     promotions: [{ quantity: 4, discountPercentage: 8 }],
   },
   {
-    type: 'Garrafa 10kg', weight: 10, price: 14900, stock: 260,
-    description: 'Envase de 10 kg. El de mayor rotación: cocina y calefacción de un hogar chico.',
-    promotions: [{ quantity: 2, discountPercentage: 5 }, { quantity: 4, discountPercentage: 12 }],
+    type: 'Garrafa 10kg',
+    weight: 10,
+    price: 14900,
+    stock: 260,
+    description:
+      'Envase de 10 kg. El de mayor rotación: cocina y calefacción de un hogar chico.',
+    promotions: [
+      { quantity: 2, discountPercentage: 5 },
+      { quantity: 4, discountPercentage: 12 },
+    ],
   },
   {
-    type: 'Garrafa 15kg', weight: 15, price: 21500, stock: 95,
-    description: 'Envase de 15 kg. Familias grandes y comercios con consumo sostenido.',
+    type: 'Garrafa 15kg',
+    weight: 15,
+    price: 21500,
+    stock: 95,
+    description:
+      'Envase de 15 kg. Familias grandes y comercios con consumo sostenido.',
     promotions: [{ quantity: 2, discountPercentage: 7 }],
   },
   {
-    type: 'Garrafa 25kg', weight: 25, price: 34000, stock: 40,
-    description: 'Envase de 25 kg. Uso comercial: parrillas, panaderías y hotelería.',
+    type: 'Garrafa 25kg',
+    weight: 25,
+    price: 34000,
+    stock: 40,
+    description:
+      'Envase de 25 kg. Uso comercial: parrillas, panaderías y hotelería.',
     promotions: [{ quantity: 3, discountPercentage: 10 }],
   },
 ] as const;
@@ -189,11 +304,19 @@ async function main() {
   // El orden respeta las claves foráneas: primero lo que depende, después lo
   // que sostiene. Los usuarios con login (los que tienen firebase_uid) no se
   // tocan, porque volver a crearlos exigiría entrar a Firebase.
-  await limpiar(q, distId);
+  // Primero las otras distribuidoras: sus pedidos apuntan a clientes y
+  // direcciones que la limpieza quiere borrar, y con las claves foráneas
+  // declaradas el borrado fallaba.
   if (SOLO_UNA) await borrarOtrasDistribuidoras(q, distId);
+  await limpiar(q, distId);
 
   // ── 3. Catálogo ────────────────────────────────────────────────────────────
-  const productos: Array<{ id: string; type: string; price: number; weight: number }> = [];
+  const productos: Array<{
+    id: string;
+    type: string;
+    price: number;
+    weight: number;
+  }> = [];
   for (const p of CATALOGO) {
     const [row] = await q(
       `INSERT INTO gas_cylinder
@@ -209,7 +332,12 @@ async function main() {
         [row.gas_cylinder_id, promo.quantity, promo.discountPercentage],
       );
     }
-    productos.push({ id: row.gas_cylinder_id, type: p.type, price: p.price, weight: p.weight });
+    productos.push({
+      id: row.gas_cylinder_id,
+      type: p.type,
+      price: p.price,
+      weight: p.weight,
+    });
   }
   resumen.push(['gas_cylinder (catálogo)', productos.length]);
 
@@ -228,31 +356,49 @@ async function main() {
   // ── 5. Zonas de cobertura ──────────────────────────────────────────────────
   for (const b of BARRIOS) {
     const anillo = [
-      [b.lngMin, b.latMin], [b.lngMax, b.latMin],
-      [b.lngMax, b.latMax], [b.lngMin, b.latMax], [b.lngMin, b.latMin],
+      [b.lngMin, b.latMin],
+      [b.lngMax, b.latMin],
+      [b.lngMax, b.latMax],
+      [b.lngMin, b.latMax],
+      [b.lngMin, b.latMin],
     ];
     await q(
       `INSERT INTO coverage_zone (distributor_id, name, area, surcharge, "isActive")
        VALUES ($1,$2, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), $4, true)`,
-      [distId, b.nombre, JSON.stringify({ type: 'Polygon', coordinates: [anillo] }), b.recargo],
+      [
+        distId,
+        b.nombre,
+        JSON.stringify({ type: 'Polygon', coordinates: [anillo] }),
+        b.recargo,
+      ],
     );
   }
   resumen.push(['coverage_zone (zonas)', BARRIOS.length]);
 
   // ── 6. Clientes ────────────────────────────────────────────────────────────
-  const [rolCliente] = await q(`SELECT role_id FROM role WHERE type = 'customer'`);
+  const [rolCliente] = await q(
+    `SELECT role_id FROM role WHERE type = 'customer'`,
+  );
   const clientes = await sembrarClientes(q, rolCliente?.role_id ?? null);
   resumen.push(['customer (clientes)', clientes.length]);
-  resumen.push(
-    ['user_address (direcciones)', clientes.reduce((n, c) => n + c.direcciones.length, 0)],
-  );
+  resumen.push([
+    'user_address (direcciones)',
+    clientes.reduce((n, c) => n + c.direcciones.length, 0),
+  ]);
 
   // ── 7. Choferes ────────────────────────────────────────────────────────────
   const choferes = await sembrarChoferes(q, distId);
   resumen.push(['delivery (choferes)', choferes.length]);
 
   // ── 8. Pedidos y todo lo que cuelga de ellos ───────────────────────────────
-  const pedidos = await sembrarPedidos(q, distId, clientes, productos, franjas, choferes);
+  const pedidos = await sembrarPedidos(
+    q,
+    distId,
+    clientes,
+    productos,
+    franjas,
+    choferes,
+  );
   await sembrarReclamos(q, distId, pedidos);
   await sembrarIncidencias(q, distId, pedidos, choferes);
   await sembrarCalificaciones(q, distId, pedidos);
@@ -294,7 +440,9 @@ interface PedidoSembrado {
 async function limpiar(q: Q, distId: string) {
   await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [distId]);
+  await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [
+    distId,
+  ]);
   await q(`DELETE FROM rating WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM incident WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM claims WHERE distributor_id = $1`, [distId]);
@@ -316,16 +464,26 @@ async function limpiar(q: Q, distId: string) {
   );
   // Las direcciones se borran todas, incluidas las del cliente con login: son
   // datos de demostración y si no, se acumulan una tanda nueva por corrida.
-  // Los pedidos que las referenciaban ya se fueron unas líneas más arriba.
+  // Quedan las que usa un pedido de otra distribuidora (con
+  // SEED_SINGLE_TENANT=false): la clave foránea no deja borrarlas.
   await q(
-    `DELETE FROM user_address
-      WHERE user_id IN (SELECT user_id FROM customer)`,
+    `DELETE FROM user_address a
+      WHERE a.user_id IN (SELECT user_id FROM customer)
+        AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.address_id = a.address_id)`,
+  );
+  const sinPedidos = `NOT EXISTS (SELECT 1 FROM "order" o WHERE o.customer_id = u.user_id)`;
+  await q(
+    `DELETE FROM customer c
+      USING "user" u
+      WHERE c.user_id = u.user_id AND u.firebase_uid IS NULL AND ${sinPedidos}`,
   );
   await q(
-    `DELETE FROM customer
-      WHERE user_id IN (SELECT user_id FROM "user" WHERE firebase_uid IS NULL)`,
+    `DELETE FROM "user" u
+      WHERE u.firebase_uid IS NULL AND ${sinPedidos}
+        AND NOT EXISTS (SELECT 1 FROM customer c WHERE c.user_id = u.user_id)
+        AND NOT EXISTS (SELECT 1 FROM delivery d WHERE d.user_id = u.user_id)
+        AND NOT EXISTS (SELECT 1 FROM user_address a WHERE a.user_id = u.user_id)`,
   );
-  await q(`DELETE FROM "user" WHERE firebase_uid IS NULL`);
 
   // Con 0 choferes pedidos, los perfiles que quedaron de corridas anteriores
   // también se van; el usuario sobrevive en Firebase y puede volver a darse de
@@ -373,7 +531,10 @@ async function borrarOtrasDistribuidoras(q: Q, distId: string) {
   }
 }
 
-async function sembrarClientes(q: Q, roleId: string | null): Promise<ClienteSembrado[]> {
+async function sembrarClientes(
+  q: Q,
+  roleId: string | null,
+): Promise<ClienteSembrado[]> {
   const clientes: ClienteSembrado[] = [];
 
   // El cliente con login real ya existe; entra como uno más de los 25 para que
@@ -406,7 +567,16 @@ async function sembrarClientes(q: Q, roleId: string | null): Promise<ClienteSemb
          (role_id, full_name, email, phone_number, phone_verified, email_verified, blocked, "createdAt")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING user_id`,
-      [roleId, nombre, email, telefono, quizas(0.7), quizas(0.85), quizas(0.06), alta],
+      [
+        roleId,
+        nombre,
+        email,
+        telefono,
+        quizas(0.7),
+        quizas(0.85),
+        quizas(0.06),
+        alta,
+      ],
     );
     await q(
       `INSERT INTO customer (user_id, validated, "createdAt")
@@ -431,9 +601,13 @@ async function sembrarClientes(q: Q, roleId: string | null): Promise<ClienteSemb
          VALUES ($1,$2,'Posadas','3300',ST_SetSRID(ST_MakePoint($4,$3),4326),$5,$6,$7)
          RETURNING address_id`,
         [
-          c.userId, calle, Number(lat.toFixed(6)), Number(lng.toFixed(6)),
+          c.userId,
+          calle,
+          Number(lat.toFixed(6)),
+          Number(lng.toFixed(6)),
           `${calle}, ${b.nombre}, Posadas, Misiones`,
-          n === 0, alguno(INDICACIONES),
+          n === 0,
+          alguno(INDICACIONES),
         ],
       );
       c.direcciones.push({ id: a.address_id, lat, lng, recargo: b.recargo });
@@ -448,16 +622,47 @@ async function sembrarClientes(q: Q, roleId: string | null): Promise<ClienteSemb
  * los crea, con vehículo, y habilita las tablas que dependen de ellos.
  */
 async function sembrarChoferes(q: Q, distId: string) {
-  const choferes: Array<{ deliveryId: string; userId: string; nombre: string }> = [];
+  const choferes: Array<{
+    deliveryId: string;
+    userId: string;
+    nombre: string;
+  }> = [];
   if (CANT_CHOFERES <= 0) return choferes;
 
-  const [rolChofer] = await q(`SELECT role_id FROM role WHERE type = 'delivery'`);
+  const [rolChofer] = await q(
+    `SELECT role_id FROM role WHERE type = 'delivery'`,
+  );
   const VEHICULOS = [
-    { type_car: 'Camioneta', car_brand: 'Toyota', car_model: 'Hilux', car_capacity: 900 },
-    { type_car: 'Camioneta', car_brand: 'Ford', car_model: 'Ranger', car_capacity: 850 },
-    { type_car: 'Utilitario', car_brand: 'Renault', car_model: 'Kangoo', car_capacity: 600 },
-    { type_car: 'Camión', car_brand: 'Iveco', car_model: 'Daily', car_capacity: 2500 },
-    { type_car: 'Utilitario', car_brand: 'Fiat', car_model: 'Fiorino', car_capacity: 500 },
+    {
+      type_car: 'Camioneta',
+      car_brand: 'Toyota',
+      car_model: 'Hilux',
+      car_capacity: 900,
+    },
+    {
+      type_car: 'Camioneta',
+      car_brand: 'Ford',
+      car_model: 'Ranger',
+      car_capacity: 850,
+    },
+    {
+      type_car: 'Utilitario',
+      car_brand: 'Renault',
+      car_model: 'Kangoo',
+      car_capacity: 600,
+    },
+    {
+      type_car: 'Camión',
+      car_brand: 'Iveco',
+      car_model: 'Daily',
+      car_capacity: 2500,
+    },
+    {
+      type_car: 'Utilitario',
+      car_brand: 'Fiat',
+      car_model: 'Fiorino',
+      car_capacity: 500,
+    },
   ];
 
   for (let i = 1; i <= CANT_CHOFERES; i++) {
@@ -467,8 +672,10 @@ async function sembrarChoferes(q: Q, distId: string) {
          (role_id, full_name, email, phone_number, phone_verified, email_verified, "createdAt")
        VALUES ($1,$2,$3,$4,true,true,$5) RETURNING user_id`,
       [
-        rolChofer?.role_id ?? null, nombre,
-        `chofer${i}@demo.splg.com`, `+54376${String(4700000 + i).slice(0, 7)}`,
+        rolChofer?.role_id ?? null,
+        nombre,
+        `chofer${i}@demo.splg.com`,
+        `+54376${String(4700000 + i).slice(0, 7)}`,
         diasAtras(entre(120, 300)),
       ],
     );
@@ -478,8 +685,12 @@ async function sembrarChoferes(q: Q, distId: string) {
          (distributor_id, user_id, validated, "isActive", calification, balance, location, "createdAt")
        VALUES ($1,$2,true,true,$3,$4,ST_SetSRID(ST_MakePoint($6,$5),4326),$7) RETURNING delivery_id`,
       [
-        distId, u.user_id, Number((3.6 + azar() * 1.4).toFixed(2)), entre(0, 45000),
-        Number((b.latMin + azar() * 0.02).toFixed(6)), Number((b.lngMin + azar() * 0.02).toFixed(6)),
+        distId,
+        u.user_id,
+        Number((3.6 + azar() * 1.4).toFixed(2)),
+        entre(0, 45000),
+        Number((b.latMin + azar() * 0.02).toFixed(6)),
+        Number((b.lngMin + azar() * 0.02).toFixed(6)),
         diasAtras(entre(120, 300)),
       ],
     );
@@ -490,9 +701,14 @@ async function sembrarChoferes(q: Q, distId: string) {
           car_model, car_year, car_color)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
-        distId, u.user_id, v.type_car, v.car_capacity,
+        distId,
+        u.user_id,
+        v.type_car,
+        v.car_capacity,
         `AB${String(100 + i)}${String.fromCharCode(65 + i)}${String.fromCharCode(70 + i)}`,
-        v.car_brand, v.car_model, entre(2014, 2024),
+        v.car_brand,
+        v.car_model,
+        entre(2014, 2024),
         alguno(['Blanco', 'Gris', 'Negro', 'Rojo']),
       ],
     );
@@ -528,12 +744,16 @@ async function sembrarPedidos(
     else if (dado < 0.82) estado = 'pending';
     else if (dado < 0.9) estado = 'cancelled';
     else if (dado < 0.96) estado = 'reserved';
-    else estado = choferes.length ? alguno(['accepted', 'on_the_way']) : 'pending';
+    else
+      estado = choferes.length ? alguno(['accepted', 'on_the_way']) : 'pending';
 
-    const creado = estado === 'reserved' ? diasAtras(entre(0, 4)) : diasAtras(entre(0, 89));
+    const creado =
+      estado === 'reserved' ? diasAtras(entre(0, 4)) : diasAtras(entre(0, 89));
 
     // Items: entre uno y tres productos distintos.
-    const elegidos = [...productos].sort(() => azar() - 0.5).slice(0, entre(1, 3));
+    const elegidos = [...productos]
+      .sort(() => azar() - 0.5)
+      .slice(0, entre(1, 3));
     let subtotal = 0;
     const detalle = elegidos.map((p) => {
       const cantidad = p.weight >= 25 ? entre(1, 2) : entre(1, 4);
@@ -546,48 +766,78 @@ async function sembrarPedidos(
     const metodo = alguno(['cash', 'mercadopago', 'transfer'] as const);
     const tipoPago = metodo === 'cash' ? 'cash' : 'online';
     let estadoPago: string;
-    if (estado === 'delivered') estadoPago = metodo === 'cash' ? 'paid' : quizas(0.94) ? 'paid' : 'failed';
-    else if (estado === 'cancelled') estadoPago = quizas(0.25) ? 'failed' : 'pending';
-    else estadoPago = metodo === 'cash' ? 'pending' : quizas(0.5) ? 'paid' : 'pending';
+    if (estado === 'delivered')
+      estadoPago =
+        metodo === 'cash' ? 'paid' : quizas(0.94) ? 'paid' : 'failed';
+    else if (estado === 'cancelled')
+      estadoPago = quizas(0.25) ? 'failed' : 'pending';
+    else
+      estadoPago =
+        metodo === 'cash' ? 'pending' : quizas(0.5) ? 'paid' : 'pending';
 
     const esReserva = estado === 'reserved';
     const sena = esReserva ? Math.round(total * 0.3) : 0;
 
-    const chofer = ['accepted', 'on_the_way', 'delivered'].includes(estado) && choferes.length
-      ? alguno(choferes)
-      : null;
+    const chofer =
+      ['accepted', 'on_the_way', 'delivered'].includes(estado) &&
+      choferes.length
+        ? alguno(choferes)
+        : null;
 
     const aceptado = ['accepted', 'on_the_way', 'delivered'].includes(estado)
       ? masMinutos(creado, entre(2, 18))
       : null;
-    const enCamino = ['on_the_way', 'delivered'].includes(estado) && aceptado
-      ? masMinutos(aceptado, entre(5, 30))
-      : null;
-    const entregado = estado === 'delivered' && enCamino
-      ? masMinutos(enCamino, entre(10, 55))
-      : estado === 'delivered'
-        ? masMinutos(creado, entre(35, 120))
+    const enCamino =
+      ['on_the_way', 'delivered'].includes(estado) && aceptado
+        ? masMinutos(aceptado, entre(5, 30))
         : null;
+    const entregado =
+      estado === 'delivered' && enCamino
+        ? masMinutos(enCamino, entre(10, 55))
+        : estado === 'delivered'
+          ? masMinutos(creado, entre(35, 120))
+          : null;
 
     const [o] = await q(
       `INSERT INTO "order"
          (distributor_id, customer_id, delivery_id, time_slot_id, scheduled_date,
           deposit_amount, deposit_paid, address_id, status, "paymentMethod",
           "paymentType", "paymentStatus", "totalAmount", notes, "deliveryInstructions",
-          "deliveryLatitude", "deliveryLongitude", "acceptedAt", "onTheWayAt",
+          "deliveryPoint", "acceptedAt", "onTheWayAt",
           "deliveredAt", "createdAt", "updatedAt", "cancellationReason", "deliveryCode")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+               ST_SetSRID(ST_MakePoint($17::float8, $16::float8), 4326),
+               $18,$19,$20,$21,$22,$23,$24)
        RETURNING order_id`,
       [
-        distId, cliente.userId, chofer?.deliveryId ?? null,
+        distId,
+        cliente.userId,
+        chofer?.deliveryId ?? null,
         quizas(0.85) ? alguno(franjas) : null,
         esReserva ? soloFecha(diasAtras(-entre(1, 12))) : null,
-        sena, esReserva ? quizas(0.7) : false,
-        dir.id, estado, metodo, tipoPago, estadoPago, total,
-        quizas(0.25) ? alguno(['Tocar bocina', 'Dejar con el encargado', 'Urgente, se quedaron sin gas']) : null,
+        sena,
+        esReserva ? quizas(0.7) : false,
+        dir.id,
+        estado,
+        metodo,
+        tipoPago,
+        estadoPago,
+        total,
+        quizas(0.25)
+          ? alguno([
+              'Tocar bocina',
+              'Dejar con el encargado',
+              'Urgente, se quedaron sin gas',
+            ])
+          : null,
         quizas(0.3) ? alguno(INDICACIONES) : null,
-        dir.lat.toFixed(6), dir.lng.toFixed(6),
-        aceptado, enCamino, entregado, creado, entregado ?? aceptado ?? creado,
+        dir.lat.toFixed(6),
+        dir.lng.toFixed(6),
+        aceptado,
+        enCamino,
+        entregado,
+        creado,
+        entregado ?? aceptado ?? creado,
         estado === 'cancelled' ? alguno(MOTIVOS_CANCELACION) : null,
         aceptado ? String(entre(100000, 999999)) : null,
       ],
@@ -613,14 +863,22 @@ async function sembrarPedidos(
             metadata, "createdAt", "updatedAt")
          VALUES ($1,$2,'mercadopago','checkout_pro',$3,$4,$5,$6,'ARS',$7,$8,$9,$10::jsonb,$11,$12)`,
         [
-          o.order_id, distId,
+          o.order_id,
+          distId,
           alguno(['credit_card', 'debit_card', 'account_money']),
-          idPasarela, o.order_id, esReserva ? sena : total,
-          aprobado ? 'approved' : estadoPago === 'failed' ? 'rejected' : 'pending',
+          idPasarela,
+          o.order_id,
+          esReserva ? sena : total,
+          aprobado
+            ? 'approved'
+            : estadoPago === 'failed'
+              ? 'rejected'
+              : 'pending',
           `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=demo-${n}`,
           esReserva,
           JSON.stringify({ preferenceId: `demo-pref-${n}`, seed: true }),
-          creado, entregado ?? creado,
+          creado,
+          entregado ?? creado,
         ],
       );
       pagos += 1;
@@ -636,8 +894,14 @@ async function sembrarPedidos(
           `INSERT INTO order_dispatch_offer
              (distributor_id, order_id, driver_id, status, "expiresAt", "offeredAt")
            VALUES ($1,$2,$3,$4,$5,$6)`,
-          [distId, o.order_id, otro.userId, alguno(['rejected', 'expired']),
-            masMinutos(ofrecidoEl, 1), ofrecidoEl],
+          [
+            distId,
+            o.order_id,
+            otro.userId,
+            alguno(['rejected', 'expired']),
+            masMinutos(ofrecidoEl, 1),
+            ofrecidoEl,
+          ],
         );
         ofertas += 1;
       }
@@ -645,15 +909,25 @@ async function sembrarPedidos(
         `INSERT INTO order_dispatch_offer
            (distributor_id, order_id, driver_id, status, "expiresAt", "offeredAt")
          VALUES ($1,$2,$3,'accepted',$4,$5)`,
-        [distId, o.order_id, chofer.userId, masMinutos(ofrecidoEl, 2), ofrecidoEl],
+        [
+          distId,
+          o.order_id,
+          chofer.userId,
+          masMinutos(ofrecidoEl, 2),
+          ofrecidoEl,
+        ],
       );
       ofertas += 1;
     }
 
     pedidos.push({
-      id: o.order_id, clienteUserId: cliente.userId,
-      choferUserId: chofer?.userId ?? null, estado,
-      entregadoEl: entregado, creadoEl: creado, total,
+      id: o.order_id,
+      clienteUserId: cliente.userId,
+      choferUserId: chofer?.userId ?? null,
+      estado,
+      entregadoEl: entregado,
+      creadoEl: creado,
+      total,
     });
   }
 
@@ -664,24 +938,39 @@ async function sembrarPedidos(
   return pedidos;
 }
 
-async function sembrarReclamos(q: Q, distId: string, pedidos: PedidoSembrado[]) {
+async function sembrarReclamos(
+  q: Q,
+  distId: string,
+  pedidos: PedidoSembrado[],
+) {
   const candidatos = pedidos.filter((p) => p.estado === 'delivered');
   let n = 0;
   for (const p of candidatos) {
     if (!quizas(0.13)) continue;
-    const estado = alguno(['pending', 'in_process', 'resolved', 'resolved', 'rejected'] as const);
+    const estado = alguno([
+      'pending',
+      'in_process',
+      'resolved',
+      'resolved',
+      'rejected',
+    ] as const);
     await q(
       `INSERT INTO claims
          (distributor_id, order_id, customer_id, reason, description, "photoUrl",
           status, "resolutionNote", "createdAt")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
-        distId, p.id, p.clienteUserId, alguno(MOTIVOS_RECLAMO),
+        distId,
+        p.id,
+        p.clienteUserId,
+        alguno(MOTIVOS_RECLAMO),
         'El cliente informó el problema por la app apenas recibió el pedido. Se pidió foto del envase para verificar el estado.',
         quizas(0.4) ? `https://storage.splg.app/reclamos/demo-${n}.jpg` : null,
         estado,
-        estado === 'resolved' ? 'Se repuso el envase sin cargo y se acreditó el descuento en el próximo pedido.'
-          : estado === 'rejected' ? 'Revisado con el chofer y las fotos: el envase salió del depósito en condiciones.'
+        estado === 'resolved'
+          ? 'Se repuso el envase sin cargo y se acreditó el descuento en el próximo pedido.'
+          : estado === 'rejected'
+            ? 'Revisado con el chofer y las fotos: el envase salió del depósito en condiciones.'
             : null,
         masMinutos(p.entregadoEl ?? p.creadoEl, entre(30, 2880)),
       ],
@@ -704,24 +993,36 @@ async function sembrarIncidencias(
        JOIN admin a ON a.user_id = u.user_id
       WHERE u.firebase_uid IS NOT NULL LIMIT 1`,
   );
-  const reportante = () => (choferes.length ? alguno(choferes).userId : admin?.user_id);
+  const reportante = () =>
+    choferes.length ? alguno(choferes).userId : admin?.user_id;
   if (!reportante()) {
     resumen.push(['incident (incidencias)', 0]);
     return;
   }
 
-  const candidatos = pedidos.filter((p) => ['delivered', 'cancelled'].includes(p.estado));
+  const candidatos = pedidos.filter((p) =>
+    ['delivered', 'cancelled'].includes(p.estado),
+  );
   const DESCRIPCIONES: Record<string, string> = {
-    damaged: 'El envase llegó con la válvula golpeada. Se retiró y se dejó otro en el momento.',
-    out_of_stock: 'No había stock del producto pedido en el camión. Se ofreció el de 10 kg como reemplazo.',
-    no_show: 'Se llamó tres veces al cliente y nadie atendió. El pedido volvió al depósito.',
-    other: 'Calle cortada por obra, hubo que reprogramar la entrega para la franja siguiente.',
+    damaged:
+      'El envase llegó con la válvula golpeada. Se retiró y se dejó otro en el momento.',
+    out_of_stock:
+      'No había stock del producto pedido en el camión. Se ofreció el de 10 kg como reemplazo.',
+    no_show:
+      'Se llamó tres veces al cliente y nadie atendió. El pedido volvió al depósito.',
+    other:
+      'Calle cortada por obra, hubo que reprogramar la entrega para la franja siguiente.',
   };
 
   let n = 0;
   for (const p of candidatos) {
     if (!quizas(0.16)) continue;
-    const tipo = alguno(['damaged', 'out_of_stock', 'no_show', 'other'] as const);
+    const tipo = alguno([
+      'damaged',
+      'out_of_stock',
+      'no_show',
+      'other',
+    ] as const);
     const cerrada = quizas(0.6);
     const creada = masMinutos(p.entregadoEl ?? p.creadoEl, entre(5, 200));
     await q(
@@ -730,11 +1031,20 @@ async function sembrarIncidencias(
           status, resolution_note, "createdAt", "resolvedAt")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
-        p.id, distId, reportante(), tipo, DESCRIPCIONES[tipo],
-        quizas(0.3) ? `https://storage.splg.app/incidencias/demo-${n}.jpg` : null,
+        p.id,
+        distId,
+        reportante(),
+        tipo,
+        DESCRIPCIONES[tipo],
+        quizas(0.3)
+          ? `https://storage.splg.app/incidencias/demo-${n}.jpg`
+          : null,
         cerrada ? 'resolved' : 'open',
-        cerrada ? 'Resuelto con el cliente. Se dejó asentado para el informe del mes.' : null,
-        creada, cerrada ? masMinutos(creada, entre(60, 4000)) : null,
+        cerrada
+          ? 'Resuelto con el cliente. Se dejó asentado para el informe del mes.'
+          : null,
+        creada,
+        cerrada ? masMinutos(creada, entre(60, 4000)) : null,
       ],
     );
     n += 1;
@@ -746,7 +1056,11 @@ async function sembrarIncidencias(
  * Calificaciones cruzadas de los pedidos entregados. Solo tienen sentido con
  * flota: sin chofer no hay a quién calificar ni quién califique al cliente.
  */
-async function sembrarCalificaciones(q: Q, distId: string, pedidos: PedidoSembrado[]) {
+async function sembrarCalificaciones(
+  q: Q,
+  distId: string,
+  pedidos: PedidoSembrado[],
+) {
   const COMENTARIOS_CLIENTE = [
     'Llegó antes de lo previsto, muy amable.',
     'Todo bien, pero tardó casi una hora más que la franja.',
@@ -772,8 +1086,13 @@ async function sembrarCalificaciones(q: Q, distId: string, pedidos: PedidoSembra
          (order_id, distributor_id, from_user_id, to_user_id, from_role, stars, comment, "createdAt")
        VALUES ($1,$2,$3,$4,'customer',$5,$6,$7)`,
       [
-        p.id, distId, p.clienteUserId, p.choferUserId, estrellas,
-        alguno(COMENTARIOS_CLIENTE), masMinutos(p.entregadoEl!, entre(10, 600)),
+        p.id,
+        distId,
+        p.clienteUserId,
+        p.choferUserId,
+        estrellas,
+        alguno(COMENTARIOS_CLIENTE),
+        masMinutos(p.entregadoEl!, entre(10, 600)),
       ],
     );
     n += 1;
@@ -784,8 +1103,13 @@ async function sembrarCalificaciones(q: Q, distId: string, pedidos: PedidoSembra
            (order_id, distributor_id, from_user_id, to_user_id, from_role, stars, comment, "createdAt")
          VALUES ($1,$2,$3,$4,'delivery',$5,$6,$7)`,
         [
-          p.id, distId, p.choferUserId, p.clienteUserId, entre(4, 5),
-          alguno(COMENTARIOS_CHOFER), masMinutos(p.entregadoEl!, entre(10, 300)),
+          p.id,
+          distId,
+          p.choferUserId,
+          p.clienteUserId,
+          entre(4, 5),
+          alguno(COMENTARIOS_CHOFER),
+          masMinutos(p.entregadoEl!, entre(10, 300)),
         ],
       );
       n += 1;
@@ -806,7 +1130,12 @@ async function sembrarEnvases(
   pedidos: PedidoSembrado[],
 ) {
   const entregados = pedidos.filter((p) => p.estado === 'delivered');
-  const DEPOSITO: Record<number, number> = { 5: 12000, 10: 18000, 15: 26000, 25: 40000 };
+  const DEPOSITO: Record<number, number> = {
+    5: 12000,
+    10: 18000,
+    15: 26000,
+    25: 40000,
+  };
 
   let envases = 0;
   let movimientos = 0;
@@ -814,7 +1143,8 @@ async function sembrarEnvases(
 
   for (const p of productos) {
     // Cuántos envases físicos hay de cada medida.
-    const cuantos = p.weight === 10 ? 90 : p.weight === 5 ? 45 : p.weight === 15 ? 35 : 20;
+    const cuantos =
+      p.weight === 10 ? 90 : p.weight === 5 ? 45 : p.weight === 15 ? 35 : 20;
 
     for (let i = 0; i < cuantos; i++) {
       const dado = azar();
@@ -827,7 +1157,10 @@ async function sembrarEnvases(
 
       // El envase que está en la calle se ata a un pedido entregado real, para
       // que la ficha del envase cuente una historia que se pueda seguir.
-      const pedido = estado === 'with_customer' && entregados.length ? alguno(entregados) : null;
+      const pedido =
+        estado === 'with_customer' && entregados.length
+          ? alguno(entregados)
+          : null;
       const cliente = pedido ? pedido.clienteUserId : null;
 
       const serial = `SPLG-${String(serie).padStart(5, '0')}`;
@@ -840,8 +1173,13 @@ async function sembrarEnvases(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING cylinder_id`,
         [
-          distId, serial, p.id, estado, cliente,
-          pedido?.id ?? null, DEPOSITO[p.weight] ?? 0,
+          distId,
+          serial,
+          p.id,
+          estado,
+          cliente,
+          pedido?.id ?? null,
+          DEPOSITO[p.weight] ?? 0,
           diasAtras(entre(200, 700)),
           pedido?.entregadoEl ?? diasAtras(entre(1, 60)),
         ],
@@ -850,9 +1188,16 @@ async function sembrarEnvases(
 
       // La cadena de movimientos hasta el estado actual, en orden.
       const cadena: string[] = ['in_depot'];
-      if (['filled', 'dispatched', 'with_customer', 'empty_returned'].includes(estado)) cadena.push('filled');
-      if (['dispatched', 'with_customer', 'empty_returned'].includes(estado)) cadena.push('dispatched');
-      if (['with_customer', 'empty_returned'].includes(estado)) cadena.push('with_customer');
+      if (
+        ['filled', 'dispatched', 'with_customer', 'empty_returned'].includes(
+          estado,
+        )
+      )
+        cadena.push('filled');
+      if (['dispatched', 'with_customer', 'empty_returned'].includes(estado))
+        cadena.push('dispatched');
+      if (['with_customer', 'empty_returned'].includes(estado))
+        cadena.push('with_customer');
       if (estado === 'empty_returned') cadena.push('empty_returned');
 
       let cuando = diasAtras(entre(30, 90));
@@ -863,13 +1208,22 @@ async function sembrarEnvases(
              (cylinder_id, distributor_id, from_state, to_state, order_id, actor_user_id, note, "createdAt")
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [
-            c.cylinder_id, distId, anterior, paso,
-            ['dispatched', 'with_customer'].includes(paso) ? pedido?.id ?? null : null,
+            c.cylinder_id,
+            distId,
+            anterior,
+            paso,
+            ['dispatched', 'with_customer'].includes(paso)
+              ? (pedido?.id ?? null)
+              : null,
             null,
-            paso === 'filled' ? 'Cargado en planta'
-              : paso === 'dispatched' ? 'Subido al camión de reparto'
-                : paso === 'with_customer' ? 'Entregado al cliente'
-                  : paso === 'empty_returned' ? 'Vacío recibido en depósito'
+            paso === 'filled'
+              ? 'Cargado en planta'
+              : paso === 'dispatched'
+                ? 'Subido al camión de reparto'
+                : paso === 'with_customer'
+                  ? 'Entregado al cliente'
+                  : paso === 'empty_returned'
+                    ? 'Vacío recibido en depósito'
                     : 'Alta del envase en el parque',
             cuando,
           ],
@@ -942,8 +1296,8 @@ function imprimirResumen() {
   if (CANT_CHOFERES === 0) {
     console.log(
       '\nLa flota quedó vacía a pedido. Sin choferes no hay vehículos,\n' +
-      'calificaciones ni ofertas de despacho, y el informe de ventas por\n' +
-      'chofer sale en blanco. Para llenarlos:  SEED_DRIVERS=4 npm run seed:demo\n',
+        'calificaciones ni ofertas de despacho, y el informe de ventas por\n' +
+        'chofer sale en blanco. Para llenarlos:  SEED_DRIVERS=4 npm run seed:demo\n',
     );
   }
 }

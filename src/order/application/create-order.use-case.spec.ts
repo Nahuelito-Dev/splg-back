@@ -51,7 +51,7 @@ describe('CreateOrderUseCase', () => {
       isTransactionActive: true,
       manager: {
         save: jest.fn((o: Record<string, unknown>) =>
-          Promise.resolve({ ...o, order_id: 'ord-1' }),
+          Promise.resolve({ ...o, orderId: 'ord-1' }),
         ),
       },
     };
@@ -64,7 +64,7 @@ describe('CreateOrderUseCase', () => {
     };
     addresses = {
       buscarDelUsuario: jest.fn().mockResolvedValue({
-        address_id: 'addr-1',
+        addressId: 'addr-1',
         latitude: '-34.6',
         longitude: '-58.4',
       }),
@@ -80,12 +80,12 @@ describe('CreateOrderUseCase', () => {
     };
     stock = {
       reservarStock: jest.fn().mockResolvedValue({
-        gas_cylinder_id: 'gc-1',
+        gasCylinderId: 'gc-1',
         type: '10kg',
         price: 1000,
         promotions: null,
         // Debe pertenecer a la distribuidora del pedido (default en estos tests).
-        distributor_id: 'dist-default',
+        distributorId: 'dist-default',
       }),
     };
     dispatchOrchestrator = {
@@ -96,7 +96,7 @@ describe('CreateOrderUseCase', () => {
     };
     orders = {
       findByIdFull: jest.fn().mockResolvedValue({
-        order_id: 'ord-1',
+        orderId: 'ord-1',
         status: OrderStatus.PENDING,
       }),
     };
@@ -112,7 +112,7 @@ describe('CreateOrderUseCase', () => {
     const distributorService = {
       getDefault: jest
         .fn()
-        .mockResolvedValue({ distributor_id: 'dist-default' }),
+        .mockResolvedValue({ distributorId: 'dist-default' }),
     };
     // Agendamiento: sin scheduledDate no se invoca; mock por si algún test lo usa.
     // `assertSlotAvailableTx` es la versión transaccional con lock (la que usa el
@@ -162,7 +162,7 @@ describe('CreateOrderUseCase', () => {
       expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
       expect(paymentsService.createCheckout).not.toHaveBeenCalled();
       expect(result.paymentUrl).toBeUndefined();
-      expect(result.order.order_id).toBe('ord-1');
+      expect(result.order.orderId).toBe('ord-1');
       expect(realtime.notifyAdmins).toHaveBeenCalledWith(
         'order:created',
         expect.any(Object),
@@ -173,11 +173,11 @@ describe('CreateOrderUseCase', () => {
   describe('aislamiento multi-tenant', () => {
     it('rechaza una garrafa de OTRA distribuidora', async () => {
       stock.reservarStock.mockResolvedValueOnce({
-        gas_cylinder_id: 'gc-x',
+        gasCylinderId: 'gc-x',
         type: '10kg',
         price: 1000,
         promotions: null,
-        distributor_id: 'dist-OTRO',
+        distributorId: 'dist-OTRO',
       });
       await expect(useCase.execute({ ...baseDto })).rejects.toThrow(
         /no pertenece a la distribuidora/,
@@ -187,11 +187,11 @@ describe('CreateOrderUseCase', () => {
 
     it('rechaza una garrafa con distributor_id null (sin tenant)', async () => {
       stock.reservarStock.mockResolvedValueOnce({
-        gas_cylinder_id: 'gc-null',
+        gasCylinderId: 'gc-null',
         type: '10kg',
         price: 1000,
         promotions: null,
-        distributor_id: null,
+        distributorId: null,
       });
       await expect(useCase.execute({ ...baseDto })).rejects.toThrow(
         /no pertenece a la distribuidora/,
@@ -228,7 +228,7 @@ describe('CreateOrderUseCase', () => {
         paymentMethod: PaymentMethod.MERCADOPAGO,
       });
 
-      expect(result.order.order_id).toBe('ord-1');
+      expect(result.order.orderId).toBe('ord-1');
       expect(result.paymentUrl).toBeUndefined();
       expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
     });

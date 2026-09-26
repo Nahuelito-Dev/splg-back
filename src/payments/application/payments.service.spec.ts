@@ -65,12 +65,12 @@ describe('PaymentsService', () => {
       // Ledger creado ANTES de llamar a la pasarela.
       expect(paymentRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          order_id: 'ord-1',
-          distributor_id: 'dist-1',
+          orderId: 'ord-1',
+          distributorId: 'dist-1',
           amount: 2000,
-          is_deposit: false,
+          isDeposit: false,
           status: LedgerPaymentStatus.PENDING,
-          external_reference: 'ord-1',
+          externalReference: 'ord-1',
         }),
       );
 
@@ -87,7 +87,7 @@ describe('PaymentsService', () => {
       const lastSaved = (
         paymentRepository.save.mock.calls as Payment[][]
       )[1][0];
-      expect(lastSaved.payment_url).toBe('https://mp.test/checkout');
+      expect(lastSaved.paymentUrl).toBe('https://mp.test/checkout');
       expect(lastSaved.metadata).toEqual({ preferenceId: 'pref-1' });
 
       expect(result).toEqual({
@@ -96,7 +96,7 @@ describe('PaymentsService', () => {
       });
     });
 
-    it('seña de reserva: is_deposit true y monto = seña', async () => {
+    it('seña de reserva: isDeposit true y monto = seña', async () => {
       paymentGateway.createCheckout.mockResolvedValue({
         initPoint: 'https://mp.test/deposit',
         preferenceId: 'pref-deposit',
@@ -119,7 +119,7 @@ describe('PaymentsService', () => {
       });
 
       expect(paymentRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ is_deposit: true, amount: 500 }),
+        expect.objectContaining({ isDeposit: true, amount: 500 }),
       );
     });
 
@@ -193,11 +193,11 @@ describe('PaymentsService', () => {
       });
 
       const pendingLedger = {
-        payment_id: 'ledger-1',
-        order_id: 'ord-1',
-        external_reference: 'ord-1',
-        gateway_payment_id: null,
-        is_deposit: false,
+        paymentId: 'ledger-1',
+        orderId: 'ord-1',
+        externalReference: 'ord-1',
+        gatewayPaymentId: null,
+        isDeposit: false,
         status: LedgerPaymentStatus.PENDING,
         metadata: null,
       };
@@ -214,7 +214,7 @@ describe('PaymentsService', () => {
 
       expect(paymentRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          gateway_payment_id: 'pay-1',
+          gatewayPaymentId: 'pay-1',
           status: LedgerPaymentStatus.APPROVED,
         }),
       );
@@ -235,11 +235,11 @@ describe('PaymentsService', () => {
       });
 
       const alreadyConfirmedLedger = {
-        payment_id: 'ledger-1',
-        order_id: 'ord-1',
-        external_reference: 'ord-1',
-        gateway_payment_id: 'pay-1',
-        is_deposit: true,
+        paymentId: 'ledger-1',
+        orderId: 'ord-1',
+        externalReference: 'ord-1',
+        gatewayPaymentId: 'pay-1',
+        isDeposit: true,
         status: LedgerPaymentStatus.APPROVED,
         metadata: { gatewayStatus: 'approved' },
       };

@@ -42,7 +42,7 @@ export class ReportsService {
       where: {
         status: OrderStatus.DELIVERED,
         deliveredAt: Between(startDate, endDate),
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        ...(distributorId ? { distributorId } : {}),
       },
       // Historial: el chofer, el cliente o la dirección dados de baja siguen
       // apareciendo en lo que ya pasó (H-74).
@@ -63,8 +63,8 @@ export class ReportsService {
     for (const order of orders) {
       if (!order.delivery || !order.delivery.user) continue;
 
-      const driverName = order.delivery.user.full_name;
-      const driverId = order.delivery.user_id; // Using user_id as key
+      const driverName = order.delivery.user.fullName;
+      const driverId = order.delivery.userId; // Using user_id as key
 
       if (!report[driverId]) {
         report[driverId] = {
@@ -106,7 +106,7 @@ export class ReportsService {
 
     // Sólo filtramos por tenant si vino distributorId (super_admin ve todo).
     if (distributorId) {
-      query.andWhere('order.distributor_id = :distributorId', {
+      query.andWhere('order.distributorId = :distributorId', {
         distributorId,
       });
     }
@@ -139,7 +139,7 @@ export class ReportsService {
     const query = this.orderRepository
       .createQueryBuilder('order')
       .select('order.paymentMethod', 'method')
-      .addSelect('COUNT(order.order_id)', 'count')
+      .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
       .andWhere('order.deliveredAt BETWEEN :start AND :end', {
@@ -148,7 +148,7 @@ export class ReportsService {
       });
 
     if (distributorId) {
-      query.andWhere('order.distributor_id = :distributorId', {
+      query.andWhere('order.distributorId = :distributorId', {
         distributorId,
       });
     }
@@ -181,7 +181,7 @@ export class ReportsService {
     const query = this.orderRepository
       .createQueryBuilder('order')
       .select(`date_trunc('${trunc}', order.deliveredAt)`, 'period')
-      .addSelect('COUNT(order.order_id)', 'count')
+      .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
       .andWhere('order.deliveredAt BETWEEN :start AND :end', {
@@ -190,7 +190,7 @@ export class ReportsService {
       });
 
     if (distributorId) {
-      query.andWhere('order.distributor_id = :distributorId', {
+      query.andWhere('order.distributorId = :distributorId', {
         distributorId,
       });
     }

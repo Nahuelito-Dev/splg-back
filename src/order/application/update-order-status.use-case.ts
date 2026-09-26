@@ -82,7 +82,7 @@ export class UpdateOrderStatusUseCase {
     // Panel admin en vivo: los valores del enum (accepted/on_the_way/delivered)
     // coinciden con los eventos que escucha la campana del panel.
     this.dispatch.notifyAdmins(`order:${status}`, {
-      orderId: order.order_id,
+      orderId: order.orderId,
       status: order.status,
       totalAmount: order.totalAmount,
     });
@@ -113,11 +113,11 @@ export class UpdateOrderStatusUseCase {
     role?: RoleType,
   ): Promise<void> {
     if (role !== RoleType.DELIVERY || !deliveryId) return;
-    if (!order.delivery_id) return;
+    if (!order.deliveryId) return;
 
     const delivery = await this.deliveries.buscarPorIdOUsuario(deliveryId);
 
-    if (!delivery || delivery.delivery_id !== order.delivery_id) {
+    if (!delivery || delivery.deliveryId !== order.deliveryId) {
       throw new ForbiddenException('Este pedido no está asignado a tu usuario');
     }
   }
@@ -145,7 +145,7 @@ export class UpdateOrderStatusUseCase {
         );
 
         // El chofer tiene que ser de la misma distribuidora que el pedido.
-        if (!delivery || delivery.distributor_id !== order.distributor_id) {
+        if (!delivery || delivery.distributorId !== order.distributorId) {
           throw new NotFoundException(
             `Repartidor no encontrado con ID: ${deliveryId}`,
           );
@@ -154,7 +154,7 @@ export class UpdateOrderStatusUseCase {
           throw new BadRequestException('El repartidor no está activo');
         }
 
-        order.delivery_id = delivery.delivery_id;
+        order.deliveryId = delivery.deliveryId;
         order.acceptedAt = new Date();
         // Prueba de entrega con QR: se genera acá el código secreto que el
         // chofer mostrará en su QR y el cliente escaneará para confirmar la
@@ -165,7 +165,7 @@ export class UpdateOrderStatusUseCase {
         // Cierra la oferta de despacho como ACCEPTED (best-effort, audit). El
         // offer.driver_id es el user_id, el mismo que usa el GEO/WS.
         await this.dispatchOrchestrator
-          .onDriverAccepted(order.order_id, delivery.user_id)
+          .onDriverAccepted(order.orderId, delivery.userId)
           .catch(() => undefined);
 
         return delivery.user;
@@ -173,18 +173,18 @@ export class UpdateOrderStatusUseCase {
 
       case OrderStatus.ON_THE_WAY: {
         order.onTheWayAt = new Date();
-        if (!order.delivery_id) return null;
+        if (!order.deliveryId) return null;
         const existingDelivery = await this.deliveries.buscarPorIdOUsuario(
-          order.delivery_id,
+          order.deliveryId,
           true,
         );
         // Activa el tracking en vivo: el GPS de este chofer se reenviará al
         // cliente mientras esté en camino.
         if (existingDelivery?.user) {
           this.dispatch.startTracking(
-            existingDelivery.user.user_id,
-            order.order_id,
-            order.customer_id,
+            existingDelivery.user.userId,
+            order.orderId,
+            order.customerId,
           );
         }
         return existingDelivery?.user ?? null;
@@ -196,29 +196,29 @@ export class UpdateOrderStatusUseCase {
           order.paymentStatus = PaymentStatus.PAID;
         }
         // Corta el tracking del chofer que entregó.
-        if (order.delivery_id) {
+        if (order.deliveryId) {
           const del = await this.deliveries.buscarPorIdOUsuario(
-            order.delivery_id,
+            order.deliveryId,
             true,
           );
-          if (del?.user) this.dispatch.stopTracking(del.user.user_id);
+          if (del?.user) this.dispatch.stopTracking(del.user.userId);
         }
         // Ciclo del envase: avanza los envases despachados en este pedido a
         // WITH_CUSTOMER. Best-effort: si falla (o la distribuidora no usa
         // envases, en cuyo caso es no-op) NO rompe la entrega del pedido.
         try {
           const advanced = await this.cylinderLifecycle.onOrderDelivered(
-            order.order_id,
-            order.distributor_id,
+            order.orderId,
+            order.distributorId,
           );
           if (advanced > 0) {
             this.logger.log(
-              `Pedido ${order.order_id} entregado: ${advanced} envase(s) → with_customer`,
+              `Pedido ${order.orderId} entregado: ${advanced} envase(s) → with_customer`,
             );
           }
         } catch (err) {
           this.logger.warn(
-            `No se pudieron avanzar los envases del pedido ${order.order_id}: ${
+            `No se pudieron avanzar los envases del pedido ${order.orderId}: ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
@@ -241,22 +241,22 @@ export class UpdateOrderStatusUseCase {
     if (!eventName) return;
 
     try {
-      this.dispatch.notifyCustomer(order.customer_id, eventName, {
-        orderId: order.order_id,
+      this.dispatch.notifyCustomer(order.customerId, eventName, {
+        orderId: order.orderId,
         status: order.status,
         updatedAt: new Date(),
         paymentStatus: order.paymentStatus,
         driver: deliveryUser
           ? {
-              name: deliveryUser.full_name,
-              phone: deliveryUser.phone_number,
+              name: deliveryUser.fullName,
+              phone: deliveryUser.phoneNumber,
             }
           : null,
       });
     } catch (error) {
       // Errores de WebSocket no rompen la actualización del pedido.
       this.logger.warn(
-        `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.order_id}: ${errorMessage(error)}`,
+        `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.orderId}: ${errorMessage(error)}`,
       );
     }
   }
@@ -267,13 +267,13 @@ export class UpdateOrderStatusUseCase {
     // cliente o no tiene token, no manda nada.
     try {
       await this.notificationService.sendOrderConfirmation(
-        order.customer_id,
-        order.order_id,
+        order.customerId,
+        order.orderId,
       );
     } catch (error) {
       // Errores de notificación no rompen la actualización del pedido.
       this.logger.warn(
-        `No se pudo enviar la notificación push de confirmación del pedido ${order.order_id}: ${errorMessage(error)}`,
+        `No se pudo enviar la notificación push de confirmación del pedido ${order.orderId}: ${errorMessage(error)}`,
       );
     }
   }

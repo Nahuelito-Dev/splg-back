@@ -51,12 +51,12 @@ describe('RegistroService', () => {
     };
     users = {
       assertDisponible: jest.fn(),
-      crearEnTransaccion: jest.fn().mockResolvedValue({ user_id: 'u1' }),
-      findOne: jest.fn().mockResolvedValue({ user_id: 'u1' }),
+      crearEnTransaccion: jest.fn().mockResolvedValue({ userId: 'u1' }),
+      findOne: jest.fn().mockResolvedValue({ userId: 'u1' }),
     };
     roles = {
       findByType: jest.fn((type: string) =>
-        Promise.resolve({ role_id: `rol-${type}`, type }),
+        Promise.resolve({ roleId: `rol-${type}`, type }),
       ),
     };
     customers = { crearPerfil: jest.fn() };
@@ -86,8 +86,8 @@ describe('RegistroService', () => {
     expect(users.crearEnTransaccion).toHaveBeenCalledWith(
       manager,
       expect.objectContaining({
-        firebase_uid: 'uid-nuevo',
-        role_id: 'rol-customer',
+        firebaseUid: 'uid-nuevo',
+        roleId: 'rol-customer',
       }),
     );
     expect(customers.crearPerfil).toHaveBeenCalledWith(

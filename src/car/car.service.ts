@@ -5,13 +5,32 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere } from 'typeorm';
+import { DeepPartial, Repository, FindOptionsWhere } from 'typeorm';
 import { Car } from './entities/car.entity';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
 import { DeliveryService } from '../delivery/delivery.service';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { CarBorradoResponseDto } from './dto/car-response.dto';
+
+/**
+ * El cuerpo de la API va en snake_case y la entidad en camelCase: se mapea
+ * campo por campo. Volcar el DTO entero (`...dto`) no da error de tipos y
+ * pierde los datos en silencio.
+ */
+function columnasDelAuto(dto: UpdateCarDto): DeepPartial<Car> {
+  return sinIndefinidos({
+    userId: dto.user_id,
+    typeCar: dto.type_car,
+    carCapacity: dto.car_capacity,
+    carPatent: dto.car_patent,
+    carBrand: dto.car_brand,
+    carModel: dto.car_model,
+    carYear: dto.car_year,
+    carColor: dto.car_color,
+  });
+}
 
 @Injectable()
 export class CarService {
@@ -32,7 +51,7 @@ export class CarService {
 
     if (createCarDto.car_patent) {
       const existingCar = await this.carRepository.findOne({
-        where: { car_patent: createCarDto.car_patent },
+        where: { carPatent: createCarDto.car_patent },
       });
 
       if (existingCar) {
@@ -43,9 +62,8 @@ export class CarService {
     }
 
     const car = this.carRepository.create({
-      ...createCarDto,
-      user_id: createCarDto.user_id,
-      distributor_id: distributorId,
+      ...columnasDelAuto(createCarDto),
+      distributorId,
     });
 
     return await this.carRepository.save(car);
@@ -53,7 +71,7 @@ export class CarService {
 
   async findAll(distributorId?: string): Promise<Car[]> {
     const where: FindOptionsWhere<Car> = {};
-    if (distributorId) where.distributor_id = distributorId;
+    if (distributorId) where.distributorId = distributorId;
 
     return await this.carRepository.find({
       where,
@@ -66,8 +84,8 @@ export class CarService {
    * (evita que un admin lea/edite vehículos de otra distribuidora).
    */
   async findOne(id: string, distributorId?: string | null): Promise<Car> {
-    const where: FindOptionsWhere<Car> = { car_id: id };
-    if (distributorId) where.distributor_id = distributorId;
+    const where: FindOptionsWhere<Car> = { carId: id };
+    if (distributorId) where.distributorId = distributorId;
 
     const car = await this.carRepository.findOne({
       where,
@@ -85,8 +103,8 @@ export class CarService {
     userId: string,
     distributorId?: string | null,
   ): Promise<Car[]> {
-    const where: FindOptionsWhere<Car> = { user_id: userId };
-    if (distributorId) where.distributor_id = distributorId;
+    const where: FindOptionsWhere<Car> = { userId };
+    if (distributorId) where.distributorId = distributorId;
 
     const cars = await this.carRepository.find({
       where,
@@ -104,7 +122,7 @@ export class CarService {
     // Verifica pertenencia al tenant antes de editar.
     const actual = await this.findOne(id, distributorId);
 
-    if (updateCarDto.user_id && updateCarDto.user_id !== actual.user_id) {
+    if (updateCarDto.user_id && updateCarDto.user_id !== actual.userId) {
       await this.assertDueñoEsChofer(updateCarDto.user_id, distributorId);
     }
 
@@ -112,13 +130,13 @@ export class CarService {
     // nueva y la comparación daba siempre igual.
     if (
       updateCarDto.car_patent &&
-      updateCarDto.car_patent !== actual.car_patent
+      updateCarDto.car_patent !== actual.carPatent
     ) {
       const existingCar = await this.carRepository.findOne({
-        where: { car_patent: updateCarDto.car_patent },
+        where: { carPatent: updateCarDto.car_patent },
       });
 
-      if (existingCar && existingCar.car_id !== id) {
+      if (existingCar && existingCar.carId !== id) {
         throw new BadRequestException(
           'La patente del vehículo ya está registrada',
         );
@@ -126,8 +144,8 @@ export class CarService {
     }
 
     const car = await this.carRepository.preload({
-      car_id: id,
-      ...updateCarDto,
+      carId: id,
+      ...columnasDelAuto(updateCarDto),
     });
 
     if (!car) {
@@ -154,8 +172,8 @@ export class CarService {
     patent: string,
     distributorId?: string | null,
   ): Promise<Car | null> {
-    const where: FindOptionsWhere<Car> = { car_patent: patent };
-    if (distributorId) where.distributor_id = distributorId;
+    const where: FindOptionsWhere<Car> = { carPatent: patent };
+    if (distributorId) where.distributorId = distributorId;
 
     const car = await this.carRepository.findOne({
       where,

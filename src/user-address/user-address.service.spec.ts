@@ -25,8 +25,8 @@ describe('UserAddressService', () => {
 
   const direccion = (over: Partial<UserAddress> = {}): UserAddress =>
     ({
-      address_id: 'a1',
-      user_id: 'u1',
+      addressId: 'a1',
+      userId: 'u1',
       isDefault: false,
       ...over,
     }) as UserAddress;
@@ -56,7 +56,7 @@ describe('UserAddressService', () => {
 
   it('un cliente crea siempre para sí mismo, aunque mande otro user_id', async () => {
     const d = await service.create(alta, 'u1');
-    expect(d.user_id).toBe('u1');
+    expect(d.userId).toBe('u1');
   });
 
   it('latitud y longitud se guardan como un punto [lng, lat]', async () => {
@@ -94,7 +94,7 @@ describe('UserAddressService', () => {
   });
 
   it('marcar como predeterminada desmarca las demás', async () => {
-    const otra = direccion({ address_id: 'a2', isDefault: true });
+    const otra = direccion({ addressId: 'a2', isDefault: true });
     repo.findOne.mockResolvedValue(direccion());
     repo.find.mockResolvedValue([otra]);
 
@@ -105,7 +105,7 @@ describe('UserAddressService', () => {
   });
 
   it('al borrar la predeterminada, pasa a serlo la más reciente', async () => {
-    const otra = direccion({ address_id: 'a2' });
+    const otra = direccion({ addressId: 'a2' });
     repo.findOne.mockResolvedValue(direccion({ isDefault: true }));
     repo.find.mockResolvedValue([otra]);
 

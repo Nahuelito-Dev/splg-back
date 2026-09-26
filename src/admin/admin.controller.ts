@@ -6,6 +6,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AdminMapper } from './admin.mapper';
@@ -29,6 +30,10 @@ export class AdminController {
   @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create admin (basic)' })
   @ApiCreatedResponse({ type: AdminResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · property role_id should not exist; user_id must be a UUID',
+  })
   async create(
     @Body() createAdminDto: CreateAdminDto,
   ): Promise<AdminResponseDto> {

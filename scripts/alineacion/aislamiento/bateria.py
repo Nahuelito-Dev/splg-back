@@ -34,6 +34,7 @@ B = dict(slot=b(1), zona=b(2), gas=b(3), car=b(4), ordEnt=b(5), ordPen=b(6), cyl
          dist='5bb47681-f5a0-4cd9-ada2-5f08e5e0e41c', admB_email='adminb.7886@splg-test.com')
 B['addr'] = sys.argv[1] if len(sys.argv) > 1 else ''
 A_DIST = 'af0c1b75-8090-42ed-bea9-7a043adc61cd'
+A_CYL = 'bbbb0000-0000-4000-8000-0000000000a1'  # envase lleno de A (fixture-b.sql)
 
 def call(actor, method, path, body=None):
     h = {'Authorization': f'Bearer {ACT[actor]}', 'Content-Type': 'application/json'}
@@ -67,6 +68,9 @@ for adm in ('admA', 'supA'):
     # cylinders
     c(adm,'GET','/cylinders',esperado=LISTA); c(adm,'GET',f'/cylinders/{B["cyl"]}'); c(adm,'GET',f'/cylinders/{B["cyl"]}/history')
     c(adm,'PATCH',f'/cylinders/{B["cyl"]}/transition',{'toState':'filled'}); c(adm,'POST','/cylinders/assign',{'serials':['SER-B-0001'],'orderId':B['ordPen']},esperado=(404,400))
+    # H-90: un envase propio no se cuelga de un pedido de B
+    c(adm,'POST','/cylinders/assign',{'serials':['SER-A-AIS-1'],'orderId':B['ordPen']},nota='H-90')
+    c(adm,'PATCH',f'/cylinders/{A_CYL}/transition',{'toState':'dispatched','orderId':B['ordPen']},nota='H-90')
     # delivery
     c(adm,'GET','/delivery',esperado=LISTA); c(adm,'GET','/delivery/active',esperado=LISTA); c(adm,'GET',f'/delivery/{B["dlv"]}')
     c(adm,'GET',f'/delivery/user/{B["choUser"]}'); c(adm,'PATCH',f'/delivery/{B["dlv"]}',{'validated':True})
@@ -109,6 +113,7 @@ for adm in ('admA', 'supA'):
 for a in ('choA',):
     c(a,'GET',f'/cylinders/{B["cyl"]}'); c(a,'PATCH',f'/cylinders/{B["cyl"]}/transition',{'toState':'filled'})
     c(a,'POST','/cylinders/assign',{'serials':['SER-B-0001'],'orderId':B['ordPen']},esperado=(404,400))
+    c(a,'POST','/cylinders/assign',{'serials':['SER-A-AIS-1'],'orderId':B['ordPen']},nota='H-90')
     c(a,'GET',f'/delivery/{B["dlv"]}',esperado=(404,403)); c(a,'GET',f'/delivery/user/{B["choUser"]}',esperado=(404,403))
     c(a,'PATCH',f'/delivery/{B["dlv"]}/location',{'latLng':'-27.4,-55.9'},esperado=(404,403))
     c(a,'PATCH',f'/delivery/user/{B["choUser"]}/availability',{'available':True},esperado=(404,403))

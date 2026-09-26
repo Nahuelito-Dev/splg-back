@@ -30,6 +30,14 @@ export class RealtimeDispatchAdapter extends RealtimeDispatchPort {
     return this.redisService.getNearbyDrivers(lat, lng, radiusKm);
   }
 
+  reportDriverLocation(
+    driverUserId: string,
+    lat: number,
+    lng: number,
+  ): Promise<void> {
+    return this.redisService.updateDriverLocation(driverUserId, lat, lng);
+  }
+
   notifyDriverNewOrder(driverId: string, payload: unknown): void {
     this.driversGateway.notifyNewOrder(driverId, payload);
   }

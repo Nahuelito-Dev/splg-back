@@ -36,15 +36,18 @@ export enum CoverageZoneSurchargeType {
 @Entity('coverage_zone')
 export class CoverageZone {
   @PrimaryGeneratedColumn('uuid', { name: 'coverage_zone_id' })
-  coverage_zone_id!: string;
+  coverageZoneId!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid' })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+  })
+  distributorId!: string;
 
   @Column({ type: 'varchar', length: 120 })
   name!: string;
@@ -93,7 +96,7 @@ export class CoverageZone {
     nullable: false,
     default: CoverageZoneSurchargeType.FIXED,
   })
-  surcharge_type!: CoverageZoneSurchargeType;
+  surchargeType!: CoverageZoneSurchargeType;
 
   @Column({ name: 'label', type: 'varchar', length: 40, nullable: true })
   label!: string | null;
@@ -102,5 +105,5 @@ export class CoverageZone {
   color!: string | null;
 
   @Column({ name: 'valid_until', type: 'timestamptz', nullable: true })
-  valid_until!: Date | null;
+  validUntil!: Date | null;
 }

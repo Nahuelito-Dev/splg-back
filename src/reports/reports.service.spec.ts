@@ -39,7 +39,7 @@ describe('ReportsService', () => {
   });
 
   it('suma las ventas de cada chofer sin errores de redondeo', async () => {
-    const chofer = { user_id: 'u1', user: { full_name: 'Juan' } };
+    const chofer = { userId: 'u1', user: { fullName: 'Juan' } };
     orders.find.mockResolvedValue([
       { delivery: chofer, totalAmount: 0.1 },
       { delivery: chofer, totalAmount: 0.2 },
@@ -56,7 +56,7 @@ describe('ReportsService', () => {
     await service.getSalesByDriver(new Date(), new Date(), 'd1');
     expect(orders.find).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ distributor_id: 'd1' }) as unknown,
+        where: expect.objectContaining({ distributorId: 'd1' }) as unknown,
       }),
     );
   });

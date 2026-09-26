@@ -6,10 +6,10 @@ import { UserMapper } from '../users/user.mapper';
 export class ClaimMapper {
   static toDto(claim: Claim): ClaimResponseDto {
     const dto = new ClaimResponseDto();
-    dto.claim_id = claim.claim_id;
-    dto.distributor_id = claim.distributor_id;
-    dto.order_id = claim.order_id;
-    dto.customer_id = claim.customer_id;
+    dto.claim_id = claim.claimId;
+    dto.distributor_id = claim.distributorId;
+    dto.order_id = claim.orderId;
+    dto.customer_id = claim.customerId;
     dto.reason = claim.reason;
     dto.description = claim.description;
     dto.photoUrl = claim.photoUrl;

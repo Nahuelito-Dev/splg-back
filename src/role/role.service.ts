@@ -44,7 +44,7 @@ export class RoleService {
 
   async findOne(id: string): Promise<Role> {
     const role = await this.roleRepository.findOne({
-      where: { role_id: id },
+      where: { roleId: id },
     });
 
     if (!role) {
@@ -59,7 +59,7 @@ export class RoleService {
     this.assertNoEsDelSistema(actual.type, 'modificar');
 
     const role = await this.roleRepository.preload({
-      role_id: id,
+      roleId: id,
       ...updateRoleDto,
     });
 
@@ -96,7 +96,7 @@ export class RoleService {
   }
 
   findById(id: string): Promise<Role | null> {
-    return this.roleRepository.findOne({ where: { role_id: id } });
+    return this.roleRepository.findOne({ where: { roleId: id } });
   }
 
   findByType(type: string): Promise<Role | null> {

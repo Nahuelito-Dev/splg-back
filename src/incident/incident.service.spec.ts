@@ -45,7 +45,7 @@ describe('IncidentService', () => {
   });
 
   it('hereda la distribuidora del pedido y nace abierta', async () => {
-    orders.findById.mockResolvedValue({ order_id: 'o1', distributor_id: 'd1' });
+    orders.findById.mockResolvedValue({ orderId: 'o1', distributorId: 'd1' });
     const i = await service.create(
       { orderId: 'o1', type: IncidentType.NO_SHOW, description: 'No estaba' },
       'chofer-1',
@@ -53,8 +53,8 @@ describe('IncidentService', () => {
       false,
     );
     expect(i).toMatchObject({
-      distributor_id: 'd1',
-      reported_by: 'chofer-1',
+      distributorId: 'd1',
+      reportedBy: 'chofer-1',
       status: IncidentStatus.OPEN,
     });
   });
@@ -72,7 +72,7 @@ describe('IncidentService', () => {
   });
 
   it('el pedido de otra distribuidora es 404', async () => {
-    orders.findById.mockResolvedValue({ order_id: 'o1', distributor_id: 'd2' });
+    orders.findById.mockResolvedValue({ orderId: 'o1', distributorId: 'd2' });
     await expect(
       service.create(
         { orderId: 'o1', type: IncidentType.OTHER, description: 'x' },
@@ -86,9 +86,9 @@ describe('IncidentService', () => {
 
   it('un chofer sólo reporta sobre el pedido que tiene asignado', async () => {
     orders.findById.mockResolvedValue({
-      order_id: 'o1',
-      distributor_id: 'd1',
-      delivery_id: 'otro',
+      orderId: 'o1',
+      distributorId: 'd1',
+      deliveryId: 'otro',
     });
     orders.assertAsignadoAlChofer.mockRejectedValue(new ForbiddenException());
     await expect(
@@ -113,10 +113,10 @@ describe('IncidentService', () => {
   });
 
   it('resolver deja la nota y la fecha', async () => {
-    incidents.findOne.mockResolvedValue({ incident_id: 'i1' });
+    incidents.findOne.mockResolvedValue({ incidentId: 'i1' });
     const i = await service.resolve('i1', { resolutionNote: 'Listo' }, 'd1');
     expect(i.status).toBe(IncidentStatus.RESOLVED);
-    expect(i.resolution_note).toBe('Listo');
+    expect(i.resolutionNote).toBe('Listo');
     expect(i.resolvedAt).toBeInstanceOf(Date);
   });
 
@@ -126,8 +126,8 @@ describe('IncidentService', () => {
       NotFoundException,
     );
     orders.findById.mockResolvedValueOnce({
-      order_id: 'o1',
-      distributor_id: 'd2',
+      orderId: 'o1',
+      distributorId: 'd2',
     });
     await expect(service.findByOrder('o1', 'd1')).rejects.toBeInstanceOf(
       NotFoundException,

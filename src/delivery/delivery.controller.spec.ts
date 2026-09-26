@@ -25,13 +25,13 @@ describe('DeliveryController — alcance', () => {
     role,
   });
   const chofer = {
-    delivery_id: 'dl1',
-    distributor_id: 'dB',
-    user_id: 'u-chofer',
+    deliveryId: 'dl1',
+    distributorId: 'dB',
+    userId: 'u-chofer',
     validated: true,
     isActive: true,
     balance: 0,
-    notification_token: 'token-del-dispositivo',
+    notificationToken: 'token-del-dispositivo',
   } as Delivery;
 
   beforeEach(() => {

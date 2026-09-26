@@ -13,6 +13,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 
 /** Lo que el alta guarda en el perfil de un cliente nuevo. */
 export interface PerfilDeClienteNuevo {
@@ -42,8 +43,8 @@ export class CustomersService {
     const repo = manager.getRepository(Customer);
     await repo.save(
       repo.create({
-        user_id: userId,
-        notification_token: datos.notification_token ?? null,
+        userId,
+        notificationToken: datos.notification_token ?? null,
         location: datos.lat_lang ? puntoDesdeLatLng(datos.lat_lang) : null,
         validated: datos.validated ?? false,
       }),
@@ -65,21 +66,21 @@ export class CustomersService {
     userId: string,
   ): Promise<{ esCliente: boolean; token: string | null }> {
     const customer = await this.customerRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
     });
     return {
       esCliente: Boolean(customer),
-      token: customer?.notification_token ?? null,
+      token: customer?.notificationToken ?? null,
     };
   }
 
   /** Guarda el token push del cliente. Devuelve false si no es cliente. */
   async saveNotificationToken(userId: string, token: string): Promise<boolean> {
     const customer = await this.customerRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
     });
     if (!customer) return false;
-    customer.notification_token = token;
+    customer.notificationToken = token;
     await this.customerRepository.save(customer);
     return true;
   }
@@ -99,7 +100,7 @@ export class CustomersService {
       .skip(offset);
 
     if (distributorId) {
-      qb.andWhere(clienteDeLaDistribuidora('customer.user_id'), {
+      qb.andWhere(clienteDeLaDistribuidora('customer.userId'), {
         distributorId,
       });
     }
@@ -130,7 +131,7 @@ export class CustomersService {
     userId: string,
   ): Promise<{ email: string | null } | null> {
     const customer = await this.customerRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
       relations: ['user'],
     });
     return customer ? { email: customer.user.email ?? null } : null;
@@ -147,12 +148,12 @@ export class CustomersService {
   ): Promise<void> {
     const [columna, valor] =
       'customer_id' in por
-        ? ['customer.customer_id', por.customer_id]
-        : ['customer.user_id', por.user_id];
+        ? ['customer.customerId', por.customer_id]
+        : ['customer.userId', por.user_id];
     const existe = await this.customerRepository
       .createQueryBuilder('customer')
       .where(`${columna} = :valor`, { valor })
-      .andWhere(clienteDeLaDistribuidora('customer.user_id'), { distributorId })
+      .andWhere(clienteDeLaDistribuidora('customer.userId'), { distributorId })
       .getExists();
     if (!existe) {
       throw new NotFoundException(`Customer with ID: ${valor} not found`);
@@ -164,7 +165,7 @@ export class CustomersService {
     requesterUserId?: string | null,
   ): Promise<Customer> {
     const customer = await this.customerRepository.findOne({
-      where: { customer_id: id },
+      where: { customerId: id },
       relations: ['user', 'user.role', 'user.addresses'],
     });
 
@@ -172,7 +173,7 @@ export class CustomersService {
       throw new NotFoundException(`Customer with ID: ${id} not found`);
     }
 
-    this.assertOwnership(customer.user_id, requesterUserId);
+    this.assertOwnership(customer.userId, requesterUserId);
     return customer;
   }
 
@@ -182,7 +183,7 @@ export class CustomersService {
   ): Promise<Customer> {
     this.assertOwnership(userId, requesterUserId);
     const customer = await this.customerRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
       relations: ['user', 'user.role', 'user.addresses'],
     });
 
@@ -218,10 +219,12 @@ export class CustomersService {
     await this.findOne(id, requesterUserId);
 
     // La ubicación llega como "lat,lng" y se guarda como punto.
-    const { lat_lang, ...campos } = updateCustomerDto;
+    // El resto campo por campo: el cuerpo va en snake_case y la entidad en
+    // camelCase, y volcarlo entero perdería `notification_token` en silencio.
+    const { lat_lang, notification_token, validated } = updateCustomerDto;
     const customer = await this.customerRepository.preload({
-      customer_id: id,
-      ...campos,
+      customerId: id,
+      ...sinIndefinidos({ notificationToken: notification_token, validated }),
       ...(lat_lang !== undefined && { location: puntoDesdeLatLng(lat_lang) }),
     });
 
@@ -235,7 +238,7 @@ export class CustomersService {
 
   async remove(id: string): Promise<MessageResponseDto> {
     await this.findOne(id);
-    await this.customerRepository.softDelete({ customer_id: id });
+    await this.customerRepository.softDelete({ customerId: id });
     return MessageResponseDto.of('Customer deleted successfully');
   }
 

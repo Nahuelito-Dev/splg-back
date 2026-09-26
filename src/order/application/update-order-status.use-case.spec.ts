@@ -30,8 +30,8 @@ describe('UpdateOrderStatusUseCase', () => {
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
-      order_id: 'ord-1',
-      customer_id: 'cust-1',
+      orderId: 'ord-1',
+      customerId: 'cust-1',
       status: OrderStatus.PENDING,
       paymentMethod: PaymentMethod.CASH,
       paymentStatus: PaymentStatus.PENDING,
@@ -90,10 +90,10 @@ describe('UpdateOrderStatusUseCase', () => {
     it('asigna el chofer, setea acceptedAt, guarda y emite order:accepted', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
-        delivery_id: 'drv-1',
-        user_id: 'user-drv-1',
+        deliveryId: 'drv-1',
+        userId: 'user-drv-1',
         isActive: true,
-        user: { full_name: 'Chofer Uno', phone_number: '+549110000' },
+        user: { fullName: 'Chofer Uno', phoneNumber: '+549110000' },
       });
 
       const result = await useCase.execute(
@@ -103,7 +103,7 @@ describe('UpdateOrderStatusUseCase', () => {
       );
 
       expect(result.status).toBe(OrderStatus.ACCEPTED);
-      expect(result.delivery_id).toBe('drv-1');
+      expect(result.deliveryId).toBe('drv-1');
       expect(result.acceptedAt).toBeInstanceOf(Date);
       // Prueba de entrega con QR: al aceptar se genera el código secreto que
       // el chofer mostrará como QR (ver ConfirmDeliveryUseCase).
@@ -136,7 +136,7 @@ describe('UpdateOrderStatusUseCase', () => {
     it('rechaza un chofer inactivo', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
-        delivery_id: 'drv-1',
+        deliveryId: 'drv-1',
         isActive: false,
         user: {},
       });

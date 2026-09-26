@@ -18,8 +18,8 @@ describe('CustomersService', () => {
 
   const cliente = (over: Partial<Customer> = {}): Customer =>
     ({
-      customer_id: 'c1',
-      user_id: 'u1',
+      customerId: 'c1',
+      userId: 'u1',
       validated: false,
       lat_lang: null,
       ...over,
@@ -54,10 +54,10 @@ describe('CustomersService', () => {
   it('el dueño y el administrador sí lo ven', async () => {
     customers.findOne.mockResolvedValue(cliente());
     await expect(service.findOne('c1', 'u1')).resolves.toMatchObject({
-      customer_id: 'c1',
+      customerId: 'c1',
     });
     await expect(service.findOne('c1')).resolves.toMatchObject({
-      customer_id: 'c1',
+      customerId: 'c1',
     });
   });
 
@@ -92,6 +92,6 @@ describe('CustomersService', () => {
     await expect(service.remove('c1')).resolves.toEqual({
       message: 'Customer deleted successfully',
     });
-    expect(customers.softDelete).toHaveBeenCalledWith({ customer_id: 'c1' });
+    expect(customers.softDelete).toHaveBeenCalledWith({ customerId: 'c1' });
   });
 });

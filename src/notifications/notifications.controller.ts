@@ -14,6 +14,8 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
   ResultadoDeEnvioDto,
@@ -41,6 +43,10 @@ export class NotificationsController {
   @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Send a test notification (admin/debug)' })
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: token no puede estar vacío; title must be shorter than or equal to 100 characters)',
+  })
   async sendTestNotification(
     @Body() dto: SendTestNotificationDto,
   ): Promise<ResultadoDeEnvioDto> {
@@ -59,6 +65,10 @@ export class NotificationsController {
   @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Send order confirmation notification (admin)' })
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: customerId debe ser un UUID; orderId debe ser un UUID)',
+  })
   async sendOrderConfirmation(
     @Body() dto: SendOrderConfirmationDto,
   ): Promise<ResultadoDeEnvioDto> {
@@ -73,6 +83,7 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Get notification tokens for user (self o admin)' })
   @ApiOkResponse({ type: TokensDeUsuarioDto })
   @ApiForbiddenResponse({ description: 'Tokens de otro usuario' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async getUserTokens(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -90,6 +101,11 @@ export class NotificationsController {
   @Post('token')
   @ApiOperation({ summary: 'Save notification token for the current user' })
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: userId debe ser un UUID; token no puede estar vacío)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async saveToken(
     @Body() dto: SaveNotificationTokenDto,
     @CurrentUser() user: AuthenticatedUser,

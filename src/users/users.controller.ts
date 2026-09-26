@@ -23,6 +23,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -65,6 +66,7 @@ export class UsersController {
   @ApiBadRequestResponse({ description: 'No es un correo' })
   @ApiForbiddenResponse({ description: 'No es su cuenta' })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOneByEmail(
     @Param() { email }: EmailParamDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -80,7 +82,7 @@ export class UsersController {
     }
     const encontrado = await this.usersService.findOneByEmail(email);
     if (esAdministrador(user)) {
-      await this.assertDeSuDistribuidora(encontrado.user_id, distributorId);
+      await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
     }
     return UserMapper.toDto(encontrado);
   }
@@ -111,6 +113,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserResponseDto })
   @ApiForbiddenResponse({ description: 'No es su cuenta' })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -140,7 +143,7 @@ export class UsersController {
   ): Promise<UserResponseDto | null> {
     const encontrado = await this.usersService.findOneByPhone(phoneNumber);
     if (!encontrado) return null;
-    await this.assertDeSuDistribuidora(encontrado.user_id, distributorId);
+    await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
     return UserMapper.toDto(encontrado);
   }
 
@@ -168,6 +171,10 @@ export class UsersController {
   @ApiConflictResponse({
     description: 'Teléfono en uso, o sin cuenta de acceso',
   })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: property email should not exist)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
@@ -287,6 +294,9 @@ export class UsersController {
   @ApiOkResponse({ type: BloqueoDeUsuarioDto })
   @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: block tiene que ser true o false)',
+  })
   async blockUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: BlockUserDto,

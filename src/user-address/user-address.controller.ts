@@ -19,6 +19,8 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserAddressService } from './user-address.service';
 import { UserAddressMapper } from './user-address.mapper';
@@ -57,6 +59,11 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Create a new user address' })
   @ApiCreatedResponse({ type: UserAddressResponseDto })
   @ApiNotFoundResponse({ description: 'El usuario no existe' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: user_id must be a UUID; street must be a string)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async create(
     @Body() createUserAddressDto: CreateUserAddressDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -96,6 +103,7 @@ export class UserAddressController {
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
   @ApiNotFoundResponse({ description: 'Address not found' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -112,6 +120,8 @@ export class UserAddressController {
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto, isArray: true })
   @ApiForbiddenResponse({ description: 'Son de otro usuario' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
+  @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   async findByUserId(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -131,6 +141,7 @@ export class UserAddressController {
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
   @ApiNotFoundResponse({ description: 'No default address found' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findDefaultByUserId(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -151,6 +162,11 @@ export class UserAddressController {
   @ApiOkResponse({ type: UserAddressResponseDto })
   @ApiNotFoundResponse({ description: 'Address not found' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: latitude debe ser una latitud válida; longitude debe ser una longitud válida)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserAddressDto: UpdateUserAddressDto,
@@ -173,6 +189,7 @@ export class UserAddressController {
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
   @ApiNotFoundResponse({ description: 'Address not found' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async setAsDefault(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -190,6 +207,7 @@ export class UserAddressController {
   @ApiOkResponse({ type: DireccionBorradaDto })
   @ApiNotFoundResponse({ description: 'Address not found' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,

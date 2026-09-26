@@ -13,7 +13,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 @Entity('admin')
 export class Admin {
   @PrimaryGeneratedColumn('uuid', { name: 'admin_id' })
-  admin_id!: string;
+  adminId!: string;
 
   /**
    * Distribuidora que administra. Nullable = admin de plataforma (super_admin,
@@ -24,8 +24,12 @@ export class Admin {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  distributor_id!: string | null;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  distributorId!: string | null;
 
   @ManyToOne(() => User, (user) => user.admins, {
     nullable: false,
@@ -40,8 +44,11 @@ export class Admin {
    * dijeran cosas distintas (H-77).
    */
   @Index('UQ_admin_user', { unique: true })
-  @Column({ type: 'uuid' })
-  user_id!: string;
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+  })
+  userId!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

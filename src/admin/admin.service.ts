@@ -36,9 +36,7 @@ export class AdminService {
     distributorId: string | null,
   ): Promise<void> {
     const repo = manager.getRepository(Admin);
-    await repo.save(
-      repo.create({ user_id: userId, distributor_id: distributorId }),
-    );
+    await repo.save(repo.create({ userId, distributorId }));
   }
 
   /** Si ya hay algún super administrador (el comando de arranque crea el primero). */
@@ -61,8 +59,8 @@ export class AdminService {
     if (!usuario) {
       throw new NotFoundException(`User with ID: ${user_id} not found`);
     }
-    const rol = usuario.role_id
-      ? await this.roleService.findOne(usuario.role_id)
+    const rol = usuario.roleId
+      ? await this.roleService.findOne(usuario.roleId)
       : null;
     // `role.type` es texto libre en la base; se compara contra el valor del enum.
     const esAdminDeEmpresa = rol?.type === String(RoleType.ADMIN);
@@ -77,12 +75,15 @@ export class AdminService {
         'Un admin de empresa lleva distribuidora y el super administrador no',
       );
     }
-    if (await this.adminRepository.exists({ where: { user_id } })) {
+    if (await this.adminRepository.exists({ where: { userId: user_id } })) {
       throw new ConflictException(
         'El usuario ya tiene perfil de administrador',
       );
     }
-    const admin = this.adminRepository.create(createAdminDto);
+    const admin = this.adminRepository.create({
+      userId: user_id,
+      distributorId: distributor_id ?? null,
+    });
     return await this.adminRepository.save(admin);
   }
 
@@ -93,14 +94,14 @@ export class AdminService {
    */
   async findAll(distributorId?: string | null): Promise<Admin[]> {
     return await this.adminRepository.find({
-      where: distributorId ? { distributor_id: distributorId } : {},
+      where: distributorId ? { distributorId } : {},
       relations: ['user', 'user.role', 'distributor'],
     });
   }
 
   async findOne(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
-      where: { admin_id: id },
+      where: { adminId: id },
       relations: ['user', 'user.role'],
     });
 
@@ -143,13 +144,13 @@ export class AdminService {
 
     const admin = isUUID(term)
       ? await queryBuilder
-          .where('admin.admin_id = :admin_id', { admin_id: term })
+          .where('admin.adminId = :admin_id', { admin_id: term })
           .getOne()
       : await queryBuilder
           .where('user.email = :email', { email: term })
           .getOne();
 
-    if (!admin || (distributorId && admin.distributor_id !== distributorId)) {
+    if (!admin || (distributorId && admin.distributorId !== distributorId)) {
       throw new NotFoundException(`Admin with ${term} not found`);
     }
 

@@ -6,6 +6,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { EmailService } from './email.service';
 import { Public } from '../common/decorators/isPublic.decorator';
@@ -47,6 +48,7 @@ export class EmailController {
   @ApiBadRequestResponse({
     description: 'Token inválido, no coincide o el correo nuevo ya existe',
   })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   changeEmail(@Body() body: ChangeEmailDto): Promise<EmailCambiadoResponseDto> {
     return this.emailService.changeEmail(
       body.currentEmail,
@@ -61,6 +63,9 @@ export class EmailController {
   @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Test email service functionality' })
   @ApiCreatedResponse({ type: PruebaDeEmailResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: email debe ser un correo válido)',
+  })
   testEmailService(
     @Body() body: TestEmailDto,
   ): Promise<PruebaDeEmailResponseDto> {

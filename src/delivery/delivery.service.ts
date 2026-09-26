@@ -46,11 +46,11 @@ export class DeliveryService {
     const repo = manager.getRepository(Delivery);
     await repo.save(
       repo.create({
-        user_id: userId,
-        distributor_id: distributorId,
+        userId,
+        distributorId,
         calification: 0,
         location: datos.latLng ? puntoDesdeLatLng(datos.latLng) : null,
-        actual_location: datos.actual_location,
+        actualLocation: datos.actual_location,
         validated: datos.validated ?? false,
         isActive: datos.isActive ?? true,
         balance: 0,
@@ -66,7 +66,7 @@ export class DeliveryService {
     const { limit = 10, offset = 0 } = paginationDto;
 
     return await this.deliveryRepository.find({
-      where: distributorId ? { distributor_id: distributorId } : {},
+      where: distributorId ? { distributorId } : {},
       take: limit,
       skip: offset,
       relations: ['user', 'user.role'],
@@ -76,18 +76,18 @@ export class DeliveryService {
   /** El token push del chofer, o null si no es chofer o no registró ninguno. */
   async findNotificationToken(userId: string): Promise<string | null> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
     });
-    return delivery?.notification_token ?? null;
+    return delivery?.notificationToken ?? null;
   }
 
   /** Guarda el token push del chofer. Devuelve false si no es chofer. */
   async saveNotificationToken(userId: string, token: string): Promise<boolean> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
     });
     if (!delivery) return false;
-    delivery.notification_token = token;
+    delivery.notificationToken = token;
     await this.deliveryRepository.save(delivery);
     return true;
   }
@@ -102,19 +102,19 @@ export class DeliveryService {
     duenoUserId?: string | null,
     distributorId?: string | null,
   ): void {
-    if (duenoUserId && delivery.user_id !== duenoUserId) {
+    if (duenoUserId && delivery.userId !== duenoUserId) {
       throw new ForbiddenException('No podés operar sobre otro chofer');
     }
-    if (distributorId && delivery.distributor_id !== distributorId) {
+    if (distributorId && delivery.distributorId !== distributorId) {
       throw new NotFoundException(
-        `Delivery with ID: ${delivery.delivery_id} not found`,
+        `Delivery with ID: ${delivery.deliveryId} not found`,
       );
     }
   }
 
   /** El chofer sin relaciones, o null. Para los módulos que sólo necesitan su user_id. */
   findById(id: string): Promise<Delivery | null> {
-    return this.deliveryRepository.findOne({ where: { delivery_id: id } });
+    return this.deliveryRepository.findOne({ where: { deliveryId: id } });
   }
 
   /**
@@ -127,7 +127,7 @@ export class DeliveryService {
     conUsuario = false,
   ): Promise<Delivery | null> {
     return this.deliveryRepository.findOne({
-      where: [{ delivery_id: id }, { user_id: id }],
+      where: [{ deliveryId: id }, { userId: id }],
       relations: conUsuario ? ['user'] : [],
     });
   }
@@ -139,10 +139,10 @@ export class DeliveryService {
   ): Promise<string[]> {
     if (userIds.length === 0) return [];
     const filas = await this.deliveryRepository.find({
-      where: { user_id: In(userIds), distributor_id: distributorId },
-      select: { user_id: true },
+      where: { userId: In(userIds), distributorId },
+      select: { userId: true },
     });
-    return filas.map((f) => f.user_id);
+    return filas.map((f) => f.userId);
   }
 
   /** Cuántos choferes activos y validados hay, en una distribuidora o en todas. */
@@ -151,7 +151,7 @@ export class DeliveryService {
       where: {
         isActive: true,
         validated: true,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        ...(distributorId ? { distributorId } : {}),
       },
     });
   }
@@ -161,15 +161,12 @@ export class DeliveryService {
     userId: string,
     average: number,
   ): Promise<void> {
-    await this.deliveryRepository.update(
-      { user_id: userId },
-      { calification: average },
-    );
+    await this.deliveryRepository.update({ userId }, { calification: average });
   }
 
   async findOne(id: string): Promise<Delivery> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { delivery_id: id },
+      where: { deliveryId: id },
       relations: ['user', 'user.role'],
     });
 
@@ -186,15 +183,15 @@ export class DeliveryService {
    */
   async findDistributorIdByUserId(userId: string): Promise<string | null> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { user_id: userId },
-      select: { delivery_id: true, distributor_id: true },
+      where: { userId },
+      select: { deliveryId: true, distributorId: true },
     });
-    return delivery?.distributor_id ?? null;
+    return delivery?.distributorId ?? null;
   }
 
   async findOneByUserId(userId: string): Promise<Delivery> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
       relations: ['user', 'user.role'],
     });
 
@@ -229,7 +226,7 @@ export class DeliveryService {
     return await this.deliveryRepository.find({
       where: {
         isActive: true,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        ...(distributorId ? { distributorId } : {}),
       },
       take: limit,
       skip: offset,
@@ -246,15 +243,15 @@ export class DeliveryService {
     // super_admin llega sin distributorId y no tiene esa restricción.
     if (distributorId) {
       const actual = await this.deliveryRepository.findOne({
-        where: { delivery_id: id },
+        where: { deliveryId: id },
       });
-      if (!actual || actual.distributor_id !== distributorId) {
+      if (!actual || actual.distributorId !== distributorId) {
         throw new NotFoundException(`Delivery with ID: ${id} not found`);
       }
     }
 
     const delivery = await this.deliveryRepository.preload({
-      delivery_id: id,
+      deliveryId: id,
       ...updateDeliveryDto,
     });
 
@@ -268,7 +265,7 @@ export class DeliveryService {
 
   async remove(id: string): Promise<MessageResponseDto> {
     await this.findOne(id);
-    await this.deliveryRepository.softDelete({ delivery_id: id });
+    await this.deliveryRepository.softDelete({ deliveryId: id });
     return MessageResponseDto.of('Delivery deleted successfully');
   }
 
@@ -296,7 +293,7 @@ export class DeliveryService {
     this.assertAlcance(delivery, duenoUserId);
     delivery.location = puntoDesdeLatLng(latLng);
     if (actualLocation) {
-      delivery.actual_location = actualLocation;
+      delivery.actualLocation = actualLocation;
     }
     await this.deliveryRepository.save(delivery);
     return delivery;
@@ -322,7 +319,7 @@ export class DeliveryService {
     distributorId?: string | null,
   ): Promise<DisponibilidadDelChoferDto> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { user_id: userId },
+      where: { userId },
     });
 
     if (!delivery) {
@@ -346,7 +343,7 @@ export class DeliveryService {
 
     return {
       userId,
-      deliveryId: delivery.delivery_id,
+      deliveryId: delivery.deliveryId,
       isAvailable: delivery.isActive,
       message: isAvailable ? 'Estás en línea 🟢' : 'Estás desconectado 🔴',
     };

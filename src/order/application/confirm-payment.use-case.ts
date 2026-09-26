@@ -77,13 +77,13 @@ export class ConfirmPaymentUseCase {
       // MVP: solo lo dejamos loggeado; el pedido queda PENDING/PENDING y el
       // cliente puede reintentar el pago (o un cron de expiración lo cancela).
       this.logger.log(
-        `Pago ${payment.gatewayPaymentId} del pedido ${order.order_id} en estado ${payment.status} (sin acción, ver TODO)`,
+        `Pago ${payment.gatewayPaymentId} del pedido ${order.orderId} en estado ${payment.status} (sin acción, ver TODO)`,
       );
       return;
     }
 
     this.logger.debug(
-      `Pago ${payment.gatewayPaymentId} del pedido ${order.order_id} en estado ${payment.status} (aún no definitivo)`,
+      `Pago ${payment.gatewayPaymentId} del pedido ${order.orderId} en estado ${payment.status} (aún no definitivo)`,
     );
   }
 
@@ -104,13 +104,13 @@ export class ConfirmPaymentUseCase {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'order')
         .setLock('pessimistic_write')
-        .where('order.order_id = :id', { id: order.order_id })
+        .where('order.orderId = :id', { id: order.orderId })
         .getOne();
 
       if (!locked) {
         await queryRunner.commitTransaction();
         this.logger.warn(
-          `Pedido ${order.order_id} desapareció antes de confirmar el pago`,
+          `Pedido ${order.orderId} desapareció antes de confirmar el pago`,
         );
         return;
       }
@@ -123,7 +123,7 @@ export class ConfirmPaymentUseCase {
         alreadyConfirmed = true;
         await queryRunner.commitTransaction();
         this.logger.warn(
-          `Pago ${paymentId} de un pedido ${locked.status} (${locked.order_id}): ignorado (sin despacho)`,
+          `Pago ${paymentId} de un pedido ${locked.status} (${locked.orderId}): ignorado (sin despacho)`,
         );
       } else if (locked.gatewayPaymentId) {
         alreadyConfirmed = true;
@@ -132,12 +132,12 @@ export class ConfirmPaymentUseCase {
         // Pago de la SEÑA de una reserva: se marca deposit_paid (no PAID: el
         // saldo se cobra al entregar) y NO se despacha — el cron activará la
         // reserva el día agendado.
-        locked.deposit_paid = true;
+        locked.depositPaid = true;
         locked.gatewayPaymentId = paymentId;
         await queryRunner.manager.save(locked);
         await queryRunner.commitTransaction();
         this.logger.log(
-          `Seña de la reserva ${locked.order_id} pagada (MercadoPago ${paymentId})`,
+          `Seña de la reserva ${locked.orderId} pagada (MercadoPago ${paymentId})`,
         );
         return; // no despachar: lo hace el cron de reservas el día agendado
       } else if (locked.paymentStatus === PaymentStatus.PAID) {
@@ -158,13 +158,13 @@ export class ConfirmPaymentUseCase {
 
     if (alreadyConfirmed) {
       this.logger.debug(
-        `Pedido ${order.order_id} ya estaba confirmado (idempotencia webhook, pago ${paymentId})`,
+        `Pedido ${order.orderId} ya estaba confirmado (idempotencia webhook, pago ${paymentId})`,
       );
       return;
     }
 
     this.logger.log(
-      `Pedido ${order.order_id} confirmado como PAGADO (MercadoPago ${paymentId}) → despachando`,
+      `Pedido ${order.orderId} confirmado como PAGADO (MercadoPago ${paymentId}) → despachando`,
     );
 
     // Best-effort, fuera de la transacción: `order` (con relaciones completas
@@ -175,7 +175,7 @@ export class ConfirmPaymentUseCase {
       .offerToNextDriver(order)
       .catch((error: unknown) =>
         this.logger.error(
-          `Falló el despacho post-pago del pedido ${order.order_id}: ${errorMessage(error)}`,
+          `Falló el despacho post-pago del pedido ${order.orderId}: ${errorMessage(error)}`,
         ),
       );
   }

@@ -19,7 +19,7 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
   let manager: EntityManager;
 
   const producto = (id: string, stock: number): GasCylinder =>
-    ({ gas_cylinder_id: id, type: `Garrafa ${id}`, stock }) as GasCylinder;
+    ({ gasCylinderId: id, type: `Garrafa ${id}`, stock }) as GasCylinder;
 
   beforeEach(() => {
     lecturas = [];
@@ -90,8 +90,8 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       const b = producto('b', 1);
       lecturas.push(a, b);
       await service.restituirStock(manager, [
-        { gas_cylinder_id: 'a', quantity: 2 },
-        { gas_cylinder_id: 'b', quantity: 4 },
+        { gasCylinderId: 'a', quantity: 2 },
+        { gasCylinderId: 'b', quantity: 4 },
       ]);
       expect(a.stock).toBe(7);
       expect(b.stock).toBe(5);
@@ -101,7 +101,7 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
     it('ignora el ítem de un producto que ya no existe', async () => {
       lecturas.push(null);
       await service.restituirStock(manager, [
-        { gas_cylinder_id: 'x', quantity: 2 },
+        { gasCylinderId: 'x', quantity: 2 },
       ]);
       expect(save).not.toHaveBeenCalled();
     });

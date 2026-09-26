@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Brackets, EntityManager } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { ConfigService } from '@nestjs/config';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
@@ -25,11 +26,11 @@ import { usuarioDeLaDistribuidora } from '../common/tenancy/pertenencia';
 /** Lo que el alta guarda en la fila del usuario. */
 export interface DatosDeUsuarioNuevo {
   email: string;
-  full_name: string;
-  phone_number: string;
+  fullName: string;
+  phoneNumber: string;
   selfie?: string;
-  firebase_uid: string;
-  role_id: string;
+  firebaseUid: string;
+  roleId: string;
 }
 
 @Injectable()
@@ -52,9 +53,9 @@ export class UsersService {
    */
   async assertDisponible(email: string, phoneNumber: string): Promise<void> {
     const existente = await this.userRepository.findOne({
-      where: [{ email }, { phone_number: phoneNumber }],
+      where: [{ email }, { phoneNumber }],
       withDeleted: true,
-      select: { user_id: true },
+      select: { userId: true },
     });
     if (existente) {
       throw new ConflictException('Email o teléfono ya en uso');
@@ -70,8 +71,8 @@ export class UsersService {
     return repo.save(
       repo.create({
         ...datos,
-        email_verified: false,
-        phone_verified: false,
+        emailVerified: false,
+        phoneVerified: false,
         blocked: false,
       }),
     );
@@ -97,7 +98,7 @@ export class UsersService {
       .skip(offset);
 
     if (distributorId) {
-      queryBuilder.andWhere(usuarioDeLaDistribuidora('user.user_id'), {
+      queryBuilder.andWhere(usuarioDeLaDistribuidora('user.userId'), {
         distributorId,
       });
     }
@@ -106,8 +107,8 @@ export class UsersService {
       queryBuilder.andWhere(
         new Brackets((qb) => {
           qb.where('user.email ILIKE :term', { term: `%${term}%` })
-            .orWhere('user.full_name ILIKE :term', { term: `%${term}%` })
-            .orWhere('user.phone_number ILIKE :term', { term: `%${term}%` });
+            .orWhere('user.fullName ILIKE :term', { term: `%${term}%` })
+            .orWhere('user.phoneNumber ILIKE :term', { term: `%${term}%` });
         }),
       );
     }
@@ -127,20 +128,20 @@ export class UsersService {
   async perteneceA(userId: string, distributorId: string): Promise<boolean> {
     const cantidad = await this.userRepository
       .createQueryBuilder('user')
-      .where('user.user_id = :userId', { userId })
-      .andWhere(usuarioDeLaDistribuidora('user.user_id'), { distributorId })
+      .where('user.userId = :userId', { userId })
+      .andWhere(usuarioDeLaDistribuidora('user.userId'), { distributorId })
       .getCount();
     return cantidad > 0;
   }
 
   /** El usuario sin relaciones, o null. Para confirmar que existe. */
   findById(id: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { user_id: id } });
+    return this.userRepository.findOne({ where: { userId: id } });
   }
 
   async findOne(id: string): Promise<User> {
     const user = await this.userRepository.findOne({
-      where: { user_id: id },
+      where: { userId: id },
       relations: ['role', 'customer', 'delivery', 'cars', 'addresses'],
     });
 
@@ -185,16 +186,22 @@ export class UsersService {
 
   findOneByPhone(phoneNumber: string): Promise<User | null> {
     return this.userRepository.findOne({
-      where: { phone_number: phoneNumber },
+      where: { phoneNumber },
       relations: ['role', 'customer', 'delivery', 'addresses'],
     });
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    const { password, ...campos } = updateUserDto;
+    const { password } = updateUserDto;
+    // Campo por campo: el cuerpo va en snake_case y la entidad en camelCase.
     const user = await this.userRepository.preload({
-      user_id: id,
-      ...campos,
+      userId: id,
+      ...sinIndefinidos({
+        fullName: updateUserDto.full_name,
+        phoneNumber: updateUserDto.phone_number,
+        selfie: updateUserDto.selfie,
+        blocked: updateUserDto.blocked,
+      }),
     });
 
     if (!user) {
@@ -205,12 +212,12 @@ export class UsersService {
     // descartaba en silencio y el panel informaba un cambio que no ocurría
     // (H-75).
     if (password) {
-      if (!user.firebase_uid) {
+      if (!user.firebaseUid) {
         throw new ConflictException(
           'El usuario no tiene cuenta de acceso: no se le puede cambiar la contraseña',
         );
       }
-      await this.cambiarContraseña(user.firebase_uid, password);
+      await this.cambiarContraseña(user.firebaseUid, password);
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -237,8 +244,8 @@ export class UsersService {
    */
   async cambiarEmail(id: string, email: string): Promise<void> {
     await this.userRepository.update(
-      { user_id: id },
-      { email, email_verified: false },
+      { userId: id },
+      { email, emailVerified: false },
     );
   }
 
@@ -260,7 +267,7 @@ export class UsersService {
     id: string,
   ): Promise<{ rol: string | undefined; distributorId: string | null }> {
     const user = await this.userRepository.findOne({
-      where: { user_id: id },
+      where: { userId: id },
       relations: ['role', 'delivery', 'admins'],
     });
     if (!user) {
@@ -269,9 +276,7 @@ export class UsersService {
     return {
       rol: user.role?.type,
       distributorId:
-        user.delivery?.distributor_id ??
-        user.admins?.[0]?.distributor_id ??
-        null,
+        user.delivery?.distributorId ?? user.admins?.[0]?.distributorId ?? null,
     };
   }
 
@@ -284,7 +289,7 @@ export class UsersService {
    */
   async remove(id: string): Promise<MessageResponseDto> {
     const user = await this.userRepository.findOne({
-      where: { user_id: id },
+      where: { userId: id },
       relations: ['customer', 'delivery', 'cars', 'addresses'],
     });
     if (!user) {
@@ -295,9 +300,9 @@ export class UsersService {
 
     // Sin fila vigente el acceso ya lo rechaza; deshabilitar la cuenta es la
     // segunda barrera. Si Firebase falla, la baja igual quedó hecha.
-    if (user.firebase_uid) {
+    if (user.firebaseUid) {
       try {
-        await this.firebaseAuth.updateUser(user.firebase_uid, {
+        await this.firebaseAuth.updateUser(user.firebaseUid, {
           disabled: true,
         });
       } catch (error) {
@@ -325,7 +330,7 @@ export class UsersService {
         ? this.userRepository.exists({ where: { email } })
         : Promise.resolve(false),
       phoneNumber
-        ? this.userRepository.exists({ where: { phone_number: phoneNumber } })
+        ? this.userRepository.exists({ where: { phoneNumber } })
         : Promise.resolve(false),
     ]);
     return {
@@ -348,7 +353,7 @@ export class UsersService {
   async verifyEmail(userId: string): Promise<User> {
     const user = await this.findOne(userId);
 
-    user.email_verified = true;
+    user.emailVerified = true;
     const updatedUser = await this.userRepository.save(user);
 
     return updatedUser;
@@ -356,12 +361,12 @@ export class UsersService {
 
   async verifyEmailByAddress(email: string): Promise<User> {
     const user = await this.findOneByEmail(email);
-    return await this.verifyEmail(user.user_id);
+    return await this.verifyEmail(user.userId);
   }
 
   async findOneByFirebaseUid(firebaseUid: string): Promise<User> {
     const user = await this.userRepository.findOne({
-      where: { firebase_uid: firebaseUid },
+      where: { firebaseUid },
       relations: ['role', 'customer', 'delivery', 'cars'],
     });
 
@@ -378,14 +383,14 @@ export class UsersService {
     id: string,
     shouldBlock: boolean,
   ): Promise<BloqueoDeUsuarioDto> {
-    const user = await this.userRepository.findOne({ where: { user_id: id } });
+    const user = await this.userRepository.findOne({ where: { userId: id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     user.blocked = shouldBlock;
     await this.userRepository.save(user);
 
     return {
-      id: user.user_id,
+      id: user.userId,
       email: user.email ?? null,
       isBlocked: user.blocked,
       message: user.blocked

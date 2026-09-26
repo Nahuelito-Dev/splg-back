@@ -36,18 +36,21 @@ export enum CylinderState {
  * mismo número de serie de fábrica).
  */
 @Entity('cylinder')
-@Unique(['distributor_id', 'serial'])
+@Unique(['distributorId', 'serial'])
 export class Cylinder {
   @PrimaryGeneratedColumn('uuid', { name: 'cylinder_id' })
-  cylinder_id!: string;
+  cylinderId!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
   distributor!: Distributor;
 
-  @Column({ type: 'uuid' })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+  })
+  distributorId!: string;
 
   /** Número de serie físico grabado en el envase. Único por distribuidora. */
   @Index()
@@ -55,8 +58,12 @@ export class Cylinder {
   serial!: string;
 
   /** Tipo de producto al que corresponde (ej. "Garrafa 10kg"), sin relación para simplificar. */
-  @Column({ type: 'uuid', nullable: true })
-  gas_cylinder_id!: string | null;
+  @Column({
+    name: 'gas_cylinder_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  gasCylinderId!: string | null;
 
   @ManyToOne(() => GasCylinder, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'gas_cylinder_id' })
@@ -71,8 +78,12 @@ export class Cylinder {
   state!: CylinderState;
 
   /** Cliente que tiene actualmente el envase (User user_id), solo seteado en WITH_CUSTOMER. */
-  @Column({ type: 'uuid', nullable: true })
-  current_customer_id!: string | null;
+  @Column({
+    name: 'current_customer_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  currentCustomerId!: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'current_customer_id' })
@@ -85,8 +96,12 @@ export class Cylinder {
    * como referencia del último pedido en el que se entregó.
    */
   @Index()
-  @Column({ type: 'uuid', nullable: true })
-  current_order_id!: string | null;
+  @Column({
+    name: 'current_order_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  currentOrderId!: string | null;
 
   @ManyToOne(() => Order, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'current_order_id' })
@@ -109,11 +124,11 @@ export class Cylinder {
   updatedAt!: Date;
 
   @Column({ name: 'manufactured_at', type: 'timestamptz', nullable: true })
-  manufactured_at!: Date | null;
+  manufacturedAt!: Date | null;
 
   @Column({ name: 'last_inspection_at', type: 'timestamptz', nullable: true })
-  last_inspection_at!: Date | null;
+  lastInspectionAt!: Date | null;
 
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
-  expires_at!: Date | null;
+  expiresAt!: Date | null;
 }

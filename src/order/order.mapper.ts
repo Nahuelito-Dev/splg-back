@@ -22,30 +22,30 @@ export class OrderMapper {
   static toDto(order: Order): OrderResponseDto {
     const dto = new OrderResponseDto();
 
-    dto.id = order.order_id;
+    dto.id = order.orderId;
     dto.total = Number(order.totalAmount); // Ensure number
     dto.createdAt = order.createdAt;
     dto.deliveryNotes = order.deliveryInstructions || null;
     dto.customerNotes = order.notes || null;
-    dto.deliveryId = order.delivery_id || null;
+    dto.deliveryId = order.deliveryId || null;
     dto.actualDeliveryDate = order.deliveredAt;
 
     // Delivery Name (if loaded)
     dto.deliveryName =
       order.delivery && order.delivery.user
-        ? order.delivery.user.full_name || null
+        ? order.delivery.user.fullName || null
         : null;
 
     // Status Mapping
     dto.status = this.mapStatus(order.status);
 
     // Agendamiento + reserva
-    dto.scheduledDate = order.scheduled_date ?? null;
-    dto.depositAmount = Number(order.deposit_amount ?? 0);
-    dto.depositPaid = !!order.deposit_paid;
+    dto.scheduledDate = order.scheduledDate ?? null;
+    dto.depositAmount = Number(order.depositAmount ?? 0);
+    dto.depositPaid = !!order.depositPaid;
     // Saldo a cobrar al entregar = total menos la seña YA paga.
     dto.remainingBalance =
-      Number(order.totalAmount) - (order.deposit_paid ? dto.depositAmount : 0);
+      Number(order.totalAmount) - (order.depositPaid ? dto.depositAmount : 0);
 
     // Payment Method Mapping
     dto.paymentMethod = this.mapPaymentType(order.paymentType);
@@ -53,7 +53,7 @@ export class OrderMapper {
     // Address Mapping
     if (order.address) {
       dto.address = {
-        id: order.address.address_id,
+        id: order.address.addressId,
         street: order.address.street,
         city: order.address.city,
         postalCode: order.address.postalCode,
@@ -87,7 +87,7 @@ export class OrderMapper {
       renglon.cylinder = null;
       if (item.gasCylinder) {
         const producto = new ProductoDelRenglonDto();
-        producto.id = item.gasCylinder.gas_cylinder_id;
+        producto.id = item.gasCylinder.gasCylinderId;
         producto.type = item.gasCylinder.type;
         producto.weight = Number(item.gasCylinder.weight);
         producto.price = Number(item.gasCylinder.price);

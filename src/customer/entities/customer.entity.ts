@@ -17,17 +17,24 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 @Entity('customer')
 export class Customer {
   @PrimaryGeneratedColumn('uuid', { name: 'customer_id' })
-  customer_id!: string;
+  customerId!: string;
 
   @OneToOne(() => User, (user) => user.customer, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'uuid' })
-  user_id!: string;
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+  })
+  userId!: string;
 
-  @Column({ type: 'text', nullable: true })
-  notification_token!: string | null;
+  @Column({
+    name: 'notification_token',
+    type: 'text',
+    nullable: true,
+  })
+  notificationToken!: string | null;
 
   /** Última ubicación conocida (antes texto "lat,lng" en lat_lang). */
   @Index({ spatial: true })
@@ -57,10 +64,10 @@ export class Customer {
     transformer: columnNumericTransformer,
     nullable: true,
   })
-  avg_monthly_consumption_kg!: number | null;
+  avgMonthlyConsumptionKg!: number | null;
 
   @Column({ name: 'declared_cylinder_type_id', type: 'uuid', nullable: true })
-  declared_cylinder_type_id!: string | null;
+  declaredCylinderTypeId!: string | null;
 
   @ManyToOne(() => GasCylinder, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'declared_cylinder_type_id' })
@@ -72,12 +79,12 @@ export class Customer {
     nullable: true,
     default: 3,
   })
-  repurchase_notice_days!: number | null;
+  repurchaseNoticeDays!: number | null;
 
   @Column({
     name: 'next_repurchase_estimate_at',
     type: 'timestamptz',
     nullable: true,
   })
-  next_repurchase_estimate_at!: Date | null;
+  nextRepurchaseEstimateAt!: Date | null;
 }
