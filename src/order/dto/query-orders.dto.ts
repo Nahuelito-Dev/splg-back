@@ -1,7 +1,22 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsDateString, IsEnum, IsOptional, Matches } from 'class-validator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { OrderStatus } from '../entities/order.entity';
+
+/**
+ * El filtro acepta el vocabulario de `OrderResponseDto.status`: la respuesta
+ * muestra `on_the_way` como `out_for_delivery`, así que filtrar con lo que se
+ * recibió tiene que funcionar.
+ */
+const ESTADOS_DE_LA_RESPUESTA = [
+  'reserved',
+  'pending',
+  'accepted',
+  'out_for_delivery',
+  'delivered',
+  'cancelled',
+] as const;
 
 /**
  * Consulta de `GET /orders`, para el panel. Extiende la paginación con
@@ -9,10 +24,15 @@ import { OrderStatus } from '../entities/order.entity';
  */
 export class QueryOrdersDto extends PaginationDto {
   @ApiPropertyOptional({
-    enum: OrderStatus,
-    description: 'Filtra por estado del pedido',
+    enum: ESTADOS_DE_LA_RESPUESTA,
+    description:
+      'Filtra por estado, con los mismos valores que devuelve la respuesta ' +
+      '(`out_for_delivery` es el pedido en camino)',
   })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'out_for_delivery' ? OrderStatus.ON_THE_WAY : value,
+  )
   @IsEnum(OrderStatus, {
     message: 'status debe ser un estado de pedido válido',
   })
