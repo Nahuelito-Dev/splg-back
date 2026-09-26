@@ -4,11 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, FindOptionsWhere, Not, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 import { TimeSlot } from './entities/time-slot.entity';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
 import { DistributorService } from '../distributor/distributor.service';
-import { Order, OrderStatus } from '../order/entities/order.entity';
+import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { SlotAvailabilityDto } from './dto/time-slot-response.dto';
 
 const UUID_RE =
@@ -21,8 +21,7 @@ export class TimeSlotService {
   constructor(
     @InjectRepository(TimeSlot)
     private readonly timeSlotRepository: Repository<TimeSlot>,
-    @InjectRepository(Order)
-    private readonly orderRepository: Repository<Order>,
+    private readonly orders: OrderLookupService,
     private readonly distributorService: DistributorService,
   ) {}
 
@@ -36,7 +35,7 @@ export class TimeSlotService {
     const distributor = UUID_RE.test(slugOrId)
       ? await this.distributorService.assertActive(slugOrId)
       : await this.distributorService.findBySlug(slugOrId);
-    return distributor.distributor_id;
+    return distributor.distributorId;
   }
 
   async create(
@@ -45,7 +44,7 @@ export class TimeSlotService {
   ): Promise<TimeSlot> {
     const timeSlot = this.timeSlotRepository.create({
       ...createTimeSlotDto,
-      distributor_id: distributorId,
+      distributorId,
     });
     return await this.timeSlotRepository.save(timeSlot);
   }
@@ -65,7 +64,7 @@ export class TimeSlotService {
       : (distributorId ?? null);
 
     const where: FindOptionsWhere<TimeSlot> = { isActive: true };
-    if (effective) where.distributor_id = effective;
+    if (effective) where.distributorId = effective;
 
     return await this.timeSlotRepository.find({
       where,
@@ -78,8 +77,8 @@ export class TimeSlotService {
    * tenant (evita que un admin lea/borre franjas de otra distribuidora).
    */
   async findOne(id: string, distributorId?: string | null): Promise<TimeSlot> {
-    const where: FindOptionsWhere<TimeSlot> = { time_slot_id: id };
-    if (distributorId) where.distributor_id = distributorId;
+    const where: FindOptionsWhere<TimeSlot> = { timeSlotId: id };
+    if (distributorId) where.distributorId = distributorId;
 
     const timeSlot = await this.timeSlotRepository.findOne({ where });
     if (!timeSlot) throw new NotFoundException('Time slot not found');
@@ -98,13 +97,7 @@ export class TimeSlotService {
     date: string,
     distributorId?: string | null,
   ): Promise<number> {
-    const where: FindOptionsWhere<Order> = {
-      time_slot_id: timeSlotId,
-      scheduled_date: date,
-      status: Not(OrderStatus.CANCELLED),
-    };
-    if (distributorId) where.distributor_id = distributorId;
-    return this.orderRepository.count({ where });
+    return this.orders.countBooked(timeSlotId, date, distributorId);
   }
 
   /**
@@ -118,7 +111,7 @@ export class TimeSlotService {
   ): Promise<SlotAvailability[]> {
     const distributorId = await this.resolveDistributor(distributor);
     const where: FindOptionsWhere<TimeSlot> = { isActive: true };
-    if (distributorId) where.distributor_id = distributorId;
+    if (distributorId) where.distributorId = distributorId;
 
     const slots = await this.timeSlotRepository.find({
       where,
@@ -128,12 +121,12 @@ export class TimeSlotService {
     const result: SlotAvailability[] = [];
     for (const slot of slots) {
       const booked = await this.countBooked(
-        slot.time_slot_id,
+        slot.timeSlotId,
         date,
         distributorId,
       );
       result.push({
-        timeSlotId: slot.time_slot_id,
+        timeSlotId: slot.timeSlotId,
         name: slot.name,
         startTime: slot.startTime,
         endTime: slot.endTime,
@@ -157,9 +150,9 @@ export class TimeSlotService {
   ): Promise<void> {
     const slot = await this.timeSlotRepository.findOne({
       where: {
-        time_slot_id: timeSlotId,
+        timeSlotId,
         isActive: true,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        ...(distributorId ? { distributorId } : {}),
       },
     });
     if (!slot) {
@@ -197,9 +190,9 @@ export class TimeSlotService {
   ): Promise<void> {
     const slot = await manager.findOne(TimeSlot, {
       where: {
-        time_slot_id: timeSlotId,
+        timeSlotId,
         isActive: true,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        ...(distributorId ? { distributorId } : {}),
       },
       lock: { mode: 'pessimistic_write' },
     });
@@ -212,13 +205,12 @@ export class TimeSlotService {
       throw new BadRequestException('No se puede agendar en una fecha pasada');
     }
 
-    const where: FindOptionsWhere<Order> = {
-      time_slot_id: timeSlotId,
-      scheduled_date: date,
-      status: Not(OrderStatus.CANCELLED),
-    };
-    if (distributorId) where.distributor_id = distributorId;
-    const booked = await manager.count(Order, { where });
+    const booked = await this.orders.countBooked(
+      timeSlotId,
+      date,
+      distributorId,
+      manager,
+    );
     if (booked >= slot.capacity) {
       throw new BadRequestException(
         `La franja "${slot.name}" del ${date} está completa`,

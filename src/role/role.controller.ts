@@ -16,6 +16,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { RoleService } from './role.service';
 import { RoleMapper } from './role.mapper';
@@ -36,6 +37,9 @@ export class RoleController {
   @Post()
   @ApiOperation({ summary: 'Crear un rol' })
   @ApiCreatedResponse({ type: RoleResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: type must be a string)',
+  })
   async create(@Body() createRoleDto: CreateRoleDto): Promise<RoleResponseDto> {
     return RoleMapper.toDto(await this.roleService.create(createRoleDto));
   }
@@ -63,6 +67,9 @@ export class RoleController {
   @ApiOkResponse({ type: RoleResponseDto })
   @ApiNotFoundResponse({ description: 'El rol no existe' })
   @ApiConflictResponse({ description: 'Es un rol del sistema' })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: type must be a string)',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateRoleDto: UpdateRoleDto,

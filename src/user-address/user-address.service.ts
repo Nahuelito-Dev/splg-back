@@ -64,9 +64,12 @@ export class UserAddressService {
       await this.removeDefaultFromOtherAddresses(createUserAddressDto.user_id);
     }
 
-    const { latitude, longitude, ...campos } = createUserAddressDto;
+    // Sin `user_id`: la entidad lo lleva en camelCase y volcarlo con el resto
+    // lo perdería en silencio.
+    const { latitude, longitude, user_id, ...campos } = createUserAddressDto;
     const address = this.userAddressRepository.create({
       ...campos,
+      userId: user_id,
       location: puntoDesdeCoordenadas(latitude, longitude),
     });
     return await this.userAddressRepository.save(address);
@@ -101,7 +104,7 @@ export class UserAddressService {
     userId: string,
   ): Promise<UserAddress | null> {
     return this.userAddressRepository.findOne({
-      where: { address_id: addressId, user_id: userId },
+      where: { addressId, userId },
     });
   }
 
@@ -119,10 +122,10 @@ export class UserAddressService {
       userId = ref.userId;
     } else {
       const direccion = await this.userAddressRepository.findOne({
-        where: { address_id: ref.addressId },
+        where: { addressId: ref.addressId },
       });
       if (!direccion) return; // el servicio responde el 404 de siempre
-      userId = direccion.user_id;
+      userId = direccion.userId;
     }
     if (!(await this.usersService.perteneceA(userId, distributorId))) {
       throw new NotFoundException('Dirección no encontrada');
@@ -134,7 +137,7 @@ export class UserAddressService {
     requesterUserId?: string | null,
   ): Promise<UserAddress> {
     const address = await this.userAddressRepository.findOne({
-      where: { address_id: id },
+      where: { addressId: id },
       relations: ['user'],
     });
 
@@ -142,7 +145,7 @@ export class UserAddressService {
       throw new NotFoundException(`Address with ID: ${id} not found`);
     }
 
-    this.assertOwnership(address.user_id, requesterUserId);
+    this.assertOwnership(address.userId, requesterUserId);
     return address;
   }
 
@@ -152,7 +155,7 @@ export class UserAddressService {
   ): Promise<UserAddress[]> {
     this.assertOwnership(userId, requesterUserId);
     const addresses = await this.userAddressRepository.find({
-      where: { user_id: userId },
+      where: { userId },
       relations: ['user'],
       order: { isDefault: 'DESC', createdAt: 'DESC' },
     });
@@ -166,7 +169,7 @@ export class UserAddressService {
   ): Promise<UserAddress> {
     this.assertOwnership(userId, requesterUserId);
     const address = await this.userAddressRepository.findOne({
-      where: { user_id: userId, isDefault: true },
+      where: { userId, isDefault: true },
       relations: ['user'],
     });
 
@@ -195,7 +198,7 @@ export class UserAddressService {
       throw new BadRequestException('latitude y longitude se cambian juntas');
     }
     const address = await this.userAddressRepository.preload({
-      address_id: id,
+      addressId: id,
       ...campos,
       ...(latitude !== undefined &&
         longitude !== undefined && {
@@ -208,7 +211,7 @@ export class UserAddressService {
     }
 
     if (updateUserAddressDto.isDefault) {
-      await this.removeDefaultFromOtherAddresses(address.user_id, id);
+      await this.removeDefaultFromOtherAddresses(address.userId, id);
     }
 
     return await this.userAddressRepository.save(address);
@@ -223,8 +226,8 @@ export class UserAddressService {
     if (address.isDefault) {
       const otherAddresses = await this.userAddressRepository.find({
         where: {
-          user_id: address.user_id,
-          address_id: Not(id),
+          userId: address.userId,
+          addressId: Not(id),
         },
         order: { createdAt: 'DESC' },
       });
@@ -248,7 +251,7 @@ export class UserAddressService {
     requesterUserId?: string | null,
   ): Promise<UserAddress> {
     const address = await this.findOne(id, requesterUserId);
-    await this.removeDefaultFromOtherAddresses(address.user_id, id);
+    await this.removeDefaultFromOtherAddresses(address.userId, id);
 
     address.isDefault = true;
     return await this.userAddressRepository.save(address);
@@ -259,14 +262,14 @@ export class UserAddressService {
     excludeAddressId?: string,
   ): Promise<void> {
     const whereClause: FindOptionsWhere<UserAddress> = {
-      user_id: userId,
+      userId,
       isDefault: true,
     };
 
     if (excludeAddressId) {
       // TypeORM (Postgres), NO Mongo: usar Not(), no `{ $not: ... }` (rompía
       // con 500 al marcar una dirección como predeterminada).
-      whereClause.address_id = Not(excludeAddressId);
+      whereClause.addressId = Not(excludeAddressId);
     }
 
     const defaultAddresses = await this.userAddressRepository.find({

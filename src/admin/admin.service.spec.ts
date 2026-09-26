@@ -63,7 +63,7 @@ describe('AdminService', () => {
     admins.find.mockResolvedValue([]);
     await service.findAll('dist-1');
     expect(admins.find).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { distributor_id: 'dist-1' } }),
+      expect.objectContaining({ where: { distributorId: 'dist-1' } }),
     );
     await service.findAll(null);
     expect(admins.find).toHaveBeenLastCalledWith(
@@ -72,10 +72,10 @@ describe('AdminService', () => {
   });
 
   it('busca por id si el término es un uuid y por correo si no', async () => {
-    qb.getOne.mockResolvedValue({ admin_id: 'a1' });
+    qb.getOne.mockResolvedValue({ adminId: 'a1' });
     await service.findAdminByTerm('0c8b00a8-7d75-4793-9362-5855689be8c6');
     expect(qb.where).toHaveBeenLastCalledWith(
-      'admin.admin_id = :admin_id',
+      'admin.adminId = :admin_id',
       expect.anything(),
     );
     await service.findAdminByTerm('admin@splg.com');
@@ -86,8 +86,8 @@ describe('AdminService', () => {
   });
 
   it('no le cuelga un perfil de admin a un cliente', async () => {
-    users.findById.mockResolvedValue({ user_id: 'u1', role_id: 'r-cliente' });
-    roles.findOne.mockResolvedValue({ role_id: 'r-cliente', type: 'customer' });
+    users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-cliente' });
+    roles.findOne.mockResolvedValue({ roleId: 'r-cliente', type: 'customer' });
     await expect(
       service.create({ user_id: 'u1', distributor_id: 'd1' }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -95,23 +95,23 @@ describe('AdminService', () => {
   });
 
   it('un admin de empresa sin distribuidora es 400', async () => {
-    users.findById.mockResolvedValue({ user_id: 'u1', role_id: 'r-admin' });
-    roles.findOne.mockResolvedValue({ role_id: 'r-admin', type: 'admin' });
+    users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
+    roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
     await expect(service.create({ user_id: 'u1' })).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
 
   it('el rol del perfil es el del usuario', async () => {
-    users.findById.mockResolvedValue({ user_id: 'u1', role_id: 'r-admin' });
-    roles.findOne.mockResolvedValue({ role_id: 'r-admin', type: 'admin' });
+    users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
+    roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
     await service.create({ user_id: 'u1', distributor_id: 'd1' });
     expect(admins.save).toHaveBeenCalled();
     expect(roles.findOne).toHaveBeenCalledWith('r-admin');
   });
 
   it('con distribuidora en contexto, el admin de otra es 404', async () => {
-    qb.getOne.mockResolvedValue({ admin_id: 'a1', distributor_id: 'd2' });
+    qb.getOne.mockResolvedValue({ adminId: 'a1', distributorId: 'd2' });
     await expect(
       service.findAdminByTerm('otro@splg.com', 'd1'),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -126,11 +126,11 @@ describe('AdminService', () => {
 
   it('la vista del admin no expone el identificador de Firebase', () => {
     const vista = AdminMapper.toVista({
-      admin_id: 'a1',
+      adminId: 'a1',
       user: {
         email: 'a@splg.com',
-        full_name: 'Ana',
-        firebase_uid: 'secreto',
+        fullName: 'Ana',
+        firebaseUid: 'secreto',
         role: { type: RoleType.ADMIN },
       },
     } as unknown as Admin);

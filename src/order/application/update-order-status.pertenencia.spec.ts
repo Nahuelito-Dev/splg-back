@@ -19,13 +19,13 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   let uc: UpdateOrderStatusUseCase;
 
   const armar = (
-    delivery_id: string | null,
+    deliveryId: string | null,
     status = OrderStatus.ON_THE_WAY,
   ) => {
     const order = {
-      order_id: 'f1f1f1f1-0000-4000-8000-000000000003',
-      customer_id: 'c1c1c1c1-0000-4000-8000-000000000004',
-      delivery_id,
+      orderId: 'f1f1f1f1-0000-4000-8000-000000000003',
+      customerId: 'c1c1c1c1-0000-4000-8000-000000000004',
+      deliveryId,
       status,
       items: [],
     };
@@ -59,8 +59,8 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     armar(DELIVERY_ASIGNADO);
     // El que llama existe como chofer, pero es otro.
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
-      delivery_id: DELIVERY_AJENO,
-      user_id: 'user-ajeno',
+      deliveryId: DELIVERY_AJENO,
+      userId: 'user-ajeno',
     });
 
     await expect(
@@ -78,10 +78,10 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   it('no verifica nada si el pedido todavía no tiene chofer: aceptarlo es cómo se asigna', async () => {
     armar(null, OrderStatus.PENDING);
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
-      delivery_id: DELIVERY_ASIGNADO,
-      user_id: 'user-nuevo',
+      deliveryId: DELIVERY_ASIGNADO,
+      userId: 'user-nuevo',
       isActive: true,
-      user: { full_name: 'Chofer' },
+      user: { fullName: 'Chofer' },
     });
 
     await expect(
@@ -99,8 +99,8 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   it('impide que un chofer se quede con un pedido ya asignado a otro', async () => {
     armar(DELIVERY_ASIGNADO, OrderStatus.PENDING);
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
-      delivery_id: DELIVERY_AJENO,
-      user_id: 'user-ajeno',
+      deliveryId: DELIVERY_AJENO,
+      userId: 'user-ajeno',
       isActive: true,
     });
 

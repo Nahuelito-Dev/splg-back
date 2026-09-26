@@ -99,7 +99,7 @@ export class NotificationsService {
     notificationToken?: string,
   ): Promise<ResultadoDeEnvioDto> {
     try {
-      const token = notificationToken || customer.customer?.notification_token;
+      const token = notificationToken || customer.customer?.notificationToken;
 
       if (!token) {
         return { success: false, error: 'No notification token' };
@@ -120,14 +120,14 @@ export class NotificationsService {
             statusMessages[order.status] || 'Estado de tu pedido actualizado.',
         },
         data: {
-          orderId: order.order_id,
+          orderId: order.orderId,
           status: order.status,
           type: 'ORDER_STATUS_UPDATE',
         },
       };
 
       const response = await this.fcm.sendToToken(token, message);
-      this.logger.log(`Order status update sent for order: ${order.order_id}`);
+      this.logger.log(`Order status update sent for order: ${order.orderId}`);
       return { success: true, messageId: response };
     } catch (error) {
       this.logger.error(

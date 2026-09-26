@@ -38,27 +38,37 @@ export enum IncidentStatus {
 @Entity('incident')
 export class Incident {
   @PrimaryGeneratedColumn('uuid', { name: 'incident_id' })
-  incident_id!: string;
+  incidentId!: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 
   @Index()
-  @Column({ type: 'uuid' })
-  order_id!: string;
+  @Column({
+    name: 'order_id',
+    type: 'uuid',
+  })
+  orderId!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
   /** Usuario que reporta la incidencia (user_id), normalmente el chofer. */
-  @Column({ type: 'uuid' })
-  reported_by!: string;
+  @Column({
+    name: 'reported_by',
+    type: 'uuid',
+  })
+  reportedBy!: string;
 
   @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'reported_by' })
@@ -70,8 +80,12 @@ export class Incident {
   @Column({ type: 'text' })
   description!: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  photo_url!: string | null;
+  @Column({
+    name: 'photo_url',
+    type: 'varchar',
+    nullable: true,
+  })
+  photoUrl!: string | null;
 
   @Column({
     type: 'enum',
@@ -80,8 +94,12 @@ export class Incident {
   })
   status!: IncidentStatus;
 
-  @Column({ type: 'text', nullable: true })
-  resolution_note!: string | null;
+  @Column({
+    name: 'resolution_note',
+    type: 'text',
+    nullable: true,
+  })
+  resolutionNote!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

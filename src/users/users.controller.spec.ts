@@ -27,7 +27,7 @@ describe('UsersController — alcance', () => {
     email: 'yo@splg.com',
     role,
   });
-  const fila = { user_id: 'otro', blocked: false } as User;
+  const fila = { userId: 'otro', blocked: false } as User;
 
   beforeEach(() => {
     service = {

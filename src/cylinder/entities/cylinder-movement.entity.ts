@@ -21,11 +21,14 @@ import { User } from '../../users/entities/user.entity';
 @Entity('cylinder_movement')
 export class CylinderMovement {
   @PrimaryGeneratedColumn('uuid', { name: 'movement_id' })
-  movement_id!: string;
+  movementId!: string;
 
   @Index()
-  @Column({ type: 'uuid' })
-  cylinder_id!: string;
+  @Column({
+    name: 'cylinder_id',
+    type: 'uuid',
+  })
+  cylinderId!: string;
 
   /** Trazabilidad: el historial no se pierde porque se borre el envase. */
   @ManyToOne(() => Cylinder, { nullable: false, onDelete: 'RESTRICT' })
@@ -33,30 +36,50 @@ export class CylinderMovement {
   cylinder?: Cylinder;
 
   @Index()
-  @Column({ type: 'uuid' })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+  })
+  distributorId!: string;
 
   @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'enum', enum: CylinderState, nullable: true })
-  from_state!: CylinderState | null;
+  @Column({
+    name: 'from_state',
+    type: 'enum',
+    enum: CylinderState,
+    nullable: true,
+  })
+  fromState!: CylinderState | null;
 
-  @Column({ type: 'enum', enum: CylinderState })
-  to_state!: CylinderState;
+  @Column({
+    name: 'to_state',
+    type: 'enum',
+    enum: CylinderState,
+  })
+  toState!: CylinderState;
 
   /** Pedido en cuyo contexto ocurrió la transición (dispatch/entrega), si aplica. */
-  @Column({ type: 'uuid', nullable: true })
-  order_id!: string | null;
+  @Column({
+    name: 'order_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  orderId!: string | null;
 
   @ManyToOne(() => Order, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'order_id' })
   order?: Order;
 
   /** Usuario (chofer/admin) que ejecutó la transición, si aplica. */
-  @Column({ type: 'uuid', nullable: true })
-  actor_user_id!: string | null;
+  @Column({
+    name: 'actor_user_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  actorUserId!: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'actor_user_id' })

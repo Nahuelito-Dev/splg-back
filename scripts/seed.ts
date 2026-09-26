@@ -114,8 +114,8 @@ async function bootstrap() {
     const jenyGas = await ensureDistributor(distributorService, {
       name: 'Jeny Gas',
       slug: 'jeny-gas',
-      legal_name: 'Jeny Gas S.R.L.',
-      tax_id: '30-11111111-1',
+      legalName: 'Jeny Gas S.R.L.',
+      taxId: '30-11111111-1',
       email: 'contacto@splg.com',
       phone: '+543764000001',
     });
@@ -124,7 +124,7 @@ async function bootstrap() {
     // 3) Usuarios de prueba ────────────────────────────────────────────────
     for (const u of TEST_USERS) {
       results.push(
-        await ensureUser(u, usersService, registro, jenyGas.distributor_id),
+        await ensureUser(u, usersService, registro, jenyGas.distributorId),
       );
     }
 
@@ -134,7 +134,7 @@ async function bootstrap() {
     for (const table of SCOPED_TABLES) {
       await dataSource.query(
         `UPDATE ${table} SET distributor_id = $1 WHERE distributor_id IS NULL`,
-        [jenyGas.distributor_id],
+        [jenyGas.distributorId],
       );
     }
     // En admin, null es un valor válido: es el super admin, que no pertenece a
@@ -145,7 +145,7 @@ async function bootstrap() {
            AND user_id IN (SELECT u.user_id FROM "user" u
                              JOIN role r ON r.role_id = u.role_id
                             WHERE r.type = 'admin')`,
-      [jenyGas.distributor_id],
+      [jenyGas.distributorId],
     );
     logger.log(
       '✅ Backfill: datos pre-existentes asignados a la distribuidora default',
@@ -155,8 +155,8 @@ async function bootstrap() {
     const gasAndino = await ensureDistributor(distributorService, {
       name: 'Gas Andino',
       slug: 'gas-andino',
-      legal_name: 'Gas Andino S.A.',
-      tax_id: '30-22222222-2',
+      legalName: 'Gas Andino S.A.',
+      taxId: '30-22222222-2',
       email: 'contacto@gasandino.com',
       phone: '+543764000002',
     });
@@ -164,18 +164,18 @@ async function bootstrap() {
 
     for (const u of DEMO_STAFF) {
       results.push(
-        await ensureUser(u, usersService, registro, gasAndino.distributor_id),
+        await ensureUser(u, usersService, registro, gasAndino.distributorId),
       );
       await assignStaffToDistributor(
         dataSource,
         u.email,
         u.role,
-        gasAndino.distributor_id,
+        gasAndino.distributorId,
       );
     }
 
     // Catálogo propio de la distribuidora demo (idempotente: sólo si no tiene).
-    await ensureDemoCatalog(dataSource, gasAndino.distributor_id);
+    await ensureDemoCatalog(dataSource, gasAndino.distributorId);
     logger.log(
       '✅ Staff + catálogo de Gas Andino listos (aislados de Jeny Gas)',
     );

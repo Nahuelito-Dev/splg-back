@@ -6,7 +6,7 @@ import {
   MemoryHealthIndicator,
   DiskHealthIndicator,
 } from '@nestjs/terminus';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { RedisHealthIndicator } from './redis.health';
@@ -60,6 +60,15 @@ export class HealthController {
   @Get('live')
   @Public()
   @ApiOperation({ summary: 'Liveness probe (sin chequeo de dependencias)' })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', example: 'ok' },
+        timestamp: { type: 'string', format: 'date-time' },
+      },
+    },
+  })
   live() {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }

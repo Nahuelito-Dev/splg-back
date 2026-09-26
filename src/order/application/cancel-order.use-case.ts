@@ -50,10 +50,10 @@ export class CancelOrderUseCase {
     // Antes que el estado: quién pide tiene que poder tocar este pedido. El
     // cliente, sólo los suyos (lo ajeno = 404); el chofer, sólo el que tiene
     // asignado.
-    if (role === 'customer' && order.customer_id !== userId) {
+    if (role === 'customer' && order.customerId !== userId) {
       throw new NotFoundException(`Order with ID: ${orderId} not found`);
     }
-    if (role === 'driver' && order.delivery?.user_id !== userId) {
+    if (role === 'driver' && order.delivery?.userId !== userId) {
       throw new ForbiddenException('Este pedido no está asignado a tu usuario');
     }
 
@@ -66,7 +66,7 @@ export class CancelOrderUseCase {
       );
     }
 
-    const previousDriverId = order.delivery_id;
+    const previousDriverId = order.deliveryId;
     const shouldReturnStock = this.applyCancellationPolicy(order, userId, role);
 
     // shouldReturnStock ⇔ el pedido quedó CANCELLED (customer/admin); driver solo
@@ -96,7 +96,7 @@ export class CancelOrderUseCase {
   ): boolean {
     if (role === 'driver') {
       transitionOrder(order, OrderStatus.PENDING);
-      order.delivery_id = null;
+      order.deliveryId = null;
       order.acceptedAt = null;
       order.onTheWayAt = null;
       return false;
@@ -138,20 +138,20 @@ export class CancelOrderUseCase {
     previousDriverId: string | null,
   ): void {
     const payload = {
-      orderId: order.order_id,
+      orderId: order.orderId,
       status: order.status,
       reason: order.cancellationReason,
     };
 
     if (role === 'driver') {
       this.dispatch.notifyCustomer(
-        order.customer_id,
+        order.customerId,
         'order:searching-driver',
         payload,
       );
     } else {
       this.dispatch.notifyCustomer(
-        order.customer_id,
+        order.customerId,
         'order:cancelled',
         payload,
       );
@@ -168,7 +168,7 @@ export class CancelOrderUseCase {
     // (vuelve a PENDING) → solo avisamos a admins la cancelación real.
     if (order.status === OrderStatus.CANCELLED) {
       this.dispatch.notifyAdmins('order:cancelled', {
-        orderId: order.order_id,
+        orderId: order.orderId,
         status: order.status,
         reason: order.cancellationReason,
       });

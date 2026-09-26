@@ -28,11 +28,10 @@ describe('DispatchOrchestratorService', () => {
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
-      order_id: 'ord-1',
+      orderId: 'ord-1',
       status: OrderStatus.PENDING,
-      delivery_id: null,
-      deliveryLatitude: '-26.8',
-      deliveryLongitude: '-65.2',
+      deliveryId: null,
+      deliveryPoint: { type: 'Point', coordinates: [-65.2, -26.8] },
       totalAmount: 1000,
       items: [],
       ...over,
@@ -143,14 +142,29 @@ describe('DispatchOrchestratorService', () => {
       expect(dispatch.notifyDriverNewOrder).not.toHaveBeenCalled();
       expect(dispatch.findNearbyDrivers).toHaveBeenCalledTimes(4); // agotó 5,10,15,20
     });
+
+    it('sin punto de entrega no busca choferes (no mide contra 0,0)', async () => {
+      const result = await orchestrator.offerToNextDriver(
+        makeOrder({ deliveryPoint: null }),
+      );
+
+      expect(result).toBeNull();
+      expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
+    });
+
+    it('busca alrededor del punto de entrega, en latitud y longitud', async () => {
+      await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(-26.8, -65.2, 5);
+    });
   });
 
   describe('handleExpiredOffers', () => {
     const expiredOffer = (over = {}): DispatchOffer =>
       ({
-        offer_id: 'off-1',
-        order_id: 'ord-1',
-        driver_id: 'd1',
+        offerId: 'off-1',
+        orderId: 'ord-1',
+        driverId: 'd1',
         status: DispatchOfferStatus.OFFERED,
         ...over,
       }) as DispatchOffer;
@@ -178,7 +192,7 @@ describe('DispatchOrchestratorService', () => {
     it('NO re-ofrece si el pedido ya fue aceptado (tiene delivery asignado)', async () => {
       offers.findExpired.mockResolvedValue([expiredOffer()]);
       orders.findByIdFull.mockResolvedValue(
-        makeOrder({ status: OrderStatus.ACCEPTED, delivery_id: 'drv-x' }),
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-x' }),
       );
 
       await orchestrator.handleExpiredOffers();
@@ -221,7 +235,7 @@ describe('DispatchOrchestratorService', () => {
 
     it('no ofrece si el pedido no es re-ofrecible (ya asignado)', async () => {
       await orchestrator.ensureOffered(
-        makeOrder({ status: OrderStatus.ACCEPTED, delivery_id: 'x' }),
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'x' }),
       );
       expect(offers.hasActiveOffer).not.toHaveBeenCalled();
       expect(offers.create).not.toHaveBeenCalled();

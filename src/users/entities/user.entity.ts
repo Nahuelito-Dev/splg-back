@@ -19,21 +19,34 @@ import { UserAddress } from '../../user-address/entities/user-address.entity';
 @Entity('user')
 export class User {
   @PrimaryGeneratedColumn('uuid', { name: 'user_id' })
-  user_id!: string;
+  userId!: string;
 
   @ManyToOne(() => Role, (role) => role.users, { nullable: true })
   @JoinColumn({ name: 'role_id' })
   role?: Role;
 
-  @Column({ type: 'uuid', nullable: true })
-  role_id?: string;
+  @Column({
+    name: 'role_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  roleId?: string;
 
   // Una cuenta de acceso de Firebase corresponde a un solo usuario.
-  @Column({ type: 'varchar', nullable: true, unique: true })
-  firebase_uid?: string;
+  @Column({
+    name: 'firebase_uid',
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  firebaseUid?: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  full_name?: string;
+  @Column({
+    name: 'full_name',
+    type: 'varchar',
+    nullable: true,
+  })
+  fullName?: string;
 
   @Column({ type: 'varchar', nullable: true })
   selfie?: string;
@@ -41,14 +54,27 @@ export class User {
   @Column({ type: 'varchar', unique: true, nullable: true })
   email?: string;
 
-  @Column({ type: 'varchar', unique: true, nullable: true })
-  phone_number?: string;
+  @Column({
+    name: 'phone_number',
+    type: 'varchar',
+    unique: true,
+    nullable: true,
+  })
+  phoneNumber?: string;
 
-  @Column({ type: 'boolean', default: false })
-  phone_verified!: boolean;
+  @Column({
+    name: 'phone_verified',
+    type: 'boolean',
+    default: false,
+  })
+  phoneVerified!: boolean;
 
-  @Column({ type: 'boolean', default: false })
-  email_verified!: boolean;
+  @Column({
+    name: 'email_verified',
+    type: 'boolean',
+    default: false,
+  })
+  emailVerified!: boolean;
 
   @Column({ type: 'boolean', default: false })
   blocked!: boolean;

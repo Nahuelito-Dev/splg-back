@@ -11,7 +11,7 @@ import { User } from '../../users/entities/user.entity';
 @Entity('role')
 export class Role {
   @PrimaryGeneratedColumn('uuid', { name: 'role_id' })
-  role_id!: string;
+  roleId!: string;
 
   // El código busca los roles por este texto: tiene que ser único.
   @Column({ type: 'text', unique: true })

@@ -8,14 +8,14 @@ import { CustomerMapper } from '../customer/customer.mapper';
 export class UserMapper {
   static toDto(user: User): UserResponseDto {
     const dto = new UserResponseDto();
-    dto.user_id = user.user_id;
-    dto.role_id = user.role_id ?? null;
-    dto.full_name = user.full_name ?? null;
+    dto.user_id = user.userId;
+    dto.role_id = user.roleId ?? null;
+    dto.full_name = user.fullName ?? null;
     dto.selfie = user.selfie ?? null;
     dto.email = user.email ?? null;
-    dto.phone_number = user.phone_number ?? null;
-    dto.phone_verified = user.phone_verified;
-    dto.email_verified = user.email_verified;
+    dto.phone_number = user.phoneNumber ?? null;
+    dto.phone_verified = user.phoneVerified;
+    dto.email_verified = user.emailVerified;
     dto.blocked = user.blocked;
     dto.createdAt = user.createdAt;
     dto.deletedAt = user.deletedAt ?? null;

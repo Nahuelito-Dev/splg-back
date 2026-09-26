@@ -1,3 +1,4 @@
+import { coordenadasDePunto } from '../../common/geo/punto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
@@ -42,19 +43,22 @@ export class DispatchOrchestratorService {
    */
   async offerToNextDriver(order: Order): Promise<string | null> {
     const alreadyOffered = new Set(
-      await this.offers.findOfferedDriverIds(order.order_id),
+      await this.offers.findOfferedDriverIds(order.orderId),
     );
 
+    const destino = coordenadasDePunto(order.deliveryPoint);
+    // Sin punto de entrega no hay contra qué medir la cercanía.
+    if (!destino) return null;
     const candidate = await this.findNearestAvailable(
-      Number(order.deliveryLatitude),
-      Number(order.deliveryLongitude),
+      destino.lat,
+      destino.lng,
       alreadyOffered,
-      order.distributor_id,
+      order.distributorId,
     );
 
     if (!candidate) {
       this.logger.debug(
-        `Sin choferes nuevos para ${order.order_id} (ya contactados: ${alreadyOffered.size})`,
+        `Sin choferes nuevos para ${order.orderId} (ya contactados: ${alreadyOffered.size})`,
       );
       return null;
     }
@@ -63,15 +67,15 @@ export class DispatchOrchestratorService {
       Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
     );
     await this.offers.create(
-      order.order_id,
+      order.orderId,
       candidate,
       expiresAt,
-      order.distributor_id,
+      order.distributorId,
     );
 
     this.dispatch.notifyDriverNewOrder(candidate, {
       event: 'NEW_ORDER',
-      orderId: order.order_id,
+      orderId: order.orderId,
       totalAmount: order.totalAmount,
       paymentMethod: order.paymentMethod,
       expiresAt: expiresAt.toISOString(),
@@ -80,10 +84,10 @@ export class DispatchOrchestratorService {
 
     // Push FCM complementario: si el chofer tiene la app cerrada/en background,
     // el socket no llega pero el push sí. Best-effort, no bloquea el dispatch.
-    void this.notifications.sendOfferPushToDriver(candidate, order.order_id);
+    void this.notifications.sendOfferPushToDriver(candidate, order.orderId);
 
     this.logger.log(
-      `Pedido ${order.order_id} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
+      `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
     );
     return candidate;
   }
@@ -97,16 +101,16 @@ export class DispatchOrchestratorService {
 
     for (const offer of expired) {
       await this.offers.updateStatus(
-        offer.offer_id,
+        offer.offerId,
         DispatchOfferStatus.EXPIRED,
       );
 
       // Recargar el pedido: pudo haber sido aceptado/cancelado por otra vía.
-      const order = await this.orders.findByIdFull(offer.order_id);
+      const order = await this.orders.findByIdFull(offer.orderId);
       if (!order || !this.isReofferable(order)) continue;
 
       this.logger.log(
-        `Oferta vencida de ${offer.order_id} (chofer ${offer.driver_id}) → siguiente`,
+        `Oferta vencida de ${offer.orderId} (chofer ${offer.driverId}) → siguiente`,
       );
       await this.offerToNextDriver(order);
     }
@@ -119,7 +123,7 @@ export class DispatchOrchestratorService {
    */
   async ensureOffered(order: Order): Promise<void> {
     if (!this.isReofferable(order)) return;
-    if (await this.offers.hasActiveOffer(order.order_id)) return;
+    if (await this.offers.hasActiveOffer(order.orderId)) return;
     await this.offerToNextDriver(order);
   }
 
@@ -135,7 +139,7 @@ export class DispatchOrchestratorService {
   /** El chofer rechazó: cierra su oferta y ofrece al siguiente de inmediato. */
   async onDriverRejected(order: Order, driverId: string): Promise<void> {
     await this.offers.closeActiveOffer(
-      order.order_id,
+      order.orderId,
       driverId,
       DispatchOfferStatus.REJECTED,
     );
@@ -146,7 +150,7 @@ export class DispatchOrchestratorService {
 
   /** Solo se re-ofrece un pedido pendiente y sin chofer asignado. */
   private isReofferable(order: Order): boolean {
-    return order.status === OrderStatus.PENDING && !order.delivery_id;
+    return order.status === OrderStatus.PENDING && !order.deliveryId;
   }
 
   /**

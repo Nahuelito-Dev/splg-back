@@ -44,7 +44,7 @@ export class ConfirmDeliveryUseCase {
 
     // Ownership: un cliente solo puede confirmar SUS pedidos. Admin puede
     // confirmar cualquiera (soporte / entregas asistidas telefónicamente).
-    if (role === RoleType.CUSTOMER && order.customer_id !== userId) {
+    if (role === RoleType.CUSTOMER && order.customerId !== userId) {
       throw new ForbiddenException(
         'No autorizado a confirmar la entrega de otro cliente',
       );
@@ -67,7 +67,7 @@ export class ConfirmDeliveryUseCase {
     }
 
     return this.updateOrderStatusUseCase.execute(
-      order.order_id,
+      order.orderId,
       OrderStatus.DELIVERED,
     );
   }

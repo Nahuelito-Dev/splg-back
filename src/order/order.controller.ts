@@ -17,6 +17,11 @@ import {
   ApiResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiUnauthorizedResponse,
+  ApiNotFoundResponse,
+  ApiBadRequestResponse,
+  ApiOkResponse,
+  ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { ReservationService } from './application/reservation.service';
@@ -26,6 +31,18 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
+import { OrderResponseDto } from './dto/order-response.dto';
+import {
+  CodigoDeEntregaResponseDto,
+  PaginatedOrdersResponseDto,
+  RechazoDeOfertaResponseDto,
+  ReservaResponseDto,
+} from './dto/order-listados-response.dto';
+import {
+  OrderStatsResponseDto,
+  SalesChartPointDto,
+} from './dto/order-stats-response.dto';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -71,12 +88,13 @@ export class OrderController {
     description:
       'Idempotente vía header `Idempotency-Key` (UUID v4). Reintentos con la misma key retornan la respuesta cacheada por 24h.',
   })
-  @ApiResponse({ status: 201, description: 'Order created successfully' })
+  @ApiCreatedResponse({ type: OrderResponseDto, description: 'Pedido creado' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({
     status: 409,
     description: 'Otro request con la misma Idempotency-Key está en curso',
   })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async create(
     @Body() createOrderDto: CreateOrderDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -112,7 +130,7 @@ export class OrderController {
   @Get()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get all orders with pagination' })
-  @ApiResponse({ status: 200, description: 'List of orders' })
+  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   async findAll(
     @Query() paginationDto: PaginationDto,
     @CurrentDistributor() distributorId: string | null,
@@ -137,7 +155,7 @@ export class OrderController {
   )
   @ApiOperation({ summary: 'Get orders by customer ID' })
   @ApiParam({ name: 'customerId', description: 'Customer UUID' })
-  @ApiResponse({ status: 200, description: 'List of customer orders' })
+  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   async findByCustomer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('customerId', ParseUUIDPipe) customerId: string,
@@ -169,7 +187,7 @@ export class OrderController {
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get orders by delivery ID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'List of delivery orders' })
+  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   async findByDelivery(
     @CurrentUser() user: AuthenticatedUser,
     @Param('deliveryId', ParseUUIDPipe) deliveryId: string,
@@ -193,7 +211,7 @@ export class OrderController {
   @Get('available')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get available orders for delivery' })
-  @ApiResponse({ status: 200, description: 'List of available orders' })
+  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   async findAvailableOrders(
     @Query() paginationDto: PaginationDto,
     @CurrentDistributor() distributorId: string | null,
@@ -214,7 +232,7 @@ export class OrderController {
   @ApiOperation({
     summary: 'Listar las reservas (pedidos RESERVED) con estado de seña',
   })
-  @ApiResponse({ status: 200, description: 'Listado de reservas' })
+  @ApiOkResponse({ type: ReservaResponseDto, isArray: true })
   async findReservations(@CurrentDistributor() distributorId: string | null) {
     return this.reservationService.findReservations(distributorId);
   }
@@ -222,8 +240,9 @@ export class OrderController {
   @Get(':id')
   @ApiOperation({ summary: 'Get order by ID' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Order found' })
+  @ApiOkResponse({ type: OrderResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -244,12 +263,16 @@ export class OrderController {
       'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red. Solo chofer/admin.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Status updated successfully' })
+  @ApiOkResponse({ type: OrderResponseDto, description: 'Estado actualizado' })
   @ApiResponse({
     status: 403,
     description: 'El pedido no está asignado a este chofer',
   })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiBadRequestResponse({
+    description:
+      'Transición de pedido inválida: cancelled → accepted · status debe ser uno de: reserved, pending, accepted, on_the_way, delivered, cancelled',
+  })
   async updateStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -282,6 +305,7 @@ export class OrderController {
       'al siguiente chofer más cercano de inmediato (sin esperar el timeout).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: RechazoDeOfertaResponseDto })
   async rejectOffer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -300,7 +324,7 @@ export class OrderController {
       'Solo existe si el pedido ya fue aceptado. El chofer solo puede ver el de SUS pedidos.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Código de entrega' })
+  @ApiOkResponse({ type: CodigoDeEntregaResponseDto })
   @ApiResponse({
     status: 400,
     description: 'El pedido aún no tiene código (no aceptado)',
@@ -331,7 +355,10 @@ export class OrderController {
       'Idempotente vía header `Idempotency-Key`: reintentos de red no re-procesan la entrega.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Entrega confirmada' })
+  @ApiCreatedResponse({
+    type: OrderResponseDto,
+    description: 'Entrega confirmada',
+  })
   @ApiResponse({
     status: 400,
     description: 'Código inválido o el pedido no está en camino',
@@ -362,7 +389,7 @@ export class OrderController {
   @ApiOperation({ summary: 'Assign order to delivery' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Order assigned successfully' })
+  @ApiOkResponse({ type: OrderResponseDto, description: 'Chofer asignado' })
   @ApiResponse({ status: 404, description: 'Order or delivery not found' })
   async assignDelivery(
     @Param('id', ParseUUIDPipe) id: string,
@@ -376,9 +403,18 @@ export class OrderController {
 
   @Patch(':id/location')
   @Auth(RoleType.DELIVERY)
-  @ApiOperation({ summary: 'Update delivery location' })
+  @ApiOperation({
+    summary: 'El chofer del pedido reporta su posición',
+    description:
+      'Vía HTTP para cuando el socket no está conectado: la posición va al radar ' +
+      '(Redis GEO), igual que `driver:update-location`. No modifica el pedido ni ' +
+      'su punto de entrega (H-91).',
+  })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Location updated successfully' })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description: 'El pedido, sin cambios',
+  })
   async updateLocation(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -400,8 +436,10 @@ export class OrderController {
   @ApiOperation({
     summary: 'Get order statistics (scopeado por distribuidora)',
   })
-  @ApiResponse({ status: 200, description: 'Statistics retrieved' })
-  async getStats(@CurrentDistributor() distributorId: string | null) {
+  @ApiOkResponse({ type: OrderStatsResponseDto })
+  async getStats(
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<OrderStatsResponseDto> {
     return await this.orderService.getOrderStats(distributorId);
   }
 
@@ -409,7 +447,14 @@ export class OrderController {
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cancel order (Admin Force)' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description: 'Pedido cancelado por el administrador',
+  })
+  @ApiBadRequestResponse({
+    description: 'No se puede cancelar un pedido finalizado',
+  })
+  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
   async cancelOrder(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -439,6 +484,16 @@ export class OrderController {
     description:
       'Idempotente vía header `Idempotency-Key`. Cancelaciones repetidas con la misma key son no-op. El actor (id + rol) sale SIEMPRE del token autenticado, nunca del body (evita IDOR).',
   })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: reason must be shorter than or equal to 500 characters)',
+  })
+  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description:
+      'Pedido cancelado, o devuelto a pendiente si lo libera el chofer',
+  })
   async cancel(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -465,12 +520,16 @@ export class OrderController {
       'chofer solo puede avisar la llegada de SUS pedidos.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiResponse({ status: 200, description: 'Cliente notificado' })
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Cliente notificado',
+  })
   @ApiResponse({ status: 400, description: 'El pedido no está en camino' })
   @ApiResponse({
     status: 403,
     description: 'El pedido no está asignado a este chofer',
   })
+  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
   async notifyArrival(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -490,6 +549,11 @@ export class OrderController {
       'sola vía webhook.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID (reserva)' })
+  @ApiBadRequestResponse({
+    description: 'El pedido no es una reserva pendiente',
+  })
+  @ApiNotFoundResponse({ description: 'Reserva no encontrada' })
+  @ApiOkResponse({ type: OrderResponseDto, description: 'Seña confirmada' })
   async confirmDeposit(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
@@ -506,7 +570,10 @@ export class OrderController {
   @ApiOperation({
     summary: 'Get sales chart data (Last 7 days, scopeado por distribuidora)',
   })
-  async getChartData(@CurrentDistributor() distributorId: string | null) {
+  @ApiOkResponse({ type: SalesChartPointDto, isArray: true })
+  async getChartData(
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<SalesChartPointDto[]> {
     return await this.orderService.getSalesChartData(distributorId);
   }
 }

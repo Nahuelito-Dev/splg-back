@@ -54,11 +54,11 @@ describe('UsersService', () => {
 
   describe('remove', () => {
     it('da de baja lógica al usuario y a sus perfiles, sin borrar', async () => {
-      const user = { user_id: 'u1', firebase_uid: 'fb' };
+      const user = { userId: 'u1', firebaseUid: 'fb' };
       users.findOne.mockResolvedValue(user);
       await service.remove('u1');
       expect(users.findOne).toHaveBeenCalledWith({
-        where: { user_id: 'u1' },
+        where: { userId: 'u1' },
         relations: ['customer', 'delivery', 'cars', 'addresses'],
       });
       expect(users.softRemove).toHaveBeenCalledWith(user);
@@ -66,7 +66,7 @@ describe('UsersService', () => {
     });
 
     it('deshabilita la cuenta de Firebase en vez de borrarla', async () => {
-      users.findOne.mockResolvedValue({ user_id: 'u1', firebase_uid: 'fb' });
+      users.findOne.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb' });
       await service.remove('u1');
       expect(firebase.updateUser).toHaveBeenCalledWith('fb', {
         disabled: true,
@@ -75,7 +75,7 @@ describe('UsersService', () => {
     });
 
     it('si Firebase falla, la baja igual queda hecha', async () => {
-      users.findOne.mockResolvedValue({ user_id: 'u1', firebase_uid: 'fb' });
+      users.findOne.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb' });
       firebase.updateUser.mockRejectedValue(new Error('caído'));
       await expect(service.remove('u1')).resolves.toEqual({
         message: 'Usuario dado de baja',
@@ -91,7 +91,7 @@ describe('UsersService', () => {
   });
 
   it('no cambia la contraseña de quien no tiene cuenta de acceso', async () => {
-    users.preload.mockResolvedValue({ user_id: 'u1', firebase_uid: null });
+    users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: null });
     await expect(
       service.update('u1', { password: 'Nueva1234' }),
     ).rejects.toBeInstanceOf(ConflictException);

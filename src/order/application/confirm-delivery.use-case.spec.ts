@@ -25,9 +25,9 @@ describe('ConfirmDeliveryUseCase', () => {
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
-      order_id: 'ord-1',
-      customer_id: 'cust-1',
-      delivery_id: 'drv-1',
+      orderId: 'ord-1',
+      customerId: 'cust-1',
+      deliveryId: 'drv-1',
       status: OrderStatus.ON_THE_WAY,
       paymentMethod: PaymentMethod.CASH,
       paymentStatus: PaymentStatus.PENDING,

@@ -16,6 +16,16 @@ export abstract class RealtimeDispatchPort {
     radiusKm: number,
   ): Promise<string[]>;
 
+  /**
+   * Posición actual de un chofer en el radar (Redis GEO), la misma que reporta
+   * por socket. Es la vía HTTP para cuando el socket no está conectado.
+   */
+  abstract reportDriverLocation(
+    driverUserId: string,
+    lat: number,
+    lng: number,
+  ): Promise<void>;
+
   /** Oferta de un pedido nuevo a un chofer (WebSocket). */
   abstract notifyDriverNewOrder(driverId: string, payload: unknown): void;
 

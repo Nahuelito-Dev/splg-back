@@ -23,7 +23,7 @@ export enum FleetStatus {
 @Entity('car')
 export class Car {
   @PrimaryGeneratedColumn('uuid', { name: 'car_id' })
-  car_id!: string;
+  carId!: string;
 
   /** Tenant dueño del vehículo. Nullable hasta backfill del seed. */
   @Index()
@@ -31,21 +31,37 @@ export class Car {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
   @ManyToOne(() => User, (user) => user.cars, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'uuid' })
-  user_id!: string;
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+  })
+  userId!: string;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  type_car!: string | null; // Ej: 'Moto', 'Auto', 'Camioneta'
+  @Column({
+    name: 'type_car',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  typeCar!: string | null; // Ej: 'Moto', 'Auto', 'Camioneta'
 
-  @Column({ type: 'int', nullable: true })
-  car_capacity!: number | null; // Capacidad en kg
+  @Column({
+    name: 'car_capacity',
+    type: 'int',
+    nullable: true,
+  })
+  carCapacity!: number | null; // Capacidad en kg
 
   // Única entre los vehículos vigentes: dar de baja uno no bloquea volver a
   // registrar la misma patente.
@@ -53,20 +69,44 @@ export class Car {
     unique: true,
     where: '"deletedAt" IS NULL',
   })
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  car_patent!: string | null;
+  @Column({
+    name: 'car_patent',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  carPatent!: string | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  car_brand!: string | null; // Marca
+  @Column({
+    name: 'car_brand',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  carBrand!: string | null; // Marca
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  car_model!: string | null; // Modelo
+  @Column({
+    name: 'car_model',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  carModel!: string | null; // Modelo
 
-  @Column({ type: 'int', nullable: true })
-  car_year!: number | null; // Año
+  @Column({
+    name: 'car_year',
+    type: 'int',
+    nullable: true,
+  })
+  carYear!: number | null; // Año
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  car_color!: string | null; // Color
+  @Column({
+    name: 'car_color',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  carColor!: string | null; // Color
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
@@ -86,7 +126,7 @@ export class Car {
     transformer: columnNumericTransformer,
     nullable: true,
   })
-  tare_weight_kg!: number | null;
+  tareWeightKg!: number | null;
 
   @Column({
     name: 'max_load_kg',
@@ -96,10 +136,10 @@ export class Car {
     transformer: columnNumericTransformer,
     nullable: true,
   })
-  max_load_kg!: number | null;
+  maxLoadKg!: number | null;
 
   @Column({ name: 'odometer_km', type: 'integer', nullable: true })
-  odometer_km!: number | null;
+  odometerKm!: number | null;
 
   @Column({
     name: 'fleet_status',
@@ -109,8 +149,8 @@ export class Car {
     nullable: false,
     default: FleetStatus.ACTIVE,
   })
-  fleet_status!: FleetStatus;
+  fleetStatus!: FleetStatus;
 
   @Column({ name: 'in_service_since', type: 'timestamptz', nullable: true })
-  in_service_since!: Date | null;
+  inServiceSince!: Date | null;
 }

@@ -27,7 +27,7 @@ export class ClaimsService {
     );
     const order = await this.orderService.findOne(createClaimDto.orderId);
 
-    if (order.customer_id !== createClaimDto.customerId) {
+    if (order.customerId !== createClaimDto.customerId) {
       throw new BadRequestException(
         'Esta orden no pertenece al cliente indicado',
       );
@@ -36,9 +36,9 @@ export class ClaimsService {
     // El `distributor_id` del reclamo se denormaliza desde la orden asociada:
     // el cliente no elige distribuidora acá, hereda la del pedido reclamado.
     const claim = this.claimRepo.create({
-      order_id: createClaimDto.orderId,
-      customer_id: createClaimDto.customerId,
-      distributor_id: order.distributor_id,
+      orderId: createClaimDto.orderId,
+      customerId: createClaimDto.customerId,
+      distributorId: order.distributorId,
       reason: createClaimDto.reason,
       description: createClaimDto.description,
       photoUrl: createClaimDto.photoUrl,
@@ -49,7 +49,7 @@ export class ClaimsService {
 
   async findAll(distributorId?: string | null): Promise<Claim[]> {
     const where: FindOptionsWhere<Claim> = {};
-    if (distributorId) where.distributor_id = distributorId;
+    if (distributorId) where.distributorId = distributorId;
 
     return await this.claimRepo.find({
       where,
@@ -66,8 +66,8 @@ export class ClaimsService {
    * tenant (evita que un admin lea/resuelva reclamos de otra distribuidora).
    */
   async findOne(id: string, distributorId?: string | null): Promise<Claim> {
-    const where: FindOptionsWhere<Claim> = { claim_id: id };
-    if (distributorId) where.distributor_id = distributorId;
+    const where: FindOptionsWhere<Claim> = { claimId: id };
+    if (distributorId) where.distributorId = distributorId;
 
     const claim = await this.claimRepo.findOne({ where });
     if (!claim) throw new NotFoundException('Reclamo no encontrado');

@@ -55,7 +55,7 @@ export class CoverageZoneService {
   ): Promise<CoverageZone> {
     const zone = this.repo.create({
       name: dto.name,
-      distributor_id: distributorId,
+      distributorId,
       area: this.toGeoJsonPolygon(dto.polygon),
       surcharge: dto.surcharge ?? 0,
       isActive: dto.isActive ?? true,
@@ -65,7 +65,7 @@ export class CoverageZoneService {
 
   findAll(distributorId: string): Promise<CoverageZone[]> {
     return this.repo.find({
-      where: { distributor_id: distributorId },
+      where: { distributorId },
       order: { createdAt: 'ASC' },
     });
   }
@@ -76,8 +76,8 @@ export class CoverageZoneService {
   ): Promise<CoverageZone> {
     const zone = await this.repo.findOne({
       where: {
-        coverage_zone_id: id,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        coverageZoneId: id,
+        ...(distributorId ? { distributorId } : {}),
       },
     });
     if (!zone) throw new NotFoundException(`Zona ${id} no encontrada`);
@@ -101,7 +101,7 @@ export class CoverageZoneService {
     lng: number,
   ): Promise<CoverageResult> {
     const total = await this.repo.count({
-      where: { distributor_id: distributorId, isActive: true },
+      where: { distributorId, isActive: true },
     });
     if (total === 0) {
       return { covered: true, surcharge: 0 };

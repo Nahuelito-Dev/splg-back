@@ -20,7 +20,7 @@ describe('DispatchService', () => {
   const NEW = new Date();
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
-    ({ order_id: 'ord-1', createdAt: OLD, ...over }) as unknown as Order;
+    ({ orderId: 'ord-1', createdAt: OLD, ...over }) as unknown as Order;
 
   beforeEach(() => {
     lock = { release: jest.fn().mockResolvedValue(undefined) };
@@ -54,7 +54,7 @@ describe('DispatchService', () => {
 
   it('arranca pedidos pendientes viejos sin oferta (ensureOffered)', async () => {
     orderService.findAvailableOrders.mockResolvedValue({
-      orders: [makeOrder({ order_id: 'a' }), makeOrder({ order_id: 'b' })],
+      orders: [makeOrder({ orderId: 'a' }), makeOrder({ orderId: 'b' })],
     });
     await service.tick();
     expect(orchestrator.ensureOffered).toHaveBeenCalledTimes(2);

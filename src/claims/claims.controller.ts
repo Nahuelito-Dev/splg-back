@@ -77,6 +77,10 @@ export class ClaimsController {
   @ApiNotFoundResponse({
     description: 'El reclamo no existe o es de otra distribuidora',
   })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: resolution should not be empty; status debe ser uno de: pending, in_process, resolved, rejected)',
+  })
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ResolveClaimDto,

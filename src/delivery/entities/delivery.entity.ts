@@ -16,7 +16,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 @Entity('delivery')
 export class Delivery {
   @PrimaryGeneratedColumn('uuid', { name: 'delivery_id' })
-  delivery_id!: string;
+  deliveryId!: string;
 
   /** Distribuidora para la que trabaja el chofer. Nullable hasta backfill. */
   @Index()
@@ -24,8 +24,12 @@ export class Delivery {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
   @OneToOne(() => User, (user) => user.delivery, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
@@ -33,8 +37,11 @@ export class Delivery {
 
   // Indexado: el radar/dispatch y varios findOne buscan al chofer por user_id.
   @Index()
-  @Column({ type: 'uuid' })
-  user_id!: string;
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+  })
+  userId!: string;
 
   @Column({ type: 'double precision', nullable: true })
   calification?: number;
@@ -49,8 +56,12 @@ export class Delivery {
   })
   location!: Point | null;
 
-  @Column({ type: 'text', nullable: true })
-  actual_location?: string;
+  @Column({
+    name: 'actual_location',
+    type: 'text',
+    nullable: true,
+  })
+  actualLocation?: string;
 
   @Column({ type: 'real', nullable: true })
   cancelledCharge?: number;
@@ -62,8 +73,12 @@ export class Delivery {
   isActive!: boolean;
 
   /** Token FCM del dispositivo del chofer, para push de ofertas/estado. */
-  @Column({ type: 'text', nullable: true })
-  notification_token?: string;
+  @Column({
+    name: 'notification_token',
+    type: 'text',
+    nullable: true,
+  })
+  notificationToken?: string;
 
   @Column({ type: 'double precision', default: 0 })
   balance!: number;

@@ -8,5 +8,5 @@ export async function findRoleIdByType(
 ) {
   const role = await roleRepo.findOne({ where: { type } });
   if (!role) throw new Error(`Role ${type} not found`);
-  return role.role_id;
+  return role.roleId;
 }

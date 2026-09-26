@@ -17,7 +17,7 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
  * los rangos ni impedir dos promociones para la misma cantidad.
  */
 @Entity('gas_cylinder_promotion')
-@Unique('UQ_promocion_producto_cantidad', ['gas_cylinder_id', 'quantity'])
+@Unique('UQ_promocion_producto_cantidad', ['gasCylinderId', 'quantity'])
 @Check('CHK_promocion_cantidad', '"quantity" >= 2')
 @Check(
   'CHK_promocion_descuento',
@@ -25,7 +25,7 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 )
 export class GasCylinderPromotion {
   @PrimaryGeneratedColumn('uuid', { name: 'promotion_id' })
-  promotion_id!: string;
+  promotionId!: string;
 
   @ManyToOne(() => GasCylinder, (g) => g.promotions, {
     nullable: false,
@@ -35,8 +35,11 @@ export class GasCylinderPromotion {
   @JoinColumn({ name: 'gas_cylinder_id' })
   gasCylinder?: GasCylinder;
 
-  @Column({ type: 'uuid' })
-  gas_cylinder_id!: string;
+  @Column({
+    name: 'gas_cylinder_id',
+    type: 'uuid',
+  })
+  gasCylinderId!: string;
 
   /** Unidades desde las que aplica. */
   @Column({ type: 'int' })

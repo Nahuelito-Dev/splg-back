@@ -42,15 +42,15 @@ describe('ClaimsService', () => {
 
   it('el reclamo hereda la distribuidora del pedido', async () => {
     orders.findOne.mockResolvedValue({
-      customer_id: 'u1',
-      distributor_id: 'd1',
+      customerId: 'u1',
+      distributorId: 'd1',
     });
     const claim = await service.create(dto);
-    expect(claim.distributor_id).toBe('d1');
+    expect(claim.distributorId).toBe('d1');
   });
 
   it('no se puede reclamar un pedido ajeno', async () => {
-    orders.findOne.mockResolvedValue({ customer_id: 'otro' });
+    orders.findOne.mockResolvedValue({ customerId: 'otro' });
     await expect(service.create(dto)).rejects.toBeInstanceOf(
       BadRequestException,
     );
@@ -68,12 +68,12 @@ describe('ClaimsService', () => {
       service.resolve('c1', 'ok', ClaimStatus.RESOLVED, 'd2'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(claims.findOne).toHaveBeenCalledWith({
-      where: { claim_id: 'c1', distributor_id: 'd2' },
+      where: { claimId: 'c1', distributorId: 'd2' },
     });
   });
 
   it('resolver guarda la nota y el estado', async () => {
-    claims.findOne.mockResolvedValue({ claim_id: 'c1' });
+    claims.findOne.mockResolvedValue({ claimId: 'c1' });
     const r = await service.resolve('c1', 'Se cambió', ClaimStatus.RESOLVED);
     expect(r).toMatchObject({
       resolutionNote: 'Se cambió',

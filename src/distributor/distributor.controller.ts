@@ -17,6 +17,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { DistributorMapper } from './distributor.mapper';
 import { DistributorResponseDto } from './dto/distributor-response.dto';
@@ -42,6 +43,10 @@ export class DistributorController {
   @ApiOperation({ summary: 'Crear una distribuidora (tenant)' })
   @ApiCreatedResponse({ type: DistributorResponseDto })
   @ApiConflictResponse({ description: 'slug duplicado' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: name must be longer than or equal to 2 characters; slug debe ser minúsculas, números y guiones (ej: jeny-gas))',
+  })
   async create(
     @Body() dto: CreateDistributorDto,
   ): Promise<DistributorResponseDto> {
@@ -72,6 +77,9 @@ export class DistributorController {
   @ApiParam({ name: 'id', description: 'Distributor UUID' })
   @ApiOkResponse({ type: DistributorResponseDto })
   @ApiNotFoundResponse({ description: 'La distribuidora no existe' })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: property slug should not exist)',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDistributorDto,

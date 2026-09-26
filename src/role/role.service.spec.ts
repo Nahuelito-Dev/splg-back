@@ -21,7 +21,7 @@ describe('RoleService', () => {
   };
 
   const rol = (type: string, role_id = 'rol-1'): Role =>
-    ({ role_id, type, createdAt: null, updatedAt: null }) as Role;
+    ({ roleId: role_id, type, createdAt: null, updatedAt: null }) as Role;
 
   beforeEach(() => {
     repo = {

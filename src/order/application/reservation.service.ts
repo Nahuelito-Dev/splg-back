@@ -80,28 +80,28 @@ export class ReservationService {
     const orders = await this.orderRepository.find({
       where: {
         status: OrderStatus.RESERVED,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        ...(distributorId ? { distributorId } : {}),
       },
       // Historial: el chofer, el cliente o la dirección dados de baja siguen
       // apareciendo en lo que ya pasó (H-74).
       withDeleted: true,
       relations: ['customer', 'items', 'items.gasCylinder'],
-      order: { scheduled_date: 'ASC', createdAt: 'DESC' },
+      order: { scheduledDate: 'ASC', createdAt: 'DESC' },
     });
 
     return orders.map((order) => {
-      const depositAmount = Number(order.deposit_amount ?? 0);
+      const depositAmount = Number(order.depositAmount ?? 0);
       const total = Number(order.totalAmount);
       return {
-        id: order.order_id,
-        customerName: order.customer?.full_name ?? null,
-        customerPhone: order.customer?.phone_number ?? null,
-        scheduledDate: order.scheduled_date ?? null,
+        id: order.orderId,
+        customerName: order.customer?.fullName ?? null,
+        customerPhone: order.customer?.phoneNumber ?? null,
+        scheduledDate: order.scheduledDate ?? null,
         paymentMethod: order.paymentMethod,
         total,
         depositAmount,
-        depositPaid: !!order.deposit_paid,
-        remainingBalance: total - (order.deposit_paid ? depositAmount : 0),
+        depositPaid: !!order.depositPaid,
+        remainingBalance: total - (order.depositPaid ? depositAmount : 0),
         createdAt: order.createdAt,
         items: (order.items ?? []).map((item) => ({
           quantity: item.quantity,
@@ -118,15 +118,15 @@ export class ReservationService {
   ): Promise<Order> {
     const order = await this.orderRepository.findOne({
       where: {
-        order_id: orderId,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        orderId,
+        ...(distributorId ? { distributorId } : {}),
       },
     });
     if (!order) throw new NotFoundException('Reserva no encontrada');
     if (order.status !== OrderStatus.RESERVED) {
       throw new BadRequestException('El pedido no es una reserva pendiente');
     }
-    order.deposit_paid = true;
+    order.depositPaid = true;
     return this.orderRepository.save(order);
   }
 
@@ -140,8 +140,8 @@ export class ReservationService {
     const due = await this.orderRepository.find({
       where: {
         status: OrderStatus.RESERVED,
-        deposit_paid: true,
-        scheduled_date: LessThanOrEqual(today),
+        depositPaid: true,
+        scheduledDate: LessThanOrEqual(today),
       },
       take: 50,
     });
@@ -153,16 +153,16 @@ export class ReservationService {
         transitionOrder(order, OrderStatus.PENDING);
         await this.orderRepository.save(order);
         // Despacho con el pedido completo (coords + items) para armar la oferta.
-        const full = await this.orders.findByIdFull(order.order_id);
+        const full = await this.orders.findByIdFull(order.orderId);
         if (full) {
           await this.dispatchOrchestrator
             .offerToNextDriver(full)
             .catch(() => undefined);
         }
-        this.logger.log(`Reserva ${order.order_id} activada → despachando`);
+        this.logger.log(`Reserva ${order.orderId} activada → despachando`);
       } catch (error) {
         this.logger.error(
-          `No se pudo activar la reserva ${order.order_id}: ${errorMessage(error)}`,
+          `No se pudo activar la reserva ${order.orderId}: ${errorMessage(error)}`,
         );
       }
     }
@@ -178,7 +178,7 @@ export class ReservationService {
     const stale = await this.orderRepository.find({
       where: {
         status: OrderStatus.RESERVED,
-        deposit_paid: false,
+        depositPaid: false,
         createdAt: LessThan(cutoff),
       },
       relations: ['items'],
@@ -197,18 +197,18 @@ export class ReservationService {
         await this.stock.restituirStock(
           queryRunner.manager,
           (order.items ?? []).map((it) => ({
-            gas_cylinder_id: it.gas_cylinder_id,
+            gasCylinderId: it.gasCylinderId,
             quantity: it.quantity,
           })),
         );
         await queryRunner.commitTransaction();
         this.logger.log(
-          `Reserva ${order.order_id} expirada → cancelada + stock liberado`,
+          `Reserva ${order.orderId} expirada → cancelada + stock liberado`,
         );
       } catch (error) {
         await queryRunner.rollbackTransaction();
         this.logger.error(
-          `No se pudo expirar la reserva ${order.order_id}: ${errorMessage(error)}`,
+          `No se pudo expirar la reserva ${order.orderId}: ${errorMessage(error)}`,
         );
       } finally {
         await queryRunner.release();
@@ -261,7 +261,7 @@ export class ReservationService {
         const locked = await queryRunner.manager
           .createQueryBuilder(Order, 'order')
           .setLock('pessimistic_write')
-          .where('order.order_id = :id', { id: order.order_id })
+          .where('order.orderId = :id', { id: order.orderId })
           .getOne();
 
         if (
@@ -280,18 +280,18 @@ export class ReservationService {
         await this.stock.restituirStock(
           queryRunner.manager,
           (order.items ?? []).map((it) => ({
-            gas_cylinder_id: it.gas_cylinder_id,
+            gasCylinderId: it.gasCylinderId,
             quantity: it.quantity,
           })),
         );
         await queryRunner.commitTransaction();
         this.logger.log(
-          `Pedido ${order.order_id} expirado (MercadoPago sin pagar) → cancelado + stock liberado`,
+          `Pedido ${order.orderId} expirado (MercadoPago sin pagar) → cancelado + stock liberado`,
         );
       } catch (error) {
         await queryRunner.rollbackTransaction();
         this.logger.error(
-          `No se pudo expirar el pedido ${order.order_id}: ${errorMessage(error)}`,
+          `No se pudo expirar el pedido ${order.orderId}: ${errorMessage(error)}`,
         );
       } finally {
         await queryRunner.release();

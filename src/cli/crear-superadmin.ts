@@ -79,7 +79,7 @@ async function main(): Promise<void> {
       },
       { tipo: 'sistema' },
     );
-    logger.log(`Super administrador creado: ${user.email} (${user.user_id})`);
+    logger.log(`Super administrador creado: ${user.email} (${user.userId})`);
   } finally {
     await app.close();
   }

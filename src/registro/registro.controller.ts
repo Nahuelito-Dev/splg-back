@@ -68,6 +68,11 @@ export class RegistroController {
     deprecated: true,
   })
   @ApiCreatedResponse({ type: UserResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: email must be an email; password must be longer than or equal to 6 characters)',
+  })
+  @ApiConflictResponse({ description: 'Email o teléfono ya en uso' })
   registrarClienteRutaAnterior(
     @Body() dto: RegistrarClienteDto,
   ): Promise<UserResponseDto> {

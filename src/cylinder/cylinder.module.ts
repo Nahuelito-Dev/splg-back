@@ -4,15 +4,14 @@ import { CylinderService } from './cylinder.service';
 import { CylinderController } from './cylinder.controller';
 import { Cylinder } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
-import { Order } from '../order/entities/order.entity';
+import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { CylinderInspection } from './entities/cylinder-inspection.entity';
 import { CylinderRecoveryCase } from './entities/cylinder-recovery-case.entity';
 import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.entity';
 
 @Module({
-  // Order: el envase toma el cliente del pedido. order ya depende de cylinder
-  // (al entregar avanza los envases); cortar esta lectura va con order en la
-  // tanda 3 (ver DONDE-QUEDAMOS).
+  // El envase toma el cliente del pedido. Se lee por OrderLookupModule y no
+  // por OrderModule, que importa a cylinder para avanzar los envases al entregar.
   imports: [
     TypeOrmModule.forFeature([
       Cylinder,
@@ -20,8 +19,8 @@ import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.enti
       CylinderInspection,
       CylinderRecoveryCase,
       CylinderRecoveryNotice,
-      Order,
     ]),
+    OrderLookupModule,
   ],
   controllers: [CylinderController],
   providers: [CylinderService],

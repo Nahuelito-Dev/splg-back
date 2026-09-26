@@ -51,7 +51,7 @@ describe('SocketIdentityService', () => {
   it('un usuario bloqueado no entra', async () => {
     auth.decodeToken.mockResolvedValue({ email: 'ana@splg.com' });
     users.findOneWithRoleByEmail.mockResolvedValue({
-      user_id: 'u1',
+      userId: 'u1',
       blocked: true,
     });
     await expect(
@@ -62,7 +62,7 @@ describe('SocketIdentityService', () => {
   it('resuelve la identidad real y la guarda en socket.data', async () => {
     auth.decodeToken.mockResolvedValue({ email: 'ana@splg.com' });
     users.findOneWithRoleByEmail.mockResolvedValue({
-      user_id: 'u1',
+      userId: 'u1',
       blocked: false,
       role: { type: 'customer' },
     });

@@ -20,8 +20,8 @@ export enum ClaimStatus {
 
 @Entity('claims')
 export class Claim {
-  @PrimaryGeneratedColumn('uuid')
-  claim_id!: string;
+  @PrimaryGeneratedColumn('uuid', { name: 'claim_id' })
+  claimId!: string;
 
   /** Tenant dueño del reclamo (denormalizado desde la orden). */
   @Index()
@@ -29,24 +29,28 @@ export class Claim {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
   // Relación con la Orden
   @ManyToOne(() => Order)
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 
-  @Column()
-  order_id!: string;
+  @Column({ name: 'order_id' })
+  orderId!: string;
 
   // Relación con el Cliente (Quien reclama)
   @ManyToOne(() => User)
   @JoinColumn({ name: 'customer_id' })
   customer!: User;
 
-  @Column()
-  customer_id!: string;
+  @Column({ name: 'customer_id' })
+  customerId!: string;
 
   @Column()
   reason!: string; // Ej: "Fuga de gas", "Mala atención"

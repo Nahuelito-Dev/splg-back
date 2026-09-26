@@ -16,10 +16,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 
 @Entity('gas_cylinder')
 // El tipo es la clave natural del producto dentro de una distribuidora.
-@Unique('UQ_gas_cylinder_distribuidora_tipo', ['distributor_id', 'type'])
+@Unique('UQ_gas_cylinder_distribuidora_tipo', ['distributorId', 'type'])
 export class GasCylinder {
   @PrimaryGeneratedColumn('uuid', { name: 'gas_cylinder_id' })
-  gas_cylinder_id!: string;
+  gasCylinderId!: string;
 
   /** Distribuidora dueña del producto. */
   @Index()
@@ -27,8 +27,12 @@ export class GasCylinder {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
   @Column({ type: 'varchar', length: 50 })
   type!: string; // '10kg', '15kg', '45kg'

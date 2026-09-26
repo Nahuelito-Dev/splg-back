@@ -15,6 +15,8 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { TimeSlotMapper } from './time-slot.mapper';
 import {
@@ -40,6 +42,10 @@ export class TimeSlotController {
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new time slot' })
   @ApiCreatedResponse({ type: TimeSlotResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: name should not be empty; startTime must be in HH:MM format)',
+  })
   async create(
     @Body() createTimeSlotDto: CreateTimeSlotDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -90,6 +96,7 @@ export class TimeSlotController {
   @ApiNotFoundResponse({
     description: 'La franja no existe o es de otra distribuidora',
   })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,

@@ -180,12 +180,12 @@ export class EmailService {
 
       await this.updateUserEmail(decodedToken.uid, newEmail);
 
-      await this.usersService.cambiarEmail(user.user_id, newEmail);
+      await this.usersService.cambiarEmail(user.userId, newEmail);
 
       await this.sendEmailChangeNotifications(
         currentEmail,
         newEmail,
-        user.full_name,
+        user.fullName,
       );
 
       return {

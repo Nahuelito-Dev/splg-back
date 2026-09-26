@@ -9,6 +9,27 @@ import { Repository } from 'typeorm';
 import { Distributor, DistributorStatus } from './entities/distributor.entity';
 import { CreateDistributorDto } from './dto/create-distributor.dto';
 import { UpdateDistributorDto } from './dto/update-distributor.dto';
+import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
+
+/**
+ * El cuerpo de la API lleva `legal_name`, `tax_id` y `logo_url`; la entidad,
+ * camelCase. Se mapea campo por campo: `Object.assign(entidad, dto)` no da
+ * error de tipos y pierde esos datos en silencio.
+ */
+function columnasDeLaDistribuidora(
+  dto: UpdateDistributorDto,
+): Partial<Distributor> {
+  return sinIndefinidos({
+    name: dto.name,
+    legalName: dto.legal_name,
+    taxId: dto.tax_id,
+    email: dto.email,
+    phone: dto.phone,
+    logoUrl: dto.logo_url,
+    status: dto.status,
+    plan: dto.plan,
+  });
+}
 
 @Injectable()
 export class DistributorService {
@@ -25,7 +46,10 @@ export class DistributorService {
         `Ya existe una distribuidora con slug '${dto.slug}'`,
       );
     }
-    const distributor = this.repo.create(dto);
+    const distributor = this.repo.create({
+      ...columnasDeLaDistribuidora(dto),
+      slug: dto.slug,
+    });
     return this.repo.save(distributor);
   }
 
@@ -35,7 +59,7 @@ export class DistributorService {
 
   async findOne(id: string): Promise<Distributor> {
     const distributor = await this.repo.findOne({
-      where: { distributor_id: id },
+      where: { distributorId: id },
     });
     if (!distributor) {
       throw new NotFoundException(`Distribuidora ${id} no encontrada`);
@@ -89,7 +113,7 @@ export class DistributorService {
 
   async update(id: string, dto: UpdateDistributorDto): Promise<Distributor> {
     const distributor = await this.findOne(id);
-    Object.assign(distributor, dto);
+    Object.assign(distributor, columnasDeLaDistribuidora(dto));
     return this.repo.save(distributor);
   }
 

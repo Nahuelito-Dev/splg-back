@@ -20,6 +20,7 @@ import {
   ApiForbiddenResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
@@ -143,6 +144,10 @@ export class DeliveryController {
   @ApiNotFoundResponse({
     description: 'Delivery not found (o de otra distribuidora)',
   })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: property calification should not exist; validated tiene que ser true o false)',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateDeliveryDto: UpdateDeliveryDto,
@@ -207,6 +212,10 @@ export class DeliveryController {
   @ApiNotFoundResponse({
     description: 'Delivery not found (o de otra distribuidora)',
   })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: latLng debe ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
+  })
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDeliveryLocationDto,
@@ -235,6 +244,10 @@ export class DeliveryController {
   @ApiNotFoundResponse({
     description: 'Delivery not found (o de otra distribuidora)',
   })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: amount fuera de rango; amount fuera de rango)',
+  })
   async updateBalance(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDeliveryBalanceDto,
@@ -256,6 +269,10 @@ export class DeliveryController {
   })
   @ApiNotFoundResponse({
     description: 'Delivery not found (o de otra distribuidora)',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: isActive tiene que ser true o false)',
   })
   async toggleStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -295,6 +312,10 @@ export class DeliveryController {
   @ApiForbiddenResponse({ description: 'Un chofer, sobre otro chofer' })
   @ApiNotFoundResponse({
     description: 'No es chofer o es de otra distribuidora',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: available tiene que ser true o false)',
   })
   async toggleAvailability(
     @Param('userId', ParseUUIDPipe) userId: string,

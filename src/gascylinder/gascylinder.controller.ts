@@ -18,6 +18,7 @@ import {
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiBadRequestResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { GasCylinderService } from './gascylinder.service';
 import { Public } from '../common/decorators/isPublic.decorator';
@@ -80,6 +81,7 @@ export class GasCylinderController {
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiOkResponse({ type: GasCylinderResponseDto })
   @ApiNotFoundResponse({ description: 'Gas cylinder not found' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<GasCylinderResponseDto> {
@@ -95,6 +97,7 @@ export class GasCylinderController {
   })
   @ApiOkResponse({ type: GasCylinderResponseDto })
   @ApiNotFoundResponse({ description: 'No hay un producto activo de ese tipo' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findByType(
     @Param() { type }: TipoParamDto,
     @CurrentDistributor() distributorId: string | null,
@@ -128,6 +131,10 @@ export class GasCylinderController {
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiOkResponse({ type: GasCylinderResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: weight debe ser mayor que 0; price debe ser mayor que 0)',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateGasCylinderDto: UpdateGasCylinderDto,

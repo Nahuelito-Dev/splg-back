@@ -97,7 +97,7 @@ export class CreateOrderUseCase {
     // pedido va a la distribuidora default.
     if (!distributorId) {
       const def = await this.distributorService.getDefault();
-      distributorId = def?.distributor_id ?? null;
+      distributorId = def?.distributorId ?? null;
     }
 
     // Pre-reserva: requiere fecha agendada (se reserva PARA un día futuro).
@@ -180,7 +180,7 @@ export class CreateOrderUseCase {
         // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
         // como una con `distributor_id` null (dato sin backfillear), que antes
         // se colaba en cualquier tenant.
-        if (distributorId && gasCylinder.distributor_id !== distributorId) {
+        if (distributorId && gasCylinder.distributorId !== distributorId) {
           throw new BadRequestException(
             `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
           );
@@ -197,7 +197,7 @@ export class CreateOrderUseCase {
 
         orderItems.push(
           this.orderItemRepository.create({
-            gas_cylinder_id: itemDto.gasCylinderId,
+            gasCylinderId: itemDto.gasCylinderId,
             quantity: itemDto.quantity,
             unitPrice: unitPrice.toNumber(),
             subtotal: subtotal.toNumber(),
@@ -235,21 +235,20 @@ export class CreateOrderUseCase {
         : 0;
 
       const order = this.orderRepository.create({
-        customer_id: createOrderDto.customerId,
-        distributor_id: distributorId ?? undefined,
-        address_id: createOrderDto.addressId,
+        customerId: createOrderDto.customerId,
+        distributorId: distributorId ?? undefined,
+        addressId: createOrderDto.addressId,
         status: isReservation ? OrderStatus.RESERVED : OrderStatus.PENDING,
         paymentMethod: createOrderDto.paymentMethod,
         paymentType,
-        time_slot_id: createOrderDto.timeSlotId,
+        timeSlotId: createOrderDto.timeSlotId,
         paymentStatus: PaymentStatus.PENDING,
         totalAmount: totalAmount.toNumber(),
-        deposit_amount: depositAmount,
-        deposit_paid: false,
-        scheduled_date: createOrderDto.scheduledDate ?? null,
+        depositAmount,
+        depositPaid: false,
+        scheduledDate: createOrderDto.scheduledDate ?? null,
         notes: createOrderDto.notes,
-        deliveryLatitude: punto ? String(punto.lat) : null,
-        deliveryLongitude: punto ? String(punto.lng) : null,
+        deliveryPoint: address.location ?? null,
         items: orderItems,
       });
 
@@ -292,18 +291,18 @@ export class CreateOrderUseCase {
           .catch(() => undefined);
       }
 
-      await this.sendConfirmation(savedOrder.order_id, createOrderDto);
+      await this.sendConfirmation(savedOrder.orderId, createOrderDto);
 
       // Panel admin en vivo: nuevo pedido.
       this.realtime.notifyAdmins('order:created', {
-        orderId: savedOrder.order_id,
-        distributorId: savedOrder.distributor_id,
+        orderId: savedOrder.orderId,
+        distributorId: savedOrder.distributorId,
         totalAmount: savedOrder.totalAmount,
         status: savedOrder.status,
         paymentMethod: savedOrder.paymentMethod,
       });
 
-      const result = await this.orders.findByIdFull(savedOrder.order_id);
+      const result = await this.orders.findByIdFull(savedOrder.orderId);
       if (!result) {
         throw new InternalServerErrorException(
           'Pedido creado pero no recuperable',
@@ -363,8 +362,8 @@ export class CreateOrderUseCase {
   ): Promise<string | undefined> {
     try {
       const checkout = await this.paymentsService.createCheckout({
-        orderId: savedOrder.order_id,
-        distributorId: savedOrder.distributor_id ?? null,
+        orderId: savedOrder.orderId,
+        distributorId: savedOrder.distributorId ?? null,
         amount: savedOrder.totalAmount,
         isDeposit: false,
         items: checkoutItems,
@@ -373,7 +372,7 @@ export class CreateOrderUseCase {
       return checkout.initPoint;
     } catch (error) {
       this.logger.error(
-        `No se pudo crear el checkout de MercadoPago para ${savedOrder.order_id}: ${errorMessage(error)}`,
+        `No se pudo crear el checkout de MercadoPago para ${savedOrder.orderId}: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -390,13 +389,13 @@ export class CreateOrderUseCase {
   ): Promise<string | undefined> {
     try {
       const checkout = await this.paymentsService.createCheckout({
-        orderId: savedOrder.order_id,
-        distributorId: savedOrder.distributor_id ?? null,
+        orderId: savedOrder.orderId,
+        distributorId: savedOrder.distributorId ?? null,
         amount: depositAmount,
         isDeposit: true,
         items: [
           {
-            id: `deposit-${savedOrder.order_id}`,
+            id: `deposit-${savedOrder.orderId}`,
             title: 'Seña de reserva',
             quantity: 1,
             unitPrice: depositAmount,
@@ -407,7 +406,7 @@ export class CreateOrderUseCase {
       return checkout.initPoint;
     } catch (error) {
       this.logger.error(
-        `No se pudo crear el checkout de la seña para ${savedOrder.order_id}: ${errorMessage(error)}`,
+        `No se pudo crear el checkout de la seña para ${savedOrder.orderId}: ${errorMessage(error)}`,
       );
       return undefined;
     }

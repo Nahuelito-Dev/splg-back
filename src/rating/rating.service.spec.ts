@@ -31,10 +31,10 @@ describe('RatingService', () => {
   };
 
   const entregado = {
-    order_id: 'o1',
-    distributor_id: 'd1',
-    customer_id: 'cliente',
-    delivery_id: 'del-1',
+    orderId: 'o1',
+    distributorId: 'd1',
+    customerId: 'cliente',
+    deliveryId: 'del-1',
     status: OrderStatus.DELIVERED,
   };
   const dto = { orderId: 'o1', stars: 5 };
@@ -62,7 +62,7 @@ describe('RatingService', () => {
     };
     orders = { findById: jest.fn().mockResolvedValue(entregado) };
     deliveries = {
-      findById: jest.fn().mockResolvedValue({ user_id: 'chofer' }),
+      findById: jest.fn().mockResolvedValue({ userId: 'chofer' }),
       updateCalificationByUserId: jest.fn(),
     };
     service = new RatingService(
@@ -75,9 +75,9 @@ describe('RatingService', () => {
   it('el cliente califica al chofer y se actualiza su promedio', async () => {
     const r = await service.create(dto, 'cliente', RoleType.CUSTOMER);
     expect(r).toMatchObject({
-      to_user_id: 'chofer',
-      from_role: RaterRole.CUSTOMER,
-      distributor_id: 'd1',
+      toUserId: 'chofer',
+      fromRole: RaterRole.CUSTOMER,
+      distributorId: 'd1',
     });
     expect(deliveries.updateCalificationByUserId).toHaveBeenCalledWith(
       'chofer',
@@ -87,7 +87,7 @@ describe('RatingService', () => {
 
   it('el chofer califica al cliente, sin tocar promedios', async () => {
     const r = await service.create(dto, 'chofer', RoleType.DELIVERY);
-    expect(r.to_user_id).toBe('cliente');
+    expect(r.toUserId).toBe('cliente');
     expect(deliveries.updateCalificationByUserId).not.toHaveBeenCalled();
   });
 

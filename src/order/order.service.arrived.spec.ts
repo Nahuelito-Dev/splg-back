@@ -28,11 +28,11 @@ describe('OrderService · aviso de llegada', () => {
   let service: OrderService;
 
   const pedidoEnCamino = () => ({
-    order_id: PEDIDO,
-    customer_id: CLIENTE,
-    delivery_id: DELIVERY_ASIGNADO,
+    orderId: PEDIDO,
+    customerId: CLIENTE,
+    deliveryId: DELIVERY_ASIGNADO,
     status: OrderStatus.ON_THE_WAY,
-    delivery: { user: { full_name: 'Ana Gómez' } },
+    delivery: { user: { fullName: 'Ana Gómez' } },
   });
 
   const armar = (
@@ -72,7 +72,7 @@ describe('OrderService · aviso de llegada', () => {
     const s = armar();
     // El chofer existe, pero su delivery_id no es el del pedido.
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
-      delivery_id: 'otro-chofer',
+      deliveryId: 'otro-chofer',
     });
 
     await expect(
@@ -86,7 +86,7 @@ describe('OrderService · aviso de llegada', () => {
   it('avisa por socket y por push cuando es el chofer asignado', async () => {
     const s = armar();
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
-      delivery_id: DELIVERY_ASIGNADO,
+      deliveryId: DELIVERY_ASIGNADO,
     });
 
     await expect(
@@ -122,7 +122,7 @@ describe('OrderService · aviso de llegada', () => {
       status: OrderStatus.ACCEPTED,
     } as unknown as import('./entities/order.entity').Order);
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
-      delivery_id: DELIVERY_ASIGNADO,
+      deliveryId: DELIVERY_ASIGNADO,
     });
 
     await expect(

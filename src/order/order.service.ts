@@ -65,7 +65,7 @@ export class OrderService {
     if (role !== RoleType.DELIVERY) return;
 
     const delivery = await this.deliveries.buscarPorIdOUsuario(userId);
-    if (!delivery || order.delivery_id !== delivery.delivery_id) {
+    if (!delivery || order.deliveryId !== delivery.deliveryId) {
       throw new ForbiddenException('Este pedido no está asignado a tu usuario');
     }
   }
@@ -116,7 +116,7 @@ export class OrderService {
   ): Promise<void> {
     if (!distributorId) return;
     const order = await this.orders.findById(id);
-    if (order && order.distributor_id !== distributorId) {
+    if (order && order.distributorId !== distributorId) {
       throw new NotFoundException(`Order with ID: ${id} not found`);
     }
   }
@@ -130,7 +130,7 @@ export class OrderService {
     const propio = await this.deliveries.buscarPorIdOUsuario(userId);
     if (
       !propio ||
-      (propio.delivery_id !== deliveryId && propio.user_id !== deliveryId)
+      (propio.deliveryId !== deliveryId && propio.userId !== deliveryId)
     ) {
       throw new ForbiddenException('Sólo podés ver tus propios pedidos');
     }
@@ -148,7 +148,7 @@ export class OrderService {
     if (
       !propio ||
       !deliveryIdDelPedido ||
-      propio.delivery_id !== deliveryIdDelPedido
+      propio.deliveryId !== deliveryIdDelPedido
     ) {
       throw new ForbiddenException('Este pedido no está asignado a tu usuario');
     }
@@ -173,15 +173,15 @@ export class OrderService {
     // pedido de otra empresa (IDOR cross-tenant).
     if (
       distributorId &&
-      order.distributor_id &&
-      order.distributor_id !== distributorId
+      order.distributorId &&
+      order.distributorId !== distributorId
     ) {
       throw new NotFoundException(`Order with ID: ${id} not found`);
     }
     // Ownership de cliente: un CUSTOMER solo puede leer SUS pedidos (evita IDOR
     // customer-a-customer dentro de la misma distribuidora). 404 para no
     // revelar que el pedido existe.
-    if (customerUserId && order.customer_id !== customerUserId) {
+    if (customerUserId && order.customerId !== customerUserId) {
       throw new NotFoundException(`Order with ID: ${id} not found`);
     }
     return OrderMapper.toDto(order);
@@ -242,7 +242,7 @@ export class OrderService {
       );
     }
 
-    return { orderId: order.order_id, deliveryCode: order.deliveryCode };
+    return { orderId: order.orderId, deliveryCode: order.deliveryCode };
   }
 
   /**
@@ -263,24 +263,27 @@ export class OrderService {
     const order = await this.findOne(orderId);
     const delivery = await this.deliveries.findById(deliveryId);
     // El chofer tiene que ser de la misma distribuidora que el pedido.
-    if (!delivery || delivery.distributor_id !== order.distributor_id) {
+    if (!delivery || delivery.distributorId !== order.distributorId) {
       throw new NotFoundException('Repartidor no encontrado');
     }
     if (!delivery.isActive)
       throw new BadRequestException('El repartidor no está activo');
-    order.delivery_id = deliveryId;
+    order.deliveryId = deliveryId;
     transitionOrder(order, OrderStatus.ACCEPTED);
     order.acceptedAt = new Date();
     await this.orderRepository.save(order);
     return order;
   }
 
+  /**
+   * El chofer del pedido reporta su posición. Va al radar, como la que manda
+   * por socket, y no al pedido: antes pisaba el punto de entrega y el despacho
+   * pasaba a buscar choferes cerca del chofer en vez de cerca del cliente (H-91).
+   */
   async updateLocation(id: string, lat: string, lng: string, userId: string) {
     const order = await this.findOne(id);
     await this.assertPedidoDelChofer(order, userId, RoleType.DELIVERY);
-    order.deliveryLatitude = lat;
-    order.deliveryLongitude = lng;
-    await this.orderRepository.save(order);
+    await this.dispatch.reportDriverLocation(userId, Number(lat), Number(lng));
     return order;
   }
 
@@ -290,7 +293,7 @@ export class OrderService {
    * (SUM/COUNT) en vez de cargar las órdenes a memoria.
    */
   async getOrderStats(distributorId?: string | null) {
-    const dist = distributorId ? { distributor_id: distributorId } : {};
+    const dist = distributorId ? { distributorId } : {};
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -412,10 +415,10 @@ export class OrderService {
       );
     }
 
-    const driverName = order.delivery?.user?.full_name || 'El repartidor';
+    const driverName = order.delivery?.user?.fullName || 'El repartidor';
 
-    this.dispatch.notifyCustomer(order.customer_id, 'order:arrived', {
-      orderId: order.order_id,
+    this.dispatch.notifyCustomer(order.customerId, 'order:arrived', {
+      orderId: order.orderId,
       message: '👋 ¡El repartidor está afuera!',
       driverName,
     });
@@ -423,8 +426,8 @@ export class OrderService {
     // Push además del socket: si el cliente tiene la app cerrada el socket no
     // le llega. Best-effort, no bloquea la respuesta al chofer.
     await this.notifications.sendArrivalPushToCustomer(
-      order.customer_id,
-      order.order_id,
+      order.customerId,
+      order.orderId,
       driverName,
     );
 
@@ -451,7 +454,7 @@ export class OrderService {
       .andWhere('order.deliveredAt BETWEEN :start AND :end', { start, end });
 
     if (distributorId) {
-      qb.andWhere('order.distributor_id = :distributorId', { distributorId });
+      qb.andWhere('order.distributorId = :distributorId', { distributorId });
     }
 
     const rows = await qb

@@ -39,7 +39,7 @@ describe('CarService', () => {
   it('se crea en la distribuidora del admin', async () => {
     cars.findOne.mockResolvedValue(null);
     const c = await service.create(dto, 'd1');
-    expect(c).toMatchObject({ user_id: 'u1', distributor_id: 'd1' });
+    expect(c).toMatchObject({ userId: 'u1', distributorId: 'd1' });
   });
 
   it('el dueño tiene que ser chofer', async () => {
@@ -57,7 +57,7 @@ describe('CarService', () => {
   });
 
   it('al editar, no se pasa a un chofer de otra distribuidora', async () => {
-    cars.findOne.mockResolvedValue({ car_id: 'c1', user_id: 'u1' });
+    cars.findOne.mockResolvedValue({ carId: 'c1', userId: 'u1' });
     deliveries.findDistributorIdByUserId.mockResolvedValue('d2');
     await expect(
       service.update('c1', { user_id: 'u2' }, 'd1'),
@@ -66,15 +66,15 @@ describe('CarService', () => {
 
   it('al editar, la patente nueva no puede ser la de otro auto', async () => {
     cars.findOne
-      .mockResolvedValueOnce({ car_id: 'c1', car_patent: 'AA111AA' })
-      .mockResolvedValueOnce({ car_id: 'c2', car_patent: 'BB222BB' });
+      .mockResolvedValueOnce({ carId: 'c1', carPatent: 'AA111AA' })
+      .mockResolvedValueOnce({ carId: 'c2', carPatent: 'BB222BB' });
     await expect(
       service.update('c1', { car_patent: 'BB222BB' }, 'd1'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('la patente no se repite', async () => {
-    cars.findOne.mockResolvedValue({ car_id: 'otro' });
+    cars.findOne.mockResolvedValue({ carId: 'otro' });
     await expect(service.create(dto, 'd1')).rejects.toBeInstanceOf(
       BadRequestException,
     );
@@ -87,13 +87,13 @@ describe('CarService', () => {
     );
     expect(cars.findOne).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { car_id: 'c1', distributor_id: 'd2' },
+        where: { carId: 'c1', distributorId: 'd2' },
       }),
     );
   });
 
   it('la baja responde con el id borrado', async () => {
-    cars.findOne.mockResolvedValue({ car_id: 'c1' });
+    cars.findOne.mockResolvedValue({ carId: 'c1' });
     await expect(service.remove('c1', 'd1')).resolves.toEqual({
       message: 'Car deleted successfully',
       carId: 'c1',

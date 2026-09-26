@@ -19,6 +19,8 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
 import { UpdateCustomerLocationDto } from './dto/update-customer-location.dto';
@@ -64,6 +66,7 @@ export class CustomersController {
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -81,6 +84,7 @@ export class CustomersController {
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOneByUserId(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -104,6 +108,11 @@ export class CustomersController {
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: property user_id should not exist; property campo_inventado should not exist)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
@@ -167,6 +176,11 @@ export class CustomersController {
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: latLng debe ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
+  })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCustomerLocationDto,

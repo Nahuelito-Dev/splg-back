@@ -15,6 +15,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { IncidentService } from './incident.service';
 import { IncidentMapper } from './incident.mapper';
@@ -40,6 +41,10 @@ export class IncidentController {
   })
   @ApiCreatedResponse({ type: IncidentResponseDto })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos (p. ej.: orderId must be a UUID; type must be one of the following values: damaged, out_of_stock, no_show, other)',
+  })
   async create(
     @Body() dto: CreateIncidentDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -71,6 +76,7 @@ export class IncidentController {
   @ApiOperation({ summary: 'Incidencias de un pedido' })
   @ApiParam({ name: 'orderId', description: 'Order UUID' })
   @ApiOkResponse({ type: IncidentResponseDto, isArray: true })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async findByOrder(
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @CurrentDistributor() distributorId: string | null,
@@ -88,6 +94,9 @@ export class IncidentController {
   @ApiParam({ name: 'id', description: 'Incident UUID' })
   @ApiOkResponse({ type: IncidentResponseDto })
   @ApiNotFoundResponse({ description: 'Incidencia no encontrada' })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: resolutionNote must be a string)',
+  })
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResolveIncidentDto,

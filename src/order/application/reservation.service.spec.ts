@@ -36,16 +36,16 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
 
   const staleOrder = {
-    order_id: 'ord-mp-1',
+    orderId: 'ord-mp-1',
     status: OrderStatus.PENDING,
     paymentMethod: PaymentMethod.MERCADOPAGO,
     gatewayPaymentId: null,
-    items: [{ gas_cylinder_id: 'gc-1', quantity: 2 }],
+    items: [{ gasCylinderId: 'gc-1', quantity: 2 }],
   } as unknown as Order;
 
   beforeEach(() => {
     lockedOrder = {
-      order_id: 'ord-mp-1',
+      orderId: 'ord-mp-1',
       status: OrderStatus.PENDING,
       gatewayPaymentId: null,
     };
@@ -121,11 +121,11 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
     expect(queryRunner.manager.save).toHaveBeenCalledWith(
       expect.objectContaining({
         status: OrderStatus.CANCELLED,
-        order_id: 'ord-mp-1',
+        orderId: 'ord-mp-1',
       }),
     );
     expect(stock.restituirStock).toHaveBeenCalledWith(queryRunner.manager, [
-      { gas_cylinder_id: 'gc-1', quantity: 2 },
+      { gasCylinderId: 'gc-1', quantity: 2 },
     ]);
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();

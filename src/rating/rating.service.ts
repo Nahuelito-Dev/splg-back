@@ -48,14 +48,14 @@ export class RatingService {
       );
     }
 
-    const driverUserId = order.delivery_id
-      ? (await this.deliveryService.findById(order.delivery_id))?.user_id
+    const driverUserId = order.deliveryId
+      ? (await this.deliveryService.findById(order.deliveryId))?.userId
       : undefined;
     let fromRole: RaterRole;
     let toUserId: string;
 
     if (role === RoleType.CUSTOMER) {
-      if (order.customer_id !== fromUserId) {
+      if (order.customerId !== fromUserId) {
         throw new ForbiddenException(
           'No podés calificar un pedido de otro cliente',
         );
@@ -74,17 +74,17 @@ export class RatingService {
         );
       }
       fromRole = RaterRole.DELIVERY;
-      toUserId = order.customer_id;
+      toUserId = order.customerId;
     } else {
       throw new ForbiddenException('Solo cliente o chofer pueden calificar');
     }
 
     const rating = this.ratingRepository.create({
-      order_id: order.order_id,
-      distributor_id: order.distributor_id,
-      from_user_id: fromUserId,
-      to_user_id: toUserId,
-      from_role: fromRole,
+      orderId: order.orderId,
+      distributorId: order.distributorId,
+      fromUserId,
+      toUserId,
+      fromRole,
       stars: dto.stars,
       comment: dto.comment ?? null,
     });
@@ -122,11 +122,11 @@ export class RatingService {
     const qb = this.ratingRepository
       .createQueryBuilder('r')
       .select('COALESCE(AVG(r.stars), 0)', 'average')
-      .addSelect('COUNT(r.rating_id)', 'count')
-      .where('r.to_user_id = :toUserId', { toUserId });
+      .addSelect('COUNT(r.ratingId)', 'count')
+      .where('r.toUserId = :toUserId', { toUserId });
 
     if (distributorId) {
-      qb.andWhere('r.distributor_id = :distributorId', { distributorId });
+      qb.andWhere('r.distributorId = :distributorId', { distributorId });
     }
 
     const raw = await qb.getRawOne<{ average: string; count: string }>();
@@ -143,8 +143,8 @@ export class RatingService {
   ): Promise<Rating[]> {
     return this.ratingRepository.find({
       where: {
-        to_user_id: toUserId,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        toUserId,
+        ...(distributorId ? { distributorId } : {}),
       },
       // Historial: el chofer, el cliente o la dirección dados de baja siguen
       // apareciendo en lo que ya pasó (H-74).

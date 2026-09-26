@@ -33,12 +33,12 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
   }
 
   findById(id: string): Promise<Order | null> {
-    return this.orderRepository.findOne({ where: { order_id: id } });
+    return this.orderRepository.findOne({ where: { orderId: id } });
   }
 
   findByIdFull(id: string): Promise<Order | null> {
     return this.orderRepository.findOne({
-      where: { order_id: id },
+      where: { orderId: id },
       // Historial: el chofer, el cliente o la dirección dados de baja siguen
       // apareciendo en lo que ya pasó (H-74).
       withDeleted: true,
@@ -51,7 +51,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     where: T,
     distributorId?: string | null,
   ): T {
-    return distributorId ? { ...where, distributor_id: distributorId } : where;
+    return distributorId ? { ...where, distributorId } : where;
   }
 
   async findAllPaginated(
@@ -77,7 +77,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
       where: this.scoped(
-        { status: OrderStatus.PENDING, delivery_id: IsNull() },
+        { status: OrderStatus.PENDING, deliveryId: IsNull() },
         distributorId,
       ),
       take: limit,
@@ -103,7 +103,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     distributorId?: string | null,
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
-      where: this.scoped({ customer_id: customerId }, distributorId),
+      where: this.scoped({ customerId }, distributorId),
       take: limit,
       skip: offset,
       withDeleted: true,
@@ -127,7 +127,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     distributorId?: string | null,
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
-      where: this.scoped({ delivery_id: deliveryId }, distributorId),
+      where: this.scoped({ deliveryId }, distributorId),
       take: limit,
       skip: offset,
       withDeleted: true,

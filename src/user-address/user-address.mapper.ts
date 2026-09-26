@@ -7,8 +7,8 @@ import { UserMapper } from '../users/user.mapper';
 export class UserAddressMapper {
   static toDto(address: UserAddress): UserAddressResponseDto {
     const dto = new UserAddressResponseDto();
-    dto.address_id = address.address_id;
-    dto.user_id = address.user_id;
+    dto.address_id = address.addressId;
+    dto.user_id = address.userId;
     dto.street = address.street;
     dto.city = address.city;
     dto.postalCode = address.postalCode;

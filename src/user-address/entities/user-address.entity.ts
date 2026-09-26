@@ -23,14 +23,17 @@ export enum PrecisionDeGeocodificacion {
 @Entity('user_address')
 export class UserAddress {
   @PrimaryGeneratedColumn('uuid', { name: 'address_id' })
-  address_id!: string;
+  addressId!: string;
 
   @ManyToOne(() => User, (user) => user.addresses, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'uuid' })
-  user_id!: string;
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+  })
+  userId!: string;
 
   @Column({ type: 'varchar', length: 255 })
   street!: string;

@@ -86,14 +86,14 @@ export class RegistroService {
       userId = await this.dataSource.transaction(async (manager) => {
         const user = await this.users.crearEnTransaccion(manager, {
           email: datos.email,
-          full_name: datos.full_name,
-          phone_number: datos.phone_number,
+          fullName: datos.full_name,
+          phoneNumber: datos.phone_number,
           selfie: datos.selfie,
-          firebase_uid: cuenta.uid,
-          role_id: rol.role_id,
+          firebaseUid: cuenta.uid,
+          roleId: rol.roleId,
         });
-        await this.crearPerfil(manager, user.user_id, alta, datos);
-        return user.user_id;
+        await this.crearPerfil(manager, user.userId, alta, datos);
+        return user.userId;
       });
     } catch (error) {
       await this.firebaseAuth.deleteUserSafe(cuenta.uid, this.logger);

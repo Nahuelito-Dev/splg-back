@@ -25,7 +25,7 @@ export enum DistributorStatus {
 @Entity('distributor')
 export class Distributor {
   @PrimaryGeneratedColumn('uuid', { name: 'distributor_id' })
-  distributor_id!: string;
+  distributorId!: string;
 
   @Column({ type: 'varchar', length: 120 })
   name!: string;
@@ -35,12 +35,22 @@ export class Distributor {
   @Column({ type: 'varchar', length: 60, unique: true })
   slug!: string;
 
-  @Column({ type: 'varchar', length: 160, nullable: true })
-  legal_name!: string | null;
+  @Column({
+    name: 'legal_name',
+    type: 'varchar',
+    length: 160,
+    nullable: true,
+  })
+  legalName!: string | null;
 
   /** CUIT / identificación fiscal. */
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  tax_id!: string | null;
+  @Column({
+    name: 'tax_id',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  taxId!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   email!: string | null;
@@ -48,8 +58,12 @@ export class Distributor {
   @Column({ type: 'varchar', nullable: true })
   phone!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  logo_url!: string | null;
+  @Column({
+    name: 'logo_url',
+    type: 'varchar',
+    nullable: true,
+  })
+  logoUrl!: string | null;
 
   @Column({
     type: 'enum',

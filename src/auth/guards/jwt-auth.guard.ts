@@ -83,7 +83,7 @@ export class AuthGuard implements CanActivate {
     request.user = {
       email: local_user.email ?? token_user.email,
       role: local_user.role?.type as RoleType,
-      user_id: local_user.user_id,
+      user_id: local_user.userId,
       distributor_id,
     };
     // Tenant efectivo de la request (lo lee @CurrentDistributor()).
@@ -111,7 +111,7 @@ export class AuthGuard implements CanActivate {
     // tiene (dato inconsistente), NO se degrada a "ve todo" (eso sería fuga
     // cross-tenant): se rechaza. El super_admin es el único cross-tenant.
     if (role === RoleType.DELIVERY) {
-      const id = user.delivery?.distributor_id;
+      const id = user.delivery?.distributorId;
       if (!id) {
         throw new UnauthorizedException(
           'El chofer no tiene una distribuidora asignada',
@@ -120,7 +120,7 @@ export class AuthGuard implements CanActivate {
       return id;
     }
     if (role === RoleType.ADMIN) {
-      const id = user.admins?.[0]?.distributor_id;
+      const id = user.admins?.[0]?.distributorId;
       if (!id) {
         throw new UnauthorizedException(
           'El admin no tiene una distribuidora asignada',
@@ -138,7 +138,7 @@ export class AuthGuard implements CanActivate {
       const distributor = UUID_RE.test(header)
         ? await this.distributorService.assertActive(header)
         : await this.distributorService.findBySlug(header);
-      return distributor.distributor_id;
+      return distributor.distributorId;
     } catch {
       throw new UnauthorizedException(
         `Distribuidora '${header}' inválida o no disponible`,

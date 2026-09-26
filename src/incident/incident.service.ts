@@ -29,24 +29,24 @@ export class IncidentService {
   ): Promise<Incident> {
     const order = await this.orderService.findById(dto.orderId);
     // El pedido de otra distribuidora no existe para quien reporta.
-    if (!order || (distributorId && order.distributor_id !== distributorId)) {
+    if (!order || (distributorId && order.distributorId !== distributorId)) {
       throw new NotFoundException('Pedido no encontrado');
     }
     // El chofer reporta sobre el pedido que tiene asignado.
     if (esChofer) {
       await this.orderService.assertAsignadoAlChofer(
-        order.delivery_id,
+        order.deliveryId,
         reportedByUserId,
       );
     }
 
     const incident = this.incidentRepository.create({
-      order_id: order.order_id,
-      distributor_id: order.distributor_id,
-      reported_by: reportedByUserId,
+      orderId: order.orderId,
+      distributorId: order.distributorId,
+      reportedBy: reportedByUserId,
       type: dto.type,
       description: dto.description,
-      photo_url: dto.photoUrl ?? null,
+      photoUrl: dto.photoUrl ?? null,
       status: IncidentStatus.OPEN,
     });
 
@@ -56,7 +56,7 @@ export class IncidentService {
   /** Lista todas las incidencias, scopeadas por tenant si se pasa distributorId. */
   async findAll(distributorId?: string | null): Promise<Incident[]> {
     const where: FindOptionsWhere<Incident> = {
-      ...(distributorId ? { distributor_id: distributorId } : {}),
+      ...(distributorId ? { distributorId } : {}),
     };
 
     return this.incidentRepository.find({
@@ -79,13 +79,13 @@ export class IncidentService {
     // Pedido inexistente o de otra distribuidora: el mismo 404. Una lista
     // vacía para uno y un 404 para el otro revelaría que el ajeno existe.
     const order = await this.orderService.findById(orderId);
-    if (!order || (distributorId && order.distributor_id !== distributorId)) {
+    if (!order || (distributorId && order.distributorId !== distributorId)) {
       throw new NotFoundException('Pedido no encontrado');
     }
     return this.incidentRepository.find({
       where: {
-        order_id: orderId,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        orderId,
+        ...(distributorId ? { distributorId } : {}),
       },
       order: { createdAt: 'DESC' },
     });
@@ -95,8 +95,8 @@ export class IncidentService {
   async findOne(id: string, distributorId?: string | null): Promise<Incident> {
     const incident = await this.incidentRepository.findOne({
       where: {
-        incident_id: id,
-        ...(distributorId ? { distributor_id: distributorId } : {}),
+        incidentId: id,
+        ...(distributorId ? { distributorId } : {}),
       },
     });
     if (!incident) {
@@ -114,7 +114,7 @@ export class IncidentService {
     const incident = await this.findOne(id, distributorId);
 
     incident.status = IncidentStatus.RESOLVED;
-    incident.resolution_note = dto.resolutionNote;
+    incident.resolutionNote = dto.resolutionNote;
     incident.resolvedAt = new Date();
 
     return this.incidentRepository.save(incident);

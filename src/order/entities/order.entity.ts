@@ -10,6 +10,7 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
+import type { Point } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
 import { OrderItem } from './order-item.entity';
@@ -57,16 +58,16 @@ export enum PaymentStatus {
 @Entity('order')
 // Índices compuestos para las queries calientes:
 //  - dispatch: PENDING AND delivery_id IS NULL (query central, corre por pedido + cron)
-@Index('idx_order_status_delivery', ['status', 'delivery_id'])
+@Index('idx_order_status_delivery', ['status', 'deliveryId'])
 //  - reports/stats scopeados por tenant y rango de fecha
 @Index('idx_order_dist_status_delivered', [
-  'distributor_id',
+  'distributorId',
   'status',
   'deliveredAt',
 ])
 export class Order {
   @PrimaryGeneratedColumn('uuid', { name: 'order_id' })
-  order_id!: string;
+  orderId!: string;
 
   /** Tenant dueño del pedido. */
   @Index()
@@ -74,8 +75,12 @@ export class Order {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id!: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
   /**
    * `RESTRICT` (no `CASCADE`): `customer_id` es NOT NULL, así que `SET NULL`
@@ -90,8 +95,11 @@ export class Order {
   customer!: User;
 
   @Index()
-  @Column({ type: 'uuid' })
-  customer_id!: string;
+  @Column({
+    name: 'customer_id',
+    type: 'uuid',
+  })
+  customerId!: string;
 
   @ManyToOne(() => Delivery, { nullable: true })
   @JoinColumn({ name: 'delivery_id' })
@@ -101,8 +109,12 @@ export class Order {
   @JoinColumn({ name: 'time_slot_id' })
   timeSlot!: TimeSlot | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  time_slot_id!: string | null;
+  @Column({
+    name: 'time_slot_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  timeSlotId!: string | null;
 
   /**
    * Fecha agendada de entrega (YYYY-MM-DD). Null = pedido inmediato ("lo antes
@@ -110,32 +122,48 @@ export class Order {
    * agendado a esa franja de ese día (valida capacidad al crear).
    */
   @Index()
-  @Column({ type: 'date', nullable: true })
-  scheduled_date?: string | null;
+  @Column({
+    name: 'scheduled_date',
+    type: 'date',
+    nullable: true,
+  })
+  scheduledDate?: string | null;
 
   /** Seña de la pre-reserva (0 = pedido normal, no reserva). */
   @Column({
+    name: 'deposit_amount',
     type: 'decimal',
     precision: 10,
     scale: 2,
     transformer: columnNumericTransformer,
     default: 0,
   })
-  deposit_amount!: number;
+  depositAmount!: number;
 
   /** Si la seña ya fue pagada (habilita la activación automática de la reserva). */
-  @Column({ type: 'boolean', default: false })
-  deposit_paid!: boolean;
+  @Column({
+    name: 'deposit_paid',
+    type: 'boolean',
+    default: false,
+  })
+  depositPaid!: boolean;
 
-  @Column({ type: 'uuid', nullable: true })
-  delivery_id!: string | null;
+  @Column({
+    name: 'delivery_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  deliveryId!: string | null;
 
   @ManyToOne(() => UserAddress)
   @JoinColumn({ name: 'address_id' })
   address!: UserAddress;
 
-  @Column({ type: 'uuid' })
-  address_id!: string;
+  @Column({
+    name: 'address_id',
+    type: 'uuid',
+  })
+  addressId!: string;
 
   @Index()
   @Column({
@@ -179,11 +207,20 @@ export class Order {
   @Column({ type: 'text', nullable: true })
   deliveryInstructions!: string | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  deliveryLatitude!: string | null;
-
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  deliveryLongitude!: string | null;
+  /**
+   * Dónde se entrega: el punto de la dirección al momento de pedir. Es una
+   * copia a propósito, porque la dirección del cliente puede cambiar después
+   * (el cambio de dirección de un pedido queda en `order_address_change`). El
+   * despacho busca los choferes más cercanos a este punto. La posición del
+   * chofer no se guarda acá: vive en Redis (H-91).
+   */
+  @Column({
+    type: 'geometry',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+  })
+  deliveryPoint!: Point | null;
 
   @Column({ type: 'timestamp', nullable: true })
   acceptedAt!: Date | null;
@@ -233,7 +270,7 @@ export class Order {
     length: 120,
     nullable: true,
   })
-  receiver_name!: string | null;
+  receiverName!: string | null;
 
   @Column({
     name: 'receiver_document',
@@ -241,7 +278,7 @@ export class Order {
     length: 20,
     nullable: true,
   })
-  receiver_document!: string | null;
+  receiverDocument!: string | null;
 
   @Column({
     name: 'receiver_relationship',
@@ -249,7 +286,7 @@ export class Order {
     length: 40,
     nullable: true,
   })
-  receiver_relationship!: string | null;
+  receiverRelationship!: string | null;
 
   @Column({
     name: 'delivery_mode',
@@ -259,5 +296,5 @@ export class Order {
     nullable: false,
     default: OrderDeliveryMode.STANDARD,
   })
-  delivery_mode!: OrderDeliveryMode;
+  deliveryMode!: OrderDeliveryMode;
 }

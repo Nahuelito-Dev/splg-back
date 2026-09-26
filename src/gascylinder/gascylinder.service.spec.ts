@@ -20,8 +20,8 @@ describe('GasCylinderService', () => {
 
   const producto = (stock: number) =>
     ({
-      gas_cylinder_id: 'g1',
-      distributor_id: 'd1',
+      gasCylinderId: 'g1',
+      distributorId: 'd1',
       type: '10kg',
       stock,
       isActive: true,
@@ -35,9 +35,9 @@ describe('GasCylinderService', () => {
       save: jest.fn((g: GasCylinder) => Promise.resolve(g)),
     };
     distribuidoras = {
-      getDefault: jest.fn().mockResolvedValue({ distributor_id: 'd-default' }),
-      findBySlug: jest.fn().mockResolvedValue({ distributor_id: 'd-slug' }),
-      assertActive: jest.fn().mockResolvedValue({ distributor_id: 'd-uuid' }),
+      getDefault: jest.fn().mockResolvedValue({ distributorId: 'd-default' }),
+      findBySlug: jest.fn().mockResolvedValue({ distributorId: 'd-slug' }),
+      assertActive: jest.fn().mockResolvedValue({ distributorId: 'd-uuid' }),
     };
     service = new GasCylinderService(
       productos as unknown as Repository<GasCylinder>,
@@ -63,7 +63,7 @@ describe('GasCylinderService', () => {
       await service.findAll({ limit: 10, offset: 0 }, 'jeny-gas');
       expect(productos.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { isActive: true, distributor_id: 'd-slug' },
+          where: { isActive: true, distributorId: 'd-slug' },
         }),
       );
     });
@@ -91,7 +91,7 @@ describe('GasCylinderService', () => {
       service.update('g1', { price: 1 }, 'd2'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(productos.findOne).toHaveBeenCalledWith({
-      where: { gas_cylinder_id: 'g1', distributor_id: 'd2' },
+      where: { gasCylinderId: 'g1', distributorId: 'd2' },
       relations: ['promotions'],
     });
   });

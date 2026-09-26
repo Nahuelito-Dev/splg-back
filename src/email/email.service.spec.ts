@@ -62,7 +62,7 @@ describe('EmailService', () => {
 
   describe('sendPasswordResetEmail', () => {
     it('chequea el rate-limit contra Redis con la key email:ratelimit:<email>:password_reset', async () => {
-      usersService.findOneByEmail.mockResolvedValue({ user_id: 'u-1' });
+      usersService.findOneByEmail.mockResolvedValue({ userId: 'u-1' });
       firebaseAuth.generatePasswordResetLink.mockResolvedValue(
         'https://reset.link/1',
       );
@@ -87,7 +87,7 @@ describe('EmailService', () => {
     });
 
     it('usa el link cacheado en Redis en vez de pedirle uno nuevo a Firebase', async () => {
-      usersService.findOneByEmail.mockResolvedValue({ user_id: 'u-1' });
+      usersService.findOneByEmail.mockResolvedValue({ userId: 'u-1' });
       redisService.get.mockResolvedValue('https://reset.link/cached');
 
       const result = await service.sendPasswordResetEmail('cliente@test.com');
@@ -102,7 +102,7 @@ describe('EmailService', () => {
     });
 
     it('cachea el link nuevo en Redis con TTL de 30 minutos', async () => {
-      usersService.findOneByEmail.mockResolvedValue({ user_id: 'u-1' });
+      usersService.findOneByEmail.mockResolvedValue({ userId: 'u-1' });
       firebaseAuth.generatePasswordResetLink.mockResolvedValue(
         'https://reset.link/nuevo',
       );
@@ -117,7 +117,7 @@ describe('EmailService', () => {
     });
 
     it('pide el link con el destino de la app, no uno fijo', async () => {
-      usersService.findOneByEmail.mockResolvedValue({ user_id: 'u-1' });
+      usersService.findOneByEmail.mockResolvedValue({ userId: 'u-1' });
       firebaseAuth.generatePasswordResetLink.mockResolvedValue('https://r/1');
 
       await service.sendPasswordResetEmail('cliente@test.com');
@@ -129,7 +129,7 @@ describe('EmailService', () => {
     });
 
     it('si Firebase falla, el detalle no llega al llamante', async () => {
-      usersService.findOneByEmail.mockResolvedValue({ user_id: 'u-1' });
+      usersService.findOneByEmail.mockResolvedValue({ userId: 'u-1' });
       firebaseAuth.generatePasswordResetLink.mockRejectedValue(
         new Error('UNAUTHORIZED_CONTINUE_URI : Domain not allowlisted'),
       );
@@ -151,7 +151,7 @@ describe('EmailService', () => {
     });
 
     it('el envío de email es best-effort: si el sender falla, igual devuelve éxito', async () => {
-      usersService.findOneByEmail.mockResolvedValue({ user_id: 'u-1' });
+      usersService.findOneByEmail.mockResolvedValue({ userId: 'u-1' });
       firebaseAuth.generatePasswordResetLink.mockResolvedValue(
         'https://reset.link/1',
       );
@@ -209,7 +209,7 @@ describe('EmailService', () => {
       const notFound = Object.assign(new Error('not found'), { status: 404 });
       usersService.findOneByEmail
         .mockRejectedValueOnce(notFound) // check newEmail no existe
-        .mockResolvedValueOnce({ user_id: 'u-1', full_name: 'Nahuel' }); // findOneByEmail(currentEmail)
+        .mockResolvedValueOnce({ userId: 'u-1', fullName: 'Nahuel' }); // findOneByEmail(currentEmail)
 
       const result = await service.changeEmail(
         'actual@test.com',

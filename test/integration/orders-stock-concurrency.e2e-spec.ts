@@ -52,13 +52,13 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
 
     const user = (await userRepo.save({
       email: 'test@splg.local',
-      full_name: 'Test Customer',
-      phone_number: '+540000000001',
+      fullName: 'Test Customer',
+      phoneNumber: '+540000000001',
     } as Partial<User>)) as User;
 
     await customerRepo.save({
-      user_id: user.user_id,
-      notification_token: 'fake-fcm-token',
+      userId: user.userId,
+      notificationToken: 'fake-fcm-token',
     } as Partial<Customer>);
 
     const cylinder = (await cylinderRepo.save({
@@ -70,7 +70,7 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
     } as Partial<GasCylinder>)) as GasCylinder;
 
     const address = (await addressRepo.save({
-      user_id: user.user_id,
+      userId: user.userId,
       street: 'Av. Test 123',
       city: 'CABA',
       latitude: '-34.6037',
@@ -84,10 +84,10 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
     const { user, cylinder, address } = await seedMinimalScenario(1);
 
     const orderPayload = {
-      customerId: user.user_id,
-      addressId: address.address_id,
+      customerId: user.userId,
+      addressId: address.addressId,
       paymentMethod: 'CASH',
-      items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+      items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
     };
 
     // 10 requests concurrentes — Promise.all dispara todos antes de que el primero responda
@@ -108,7 +108,7 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
     // Validación crítica: el stock en BD nunca queda negativo
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(0);
   }, 30000);
 
@@ -120,10 +120,10 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
         request(env.app.getHttpServer())
           .post('/orders')
           .send({
-            customerId: user.user_id,
-            addressId: address.address_id,
+            customerId: user.userId,
+            addressId: address.addressId,
             paymentMethod: 'CASH',
-            items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+            items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
           }),
       ),
     );
@@ -133,7 +133,7 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
 
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(0);
   }, 30000);
 
@@ -144,17 +144,17 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
     const res = await request(env.app.getHttpServer())
       .post('/orders')
       .send({
-        customerId: user.user_id,
-        addressId: address.address_id,
+        customerId: user.userId,
+        addressId: address.addressId,
         paymentMethod: 'CASH',
-        items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 5 }],
+        items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 5 }],
       });
 
     expect(res.status).toBe(400);
 
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     // Stock intacto: el rollback funcionó
     expect(finalCylinder.stock).toBe(2);
   });

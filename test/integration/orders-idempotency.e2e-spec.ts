@@ -43,13 +43,13 @@ describe('Orders Idempotency (e2e)', () => {
   async function seed(stock: number) {
     const user = (await dataSource.getRepository(User).save({
       email: `test-${Date.now()}@splg.local`,
-      full_name: 'Test Customer',
-      phone_number: `+5400000${Math.floor(Math.random() * 10000)}`,
+      fullName: 'Test Customer',
+      phoneNumber: `+5400000${Math.floor(Math.random() * 10000)}`,
     } as Partial<User>)) as User;
 
     await dataSource.getRepository(Customer).save({
-      user_id: user.user_id,
-      notification_token: 'fake-fcm',
+      userId: user.userId,
+      notificationToken: 'fake-fcm',
     } as Partial<Customer>);
 
     const cylinder = (await dataSource.getRepository(GasCylinder).save({
@@ -61,7 +61,7 @@ describe('Orders Idempotency (e2e)', () => {
     } as Partial<GasCylinder>)) as GasCylinder;
 
     const address = (await dataSource.getRepository(UserAddress).save({
-      user_id: user.user_id,
+      userId: user.userId,
       street: 'Av. Test 123',
       city: 'CABA',
       latitude: '-34.6037',
@@ -76,10 +76,10 @@ describe('Orders Idempotency (e2e)', () => {
     const idempotencyKey = randomUUID();
 
     const payload = {
-      customerId: user.user_id,
-      addressId: address.address_id,
+      customerId: user.userId,
+      addressId: address.addressId,
       paymentMethod: 'CASH',
-      items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+      items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
     };
 
     // Primera request: ejecuta handler
@@ -104,7 +104,7 @@ describe('Orders Idempotency (e2e)', () => {
     // Stock decrementó SOLO una vez (5 - 1 = 4)
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(4);
   });
 
@@ -112,10 +112,10 @@ describe('Orders Idempotency (e2e)', () => {
     const { user, cylinder, address } = await seed(5);
 
     const payload = {
-      customerId: user.user_id,
-      addressId: address.address_id,
+      customerId: user.userId,
+      addressId: address.addressId,
       paymentMethod: 'CASH',
-      items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+      items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
     };
 
     const first = await request(env.app.getHttpServer())
@@ -137,7 +137,7 @@ describe('Orders Idempotency (e2e)', () => {
 
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(3); // 5 - 2 = 3
   });
 
@@ -147,17 +147,17 @@ describe('Orders Idempotency (e2e)', () => {
     const res = await request(env.app.getHttpServer())
       .post('/orders')
       .send({
-        customerId: user.user_id,
-        addressId: address.address_id,
+        customerId: user.userId,
+        addressId: address.addressId,
         paymentMethod: 'CASH',
-        items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 2 }],
+        items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 2 }],
       })
       .expect(201);
 
     expect(res.body).toBeDefined();
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(3);
   });
 
@@ -168,17 +168,17 @@ describe('Orders Idempotency (e2e)', () => {
       .post('/orders')
       .set('Idempotency-Key', 'not-a-uuid')
       .send({
-        customerId: user.user_id,
-        addressId: address.address_id,
+        customerId: user.userId,
+        addressId: address.addressId,
         paymentMethod: 'CASH',
-        items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+        items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
       })
       .expect(400);
 
     // Stock intacto: nunca llegó a ejecutar el handler
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(5);
   });
 
@@ -191,27 +191,27 @@ describe('Orders Idempotency (e2e)', () => {
       .post('/orders')
       .set('Idempotency-Key', idempotencyKey)
       .send({
-        customerId: user.user_id,
-        addressId: address.address_id,
+        customerId: user.userId,
+        addressId: address.addressId,
         paymentMethod: 'CASH',
-        items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+        items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
       })
       .expect(201);
 
     // Cambiamos stock manualmente a 0 (simulando que otra request lo consumió)
     await dataSource
       .getRepository(GasCylinder)
-      .update(cylinder.gas_cylinder_id, { stock: 0 });
+      .update(cylinder.gasCylinderId, { stock: 0 });
 
     // Segunda request con misma key: aunque ya no hay stock, el cache responde con la primera
     const second = await request(env.app.getHttpServer())
       .post('/orders')
       .set('Idempotency-Key', idempotencyKey)
       .send({
-        customerId: user.user_id,
-        addressId: address.address_id,
+        customerId: user.userId,
+        addressId: address.addressId,
         paymentMethod: 'CASH',
-        items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+        items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
       })
       .expect(201);
 
@@ -230,10 +230,10 @@ describe('Orders Idempotency (e2e)', () => {
           .post('/orders')
           .set('Idempotency-Key', idempotencyKey)
           .send({
-            customerId: user.user_id,
-            addressId: address.address_id,
+            customerId: user.userId,
+            addressId: address.addressId,
             paymentMethod: 'CASH',
-            items: [{ gasCylinderId: cylinder.gas_cylinder_id, quantity: 1 }],
+            items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
           }),
       ),
     );
@@ -246,7 +246,7 @@ describe('Orders Idempotency (e2e)', () => {
     // Crítico: el stock solo decrementó UNA vez (10 - 1 = 9)
     const finalCylinder = await dataSource
       .getRepository(GasCylinder)
-      .findOneOrFail({ where: { gas_cylinder_id: cylinder.gas_cylinder_id } });
+      .findOneOrFail({ where: { gasCylinderId: cylinder.gasCylinderId } });
     expect(finalCylinder.stock).toBe(9);
 
     // Todos los 201 deben tener el mismo orderId

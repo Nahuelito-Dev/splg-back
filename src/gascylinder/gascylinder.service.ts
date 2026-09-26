@@ -24,7 +24,7 @@ import {
 
 /** Lo mínimo para mover stock: qué producto y cuántas unidades. */
 export interface MovimientoDeStock {
-  gas_cylinder_id: string;
+  gasCylinderId: string;
   quantity: number;
 }
 
@@ -62,12 +62,12 @@ export class GasCylinderService {
   async resolveDistributor(slugOrId?: string): Promise<string | null> {
     if (!slugOrId) {
       const def = await this.distributorService.getDefault();
-      return def?.distributor_id ?? null;
+      return def?.distributorId ?? null;
     }
     const distributor = UUID_RE.test(slugOrId)
       ? await this.distributorService.assertActive(slugOrId)
       : await this.distributorService.findBySlug(slugOrId);
-    return distributor.distributor_id;
+    return distributor.distributorId;
   }
 
   async create(
@@ -77,7 +77,7 @@ export class GasCylinderService {
     // Unicidad de `type` es POR distribuidora: dos tenants pueden tener ambos
     // una "Garrafa 10kg".
     const existing = await this.gasCylinderRepository.findOne({
-      where: { type: createGasCylinderDto.type, distributor_id: distributorId },
+      where: { type: createGasCylinderDto.type, distributorId },
     });
 
     if (existing) {
@@ -89,7 +89,7 @@ export class GasCylinderService {
     assertPromocionesSinRepetir(createGasCylinderDto.promotions);
     const gasCylinder = this.gasCylinderRepository.create({
       ...createGasCylinderDto,
-      distributor_id: distributorId,
+      distributorId,
     });
     try {
       return await this.gasCylinderRepository.save(gasCylinder);
@@ -111,7 +111,7 @@ export class GasCylinderService {
     const distributorId = await this.resolveDistributor(distributor);
 
     const where: FindOptionsWhere<GasCylinder> = { isActive: true };
-    if (distributorId) where.distributor_id = distributorId;
+    if (distributorId) where.distributorId = distributorId;
 
     const [gasCylinders, total] = await this.gasCylinderRepository.findAndCount(
       {
@@ -135,8 +135,8 @@ export class GasCylinderService {
     id: string,
     distributorId?: string | null,
   ): Promise<GasCylinder> {
-    const where: FindOptionsWhere<GasCylinder> = { gas_cylinder_id: id };
-    if (distributorId) where.distributor_id = distributorId;
+    const where: FindOptionsWhere<GasCylinder> = { gasCylinderId: id };
+    if (distributorId) where.distributorId = distributorId;
 
     const gasCylinder = await this.gasCylinderRepository.findOne({
       where,
@@ -153,7 +153,7 @@ export class GasCylinderService {
   async findByType(type: string, distributor?: string): Promise<GasCylinder> {
     const distributorId = await this.resolveDistributor(distributor);
     const where: FindOptionsWhere<GasCylinder> = { type, isActive: true };
-    if (distributorId) where.distributor_id = distributorId;
+    if (distributorId) where.distributorId = distributorId;
 
     const gasCylinder = await this.gasCylinderRepository.findOne({
       where,
@@ -177,7 +177,7 @@ export class GasCylinderService {
     assertPromocionesSinRepetir(updateGasCylinderDto.promotions);
 
     const gasCylinder = await this.gasCylinderRepository.preload({
-      gas_cylinder_id: id,
+      gasCylinderId: id,
       ...updateGasCylinderDto,
     });
 
@@ -231,7 +231,7 @@ export class GasCylinderService {
       isActive: true,
       stock: MoreThan(0),
     };
-    if (distributorId) where.distributor_id = distributorId;
+    if (distributorId) where.distributorId = distributorId;
 
     const products = await this.gasCylinderRepository.find({
       where,
@@ -271,7 +271,7 @@ export class GasCylinderService {
     // Postgres no admite FOR UPDATE con un join externo: las promociones,
     // que el pedido necesita para el precio, se leen después del lock.
     gasCylinder.promotions = await manager.find(GasCylinderPromotion, {
-      where: { gas_cylinder_id: gasCylinderId },
+      where: { gasCylinderId },
     });
     return gasCylinder;
   }
@@ -286,7 +286,7 @@ export class GasCylinderService {
     items: MovimientoDeStock[],
   ): Promise<void> {
     for (const item of items) {
-      const gasCylinder = await this.bloquear(manager, item.gas_cylinder_id);
+      const gasCylinder = await this.bloquear(manager, item.gasCylinderId);
       if (gasCylinder) {
         gasCylinder.stock += item.quantity;
         await manager.save(gasCylinder);
@@ -301,7 +301,7 @@ export class GasCylinderService {
     return manager
       .createQueryBuilder(GasCylinder, 'gc')
       .setLock('pessimistic_write')
-      .where('gc.gas_cylinder_id = :id', { id: gasCylinderId })
+      .where('gc.gasCylinderId = :id', { id: gasCylinderId })
       .getOne();
   }
 
