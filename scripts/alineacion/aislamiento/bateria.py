@@ -59,7 +59,8 @@ for adm in ('admA', 'supA'):
     c(adm,'GET','/claims',esperado=LISTA); c(adm,'PATCH',f'/claims/{B["claim"]}/resolve',{'status':'resolved','resolution':'x'})
     c(adm,'POST','/claims',{'orderId':B['ordEnt'],'customerId':B['cliUser'],'reason':'x','description':'x'},esperado=(404,400,403))
     # coverage
-    c(adm,'GET','/coverage-zones',esperado=LISTA); c(adm,'DELETE',f'/coverage-zones/{B["zona"]}')
+    c(adm,'GET','/coverage-zones',esperado=LISTA); c(adm,'GET',f'/coverage-zones/{B["zona"]}')
+    c(adm,'PATCH',f'/coverage-zones/{B["zona"]}',{'priority':9}); c(adm,'DELETE',f'/coverage-zones/{B["zona"]}')
     # customers (compartidos: A no ve los que no le compraron)
     c(adm,'GET','/customers',esperado=LISTA); c(adm,'GET',f'/customers/{B["cli"]}'); c(adm,'GET',f'/customers/user/{B["cliUser"]}')
     c(adm,'PATCH',f'/customers/{B["cli"]}',{'notification_token':'x'},esperado=(404,403))

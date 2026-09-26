@@ -1,12 +1,19 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CoverageZoneService } from './coverage-zone.service';
-import { CoverageZone } from './entities/coverage-zone.entity';
+import { CoverageZonePricingService } from './coverage-zone-pricing.service';
+import {
+  CoverageZone,
+  CoverageZoneSurchargeType,
+} from './entities/coverage-zone.entity';
 
 /**
- * Una zona es un polígono con recargo. Sin zonas cargadas, la distribuidora
- * cubre todo; con zonas, una dirección está cubierta si cae en alguna activa, y
- * se cobra el menor recargo.
+ * Una zona es un polígono con recargo (fijo o porcentual). Sin zonas
+ * cargadas, la distribuidora cubre todo; con zonas, una dirección está
+ * cubierta si cae en alguna activa y vigente, y gana la de mayor prioridad (a
+ * igual prioridad, la de menor área — eso lo resuelve el ORDER BY de la
+ * consulta, no hay forma de testearlo sin PostGIS real: se verifica contra la
+ * API en la puesta a punto).
  */
 describe('CoverageZoneService', () => {
   let service: CoverageZoneService;
@@ -15,70 +22,214 @@ describe('CoverageZoneService', () => {
     save: jest.Mock;
     count: jest.Mock;
     query: jest.Mock;
+    findAndCount: jest.Mock;
+    findOne: jest.Mock;
+    preload: jest.Mock;
+    softRemove: jest.Mock;
   };
+
+  const pricing = new CoverageZonePricingService();
 
   beforeEach(() => {
     repo = {
       create: jest.fn((z: Partial<CoverageZone>) => z),
       save: jest.fn((z: CoverageZone) => Promise.resolve(z)),
       count: jest.fn(),
-      query: jest.fn(),
+      // Por default, el polígono es válido (no se autointersecta).
+      query: jest.fn().mockResolvedValue([{ valid: true, reason: '' }]),
+      findAndCount: jest.fn(),
+      findOne: jest.fn(),
+      preload: jest.fn((z: Partial<CoverageZone>) => z),
+      softRemove: jest.fn((z: CoverageZone) => Promise.resolve(z)),
     };
     service = new CoverageZoneService(
       repo as unknown as Repository<CoverageZone>,
+      pricing,
     );
   });
 
-  it('cierra el anillo del polígono si viene abierto', async () => {
-    const z = await service.create(
-      {
-        name: 'Centro',
-        polygon: [
-          [-55.9, -27.3],
-          [-55.8, -27.3],
-          [-55.8, -27.4],
-        ],
-      },
-      'd1',
-    );
-    expect(z.area.coordinates[0]).toHaveLength(4);
-    expect(z.area.coordinates[0][3]).toEqual([-55.9, -27.3]);
-  });
+  const poligono = [
+    [-55.9, -27.3],
+    [-55.8, -27.3],
+    [-55.8, -27.4],
+  ];
 
-  it('rechaza un vértice que no es [lng, lat] numérico', async () => {
-    await expect(
-      service.create({ name: 'Mal', polygon: [[1, 2], [3], [4, 5]] }, 'd1'),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('sin zonas cargadas, todo está cubierto sin recargo', async () => {
-    repo.count.mockResolvedValue(0);
-    await expect(service.checkCoverage('d1', -27, -55)).resolves.toEqual({
-      covered: true,
-      surcharge: 0,
+  describe('create', () => {
+    it('cierra el anillo del polígono si viene abierto', async () => {
+      const z = await service.create(
+        { name: 'Centro', polygon: poligono },
+        'd1',
+      );
+      expect(z.area.coordinates[0]).toHaveLength(4);
+      expect(z.area.coordinates[0][3]).toEqual([-55.9, -27.3]);
     });
-    expect(repo.query).not.toHaveBeenCalled();
-  });
 
-  it('fuera de toda zona activa, no está cubierto', async () => {
-    repo.count.mockResolvedValue(2);
-    repo.query.mockResolvedValue([]);
-    await expect(service.checkCoverage('d1', -27, -55)).resolves.toEqual({
-      covered: false,
-      surcharge: 0,
+    it('rechaza un vértice que no es [lng, lat] numérico', async () => {
+      await expect(
+        service.create({ name: 'Mal', polygon: [[1, 2], [3], [4, 5]] }, 'd1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('default: sin surchargeType es percentage', async () => {
+      const z = await service.create(
+        { name: 'Centro', polygon: poligono, surchargeValue: 10 },
+        'd1',
+      );
+      expect(z.surchargeType).toBe(CoverageZoneSurchargeType.PERCENTAGE);
+      expect(z.surchargeValue).toBe(10);
+    });
+
+    it('rechaza un porcentaje mayor a 100', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Centro',
+            polygon: poligono,
+            surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+            surchargeValue: 150,
+          },
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('un monto fijo negativo también se rechaza', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Centro',
+            polygon: poligono,
+            surchargeType: CoverageZoneSurchargeType.FIXED,
+            surchargeValue: -5,
+          },
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('validUntil antes o igual a validFrom se rechaza', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Centro',
+            polygon: poligono,
+            validFrom: '2026-10-01T00:00:00Z',
+            validUntil: '2026-09-01T00:00:00Z',
+          },
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('un polígono que se autointersecta se rechaza con el motivo de PostGIS', async () => {
+      repo.query.mockResolvedValueOnce([
+        { valid: false, reason: 'Self-intersection at or near point 1 2' },
+      ]);
+      await expect(
+        service.create({ name: 'Mal', polygon: poligono }, 'd1'),
+      ).rejects.toThrow(/Self-intersection/);
     });
   });
 
-  it('dentro de una zona, devuelve la zona y su recargo como número', async () => {
-    repo.count.mockResolvedValue(2);
-    repo.query.mockResolvedValue([
-      { coverage_zone_id: 'z1', name: 'Centro', surcharge: '500.00' },
-    ]);
-    await expect(service.checkCoverage('d1', -27, -55)).resolves.toEqual({
-      covered: true,
-      zoneId: 'z1',
-      zoneName: 'Centro',
-      surcharge: 500,
+  describe('update', () => {
+    it('valida el recargo con el TIPO ya guardado si sólo se manda el valor', async () => {
+      repo.findOne.mockResolvedValue({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+        surchargeValue: 10,
+        validFrom: null,
+        validUntil: null,
+      });
+      await expect(
+        service.update('z1', { surchargeValue: 150 }, 'd1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('de otra distribuidora, no se encuentra (404)', async () => {
+      repo.findOne.mockResolvedValue(null);
+      await expect(
+        service.update('z1', { name: 'x' }, 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('checkCoverage', () => {
+    it('sin zonas cargadas, todo está cubierto sin recargo', async () => {
+      repo.count.mockResolvedValue(0);
+      await expect(service.checkCoverage('d1', -27, -55)).resolves.toEqual({
+        covered: true,
+        surcharge: 0,
+        zone: null,
+      });
+      expect(repo.query).not.toHaveBeenCalled();
+    });
+
+    it('fuera de toda zona activa y vigente, no está cubierto', async () => {
+      repo.count.mockResolvedValue(2);
+      repo.query.mockResolvedValue([]);
+      await expect(service.checkCoverage('d1', -27, -55)).resolves.toEqual({
+        covered: false,
+        surcharge: 0,
+        zone: null,
+      });
+    });
+
+    it('dentro de una zona fixed, devuelve la zona y su recargo crudo', async () => {
+      repo.count.mockResolvedValue(2);
+      repo.query.mockResolvedValue([
+        {
+          coverage_zone_id: 'z1',
+          name: 'Posadas',
+          surcharge_type: CoverageZoneSurchargeType.FIXED,
+          surcharge_value: '500.00',
+          color: '#FF7A00',
+        },
+      ]);
+      await expect(service.checkCoverage('d1', -27, -55)).resolves.toEqual({
+        covered: true,
+        zoneId: 'z1',
+        zoneName: 'Posadas',
+        surcharge: 500,
+        zone: {
+          id: 'z1',
+          name: 'Posadas',
+          type: CoverageZoneSurchargeType.FIXED,
+          value: 500,
+          color: '#FF7A00',
+        },
+      });
+    });
+
+    it('con subtotal, agrega `amount` con el recargo ya calculado (percentage)', async () => {
+      repo.count.mockResolvedValue(1);
+      repo.query.mockResolvedValue([
+        {
+          coverage_zone_id: 'z2',
+          name: 'Villa Lanús',
+          surcharge_type: CoverageZoneSurchargeType.PERCENTAGE,
+          surcharge_value: '10.00',
+          color: null,
+        },
+      ]);
+      const resultado = await service.checkCoverage('d1', -27, -55, 10000);
+      expect(resultado.amount).toBe(1000);
+      expect(resultado.zone?.type).toBe(CoverageZoneSurchargeType.PERCENTAGE);
+    });
+
+    it('la consulta filtra activa, no borrada, vigente y ordena por prioridad y área', async () => {
+      repo.count.mockResolvedValue(1);
+      repo.query.mockResolvedValue([]);
+      await service.checkCoverage('d1', -27, -55);
+
+      const [sql] = repo.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/"isActive" = true/);
+      expect(sql).toMatch(/"deletedAt" IS NULL/);
+      expect(sql).toMatch(/valid_from IS NULL OR valid_from <= now\(\)/);
+      expect(sql).toMatch(/valid_until IS NULL OR valid_until > now\(\)/);
+      expect(sql).toMatch(/ST_Covers\(/);
+      expect(sql).toMatch(/ORDER BY priority DESC, ST_Area\(area\) ASC/);
+      expect(sql).toMatch(/LIMIT 1/);
     });
   });
 });

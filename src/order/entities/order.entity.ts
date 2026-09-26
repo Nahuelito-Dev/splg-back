@@ -18,6 +18,10 @@ import { TimeSlot } from '../../time-slot/entities/time-slot.entity';
 import { UserAddress } from '../../user-address/entities/user-address.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+import {
+  CoverageZone,
+  CoverageZoneSurchargeType,
+} from '../../coverage-zone/entities/coverage-zone.entity';
 
 export enum OrderStatus {
   /**
@@ -297,4 +301,61 @@ export class Order {
     default: OrderDeliveryMode.STANDARD,
   })
   deliveryMode!: OrderDeliveryMode;
+
+  /**
+   * Snapshot de la zona de cobertura al momento de pedir (delivery/coverage-
+   * zone.service). `coverage_zone_id` es sólo trazabilidad: si la zona se
+   * edita o se borra después, este pedido NO cambia — el total ya cobrado se
+   * reconstruye con `zone_name` + `zone_surcharge_*` + `subtotal_items`, no
+   * releyendo la zona.
+   */
+  @ManyToOne(() => CoverageZone, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'coverage_zone_id' })
+  coverageZone!: CoverageZone | null;
+
+  @Column({ name: 'coverage_zone_id', type: 'uuid', nullable: true })
+  coverageZoneId!: string | null;
+
+  @Column({ name: 'zone_name', type: 'varchar', length: 120, nullable: true })
+  zoneName!: string | null;
+
+  @Column({
+    name: 'zone_surcharge_type',
+    type: 'enum',
+    enum: CoverageZoneSurchargeType,
+    nullable: true,
+  })
+  zoneSurchargeType!: CoverageZoneSurchargeType | null;
+
+  /** Valor crudo de la zona al momento de pedir (monto o %, según el tipo). */
+  @Column({
+    name: 'zone_surcharge_value',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  zoneSurchargeValue!: number | null;
+
+  /** Recargo YA calculado (monto en la moneda del pedido). 0 si no hay zona. */
+  @Column({
+    name: 'zone_surcharge_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  zoneSurchargeAmount!: number;
+
+  /** Subtotal de los ítems (ya con promociones), antes de cualquier recargo. */
+  @Column({
+    name: 'subtotal_items',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+  })
+  subtotalItems!: number;
 }

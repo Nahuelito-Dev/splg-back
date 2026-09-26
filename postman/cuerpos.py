@@ -68,11 +68,17 @@ CUERPOS = {
     "POST /api/coverage-zones": {
         "ok": {
             "name": "Zona de prueba " + UNICO,
-            "polygon": [[-27.36, -55.90], [-27.36, -55.88], [-27.38, -55.88], [-27.36, -55.90]],
-            "surcharge": 150,
+            "polygon": [[-55.90, -27.36], [-55.88, -27.36], [-55.88, -27.38], [-55.90, -27.36]],
+            "surchargeType": "percentage",
+            "surchargeValue": 10,
             "isActive": True,
         },
         "malo": {"name": "", "polygon": "no-es-un-poligono"},
+    },
+    "PATCH /api/coverage-zones/{id}": {
+        "ok": {"priority": 1, "label": "Editada por la bateria"},
+        # 400: un recargo porcentual no puede superar el 100%.
+        "malo": {"surchargeType": "percentage", "surchargeValue": 150},
     },
     "POST /api/car": {
         "ok": {"user_id": "<<deliveryUserId>>", "type_car": "Camioneta",

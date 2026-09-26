@@ -1,5 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsLatitude, IsLongitude } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsLatitude,
+  IsLongitude,
+  IsNumber,
+  IsOptional,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** Punto a chequear contra las zonas de una distribuidora. */
@@ -19,4 +25,16 @@ export class CheckCoverageDto {
   @Type(() => Number)
   @IsLongitude({ message: 'lng debe ser una longitud válida' })
   lng!: number;
+
+  @ApiPropertyOptional({
+    example: 22000,
+    description:
+      'Subtotal de los ítems (ya con promociones). Si se manda, la respuesta ' +
+      'incluye `amount`: el recargo de zona ya calculado sobre ese subtotal.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  subtotal?: number;
 }

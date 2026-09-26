@@ -24,6 +24,8 @@ import { CreateOrderDto } from '../dto/create-order.dto';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
+import { CoverageZonePricingService } from '../../coverage-zone/coverage-zone-pricing.service';
+import type { CoverageZoneResumenDto } from '../../coverage-zone/dto/coverage-zone-response.dto';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -82,6 +84,7 @@ export class CreateOrderUseCase {
     private readonly distributorService: DistributorService,
     private readonly timeSlotService: TimeSlotService,
     private readonly coverageZoneService: CoverageZoneService,
+    private readonly coverageZonePricing: CoverageZonePricingService,
   ) {}
 
   /**
@@ -130,10 +133,12 @@ export class CreateOrderUseCase {
 
       // Zona de cobertura: si la distribuidora definió zonas (PostGIS), la
       // dirección debe caer dentro de alguna → si no, se rechaza el pedido
-      // ANTES de reservar stock. La zona puede además tener un recargo (delivery
-      // por lejanía) que se suma al total. Si la distribuidora NO definió zonas,
-      // checkCoverage devuelve covered:true / surcharge:0 (no-op).
-      let zoneSurcharge = new Decimal(0);
+      // ANTES de reservar stock. La zona ganadora puede tener un recargo fijo
+      // o porcentual; el porcentual se calcula más abajo, sobre el subtotal
+      // de los ítems (todavía no se conoce en este punto). Si la distribuidora
+      // NO definió zonas, checkCoverage devuelve covered:true / zone:null
+      // (no-op).
+      let coverageZone: CoverageZoneResumenDto | null = null;
       const punto = coordenadasDePunto(address.location);
       if (distributorId && punto) {
         const coverage = await this.coverageZoneService.checkCoverage(
@@ -146,7 +151,7 @@ export class CreateOrderUseCase {
             'La dirección está fuera de la zona de cobertura de la distribuidora',
           );
         }
-        zoneSurcharge = new Decimal(coverage.surcharge ?? 0);
+        coverageZone = coverage.zone;
       }
 
       // Agendamiento: validar cupo de la franja DENTRO de la transacción y con
@@ -212,9 +217,20 @@ export class CreateOrderUseCase {
         });
       }
 
-      // Recargo por zona de cobertura (delivery por lejanía), sobre el subtotal
-      // de los ítems, antes del recargo por método de pago.
-      totalAmount = totalAmount.plus(zoneSurcharge);
+      // Subtotal de los ítems YA con promociones, antes de cualquier recargo.
+      // Se guarda en el pedido (snapshot) para poder reconstruir el total aun
+      // si la zona se edita o se borra después.
+      const subtotalItems = totalAmount;
+
+      // Recargo por zona de cobertura: fijo (monto) o porcentual (sobre
+      // `subtotalItems`), ANTES del recargo por método de pago — ese último
+      // se sigue aplicando sobre el total con el recargo de zona ya sumado
+      // (delivery + costo online, no sólo delivery).
+      const zoneSurchargeAmount = this.coverageZonePricing.zoneSurcharge(
+        subtotalItems,
+        coverageZone,
+      );
+      totalAmount = totalAmount.plus(zoneSurchargeAmount);
 
       // Recargo por método de pago (dominio): +10% en pagos online (MP/Transfer).
       totalAmount = this.pricing.applyPaymentSurcharge(
@@ -250,6 +266,14 @@ export class CreateOrderUseCase {
         notes: createOrderDto.notes,
         deliveryPoint: address.location ?? null,
         items: orderItems,
+        // Snapshot de la zona de cobertura al momento de pedir: el total
+        // tiene que poder reconstruirse aunque la zona se edite o se borre.
+        coverageZoneId: coverageZone?.id ?? null,
+        zoneName: coverageZone?.name ?? null,
+        zoneSurchargeType: coverageZone?.type ?? null,
+        zoneSurchargeValue: coverageZone?.value ?? null,
+        zoneSurchargeAmount: zoneSurchargeAmount.toNumber(),
+        subtotalItems: subtotalItems.toNumber(),
       });
 
       const savedOrder = await queryRunner.manager.save(order);

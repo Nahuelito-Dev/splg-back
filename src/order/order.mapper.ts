@@ -7,6 +7,7 @@ import {
   OrderItemResponseDto,
   OrderResponseDto,
   ProductoDelRenglonDto,
+  ZoneSurchargeDto,
 } from './dto/order-response.dto';
 
 /** La dirección se guarda como punto; el pedido la muestra como texto. */
@@ -34,6 +35,22 @@ function clienteDe(user: User | null | undefined): CustomerDeOrderDto | null {
   return dto;
 }
 
+/**
+ * Recargo por zona, tal como quedó en el snapshot del pedido. `null` si la
+ * distribuidora no tenía zonas al pedir (no-op) o el pedido es anterior a esta
+ * funcionalidad — en ambos casos `coverageZoneId` es `null`.
+ */
+function recargoDeZonaDe(order: Order): ZoneSurchargeDto | null {
+  if (!order.coverageZoneId || !order.zoneSurchargeType) return null;
+  const dto = new ZoneSurchargeDto();
+  dto.coverageZoneId = order.coverageZoneId;
+  dto.name = order.zoneName ?? '';
+  dto.type = order.zoneSurchargeType;
+  dto.value = Number(order.zoneSurchargeValue ?? 0);
+  dto.amount = Number(order.zoneSurchargeAmount ?? 0);
+  return dto;
+}
+
 export class OrderMapper {
   static toDto(order: Order): OrderResponseDto {
     const dto = new OrderResponseDto();
@@ -57,6 +74,10 @@ export class OrderMapper {
     dto.cancellationReason = order.cancellationReason ?? null;
     dto.acceptedAt = order.acceptedAt ?? null;
     dto.onTheWayAt = order.onTheWayAt ?? null;
+
+    // Zona de cobertura: snapshot al momento de pedir (no vuelve a leer la zona).
+    dto.zoneSurcharge = recargoDeZonaDe(order);
+    dto.subtotalItems = Number(order.subtotalItems ?? 0);
 
     // Status Mapping
     dto.status = this.mapStatus(order.status);

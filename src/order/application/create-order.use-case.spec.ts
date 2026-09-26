@@ -2,6 +2,8 @@ import Decimal from 'decimal.js';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { OrderStatus, PaymentMethod } from '../entities/order.entity';
+import { CoverageZonePricingService } from '../../coverage-zone/coverage-zone-pricing.service';
+import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
 
 /**
  * Use-case de creación de pedido. Foco de estos tests: el BRANCH por método
@@ -33,6 +35,7 @@ describe('CreateOrderUseCase', () => {
   let orders: { findByIdFull: jest.Mock };
   let realtime: { notifyAdmins: jest.Mock };
   let paymentsService: { createCheckout: jest.Mock };
+  let coverageZoneService: { checkCoverage: jest.Mock };
 
   const baseDto: CreateOrderDto = {
     customerId: 'cust-1',
@@ -67,6 +70,10 @@ describe('CreateOrderUseCase', () => {
         addressId: 'addr-1',
         latitude: '-34.6',
         longitude: '-58.4',
+        // GeoJSON Point (lng, lat): lo que lee `coordenadasDePunto` para el
+        // chequeo de cobertura. Sin esto, `punto` da null y checkCoverage NUNCA
+        // se llama (quedaba sin probar).
+        location: { type: 'Point', coordinates: [-58.4, -34.6] },
       }),
     };
     orderItemRepository = { create: jest.fn((data: unknown) => data) };
@@ -122,12 +129,13 @@ describe('CreateOrderUseCase', () => {
       assertSlotAvailableTx: jest.fn().mockResolvedValue(undefined),
     };
 
-    // Sin zonas definidas → cubierto, sin recargo (no-op), por defecto.
-    const coverageZoneService = {
+    // Sin zonas definidas → cubierto, sin zona (no-op), por defecto.
+    coverageZoneService = {
       checkCoverage: jest
         .fn()
-        .mockResolvedValue({ covered: true, surcharge: 0 }),
+        .mockResolvedValue({ covered: true, surcharge: 0, zone: null }),
     };
+    const coverageZonePricing = new CoverageZonePricingService();
 
     useCase = new CreateOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
@@ -149,6 +157,7 @@ describe('CreateOrderUseCase', () => {
       distributorService as unknown as import('../../distributor/distributor.service').DistributorService,
       timeSlotService as unknown as import('../../time-slot/time-slot.service').TimeSlotService,
       coverageZoneService as unknown as import('../../coverage-zone/coverage-zone.service').CoverageZoneService,
+      coverageZonePricing,
     );
   });
 
@@ -231,6 +240,125 @@ describe('CreateOrderUseCase', () => {
       expect(result.order.orderId).toBe('ord-1');
       expect(result.paymentUrl).toBeUndefined();
       expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('zona de cobertura', () => {
+    /**
+     * `orderRepository.create` refleja exactamente lo que arma el use-case
+     * (el mock lo devuelve tal cual); `orders.findByIdFull` está mockeado
+     * aparte y no sirve para esto, así que el snapshot se verifica sobre lo
+     * que se le pasó a `create`.
+     */
+    function ordenCreada(): Record<string, unknown> {
+      const llamadas = orderRepository.create.mock.calls as unknown as Record<
+        string,
+        unknown
+      >[][];
+      return llamadas[0][0];
+    }
+
+    it('sin zona (no-op): snapshot en null y recargo 0', async () => {
+      await useCase.execute({ ...baseDto });
+      const orden = ordenCreada();
+      expect(orden.coverageZoneId).toBeNull();
+      expect(orden.zoneName).toBeNull();
+      expect(orden.zoneSurchargeType).toBeNull();
+      expect(orden.zoneSurchargeValue).toBeNull();
+      expect(orden.zoneSurchargeAmount).toBe(0);
+      expect(orden.subtotalItems).toBe(2000); // 2 × 1000 (mock de pricing)
+      expect(orden.totalAmount).toBe(2000);
+    });
+
+    it('fixed: suma el monto tal cual y lo deja en el snapshot', async () => {
+      coverageZoneService.checkCoverage.mockResolvedValue({
+        covered: true,
+        zoneId: 'z1',
+        zoneName: 'Posadas',
+        surcharge: 500,
+        zone: {
+          id: 'z1',
+          name: 'Posadas',
+          type: CoverageZoneSurchargeType.FIXED,
+          value: 500,
+          color: null,
+        },
+      });
+
+      await useCase.execute({ ...baseDto });
+      const orden = ordenCreada();
+      expect(orden.coverageZoneId).toBe('z1');
+      expect(orden.zoneName).toBe('Posadas');
+      expect(orden.zoneSurchargeType).toBe(CoverageZoneSurchargeType.FIXED);
+      expect(orden.zoneSurchargeValue).toBe(500);
+      expect(orden.zoneSurchargeAmount).toBe(500);
+      expect(orden.subtotalItems).toBe(2000);
+      expect(orden.totalAmount).toBe(2500); // 2000 + 500, sin recargo online
+    });
+
+    it('percentage: calcula el recargo sobre el subtotal de los ítems', async () => {
+      coverageZoneService.checkCoverage.mockResolvedValue({
+        covered: true,
+        zoneId: 'z2',
+        zoneName: 'Villa Lanús',
+        surcharge: 10,
+        zone: {
+          id: 'z2',
+          name: 'Villa Lanús',
+          type: CoverageZoneSurchargeType.PERCENTAGE,
+          value: 10,
+          color: '#FF7A00',
+        },
+      });
+
+      await useCase.execute({ ...baseDto });
+      const orden = ordenCreada();
+      expect(orden.zoneSurchargeType).toBe(
+        CoverageZoneSurchargeType.PERCENTAGE,
+      );
+      expect(orden.zoneSurchargeValue).toBe(10);
+      expect(orden.zoneSurchargeAmount).toBe(200); // 10% de 2000
+      expect(orden.totalAmount).toBe(2200);
+    });
+
+    it('el recargo de zona se aplica ANTES del recargo por pago online', async () => {
+      pricing.applyPaymentSurcharge.mockImplementation((amount: Decimal) =>
+        amount.times(1.1),
+      );
+      coverageZoneService.checkCoverage.mockResolvedValue({
+        covered: true,
+        zoneId: 'z1',
+        zoneName: 'Posadas',
+        surcharge: 500,
+        zone: {
+          id: 'z1',
+          name: 'Posadas',
+          type: CoverageZoneSurchargeType.FIXED,
+          value: 500,
+          color: null,
+        },
+      });
+
+      await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+      });
+      const orden = ordenCreada();
+      // (2000 + 500) × 1.1 = 2750
+      expect(orden.totalAmount).toBe(2750);
+      expect(orden.subtotalItems).toBe(2000);
+      expect(orden.zoneSurchargeAmount).toBe(500);
+    });
+
+    it('rechaza el pedido si la dirección está fuera de cobertura', async () => {
+      coverageZoneService.checkCoverage.mockResolvedValue({
+        covered: false,
+        surcharge: 0,
+        zone: null,
+      });
+      await expect(useCase.execute({ ...baseDto })).rejects.toThrow(
+        /fuera de la zona de cobertura/,
+      );
     });
   });
 });
