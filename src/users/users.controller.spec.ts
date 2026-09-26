@@ -73,6 +73,31 @@ describe('UsersController — alcance', () => {
     expect(service.findOne).not.toHaveBeenCalled();
   });
 
+  it('el super admin con "Ver como" se lee a sí mismo aunque no sea de esa distribuidora', async () => {
+    service.findOneByEmail.mockResolvedValue({ userId: 'yo', blocked: false });
+    service.perteneceA.mockResolvedValue(false);
+    await expect(
+      controller.findOneByEmail(
+        { email: 'yo@splg.com' },
+        usuario(RoleType.SUPER_ADMIN),
+        'jeny',
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      controller.findOne('yo', usuario(RoleType.SUPER_ADMIN), 'jeny'),
+    ).resolves.toBeDefined();
+    expect(service.perteneceA).not.toHaveBeenCalled();
+  });
+
+  it('buscar por email a alguien de otra distribuidora no revela su id', async () => {
+    service.perteneceA.mockResolvedValue(false);
+    const error: unknown = await controller
+      .findOneByEmail({ email: 'otro@splg.com' }, usuario(RoleType.ADMIN), 'd1')
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect((error as NotFoundException).message).not.toContain('otro');
+  });
+
   it('un admin de empresa no administra la cuenta de un cliente', async () => {
     service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
     await expect(
