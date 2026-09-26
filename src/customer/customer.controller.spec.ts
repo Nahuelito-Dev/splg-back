@@ -1,11 +1,13 @@
-import { ForbiddenException } from '@nestjs/common';
 import { CustomersController } from './customer.controller';
 import { CustomersService } from './customer.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
-/** H-52: un cliente no puede cambiar su propia validación. */
-describe('CustomersController — validación', () => {
+/**
+ * Actualización del perfil. La validación de clientes se eliminó el 26/09: el
+ * cliente se registra y compra, no hay nada que aprobar.
+ */
+describe('CustomersController — actualización', () => {
   let controller: CustomersController;
   let service: { update: jest.Mock };
 
@@ -26,19 +28,7 @@ describe('CustomersController — validación', () => {
     );
   });
 
-  it('un cliente que manda validated recibe 403', async () => {
-    await expect(
-      controller.update(
-        'c1',
-        { validated: true },
-        usuario(RoleType.CUSTOMER),
-        null,
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(service.update).not.toHaveBeenCalled();
-  });
-
-  it('un cliente puede cambiar sus otros datos', async () => {
+  it('un cliente puede cambiar sus datos', async () => {
     await controller.update(
       'c1',
       { lat_lang: '-27.3,-55.8' },
@@ -52,16 +42,16 @@ describe('CustomersController — validación', () => {
     );
   });
 
-  it('un administrador sí valida', async () => {
+  it('un administrador actualiza sin quedar acotado a un dueño', async () => {
     await controller.update(
       'c1',
-      { validated: true },
+      { notification_token: 'tok' },
       usuario(RoleType.ADMIN),
       null,
     );
     expect(service.update).toHaveBeenCalledWith(
       'c1',
-      { validated: true },
+      { notification_token: 'tok' },
       undefined,
     );
   });

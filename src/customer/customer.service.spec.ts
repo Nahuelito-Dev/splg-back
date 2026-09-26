@@ -20,8 +20,6 @@ describe('CustomersService', () => {
     ({
       customerId: 'c1',
       userId: 'u1',
-      validated: false,
-      lat_lang: null,
       ...over,
     }) as Customer;
 
@@ -66,17 +64,6 @@ describe('CustomersService', () => {
       ForbiddenException,
     );
     expect(customers.findOne).not.toHaveBeenCalled();
-  });
-
-  it('validar e invalidar cambian el estado', async () => {
-    customers.findOne.mockResolvedValue(cliente());
-    await expect(service.validateCustomer('c1')).resolves.toMatchObject({
-      validated: true,
-    });
-    customers.findOne.mockResolvedValue(cliente({ validated: true }));
-    await expect(service.invalidateCustomer('c1')).resolves.toMatchObject({
-      validated: false,
-    });
   });
 
   it('la posición de otro cliente no se puede mover', async () => {

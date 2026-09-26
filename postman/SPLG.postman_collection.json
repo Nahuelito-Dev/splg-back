@@ -2016,6 +2016,196 @@
       ]
     },
     {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "GET /api/audit",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/audit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "audit"
+                  ],
+                  "query": [
+                    {
+                      "key": "actorUserId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "resource",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "resourceId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "result",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "desde",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "hasta",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Consultar el registro de auditoría"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/audit",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "audit"
+                  ],
+                  "query": [
+                    {
+                      "key": "actorUserId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "resource",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "resourceId",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "result",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "desde",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "hasta",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Auth",
       "item": [
         {
@@ -5164,154 +5354,6 @@
           ]
         },
         {
-          "name": "PATCH /api/customers/{id}/invalidate",
-          "item": [
-            {
-              "name": "1 · correcto → 200",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/customers/{{customerId}}/invalidate",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "customers",
-                    "{{customerId}}",
-                    "invalidate"
-                  ]
-                },
-                "description": "Invalidate customer"
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · sin token → 401",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "",
-                    "disabled": false
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/customers/{{customerId}}/invalidate",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "customers",
-                    "{{customerId}}",
-                    "invalidate"
-                  ]
-                },
-                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Esta peticion va sin token a proposito.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "4 · id inexistente → 404",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/customers/{{idInexistente}}/invalidate",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "customers",
-                    "{{idInexistente}}",
-                    "invalidate"
-                  ]
-                },
-                "description": "Un identificador con formato valido que no existe en la base."
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 404 o 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
           "name": "PATCH /api/customers/{id}/location",
           "item": [
             {
@@ -5538,154 +5580,6 @@
                     }
                   }
                 }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 404 o 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "PATCH /api/customers/{id}/validate",
-          "item": [
-            {
-              "name": "1 · correcto → 200",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/customers/{{customerId}}/validate",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "customers",
-                    "{{customerId}}",
-                    "validate"
-                  ]
-                },
-                "description": "Validate customer"
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · sin token → 401",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "",
-                    "disabled": false
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/customers/{{customerId}}/validate",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "customers",
-                    "{{customerId}}",
-                    "validate"
-                  ]
-                },
-                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
-                "auth": {
-                  "type": "noauth"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Esta peticion va sin token a proposito.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "4 · id inexistente → 404",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/customers/{{idInexistente}}/validate",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "customers",
-                    "{{idInexistente}}",
-                    "validate"
-                  ]
-                },
-                "description": "Un identificador con formato valido que no existe en la base."
               },
               "event": [
                 {
@@ -10693,6 +10587,13 @@
                   ],
                   "path": [
                     "gascylinder"
+                  ],
+                  "query": [
+                    {
+                      "key": "distributor",
+                      "value": "{{distributorSlug}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get all gas cylinders with pagination"
@@ -10742,6 +10643,13 @@
                   ],
                   "path": [
                     "gascylinder"
+                  ],
+                  "query": [
+                    {
+                      "key": "distributor",
+                      "value": "{{distributorSlug}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
@@ -10796,7 +10704,7 @@
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
-                      "disabled": false
+                      "disabled": true
                     }
                   ]
                 },
@@ -10854,7 +10762,7 @@
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
-                      "disabled": false
+                      "disabled": true
                     }
                   ]
                 },
@@ -13672,7 +13580,7 @@
           "name": "POST /api/orders/{id}/confirm-delivery",
           "item": [
             {
-              "name": "1 · correcto → 200 o 400",
+              "name": "1 · correcto → 201 o 400",
               "request": {
                 "method": "POST",
                 "header": [
@@ -13719,8 +13627,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 400\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                      "pm.test(\"responde 201 o 400\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201, 400]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -13873,7 +13781,7 @@
           "name": "POST /api/orders/{id}/reject",
           "item": [
             {
-              "name": "1 · correcto → 201 o 400 o 401",
+              "name": "1 · correcto → 200 o 400 o 401",
               "request": {
                 "method": "POST",
                 "header": [
@@ -13907,8 +13815,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201 o 400 o 401 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201, 400, 401, 403]));",
+                      "pm.test(\"responde 200 o 400 o 401 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 401, 403]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -15816,7 +15724,7 @@
                     "location"
                   ]
                 },
-                "description": "Update delivery location\n\nPrecondicion: solo el chofer asignado al pedido puede reportar posicion.",
+                "description": "El chofer del pedido reporta su posición\n\nPrecondicion: solo el chofer asignado al pedido puede reportar posicion.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"lat\": -27.3671,\n  \"lng\": -55.8961\n}",
@@ -21172,13 +21080,6 @@
                   ],
                   "path": [
                     "users"
-                  ],
-                  "query": [
-                    {
-                      "key": "term",
-                      "value": "{{term}}",
-                      "disabled": false
-                    }
                   ]
                 },
                 "description": "Get all users with pagination and search"
@@ -21233,13 +21134,6 @@
                   ],
                   "path": [
                     "users"
-                  ],
-                  "query": [
-                    {
-                      "key": "term",
-                      "value": "{{term}}",
-                      "disabled": false
-                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -22133,7 +22027,7 @@
                     "{{userIdBorrable}}"
                   ]
                 },
-                "description": "Delete user by ID (soft delete)"
+                "description": "Dar de baja un usuario (baja lógica)"
               },
               "event": [
                 {

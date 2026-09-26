@@ -13,7 +13,7 @@ DELETE FROM car WHERE car_id::text LIKE 'bbbb0000%' OR car_patent='ZZZ111';
 DELETE FROM gas_cylinder WHERE gas_cylinder_id::text LIKE 'bbbb0000%';
 DELETE FROM coverage_zone WHERE coverage_zone_id::text LIKE 'bbbb0000%';
 DELETE FROM time_slot WHERE time_slot_id::text LIKE 'bbbb0000%';
-UPDATE customer SET "deletedAt"=NULL, validated='false' WHERE user_id='6addc762-49c9-4262-8e82-aca374604acf';
+UPDATE customer SET "deletedAt"=NULL WHERE user_id='6addc762-49c9-4262-8e82-aca374604acf';
 UPDATE "user" SET "deletedAt"=NULL, blocked=false WHERE user_id IN ('6addc762-49c9-4262-8e82-aca374604acf','a29dc060-6efc-4fe3-9f21-8bef5643eb26');
 UPDATE delivery SET "deletedAt"=NULL, validated=true, "isActive"=true WHERE delivery_id='de19bd70-c58d-4823-a409-c077cd7be352';
 DELETE FROM user_address WHERE address_id::text LIKE 'bbbb0000%';

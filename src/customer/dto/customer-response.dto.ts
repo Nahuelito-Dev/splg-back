@@ -19,9 +19,6 @@ export class CustomerResponseDto {
   })
   lat_lang!: string | null;
 
-  @ApiProperty({ description: 'Si la distribuidora aprobó al cliente' })
-  validated!: boolean;
-
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   createdAt!: Date | null;
 
