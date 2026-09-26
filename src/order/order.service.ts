@@ -12,6 +12,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderMapper } from './order.mapper';
 import { PaginationDto } from '../common/dtos/pagination.dto';
+import { QueryOrdersDto } from './dto/query-orders.dto';
 import { DeliveryService } from '../delivery/delivery.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { RealtimeDispatchPort } from './domain/ports/realtime-dispatch.port';
@@ -91,9 +92,14 @@ export class OrderService {
     return this.createOrderUseCase.execute(createOrderDto, distributorId);
   }
 
-  async findAll(paginationDto: PaginationDto, distributorId?: string | null) {
-    const { limit = 10, offset = 0 } = paginationDto;
-    return this.orders.findAllPaginated(limit, offset, distributorId);
+  async findAll(queryDto: QueryOrdersDto, distributorId?: string | null) {
+    const { limit = 10, offset = 0, term, status, from, to } = queryDto;
+    return this.orders.findAllPaginated(limit, offset, distributorId, {
+      term,
+      status,
+      from,
+      to,
+    });
   }
 
   /**

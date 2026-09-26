@@ -53,6 +53,9 @@ export class DeliveryController {
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all deliveries with pagination (scopeado por distribuidora)',
+    description:
+      '`term` busca por nombre, email o teléfono del chofer, y por la ' +
+      'patente de su vehículo.',
   })
   @ApiOkResponse({
     type: DeliveryResponseDto,
@@ -77,7 +80,12 @@ export class DeliveryController {
   // de empresa sólo los de su distribuidora.
   @Get('active')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get all active deliveries' })
+  @ApiOperation({
+    summary: 'Get all active deliveries',
+    description:
+      '`term` busca por nombre, email o teléfono del chofer, y por la ' +
+      'patente de su vehículo.',
+  })
   @ApiOkResponse({
     type: DeliveryResponseDto,
     isArray: true,

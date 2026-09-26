@@ -69,6 +69,28 @@ export class AddressResponseDto {
   additionalInstructions!: string | null;
 }
 
+/**
+ * Datos del cliente que hizo el pedido. Clave nueva (`customer`), pensada para
+ * el panel: las apps no la usan pero tampoco la rompen, y viaja `null` si el
+ * pedido no trae la relación cargada.
+ */
+export class CustomerDeOrderDto {
+  @ApiProperty({ name: 'user_id', format: 'uuid' })
+  @Expose({ name: 'user_id' })
+  userId!: string;
+
+  @ApiProperty({ name: 'full_name', type: String, nullable: true })
+  @Expose({ name: 'full_name' })
+  fullName!: string | null;
+
+  @ApiProperty({ name: 'phone_number', type: String, nullable: true })
+  @Expose({ name: 'phone_number' })
+  phoneNumber!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  email!: string | null;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
@@ -193,4 +215,38 @@ export class OrderResponseDto {
   /** Saldo a cobrar al entregar (total - seña paga). */
   @ApiPropertyOptional({ example: 22600 })
   remainingBalance?: number;
+
+  /**
+   * Datos del cliente que compró (para el panel). `null` si el pedido no trae
+   * la relación cargada; nunca se omite la clave.
+   */
+  @ApiProperty({ name: 'customer', type: CustomerDeOrderDto, nullable: true })
+  @Expose({ name: 'customer' })
+  @Type(() => CustomerDeOrderDto)
+  customer!: CustomerDeOrderDto | null;
+
+  /** Motivo de cancelación, si el pedido se canceló. */
+  @ApiProperty({ name: 'cancellation_reason', type: String, nullable: true })
+  @Expose({ name: 'cancellation_reason' })
+  cancellationReason!: string | null;
+
+  /** Cuándo un chofer aceptó el pedido. */
+  @ApiProperty({
+    name: 'accepted_at',
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  @Expose({ name: 'accepted_at' })
+  acceptedAt!: Date | null;
+
+  /** Cuándo el pedido pasó a "en camino". */
+  @ApiProperty({
+    name: 'on_the_way_at',
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  @Expose({ name: 'on_the_way_at' })
+  onTheWayAt!: Date | null;
 }

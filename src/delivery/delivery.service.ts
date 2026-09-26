@@ -58,19 +58,18 @@ export class DeliveryService {
     );
   }
 
-  /** Lista choferes, scopeada por distribuidora si se pasa `distributorId`. */
+  /**
+   * Lista choferes, scopeada por distribuidora si se pasa `distributorId`.
+   * `term` busca por nombre, email o teléfono del chofer, y por la patente de
+   * su vehículo (sin N+1: una subconsulta `EXISTS`, no un join que multiplique
+   * filas).
+   */
   async findAll(
     paginationDto: PaginationDto,
     distributorId?: string | null,
   ): Promise<[Delivery[], number]> {
-    const { limit = 10, offset = 0 } = paginationDto;
-
-    return await this.deliveryRepository.findAndCount({
-      where: distributorId ? { distributorId } : {},
-      take: limit,
-      skip: offset,
-      relations: ['user', 'user.role'],
-    });
+    const { limit = 10, offset = 0, term } = paginationDto;
+    return this.buscarChoferes(limit, offset, distributorId, term);
   }
 
   /** El token push del chofer, o null si no es chofer o no registró ninguno. */
@@ -221,17 +220,64 @@ export class DeliveryService {
     paginationDto: PaginationDto,
     distributorId?: string | null,
   ): Promise<[Delivery[], number]> {
-    const { limit = 10, offset = 0 } = paginationDto;
-
-    return await this.deliveryRepository.findAndCount({
-      where: {
-        isActive: true,
-        ...(distributorId ? { distributorId } : {}),
-      },
-      take: limit,
-      skip: offset,
-      relations: ['user', 'user.role'],
+    const { limit = 10, offset = 0, term } = paginationDto;
+    return this.buscarChoferes(limit, offset, distributorId, term, {
+      soloActivos: true,
     });
+  }
+
+  /**
+   * Consulta compartida de `findAll`/`findActiveDeliveries`. Sin `term` usa el
+   * camino simple de siempre (`findAndCount`); con `term` arma el WHERE con un
+   * query builder para poder buscar por los datos del usuario y por la patente
+   * del vehículo.
+   */
+  private async buscarChoferes(
+    limit: number,
+    offset: number,
+    distributorId: string | null | undefined,
+    term: string | undefined,
+    opciones: { soloActivos?: boolean } = {},
+  ): Promise<[Delivery[], number]> {
+    const termino = term?.trim();
+    if (!termino) {
+      return this.deliveryRepository.findAndCount({
+        where: {
+          ...(opciones.soloActivos ? { isActive: true } : {}),
+          ...(distributorId ? { distributorId } : {}),
+        },
+        take: limit,
+        skip: offset,
+        relations: ['user', 'user.role'],
+      });
+    }
+
+    // `user` (one-to-one) y `role` (many-to-one desde `user`) no multiplican
+    // filas: el `take`/`skip` de acá abajo pagina bien.
+    const qb = this.deliveryRepository
+      .createQueryBuilder('delivery')
+      .leftJoinAndSelect('delivery.user', 'user')
+      .leftJoinAndSelect('user.role', 'role')
+      .take(limit)
+      .skip(offset);
+
+    if (opciones.soloActivos) {
+      qb.andWhere('delivery.isActive = true');
+    }
+    if (distributorId) {
+      qb.andWhere('delivery.distributorId = :distributorId', {
+        distributorId,
+      });
+    }
+    qb.andWhere(
+      '(user.fullName ILIKE :term OR user.email ILIKE :term ' +
+        'OR user.phoneNumber ILIKE :term ' +
+        'OR EXISTS (SELECT 1 FROM car WHERE car.user_id = delivery.userId ' +
+        'AND car.car_patent ILIKE :term AND car."deletedAt" IS NULL))',
+      { term: `%${termino}%` },
+    );
+
+    return qb.getManyAndCount();
   }
 
   async update(
