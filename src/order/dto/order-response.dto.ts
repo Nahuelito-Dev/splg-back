@@ -1,5 +1,6 @@
 import { Expose, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
 
 /*
  * El contrato de pedidos que consumen las apps y el panel. Los nombres de la
@@ -89,6 +90,35 @@ export class CustomerDeOrderDto {
 
   @ApiProperty({ type: String, nullable: true })
   email!: string | null;
+}
+
+/**
+ * Recargo por zona de cobertura, tal como quedó registrado en el pedido
+ * (snapshot): no cambia aunque la zona se edite o se borre después.
+ */
+export class ZoneSurchargeDto {
+  @ApiProperty({ name: 'coverage_zone_id', format: 'uuid' })
+  @Expose({ name: 'coverage_zone_id' })
+  coverageZoneId!: string;
+
+  @ApiProperty({ example: 'Villa Lanús' })
+  name!: string;
+
+  @ApiProperty({ enum: CoverageZoneSurchargeType })
+  type!: CoverageZoneSurchargeType;
+
+  @ApiProperty({
+    example: 10,
+    description:
+      'Valor crudo de la zona (monto si es fixed, % si es percentage).',
+  })
+  value!: number;
+
+  @ApiProperty({
+    example: 2000,
+    description: 'Recargo ya calculado, en la moneda del pedido.',
+  })
+  amount!: number;
 }
 
 export class OrderResponseDto {
@@ -249,4 +279,23 @@ export class OrderResponseDto {
   })
   @Expose({ name: 'on_the_way_at' })
   onTheWayAt!: Date | null;
+
+  /**
+   * Recargo por zona de cobertura al momento de pedir, o `null` si la
+   * distribuidora no tenía zonas definidas (no-op) o el pedido es de antes de
+   * esta funcionalidad.
+   */
+  @ApiProperty({
+    name: 'zone_surcharge',
+    type: ZoneSurchargeDto,
+    nullable: true,
+  })
+  @Expose({ name: 'zone_surcharge' })
+  @Type(() => ZoneSurchargeDto)
+  zoneSurcharge!: ZoneSurchargeDto | null;
+
+  /** Subtotal de los ítems (ya con promociones), antes de cualquier recargo. */
+  @ApiProperty({ name: 'subtotal_items', example: 20000 })
+  @Expose({ name: 'subtotal_items' })
+  subtotalItems!: number;
 }

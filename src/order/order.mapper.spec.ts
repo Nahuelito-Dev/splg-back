@@ -8,6 +8,7 @@ import {
   OrderDeliveryMode,
 } from './entities/order.entity';
 import type { User } from '../users/entities/user.entity';
+import { CoverageZoneSurchargeType } from '../coverage-zone/entities/coverage-zone.entity';
 
 /**
  * Lo nuevo para el panel: `customer`, `cancellation_reason`, `accepted_at` y
@@ -110,5 +111,34 @@ describe('OrderMapper · datos del panel', () => {
     expect(dto.cancellationReason).toBeNull();
     expect(dto.acceptedAt).toBeNull();
     expect(dto.onTheWayAt).toBeNull();
+  });
+
+  it('zoneSurcharge sale null y subtotalItems 0 si el pedido no tiene zona (no-op o anterior a la funcionalidad)', () => {
+    const dto = OrderMapper.toDto(pedidoBase());
+    expect(dto.zoneSurcharge).toBeNull();
+    expect(dto.subtotalItems).toBe(0);
+  });
+
+  it('zoneSurcharge trae el snapshot de la zona ganadora al pedir', () => {
+    const pedido = {
+      ...pedidoBase(),
+      coverageZoneId: 'z1',
+      zoneName: 'Villa Lanús',
+      zoneSurchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+      zoneSurchargeValue: 10,
+      zoneSurchargeAmount: 2000,
+      subtotalItems: 20000,
+    } as Order;
+
+    const dto = OrderMapper.toDto(pedido);
+
+    expect(dto.zoneSurcharge).toEqual({
+      coverageZoneId: 'z1',
+      name: 'Villa Lanús',
+      type: CoverageZoneSurchargeType.PERCENTAGE,
+      value: 10,
+      amount: 2000,
+    });
+    expect(dto.subtotalItems).toBe(20000);
   });
 });

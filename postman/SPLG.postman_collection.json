@@ -4177,7 +4177,7 @@
                 "description": "Crear una zona de cobertura (polígono) de la distribuidora",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Zona de prueba {{$timestamp}}\",\n  \"polygon\": [\n    [\n      -27.36,\n      -55.9\n    ],\n    [\n      -27.36,\n      -55.88\n    ],\n    [\n      -27.38,\n      -55.88\n    ],\n    [\n      -27.36,\n      -55.9\n    ]\n  ],\n  \"surcharge\": 150,\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"name\": \"Zona de prueba {{$timestamp}}\",\n  \"polygon\": [\n    [\n      -55.9,\n      -27.36\n    ],\n    [\n      -55.88,\n      -27.36\n    ],\n    [\n      -55.88,\n      -27.38\n    ],\n    [\n      -55.9,\n      -27.36\n    ]\n  ],\n  \"surchargeType\": \"percentage\",\n  \"surchargeValue\": 10,\n  \"isActive\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -4315,7 +4315,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Zona de prueba {{$timestamp}}\",\n  \"polygon\": [\n    [\n      -27.36,\n      -55.9\n    ],\n    [\n      -27.36,\n      -55.88\n    ],\n    [\n      -27.38,\n      -55.88\n    ],\n    [\n      -27.36,\n      -55.9\n    ]\n  ],\n  \"surcharge\": 150,\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"name\": \"Zona de prueba {{$timestamp}}\",\n  \"polygon\": [\n    [\n      -55.9,\n      -27.36\n    ],\n    [\n      -55.88,\n      -27.36\n    ],\n    [\n      -55.88,\n      -27.38\n    ],\n    [\n      -55.9,\n      -27.36\n    ]\n  ],\n  \"surchargeType\": \"percentage\",\n  \"surchargeValue\": 10,\n  \"isActive\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -4363,6 +4363,13 @@
                   ],
                   "path": [
                     "coverage-zones"
+                  ],
+                  "query": [
+                    {
+                      "key": "includeInactive",
+                      "value": "",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Listar las zonas de cobertura de la distribuidora"
@@ -4417,6 +4424,13 @@
                   ],
                   "path": [
                     "coverage-zones"
+                  ],
+                  "query": [
+                    {
+                      "key": "includeInactive",
+                      "value": "",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -4476,6 +4490,11 @@
                       "key": "lng",
                       "value": "-55.965",
                       "disabled": false
+                    },
+                    {
+                      "key": "subtotal",
+                      "value": "",
+                      "disabled": true
                     }
                   ]
                 },
@@ -4543,6 +4562,11 @@
                       "key": "lng",
                       "value": "-55.965",
                       "disabled": false
+                    },
+                    {
+                      "key": "subtotal",
+                      "value": "",
+                      "disabled": true
                     }
                   ]
                 },
@@ -4560,6 +4584,393 @@
                       "// Esta peticion va sin token a proposito.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
                       "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "GET /api/coverage-zones/{id}",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{coverageZoneId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{coverageZoneId}}"
+                  ]
+                },
+                "description": "Ver una zona de cobertura"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{coverageZoneId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{coverageZoneId}}"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{idInexistente}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{idInexistente}}"
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403 o 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403, 200]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "PATCH /api/coverage-zones/{id}",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{coverageZoneId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{coverageZoneId}}"
+                  ]
+                },
+                "description": "Editar una zona de cobertura",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"priority\": 1,\n  \"label\": \"Editada por la bateria\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2 · datos invalidos → 400",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{coverageZoneId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{coverageZoneId}}"
+                  ]
+                },
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"surchargeType\": \"percentage\",\n  \"surchargeValue\": 150\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Entrada invalida: el pipe la frena con 400.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "pm.test(\"el error explica que paso\", () => {",
+                      "  const j = pm.response.json();",
+                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
+                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
+                      "});",
+                      "pm.test(\"el error no revela rutas del servidor\", () =>",
+                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{coverageZoneId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{coverageZoneId}}"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"priority\": 1,\n  \"label\": \"Editada por la bateria\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/coverage-zones/{{idInexistente}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "coverage-zones",
+                    "{{idInexistente}}"
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"priority\": 1,\n  \"label\": \"Editada por la bateria\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
                     ]
                   }
                 }
@@ -4594,7 +5005,7 @@
                     "{{coverageZoneId}}"
                   ]
                 },
-                "description": "Eliminar una zona de cobertura"
+                "description": "Eliminar una zona de cobertura (baja lógica)"
               },
               "event": [
                 {
@@ -4741,6 +5152,33 @@
                   ],
                   "path": [
                     "customers"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get customers (scopeado por distribuidora: solo los que pidieron a esa empresa)"
@@ -4795,6 +5233,33 @@
                   ],
                   "path": [
                     "customers"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -6825,6 +7290,33 @@
                   ],
                   "path": [
                     "delivery"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get all deliveries with pagination (scopeado por distribuidora)"
@@ -6879,6 +7371,33 @@
                   ],
                   "path": [
                     "delivery"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -6927,6 +7446,33 @@
                   "path": [
                     "delivery",
                     "active"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get all active deliveries"
@@ -6982,6 +7528,33 @@
                   "path": [
                     "delivery",
                     "active"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -10590,6 +11163,31 @@
                   ],
                   "query": [
                     {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    },
+                    {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
                       "disabled": true
@@ -10645,6 +11243,31 @@
                     "gascylinder"
                   ],
                   "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    },
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
@@ -13917,6 +14540,48 @@
                   ],
                   "path": [
                     "orders"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "from",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get all orders with pagination"
@@ -13971,6 +14636,48 @@
                   ],
                   "path": [
                     "orders"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "from",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "to",
+                      "value": "",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -14019,6 +14726,33 @@
                   "path": [
                     "orders",
                     "available"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get available orders for delivery"
@@ -14074,6 +14808,33 @@
                   "path": [
                     "orders",
                     "available"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -14123,6 +14884,33 @@
                     "orders",
                     "customer",
                     "{{customerId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get orders by customer ID"
@@ -14179,6 +14967,33 @@
                     "orders",
                     "customer",
                     "{{customerId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -14223,6 +15038,33 @@
                     "orders",
                     "customer",
                     "{{idInexistente}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Un identificador con formato valido que no existe en la base."
@@ -14271,6 +15113,33 @@
                     "orders",
                     "delivery",
                     "{{deliveryId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get orders by delivery ID"
@@ -14327,6 +15196,33 @@
                     "orders",
                     "delivery",
                     "{{deliveryId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -14371,6 +15267,33 @@
                     "orders",
                     "delivery",
                     "{{idInexistente}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Un identificador con formato valido que no existe en la base."
@@ -19813,6 +20736,33 @@
                   ],
                   "path": [
                     "user-address"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Listar todas las direcciones (paginado)"
@@ -19867,6 +20817,33 @@
                   ],
                   "path": [
                     "user-address"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -21080,6 +22057,33 @@
                   ],
                   "path": [
                     "users"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Get all users with pagination and search"
@@ -21134,6 +22138,33 @@
                   ],
                   "path": [
                     "users"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
