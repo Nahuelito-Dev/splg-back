@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { EnlacesDeLaApp } from './enlaces-de-la-app';
+
+/** Los valores que una plantilla interpola: todos texto, todos opcionales. */
+export type DatosDePlantilla = Record<string, string | undefined>;
 
 /**
  * Provider de templates de email. Antes vivían embebidos (~250 líneas de
@@ -11,7 +15,9 @@ import { Injectable } from '@nestjs/common';
  */
 @Injectable()
 export class EmailTemplateProvider {
-  render(template: string, data: any): string {
+  constructor(private readonly enlaces: EnlacesDeLaApp) {}
+
+  render(template: string, data: DatosDePlantilla): string {
     const templates: Record<string, string> = {
       welcome: `
   <!DOCTYPE html>
@@ -40,7 +46,7 @@ export class EmailTemplateProvider {
               <p>Thanks for creating your account. You’re all set and can start using ${data.appName || 'Yeni Gass'} right away.</p>
 
               <p style="text-align: center; margin: 30px 0;">
-                  <a href="https://taolistic-courses.firebaseapp.com/" class="button" style="color: white;">Go to the app</a>
+                  <a href="${this.enlaces.inicio}" class="button" style="color: white;">Go to the app</a>
               </p>
 
               <p class="muted">
@@ -159,7 +165,7 @@ export class EmailTemplateProvider {
                     <p>If you made this change, no further action is required.</p>
                     <p>If you didn't ask to change your email, please secure your account immediately:</p>
                     <p style="text-align: center; margin: 30px 0;">
-                        <a href="https://taolistic-courses.firebaseapp.com/__/auth/action" class="button" style="color: white;">Secure Your Account</a>
+                        <a href="${this.enlaces.accionDeCuenta}" class="button" style="color: white;">Secure Your Account</a>
                     </p>
                     <p>If you need assistance, please contact our support team.</p>
                 </div>

@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
   Body,
   Patch,
   Param,
@@ -10,125 +9,215 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
+  ForbiddenException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
-import { CreateCustomerDto } from './dto/create-customer.dto';
+import { UpdateCustomerLocationDto } from './dto/update-customer-location.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { CustomerResponseDto } from './dto/customer-response.dto';
+import { CustomerMapper } from './customer.mapper';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-
-/** Ownership (anti-IDOR): un cliente solo accede a SUS datos; admin a cualquiera. */
-function scope(user: AuthenticatedUser): string | undefined {
-  return user.role === RoleType.ADMIN || user.role === RoleType.SUPER_ADMIN
-    ? undefined
-    : user.user_id;
-}
+import { alcanceDelDueño, esAdministrador } from '../common/utils/alcance.util';
 
 @ApiTags('Customers')
+@ApiBearerAuth()
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
   @Get()
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
       'Get customers (scopeado por distribuidora: solo los que pidieron a esa empresa)',
   })
-  @ApiResponse({ status: 200, description: 'List of customers' })
+  @ApiOkResponse({ type: CustomerResponseDto, isArray: true })
   async findAll(
     @Query() paginationDto: PaginationDto,
     @CurrentDistributor() distributorId?: string | null,
-  ) {
-    return await this.customersService.findAll(paginationDto, distributorId);
+  ): Promise<CustomerResponseDto[]> {
+    const customers = await this.customersService.findAll(
+      paginationDto,
+      distributorId,
+    );
+    return customers.map((c) => CustomerMapper.toDto(c));
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get customer by ID' })
+  @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiResponse({ status: 200, description: 'Customer found' })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
+  @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return await this.customersService.findOne(id, scope(user));
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CustomerResponseDto> {
+    await this.acotar({ customer_id: id }, user, distributorId);
+    return CustomerMapper.toDto(
+      await this.customersService.findOne(id, alcanceDelDueño(user)),
+    );
   }
 
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get customer by user ID' })
+  @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
-  @ApiResponse({ status: 200, description: 'Customer found' })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
+  @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
   async findOneByUserId(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return await this.customersService.findOneByUserId(userId, scope(user));
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CustomerResponseDto> {
+    await this.acotar({ user_id: userId }, user, distributorId);
+    return CustomerMapper.toDto(
+      await this.customersService.findOneByUserId(
+        userId,
+        alcanceDelDueño(user),
+      ),
+    );
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update customer by ID' })
+  @ApiForbiddenResponse({
+    description:
+      'Es de otro cliente, o un cliente intenta cambiar su validación',
+  })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiResponse({ status: 200, description: 'Customer updated successfully' })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
+  @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return await this.customersService.update(id, updateCustomerDto, scope(user));
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CustomerResponseDto> {
+    await this.acotar({ customer_id: id }, user, distributorId);
+    // H-52: la validación la decide un administrador. Un cliente que la manda
+    // se estaría validando a sí mismo.
+    if (alcanceDelDueño(user) && updateCustomerDto.validated !== undefined) {
+      throw new ForbiddenException(
+        'Sólo un administrador puede cambiar la validación de un cliente',
+      );
+    }
+    return CustomerMapper.toDto(
+      await this.customersService.update(
+        id,
+        updateCustomerDto,
+        alcanceDelDueño(user),
+      ),
+    );
   }
 
   @Patch(':id/validate')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Validate customer' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiResponse({ status: 200, description: 'Customer validated successfully' })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
-  async validateCustomer(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.customersService.validateCustomer(id);
+  @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
+  async validateCustomer(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CustomerResponseDto> {
+    await this.acotar({ customer_id: id }, user, distributorId);
+    return CustomerMapper.toDto(
+      await this.customersService.validateCustomer(id),
+    );
   }
 
   @Patch(':id/invalidate')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Invalidate customer' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Customer invalidated successfully',
-  })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
-  async invalidateCustomer(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.customersService.invalidateCustomer(id);
+  @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
+  async invalidateCustomer(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CustomerResponseDto> {
+    await this.acotar({ customer_id: id }, user, distributorId);
+    return CustomerMapper.toDto(
+      await this.customersService.invalidateCustomer(id),
+    );
   }
 
   @Patch(':id/location')
   @ApiOperation({ summary: 'Update customer location' })
+  @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiResponse({ status: 200, description: 'Location updated successfully' })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
+  @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { latLng: string },
+    @Body() dto: UpdateCustomerLocationDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return await this.customersService.updateLocation(id, body.latLng, scope(user));
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CustomerResponseDto> {
+    await this.acotar({ customer_id: id }, user, distributorId);
+    return CustomerMapper.toDto(
+      await this.customersService.updateLocation(
+        id,
+        dto.latLng,
+        alcanceDelDueño(user),
+      ),
+    );
   }
 
   @Delete(':id')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete customer by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiResponse({ status: 200, description: 'Customer deleted successfully' })
-  @ApiResponse({ status: 404, description: 'Customer not found' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiNotFoundResponse({ description: 'Customer not found' })
   @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.customersService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<MessageResponseDto> {
+    await this.acotar({ customer_id: id }, user, distributorId);
+    // Un cliente puede comprarle a varias distribuidoras: darlo de baja lo
+    // saca de todas. Lo decide el administrador general, como en users.
+    if (user.role === RoleType.ADMIN) {
+      throw new ForbiddenException(
+        'La cuenta de un cliente la administra el administrador general',
+      );
+    }
+    return this.customersService.remove(id);
+  }
+
+  /**
+   * Con distribuidora en contexto, un administrador sólo llega a los clientes
+   * que le compraron a ella. El cliente mismo no se acota por distribuidora:
+   * su ownership lo controla el servicio.
+   */
+  private async acotar(
+    por: { customer_id: string } | { user_id: string },
+    user: AuthenticatedUser,
+    distributorId: string | null,
+  ): Promise<void> {
+    if (esAdministrador(user) && distributorId) {
+      await this.customersService.assertDeLaDistribuidora(por, distributorId);
+    }
   }
 }

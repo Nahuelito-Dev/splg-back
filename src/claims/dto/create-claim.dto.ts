@@ -5,22 +5,22 @@ export class CreateClaimDto {
   @ApiProperty()
   @IsUUID()
   @IsNotEmpty()
-  orderId: string;
+  orderId!: string;
 
   @ApiProperty()
   @IsUUID()
   @IsNotEmpty()
-  customerId: string;
+  customerId!: string;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
-  reason: string;
+  reason!: string;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
-  description: string;
+  description!: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

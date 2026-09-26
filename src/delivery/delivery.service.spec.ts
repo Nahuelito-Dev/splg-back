@@ -6,7 +6,10 @@ jest.mock('firebase-admin', () => ({
   credential: { cert: jest.fn() },
 }));
 
+import { Repository } from 'typeorm';
 import { DeliveryService } from './delivery.service';
+import { Delivery } from './entities/delivery.entity';
+import { RedisService } from '../redis/redis.service';
 
 /**
  * Cubre el fix de CU-022: al ponerse OFFLINE, el chofer debe salir del radar
@@ -31,12 +34,8 @@ describe('DeliveryService.toggleAvailability (CU-022)', () => {
     };
     redis = { removeDriver: jest.fn().mockResolvedValue(undefined) };
     service = new DeliveryService(
-      deliveryRepo as any, // deliveryRepository
-      redis as any, // redisService
-      {} as any, // userRepository (no usado en este caso)
-      {} as any, // roleRepository (no usado en este caso)
-      {} as any, // dataSource (no usado en este caso)
-      {} as any, // firebaseAuth (no usado en este caso)
+      deliveryRepo as unknown as Repository<Delivery>,
+      redis as unknown as RedisService,
     );
   });
 

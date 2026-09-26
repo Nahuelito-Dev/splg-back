@@ -2,12 +2,13 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { Order, OrderStatus } from '../entities/order.entity';
 import { transitionOrder } from '../domain/order-status.machine';
-import { StockReservationService } from '../domain/stock-reservation.service';
+import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 
@@ -22,7 +23,7 @@ export type CancelActor = 'customer' | 'driver' | 'admin' | 'superadmin';
  *  - driver → NO cancela: libera el pedido a PENDING (re-dispatch) sin tocar stock.
  *
  * La restitución de stock corre en su propia transacción con lock pesimista
- * (StockReservationService). Los avisos de tiempo real son best-effort.
+ * (GasCylinderService.restituirStock). Los avisos de tiempo real son best-effort.
  *
  * Extraído de OrderService para respetar SRP.
  */
@@ -30,7 +31,7 @@ export type CancelActor = 'customer' | 'driver' | 'admin' | 'superadmin';
 export class CancelOrderUseCase {
   constructor(
     private readonly dataSource: DataSource,
-    private readonly stock: StockReservationService,
+    private readonly stock: GasCylinderService,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly orders: OrderRepositoryPort,
   ) {}
@@ -46,11 +47,23 @@ export class CancelOrderUseCase {
       throw new NotFoundException(`Order with ID: ${orderId} not found`);
     }
 
+    // Antes que el estado: quién pide tiene que poder tocar este pedido. El
+    // cliente, sólo los suyos (lo ajeno = 404); el chofer, sólo el que tiene
+    // asignado.
+    if (role === 'customer' && order.customer_id !== userId) {
+      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    }
+    if (role === 'driver' && order.delivery?.user_id !== userId) {
+      throw new ForbiddenException('Este pedido no está asignado a tu usuario');
+    }
+
     if (
       order.status === OrderStatus.DELIVERED ||
       order.status === OrderStatus.CANCELLED
     ) {
-      throw new BadRequestException('No se puede cancelar un pedido finalizado');
+      throw new BadRequestException(
+        'No se puede cancelar un pedido finalizado',
+      );
     }
 
     const previousDriverId = order.delivery_id;
@@ -95,9 +108,6 @@ export class CancelOrderUseCase {
           'El pedido ya está en camino. Contacte al soporte.',
         );
       }
-      if (order.customer_id !== userId) {
-        throw new BadRequestException('No autorizado');
-      }
     }
 
     // customer (validado) o admin/superadmin → cancelación con devolución.
@@ -111,7 +121,7 @@ export class CancelOrderUseCase {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      await this.stock.restore(queryRunner.manager, order.items);
+      await this.stock.restituirStock(queryRunner.manager, order.items);
       await queryRunner.commitTransaction();
     } catch (e) {
       await queryRunner.rollbackTransaction();
@@ -140,7 +150,11 @@ export class CancelOrderUseCase {
         payload,
       );
     } else {
-      this.dispatch.notifyCustomer(order.customer_id, 'order:cancelled', payload);
+      this.dispatch.notifyCustomer(
+        order.customer_id,
+        'order:cancelled',
+        payload,
+      );
     }
 
     if (previousDriverId && role !== 'driver') {

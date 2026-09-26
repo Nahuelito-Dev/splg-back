@@ -4,11 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
-import {
-  Distributor,
-  DistributorStatus,
-} from './entities/distributor.entity';
+import { Distributor, DistributorStatus } from './entities/distributor.entity';
 import { CreateDistributorDto } from './dto/create-distributor.dto';
 import { UpdateDistributorDto } from './dto/update-distributor.dto';
 
@@ -17,6 +15,7 @@ export class DistributorService {
   constructor(
     @InjectRepository(Distributor)
     private readonly repo: Repository<Distributor>,
+    private readonly config: ConfigService,
   ) {}
 
   async create(dto: CreateDistributorDto): Promise<Distributor> {
@@ -61,7 +60,10 @@ export class DistributorService {
    *   3. null si no hay ninguna.
    */
   async getDefault(): Promise<Distributor | null> {
-    const slug = process.env.DEFAULT_DISTRIBUTOR_SLUG || 'jeny-gas';
+    const slug = this.config.get<string>(
+      'DEFAULT_DISTRIBUTOR_SLUG',
+      'jeny-gas',
+    );
     const bySlug = await this.repo.findOne({ where: { slug } });
     if (bySlug) return bySlug;
     return this.repo.findOne({

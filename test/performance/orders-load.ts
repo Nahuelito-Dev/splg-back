@@ -23,9 +23,12 @@
 import autocannon from 'autocannon';
 
 const URL = process.env.PERF_TARGET_URL ?? 'http://localhost:3000';
-const CUSTOMER_ID = process.env.PERF_CUSTOMER_ID ?? '00000000-0000-0000-0000-000000000001';
-const ADDRESS_ID = process.env.PERF_ADDRESS_ID ?? '00000000-0000-0000-0000-000000000002';
-const CYLINDER_ID = process.env.PERF_CYLINDER_ID ?? '00000000-0000-0000-0000-000000000003';
+const CUSTOMER_ID =
+  process.env.PERF_CUSTOMER_ID ?? '00000000-0000-0000-0000-000000000001';
+const ADDRESS_ID =
+  process.env.PERF_ADDRESS_ID ?? '00000000-0000-0000-0000-000000000002';
+const CYLINDER_ID =
+  process.env.PERF_CYLINDER_ID ?? '00000000-0000-0000-0000-000000000003';
 
 const orderPayload = JSON.stringify({
   customerId: CUSTOMER_ID,
@@ -56,7 +59,9 @@ async function run() {
   console.log('📊 RESULTADOS');
   console.log('───────────────────────────────────────────');
   console.log(`Total requests:    ${result.requests.total}`);
-  console.log(`Throughput:        ${(result.requests.average ?? 0).toFixed(2)} req/s`);
+  console.log(
+    `Throughput:        ${(result.requests.average ?? 0).toFixed(2)} req/s`,
+  );
   console.log(`Errores:           ${result.errors}`);
   console.log(`Timeouts:          ${result.timeouts}`);
   console.log(`Non-2xx:           ${result.non2xx}`);
@@ -77,16 +82,22 @@ async function run() {
     minThroughput: 20, // req/s
     maxErrorRate: 0.01,
   };
-  const errorRate = (result.errors + result.timeouts + result.non2xx) / result.requests.total;
+  const errorRate =
+    (result.errors + result.timeouts + result.non2xx) / result.requests.total;
   const p95 = (result.latency as any).p97_5 ?? result.latency.p99;
 
   const issues: string[] = [];
-  if (p95 > targets.p95Max) issues.push(`❌ p95 ${p95}ms > target ${targets.p95Max}ms`);
+  if (p95 > targets.p95Max)
+    issues.push(`❌ p95 ${p95}ms > target ${targets.p95Max}ms`);
   if ((result.requests.average ?? 0) < targets.minThroughput) {
-    issues.push(`❌ Throughput ${result.requests.average} req/s < target ${targets.minThroughput}`);
+    issues.push(
+      `❌ Throughput ${result.requests.average} req/s < target ${targets.minThroughput}`,
+    );
   }
   if (errorRate > targets.maxErrorRate) {
-    issues.push(`❌ Error rate ${(errorRate * 100).toFixed(2)}% > target ${(targets.maxErrorRate * 100).toFixed(2)}%`);
+    issues.push(
+      `❌ Error rate ${(errorRate * 100).toFixed(2)}% > target ${(targets.maxErrorRate * 100).toFixed(2)}%`,
+    );
   }
 
   if (issues.length === 0) {

@@ -4,9 +4,11 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
+import { errorMessage } from '../common/errors/error-message';
+import { SocketDeSplg, tokenDelHandshake } from './socket-data';
 
 /**
  * Canal de tiempo real del PANEL ADMIN. A diferencia de customers/drivers (salas
@@ -19,11 +21,9 @@ import { AuthService } from '../auth/auth.service';
   cors: { origin: '*' },
   namespace: 'admin',
 })
-export class AdminGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
   private readonly logger = new Logger('AdminGateway');
 
   /** Sala única donde viven todos los admins conectados. */
@@ -31,11 +31,9 @@ export class AdminGateway
 
   constructor(private readonly authService: AuthService) {}
 
-  async handleConnection(client: Socket) {
+  async handleConnection(client: SocketDeSplg): Promise<void> {
     try {
-      const token =
-        client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.split(' ')[1];
+      const token = tokenDelHandshake(client);
 
       if (!token) {
         this.logger.warn(`🚫 Admin rechazado (sin token): ${client.id}`);
@@ -44,22 +42,22 @@ export class AdminGateway
       }
 
       const decoded = await this.authService.decodeToken(token);
-      (client as any).user = decoded;
-      client.join(AdminGateway.ROOM);
+      client.data.admin = decoded;
+      await client.join(AdminGateway.ROOM);
       this.logger.log(`🛠️ Admin conectado: ${decoded.email} (${client.id})`);
       client.emit('server:ack', { message: 'Conectado al panel en vivo' });
-    } catch (error: any) {
-      this.logger.error(`🚫 Error auth socket admin: ${error?.message}`);
+    } catch (error) {
+      this.logger.error(`🚫 Error auth socket admin: ${errorMessage(error)}`);
       client.disconnect();
     }
   }
 
-  handleDisconnect(client: Socket) {
+  handleDisconnect(): void {
     // sin estado por-cliente que limpiar (la sala se libera sola)
   }
 
   /** Emite un evento del ciclo de vida del pedido a TODOS los admins. */
-  notifyAdmins(event: string, payload: any) {
+  notifyAdmins(event: string, payload: unknown): void {
     this.server.to(AdminGateway.ROOM).emit(event, payload);
   }
 }

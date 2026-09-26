@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import {
   DataSource,
   IsNull,
@@ -17,8 +18,9 @@ import {
 import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { transitionOrder } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
-import { StockReservationService } from '../domain/stock-reservation.service';
+import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { errorMessage } from '../../common/errors/error-message';
 
 /**
  * Procesos AUTOMÁTICOS de las pre-reservas (Módulo Inteligente / DSS del scope:
@@ -42,27 +44,32 @@ export class ReservationService {
   private readonly logger = new Logger(ReservationService.name);
 
   /** Horas que una reserva puede esperar el pago de la seña antes de expirar. */
-  private readonly depositTtlHours = Number(
-    process.env.RESERVATION_DEPOSIT_TTL_HOURS ?? 48,
-  );
+  private readonly depositTtlHours: number;
 
   /**
    * Minutos que un pedido NORMAL (no reserva) con `paymentMethod=mercadopago`
    * puede esperar el pago del checkout antes de expirar. Corto a propósito
    * (el checkout de MP no dura horas) para no tener stock reservado colgado.
    */
-  private readonly mpPendingTtlMinutes = Number(
-    process.env.ORDER_MERCADOPAGO_PENDING_TTL_MINUTES ?? 60,
-  );
+  private readonly mpPendingTtlMinutes: number;
 
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
     private readonly dataSource: DataSource,
     private readonly orders: OrderRepositoryPort,
-    private readonly stock: StockReservationService,
+    private readonly stock: GasCylinderService,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
-  ) {}
+    config: ConfigService,
+  ) {
+    // Validadas y con su valor por defecto en joi.validation.ts.
+    this.depositTtlHours = config.getOrThrow<number>(
+      'RESERVATION_DEPOSIT_TTL_HOURS',
+    );
+    this.mpPendingTtlMinutes = config.getOrThrow<number>(
+      'ORDER_MERCADOPAGO_PENDING_TTL_MINUTES',
+    );
+  }
 
   /**
    * Lista las reservas (pedidos RESERVED) de la distribuidora para el panel,
@@ -75,6 +82,9 @@ export class ReservationService {
         status: OrderStatus.RESERVED,
         ...(distributorId ? { distributor_id: distributorId } : {}),
       },
+      // Historial: el chofer, el cliente o la dirección dados de baja siguen
+      // apareciendo en lo que ya pasó (H-74).
+      withDeleted: true,
       relations: ['customer', 'items', 'items.gasCylinder'],
       order: { scheduled_date: 'ASC', createdAt: 'DESC' },
     });
@@ -150,9 +160,9 @@ export class ReservationService {
             .catch(() => undefined);
         }
         this.logger.log(`Reserva ${order.order_id} activada → despachando`);
-      } catch (error: any) {
+      } catch (error) {
         this.logger.error(
-          `No se pudo activar la reserva ${order.order_id}: ${error?.message}`,
+          `No se pudo activar la reserva ${order.order_id}: ${errorMessage(error)}`,
         );
       }
     }
@@ -184,7 +194,7 @@ export class ReservationService {
       try {
         transitionOrder(order, OrderStatus.CANCELLED);
         await queryRunner.manager.save(order);
-        await this.stock.restore(
+        await this.stock.restituirStock(
           queryRunner.manager,
           (order.items ?? []).map((it) => ({
             gas_cylinder_id: it.gas_cylinder_id,
@@ -195,10 +205,10 @@ export class ReservationService {
         this.logger.log(
           `Reserva ${order.order_id} expirada → cancelada + stock liberado`,
         );
-      } catch (error: any) {
+      } catch (error) {
         await queryRunner.rollbackTransaction();
         this.logger.error(
-          `No se pudo expirar la reserva ${order.order_id}: ${error?.message}`,
+          `No se pudo expirar la reserva ${order.order_id}: ${errorMessage(error)}`,
         );
       } finally {
         await queryRunner.release();
@@ -267,7 +277,7 @@ export class ReservationService {
         locked.cancellationReason =
           'Pago con MercadoPago no completado dentro del plazo';
         await queryRunner.manager.save(locked);
-        await this.stock.restore(
+        await this.stock.restituirStock(
           queryRunner.manager,
           (order.items ?? []).map((it) => ({
             gas_cylinder_id: it.gas_cylinder_id,
@@ -278,10 +288,10 @@ export class ReservationService {
         this.logger.log(
           `Pedido ${order.order_id} expirado (MercadoPago sin pagar) → cancelado + stock liberado`,
         );
-      } catch (error: any) {
+      } catch (error) {
         await queryRunner.rollbackTransaction();
         this.logger.error(
-          `No se pudo expirar el pedido ${order.order_id}: ${error?.message}`,
+          `No se pudo expirar el pedido ${order.order_id}: ${errorMessage(error)}`,
         );
       } finally {
         await queryRunner.release();

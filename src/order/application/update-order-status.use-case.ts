@@ -3,9 +3,8 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 
 import {
   Order,
@@ -14,7 +13,7 @@ import {
   PaymentStatus,
 } from '../entities/order.entity';
 import { User } from '../../users/entities/user.entity';
-import { Delivery } from '../../delivery/entities/delivery.entity';
+import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { transitionOrder } from '../domain/order-status.machine';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
@@ -22,6 +21,8 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { RoleType } from '../../common/constants/role-type.enum';
+import { errorMessage } from '../../common/errors/error-message';
 
 /** Evento de tiempo real emitido al cliente por cada estado del pedido. */
 const STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
@@ -46,10 +47,7 @@ export class UpdateOrderStatusUseCase {
   private readonly logger = new Logger(UpdateOrderStatusUseCase.name);
 
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(Delivery)
-    private readonly deliveryRepository: Repository<Delivery>,
+    private readonly deliveries: DeliveryService,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly notificationService: NotificationPort,
     private readonly orders: OrderRepositoryPort,
@@ -61,14 +59,22 @@ export class UpdateOrderStatusUseCase {
     id: string,
     status: OrderStatus,
     deliveryId?: string,
+    role?: RoleType,
   ): Promise<Order> {
     const order = await this.orders.findByIdFull(id);
     if (!order) throw new NotFoundException(`Order with ID: ${id} not found`);
 
+    // Antes de tocar nada: el pedido tiene que ser de quien lo está moviendo.
+    await this.assertPedidoDelChofer(order, deliveryId, role);
+
     // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
     // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
     transitionOrder(order, status);
-    const deliveryUser = await this.applyStatusEffects(order, status, deliveryId);
+    const deliveryUser = await this.applyStatusEffects(
+      order,
+      status,
+      deliveryId,
+    );
 
     await this.orders.save(order);
 
@@ -83,6 +89,37 @@ export class UpdateOrderStatusUseCase {
     await this.notifyCustomer(order);
 
     return order;
+  }
+
+  /**
+   * Un chofer solo puede mover pedidos que ya son suyos.
+   *
+   * Solo se aplica al rol chofer: el administrador mueve cualquier pedido, que
+   * es su trabajo, y reasigna por la operación dedicada.
+   *
+   * Si el pedido **todavía no tiene chofer**, no hay nada que verificar:
+   * aceptarlo es justamente la forma en que se asigna, y ese es el camino
+   * normal del despacho. Si ya lo tiene, el que llama tiene que ser ese mismo,
+   * lo que cubre dos cosas a la vez: cerrar la entrega de un pedido ajeno, y
+   * aceptar uno que el despacho o el administrador ya le habían dado a otro.
+   *
+   * El identificador se resuelve por perfil de reparto o por usuario porque el
+   * chofer llega identificado por su `user_id` mientras que el pedido guarda el
+   * `delivery_id`. Es la misma resolución que hace el alta de la aceptación.
+   */
+  private async assertPedidoDelChofer(
+    order: Order,
+    deliveryId?: string,
+    role?: RoleType,
+  ): Promise<void> {
+    if (role !== RoleType.DELIVERY || !deliveryId) return;
+    if (!order.delivery_id) return;
+
+    const delivery = await this.deliveries.buscarPorIdOUsuario(deliveryId);
+
+    if (!delivery || delivery.delivery_id !== order.delivery_id) {
+      throw new ForbiddenException('Este pedido no está asignado a tu usuario');
+    }
   }
 
   /**
@@ -102,12 +139,13 @@ export class UpdateOrderStatusUseCase {
           );
         }
 
-        const delivery = await this.deliveryRepository.findOne({
-          where: [{ delivery_id: deliveryId }, { user_id: deliveryId }],
-          relations: ['user'],
-        });
+        const delivery = await this.deliveries.buscarPorIdOUsuario(
+          deliveryId,
+          true,
+        );
 
-        if (!delivery) {
+        // El chofer tiene que ser de la misma distribuidora que el pedido.
+        if (!delivery || delivery.distributor_id !== order.distributor_id) {
           throw new NotFoundException(
             `Repartidor no encontrado con ID: ${deliveryId}`,
           );
@@ -136,10 +174,10 @@ export class UpdateOrderStatusUseCase {
       case OrderStatus.ON_THE_WAY: {
         order.onTheWayAt = new Date();
         if (!order.delivery_id) return null;
-        const existingDelivery = await this.deliveryRepository.findOne({
-          where: { delivery_id: order.delivery_id },
-          relations: ['user'],
-        });
+        const existingDelivery = await this.deliveries.buscarPorIdOUsuario(
+          order.delivery_id,
+          true,
+        );
         // Activa el tracking en vivo: el GPS de este chofer se reenviará al
         // cliente mientras esté en camino.
         if (existingDelivery?.user) {
@@ -159,10 +197,10 @@ export class UpdateOrderStatusUseCase {
         }
         // Corta el tracking del chofer que entregó.
         if (order.delivery_id) {
-          const del = await this.deliveryRepository.findOne({
-            where: { delivery_id: order.delivery_id },
-            relations: ['user'],
-          });
+          const del = await this.deliveries.buscarPorIdOUsuario(
+            order.delivery_id,
+            true,
+          );
           if (del?.user) this.dispatch.stopTracking(del.user.user_id);
         }
         // Ciclo del envase: avanza los envases despachados en este pedido a
@@ -218,29 +256,24 @@ export class UpdateOrderStatusUseCase {
     } catch (error) {
       // Errores de WebSocket no rompen la actualización del pedido.
       this.logger.warn(
-        `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.order_id}: ${error instanceof Error ? error.message : error}`,
+        `No se pudo emitir el evento de WebSocket "${eventName}" del pedido ${order.order_id}: ${errorMessage(error)}`,
       );
     }
   }
 
   /** Envía push de confirmación al cliente (best-effort). */
   private async notifyCustomer(order: Order): Promise<void> {
-    const customer = await this.userRepository.findOne({
-      where: { user_id: order.customer_id },
-      relations: ['customer'],
-    });
-    if (!customer?.customer) return;
-
+    // El token del cliente lo resuelve el módulo de notificaciones; si no es
+    // cliente o no tiene token, no manda nada.
     try {
       await this.notificationService.sendOrderConfirmation(
         order.customer_id,
         order.order_id,
-        customer.customer.notification_token,
       );
     } catch (error) {
       // Errores de notificación no rompen la actualización del pedido.
       this.logger.warn(
-        `No se pudo enviar la notificación push de confirmación del pedido ${order.order_id}: ${error instanceof Error ? error.message : error}`,
+        `No se pudo enviar la notificación push de confirmación del pedido ${order.order_id}: ${errorMessage(error)}`,
       );
     }
   }

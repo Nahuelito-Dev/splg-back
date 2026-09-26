@@ -1,8 +1,8 @@
-import { ArgumentsHost } from '@nestjs/common';
+import { ArgumentsHost, HttpServer } from '@nestjs/common';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { InvalidOrderTransitionError } from '../../order/domain/errors/invalid-order-transition.error';
-import { GasCylinderNotFoundError } from '../../order/domain/errors/gas-cylinder-not-found.error';
-import { InsufficientStockError } from '../../order/domain/errors/insufficient-stock.error';
+import { GasCylinderNotFoundError } from '../../gascylinder/domain/errors/gas-cylinder-not-found.error';
+import { InsufficientStockError } from '../../gascylinder/domain/errors/insufficient-stock.error';
 import { InvalidCylinderTransitionError } from '../../cylinder/domain/errors/invalid-cylinder-transition.error';
 import { OrderStatus } from '../../order/entities/order.entity';
 import { CylinderState } from '../../cylinder/entities/cylinder.entity';
@@ -16,7 +16,11 @@ import { CylinderState } from '../../cylinder/entities/cylinder.entity';
  */
 describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
   let filter: GlobalExceptionFilter;
-  let applicationRef: { isHeadersSent: jest.Mock; reply: jest.Mock; end: jest.Mock };
+  let applicationRef: {
+    isHeadersSent: jest.Mock;
+    reply: jest.Mock;
+    end: jest.Mock;
+  };
   let host: ArgumentsHost;
 
   const makeHost = (): ArgumentsHost => {
@@ -37,7 +41,7 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
       reply: jest.fn(),
       end: jest.fn(),
     };
-    filter = new GlobalExceptionFilter(applicationRef as any);
+    filter = new GlobalExceptionFilter(applicationRef as unknown as HttpServer);
     host = makeHost();
   });
 

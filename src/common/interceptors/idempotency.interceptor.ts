@@ -8,9 +8,10 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Observable, firstValueFrom, from, of } from 'rxjs';
+import { Observable, firstValueFrom, of } from 'rxjs';
 import { RedisService } from '../../redis/redis.service';
 import { IDEMPOTENT_KEY } from '../decorators/idempotent.decorator';
+import type { Request } from 'express';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -66,8 +67,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const request = context.switchToHttp().getRequest();
-    const rawKey: string | undefined = request.headers[HEADER];
+    const request = context.switchToHttp().getRequest<Request>();
+    const header = request.headers[HEADER];
+    const rawKey = typeof header === 'string' ? header : undefined;
 
     // Sin header → backwards compat: ejecutar normalmente
     if (!rawKey) {
@@ -105,7 +107,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       }
 
       // Ejecutar el handler. Si lanza, se propaga sin cachear.
-      const response = await firstValueFrom(next.handle());
+      const response: unknown = await firstValueFrom(next.handle());
 
       // Persistir respuesta exitosa. Errores no llegan acá (throw arriba).
       const payload: CachedResponse = {
@@ -129,7 +131,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   private parseCached(raw: string): unknown {
     try {
-      const parsed: CachedResponse = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as CachedResponse;
       this.logger.debug(`Idempotency hit (cachedAt=${parsed.cachedAt})`);
       return parsed.body;
     } catch {

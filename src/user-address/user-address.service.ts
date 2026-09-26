@@ -1,0 +1,281 @@
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { FindOptionsWhere, Not, Repository } from 'typeorm';
+import { UserAddress } from './entities/user-address.entity';
+import { CreateUserAddressDto } from './dto/create-user-address.dto';
+import { UpdateUserAddressDto } from './dto/update-user-address.dto';
+import { PaginationDto } from '../common/dtos/pagination.dto';
+import { UsersService } from '../users/users.service';
+import { puntoDesdeCoordenadas } from '../common/geo/punto';
+import { DireccionBorradaDto } from './dto/user-address-listado.dto';
+
+@Injectable()
+export class UserAddressService {
+  constructor(
+    @InjectRepository(UserAddress)
+    private readonly userAddressRepository: Repository<UserAddress>,
+
+    private readonly usersService: UsersService,
+  ) {}
+
+  /**
+   * Enforcement de ownership (anti-IDOR): si `requesterUserId` viene (rol NO
+   * admin), el dueño de la dirección debe ser ese usuario; si no, 403. Los
+   * admins pasan `undefined`/`null` y saltan el check.
+   */
+  private assertOwnership(
+    ownerUserId: string,
+    requesterUserId?: string | null,
+  ): void {
+    if (requesterUserId && ownerUserId !== requesterUserId) {
+      throw new ForbiddenException(
+        'No autorizado a acceder a direcciones de otro usuario',
+      );
+    }
+  }
+
+  async create(
+    createUserAddressDto: CreateUserAddressDto,
+    requesterUserId?: string | null,
+  ): Promise<UserAddress> {
+    // Un cliente solo puede crear direcciones PARA SÍ MISMO: si no es admin,
+    // se fuerza el user_id al del que pide (ignora lo que venga en el body).
+    if (requesterUserId) {
+      createUserAddressDto = {
+        ...createUserAddressDto,
+        user_id: requesterUserId,
+      };
+    }
+
+    const user = await this.usersService.findById(createUserAddressDto.user_id);
+
+    if (!user) {
+      throw new NotFoundException(
+        `User with ID: ${createUserAddressDto.user_id} not found`,
+      );
+    }
+
+    if (createUserAddressDto.isDefault) {
+      await this.removeDefaultFromOtherAddresses(createUserAddressDto.user_id);
+    }
+
+    const { latitude, longitude, ...campos } = createUserAddressDto;
+    const address = this.userAddressRepository.create({
+      ...campos,
+      location: puntoDesdeCoordenadas(latitude, longitude),
+    });
+    return await this.userAddressRepository.save(address);
+  }
+
+  async findAll(paginationDto: PaginationDto): Promise<{
+    addresses: UserAddress[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    const { limit = 10, offset = 0 } = paginationDto;
+
+    const [addresses, total] = await this.userAddressRepository.findAndCount({
+      take: limit,
+      skip: offset,
+      relations: ['user'],
+      order: { isDefault: 'DESC', createdAt: 'DESC' },
+    });
+
+    return {
+      addresses,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  /** La dirección si es de ese usuario, o null. Para validar un pedido. */
+  buscarDelUsuario(
+    addressId: string,
+    userId: string,
+  ): Promise<UserAddress | null> {
+    return this.userAddressRepository.findOne({
+      where: { address_id: addressId, user_id: userId },
+    });
+  }
+
+  /**
+   * Aislamiento entre distribuidoras: el dueño de la dirección tiene que ser
+   * usuario de la distribuidora en contexto (para un cliente, que le haya
+   * comprado). Si no, 404.
+   */
+  async assertDeLaDistribuidora(
+    ref: { userId: string } | { addressId: string },
+    distributorId: string,
+  ): Promise<void> {
+    let userId: string;
+    if ('userId' in ref) {
+      userId = ref.userId;
+    } else {
+      const direccion = await this.userAddressRepository.findOne({
+        where: { address_id: ref.addressId },
+      });
+      if (!direccion) return; // el servicio responde el 404 de siempre
+      userId = direccion.user_id;
+    }
+    if (!(await this.usersService.perteneceA(userId, distributorId))) {
+      throw new NotFoundException('Dirección no encontrada');
+    }
+  }
+
+  async findOne(
+    id: string,
+    requesterUserId?: string | null,
+  ): Promise<UserAddress> {
+    const address = await this.userAddressRepository.findOne({
+      where: { address_id: id },
+      relations: ['user'],
+    });
+
+    if (!address) {
+      throw new NotFoundException(`Address with ID: ${id} not found`);
+    }
+
+    this.assertOwnership(address.user_id, requesterUserId);
+    return address;
+  }
+
+  async findByUserId(
+    userId: string,
+    requesterUserId?: string | null,
+  ): Promise<UserAddress[]> {
+    this.assertOwnership(userId, requesterUserId);
+    const addresses = await this.userAddressRepository.find({
+      where: { user_id: userId },
+      relations: ['user'],
+      order: { isDefault: 'DESC', createdAt: 'DESC' },
+    });
+
+    return addresses;
+  }
+
+  async findDefaultByUserId(
+    userId: string,
+    requesterUserId?: string | null,
+  ): Promise<UserAddress> {
+    this.assertOwnership(userId, requesterUserId);
+    const address = await this.userAddressRepository.findOne({
+      where: { user_id: userId, isDefault: true },
+      relations: ['user'],
+    });
+
+    if (!address) {
+      const addresses = await this.findByUserId(userId);
+      if (addresses.length > 0) {
+        return addresses[0];
+      }
+      throw new NotFoundException(`No addresses found for user: ${userId}`);
+    }
+
+    return address;
+  }
+
+  async update(
+    id: string,
+    updateUserAddressDto: UpdateUserAddressDto,
+    requesterUserId?: string | null,
+  ): Promise<UserAddress> {
+    // Ownership: valida que la dirección sea del que pide (si no es admin).
+    await this.findOne(id, requesterUserId);
+
+    // Latitud y longitud se cambian juntas: son un solo punto.
+    const { latitude, longitude, ...campos } = updateUserAddressDto;
+    if ((latitude === undefined) !== (longitude === undefined)) {
+      throw new BadRequestException('latitude y longitude se cambian juntas');
+    }
+    const address = await this.userAddressRepository.preload({
+      address_id: id,
+      ...campos,
+      ...(latitude !== undefined &&
+        longitude !== undefined && {
+          location: puntoDesdeCoordenadas(latitude, longitude),
+        }),
+    });
+
+    if (!address) {
+      throw new NotFoundException(`Address with ID: ${id} not found`);
+    }
+
+    if (updateUserAddressDto.isDefault) {
+      await this.removeDefaultFromOtherAddresses(address.user_id, id);
+    }
+
+    return await this.userAddressRepository.save(address);
+  }
+
+  async remove(
+    id: string,
+    requesterUserId?: string | null,
+  ): Promise<DireccionBorradaDto> {
+    const address = await this.findOne(id, requesterUserId);
+
+    if (address.isDefault) {
+      const otherAddresses = await this.userAddressRepository.find({
+        where: {
+          user_id: address.user_id,
+          address_id: Not(id),
+        },
+        order: { createdAt: 'DESC' },
+      });
+
+      if (otherAddresses.length > 0) {
+        otherAddresses[0].isDefault = true;
+        await this.userAddressRepository.save(otherAddresses[0]);
+      }
+    }
+
+    await this.userAddressRepository.softRemove(address);
+
+    return {
+      message: 'Address deleted successfully',
+      addressId: id,
+    };
+  }
+
+  async setAsDefault(
+    id: string,
+    requesterUserId?: string | null,
+  ): Promise<UserAddress> {
+    const address = await this.findOne(id, requesterUserId);
+    await this.removeDefaultFromOtherAddresses(address.user_id, id);
+
+    address.isDefault = true;
+    return await this.userAddressRepository.save(address);
+  }
+
+  private async removeDefaultFromOtherAddresses(
+    userId: string,
+    excludeAddressId?: string,
+  ): Promise<void> {
+    const whereClause: FindOptionsWhere<UserAddress> = {
+      user_id: userId,
+      isDefault: true,
+    };
+
+    if (excludeAddressId) {
+      // TypeORM (Postgres), NO Mongo: usar Not(), no `{ $not: ... }` (rompía
+      // con 500 al marcar una dirección como predeterminada).
+      whereClause.address_id = Not(excludeAddressId);
+    }
+
+    const defaultAddresses = await this.userAddressRepository.find({
+      where: whereClause,
+    });
+
+    for (const address of defaultAddresses) {
+      address.isDefault = false;
+      await this.userAddressRepository.save(address);
+    }
+  }
+}

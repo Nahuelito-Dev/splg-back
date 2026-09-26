@@ -11,7 +11,7 @@ import { ApiProperty } from '@nestjs/swagger';
 export class CreateCarDto {
   @ApiProperty({ description: 'User ID' })
   @IsUUID()
-  user_id: string;
+  user_id!: string;
 
   @ApiProperty({
     description: 'Car type (Moto, Auto, Camioneta)',

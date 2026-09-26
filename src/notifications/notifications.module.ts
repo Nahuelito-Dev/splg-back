@@ -1,14 +1,13 @@
-// src/notifications/notifications.module.ts - VERSIÓN CORREGIDA
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
-import { User } from '../users/entities/user.entity';
-import { Customer } from '../customer/entities/customer.entity';
-import { Delivery } from '../delivery/entities/delivery.entity';
+import { CustomersModule } from '../customer/customer.module';
+import { DeliveryModule } from '../delivery/delivery.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Customer, Delivery])],
+  // Los tokens push son de clientes y choferes: se leen y guardan por sus
+  // servicios. FcmPort llega del FirebaseModule, que es global.
+  imports: [CustomersModule, DeliveryModule],
   controllers: [NotificationsController],
   providers: [NotificationsService],
   exports: [NotificationsService],

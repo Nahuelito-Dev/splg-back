@@ -11,6 +11,7 @@ import { RequestSource } from '../enum/request-source.enum';
 import { User } from '../../users/entities/user.entity';
 import { DistributorService } from '../../distributor/distributor.service';
 import { RoleType } from '../../common/constants/role-type.enum';
+import type { Request } from 'express';
 
 /** Un uuid v4 canónico (para distinguir header X-Distributor id vs slug). */
 const UUID_RE =
@@ -25,10 +26,13 @@ export class AuthGuard implements CanActivate {
     private readonly distributorService: DistributorService,
   ) {}
 
-  public async canActivate(context: ExecutionContext): Promise<any> {
-    const request = context.switchToHttp().getRequest();
+  public async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<Request>();
 
-    const isPublic = this.reflector.get('isPublic', context.getHandler());
+    const isPublic = this.reflector.get<boolean | undefined>(
+      'isPublic',
+      context.getHandler(),
+    );
 
     if (isPublic) {
       return true;
@@ -48,13 +52,13 @@ export class AuthGuard implements CanActivate {
       request.method === 'POST' &&
       request.url.includes('/auth/login')
     ) {
-      const body = request.body;
+      const email = emailDelCuerpo(request.body);
 
-      if (!body || !body.email) {
+      if (!email) {
         throw new UnauthorizedException('Email is required for login');
       }
 
-      const user = await this.usersService.findOneByEmail(body.email);
+      const user = await this.usersService.findOneByEmail(email);
       this.validateUserRoleForApp(user, requestSource);
 
       return true;
@@ -74,16 +78,16 @@ export class AuthGuard implements CanActivate {
 
     const distributor_id = await this.resolveDistributor(local_user, request);
 
-    const user = {
-      email: local_user.email,
-      role: local_user.role?.type,
+    // getUser ya pasó por validateUserRoleForApp, que rechaza al usuario sin
+    // rol o con un rol que no es de esta app: acá el rol es de RoleType.
+    request.user = {
+      email: local_user.email ?? token_user.email,
+      role: local_user.role?.type as RoleType,
       user_id: local_user.user_id,
       distributor_id,
     };
-
-    request['user'] = user;
     // Tenant efectivo de la request (lo lee @CurrentDistributor()).
-    request['distributorId'] = distributor_id;
+    request.distributorId = distributor_id;
 
     return true;
   }
@@ -99,7 +103,7 @@ export class AuthGuard implements CanActivate {
    */
   private async resolveDistributor(
     user: User,
-    request: any,
+    request: Request,
   ): Promise<string | null> {
     const role = user.role?.type;
 
@@ -142,23 +146,41 @@ export class AuthGuard implements CanActivate {
     }
   }
 
-  private extractTokenFromHeader(request: any): string | null {
-    const authHeader = request.headers.authorization;
-    const [type, token] = authHeader?.split(' ') ?? [];
-    return type === 'Bearer' ? token : null;
+  private extractTokenFromHeader(request: Request): string | null {
+    const [type, token] = request.headers.authorization?.split(' ') ?? [];
+    return type === 'Bearer' && token ? token : null;
   }
 
   private async getUser(
     user_email: string,
     request_source: RequestSource,
   ): Promise<User> {
+    let user: User;
     try {
-      const user = await this.usersService.findOneByEmail(user_email);
+      user = await this.usersService.findOneByEmail(user_email);
       this.validateUserRoleForApp(user, request_source);
-      return user;
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException(
         'User not found or invalid role for this application',
+      );
+    }
+
+    // La cuenta bloqueada se rechaza acá y no dentro del try de arriba: si
+    // fuera parte de ese bloque, el catch la confundiría con "usuario
+    // inexistente" y el administrador que bloqueó no sabría si surtió efecto.
+    //
+    // Tiene que estar en el guard y no en el login, porque el panel y las dos
+    // apps se autentican con el SDK de Firebase y nunca pasan por nuestro
+    // endpoint de acceso: el guard es el único lugar por donde pasan todos.
+    this.assertCuentaHabilitada(user);
+
+    return user;
+  }
+
+  private assertCuentaHabilitada(user: User): void {
+    if (user.blocked) {
+      throw new UnauthorizedException(
+        'La cuenta está bloqueada. Comuníquese con la distribuidora.',
       );
     }
   }
@@ -173,7 +195,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('User does not have a role assigned');
     }
 
-    const validRolesForApp = {
+    const validRolesForApp: Record<RequestSource, string[]> = {
       [RequestSource.ADMIN_PANEL]: ['admin', 'super_admin'],
       [RequestSource.CUSTOMER_APP]: ['customer'],
       [RequestSource.DELIVERY_APP]: ['delivery'],
@@ -186,7 +208,9 @@ export class AuthGuard implements CanActivate {
     }
   }
 
-  private extractRequestSourceFromHeader(request: any): RequestSource | null {
+  private extractRequestSourceFromHeader(
+    request: Request,
+  ): RequestSource | null {
     const requestSource = request.headers['x-client-source'];
 
     if (!requestSource) {
@@ -205,4 +229,13 @@ export class AuthGuard implements CanActivate {
         return null;
     }
   }
+}
+
+function emailDelCuerpo(cuerpo: unknown): string | null {
+  if (typeof cuerpo === 'object' && cuerpo !== null && 'email' in cuerpo) {
+    return typeof cuerpo.email === 'string' && cuerpo.email
+      ? cuerpo.email
+      : null;
+  }
+  return null;
 }

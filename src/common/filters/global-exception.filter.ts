@@ -12,6 +12,7 @@ import {
   BadRequestDomainError,
   NotFoundDomainError,
 } from '../errors/domain.error';
+import type { Request } from 'express';
 
 /**
  * Exception filter GLOBAL (observabilidad, C4): loguea toda excepción no
@@ -43,9 +44,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     exception = this.mapDomainError(exception);
 
     const ctx = host.switchToHttp();
-    const request: any = ctx.getRequest();
+    const request = ctx.getRequest<Request | undefined>();
+    const header = request?.headers?.['x-request-id'];
     const requestId =
-      request?.requestId ?? request?.headers?.['x-request-id'] ?? '-';
+      request?.requestId ?? (typeof header === 'string' ? header : '-');
     const method = request?.method ?? '-';
     const path = request?.originalUrl ?? request?.url ?? '-';
     const duration = request?.startTime
@@ -59,14 +61,19 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const message =
       exception instanceof HttpException
         ? exception.message
-        : ((exception as any)?.message ?? 'Internal server error');
+        : exception instanceof Error
+          ? exception.message
+          : 'Internal server error';
 
     const line = `[${requestId}] ${method} ${path} ${status} ${duration ?? '-'}ms — ${message}`;
 
     // 5xx = error real del servidor → stack trace. 4xx = error de cliente
     // (validación, not found, etc.) → una línea, sin ruido.
     if (status >= 500) {
-      this.logger.error(line, (exception as any)?.stack);
+      this.logger.error(
+        line,
+        exception instanceof Error ? exception.stack : undefined,
+      );
     } else {
       this.logger.warn(line);
     }

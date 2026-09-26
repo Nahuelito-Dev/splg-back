@@ -25,49 +25,49 @@ export enum DistributorStatus {
 @Entity('distributor')
 export class Distributor {
   @PrimaryGeneratedColumn('uuid', { name: 'distributor_id' })
-  distributor_id: string;
+  distributor_id!: string;
 
   @Column({ type: 'varchar', length: 120 })
-  name: string;
+  name!: string;
 
   /** Identificador legible/estable para resolver el tenant (header/subdominio). */
   @Index({ unique: true })
   @Column({ type: 'varchar', length: 60, unique: true })
-  slug: string;
+  slug!: string;
 
   @Column({ type: 'varchar', length: 160, nullable: true })
-  legal_name?: string;
+  legal_name!: string | null;
 
   /** CUIT / identificación fiscal. */
   @Column({ type: 'varchar', length: 20, nullable: true })
-  tax_id?: string;
+  tax_id!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  email?: string;
+  email!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  phone?: string;
+  phone!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  logo_url?: string;
+  logo_url!: string | null;
 
   @Column({
     type: 'enum',
     enum: DistributorStatus,
     default: DistributorStatus.ACTIVE,
   })
-  status: DistributorStatus;
+  status!: DistributorStatus;
 
   /** Plan de suscripción SaaS (para facturación futura). */
   @Column({ type: 'varchar', nullable: true })
-  plan?: string;
+  plan!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @DeleteDateColumn({ type: 'timestamptz', nullable: true })
-  deletedAt?: Date;
+  deletedAt!: Date | null;
 }

@@ -9,25 +9,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Rating, RaterRole } from './entities/rating.entity';
 import { CreateRatingDto } from './dto/create-rating.dto';
-import { Order, OrderStatus } from '../order/entities/order.entity';
-import { Delivery } from '../delivery/entities/delivery.entity';
+import { OrderStatus } from '../order/entities/order.entity';
+import { OrderService } from '../order/order.service';
+import { DeliveryService } from '../delivery/delivery.service';
+import { errorCode } from '../common/errors/error-message';
 import { RoleType } from '../common/constants/role-type.enum';
-
-/** Resumen de calificaciones de un usuario (promedio + cantidad). */
-export interface RatingSummary {
-  average: number;
-  count: number;
-}
+import { RatingSummaryDto } from './dto/rating-response.dto';
 
 @Injectable()
 export class RatingService {
   constructor(
     @InjectRepository(Rating)
     private readonly ratingRepository: Repository<Rating>,
-    @InjectRepository(Order)
-    private readonly orderRepository: Repository<Order>,
-    @InjectRepository(Delivery)
-    private readonly deliveryRepository: Repository<Delivery>,
+    private readonly orderService: OrderService,
+    private readonly deliveryService: DeliveryService,
   ) {}
 
   /**
@@ -43,10 +38,7 @@ export class RatingService {
     fromUserId: string,
     role: RoleType,
   ): Promise<Rating> {
-    const order = await this.orderRepository.findOne({
-      where: { order_id: dto.orderId },
-      relations: ['delivery'],
-    });
+    const order = await this.orderService.findById(dto.orderId);
     if (!order) {
       throw new NotFoundException('Pedido no encontrado');
     }
@@ -56,22 +48,30 @@ export class RatingService {
       );
     }
 
-    const driverUserId = order.delivery?.user_id;
+    const driverUserId = order.delivery_id
+      ? (await this.deliveryService.findById(order.delivery_id))?.user_id
+      : undefined;
     let fromRole: RaterRole;
     let toUserId: string;
 
     if (role === RoleType.CUSTOMER) {
       if (order.customer_id !== fromUserId) {
-        throw new ForbiddenException('No podés calificar un pedido de otro cliente');
+        throw new ForbiddenException(
+          'No podés calificar un pedido de otro cliente',
+        );
       }
       if (!driverUserId) {
-        throw new BadRequestException('El pedido no tiene chofer para calificar');
+        throw new BadRequestException(
+          'El pedido no tiene chofer para calificar',
+        );
       }
       fromRole = RaterRole.CUSTOMER;
       toUserId = driverUserId;
     } else if (role === RoleType.DELIVERY) {
       if (driverUserId !== fromUserId) {
-        throw new ForbiddenException('No podés calificar un pedido que no entregaste');
+        throw new ForbiddenException(
+          'No podés calificar un pedido que no entregaste',
+        );
       }
       fromRole = RaterRole.DELIVERY;
       toUserId = order.customer_id;
@@ -86,14 +86,14 @@ export class RatingService {
       to_user_id: toUserId,
       from_role: fromRole,
       stars: dto.stars,
-      comment: dto.comment,
+      comment: dto.comment ?? null,
     });
 
     let saved: Rating;
     try {
       saved = await this.ratingRepository.save(rating);
-    } catch (error: any) {
-      if (error.code === '23505') {
+    } catch (error) {
+      if (errorCode(error) === '23505') {
         throw new ConflictException('Ya calificaste este pedido');
       }
       throw error;
@@ -118,7 +118,7 @@ export class RatingService {
   async getSummaryForUser(
     toUserId: string,
     distributorId?: string | null,
-  ): Promise<RatingSummary> {
+  ): Promise<RatingSummaryDto> {
     const qb = this.ratingRepository
       .createQueryBuilder('r')
       .select('COALESCE(AVG(r.stars), 0)', 'average')
@@ -130,10 +130,10 @@ export class RatingService {
     }
 
     const raw = await qb.getRawOne<{ average: string; count: string }>();
-    return {
-      average: raw ? Math.round(Number(raw.average) * 100) / 100 : 0,
-      count: raw ? Number(raw.count) : 0,
-    };
+    return RatingSummaryDto.de(
+      raw ? Math.round(Number(raw.average) * 100) / 100 : 0,
+      raw ? Number(raw.count) : 0,
+    );
   }
 
   /** Calificaciones recibidas por un usuario (historial), scopeado por tenant. */
@@ -146,6 +146,9 @@ export class RatingService {
         to_user_id: toUserId,
         ...(distributorId ? { distributor_id: distributorId } : {}),
       },
+      // Historial: el chofer, el cliente o la dirección dados de baja siguen
+      // apareciendo en lo que ya pasó (H-74).
+      withDeleted: true,
       relations: ['fromUser'],
       order: { createdAt: 'DESC' },
     });
@@ -154,9 +157,9 @@ export class RatingService {
   /** Recalcula y persiste el promedio del chofer en su perfil Delivery. */
   private async refreshDeliveryAverage(driverUserId: string): Promise<void> {
     const { average } = await this.getSummaryForUser(driverUserId);
-    await this.deliveryRepository.update(
-      { user_id: driverUserId },
-      { calification: average },
+    await this.deliveryService.updateCalificationByUserId(
+      driverUserId,
+      average,
     );
   }
 }

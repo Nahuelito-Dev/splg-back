@@ -10,25 +10,40 @@ import {
 import { ClaimsService } from './claims.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { ResolveClaimDto } from './dto/resolve-claim.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Roles } from '../common/decorators/roles.decorator';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { ClaimResponseDto } from './dto/claim-response.dto';
+import { ClaimMapper } from './claims.mapper';
+import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Claims')
+@ApiBearerAuth()
 @Controller('claims')
 export class ClaimsController {
   constructor(private readonly claimsService: ClaimsService) {}
 
   @Post()
-  @Roles(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cliente crea un reclamo' })
-  create(
+  @ApiCreatedResponse({ type: ClaimResponseDto })
+  @ApiNotFoundResponse({ description: 'El pedido no existe' })
+  @ApiBadRequestResponse({ description: 'El pedido no es del cliente' })
+  async create(
     @Body() createClaimDto: CreateClaimDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<ClaimResponseDto> {
     // Anti-impersonación: un cliente solo puede reclamar como SÍ MISMO (se
     // fuerza el customerId al del token, ignorando lo que venga en el body).
     // Un admin puede crear a nombre de un cliente (soporte). El distributor_id
@@ -38,29 +53,42 @@ export class ClaimsController {
     const dto = isAdmin
       ? createClaimDto
       : { ...createClaimDto, customerId: user.user_id };
-    return this.claimsService.create(dto);
+    // Al admin lo acota su distribuidora; al cliente, que el pedido sea suyo.
+    return ClaimMapper.toDto(
+      await this.claimsService.create(dto, isAdmin ? distributorId : null),
+    );
   }
 
   @Get()
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Admin ve todos los reclamos' })
-  findAll(@CurrentDistributor() distributorId: string | null) {
-    return this.claimsService.findAll(distributorId);
+  @ApiOkResponse({ type: ClaimResponseDto, isArray: true })
+  async findAll(
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<ClaimResponseDto[]> {
+    const claims = await this.claimsService.findAll(distributorId);
+    return claims.map((c) => ClaimMapper.toDto(c));
   }
 
   @Patch(':id/resolve')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Admin resuelve un reclamo' })
-  resolve(
+  @ApiOkResponse({ type: ClaimResponseDto })
+  @ApiNotFoundResponse({
+    description: 'El reclamo no existe o es de otra distribuidora',
+  })
+  async resolve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ResolveClaimDto,
     @CurrentDistributor() distributorId: string | null,
-  ) {
-    return this.claimsService.resolve(
-      id,
-      body.resolution,
-      body.status,
-      distributorId,
+  ): Promise<ClaimResponseDto> {
+    return ClaimMapper.toDto(
+      await this.claimsService.resolve(
+        id,
+        body.resolution,
+        body.status,
+        distributorId,
+      ),
     );
   }
 }

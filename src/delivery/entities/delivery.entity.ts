@@ -8,6 +8,7 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Index,
+  Point,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -15,7 +16,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 @Entity('delivery')
 export class Delivery {
   @PrimaryGeneratedColumn('uuid', { name: 'delivery_id' })
-  delivery_id: string;
+  delivery_id!: string;
 
   /** Distribuidora para la que trabaja el chofer. Nullable hasta backfill. */
   @Index()
@@ -24,22 +25,29 @@ export class Delivery {
   distributor?: Distributor;
 
   @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  distributor_id!: string;
 
   @OneToOne(() => User, (user) => user.delivery, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user!: User;
 
   // Indexado: el radar/dispatch y varios findOne buscan al chofer por user_id.
   @Index()
   @Column({ type: 'uuid' })
-  user_id: string;
+  user_id!: string;
 
   @Column({ type: 'double precision', nullable: true })
   calification?: number;
 
-  @Column({ type: 'text', nullable: true })
-  latLng?: string;
+  /** Última ubicación conocida (antes texto "lat,lng" en latLng). */
+  @Index({ spatial: true })
+  @Column({
+    type: 'geometry',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+  })
+  location!: Point | null;
 
   @Column({ type: 'text', nullable: true })
   actual_location?: string;
@@ -48,20 +56,17 @@ export class Delivery {
   cancelledCharge?: number;
 
   @Column({ type: 'boolean', default: false })
-  validated: boolean;
+  validated!: boolean;
 
   @Column({ type: 'boolean', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   /** Token FCM del dispositivo del chofer, para push de ofertas/estado. */
   @Column({ type: 'text', nullable: true })
   notification_token?: string;
 
-  @Column({ type: 'text', nullable: true })
-  isTraveling?: string;
-
   @Column({ type: 'double precision', default: 0 })
-  balance: number;
+  balance!: number;
 
   @CreateDateColumn({ type: 'timestamptz', nullable: true })
   createdAt?: Date;

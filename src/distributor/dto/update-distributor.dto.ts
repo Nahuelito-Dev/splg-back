@@ -1,5 +1,4 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { OmitType } from '@nestjs/mapped-types';
+import { OmitType, PartialType } from '@nestjs/swagger';
 import { CreateDistributorDto } from './create-distributor.dto';
 
 /**

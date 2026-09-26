@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { RoleType } from '../constants/role-type.enum';
+import type { Request } from 'express';
 
 /**
  * Identidad del usuario autenticado, tal como la deja `AuthGuard` en
@@ -37,7 +38,7 @@ export interface AuthenticatedUser {
  */
 export const CurrentUser = createParamDecorator(
   (data: keyof AuthenticatedUser | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
+    const request = ctx.switchToHttp().getRequest<Request>();
     const user: AuthenticatedUser | undefined = request.user;
 
     if (!user) {

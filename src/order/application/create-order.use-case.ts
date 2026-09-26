@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  HttpException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -17,13 +18,13 @@ import {
   PaymentType,
 } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
-import { User } from '../../users/entities/user.entity';
-import { UserAddress } from '../../user-addres/entities/user-addres.entity';
+import { CustomersService } from '../../customer/customer.service';
+import { UserAddressService } from '../../user-address/user-address.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
-import { StockReservationService } from '../domain/stock-reservation.service';
+import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { PaymentCheckoutItem } from '../../payments/domain/ports/payment-gateway.port';
@@ -31,6 +32,9 @@ import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { DistributorService } from '../../distributor/distributor.service';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
+import { errorMessage } from '../../common/errors/error-message';
+import { coordenadasDePunto } from '../../common/geo/punto';
+import { DomainError } from '../../common/errors/domain.error';
 
 /** Resultado de crear un pedido: la entidad y, si es pago online, la URL de checkout. */
 export interface CreateOrderResult {
@@ -62,16 +66,14 @@ export class CreateOrderUseCase {
 
   constructor(
     private readonly dataSource: DataSource,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(UserAddress)
-    private readonly userAddressRepository: Repository<UserAddress>,
+    private readonly customers: CustomersService,
+    private readonly addresses: UserAddressService,
     @InjectRepository(OrderItem)
     private readonly orderItemRepository: Repository<OrderItem>,
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
     private readonly pricing: OrderPricingService,
-    private readonly stock: StockReservationService,
+    private readonly stock: GasCylinderService,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly notificationService: NotificationPort,
     private readonly orders: OrderRepositoryPort,
@@ -110,21 +112,17 @@ export class CreateOrderUseCase {
     await queryRunner.startTransaction();
 
     try {
-      const customer = await this.userRepository.findOne({
-        where: { user_id: createOrderDto.customerId },
-        relations: ['customer'],
-      });
-
-      if (!customer || !customer.customer) {
+      const customer = await this.customers.buscarComprador(
+        createOrderDto.customerId,
+      );
+      if (!customer) {
         throw new NotFoundException('Cliente no encontrado');
       }
 
-      const address = await this.userAddressRepository.findOne({
-        where: {
-          address_id: createOrderDto.addressId,
-          user_id: createOrderDto.customerId,
-        },
-      });
+      const address = await this.addresses.buscarDelUsuario(
+        createOrderDto.addressId,
+        createOrderDto.customerId,
+      );
 
       if (!address) {
         throw new NotFoundException('Dirección no encontrada');
@@ -136,11 +134,12 @@ export class CreateOrderUseCase {
       // por lejanía) que se suma al total. Si la distribuidora NO definió zonas,
       // checkCoverage devuelve covered:true / surcharge:0 (no-op).
       let zoneSurcharge = new Decimal(0);
-      if (distributorId) {
+      const punto = coordenadasDePunto(address.location);
+      if (distributorId && punto) {
         const coverage = await this.coverageZoneService.checkCoverage(
           distributorId,
-          Number(address.latitude),
-          Number(address.longitude),
+          punto.lat,
+          punto.lng,
         );
         if (!coverage.covered) {
           throw new BadRequestException(
@@ -171,7 +170,7 @@ export class CreateOrderUseCase {
       for (const itemDto of createOrderDto.items) {
         // Reserva de stock con lock pesimista (dentro de ESTA transacción).
         // Devuelve la garrafa bloqueada para leer precio/promos de la misma fila.
-        const gasCylinder = await this.stock.reserve(
+        const gasCylinder = await this.stock.reservarStock(
           queryRunner.manager,
           itemDto.gasCylinderId,
           itemDto.quantity,
@@ -181,10 +180,7 @@ export class CreateOrderUseCase {
         // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
         // como una con `distributor_id` null (dato sin backfillear), que antes
         // se colaba en cualquier tenant.
-        if (
-          distributorId &&
-          gasCylinder.distributor_id !== distributorId
-        ) {
+        if (distributorId && gasCylinder.distributor_id !== distributorId) {
           throw new BadRequestException(
             `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
           );
@@ -252,8 +248,8 @@ export class CreateOrderUseCase {
         deposit_paid: false,
         scheduled_date: createOrderDto.scheduledDate ?? null,
         notes: createOrderDto.notes,
-        deliveryLatitude: address.latitude,
-        deliveryLongitude: address.longitude,
+        deliveryLatitude: punto ? String(punto.lat) : null,
+        deliveryLongitude: punto ? String(punto.lng) : null,
         items: orderItems,
       });
 
@@ -314,14 +310,20 @@ export class CreateOrderUseCase {
         );
       }
       return { order: result, paymentUrl };
-    } catch (error: any) {
+    } catch (error) {
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
-      if (error.status === 404 || error.status === 400) {
+      // Los errores de quien pide (validación, stock, cobertura, pertenencia)
+      // se devuelven tal cual. Antes sólo pasaban los que traían `status` 400 o
+      // 404: los de dominio no lo traen, y "sin stock" salía como 500 (H-85).
+      if (
+        error instanceof DomainError ||
+        (error instanceof HttpException && error.getStatus() < 500)
+      ) {
         throw error;
       }
-      this.logger.error(`create order falló: ${error?.message}`);
+      this.logger.error(`create order falló: ${errorMessage(error)}`);
       throw new InternalServerErrorException('Error al crear el pedido');
     } finally {
       await queryRunner.release();
@@ -341,7 +343,7 @@ export class CreateOrderUseCase {
     } catch (error) {
       // Best-effort: errores de notificación no rompen la creación del pedido.
       this.logger.warn(
-        `No se pudo enviar la notificación de confirmación del pedido ${orderId}: ${error instanceof Error ? error.message : error}`,
+        `No se pudo enviar la notificación de confirmación del pedido ${orderId}: ${errorMessage(error)}`,
       );
     }
   }
@@ -357,7 +359,7 @@ export class CreateOrderUseCase {
   private async createMercadoPagoCheckout(
     savedOrder: Order,
     checkoutItems: PaymentCheckoutItem[],
-    customer: User,
+    customer: { email: string | null },
   ): Promise<string | undefined> {
     try {
       const checkout = await this.paymentsService.createCheckout({
@@ -369,9 +371,9 @@ export class CreateOrderUseCase {
         payerEmail: customer.email || '',
       });
       return checkout.initPoint;
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(
-        `No se pudo crear el checkout de MercadoPago para ${savedOrder.order_id}: ${error?.message}`,
+        `No se pudo crear el checkout de MercadoPago para ${savedOrder.order_id}: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -384,7 +386,7 @@ export class CreateOrderUseCase {
   private async createDepositCheckout(
     savedOrder: Order,
     depositAmount: number,
-    customer: User,
+    customer: { email: string | null },
   ): Promise<string | undefined> {
     try {
       const checkout = await this.paymentsService.createCheckout({
@@ -403,9 +405,9 @@ export class CreateOrderUseCase {
         payerEmail: customer.email || '',
       });
       return checkout.initPoint;
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(
-        `No se pudo crear el checkout de la seña para ${savedOrder.order_id}: ${error?.message}`,
+        `No se pudo crear el checkout de la seña para ${savedOrder.order_id}: ${errorMessage(error)}`,
       );
       return undefined;
     }

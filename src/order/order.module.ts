@@ -1,4 +1,3 @@
-// src/order/order.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderController } from './order.controller';
@@ -6,19 +5,17 @@ import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { DispatchOffer } from './entities/dispatch-offer.entity';
-import { GasCylinder } from '../gascylinder/entities/gascylinder.entity';
-import { User } from '../users/entities/user.entity';
-import { Delivery } from '../delivery/entities/delivery.entity';
-import { UserAddress } from '../user-addres/entities/user-addres.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { Customer } from '../customer/entities/customer.entity';
+import { GasCylinderModule } from '../gascylinder/gascylinder.module';
+import { DeliveryModule } from '../delivery/delivery.module';
+import { CustomersModule } from '../customer/customer.module';
+import { UserAddressModule } from '../user-address/user-address.module';
 
 import { GatewaysModule } from '../gateways/gateways.module';
-import { RedisModule } from '../redis/redis.module'; // 👈 Importar
+import { RedisModule } from '../redis/redis.module';
 import { TimeSlotModule } from '../time-slot/time-slot.module';
 import { DispatchService } from './dispatch.service';
 import { OrderPricingService } from './domain/order-pricing.service';
-import { StockReservationService } from './domain/stock-reservation.service';
 import { RealtimeDispatchPort } from './domain/ports/realtime-dispatch.port';
 import { RealtimeDispatchAdapter } from './infrastructure/realtime-dispatch.adapter';
 import { OrderRepositoryPort } from './domain/ports/order.repository.port';
@@ -32,7 +29,7 @@ import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repos
 import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.typeorm.repository';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { ReservationService } from './application/reservation.service';
-import { MercadoPagoWebhookController } from './mercadopago-webhook.controller';
+import { PagoNotificadoListener } from './application/pago-notificado.listener';
 import { CylinderModule } from '../cylinder/cylinder.module';
 import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
@@ -40,32 +37,42 @@ import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.ad
 import { PaymentsModule } from '../payments/payments.module';
 import { NotificationPort } from './domain/ports/notification.port';
 import { NotificationAdapter } from './infrastructure/notification.adapter';
+import { OrderStatusHistory } from './entities/order-status-history.entity';
+import { OrderAddressChange } from './entities/order-address-change.entity';
+import { RouteBatch } from './entities/route-batch.entity';
+import { RouteBatchStop } from './entities/route-batch-stop.entity';
+import { RouteBatchOffer } from './entities/route-batch-offer.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Order,
       OrderItem,
       DispatchOffer,
-      GasCylinder,
-      User,
-      Delivery,
-      UserAddress,
-      Customer,
+      OrderStatusHistory,
+      OrderAddressChange,
+      RouteBatch,
+      RouteBatchStop,
+      RouteBatchOffer,
     ]),
+    GasCylinderModule, // catálogo: reserva y devolución de stock
+    DeliveryModule, // choferes: pertenencia, asignación y disponibles
+    CustomersModule, // el cliente del pedido tiene que existir
+    UserAddressModule, // la dirección tiene que ser del cliente
     NotificationsModule,
     GatewaysModule,
-    RedisModule, // 👈 AGREGAR ESTO AQUÍ
+    RedisModule,
     TimeSlotModule, // agendamiento: valida cupo de franja al crear pedido
     CylinderModule, // ciclo del envase físico: al entregar, avanza los envases
     CoverageZoneModule, // valida cobertura de la dirección + recargo por zona
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
   ],
-  controllers: [OrderController, MercadoPagoWebhookController],
+  controllers: [OrderController],
   providers: [
+    // Confirma el pedido cuando payments publica un pago notificado.
+    PagoNotificadoListener,
     OrderService,
     DispatchService,
     OrderPricingService,
-    StockReservationService,
     CreateOrderUseCase,
     UpdateOrderStatusUseCase,
     CancelOrderUseCase,

@@ -1,19 +1,36 @@
 import {
   Injectable,
   BadRequestException,
-  InternalServerErrorException,
   NotFoundException,
   ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, Brackets } from 'typeorm';
+import { Repository, DataSource, Brackets, EntityManager } from 'typeorm';
 import { User } from './entities/user.entity';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { ConfigService } from '@nestjs/config';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
+
+import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { errorMessage } from '../common/errors/error-message';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import {
+  BloqueoDeUsuarioDto,
+  UsuarioExisteDto,
+} from './dto/usuarios-response.dto';
+import { usuarioDeLaDistribuidora } from '../common/tenancy/pertenencia';
+
+/** Lo que el alta guarda en la fila del usuario. */
+export interface DatosDeUsuarioNuevo {
+  email: string;
+  full_name: string;
+  phone_number: string;
+  selfie?: string;
+  firebase_uid: string;
+  role_id: string;
+}
 
 @Injectable()
 export class UsersService {
@@ -28,63 +45,49 @@ export class UsersService {
     private readonly firebaseAuth: FirebaseAuthPort,
   ) {}
 
-  async create(createUserDto: CreateUserDto): Promise<User> {
-    try {
-      const user = this.userRepository.create(createUserDto);
-      const savedUser = await this.userRepository.save(user);
-
-      if (!savedUser) {
-        throw new InternalServerErrorException('User could not be created');
-      }
-
-      return savedUser;
-    } catch (error) {
-      this.handleDBExceptions(error);
-      throw new InternalServerErrorException('User creation failed');
+  /**
+   * El correo y el teléfono tienen que estar libres, también entre los dados
+   * de baja (la restricción única los sigue contando). Se controla antes de
+   * crear la cuenta en Firebase: un duplicado no llega a crear nada.
+   */
+  async assertDisponible(email: string, phoneNumber: string): Promise<void> {
+    const existente = await this.userRepository.findOne({
+      where: [{ email }, { phone_number: phoneNumber }],
+      withDeleted: true,
+      select: { user_id: true },
+    });
+    if (existente) {
+      throw new ConflictException('Email o teléfono ya en uso');
     }
   }
 
-  /**
-   * Best-effort, delega el mapeo de errores en `FirebaseAuthPort` (antes
-   * duplicado acá, en `CustomersService` y en `DeliveryService`; ver punto 4
-   * de `docs/ARQUITECTURA-REVIEW.md`).
-   */
-  private async cleanupFirebaseUser(email: string) {
-    await this.firebaseAuth.deleteUserByEmailSafe(email, this.logger);
+  /** La fila del usuario, dentro de la transacción del alta. */
+  crearEnTransaccion(
+    manager: EntityManager,
+    datos: DatosDeUsuarioNuevo,
+  ): Promise<User> {
+    const repo = manager.getRepository(User);
+    return repo.save(
+      repo.create({
+        ...datos,
+        email_verified: false,
+        phone_verified: false,
+        blocked: false,
+      }),
+    );
   }
 
   /**
-   * Método PÚBLICO (lo usan `admin-registration.helper.ts` y
-   * `user-registration.helper.ts`). Delega el create + mapeo de errores en
-   * `FirebaseAuthPort.createUserSafe` (antes duplicado acá, en
-   * `CustomersService` y en `DeliveryService`).
+   * Lista usuarios. Con `distributorId` (admin de empresa, o super admin con
+   * "ver como") sólo los de esa distribuidora: sus choferes, sus admins y los
+   * clientes que le compraron (H-66). Sin él, todos.
    */
-  async createFirebaseUser(createUserDto: CreateUserDto) {
-    return this.firebaseAuth.createUserSafe(createUserDto);
-  }
-
-  async findFbUserByEmail(email: string): Promise<boolean> {
-    try {
-      await this.firebaseAuth.getUserByEmail(email);
-      return true;
-    } catch (error) {
-      // CORRECCIÓN AQUÍ: Casteamos a 'any' para acceder a .code
-      const firebaseError = error as any;
-
-      if (firebaseError.code === 'auth/user-not-found') {
-        return false;
-      }
-
-      // Es buena práctica loguear el error real antes de lanzar la excepción genérica
-      this.logger.error(firebaseError);
-      throw new InternalServerErrorException('Error al consultar Firebase');
-    }
-  }
-
-  async findAll(paginationDto: PaginationDto & { term?: string }) {
+  async findAll(
+    paginationDto: PaginationDto,
+    distributorId?: string | null,
+  ): Promise<{ users: User[]; maxUsers: number }> {
     const { limit = 10, offset = 0, term } = paginationDto;
 
-    // Usamos CreateQueryBuilder para búsquedas flexibles
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
@@ -92,6 +95,12 @@ export class UsersService {
       .leftJoinAndSelect('user.delivery', 'delivery')
       .take(limit)
       .skip(offset);
+
+    if (distributorId) {
+      queryBuilder.andWhere(usuarioDeLaDistribuidora('user.user_id'), {
+        distributorId,
+      });
+    }
 
     if (term) {
       queryBuilder.andWhere(
@@ -110,7 +119,26 @@ export class UsersService {
       maxUsers: total,
     };
   }
-  async findOne(id: string) {
+
+  /**
+   * Si el usuario es de la distribuidora: chofer o admin de ella, o cliente
+   * que le compró. Un super admin no es de ninguna.
+   */
+  async perteneceA(userId: string, distributorId: string): Promise<boolean> {
+    const cantidad = await this.userRepository
+      .createQueryBuilder('user')
+      .where('user.user_id = :userId', { userId })
+      .andWhere(usuarioDeLaDistribuidora('user.user_id'), { distributorId })
+      .getCount();
+    return cantidad > 0;
+  }
+
+  /** El usuario sin relaciones, o null. Para confirmar que existe. */
+  findById(id: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { user_id: id } });
+  }
+
+  async findOne(id: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { user_id: id },
       relations: ['role', 'customer', 'delivery', 'cars', 'addresses'],
@@ -123,10 +151,29 @@ export class UsersService {
     return user;
   }
 
-  async findOneByEmail(email: string) {
+  /**
+   * El usuario con su rol y nada más, o null si no existe o está dado de baja.
+   * Para el handshake de los sockets: `findOneByEmail` trae seis relaciones,
+   * que en cada conexión es caro y no se usa.
+   */
+  findOneWithRoleByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { email },
+      relations: ['role'],
+    });
+  }
+
+  async findOneByEmail(email: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { email },
-      relations: ['role', 'customer', 'delivery', 'cars', 'addresses', 'admins'],
+      relations: [
+        'role',
+        'customer',
+        'delivery',
+        'cars',
+        'addresses',
+        'admins',
+      ],
     });
 
     if (!user) {
@@ -136,23 +183,34 @@ export class UsersService {
     return user;
   }
 
-  async findOneByPhone(phoneNumber: string) {
-    const user = await this.userRepository.findOne({
+  findOneByPhone(phoneNumber: string): Promise<User | null> {
+    return this.userRepository.findOne({
       where: { phone_number: phoneNumber },
-      relations: ['role', 'customer', 'delivery', 'cars', 'addresses'],
+      relations: ['role', 'customer', 'delivery', 'addresses'],
     });
-
-    return user;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    const { password, ...campos } = updateUserDto;
     const user = await this.userRepository.preload({
       user_id: id,
-      ...updateUserDto,
+      ...campos,
     });
 
     if (!user) {
       throw new NotFoundException(`User with ID: ${id} not found`);
+    }
+
+    // La contraseña vive en el proveedor de identidad, no en la base: antes se
+    // descartaba en silencio y el panel informaba un cambio que no ocurría
+    // (H-75).
+    if (password) {
+      if (!user.firebase_uid) {
+        throw new ConflictException(
+          'El usuario no tiene cuenta de acceso: no se le puede cambiar la contraseña',
+        );
+      }
+      await this.cambiarContraseña(user.firebase_uid, password);
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -168,66 +226,123 @@ export class UsersService {
     } catch (error) {
       await queryRunner.rollbackTransaction();
       await queryRunner.release();
-      this.handleDBExceptions(error);
+      return this.handleDBExceptions(error);
     }
   }
 
-  async remove(id: string) {
-    const user = await this.findOne(id);
+  /**
+   * El correo nuevo de un usuario, que vuelve a quedar sin verificar. Sólo
+   * para `EmailService.changeEmail`, que antes lo cambió en el proveedor de
+   * identidad con el token de la persona: nunca por `PATCH /users/:id`.
+   */
+  async cambiarEmail(id: string, email: string): Promise<void> {
+    await this.userRepository.update(
+      { user_id: id },
+      { email, email_verified: false },
+    );
+  }
 
-    // Borramos de la DB PRIMERO. Order→User es RESTRICT (P2-10): si el usuario
-    // tiene pedidos, el DELETE falla acá con FK violation → devolvemos 409 y NO
-    // tocamos Firebase (evita dejar el usuario huérfano en Firebase). Customer/
-    // Delivery sí cascadean desde User, así que un usuario sin pedidos se borra ok.
+  private async cambiarContraseña(uid: string, password: string) {
     try {
-      await this.userRepository.delete({ user_id: id });
-    } catch (error: any) {
-      if (error?.code === '23503') {
-        throw new ConflictException(
-          'No se puede eliminar el usuario porque tiene pedidos u otros registros asociados. Bloquéalo en lugar de eliminarlo.',
+      await this.firebaseAuth.updateUser(uid, { password });
+    } catch (error) {
+      this.logger.error(`No se pudo cambiar la contraseña de ${uid}`, error);
+      throw new BadRequestException('No se pudo cambiar la contraseña');
+    }
+  }
+
+  /**
+   * El rol del usuario y la distribuidora de su perfil, o null si no tiene
+   * (clientes y super administradores). Para decidir si un admin de empresa
+   * puede modificarlo.
+   */
+  async findAlcance(
+    id: string,
+  ): Promise<{ rol: string | undefined; distributorId: string | null }> {
+    const user = await this.userRepository.findOne({
+      where: { user_id: id },
+      relations: ['role', 'delivery', 'admins'],
+    });
+    if (!user) {
+      throw new NotFoundException(`User with ID: ${id} not found`);
+    }
+    return {
+      rol: user.role?.type,
+      distributorId:
+        user.delivery?.distributor_id ??
+        user.admins?.[0]?.distributor_id ??
+        null,
+    };
+  }
+
+  /**
+   * Baja lógica (H-74): el usuario, su perfil de cliente o chofer, sus
+   * vehículos y sus direcciones quedan con `deletedAt` y dejan de aparecer.
+   * Nada se borra: los pedidos, pagos y calificaciones siguen apuntando a él
+   * y la auditoría conserva quién era. Su cuenta de Firebase se deshabilita
+   * (no se borra): no puede volver a entrar, y el correo sigue ocupado.
+   */
+  async remove(id: string): Promise<MessageResponseDto> {
+    const user = await this.userRepository.findOne({
+      where: { user_id: id },
+      relations: ['customer', 'delivery', 'cars', 'addresses'],
+    });
+    if (!user) {
+      throw new NotFoundException(`User with ID: ${id} not found`);
+    }
+
+    await this.userRepository.softRemove(user);
+
+    // Sin fila vigente el acceso ya lo rechaza; deshabilitar la cuenta es la
+    // segunda barrera. Si Firebase falla, la baja igual quedó hecha.
+    if (user.firebase_uid) {
+      try {
+        await this.firebaseAuth.updateUser(user.firebase_uid, {
+          disabled: true,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Usuario ${id} dado de baja, pero no se pudo deshabilitar su cuenta de Firebase: ${errorMessage(error)}`,
         );
       }
-      throw error;
     }
 
-    // Recién si se borró de la DB, lo sacamos de Firebase.
-    if (user.email) {
-      await this.cleanupFirebaseUser(user.email);
-    }
-
-    return { message: 'Usuario eliminado permanentemente de DB y Firebase' };
+    return MessageResponseDto.of('Usuario dado de baja');
   }
 
-  async checkUserExists(email?: string, phoneNumber?: string) {
-    const conditions: any[] = [];
-
-    if (email) conditions.push({ email });
-    if (phoneNumber) conditions.push({ phone_number: phoneNumber });
-
-    if (conditions.length === 0) {
-      return { exists: false };
-    }
-
-    const user = await this.userRepository.findOne({
-      where: conditions,
-    });
-
-    const result = {
-      exists: !!user,
-      email: email ? !!user?.email : false,
-      phoneNumber: phoneNumber ? !!user?.phone_number : false,
+  /**
+   * Si el correo y el teléfono ya están en uso, cada uno por separado. Antes
+   * se buscaba un usuario con cualquiera de los dos y se marcaba el correo
+   * como usado si ese usuario tenía correo, aunque la coincidencia fuera por
+   * el teléfono.
+   */
+  async checkUserExists(
+    email?: string,
+    phoneNumber?: string,
+  ): Promise<UsuarioExisteDto> {
+    const [emailUsado, telefonoUsado] = await Promise.all([
+      email
+        ? this.userRepository.exists({ where: { email } })
+        : Promise.resolve(false),
+      phoneNumber
+        ? this.userRepository.exists({ where: { phone_number: phoneNumber } })
+        : Promise.resolve(false),
+    ]);
+    return {
+      exists: emailUsado || telefonoUsado,
+      email: emailUsado,
+      phoneNumber: telefonoUsado,
     };
-
-    return result;
   }
 
-  private handleDBExceptions(error: any) {
-    if (error.code === '23505') {
-      throw new BadRequestException('Duplicate entry', error.detail);
-    }
-    throw new InternalServerErrorException(
-      'Unexpected error, check server logs',
-    );
+  /**
+   * Delega en el traductor compartido. Antes esto contemplaba sólo los
+   * duplicados y convertía todo lo demás en un 500 sin registrar la causa:
+   * crear un usuario con un rol inexistente daba "Unexpected error, check
+   * server logs" y en los logs no había nada.
+   */
+  private handleDBExceptions(error: unknown): never {
+    return traducirErrorDeBase(error, this.logger, 'usuarios');
   }
 
   async verifyEmail(userId: string): Promise<User> {
@@ -259,7 +374,10 @@ export class UsersService {
     return user;
   }
 
-  async toggleBlockUser(id: string, shouldBlock: boolean) {
+  async toggleBlockUser(
+    id: string,
+    shouldBlock: boolean,
+  ): Promise<BloqueoDeUsuarioDto> {
     const user = await this.userRepository.findOne({ where: { user_id: id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
@@ -268,7 +386,7 @@ export class UsersService {
 
     return {
       id: user.user_id,
-      email: user.email,
+      email: user.email ?? null,
       isBlocked: user.blocked,
       message: user.blocked
         ? 'Usuario BLOQUEADO 🚫'

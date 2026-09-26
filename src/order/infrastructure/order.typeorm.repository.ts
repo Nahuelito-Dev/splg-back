@@ -32,9 +32,16 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     super();
   }
 
+  findById(id: string): Promise<Order | null> {
+    return this.orderRepository.findOne({ where: { order_id: id } });
+  }
+
   findByIdFull(id: string): Promise<Order | null> {
     return this.orderRepository.findOne({
       where: { order_id: id },
+      // Historial: el chofer, el cliente o la dirección dados de baja siguen
+      // apareciendo en lo que ya pasó (H-74).
+      withDeleted: true,
       relations: FULL_RELATIONS,
     });
   }
@@ -56,6 +63,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       where: this.scoped({}, distributorId),
       take: limit,
       skip: offset,
+      withDeleted: true,
       relations: FULL_RELATIONS,
       order: { createdAt: 'DESC' },
     });
@@ -74,6 +82,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       ),
       take: limit,
       skip: offset,
+      withDeleted: true,
       relations: [
         'customer',
         'customer.customer',
@@ -97,6 +106,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       where: this.scoped({ customer_id: customerId }, distributorId),
       take: limit,
       skip: offset,
+      withDeleted: true,
       relations: [
         'delivery',
         'delivery.user',
@@ -120,6 +130,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       where: this.scoped({ delivery_id: deliveryId }, distributorId),
       take: limit,
       skip: offset,
+      withDeleted: true,
       relations: [
         'customer',
         'customer.customer',

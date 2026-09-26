@@ -16,9 +16,16 @@ export class ClaimsService {
     private readonly orderService: OrderService,
   ) {}
 
-  async create(createClaimDto: CreateClaimDto) {
+  async create(
+    createClaimDto: CreateClaimDto,
+    distributorId: string | null = null,
+  ): Promise<Claim> {
+    // Con distribuidora en contexto, el pedido de otra no existe.
+    await this.orderService.assertDeLaDistribuidora(
+      createClaimDto.orderId,
+      distributorId,
+    );
     const order = await this.orderService.findOne(createClaimDto.orderId);
-    if (!order) throw new NotFoundException('Orden no encontrada');
 
     if (order.customer_id !== createClaimDto.customerId) {
       throw new BadRequestException(
@@ -40,13 +47,16 @@ export class ClaimsService {
     return await this.claimRepo.save(claim);
   }
 
-  async findAll(distributorId?: string | null) {
+  async findAll(distributorId?: string | null): Promise<Claim[]> {
     const where: FindOptionsWhere<Claim> = {};
     if (distributorId) where.distributor_id = distributorId;
 
     return await this.claimRepo.find({
       where,
       order: { createdAt: 'DESC' },
+      // Historial: el chofer, el cliente o la dirección dados de baja siguen
+      // apareciendo en lo que ya pasó (H-74).
+      withDeleted: true,
       relations: ['order', 'customer'],
     });
   }
@@ -55,7 +65,7 @@ export class ClaimsService {
    * `distributorId` opcional: si viene, el reclamo debe pertenecer a ese
    * tenant (evita que un admin lea/resuelva reclamos de otra distribuidora).
    */
-  async findOne(id: string, distributorId?: string | null) {
+  async findOne(id: string, distributorId?: string | null): Promise<Claim> {
     const where: FindOptionsWhere<Claim> = { claim_id: id };
     if (distributorId) where.distributor_id = distributorId;
 
@@ -70,7 +80,7 @@ export class ClaimsService {
     resolution: string,
     status: ClaimStatus,
     distributorId?: string | null,
-  ) {
+  ): Promise<Claim> {
     // Verifica pertenencia al tenant antes de resolver.
     const claim = await this.findOne(id, distributorId);
 

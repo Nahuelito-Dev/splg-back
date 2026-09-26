@@ -1,4 +1,3 @@
-// payments/entities/payment.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -6,6 +5,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import {
   PaymentGateway,
@@ -13,6 +14,8 @@ import {
   LedgerPaymentStatus,
 } from '../domain/payment.enums';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+import { Order } from '../../order/entities/order.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
 
 /**
  * Ledger de pagos: UN registro por INTENTO de cobro (append-friendly). No
@@ -28,27 +31,36 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 @Entity('payment')
 export class Payment {
   @PrimaryGeneratedColumn('uuid', { name: 'payment_id' })
-  payment_id: string;
+  payment_id!: string;
 
   /** Pedido al que pertenece este intento de cobro. */
   @Index()
   @Column({ type: 'uuid' })
-  order_id: string;
+  order_id!: string;
+
+  /** Registro contable: borrar el pedido no puede llevarse sus pagos. */
+  @ManyToOne(() => Order, { nullable: false, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'order_id' })
+  order?: Order;
 
   /** Tenant dueño del pago (igual que el pedido). Nullable hasta backfill. */
   @Index()
   @Column({ type: 'uuid', nullable: true })
-  distributor_id: string | null;
+  distributor_id!: string | null;
+
+  @ManyToOne(() => Distributor, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
 
   @Column({ type: 'enum', enum: PaymentGateway })
-  gateway: PaymentGateway;
+  gateway!: PaymentGateway;
 
   @Column({ type: 'enum', enum: PaymentIntegration })
-  integration: PaymentIntegration;
+  integration!: PaymentIntegration;
 
   /** Medio de pago concreto dentro de la pasarela (ej. 'credit_card', 'account_money'). */
   @Column({ type: 'varchar', length: 50, nullable: true })
-  method: string | null;
+  method!: string | null;
 
   /**
    * ID del pago en la pasarela. Null mientras el intento está PENDING (recién
@@ -59,40 +71,45 @@ export class Payment {
    */
   @Index({ unique: true, where: '"gateway_payment_id" IS NOT NULL' })
   @Column({ type: 'varchar', length: 100, nullable: true })
-  gateway_payment_id: string | null;
+  gateway_payment_id!: string | null;
 
   /** Referencia externa enviada a la pasarela (= order_id). */
   @Column({ type: 'varchar', nullable: true })
-  external_reference: string | null;
+  external_reference!: string | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
-  amount: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+  })
+  amount!: number;
 
   @Column({ type: 'varchar', length: 10, default: 'ARS' })
-  currency: string;
+  currency!: string;
 
   @Column({
     type: 'enum',
     enum: LedgerPaymentStatus,
     default: LedgerPaymentStatus.PENDING,
   })
-  status: LedgerPaymentStatus;
+  status!: LedgerPaymentStatus;
 
   /** URL de checkout devuelta por la pasarela (Checkout Pro init_point). */
   @Column({ type: 'text', nullable: true })
-  payment_url: string | null;
+  payment_url!: string | null;
 
   /** true = este intento cobra la SEÑA de una reserva, no el pedido completo. */
   @Column({ type: 'boolean', default: false })
-  is_deposit: boolean;
+  is_deposit!: boolean;
 
   /** Datos crudos/auxiliares de la pasarela (preferenceId, status crudo, etc.). */
   @Column({ type: 'jsonb', nullable: true })
-  metadata: Record<string, any> | null;
+  metadata!: Record<string, unknown> | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

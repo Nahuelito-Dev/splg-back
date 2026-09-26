@@ -7,9 +7,10 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
 import { Logger } from '@nestjs/common';
-import { AuthService } from '../auth/auth.service';
+import { SocketIdentityService } from './socket-identity.service';
+import type { SocketDeSplg } from './socket-data';
 
 @WebSocketGateway({
   cors: {
@@ -18,55 +19,60 @@ import { AuthService } from '../auth/auth.service';
   namespace: 'customers',
 })
 export class CustomersGateway
-  implements OnGatewayConnection, OnGatewayDisconnect {
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
-  server: Server;
+  server!: Server;
   private readonly logger = new Logger('CustomersGateway');
 
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly identidades: SocketIdentityService) {}
 
-  async handleConnection(client: Socket) {
-    try {
-      const token =
-        client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.split(' ')[1];
+  async handleConnection(client: SocketDeSplg): Promise<void> {
+    const identidad = await this.identidades.identificar(client);
 
-      if (!token) {
-        this.logger.warn(`🚫 Cliente rechazado (Sin token): ${client.id}`);
-        client.disconnect();
-        return;
-      }
-
-      const decoded = await this.authService.decodeToken(token);
-      (client as any).user = decoded;
-
-      this.logger.log(`👤 Cliente conectado: ${decoded.email} (${client.id})`);
-    } catch (error) {
-      this.logger.error(`🚫 Errorauth socket cliente: ${error.message}`);
+    if (!identidad) {
+      this.logger.warn(`🚫 Cliente rechazado (sin identidad): ${client.id}`);
       client.disconnect();
+      return;
     }
+
+    this.logger.log(`👤 Cliente conectado: ${identidad.email} (${client.id})`);
   }
 
-  handleDisconnect(client: Socket) {
-    // this.logger.log(`❌ Cliente desconectado: ${client.id}`);
+  handleDisconnect(): void {
+    // sin estado por-cliente que limpiar (la sala se libera sola)
   }
 
-  // El cliente se une a su sala con su ID de usuario
+  /**
+   * El cliente entra a su sala. El identificador sale de la identidad resuelta
+   * en el handshake, NO del cuerpo del mensaje: creyéndole al cliente,
+   * cualquiera que conozca un `user_id` ajeno seguía en vivo la entrega de esa
+   * persona, con su posición y su domicilio.
+   *
+   * El cuerpo se sigue aceptando por compatibilidad con las apps publicadas,
+   * pero se ignora.
+   */
   @SubscribeMessage('customer:join')
-  handleCustomerJoin(
-    @MessageBody() data: { customerId: string },
-    @ConnectedSocket() client: Socket,
+  async handleCustomerJoin(
+    @MessageBody() _cuerpoIgnorado: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
   ) {
-    const roomName = `customer_${data.customerId}`;
-    client.join(roomName);
-    this.logger.log(`👤 Cliente ${data.customerId} unido a sala ${roomName}`);
+    const identidad = await this.identidades.obtener(client);
+    if (!identidad) {
+      client.disconnect();
+      return;
+    }
+
+    const roomName = `customer_${identidad.userId}`;
+    await client.join(roomName);
+    this.logger.log(`👤 Cliente ${identidad.userId} unido a sala ${roomName}`);
     client.emit('server:ack', {
       message: 'Conectado a actualizaciones de pedidos',
     });
   }
 
   // Método para enviar alertas al cliente
-  notifyCustomer(customerId: string, event: string, payload: any) {
+  notifyCustomer(customerId: string, event: string, payload: unknown): void {
     const roomName = `customer_${customerId}`;
     this.logger.log(`🔔 Notificando a Cliente ${customerId}: ${event}`);
     this.server.to(roomName).emit(event, payload);

@@ -9,8 +9,6 @@ import {
   Delete,
   Query,
   ParseUUIDPipe,
-  HttpStatus,
-  HttpCode,
   ForbiddenException,
 } from '@nestjs/common';
 import {
@@ -29,13 +27,11 @@ import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
-import { Public } from '../common/decorators/isPublic.decorator';
-import { OrderStatus } from './entities/order.entity';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 
@@ -114,7 +110,7 @@ export class OrderController {
   }
 
   @Get()
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get all orders with pagination' })
   @ApiResponse({ status: 200, description: 'List of orders' })
   async findAll(
@@ -122,7 +118,10 @@ export class OrderController {
     @CurrentDistributor() distributorId: string | null,
   ) {
     // Admin de distribuidora → sólo sus pedidos; super_admin sin header → todos.
-    const result = await this.orderService.findAll(paginationDto, distributorId);
+    const result = await this.orderService.findAll(
+      paginationDto,
+      distributorId,
+    );
     return {
       ...result,
       orders: result.orders.map((order) => OrderMapper.toDto(order)),
@@ -130,7 +129,7 @@ export class OrderController {
   }
 
   @Get('customer/:customerId')
-  @Roles(
+  @Auth(
     RoleType.CUSTOMER,
     RoleType.DELIVERY,
     RoleType.ADMIN,
@@ -148,7 +147,9 @@ export class OrderController {
     // Ownership: un cliente solo puede ver SUS pedidos. Admin ve los de cualquiera.
     // (order.customer_id es el User PK, igual que user.user_id.)
     if (user.role === RoleType.CUSTOMER && user.user_id !== customerId) {
-      throw new ForbiddenException('No autorizado a ver pedidos de otro cliente');
+      throw new ForbiddenException(
+        'No autorizado a ver pedidos de otro cliente',
+      );
     }
     // El staff (admin/delivery) sólo ve pedidos de su distribuidora; el cliente
     // ve TODO su historial (aunque haya pedido a varias) → sin scope de tenant.
@@ -165,15 +166,19 @@ export class OrderController {
   }
 
   @Get('delivery/:deliveryId')
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get orders by delivery ID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
   @ApiResponse({ status: 200, description: 'List of delivery orders' })
   async findByDelivery(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('deliveryId', ParseUUIDPipe) deliveryId: string,
     @Query() paginationDto: PaginationDto,
     @CurrentDistributor() distributorId: string | null,
   ) {
+    if (user.role === RoleType.DELIVERY) {
+      await this.orderService.assertEsElChofer(deliveryId, user.user_id);
+    }
     const result = await this.orderService.findByDelivery(
       deliveryId,
       paginationDto,
@@ -186,7 +191,7 @@ export class OrderController {
   }
 
   @Get('available')
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get available orders for delivery' })
   @ApiResponse({ status: 200, description: 'List of available orders' })
   async findAvailableOrders(
@@ -205,14 +210,12 @@ export class OrderController {
   }
 
   @Get('reservations')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Listar las reservas (pedidos RESERVED) con estado de seña',
   })
   @ApiResponse({ status: 200, description: 'Listado de reservas' })
-  async findReservations(
-    @CurrentDistributor() distributorId: string | null,
-  ) {
+  async findReservations(@CurrentDistributor() distributorId: string | null) {
     return this.reservationService.findReservations(distributorId);
   }
 
@@ -233,7 +236,7 @@ export class OrderController {
   }
 
   @Patch(':id/status')
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
     summary: 'Update order status',
@@ -242,12 +245,18 @@ export class OrderController {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Status updated successfully' })
+  @ApiResponse({
+    status: 403,
+    description: 'El pedido no está asignado a este chofer',
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async updateStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateOrderStatusDto,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     // Un chofer solo puede operar EN SU NOMBRE: ignoramos cualquier deliveryId
     // del body y usamos su identidad autenticada (updateStatus resuelve el perfil
     // Delivery por user_id). El admin sí puede asignar a un chofer arbitrario.
@@ -258,12 +267,13 @@ export class OrderController {
       id,
       body.status,
       deliveryId,
+      user.role,
     );
     return OrderMapper.toDto(order);
   }
 
   @Post(':id/reject')
-  @Roles(RoleType.DELIVERY)
+  @Auth(RoleType.DELIVERY)
   @Idempotent()
   @ApiOperation({
     summary: 'Chofer rechaza/ignora una oferta de pedido (CU-016)',
@@ -275,12 +285,14 @@ export class OrderController {
   async rejectOffer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     return this.orderService.rejectOffer(id, user.user_id);
   }
 
   @Get(':id/delivery-code')
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Obtener el código secreto de entrega (para el QR del chofer)',
     description:
@@ -289,21 +301,30 @@ export class OrderController {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Código de entrega' })
-  @ApiResponse({ status: 400, description: 'El pedido aún no tiene código (no aceptado)' })
-  @ApiResponse({ status: 403, description: 'El pedido no está asignado a este chofer' })
+  @ApiResponse({
+    status: 400,
+    description: 'El pedido aún no tiene código (no aceptado)',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'El pedido no está asignado a este chofer',
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async getDeliveryCode(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     return this.orderService.getDeliveryCode(id, user.user_id, user.role);
   }
 
   @Post(':id/confirm-delivery')
-  @Roles(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
-    summary: 'Confirmar entrega escaneando el QR del chofer (prueba anti-fraude)',
+    summary:
+      'Confirmar entrega escaneando el QR del chofer (prueba anti-fraude)',
     description:
       'El cliente escanea el QR que muestra el chofer y envía el código leído. ' +
       'Si coincide con `order.deliveryCode` y el pedido está ON_THE_WAY, se marca DELIVERED. ' +
@@ -311,14 +332,22 @@ export class OrderController {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Entrega confirmada' })
-  @ApiResponse({ status: 400, description: 'Código inválido o el pedido no está en camino' })
-  @ApiResponse({ status: 403, description: 'No autorizado (pedido de otro cliente)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Código inválido o el pedido no está en camino',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No autorizado (pedido de otro cliente)',
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async confirmDelivery(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ConfirmDeliveryDto,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.confirmDelivery(
       id,
       body.code,
@@ -329,7 +358,7 @@ export class OrderController {
   }
 
   @Patch(':id/assign/:deliveryId')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Assign order to delivery' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
@@ -338,53 +367,72 @@ export class OrderController {
   async assignDelivery(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('deliveryId', ParseUUIDPipe) deliveryId: string,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.assignDelivery(id, deliveryId);
     return OrderMapper.toDto(order);
   }
 
   @Patch(':id/location')
-  @Roles(RoleType.DELIVERY)
+  @Auth(RoleType.DELIVERY)
   @ApiOperation({ summary: 'Update delivery location' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Location updated successfully' })
   async updateLocation(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateLocationDto,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.updateLocation(
       id,
       body.lat,
       body.lng,
+      user.user_id,
     );
     return OrderMapper.toDto(order);
   }
 
   @Get('stats/summary')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get order statistics (scopeado por distribuidora)' })
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Get order statistics (scopeado por distribuidora)',
+  })
   @ApiResponse({ status: 200, description: 'Statistics retrieved' })
   async getStats(@CurrentDistributor() distributorId: string | null) {
     return await this.orderService.getOrderStats(distributorId);
   }
 
   @Delete(':id')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cancel order (Admin Force)' })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Order cancelled successfully' })
   async cancelOrder(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     // Cancelación forzada por admin. La identidad sale del token, no de un id
     // ficticio hardcodeado.
-    const order = await this.orderService.cancelOrder(id, user.user_id, 'admin');
+    const order = await this.orderService.cancelOrder(
+      id,
+      user.user_id,
+      'admin',
+    );
     return OrderMapper.toDto(order);
   }
 
   @Patch(':id/cancel')
-  @Roles(RoleType.CUSTOMER, RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(
+    RoleType.CUSTOMER,
+    RoleType.DELIVERY,
+    RoleType.ADMIN,
+    RoleType.SUPER_ADMIN,
+  )
   @Idempotent()
   @ApiOperation({
     summary: 'Cancelar pedido (Cliente/Chofer/Admin)',
@@ -395,7 +443,9 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelOrderDto,
+    @CurrentDistributor() distributorId: string | null,
   ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.cancelOrder(
       id,
       user.user_id,
@@ -406,22 +456,32 @@ export class OrderController {
   }
 
   @Patch(':id/arrived')
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Avisar al cliente que el repartidor llegó',
     description:
       'El chofer la dispara al llegar al domicilio (pedido ON_THE_WAY). Notifica ' +
-      'al cliente por socket, no cambia el estado del pedido.',
+      'al cliente por socket y por push, no cambia el estado del pedido. El ' +
+      'chofer solo puede avisar la llegada de SUS pedidos.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiResponse({ status: 200, description: 'Cliente notificado' })
   @ApiResponse({ status: 400, description: 'El pedido no está en camino' })
-  async notifyArrival(@Param('id', ParseUUIDPipe) id: string) {
-    return this.orderService.notifyDriverArrived(id);
+  @ApiResponse({
+    status: 403,
+    description: 'El pedido no está asignado a este chofer',
+  })
+  async notifyArrival(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    return this.orderService.notifyDriverArrived(id, user.user_id, user.role);
   }
 
   @Patch(':id/confirm-deposit')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Confirmar la seña de una reserva cobrada en efectivo',
     description:
@@ -434,13 +494,18 @@ export class OrderController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
   ) {
-    const order = await this.reservationService.confirmDeposit(id, distributorId);
+    const order = await this.reservationService.confirmDeposit(
+      id,
+      distributorId,
+    );
     return OrderMapper.toDto(order);
   }
 
   @Get('stats/chart')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get sales chart data (Last 7 days, scopeado por distribuidora)' })
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Get sales chart data (Last 7 days, scopeado por distribuidora)',
+  })
   async getChartData(@CurrentDistributor() distributorId: string | null) {
     return await this.orderService.getSalesChartData(distributorId);
   }

@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   InternalServerErrorException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 
 /**
  * Inyecta el `distributor_id` (tenant) efectivo de la request, resuelto por
@@ -22,7 +23,7 @@ import {
  */
 export const CurrentDistributor = createParamDecorator(
   (opts: { required?: boolean } | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
+    const request = ctx.switchToHttp().getRequest<Request>();
 
     // `distributorId` puede no existir en la request si el guard no corrió.
     if (!('distributorId' in request)) {
@@ -31,7 +32,7 @@ export const CurrentDistributor = createParamDecorator(
       );
     }
 
-    const distributorId: string | null = request.distributorId;
+    const distributorId = request.distributorId ?? null;
 
     if (opts?.required && !distributorId) {
       throw new BadRequestException(

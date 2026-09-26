@@ -11,13 +11,17 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
-  ApiResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { IncidentService } from './incident.service';
+import { IncidentMapper } from './incident.mapper';
+import { IncidentResponseDto } from './dto/incident-response.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -30,47 +34,67 @@ export class IncidentController {
   constructor(private readonly incidentService: IncidentService) {}
 
   @Post()
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Reportar una incidencia de entrega (chofer durante el reparto)',
   })
-  @ApiResponse({ status: 201, description: 'Incidencia registrada' })
-  @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
-  create(
+  @ApiCreatedResponse({ type: IncidentResponseDto })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  async create(
     @Body() dto: CreateIncidentDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.incidentService.create(dto, user.user_id);
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<IncidentResponseDto> {
+    return IncidentMapper.toDto(
+      await this.incidentService.create(
+        dto,
+        user.user_id,
+        distributorId,
+        user.role === RoleType.DELIVERY,
+      ),
+    );
   }
 
   @Get()
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Listar incidencias (scopeado por distribuidora)' })
-  findAll(@CurrentDistributor() distributorId: string | null) {
-    return this.incidentService.findAll(distributorId);
+  @ApiOkResponse({ type: IncidentResponseDto, isArray: true })
+  async findAll(
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<IncidentResponseDto[]> {
+    const incidents = await this.incidentService.findAll(distributorId);
+    return incidents.map((i) => IncidentMapper.toDto(i));
   }
 
   @Get('order/:orderId')
-  @Roles(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Incidencias de un pedido' })
   @ApiParam({ name: 'orderId', description: 'Order UUID' })
-  findByOrder(
+  @ApiOkResponse({ type: IncidentResponseDto, isArray: true })
+  async findByOrder(
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @CurrentDistributor() distributorId: string | null,
-  ) {
-    return this.incidentService.findByOrder(orderId, distributorId);
+  ): Promise<IncidentResponseDto[]> {
+    const incidents = await this.incidentService.findByOrder(
+      orderId,
+      distributorId,
+    );
+    return incidents.map((i) => IncidentMapper.toDto(i));
   }
 
   @Patch(':id/resolve')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Resolver una incidencia' })
   @ApiParam({ name: 'id', description: 'Incident UUID' })
-  @ApiResponse({ status: 404, description: 'Incidencia no encontrada' })
-  resolve(
+  @ApiOkResponse({ type: IncidentResponseDto })
+  @ApiNotFoundResponse({ description: 'Incidencia no encontrada' })
+  async resolve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResolveIncidentDto,
     @CurrentDistributor({ required: true }) distributorId: string,
-  ) {
-    return this.incidentService.resolve(id, dto, distributorId);
+  ): Promise<IncidentResponseDto> {
+    return IncidentMapper.toDto(
+      await this.incidentService.resolve(id, dto, distributorId),
+    );
   }
 }

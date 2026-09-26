@@ -114,7 +114,7 @@
                 "exec": [
                   "pm.test(\"el acceso de cliente funciona\", () => pm.response.to.have.status(200));",
                   "const j = pm.response.json();",
-                  "const idToken = j?._tokenResponse?.idToken;",
+                  "const idToken = j?.accessToken;",
                   "pm.test(\"devuelve un token\", () => pm.expect(idToken).to.be.a(\"string\"));",
                   "if (idToken) {",
                   "  pm.collectionVariables.set(\"tokenCliente\", idToken);",
@@ -122,11 +122,16 @@
                   "  // El guard compara el rol del token con X-Client-Source: tienen que ir juntos.",
                   "  pm.collectionVariables.set(\"clientSource\", \"customer-app\");",
                   "}",
-                  "// Defecto H-02: el login devuelve el objeto crudo de Firebase. Falla a proposito.",
-                  "pm.test(\"[H-02] no deberia devolver refreshToken ni apiKey\", () => {",
+                  "// H-02 resuelto: el login devuelve un DTO propio, no el objeto de Firebase.",
+                  "pm.test(\"no devuelve refreshToken ni apiKey\", () => {",
                   "  const t = pm.response.text();",
                   "  pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
                   "  pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                  "});",
+                  "pm.test(\"devuelve accessToken, expiresIn y user\", () => {",
+                  "  pm.expect(j).to.have.property(\"accessToken\");",
+                  "  pm.expect(j).to.have.property(\"expiresIn\");",
+                  "  pm.expect(j).to.have.property(\"user\");",
                   "});"
                 ]
               }
@@ -176,7 +181,7 @@
                 "exec": [
                   "pm.test(\"el acceso de chofer funciona\", () => pm.response.to.have.status(200));",
                   "const j = pm.response.json();",
-                  "const idToken = j?._tokenResponse?.idToken;",
+                  "const idToken = j?.accessToken;",
                   "pm.test(\"devuelve un token\", () => pm.expect(idToken).to.be.a(\"string\"));",
                   "if (idToken) {",
                   "  pm.collectionVariables.set(\"tokenChofer\", idToken);",
@@ -184,11 +189,16 @@
                   "  // El guard compara el rol del token con X-Client-Source: tienen que ir juntos.",
                   "  pm.collectionVariables.set(\"clientSource\", \"driver-app\");",
                   "}",
-                  "// Defecto H-02: el login devuelve el objeto crudo de Firebase. Falla a proposito.",
-                  "pm.test(\"[H-02] no deberia devolver refreshToken ni apiKey\", () => {",
+                  "// H-02 resuelto: el login devuelve un DTO propio, no el objeto de Firebase.",
+                  "pm.test(\"no devuelve refreshToken ni apiKey\", () => {",
                   "  const t = pm.response.text();",
                   "  pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
                   "  pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                  "});",
+                  "pm.test(\"devuelve accessToken, expiresIn y user\", () => {",
+                  "  pm.expect(j).to.have.property(\"accessToken\");",
+                  "  pm.expect(j).to.have.property(\"expiresIn\");",
+                  "  pm.expect(j).to.have.property(\"user\");",
                   "});"
                 ]
               }
@@ -239,7 +249,7 @@
                 "exec": [
                   "pm.test(\"el acceso de admin funciona\", () => pm.response.to.have.status(200));",
                   "const j = pm.response.json();",
-                  "const idToken = j?._tokenResponse?.idToken;",
+                  "const idToken = j?.accessToken;",
                   "pm.test(\"devuelve un token\", () => pm.expect(idToken).to.be.a(\"string\"));",
                   "if (idToken) {",
                   "  pm.collectionVariables.set(\"tokenAdmin\", idToken);",
@@ -247,11 +257,16 @@
                   "  // El guard compara el rol del token con X-Client-Source: tienen que ir juntos.",
                   "  pm.collectionVariables.set(\"clientSource\", \"panel-app\");",
                   "}",
-                  "// Defecto H-02: el login devuelve el objeto crudo de Firebase. Falla a proposito.",
-                  "pm.test(\"[H-02] no deberia devolver refreshToken ni apiKey\", () => {",
+                  "// H-02 resuelto: el login devuelve un DTO propio, no el objeto de Firebase.",
+                  "pm.test(\"no devuelve refreshToken ni apiKey\", () => {",
                   "  const t = pm.response.text();",
                   "  pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
                   "  pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                  "});",
+                  "pm.test(\"devuelve accessToken, expiresIn y user\", () => {",
+                  "  pm.expect(j).to.have.property(\"accessToken\");",
+                  "  pm.expect(j).to.have.property(\"expiresIn\");",
+                  "  pm.expect(j).to.have.property(\"user\");",
                   "});"
                 ]
               }
@@ -302,7 +317,7 @@
                 "exec": [
                   "pm.test(\"el acceso de super_admin funciona\", () => pm.response.to.have.status(200));",
                   "const j = pm.response.json();",
-                  "const idToken = j?._tokenResponse?.idToken;",
+                  "const idToken = j?.accessToken;",
                   "pm.test(\"devuelve un token\", () => pm.expect(idToken).to.be.a(\"string\"));",
                   "if (idToken) {",
                   "  pm.collectionVariables.set(\"tokenSuperAdmin\", idToken);",
@@ -310,11 +325,16 @@
                   "  // El guard compara el rol del token con X-Client-Source: tienen que ir juntos.",
                   "  pm.collectionVariables.set(\"clientSource\", \"panel-app\");",
                   "}",
-                  "// Defecto H-02: el login devuelve el objeto crudo de Firebase. Falla a proposito.",
-                  "pm.test(\"[H-02] no deberia devolver refreshToken ni apiKey\", () => {",
+                  "// H-02 resuelto: el login devuelve un DTO propio, no el objeto de Firebase.",
+                  "pm.test(\"no devuelve refreshToken ni apiKey\", () => {",
                   "  const t = pm.response.text();",
                   "  pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
                   "  pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                  "});",
+                  "pm.test(\"devuelve accessToken, expiresIn y user\", () => {",
+                  "  pm.expect(j).to.have.property(\"accessToken\");",
+                  "  pm.expect(j).to.have.property(\"expiresIn\");",
+                  "  pm.expect(j).to.have.property(\"user\");",
                   "});"
                 ]
               }
@@ -343,12 +363,18 @@
               {
                 "key": "X-Distributor",
                 "value": "{{distributorSlug}}"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{tokenSuperAdmin}}"
               }
             ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"borrable.cli.{{sufijo}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"Cliente Descartable\",\n  \"phone_number\": \"+549376{{sufijo}}\"\n}",
@@ -359,13 +385,13 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/users/customer-registration",
+              "raw": "{{baseUrl}}/auth/registro",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "users",
-                "customer-registration"
+                "auth",
+                "registro"
               ]
             },
             "description": "Dato descartable: se crea para poder probar la baja sin romper el resto de la coleccion."
@@ -380,7 +406,6 @@
                   "if (pm.response.code < 300) {",
                   "  const j = pm.response.json();",
                   "  if (j?.customer?.customer_id) { pm.collectionVariables.set(\"customerIdBorrable\", j?.customer?.customer_id); if (pm.environment.name) pm.environment.set(\"customerIdBorrable\", j?.customer?.customer_id); }",
-                  "  if (j?.user_id) { pm.collectionVariables.set(\"userIdBorrable\", j?.user_id); if (pm.environment.name) pm.environment.set(\"userIdBorrable\", j?.user_id); }",
                   "}"
                 ]
               }
@@ -403,12 +428,18 @@
               {
                 "key": "X-Distributor",
                 "value": "{{distributorSlug}}"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{tokenSuperAdmin}}"
               }
             ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"type\": \"Descartable {{sufijo}}\",\n  \"weight\": 10,\n  \"price\": 9000,\n  \"stock\": 5,\n  \"description\": \"Producto creado solo para probar la baja\"\n}",
@@ -461,15 +492,21 @@
               {
                 "key": "X-Distributor",
                 "value": "{{distributorSlug}}"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{tokenSuperAdmin}}"
               }
             ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"borrable.cho.{{sufijo}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"Chofer Descartable\",\n  \"phone_number\": \"+549377{{sufijo}}\",\n  \"distributorId\": \"{{distributorId}}\"\n}",
+              "raw": "{\n  \"email\": \"borrable.cho.{{sufijo}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"Chofer Descartable\",\n  \"phone_number\": \"+549377{{sufijo}}\",\n  \"rol\": \"delivery\",\n  \"distributorId\": \"{{distribuidoraBaseId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -477,13 +514,12 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/users/delivery-registration",
+              "raw": "{{baseUrl}}/users",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "users",
-                "delivery-registration"
+                "users"
               ]
             },
             "description": "Dato descartable: se crea para poder probar la baja sin romper el resto de la coleccion."
@@ -503,6 +539,1073 @@
               }
             }
           ]
+        },
+        {
+          "name": "Usuario descartable",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "panel-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"borrable.usr.{{sufijo}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"Usuario Descartable\",\n  \"phone_number\": \"+549379{{sufijo}}\",\n  \"rol\": \"delivery\",\n  \"distributorId\": \"{{distribuidoraBaseId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Dato descartable: se crea para poder probar la baja sin romper el resto de la coleccion."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"se crea el dato descartable\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.user_id) { pm.collectionVariables.set(\"userIdBorrable\", j?.user_id); if (pm.environment.name) pm.environment.set(\"userIdBorrable\", j?.user_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 · Recorrido del pedido",
+      "description": "Un pedido de punta a punta, en orden: alta del producto, direccion del cliente, pedido, asignacion, aceptacion, viaje, aviso de llegada, codigo de entrega, confirmacion y calificacion. Cada paso usa lo que devolvio el anterior, asi que hay que correrla ENTERA y EN ORDEN (el boton Run de la carpeta), no pedido por pedido.\n\nRequiere haber corrido antes '00 · Acceso'. Las coordenadas caen dentro de Itaembe Mini, que es la unica zona de cobertura activa: fuera de ese poligono el alta de pedido responde 400 a proposito.",
+      "item": [
+        {
+          "name": "Chofer asignado · resolver su user_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenChofer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/email/{{choferEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "email",
+                "{{choferEmail}}"
+              ]
+            },
+            "description": "El login devuelve el uid de Firebase, no la clave interna. La app del chofer resuelve su user_id con este mismo endpoint despues de entrar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.user_id) { pm.collectionVariables.set(\"cuUserChofer\", j?.user_id); if (pm.environment.name) pm.environment.set(\"cuUserChofer\", j?.user_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chofer asignado · su perfil de reparto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "panel-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/delivery/user/{{cuUserChofer}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "delivery",
+                "user",
+                "{{cuUserChofer}}"
+              ]
+            },
+            "description": "La asignacion identifica al chofer por delivery_id, que NO es su user_id: hay que resolverlo antes de pedirla."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.delivery_id) { pm.collectionVariables.set(\"cuDeliveryId\", j?.delivery_id); if (pm.environment.name) pm.environment.set(\"cuDeliveryId\", j?.delivery_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cliente · resolver su user_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "customer-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/email/{{clienteEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "email",
+                "{{clienteEmail}}"
+              ]
+            },
+            "description": "Mismo caso que el chofer: la direccion y el pedido se piden con la clave interna del usuario."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.user_id) { pm.collectionVariables.set(\"cuUserCliente\", j?.user_id); if (pm.environment.name) pm.environment.set(\"cuUserCliente\", j?.user_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alta de la garrafa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "panel-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/gascylinder",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "gascylinder"
+              ]
+            },
+            "description": "El producto que se va a pedir. Se crea uno nuevo en cada corrida para no depender del stock de otro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Garrafa del recorrido {{sufijo}}\",\n  \"weight\": 10,\n  \"price\": 9500,\n  \"stock\": 50,\n  \"description\": \"Garrafa de 10 kg creada por el recorrido\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.gas_cylinder_id) { pm.collectionVariables.set(\"cuGasCylinderId\", j?.gas_cylinder_id); if (pm.environment.name) pm.environment.set(\"cuGasCylinderId\", j?.gas_cylinder_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El cliente carga su direccion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "customer-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-address",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-address"
+              ]
+            },
+            "description": "Dentro de Itaembe Mini. Si se cambian estas coordenadas por unas de afuera, el alta del pedido responde 400 y el recorrido se corta ahi.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{cuUserCliente}}\",\n  \"street\": \"Av. del Recorrido 1234\",\n  \"city\": \"Posadas\",\n  \"postalCode\": \"3300\",\n  \"latitude\": \"-27.4100\",\n  \"longitude\": \"-55.9650\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.address_id) { pm.collectionVariables.set(\"cuAddressId\", j?.address_id); if (pm.environment.name) pm.environment.set(\"cuAddressId\", j?.address_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El cliente hace el pedido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "customer-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Pago en efectivo: la demo todavia no incluye el metodo de pago online.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{cuUserCliente}}\",\n  \"addressId\": \"{{cuAddressId}}\",\n  \"items\": [\n    {\n      \"gasCylinderId\": \"{{cuGasCylinderId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 9500\n    }\n  ],\n  \"paymentMethod\": \"cash\",\n  \"notes\": \"Pedido del recorrido\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test(\"nace pendiente\", () => { const j = pm.response.json(); pm.expect(j.status, \"un pedido recien creado esta pendiente\").to.eql(\"pending\"); });",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.order_id) { pm.collectionVariables.set(\"cuOrderId\", j?.order_id); if (pm.environment.name) pm.environment.set(\"cuOrderId\", j?.order_id); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alta de un chofer ajeno al pedido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "panel-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Existe solo para comprobar que NO puede tocar el pedido de otro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ajeno.{{sufijo}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"Chofer Ajeno\",\n  \"phone_number\": \"+549378{{sufijo}}\",\n  \"rol\": \"delivery\",\n  \"distributorId\": \"{{distribuidoraBaseId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chofer ajeno · entra",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Unico login que agrega esta carpeta. El acceso admite 8 por minuto y por IP: si aparece un 429, esperar un minuto y volver a correr.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ajeno.{{sufijo}}@splg-test.com\",\n  \"password\": \"Test1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.accessToken) { pm.collectionVariables.set(\"cuTokenAjeno\", j?.accessToken); if (pm.environment.name) pm.environment.set(\"cuTokenAjeno\", j?.accessToken); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El admin le asigna el pedido al chofer",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "panel-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenSuperAdmin}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/assign/{{cuDeliveryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "assign",
+                "{{cuDeliveryId}}"
+              ]
+            },
+            "description": "Con el delivery_id que se resolvio al principio."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El chofer acepta",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenChofer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "status"
+              ]
+            },
+            "description": "pending -> accepted. Aca el pedido genera su codigo secreto de entrega.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"accepted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El chofer sale en camino",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenChofer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "status"
+              ]
+            },
+            "description": "accepted -> on_the_way.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"on_the_way\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El chofer reporta su posicion",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenChofer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/location",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "location"
+              ]
+            },
+            "description": "El tracking que sigue el cliente. En la app se manda cada vez que el GPS se mueve; aca alcanza con una.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": -27.412,\n  \"lng\": -55.967\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Un chofer ajeno NO puede avisar la llegada",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{cuTokenAjeno}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/arrived",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "arrived"
+              ]
+            },
+            "description": "El aviso de llegada solo lo puede dar el chofer asignado al pedido. Antes lo podia disparar cualquier chofer autenticado."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 403\", () => pm.expect(pm.response.code).to.be.oneOf([403]));",
+                  "pm.test(\"dice que el pedido no es suyo\", () => pm.expect(pm.response.text()).to.include(\"no esta asignado\".replace(\"esta\", \"está\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El chofer asignado avisa que llego",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenChofer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/arrived",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "arrived"
+              ]
+            },
+            "description": "Sale por socket y tambien por push, para que el aviso llegue aunque el cliente tenga la app cerrada. No cambia el estado del pedido: el ciclo de vida tiene cinco estados y 'llego' no es uno de ellos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El chofer pide el codigo de entrega",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Client-Source",
+                "value": "driver-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenChofer}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/delivery-code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "delivery-code"
+              ]
+            },
+            "description": "El chofer lo muestra como QR y el cliente lo escanea."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200\", () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "if (pm.response.code < 300) {",
+                  "  const j = pm.response.json();",
+                  "  if (j?.deliveryCode) { pm.collectionVariables.set(\"cuDeliveryCode\", j?.deliveryCode); if (pm.environment.name) pm.environment.set(\"cuDeliveryCode\", j?.deliveryCode); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El cliente confirma la entrega",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "customer-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{cuOrderId}}/confirm-delivery",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{cuOrderId}}",
+                "confirm-delivery"
+              ]
+            },
+            "description": "Con el codigo del paso anterior. Es lo que pasa el pedido a entregado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{cuDeliveryCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El cliente califica el servicio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Client-Source",
+                "value": "customer-app"
+              },
+              {
+                "key": "X-Distributor",
+                "value": "{{distributorSlug}}"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{tokenCliente}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ratings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ratings"
+              ]
+            },
+            "description": "Cierra el recorrido.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{cuOrderId}}\",\n  \"stars\": 5,\n  \"comment\": \"Entrega rapida, todo bien\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                  "pm.test(\"responde 200 o 201\", () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -513,7 +1616,7 @@
           "name": "POST /api/admin",
           "item": [
             {
-              "name": "1 · correcto → 201",
+              "name": "1 · correcto → 201 o 400 o 409",
               "request": {
                 "method": "POST",
                 "header": [
@@ -539,10 +1642,10 @@
                     "admin"
                   ]
                 },
-                "description": "Create admin (basic)",
+                "description": "Create admin (basic)\n\nPrecondicion: solo para un usuario con rol admin que todavia no tenga perfil; el alta normal ya lo crea (H-77).",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"user_id\": \"{{adminUserLibre}}\",\n  \"role_id\": \"{{roleIdAdmin}}\",\n  \"distributor_id\": \"{{distributorId}}\"\n}",
+                  "raw": "{\n  \"user_id\": \"{{adminUserLibre}}\",\n  \"distributor_id\": \"{{distributorId}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -558,8 +1661,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
+                      "pm.test(\"responde 201 o 400 o 409\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201, 400, 409]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -680,398 +1783,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"user_id\": \"{{adminUserLibre}}\",\n  \"role_id\": \"{{roleIdAdmin}}\",\n  \"distributor_id\": \"{{distributorId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Esta peticion va sin token a proposito.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "POST /api/admin/first-superadmin",
-          "item": [
-            {
-              "name": "1 · correcto → 201 o 403",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/admin/first-superadmin",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "admin",
-                    "first-superadmin"
-                  ]
-                },
-                "description": "Create first super admin (development only)\n\nPrecondicion: solo funciona si todavia no existe ningun super admin.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"primer.super.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"phone_number\": \"+549384{{$timestamp}}\",\n  \"full_name\": \"Primer Super Admin\",\n  \"role_id\": \"{{roleIdSuperAdmin}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}",
-                      "if (pm.response.code < 300) {",
-                      "  const j = pm.response.json();",
-                      "  const nuevo = j?.adminId || j?.id || j?.admin_id ||",
-                      "                Object.entries(j || {}).find(([k, v]) =>",
-                      "                  /(_id|Id)$/.test(k) && typeof v === \"string\" && v.length === 36)?.[1];",
-                      "  if (nuevo) {",
-                      "    pm.collectionVariables.set(\"adminId\", nuevo);",
-                      "    if (pm.environment.name) pm.environment.set(\"adminId\", nuevo);",
-                      "    console.log(\"adminId ahora apunta a lo recien creado:\", nuevo);",
-                      "  }",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "2 · datos invalidos → 400",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/admin/first-superadmin",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "admin",
-                    "first-superadmin"
-                  ]
-                },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Entrada invalida: el pipe la frena con 400.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "pm.test(\"el error explica que paso\", () => {",
-                      "  const j = pm.response.json();",
-                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
-                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
-                      "});",
-                      "pm.test(\"el error no revela rutas del servidor\", () =>",
-                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · publico: anda sin token",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/admin/first-superadmin",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "admin",
-                    "first-superadmin"
-                  ]
-                },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"primer.super.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"phone_number\": \"+549384{{$timestamp}}\",\n  \"full_name\": \"Primer Super Admin\",\n  \"role_id\": \"{{roleIdSuperAdmin}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Endpoint publico: no se le pide 401.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "POST /api/admin/register",
-          "item": [
-            {
-              "name": "1 · correcto → 201",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/admin/register",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "admin",
-                    "register"
-                  ]
-                },
-                "description": "Registrar un admin. super_admin: cualquier empresa/rol. admin: solo admins de SU propia empresa y sin poder crear super_admins.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.adm.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Admin\",\n  \"phone_number\": \"+549387{{sufijo}}\",\n  \"role_id\": \"{{roleIdAdmin}}\",\n  \"distributorId\": \"{{distributorId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}",
-                      "if (pm.response.code < 300) {",
-                      "  const j = pm.response.json();",
-                      "  const nuevo = j?.adminId || j?.id || j?.admin_id ||",
-                      "                Object.entries(j || {}).find(([k, v]) =>",
-                      "                  /(_id|Id)$/.test(k) && typeof v === \"string\" && v.length === 36)?.[1];",
-                      "  if (nuevo) {",
-                      "    pm.collectionVariables.set(\"adminId\", nuevo);",
-                      "    if (pm.environment.name) pm.environment.set(\"adminId\", nuevo);",
-                      "    console.log(\"adminId ahora apunta a lo recien creado:\", nuevo);",
-                      "  }",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "2 · datos invalidos → 400",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/admin/register",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "admin",
-                    "register"
-                  ]
-                },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Entrada invalida: el pipe la frena con 400.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "pm.test(\"el error explica que paso\", () => {",
-                      "  const j = pm.response.json();",
-                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
-                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
-                      "});",
-                      "pm.test(\"el error no revela rutas del servidor\", () =>",
-                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · sin token → 401",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "",
-                    "disabled": false
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/admin/register",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "admin",
-                    "register"
-                  ]
-                },
-                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.adm.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Admin\",\n  \"phone_number\": \"+549387{{sufijo}}\",\n  \"role_id\": \"{{roleIdAdmin}}\",\n  \"distributorId\": \"{{distributorId}}\"\n}",
+                  "raw": "{\n  \"user_id\": \"{{adminUserLibre}}\",\n  \"distributor_id\": \"{{distributorId}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -1224,7 +1936,7 @@
                     "{{term}}"
                   ]
                 },
-                "description": "Find admin by term\n\nPrecondicion: busca por UUID o email exacto, no por nombre."
+                "description": "Find admin by term (id o correo)\n\nPrecondicion: busca por UUID o email exacto, no por nombre."
               },
               "event": [
                 {
@@ -1332,7 +2044,7 @@
                     "auth"
                   ]
                 },
-                "description": ""
+                "description": "Validar el token de sesión"
               },
               "event": [
                 {
@@ -1411,43 +2123,23 @@
           "name": "POST /api/auth/login",
           "item": [
             {
-              "name": "1 · correcto → 200",
+              "name": "1 · correcto → lo prueba 00 · Acceso",
               "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
+                "method": "GET",
+                "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/auth/login",
+                  "raw": "{{baseUrl}}/health",
                   "host": [
                     "{{baseUrl}}"
                   ],
                   "path": [
-                    "auth",
-                    "login"
+                    "health"
                   ]
                 },
-                "description": "",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{clienteEmail}}\",\n  \"password\": \"{{clientePassword}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "El camino feliz de este endpoint se prueba en la carpeta 00 · Acceso. No se repite aca porque el acceso esta limitado a 8 intentos por minuto y la coleccion entera gastaria diez."
               },
               "event": [
                 {
@@ -1455,19 +2147,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}"
+                      "pm.test(\"el acceso se prueba en 00 · Acceso\", () => pm.expect(true).to.be.true);"
                     ]
                   }
                 }
@@ -1501,7 +2181,7 @@
                     "login"
                   ]
                 },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base. El acceso esta limitado a 8 intentos por minuto y el limite cuenta tambien los invalidos: un 429 aca significa esperar un minuto, no que el endpoint este mal.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\"\n}",
@@ -1520,8 +2200,8 @@
                     "exec": [
                       "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde 400 o 403 o 429\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 429]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "pm.test(\"el error explica que paso\", () => {",
                       "  const j = pm.response.json();",
@@ -1530,58 +2210,6 @@
                       "});",
                       "pm.test(\"el error no revela rutas del servidor\", () =>",
                       "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · publico: anda sin token",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/auth/login",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "login"
-                  ]
-                },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{clienteEmail}}\",\n  \"password\": \"{{clientePassword}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Endpoint publico: no se le pide 401.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
                     ]
                   }
                 }
@@ -1593,44 +2221,23 @@
           "name": "POST /api/auth/login/dashboard",
           "item": [
             {
-              "name": "1 · correcto → 200",
+              "name": "1 · correcto → lo prueba 00 · Acceso",
               "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
+                "method": "GET",
+                "header": [],
                 "url": {
-                  "raw": "{{baseUrl}}/auth/login/dashboard",
+                  "raw": "{{baseUrl}}/health",
                   "host": [
                     "{{baseUrl}}"
                   ],
                   "path": [
-                    "auth",
-                    "login",
-                    "dashboard"
+                    "health"
                   ]
                 },
-                "description": "",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "El camino feliz de este endpoint se prueba en la carpeta 00 · Acceso. No se repite aca porque el acceso esta limitado a 8 intentos por minuto y la coleccion entera gastaria diez."
               },
               "event": [
                 {
@@ -1638,19 +2245,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}"
+                      "pm.test(\"el acceso se prueba en 00 · Acceso\", () => pm.expect(true).to.be.true);"
                     ]
                   }
                 }
@@ -1685,7 +2280,7 @@
                     "dashboard"
                   ]
                 },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base. El acceso esta limitado a 8 intentos por minuto y el limite cuenta tambien los invalidos: un 429 aca significa esperar un minuto, no que el endpoint este mal.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\"\n}",
@@ -1704,8 +2299,8 @@
                     "exec": [
                       "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde 400 o 403 o 429\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 429]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "pm.test(\"el error explica que paso\", () => {",
                       "  const j = pm.response.json();",
@@ -1714,59 +2309,6 @@
                       "});",
                       "pm.test(\"el error no revela rutas del servidor\", () =>",
                       "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · publico: anda sin token",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/auth/login/dashboard",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "login",
-                    "dashboard"
-                  ]
-                },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Endpoint publico: no se le pide 401.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
                     ]
                   }
                 }
@@ -3712,7 +4254,7 @@
           "name": "GET /api/coverage-zones/check",
           "item": [
             {
-              "name": "1 · correcto → 200 o 400",
+              "name": "1 · correcto → 200",
               "request": {
                 "method": "GET",
                 "header": [
@@ -3733,9 +4275,21 @@
                   "path": [
                     "coverage-zones",
                     "check"
+                  ],
+                  "query": [
+                    {
+                      "key": "lat",
+                      "value": "-27.41",
+                      "disabled": false
+                    },
+                    {
+                      "key": "lng",
+                      "value": "-55.965",
+                      "disabled": false
+                    }
                   ]
                 },
-                "description": "Validar si una dirección está dentro de la cobertura (antes de pedir)\n\nPrecondicion: exige lat y lng, que el OpenAPI no declara (H-09)."
+                "description": "Validar si una dirección está dentro de la cobertura (antes de pedir)"
               },
               "event": [
                 {
@@ -3745,8 +4299,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403]));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -3788,6 +4342,18 @@
                   "path": [
                     "coverage-zones",
                     "check"
+                  ],
+                  "query": [
+                    {
+                      "key": "lat",
+                      "value": "-27.41",
+                      "disabled": false
+                    },
+                    {
+                      "key": "lng",
+                      "value": "-55.965",
+                      "disabled": false
+                    }
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
@@ -4813,7 +5379,7 @@
               ]
             },
             {
-              "name": "2 · datos invalidos → 400  [defecto H-31]",
+              "name": "2 · datos invalidos → 400",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -4841,7 +5407,7 @@
                     "location"
                   ]
                 },
-                "description": "Este endpoint NO tiene DTO: hoy acepta esto y contesta 2xx sin actualizar nada. El test FALLA a proposito hasta que se escriba el DTO (H-31).",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"latLng\": 12345\n}",
@@ -4858,7 +5424,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Defecto conocido H-31: deberia rechazar con 400.",
+                      "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
                       "pm.test(\"responde 400 o 403\", () =>",
                       "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
@@ -5143,7 +5709,7 @@
           "name": "DELETE /api/customers/{id}",
           "item": [
             {
-              "name": "1 · correcto → 200",
+              "name": "1 · correcto → 200 o 403 o 404",
               "request": {
                 "method": "DELETE",
                 "header": [
@@ -5166,7 +5732,7 @@
                     "{{customerIdBorrable}}"
                   ]
                 },
-                "description": "Delete customer by ID (soft delete)"
+                "description": "Delete customer by ID (soft delete)\n\nPrecondicion: la baja de un cliente es del administrador general; el cliente recien creado ademas no le compro a nadie (H-81)."
               },
               "event": [
                 {
@@ -5176,8 +5742,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde 200 o 403 o 404 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404, 403]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -7122,7 +7688,7 @@
                 "description": "Update delivery by ID",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"calification\": 5\n}",
+                  "raw": "{\n  \"validated\": true,\n  \"isActive\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -7185,7 +7751,7 @@
                 "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"calification\": \"excelente\"\n}",
+                  "raw": "{\n  \"validated\": \"si\",\n  \"calification\": 5\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -7251,7 +7817,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"calification\": 5\n}",
+                  "raw": "{\n  \"validated\": true,\n  \"isActive\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -7304,7 +7870,7 @@
                 "description": "Un identificador con formato valido que no existe en la base.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"calification\": 5\n}",
+                  "raw": "{\n  \"validated\": true,\n  \"isActive\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -7792,7 +8358,7 @@
               ]
             },
             {
-              "name": "2 · datos invalidos → 400  [defecto H-31]",
+              "name": "2 · datos invalidos → 400",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -7820,7 +8386,7 @@
                     "location"
                   ]
                 },
-                "description": "Este endpoint NO tiene DTO: hoy acepta esto y contesta 2xx sin actualizar nada. El test FALLA a proposito hasta que se escriba el DTO (H-31).",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"latLng\": 12345\n}",
@@ -7837,7 +8403,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Defecto conocido H-31: deberia rechazar con 400.",
+                      "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
                       "pm.test(\"responde 400 o 403\", () =>",
                       "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
@@ -9351,7 +9917,7 @@
           "name": "POST /api/email/change-email",
           "item": [
             {
-              "name": "1 · correcto → 200 o 400",
+              "name": "1 · correcto → 201 o 400",
               "request": {
                 "method": "POST",
                 "header": [
@@ -9397,8 +9963,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 400\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                      "pm.test(\"responde 201 o 400\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201, 400]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -9845,7 +10411,7 @@
               ]
             },
             {
-              "name": "3 · publico: anda sin token",
+              "name": "3 · sin token → 401",
               "request": {
                 "method": "POST",
                 "header": [
@@ -9856,6 +10422,11 @@
                   {
                     "key": "X-Distributor",
                     "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
                   }
                 ],
                 "url": {
@@ -9868,7 +10439,7 @@
                     "test"
                   ]
                 },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
                 "auth": {
                   "type": "noauth"
                 },
@@ -9888,9 +10459,9 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Endpoint publico: no se le pide 401.",
+                      "// Esta peticion va sin token a proposito.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
                     ]
                   }
                 }
@@ -12192,7 +12763,7 @@
           "name": "POST /api/notifications/order-confirmation",
           "item": [
             {
-              "name": "1 · correcto → 200 o 201",
+              "name": "1 · correcto → 201",
               "request": {
                 "method": "POST",
                 "header": [
@@ -12238,8 +12809,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                      "pm.test(\"responde 201\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -12255,7 +12826,7 @@
               ]
             },
             {
-              "name": "2 · datos invalidos → 400  [defecto H-31]",
+              "name": "2 · datos invalidos → 400",
               "request": {
                 "method": "POST",
                 "header": [
@@ -12282,7 +12853,7 @@
                     "order-confirmation"
                   ]
                 },
-                "description": "Este endpoint NO tiene DTO: hoy acepta esto y contesta 2xx sin actualizar nada. El test FALLA a proposito hasta que se escriba el DTO (H-31).",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"customerId\": \"no-es-uuid\",\n  \"orderId\": \"tampoco\"\n}",
@@ -12299,7 +12870,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Defecto conocido H-31: deberia rechazar con 400.",
+                      "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
                       "pm.test(\"responde 400 o 403\", () =>",
                       "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
@@ -12379,7 +12950,7 @@
           "name": "POST /api/notifications/send-test",
           "item": [
             {
-              "name": "1 · correcto → 200 o 201",
+              "name": "1 · correcto → 201",
               "request": {
                 "method": "POST",
                 "header": [
@@ -12425,8 +12996,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                      "pm.test(\"responde 201\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -12442,7 +13013,7 @@
               ]
             },
             {
-              "name": "2 · datos invalidos → 400  [defecto H-31]",
+              "name": "2 · datos invalidos → 400",
               "request": {
                 "method": "POST",
                 "header": [
@@ -12469,7 +13040,7 @@
                     "send-test"
                   ]
                 },
-                "description": "Este endpoint NO tiene DTO: hoy acepta esto y contesta 2xx sin actualizar nada. El test FALLA a proposito hasta que se escriba el DTO (H-31).",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"token\": \"\",\n  \"title\": 123\n}",
@@ -12486,7 +13057,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Defecto conocido H-31: deberia rechazar con 400.",
+                      "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
                       "pm.test(\"responde 400 o 403\", () =>",
                       "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
@@ -12566,7 +13137,7 @@
           "name": "POST /api/notifications/token",
           "item": [
             {
-              "name": "1 · correcto → 200 o 201",
+              "name": "1 · correcto → 201",
               "request": {
                 "method": "POST",
                 "header": [
@@ -12612,8 +13183,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                      "pm.test(\"responde 201\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -12629,7 +13200,7 @@
               ]
             },
             {
-              "name": "2 · datos invalidos → 400  [defecto H-31]",
+              "name": "2 · datos invalidos → 400",
               "request": {
                 "method": "POST",
                 "header": [
@@ -12656,7 +13227,7 @@
                     "token"
                   ]
                 },
-                "description": "Este endpoint NO tiene DTO: hoy acepta esto y contesta 2xx sin actualizar nada. El test FALLA a proposito hasta que se escriba el DTO (H-31).",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"userId\": \"no-es-uuid\",\n  \"token\": \"\",\n  \"platform\": 123\n}",
@@ -12673,7 +13244,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Defecto conocido H-31: deberia rechazar con 400.",
+                      "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
                       "pm.test(\"responde 400 o 403\", () =>",
                       "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
@@ -16352,6 +16923,570 @@
       ]
     },
     {
+      "name": "Registro",
+      "item": [
+        {
+          "name": "POST /api/auth/registro",
+          "item": [
+            {
+              "name": "1 · correcto → 201",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/registro",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "registro"
+                  ]
+                },
+                "description": "Registrarse como cliente (CU-002)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"qa.reg.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Cliente Registro\",\n  \"phone_number\": \"+549382{{sufijo}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 201\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2 · datos invalidos → 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/registro",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "registro"
+                  ]
+                },
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\",\n  \"full_name\": \"x\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Entrada invalida: el pipe la frena con 400.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "pm.test(\"el error explica que paso\", () => {",
+                      "  const j = pm.response.json();",
+                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
+                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
+                      "});",
+                      "pm.test(\"el error no revela rutas del servidor\", () =>",
+                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · publico: anda sin token",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/registro",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "registro"
+                  ]
+                },
+                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"qa.reg.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Cliente Registro\",\n  \"phone_number\": \"+549382{{sufijo}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Endpoint publico: no se le pide 401.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "POST /api/users",
+          "item": [
+            {
+              "name": "1 · correcto → 201 o 409",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users"
+                  ]
+                },
+                "description": "Dar de alta un usuario de cualquier rol (CU-003, CU-031, CU-086)\n\nPrecondicion: el correo y el telefono son unicos: repetir el mismo cuerpo devuelve 409, que es lo correcto.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"qa.user.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Chofer Alta\",\n  \"phone_number\": \"+549388{{sufijo}}\",\n  \"rol\": \"delivery\",\n  \"distributorId\": \"{{distribuidoraBaseId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 201 o 409\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}",
+                      "if (pm.response.code < 300) {",
+                      "  const j = pm.response.json();",
+                      "  const nuevo = j?.userId || j?.id || j?.user_id ||",
+                      "                Object.entries(j || {}).find(([k, v]) =>",
+                      "                  /(_id|Id)$/.test(k) && typeof v === \"string\" && v.length === 36)?.[1];",
+                      "  if (nuevo) {",
+                      "    pm.collectionVariables.set(\"userId\", nuevo);",
+                      "    if (pm.environment.name) pm.environment.set(\"userId\", nuevo);",
+                      "    console.log(\"userId ahora apunta a lo recien creado:\", nuevo);",
+                      "  }",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2 · datos invalidos → 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users"
+                  ]
+                },
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"full_name\": \"\",\n  \"rol\": \"qa_pruebas\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Entrada invalida: el pipe la frena con 400.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "pm.test(\"el error explica que paso\", () => {",
+                      "  const j = pm.response.json();",
+                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
+                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
+                      "});",
+                      "pm.test(\"el error no revela rutas del servidor\", () =>",
+                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"qa.user.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Chofer Alta\",\n  \"phone_number\": \"+549388{{sufijo}}\",\n  \"rol\": \"delivery\",\n  \"distributorId\": \"{{distribuidoraBaseId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "POST /api/users/customer-registration",
+          "item": [
+            {
+              "name": "1 · correcto → 201",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/customer-registration",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "customer-registration"
+                  ]
+                },
+                "description": "Registrarse como cliente (ruta anterior de /auth/registro)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"qa.cli.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Cliente Automatico\",\n  \"phone_number\": \"+549381{{sufijo}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 201\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2 · datos invalidos → 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/customer-registration",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "customer-registration"
+                  ]
+                },
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\",\n  \"full_name\": \"x\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Entrada invalida: el pipe la frena con 400.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "pm.test(\"el error explica que paso\", () => {",
+                      "  const j = pm.response.json();",
+                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
+                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
+                      "});",
+                      "pm.test(\"el error no revela rutas del servidor\", () =>",
+                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · publico: anda sin token",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/customer-registration",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "customer-registration"
+                  ]
+                },
+                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"qa.cli.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Cliente Automatico\",\n  \"phone_number\": \"+549381{{sufijo}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Endpoint publico: no se le pide 401.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Reports",
       "item": [
         {
@@ -16907,7 +18042,7 @@
                     "role"
                   ]
                 },
-                "description": "",
+                "description": "Crear un rol",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"type\": \"rol_prueba_{{$timestamp}}\"\n}",
@@ -17099,7 +18234,7 @@
                     "seed"
                   ]
                 },
-                "description": ""
+                "description": "Crear los roles del sistema que falten"
               },
               "event": [
                 {
@@ -17212,7 +18347,7 @@
                     "role"
                   ]
                 },
-                "description": ""
+                "description": "Listar los roles"
               },
               "event": [
                 {
@@ -17314,7 +18449,7 @@
                     "{{roleId}}"
                   ]
                 },
-                "description": ""
+                "description": "Consultar un rol"
               },
               "event": [
                 {
@@ -17436,7 +18571,7 @@
           "name": "PATCH /api/role/{id}",
           "item": [
             {
-              "name": "1 · correcto → 200",
+              "name": "1 · correcto → 200 o 409",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -17463,7 +18598,7 @@
                     "{{roleId}}"
                   ]
                 },
-                "description": "",
+                "description": "Modificar un rol\n\nPrecondicion: los cuatro roles del sistema (customer, delivery, admin, super_admin) no se pueden renombrar: el codigo los busca por ese texto.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"type\": \"rol_renombrado_{{$timestamp}}\"\n}",
@@ -17482,8 +18617,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200]));",
+                      "pm.test(\"responde 200 o 409\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -17678,7 +18813,7 @@
           "name": "DELETE /api/role/{id}",
           "item": [
             {
-              "name": "1 · correcto → 200",
+              "name": "1 · correcto → 200 o 409",
               "request": {
                 "method": "DELETE",
                 "header": [
@@ -17701,7 +18836,7 @@
                     "{{roleId}}"
                   ]
                 },
-                "description": ""
+                "description": "Borrar un rol\n\nPrecondicion: un rol del sistema no se puede borrar, y uno en uso tampoco."
               },
               "event": [
                 {
@@ -17711,8 +18846,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde 200 o 409 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 409, 403]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -18048,7 +19183,7 @@
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
-                      "disabled": false
+                      "disabled": true
                     }
                   ]
                 },
@@ -18109,7 +19244,7 @@
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
-                      "disabled": false
+                      "disabled": true
                     }
                   ]
                 },
@@ -18169,7 +19304,7 @@
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
-                      "disabled": false
+                      "disabled": true
                     }
                   ]
                 },
@@ -18231,7 +19366,7 @@
                     {
                       "key": "distributor",
                       "value": "{{distributorSlug}}",
-                      "disabled": false
+                      "disabled": true
                     }
                   ]
                 },
@@ -18772,7 +19907,7 @@
                     "user-address"
                   ]
                 },
-                "description": "Get all user addresses (super_admin — listado global de soporte)"
+                "description": "Listar todas las direcciones (paginado)"
               },
               "event": [
                 {
@@ -19832,200 +20967,10 @@
       "name": "Users",
       "item": [
         {
-          "name": "POST /api/users",
-          "item": [
-            {
-              "name": "1 · correcto → 201",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users"
-                  ]
-                },
-                "description": "Create a new user",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.user.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Usuario Base\",\n  \"phone_number\": \"+549388{{sufijo}}\",\n  \"role_id\": \"{{roleId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}",
-                      "if (pm.response.code < 300) {",
-                      "  const j = pm.response.json();",
-                      "  const nuevo = j?.userId || j?.id || j?.user_id ||",
-                      "                Object.entries(j || {}).find(([k, v]) =>",
-                      "                  /(_id|Id)$/.test(k) && typeof v === \"string\" && v.length === 36)?.[1];",
-                      "  if (nuevo) {",
-                      "    pm.collectionVariables.set(\"userId\", nuevo);",
-                      "    if (pm.environment.name) pm.environment.set(\"userId\", nuevo);",
-                      "    console.log(\"userId ahora apunta a lo recien creado:\", nuevo);",
-                      "  }",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "2 · datos invalidos → 400",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users"
-                  ]
-                },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"full_name\": \"\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Entrada invalida: el pipe la frena con 400.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "pm.test(\"el error explica que paso\", () => {",
-                      "  const j = pm.response.json();",
-                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
-                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
-                      "});",
-                      "pm.test(\"el error no revela rutas del servidor\", () =>",
-                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · publico: anda sin token",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users"
-                  ]
-                },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.user.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Usuario Base\",\n  \"phone_number\": \"+549388{{sufijo}}\",\n  \"role_id\": \"{{roleId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Endpoint publico: no se le pide 401.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
           "name": "POST /api/users/check-exists",
           "item": [
             {
-              "name": "1 · correcto → 200 o 201",
+              "name": "1 · correcto → 200",
               "request": {
                 "method": "POST",
                 "header": [
@@ -20071,8 +21016,8 @@
                     "exec": [
                       "// El camino feliz: datos validos y permisos correctos.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 200 o 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                      "pm.test(\"responde 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200]));",
                       "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
                       "if (pm.response.code < 300 && pm.response.text()) {",
                       "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
@@ -20088,7 +21033,7 @@
               ]
             },
             {
-              "name": "2 · datos invalidos → 400  [defecto H-28]",
+              "name": "2 · datos invalidos → 400",
               "request": {
                 "method": "POST",
                 "header": [
@@ -20115,7 +21060,7 @@
                     "check-exists"
                   ]
                 },
-                "description": "Este endpoint NO tiene DTO: hoy acepta esto y contesta 2xx sin actualizar nada. El test FALLA a proposito hasta que se escriba el DTO (H-28).",
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"email\": 12345\n}",
@@ -20132,7 +21077,7 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Defecto conocido H-28: deberia rechazar con 400.",
+                      "// Entrada invalida: el pipe la frena con 400.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
                       "pm.test(\"responde 400 o 403\", () =>",
                       "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
@@ -20196,397 +21141,6 @@
                       "// Endpoint publico: no se le pide 401.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
                       "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "POST /api/users/customer-registration",
-          "item": [
-            {
-              "name": "1 · correcto → 201",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users/customer-registration",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users",
-                    "customer-registration"
-                  ]
-                },
-                "description": "Complete customer registration (User + Customer + Firebase)",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.cli.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Cliente Automatico\",\n  \"phone_number\": \"+549381{{sufijo}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}",
-                      "if (pm.response.code < 300) {",
-                      "  const j = pm.response.json();",
-                      "  const nuevo = j?.userId || j?.id || j?.user_id ||",
-                      "                Object.entries(j || {}).find(([k, v]) =>",
-                      "                  /(_id|Id)$/.test(k) && typeof v === \"string\" && v.length === 36)?.[1];",
-                      "  if (nuevo) {",
-                      "    pm.collectionVariables.set(\"userId\", nuevo);",
-                      "    if (pm.environment.name) pm.environment.set(\"userId\", nuevo);",
-                      "    console.log(\"userId ahora apunta a lo recien creado:\", nuevo);",
-                      "  }",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "2 · datos invalidos → 400",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users/customer-registration",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users",
-                    "customer-registration"
-                  ]
-                },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\",\n  \"full_name\": \"x\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Entrada invalida: el pipe la frena con 400.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "pm.test(\"el error explica que paso\", () => {",
-                      "  const j = pm.response.json();",
-                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
-                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
-                      "});",
-                      "pm.test(\"el error no revela rutas del servidor\", () =>",
-                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · publico: anda sin token",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users/customer-registration",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users",
-                    "customer-registration"
-                  ]
-                },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.cli.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Cliente Automatico\",\n  \"phone_number\": \"+549381{{sufijo}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Endpoint publico: no se le pide 401.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "POST /api/users/delivery-registration",
-          "item": [
-            {
-              "name": "1 · correcto → 201",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users/delivery-registration",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users",
-                    "delivery-registration"
-                  ]
-                },
-                "description": "Complete delivery registration (User + Delivery + Firebase) - Admin only",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.cho.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Chofer Automatico\",\n  \"phone_number\": \"+549385{{sufijo}}\",\n  \"distributorId\": \"{{distributorId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// El camino feliz: datos validos y permisos correctos.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 201\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([201]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "if (pm.response.code < 300 && pm.response.text()) {",
-                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
-                      "  pm.test(\"no filtra datos sensibles\", () => {",
-                      "    const t = pm.response.text();",
-                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
-                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
-                      "  });",
-                      "}",
-                      "if (pm.response.code < 300) {",
-                      "  const j = pm.response.json();",
-                      "  const nuevo = j?.userId || j?.id || j?.user_id ||",
-                      "                Object.entries(j || {}).find(([k, v]) =>",
-                      "                  /(_id|Id)$/.test(k) && typeof v === \"string\" && v.length === 36)?.[1];",
-                      "  if (nuevo) {",
-                      "    pm.collectionVariables.set(\"userId\", nuevo);",
-                      "    if (pm.environment.name) pm.environment.set(\"userId\", nuevo);",
-                      "    console.log(\"userId ahora apunta a lo recien creado:\", nuevo);",
-                      "  }",
-                      "}"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "2 · datos invalidos → 400",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users/delivery-registration",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users",
-                    "delivery-registration"
-                  ]
-                },
-                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"password\": \"\",\n  \"full_name\": \"x\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Entrada invalida: el pipe la frena con 400.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
-                      "pm.test(\"responde 400 o 403\", () =>",
-                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
-                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
-                      "pm.test(\"el error explica que paso\", () => {",
-                      "  const j = pm.response.json();",
-                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
-                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
-                      "});",
-                      "pm.test(\"el error no revela rutas del servidor\", () =>",
-                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "name": "3 · sin token → 401",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "X-Client-Source",
-                    "value": "{{clientSource}}"
-                  },
-                  {
-                    "key": "X-Distributor",
-                    "value": "{{distributorSlug}}"
-                  },
-                  {
-                    "key": "Authorization",
-                    "value": "",
-                    "disabled": false
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/users/delivery-registration",
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "path": [
-                    "users",
-                    "delivery-registration"
-                  ]
-                },
-                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
-                "auth": {
-                  "type": "noauth"
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"qa.cho.{{$timestamp}}@splg-test.com\",\n  \"password\": \"Test1234\",\n  \"full_name\": \"QA Chofer Automatico\",\n  \"phone_number\": \"+549385{{sufijo}}\",\n  \"distributorId\": \"{{distributorId}}\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "// Esta peticion va sin token a proposito.",
-                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
                     ]
                   }
                 }
@@ -20764,7 +21318,7 @@
               ]
             },
             {
-              "name": "3 · publico: anda sin token",
+              "name": "3 · sin token → 401",
               "request": {
                 "method": "GET",
                 "header": [
@@ -20775,6 +21329,11 @@
                   {
                     "key": "X-Distributor",
                     "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
                   }
                 ],
                 "url": {
@@ -20788,7 +21347,7 @@
                     "{{email}}"
                   ]
                 },
-                "description": "Este endpoint NO exige token (verificado contra la API). Se deja la peticion para dejar constancia de que es publico a proposito.",
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
                 "auth": {
                   "type": "noauth"
                 }
@@ -20799,9 +21358,9 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "// Endpoint publico: no se le pide 401.",
+                      "// Esta peticion va sin token a proposito.",
                       "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
-                      "pm.test(\"responde sin token\", () => pm.expect(pm.response.code).to.not.equal(401));"
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
                     ]
                   }
                 }

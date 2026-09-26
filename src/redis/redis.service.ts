@@ -12,8 +12,8 @@ import { redisConnectionOptions } from '../common/redis/redis-connection';
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('RedisService');
-  private client: Redis;
-  private redlock: Redlock;
+  private client!: Redis;
+  private redlock!: Redlock;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -37,7 +37,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     });
 
     // Evita unhandled rejection si el lock expira por timeout
-    this.redlock.on('error', (err) => {
+    this.redlock.on('error', (err: Error) => {
       this.logger.warn(`Redlock error: ${err.message}`);
     });
   }
@@ -145,7 +145,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const raw = await this.get(this.driverActiveOrderKey(driverUserId));
     if (!raw) return null;
     try {
-      return JSON.parse(raw);
+      return JSON.parse(raw) as { orderId: string; customerId: string };
     } catch {
       return null;
     }

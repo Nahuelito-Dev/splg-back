@@ -12,14 +12,22 @@ import { OrderStatus, PaymentMethod } from '../entities/order.entity';
 describe('CreateOrderUseCase', () => {
   let useCase: CreateOrderUseCase;
 
-  let dataSource: any;
-  let queryRunner: any;
-  let userRepository: { findOne: jest.Mock };
-  let userAddressRepository: { findOne: jest.Mock };
+  let dataSource: { createQueryRunner: jest.Mock };
+  let queryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    isTransactionActive: boolean;
+    manager: { save: jest.Mock };
+  };
+  let customers: { buscarComprador: jest.Mock };
+  let addresses: { buscarDelUsuario: jest.Mock };
   let orderItemRepository: { create: jest.Mock };
   let orderRepository: { create: jest.Mock };
   let pricing: { priceItem: jest.Mock; applyPaymentSurcharge: jest.Mock };
-  let stock: { reserve: jest.Mock };
+  let stock: { reservarStock: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
   let notificationService: { sendOrderConfirmation: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
@@ -42,36 +50,36 @@ describe('CreateOrderUseCase', () => {
       release: jest.fn().mockResolvedValue(undefined),
       isTransactionActive: true,
       manager: {
-        save: jest.fn(async (o: any) => ({ ...o, order_id: 'ord-1' })),
+        save: jest.fn((o: Record<string, unknown>) =>
+          Promise.resolve({ ...o, order_id: 'ord-1' }),
+        ),
       },
     };
     dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
 
-    userRepository = {
-      findOne: jest.fn().mockResolvedValue({
-        user_id: 'cust-1',
+    customers = {
+      buscarComprador: jest.fn().mockResolvedValue({
         email: 'cliente@test.com',
-        customer: { customer_id: 'c-1' },
       }),
     };
-    userAddressRepository = {
-      findOne: jest.fn().mockResolvedValue({
+    addresses = {
+      buscarDelUsuario: jest.fn().mockResolvedValue({
         address_id: 'addr-1',
         latitude: '-34.6',
         longitude: '-58.4',
       }),
     };
-    orderItemRepository = { create: jest.fn((data) => data) };
-    orderRepository = { create: jest.fn((data) => data) };
+    orderItemRepository = { create: jest.fn((data: unknown) => data) };
+    orderRepository = { create: jest.fn((data: unknown) => data) };
     pricing = {
       priceItem: jest.fn(() => ({
         unitPrice: new Decimal(1000),
         subtotal: new Decimal(2000),
       })),
-      applyPaymentSurcharge: jest.fn((amount) => amount),
+      applyPaymentSurcharge: jest.fn((amount: unknown) => amount),
     };
     stock = {
-      reserve: jest.fn().mockResolvedValue({
+      reservarStock: jest.fn().mockResolvedValue({
         gas_cylinder_id: 'gc-1',
         type: '10kg',
         price: 1000,
@@ -80,7 +88,9 @@ describe('CreateOrderUseCase', () => {
         distributor_id: 'dist-default',
       }),
     };
-    dispatchOrchestrator = { offerToNextDriver: jest.fn().mockResolvedValue('drv-1') };
+    dispatchOrchestrator = {
+      offerToNextDriver: jest.fn().mockResolvedValue('drv-1'),
+    };
     notificationService = {
       sendOrderConfirmation: jest.fn().mockResolvedValue(undefined),
     };
@@ -100,7 +110,9 @@ describe('CreateOrderUseCase', () => {
     // Multi-tenant: sin tenant explícito, el use-case pide la distribuidora
     // default. Devolvemos una fija para los tests.
     const distributorService = {
-      getDefault: jest.fn().mockResolvedValue({ distributor_id: 'dist-default' }),
+      getDefault: jest
+        .fn()
+        .mockResolvedValue({ distributor_id: 'dist-default' }),
     };
     // Agendamiento: sin scheduledDate no se invoca; mock por si algún test lo usa.
     // `assertSlotAvailableTx` es la versión transaccional con lock (la que usa el
@@ -118,21 +130,25 @@ describe('CreateOrderUseCase', () => {
     };
 
     useCase = new CreateOrderUseCase(
-      dataSource as any,
-      userRepository as any,
-      userAddressRepository as any,
-      orderItemRepository as any,
-      orderRepository as any,
-      pricing as any,
-      stock as any,
-      dispatchOrchestrator as any,
-      notificationService as any,
-      orders as any,
-      realtime as any,
-      paymentsService as any,
-      distributorService as any,
-      timeSlotService as any,
-      coverageZoneService as any,
+      dataSource as unknown as import('typeorm').DataSource,
+      customers as unknown as import('../../customer/customer.service').CustomersService,
+      addresses as unknown as import('../../user-address/user-address.service').UserAddressService,
+      orderItemRepository as unknown as import('typeorm').Repository<
+        import('../entities/order-item.entity').OrderItem
+      >,
+      orderRepository as unknown as import('typeorm').Repository<
+        import('../entities/order.entity').Order
+      >,
+      pricing as unknown as import('../domain/order-pricing.service').OrderPricingService,
+      stock as unknown as import('../../gascylinder/gascylinder.service').GasCylinderService,
+      dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
+      notificationService as unknown as import('../domain/ports/notification.port').NotificationPort,
+      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      realtime as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
+      paymentsService as unknown as import('../../payments/application/payments.service').PaymentsService,
+      distributorService as unknown as import('../../distributor/distributor.service').DistributorService,
+      timeSlotService as unknown as import('../../time-slot/time-slot.service').TimeSlotService,
+      coverageZoneService as unknown as import('../../coverage-zone/coverage-zone.service').CoverageZoneService,
     );
   });
 
@@ -156,7 +172,7 @@ describe('CreateOrderUseCase', () => {
 
   describe('aislamiento multi-tenant', () => {
     it('rechaza una garrafa de OTRA distribuidora', async () => {
-      stock.reserve.mockResolvedValueOnce({
+      stock.reservarStock.mockResolvedValueOnce({
         gas_cylinder_id: 'gc-x',
         type: '10kg',
         price: 1000,
@@ -170,7 +186,7 @@ describe('CreateOrderUseCase', () => {
     });
 
     it('rechaza una garrafa con distributor_id null (sin tenant)', async () => {
-      stock.reserve.mockResolvedValueOnce({
+      stock.reservarStock.mockResolvedValueOnce({
         gas_cylinder_id: 'gc-null',
         type: '10kg',
         price: 1000,

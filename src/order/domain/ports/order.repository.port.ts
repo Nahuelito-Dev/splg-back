@@ -19,6 +19,9 @@ export interface PaginatedOrders {
  * agregados. Este puerto cubre lecturas y guardado simple de un pedido.
  */
 export abstract class OrderRepositoryPort {
+  /** Pedido por id, sin relaciones. */
+  abstract findById(id: string): Promise<Order | null>;
+
   /** Pedido por id con TODAS las relaciones (customer, delivery, items, etc.). */
   abstract findByIdFull(id: string): Promise<Order | null>;
 

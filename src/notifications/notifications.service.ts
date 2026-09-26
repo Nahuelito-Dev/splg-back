@@ -1,31 +1,30 @@
-// src/notifications/notifications.service.ts - VERSIÓN MEJORADA
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
-import { Customer } from '../customer/entities/customer.entity';
-import { Delivery } from '../delivery/entities/delivery.entity';
-import { Order } from '../order/entities/order.entity';
+import type { User } from '../users/entities/user.entity';
+import { Order, OrderStatus } from '../order/entities/order.entity';
+import { CustomersService } from '../customer/customer.service';
+import { DeliveryService } from '../delivery/delivery.service';
+import {
+  ResultadoDeEnvioDto,
+  TokensDeUsuarioDto,
+} from './dto/notification-response.dto';
 import { FcmPort } from '../firebase/ports/fcm.port';
+import { errorMessage } from '../common/errors/error-message';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger('NotificationService');
 
   constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-
-    @InjectRepository(Customer)
-    private readonly customerRepository: Repository<Customer>,
-
-    @InjectRepository(Delivery)
-    private readonly deliveryRepository: Repository<Delivery>,
-
+    private readonly customersService: CustomersService,
+    private readonly deliveryService: DeliveryService,
     private readonly fcm: FcmPort,
   ) {}
 
-  async sendTestNotification(token: string, title: string, body: string) {
+  async sendTestNotification(
+    token: string,
+    title: string,
+    body: string,
+  ): Promise<ResultadoDeEnvioDto> {
     try {
       const message = {
         notification: {
@@ -42,8 +41,10 @@ export class NotificationsService {
       this.logger.log(`Test notification sent: ${response}`);
       return { success: true, messageId: response };
     } catch (error) {
-      this.logger.error(`Error sending test notification: ${error.message}`);
-      return { success: false, error: error.message };
+      this.logger.error(
+        `Error sending test notification: ${errorMessage(error)}`,
+      );
+      return { success: false, error: errorMessage(error) };
     }
   }
 
@@ -51,21 +52,18 @@ export class NotificationsService {
     customerId: string,
     orderId: string,
     token?: string,
-  ) {
+  ): Promise<ResultadoDeEnvioDto> {
     try {
-      // Buscar al cliente
-      const customer = await this.customerRepository.findOne({
-        where: { user_id: customerId },
-        relations: ['user'],
-      });
+      const cliente =
+        await this.customersService.findNotificationToken(customerId);
 
-      if (!customer || !customer.user) {
+      if (!cliente.esCliente) {
         this.logger.warn(`Customer not found: ${customerId}`);
         return { success: false, error: 'Customer not found' };
       }
 
       // Usar token del cliente o el proporcionado
-      const notificationToken = token || customer.notification_token;
+      const notificationToken = token || cliente.token;
 
       if (!notificationToken) {
         this.logger.warn(`No notification token for customer: ${customerId}`);
@@ -88,8 +86,10 @@ export class NotificationsService {
       this.logger.log(`Order confirmation sent for order: ${orderId}`);
       return { success: true, messageId: response };
     } catch (error) {
-      this.logger.error(`Error sending order confirmation: ${error.message}`);
-      return { success: false, error: error.message };
+      this.logger.error(
+        `Error sending order confirmation: ${errorMessage(error)}`,
+      );
+      return { success: false, error: errorMessage(error) };
     }
   }
 
@@ -97,7 +97,7 @@ export class NotificationsService {
     customer: User,
     order: Order,
     notificationToken?: string,
-  ) {
+  ): Promise<ResultadoDeEnvioDto> {
     try {
       const token = notificationToken || customer.customer?.notification_token;
 
@@ -105,7 +105,7 @@ export class NotificationsService {
         return { success: false, error: 'No notification token' };
       }
 
-      const statusMessages = {
+      const statusMessages: Partial<Record<OrderStatus, string>> = {
         pending: 'Tu pedido está pendiente.',
         accepted: '¡Tu pedido ha sido aceptado!',
         on_the_way: '¡Tu pedido está en camino!',
@@ -130,38 +130,24 @@ export class NotificationsService {
       this.logger.log(`Order status update sent for order: ${order.order_id}`);
       return { success: true, messageId: response };
     } catch (error) {
-      this.logger.error(`Error sending status notification: ${error.message}`);
-      return { success: false, error: error.message };
+      this.logger.error(
+        `Error sending status notification: ${errorMessage(error)}`,
+      );
+      return { success: false, error: errorMessage(error) };
     }
   }
 
-  async getUserNotificationTokens(userId: string) {
+  async getUserNotificationTokens(userId: string): Promise<TokensDeUsuarioDto> {
     try {
-      const customer = await this.customerRepository.findOne({
-        where: { user_id: userId },
-      });
-
-      if (!customer) {
-        return { tokens: [] };
-      }
-
-      return {
-        tokens: customer.notification_token
-          ? [customer.notification_token]
-          : [],
-      };
+      const { token } =
+        await this.customersService.findNotificationToken(userId);
+      return { tokens: token ? [token] : [] };
     } catch (error) {
-      this.logger.error(`Error getting user tokens: ${error.message}`);
+      this.logger.error(`Error getting user tokens: ${errorMessage(error)}`);
       return { tokens: [] };
     }
   }
 
-  /**
-   * Guarda el token FCM del dispositivo. El mismo endpoint lo usan la app
-   * cliente y la app chofer, así que buscamos el `userId` primero como Customer
-   * y, si no está, como Delivery (el chofer). Así el push le puede llegar a
-   * cualquiera de los dos lados.
-   */
   /**
    * Push de "nueva oferta de pedido" al chofer. Best-effort y complementario al
    * socket: si el chofer tiene la app cerrada/en background, el socket no llega
@@ -173,10 +159,8 @@ export class NotificationsService {
     orderId: string,
   ): Promise<void> {
     try {
-      const delivery = await this.deliveryRepository.findOne({
-        where: { user_id: driverUserId },
-      });
-      const token = delivery?.notification_token;
+      const token =
+        await this.deliveryService.findNotificationToken(driverUserId);
       if (!token) return;
 
       await this.fcm.sendToToken(token, {
@@ -191,46 +175,77 @@ export class NotificationsService {
       this.logger.log(
         `Push de oferta enviado al chofer ${driverUserId} (pedido ${orderId})`,
       );
-    } catch (error: any) {
+    } catch (error) {
       this.logger.warn(
-        `No se pudo enviar push de oferta al chofer ${driverUserId}: ${error?.message}`,
+        `No se pudo enviar push de oferta al chofer ${driverUserId}: ${errorMessage(error)}`,
       );
     }
   }
 
-  async saveNotificationToken(userId: string, token: string, platform: string) {
+  /**
+   * Push de "el repartidor llegó" al cliente. Best-effort y complementario al
+   * socket `order:arrived`: si el cliente tiene la app cerrada o en segundo
+   * plano el socket no llega, y sin este push el aviso se pierde justo en el
+   * caso que CU-011 quería cubrir. No-op si el cliente no registró token.
+   * Nunca lanza: el aviso de llegada no debe romperse por un fallo de FCM.
+   */
+  async sendArrivalPushToCustomer(
+    customerUserId: string,
+    orderId: string,
+    driverName: string,
+  ): Promise<void> {
     try {
-      const customer = await this.customerRepository.findOne({
-        where: { user_id: userId },
-      });
+      const { token } =
+        await this.customersService.findNotificationToken(customerUserId);
+      if (!token) return;
 
-      if (customer) {
-        customer.notification_token = token;
-        await this.customerRepository.save(customer);
-        this.logger.log(
-          `Token FCM guardado (cliente ${userId}, ${platform})`,
-        );
+      await this.fcm.sendToToken(token, {
+        notification: {
+          title: '¡Tu pedido llegó!',
+          body: `${driverName} está en la puerta.`,
+        },
+        data: { event: 'ORDER_ARRIVED', orderId },
+        android: { priority: 'high' },
+        apns: { headers: { 'apns-priority': '10' } },
+      });
+      this.logger.log(
+        `Push de llegada enviado al cliente ${customerUserId} (pedido ${orderId})`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar push de llegada al cliente ${customerUserId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Guarda el token FCM del dispositivo. El mismo endpoint lo usan la app
+   * cliente y la app chofer: se intenta primero como cliente y, si no lo es,
+   * como chofer. Así el push le puede llegar a cualquiera de los dos lados.
+   */
+  async saveNotificationToken(
+    userId: string,
+    token: string,
+    platform: string,
+  ): Promise<ResultadoDeEnvioDto> {
+    try {
+      if (await this.customersService.saveNotificationToken(userId, token)) {
+        this.logger.log(`Token FCM guardado (cliente ${userId}, ${platform})`);
         return { success: true };
       }
 
-      const delivery = await this.deliveryRepository.findOne({
-        where: { user_id: userId },
-      });
-
-      if (delivery) {
-        delivery.notification_token = token;
-        await this.deliveryRepository.save(delivery);
-        this.logger.log(
-          `Token FCM guardado (chofer ${userId}, ${platform})`,
-        );
+      if (await this.deliveryService.saveNotificationToken(userId, token)) {
+        this.logger.log(`Token FCM guardado (chofer ${userId}, ${platform})`);
         return { success: true };
       }
 
       this.logger.warn(`Usuario no encontrado para token FCM: ${userId}`);
       return { success: false, error: 'User not found' };
     } catch (error) {
-      this.logger.error(`Error saving notification token: ${error.message}`);
-      return { success: false, error: error.message };
+      this.logger.error(
+        `Error saving notification token: ${errorMessage(error)}`,
+      );
+      return { success: false, error: errorMessage(error) };
     }
   }
 }

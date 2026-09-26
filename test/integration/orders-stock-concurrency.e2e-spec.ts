@@ -16,7 +16,7 @@ import { DataSource } from 'typeorm';
 import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { User } from '../../src/users/entities/user.entity';
-import { UserAddress } from '../../src/user-addres/entities/user-addres.entity';
+import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { Customer } from '../../src/customer/entities/customer.entity';
 
 describe('CU-005 Orders Stock Concurrency (e2e)', () => {

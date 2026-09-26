@@ -14,12 +14,12 @@ import { Customer } from '../../customer/entities/customer.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
 import { Car } from '../../car/entities/car.entity';
 import { Admin } from '../../admin/entities/admin.entity';
-import { UserAddress } from '../../user-addres/entities/user-addres.entity';
+import { UserAddress } from '../../user-address/entities/user-address.entity';
 
 @Entity('user')
 export class User {
   @PrimaryGeneratedColumn('uuid', { name: 'user_id' })
-  user_id: string;
+  user_id!: string;
 
   @ManyToOne(() => Role, (role) => role.users, { nullable: true })
   @JoinColumn({ name: 'role_id' })
@@ -28,7 +28,8 @@ export class User {
   @Column({ type: 'uuid', nullable: true })
   role_id?: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  // Una cuenta de acceso de Firebase corresponde a un solo usuario.
+  @Column({ type: 'varchar', nullable: true, unique: true })
   firebase_uid?: string;
 
   @Column({ type: 'varchar', nullable: true })
@@ -44,16 +45,16 @@ export class User {
   phone_number?: string;
 
   @Column({ type: 'boolean', default: false })
-  phone_verified: boolean;
+  phone_verified!: boolean;
 
   @Column({ type: 'boolean', default: false })
-  email_verified: boolean;
+  email_verified!: boolean;
 
   @Column({ type: 'boolean', default: false })
-  blocked: boolean;
+  blocked!: boolean;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @DeleteDateColumn({ type: 'timestamptz', nullable: true })
   deletedAt?: Date;
@@ -63,7 +64,7 @@ export class User {
   customer?: Customer;
 
   @OneToOne(() => Delivery, (delivery) => delivery.user, { cascade: true })
-  delivery?: Delivery;
+  delivery?: Delivery | null;
 
   @OneToMany(() => Car, (car) => car.user, { cascade: true })
   cars?: Car[];

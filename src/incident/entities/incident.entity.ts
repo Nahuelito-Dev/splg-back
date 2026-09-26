@@ -9,13 +9,19 @@ import {
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { User } from '../../users/entities/user.entity';
 
-/** Tipo de incidencia reportada durante una entrega. */
 export enum IncidentType {
   DAMAGED = 'damaged',
   OUT_OF_STOCK = 'out_of_stock',
   NO_SHOW = 'no_show',
   OTHER = 'other',
+}
+
+export enum IncidentMoment {
+  PRE_DELIVERY = 'pre_delivery',
+  IN_DELIVERY = 'in_delivery',
+  POST_DELIVERY = 'post_delivery',
 }
 
 export enum IncidentStatus {
@@ -32,15 +38,15 @@ export enum IncidentStatus {
 @Entity('incident')
 export class Incident {
   @PrimaryGeneratedColumn('uuid', { name: 'incident_id' })
-  incident_id: string;
+  incident_id!: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: Order;
+  order!: Order;
 
   @Index()
   @Column({ type: 'uuid' })
-  order_id: string;
+  order_id!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false })
@@ -48,34 +54,47 @@ export class Incident {
   distributor?: Distributor;
 
   @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  distributor_id!: string;
 
   /** Usuario que reporta la incidencia (user_id), normalmente el chofer. */
   @Column({ type: 'uuid' })
-  reported_by: string;
+  reported_by!: string;
+
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'reported_by' })
+  reporter?: User;
 
   @Column({ type: 'enum', enum: IncidentType })
-  type: IncidentType;
+  type!: IncidentType;
 
   @Column({ type: 'text' })
-  description: string;
+  description!: string;
 
   @Column({ type: 'varchar', nullable: true })
-  photo_url?: string;
+  photo_url!: string | null;
 
   @Column({
     type: 'enum',
     enum: IncidentStatus,
     default: IncidentStatus.OPEN,
   })
-  status: IncidentStatus;
+  status!: IncidentStatus;
 
   @Column({ type: 'text', nullable: true })
-  resolution_note?: string;
+  resolution_note!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @Column({ type: 'timestamptz', nullable: true })
-  resolvedAt: Date | null;
+  resolvedAt!: Date | null;
+
+  @Column({
+    name: 'moment',
+    type: 'enum',
+    enum: IncidentMoment,
+
+    nullable: true,
+  })
+  moment!: IncidentMoment | null;
 }

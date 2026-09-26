@@ -13,5 +13,5 @@ export class ConfirmDeliveryDto {
   })
   @IsString()
   @IsNotEmpty()
-  code: string;
+  code!: string;
 }

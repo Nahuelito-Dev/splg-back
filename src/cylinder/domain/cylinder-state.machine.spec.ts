@@ -13,20 +13,17 @@ import { InvalidCylinderTransitionError } from './errors/invalid-cylinder-transi
  */
 describe('cylinder-state.machine', () => {
   it('permite el ciclo completo in_depot → filled → dispatched → with_customer → empty_returned → in_depot', () => {
-    expect(
-      canTransition(CylinderState.IN_DEPOT, CylinderState.FILLED),
-    ).toBe(true);
-    expect(
-      canTransition(CylinderState.FILLED, CylinderState.DISPATCHED),
-    ).toBe(true);
+    expect(canTransition(CylinderState.IN_DEPOT, CylinderState.FILLED)).toBe(
+      true,
+    );
+    expect(canTransition(CylinderState.FILLED, CylinderState.DISPATCHED)).toBe(
+      true,
+    );
     expect(
       canTransition(CylinderState.DISPATCHED, CylinderState.WITH_CUSTOMER),
     ).toBe(true);
     expect(
-      canTransition(
-        CylinderState.WITH_CUSTOMER,
-        CylinderState.EMPTY_RETURNED,
-      ),
+      canTransition(CylinderState.WITH_CUSTOMER, CylinderState.EMPTY_RETURNED),
     ).toBe(true);
     expect(
       canTransition(CylinderState.EMPTY_RETURNED, CylinderState.IN_DEPOT),
@@ -34,9 +31,9 @@ describe('cylinder-state.machine', () => {
   });
 
   it('permite revertir despacho/llenado (filled/dispatched → in_depot)', () => {
-    expect(
-      canTransition(CylinderState.FILLED, CylinderState.IN_DEPOT),
-    ).toBe(true);
+    expect(canTransition(CylinderState.FILLED, CylinderState.IN_DEPOT)).toBe(
+      true,
+    );
     expect(
       canTransition(CylinderState.DISPATCHED, CylinderState.IN_DEPOT),
     ).toBe(true);
@@ -53,10 +50,7 @@ describe('cylinder-state.machine', () => {
     ).toBe(false);
     // El vacío del cliente no vuelve a estar con el cliente.
     expect(
-      canTransition(
-        CylinderState.EMPTY_RETURNED,
-        CylinderState.WITH_CUSTOMER,
-      ),
+      canTransition(CylinderState.EMPTY_RETURNED, CylinderState.WITH_CUSTOMER),
     ).toBe(false);
   });
 

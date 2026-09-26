@@ -1,20 +1,32 @@
 import {
-  Controller,
-  Post,
   Body,
+  Controller,
+  ForbiddenException,
   Get,
   Param,
-  ForbiddenException,
+  ParseUUIDPipe,
+  Post,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
+  ResultadoDeEnvioDto,
+  TokensDeUsuarioDto,
+} from './dto/notification-response.dto';
 import { NotificationsService } from './notifications.service';
-import { Roles } from '../common/decorators/roles.decorator';
+import { Auth } from '../common/decorators/auth.decorator';
+import { SendTestNotificationDto } from './dto/send-test-notification.dto';
+import { SendOrderConfirmationDto } from './dto/send-order-confirmation.dto';
+import { SaveNotificationTokenDto } from './dto/save-notification-token.dto';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-
-const isAdmin = (u: AuthenticatedUser) =>
-  u.role === RoleType.ADMIN || u.role === RoleType.SUPER_ADMIN;
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -22,66 +34,75 @@ const isAdmin = (u: AuthenticatedUser) =>
 export class NotificationsController {
   constructor(private readonly notificationService: NotificationsService) {}
 
-  // Endpoint de debug: mandar un push arbitrario. Solo admin (no es tráfico de
-  // usuario final — el push real lo dispara el flujo de pedido internamente).
+  // Endpoint de debug: mandar un push arbitrario. Sólo el super administrador,
+  // como POST /email/test (H-58): un admin de empresa podía mandar pushes con
+  // el proyecto de Firebase de la plataforma a cualquier dispositivo.
   @Post('send-test')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Send a test notification (admin/debug)' })
-  @ApiResponse({ status: 200, description: 'Notification sent' })
+  @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   async sendTestNotification(
-    @Body() body: { token: string; title: string; body: string },
-  ) {
+    @Body() dto: SendTestNotificationDto,
+  ): Promise<ResultadoDeEnvioDto> {
     return await this.notificationService.sendTestNotification(
-      body.token,
-      body.title,
-      body.body,
+      dto.token,
+      dto.title,
+      dto.body,
     );
   }
 
   // Interno/soporte: el push de confirmación real lo dispara el use-case de
-  // creación de pedido; este endpoint es para admin (reenvío manual).
+  // creación de pedido; este endpoint es el reenvío manual. Sólo el super
+  // administrador: recibe un cliente y un pedido cualquiera, de cualquier
+  // distribuidora, y el panel no lo usa.
   @Post('order-confirmation')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Send order confirmation notification (admin)' })
-  @ApiResponse({ status: 200, description: 'Notification sent' })
+  @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   async sendOrderConfirmation(
-    @Body() body: { customerId: string; orderId: string; token?: string },
-  ) {
+    @Body() dto: SendOrderConfirmationDto,
+  ): Promise<ResultadoDeEnvioDto> {
     return await this.notificationService.sendOrderConfirmation(
-      body.customerId,
-      body.orderId,
-      body.token,
+      dto.customerId,
+      dto.orderId,
+      dto.token,
     );
   }
 
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get notification tokens for user (self o admin)' })
-  @ApiResponse({ status: 200, description: 'Tokens found' })
+  @ApiOkResponse({ type: TokensDeUsuarioDto })
+  @ApiForbiddenResponse({ description: 'Tokens de otro usuario' })
   async getUserTokens(
-    @Param('userId') userId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    if (!isAdmin(user) && userId !== user.user_id) {
-      throw new ForbiddenException('No autorizado a ver tokens de otro usuario');
+  ): Promise<TokensDeUsuarioDto> {
+    // Los tokens de otro usuario sólo los ve el super administrador: un admin
+    // de empresa no tiene por qué leer los de usuarios de otra distribuidora.
+    if (user.role !== RoleType.SUPER_ADMIN && userId !== user.user_id) {
+      throw new ForbiddenException(
+        'No autorizado a ver tokens de otro usuario',
+      );
     }
     return await this.notificationService.getUserNotificationTokens(userId);
   }
 
   @Post('token')
   @ApiOperation({ summary: 'Save notification token for the current user' })
-  @ApiResponse({ status: 200, description: 'Token saved' })
+  @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   async saveToken(
-    @Body() body: { userId: string; token: string; platform: string },
+    @Body() dto: SaveNotificationTokenDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    // Anti-secuestro: un no-admin solo puede registrar SU propio token (se fuerza
+  ): Promise<ResultadoDeEnvioDto> {
+    // Anti-secuestro: cada uno registra SU propio token (se fuerza
     // el userId al del token, ignorando el del body). Así userA no puede setear
     // el token de userB para robarle los push ni para dejarlo sin notificaciones.
-    const userId = isAdmin(user) ? body.userId : user.user_id;
+    const userId =
+      user.role === RoleType.SUPER_ADMIN ? dto.userId : user.user_id;
     return await this.notificationService.saveNotificationToken(
       userId,
-      body.token,
-      body.platform,
+      dto.token,
+      dto.platform,
     );
   }
 }

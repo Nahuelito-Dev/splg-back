@@ -4,15 +4,21 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  Req,
   Res,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto } from './dto';
+import { LoginDto, SesionIniciadaDto, TokenValidoResponseDto } from './dto';
 import { Public } from '../common/decorators/isPublic.decorator';
-import type { Response, Request } from 'express'; // ← AGREGAR Request
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -20,39 +26,53 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post()
-  checkToken() {
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Validar el token de sesión',
+    description:
+      'Si la petición llega acá, el guard ya validó el token y la cuenta.',
+  })
+  @ApiCreatedResponse({ type: TokenValidoResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o vencido' })
+  checkToken(): TokenValidoResponseDto {
     return this.authService.checkIfTokenValid();
   }
 
-  // Login = superficie de fuerza bruta / credential stuffing: límite MUCHO
-  // más estricto que el global (100/min) para frenar intentos automatizados
-  // sin afectar a un usuario real reintentando una contraseña.
+  // El cupo estricto de acceso NO va por IP: lo lleva el throttler 'cuenta'
+  // (8/min por cuenta, ver AppThrottlerGuard). Acá queda el cupo por IP del
+  // throttler por defecto, que es el techo amplio contra un host que pruebe
+  // muchas cuentas. Ponerle 8 por IP volvería a bloquear entre sí a los
+  // usuarios que comparten IP pública.
   @Public()
-  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async Login(@Body() dto: LoginDto) {
-    return await this.authService.login(dto);
+  @ApiOperation({ summary: 'Iniciar sesión desde las apps' })
+  @ApiOkResponse({ type: SesionIniciadaDto })
+  @ApiBadRequestResponse({ description: 'Credenciales incorrectas' })
+  @ApiUnauthorizedResponse({ description: 'La cuenta no está habilitada' })
+  login(@Body() dto: LoginDto): Promise<SesionIniciadaDto> {
+    return this.authService.login(dto);
   }
 
+  // Mismo criterio de cupo que el login de las apps.
   @Public()
-  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login/dashboard')
   @HttpCode(HttpStatus.OK)
-  async DashboardLogin(
+  @ApiOperation({ summary: 'Iniciar sesión en el panel' })
+  @ApiOkResponse({ type: SesionIniciadaDto })
+  @ApiBadRequestResponse({ description: 'Credenciales incorrectas' })
+  @ApiUnauthorizedResponse({
+    description: 'La cuenta no está habilitada o no es de un administrador',
+  })
+  async dashboardLogin(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
-    @Req() req: Request,
-  ) {
-    const requestSource = req.headers['x-client-source'] as string;
+  ): Promise<SesionIniciadaDto> {
+    const sesion = await this.authService.login(dto);
 
-    const creds = await this.authService.login(dto, requestSource);
+    await this.authService.loginDashboard(sesion.accessToken);
 
-    const accessToken = (creds.user as any).stsTokenManager.accessToken;
-
-    await this.authService.loginDashboard(accessToken);
-
-    res.cookie('token', accessToken, {
+    res.cookie('token', sesion.accessToken, {
       httpOnly: true,
       secure: true,
       sameSite: 'strict',
@@ -60,6 +80,6 @@ export class AuthController {
       maxAge: 1000 * 60 * 60,
     });
 
-    return creds;
+    return sesion;
   }
 }

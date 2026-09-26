@@ -2,19 +2,26 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  BadRequestException,
-  InternalServerErrorException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { In, Repository, EntityManager } from 'typeorm';
 import { Delivery } from './entities/delivery.entity';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
-import { CreateDeliveryDto } from './dto/create-delivery.dto';
+import { DisponibilidadDelChoferDto } from './dto/disponibilidad-response.dto';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { RedisService } from '../redis/redis.service';
-import { User } from '../users/entities/user.entity';
-import { Role } from '../role/entities/role.entity';
-import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
+import { puntoDesdeLatLng } from '../common/geo/punto';
+import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+
+/** Lo que el alta guarda en el perfil de un chofer nuevo. */
+export interface PerfilDeChoferNuevo {
+  latLng?: string;
+  actual_location?: string;
+  validated?: boolean;
+  isActive?: boolean;
+}
 
 @Injectable()
 export class DeliveryService {
@@ -24,103 +31,38 @@ export class DeliveryService {
     @InjectRepository(Delivery)
     private readonly deliveryRepository: Repository<Delivery>,
     private readonly redisService: RedisService,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
-    private readonly dataSource: DataSource,
-    private readonly firebaseAuth: FirebaseAuthPort,
   ) {}
 
   /**
-   * Registro completo: User + Delivery + Firebase, en una transacción.
-   * Movido acá desde `UsersService.createDeliveryWithUser` (P2-3) para que
-   * `UsersService` deje de conocer entidades de otros dominios.
+   * El perfil de chofer de un usuario recién creado, dentro de la transacción
+   * del alta (RegistroService). La distribuidora ya viene autorizada.
    */
-  async registerWithUser(createDeliveryDto: CreateDeliveryDto) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      const existingUser = await this.userRepository.findOne({
-        where: { email: createDeliveryDto.email },
-      });
-
-      if (existingUser) {
-        throw new BadRequestException('User with this email already exists');
-      }
-
-      const firebaseUser = await this.firebaseAuth.createUserSafe({
-        email: createDeliveryDto.email,
-        password: createDeliveryDto.password,
-        full_name: createDeliveryDto.full_name,
-        phone_number: createDeliveryDto.phone_number,
-      });
-
-      const deliveryRole = await this.roleRepository.findOne({
-        where: { type: 'delivery' },
-      });
-
-      if (!deliveryRole) {
-        throw new InternalServerErrorException('Delivery role not found');
-      }
-
-      const user = this.userRepository.create({
-        email: createDeliveryDto.email,
-        full_name: createDeliveryDto.full_name,
-        phone_number: createDeliveryDto.phone_number,
-        firebase_uid: firebaseUser.uid,
-        role_id: deliveryRole.role_id,
-        email_verified: false,
-        phone_verified: false,
-        blocked: false,
-        selfie: createDeliveryDto.selfie,
-      });
-
-      const savedUser = await queryRunner.manager.save(user);
-
-      const delivery = this.deliveryRepository.create({
-        user_id: savedUser.user_id,
-        distributor_id: createDeliveryDto.distributorId,
-        calification: createDeliveryDto.calification || 0,
-        latLng: createDeliveryDto.latLng,
-        actual_location: createDeliveryDto.actual_location,
-        validated: createDeliveryDto.validated || false,
-        isActive:
-          createDeliveryDto.isActive !== undefined
-            ? createDeliveryDto.isActive
-            : true,
+  async crearPerfil(
+    manager: EntityManager,
+    userId: string,
+    distributorId: string,
+    datos: PerfilDeChoferNuevo,
+  ): Promise<void> {
+    const repo = manager.getRepository(Delivery);
+    await repo.save(
+      repo.create({
+        user_id: userId,
+        distributor_id: distributorId,
+        calification: 0,
+        location: datos.latLng ? puntoDesdeLatLng(datos.latLng) : null,
+        actual_location: datos.actual_location,
+        validated: datos.validated ?? false,
+        isActive: datos.isActive ?? true,
         balance: 0,
-      });
-
-      await queryRunner.manager.save(delivery);
-      await queryRunner.commitTransaction();
-
-      const result = await this.userRepository.findOne({
-        where: { user_id: savedUser.user_id },
-        relations: ['delivery', 'role'],
-      });
-
-      return result;
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-
-      if (createDeliveryDto.email) {
-        await this.firebaseAuth.deleteUserByEmailSafe(
-          createDeliveryDto.email,
-          this.logger,
-        );
-      }
-
-      this.handleDBExceptions(error);
-    } finally {
-      await queryRunner.release();
-    }
+      }),
+    );
   }
 
   /** Lista choferes, scopeada por distribuidora si se pasa `distributorId`. */
-  async findAll(paginationDto: PaginationDto, distributorId?: string | null) {
+  async findAll(
+    paginationDto: PaginationDto,
+    distributorId?: string | null,
+  ): Promise<Delivery[]> {
     const { limit = 10, offset = 0 } = paginationDto;
 
     return await this.deliveryRepository.find({
@@ -131,7 +73,101 @@ export class DeliveryService {
     });
   }
 
-  async findOne(id: string) {
+  /** El token push del chofer, o null si no es chofer o no registró ninguno. */
+  async findNotificationToken(userId: string): Promise<string | null> {
+    const delivery = await this.deliveryRepository.findOne({
+      where: { user_id: userId },
+    });
+    return delivery?.notification_token ?? null;
+  }
+
+  /** Guarda el token push del chofer. Devuelve false si no es chofer. */
+  async saveNotificationToken(userId: string, token: string): Promise<boolean> {
+    const delivery = await this.deliveryRepository.findOne({
+      where: { user_id: userId },
+    });
+    if (!delivery) return false;
+    delivery.notification_token = token;
+    await this.deliveryRepository.save(delivery);
+    return true;
+  }
+
+  /**
+   * Propiedad del dato (H-64): un chofer sólo opera sobre su propio perfil y un
+   * admin de empresa sólo sobre los de su distribuidora. El super_admin llega
+   * sin distribuidora y sin dueño, y pasa.
+   */
+  assertAlcance(
+    delivery: Delivery,
+    duenoUserId?: string | null,
+    distributorId?: string | null,
+  ): void {
+    if (duenoUserId && delivery.user_id !== duenoUserId) {
+      throw new ForbiddenException('No podés operar sobre otro chofer');
+    }
+    if (distributorId && delivery.distributor_id !== distributorId) {
+      throw new NotFoundException(
+        `Delivery with ID: ${delivery.delivery_id} not found`,
+      );
+    }
+  }
+
+  /** El chofer sin relaciones, o null. Para los módulos que sólo necesitan su user_id. */
+  findById(id: string): Promise<Delivery | null> {
+    return this.deliveryRepository.findOne({ where: { delivery_id: id } });
+  }
+
+  /**
+   * El perfil de chofer por su `delivery_id` o por el `user_id` de la persona
+   * (el pedido guarda el primero y el token trae el segundo), o null. Con
+   * `conUsuario`, trae además la persona.
+   */
+  buscarPorIdOUsuario(
+    id: string,
+    conUsuario = false,
+  ): Promise<Delivery | null> {
+    return this.deliveryRepository.findOne({
+      where: [{ delivery_id: id }, { user_id: id }],
+      relations: conUsuario ? ['user'] : [],
+    });
+  }
+
+  /** De esos usuarios, los que son choferes de la distribuidora. */
+  async choferesDeLaDistribuidora(
+    userIds: string[],
+    distributorId: string,
+  ): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const filas = await this.deliveryRepository.find({
+      where: { user_id: In(userIds), distributor_id: distributorId },
+      select: { user_id: true },
+    });
+    return filas.map((f) => f.user_id);
+  }
+
+  /** Cuántos choferes activos y validados hay, en una distribuidora o en todas. */
+  contarDisponibles(distributorId?: string | null): Promise<number> {
+    return this.deliveryRepository.count({
+      where: {
+        isActive: true,
+        validated: true,
+        ...(distributorId ? { distributor_id: distributorId } : {}),
+      },
+    });
+  }
+
+  /** Guarda el promedio de calificaciones del chofer, para lecturas rápidas. */
+  async updateCalificationByUserId(
+    userId: string,
+    average: number,
+  ): Promise<void> {
+    await this.deliveryRepository.update(
+      { user_id: userId },
+      { calification: average },
+    );
+  }
+
+  async findOne(id: string): Promise<Delivery> {
     const delivery = await this.deliveryRepository.findOne({
       where: { delivery_id: id },
       relations: ['user', 'user.role'],
@@ -144,7 +180,19 @@ export class DeliveryService {
     return delivery;
   }
 
-  async findOneByUserId(userId: string) {
+  /**
+   * La distribuidora del chofer con ese `user_id`, o null si el usuario no es
+   * chofer. Para los módulos que asignan algo a un chofer (vehículos).
+   */
+  async findDistributorIdByUserId(userId: string): Promise<string | null> {
+    const delivery = await this.deliveryRepository.findOne({
+      where: { user_id: userId },
+      select: { delivery_id: true, distributor_id: true },
+    });
+    return delivery?.distributor_id ?? null;
+  }
+
+  async findOneByUserId(userId: string): Promise<Delivery> {
     const delivery = await this.deliveryRepository.findOne({
       where: { user_id: userId },
       relations: ['user', 'user.role'],
@@ -172,18 +220,39 @@ export class DeliveryService {
     return delivery;
   }
 
-  async findActiveDeliveries(paginationDto: PaginationDto) {
+  async findActiveDeliveries(
+    paginationDto: PaginationDto,
+    distributorId?: string | null,
+  ): Promise<Delivery[]> {
     const { limit = 10, offset = 0 } = paginationDto;
 
     return await this.deliveryRepository.find({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        ...(distributorId ? { distributor_id: distributorId } : {}),
+      },
       take: limit,
       skip: offset,
       relations: ['user', 'user.role'],
     });
   }
 
-  async update(id: string, updateDeliveryDto: UpdateDeliveryDto) {
+  async update(
+    id: string,
+    updateDeliveryDto: UpdateDeliveryDto,
+    distributorId?: string | null,
+  ): Promise<Delivery> {
+    // Un admin de empresa sólo edita choferes de su distribuidora (H-61); el
+    // super_admin llega sin distributorId y no tiene esa restricción.
+    if (distributorId) {
+      const actual = await this.deliveryRepository.findOne({
+        where: { delivery_id: id },
+      });
+      if (!actual || actual.distributor_id !== distributorId) {
+        throw new NotFoundException(`Delivery with ID: ${id} not found`);
+      }
+    }
+
     const delivery = await this.deliveryRepository.preload({
       delivery_id: id,
       ...updateDeliveryDto,
@@ -197,29 +266,35 @@ export class DeliveryService {
     return await this.findOne(id);
   }
 
-  async remove(id: string) {
-    const delivery = await this.findOne(id);
+  async remove(id: string): Promise<MessageResponseDto> {
+    await this.findOne(id);
     await this.deliveryRepository.softDelete({ delivery_id: id });
-    return { message: 'Delivery deleted successfully' };
+    return MessageResponseDto.of('Delivery deleted successfully');
   }
 
-  async validateDelivery(id: string) {
+  async validateDelivery(id: string): Promise<Delivery> {
     const delivery = await this.findOne(id);
     delivery.validated = true;
     await this.deliveryRepository.save(delivery);
     return delivery;
   }
 
-  async invalidateDelivery(id: string) {
+  async invalidateDelivery(id: string): Promise<Delivery> {
     const delivery = await this.findOne(id);
     delivery.validated = false;
     await this.deliveryRepository.save(delivery);
     return delivery;
   }
 
-  async updateLocation(id: string, latLng: string, actualLocation?: string) {
+  async updateLocation(
+    id: string,
+    latLng: string,
+    actualLocation?: string,
+    duenoUserId?: string | null,
+  ): Promise<Delivery> {
     const delivery = await this.findOne(id);
-    delivery.latLng = latLng;
+    this.assertAlcance(delivery, duenoUserId);
+    delivery.location = puntoDesdeLatLng(latLng);
     if (actualLocation) {
       delivery.actual_location = actualLocation;
     }
@@ -227,24 +302,27 @@ export class DeliveryService {
     return delivery;
   }
 
-  async updateBalance(id: string, amount: number) {
+  async updateBalance(id: string, amount: number): Promise<Delivery> {
     const delivery = await this.findOne(id);
     delivery.balance = (delivery.balance || 0) + amount;
     await this.deliveryRepository.save(delivery);
     return delivery;
   }
 
-  async toggleActiveStatus(id: string, isActive: boolean) {
+  async toggleActiveStatus(id: string, isActive: boolean): Promise<Delivery> {
     const delivery = await this.findOne(id);
     delivery.isActive = isActive;
     await this.deliveryRepository.save(delivery);
     return delivery;
   }
 
-  async toggleAvailability(userId: string, isAvailable: boolean) {
-    // 1. Buscamos el delivery asociado a ese usuario
+  async toggleAvailability(
+    userId: string,
+    isAvailable: boolean,
+    distributorId?: string | null,
+  ): Promise<DisponibilidadDelChoferDto> {
     const delivery = await this.deliveryRepository.findOne({
-      where: { user_id: userId }, // <--- CAMBIO CRUCIAL: Buscamos por user_id
+      where: { user_id: userId },
     });
 
     if (!delivery) {
@@ -252,12 +330,12 @@ export class DeliveryService {
         'Perfil de repartidor no encontrado para este usuario',
       );
     }
+    this.assertAlcance(delivery, null, distributorId);
 
-    // 2. Actualizamos el estado
     delivery.isActive = isAvailable;
     await this.deliveryRepository.save(delivery);
 
-    // 3. Gestionamos Redis (Geolocalización)
+    // Fuera de línea, sale del radar de despacho.
     if (!isAvailable) {
       // El radar `drivers:locations` se llena por `user_id` (lo setea
       // `driver:update-location` vía `updateDriverLocation(userId,...)`), así que
@@ -267,25 +345,20 @@ export class DeliveryService {
     }
 
     return {
-      userId: userId, // Devolvemos el userId para confirmar
+      userId,
       deliveryId: delivery.delivery_id,
       isAvailable: delivery.isActive,
       message: isAvailable ? 'Estás en línea 🟢' : 'Estás desconectado 🔴',
     };
   }
 
-  private handleDBExceptions(error: any) {
-    if (error.status === 404 || error.status === 400) {
-      throw error;
-    }
-    if (error.code === '23505') {
-      throw new BadRequestException('Duplicate entry', error.detail);
-    }
-    if (error.code === '23503') {
-      throw new BadRequestException('Foreign key constraint failed');
-    }
-    throw new InternalServerErrorException(
-      'Unexpected error, check server logs',
-    );
+  /**
+   * Delega en el traductor compartido. Antes cada servicio tenia su propia
+   * copia: contemplaban uno o dos codigos de Postgres y convertian todo lo
+   * demas en un 500 sin registrar la causa, asi que el mensaje mandaba a
+   * mirar unos logs donde el error no estaba.
+   */
+  private handleDBExceptions(error: unknown): never {
+    return traducirErrorDeBase(error, this.logger, 'choferes');
   }
 }

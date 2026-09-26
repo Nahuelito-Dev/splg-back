@@ -4,6 +4,8 @@ import { CylinderService } from './cylinder.service';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { Order } from '../order/entities/order.entity';
+import { CreateCylinderDto } from './dto/create-cylinder.dto';
+import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 
 /**
  * CylinderService: ciclo físico del envase. Mockeamos los tres repos (envase,
@@ -38,29 +40,31 @@ describe('CylinderService', () => {
   beforeEach(() => {
     // create() devuelve el literal tal cual; save() lo devuelve resuelto.
     cylinderRepo = {
-      create: jest.fn().mockImplementation((e) => e),
-      save: jest.fn().mockImplementation(async (e) => e),
+      create: jest.fn().mockImplementation((e: Cylinder) => e),
+      save: jest.fn().mockImplementation((e: Cylinder) => Promise.resolve(e)),
       find: jest.fn(),
       findOne: jest.fn(),
-    } as any;
+    } as unknown as typeof cylinderRepo;
     movementRepo = {
-      create: jest.fn().mockImplementation((e) => e),
-      save: jest.fn().mockImplementation(async (e) => e),
+      create: jest.fn().mockImplementation((e: CylinderMovement) => e),
+      save: jest
+        .fn()
+        .mockImplementation((e: CylinderMovement) => Promise.resolve(e)),
       find: jest.fn(),
-    } as any;
-    orderRepo = { findOne: jest.fn() } as any;
+    } as unknown as typeof movementRepo;
+    orderRepo = { findOne: jest.fn() } as unknown as typeof orderRepo;
 
     service = new CylinderService(
-      cylinderRepo as any,
-      movementRepo as any,
-      orderRepo as any,
+      cylinderRepo as unknown as Repository<Cylinder>,
+      movementRepo as unknown as Repository<CylinderMovement>,
+      orderRepo as unknown as Repository<Order>,
     );
   });
 
   describe('create', () => {
     it('da de alta el envase en IN_DEPOT y registra el movimiento inicial', async () => {
       await service.create(
-        { serial: 'SN-001', deposit: 500 } as any,
+        { serial: 'SN-001', deposit: 500 } as CreateCylinderDto,
         DIST,
       );
 
@@ -85,7 +89,7 @@ describe('CylinderService', () => {
     it('traduce el serial duplicado (23505) a 409', async () => {
       cylinderRepo.save.mockRejectedValueOnce({ code: '23505' });
       await expect(
-        service.create({ serial: 'SN-001' } as any, DIST),
+        service.create({ serial: 'SN-001' } as CreateCylinderDto, DIST),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -107,7 +111,7 @@ describe('CylinderService', () => {
 
       const result = await service.transition(
         'cyl-1',
-        { toState: CylinderState.FILLED } as any,
+        { toState: CylinderState.FILLED } as TransitionCylinderDto,
         DIST,
         'actor-1',
       );
@@ -130,7 +134,7 @@ describe('CylinderService', () => {
       await expect(
         service.transition(
           'cyl-1',
-          { toState: CylinderState.WITH_CUSTOMER } as any,
+          { toState: CylinderState.WITH_CUSTOMER } as TransitionCylinderDto,
           DIST,
         ),
       ).rejects.toThrow(/Transición de envase inválida/);
@@ -150,7 +154,10 @@ describe('CylinderService', () => {
 
       const result = await service.transition(
         'cyl-1',
-        { toState: CylinderState.WITH_CUSTOMER, orderId: 'ord-1' } as any,
+        {
+          toState: CylinderState.WITH_CUSTOMER,
+          orderId: 'ord-1',
+        } as TransitionCylinderDto,
         DIST,
       );
 
@@ -167,7 +174,7 @@ describe('CylinderService', () => {
 
       const result = await service.transition(
         'cyl-1',
-        { toState: CylinderState.EMPTY_RETURNED } as any,
+        { toState: CylinderState.EMPTY_RETURNED } as TransitionCylinderDto,
         DIST,
       );
 
@@ -183,10 +190,18 @@ describe('CylinderService', () => {
       } as Order);
       cylinderRepo.findOne
         .mockResolvedValueOnce(
-          makeCylinder({ cylinder_id: 'cyl-1', serial: 'SN-001', state: CylinderState.FILLED }),
+          makeCylinder({
+            cylinder_id: 'cyl-1',
+            serial: 'SN-001',
+            state: CylinderState.FILLED,
+          }),
         )
         .mockResolvedValueOnce(
-          makeCylinder({ cylinder_id: 'cyl-2', serial: 'SN-002', state: CylinderState.FILLED }),
+          makeCylinder({
+            cylinder_id: 'cyl-2',
+            serial: 'SN-002',
+            state: CylinderState.FILLED,
+          }),
         );
 
       const result = await service.assignToOrder(

@@ -12,7 +12,10 @@ import {
  */
 describe('DispatchOrchestratorService', () => {
   let orchestrator: DispatchOrchestratorService;
-  let dispatch: { findNearbyDrivers: jest.Mock; notifyDriverNewOrder: jest.Mock };
+  let dispatch: {
+    findNearbyDrivers: jest.Mock;
+    notifyDriverNewOrder: jest.Mock;
+  };
   let orders: { findByIdFull: jest.Mock };
   let offers: {
     create: jest.Mock;
@@ -49,16 +52,20 @@ describe('DispatchOrchestratorService', () => {
       updateStatus: jest.fn().mockResolvedValue(undefined),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
     };
-    const deliveryRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    const deliveries = {
+      choferesDeLaDistribuidora: jest.fn((ids: string[]) =>
+        Promise.resolve(ids),
+      ),
+    };
     const notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
     };
     orchestrator = new DispatchOrchestratorService(
-      dispatch as any,
-      orders as any,
-      offers as any,
-      deliveryRepo as any,
-      notifications as any,
+      dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
+      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      offers as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
+      deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
+      notifications as unknown as import('../../notifications/notifications.service').NotificationsService,
     );
   });
 
@@ -71,11 +78,15 @@ describe('DispatchOrchestratorService', () => {
 
       expect(result).toBe('near');
       expect(offers.create).toHaveBeenCalledTimes(1);
-      const [orderId, driverId, expiresAt] = offers.create.mock.calls[0];
+      const [orderId, driverId, expiresAt] = offers.create.mock.calls[0] as [
+        string,
+        string,
+        Date,
+      ];
       expect(orderId).toBe('ord-1');
       expect(driverId).toBe('near');
       // expiresAt ≈ now + 30s
-      const ttlMs = (expiresAt as Date).getTime() - before;
+      const ttlMs = expiresAt.getTime() - before;
       expect(ttlMs).toBeGreaterThanOrEqual(29_000);
       expect(ttlMs).toBeLessThanOrEqual(31_000);
       expect(dispatch.notifyDriverNewOrder).toHaveBeenCalledWith(
@@ -91,7 +102,12 @@ describe('DispatchOrchestratorService', () => {
       const result = await orchestrator.offerToNextDriver(makeOrder());
 
       expect(result).toBe('d2');
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date), undefined);
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'd2',
+        expect.any(Date),
+        undefined,
+      );
     });
 
     it('radio progresivo: si en 5km todos ya fueron contactados, amplía a 10km', async () => {
@@ -103,8 +119,18 @@ describe('DispatchOrchestratorService', () => {
       const result = await orchestrator.offerToNextDriver(makeOrder());
 
       expect(result).toBe('d2');
-      expect(dispatch.findNearbyDrivers).toHaveBeenNthCalledWith(1, -26.8, -65.2, 5);
-      expect(dispatch.findNearbyDrivers).toHaveBeenNthCalledWith(2, -26.8, -65.2, 10);
+      expect(dispatch.findNearbyDrivers).toHaveBeenNthCalledWith(
+        1,
+        -26.8,
+        -65.2,
+        5,
+      );
+      expect(dispatch.findNearbyDrivers).toHaveBeenNthCalledWith(
+        2,
+        -26.8,
+        -65.2,
+        10,
+      );
     });
 
     it('devuelve null y no crea oferta si no hay choferes nuevos en ningún radio', async () => {
@@ -141,7 +167,12 @@ describe('DispatchOrchestratorService', () => {
         'off-1',
         DispatchOfferStatus.EXPIRED,
       );
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date), undefined);
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'd2',
+        expect.any(Date),
+        undefined,
+      );
     });
 
     it('NO re-ofrece si el pedido ya fue aceptado (tiene delivery asignado)', async () => {
@@ -180,7 +211,12 @@ describe('DispatchOrchestratorService', () => {
       offers.hasActiveOffer.mockResolvedValue(false);
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['d1']);
       await orchestrator.ensureOffered(makeOrder());
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd1', expect.any(Date), undefined);
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'd1',
+        expect.any(Date),
+        undefined,
+      );
     });
 
     it('no ofrece si el pedido no es re-ofrecible (ya asignado)', async () => {
@@ -210,7 +246,12 @@ describe('DispatchOrchestratorService', () => {
         'd1',
         DispatchOfferStatus.REJECTED,
       );
-      expect(offers.create).toHaveBeenCalledWith('ord-1', 'd2', expect.any(Date), undefined);
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'd2',
+        expect.any(Date),
+        undefined,
+      );
     });
   });
 });

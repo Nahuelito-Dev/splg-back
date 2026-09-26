@@ -11,6 +11,7 @@ import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 import { assertTransition } from './domain/cylinder-state.machine';
 import { Order } from '../order/entities/order.entity';
+import { errorCode } from '../common/errors/error-message';
 
 @Injectable()
 export class CylinderService {
@@ -35,7 +36,7 @@ export class CylinderService {
     const cylinder = this.cylinderRepository.create({
       distributor_id: distributorId,
       serial: dto.serial,
-      gas_cylinder_id: dto.gasCylinderId,
+      gas_cylinder_id: dto.gasCylinderId ?? null,
       deposit: dto.deposit ?? 0,
       state: CylinderState.IN_DEPOT,
     });
@@ -43,11 +44,9 @@ export class CylinderService {
     let saved: Cylinder;
     try {
       saved = await this.cylinderRepository.save(cylinder);
-    } catch (error: any) {
-      if (error.code === '23505') {
-        throw new ConflictException(
-          'El serial ya existe en tu distribuidora',
-        );
+    } catch (error) {
+      if (errorCode(error) === '23505') {
+        throw new ConflictException('El serial ya existe en tu distribuidora');
       }
       throw error;
     }
@@ -95,10 +94,7 @@ export class CylinderService {
   }
 
   /** Busca un envase por su serial, scopeado por tenant. */
-  async findBySerial(
-    serial: string,
-    distributorId: string,
-  ): Promise<Cylinder> {
+  async findBySerial(serial: string, distributorId: string): Promise<Cylinder> {
     const cylinder = await this.cylinderRepository.findOne({
       where: { serial, distributor_id: distributorId },
     });

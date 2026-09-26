@@ -1,9 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
-import { Delivery } from '../../delivery/entities/delivery.entity';
+import { DeliveryService } from '../../delivery/delivery.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
@@ -33,8 +31,7 @@ export class DispatchOrchestratorService {
     private readonly dispatch: RealtimeDispatchPort,
     private readonly orders: OrderRepositoryPort,
     private readonly offers: DispatchOfferRepositoryPort,
-    @InjectRepository(Delivery)
-    private readonly deliveryRepository: Repository<Delivery>,
+    private readonly deliveries: DeliveryService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -99,7 +96,10 @@ export class DispatchOrchestratorService {
     const expired = await this.offers.findExpired(new Date());
 
     for (const offer of expired) {
-      await this.offers.updateStatus(offer.offer_id, DispatchOfferStatus.EXPIRED);
+      await this.offers.updateStatus(
+        offer.offer_id,
+        DispatchOfferStatus.EXPIRED,
+      );
 
       // Recargar el pedido: pudo haber sido aceptado/cancelado por otra vía.
       const order = await this.orders.findByIdFull(offer.order_id);
@@ -180,11 +180,9 @@ export class DispatchOrchestratorService {
     distributorId?: string | null,
   ): Promise<string[]> {
     if (!distributorId || driverIds.length === 0) return driverIds;
-    const rows = await this.deliveryRepository.find({
-      where: { user_id: In(driverIds), distributor_id: distributorId },
-      select: { user_id: true },
-    });
-    const allowed = new Set(rows.map((r) => r.user_id));
+    const allowed = new Set(
+      await this.deliveries.choferesDeLaDistribuidora(driverIds, distributorId),
+    );
     return driverIds.filter((id) => allowed.has(id));
   }
 }

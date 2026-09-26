@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Order } from './order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { User } from '../../users/entities/user.entity';
 
 /**
  * Estado de una oferta de pedido a UN chofer.
@@ -39,24 +40,32 @@ export enum DispatchOfferStatus {
 @Index('idx_offer_status_expires', ['status', 'expiresAt'])
 export class DispatchOffer {
   @PrimaryGeneratedColumn('uuid', { name: 'offer_id' })
-  offer_id: string;
+  offer_id!: string;
 
   /** Tenant dueño del despacho (denormalizado desde la orden). */
   @Index()
   @Column({ type: 'uuid', nullable: false })
   distributor_id?: string;
 
+  @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
+
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: Order;
+  order!: Order;
 
   @Index()
   @Column({ type: 'uuid' })
-  order_id: string;
+  order_id!: string;
 
   /** ID del chofer al que se ofreció = `user_id` (el mismo que usa el GEO/WS). */
   @Column({ type: 'uuid' })
-  driver_id: string;
+  driver_id!: string;
+
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'driver_id' })
+  driver?: User;
 
   @Index()
   @Column({
@@ -64,7 +73,7 @@ export class DispatchOffer {
     enum: DispatchOfferStatus,
     default: DispatchOfferStatus.OFFERED,
   })
-  status: DispatchOfferStatus;
+  status!: DispatchOfferStatus;
 
   /**
    * Momento hasta el cual la oferta es válida (offered_at + TTL). timestamptz
@@ -73,8 +82,8 @@ export class DispatchOffer {
    */
   @Index()
   @Column({ type: 'timestamptz' })
-  expiresAt: Date;
+  expiresAt!: Date;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  offeredAt: Date;
+  offeredAt!: Date;
 }

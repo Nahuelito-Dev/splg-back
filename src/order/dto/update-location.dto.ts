@@ -14,12 +14,12 @@ export class UpdateLocationDto {
     example: '-34.603722',
   })
   @IsLatitude({ message: 'lat debe ser una latitud válida' })
-  lat: string;
+  lat!: string;
 
   @ApiProperty({
     description: 'Longitud actual del repartidor',
     example: '-58.381592',
   })
   @IsLongitude({ message: 'lng debe ser una longitud válida' })
-  lng: string;
+  lng!: string;
 }

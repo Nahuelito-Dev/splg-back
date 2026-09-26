@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { PaymentMethod } from '../entities/order.entity';
 
-/** Promoción por volumen tal como se guarda en GasCylinder.promotions (JSONB). */
+/** Promoción por volumen de un producto (tabla gas_cylinder_promotion). */
 export interface VolumePromotion {
   quantity: number;
   discountPercentage: number;

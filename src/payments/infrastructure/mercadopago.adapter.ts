@@ -10,6 +10,7 @@ import {
   PaymentGatewayPort,
   VerifyWebhookSignatureInput,
 } from '../domain/ports/payment-gateway.port';
+import { errorMessage } from '../../common/errors/error-message';
 
 /**
  * Adapter del PaymentGatewayPort sobre el SDK oficial `mercadopago` (Checkout
@@ -58,7 +59,9 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
     if (!preference.init_point || !preference.id) {
       // No debería ocurrir con un access token válido; lo tratamos como error
       // de infraestructura (el use-case lo deja burbujear como 500).
-      throw new Error('MercadoPago no devolvió init_point/id de la preferencia');
+      throw new Error(
+        'MercadoPago no devolvió init_point/id de la preferencia',
+      );
     }
 
     return {
@@ -93,8 +96,10 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
         secret,
       });
       return true;
-    } catch (error: any) {
-      this.logger.warn(`Firma de webhook MercadoPago inválida: ${error?.message}`);
+    } catch (error) {
+      this.logger.warn(
+        `Firma de webhook MercadoPago inválida: ${errorMessage(error)}`,
+      );
       return false;
     }
   }

@@ -8,11 +8,11 @@ import { ArrayNotEmpty, IsArray, IsString, IsUUID } from 'class-validator';
 export class AssignCylindersDto {
   /** Pedido al que se asignan los envases. */
   @IsUUID()
-  orderId: string;
+  orderId!: string;
 
   /** Seriales de los envases a despachar (deben estar FILLED). */
   @IsArray()
   @ArrayNotEmpty()
   @IsString({ each: true })
-  serials: string[];
+  serials!: string[];
 }

@@ -1,4 +1,3 @@
-// gas-cylinder/entities/gas-cylinder.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -8,48 +7,66 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  OneToMany,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { GasCylinderPromotion } from './gascylinder-promotion.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 @Entity('gas_cylinder')
+// El tipo es la clave natural del producto dentro de una distribuidora.
+@Unique('UQ_gas_cylinder_distribuidora_tipo', ['distributor_id', 'type'])
 export class GasCylinder {
   @PrimaryGeneratedColumn('uuid', { name: 'gas_cylinder_id' })
-  gas_cylinder_id: string;
+  gas_cylinder_id!: string;
 
-  /** Tenant dueño de este producto. Nullable hasta backfill del seed. */
+  /** Distribuidora dueña del producto. */
   @Index()
   @ManyToOne(() => Distributor, { nullable: false })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
   @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  distributor_id!: string;
 
   @Column({ type: 'varchar', length: 50 })
-  type: string; // '10kg', '15kg', '45kg'
+  type!: string; // '10kg', '15kg', '45kg'
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
-  weight: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+  })
+  weight!: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
-  price: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+  })
+  price!: number;
 
   @Column({ type: 'int', default: 0 })
-  stock: number;
+  stock!: number;
 
   @Column({ type: 'text', nullable: true })
-  description: string;
+  description!: string | null;
 
   @Column({ type: 'boolean', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
-  @Column({ type: 'jsonb', nullable: true })
-  promotions: { quantity: number; discountPercentage: number }[];
+  /** Promociones por volumen; se guardan y se reemplazan junto con el producto. */
+  @OneToMany(() => GasCylinderPromotion, (p) => p.gasCylinder, {
+    cascade: true,
+  })
+  promotions?: GasCylinderPromotion[];
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

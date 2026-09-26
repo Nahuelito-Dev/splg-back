@@ -1,7 +1,6 @@
-// src/firebase/firebase.module.ts
 import { Global, Module } from '@nestjs/common';
 import * as firebase from 'firebase-admin';
-import { serviceAccount } from '../auth/service-account';
+import { ConfigService } from '@nestjs/config';
 import { FIREBASE_ADMIN_APP } from './firebase.constants';
 import { FirebaseAuthPort } from './ports/firebase-auth.port';
 import { FcmPort } from './ports/fcm.port';
@@ -29,7 +28,8 @@ import { FcmAdapter } from './infrastructure/fcm.adapter';
   providers: [
     {
       provide: FIREBASE_ADMIN_APP,
-      useFactory: (): firebase.app.App => {
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): firebase.app.App => {
         // Idempotente: si ya existe la app default (ej. en tests que instancian
         // el módulo más de una vez), la reusamos en vez de re-inicializar y
         // volar con "Firebase app named '[DEFAULT]' already exists".
@@ -38,8 +38,16 @@ import { FcmAdapter } from './infrastructure/fcm.adapter';
           return existing;
         }
 
+        // La clave llega del .env con los saltos de línea escapados.
+        const privateKey = config
+          .getOrThrow<string>('FIREBASE_PRIVATE_KEY')
+          .replace(/\\n/g, '\n');
         return firebase.initializeApp({
-          credential: firebase.credential.cert(serviceAccount),
+          credential: firebase.credential.cert({
+            projectId: config.getOrThrow<string>('FIREBASE_PROJECT_ID'),
+            clientEmail: config.getOrThrow<string>('FIREBASE_CLIENT_EMAIL'),
+            privateKey,
+          }),
         });
       },
     },
