@@ -40,7 +40,8 @@ export class AsientoDeAuditoriaDto {
   statusCode!: number;
 
   @ApiProperty({
-    type: Object,
+    type: 'object',
+    additionalProperties: true,
     nullable: true,
     description: 'El cuerpo de la operación, sin credenciales',
   })

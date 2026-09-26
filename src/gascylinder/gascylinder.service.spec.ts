@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { ILike, Repository } from 'typeorm';
 import { GasCylinderService } from './gascylinder.service';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { DistributorService } from '../distributor/distributor.service';
@@ -64,6 +64,22 @@ describe('GasCylinderService', () => {
       expect(productos.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { isActive: true, distributorId: 'd-slug' },
+        }),
+      );
+    });
+
+    it('term busca por tipo o descripción sin salir de la distribuidora', async () => {
+      await service.findAll({ limit: 10, offset: 0, term: ' 45 ' }, 'jeny-gas');
+      expect(productos.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: [
+            { isActive: true, distributorId: 'd-slug', type: ILike('%45%') },
+            {
+              isActive: true,
+              distributorId: 'd-slug',
+              description: ILike('%45%'),
+            },
+          ],
         }),
       );
     });
