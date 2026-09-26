@@ -1,3 +1,5 @@
+import type { Response } from 'express';
+import { ApiTotal, informarTotal } from '../common/http/total';
 import {
   Controller,
   Get,
@@ -6,6 +8,7 @@ import {
   Param,
   Delete,
   Query,
+  Res,
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
@@ -49,14 +52,17 @@ export class CustomersController {
       'Get customers (scopeado por distribuidora: solo los que pidieron a esa empresa)',
   })
   @ApiOkResponse({ type: CustomerResponseDto, isArray: true })
+  @ApiTotal()
   async findAll(
     @Query() paginationDto: PaginationDto,
+    @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<CustomerResponseDto[]> {
-    const customers = await this.customersService.findAll(
+    const [customers, total] = await this.customersService.findAll(
       paginationDto,
       distributorId,
     );
+    informarTotal(res, total);
     return customers.map((c) => CustomerMapper.toDto(c));
   }
 

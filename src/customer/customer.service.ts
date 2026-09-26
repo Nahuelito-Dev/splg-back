@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
+import { Brackets, Repository, EntityManager } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { puntoDesdeLatLng } from '../common/geo/punto';
 import { clienteDeLaDistribuidora } from '../common/tenancy/pertenencia';
@@ -86,16 +86,29 @@ export class CustomersService {
   async findAll(
     paginationDto: PaginationDto,
     distributorId?: string | null,
-  ): Promise<Customer[]> {
-    const { limit = 10, offset = 0 } = paginationDto;
+  ): Promise<[Customer[], number]> {
+    const { limit = 10, offset = 0, term } = paginationDto;
 
     const qb = this.customerRepository
       .createQueryBuilder('customer')
       .leftJoinAndSelect('customer.user', 'user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('user.addresses', 'addresses')
+      .orderBy('customer.createdAt', 'DESC')
       .take(limit)
       .skip(offset);
+
+    // Búsqueda por nombre, email o teléfono, como en el listado de usuarios.
+    if (term) {
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('user.fullName ILIKE :term')
+            .orWhere('user.email ILIKE :term')
+            .orWhere('user.phoneNumber ILIKE :term');
+        }),
+        { term: `%${term}%` },
+      );
+    }
 
     if (distributorId) {
       qb.andWhere(clienteDeLaDistribuidora('customer.userId'), {
@@ -103,7 +116,7 @@ export class CustomersService {
       });
     }
 
-    return qb.getMany();
+    return qb.getManyAndCount();
   }
 
   /**
