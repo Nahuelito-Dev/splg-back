@@ -81,7 +81,7 @@ export class UsersController {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
     const encontrado = await this.usersService.findOneByEmail(email);
-    if (esAdministrador(user)) {
+    if (esAdministrador(user) && encontrado.userId !== user.user_id) {
       await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
     }
     return UserMapper.toDto(encontrado);
@@ -122,7 +122,7 @@ export class UsersController {
     if (!esAdministrador(user) && id !== user.user_id) {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
-    if (esAdministrador(user)) {
+    if (esAdministrador(user) && id !== user.user_id) {
       await this.assertDeSuDistribuidora(id, distributorId);
     }
     return UserMapper.toDto(await this.usersService.findOne(id));
@@ -218,13 +218,18 @@ export class UsersController {
    * y los clientes que le compraron. Si no, 404: no se revela que existe
    * (H-66).
    */
+  /**
+   * La cuenta propia no se acota: el administrador general que eligió una
+   * distribuidora con "Ver como" no pertenece a ella y tiene que poder leerse
+   * al entrar. El 404 no nombra el id: para quien pregunta, no existe.
+   */
   private async assertDeSuDistribuidora(
     userId: string,
     distributorId: string | null,
   ): Promise<void> {
     if (!distributorId) return;
     if (!(await this.usersService.perteneceA(userId, distributorId))) {
-      throw new NotFoundException(`User with ID: ${userId} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
   }
 
