@@ -32,6 +32,7 @@ import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
+import { QueryOrdersDto } from './dto/query-orders.dto';
 import {
   CodigoDeEntregaResponseDto,
   PaginatedOrdersResponseDto,
@@ -129,17 +130,23 @@ export class OrderController {
 
   @Get()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get all orders with pagination' })
+  @ApiOperation({
+    summary: 'Get all orders with pagination',
+    description:
+      'Admite `term` (nombre/email/teléfono del cliente o los últimos ' +
+      'caracteres del id del pedido), `status` y rango `from`/`to` (fecha ' +
+      'local, `to` inclusivo).',
+  })
   @ApiOkResponse({ type: PaginatedOrdersResponseDto })
+  @ApiBadRequestResponse({
+    description: 'status, from o to inválidos',
+  })
   async findAll(
-    @Query() paginationDto: PaginationDto,
+    @Query() queryDto: QueryOrdersDto,
     @CurrentDistributor() distributorId: string | null,
   ) {
     // Admin de distribuidora → sólo sus pedidos; super_admin sin header → todos.
-    const result = await this.orderService.findAll(
-      paginationDto,
-      distributorId,
-    );
+    const result = await this.orderService.findAll(queryDto, distributorId);
     return {
       ...result,
       orders: result.orders.map((order) => OrderMapper.toDto(order)),

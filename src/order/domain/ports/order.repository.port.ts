@@ -1,4 +1,4 @@
-import { Order } from '../../entities/order.entity';
+import { Order, OrderStatus } from '../../entities/order.entity';
 
 /** Resultado paginado uniforme de las consultas de pedidos. */
 export interface PaginatedOrders {
@@ -6,6 +6,18 @@ export interface PaginatedOrders {
   total: number;
   limit: number;
   offset: number;
+}
+
+/**
+ * Filtros de `GET /orders` para el panel. `term` busca por nombre, email o
+ * teléfono del cliente, y por los últimos caracteres del id del pedido.
+ * `from`/`to` son fechas locales (YYYY-MM-DD), `to` inclusivo.
+ */
+export interface OrderListFilters {
+  term?: string;
+  status?: OrderStatus;
+  from?: string;
+  to?: string;
 }
 
 /**
@@ -29,6 +41,7 @@ export abstract class OrderRepositoryPort {
     limit: number,
     offset: number,
     distributorId?: string | null,
+    filters?: OrderListFilters,
   ): Promise<PaginatedOrders>;
 
   /**

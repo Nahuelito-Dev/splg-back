@@ -1,7 +1,9 @@
 import type { Point } from 'typeorm';
 import { coordenadasDePunto } from '../common/geo/punto';
 import { Order, OrderStatus, PaymentType } from './entities/order.entity';
+import type { User } from '../users/entities/user.entity';
 import {
+  CustomerDeOrderDto,
   OrderItemResponseDto,
   OrderResponseDto,
   ProductoDelRenglonDto,
@@ -16,6 +18,20 @@ function latitudDe(punto: Point | null): string | null {
 function longitudDe(punto: Point | null): string | null {
   const c = coordenadasDePunto(punto);
   return c ? String(c.lng) : null;
+}
+
+/**
+ * Cliente del pedido, para el panel. `null` si la relación `order.customer`
+ * no vino cargada (el repositorio no la pidió).
+ */
+function clienteDe(user: User | null | undefined): CustomerDeOrderDto | null {
+  if (!user) return null;
+  const dto = new CustomerDeOrderDto();
+  dto.userId = user.userId;
+  dto.fullName = user.fullName ?? null;
+  dto.phoneNumber = user.phoneNumber ?? null;
+  dto.email = user.email ?? null;
+  return dto;
 }
 
 export class OrderMapper {
@@ -35,6 +51,12 @@ export class OrderMapper {
       order.delivery && order.delivery.user
         ? order.delivery.user.fullName || null
         : null;
+
+    // Cliente (para el panel; null si la relación no vino cargada).
+    dto.customer = clienteDe(order.customer);
+    dto.cancellationReason = order.cancellationReason ?? null;
+    dto.acceptedAt = order.acceptedAt ?? null;
+    dto.onTheWayAt = order.onTheWayAt ?? null;
 
     // Status Mapping
     dto.status = this.mapStatus(order.status);
