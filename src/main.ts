@@ -97,7 +97,9 @@ async function bootstrap() {
     ],
     // El request-id que genera/normaliza el backend viaja en la respuesta;
     // sin exponerlo, el JS del front no puede leerlo en un request cross-site.
-    exposedHeaders: ['X-Request-Id'],
+    // X-Total-Count: el total de los listados paginados que devuelven un array
+    // (clientes, choferes), para que el panel pagine sin adivinar.
+    exposedHeaders: ['X-Request-Id', 'X-Total-Count'],
   });
 
   morgan.token<Request, Response>('reqId', (req) => {

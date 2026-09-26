@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { ArrayNotEmpty, IsArray, IsString, IsUUID } from 'class-validator';
 
 /**
@@ -7,10 +8,12 @@ import { ArrayNotEmpty, IsArray, IsString, IsUUID } from 'class-validator';
  */
 export class AssignCylindersDto {
   /** Pedido al que se asignan los envases. */
+  @ApiProperty({ format: 'uuid' })
   @IsUUID()
   orderId!: string;
 
   /** Seriales de los envases a despachar (deben estar FILLED). */
+  @ApiProperty({ type: String, isArray: true, example: ['SN-000123'] })
   @IsArray()
   @ArrayNotEmpty()
   @IsString({ each: true })

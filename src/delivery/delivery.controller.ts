@@ -1,3 +1,5 @@
+import type { Response } from 'express';
+import { ApiTotal, informarTotal } from '../common/http/total';
 // delivery/delivery.controller.ts
 import {
   Controller,
@@ -8,6 +10,7 @@ import {
   Param,
   Delete,
   Query,
+  Res,
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
@@ -56,13 +59,18 @@ export class DeliveryController {
     isArray: true,
     description: 'List of deliveries',
   })
+  @ApiTotal()
   async findAll(
     @Query() paginationDto: PaginationDto,
+    @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<DeliveryResponseDto[]> {
-    return (
-      await this.deliveryService.findAll(paginationDto, distributorId)
-    ).map((d) => DeliveryMapper.toDto(d));
+    const [deliveries, total] = await this.deliveryService.findAll(
+      paginationDto,
+      distributorId,
+    );
+    informarTotal(res, total);
+    return deliveries.map((d) => DeliveryMapper.toDto(d));
   }
 
   // H-64: los choferes activos (con su ubicación) los ve un administrador, y el
@@ -75,16 +83,18 @@ export class DeliveryController {
     isArray: true,
     description: 'List of active deliveries',
   })
+  @ApiTotal()
   async findActive(
     @Query() paginationDto: PaginationDto,
+    @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<DeliveryResponseDto[]> {
-    return (
-      await this.deliveryService.findActiveDeliveries(
-        paginationDto,
-        distributorId,
-      )
-    ).map((d) => DeliveryMapper.toDto(d));
+    const [deliveries, total] = await this.deliveryService.findActiveDeliveries(
+      paginationDto,
+      distributorId,
+    );
+    informarTotal(res, total);
+    return deliveries.map((d) => DeliveryMapper.toDto(d));
   }
 
   @Get(':id')

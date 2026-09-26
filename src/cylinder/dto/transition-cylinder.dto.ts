@@ -1,15 +1,19 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { CylinderState } from '../entities/cylinder.entity';
 
 export class TransitionCylinderDto {
+  @ApiProperty({ enum: CylinderState })
   @IsEnum(CylinderState)
   toState!: CylinderState;
 
   /** Pedido en cuyo contexto ocurre la transición (ej. dispatch/entrega). */
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   orderId?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   note?: string;

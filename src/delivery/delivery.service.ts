@@ -62,10 +62,10 @@ export class DeliveryService {
   async findAll(
     paginationDto: PaginationDto,
     distributorId?: string | null,
-  ): Promise<Delivery[]> {
+  ): Promise<[Delivery[], number]> {
     const { limit = 10, offset = 0 } = paginationDto;
 
-    return await this.deliveryRepository.find({
+    return await this.deliveryRepository.findAndCount({
       where: distributorId ? { distributorId } : {},
       take: limit,
       skip: offset,
@@ -220,10 +220,10 @@ export class DeliveryService {
   async findActiveDeliveries(
     paginationDto: PaginationDto,
     distributorId?: string | null,
-  ): Promise<Delivery[]> {
+  ): Promise<[Delivery[], number]> {
     const { limit = 10, offset = 0 } = paginationDto;
 
-    return await this.deliveryRepository.find({
+    return await this.deliveryRepository.findAndCount({
       where: {
         isActive: true,
         ...(distributorId ? { distributorId } : {}),
