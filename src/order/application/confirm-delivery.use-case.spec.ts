@@ -1,7 +1,15 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfirmDeliveryUseCase } from './confirm-delivery.use-case';
-import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
-import { Order, OrderStatus, PaymentMethod, PaymentStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
 
 /**
@@ -33,8 +41,8 @@ describe('ConfirmDeliveryUseCase', () => {
     updateOrderStatusUseCase = { execute: jest.fn() };
 
     useCase = new ConfirmDeliveryUseCase(
-      orders as any,
-      updateOrderStatusUseCase as any,
+      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      updateOrderStatusUseCase as unknown as import('./update-order-status.use-case').UpdateOrderStatusUseCase,
     );
   });
 

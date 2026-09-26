@@ -29,15 +29,15 @@ export enum RaterRole {
 @Unique('UQ_rating_order_role', ['order_id', 'from_role'])
 export class Rating {
   @PrimaryGeneratedColumn('uuid', { name: 'rating_id' })
-  rating_id: string;
+  rating_id!: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: Order;
+  order!: Order;
 
   @Index()
   @Column({ type: 'uuid' })
-  order_id: string;
+  order_id!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false })
@@ -45,11 +45,11 @@ export class Rating {
   distributor?: Distributor;
 
   @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  distributor_id!: string;
 
   /** Usuario que emite la calificación (user_id). */
   @Column({ type: 'uuid' })
-  from_user_id: string;
+  from_user_id!: string;
 
   /** Relación al usuario que califica (para mostrar su nombre en el panel). */
   @ManyToOne(() => User, { nullable: true })
@@ -59,18 +59,22 @@ export class Rating {
   /** Usuario calificado (el otro lado del pedido) (user_id). */
   @Index()
   @Column({ type: 'uuid' })
-  to_user_id: string;
+  to_user_id!: string;
+
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'to_user_id' })
+  toUser?: User;
 
   @Column({ type: 'enum', enum: RaterRole })
-  from_role: RaterRole;
+  from_role!: RaterRole;
 
   /** 1 a 5 estrellas. */
   @Column({ type: 'int' })
-  stars: number;
+  stars!: number;
 
   @Column({ type: 'text', nullable: true })
-  comment?: string;
+  comment!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 }

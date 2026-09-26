@@ -1,4 +1,7 @@
+import { Repository } from 'typeorm';
 import { PaymentsService } from './payments.service';
+import { Payment } from '../entities/payment.entity';
+import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
 import { LedgerPaymentStatus } from '../domain/payment.enums';
 
 /**
@@ -25,8 +28,8 @@ describe('PaymentsService', () => {
 
   beforeEach(() => {
     paymentRepository = {
-      create: jest.fn((data) => ({ ...data })),
-      save: jest.fn(async (entity: any) => entity),
+      create: jest.fn((data: Partial<Payment>) => ({ ...data })),
+      save: jest.fn((entity: Payment) => Promise.resolve(entity)),
       findOne: jest.fn(),
     };
     paymentGateway = {
@@ -36,8 +39,8 @@ describe('PaymentsService', () => {
     };
 
     service = new PaymentsService(
-      paymentRepository as any,
-      paymentGateway as any,
+      paymentRepository as unknown as Repository<Payment>,
+      paymentGateway as unknown as PaymentGatewayPort,
     );
   });
 
@@ -53,7 +56,9 @@ describe('PaymentsService', () => {
         distributorId: 'dist-1',
         amount: 2000,
         isDeposit: false,
-        items: [{ id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 }],
+        items: [
+          { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
+        ],
         payerEmail: 'cliente@test.com',
       });
 
@@ -71,13 +76,17 @@ describe('PaymentsService', () => {
 
       expect(paymentGateway.createCheckout).toHaveBeenCalledWith({
         orderId: 'ord-1',
-        items: [{ id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 }],
+        items: [
+          { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
+        ],
         payerEmail: 'cliente@test.com',
       });
 
       // Se guarda dos veces: al crear el PENDING y al completar payment_url.
       expect(paymentRepository.save).toHaveBeenCalledTimes(2);
-      const lastSaved = paymentRepository.save.mock.calls[1][0];
+      const lastSaved = (
+        paymentRepository.save.mock.calls as Payment[][]
+      )[1][0];
       expect(lastSaved.payment_url).toBe('https://mp.test/checkout');
       expect(lastSaved.metadata).toEqual({ preferenceId: 'pref-1' });
 
@@ -98,7 +107,14 @@ describe('PaymentsService', () => {
         distributorId: null,
         amount: 500,
         isDeposit: true,
-        items: [{ id: 'deposit-ord-2', title: 'Seña de reserva', quantity: 1, unitPrice: 500 }],
+        items: [
+          {
+            id: 'deposit-ord-2',
+            title: 'Seña de reserva',
+            quantity: 1,
+            unitPrice: 500,
+          },
+        ],
         payerEmail: 'cliente@test.com',
       });
 

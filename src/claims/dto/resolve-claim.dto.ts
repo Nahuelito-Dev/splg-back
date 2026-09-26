@@ -11,7 +11,7 @@ export class ResolveClaimDto {
   @ApiProperty({ description: 'Texto de resolución del reclamo' })
   @IsString()
   @IsNotEmpty()
-  resolution: string;
+  resolution!: string;
 
   @ApiProperty({
     description: 'Nuevo estado del reclamo',
@@ -21,5 +21,5 @@ export class ResolveClaimDto {
   @IsEnum(ClaimStatus, {
     message: `status debe ser uno de: ${Object.values(ClaimStatus).join(', ')}`,
   })
-  status: ClaimStatus;
+  status!: ClaimStatus;
 }

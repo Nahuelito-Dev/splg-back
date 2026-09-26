@@ -21,7 +21,7 @@ export enum ClaimStatus {
 @Entity('claims')
 export class Claim {
   @PrimaryGeneratedColumn('uuid')
-  claim_id: string;
+  claim_id!: string;
 
   /** Tenant dueño del reclamo (denormalizado desde la orden). */
   @Index()
@@ -30,43 +30,43 @@ export class Claim {
   distributor?: Distributor;
 
   @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  distributor_id!: string;
 
   // Relación con la Orden
   @ManyToOne(() => Order)
   @JoinColumn({ name: 'order_id' })
-  order: Order;
+  order!: Order;
 
   @Column()
-  order_id: string;
+  order_id!: string;
 
   // Relación con el Cliente (Quien reclama)
   @ManyToOne(() => User)
   @JoinColumn({ name: 'customer_id' })
-  customer: User;
+  customer!: User;
 
   @Column()
-  customer_id: string;
+  customer_id!: string;
 
   @Column()
-  reason: string; // Ej: "Fuga de gas", "Mala atención"
+  reason!: string; // Ej: "Fuga de gas", "Mala atención"
 
   @Column('text')
-  description: string;
+  description!: string;
 
-  @Column({ nullable: true })
-  photoUrl: string;
+  @Column({ type: 'varchar', nullable: true })
+  photoUrl!: string | null;
 
   @Column({
     type: 'enum',
     enum: ClaimStatus,
     default: ClaimStatus.PENDING,
   })
-  status: ClaimStatus;
+  status!: ClaimStatus;
 
   @Column({ type: 'text', nullable: true })
-  resolutionNote: string;
+  resolutionNote!: string | null;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 }

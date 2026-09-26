@@ -59,3 +59,7 @@ pids
 *.seed
 *.pid.lock
 .env.bak*
+postman/__pycache__/
+postman/ids.txt
+postman/openapi.json
+scripts/alineacion/newman-*.json

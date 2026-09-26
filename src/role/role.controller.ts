@@ -1,56 +1,90 @@
-// role.controller.ts - CORREGIDO
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
+  Get,
+  Param,
   ParseUUIDPipe,
+  Patch,
+  Post,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RoleService } from './role.service';
+import { RoleMapper } from './role.mapper';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
-import { Roles } from '../common/decorators/roles.decorator';
+import { RoleResponseDto } from './dto/role-response.dto';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 
-@Roles(RoleType.SUPER_ADMIN)
+@ApiTags('Role')
+@ApiBearerAuth()
+@Auth(RoleType.SUPER_ADMIN)
 @Controller('role')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
   @Post()
-  create(@Body() createRoleDto: CreateRoleDto) {
-    return this.roleService.create(createRoleDto);
+  @ApiOperation({ summary: 'Crear un rol' })
+  @ApiCreatedResponse({ type: RoleResponseDto })
+  async create(@Body() createRoleDto: CreateRoleDto): Promise<RoleResponseDto> {
+    return RoleMapper.toDto(await this.roleService.create(createRoleDto));
   }
 
   @Get()
-  findAll() {
-    return this.roleService.findAll();
+  @ApiOperation({ summary: 'Listar los roles' })
+  @ApiOkResponse({ type: RoleResponseDto, isArray: true })
+  async findAll(): Promise<RoleResponseDto[]> {
+    const roles = await this.roleService.findAll();
+    return roles.map((role) => RoleMapper.toDto(role));
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    // ✅ Usar ParseUUIDPipe
-    return this.roleService.findOne(id);
+  @ApiOperation({ summary: 'Consultar un rol' })
+  @ApiOkResponse({ type: RoleResponseDto })
+  @ApiNotFoundResponse({ description: 'El rol no existe' })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<RoleResponseDto> {
+    return RoleMapper.toDto(await this.roleService.findOne(id));
   }
 
   @Patch(':id')
-  update(
+  @ApiOperation({ summary: 'Modificar un rol' })
+  @ApiOkResponse({ type: RoleResponseDto })
+  @ApiNotFoundResponse({ description: 'El rol no existe' })
+  @ApiConflictResponse({ description: 'Es un rol del sistema' })
+  async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateRoleDto: UpdateRoleDto,
-  ) {
-    return this.roleService.update(id, updateRoleDto);
+  ): Promise<RoleResponseDto> {
+    return RoleMapper.toDto(await this.roleService.update(id, updateRoleDto));
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
+  @ApiOperation({ summary: 'Borrar un rol' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiNotFoundResponse({ description: 'El rol no existe' })
+  @ApiConflictResponse({
+    description: 'Es un rol del sistema, o todavía tiene usuarios',
+  })
+  remove(@Param('id', ParseUUIDPipe) id: string): Promise<MessageResponseDto> {
     return this.roleService.remove(id);
   }
 
   @Post('seed')
-  async seedRoles() {
+  @ApiOperation({ summary: 'Crear los roles del sistema que falten' })
+  @ApiCreatedResponse({ type: MessageResponseDto })
+  seedRoles(): Promise<MessageResponseDto> {
     return this.roleService.seedRoles();
   }
 }

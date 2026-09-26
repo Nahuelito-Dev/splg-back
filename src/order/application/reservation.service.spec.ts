@@ -13,11 +13,25 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
   let service: ReservationService;
 
   let orderRepository: { find: jest.Mock };
-  let dataSource: any;
-  let queryRunner: any;
-  let queryBuilder: any;
+  let dataSource: { createQueryRunner: jest.Mock };
+  let queryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    manager: {
+      createQueryBuilder: jest.Mock;
+      save: jest.Mock;
+    };
+  };
+  let queryBuilder: {
+    setLock: jest.Mock;
+    where: jest.Mock;
+    getOne: jest.Mock;
+  };
   let lockedOrder: Partial<Order> | null;
-  let stock: { restore: jest.Mock };
+  let stock: { restituirStock: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
 
@@ -50,22 +64,29 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
         createQueryBuilder: jest.fn(() => queryBuilder),
-        save: jest.fn(async (o: any) => o),
+        save: jest.fn((o: unknown) => Promise.resolve(o)),
       },
     };
     dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
 
     orderRepository = { find: jest.fn().mockResolvedValue([]) };
-    stock = { restore: jest.fn().mockResolvedValue(undefined) };
+    stock = { restituirStock: jest.fn().mockResolvedValue(undefined) };
     orders = { findByIdFull: jest.fn() };
     dispatchOrchestrator = { offerToNextDriver: jest.fn() };
 
     service = new ReservationService(
-      orderRepository as any,
-      dataSource,
-      orders as any,
-      stock as any,
-      dispatchOrchestrator as any,
+      orderRepository as unknown as import('typeorm').Repository<Order>,
+      dataSource as unknown as import('typeorm').DataSource,
+      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      stock as unknown as import('../../gascylinder/gascylinder.service').GasCylinderService,
+      dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
+      {
+        getOrThrow: jest.fn((key: string) => {
+          if (key === 'RESERVATION_DEPOSIT_TTL_HOURS') return 48;
+          if (key === 'ORDER_MERCADOPAGO_PENDING_TTL_MINUTES') return 60;
+          throw new Error('Unknown config key');
+        }),
+      } as unknown as import('@nestjs/config').ConfigService,
     );
   });
 
@@ -85,7 +106,9 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
         where: expect.objectContaining({
           status: OrderStatus.PENDING,
           paymentMethod: PaymentMethod.MERCADOPAGO,
-        }),
+        }) as unknown as import('typeorm').FindOptionsWhere<
+          import('../entities/order.entity').Order
+        >,
       }),
     );
   });
@@ -101,7 +124,7 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
         order_id: 'ord-mp-1',
       }),
     );
-    expect(stock.restore).toHaveBeenCalledWith(queryRunner.manager, [
+    expect(stock.restituirStock).toHaveBeenCalledWith(queryRunner.manager, [
       { gas_cylinder_id: 'gc-1', quantity: 2 },
     ]);
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
@@ -115,7 +138,7 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
     await service.expireUnpaidMercadoPagoOrders();
 
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
-    expect(stock.restore).not.toHaveBeenCalled();
+    expect(stock.restituirStock).not.toHaveBeenCalled();
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
   });
 
@@ -126,7 +149,7 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
     await service.expireUnpaidMercadoPagoOrders();
 
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
-    expect(stock.restore).not.toHaveBeenCalled();
+    expect(stock.restituirStock).not.toHaveBeenCalled();
   });
 
   it('el pedido desapareció entre la lectura y el lock: no revienta', async () => {

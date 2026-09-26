@@ -71,7 +71,11 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     status: DispatchOfferStatus,
   ): Promise<boolean> {
     const result = await this.repo.update(
-      { order_id: orderId, driver_id: driverId, status: DispatchOfferStatus.OFFERED },
+      {
+        order_id: orderId,
+        driver_id: driverId,
+        status: DispatchOfferStatus.OFFERED,
+      },
       { status },
     );
     return (result.affected ?? 0) > 0;

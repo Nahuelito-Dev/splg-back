@@ -18,31 +18,31 @@ import { PaymentMethod } from '../entities/order.entity';
 export class OrderItemDto {
   @ApiProperty({ description: 'ID de la garrafa' })
   @IsUUID()
-  gasCylinderId: string;
+  gasCylinderId!: string;
 
   @ApiProperty({ description: 'Cantidad' })
   @IsNumber()
-  quantity: number;
+  quantity!: number;
 
   @ApiProperty({ description: 'Precio unitario' })
   @IsNumber()
-  unitPrice: number;
+  unitPrice!: number;
 }
 
 export class CreateOrderDto {
   @ApiProperty({ description: 'ID del cliente' })
   @IsUUID()
-  customerId: string;
+  customerId!: string;
 
   @ApiProperty({ description: 'ID de la dirección de entrega' })
   @IsUUID()
-  addressId: string;
+  addressId!: string;
 
   @ApiProperty({ description: 'Ítems del pedido', type: [OrderItemDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items: OrderItemDto[];
+  items!: OrderItemDto[];
 
   @ApiProperty({
     description: 'Método de pago',
@@ -52,7 +52,7 @@ export class CreateOrderDto {
   @IsEnum(PaymentMethod, {
     message: `paymentMethod debe ser uno de: ${Object.values(PaymentMethod).join(', ')}`,
   })
-  paymentMethod: PaymentMethod;
+  paymentMethod!: PaymentMethod;
 
   @ApiProperty({ description: 'Notas adicionales', required: false })
   @IsOptional()
@@ -64,7 +64,10 @@ export class CreateOrderDto {
   @IsString()
   notificationToken?: string;
 
-  @ApiProperty({ description: 'ID del turno de entrega (TimeSlot)', required: false })
+  @ApiProperty({
+    description: 'ID del turno de entrega (TimeSlot)',
+    required: false,
+  })
   @IsOptional()
   @IsUUID()
   timeSlotId?: string;
@@ -92,7 +95,8 @@ export class CreateOrderDto {
   isReservation?: boolean;
 
   @ApiProperty({
-    description: 'Monto de la seña de la reserva (obligatorio si isReservation).',
+    description:
+      'Monto de la seña de la reserva (obligatorio si isReservation).',
     required: false,
   })
   @IsOptional()

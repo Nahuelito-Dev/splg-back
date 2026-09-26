@@ -1,0 +1,120 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+import { MaintenancePlan } from './maintenance-plan.entity';
+import { Distributor } from '../../distributor/entities/distributor.entity';
+import { Car } from '../../car/entities/car.entity';
+import { Delivery } from '../../delivery/entities/delivery.entity';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+
+export enum MaintenanceTaskStatus {
+  FORECAST = 'forecast',
+  SCHEDULED = 'scheduled',
+  IN_PROGRESS = 'in_progress',
+  DONE = 'done',
+  OVERDUE = 'overdue',
+  CANCELLED = 'cancelled',
+}
+
+/**
+ * Tarea de mantenimiento
+ * Cada vencimiento concreto de un plan: una póliza, una VTV, un service.
+ * Casos: CU-136 a CU-142 y CU-105 (M1)
+ */
+@Entity('maintenance_task')
+export class MaintenanceTask {
+  @PrimaryGeneratedColumn('uuid', { name: 'task_id' })
+  taskId!: string;
+
+  @ManyToOne(() => MaintenancePlan, { nullable: false, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'plan_id' })
+  plan!: MaintenancePlan;
+
+  @Column({ name: 'plan_id', type: 'uuid' })
+  planId!: string;
+
+  @Index()
+  @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor!: Distributor;
+
+  @Column({ name: 'distributor_id', type: 'uuid' })
+  distributorId!: string;
+
+  @ManyToOne(() => Car, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'car_id' })
+  car?: Car;
+
+  @Column({ name: 'car_id', type: 'uuid', nullable: true })
+  carId!: string | null;
+
+  @ManyToOne(() => Delivery, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'delivery_id' })
+  delivery?: Delivery;
+
+  @Column({ name: 'delivery_id', type: 'uuid', nullable: true })
+  deliveryId!: string | null;
+
+  @Column({
+    name: 'status',
+    type: 'enum',
+    enum: MaintenanceTaskStatus,
+
+    nullable: false,
+    default: MaintenanceTaskStatus.FORECAST,
+  })
+  status!: MaintenanceTaskStatus;
+
+  @Column({ name: 'due_at', type: 'timestamptz', nullable: true })
+  dueAt!: Date | null;
+
+  @Column({ name: 'due_km', type: 'integer', nullable: true })
+  dueKm!: number | null;
+
+  @Column({ name: 'predicted_due_at', type: 'timestamptz', nullable: true })
+  predictedDueAt!: Date | null;
+
+  @Column({ name: 'scheduled_at', type: 'timestamptz', nullable: true })
+  scheduledAt!: Date | null;
+
+  @Column({ name: 'performed_at', type: 'timestamptz', nullable: true })
+  performedAt!: Date | null;
+
+  @Column({ name: 'odometer_km', type: 'integer', nullable: true })
+  odometerKm!: number | null;
+
+  @Column({
+    name: 'cost',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  cost!: number | null;
+
+  @Column({ name: 'provider', type: 'varchar', length: 120, nullable: true })
+  provider!: string | null;
+
+  @Column({
+    name: 'reference_number',
+    type: 'varchar',
+    length: 60,
+    nullable: true,
+  })
+  referenceNumber!: string | null;
+
+  @Column({ name: 'category', type: 'varchar', length: 10, nullable: true })
+  category!: string | null;
+
+  @Column({ name: 'alerted_at', type: 'timestamptz', nullable: true })
+  alertedAt!: Date | null;
+
+  @Column({ name: 'notes', type: 'text', nullable: true })
+  notes!: string | null;
+}

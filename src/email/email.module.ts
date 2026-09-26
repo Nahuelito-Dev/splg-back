@@ -1,5 +1,4 @@
-// src/email/email.module.ts
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EmailService } from './email.service';
 import { EmailController } from './email.controller';
@@ -8,17 +7,21 @@ import { RedisModule } from '../redis/redis.module';
 import { EmailSenderPort } from './ports/email-sender.port';
 import { ResendEmailAdapter } from './infrastructure/resend-email.adapter';
 import { EmailTemplateProvider } from './email-template.provider';
+import { EnlacesDeLaApp } from './enlaces-de-la-app';
+import { BienvenidaListener } from './bienvenida.listener';
 
 @Module({
   imports: [
     ConfigModule,
-    forwardRef(() => UsersModule), // ← CORRECTO
+    UsersModule,
     RedisModule, // rate-limit + cache de links de reset (ver EmailService)
   ],
   controllers: [EmailController],
   providers: [
     EmailService,
     EmailTemplateProvider,
+    EnlacesDeLaApp,
+    BienvenidaListener,
     { provide: EmailSenderPort, useClass: ResendEmailAdapter },
   ],
   exports: [EmailService],

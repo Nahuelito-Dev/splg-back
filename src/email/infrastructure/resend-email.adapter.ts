@@ -20,7 +20,7 @@ export class ResendEmailAdapter extends EmailSenderPort {
 
   constructor(private readonly config: ConfigService) {
     super();
-    const resendApiKey = this.config.get('RESEND_API_KEY');
+    const resendApiKey = this.config.get<string>('RESEND_API_KEY');
     this.resend = resendApiKey ? new Resend(resendApiKey) : null;
   }
 

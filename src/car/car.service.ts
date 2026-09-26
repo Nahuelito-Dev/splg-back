@@ -1,36 +1,34 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
-  InternalServerErrorException,
+  Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
 import { Car } from './entities/car.entity';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
-import { User } from '../users/entities/user.entity';
+import { DeliveryService } from '../delivery/delivery.service';
+import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { CarBorradoResponseDto } from './dto/car-response.dto';
 
 @Injectable()
 export class CarService {
+  private readonly logger = new Logger(CarService.name);
+
   constructor(
     @InjectRepository(Car)
     private readonly carRepository: Repository<Car>,
 
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private readonly deliveryService: DeliveryService,
   ) {}
 
-  async create(createCarDto: CreateCarDto, distributorId: string) {
-    const user = await this.userRepository.findOne({
-      where: { user_id: createCarDto.user_id },
-    });
-
-    if (!user) {
-      throw new NotFoundException(
-        `User with ID: ${createCarDto.user_id} not found`,
-      );
-    }
+  async create(
+    createCarDto: CreateCarDto,
+    distributorId: string,
+  ): Promise<Car> {
+    await this.assertDueñoEsChofer(createCarDto.user_id, distributorId);
 
     if (createCarDto.car_patent) {
       const existingCar = await this.carRepository.findOne({
@@ -53,7 +51,7 @@ export class CarService {
     return await this.carRepository.save(car);
   }
 
-  async findAll(distributorId?: string) {
+  async findAll(distributorId?: string): Promise<Car[]> {
     const where: FindOptionsWhere<Car> = {};
     if (distributorId) where.distributor_id = distributorId;
 
@@ -67,7 +65,7 @@ export class CarService {
    * `distributorId` opcional: si viene, el auto debe pertenecer a ese tenant
    * (evita que un admin lea/edite vehículos de otra distribuidora).
    */
-  async findOne(id: string, distributorId?: string | null) {
+  async findOne(id: string, distributorId?: string | null): Promise<Car> {
     const where: FindOptionsWhere<Car> = { car_id: id };
     if (distributorId) where.distributor_id = distributorId;
 
@@ -83,7 +81,10 @@ export class CarService {
     return car;
   }
 
-  async findByUserId(userId: string, distributorId?: string | null) {
+  async findByUserId(
+    userId: string,
+    distributorId?: string | null,
+  ): Promise<Car[]> {
     const where: FindOptionsWhere<Car> = { user_id: userId };
     if (distributorId) where.distributor_id = distributorId;
 
@@ -95,20 +96,24 @@ export class CarService {
     return cars;
   }
 
-  async update(id: string, updateCarDto: UpdateCarDto, distributorId: string) {
+  async update(
+    id: string,
+    updateCarDto: UpdateCarDto,
+    distributorId: string,
+  ): Promise<Car> {
     // Verifica pertenencia al tenant antes de editar.
-    await this.findOne(id, distributorId);
+    const actual = await this.findOne(id, distributorId);
 
-    const car = await this.carRepository.preload({
-      car_id: id,
-      ...updateCarDto,
-    });
-
-    if (!car) {
-      throw new NotFoundException(`Car with ID: ${id} not found`);
+    if (updateCarDto.user_id && updateCarDto.user_id !== actual.user_id) {
+      await this.assertDueñoEsChofer(updateCarDto.user_id, distributorId);
     }
 
-    if (updateCarDto.car_patent && updateCarDto.car_patent !== car.car_patent) {
+    // Contra la patente guardada: después del preload el auto ya trae la
+    // nueva y la comparación daba siempre igual.
+    if (
+      updateCarDto.car_patent &&
+      updateCarDto.car_patent !== actual.car_patent
+    ) {
       const existingCar = await this.carRepository.findOne({
         where: { car_patent: updateCarDto.car_patent },
       });
@@ -120,12 +125,24 @@ export class CarService {
       }
     }
 
+    const car = await this.carRepository.preload({
+      car_id: id,
+      ...updateCarDto,
+    });
+
+    if (!car) {
+      throw new NotFoundException(`Car with ID: ${id} not found`);
+    }
+
     return await this.carRepository.save(car);
   }
 
-  async remove(id: string, distributorId: string) {
+  async remove(
+    id: string,
+    distributorId: string,
+  ): Promise<CarBorradoResponseDto> {
     const car = await this.findOne(id, distributorId);
-    await this.carRepository.remove(car);
+    await this.carRepository.softRemove(car);
 
     return {
       message: 'Car deleted successfully',
@@ -133,7 +150,10 @@ export class CarService {
     };
   }
 
-  async findByPatent(patent: string, distributorId?: string | null) {
+  async findByPatent(
+    patent: string,
+    distributorId?: string | null,
+  ): Promise<Car | null> {
     const where: FindOptionsWhere<Car> = { car_patent: patent };
     if (distributorId) where.distributor_id = distributorId;
 
@@ -145,17 +165,30 @@ export class CarService {
     return car;
   }
 
-  private handleDBExceptions(error: any) {
-    if (error.code === '23505') {
-      throw new BadRequestException('Duplicate entry', error.detail);
-    }
+  /**
+   * Delega en el traductor compartido. Antes cada servicio tenia su propia
+   * copia: contemplaban uno o dos codigos de Postgres y convertian todo lo
+   * demas en un 500 sin registrar la causa, asi que el mensaje mandaba a
+   * mirar unos logs donde el error no estaba.
+   */
+  private handleDBExceptions(error: unknown): never {
+    return traducirErrorDeBase(error, this.logger, 'autos');
+  }
 
-    if (error.code === '23503') {
-      throw new BadRequestException('Foreign key constraint failed');
+  /**
+   * H-69: el dueño de un vehículo es un chofer de la misma distribuidora. Un
+   * usuario que no es chofer, o que lo es de otra, se trata como inexistente.
+   */
+  private async assertDueñoEsChofer(
+    userId: string,
+    distributorId: string,
+  ): Promise<void> {
+    const suDistribuidora =
+      await this.deliveryService.findDistributorIdByUserId(userId);
+    if (suDistribuidora !== distributorId) {
+      throw new NotFoundException(
+        `No hay un chofer con user ID ${userId} en esta distribuidora`,
+      );
     }
-
-    throw new InternalServerErrorException(
-      'Unexpected error, check server logs',
-    );
   }
 }

@@ -11,6 +11,9 @@ import {
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
+import { User } from '../../users/entities/user.entity';
+import { Order } from '../../order/entities/order.entity';
 
 /**
  * Estado del ciclo de vida FÍSICO del envase. No confundir con `OrderStatus`
@@ -36,24 +39,28 @@ export enum CylinderState {
 @Unique(['distributor_id', 'serial'])
 export class Cylinder {
   @PrimaryGeneratedColumn('uuid', { name: 'cylinder_id' })
-  cylinder_id: string;
+  cylinder_id!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
-  distributor: Distributor;
+  distributor!: Distributor;
 
   @Column({ type: 'uuid' })
-  distributor_id: string;
+  distributor_id!: string;
 
   /** Número de serie físico grabado en el envase. Único por distribuidora. */
   @Index()
   @Column({ type: 'varchar' })
-  serial: string;
+  serial!: string;
 
   /** Tipo de producto al que corresponde (ej. "Garrafa 10kg"), sin relación para simplificar. */
   @Column({ type: 'uuid', nullable: true })
-  gas_cylinder_id?: string;
+  gas_cylinder_id!: string | null;
+
+  @ManyToOne(() => GasCylinder, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'gas_cylinder_id' })
+  gasCylinder?: GasCylinder;
 
   @Index()
   @Column({
@@ -61,11 +68,15 @@ export class Cylinder {
     enum: CylinderState,
     default: CylinderState.IN_DEPOT,
   })
-  state: CylinderState;
+  state!: CylinderState;
 
   /** Cliente que tiene actualmente el envase (User user_id), solo seteado en WITH_CUSTOMER. */
   @Column({ type: 'uuid', nullable: true })
-  current_customer_id?: string | null;
+  current_customer_id!: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'current_customer_id' })
+  currentCustomer?: User;
 
   /**
    * Pedido en el que el envase salió despachado. Se setea al asignarlo a un
@@ -75,15 +86,34 @@ export class Cylinder {
    */
   @Index()
   @Column({ type: 'uuid', nullable: true })
-  current_order_id?: string | null;
+  current_order_id!: string | null;
+
+  @ManyToOne(() => Order, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'current_order_id' })
+  currentOrder?: Order;
 
   /** Monto de garantía/depósito cobrado por el envase. */
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer, default: 0 })
-  deposit: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  deposit!: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
+
+  @Column({ name: 'manufactured_at', type: 'timestamptz', nullable: true })
+  manufactured_at!: Date | null;
+
+  @Column({ name: 'last_inspection_at', type: 'timestamptz', nullable: true })
+  last_inspection_at!: Date | null;
+
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
+  expires_at!: Date | null;
 }

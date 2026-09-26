@@ -21,7 +21,9 @@ describe('Health (e2e)', () => {
 
   describe('GET /health', () => {
     it('responde 200 con status "ok" cuando todo está sano', async () => {
-      const res = await request(env.app.getHttpServer()).get('/health').expect(200);
+      const res = await request(env.app.getHttpServer())
+        .get('/health')
+        .expect(200);
 
       expect(res.body.status).toBe('ok');
       expect(res.body.info.postgres.status).toBe('up');
@@ -32,7 +34,9 @@ describe('Health (e2e)', () => {
     it('responde 503 cuando Redis está caído', async () => {
       await env.redisContainer.stop();
 
-      const res = await request(env.app.getHttpServer()).get('/health').expect(503);
+      const res = await request(env.app.getHttpServer())
+        .get('/health')
+        .expect(503);
 
       expect(res.body.status).toBe('error');
       expect(res.body.error.redis.status).toBe('down');
@@ -44,7 +48,9 @@ describe('Health (e2e)', () => {
 
   describe('GET /health/live', () => {
     it('responde 200 sin chequear dependencias', async () => {
-      const res = await request(env.app.getHttpServer()).get('/health/live').expect(200);
+      const res = await request(env.app.getHttpServer())
+        .get('/health/live')
+        .expect(200);
 
       expect(res.body.status).toBe('ok');
       expect(res.body.timestamp).toBeDefined();

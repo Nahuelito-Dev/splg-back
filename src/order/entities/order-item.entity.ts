@@ -13,28 +13,38 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 @Entity('order_item')
 export class OrderItem {
   @PrimaryGeneratedColumn('uuid', { name: 'order_item_id' })
-  order_item_id: string;
+  order_item_id!: string;
 
   @ManyToOne(() => Order, (order) => order.items, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: Order;
+  order!: Order;
 
   @Column({ type: 'uuid' })
-  order_id: string;
+  order_id!: string;
 
   @ManyToOne(() => GasCylinder)
   @JoinColumn({ name: 'gas_cylinder_id' })
-  gasCylinder: GasCylinder;
+  gasCylinder!: GasCylinder;
 
   @Column({ type: 'uuid' })
-  gas_cylinder_id: string;
+  gas_cylinder_id!: string;
 
   @Column({ type: 'int' })
-  quantity: number;
+  quantity!: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
-  unitPrice: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+  })
+  unitPrice!: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer })
-  subtotal: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+  })
+  subtotal!: number;
 }

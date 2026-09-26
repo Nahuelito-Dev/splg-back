@@ -6,6 +6,26 @@ export const JoiValidationSchema = Joi.object({
   DB_HOST: Joi.required(),
   DB_PORT: Joi.number().default(5433),
   DB_USERNAME: Joi.required(),
+  // Distribuidora de los clientes que todavía no mandan X-Distributor.
+  DEFAULT_DISTRIBUTOR_SLUG: Joi.string().default('jeny-gas'),
+  // Horas que una reserva espera el pago de la seña antes de vencer.
+  RESERVATION_DEPOSIT_TTL_HOURS: Joi.number().integer().min(1).default(48),
+  // Minutos que un pedido con MercadoPago espera el pago antes de vencer.
+  ORDER_MERCADOPAGO_PENDING_TTL_MINUTES: Joi.number()
+    .integer()
+    .min(1)
+    .default(60),
+  // Firebase Admin: sin estas tres no se pueden verificar los tokens.
+  FIREBASE_PROJECT_ID: Joi.string().required(),
+  FIREBASE_CLIENT_EMAIL: Joi.string().required(),
+  FIREBASE_PRIVATE_KEY: Joi.string().required(),
+  // SDK de cliente, para el acceso con email y contraseña.
+  FIREBASE_APP_API_KEY: Joi.string().optional(),
+  // Dominio de la app en los links de los correos; por defecto, el del
+  // proyecto de Firebase (ver EnlacesDeLaApp).
+  APP_URL: Joi.string()
+    .uri({ scheme: ['https'] })
+    .optional(),
   // MercadoPago Checkout Pro. Opcionales para no romper entornos (tests/CI)
   // sin credenciales sandbox configuradas; en runtime real deben setearse.
   MP_ACCESS_TOKEN: Joi.string().optional(),
@@ -20,7 +40,7 @@ export const JoiValidationSchema = Joi.object({
   //AWS_PUBLIC_BUCKET_NAME: Joi.string().required(),
   //GOOGLE_MAPS_API_KEY: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_API_KEY: Joi.string().required(),
- // MERCADO_PAGO_MARKETPLACE_CLIENT_ID: Joi.string().required(),
+  // MERCADO_PAGO_MARKETPLACE_CLIENT_ID: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_CLIENT_SECRET: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_REDIRECT_URI: Joi.string().required(),
   //MARKET_PLACE_ID: Joi.string().required(),

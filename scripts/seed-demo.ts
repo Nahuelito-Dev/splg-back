@@ -197,11 +197,18 @@ async function main() {
   for (const p of CATALOGO) {
     const [row] = await q(
       `INSERT INTO gas_cylinder
-         (distributor_id, type, weight, price, stock, description, "isActive", promotions)
-       VALUES ($1,$2,$3,$4,$5,$6,true,$7::jsonb)
+         (distributor_id, type, weight, price, stock, description, "isActive")
+       VALUES ($1,$2,$3,$4,$5,$6,true)
        RETURNING gas_cylinder_id`,
-      [distId, p.type, p.weight, p.price, p.stock, p.description, JSON.stringify(p.promotions)],
+      [distId, p.type, p.weight, p.price, p.stock, p.description],
     );
+    for (const promo of p.promotions) {
+      await q(
+        `INSERT INTO gas_cylinder_promotion (gas_cylinder_id, quantity, discount_percentage)
+         VALUES ($1,$2,$3)`,
+        [row.gas_cylinder_id, promo.quantity, promo.discountPercentage],
+      );
+    }
     productos.push({ id: row.gas_cylinder_id, type: p.type, price: p.price, weight: p.weight });
   }
   resumen.push(['gas_cylinder (catálogo)', productos.length]);
@@ -402,9 +409,9 @@ async function sembrarClientes(q: Q, roleId: string | null): Promise<ClienteSemb
       [roleId, nombre, email, telefono, quizas(0.7), quizas(0.85), quizas(0.06), alta],
     );
     await q(
-      `INSERT INTO customer (user_id, validated, lat_lang, "createdAt")
-       VALUES ($1,'true',$2,$3)`,
-      [u.user_id, null, alta],
+      `INSERT INTO customer (user_id, validated, "createdAt")
+       VALUES ($1,true,$2)`,
+      [u.user_id, alta],
     );
     clientes.push({ userId: u.user_id, nombre, direcciones: [] });
   }
@@ -419,12 +426,12 @@ async function sembrarClientes(q: Q, roleId: string | null): Promise<ClienteSemb
       const calle = `${alguno(CALLES)} ${entre(100, 4200)}`;
       const [a] = await q(
         `INSERT INTO user_address
-           (user_id, street, city, "postalCode", latitude, longitude,
+           (user_id, street, city, "postalCode", location,
             "formattedAddress", "isDefault", "additionalInstructions")
-         VALUES ($1,$2,'Posadas','3300',$3,$4,$5,$6,$7)
+         VALUES ($1,$2,'Posadas','3300',ST_SetSRID(ST_MakePoint($4,$3),4326),$5,$6,$7)
          RETURNING address_id`,
         [
-          c.userId, calle, lat.toFixed(6), lng.toFixed(6),
+          c.userId, calle, Number(lat.toFixed(6)), Number(lng.toFixed(6)),
           `${calle}, ${b.nombre}, Posadas, Misiones`,
           n === 0, alguno(INDICACIONES),
         ],
@@ -468,11 +475,11 @@ async function sembrarChoferes(q: Q, distId: string) {
     const b = BARRIOS[0];
     const [d] = await q(
       `INSERT INTO delivery
-         (distributor_id, user_id, validated, "isActive", calification, balance, "latLng", "createdAt")
-       VALUES ($1,$2,true,true,$3,$4,$5,$6) RETURNING delivery_id`,
+         (distributor_id, user_id, validated, "isActive", calification, balance, location, "createdAt")
+       VALUES ($1,$2,true,true,$3,$4,ST_SetSRID(ST_MakePoint($6,$5),4326),$7) RETURNING delivery_id`,
       [
         distId, u.user_id, Number((3.6 + azar() * 1.4).toFixed(2)), entre(0, 45000),
-        `${(b.latMin + azar() * 0.02).toFixed(6)},${(b.lngMin + azar() * 0.02).toFixed(6)}`,
+        Number((b.latMin + azar() * 0.02).toFixed(6)), Number((b.lngMin + azar() * 0.02).toFixed(6)),
         diasAtras(entre(120, 300)),
       ],
     );

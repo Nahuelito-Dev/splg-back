@@ -19,7 +19,7 @@ export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus, {
     message: `status debe ser uno de: ${Object.values(OrderStatus).join(', ')}`,
   })
-  status: OrderStatus;
+  status!: OrderStatus;
 
   @ApiProperty({
     description: 'ID del repartidor (solo admin; el chofer usa su token)',

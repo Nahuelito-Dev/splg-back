@@ -16,9 +16,13 @@ import {
  */
 describe('UpdateOrderStatusUseCase', () => {
   let useCase: UpdateOrderStatusUseCase;
-  let userRepo: { findOne: jest.Mock };
-  let deliveryRepo: { findOne: jest.Mock };
-  let dispatch: { notifyCustomer: jest.Mock };
+  let deliveries: { buscarPorIdOUsuario: jest.Mock };
+  let dispatch: {
+    notifyCustomer: jest.Mock;
+    notifyAdmins: jest.Mock;
+    startTracking: jest.Mock;
+    stopTracking: jest.Mock;
+  };
   let notifications: { sendOrderConfirmation: jest.Mock };
   let orders: { findByIdFull: jest.Mock; save: jest.Mock };
   let orchestrator: { onDriverAccepted: jest.Mock };
@@ -36,30 +40,30 @@ describe('UpdateOrderStatusUseCase', () => {
     }) as Order;
 
   beforeEach(() => {
-    userRepo = { findOne: jest.fn().mockResolvedValue(null) };
-    deliveryRepo = { findOne: jest.fn() };
+    deliveries = { buscarPorIdOUsuario: jest.fn() };
     dispatch = {
       notifyCustomer: jest.fn(),
       notifyAdmins: jest.fn(),
       startTracking: jest.fn(),
       stopTracking: jest.fn(),
     };
-    notifications = { sendOrderConfirmation: jest.fn().mockResolvedValue(null) };
+    notifications = {
+      sendOrderConfirmation: jest.fn().mockResolvedValue(null),
+    };
     orders = {
       findByIdFull: jest.fn(),
-      save: jest.fn().mockImplementation(async (o) => o),
+      save: jest.fn((o: unknown) => Promise.resolve(o)),
     };
     orchestrator = { onDriverAccepted: jest.fn().mockResolvedValue(undefined) };
     cylinderLifecycle = { onOrderDelivered: jest.fn().mockResolvedValue(0) };
 
     useCase = new UpdateOrderStatusUseCase(
-      userRepo as any,
-      deliveryRepo as any,
-      dispatch as any,
-      notifications as any,
-      orders as any,
-      orchestrator as any,
-      cylinderLifecycle as any,
+      deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
+      dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
+      notifications as unknown as import('../domain/ports/notification.port').NotificationPort,
+      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      orchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
+      cylinderLifecycle as unknown as import('../domain/ports/cylinder-lifecycle.port').CylinderLifecyclePort,
     );
   });
 
@@ -85,7 +89,7 @@ describe('UpdateOrderStatusUseCase', () => {
   describe('ACCEPTED', () => {
     it('asigna el chofer, setea acceptedAt, guarda y emite order:accepted', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
-      deliveryRepo.findOne.mockResolvedValue({
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
         delivery_id: 'drv-1',
         user_id: 'user-drv-1',
         isActive: true,
@@ -103,7 +107,9 @@ describe('UpdateOrderStatusUseCase', () => {
       expect(result.acceptedAt).toBeInstanceOf(Date);
       // Prueba de entrega con QR: al aceptar se genera el código secreto que
       // el chofer mostrará como QR (ver ConfirmDeliveryUseCase).
-      expect(result.deliveryCode).toEqual(expect.stringMatching(/^[0-9A-F]{10}$/));
+      expect(result.deliveryCode).toEqual(
+        expect.stringMatching(/^[0-9A-F]{10}$/),
+      );
       expect(orders.save).toHaveBeenCalledWith(result);
       // Cierra la oferta de despacho del chofer que aceptó (por user_id).
       expect(orchestrator.onDriverAccepted).toHaveBeenCalledWith(
@@ -129,7 +135,7 @@ describe('UpdateOrderStatusUseCase', () => {
 
     it('rechaza un chofer inactivo', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
-      deliveryRepo.findOne.mockResolvedValue({
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
         delivery_id: 'drv-1',
         isActive: false,
         user: {},
@@ -141,7 +147,7 @@ describe('UpdateOrderStatusUseCase', () => {
 
     it('lanza NotFound si el chofer no existe', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
-      deliveryRepo.findOne.mockResolvedValue(null);
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(null);
       await expect(
         useCase.execute('ord-1', OrderStatus.ACCEPTED, 'ghost'),
       ).rejects.toThrow(NotFoundException);
@@ -196,10 +202,7 @@ describe('UpdateOrderStatusUseCase', () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({ status: OrderStatus.ON_THE_WAY }),
       );
-      userRepo.findOne.mockResolvedValue({
-        user_id: 'cust-1',
-        customer: { notification_token: 'tok' },
-      });
+
       notifications.sendOrderConfirmation.mockRejectedValue(
         new Error('FCM caído'),
       );

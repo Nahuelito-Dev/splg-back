@@ -7,5 +7,5 @@ import { ApiProperty } from '@nestjs/swagger';
 export class TestEmailDto {
   @ApiProperty({ example: 'user@example.com' })
   @IsEmail({}, { message: 'email debe ser un correo válido' })
-  email: string;
+  email!: string;
 }

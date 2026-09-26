@@ -1,8 +1,8 @@
 // delivery/delivery.controller.ts
 import {
   Controller,
+  ForbiddenException,
   Get,
-  Post,
   Body,
   Patch,
   Param,
@@ -11,26 +11,33 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
+  ApiOkResponse,
+  ApiNotFoundResponse,
+  ApiForbiddenResponse,
   ApiParam,
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
-import { CreateDeliveryDto } from './dto/create-delivery.dto';
+import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
+import { UpdateDeliveryBalanceDto } from './dto/update-delivery-balance.dto';
+import { ToggleDeliveryStatusDto } from './dto/toggle-delivery-status.dto';
+import { ToggleDeliveryAvailabilityDto } from './dto/toggle-delivery-availability.dto';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
+import { DeliveryResponseDto } from './dto/delivery-response.dto';
+import { DisponibilidadDelChoferDto } from './dto/disponibilidad-response.dto';
+import { DeliveryMapper } from './delivery.mapper';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
-import { Public } from '../common/decorators/isPublic.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
-import { AuthGuard } from 'src/auth/guards/jwt-auth.guard'; // <--- IMPORTANTE: Importar AuthGuard
-
+import { alcanceDelDueño } from '../common/utils/alcance.util';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Delivery')
 @ApiBearerAuth()
@@ -39,136 +46,282 @@ export class DeliveryController {
   constructor(private readonly deliveryService: DeliveryService) {}
 
   @Get()
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
-  @ApiOperation({ summary: 'Get all deliveries with pagination (scopeado por distribuidora)' })
-  @ApiResponse({ status: 200, description: 'List of deliveries' })
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Get all deliveries with pagination (scopeado por distribuidora)',
+  })
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    isArray: true,
+    description: 'List of deliveries',
+  })
   async findAll(
     @Query() paginationDto: PaginationDto,
     @CurrentDistributor() distributorId?: string | null,
-  ) {
-    return await this.deliveryService.findAll(paginationDto, distributorId);
+  ): Promise<DeliveryResponseDto[]> {
+    return (
+      await this.deliveryService.findAll(paginationDto, distributorId)
+    ).map((d) => DeliveryMapper.toDto(d));
   }
 
+  // H-64: los choferes activos (con su ubicación) los ve un administrador, y el
+  // de empresa sólo los de su distribuidora.
   @Get('active')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get all active deliveries' })
-  @ApiResponse({ status: 200, description: 'List of active deliveries' })
-  async findActive(@Query() paginationDto: PaginationDto) {
-    return await this.deliveryService.findActiveDeliveries(paginationDto);
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    isArray: true,
+    description: 'List of active deliveries',
+  })
+  async findActive(
+    @Query() paginationDto: PaginationDto,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto[]> {
+    return (
+      await this.deliveryService.findActiveDeliveries(
+        paginationDto,
+        distributorId,
+      )
+    ).map((d) => DeliveryMapper.toDto(d));
   }
 
   @Get(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Get delivery by ID' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Delivery found' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.deliveryService.findOne(id);
+  @ApiOkResponse({ type: DeliveryResponseDto, description: 'Delivery found' })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    const delivery = await this.deliveryService.findOne(id);
+    this.deliveryService.assertAlcance(
+      delivery,
+      alcanceDelDueño(user),
+      distributorId,
+    );
+    return DeliveryMapper.toDto(delivery);
   }
 
   @Get('user/:userId')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Get delivery by user ID' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
-  @ApiResponse({ status: 200, description: 'Delivery found' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
-  async findOneByUserId(@Param('userId', ParseUUIDPipe) userId: string) {
-    return await this.deliveryService.findOneByUserId(userId);
+  @ApiOkResponse({ type: DeliveryResponseDto, description: 'Delivery found' })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
+  async findOneByUserId(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    const delivery = await this.deliveryService.findOneByUserId(userId);
+    this.deliveryService.assertAlcance(
+      delivery,
+      alcanceDelDueño(user),
+      distributorId,
+    );
+    return DeliveryMapper.toDto(delivery);
   }
 
   @Patch(':id')
+  // H-61: sólo un administrador edita a un chofer, y el de empresa sólo a los
+  // de su distribuidora.
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update delivery by ID' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Delivery updated successfully' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    description: 'Delivery updated successfully',
+  })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateDeliveryDto: UpdateDeliveryDto,
-  ) {
-    return await this.deliveryService.update(id, updateDeliveryDto);
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    return DeliveryMapper.toDto(
+      await this.deliveryService.update(id, updateDeliveryDto, distributorId),
+    );
   }
 
   @Patch(':id/validate')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Validate delivery' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Delivery validated successfully' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
-  async validateDelivery(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.deliveryService.validateDelivery(id);
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    description: 'Delivery validated successfully',
+  })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
+  async validateDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    await this.acotar(id, distributorId);
+    return DeliveryMapper.toDto(
+      await this.deliveryService.validateDelivery(id),
+    );
   }
 
   @Patch(':id/invalidate')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Invalidate delivery' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({
-    status: 200,
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
     description: 'Delivery invalidated successfully',
   })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
-  async invalidateDelivery(@Param('id', ParseUUIDPipe) id: string) {
-    return await this.deliveryService.invalidateDelivery(id);
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
+  async invalidateDelivery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    await this.acotar(id, distributorId);
+    return DeliveryMapper.toDto(
+      await this.deliveryService.invalidateDelivery(id),
+    );
   }
 
+  // H-64: la ubicación la informa el propio chofer (o un admin).
   @Patch(':id/location')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Update delivery location' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Location updated successfully' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    description: 'Location updated successfully',
+  })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { latLng: string; actualLocation?: string },
-  ) {
-    return await this.deliveryService.updateLocation(
-      id,
-      body.latLng,
-      body.actualLocation,
+    @Body() dto: UpdateDeliveryLocationDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    await this.acotar(id, distributorId);
+    return DeliveryMapper.toDto(
+      await this.deliveryService.updateLocation(
+        id,
+        dto.latLng,
+        dto.actualLocation,
+        alcanceDelDueño(user),
+      ),
     );
   }
 
   @Patch(':id/balance')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update delivery balance' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Balance updated successfully' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    description: 'Balance updated successfully',
+  })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
   async updateBalance(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { amount: number },
-  ) {
-    return await this.deliveryService.updateBalance(id, body.amount);
+    @Body() dto: UpdateDeliveryBalanceDto,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    await this.acotar(id, distributorId);
+    return DeliveryMapper.toDto(
+      await this.deliveryService.updateBalance(id, dto.amount),
+    );
   }
 
   @Patch(':id/status')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Toggle delivery active status' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Status updated successfully' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
+  @ApiOkResponse({
+    type: DeliveryResponseDto,
+    description: 'Status updated successfully',
+  })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
   async toggleStatus(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { isActive: boolean },
-  ) {
-    return await this.deliveryService.toggleActiveStatus(id, body.isActive);
+    @Body() dto: ToggleDeliveryStatusDto,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DeliveryResponseDto> {
+    await this.acotar(id, distributorId);
+    return DeliveryMapper.toDto(
+      await this.deliveryService.toggleActiveStatus(id, dto.isActive),
+    );
   }
 
   @Delete(':id')
-  @Roles(RoleType.ADMIN, RoleType.SUPER_ADMIN) // ← Usar RoleType enum
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete delivery by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
-  @ApiResponse({ status: 200, description: 'Delivery deleted successfully' })
-  @ApiResponse({ status: 404, description: 'Delivery not found' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiNotFoundResponse({
+    description: 'Delivery not found (o de otra distribuidora)',
+  })
   @HttpCode(HttpStatus.OK)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<MessageResponseDto> {
+    await this.acotar(id, distributorId);
     return await this.deliveryService.remove(id);
   }
 
-  @Patch('user/:userId/availability') // <--- CAMBIO: Ruta más clara
+  // H-64: un chofer se pone disponible o no a sí mismo; un admin, a los de su
+  // distribuidora.
+  @Patch('user/:userId/availability')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Toggle driver availability by User ID (ON/OFF)' })
-  @ApiParam({ name: 'userId', description: 'User UUID' }) // <--- CAMBIO: Documentación
+  @ApiParam({ name: 'userId', description: 'User UUID' })
+  @ApiOkResponse({ type: DisponibilidadDelChoferDto })
+  @ApiForbiddenResponse({ description: 'Un chofer, sobre otro chofer' })
+  @ApiNotFoundResponse({
+    description: 'No es chofer o es de otra distribuidora',
+  })
   async toggleAvailability(
-    @Param('userId', ParseUUIDPipe) userId: string, // <--- CAMBIO: Recibimos userId
-    @Body() body: { available: boolean },
-  ) {
-    return this.deliveryService.toggleAvailability(userId, body.available);
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: ToggleDeliveryAvailabilityDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<DisponibilidadDelChoferDto> {
+    const dueno = alcanceDelDueño(user);
+    if (dueno && dueno !== userId) {
+      throw new ForbiddenException(
+        'No podés cambiar la disponibilidad de otro chofer',
+      );
+    }
+    return this.deliveryService.toggleAvailability(
+      userId,
+      dto.available,
+      dueno ? null : distributorId,
+    );
+  }
+
+  /**
+   * Aislamiento entre distribuidoras: con una en contexto, el chofer tiene que
+   * ser de ella. Lo ajeno responde 404.
+   */
+  private async acotar(id: string, distributorId: string | null) {
+    if (!distributorId) return;
+    const delivery = await this.deliveryService.findOne(id);
+    this.deliveryService.assertAlcance(delivery, null, distributorId);
   }
 }

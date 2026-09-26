@@ -14,9 +14,23 @@ import { Order, PaymentStatus } from '../entities/order.entity';
 describe('ConfirmPaymentUseCase', () => {
   let useCase: ConfirmPaymentUseCase;
 
-  let dataSource: any;
-  let queryRunner: any;
-  let queryBuilder: any;
+  let dataSource: { createQueryRunner: jest.Mock };
+  let queryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    manager: {
+      createQueryBuilder: jest.Mock;
+      save: jest.Mock;
+    };
+  };
+  let queryBuilder: {
+    setLock: jest.Mock;
+    where: jest.Mock;
+    getOne: jest.Mock;
+  };
   let lockedOrder: Partial<Order>;
 
   let orders: { findByIdFull: jest.Mock };
@@ -53,7 +67,7 @@ describe('ConfirmPaymentUseCase', () => {
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
         createQueryBuilder: jest.fn(() => queryBuilder),
-        save: jest.fn(async (o: any) => o),
+        save: jest.fn((o: unknown) => Promise.resolve(o)),
       },
     };
     dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
@@ -65,10 +79,10 @@ describe('ConfirmPaymentUseCase', () => {
     };
 
     useCase = new ConfirmPaymentUseCase(
-      dataSource as any,
-      orders as any,
-      paymentsService as any,
-      dispatchOrchestrator as any,
+      dataSource as unknown as import('typeorm').DataSource,
+      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      paymentsService as unknown as import('../../payments/application/payments.service').PaymentsService,
+      dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
     );
   });
 

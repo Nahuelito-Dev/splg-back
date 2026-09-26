@@ -3,10 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IncidentService } from './incident.service';
 import { IncidentController } from './incident.controller';
 import { Incident } from './entities/incident.entity';
-import { Order } from '../order/entities/order.entity';
+import { OrderModule } from '../order/order.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Incident, Order])],
+  // OrderService: la incidencia hereda la distribuidora del pedido.
+  imports: [TypeOrmModule.forFeature([Incident]), OrderModule],
   controllers: [IncidentController],
   providers: [IncidentService],
   exports: [IncidentService],

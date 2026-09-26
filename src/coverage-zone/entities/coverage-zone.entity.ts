@@ -7,9 +7,21 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+
+/** Lo que TypeORM lee y escribe en la columna geometry: GeoJSON. */
+export interface PoligonoGeoJson {
+  type: 'Polygon';
+  coordinates: number[][][];
+}
+
+export enum CoverageZoneSurchargeType {
+  FIXED = 'fixed',
+  PERCENTAGE = 'percentage',
+}
 
 /**
  * Zona de cobertura de una distribuidora, definida como POLÍGONO geográfico
@@ -24,7 +36,7 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 @Entity('coverage_zone')
 export class CoverageZone {
   @PrimaryGeneratedColumn('uuid', { name: 'coverage_zone_id' })
-  coverage_zone_id: string;
+  coverage_zone_id!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
@@ -32,10 +44,10 @@ export class CoverageZone {
   distributor?: Distributor;
 
   @Column({ type: 'uuid' })
-  distributor_id: string;
+  distributor_id!: string;
 
   @Column({ type: 'varchar', length: 120 })
-  name: string;
+  name!: string;
 
   /**
    * Polígono del área (PostGIS geometry). spatialFeatureType 'Polygon' + SRID
@@ -48,18 +60,47 @@ export class CoverageZone {
     spatialFeatureType: 'Polygon',
     srid: 4326,
   })
-  area: object;
+  area!: PoligonoGeoJson;
 
   /** Recargo por reparto en esta zona (monto fijo en la moneda del pedido). */
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer, default: 0 })
-  surcharge: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  surcharge!: number;
 
   @Column({ type: 'boolean', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
+
+  /** Baja lógica: la fila se conserva para el historial y la auditoría. */
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  deletedAt!: Date | null;
+
+  @Column({
+    name: 'surcharge_type',
+    type: 'enum',
+    enum: CoverageZoneSurchargeType,
+
+    nullable: false,
+    default: CoverageZoneSurchargeType.FIXED,
+  })
+  surcharge_type!: CoverageZoneSurchargeType;
+
+  @Column({ name: 'label', type: 'varchar', length: 40, nullable: true })
+  label!: string | null;
+
+  @Column({ name: 'color', type: 'varchar', length: 7, nullable: true })
+  color!: string | null;
+
+  @Column({ name: 'valid_until', type: 'timestamptz', nullable: true })
+  valid_until!: Date | null;
 }

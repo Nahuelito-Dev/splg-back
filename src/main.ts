@@ -1,21 +1,51 @@
-import { ValidationPipe, Logger } from '@nestjs/common';
+import {
+  ValidationPipe,
+  Logger,
+  VersioningType,
+  VERSION_NEUTRAL,
+} from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import basicAuth from 'express-basic-auth';
 
-import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 
-const morgan = require('morgan');
+import morgan from 'morgan';
+import type { Request, Response } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger('Bootstrap');
 
+  // Detras de un proxy (nginx, balanceador, Cloudflare) Express devuelve la IP
+  // del proxy en req.ip, no la del usuario, salvo que se le diga cuantos saltos
+  // confiar. Sin esto, el rate limiting por IP cuenta a todos juntos.
+  //
+  // Se configura por entorno y viene apagado: en local no hay proxy, y confiar
+  // en el header sin proxy delante permitiria falsearlo para saltear el limite.
+  const saltosDeProxy = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+  if (saltosDeProxy > 0) {
+    app.set('trust proxy', saltosDeProxy);
+    logger.log(
+      `Se confia en ${saltosDeProxy} salto(s) de proxy para resolver la IP`,
+    );
+  }
+
   app.setGlobalPrefix('api');
+
+  // Versionado por URI. La version por defecto es NEUTRAL: todas las rutas que
+  // existen hoy siguen respondiendo en /api/... tal cual, sin cambiar nada para
+  // el panel ni para las apps publicadas. Cuando haya que cambiar el contrato
+  // de un endpoint sin romper a quien ya lo consume, se marca el nuevo con
+  // @Version('2') y los dos conviven: /api/auth/login y /api/v2/auth/login.
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: VERSION_NEUTRAL,
+  });
 
   // Autenticación (AuthGuard) y autorización (RolesGuard) se registran como
   // guards GLOBALES vía APP_GUARD en AppModule. Siempre activos, en todos los
@@ -33,8 +63,6 @@ async function bootstrap() {
   // extiende BaseExceptionFilter y necesita el httpAdapter real.
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
-
-  app.useGlobalInterceptors(new TimeoutInterceptor());
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -72,16 +100,16 @@ async function bootstrap() {
     exposedHeaders: ['X-Request-Id'],
   });
 
-  morgan.token(
-    'reqId',
-    (req: any) => req.requestId ?? req.headers?.['x-request-id'] ?? '-',
-  );
+  morgan.token<Request, Response>('reqId', (req) => {
+    const header = req.headers['x-request-id'];
+    return req.requestId ?? (typeof header === 'string' ? header : '-');
+  });
 
-  morgan.token('body', (req: any) => {
+  morgan.token<Request, Response>('body', (req) => {
     try {
       if (!req.body) return '{}';
 
-      const body = { ...req.body };
+      const body = { ...(req.body as Record<string, unknown>) };
 
       const sensitiveFields = [
         'password',
@@ -98,7 +126,7 @@ async function bootstrap() {
       });
 
       return JSON.stringify(body);
-    } catch (error) {
+    } catch {
       return '{}';
     }
   });
@@ -158,7 +186,7 @@ async function bootstrap() {
   // la memoria del pod que aceptó el socket, y un emit en el pod A no llega al
   // cliente conectado al pod B (despacho/tracking se rompen en silencio).
   const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis();
+  redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
   const port = process.env.PORT || 3000;
@@ -166,4 +194,4 @@ async function bootstrap() {
   logger.log(`🚀 App running on port ${port}`);
 }
 
-bootstrap();
+void bootstrap();

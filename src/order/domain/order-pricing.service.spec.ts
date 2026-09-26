@@ -29,7 +29,9 @@ describe('OrderPricingService', () => {
     });
 
     it('trata undefined/[] de promociones como sin descuento', () => {
-      expect(pricing.priceItem(500, undefined, 1).subtotal.toNumber()).toBe(500);
+      expect(pricing.priceItem(500, undefined, 1).subtotal.toNumber()).toBe(
+        500,
+      );
       expect(pricing.priceItem(500, [], 1).subtotal.toNumber()).toBe(500);
     });
   });

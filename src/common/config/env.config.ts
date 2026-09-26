@@ -20,12 +20,12 @@ export const EnvConfiguration = () => ({
   //aws_public_bucket_name: process.env.AWS_PUBLIC_BUCKET_NAME,
   //google_maps_api_key: process.env.GOOGLE_MAPS_API_KEY,
   //mercado_pago_marketplace_api_key:
-    //process.env.MERCADO_PAGO_MARKETPLACE_API_KEY,
+  //process.env.MERCADO_PAGO_MARKETPLACE_API_KEY,
   //mercado_pago_marketplace_client_id:
-    //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_ID,
+  //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_ID,
   //mercado_pago_marketplace_client_secret:
-    //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_SECRET,
+  //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_SECRET,
   //mercado_pago_marketplace_redirect_uri:
-    //process.env.MERCADO_PAGO_MARKETPLACE_REDIRECT_URI,
+  //process.env.MERCADO_PAGO_MARKETPLACE_REDIRECT_URI,
   //market_place_id: process.env.MARKET_PLACE_ID,
 });

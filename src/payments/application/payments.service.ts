@@ -15,6 +15,7 @@ import {
   PaymentGatewayPort,
   VerifyWebhookSignatureInput,
 } from '../domain/ports/payment-gateway.port';
+import { errorMessage } from '../../common/errors/error-message';
 
 /** Input para crear un checkout: agnóstico de la pasarela concreta. */
 export interface CreatePaymentCheckoutInput {
@@ -122,9 +123,9 @@ export class PaymentsService {
     let gatewayPayment: GatewayPayment;
     try {
       gatewayPayment = await this.paymentGateway.getPayment(input.dataId);
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(
-        `No se pudo consultar el pago ${input.dataId} en la pasarela: ${error?.message}`,
+        `No se pudo consultar el pago ${input.dataId} en la pasarela: ${errorMessage(error)}`,
       );
       return null;
     }

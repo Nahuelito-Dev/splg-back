@@ -41,9 +41,9 @@ export async function withTransactionRetry<T>(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
-      const code: string | undefined = error?.code ?? error?.driverError?.code;
+      const code = codigoDeError(error);
       const isRetryable = code && RETRYABLE_PG_CODES.has(code);
 
       if (!isRetryable || attempt === maxAttempts) {
@@ -61,4 +61,20 @@ export async function withTransactionRetry<T>(
   }
 
   throw lastError;
+}
+
+/** Código SQLSTATE del error, esté en el error o en el `driverError` de TypeORM. */
+function codigoDeError(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  if ('code' in error && typeof error.code === 'string') return error.code;
+  if (
+    'driverError' in error &&
+    typeof error.driverError === 'object' &&
+    error.driverError !== null &&
+    'code' in error.driverError &&
+    typeof error.driverError.code === 'string'
+  ) {
+    return error.driverError.code;
+  }
+  return undefined;
 }

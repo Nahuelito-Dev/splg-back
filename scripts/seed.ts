@@ -17,10 +17,9 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { RoleService } from '../src/role/role.service';
 import { UsersService } from '../src/users/users.service';
-import { AdminService } from '../src/admin/admin.service';
 import { DistributorService } from '../src/distributor/distributor.service';
-import { CustomersService } from '../src/customer/customer.service';
-import { DeliveryService } from '../src/delivery/delivery.service';
+import { RegistroService } from '../src/registro/registro.service';
+import type { RolRegistrable } from '../src/registro/politica-de-registro';
 import { Distributor } from '../src/distributor/entities/distributor.entity';
 
 const PASSWORD = 'Test1234'; // Firebase exige >= 6 caracteres.
@@ -33,7 +32,6 @@ const SCOPED_TABLES = [
   'time_slot',
   'claims',
   'delivery',
-  'admin',
 ];
 
 interface TestUser {
@@ -99,10 +97,8 @@ async function bootstrap() {
 
   const roleService = app.get(RoleService);
   const usersService = app.get(UsersService);
-  const adminService = app.get(AdminService);
   const distributorService = app.get(DistributorService);
-  const customersService = app.get(CustomersService);
-  const deliveryService = app.get(DeliveryService);
+  const registro = app.get(RegistroService);
   const dataSource = app.get(DataSource);
 
   const results: Array<{ email: string; role: string; status: string }> = [];
@@ -111,13 +107,6 @@ async function bootstrap() {
     // 1) Roles ────────────────────────────────────────────────────────────
     await roleService.seedRoles();
     logger.log('✅ Roles sembrados (customer, delivery, admin, super_admin)');
-
-    const roleIdByType: Record<string, string> = {};
-    for (const type of ['admin', 'super_admin']) {
-      const role = await roleService.findByType(type);
-      if (!role) throw new Error(`Rol '${type}' no encontrado tras el seed`);
-      roleIdByType[type] = role.role_id;
-    }
 
     // 2) Multi-tenant: distribuidora default ───────────────────────────────
     // Se crea ANTES que los usuarios: delivery.distributor_id es NOT NULL, asi
@@ -135,15 +124,7 @@ async function bootstrap() {
     // 3) Usuarios de prueba ────────────────────────────────────────────────
     for (const u of TEST_USERS) {
       results.push(
-        await ensureUser(
-          u,
-          usersService,
-          adminService,
-          roleIdByType,
-          customersService,
-          deliveryService,
-          jenyGas.distributor_id,
-        ),
+        await ensureUser(u, usersService, registro, jenyGas.distributor_id),
       );
     }
 
@@ -156,7 +137,19 @@ async function bootstrap() {
         [jenyGas.distributor_id],
       );
     }
-    logger.log('✅ Backfill: datos pre-existentes asignados a la distribuidora default');
+    // En admin, null es un valor válido: es el super admin, que no pertenece a
+    // ninguna distribuidora. Sólo se completan los admins de empresa (H-76).
+    await dataSource.query(
+      `UPDATE admin SET distributor_id = $1
+         WHERE distributor_id IS NULL
+           AND user_id IN (SELECT u.user_id FROM "user" u
+                             JOIN role r ON r.role_id = u.role_id
+                            WHERE r.type = 'admin')`,
+      [jenyGas.distributor_id],
+    );
+    logger.log(
+      '✅ Backfill: datos pre-existentes asignados a la distribuidora default',
+    );
 
     // 4) 2da distribuidora demo (Gas Andino) con staff + catálogo propios ──
     const gasAndino = await ensureDistributor(distributorService, {
@@ -171,15 +164,7 @@ async function bootstrap() {
 
     for (const u of DEMO_STAFF) {
       results.push(
-        await ensureUser(
-          u,
-          usersService,
-          adminService,
-          roleIdByType,
-          customersService,
-          deliveryService,
-          gasAndino.distributor_id,
-        ),
+        await ensureUser(u, usersService, registro, gasAndino.distributor_id),
       );
       await assignStaffToDistributor(
         dataSource,
@@ -191,7 +176,9 @@ async function bootstrap() {
 
     // Catálogo propio de la distribuidora demo (idempotente: sólo si no tiene).
     await ensureDemoCatalog(dataSource, gasAndino.distributor_id);
-    logger.log('✅ Staff + catálogo de Gas Andino listos (aislados de Jeny Gas)');
+    logger.log(
+      '✅ Staff + catálogo de Gas Andino listos (aislados de Jeny Gas)',
+    );
   } finally {
     printSummary(results);
     await app.close();
@@ -205,42 +192,28 @@ async function bootstrap() {
 async function ensureUser(
   u: TestUser,
   usersService: UsersService,
-  adminService: AdminService,
-  roleIdByType: Record<string, string>,
-  customersService: CustomersService,
-  deliveryService: DeliveryService,
+  registro: RegistroService,
   distributorId: string,
 ): Promise<{ email: string; role: string; status: string }> {
   if (await userExists(usersService, u.email)) {
     return { email: u.email, role: u.role, status: 'ya existía ⏭️' };
   }
   try {
-    if (u.role === 'customer') {
-      await customersService.registerWithUser({
+    const rol = u.role as RolRegistrable;
+    await registro.registrar(
+      {
         email: u.email,
         password: PASSWORD,
         full_name: u.full_name,
         phone_number: u.phone_number,
-      });
-    } else if (u.role === 'delivery') {
-      await deliveryService.registerWithUser({
-        email: u.email,
-        password: PASSWORD,
-        full_name: u.full_name,
-        phone_number: u.phone_number,
+        rol,
+        // La política la ignora para clientes y super admins.
+        distributorId,
         validated: true,
         isActive: true,
-        distributorId,
-      } as any);
-    } else {
-      await adminService.registerAdmin({
-        email: u.email,
-        password: PASSWORD,
-        full_name: u.full_name,
-        phone_number: u.phone_number,
-        role_id: roleIdByType[u.role],
-      });
-    }
+      },
+      { tipo: 'sistema' },
+    );
     return { email: u.email, role: u.role, status: 'creado ✅' };
   } catch (error) {
     return {
@@ -286,13 +259,20 @@ async function ensureDemoCatalog(
   dataSource: DataSource,
   distributorId: string,
 ): Promise<void> {
-  await dataSource.query(
-    `INSERT INTO gas_cylinder (type, weight, price, stock, description, "isActive", promotions, distributor_id)
-     SELECT 'Garrafa 10kg Andino', 10, 11000, 40, 'Garrafa 10kg de Gas Andino', true,
-            '[{"quantity":3,"discountPercentage":10}]'::jsonb, $1
-     WHERE NOT EXISTS (SELECT 1 FROM gas_cylinder WHERE distributor_id = $1)`,
+  const creado: { gas_cylinder_id: string }[] = await dataSource.query(
+    `INSERT INTO gas_cylinder (type, weight, price, stock, description, "isActive", distributor_id)
+     SELECT 'Garrafa 10kg Andino', 10, 11000, 40, 'Garrafa 10kg de Gas Andino', true, $1
+     WHERE NOT EXISTS (SELECT 1 FROM gas_cylinder WHERE distributor_id = $1)
+     RETURNING gas_cylinder_id`,
     [distributorId],
   );
+  if (creado[0]) {
+    await dataSource.query(
+      `INSERT INTO gas_cylinder_promotion (gas_cylinder_id, quantity, discount_percentage)
+       VALUES ($1, 3, 10)`,
+      [creado[0].gas_cylinder_id],
+    );
+  }
 }
 
 async function userExists(

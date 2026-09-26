@@ -88,27 +88,20 @@ CUERPOS = {
         "ok": {"serial": "QA-" + UNICO, "gasCylinderId": "<<gasCylinderId>>", "deposit": 5000},
         "malo": {"serial": "", "gasCylinderId": "no-es-uuid"},
     },
+    "POST /api/auth/registro": {
+        "ok": {"email": "qa.reg." + UNICO + "@splg-test.com", "password": "Test1234",
+               "full_name": "QA Cliente Registro", "phone_number": "+549382" + TEL},
+        "malo": {"email": "no-es-un-email", "password": "", "full_name": "x"},
+    },
+    # Ruta anterior de /auth/registro, la usan las versiones publicadas de la app.
     "POST /api/users/customer-registration": {
         "ok": {"email": "qa.cli." + UNICO + "@splg-test.com", "password": "Test1234",
                "full_name": "QA Cliente Automatico", "phone_number": "+549381" + TEL},
         "malo": {"email": "no-es-un-email", "password": "", "full_name": "x"},
     },
-    "POST /api/users/delivery-registration": {
-        # distributorId es obligatorio de hecho aunque el DTO lo marque opcional (H-22)
-        "ok": {"email": "qa.cho." + UNICO + "@splg-test.com", "password": "Test1234",
-               "full_name": "QA Chofer Automatico", "phone_number": "+549385" + TEL,
-               "distributorId": "<<distributorId>>"},
-        "malo": {"email": "no-es-un-email", "password": "", "full_name": "x"},
-    },
     "POST /api/users/check-exists": {
         "ok": {"email": "<<email>>"},
         "malo": {"email": 12345},
-    },
-    "POST /api/admin/register": {
-        "ok": {"email": "qa.adm." + UNICO + "@splg-test.com", "password": "Test1234",
-               "full_name": "QA Admin", "phone_number": "+549387" + TEL,
-               "role_id": "<<roleIdAdmin>>", "distributorId": "<<distributorId>>"},
-        "malo": {"email": "no-es-un-email", "password": ""},
     },
     "POST /api/auth/login": {
         "ok": {"email": "<<clienteEmail>>", "password": "<<clientePassword>>"},
@@ -133,17 +126,9 @@ CUERPOS = {
 
     # --- segunda tanda: los 22 que quedaban con cuerpo generado ---
     "POST /api/admin": {
-        "ok": {"user_id": "<<adminUserLibre>>", "role_id": "<<roleIdAdmin>>",
+        "ok": {"user_id": "<<adminUserLibre>>",
                "distributor_id": "<<distributorId>>"},
         "malo": {"user_id": "no-es-uuid", "role_id": "tampoco"},
-    },
-    "POST /api/admin/first-superadmin": {
-        # Solo funciona si no existe ningun superadmin: con la base sembrada
-        # tiene que rechazar, y ese rechazo es la respuesta correcta.
-        "ok": {"email": "primer.super." + UNICO + "@splg-test.com", "password": "Test1234",
-               "phone_number": "+549384" + UNICO, "full_name": "Primer Super Admin",
-               "role_id": "<<roleIdSuperAdmin>>"},
-        "malo": {"email": "no-es-un-email", "password": ""},
     },
     "PATCH /api/car/{id}": {
         "ok": {"car_brand": "Chevrolet", "car_model": "S10", "car_color": "Gris"},
@@ -168,8 +153,10 @@ CUERPOS = {
         "malo": {"toState": "estado_inexistente"},
     },
     "PATCH /api/delivery/{id}": {
-        "ok": {"calification": 5},
-        "malo": {"calification": "excelente"},
+        # Sólo validated e isActive: la calificación sale de las
+        # calificaciones y los datos de la persona van por /users.
+        "ok": {"validated": True, "isActive": True},
+        "malo": {"validated": "si", "calification": 5},
     },
     "PATCH /api/distributor/{id}": {
         "ok": {"phone": "+543764111222"},
@@ -222,11 +209,15 @@ CUERPOS = {
         "ok": {"street": "Av. Mitre 4321", "city": "Posadas"},
         "malo": {"latitude": 123, "longitude": 456},
     },
+    # Alta desde el panel: el rol decide el perfil. Un chofer necesita
+    # distribuidora; la coleccion corre como super admin. Va la distribuidora
+    # base y no {{distributorId}}, que la carpeta Distributor reapunta a la que
+    # crea y después borra.
     "POST /api/users": {
         "ok": {"email": "qa.user." + UNICO + "@splg-test.com", "password": "Test1234",
-               "full_name": "QA Usuario Base", "phone_number": "+549388" + TEL,
-               "role_id": "<<roleId>>"},
-        "malo": {"email": "no-es-un-email", "full_name": ""},
+               "full_name": "QA Chofer Alta", "phone_number": "+549388" + TEL,
+               "rol": "delivery", "distributorId": "<<distribuidoraBaseId>>"},
+        "malo": {"email": "no-es-un-email", "full_name": "", "rol": "qa_pruebas"},
     },
     "PATCH /api/users/{id}": {
         "ok": {"full_name": "Nombre Actualizado " + UNICO},

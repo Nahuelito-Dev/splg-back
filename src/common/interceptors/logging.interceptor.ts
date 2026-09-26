@@ -6,6 +6,7 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
+import type { Request, Response } from 'express';
 
 /**
  * Logging estructurado de requests HTTP (observabilidad, C4).
@@ -23,16 +24,17 @@ import { Observable, tap } from 'rxjs';
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') {
       return next.handle();
     }
 
-    const request: any = context.switchToHttp().getRequest();
-    const response: any = context.switchToHttp().getResponse();
+    const request = context.switchToHttp().getRequest<Request>();
+    const response = context.switchToHttp().getResponse<Response>();
     const start = request.startTime ?? Date.now();
+    const header = request.headers['x-request-id'];
     const requestId =
-      request.requestId ?? request.headers?.['x-request-id'] ?? '-';
+      request.requestId ?? (typeof header === 'string' ? header : '-');
     const method = request.method;
     const path = request.originalUrl ?? request.url;
 

@@ -1,15 +1,18 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, EntityManager } from 'typeorm';
 import { Admin } from './entities/admin.entity';
-import { Role } from '../role/entities/role.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
-import { UsersService } from '../users/users.service';
-import { RegisterAdminDto } from './dto/register-admin.dto';
-import * as AdminRegistrationHelper from './helpers/admin-registration.helper';
-import { UpdateAdminDto } from './dto/update-admin.dto';
 import { isUUID } from 'class-validator';
+import { UsersService } from '../users/users.service';
+import { RoleService } from '../role/role.service';
 
 @Injectable()
 export class AdminService {
@@ -18,61 +21,67 @@ export class AdminService {
   constructor(
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
     private readonly usersService: UsersService,
+    private readonly roleService: RoleService,
   ) {}
 
-  /** True si el role_id corresponde al rol super_admin (para evitar escalada). */
-  async isSuperAdminRole(roleId: string): Promise<boolean> {
-    const role = await this.roleRepository.findOne({
-      where: { role_id: roleId },
+  /**
+   * El perfil de administrador de un usuario recién creado, dentro de la
+   * transacción del alta (RegistroService). `distributorId` en null sólo
+   * para el super administrador.
+   */
+  async crearPerfil(
+    manager: EntityManager,
+    userId: string,
+    distributorId: string | null,
+  ): Promise<void> {
+    const repo = manager.getRepository(Admin);
+    await repo.save(
+      repo.create({ user_id: userId, distributor_id: distributorId }),
+    );
+  }
+
+  /** Si ya hay algún super administrador (el comando de arranque crea el primero). */
+  async existeSuperAdmin(): Promise<boolean> {
+    const cantidad = await this.adminRepository.count({
+      where: { user: { role: { type: RoleType.SUPER_ADMIN } } },
     });
-    return role?.type === RoleType.SUPER_ADMIN;
+    return cantidad > 0;
   }
 
-  // ✅ CORREGIR el tipo del parámetro
-  async registerAdmin(registerAdminDto: RegisterAdminDto) {
-    this.logger.log('🚀 [CREATE] Iniciando creación de Admin');
-
-    // 1. Validar unicidad
-    await AdminRegistrationHelper.validateUniqueness(
-      registerAdminDto,
-      this.usersService,
-    );
-
-    // 2. Crear en Firebase
-    const firebaseUser = await AdminRegistrationHelper.createUserInFirebase(
-      registerAdminDto,
-      this.usersService,
-    );
-
-    // 3. Crear en base de datos local
-    const user = await AdminRegistrationHelper.createUserInDatabase(
-      registerAdminDto,
-      firebaseUser.uid,
-      this.usersService,
-    );
-
-    // 4. Crear entidad Admin (user_id se obtiene del user creado). El
-    // distributor_id define el tenant del admin (null = super_admin cross-tenant).
-    const adminData: CreateAdminDto = {
-      user_id: user.user_id, // ✅ Se obtiene del user recién creado
-      role_id: registerAdminDto.role_id,
-      distributor_id: registerAdminDto.distributorId,
-    };
-
-    const admin = await this.create(adminData);
-
-    this.logger.log(`✅ Admin creado exitosamente: ${admin.admin_id}`);
-    return {
-      message: 'Admin registered successfully',
-      admin,
-      user,
-    };
-  }
-
-  async create(createAdminDto: CreateAdminDto) {
+  /**
+   * Alta directa de un perfil de administrador sobre un usuario existente
+   * (sólo el super administrador). El perfil tiene que coincidir con el rol
+   * del usuario: sin esta regla, a un cliente o un chofer se le colgaba un
+   * perfil de admin de una empresa y pasaba a "pertenecer" a ella.
+   */
+  async create(createAdminDto: CreateAdminDto): Promise<Admin> {
+    const { user_id, distributor_id } = createAdminDto;
+    const usuario = await this.usersService.findById(user_id);
+    if (!usuario) {
+      throw new NotFoundException(`User with ID: ${user_id} not found`);
+    }
+    const rol = usuario.role_id
+      ? await this.roleService.findOne(usuario.role_id)
+      : null;
+    // `role.type` es texto libre en la base; se compara contra el valor del enum.
+    const esAdminDeEmpresa = rol?.type === String(RoleType.ADMIN);
+    const esSuperAdmin = rol?.type === String(RoleType.SUPER_ADMIN);
+    if (!esAdminDeEmpresa && !esSuperAdmin) {
+      throw new BadRequestException(
+        'Sólo un usuario con rol admin o super_admin tiene perfil de administrador',
+      );
+    }
+    if (esAdminDeEmpresa !== Boolean(distributor_id)) {
+      throw new BadRequestException(
+        'Un admin de empresa lleva distribuidora y el super administrador no',
+      );
+    }
+    if (await this.adminRepository.exists({ where: { user_id } })) {
+      throw new ConflictException(
+        'El usuario ya tiene perfil de administrador',
+      );
+    }
     const admin = this.adminRepository.create(createAdminDto);
     return await this.adminRepository.save(admin);
   }
@@ -82,17 +91,17 @@ export class AdminService {
    * distribuidora, o super_admin con "ver como") devuelve solo los de esa
    * empresa; sin él (super_admin cross-tenant) devuelve todos.
    */
-  async findAll(distributorId?: string | null) {
+  async findAll(distributorId?: string | null): Promise<Admin[]> {
     return await this.adminRepository.find({
       where: distributorId ? { distributor_id: distributorId } : {},
-      relations: ['user', 'role', 'distributor'],
+      relations: ['user', 'user.role', 'distributor'],
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
       where: { admin_id: id },
-      relations: ['user', 'role'],
+      relations: ['user', 'user.role'],
     });
 
     if (!admin) {
@@ -102,12 +111,11 @@ export class AdminService {
     return admin;
   }
 
-  // ✅ MÉTODO REQUERIDO: Buscar admin por email del usuario
   async findOneByEmail(email: string): Promise<Admin> {
     const admin = await this.adminRepository
       .createQueryBuilder('admin')
       .leftJoinAndSelect('admin.user', 'user')
-      .leftJoinAndSelect('admin.role', 'role')
+      .leftJoinAndSelect('user.role', 'role')
       .where('user.email = :email', { email })
       .getOne();
 
@@ -118,55 +126,33 @@ export class AdminService {
     return admin;
   }
 
-  async findAdminByTerm(term: string) {
+  /**
+   * Con distribuidora en contexto sólo encuentra a los admins de ella: los de
+   * otra, y los super admin, responden 404.
+   */
+  async findAdminByTerm(
+    term: string,
+    distributorId: string | null = null,
+  ): Promise<Admin> {
     this.logger.debug(`🔍 Buscando admin con term: ${term}`);
 
     const queryBuilder = this.adminRepository
       .createQueryBuilder('admin')
-      .leftJoinAndSelect('admin.user', 'user') // ✅ CORRECTO
-      .leftJoinAndSelect('admin.role', 'role'); // ✅ CORRECTO
+      .leftJoinAndSelect('admin.user', 'user')
+      .leftJoinAndSelect('user.role', 'role');
 
     const admin = isUUID(term)
       ? await queryBuilder
           .where('admin.admin_id = :admin_id', { admin_id: term })
           .getOne()
       : await queryBuilder
-          .where('user.email = :email', { email: term }) // ✅ CORRECTO - busca en user.email
+          .where('user.email = :email', { email: term })
           .getOne();
 
-    this.logger.debug(`🔍 Resultado de búsqueda: ${JSON.stringify(admin)}`);
-
-    if (!admin) throw new NotFoundException(`Admin with ${term} not found`);
-
-    const result = {
-      admin_id: admin.admin_id,
-      email: admin.user?.email, // ✅ Del User
-      displayName: admin.user?.full_name, // ✅ Del User
-      fullName: admin.user?.full_name, // ✅ Del User
-      rol: admin.role?.type, // ✅ Del Role
-      uid: admin.user?.firebase_uid, // ✅ Del User
-    };
-
-    this.logger.debug(`🔍 Datos formateados: ${JSON.stringify(result)}`);
-    return result;
-  }
-
-  async update(id: string, updateAdminDto: UpdateAdminDto) {
-    const admin = await this.adminRepository.preload({
-      admin_id: id,
-      ...updateAdminDto,
-    });
-
-    if (!admin) {
-      throw new NotFoundException(`Admin with ID: ${id} not found`);
+    if (!admin || (distributorId && admin.distributor_id !== distributorId)) {
+      throw new NotFoundException(`Admin with ${term} not found`);
     }
 
-    return await this.adminRepository.save(admin);
-  }
-
-  async remove(id: string) {
-    const admin = await this.findOne(id);
-    await this.adminRepository.delete(id);
-    return { message: 'Admin deleted successfully' };
+    return admin;
   }
 }

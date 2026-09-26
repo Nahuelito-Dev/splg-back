@@ -3,11 +3,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RatingService } from './rating.service';
 import { RatingController } from './rating.controller';
 import { Rating } from './entities/rating.entity';
-import { Order } from '../order/entities/order.entity';
-import { Delivery } from '../delivery/entities/delivery.entity';
+import { OrderModule } from '../order/order.module';
+import { DeliveryModule } from '../delivery/delivery.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Rating, Order, Delivery])],
+  // OrderService para el pedido calificado y DeliveryService para el chofer y
+  // su promedio: el módulo sólo es dueño de las calificaciones.
+  imports: [TypeOrmModule.forFeature([Rating]), OrderModule, DeliveryModule],
   controllers: [RatingController],
   providers: [RatingService],
   exports: [RatingService],

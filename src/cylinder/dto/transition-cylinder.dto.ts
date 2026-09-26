@@ -3,7 +3,7 @@ import { CylinderState } from '../entities/cylinder.entity';
 
 export class TransitionCylinderDto {
   @IsEnum(CylinderState)
-  toState: CylinderState;
+  toState!: CylinderState;
 
   /** Pedido en cuyo contexto ocurre la transición (ej. dispatch/entrega). */
   @IsOptional()

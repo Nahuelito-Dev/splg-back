@@ -10,7 +10,10 @@ describe('DispatchService', () => {
   let service: DispatchService;
   let orderService: { findAvailableOrders: jest.Mock };
   let redis: { acquireLock: jest.Mock };
-  let orchestrator: { handleExpiredOffers: jest.Mock; ensureOffered: jest.Mock };
+  let orchestrator: {
+    handleExpiredOffers: jest.Mock;
+    ensureOffered: jest.Mock;
+  };
   let lock: { release: jest.Mock };
 
   const OLD = new Date(Date.now() - 5 * 60 * 1000);
@@ -30,9 +33,9 @@ describe('DispatchService', () => {
       ensureOffered: jest.fn().mockResolvedValue(undefined),
     };
     service = new DispatchService(
-      orderService as any,
-      redis as any,
-      orchestrator as any,
+      orderService as unknown as import('./order.service').OrderService,
+      redis as unknown as import('../redis/redis.service').RedisService,
+      orchestrator as unknown as import('./application/dispatch-orchestrator.service').DispatchOrchestratorService,
     );
   });
 

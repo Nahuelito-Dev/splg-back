@@ -33,8 +33,8 @@ export function requestIdMiddleware(
       ? incoming
       : randomUUID();
 
-  (req as any).requestId = requestId;
-  (req as any).startTime = Date.now();
+  req.requestId = requestId;
+  req.startTime = Date.now();
 
   res.setHeader('X-Request-Id', requestId);
 

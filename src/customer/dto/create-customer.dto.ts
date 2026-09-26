@@ -1,18 +1,27 @@
-import { IsUUID, IsOptional, IsString } from 'class-validator';
+import {
+  IsUUID,
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsLatLong,
+} from 'class-validator';
 
 export class CreateCustomerDto {
   @IsUUID()
-  user_id: string;
+  user_id!: string;
 
   @IsOptional()
   @IsString()
   notification_token?: string;
 
   @IsOptional()
-  @IsString()
+  @IsLatLong({
+    message:
+      'lat_lang debe ser "latitud,longitud", por ejemplo -27.3671,-55.8961',
+  })
   lat_lang?: string;
 
   @IsOptional()
-  @IsString()
-  validated?: string;
+  @IsBoolean({ message: 'validated tiene que ser true o false' })
+  validated?: boolean;
 }

@@ -1,10 +1,10 @@
-// src/payments/payments.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Payment } from './entities/payment.entity';
 import { PaymentGatewayPort } from './domain/ports/payment-gateway.port';
 import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
 import { PaymentsService } from './application/payments.service';
+import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook.controller';
 
 /**
  * Módulo de pagos, independiente de `order`: expone `PaymentsService`
@@ -15,6 +15,8 @@ import { PaymentsService } from './application/payments.service';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([Payment])],
+  // El webhook valida la firma y publica PagoNotificadoEvent; order lo escucha.
+  controllers: [MercadoPagoWebhookController],
   providers: [
     PaymentsService,
     // Puerto de pasarela de pago → adapter MercadoPago (Checkout Pro). Sumar

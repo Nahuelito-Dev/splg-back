@@ -8,13 +8,12 @@ import {
   Index,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
-import { Role } from '../../role/entities/role.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 
 @Entity('admin')
 export class Admin {
   @PrimaryGeneratedColumn('uuid', { name: 'admin_id' })
-  admin_id: string;
+  admin_id!: string;
 
   /**
    * Distribuidora que administra. Nullable = admin de plataforma (super_admin,
@@ -23,28 +22,27 @@ export class Admin {
   @Index()
   @ManyToOne(() => Distributor, { nullable: true })
   @JoinColumn({ name: 'distributor_id' })
-  distributor?: Distributor;
+  distributor?: Distributor | null;
 
   @Column({ type: 'uuid', nullable: true })
-  distributor_id?: string;
+  distributor_id!: string | null;
 
   @ManyToOne(() => User, (user) => user.admins, {
     nullable: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user!: User;
 
+  /**
+   * Un perfil por usuario. El rol no se guarda acá: es el del usuario
+   * (`user.role_id`). Repetirlo era redundante y permitía que los dos
+   * dijeran cosas distintas (H-77).
+   */
+  @Index('UQ_admin_user', { unique: true })
   @Column({ type: 'uuid' })
-  user_id: string;
-
-  @ManyToOne(() => Role, (role) => role.admins, { nullable: false })
-  @JoinColumn({ name: 'role_id' })
-  role: Role;
-
-  @Column({ type: 'uuid' })
-  role_id: string;
+  user_id!: string;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 }

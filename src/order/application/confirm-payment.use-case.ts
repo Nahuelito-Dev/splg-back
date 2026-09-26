@@ -6,6 +6,7 @@ import { isTerminal } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { errorMessage } from '../../common/errors/error-message';
 
 /** Payload que llega del webhook de MercadoPago (query params `type`/`data.id`). */
 export interface ConfirmPaymentInput {
@@ -71,7 +72,7 @@ export class ConfirmPaymentUseCase {
     }
 
     if (payment.status === 'rejected' || payment.status === 'cancelled') {
-      // TODO: liberar el stock reservado (StockReservationService.restore) y
+      // TODO: liberar el stock reservado (GasCylinderService.restituirStock) y
       // marcar el pedido CANCELLED cuando el pago se rechaza/cancela en MP.
       // MVP: solo lo dejamos loggeado; el pedido queda PENDING/PENDING y el
       // cliente puede reintentar el pago (o un cron de expiración lo cancela).
@@ -108,7 +109,9 @@ export class ConfirmPaymentUseCase {
 
       if (!locked) {
         await queryRunner.commitTransaction();
-        this.logger.warn(`Pedido ${order.order_id} desapareció antes de confirmar el pago`);
+        this.logger.warn(
+          `Pedido ${order.order_id} desapareció antes de confirmar el pago`,
+        );
         return;
       }
 
@@ -170,9 +173,9 @@ export class ConfirmPaymentUseCase {
     order.gatewayPaymentId = paymentId;
     await this.dispatchOrchestrator
       .offerToNextDriver(order)
-      .catch((error: any) =>
+      .catch((error: unknown) =>
         this.logger.error(
-          `Falló el despacho post-pago del pedido ${order.order_id}: ${error?.message}`,
+          `Falló el despacho post-pago del pedido ${order.order_id}: ${errorMessage(error)}`,
         ),
       );
   }
