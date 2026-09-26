@@ -19,7 +19,6 @@ import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 export interface PerfilDeClienteNuevo {
   lat_lang?: string;
   notification_token?: string;
-  validated?: boolean;
 }
 
 @Injectable()
@@ -46,7 +45,6 @@ export class CustomersService {
         userId,
         notificationToken: datos.notification_token ?? null,
         location: datos.lat_lang ? puntoDesdeLatLng(datos.lat_lang) : null,
-        validated: datos.validated ?? false,
       }),
     );
   }
@@ -221,10 +219,10 @@ export class CustomersService {
     // La ubicación llega como "lat,lng" y se guarda como punto.
     // El resto campo por campo: el cuerpo va en snake_case y la entidad en
     // camelCase, y volcarlo entero perdería `notification_token` en silencio.
-    const { lat_lang, notification_token, validated } = updateCustomerDto;
+    const { lat_lang, notification_token } = updateCustomerDto;
     const customer = await this.customerRepository.preload({
       customerId: id,
-      ...sinIndefinidos({ notificationToken: notification_token, validated }),
+      ...sinIndefinidos({ notificationToken: notification_token }),
       ...(lat_lang !== undefined && { location: puntoDesdeLatLng(lat_lang) }),
     });
 
@@ -240,20 +238,6 @@ export class CustomersService {
     await this.findOne(id);
     await this.customerRepository.softDelete({ customerId: id });
     return MessageResponseDto.of('Customer deleted successfully');
-  }
-
-  async validateCustomer(id: string): Promise<Customer> {
-    const customer = await this.findOne(id);
-    customer.validated = true;
-    await this.customerRepository.save(customer);
-    return customer;
-  }
-
-  async invalidateCustomer(id: string): Promise<Customer> {
-    const customer = await this.findOne(id);
-    customer.validated = false;
-    await this.customerRepository.save(customer);
-    return customer;
   }
 
   async updateLocation(

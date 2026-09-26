@@ -62,8 +62,8 @@ for adm in ('admA', 'supA'):
     c(adm,'GET','/coverage-zones',esperado=LISTA); c(adm,'DELETE',f'/coverage-zones/{B["zona"]}')
     # customers (compartidos: A no ve los que no le compraron)
     c(adm,'GET','/customers',esperado=LISTA); c(adm,'GET',f'/customers/{B["cli"]}'); c(adm,'GET',f'/customers/user/{B["cliUser"]}')
-    c(adm,'PATCH',f'/customers/{B["cli"]}',{'validated':True},esperado=(404,403)); c(adm,'PATCH',f'/customers/{B["cli"]}/validate',esperado=(404,403))
-    c(adm,'PATCH',f'/customers/{B["cli"]}/invalidate',esperado=(404,403)); c(adm,'PATCH',f'/customers/{B["cli"]}/location',{'latLng':'-27.4,-55.9'},esperado=(404,403))
+    c(adm,'PATCH',f'/customers/{B["cli"]}',{'notification_token':'x'},esperado=(404,403))
+    c(adm,'PATCH',f'/customers/{B["cli"]}/location',{'latLng':'-27.4,-55.9'},esperado=(404,403))
     c(adm,'DELETE',f'/customers/{B["cli"]}',esperado=(404,403))
     # cylinders
     c(adm,'GET','/cylinders',esperado=LISTA); c(adm,'GET',f'/cylinders/{B["cyl"]}'); c(adm,'GET',f'/cylinders/{B["cyl"]}/history')

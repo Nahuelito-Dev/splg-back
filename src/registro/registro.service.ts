@@ -124,7 +124,6 @@ export class RegistroService {
         return this.customers.crearPerfil(manager, userId, {
           lat_lang: datos.lat_lang,
           notification_token: datos.notification_token,
-          validated: datos.validated,
         });
       case RoleType.DELIVERY:
         return this.deliveries.crearPerfil(

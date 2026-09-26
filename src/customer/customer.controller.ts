@@ -120,53 +120,12 @@ export class CustomersController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
-    // H-52: la validación la decide un administrador. Un cliente que la manda
-    // se estaría validando a sí mismo.
-    if (alcanceDelDueño(user) && updateCustomerDto.validated !== undefined) {
-      throw new ForbiddenException(
-        'Sólo un administrador puede cambiar la validación de un cliente',
-      );
-    }
     return CustomerMapper.toDto(
       await this.customersService.update(
         id,
         updateCustomerDto,
         alcanceDelDueño(user),
       ),
-    );
-  }
-
-  @Patch(':id/validate')
-  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Validate customer' })
-  @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiOkResponse({ type: CustomerResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
-  async validateCustomer(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
-  ): Promise<CustomerResponseDto> {
-    await this.acotar({ customer_id: id }, user, distributorId);
-    return CustomerMapper.toDto(
-      await this.customersService.validateCustomer(id),
-    );
-  }
-
-  @Patch(':id/invalidate')
-  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Invalidate customer' })
-  @ApiParam({ name: 'id', description: 'Customer UUID' })
-  @ApiOkResponse({ type: CustomerResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
-  async invalidateCustomer(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
-  ): Promise<CustomerResponseDto> {
-    await this.acotar({ customer_id: id }, user, distributorId);
-    return CustomerMapper.toDto(
-      await this.customersService.invalidateCustomer(id),
     );
   }
 

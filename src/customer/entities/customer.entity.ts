@@ -46,10 +46,6 @@ export class Customer {
   })
   location!: Point | null;
 
-  /** Si la distribuidora aprobó al cliente. Era texto 'true'/'false'. */
-  @Column({ type: 'boolean', default: false })
-  validated!: boolean;
-
   @CreateDateColumn({ type: 'timestamptz', nullable: true })
   createdAt!: Date | null;
 

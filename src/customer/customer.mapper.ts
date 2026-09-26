@@ -9,7 +9,6 @@ export class CustomerMapper {
     dto.customer_id = customer.customerId;
     dto.user_id = customer.userId;
     dto.lat_lang = latLngDesdePunto(customer.location);
-    dto.validated = customer.validated;
     dto.createdAt = customer.createdAt;
     dto.deletedAt = customer.deletedAt;
     if (customer.user) dto.user = UserMapper.toDto(customer.user);

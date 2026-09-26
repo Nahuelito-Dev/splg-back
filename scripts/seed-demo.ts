@@ -579,8 +579,8 @@ async function sembrarClientes(
       ],
     );
     await q(
-      `INSERT INTO customer (user_id, validated, "createdAt")
-       VALUES ($1,true,$2)`,
+      `INSERT INTO customer (user_id, "createdAt")
+       VALUES ($1,$2)`,
       [u.user_id, alta],
     );
     clientes.push({ userId: u.user_id, nombre, direcciones: [] });

@@ -80,7 +80,8 @@ export class RegistrarUsuarioDto extends RegistrarClienteDto {
   selfie?: string;
 
   @ApiPropertyOptional({
-    description: 'Cliente o chofer ya validado por el administrador',
+    description:
+      'Chofer ya validado por el administrador. Los clientes no se validan: se registran y compran',
   })
   @IsOptional()
   @IsBoolean()
