@@ -1,6 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { CylinderState } from '../entities/cylinder.entity';
 
+/** El producto del catálogo al que pertenece el envase. */
+export class ProductoDelEnvaseDto {
+  @ApiProperty({ example: 'Garrafa 10kg' }) type!: string;
+  @ApiProperty({ example: 10 }) weight!: number;
+}
+
+/** El cliente que tiene el envase en su poder. */
+export class ClienteDelEnvaseDto {
+  @ApiProperty({ format: 'uuid' }) user_id!: string;
+  @ApiProperty({ type: String, nullable: true }) full_name!: string | null;
+  @ApiProperty({ type: String, nullable: true }) phone_number!: string | null;
+}
+
 export class CylinderResponseDto {
   @ApiProperty({ format: 'uuid' }) cylinder_id!: string;
   @ApiProperty({ format: 'uuid' }) distributor_id!: string;
@@ -23,6 +36,22 @@ export class CylinderResponseDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   current_order_id!: string | null;
   @ApiProperty({ example: 15000 }) deposit!: number;
+  @ApiProperty({
+    type: ProductoDelEnvaseDto,
+    nullable: true,
+    description: 'Tipo y peso del producto (null si no tiene uno asignado)',
+  })
+  gas_cylinder!: ProductoDelEnvaseDto | null;
+  @ApiProperty({
+    type: ClienteDelEnvaseDto,
+    nullable: true,
+    description: 'Quién lo tiene ahora (null si está en la distribuidora)',
+  })
+  current_customer!: ClienteDelEnvaseDto | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  manufactured_at!: Date | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  last_inspection_at!: Date | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: String, format: 'date-time' }) updatedAt!: Date;
 }

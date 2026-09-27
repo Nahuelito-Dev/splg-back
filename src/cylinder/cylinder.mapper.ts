@@ -16,6 +16,19 @@ export class CylinderMapper {
     dto.current_customer_id = c.currentCustomerId;
     dto.current_order_id = c.currentOrderId;
     dto.deposit = c.deposit;
+    // Las relaciones vienen sólo si la consulta las cargó (listado y detalle).
+    dto.gas_cylinder = c.gasCylinder
+      ? { type: c.gasCylinder.type, weight: c.gasCylinder.weight }
+      : null;
+    dto.current_customer = c.currentCustomer
+      ? {
+          user_id: c.currentCustomer.userId,
+          full_name: c.currentCustomer.fullName ?? null,
+          phone_number: c.currentCustomer.phoneNumber ?? null,
+        }
+      : null;
+    dto.manufactured_at = c.manufacturedAt;
+    dto.last_inspection_at = c.lastInspectionAt;
     dto.createdAt = c.createdAt;
     dto.updatedAt = c.updatedAt;
     return dto;
