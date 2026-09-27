@@ -265,6 +265,12 @@ export class OrderService {
     return this.confirmDeliveryUseCase.execute(orderId, code, userId, role);
   }
 
+  /**
+   * Asignación MANUAL del admin (`PATCH /orders/:id/assign/:deliveryId`).
+   * Exige habilitado + validado, igual que aceptar una oferta. NO exige que
+   * esté en línea: es un acto explícito del admin, no una búsqueda por el
+   * radar.
+   */
   async assignDelivery(orderId: string, deliveryId: string) {
     const order = await this.findOne(orderId);
     const delivery = await this.deliveries.findById(deliveryId);
@@ -272,8 +278,7 @@ export class OrderService {
     if (!delivery || delivery.distributorId !== order.distributorId) {
       throw new NotFoundException('Repartidor no encontrado');
     }
-    if (!delivery.isActive)
-      throw new BadRequestException('El repartidor no está activo');
+    this.deliveries.assertElegibleParaAsignacion(delivery);
     order.deliveryId = deliveryId;
     transitionOrder(order, OrderStatus.ACCEPTED);
     order.acceptedAt = new Date();
@@ -297,6 +302,10 @@ export class OrderService {
    * KPIs del dashboard. Scopeado por distribuidora (un admin de empresa solo ve
    * lo suyo; super_admin sin tenant ve el consolidado). Usa agregados SQL
    * (SUM/COUNT) en vez de cargar las órdenes a memoria.
+   *
+   * `sales.week` es la semana calendario (domingo a sábado), no los últimos 7
+   * días. `paymentMethods.cash`/`.mercadopago` son del mes en curso (desde el
+   * día 1), igual que `sales.month`.
    */
   async getOrderStats(distributorId?: string | null) {
     const dist = distributorId ? { distributorId } : {};
@@ -334,6 +343,7 @@ export class OrderService {
       accepted,
       onTheWay,
       activeDeliveries,
+      enabledDeliveries,
       cash,
       mercadopago,
     ] = await Promise.all([
@@ -354,7 +364,8 @@ export class OrderService {
       this.orderRepository.count({
         where: { status: OrderStatus.ON_THE_WAY, ...dist },
       }),
-      this.deliveries.contarDisponibles(distributorId),
+      this.deliveries.contarEnLinea(distributorId),
+      this.deliveries.contarHabilitados(distributorId),
       this.orderRepository.count({
         where: {
           status: OrderStatus.DELIVERED,
@@ -390,7 +401,10 @@ export class OrderService {
       },
       performance: {
         activeDeliveries,
+        enabledDeliveries,
         avgOrderValue: deliveredToday > 0 ? todaySalesN / deliveredToday : 0,
+        // Deprecado: duplica deliveredToday exacto (ver el DTO). Se mantiene
+        // por contrato, no se borra.
         ordersPerDay: deliveredToday,
       },
       paymentMethods: { cash, mercadopago },

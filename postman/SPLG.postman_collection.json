@@ -7316,6 +7316,11 @@
                       "key": "term",
                       "value": "{{term}}",
                       "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
+                      "disabled": true
                     }
                   ]
                 },
@@ -7396,6 +7401,11 @@
                     {
                       "key": "term",
                       "value": "{{term}}",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
                       "disabled": true
                     }
                   ]
@@ -8155,7 +8165,7 @@
                 "description": "Update delivery by ID",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"validated\": true,\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"validated\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -8284,7 +8294,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"validated\": true,\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"validated\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -8337,7 +8347,7 @@
                 "description": "Un identificador con formato valido que no existe en la base.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"validated\": true,\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"validated\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -9035,10 +9045,10 @@
                     "status"
                   ]
                 },
-                "description": "Toggle delivery active status",
+                "description": "Habilita o deshabilita al chofer (admin)",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"isEnabled\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -9102,7 +9112,7 @@
                 "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"isActive\": \"si\"\n}",
+                  "raw": "{\n  \"isEnabled\": \"si\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -9169,7 +9179,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"isEnabled\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -9223,7 +9233,7 @@
                 "description": "Un identificador con formato valido que no existe en la base.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"isActive\": true\n}",
+                  "raw": "{\n  \"isEnabled\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -9820,6 +9830,109 @@
                   ],
                   "path": [
                     "distributor"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "GET /api/distributor/current",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/distributor/current",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "distributor",
+                    "current"
+                  ]
+                },
+                "description": "La distribuidora de la sesión"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/distributor/current",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "distributor",
+                    "current"
                   ]
                 },
                 "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",

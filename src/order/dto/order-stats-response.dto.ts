@@ -8,26 +8,57 @@ export class ResumenDePedidosDto {
   @ApiProperty({ example: 2 }) deliveredToday!: number;
 }
 
-/** Importe vendido (pedidos entregados) en cada período. */
+/**
+ * Importe vendido (pedidos entregados) en cada período. `week` es la SEMANA
+ * CALENDARIO (domingo a sábado en curso), no los últimos 7 días.
+ */
 export class VentasDto {
   @ApiProperty({ example: 22600 }) today!: number;
-  @ApiProperty({ example: 958500 }) week!: number;
-  @ApiProperty({ example: 1623100 }) month!: number;
+  @ApiProperty({
+    example: 958500,
+    description:
+      'Semana calendario en curso (domingo a sábado), no los últimos 7 días',
+  })
+  week!: number;
+  @ApiProperty({
+    example: 1623100,
+    description: 'Mes en curso (desde el día 1)',
+  })
+  month!: number;
   @ApiProperty({ example: 12561700 }) total!: number;
 }
 
 export class RendimientoDto {
-  @ApiProperty({ example: 11, description: 'Choferes activos' })
+  @ApiProperty({
+    example: 11,
+    description:
+      'Choferes EN LÍNEA y listos para despachar (habilitado + validado + ' +
+      'conectado en su app)',
+  })
   activeDeliveries!: number;
+  @ApiProperty({
+    example: 15,
+    description:
+      'Choferes habilitados por un admin, estén o no en línea ni validados',
+  })
+  enabledDeliveries!: number;
   @ApiProperty({ example: 11300, description: 'Ticket promedio de hoy' })
   avgOrderValue!: number;
-  @ApiProperty({ example: 2, description: 'Entregados hoy' })
+  @ApiProperty({
+    example: 2,
+    deprecated: true,
+    description:
+      'Deprecado: duplica exactamente `ordersSummary.deliveredToday`. Se ' +
+      'mantiene por contrato, no se calcula distinto',
+  })
   ordersPerDay!: number;
 }
 
+/** Medios de pago de los pedidos entregados en el MES EN CURSO (desde el día 1). */
 export class MediosDePagoDto {
-  @ApiProperty({ example: 88 }) cash!: number;
-  @ApiProperty({ example: 1 }) mercadopago!: number;
+  @ApiProperty({ example: 88, description: 'Mes en curso' }) cash!: number;
+  @ApiProperty({ example: 1, description: 'Mes en curso' })
+  mercadopago!: number;
 }
 
 /** `GET /orders/stats/summary`: los números del tablero del panel. */

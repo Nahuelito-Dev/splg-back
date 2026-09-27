@@ -1,6 +1,7 @@
 import { Repository } from 'typeorm';
 import { DeliveryService } from './delivery.service';
 import { Delivery } from './entities/delivery.entity';
+import { DeliveryStatusFilter } from './dto/query-delivery.dto';
 import { RedisService } from '../redis/redis.service';
 
 /**
@@ -78,12 +79,24 @@ describe('DeliveryService · búsqueda de choferes', () => {
     );
   });
 
-  it('findActiveDeliveries con term filtra además por isActive', async () => {
+  it('findActiveDeliveries con term filtra además por habilitado+validado+en línea', async () => {
     await service.findActiveDeliveries(
       { limit: 10, offset: 0, term: 'ana' },
       null,
     );
 
-    expect(qb.andWhere).toHaveBeenCalledWith('delivery.isActive = true');
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'delivery.isEnabled = true AND delivery.validated = true AND delivery.isAvailable = true',
+    );
+  });
+
+  it('findAll con status=disabled filtra por deshabilitados', async () => {
+    await service.findAll(
+      { limit: 10, offset: 0, term: 'ana' },
+      null,
+      DeliveryStatusFilter.DISABLED,
+    );
+
+    expect(qb.andWhere).toHaveBeenCalledWith('delivery.isEnabled = false');
   });
 });

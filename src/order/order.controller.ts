@@ -393,11 +393,21 @@ export class OrderController {
 
   @Patch(':id/assign/:deliveryId')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Assign order to delivery' })
+  @ApiOperation({
+    summary: 'Assign order to delivery',
+    description:
+      'Asignación manual del admin: exige que el chofer esté habilitado y ' +
+      'validado. NO exige que esté en línea (a diferencia del despacho ' +
+      'automático).',
+  })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
   @ApiOkResponse({ type: OrderResponseDto, description: 'Chofer asignado' })
   @ApiResponse({ status: 404, description: 'Order or delivery not found' })
+  @ApiBadRequestResponse({
+    description:
+      'El repartidor está deshabilitado, o el repartidor no está validado',
+  })
   async assignDelivery(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('deliveryId', ParseUUIDPipe) deliveryId: string,

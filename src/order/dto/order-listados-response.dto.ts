@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { OrderResponseDto } from './order-response.dto';
+import { PaymentMethod } from '../entities/order.entity';
 
 /** Listados paginados de pedidos (`GET /orders`, por cliente, por chofer, disponibles). */
 export class PaginatedOrdersResponseDto {
@@ -23,7 +24,8 @@ export class ReservaResponseDto {
   @ApiProperty({ type: String, nullable: true }) customerPhone!: string | null;
   @ApiProperty({ type: String, format: 'date', nullable: true })
   scheduledDate!: string | null;
-  @ApiProperty({ example: 'cash' }) paymentMethod!: string;
+  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
+  paymentMethod!: PaymentMethod;
   @ApiProperty({ example: 22600 }) total!: number;
   @ApiProperty({ example: 5000 }) depositAmount!: number;
   @ApiProperty() depositPaid!: boolean;

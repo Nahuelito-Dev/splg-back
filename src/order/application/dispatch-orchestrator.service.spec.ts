@@ -17,6 +17,7 @@ describe('DispatchOrchestratorService', () => {
     notifyDriverNewOrder: jest.Mock;
   };
   let orders: { findByIdFull: jest.Mock };
+  let deliveries: { choferesElegibles: jest.Mock };
   let offers: {
     create: jest.Mock;
     findOfferedDriverIds: jest.Mock;
@@ -51,10 +52,8 @@ describe('DispatchOrchestratorService', () => {
       updateStatus: jest.fn().mockResolvedValue(undefined),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
     };
-    const deliveries = {
-      choferesDeLaDistribuidora: jest.fn((ids: string[]) =>
-        Promise.resolve(ids),
-      ),
+    deliveries = {
+      choferesElegibles: jest.fn((ids: string[]) => Promise.resolve(ids)),
     };
     const notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
@@ -156,6 +155,21 @@ describe('DispatchOrchestratorService', () => {
       await orchestrator.offerToNextDriver(makeOrder());
 
       expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(-26.8, -65.2, 5);
+    });
+
+    it('el radar no filtra por habilitación: el orquestador descarta al no elegible y ofrece al que sí lo es', async () => {
+      // El más cercano ('near') está en el radar pero deshabilitado o sin
+      // validar; DeliveryService.choferesElegibles lo saca de la lista.
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near', 'far']);
+      deliveries.choferesElegibles.mockResolvedValueOnce(['far']);
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBe('far');
+      expect(deliveries.choferesElegibles).toHaveBeenCalledWith(
+        ['near', 'far'],
+        undefined,
+      );
     });
   });
 

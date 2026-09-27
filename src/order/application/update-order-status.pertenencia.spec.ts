@@ -14,7 +14,10 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   const DELIVERY_ASIGNADO = 'd1d1d1d1-0000-4000-8000-000000000001';
   const DELIVERY_AJENO = 'd2d2d2d2-0000-4000-8000-000000000002';
 
-  let deliveries: { buscarPorIdOUsuario: jest.Mock };
+  let deliveries: {
+    buscarPorIdOUsuario: jest.Mock;
+    assertElegibleParaAsignacion: jest.Mock;
+  };
   let orders: { findByIdFull: jest.Mock; save: jest.Mock };
   let uc: UpdateOrderStatusUseCase;
 
@@ -29,7 +32,10 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       status,
       items: [],
     };
-    deliveries = { buscarPorIdOUsuario: jest.fn() };
+    deliveries = {
+      buscarPorIdOUsuario: jest.fn(),
+      assertElegibleParaAsignacion: jest.fn(),
+    };
     orders = {
       findByIdFull: jest.fn().mockResolvedValue(order),
       save: jest.fn((o: unknown) => Promise.resolve(o)),
@@ -80,7 +86,8 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
       deliveryId: DELIVERY_ASIGNADO,
       userId: 'user-nuevo',
-      isActive: true,
+      isEnabled: true,
+      validated: true,
       user: { fullName: 'Chofer' },
     });
 
@@ -101,7 +108,8 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     deliveries.buscarPorIdOUsuario.mockResolvedValue({
       deliveryId: DELIVERY_AJENO,
       userId: 'user-ajeno',
-      isActive: true,
+      isEnabled: true,
+      validated: true,
     });
 
     await expect(

@@ -86,6 +86,9 @@ UNION ALL SELECT 'addressId='||address_id FROM elegido
 # El chofer de prueba tiene que poder entrar de verdad: con cuenta en Firebase,
 # vivo, no bloqueado y con fila de delivery en la distribuidora real. Desde que
 # el login rechaza cuentas dadas de baja, apuntar a una borrada da 401.
+# Habilitado y validado, porque el caso correcto de la disponibilidad
+# (PATCH /delivery/user/{userId}/availability con available=true) ahora exige
+# los dos: un chofer sin validar da 403 y ahí el "camino feliz" no lo es.
 docker exec splg-bd psql -U postgres -d splg_db -t -A -c "
 SELECT 'choferEmail='||u.email
 FROM delivery d
@@ -94,6 +97,8 @@ WHERE u.firebase_uid IS NOT NULL
   AND u.\"deletedAt\" IS NULL
   AND d.\"deletedAt\" IS NULL
   AND u.blocked = false
+  AND d.\"isEnabled\" = true
+  AND d.validated = true
   AND d.distributor_id = (SELECT distributor_id FROM distributor WHERE slug='jeny-gas')
   AND u.email LIKE '%@splg-test.com'
 ORDER BY u.\"createdAt\" DESC
