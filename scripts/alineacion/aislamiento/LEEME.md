@@ -18,3 +18,10 @@ SPLG_CLAVE=... scripts/alineacion/aislamiento/run.sh aislamiento.txt
 ```
 
 Resultado del 25/09: 205 casos, 0 fallas (antes de los arreglos: 66).
+
+Resultado del 26/09, con los casos de flota (`fleet/plans`, `fleet/tasks`,
+`fleet/expirations`, `cars/{id}/documents`, `delivery/{id}/documents`)
+agregados: 231 casos, 0 fallas. Corrido contra la instancia de flota (:3400):
+usa dos planes base fijos de B (`planVtv`, `planLicencia`, sembrados por la
+migración `SembrarPlanesBaseDeFlota`, con UUID aleatorio anotado a mano) y el
+plan VTV de A (Jeny Gas) como contraparte.

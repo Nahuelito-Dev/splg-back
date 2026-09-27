@@ -14,6 +14,17 @@ export const EnvConfiguration = () => ({
   mp_success_url: process.env.MP_SUCCESS_URL,
   mp_failure_url: process.env.MP_FAILURE_URL,
   mp_pending_url: process.env.MP_PENDING_URL,
+  // Almacenamiento de archivos (flota: pólizas, VTV, licencias). Se consumen
+  // directo vía ConfigService.get('STORAGE_...') en StorageModule, pero se
+  // dejan acá también para consistencia con el resto de la config.
+  storage_driver: process.env.STORAGE_DRIVER,
+  storage_local_path: process.env.STORAGE_LOCAL_PATH,
+  storage_s3_bucket: process.env.STORAGE_S3_BUCKET,
+  storage_s3_region: process.env.STORAGE_S3_REGION,
+  storage_s3_access_key_id: process.env.STORAGE_S3_ACCESS_KEY_ID,
+  storage_s3_secret_access_key: process.env.STORAGE_S3_SECRET_ACCESS_KEY,
+  storage_s3_signed_url_ttl_seconds:
+    process.env.STORAGE_S3_SIGNED_URL_TTL_SECONDS,
   //aws_region: process.env.AWS_REGION,
   //aws_access_key_id: process.env.AWS_ACCESS_KEY_ID,
   //aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,

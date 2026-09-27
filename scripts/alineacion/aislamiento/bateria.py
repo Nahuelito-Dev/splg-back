@@ -31,10 +31,14 @@ b = lambda n: f'bbbb0000-0000-4000-8000-{n:012x}'
 B = dict(slot=b(1), zona=b(2), gas=b(3), car=b(4), ordEnt=b(5), ordPen=b(6), cyl=b(9), claim=b(11), inc=b(12), rating=b(13),
          dlv='de19bd70-c58d-4823-a409-c077cd7be352', choUser='a29dc060-6efc-4fe3-9f21-8bef5643eb26',
          cliUser='6addc762-49c9-4262-8e82-aca374604acf', cli='9f775e35-45f7-493a-9916-4b9b5eaca4de',
-         dist='5bb47681-f5a0-4cd9-ada2-5f08e5e0e41c', admB_email='adminb.7886@splg-test.com')
+         dist='5bb47681-f5a0-4cd9-ada2-5f08e5e0e41c', admB_email='adminb.7886@splg-test.com',
+         # Planes base de B, sembrados por la migración SembrarPlanesBaseDeFlota
+         # (uuid_generate_v4: no son deterministicos, se anotan a mano).
+         planVtv='95eb27a1-37ba-4b97-92bf-95f5f492508d', planLicencia='682b4652-c4c9-47eb-8706-9f1d701c9423')
 B['addr'] = sys.argv[1] if len(sys.argv) > 1 else ''
 A_DIST = 'af0c1b75-8090-42ed-bea9-7a043adc61cd'
 A_CYL = 'bbbb0000-0000-4000-8000-0000000000a1'  # envase lleno de A (fixture-b.sql)
+A_FLEET_PLAN_VTV = '90f6fca3-ab06-4cd7-8749-bfc9b3824c2d'  # plan base "VTV" de Jeny Gas (mismo origen: la migración)
 
 def call(actor, method, path, body=None):
     h = {'Authorization': f'Bearer {ACT[actor]}', 'Content-Type': 'application/json'}
@@ -105,6 +109,15 @@ for adm in ('admA', 'supA'):
     # users / admin
     c(adm,'GET','/admin',esperado=LISTA); c(adm,'GET',f'/admin/term/{B["admB_email"]}')
     c(adm,'GET',f'/users/email/{B["admB_email"]}'); c(adm,'GET',f'/users/{B["choUser"]}')
+    # fleet: planes, tareas y las fachadas de documentos de vehiculo/chofer
+    c(adm,'GET','/fleet/plans',esperado=LISTA); c(adm,'GET',f'/fleet/plans/{B["planVtv"]}')
+    c(adm,'PATCH',f'/fleet/plans/{B["planVtv"]}',{'leadTimeDays':10})
+    c(adm,'GET','/fleet/tasks',esperado=LISTA); c(adm,'GET','/fleet/expirations',esperado=LISTA)
+    # el plan es de B: 404 antes de mirar siquiera el vehiculo del cuerpo
+    c(adm,'POST','/fleet/tasks',{'planId':B['planVtv'],'carId':B['car']},esperado=(404,400))
+    # el plan es de A pero el vehiculo del cuerpo es de B: 404 al validar el vehiculo
+    c(adm,'POST','/fleet/tasks',{'planId':A_FLEET_PLAN_VTV,'carId':B['car']},esperado=(404,400))
+    c(adm,'GET',f'/cars/{B["car"]}/documents'); c(adm,'GET',f'/delivery/{B["dlv"]}/documents')
     # user-address del cliente de B
     c(adm,'GET',f'/user-address/user/{B["cliUser"]}',esperado=(404,403)); c(adm,'GET',f'/user-address/{B["addr"]}',esperado=(404,403))
     # distribuidora B (sólo super admin)
@@ -122,6 +135,9 @@ for a in ('choA',):
     c(a,'GET',f'/incidents/order/{B["ordEnt"]}',esperado=(404,403))
     c(a,'GET',f'/orders/{B["ordEnt"]}',esperado=(404,403)); c(a,'GET',f'/orders/customer/{B["cliUser"]}',esperado=(404,403,'lista'))
     c(a,'GET',f'/orders/delivery/{B["dlv"]}',esperado=(404,403)); c(a,'GET','/orders/available',esperado=LISTA)
+    # fleet es solo admin/super_admin: un chofer no entra, de ninguna distribuidora
+    c(a,'GET','/fleet/plans',esperado=(403,)); c(a,'GET',f'/cars/{B["car"]}/documents',esperado=(403,))
+    c(a,'GET',f'/delivery/{B["dlv"]}/documents',esperado=(403,))
     c(a,'PATCH',f'/orders/{B["ordPen"]}/status',{'status':'accepted'},esperado=(404,403)); c(a,'POST',f'/orders/{B["ordPen"]}/reject',{'reason':'x'},esperado=(404,403))
     c(a,'GET',f'/orders/{B["ordEnt"]}/delivery-code',esperado=(404,403)); c(a,'PATCH',f'/orders/{B["ordPen"]}/location',{'lat':-27.4,'lng':-55.9},esperado=(404,403))
     c(a,'PATCH',f'/orders/{B["ordPen"]}/cancel',{'reason':'x'},esperado=(404,403)); c(a,'PATCH',f'/orders/{B["ordPen"]}/arrived',esperado=(404,403))

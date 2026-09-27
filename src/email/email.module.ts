@@ -24,6 +24,9 @@ import { BienvenidaListener } from './bienvenida.listener';
     BienvenidaListener,
     { provide: EmailSenderPort, useClass: ResendEmailAdapter },
   ],
-  exports: [EmailService],
+  // EmailSenderPort también se exporta: lo usa `fleet` para el aviso de
+  // vencimientos a los admins (FleetAlertsCronService), sin pasar por los
+  // flujos transaccionales de EmailService (reset, bienvenida).
+  exports: [EmailService, EmailSenderPort],
 })
 export class EmailModule {}

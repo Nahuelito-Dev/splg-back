@@ -272,4 +272,37 @@ CUERPOS = {
         "ok": {"customerId": "<<customerUserId>>", "orderId": "<<orderIdDelCliente>>"},
         "malo": {"customerId": "no-es-uuid", "orderId": "tampoco"},
     },
+
+    # --- flota (CU-136 a CU-142) ---
+    "POST /api/fleet/plans": {
+        "ok": {"name": "Plan de prueba " + UNICO, "subject": "vehicle",
+               "trigger": "by_fixed_date", "leadTimeDays": 30, "criticality": "blocking"},
+        "malo": {"subject": "vehicle", "trigger": "by_km", "leadTimeDays": 30,
+                 "criticality": "blocking"},  # by_km sin intervalKm: 400
+    },
+    "PATCH /api/fleet/plans/{id}": {
+        "ok": {"leadTimeDays": 45},
+        "malo": {"trigger": "by_km"},  # sin intervalKm: 400
+    },
+    "POST /api/fleet/tasks": {
+        # El plan base "Seguro del vehículo" es de subject vehicle: necesita
+        # carId. Va "fleetCarId" (no "carId": el módulo Car recicla esa
+        # variable con un auto que después borra en su propia carpeta).
+        "ok": {"planId": "<<fleetPlanId>>", "carId": "<<fleetCarId>>",
+               "dueAt": "2026-12-31T00:00:00.000Z", "provider": "Aseguradora de prueba",
+               "referenceNumber": "POL-" + UNICO},
+        "malo": {"planId": "<<fleetPlanId>>", "deliveryId": "<<deliveryId>>"},  # plan de vehiculo con deliveryId: 400
+    },
+    "PATCH /api/fleet/tasks/{id}": {
+        "ok": {"provider": "Aseguradora editada por la bateria"},
+        "malo": {"dueAt": "no-es-una-fecha"},
+    },
+    "PATCH /api/fleet/tasks/{id}/close": {
+        "ok": {"performedAt": "2026-09-26T12:00:00.000Z", "odometerKm": 50000, "cost": 45000.5},
+        "malo": {"performedAt": "no-es-una-fecha"},
+    },
+    "PATCH /api/fleet/tasks/{id}/cancel": {
+        "ok": {"notes": "Cancelada por la bateria de pruebas"},
+        "malo": {"notes": 12345},
+    },
 }

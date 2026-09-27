@@ -1,10 +1,22 @@
 # Colección de Postman de SPLG
 
-**383 peticiones sobre los 131 endpoints.** Cada endpoint tiene su caso correcto
-y sus casos de fallo, cada uno con el test que corresponde.
+**441 peticiones sobre los 145 endpoints** (incluye `fleet/plans`,
+`fleet/tasks`, `fleet/expirations` y las fachadas de documentos de vehículo y
+chofer). Cada endpoint tiene su caso correcto y sus casos de fallo, cada uno
+con el test que corresponde.
 
-Corrida completa con newman: **1338 aserciones, 31 fallos, y los 31 están
-atados a un defecto documentado.** No queda ningún fallo sin explicar.
+Tres endpoints de flota quedan afuera del generador automático: subir un
+adjunto (`POST /fleet/tasks/{id}/attachments`) y sus dos rutas que dependen de
+un adjunto real (`GET .../download`, `DELETE .../{attachmentId}`). El
+generador arma cuerpos JSON; multipart con un archivo real no entra en ese
+esquema. Se probaron a mano contra la API (ver el informe de la tarea de
+flota): subida de PDF, descarga con contenido idéntico al original, rechazo
+por tipo de archivo (415) y por tamaño (413), y borrado.
+
+Corrida completa con newman, incluyendo lo de arriba: **cero fallos en las
+carpetas de Fleet.** El resto de la colección puede tener fallos propios de
+otros módulos, documentados más abajo o dependientes del estado de los datos
+de la base en el momento de la corrida.
 
 ## Cómo usarla
 

@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   Index,
 } from 'typeorm';
@@ -10,6 +11,7 @@ import { MaintenancePlan } from './maintenance-plan.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
+import { MaintenanceTaskAttachment } from './maintenance-task-attachment.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
 export enum MaintenanceTaskStatus {
@@ -117,4 +119,7 @@ export class MaintenanceTask {
 
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
+
+  @OneToMany(() => MaintenanceTaskAttachment, (a) => a.task)
+  attachments?: MaintenanceTaskAttachment[];
 }

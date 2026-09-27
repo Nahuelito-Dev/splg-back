@@ -14,6 +14,8 @@ UNION ALL SELECT * FROM (SELECT 'cylinderId='||cylinder_id FROM cylinder WHERE d
 UNION ALL SELECT * FROM (SELECT 'timeSlotId='||time_slot_id FROM time_slot WHERE distributor_id=(SELECT distributor_id FROM distributor WHERE slug='jeny-gas') LIMIT 1) h
 UNION ALL SELECT * FROM (SELECT 'coverageZoneId='||coverage_zone_id FROM coverage_zone WHERE distributor_id=(SELECT distributor_id FROM distributor WHERE slug='jeny-gas') LIMIT 1) i
 UNION ALL SELECT * FROM (SELECT 'carId='||car_id FROM car WHERE distributor_id=(SELECT distributor_id FROM distributor WHERE slug='jeny-gas') LIMIT 1) j
+UNION ALL SELECT * FROM (SELECT 'fleetPlanId='||plan_id FROM maintenance_plan WHERE distributor_id=(SELECT distributor_id FROM distributor WHERE slug='jeny-gas') AND subject='vehicle' AND name='Seguro del vehículo' LIMIT 1) j2
+UNION ALL SELECT * FROM (SELECT 'fleetCarId='||car_id FROM car WHERE distributor_id=(SELECT distributor_id FROM distributor WHERE slug='jeny-gas') AND \"deletedAt\" IS NULL LIMIT 1) j3
 UNION ALL SELECT * FROM (SELECT 'roleId='||role_id FROM role WHERE type='qa_pruebas' LIMIT 1) k
 UNION ALL SELECT * FROM (SELECT 'addressId='||address_id FROM user_address LIMIT 1) l
 UNION ALL SELECT * FROM (SELECT 'ratingId='||rating_id FROM rating WHERE distributor_id=(SELECT distributor_id FROM distributor WHERE slug='jeny-gas') LIMIT 1) m
