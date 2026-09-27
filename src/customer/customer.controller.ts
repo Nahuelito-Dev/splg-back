@@ -108,8 +108,7 @@ export class CustomersController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update customer by ID' })
   @ApiForbiddenResponse({
-    description:
-      'Es de otro cliente, o un cliente intenta cambiar su validación',
+    description: 'Es de otro cliente',
   })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
