@@ -18,13 +18,14 @@ RECURSO = {"orders": "orderId", "delivery": "deliveryId", "customers": "customer
            "cylinders": "cylinderId", "time-slot": "timeSlotId", "admin": "adminId",
            "coverage-zones": "coverageZoneId", "car": "carId", "role": "roleId",
            "ratings": "ratingId", "incidents": "incidentId", "claims": "claimId",
-           "distributor": "distributorId"}
+           "distributor": "distributorId", "plans": "fleetPlanId", "tasks": "fleetTaskId"}
 POR_NOMBRE = {"orderid":"orderId","customerid":"customerId","deliveryid":"deliveryId",
   "userid":"userId","distributorid":"distributorId","addressid":"addressId",
   "cylinderid":"cylinderId","gascylinderid":"gasCylinderId","timeslotid":"timeSlotId",
   "coveragezoneid":"coverageZoneId","carid":"carId","roleid":"roleId","ratingid":"ratingId",
   "incidentid":"incidentId","adminid":"adminId","term":"term","email":"email",
-  "phonenumber":"phoneNumber","type":"type","patent":"patent","distributor":"distributorSlug"}
+  "phonenumber":"phoneNumber","type":"type","patent":"patent","distributor":"distributorSlug",
+  "attachmentid":"fleetAttachmentId"}
 POR_RUTA_USERID = {"customers":"customerUserId","delivery":"deliveryUserId","user-address":"addressUserId"}
 INEXISTENTE = "00000000-0000-4000-8000-000000000000"
 
@@ -72,6 +73,20 @@ PRECONDICIONES = {
  "POST /api/auth/login/dashboard": ([400, 429], "mismo limite de 8 por minuto que /auth/login"),
  "POST /api/admin": ([400, 409], "solo para un usuario con rol admin que todavia no tenga perfil; el alta normal ya lo crea (H-77)"),
  "DELETE /api/customers/{id}": ([403, 404], "la baja de un cliente es del administrador general; el cliente recien creado ademas no le compro a nadie (H-81)"),
+ # Dentro de la misma carpeta, "cancel" ordena alfabeticamente antes que
+ # "close": para cuando se corre "close", la bateria ya cancelo la tarea
+ # recien creada, asi que el 400 ("ya esta cancelada") es el resultado
+ # esperado de esa carrera de orden, no un defecto.
+ "PATCH /api/fleet/tasks/{id}/close": ([400], "la carpeta ya canceló esta misma tarea (orden alfabético: cancel corre antes que close)"),
+}
+
+# Multipart (subida de archivos): el generador arma cuerpos JSON, no
+# formdata con un archivo real. Estos tres se prueban a mano contra la API
+# (ver el informe de la tarea) y no entran en la coleccion automatica.
+SIN_GENERAR = {
+ "POST /api/fleet/tasks/{id}/attachments",
+ "GET /api/fleet/tasks/{id}/attachments/{attachmentId}/download",
+ "DELETE /api/fleet/tasks/{id}/attachments/{attachmentId}",
 }
 
 # Endpoints que aceptan datos invalidos y contestan 2xx en vez de 400.
@@ -97,6 +112,12 @@ def var_de(param, ruta):
     if p == "userid":
         for seg, v in POR_RUTA_USERID.items():
             if f"/{seg}/" in ruta or ruta.endswith(f"/{seg}"): return v
+    # La fachada de documentos de flota usa "carId" en la ruta, pero NO puede
+    # compartir la variable "carId": el modulo Car crea y borra un auto propio
+    # en su carpeta, y deja la variable apuntando a uno ya eliminado para
+    # cuando le toca el turno a esta carpeta (orden alfabetico: Cars < Fleet).
+    if p == "carid" and "/documents" in ruta:
+        return "fleetCarId"
     if p in POR_NOMBRE: return POR_NOMBRE[p]
     for seg in ruta.split("/"):
         if seg in RECURSO: return RECURSO[seg]
@@ -196,6 +217,7 @@ for _tag, _ord, ruta, metodo, op in tareas:
         tag = (op.get("tags") or ["Sin clasificar"])[0]
         M = metodo.upper()
         clave = f"{M} {ruta}"
+        if clave in SIN_GENERAR: continue
         if clave in BORRABLE:
             pm_ruta = re.sub(r"\{[^}]+\}", "{{" + BORRABLE[clave] + "}}", ruta)
         else:

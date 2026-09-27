@@ -5,11 +5,16 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { Distributor, DistributorStatus } from './entities/distributor.entity';
 import { CreateDistributorDto } from './dto/create-distributor.dto';
 import { UpdateDistributorDto } from './dto/update-distributor.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
+import {
+  DistribuidoraCreadaEvent,
+  EVENTO_DISTRIBUIDORA_CREADA,
+} from './events/distribuidora-creada.event';
 
 /**
  * El cuerpo de la API lleva `legal_name`, `tax_id` y `logo_url`; la entidad,
@@ -37,6 +42,7 @@ export class DistributorService {
     @InjectRepository(Distributor)
     private readonly repo: Repository<Distributor>,
     private readonly config: ConfigService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async create(dto: CreateDistributorDto): Promise<Distributor> {
@@ -50,7 +56,16 @@ export class DistributorService {
       ...columnasDeLaDistribuidora(dto),
       slug: dto.slug,
     });
-    return this.repo.save(distributor);
+    const guardada = await this.repo.save(distributor);
+
+    // Confirmada el alta, se avisa para que quien tenga datos base por
+    // distribuidora los siembre (hoy: los planes de mantenimiento de fleet).
+    this.eventos.emit(
+      EVENTO_DISTRIBUIDORA_CREADA,
+      new DistribuidoraCreadaEvent(guardada.distributorId),
+    );
+
+    return guardada;
   }
 
   findAll(): Promise<Distributor[]> {

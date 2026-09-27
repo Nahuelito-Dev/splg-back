@@ -1,8 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { DistributorService } from './distributor.service';
 import { Distributor, DistributorStatus } from './entities/distributor.entity';
+import { EVENTO_DISTRIBUIDORA_CREADA } from './events/distribuidora-creada.event';
 
 /**
  * La distribuidora es el tenant: el slug no se repite, una suspendida no
@@ -15,6 +17,7 @@ describe('DistributorService', () => {
     create: jest.Mock;
     save: jest.Mock;
   };
+  let eventos: { emit: jest.Mock };
 
   beforeEach(() => {
     repo = {
@@ -22,9 +25,20 @@ describe('DistributorService', () => {
       create: jest.fn((d: Partial<Distributor>) => d),
       save: jest.fn((d: Distributor) => Promise.resolve(d)),
     };
+    eventos = { emit: jest.fn() };
     service = new DistributorService(
       repo as unknown as Repository<Distributor>,
       { get: (_k: string, def: string) => def } as unknown as ConfigService,
+      eventos as unknown as EventEmitter2,
+    );
+  });
+
+  it('al crear se avisa con un evento, para quien siembre datos base', async () => {
+    repo.findOne.mockResolvedValue(null);
+    const creada = await service.create({ name: 'Nueva', slug: 'nueva' });
+    expect(eventos.emit).toHaveBeenCalledWith(
+      EVENTO_DISTRIBUIDORA_CREADA,
+      expect.objectContaining({ distributorId: creada.distributorId }),
     );
   });
 

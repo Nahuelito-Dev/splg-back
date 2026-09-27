@@ -26,6 +26,9 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# --- ALMACENAMIENTO LOCAL DE ARCHIVOS (driver STORAGE_DRIVER=local) ---
+/storage-local/
+
 # --- ENTORNO Y SECRETOS ---
 .env
 .env.local

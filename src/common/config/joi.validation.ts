@@ -34,6 +34,32 @@ export const JoiValidationSchema = Joi.object({
   MP_SUCCESS_URL: Joi.string().optional(),
   MP_FAILURE_URL: Joi.string().optional(),
   MP_PENDING_URL: Joi.string().optional(),
+  // Almacenamiento de archivos (flota: pólizas, VTV, licencias de choferes).
+  // Con STORAGE_DRIVER=s3, el bucket/región/credenciales pasan a ser
+  // obligatorios; con 'local' (default) no hace falta nada más.
+  STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
+  STORAGE_LOCAL_PATH: Joi.string().default('./storage-local'),
+  STORAGE_S3_BUCKET: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_S3_REGION: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_S3_ACCESS_KEY_ID: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_S3_SECRET_ACCESS_KEY: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  STORAGE_S3_SIGNED_URL_TTL_SECONDS: Joi.number().integer().min(1).optional(),
   //AWS_REGION: Joi.string().required(),
   //AWS_ACCESS_KEY_ID: Joi.string().required(),
   //AWS_SECRET_ACCESS_KEY: Joi.string().required(),
