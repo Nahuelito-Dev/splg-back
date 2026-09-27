@@ -14,7 +14,10 @@ export class DeliveryMapper {
     dto.actual_location = d.actualLocation ?? null;
     dto.cancelledCharge = d.cancelledCharge ?? null;
     dto.validated = d.validated;
-    dto.isActive = d.isActive;
+    dto.isEnabled = d.isEnabled;
+    dto.isAvailable = d.isAvailable;
+    // Deprecado: alias de isEnabled por compatibilidad (ver el DTO).
+    dto.isActive = d.isEnabled;
     dto.balance = d.balance;
     dto.createdAt = d.createdAt ?? null;
     dto.deletedAt = d.deletedAt ?? null;

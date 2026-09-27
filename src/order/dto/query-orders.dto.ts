@@ -9,7 +9,7 @@ import { OrderStatus } from '../entities/order.entity';
  * muestra `on_the_way` como `out_for_delivery`, así que filtrar con lo que se
  * recibió tiene que funcionar.
  */
-const ESTADOS_DE_LA_RESPUESTA = [
+export const ESTADOS_DE_LA_RESPUESTA = [
   'reserved',
   'pending',
   'accepted',

@@ -159,9 +159,10 @@ CUERPOS = {
         "malo": {"toState": "estado_inexistente"},
     },
     "PATCH /api/delivery/{id}": {
-        # Sólo validated e isActive: la calificación sale de las
-        # calificaciones y los datos de la persona van por /users.
-        "ok": {"validated": True, "isActive": True},
+        # Sólo validated: la habilitación vive en /delivery/{id}/status (no
+        # acá, para no bypasear la baja del radar), la calificación sale de
+        # las calificaciones y los datos de la persona van por /users.
+        "ok": {"validated": True},
         "malo": {"validated": "si", "calification": 5},
     },
     "PATCH /api/distributor/{id}": {
@@ -250,8 +251,8 @@ CUERPOS = {
         "malo": {"amount": "mil quinientos"},
     },
     "PATCH /api/delivery/{id}/status": {
-        "ok": {"isActive": True},
-        "malo": {"isActive": "si"},
+        "ok": {"isEnabled": True},
+        "malo": {"isEnabled": "si"},
     },
     "PATCH /api/delivery/user/{userId}/availability": {
         "ok": {"available": True},

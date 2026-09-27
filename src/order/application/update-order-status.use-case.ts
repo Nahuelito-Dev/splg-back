@@ -150,9 +150,9 @@ export class UpdateOrderStatusUseCase {
             `Repartidor no encontrado con ID: ${deliveryId}`,
           );
         }
-        if (!delivery.isActive) {
-          throw new BadRequestException('El repartidor no está activo');
-        }
+        // Mismo gate que la asignación manual (`assignDelivery`): habilitado
+        // y validado. No exige que esté en línea.
+        this.deliveries.assertElegibleParaAsignacion(delivery);
 
         order.deliveryId = delivery.deliveryId;
         order.acceptedAt = new Date();

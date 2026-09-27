@@ -23,7 +23,22 @@ export class DeliveryResponseDto {
     | number
     | null;
   @ApiProperty() validated!: boolean;
-  @ApiProperty({ description: 'Disponible para recibir ofertas' })
+  @ApiProperty({
+    description:
+      'Habilitación administrativa: false si un admin dio de baja al chofer',
+  })
+  isEnabled!: boolean;
+  @ApiProperty({
+    description: 'Presencia: true mientras el chofer está en línea en su app',
+  })
+  isAvailable!: boolean;
+  @ApiProperty({
+    deprecated: true,
+    description:
+      'Deprecado, se mantiene por compatibilidad con paneles existentes: ' +
+      'alias de `isEnabled` (NO de `isAvailable`). Usar `isEnabled` para la ' +
+      'habilitación e `isAvailable` para si está en línea.',
+  })
   isActive!: boolean;
   @ApiProperty() balance!: number;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })

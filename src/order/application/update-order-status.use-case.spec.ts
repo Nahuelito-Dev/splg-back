@@ -16,7 +16,10 @@ import {
  */
 describe('UpdateOrderStatusUseCase', () => {
   let useCase: UpdateOrderStatusUseCase;
-  let deliveries: { buscarPorIdOUsuario: jest.Mock };
+  let deliveries: {
+    buscarPorIdOUsuario: jest.Mock;
+    assertElegibleParaAsignacion: jest.Mock;
+  };
   let dispatch: {
     notifyCustomer: jest.Mock;
     notifyAdmins: jest.Mock;
@@ -40,7 +43,22 @@ describe('UpdateOrderStatusUseCase', () => {
     }) as Order;
 
   beforeEach(() => {
-    deliveries = { buscarPorIdOUsuario: jest.fn() };
+    deliveries = {
+      buscarPorIdOUsuario: jest.fn(),
+      // Réplica fiel de DeliveryService.assertElegibleParaAsignacion: la
+      // cobertura de la regla en sí vive en delivery.service.spec.ts, acá sólo
+      // interesa que el use-case la invoque y propague el error.
+      assertElegibleParaAsignacion: jest.fn(
+        (delivery: { isEnabled?: boolean; validated?: boolean }) => {
+          if (!delivery.isEnabled) {
+            throw new BadRequestException('El repartidor está deshabilitado');
+          }
+          if (!delivery.validated) {
+            throw new BadRequestException('El repartidor no está validado');
+          }
+        },
+      ),
+    };
     dispatch = {
       notifyCustomer: jest.fn(),
       notifyAdmins: jest.fn(),
@@ -92,7 +110,8 @@ describe('UpdateOrderStatusUseCase', () => {
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
         deliveryId: 'drv-1',
         userId: 'user-drv-1',
-        isActive: true,
+        isEnabled: true,
+        validated: true,
         user: { fullName: 'Chofer Uno', phoneNumber: '+549110000' },
       });
 
@@ -133,11 +152,25 @@ describe('UpdateOrderStatusUseCase', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rechaza un chofer inactivo', async () => {
+    it('rechaza un chofer deshabilitado', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
         deliveryId: 'drv-1',
-        isActive: false,
+        isEnabled: false,
+        validated: true,
+        user: {},
+      });
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rechaza un chofer sin validar', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+        isEnabled: true,
+        validated: false,
         user: {},
       });
       await expect(

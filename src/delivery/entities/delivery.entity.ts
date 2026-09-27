@@ -69,6 +69,38 @@ export class Delivery {
   @Column({ type: 'boolean', default: false })
   validated!: boolean;
 
+  /**
+   * Habilitación ADMINISTRATIVA: la pone/saca un admin con
+   * `PATCH /delivery/:id/status`. Un chofer deshabilitado no puede ponerse en
+   * línea aunque lo intente desde su app.
+   *
+   * Reemplaza a la vieja columna `isActive`, que mezclaba esto con la
+   * presencia del chofer (ver `isAvailable`): un chofer deshabilitado podía
+   * "conectarse" desde su app y volver a recibir pedidos. La columna
+   * `isActive` sigue existiendo en la base (no se borra ni se renombra: la
+   * sigue usando el proceso viejo mientras conviven ambos) pero este código
+   * ya no la lee ni la escribe.
+   */
+  @Column({ type: 'boolean', default: true })
+  isEnabled!: boolean;
+
+  /**
+   * Presencia: true mientras el chofer está "en línea" en su app
+   * (`PATCH /delivery/user/:userId/availability`). Sale de línea al
+   * desconectarse, al deshabilitarlo un admin, o al cerrar la app (el gateway
+   * de sockets lo saca del radar al desconectar).
+   */
+  @Column({ type: 'boolean', default: false })
+  isAvailable!: boolean;
+
+  /**
+   * @deprecated Mezclaba habilitación y presencia (ver `isEnabled` e
+   * `isAvailable`). La columna sigue en la base porque el proceso viejo
+   * (`:3100`, sin este cambio) todavía la lee y la escribe mientras conviven
+   * las dos versiones; se mapea acá SOLO para que `migration:generate` no la
+   * vea como una columna huérfana y proponga borrarla. Este código no la lee
+   * ni la escribe: usar `isEnabled`/`isAvailable`.
+   */
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 

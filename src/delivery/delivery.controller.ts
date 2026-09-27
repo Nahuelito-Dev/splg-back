@@ -32,6 +32,7 @@ import { ToggleDeliveryStatusDto } from './dto/toggle-delivery-status.dto';
 import { ToggleDeliveryAvailabilityDto } from './dto/toggle-delivery-availability.dto';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
+import { QueryDeliveryDto } from './dto/query-delivery.dto';
 import { DeliveryResponseDto } from './dto/delivery-response.dto';
 import { DisponibilidadDelChoferDto } from './dto/disponibilidad-response.dto';
 import { DeliveryMapper } from './delivery.mapper';
@@ -55,7 +56,9 @@ export class DeliveryController {
     summary: 'Get all deliveries with pagination (scopeado por distribuidora)',
     description:
       '`term` busca por nombre, email o teléfono del chofer, y por la ' +
-      'patente de su vehículo.',
+      'patente de su vehículo. `status` filtra por uno de los cuatro grupos ' +
+      'administrativos (`enabled`/`disabled`/`online`/`unvalidated`); con ' +
+      '`limit=1` y sin mirar el array, `X-Total-Count` da el total de cada uno.',
   })
   @ApiOkResponse({
     type: DeliveryResponseDto,
@@ -64,13 +67,14 @@ export class DeliveryController {
   })
   @ApiTotal()
   async findAll(
-    @Query() paginationDto: PaginationDto,
+    @Query() query: QueryDeliveryDto,
     @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<DeliveryResponseDto[]> {
     const [deliveries, total] = await this.deliveryService.findAll(
-      paginationDto,
+      query,
       distributorId,
+      query.status,
     );
     informarTotal(res, total);
     return deliveries.map((d) => DeliveryMapper.toDto(d));
@@ -83,8 +87,10 @@ export class DeliveryController {
   @ApiOperation({
     summary: 'Get all active deliveries',
     description:
-      '`term` busca por nombre, email o teléfono del chofer, y por la ' +
-      'patente de su vehículo.',
+      '"Activo" significa en línea y listo para recibir pedidos: habilitado ' +
+      '+ validado + conectado en su app (`isEnabled && validated && ' +
+      'isAvailable`). `term` busca por nombre, email o teléfono del chofer, ' +
+      'y por la patente de su vehículo.',
   })
   @ApiOkResponse({
     type: DeliveryResponseDto,
@@ -279,7 +285,14 @@ export class DeliveryController {
 
   @Patch(':id/status')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Toggle delivery active status' })
+  @ApiOperation({
+    summary: 'Habilita o deshabilita al chofer (admin)',
+    description:
+      'Cambia sólo la habilitación administrativa. Al deshabilitar, el ' +
+      'chofer también se desconecta (`isAvailable: false`) y sale del radar ' +
+      'de despacho: no puede volver a ponerse en línea desde su app hasta ' +
+      'que un admin lo habilite de nuevo.',
+  })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
@@ -290,7 +303,7 @@ export class DeliveryController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: isActive tiene que ser true o false)',
+      'Datos inválidos (p. ej.: isEnabled tiene que ser true o false)',
   })
   async toggleStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -299,7 +312,7 @@ export class DeliveryController {
   ): Promise<DeliveryResponseDto> {
     await this.acotar(id, distributorId);
     return DeliveryMapper.toDto(
-      await this.deliveryService.toggleActiveStatus(id, dto.isActive),
+      await this.deliveryService.toggleActiveStatus(id, dto.isEnabled),
     );
   }
 
@@ -324,10 +337,20 @@ export class DeliveryController {
   // distribuidora.
   @Patch('user/:userId/availability')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
-  @ApiOperation({ summary: 'Toggle driver availability by User ID (ON/OFF)' })
+  @ApiOperation({
+    summary: 'Toggle driver availability by User ID (ON/OFF)',
+    description:
+      'Ponerse EN LÍNEA (`available: true`) exige estar habilitado y ' +
+      'validado; si no, responde 403. Desconectarse (`available: false`) ' +
+      'siempre se permite.',
+  })
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: DisponibilidadDelChoferDto })
-  @ApiForbiddenResponse({ description: 'Un chofer, sobre otro chofer' })
+  @ApiForbiddenResponse({
+    description:
+      'Un chofer, sobre otro chofer; o intentando ponerse en línea estando ' +
+      'deshabilitado o sin validar',
+  })
   @ApiNotFoundResponse({
     description: 'No es chofer o es de otra distribuidora',
   })

@@ -87,7 +87,11 @@ export class RegistrarUsuarioDto extends RegistrarClienteDto {
   @IsBoolean()
   validated?: boolean;
 
-  @ApiPropertyOptional({ description: 'Chofer: habilitado para operar' })
+  @ApiPropertyOptional({
+    description:
+      'Chofer: habilitado para operar (se guarda como `delivery.isEnabled`; ' +
+      'el chofer arranca desconectado y se pone en línea desde su app)',
+  })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;

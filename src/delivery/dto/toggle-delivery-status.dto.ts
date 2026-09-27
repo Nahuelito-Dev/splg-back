@@ -1,12 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean } from 'class-validator';
 
-/** Alta o baja operativa del chofer dentro de la distribuidora. */
+/** Habilitación administrativa del chofer dentro de la distribuidora. */
 export class ToggleDeliveryStatusDto {
   @ApiProperty({
-    description: 'true deja al chofer activo, false lo da de baja operativa',
+    description:
+      'true habilita al chofer; false lo deshabilita y, si estaba en línea, ' +
+      'también lo desconecta y lo saca del radar de despacho',
     example: true,
   })
-  @IsBoolean({ message: 'isActive tiene que ser true o false' })
-  isActive!: boolean;
+  @IsBoolean({ message: 'isEnabled tiene que ser true o false' })
+  isEnabled!: boolean;
 }

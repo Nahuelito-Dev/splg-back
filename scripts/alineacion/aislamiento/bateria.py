@@ -75,7 +75,7 @@ for adm in ('admA', 'supA'):
     # delivery
     c(adm,'GET','/delivery',esperado=LISTA); c(adm,'GET','/delivery/active',esperado=LISTA); c(adm,'GET',f'/delivery/{B["dlv"]}')
     c(adm,'GET',f'/delivery/user/{B["choUser"]}'); c(adm,'PATCH',f'/delivery/{B["dlv"]}',{'validated':True})
-    for s in ('validate','invalidate','status'): c(adm,'PATCH',f'/delivery/{B["dlv"]}/{s}',{'isActive':True} if s=='status' else None)
+    for s in ('validate','invalidate','status'): c(adm,'PATCH',f'/delivery/{B["dlv"]}/{s}',{'isEnabled':True} if s=='status' else None)
     c(adm,'PATCH',f'/delivery/{B["dlv"]}/location',{'latLng':'-27.4,-55.9'}); c(adm,'PATCH',f'/delivery/{B["dlv"]}/balance',{'amount':1})
     c(adm,'PATCH',f'/delivery/user/{B["choUser"]}/availability',{'available':True}); c(adm,'DELETE',f'/delivery/{B["dlv"]}')
     # gascylinder

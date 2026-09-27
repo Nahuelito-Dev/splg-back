@@ -134,7 +134,10 @@ export class RegistroService {
             latLng: datos.latLng,
             actual_location: datos.actual_location,
             validated: datos.validated,
-            isActive: datos.isActive,
+            // El campo del alta se sigue llamando `isActive` (contrato
+            // externo, lo usan el panel y el seed): internamente ahora es la
+            // habilitación administrativa (`delivery.isEnabled`).
+            isEnabled: datos.isActive,
           },
         );
       case RoleType.ADMIN:

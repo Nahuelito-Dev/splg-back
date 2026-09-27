@@ -167,7 +167,7 @@ export class DispatchOrchestratorService {
   ): Promise<string | null> {
     for (const radiusKm of DispatchOrchestratorService.RADIUS_STEPS_KM) {
       const drivers = await this.dispatch.findNearbyDrivers(lat, lng, radiusKm);
-      const eligible = await this.filterByDistributor(drivers, distributorId);
+      const eligible = await this.filterEligible(drivers, distributorId);
       const next = eligible.find((id) => !exclude.has(id));
       if (next) return next;
     }
@@ -175,18 +175,21 @@ export class DispatchOrchestratorService {
   }
 
   /**
-   * Restringe una lista de choferes (por cercanía) a los que pertenecen a la
-   * distribuidora dada, preservando el orden. Sin distribuidora, no filtra.
+   * Restringe una lista de choferes (por cercanía) a los habilitados y
+   * validados y, si se pasa, de la distribuidora dada, preservando el orden.
    * `driver_id` de la oferta = `user_id` del chofer = `delivery.user_id`.
+   *
+   * El radar de Redis (`findNearbyDrivers`) sólo sabe de posición: no filtra
+   * por habilitación ni validación. Sin este chequeo contra la base, un
+   * chofer deshabilitado que igual quedara en el radar (por ejemplo,
+   * conectado por socket sin pasar por el endpoint de disponibilidad) seguiría
+   * recibiendo ofertas.
    */
-  private async filterByDistributor(
+  private async filterEligible(
     driverIds: string[],
     distributorId?: string | null,
   ): Promise<string[]> {
-    if (!distributorId || driverIds.length === 0) return driverIds;
-    const allowed = new Set(
-      await this.deliveries.choferesDeLaDistribuidora(driverIds, distributorId),
-    );
-    return driverIds.filter((id) => allowed.has(id));
+    if (driverIds.length === 0) return driverIds;
+    return this.deliveries.choferesElegibles(driverIds, distributorId);
   }
 }

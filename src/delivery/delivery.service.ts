@@ -3,12 +3,14 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, EntityManager } from 'typeorm';
 import { Delivery } from './entities/delivery.entity';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
 import { DisponibilidadDelChoferDto } from './dto/disponibilidad-response.dto';
+import { DeliveryStatusFilter } from './dto/query-delivery.dto';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { RedisService } from '../redis/redis.service';
@@ -20,7 +22,8 @@ export interface PerfilDeChoferNuevo {
   latLng?: string;
   actual_location?: string;
   validated?: boolean;
-  isActive?: boolean;
+  /** Habilitación administrativa inicial. Arranca siempre desconectado (`isAvailable: false`). */
+  isEnabled?: boolean;
 }
 
 @Injectable()
@@ -52,7 +55,9 @@ export class DeliveryService {
         location: datos.latLng ? puntoDesdeLatLng(datos.latLng) : null,
         actualLocation: datos.actual_location,
         validated: datos.validated ?? false,
-        isActive: datos.isActive ?? true,
+        isEnabled: datos.isEnabled ?? true,
+        // Un chofer nuevo arranca desconectado: todavía no abrió la app.
+        isAvailable: false,
         balance: 0,
       }),
     );
@@ -62,14 +67,17 @@ export class DeliveryService {
    * Lista choferes, scopeada por distribuidora si se pasa `distributorId`.
    * `term` busca por nombre, email o teléfono del chofer, y por la patente de
    * su vehículo (sin N+1: una subconsulta `EXISTS`, no un join que multiplique
-   * filas).
+   * filas). `status` filtra por uno de los cuatro grupos administrativos
+   * (habilitados/deshabilitados/en línea/sin validar), para que el panel pueda
+   * listar cada uno con su total (`X-Total-Count`).
    */
   async findAll(
     paginationDto: PaginationDto,
     distributorId?: string | null,
+    status?: DeliveryStatusFilter,
   ): Promise<[Delivery[], number]> {
     const { limit = 10, offset = 0, term } = paginationDto;
-    return this.buscarChoferes(limit, offset, distributorId, term);
+    return this.buscarChoferes(limit, offset, distributorId, term, { status });
   }
 
   /** El token push del chofer, o null si no es chofer o no registró ninguno. */
@@ -131,28 +139,78 @@ export class DeliveryService {
     });
   }
 
-  /** De esos usuarios, los que son choferes de la distribuidora. */
-  async choferesDeLaDistribuidora(
+  /**
+   * De esos usuarios (`user_id`, lo que trae el radar de Redis), los que son
+   * choferes EN CONDICIONES de recibir una oferta: habilitados y validados
+   * (y de la distribuidora, si se pasa). Preserva el orden de entrada, que en
+   * el radar es el de cercanía.
+   *
+   * La usa el despacho (`DispatchOrchestratorService.findNearestAvailable`)
+   * como el filtro real de elegibilidad: el radar de Redis sólo sabe de
+   * ubicación, no de habilitación ni de validación, así que sin este chequeo
+   * un chofer deshabilitado o sin validar que igual quedara en el radar (por
+   * ejemplo, conectado por socket sin pasar por `toggleAvailability`) seguiría
+   * recibiendo pedidos.
+   */
+  async choferesElegibles(
     userIds: string[],
-    distributorId: string,
+    distributorId?: string | null,
   ): Promise<string[]> {
     if (userIds.length === 0) return [];
     const filas = await this.deliveryRepository.find({
-      where: { userId: In(userIds), distributorId },
-      select: { userId: true },
-    });
-    return filas.map((f) => f.userId);
-  }
-
-  /** Cuántos choferes activos y validados hay, en una distribuidora o en todas. */
-  contarDisponibles(distributorId?: string | null): Promise<number> {
-    return this.deliveryRepository.count({
       where: {
-        isActive: true,
+        userId: In(userIds),
+        isEnabled: true,
         validated: true,
         ...(distributorId ? { distributorId } : {}),
       },
+      select: { userId: true },
     });
+    const elegibles = new Set(filas.map((f) => f.userId));
+    return userIds.filter((id) => elegibles.has(id));
+  }
+
+  /** Cuántos choferes están habilitados, en una distribuidora o en todas. */
+  contarHabilitados(distributorId?: string | null): Promise<number> {
+    return this.deliveryRepository.count({
+      where: {
+        isEnabled: true,
+        ...(distributorId ? { distributorId } : {}),
+      },
+    });
+  }
+
+  /**
+   * Cuántos choferes están habilitados + validados + en línea: los que el
+   * despacho considera disponibles ahora mismo para recibir un pedido.
+   */
+  contarEnLinea(distributorId?: string | null): Promise<number> {
+    return this.deliveryRepository.count({
+      where: {
+        isEnabled: true,
+        validated: true,
+        isAvailable: true,
+        ...(distributorId ? { distributorId } : {}),
+      },
+    });
+  }
+
+  /**
+   * Invariante de asignación de un pedido a un chofer, manual (admin, `PATCH
+   * /orders/:id/assign/:deliveryId`) o al aceptar una oferta (`PATCH
+   * /orders/:id/status` con `status=accepted`): tiene que estar habilitado y
+   * validado. A propósito NO exige que esté en línea (`isAvailable`): es un
+   * acto explícito de asignación, no una búsqueda por el radar, y un admin
+   * puede querer asignar a un chofer que sabe disponible aunque su app no lo
+   * muestre conectado.
+   */
+  assertElegibleParaAsignacion(delivery: Delivery): void {
+    if (!delivery.isEnabled) {
+      throw new BadRequestException('El repartidor está deshabilitado');
+    }
+    if (!delivery.validated) {
+      throw new BadRequestException('El repartidor no está validado');
+    }
   }
 
   /** Guarda el promedio de calificaciones del chofer, para lecturas rápidas. */
@@ -216,13 +274,19 @@ export class DeliveryService {
     return delivery;
   }
 
+  /**
+   * `GET /delivery/active`: choferes en línea y listos para despachar
+   * (habilitado + validado + `isAvailable`). Antes "activo" era sólo
+   * `isActive`, que un chofer deshabilitado podía forzar a `true` desde su
+   * propia app; ahora requiere los tres gates.
+   */
   async findActiveDeliveries(
     paginationDto: PaginationDto,
     distributorId?: string | null,
   ): Promise<[Delivery[], number]> {
     const { limit = 10, offset = 0, term } = paginationDto;
     return this.buscarChoferes(limit, offset, distributorId, term, {
-      soloActivos: true,
+      soloEnLinea: true,
     });
   }
 
@@ -237,13 +301,14 @@ export class DeliveryService {
     offset: number,
     distributorId: string | null | undefined,
     term: string | undefined,
-    opciones: { soloActivos?: boolean } = {},
+    opciones: { soloEnLinea?: boolean; status?: DeliveryStatusFilter } = {},
   ): Promise<[Delivery[], number]> {
     const termino = term?.trim();
+    const filtroDeEstado = this.condicionDeEstado(opciones);
     if (!termino) {
       return this.deliveryRepository.findAndCount({
         where: {
-          ...(opciones.soloActivos ? { isActive: true } : {}),
+          ...filtroDeEstado,
           ...(distributorId ? { distributorId } : {}),
         },
         take: limit,
@@ -261,8 +326,13 @@ export class DeliveryService {
       .take(limit)
       .skip(offset);
 
-    if (opciones.soloActivos) {
-      qb.andWhere('delivery.isActive = true');
+    if (opciones.soloEnLinea) {
+      qb.andWhere(
+        'delivery.isEnabled = true AND delivery.validated = true AND delivery.isAvailable = true',
+      );
+    }
+    if (opciones.status) {
+      qb.andWhere(this.condicionSqlDeEstado(opciones.status));
     }
     if (distributorId) {
       qb.andWhere('delivery.distributorId = :distributorId', {
@@ -278,6 +348,42 @@ export class DeliveryService {
     );
 
     return qb.getManyAndCount();
+  }
+
+  /** El WHERE de `findAndCount` para `soloEnLinea`/`status` (camino sin `term`). */
+  private condicionDeEstado(opciones: {
+    soloEnLinea?: boolean;
+    status?: DeliveryStatusFilter;
+  }): Partial<Record<'isEnabled' | 'validated' | 'isAvailable', boolean>> {
+    if (opciones.soloEnLinea) {
+      return { isEnabled: true, validated: true, isAvailable: true };
+    }
+    switch (opciones.status) {
+      case DeliveryStatusFilter.ENABLED:
+        return { isEnabled: true };
+      case DeliveryStatusFilter.DISABLED:
+        return { isEnabled: false };
+      case DeliveryStatusFilter.ONLINE:
+        return { isAvailable: true };
+      case DeliveryStatusFilter.UNVALIDATED:
+        return { validated: false };
+      default:
+        return {};
+    }
+  }
+
+  /** La misma condición de `condicionDeEstado`, como fragmento SQL para el query builder. */
+  private condicionSqlDeEstado(status: DeliveryStatusFilter): string {
+    switch (status) {
+      case DeliveryStatusFilter.ENABLED:
+        return 'delivery.isEnabled = true';
+      case DeliveryStatusFilter.DISABLED:
+        return 'delivery.isEnabled = false';
+      case DeliveryStatusFilter.ONLINE:
+        return 'delivery.isAvailable = true';
+      case DeliveryStatusFilter.UNVALIDATED:
+        return 'delivery.validated = false';
+    }
   }
 
   async update(
@@ -352,13 +458,37 @@ export class DeliveryService {
     return delivery;
   }
 
-  async toggleActiveStatus(id: string, isActive: boolean): Promise<Delivery> {
+  /**
+   * Habilitación ADMINISTRATIVA (`PATCH /delivery/:id/status`). Al
+   * deshabilitar, el chofer también sale de línea y del radar de Redis: sin
+   * esto, un chofer que ya estaba conectado seguía recibiendo ofertas después
+   * de que el admin lo diera de baja.
+   */
+  async toggleActiveStatus(id: string, isEnabled: boolean): Promise<Delivery> {
     const delivery = await this.findOne(id);
-    delivery.isActive = isActive;
+    delivery.isEnabled = isEnabled;
+    if (!isEnabled) {
+      delivery.isAvailable = false;
+    }
     await this.deliveryRepository.save(delivery);
+
+    if (!isEnabled) {
+      await this.redisService.removeDriver(delivery.userId);
+    }
+
     return delivery;
   }
 
+  /**
+   * Presencia (`PATCH /delivery/user/:userId/availability`), la pone el
+   * propio chofer al conectarse/desconectarse desde su app.
+   *
+   * Ponerse EN LÍNEA exige estar habilitado y validado: es el fix del bug de
+   * fondo (CU-022 ampliado). Antes esto pisaba la misma columna que usaba la
+   * habilitación administrativa, así que un chofer deshabilitado por el admin
+   * podía "reactivarse" solo con este endpoint. Desconectarse (`isAvailable:
+   * false`) siempre se permite, esté habilitado o no.
+   */
   async toggleAvailability(
     userId: string,
     isAvailable: boolean,
@@ -375,7 +505,20 @@ export class DeliveryService {
     }
     this.assertAlcance(delivery, null, distributorId);
 
-    delivery.isActive = isAvailable;
+    if (isAvailable) {
+      if (!delivery.isEnabled) {
+        throw new ForbiddenException(
+          'No podés ponerte en línea: tu cuenta está deshabilitada por el administrador',
+        );
+      }
+      if (!delivery.validated) {
+        throw new ForbiddenException(
+          'No podés ponerte en línea: tu perfil todavía no fue validado',
+        );
+      }
+    }
+
+    delivery.isAvailable = isAvailable;
     await this.deliveryRepository.save(delivery);
 
     // Fuera de línea, sale del radar de despacho.
@@ -390,7 +533,7 @@ export class DeliveryService {
     return {
       userId,
       deliveryId: delivery.deliveryId,
-      isAvailable: delivery.isActive,
+      isAvailable: delivery.isAvailable,
       message: isAvailable ? 'Estás en línea 🟢' : 'Estás desconectado 🔴',
     };
   }
