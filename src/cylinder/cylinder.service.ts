@@ -13,6 +13,9 @@ import { assertTransition } from './domain/cylinder-state.machine';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { errorCode } from '../common/errors/error-message';
 
+/** Lo que el panel muestra de cada envase: de qué producto es y quién lo tiene. */
+const CON_PRODUCTO_Y_CLIENTE = ['gasCylinder', 'currentCustomer'];
+
 @Injectable()
 export class CylinderService {
   constructor(
@@ -74,6 +77,7 @@ export class CylinderService {
 
     return this.cylinderRepository.find({
       where,
+      relations: CON_PRODUCTO_Y_CLIENTE,
       order: { createdAt: 'DESC' },
     });
   }
@@ -85,6 +89,7 @@ export class CylinderService {
         cylinderId: id,
         ...(distributorId ? { distributorId } : {}),
       },
+      relations: CON_PRODUCTO_Y_CLIENTE,
     });
     if (!cylinder) {
       throw new NotFoundException('Envase no encontrado');
