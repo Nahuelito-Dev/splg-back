@@ -15,6 +15,7 @@ import { UsersService } from '../users/users.service';
 describe('UserAddressService', () => {
   let service: UserAddressService;
   let repo: {
+    preload: jest.Mock;
     findOne: jest.Mock;
     find: jest.Mock;
     create: jest.Mock;
@@ -41,6 +42,9 @@ describe('UserAddressService', () => {
 
   beforeEach(() => {
     repo = {
+      preload: jest.fn((d: Partial<UserAddress>) =>
+        Promise.resolve({ ...direccion({ isDefault: true }), ...d }),
+      ),
       findOne: jest.fn(),
       find: jest.fn().mockResolvedValue([]),
       create: jest.fn((d: Partial<UserAddress>) => d),
@@ -114,5 +118,25 @@ describe('UserAddressService', () => {
       addressId: 'a1',
     });
     expect(otra.isDefault).toBe(true);
+  });
+
+  describe('desmarcar la principal no deja al usuario sin ninguna', () => {
+    it('pasa a ser principal la más reciente de las otras', async () => {
+      repo.findOne.mockResolvedValue(direccion({ isDefault: true }));
+      const otra = direccion({ addressId: 'a2' });
+      repo.find.mockResolvedValue([otra]);
+      const d = await service.update('a1', { isDefault: false }, null);
+      expect(d.isDefault).toBe(false);
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ addressId: 'a2', isDefault: true }),
+      );
+    });
+
+    it('si es la única, sigue siendo la principal', async () => {
+      repo.findOne.mockResolvedValue(direccion({ isDefault: true }));
+      repo.find.mockResolvedValue([]);
+      const d = await service.update('a1', { isDefault: false }, null);
+      expect(d.isDefault).toBe(true);
+    });
   });
 });

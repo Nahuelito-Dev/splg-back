@@ -190,7 +190,7 @@ export class UserAddressService {
     requesterUserId?: string | null,
   ): Promise<UserAddress> {
     // Ownership: valida que la dirección sea del que pide (si no es admin).
-    await this.findOne(id, requesterUserId);
+    const previa = await this.findOne(id, requesterUserId);
 
     // Latitud y longitud se cambian juntas: son un solo punto.
     const { latitude, longitude, ...campos } = updateUserAddressDto;
@@ -212,6 +212,11 @@ export class UserAddressService {
 
     if (updateUserAddressDto.isDefault) {
       await this.removeDefaultFromOtherAddresses(address.userId, id);
+    } else if (updateUserAddressDto.isDefault === false && previa.isDefault) {
+      // Desmarcar la principal no puede dejar al usuario sin ninguna: pasa a
+      // serlo la más reciente de las otras. Si es la única, lo sigue siendo.
+      const promovida = await this.promoverOtraPrincipal(address.userId, id);
+      if (!promovida) address.isDefault = true;
     }
 
     return await this.userAddressRepository.save(address);
@@ -224,18 +229,7 @@ export class UserAddressService {
     const address = await this.findOne(id, requesterUserId);
 
     if (address.isDefault) {
-      const otherAddresses = await this.userAddressRepository.find({
-        where: {
-          userId: address.userId,
-          addressId: Not(id),
-        },
-        order: { createdAt: 'DESC' },
-      });
-
-      if (otherAddresses.length > 0) {
-        otherAddresses[0].isDefault = true;
-        await this.userAddressRepository.save(otherAddresses[0]);
-      }
+      await this.promoverOtraPrincipal(address.userId, id);
     }
 
     await this.userAddressRepository.softRemove(address);
@@ -255,6 +249,25 @@ export class UserAddressService {
 
     address.isDefault = true;
     return await this.userAddressRepository.save(address);
+  }
+
+  /**
+   * La dirección más reciente del usuario, salvo `exceptId`, pasa a ser la
+   * principal. Devuelve false si no hay otra.
+   */
+  private async promoverOtraPrincipal(
+    userId: string,
+    exceptId: string,
+  ): Promise<boolean> {
+    const [otra] = await this.userAddressRepository.find({
+      where: { userId, addressId: Not(exceptId) },
+      order: { createdAt: 'DESC' },
+      take: 1,
+    });
+    if (!otra) return false;
+    otra.isDefault = true;
+    await this.userAddressRepository.save(otra);
+    return true;
   }
 
   private async removeDefaultFromOtherAddresses(

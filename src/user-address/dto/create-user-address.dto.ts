@@ -75,7 +75,10 @@ export class CreateUserAddressDto {
   @IsString()
   formattedAddress?: string;
 
-  @ApiProperty({ description: 'Es dirección principal', default: false })
+  @ApiPropertyOptional({
+    description: 'Es dirección principal',
+    default: false,
+  })
   @IsOptional()
   @IsBoolean()
   isDefault?: boolean;
