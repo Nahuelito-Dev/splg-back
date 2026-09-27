@@ -23,6 +23,7 @@ import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import { NotificationPort } from './domain/ports/notification.port';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { generateDeliveryCode } from './domain/delivery-code.util';
 
 @Injectable()
 export class OrderService {
@@ -282,8 +283,19 @@ export class OrderService {
     order.deliveryId = deliveryId;
     transitionOrder(order, OrderStatus.ACCEPTED);
     order.acceptedAt = new Date();
+    // Igual que cuando el chofer acepta la oferta: sin este código el cliente
+    // no puede confirmar la entrega con el QR. Si se reasigna, el código nuevo
+    // deja sin efecto el del chofer anterior.
+    order.deliveryCode = generateDeliveryCode();
     await this.orderRepository.save(order);
-    return order;
+
+    this.dispatch.notifyAdmins('order:accepted', {
+      orderId: order.orderId,
+      status: order.status,
+      totalAmount: order.totalAmount,
+    });
+    // Se relee para que la respuesta traiga el chofer nuevo, no el anterior.
+    return this.findOne(orderId);
   }
 
   /**
