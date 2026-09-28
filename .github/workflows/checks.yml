@@ -1,34 +1,25 @@
-name: 🛡️ Guardián del Código (PR Checks)
+name: Checks
 
-# Se activa SOLO cuando se abre un Pull Request hacia main
+# Corre el mismo gate que se usa en local (npm run verify) en cada PR a develop o main
+# y en cada push a develop. Si no pasa, no se integra.
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate-code:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      # 1. Bajar el código
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # 2. Configurar Node.js (Usamos la 20 igual que en deploy)
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-
-      # 3. Instalar dependencias
-      - name: Install dependencies
-        run: npm ci
-
-      # 4. Verificar compilación (Build)
-      # Si esto falla, GitHub bloqueará el botón de "Merge"
-      - name: Verificar Build (NestJS)
-        run: npm run build
-
-      # (Opcional) Aquí podrías agregar tests si los tuvieras:
-      # - name: Correr Tests
-      #   run: npm run test
+          cache: npm
+      - run: npm ci
+      - run: npm run verify

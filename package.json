@@ -33,7 +33,9 @@
     "test:integration:redlock": "jest --config ./test/jest-e2e.json --testPathPattern=redlock\\.e2e-spec\\.ts$",
     "test:integration:idempotency": "jest --config ./test/jest-e2e.json --testPathPattern=orders-idempotency\\.e2e-spec\\.ts$",
     "test:perf:orders": "ts-node test/performance/orders-load.ts",
-    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\""
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify": "npm run typecheck && npm run lint:check && jest && nest build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",
