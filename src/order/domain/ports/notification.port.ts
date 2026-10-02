@@ -38,4 +38,14 @@ export abstract class NotificationPort {
     orderId: string,
     driverName: string,
   ): Promise<void>;
+
+  /**
+   * Avisa al cliente que su pago se aprobó (push best-effort, complementario
+   * al socket `order:payment-approved`). Nunca lanza.
+   */
+  abstract sendPaymentApprovedPush(
+    customerId: string,
+    orderId: string,
+    esSena?: boolean,
+  ): Promise<void>;
 }

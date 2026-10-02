@@ -99,6 +99,15 @@ export class CoverageZoneService {
     }
   }
 
+  /**
+   * `new Date(null)` NO da un error: da 1970-01-01 (trata `null` como `0`).
+   * Por eso una fecha de vigencia se parsea siempre por acá: cadena con
+   * valor → esa fecha; `null` (o vacío) → sin límite.
+   */
+  private parseFechaVigencia(valor: string | null | undefined): Date | null {
+    return valor ? new Date(valor) : null;
+  }
+
   private validarVigencia(desde: Date | null, hasta: Date | null): void {
     if (desde && hasta && hasta <= desde) {
       throw new BadRequestException(
@@ -119,8 +128,8 @@ export class CoverageZoneService {
     const surchargeValue = dto.surchargeValue ?? 0;
     this.validarRecargo(surchargeType, surchargeValue);
 
-    const validFrom = dto.validFrom ? new Date(dto.validFrom) : null;
-    const validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
+    const validFrom = this.parseFechaVigencia(dto.validFrom);
+    const validUntil = this.parseFechaVigencia(dto.validUntil);
     this.validarVigencia(validFrom, validUntil);
 
     const zone = this.repo.create({
@@ -183,6 +192,14 @@ export class CoverageZoneService {
     const area = dto.polygon ? this.toGeoJsonPolygon(dto.polygon) : undefined;
     if (area) await this.validarPoligono(area);
 
+    // `PartialType` deja pasar `null` en todos los campos, y el recargo no
+    // admite nulos: sin esto llegaba a la base y rebotaba contra la columna.
+    if (dto.surchargeType === null || dto.surchargeValue === null) {
+      throw new BadRequestException(
+        'surchargeType y surchargeValue no pueden ser null: omitilos para no cambiarlos',
+      );
+    }
+
     // La validación de negocio corre sobre el estado FUSIONADO: patchear sólo
     // `surchargeValue` en una zona ya `percentage` (o viceversa) tiene que
     // seguir respetando el rango 0-100.
@@ -191,10 +208,12 @@ export class CoverageZoneService {
     this.validarRecargo(surchargeType, surchargeValue);
 
     const validFrom =
-      dto.validFrom !== undefined ? new Date(dto.validFrom) : actual.validFrom;
+      dto.validFrom !== undefined
+        ? this.parseFechaVigencia(dto.validFrom)
+        : actual.validFrom;
     const validUntil =
       dto.validUntil !== undefined
-        ? new Date(dto.validUntil)
+        ? this.parseFechaVigencia(dto.validUntil)
         : actual.validUntil;
     this.validarVigencia(validFrom, validUntil);
 

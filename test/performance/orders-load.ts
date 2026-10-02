@@ -66,7 +66,7 @@ async function run() {
   console.log(`Timeouts:          ${result.timeouts}`);
   console.log(`Non-2xx:           ${result.non2xx}`);
   console.log('');
-  const lat = result.latency as any;
+  const lat = result.latency;
   console.log('Latencia (ms):');
   console.log(`  p50  → ${lat.p50}`);
   console.log(`  p90  → ${lat.p90}`);
@@ -84,7 +84,7 @@ async function run() {
   };
   const errorRate =
     (result.errors + result.timeouts + result.non2xx) / result.requests.total;
-  const p95 = (result.latency as any).p97_5 ?? result.latency.p99;
+  const p95 = result.latency.p97_5 ?? result.latency.p99;
 
   const issues: string[] = [];
   if (p95 > targets.p95Max)

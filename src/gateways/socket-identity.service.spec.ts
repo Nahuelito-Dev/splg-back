@@ -74,13 +74,60 @@ describe('SocketIdentityService', () => {
       userId: 'u1',
       email: 'ana@splg.com',
       role: 'customer',
+      distributorId: null,
     });
     expect(s.data.identidad).toEqual(identidad);
   });
 
+  it('resuelve la distribuidora del admin desde su perfil (admins[0])', async () => {
+    auth.decodeToken.mockResolvedValue({ email: 'admin@splg.com' });
+    users.findOneWithRoleByEmail.mockResolvedValue({
+      userId: 'u2',
+      blocked: false,
+      role: { type: 'admin' },
+      admins: [{ distributorId: 'dist-1' }],
+    });
+
+    const identidad = await service.identificar(socket({ token: 't' }));
+
+    expect(identidad?.distributorId).toBe('dist-1');
+  });
+
+  it('resuelve la distribuidora del chofer desde su perfil delivery', async () => {
+    auth.decodeToken.mockResolvedValue({ email: 'chofer@splg.com' });
+    users.findOneWithRoleByEmail.mockResolvedValue({
+      userId: 'u3',
+      blocked: false,
+      role: { type: 'delivery' },
+      delivery: { distributorId: 'dist-2' },
+    });
+
+    const identidad = await service.identificar(socket({ token: 't' }));
+
+    expect(identidad?.distributorId).toBe('dist-2');
+  });
+
+  it('el super_admin no tiene una sola distribuidora (null)', async () => {
+    auth.decodeToken.mockResolvedValue({ email: 'super@splg.com' });
+    users.findOneWithRoleByEmail.mockResolvedValue({
+      userId: 'u4',
+      blocked: false,
+      role: { type: 'super_admin' },
+    });
+
+    const identidad = await service.identificar(socket({ token: 't' }));
+
+    expect(identidad?.distributorId).toBeNull();
+  });
+
   it('obtener no vuelve a consultar la base si ya está resuelta', async () => {
     const s = socket({ token: 't' });
-    s.data.identidad = { userId: 'u1', email: 'a', role: 'customer' as never };
+    s.data.identidad = {
+      userId: 'u1',
+      email: 'a',
+      role: 'customer' as never,
+      distributorId: null,
+    };
     await service.obtener(s);
     expect(auth.decodeToken).not.toHaveBeenCalled();
   });

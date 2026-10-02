@@ -24,6 +24,7 @@ import {
   ApiParam,
   ApiBearerAuth,
   ApiBadRequestResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
@@ -323,6 +324,10 @@ export class DeliveryController {
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiNotFoundResponse({
     description: 'Delivery not found (o de otra distribuidora)',
+  })
+  @ApiConflictResponse({
+    description:
+      'Tiene pedidos aceptados o en camino: hay que cancelarlos o reasignarlos antes',
   })
   @HttpCode(HttpStatus.OK)
   async remove(

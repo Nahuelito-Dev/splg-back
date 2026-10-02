@@ -15,6 +15,8 @@ const CODIGOS = {
   CLAVE_FORANEA: '23503',
   NO_NULO: '23502',
   SINTAXIS_INVALIDA: '22P02',
+  DEADLOCK: '40P01',
+  FALLA_DE_SERIALIZACION: '40001',
 } as const;
 
 /**
@@ -74,6 +76,17 @@ export function traducirErrorDeBase(
       logger.warn(`Valor con formato inválido${donde}: ${e.message}`);
       throw new BadRequestException(
         `Alguno de los valores enviados tiene un formato inválido${donde}`,
+      );
+
+    case CODIGOS.DEADLOCK:
+    case CODIGOS.FALLA_DE_SERIALIZACION:
+      // `withTransactionRetry` ya reintenta esto automáticamente (3 intentos
+      // en total: el primero y 2 reintentos); si llega acá es porque se
+      // agotaron. Un 409 explica mejor que un 500: la operación chocó con
+      // otra, no está rota.
+      logger.warn(`Choque entre transacciones${donde}: ${e.message}`);
+      throw new ConflictException(
+        `Dos operaciones chocaron al mismo tiempo${donde}. Probá de nuevo.`,
       );
 
     default:

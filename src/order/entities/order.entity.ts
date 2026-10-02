@@ -358,4 +358,41 @@ export class Order {
     transformer: columnNumericTransformer,
   })
   subtotalItems!: number;
+
+  /**
+   * Snapshot del vehículo con el que se entrega, tomado al aceptar el
+   * pedido (manual, `PATCH /orders/:id/status` o despacho automático): el
+   * vehículo EN USO del chofer en ese momento (decisión de nahue del 30/09,
+   * "vehículo en uso"). Igual que `zone_name`/`zone_surcharge_*`, es una
+   * copia a propósito: si el chofer cambia de vehículo después, o el auto
+   * se edita o se borra, este pedido no cambia — queda la trazabilidad de
+   * con qué vehículo se entregó de verdad. `null` en pedidos sin chofer
+   * asignado todavía, o de antes de esta funcionalidad.
+   */
+  @Column({ name: 'vehicle_car_id', type: 'uuid', nullable: true })
+  vehicleCarId!: string | null;
+
+  @Column({
+    name: 'vehicle_patent',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  vehiclePatent!: string | null;
+
+  @Column({
+    name: 'vehicle_brand',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  vehicleBrand!: string | null;
+
+  @Column({
+    name: 'vehicle_model',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  vehicleModel!: string | null;
 }

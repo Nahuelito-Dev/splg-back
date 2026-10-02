@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
 
 import {
   Order,
@@ -16,13 +17,21 @@ import { User } from '../../users/entities/user.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { transitionOrder } from '../domain/order-status.machine';
+import { assertReservaActivable } from '../domain/reservation-activation';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { ReleaseOrderUseCase } from './release-order.use-case';
+import {
+  CancelOrderUseCase,
+  mapRoleToCancelActor,
+} from './cancel-order.use-case';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
+import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
+import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
 
 /** Evento de tiempo real emitido al cliente por cada estado del pedido. */
 const STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
@@ -47,12 +56,20 @@ export class UpdateOrderStatusUseCase {
   private readonly logger = new Logger(UpdateOrderStatusUseCase.name);
 
   constructor(
+    private readonly dataSource: DataSource,
     private readonly deliveries: DeliveryService,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly notificationService: NotificationPort,
     private readonly orders: OrderRepositoryPort,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly cylinderLifecycle: CylinderLifecyclePort,
+    private readonly cancelOrderUseCase: CancelOrderUseCase,
+    private readonly releaseOrderUseCase: ReleaseOrderUseCase,
+    // Gate único de bloqueo de flota (CU-136 a CU-138), el mismo que usan
+    // `OrderService.assignDelivery` y el despacho automático: aceptar por
+    // esta vía (admin con deliveryId, o el propio chofer desde el pool)
+    // tampoco puede darle el pedido a un chofer inhabilitado.
+    private readonly fleetGate: FleetDispatchLockService,
   ) {}
 
   async execute(
@@ -60,34 +77,217 @@ export class UpdateOrderStatusUseCase {
     status: OrderStatus,
     deliveryId?: string,
     role?: RoleType,
+    actorUserId?: string,
+  ): Promise<Order> {
+    // Cancelar por ESTE endpoint tiene que producir EXACTAMENTE el mismo
+    // efecto que `PATCH /orders/:id/cancel` (mismo stock, mismos avisos, sin
+    // doble devolución si se reintenta): delega por completo en
+    // CancelOrderUseCase en vez de duplicar su política. Antes este caso
+    // caía en el `default` de `applyStatusEffects` y no devolvía stock.
+    if (status === OrderStatus.CANCELLED) {
+      if (!actorUserId) {
+        throw new BadRequestException(
+          'No se puede cancelar sin el id del usuario que lo solicita',
+        );
+      }
+      return this.cancelOrderUseCase.execute(
+        id,
+        actorUserId,
+        mapRoleToCancelActor(role),
+      );
+    }
+
+    if (status === OrderStatus.PENDING) {
+      return this.handlePendingTarget(id, deliveryId, role);
+    }
+
+    // ACCEPTED / ON_THE_WAY / DELIVERED: la carrera real (segunda revisión,
+    // punto 2) es que alguien cancele el pedido MIENTRAS esto se procesa. Se
+    // re-lee con el MISMO lock pesimista que cancelar/liberar
+    // (`FOR UPDATE OF "ord"`, ver `CancelOrderUseCase`/`ReleaseOrderUseCase`)
+    // dentro de una transacción, y la transición se valida con el dato
+    // FRESCO que trae el lock: si la cancelación concurrente ya hizo commit,
+    // `transitionOrder` ve el estado terminal y corta con 400 acá, en vez de
+    // pisarla silenciosamente con datos leídos antes de que el lock existiera.
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    let order: Order;
+    let deliveryUser: User | null;
+    try {
+      const locked = await queryRunner.manager
+        .createQueryBuilder(Order, 'ord')
+        .setLock('pessimistic_write', undefined, ['ord'])
+        .leftJoinAndSelect('ord.delivery', 'delivery')
+        .leftJoinAndSelect('ord.items', 'items')
+        .where('ord.orderId = :id', { id })
+        .getOne();
+
+      if (!locked) {
+        throw new NotFoundException(`Order with ID: ${id} not found`);
+      }
+
+      // Antes de tocar nada: el pedido tiene que ser de quien lo está moviendo.
+      await this.assertPedidoDelChofer(locked, deliveryId, role);
+
+      // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
+      // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
+      const previousStatus = locked.status;
+      transitionOrder(locked, status);
+      deliveryUser = await this.applyStatusEffects(
+        locked,
+        status,
+        previousStatus,
+        queryRunner.manager,
+        deliveryId,
+      );
+
+      order = await queryRunner.manager.save(locked);
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      throw e;
+    } finally {
+      await queryRunner.release();
+    }
+
+    this.emitStatusEvent(order, status, deliveryUser);
+    // Panel admin en vivo: los valores del enum (accepted/on_the_way/delivered)
+    // coinciden con los eventos que escucha la campana del panel. Sólo a los
+    // admins DE ESA distribuidora (+ super admin, que ven todas).
+    const adminPayload = {
+      orderId: order.orderId,
+      status: order.status,
+      totalAmount: order.totalAmount,
+    };
+    this.dispatch.notifyAdmins(
+      `order:${status}`,
+      adminPayload,
+      order.distributorId,
+    );
+    // H-54: el namespace del cliente emite `order:on-the-way` (con guión)
+    // para este estado; el panel usaba el valor crudo del enum,
+    // `order:on_the_way` (guión bajo), medido contra sockets reales el
+    // 26/09. Unificamos en el nombre con guión y dejamos el de arriba como
+    // ALIAS de compatibilidad para paneles que todavía no migraron.
+    if (status === OrderStatus.ON_THE_WAY) {
+      this.dispatch.notifyAdmins(
+        'order:on-the-way',
+        adminPayload,
+        order.distributorId,
+      );
+    }
+    await this.notifyCustomer(order);
+
+    return order;
+  }
+
+  /**
+   * `status: pending` tiene DOS significados según de dónde viene el pedido,
+   * y cada uno tiene su propio camino:
+   *  - RESERVED → PENDING: activación MANUAL de una reserva. Exige las
+   *    MISMAS condiciones que el cron (`ReservationService.activateDueReservations`):
+   *    seña paga y día agendado cumplido. Sin esto, este endpoint sería un
+   *    segundo camino que se salta la política de reservas.
+   *  - ACCEPTED/ON_THE_WAY → PENDING: liberar al chofer asignado (admin que
+   *    destraba a mano, o el propio chofer). Delega por completo en el
+   *    camino ÚNICO de liberación (`ReleaseOrderUseCase`), el mismo que usa
+   *    `PATCH /cancel` (chofer).
+   */
+  private async handlePendingTarget(
+    id: string,
+    deliveryId?: string,
+    role?: RoleType,
   ): Promise<Order> {
     const order = await this.orders.findByIdFull(id);
     if (!order) throw new NotFoundException(`Order with ID: ${id} not found`);
 
-    // Antes de tocar nada: el pedido tiene que ser de quien lo está moviendo.
+    if (order.status === OrderStatus.RESERVED) {
+      // Activar una reserva es una operación administrativa (mismo nivel que
+      // `confirmDeposit`); un chofer no tiene por qué conocer una reserva
+      // ajena (todavía sin despachar) ni activarla a mano.
+      if (role === RoleType.DELIVERY) {
+        throw new ForbiddenException(
+          'Sólo un administrador puede activar una reserva',
+        );
+      }
+      return this.activarReservaConLock(id);
+    }
+
+    // Liberar un pedido con chofer asignado: quién pide tiene que poder
+    // tocarlo (mismo chequeo que el resto de las transiciones del chofer).
     await this.assertPedidoDelChofer(order, deliveryId, role);
+    // Punto 6 (segunda revisión): el DUEÑO se revalida DENTRO del lock de
+    // `ReleaseOrderUseCase`, con el dato fresco — este chequeo de arriba es
+    // sólo un rechazo rápido (403 sin abrir transacción) con el dato que
+    // había ANTES de pedir el lock. Para un chofer, el parámetro `deliveryId`
+    // que llega acá YA es su propio `user_id` (lo resuelve el controller,
+    // ver `OrderController.updateStatus`); para un admin no hay dueño que
+    // validar, puede liberar cualquier pedido.
+    const expectedDriverUserId =
+      role === RoleType.DELIVERY ? deliveryId : undefined;
+    return this.releaseOrderUseCase.execute(id, expectedDriverUserId);
+  }
 
-    // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
-    // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
-    transitionOrder(order, status);
-    const deliveryUser = await this.applyStatusEffects(
-      order,
-      status,
-      deliveryId,
-    );
+  /**
+   * Activa una reserva a mano con el MISMO lock pesimista que cancelar/
+   * liberar: la carrera real (segunda revisión, punto 7) es contra el CRON
+   * (`ReservationService.activateDueReservations`), que corre cada minuto y
+   * puede ganarle a un admin que activa a mano al mismo tiempo. Sin el lock,
+   * los dos leerían `RESERVED`, los dos ofertarían → el pedido queda con DOS
+   * ofertas vigentes. Con el lock: el segundo en llegar ve, con el dato
+   * fresco, que ya no está `RESERVED` (el primero ya la activó y ofertó) y
+   * NO vuelve a ofertar — devuelve el pedido tal como quedó, de forma
+   * idempotente, en vez de duplicar el despacho.
+   */
+  private async activarReservaConLock(id: string): Promise<Order> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    await this.orders.save(order);
+    let order: Order;
+    let yaActivada: boolean;
+    try {
+      const locked = await queryRunner.manager
+        .createQueryBuilder(Order, 'ord')
+        .setLock('pessimistic_write', undefined, ['ord'])
+        .leftJoinAndSelect('ord.items', 'items')
+        .where('ord.orderId = :id', { id })
+        .getOne();
 
-    this.emitStatusEvent(order, status, deliveryUser);
-    // Panel admin en vivo: los valores del enum (accepted/on_the_way/delivered)
-    // coinciden con los eventos que escucha la campana del panel.
-    this.dispatch.notifyAdmins(`order:${status}`, {
-      orderId: order.orderId,
-      status: order.status,
-      totalAmount: order.totalAmount,
-    });
-    await this.notifyCustomer(order);
+      if (!locked) {
+        throw new NotFoundException(`Order with ID: ${id} not found`);
+      }
 
+      yaActivada = locked.status !== OrderStatus.RESERVED;
+      if (!yaActivada) {
+        assertReservaActivable(locked);
+        transitionOrder(locked, OrderStatus.PENDING);
+      }
+
+      order = await queryRunner.manager.save(locked);
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      throw e;
+    } finally {
+      await queryRunner.release();
+    }
+
+    // Si ganó el cron la carrera, el pedido ya está ofertado por él: no
+    // duplicamos el despacho ni el aviso.
+    if (!yaActivada) {
+      // Despacho automático, igual que hace el cron al activar.
+      await this.dispatchOrchestrator
+        .offerToNextDriver(order)
+        .catch(() => undefined);
+      this.dispatch.notifyAdmins(
+        'order:pending',
+        { orderId: order.orderId, status: order.status },
+        order.distributorId,
+      );
+    }
     return order;
   }
 
@@ -129,6 +329,8 @@ export class UpdateOrderStatusUseCase {
   private async applyStatusEffects(
     order: Order,
     status: OrderStatus,
+    previousStatus: OrderStatus,
+    manager: EntityManager,
     deliveryId?: string,
   ): Promise<User | null> {
     switch (status) {
@@ -153,20 +355,64 @@ export class UpdateOrderStatusUseCase {
         // Mismo gate que la asignación manual (`assignDelivery`): habilitado
         // y validado. No exige que esté en línea.
         this.deliveries.assertElegibleParaAsignacion(delivery);
+        // Con el chofer bloqueado (el mismo lock que `ponerEnUso`, la baja y
+        // la asignación a mano): el vehículo que se lee abajo no cambia hasta
+        // el commit, y una baja que ganó la carrera se ve acá.
+        if (!(await bloquearChoferVigente(manager, delivery.deliveryId))) {
+          throw new NotFoundException(
+            `Repartidor no encontrado con ID: ${deliveryId}`,
+          );
+        }
+        // Y el mismo gate de flota (CU-136 a CU-138): la licencia propia o el
+        // vehículo que maneja no pueden tener un documento bloqueante vencido.
+        // Se aplica tanto si acepta el admin (con `deliveryId`) como si acepta
+        // el propio chofer desde el pool (`GET /orders/available`).
+        await this.fleetGate.assertChoferHabilitado(
+          delivery.userId,
+          order.distributorId,
+        );
+        // Snapshot del vehículo en uso (decisión de nahue del 30/09): a
+        // esta altura el chofer ya pasó el gate, así que si tiene
+        // vehículo, no viene inhabilitado.
+        const vehiculo = await this.fleetGate.vehiculoEnUsoDelChofer(
+          delivery.userId,
+          order.distributorId,
+        );
+        order.vehicleCarId = vehiculo?.carId ?? null;
+        order.vehiclePatent = vehiculo?.patent ?? null;
+        order.vehicleBrand = vehiculo?.brand ?? null;
+        order.vehicleModel = vehiculo?.model ?? null;
 
-        order.deliveryId = delivery.deliveryId;
-        order.acceptedAt = new Date();
-        // Prueba de entrega con QR: se genera acá el código secreto que el
-        // chofer mostrará en su QR y el cliente escaneará para confirmar la
-        // entrega (ver ConfirmDeliveryUseCase). Ya queda listo para cuando el
-        // pedido pase a ON_THE_WAY.
-        order.deliveryCode = generateDeliveryCode();
+        // Idempotencia (H-55): si YA estaba ACCEPTED con este mismo chofer
+        // (típicamente porque "aceptó" el aviso de una asignación manual,
+        // que no era una oferta real), no reprocesar: no regenerar
+        // `acceptedAt` ni `deliveryCode`, ni volver a cerrar una oferta que
+        // nunca existió.
+        const yaAceptadoPorEsteChofer =
+          previousStatus === OrderStatus.ACCEPTED &&
+          order.deliveryId === delivery.deliveryId;
 
-        // Cierra la oferta de despacho como ACCEPTED (best-effort, audit). El
-        // offer.driver_id es el user_id, el mismo que usa el GEO/WS.
-        await this.dispatchOrchestrator
-          .onDriverAccepted(order.orderId, delivery.userId)
-          .catch(() => undefined);
+        if (!yaAceptadoPorEsteChofer) {
+          order.deliveryId = delivery.deliveryId;
+          // `order.delivery` (la relación) y `order.deliveryId` (la columna)
+          // apuntan a la MISMA columna `delivery_id`: si se reasigna de un
+          // chofer a otro y sólo se pisa `deliveryId`, TypeORM prioriza el
+          // valor de la relación (el chofer viejo) al guardar. Ver el mismo
+          // fix en `releaseDriverAssignment`/`OrderService.assignDelivery`.
+          order.delivery = delivery;
+          order.acceptedAt = new Date();
+          // Prueba de entrega con QR: se genera acá el código secreto que el
+          // chofer mostrará en su QR y el cliente escaneará para confirmar la
+          // entrega (ver ConfirmDeliveryUseCase). Ya queda listo para cuando
+          // el pedido pase a ON_THE_WAY.
+          order.deliveryCode = generateDeliveryCode();
+
+          // Cierra la oferta de despacho como ACCEPTED (best-effort, audit).
+          // El offer.driver_id es el user_id, el mismo que usa el GEO/WS.
+          await this.dispatchOrchestrator
+            .onDriverAccepted(order.orderId, delivery.userId)
+            .catch(() => undefined);
+        }
 
         return delivery.user;
       }
@@ -185,6 +431,7 @@ export class UpdateOrderStatusUseCase {
             existingDelivery.user.userId,
             order.orderId,
             order.customerId,
+            order.distributorId,
           );
         }
         return existingDelivery?.user ?? null;

@@ -216,14 +216,25 @@ export class GasCylinderService {
     quantity: number,
     distributorId: string,
   ): Promise<GasCylinder> {
-    const gasCylinder = await this.findOne(id, distributorId);
-    gasCylinder.stock += quantity;
-
-    if (gasCylinder.stock < 0) {
-      throw new BadRequestException('Stock cannot be negative');
-    }
-
-    return await this.gasCylinderRepository.save(gasCylinder);
+    // Con el mismo lock que `reservarStock`: leer, sumar y guardar sin él
+    // pisaba una reserva que se confirmara en el medio.
+    await this.gasCylinderRepository.manager.transaction(async (manager) => {
+      const gasCylinder = await manager
+        .createQueryBuilder(GasCylinder, 'gc')
+        .setLock('pessimistic_write')
+        .where('gc.gasCylinderId = :id', { id })
+        .andWhere('gc.distributorId = :distributorId', { distributorId })
+        .getOne();
+      if (!gasCylinder) {
+        throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
+      }
+      if (gasCylinder.stock + quantity < 0) {
+        throw new BadRequestException('Stock cannot be negative');
+      }
+      gasCylinder.stock += quantity;
+      await manager.save(gasCylinder);
+    });
+    return this.findOne(id, distributorId);
   }
 
   async remove(id: string, distributorId: string): Promise<BajaDeProductoDto> {

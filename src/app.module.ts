@@ -56,6 +56,9 @@ import { FirebaseModule } from './firebase/firebase.module';
       load: [EnvConfiguration],
       validationSchema: JoiValidationSchema,
       isGlobal: true,
+      // Los tests de integración reciben el entorno de sus contenedores: el
+      // `.env` de desarrollo no se lee nunca (apuntaría a `splg_db`).
+      ignoreEnvFile: process.env.STAGE === 'test',
     }),
     // Rate limiting (C4, hardening de prod). Límite GLOBAL por IP; los
     // endpoints sensibles (login) usan @Throttle() con un límite más
@@ -106,9 +109,14 @@ import { FirebaseModule } from './firebase/firebase.module';
           ssl: isSslEnabled ? { rejectUnauthorized: false } : false,
 
           // Configuración extra necesaria para Render
-          extra: isSslEnabled
-            ? { ssl: { rejectUnauthorized: false } }
-            : undefined,
+          extra: {
+            // Conexiones del pool (10 por defecto de `pg`). Cada pedido
+            // concurrente retiene una dentro de su transacción mientras otra
+            // consulta pide una segunda: con el pool chico, 10 pedidos
+            // simultáneos se bloquean entre sí.
+            max: Number(configService.get('DB_POOL_SIZE') ?? 10),
+            ...(isSslEnabled ? { ssl: { rejectUnauthorized: false } } : {}),
+          },
 
           // El esquema se gestiona con MIGRACIONES (fuente de verdad), en todos
           // los ambientes. `synchronize:false` por defecto para no alterar el

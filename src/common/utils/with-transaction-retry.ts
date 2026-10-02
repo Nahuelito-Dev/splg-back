@@ -1,13 +1,16 @@
-import { Logger } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 
 /**
  * Códigos de error de PostgreSQL que justifican reintento:
  * - 40P01: deadlock_detected
  * - 40001: serialization_failure (REPEATABLE READ o SERIALIZABLE)
- * Otros errores se propagan inmediatamente sin reintento.
+ * Otros errores se propagan inmediatamente sin reintento. Si se agotan los
+ * intentos con uno de esos códigos, la operación chocó con otra y no está
+ * rota: se responde 409 (`ConflictException`), no 500.
  */
 const RETRYABLE_PG_CODES = new Set(['40P01', '40001']);
 
+/** Intentos en total: el primero y 2 reintentos. */
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 50;
 
@@ -46,8 +49,16 @@ export async function withTransactionRetry<T>(
       const code = codigoDeError(error);
       const isRetryable = code && RETRYABLE_PG_CODES.has(code);
 
-      if (!isRetryable || attempt === maxAttempts) {
+      if (!isRetryable) {
         throw error;
+      }
+      if (attempt === maxAttempts) {
+        logger.warn(
+          `[${context}] Se agotaron los ${maxAttempts} intentos (${code})`,
+        );
+        throw new ConflictException(
+          'Dos operaciones chocaron al mismo tiempo. Probá de nuevo.',
+        );
       }
 
       // Exponential backoff with jitter: ~50ms, ~100ms, ~200ms (+/- 50%)

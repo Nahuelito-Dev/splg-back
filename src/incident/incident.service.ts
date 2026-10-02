@@ -105,11 +105,15 @@ export class IncidentService {
     return incident;
   }
 
-  /** Marca la incidencia como resuelta con su nota de resolución. */
+  /**
+   * Marca la incidencia como resuelta con su nota de resolución.
+   * `distributorId` opcional: sin él (super admin sin `X-Distributor`) se
+   * resuelve cross-tenant, igual que en `claims.resolve`.
+   */
   async resolve(
     id: string,
     dto: ResolveIncidentDto,
-    distributorId: string,
+    distributorId?: string | null,
   ): Promise<Incident> {
     const incident = await this.findOne(id, distributorId);
 

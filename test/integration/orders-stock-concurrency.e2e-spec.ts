@@ -13,11 +13,24 @@
  */
 import request from 'supertest';
 import { DataSource } from 'typeorm';
-import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  sembrarClienteAutenticado,
+  truncateAllTables,
+} from './setup/test-env';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
-import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
-import { Customer } from '../../src/customer/entities/customer.entity';
+
+/** `res.body` de supertest llega sin tipar: se lee a través de esta forma
+ * conocida en vez de acceder a un valor `any`. */
+interface CuerpoError {
+  message?: string;
+}
+
+function mensajeDeError(body: unknown): string {
+  return (body as CuerpoError).message ?? '';
+}
 
 describe('CU-005 Orders Stock Concurrency (e2e)', () => {
   let env: TestEnv;
@@ -45,21 +58,12 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
    * mantener los tests legibles sin pelearnos con la inferencia.
    */
   async function seedMinimalScenario(stock: number) {
-    const userRepo = dataSource.getRepository(User);
-    const customerRepo = dataSource.getRepository(Customer);
     const cylinderRepo = dataSource.getRepository(GasCylinder);
     const addressRepo = dataSource.getRepository(UserAddress);
 
-    const user = (await userRepo.save({
-      email: 'test@splg.local',
-      fullName: 'Test Customer',
-      phoneNumber: '+540000000001',
-    } as Partial<User>)) as User;
-
-    await customerRepo.save({
-      userId: user.userId,
-      notificationToken: 'fake-fcm-token',
-    } as Partial<Customer>);
+    const { user, distributor, headers } = await sembrarClienteAutenticado(
+      env.app,
+    );
 
     const cylinder = (await cylinderRepo.save({
       type: '10kg',
@@ -67,6 +71,7 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
       stock,
       weight: 10,
       isActive: true,
+      distributorId: distributor.distributorId,
     } as Partial<GasCylinder>)) as GasCylinder;
 
     const address = (await addressRepo.save({
@@ -77,29 +82,34 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
       longitude: '-58.3816',
     } as Partial<UserAddress>)) as UserAddress;
 
-    return { user, cylinder, address };
+    return { user, cylinder, address, headers };
   }
 
   it('previene oversell: 10 pedidos concurrentes con stock=1 → solo 1 éxito, stock final = 0', async () => {
-    const { user, cylinder, address } = await seedMinimalScenario(1);
+    const { user, cylinder, address, headers } = await seedMinimalScenario(1);
 
     const orderPayload = {
       customerId: user.userId,
       addressId: address.addressId,
-      paymentMethod: 'CASH',
-      items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
+      paymentMethod: 'cash',
+      items: [
+        { gasCylinderId: cylinder.gasCylinderId, quantity: 1, unitPrice: 1000 },
+      ],
     };
 
     // 10 requests concurrentes — Promise.all dispara todos antes de que el primero responda
     const responses = await Promise.all(
       Array.from({ length: 10 }, () =>
-        request(env.app.getHttpServer()).post('/orders').send(orderPayload),
+        request(env.app.getHttpServer())
+          .post('/orders')
+          .set(headers)
+          .send(orderPayload),
       ),
     );
 
     const successes = responses.filter((r) => r.status === 201);
     const insufficientStock = responses.filter(
-      (r) => r.status === 400 && /stock/i.test(r.body.message ?? ''),
+      (r) => r.status === 400 && /stock/i.test(mensajeDeError(r.body)),
     );
 
     expect(successes.length).toBe(1);
@@ -113,17 +123,24 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
   }, 30000);
 
   it('respeta stock parcial: 10 pedidos concurrentes con stock=3 → exactamente 3 éxitos', async () => {
-    const { user, cylinder, address } = await seedMinimalScenario(3);
+    const { user, cylinder, address, headers } = await seedMinimalScenario(3);
 
     const responses = await Promise.all(
       Array.from({ length: 10 }, () =>
         request(env.app.getHttpServer())
           .post('/orders')
+          .set(headers)
           .send({
             customerId: user.userId,
             addressId: address.addressId,
-            paymentMethod: 'CASH',
-            items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 1 }],
+            paymentMethod: 'cash',
+            items: [
+              {
+                gasCylinderId: cylinder.gasCylinderId,
+                quantity: 1,
+                unitPrice: 1000,
+              },
+            ],
           }),
       ),
     );
@@ -138,16 +155,23 @@ describe('CU-005 Orders Stock Concurrency (e2e)', () => {
   }, 30000);
 
   it('rollback completo si stock insuficiente: no decrementa parcialmente', async () => {
-    const { user, cylinder, address } = await seedMinimalScenario(2);
+    const { user, cylinder, address, headers } = await seedMinimalScenario(2);
 
     // Pedido por 5 unidades — debe fallar y dejar stock intacto
     const res = await request(env.app.getHttpServer())
       .post('/orders')
+      .set(headers)
       .send({
         customerId: user.userId,
         addressId: address.addressId,
-        paymentMethod: 'CASH',
-        items: [{ gasCylinderId: cylinder.gasCylinderId, quantity: 5 }],
+        paymentMethod: 'cash',
+        items: [
+          {
+            gasCylinderId: cylinder.gasCylinderId,
+            quantity: 5,
+            unitPrice: 1000,
+          },
+        ],
       });
 
     expect(res.status).toBe(400);

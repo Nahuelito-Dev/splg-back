@@ -112,11 +112,12 @@ def var_de(param, ruta):
     if p == "userid":
         for seg, v in POR_RUTA_USERID.items():
             if f"/{seg}/" in ruta or ruta.endswith(f"/{seg}"): return v
-    # La fachada de documentos de flota usa "carId" en la ruta, pero NO puede
-    # compartir la variable "carId": el modulo Car crea y borra un auto propio
-    # en su carpeta, y deja la variable apuntando a uno ya eliminado para
-    # cuando le toca el turno a esta carpeta (orden alfabetico: Cars < Fleet).
-    if p == "carid" and "/documents" in ruta:
+    # Las fachadas de flota (documentos, y el historial de vehiculo en uso)
+    # usan "carId" en la ruta, pero NO pueden compartir la variable "carId":
+    # el modulo Car crea y borra un auto propio en su carpeta, y deja la
+    # variable apuntando a uno ya eliminado para cuando le toca el turno a
+    # esta carpeta (orden alfabetico: Cars < Fleet).
+    if p == "carid" and ("/documents" in ruta or "/assignments" in ruta):
         return "fleetCarId"
     if p in POR_NOMBRE: return POR_NOMBRE[p]
     for seg in ruta.split("/"):

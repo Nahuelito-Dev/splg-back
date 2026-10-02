@@ -9,6 +9,12 @@ import { RoleType } from '../../common/constants/role-type.enum';
  * Sin esta regla, cualquier chofer autenticado podía cerrar la entrega de un
  * pedido ajeno —y, si el pago era en efectivo, darlo por cobrado— o quedarse
  * con uno que el despacho ya le había ofrecido a otro.
+ *
+ * `execute()` para ACCEPTED/ON_THE_WAY/DELIVERED re-lee el pedido con lock
+ * pesimista (segunda revisión, punto 2): el mock de `DataSource` imita ese
+ * query builder, así que `armar()` devuelve el MISMO objeto que entrega el
+ * lock (no hace falta duplicar `findByIdFull`/`save` del puerto para este
+ * tramo).
  */
 describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   const DELIVERY_ASIGNADO = 'd1d1d1d1-0000-4000-8000-000000000001';
@@ -18,7 +24,24 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     buscarPorIdOUsuario: jest.Mock;
     assertElegibleParaAsignacion: jest.Mock;
   };
-  let orders: { findByIdFull: jest.Mock; save: jest.Mock };
+  let queryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    manager: {
+      createQueryBuilder: jest.Mock;
+      save: jest.Mock;
+      query: jest.Mock;
+    };
+  };
+  let queryBuilder: {
+    setLock: jest.Mock;
+    leftJoinAndSelect: jest.Mock;
+    where: jest.Mock;
+    getOne: jest.Mock;
+  };
   let uc: UpdateOrderStatusUseCase;
 
   const armar = (
@@ -36,12 +59,35 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       buscarPorIdOUsuario: jest.fn(),
       assertElegibleParaAsignacion: jest.fn(),
     };
-    orders = {
-      findByIdFull: jest.fn().mockResolvedValue(order),
-      save: jest.fn((o: unknown) => Promise.resolve(o)),
+    queryBuilder = {
+      setLock: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(() => Promise.resolve({ ...order })),
+    };
+    queryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {
+        // El lock del chofer (`bloquearChoferes`): todos los pedidos existen y están vigentes.
+        query: jest.fn((_sql: string, [ids]: [string[]]) =>
+          Promise.resolve(
+            ids.map((id) => ({ delivery_id: id, deleted: false })),
+          ),
+        ),
+        createQueryBuilder: jest.fn(() => queryBuilder),
+        save: jest.fn((o: unknown) => Promise.resolve(o)),
+      },
+    };
+    const dataSource = {
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
     };
 
     uc = new UpdateOrderStatusUseCase(
+      dataSource as unknown as import('typeorm').DataSource,
       deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
       {
         notifyCustomer: jest.fn(),
@@ -50,15 +96,27 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         sendOrderConfirmation: jest.fn().mockResolvedValue({ success: true }),
       } as unknown as import('../domain/ports/notification.port').NotificationPort,
-      orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
+      {
+        findByIdFull: jest.fn().mockResolvedValue(order),
+      } as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
       {
         onDriverAccepted: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
       {
         onOrderDelivered: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('../domain/ports/cylinder-lifecycle.port').CylinderLifecyclePort,
+      {
+        execute: jest.fn(),
+      } as unknown as import('./cancel-order.use-case').CancelOrderUseCase,
+      {
+        execute: jest.fn(),
+      } as unknown as import('./release-order.use-case').ReleaseOrderUseCase,
+      {
+        assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
+        vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue(null),
+      } as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
     );
-    return order;
+    return { order, queryRunner, queryBuilder };
   };
 
   it('rechaza al chofer que no tiene el pedido asignado', async () => {
@@ -78,7 +136,9 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       ),
     ).rejects.toThrow(ForbiddenException);
 
-    expect(orders.save).not.toHaveBeenCalled();
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
 
   it('no verifica nada si el pedido todavía no tiene chofer: aceptarlo es cómo se asigna', async () => {
@@ -100,7 +160,8 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       ),
     ).resolves.toBeDefined();
 
-    expect(orders.save).toHaveBeenCalled();
+    expect(queryRunner.manager.save).toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).toHaveBeenCalled();
   });
 
   it('impide que un chofer se quede con un pedido ya asignado a otro', async () => {
@@ -137,6 +198,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     // El pedido avanza: al administrador la verificación no lo frena. (El
     // repositorio de choferes sí se consulta, pero para armar el aviso de
     // tiempo real, no para decidir el permiso.)
-    expect(orders.save).toHaveBeenCalled();
+    expect(queryRunner.manager.save).toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).toHaveBeenCalled();
   });
 });

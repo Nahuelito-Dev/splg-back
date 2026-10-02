@@ -8,6 +8,7 @@ import { Repository, FindOptionsWhere } from 'typeorm';
 import { Claim, ClaimStatus } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { OrderService } from '../order/order.service';
+import { assertClaimTransition } from './claim-status.machine';
 
 @Injectable()
 export class ClaimsService {
@@ -75,18 +76,90 @@ export class ClaimsService {
     return claim;
   }
 
+  /**
+   * Lee el reclamo con lock pesimista (`FOR UPDATE`), aplica el cambio y lo
+   * guarda, todo en una transacción: dos admins que resuelven, toman o
+   * reabren el mismo reclamo a la vez se serializan, y el segundo valida la
+   * transición contra el estado que dejó el primero (no contra una lectura
+   * vieja) en lugar de pisarle la nota.
+   */
+  private modificar(
+    id: string,
+    distributorId: string | null | undefined,
+    aplicar: (claim: Claim) => void,
+  ): Promise<Claim> {
+    return this.claimRepo.manager.transaction(async (manager) => {
+      const consulta = manager
+        .createQueryBuilder(Claim, 'claim')
+        .setLock('pessimistic_write')
+        .where('claim.claimId = :id', { id });
+      if (distributorId) {
+        consulta.andWhere('claim.distributorId = :distributorId', {
+          distributorId,
+        });
+      }
+      const claim = await consulta.getOne();
+      if (!claim) throw new NotFoundException('Reclamo no encontrado');
+
+      aplicar(claim);
+      return manager.save(claim);
+    });
+  }
+
   async resolve(
     id: string,
     resolution: string,
     status: ClaimStatus,
     distributorId?: string | null,
   ): Promise<Claim> {
-    // Verifica pertenencia al tenant antes de resolver.
-    const claim = await this.findOne(id, distributorId);
+    // Máquina de estados: un reclamo RESOLVED/REJECTED no se "re-resuelve" de
+    // taquito, hay que reabrirlo primero (`reopen`).
+    return this.modificar(id, distributorId, (claim) => {
+      assertClaimTransition(claim.status, status);
+      claim.resolutionNote = resolution;
+      claim.status = status;
+    });
+  }
 
-    claim.resolutionNote = resolution;
-    claim.status = status;
+  /**
+   * El admin toma un reclamo pendiente para empezar a revisarlo. A diferencia
+   * de `resolve`, no exige nota: es sólo marcar que alguien ya lo está mirando.
+   */
+  async take(id: string, distributorId?: string | null): Promise<Claim> {
+    return this.modificar(id, distributorId, (claim) => {
+      if (claim.status !== ClaimStatus.PENDING) {
+        throw new BadRequestException(
+          'Sólo se puede tomar un reclamo pendiente',
+        );
+      }
+      assertClaimTransition(claim.status, ClaimStatus.IN_PROCESS);
+      claim.status = ClaimStatus.IN_PROCESS;
+    });
+  }
 
-    return await this.claimRepo.save(claim);
+  /**
+   * Reabre un reclamo ya resuelto o rechazado (error del admin, el cliente
+   * aportó datos nuevos, etc.). Vuelve a IN_PROCESS, nunca a PENDING: alguien
+   * ya lo había tomado. Exige el motivo de la reapertura, que pisa la nota de
+   * resolución anterior (el historial completo queda en la auditoría).
+   */
+  async reopen(
+    id: string,
+    reason: string,
+    distributorId?: string | null,
+  ): Promise<Claim> {
+    return this.modificar(id, distributorId, (claim) => {
+      if (
+        claim.status !== ClaimStatus.RESOLVED &&
+        claim.status !== ClaimStatus.REJECTED
+      ) {
+        throw new BadRequestException(
+          'Sólo se puede reabrir un reclamo resuelto o rechazado',
+        );
+      }
+      assertClaimTransition(claim.status, ClaimStatus.IN_PROCESS);
+      claim.status = ClaimStatus.IN_PROCESS;
+      claim.resolutionNote = reason;
+    });
   }
 }

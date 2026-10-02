@@ -11,6 +11,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -103,6 +104,10 @@ export class CarController {
   @ApiOkResponse({ type: CarResponseDto })
   @ApiNotFoundResponse({ description: 'Car not found' })
   @ApiBadRequestResponse({ description: 'La patente ya está registrada' })
+  @ApiConflictResponse({
+    description:
+      'El vehículo está en uso por un chofer: no se le cambia la patente ni el tipo',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCarDto: UpdateCarDto,

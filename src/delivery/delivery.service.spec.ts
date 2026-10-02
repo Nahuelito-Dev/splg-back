@@ -6,11 +6,12 @@ jest.mock('firebase-admin', () => ({
   credential: { cert: jest.fn() },
 }));
 
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { DeliveryService } from './delivery.service';
 import { Delivery } from './entities/delivery.entity';
 import { RedisService } from '../redis/redis.service';
+import { UsersService } from '../users/users.service';
 
 /**
  * Cubre el fix de CU-022: al ponerse OFFLINE, el chofer debe salir del radar
@@ -39,6 +40,7 @@ describe('DeliveryService.toggleAvailability (CU-022)', () => {
     service = new DeliveryService(
       deliveryRepo as unknown as Repository<Delivery>,
       redis as unknown as RedisService,
+      {} as unknown as UsersService,
     );
   });
 
@@ -84,6 +86,7 @@ describe('DeliveryService · habilitación vs. presencia', () => {
     service = new DeliveryService(
       deliveryRepo as unknown as Repository<Delivery>,
       redis as unknown as RedisService,
+      {} as unknown as UsersService,
     );
   });
 
@@ -117,6 +120,7 @@ describe('DeliveryService · habilitación vs. presencia', () => {
     service = new DeliveryService(
       { findOne, save: deliveryRepo.save } as unknown as Repository<Delivery>,
       redis as unknown as RedisService,
+      {} as unknown as UsersService,
     );
 
     const resultado = await service.toggleActiveStatus('delivery-999', false);
@@ -135,10 +139,78 @@ describe('DeliveryService · habilitación vs. presencia', () => {
     service = new DeliveryService(
       { findOne, save: deliveryRepo.save } as unknown as Repository<Delivery>,
       redis as unknown as RedisService,
+      {} as unknown as UsersService,
     );
 
     await service.toggleActiveStatus('delivery-999', true);
 
+    expect(redis.removeDriver).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Un chofer es de una sola distribuidora: borrarlo desde el panel da de baja su
+ * cuenta entera, no sólo el perfil. Si tiene pedidos en curso, la baja se
+ * rechaza: quedarían sin nadie que los entregue. Ya no se rechaza por tener
+ * vehículos asignados (son de la flota, no del usuario); si tenía uno en uso,
+ * lo libera `UsersService.remove` por el evento `chofer.dado-de-baja` (eso ya
+ * lo cubre `users.service.spec.ts`).
+ */
+describe('DeliveryService.remove', () => {
+  let redis: { removeDriver: jest.Mock };
+  let users: { remove: jest.Mock };
+  let service: DeliveryService;
+
+  beforeEach(() => {
+    const findOne = jest.fn().mockResolvedValue({
+      deliveryId: 'delivery-999',
+      userId: 'user-123',
+    });
+    redis = { removeDriver: jest.fn().mockResolvedValue(undefined) };
+    users = { remove: jest.fn().mockResolvedValue(undefined) };
+    service = new DeliveryService(
+      { findOne } as unknown as Repository<Delivery>,
+      redis as unknown as RedisService,
+      users as unknown as UsersService,
+    );
+  });
+
+  it('da de baja la cuenta del chofer y lo saca del radar', async () => {
+    await service.remove('delivery-999');
+
+    expect(users.remove).toHaveBeenCalledWith('user-123');
+    expect(redis.removeDriver).toHaveBeenCalledWith('user-123');
+  });
+
+  it('el radar se limpia DESPUÉS de la baja: si la baja falla, el chofer sigue en el radar', async () => {
+    users.remove.mockRejectedValue(new Error('la baja falló'));
+
+    await expect(service.remove('delivery-999')).rejects.toThrow(
+      'la baja falló',
+    );
+    expect(redis.removeDriver).not.toHaveBeenCalled();
+  });
+
+  it('si Redis falla después de la baja, la baja queda hecha y no se propaga', async () => {
+    redis.removeDriver.mockRejectedValue(new Error('redis caído'));
+    const error = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(service.remove('delivery-999')).resolves.toBeDefined();
+    expect(users.remove).toHaveBeenCalledWith('user-123');
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('no se pudo sacar del radar'),
+    );
+    error.mockRestore();
+  });
+
+  it('el 409 por pedidos en curso lo da UsersService.remove (con el chofer bloqueado): no se toca el radar', async () => {
+    users.remove.mockRejectedValue(new ConflictException('pedidos en curso'));
+
+    await expect(service.remove('delivery-999')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
     expect(redis.removeDriver).not.toHaveBeenCalled();
   });
 });

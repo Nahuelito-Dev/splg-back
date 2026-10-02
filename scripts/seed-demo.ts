@@ -354,6 +354,8 @@ async function main() {
   resumen.push(['time_slot (franjas)', franjas.length]);
 
   // ── 5. Zonas de cobertura ──────────────────────────────────────────────────
+  // Recargo fijo por barrio; el id se guarda para la foto de la zona en cada pedido.
+  const zonas = new Map<string, string>();
   for (const b of BARRIOS) {
     const anillo = [
       [b.lngMin, b.latMin],
@@ -362,9 +364,10 @@ async function main() {
       [b.lngMin, b.latMax],
       [b.lngMin, b.latMin],
     ];
-    await q(
-      `INSERT INTO coverage_zone (distributor_id, name, area, surcharge, "isActive")
-       VALUES ($1,$2, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), $4, true)`,
+    const [zona] = await q(
+      `INSERT INTO coverage_zone (distributor_id, name, area, surcharge_type, surcharge_value, "isActive")
+       VALUES ($1,$2, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), 'fixed', $4, true)
+       RETURNING coverage_zone_id`,
       [
         distId,
         b.nombre,
@@ -372,6 +375,7 @@ async function main() {
         b.recargo,
       ],
     );
+    zonas.set(b.nombre, zona.coverage_zone_id);
   }
   resumen.push(['coverage_zone (zonas)', BARRIOS.length]);
 
@@ -379,7 +383,11 @@ async function main() {
   const [rolCliente] = await q(
     `SELECT role_id FROM role WHERE type = 'customer'`,
   );
-  const clientes = await sembrarClientes(q, rolCliente?.role_id ?? null);
+  const clientes = await sembrarClientes(
+    q,
+    rolCliente?.role_id ?? null,
+    zonas,
+  );
   resumen.push(['customer (clientes)', clientes.length]);
   resumen.push([
     'user_address (direcciones)',
@@ -419,7 +427,14 @@ type Q = (sql: string, params?: any[]) => Promise<any>;
 interface ClienteSembrado {
   userId: string;
   nombre: string;
-  direcciones: Array<{ id: string; lat: number; lng: number; recargo: number }>;
+  direcciones: Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    recargo: number;
+    zonaId: string | null;
+    zona: string;
+  }>;
 }
 
 interface PedidoSembrado {
@@ -534,6 +549,7 @@ async function borrarOtrasDistribuidoras(q: Q, distId: string) {
 async function sembrarClientes(
   q: Q,
   roleId: string | null,
+  zonas: Map<string, string>,
 ): Promise<ClienteSembrado[]> {
   const clientes: ClienteSembrado[] = [];
 
@@ -610,7 +626,14 @@ async function sembrarClientes(
           alguno(INDICACIONES),
         ],
       );
-      c.direcciones.push({ id: a.address_id, lat, lng, recargo: b.recargo });
+      c.direcciones.push({
+        id: a.address_id,
+        lat,
+        lng,
+        recargo: b.recargo,
+        zonaId: zonas.get(b.nombre) ?? null,
+        zona: b.nombre,
+      });
     }
   }
   return clientes;
@@ -631,6 +654,15 @@ async function sembrarChoferes(q: Q, distId: string) {
 
   const [rolChofer] = await q(
     `SELECT role_id FROM role WHERE type = 'delivery'`,
+  );
+  // Vehículo en uso (decisión de nahue del 30/09): cada chofer sembrado
+  // necesita una asignación ABIERTA para ser elegible en el despacho.
+  // `assigned_by_user_id` es NOT NULL: lo carga un admin de la distribuidora.
+  const [adminSembrador] = await q(
+    `SELECT u.user_id FROM "user" u
+       JOIN admin a ON a.user_id = u.user_id
+      WHERE a.distributor_id = $1 LIMIT 1`,
+    [distId],
   );
   const VEHICULOS = [
     {
@@ -695,11 +727,11 @@ async function sembrarChoferes(q: Q, distId: string) {
       ],
     );
     const v = VEHICULOS[(i - 1) % VEHICULOS.length];
-    await q(
+    const [car] = await q(
       `INSERT INTO car
          (distributor_id, user_id, type_car, car_capacity, car_patent, car_brand,
           car_model, car_year, car_color)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING car_id`,
       [
         distId,
         u.user_id,
@@ -712,6 +744,63 @@ async function sembrarChoferes(q: Q, distId: string) {
         alguno(['Blanco', 'Gris', 'Negro', 'Rojo']),
       ],
     );
+
+    // Vehículo en uso + historial: el primer chofer tuvo antes otro vehículo
+    // (ya liberado), para que el historial no quede vacío en la demo.
+    const asignadoDesde = diasAtras(entre(10, 90));
+    if (i === 1 && adminSembrador?.user_id) {
+      const vAnterior = VEHICULOS[VEHICULOS.length - 1];
+      const [carAnterior] = await q(
+        `INSERT INTO car
+           (distributor_id, user_id, type_car, car_capacity, car_patent, car_brand,
+            car_model, car_year, car_color)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING car_id`,
+        [
+          distId,
+          u.user_id,
+          vAnterior.type_car,
+          vAnterior.car_capacity,
+          `AC${String(100 + i)}ZZ`,
+          vAnterior.car_brand,
+          vAnterior.car_model,
+          entre(2010, 2018),
+          'Azul',
+        ],
+      );
+      await q(
+        `INSERT INTO vehicle_assignment
+           (distributor_id, car_id, delivery_id, assigned_at, released_at,
+            assigned_by_user_id, released_by_user_id, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$6,$7)`,
+        [
+          distId,
+          carAnterior.car_id,
+          d.delivery_id,
+          diasAtras(150),
+          asignadoDesde,
+          adminSembrador.user_id,
+          'Vehículo anterior (dado de baja de uso, demo)',
+        ],
+      );
+    }
+
+    if (adminSembrador?.user_id) {
+      await q(
+        `INSERT INTO vehicle_assignment
+           (distributor_id, car_id, delivery_id, assigned_at, released_at,
+            assigned_by_user_id, note)
+         VALUES ($1,$2,$3,$4,NULL,$5,$6)`,
+        [
+          distId,
+          car.car_id,
+          d.delivery_id,
+          asignadoDesde,
+          adminSembrador.user_id,
+          'Asignación de la demo',
+        ],
+      );
+    }
+
     choferes.push({ deliveryId: d.delivery_id, userId: u.user_id, nombre });
   }
   resumen.push(['car (vehículos)', choferes.length]);
@@ -804,10 +893,12 @@ async function sembrarPedidos(
           deposit_amount, deposit_paid, address_id, status, "paymentMethod",
           "paymentType", "paymentStatus", "totalAmount", notes, "deliveryInstructions",
           "deliveryPoint", "acceptedAt", "onTheWayAt",
-          "deliveredAt", "createdAt", "updatedAt", "cancellationReason", "deliveryCode")
+          "deliveredAt", "createdAt", "updatedAt", "cancellationReason", "deliveryCode",
+          subtotal_items, coverage_zone_id, zone_name, zone_surcharge_type,
+          zone_surcharge_value, zone_surcharge_amount)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
                ST_SetSRID(ST_MakePoint($17::float8, $16::float8), 4326),
-               $18,$19,$20,$21,$22,$23,$24)
+               $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'fixed',$28,$28)
        RETURNING order_id`,
       [
         distId,
@@ -840,6 +931,10 @@ async function sembrarPedidos(
         entregado ?? aceptado ?? creado,
         estado === 'cancelled' ? alguno(MOTIVOS_CANCELACION) : null,
         aceptado ? String(entre(100000, 999999)) : null,
+        subtotal,
+        dir.zonaId,
+        dir.zona,
+        dir.recargo,
       ],
     );
 

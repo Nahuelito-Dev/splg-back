@@ -10,22 +10,45 @@ import { Order, OrderStatus } from '../entities/order.entity';
 import { transitionOrder } from '../domain/order-status.machine';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
-import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
+import { ReleaseOrderUseCase } from './release-order.use-case';
+import { RoleType } from '../../common/constants/role-type.enum';
 
 /** Quién dispara la cancelación (define la política de estado y stock). */
 export type CancelActor = 'customer' | 'driver' | 'admin' | 'superadmin';
+
+/**
+ * Traduce el rol autenticado (RoleType) al actor que espera `execute`.
+ * super_admin se trata como admin. Único lugar de este mapeo: lo usan el
+ * controller (`PATCH /orders/:id/cancel`) y `UpdateOrderStatusUseCase` (cuando
+ * `PATCH /orders/:id/status` delega la cancelación acá).
+ */
+export function mapRoleToCancelActor(role?: RoleType): CancelActor {
+  switch (role) {
+    case RoleType.CUSTOMER:
+      return 'customer';
+    case RoleType.DELIVERY:
+      return 'driver';
+    default:
+      return 'admin';
+  }
+}
 
 /**
  * Caso de uso: cancelar (o liberar) un pedido.
  *
  * La política depende del actor:
  *  - customer/admin → CANCELLED + restitución de stock.
- *  - driver → NO cancela: libera el pedido a PENDING (re-dispatch) sin tocar stock.
+ *  - driver → NO cancela: libera el pedido a PENDING (re-dispatch) sin tocar
+ *    stock, por el camino ÚNICO de liberación (`ReleaseOrderUseCase`, el
+ *    mismo que usan `PATCH /status` con `pending` y `POST /reject` sobre una
+ *    asignación manual).
  *
- * La restitución de stock corre en su propia transacción con lock pesimista
- * (GasCylinderService.restituirStock). Los avisos de tiempo real son best-effort.
- *
- * Extraído de OrderService para respetar SRP.
+ * TODO (ownership + estado + política + guardado) corre dentro de UNA sola
+ * transacción con lock pesimista sobre el pedido: dos cancelaciones
+ * concurrentes del mismo pedido no pueden devolver el stock dos veces —
+ * la segunda, al re-leer con el lock, ya ve el `status` que dejó la primera
+ * (`CANCELLED`) y corta con 400 antes de tocar nada. Los avisos de tiempo
+ * real son best-effort y corren DESPUÉS del commit.
  */
 @Injectable()
 export class CancelOrderUseCase {
@@ -33,7 +56,7 @@ export class CancelOrderUseCase {
     private readonly dataSource: DataSource,
     private readonly stock: GasCylinderService,
     private readonly dispatch: RealtimeDispatchPort,
-    private readonly orders: OrderRepositoryPort,
+    private readonly releaseOrder: ReleaseOrderUseCase,
   ) {}
 
   async execute(
@@ -42,86 +65,78 @@ export class CancelOrderUseCase {
     role: CancelActor,
     reason?: string,
   ): Promise<Order> {
-    const order = await this.orders.findByIdFull(orderId);
-    if (!order) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
-    }
-
-    // Antes que el estado: quién pide tiene que poder tocar este pedido. El
-    // cliente, sólo los suyos (lo ajeno = 404); el chofer, sólo el que tiene
-    // asignado.
-    if (role === 'customer' && order.customerId !== userId) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
-    }
-    if (role === 'driver' && order.delivery?.userId !== userId) {
-      throw new ForbiddenException('Este pedido no está asignado a tu usuario');
-    }
-
-    if (
-      order.status === OrderStatus.DELIVERED ||
-      order.status === OrderStatus.CANCELLED
-    ) {
-      throw new BadRequestException(
-        'No se puede cancelar un pedido finalizado',
-      );
-    }
-
-    const previousDriverId = order.deliveryId;
-    const shouldReturnStock = this.applyCancellationPolicy(order, userId, role);
-
-    // shouldReturnStock ⇔ el pedido quedó CANCELLED (customer/admin); driver solo
-    // lo libera a PENDING y no lleva motivo de cancelación.
-    if (shouldReturnStock) {
-      order.cancellationReason = reason || `Cancelado por ${role}`;
-    }
-
-    if (shouldReturnStock) {
-      await this.restoreStock(order);
-    }
-
-    await this.orders.save(order);
-    this.notify(order, role, previousDriverId);
-
-    return order;
-  }
-
-  /**
-   * Muta el estado del pedido según el actor y devuelve si hay que restituir
-   * stock. customer/admin cancelan; driver libera a PENDING para re-dispatch.
-   */
-  private applyCancellationPolicy(
-    order: Order,
-    userId: string,
-    role: CancelActor,
-  ): boolean {
-    if (role === 'driver') {
-      transitionOrder(order, OrderStatus.PENDING);
-      order.deliveryId = null;
-      order.acceptedAt = null;
-      order.onTheWayAt = null;
-      return false;
-    }
-
-    if (role === 'customer') {
-      if (order.status === OrderStatus.ON_THE_WAY) {
-        throw new BadRequestException(
-          'El pedido ya está en camino. Contacte al soporte.',
-        );
-      }
-    }
-
-    // customer (validado) o admin/superadmin → cancelación con devolución.
-    transitionOrder(order, OrderStatus.CANCELLED);
-    return true;
-  }
-
-  /** Devuelve el stock de los ítems del pedido en una transacción con lock. */
-  private async restoreStock(order: Order): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+
+    let order: Order;
+    let previousDriverUserId: string | null;
     try {
-      await this.stock.restituirStock(queryRunner.manager, order.items);
+      // `FOR UPDATE OF "ord"` (tercer argumento de setLock): sin acotar la
+      // tabla, Postgres rechaza el lock con "FOR UPDATE cannot be applied to
+      // the nullable side of an outer join" — `delivery`/`items` son LEFT
+      // JOIN y el error sale SIEMPRE (verificado contra la base real). Alias
+      // `ord`, no `order`: TypeORM no cita el nombre en `FOR UPDATE OF`, y
+      // `order` es palabra reservada de SQL → "syntax error at or near
+      // order" (verificado también contra la base real).
+      const locked = await queryRunner.manager
+        .createQueryBuilder(Order, 'ord')
+        .setLock('pessimistic_write', undefined, ['ord'])
+        .leftJoinAndSelect('ord.delivery', 'delivery')
+        .leftJoinAndSelect('ord.items', 'items')
+        .where('ord.orderId = :id', { id: orderId })
+        .getOne();
+
+      if (!locked) {
+        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      }
+
+      // Antes que el estado: quién pide tiene que poder tocar este pedido. El
+      // cliente, sólo los suyos (lo ajeno = 404); el chofer, sólo el que tiene
+      // asignado.
+      if (role === 'customer' && locked.customerId !== userId) {
+        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      }
+      if (role === 'driver' && locked.delivery?.userId !== userId) {
+        throw new ForbiddenException(
+          'Este pedido no está asignado a tu usuario',
+        );
+      }
+
+      // Re-chequeado DENTRO del lock (no con el dato leído antes de pedirlo):
+      // si esta cancelación pierde la carrera contra otra concurrente, ve el
+      // estado que dejó la que ganó y corta acá, sin devolver el stock de
+      // nuevo.
+      if (
+        locked.status === OrderStatus.DELIVERED ||
+        locked.status === OrderStatus.CANCELLED
+      ) {
+        throw new BadRequestException(
+          'No se puede cancelar un pedido finalizado',
+        );
+      }
+
+      // El driver_id de una oferta (DispatchOffer) y las salas de socket del
+      // chofer son por `user_id`, no por `order.deliveryId` (el id de su
+      // perfil de reparto: son ids distintos).
+      previousDriverUserId = locked.delivery?.userId ?? null;
+
+      if (role === 'driver') {
+        // Mutación pura del camino único, aplicada DENTRO de esta misma
+        // transacción/lock (no abre una segunda sobre el mismo pedido).
+        this.releaseOrder.applyRelease(locked);
+      } else {
+        if (role === 'customer' && locked.status === OrderStatus.ON_THE_WAY) {
+          throw new BadRequestException(
+            'El pedido ya está en camino. Contacte al soporte.',
+          );
+        }
+        transitionOrder(locked, OrderStatus.CANCELLED);
+        locked.cancellationReason = reason || `Cancelado por ${role}`;
+        await this.stock.restituirStock(queryRunner.manager, locked.items);
+      }
+
+      order = await queryRunner.manager.save(locked);
       await queryRunner.commitTransaction();
     } catch (e) {
       await queryRunner.rollbackTransaction();
@@ -129,49 +144,50 @@ export class CancelOrderUseCase {
     } finally {
       await queryRunner.release();
     }
+
+    if (role === 'driver') {
+      await this.releaseOrder.notifyReleased(order, previousDriverUserId);
+    } else {
+      this.notify(order, previousDriverUserId);
+    }
+
+    return order;
   }
 
-  /** Avisos de tiempo real al cliente y (si corresponde) al chofer previo. */
-  private notify(
-    order: Order,
-    role: CancelActor,
-    previousDriverId: string | null,
-  ): void {
+  /** Avisos de tiempo real de una cancelación REAL (customer/admin). */
+  private notify(order: Order, previousDriverUserId: string | null): void {
     const payload = {
       orderId: order.orderId,
       status: order.status,
       reason: order.cancellationReason,
     };
 
-    if (role === 'driver') {
-      this.dispatch.notifyCustomer(
-        order.customerId,
-        'order:searching-driver',
-        payload,
-      );
-    } else {
-      this.dispatch.notifyCustomer(
-        order.customerId,
-        'order:cancelled',
-        payload,
-      );
-    }
+    this.dispatch.notifyCustomer(order.customerId, 'order:cancelled', payload);
 
-    if (previousDriverId && role !== 'driver') {
-      this.dispatch.notifyDriverOrderCancelled(previousDriverId, {
+    // El chofer que tenía el pedido: por `user_id` (sala `driver_<user_id>`),
+    // NUNCA por `order.deliveryId` (el id de su perfil de reparto, otro id).
+    if (previousDriverUserId) {
+      // Segunda revisión, punto 3: cancelar un pedido ACCEPTED/ON_THE_WAY por
+      // CUALQUIER puerta corta el tracking del chofer que lo tenía. Antes
+      // sólo lo hacía `ReleaseOrderUseCase` (cuando el actor es el propio
+      // chofer); esta rama (customer/admin cancelan de verdad) no lo hacía.
+      // Inofensivo si el pedido todavía no estaba ON_THE_WAY (no hay nada
+      // que cortar, `stopTracking` sólo limpia una clave de Redis).
+      this.dispatch.stopTracking(previousDriverUserId);
+      this.dispatch.notifyDriverOrderCancelled(previousDriverUserId, {
         ...payload,
         message: 'El cliente canceló el pedido. No es necesario ir.',
       });
     }
 
-    // Panel admin en vivo. Un chofer liberando el pedido NO es una cancelación
-    // (vuelve a PENDING) → solo avisamos a admins la cancelación real.
-    if (order.status === OrderStatus.CANCELLED) {
-      this.dispatch.notifyAdmins('order:cancelled', {
+    this.dispatch.notifyAdmins(
+      'order:cancelled',
+      {
         orderId: order.orderId,
         status: order.status,
         reason: order.cancellationReason,
-      });
-    }
+      },
+      order.distributorId,
+    );
   }
 }

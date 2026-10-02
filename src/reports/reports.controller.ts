@@ -95,7 +95,7 @@ export class ReportsController {
   }
 
   @Get('sales-evolution')
-  @ApiOperation({ summary: 'Evolución de ventas por período (día/mes)' })
+  @ApiOperation({ summary: 'Evolución de ventas por período (día/semana/mes)' })
   @ApiOkResponse({ type: EvolucionDeVentasDto, isArray: true })
   @ApiBadRequestResponse({ description: 'Fecha con formato inválido' })
   async getSalesEvolution(
@@ -103,13 +103,26 @@ export class ReportsController {
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<EvolucionDeVentasDto[]> {
     const { startDate, endDate } = this.parseDates(rango.from, rango.to);
-    // 'week' se acepta pero se trata como 'day' (H-57).
-    const gran = rango.granularity === Granularidad.MES ? 'month' : 'day';
     return this.reportsService.getSalesEvolution(
       startDate,
       endDate,
-      gran,
+      this.aGranularidadSql(rango.granularity),
       distributorId,
     );
+  }
+
+  /** `Granularidad` ya usa el mismo vocabulario que `date_trunc` de Postgres
+   * ('day' | 'week' | 'month'); esto sólo fija el default (sin query, día). */
+  private aGranularidadSql(
+    granularity?: Granularidad,
+  ): 'day' | 'week' | 'month' {
+    switch (granularity) {
+      case Granularidad.SEMANA:
+        return 'week';
+      case Granularidad.MES:
+        return 'month';
+      default:
+        return 'day';
+    }
   }
 }

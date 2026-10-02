@@ -14,8 +14,11 @@ import { DeliveryStatusFilter } from './dto/query-delivery.dto';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { RedisService } from '../redis/redis.service';
+import { UsersService } from '../users/users.service';
 import { puntoDesdeLatLng } from '../common/geo/punto';
+import { normalizarEmail } from '../common/utils/email.util';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { errorMessage } from '../common/errors/error-message';
 
 /** Lo que el alta guarda en el perfil de un chofer nuevo. */
 export interface PerfilDeChoferNuevo {
@@ -34,6 +37,7 @@ export class DeliveryService {
     @InjectRepository(Delivery)
     private readonly deliveryRepository: Repository<Delivery>,
     private readonly redisService: RedisService,
+    private readonly usersService: UsersService,
   ) {}
 
   /**
@@ -114,7 +118,7 @@ export class DeliveryService {
     }
     if (distributorId && delivery.distributorId !== distributorId) {
       throw new NotFoundException(
-        `Delivery with ID: ${delivery.deliveryId} not found`,
+        `Chofer ${delivery.deliveryId} no encontrado`,
       );
     }
   }
@@ -170,6 +174,26 @@ export class DeliveryService {
     return userIds.filter((id) => elegibles.has(id));
   }
 
+  /**
+   * `delivery_id` de esos usuarios (`user_id`), en lote. Lo usa
+   * `FleetTaskService` para saber a qué chofer corresponde cada tarea de
+   * flota (CU-136 a CU-138) sin un `findOne` por candidato del despacho.
+   */
+  async findDeliveryIdsByUserIds(
+    userIds: string[],
+    distributorId?: string | null,
+  ): Promise<Array<{ userId: string; deliveryId: string }>> {
+    if (userIds.length === 0) return [];
+    const filas = await this.deliveryRepository.find({
+      where: {
+        userId: In(userIds),
+        ...(distributorId ? { distributorId } : {}),
+      },
+      select: { userId: true, deliveryId: true },
+    });
+    return filas.map((f) => ({ userId: f.userId, deliveryId: f.deliveryId }));
+  }
+
   /** Cuántos choferes están habilitados, en una distribuidora o en todas. */
   contarHabilitados(distributorId?: string | null): Promise<number> {
     return this.deliveryRepository.count({
@@ -196,12 +220,16 @@ export class DeliveryService {
   }
 
   /**
-   * Invariante de asignación de un pedido a un chofer, manual (admin, `PATCH
-   * /orders/:id/assign/:deliveryId`) o al aceptar una oferta (`PATCH
-   * /orders/:id/status` con `status=accepted`): tiene que estar habilitado y
-   * validado. A propósito NO exige que esté en línea (`isAvailable`): es un
-   * acto explícito de asignación, no una búsqueda por el radar, y un admin
-   * puede querer asignar a un chofer que sabe disponible aunque su app no lo
+   * Uno de los DOS gates de asignación de un pedido a un chofer (el otro es
+   * el de flota, `FleetDispatchLockService.assertChoferHabilitado`, CU-136 a
+   * CU-138). Los tres caminos que le dan un pedido a un chofer —la
+   * asignación manual (admin, `PATCH /orders/:id/assign/:deliveryId`), la
+   * aceptación por `PATCH /orders/:id/status` con `status=accepted` (admin
+   * con `deliveryId`, o el propio chofer desde el pool) y el despacho
+   * automático— llaman a los dos. Éste sólo mira habilitado y validado. A
+   * propósito NO exige que esté en línea (`isAvailable`): es un acto
+   * explícito de asignación, no una búsqueda por el radar, y un admin puede
+   * querer asignar a un chofer que sabe disponible aunque su app no lo
    * muestre conectado.
    */
   assertElegibleParaAsignacion(delivery: Delivery): void {
@@ -228,7 +256,7 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException(`Delivery with ID: ${id} not found`);
+      throw new NotFoundException(`Chofer ${id} no encontrado`);
     }
 
     return delivery;
@@ -253,7 +281,7 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException(`Delivery for user ID: ${userId} not found`);
+      throw new NotFoundException(`No hay un chofer para el usuario ${userId}`);
     }
 
     return delivery;
@@ -264,11 +292,11 @@ export class DeliveryService {
       .createQueryBuilder('delivery')
       .leftJoinAndSelect('delivery.user', 'user')
       .leftJoinAndSelect('user.role', 'role')
-      .where('user.email = :email', { email })
+      .where('LOWER(user.email) = :email', { email: normalizarEmail(email) })
       .getOne();
 
     if (!delivery) {
-      throw new NotFoundException(`Delivery with email: ${email} not found`);
+      throw new NotFoundException(`No hay un chofer con el correo ${email}`);
     }
 
     return delivery;
@@ -398,7 +426,7 @@ export class DeliveryService {
         where: { deliveryId: id },
       });
       if (!actual || actual.distributorId !== distributorId) {
-        throw new NotFoundException(`Delivery with ID: ${id} not found`);
+        throw new NotFoundException(`Chofer ${id} no encontrado`);
       }
     }
 
@@ -408,16 +436,44 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException(`Delivery with ID: ${id} not found`);
+      throw new NotFoundException(`Chofer ${id} no encontrado`);
     }
 
     await this.deliveryRepository.save(delivery);
     return await this.findOne(id);
   }
 
+  /**
+   * Un chofer es de una sola distribuidora, así que darlo de baja es dar de
+   * baja su cuenta: el usuario y el perfil quedan con `deletedAt` y su cuenta
+   * de Firebase se deshabilita. Borrar sólo el perfil dejaba al usuario vivo,
+   * sin rol utilizable y visible en Usuarios.
+   *
+   * Se rechaza (409, desde `UsersService.remove`) mientras tenga pedidos en
+   * curso, que quedarían sin nadie que los entregue. Ya NO se rechaza por
+   * tener vehículos asignados: la flota es de la distribuidora, no del usuario (`User.cars` perdió el `cascade`), y
+   * si tenía un vehículo en uso lo libera `UsersService.remove` por el evento
+   * `chofer.dado-de-baja` (lo escucha `VehicleReleaseOnBajaListener`), dentro
+   * de la misma transacción de la baja.
+   */
   async remove(id: string): Promise<MessageResponseDto> {
-    await this.findOne(id);
-    await this.deliveryRepository.softDelete({ deliveryId: id });
+    const delivery = await this.findOne(id);
+
+    // El 409 por pedidos en curso lo da `UsersService.remove`, con el chofer
+    // bloqueado: un conteo hecho acá, antes del lock, no vería una
+    // aceptación que se está confirmando.
+    await this.usersService.remove(delivery.userId);
+
+    // Recién con la baja confirmada sale del radar: si la baja falla, el
+    // chofer sigue siendo un chofer vigente y no queda fuera del despacho.
+    // Si Redis falla, la baja ya está hecha: se registra, no se revierte.
+    try {
+      await this.redisService.removeDriver(delivery.userId);
+    } catch (error) {
+      this.logger.error(
+        `Chofer ${id} dado de baja, pero no se pudo sacar del radar de despacho: ${errorMessage(error)}`,
+      );
+    }
     return MessageResponseDto.of('Delivery deleted successfully');
   }
 

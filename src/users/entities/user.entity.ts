@@ -7,6 +7,7 @@ import {
   OneToMany,
   CreateDateColumn,
   DeleteDateColumn,
+  Index,
   JoinColumn,
 } from 'typeorm';
 import { Role } from '../../role/entities/role.entity';
@@ -16,6 +17,10 @@ import { Car } from '../../car/entities/car.entity';
 import { Admin } from '../../admin/entities/admin.entity';
 import { UserAddress } from '../../user-address/entities/user-address.entity';
 
+// Índice funcional `lower(email)` (migración `IndiceEmailEnMinusculas`): las
+// búsquedas por correo comparan `LOWER(email)`. TypeORM no modela expresiones:
+// `synchronize: false` evita que `migration:generate` lo quiera borrar.
+@Index('IDX_user_email_lower', { synchronize: false })
 @Entity('user')
 export class User {
   @PrimaryGeneratedColumn('uuid', { name: 'user_id' })
@@ -92,7 +97,13 @@ export class User {
   @OneToOne(() => Delivery, (delivery) => delivery.user, { cascade: true })
   delivery?: Delivery | null;
 
-  @OneToMany(() => Car, (car) => car.user, { cascade: true })
+  // Sin `cascade`: la flota es de la distribuidora, no del usuario (revisión
+  // de vehículo en uso). Si lo tuviera, dar de baja al chofer daría de baja
+  // también sus vehículos (`UsersService.remove` hace `softRemove(user)` con
+  // esta relación cargada) — y la flota tiene que seguir existiendo para la
+  // distribuidora aunque el chofer se vaya. `car.user_id` queda como "chofer
+  // habitual", informativo.
+  @OneToMany(() => Car, (car) => car.user)
   cars?: Car[];
 
   @OneToMany(() => Admin, (admin) => admin.user)

@@ -10,6 +10,7 @@ import {
 import { ClaimsService } from './claims.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { ResolveClaimDto } from './dto/resolve-claim.dto';
+import { ReopenClaimDto } from './dto/reopen-claim.dto';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -17,6 +18,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { ClaimResponseDto } from './dto/claim-response.dto';
@@ -72,19 +74,28 @@ export class ClaimsController {
 
   @Patch(':id/resolve')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Admin resuelve un reclamo' })
+  @ApiOperation({
+    summary: 'Admin resuelve un reclamo',
+    description:
+      'Deja el reclamo en RESOLVED o REJECTED, con nota obligatoria ' +
+      '(CU-025). La transición se valida contra la máquina de estados: un ' +
+      'reclamo RESOLVED o REJECTED no se vuelve a resolver sin reabrirlo antes ' +
+      '(`PATCH /claims/:id/reopen`). Pasar a IN_PROCESS es `PATCH /claims/:id/take`.',
+  })
+  @ApiParam({ name: 'id', description: 'Claim UUID' })
   @ApiOkResponse({ type: ClaimResponseDto })
   @ApiNotFoundResponse({
     description: 'El reclamo no existe o es de otra distribuidora',
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: resolution should not be empty; status debe ser uno de: pending, in_process, resolved, rejected)',
+      'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: resolution should not be empty; status debe ser uno de: resolved, rejected) ' +
+      'o transición de reclamo inválida (p. ej.: resolved → rejected sin reabrir antes)',
   })
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ResolveClaimDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ClaimResponseDto> {
     return ClaimMapper.toDto(
       await this.claimsService.resolve(
@@ -93,6 +104,57 @@ export class ClaimsController {
         body.status,
         distributorId,
       ),
+    );
+  }
+
+  @Patch(':id/take')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Admin toma un reclamo pendiente para revisarlo',
+    description:
+      'PENDING → IN_PROCESS. Sin nota: sólo marca que un admin ya está mirando ' +
+      'el reclamo (distinto de `resolve`, que exige nota de resolución).',
+  })
+  @ApiParam({ name: 'id', description: 'Claim UUID' })
+  @ApiOkResponse({ type: ClaimResponseDto })
+  @ApiNotFoundResponse({
+    description: 'El reclamo no existe o es de otra distribuidora',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Falta la distribuidora (header X-Distributor, sólo super admin) o el reclamo no está pendiente (ya fue tomado, resuelto o rechazado)',
+  })
+  async take(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<ClaimResponseDto> {
+    return ClaimMapper.toDto(await this.claimsService.take(id, distributorId));
+  }
+
+  @Patch(':id/reopen')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Admin reabre un reclamo resuelto o rechazado',
+    description:
+      'RESOLVED/REJECTED → IN_PROCESS, con motivo obligatorio. Nunca vuelve a ' +
+      'PENDING: alguien ya lo había tomado.',
+  })
+  @ApiParam({ name: 'id', description: 'Claim UUID' })
+  @ApiOkResponse({ type: ClaimResponseDto })
+  @ApiNotFoundResponse({
+    description: 'El reclamo no existe o es de otra distribuidora',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Falta la distribuidora (header X-Distributor, sólo super admin), datos inválidos (reason should not be empty) o el reclamo no está resuelto ni rechazado',
+  })
+  async reopen(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ReopenClaimDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<ClaimResponseDto> {
+    return ClaimMapper.toDto(
+      await this.claimsService.reopen(id, body.reason, distributorId),
     );
   }
 }

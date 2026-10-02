@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, FindOptionsWhere, Not, Repository } from 'typeorm';
-import { Order, OrderStatus } from '../entities/order.entity';
+import { EntityManager, FindOptionsWhere, In, Not, Repository } from 'typeorm';
+import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 
 /** Lo mínimo de un pedido que necesitan los módulos que no son `order`. */
 export interface OrderRef {
@@ -9,8 +9,15 @@ export interface OrderRef {
   customerId: string;
 }
 
+/** Estado de un pedido visto desde `payments`: si todavía se puede cobrar. */
+export interface OrderPaymentState {
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+}
+
 /**
- * Puerto de lectura de la tabla `order` para `cylinder` y `time-slot`.
+ * Puerto de lectura de la tabla `order` para `cylinder`, `time-slot` y
+ * `delivery`.
  *
  * `order` importa a esos dos módulos (reserva de franja, avance de envases al
  * entregar), así que ellos no pueden importar `OrderModule` sin armar un ciclo.
@@ -43,6 +50,17 @@ export class OrderLookupService {
       : null;
   }
 
+  /** Estado y estado de pago del pedido, o null si no existe. */
+  async findPaymentState(orderId: string): Promise<OrderPaymentState | null> {
+    const order = await this.orderRepository.findOne({
+      where: { orderId },
+      select: { orderId: true, status: true, paymentStatus: true },
+    });
+    return order
+      ? { status: order.status, paymentStatus: order.paymentStatus }
+      : null;
+  }
+
   /**
    * Pedidos no cancelados agendados en una franja y fecha. Con `manager` cuenta
    * dentro de esa transacción, para que vea el lock de la franja.
@@ -59,6 +77,20 @@ export class OrderLookupService {
       status: Not(OrderStatus.CANCELLED),
     };
     if (distributorId) where.distributorId = distributorId;
+    return manager
+      ? manager.count(Order, { where })
+      : this.orderRepository.count({ where });
+  }
+
+  /** Pedidos que el chofer tiene tomados y todavía no entregó. */
+  countActiveByDelivery(
+    deliveryId: string,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const where: FindOptionsWhere<Order> = {
+      deliveryId,
+      status: In([OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY]),
+    };
     return manager
       ? manager.count(Order, { where })
       : this.orderRepository.count({ where });

@@ -16,7 +16,11 @@ export class FleetVehicleDocumentsResponseDto {
 export class FleetDriverDocumentsResponseDto {
   @ApiProperty({ format: 'uuid' }) deliveryId!: string;
   @ApiProperty({
-    description: 'Tiene una habilitación bloqueante vencida: no puede salir',
+    description:
+      'Tiene una habilitación bloqueante vencida: no puede salir. Considera ' +
+      'tanto la documentación propia del chofer (licencia) como la del ' +
+      'vehículo que maneja (seguro, VTV) — el mismo criterio que aplica el ' +
+      'despacho.',
   })
   isLocked!: boolean;
   @ApiProperty({ type: FleetTaskResponseDto, isArray: true })

@@ -12,7 +12,6 @@ test/
 │   └── redlock.e2e-spec.ts          # Distributed locks
 ├── performance/
 │   └── orders-load.ts               # Load test del POST /orders con autocannon
-├── app.e2e-spec.ts                  # E2E original (heredado)
 └── jest-e2e.json                    # Config de Jest para tests e2e
 ```
 
@@ -92,23 +91,23 @@ Latencia (ms):
 
 ## Qué valida cada test
 
-| Test | Qué valida | Falla si... |
-|------|------------|-------------|
-| `health.e2e-spec.ts` | `/health` responde 200 con DB+Redis OK | health check no detecta caídas de Redis |
-| `orders-stock-concurrency.e2e-spec.ts` | El pessimistic lock previene oversell | hay race condition de stock (≥ 2 ventas con stock=1) |
-| `redlock.e2e-spec.ts` | Acquire concurrente devuelve null si otro lo tiene | el lock distribuido no funciona |
-| `orders-load.ts` (perf) | p95 < 5s, throughput > 20 req/s, errores < 1% | el endpoint no cumple NFR-02 |
+| Test                                   | Qué valida                                         | Falla si...                                          |
+| -------------------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
+| `health.e2e-spec.ts`                   | `/health` responde 200 con DB+Redis OK             | health check no detecta caídas de Redis              |
+| `orders-stock-concurrency.e2e-spec.ts` | El pessimistic lock previene oversell              | hay race condition de stock (≥ 2 ventas con stock=1) |
+| `redlock.e2e-spec.ts`                  | Acquire concurrente devuelve null si otro lo tiene | el lock distribuido no funciona                      |
+| `orders-load.ts` (perf)                | p95 < 5s, throughput > 20 req/s, errores < 1%      | el endpoint no cumple NFR-02                         |
 
 ## Cobertura por concepto auditado
 
-| Concepto | Test que lo valida |
-|----------|--------------------|
-| Pessimistic locks (Día 1) | `orders-stock-concurrency.e2e-spec.ts` |
-| Health checks (Día 2) | `health.e2e-spec.ts` |
-| Distributed locks / Redlock (Día 3) | `redlock.e2e-spec.ts` |
-| Idempotencia (Día 4-5) | _pendiente_ — agregar `orders-idempotency.e2e-spec.ts` |
-| Workers + Queues (Día 6-8) | _pendiente_ — agregar `notifications-queue.e2e-spec.ts` |
-| Performance | `orders-load.ts` |
+| Concepto                            | Test que lo valida                                      |
+| ----------------------------------- | ------------------------------------------------------- |
+| Pessimistic locks (Día 1)           | `orders-stock-concurrency.e2e-spec.ts`                  |
+| Health checks (Día 2)               | `health.e2e-spec.ts`                                    |
+| Distributed locks / Redlock (Día 3) | `redlock.e2e-spec.ts`                                   |
+| Idempotencia (Día 4-5)              | _pendiente_ — agregar `orders-idempotency.e2e-spec.ts`  |
+| Workers + Queues (Día 6-8)          | _pendiente_ — agregar `notifications-queue.e2e-spec.ts` |
+| Performance                         | `orders-load.ts`                                        |
 
 ## Troubleshooting
 
@@ -117,7 +116,7 @@ Latencia (ms):
 
 **Test hangs por > 3 min**
 → Probablemente Docker está descargando una imagen por primera vez. Esperá.
-   Para acelerar futuras corridas, las imágenes quedan cacheadas.
+Para acelerar futuras corridas, las imágenes quedan cacheadas.
 
 **Pessimistic concurrency test falla con stock != 0**
 → El lock no está funcionando. Revisar `OrderService.create()` en `order.service.ts:96-105`.

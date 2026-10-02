@@ -219,6 +219,46 @@ export class NotificationsService {
   }
 
   /**
+   * Push al cliente cuando se aprueba el pago de su pedido. No-op si el
+   * cliente no registró token. Nunca lanza: no debe romper la confirmación.
+   */
+  async sendPaymentApprovedPush(
+    customerUserId: string,
+    orderId: string,
+    esSena = false,
+  ): Promise<void> {
+    try {
+      const { token } =
+        await this.customersService.findNotificationToken(customerUserId);
+      if (!token) return;
+
+      const corto = orderId.substring(0, 8);
+      await this.fcm.sendToToken(token, {
+        notification: esSena
+          ? {
+              title: 'Seña recibida',
+              body: `Recibimos la seña de tu reserva #${corto}.`,
+            }
+          : {
+              title: 'Pago aprobado',
+              body: `Recibimos el pago de tu pedido #${corto}.`,
+            },
+        data: {
+          event: esSena ? 'DEPOSIT_APPROVED' : 'PAYMENT_APPROVED',
+          orderId,
+        },
+      });
+      this.logger.log(
+        `Push de pago aprobado enviado al cliente ${customerUserId} (pedido ${orderId})`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar push de pago aprobado al cliente ${customerUserId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
    * Guarda el token FCM del dispositivo. El mismo endpoint lo usan la app
    * cliente y la app chofer: se intenta primero como cliente y, si no lo es,
    * como chofer. Así el push le puede llegar a cualquiera de los dos lados.

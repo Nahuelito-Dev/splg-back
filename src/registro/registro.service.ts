@@ -15,6 +15,7 @@ import { AdminService } from '../admin/admin.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { normalizarEmail } from '../common/utils/email.util';
 import { RegistrarUsuarioDto } from './dto/registrar-usuario.dto';
 import {
   AltaAutorizada,
@@ -72,10 +73,11 @@ export class RegistroService {
       );
     }
 
-    await this.users.assertDisponible(datos.email, datos.phone_number);
+    const email = normalizarEmail(datos.email);
+    await this.users.assertDisponible(email, datos.phone_number);
 
     const cuenta = await this.firebaseAuth.createUserSafe({
-      email: datos.email,
+      email,
       password: datos.password,
       full_name: datos.full_name,
       phone_number: datos.phone_number,
@@ -85,7 +87,7 @@ export class RegistroService {
     try {
       userId = await this.dataSource.transaction(async (manager) => {
         const user = await this.users.crearEnTransaccion(manager, {
-          email: datos.email,
+          email,
           fullName: datos.full_name,
           phoneNumber: datos.phone_number,
           selfie: datos.selfie,
@@ -102,12 +104,7 @@ export class RegistroService {
 
     this.eventos.emit(
       EVENTO_USUARIO_REGISTRADO,
-      new UsuarioRegistradoEvent(
-        userId,
-        datos.email,
-        datos.full_name,
-        alta.rol,
-      ),
+      new UsuarioRegistradoEvent(userId, email, datos.full_name, alta.rol),
     );
     return this.users.findOne(userId);
   }

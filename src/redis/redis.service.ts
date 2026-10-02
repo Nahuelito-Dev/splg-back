@@ -9,6 +9,9 @@ import { Redis } from 'ioredis';
 import Redlock, { Lock } from 'redlock';
 import { redisConnectionOptions } from '../common/redis/redis-connection';
 
+/** Cuánto espera el health check la respuesta de Redis antes de darlo por caído. */
+const PING_TIMEOUT_MS = 2000;
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('RedisService');
@@ -111,7 +114,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    */
   async ping(): Promise<boolean> {
     try {
-      const result = await this.client.ping();
+      // Con Redis caído el cliente encola el comando y reintenta: sin un tope,
+      // el health check se colgaba hasta el timeout de la request (2 min).
+      let temporizador: NodeJS.Timeout | undefined;
+      const result = await Promise.race([
+        this.client.ping(),
+        new Promise<null>((resolve) => {
+          temporizador = setTimeout(() => resolve(null), PING_TIMEOUT_MS);
+        }),
+      ]).finally(() => clearTimeout(temporizador));
       return result === 'PONG';
     } catch {
       return false;
@@ -129,7 +140,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async setDriverActiveOrder(
     driverUserId: string,
-    data: { orderId: string; customerId: string },
+    data: {
+      orderId: string;
+      customerId: string;
+      distributorId?: string | null;
+    },
     ttlSec = 3 * 60 * 60,
   ): Promise<void> {
     await this.setex(
@@ -139,13 +154,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  async getDriverActiveOrder(
-    driverUserId: string,
-  ): Promise<{ orderId: string; customerId: string } | null> {
+  async getDriverActiveOrder(driverUserId: string): Promise<{
+    orderId: string;
+    customerId: string;
+    distributorId?: string | null;
+  } | null> {
     const raw = await this.get(this.driverActiveOrderKey(driverUserId));
     if (!raw) return null;
     try {
-      return JSON.parse(raw) as { orderId: string; customerId: string };
+      return JSON.parse(raw) as {
+        orderId: string;
+        customerId: string;
+        distributorId?: string | null;
+      };
     } catch {
       return null;
     }

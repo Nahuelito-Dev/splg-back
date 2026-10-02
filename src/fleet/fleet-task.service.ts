@@ -21,9 +21,15 @@ import { CancelFleetTaskDto } from './dto/cancel-task.dto';
 import { QueryFleetTaskDto } from './dto/query-task.dto';
 import { CarService } from '../car/car.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { FleetDispatchLockService } from './fleet-dispatch-lock.service';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
-import { estaInhabilitado } from './domain/fleet-lock.util';
+import {
+  describirVencimiento,
+  estaInhabilitado,
+  normalizarFechaCalendario,
+  tareasQueInhabilitan,
+} from './domain/fleet-lock.util';
 import { calcularEstadoDeVencimiento } from './domain/expiration-status';
 
 const ESTADOS_CERRADOS = [
@@ -47,6 +53,10 @@ export class FleetTaskService {
     private readonly plans: Repository<MaintenancePlan>,
     private readonly carService: CarService,
     private readonly deliveryService: DeliveryService,
+    // Gate único de bloqueo de flota (CU-136 a CU-138): lo usa `listByDelivery`
+    // para que la ficha del chofer muestre el MISMO `isLocked` que aplica el
+    // despacho (incluye el vehículo que maneja, no sólo su propia licencia).
+    private readonly fleetLock: FleetDispatchLockService,
   ) {}
 
   async create(
@@ -62,7 +72,10 @@ export class FleetTaskService {
       carId: dto.carId ?? null,
       deliveryId: dto.deliveryId ?? null,
       status: MaintenanceTaskStatus.SCHEDULED,
-      dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+      // Fecha de calendario: si el ISO trae hora (datepicker con hora local,
+      // etc.), se normaliza a medianoche UTC para no correr el vencimiento a
+      // otro día (revisión de vehículo en uso).
+      dueAt: dto.dueAt ? normalizarFechaCalendario(new Date(dto.dueAt)) : null,
       dueKm: dto.dueKm ?? null,
       scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
       performedAt: null,
@@ -87,7 +100,7 @@ export class FleetTaskService {
   async findAll(
     distributorId: string,
     query: QueryFleetTaskDto,
-  ): Promise<MaintenanceTask[]> {
+  ): Promise<[MaintenanceTask[], number]> {
     const qb = this.tasks
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.plan', 'plan')
@@ -100,8 +113,13 @@ export class FleetTaskService {
         deliveryId: query.deliveryId,
       });
     }
+    if (query.planId)
+      qb.andWhere('task.plan_id = :planId', { planId: query.planId });
     if (query.status)
       qb.andWhere('task.status = :status', { status: query.status });
+
+    // El total es el de los filtros, sin paginar.
+    const total = await qb.getCount();
 
     // `take`/`skip` (paginación "relacional") + `leftJoinAndSelect` +
     // `orderBy` sobre una columna de la entidad raíz rompen esta versión de
@@ -109,13 +127,15 @@ export class FleetTaskService {
     // dentro de la subquery de paginación). `limit`/`offset` (SQL directo) no
     // tienen ese problema, y acá alcanza: el único join es a `plan`
     // (ManyToOne), que no duplica filas.
-    // Postgres ya pone los NULL al final en ASC por default: no hace falta
-    // pedir 'NULLS LAST' aparte.
-    qb.orderBy('task.due_at', 'ASC')
+    // `NULLS LAST` explícito, y el id como desempate: dos tareas con la misma
+    // fecha de vencimiento (o sin ella) tienen siempre el mismo orden, así la
+    // paginación no repite ni se salta filas.
+    qb.orderBy('task.due_at', 'ASC', 'NULLS LAST')
+      .addOrderBy('task.task_id', 'ASC')
       .limit(query.limit ?? 10)
       .offset(query.offset ?? 0);
 
-    return qb.getMany();
+    return [await qb.getMany(), total];
   }
 
   async findOne(id: string, distributorId: string): Promise<MaintenanceTask> {
@@ -140,7 +160,9 @@ export class FleetTaskService {
     Object.assign(
       task,
       sinIndefinidos({
-        dueAt: dto.dueAt ? new Date(dto.dueAt) : dto.dueAt,
+        dueAt: dto.dueAt
+          ? normalizarFechaCalendario(new Date(dto.dueAt))
+          : dto.dueAt,
         dueKm: dto.dueKm,
         provider: dto.provider,
         referenceNumber: dto.referenceNumber,
@@ -212,7 +234,63 @@ export class FleetTaskService {
     return { tasks, isLocked: this.calcularBloqueo(tasks) };
   }
 
-  /** CU-138: documentación de un chofer, y si está inhabilitado. */
+  /**
+   * Qué está vencido en el vehículo, en castellano y con fecha. Vacío si el
+   * vehículo está en condiciones. Lo usa `DeliveryVehicleController` (en
+   * `fleet`) ANTES de poner un vehículo en uso (CU-136/137): un vehículo
+   * inhabilitado no puede asignarse a ningún chofer. `CarService` no puede
+   * hacer este chequeo (viviría en `car`, que no puede depender de `fleet`
+   * sin generar un ciclo — CONVENCIONES §4), así que lo resuelve el
+   * controlador llamando a este método antes de `VehicleAssignmentService.ponerEnUso`.
+   */
+  async motivosDeInhabilitacionDeVehiculo(
+    carId: string,
+    distributorId: string,
+  ): Promise<string[]> {
+    await this.carService.findOne(carId, distributorId); // 404 si no existe/no es de esta distribuidora
+
+    const tasks = await this.tasks.find({
+      where: { carId, distributorId },
+      relations: ['plan'],
+    });
+    const abiertas = tasks.filter((t) => !ESTADOS_CERRADOS.includes(t.status));
+    const conEstado = abiertas.map((t) => ({
+      task: t,
+      criticality: t.plan.criticality,
+      expirationStatus: calcularEstadoDeVencimiento(
+        t.dueAt,
+        t.plan.leadTimeDays,
+      ),
+    }));
+
+    return tareasQueInhabilitan(conEstado).map((c) =>
+      describirVencimiento(c.task.plan.name, c.task.dueAt),
+    );
+  }
+
+  /** 400 si el vehículo está inhabilitado por documentación vencida (CU-136/137). */
+  async assertVehiculoHabilitado(
+    carId: string,
+    distributorId: string,
+  ): Promise<void> {
+    const motivos = await this.motivosDeInhabilitacionDeVehiculo(
+      carId,
+      distributorId,
+    );
+    if (motivos.length > 0) {
+      throw new BadRequestException(
+        `No se puede asignar: ${motivos.join('; ')}.`,
+      );
+    }
+  }
+
+  /**
+   * CU-138: documentación de un chofer, y si está inhabilitado. `isLocked`
+   * sale del MISMO gate que usa el despacho (`FleetDispatchLockService`):
+   * no sólo la licencia propia, también el vehículo que maneja. `tasks` es
+   * sólo lo propio del chofer (su licencia): lo del vehículo se consulta en
+   * `/cars/:id/documents`.
+   */
   async listByDelivery(
     deliveryId: string,
     distributorId: string,
@@ -228,14 +306,19 @@ export class FleetTaskService {
       order: { dueAt: 'ASC' },
     });
 
-    return { tasks, isLocked: this.calcularBloqueo(tasks) };
+    const inhabilitados = await this.fleetLock.choferesInhabilitados(
+      [delivery.userId],
+      distributorId,
+    );
+
+    return { tasks, isLocked: inhabilitados.has(delivery.userId) };
   }
 
   /**
-   * CU-136/137/138: un vehículo/chofer está inhabilitado si tiene una tarea
-   * ABIERTA de un plan bloqueante, vencida. Sólo cuenta el estado de la
-   * habilitación (no aplica todavía al despacho — ver el informe de esta
-   * tarea para el punto de enganche).
+   * CU-136/137: un vehículo está inhabilitado si tiene una tarea ABIERTA de
+   * un plan bloqueante, vencida. A diferencia de `listByDelivery`, acá no
+   * hace falta el gate compartido: un vehículo no se inhabilita por nada
+   * ajeno a sus propias tareas.
    */
   private calcularBloqueo(tasks: MaintenanceTask[]): boolean {
     const abiertas = tasks.filter((t) => !ESTADOS_CERRADOS.includes(t.status));

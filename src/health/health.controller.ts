@@ -6,6 +6,7 @@ import {
   MemoryHealthIndicator,
   DiskHealthIndicator,
 } from '@nestjs/terminus';
+import { ConfigService } from '@nestjs/config';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/isPublic.decorator';
@@ -18,13 +19,25 @@ import { RedisHealthIndicator } from './redis.health';
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
+  /** RSS máxima antes de reportar `down` (H-53: 300 MB fijo era el de un
+   * proceso recién levantado; con tráfico real lo pasa de largo y un load
+   * balancer sacaba de servicio una instancia sana). Configurable por env,
+   * con default documentado en `.env.example`. */
+  private readonly memoryRssThresholdBytes: number;
+
   constructor(
     private readonly health: HealthCheckService,
     private readonly db: TypeOrmHealthIndicator,
     private readonly memory: MemoryHealthIndicator,
     private readonly disk: DiskHealthIndicator,
     private readonly redis: RedisHealthIndicator,
-  ) {}
+    config: ConfigService,
+  ) {
+    const thresholdMb = config.getOrThrow<number>(
+      'HEALTH_MEMORY_RSS_THRESHOLD_MB',
+    );
+    this.memoryRssThresholdBytes = thresholdMb * 1024 * 1024;
+  }
 
   /**
    * Health check completo del sistema. Pensado para load balancers,
@@ -33,7 +46,7 @@ export class HealthController {
    * Verifica:
    *  - PostgreSQL (ping)
    *  - Redis (ping)
-   *  - Heap RSS < 300 MB
+   *  - RSS < `HEALTH_MEMORY_RSS_THRESHOLD_MB` (default 512 MB)
    *  - Disco con al menos 250 MB libres
    *
    * Retorna 200 con `{ status: "ok" }` cuando todo está sano.
@@ -47,7 +60,7 @@ export class HealthController {
     return this.health.check([
       () => this.db.pingCheck('postgres'),
       () => this.redis.isHealthy('redis'),
-      () => this.memory.checkRSS('memory_rss', 300 * 1024 * 1024),
+      () => this.memory.checkRSS('memory_rss', this.memoryRssThresholdBytes),
       () =>
         this.disk.checkStorage('storage', { path: '/', thresholdPercent: 0.9 }),
     ]);

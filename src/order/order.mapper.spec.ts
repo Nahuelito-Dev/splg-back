@@ -141,4 +141,28 @@ describe('OrderMapper · datos del panel', () => {
     });
     expect(dto.subtotalItems).toBe(20000);
   });
+
+  it('vehicle sale null si el pedido no tiene snapshot de vehículo (sin chofer, o anterior a la funcionalidad)', () => {
+    const dto = OrderMapper.toDto(pedidoBase());
+    expect(dto.vehicle).toBeNull();
+  });
+
+  it('vehicle trae el snapshot tomado al aceptar (decisión de nahue, "vehículo en uso")', () => {
+    const pedido = {
+      ...pedidoBase(),
+      vehicleCarId: 'c1',
+      vehiclePatent: 'AB123CD',
+      vehicleBrand: 'Honda',
+      vehicleModel: 'Wave',
+    } as Order;
+
+    const dto = OrderMapper.toDto(pedido);
+
+    expect(dto.vehicle).toEqual({
+      carId: 'c1',
+      patent: 'AB123CD',
+      brand: 'Honda',
+      model: 'Wave',
+    });
+  });
 });

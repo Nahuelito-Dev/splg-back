@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   NotFoundException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
@@ -94,6 +95,25 @@ describe('FleetAttachmentService', () => {
         ),
       ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
       expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un archivo vacío con 400, sin subir nada', async () => {
+      await expect(
+        service.upload('t1', 'd1', archivo({ size: 0 }), 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(storage.put).not.toHaveBeenCalled();
+      expect(attachments.save).not.toHaveBeenCalled();
+    });
+
+    it('guarda el nombre con las tildes bien (multer lo entrega en latin1)', async () => {
+      const comoLlega = Buffer.from('póliza.pdf', 'utf8').toString('latin1');
+      const result = await service.upload(
+        't1',
+        'd1',
+        archivo({ originalname: comoLlega }),
+        'u1',
+      );
+      expect(result.originalName).toBe('póliza.pdf');
     });
 
     it('rechaza un archivo más grande que el máximo', async () => {

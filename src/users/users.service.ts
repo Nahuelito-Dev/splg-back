@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Brackets, EntityManager } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User } from './entities/user.entity';
+import {
+  ChoferDadoDeBajaEvent,
+  EVENTO_CHOFER_DADO_DE_BAJA,
+} from '../delivery/events/chofer-dado-de-baja.event';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { PaginationDto } from '../common/dtos/pagination.dto';
@@ -22,6 +27,14 @@ import {
   UsuarioExisteDto,
 } from './dto/usuarios-response.dto';
 import { usuarioDeLaDistribuidora } from '../common/tenancy/pertenencia';
+import { emailIgualA, normalizarEmail } from '../common/utils/email.util';
+import { bloquearChoferes } from '../common/locks/chofer-lock';
+import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { RedisService } from '../redis/redis.service';
+
+/** Intentos para deshabilitar la cuenta de Firebase tras una baja, y la espera entre uno y otro. */
+const INTENTOS_DESHABILITAR_CUENTA = 3;
+const ESPERA_ENTRE_INTENTOS_MS = 200;
 
 /** Lo que el alta guarda en la fila del usuario. */
 export interface DatosDeUsuarioNuevo {
@@ -44,6 +57,9 @@ export class UsersService {
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly firebaseAuth: FirebaseAuthPort,
+    private readonly eventos: EventEmitter2,
+    private readonly orderLookup: OrderLookupService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -53,7 +69,7 @@ export class UsersService {
    */
   async assertDisponible(email: string, phoneNumber: string): Promise<void> {
     const existente = await this.userRepository.findOne({
-      where: [{ email }, { phoneNumber }],
+      where: [{ email: emailIgualA(email) }, { phoneNumber }],
       withDeleted: true,
       select: { userId: true },
     });
@@ -153,20 +169,23 @@ export class UsersService {
   }
 
   /**
-   * El usuario con su rol y nada más, o null si no existe o está dado de baja.
-   * Para el handshake de los sockets: `findOneByEmail` trae seis relaciones,
-   * que en cada conexión es caro y no se usa.
+   * El usuario con su rol y la distribuidora de su perfil de staff (si
+   * aplica), nada más. Para el handshake de los sockets: `findOneByEmail`
+   * trae seis relaciones, varias colecciones grandes (`cars`, `addresses`),
+   * que en cada conexión es caro y no se usa. `admins`/`delivery` son 1-a-uno
+   * o 1-a-pocos: las necesita `SocketIdentityService` para resolver la
+   * distribuidora del staff y armar la sala del admin por tenant.
    */
   findOneWithRoleByEmail(email: string): Promise<User | null> {
     return this.userRepository.findOne({
-      where: { email },
-      relations: ['role'],
+      where: { email: emailIgualA(email) },
+      relations: ['role', 'admins', 'delivery'],
     });
   }
 
   async findOneByEmail(email: string): Promise<User> {
     const user = await this.userRepository.findOne({
-      where: { email },
+      where: { email: emailIgualA(email) },
       relations: [
         'role',
         'customer',
@@ -245,7 +264,7 @@ export class UsersService {
   async cambiarEmail(id: string, email: string): Promise<void> {
     await this.userRepository.update(
       { userId: id },
-      { email, emailVerified: false },
+      { email: normalizarEmail(email), emailVerified: false },
     );
   }
 
@@ -281,42 +300,103 @@ export class UsersService {
   }
 
   /**
-   * Baja lógica (H-74): el usuario, su perfil de cliente o chofer, sus
-   * vehículos y sus direcciones quedan con `deletedAt` y dejan de aparecer.
-   * Nada se borra: los pedidos, pagos y calificaciones siguen apuntando a él
-   * y la auditoría conserva quién era. Su cuenta de Firebase se deshabilita
-   * (no se borra): no puede volver a entrar, y el correo sigue ocupado.
+   * Baja lógica (H-74): el usuario, su perfil de cliente o chofer y sus
+   * direcciones quedan con `deletedAt` y dejan de aparecer. Nada se borra:
+   * los pedidos, pagos y calificaciones siguen apuntando a él y la auditoría
+   * conserva quién era. Su cuenta de Firebase se deshabilita (no se borra):
+   * no puede volver a entrar, y el correo sigue ocupado.
+   *
+   * Sus vehículos NO se dan de baja (revisión de vehículo en uso): la flota
+   * es de la distribuidora, no del usuario (`cars` ya no tiene `cascade` en
+   * la entidad). Si tenía perfil de chofer: se rechaza con 409 mientras tenga
+   * pedidos aceptados o en camino (quedarían sin quien los entregue), y se
+   * libera el vehículo que tenía en uso DENTRO de la misma transacción, por
+   * el evento `chofer.dado-de-baja` que escucha `VehicleReleaseOnBajaListener`
+   * (así `users` no depende de `car`, CONVENCIONES §4): si la liberación
+   * falla, la baja se revierte.
    */
   async remove(id: string): Promise<MessageResponseDto> {
     const user = await this.userRepository.findOne({
       where: { userId: id },
-      relations: ['customer', 'delivery', 'cars', 'addresses'],
+      relations: ['customer', 'delivery', 'addresses'],
     });
     if (!user) {
       throw new NotFoundException(`User with ID: ${id} not found`);
     }
 
-    await this.userRepository.softRemove(user);
+    await this.dataSource.transaction(async (manager) => {
+      if (user.delivery) {
+        // Con el chofer bloqueado: una aceptación o asignación en curso
+        // termina antes del conteo, y la que llega después ve la baja.
+        await bloquearChoferes(manager, [user.delivery.deliveryId]);
+        const pedidos = await this.orderLookup.countActiveByDelivery(
+          user.delivery.deliveryId,
+          manager,
+        );
+        if (pedidos > 0) {
+          throw new ConflictException(
+            `El chofer tiene ${pedidos} pedido(s) en curso: cancelalos o reasignalos antes de darlo de baja`,
+          );
+        }
+      }
 
-    // Sin fila vigente el acceso ya lo rechaza; deshabilitar la cuenta es la
-    // segunda barrera. Si Firebase falla, la baja igual quedó hecha.
-    if (user.firebaseUid) {
-      try {
-        await this.firebaseAuth.updateUser(user.firebaseUid, {
-          disabled: true,
-        });
-      } catch (error) {
-        this.logger.error(
-          `Usuario ${id} dado de baja, pero no se pudo deshabilitar su cuenta de Firebase: ${errorMessage(error)}`,
+      await manager.softRemove(user);
+
+      if (user.delivery) {
+        await this.eventos.emitAsync(
+          EVENTO_CHOFER_DADO_DE_BAJA,
+          new ChoferDadoDeBajaEvent(user.delivery.deliveryId, manager),
         );
       }
+    });
+
+    // Recién con la baja confirmada sale del radar de despacho. Si Redis
+    // falla la baja ya está hecha: se registra, no se revierte.
+    if (user.delivery) {
+      try {
+        await this.redisService.removeDriver(user.userId);
+      } catch (error) {
+        this.logger.error(
+          `Chofer ${user.delivery.deliveryId} dado de baja, pero no se pudo sacar del radar de despacho: ${errorMessage(error)}`,
+        );
+      }
+    }
+
+    // Sin fila vigente el acceso ya lo rechaza; deshabilitar la cuenta es la
+    // segunda barrera. Si Firebase falla la baja igual quedó hecha: se
+    // reintenta y, si no hay caso, queda registrado con qué cuenta hay que
+    // deshabilitar a mano.
+    if (user.firebaseUid) {
+      await this.deshabilitarCuenta(id, user.firebaseUid);
     }
 
     return MessageResponseDto.of('Usuario dado de baja');
   }
 
+  private async deshabilitarCuenta(
+    userId: string,
+    firebaseUid: string,
+  ): Promise<void> {
+    for (let intento = 1; intento <= INTENTOS_DESHABILITAR_CUENTA; intento++) {
+      try {
+        await this.firebaseAuth.updateUser(firebaseUid, { disabled: true });
+        return;
+      } catch (error) {
+        if (intento === INTENTOS_DESHABILITAR_CUENTA) {
+          this.logger.error(
+            `Usuario ${userId} dado de baja, pero su cuenta de Firebase ${firebaseUid} sigue HABILITADA tras ${intento} intentos: deshabilitarla a mano. Causa: ${errorMessage(error)}`,
+          );
+          return;
+        }
+        await new Promise((r) => setTimeout(r, ESPERA_ENTRE_INTENTOS_MS));
+      }
+    }
+  }
+
   /**
-   * Si el correo y el teléfono ya están en uso, cada uno por separado. Antes
+   * Si el correo y el teléfono ya están en uso, cada uno por separado. Cuenta
+   * también a los dados de baja: es la misma regla de `assertDisponible`, así
+   * que "libre" acá nunca termina en un 409 en el alta. Antes
    * se buscaba un usuario con cualquiera de los dos y se marcaba el correo
    * como usado si ese usuario tenía correo, aunque la coincidencia fuera por
    * el teléfono.
@@ -327,10 +407,16 @@ export class UsersService {
   ): Promise<UsuarioExisteDto> {
     const [emailUsado, telefonoUsado] = await Promise.all([
       email
-        ? this.userRepository.exists({ where: { email } })
+        ? this.userRepository.exists({
+            where: { email: emailIgualA(email) },
+            withDeleted: true,
+          })
         : Promise.resolve(false),
       phoneNumber
-        ? this.userRepository.exists({ where: { phoneNumber } })
+        ? this.userRepository.exists({
+            where: { phoneNumber },
+            withDeleted: true,
+          })
         : Promise.resolve(false),
     ]);
     return {

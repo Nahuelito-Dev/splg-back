@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, Between } from 'typeorm';
+import { DataSource, Repository, MoreThanOrEqual, Between } from 'typeorm';
 import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -23,7 +23,11 @@ import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import { NotificationPort } from './domain/ports/notification.port';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
+import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
 import { generateDeliveryCode } from './domain/delivery-code.util';
+import { bloquearChoferVigente } from '../common/locks/chofer-lock';
+import { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
 
 @Injectable()
 export class OrderService {
@@ -48,9 +52,19 @@ export class OrderService {
     // que cierra la oferta del chofer y re-ofrece al siguiente de inmediato (en
     // vez de esperar a que expire por timeout).
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    // Para distinguir, en `rejectOffer`, una oferta real del despacho
+    // automático de una asignación MANUAL (H-55): esta última no crea fila.
+    private readonly dispatchOffers: DispatchOfferRepositoryPort,
     // Push al cliente detrás del puerto (adapter → NotificationsService →
     // Firebase): el service no conoce FCM.
     private readonly notifications: NotificationPort,
+    // Para el lock pesimista de `assignDelivery` (segunda revisión, punto 2):
+    // mismo patrón que `CancelOrderUseCase`/`ReleaseOrderUseCase`.
+    private readonly dataSource: DataSource,
+    // Gate único de bloqueo de flota (CU-136 a CU-138), compartido con
+    // `UpdateOrderStatusUseCase` y el despacho automático: la asignación
+    // manual tampoco puede darle un pedido a un chofer inhabilitado.
+    private readonly fleetGate: FleetDispatchLockService,
   ) {}
 
   /**
@@ -73,14 +87,64 @@ export class OrderService {
   }
 
   /**
-   * CU-016: el chofer rechaza/ignora una oferta de pedido. Cierra su oferta
-   * activa como REJECTED y re-ofrece el pedido al siguiente chofer más cercano
-   * de inmediato. Best-effort: si el pedido ya no es re-ofertable (lo tomó otro,
-   * se canceló), es un no-op silencioso.
+   * CU-016: el chofer rechaza/ignora una oferta de pedido. Dos caminos según
+   * cómo llegó el pedido a él:
+   *  - Oferta REAL del despacho automático (hay una fila `OFFERED` de ESTE
+   *    chofer): cierra la oferta como REJECTED y re-ofrece al siguiente
+   *    chofer más cercano de inmediato.
+   *  - Asignación MANUAL del admin (H-55): el chofer la recibe con el MISMO
+   *    evento de socket que una oferta (`server:new-order-request`), pero no
+   *    hay ninguna fila `OFFERED` suya que cerrar — ya está ACCEPTED directo.
+   *
+   * Segunda revisión, punto 1 (decisión de nahue, cambia la tanda anterior):
+   * la app del chofer manda este mismo `/reject` TANTO si el chofer lo
+   * rechaza activamente COMO si deja vencer el aviso a los 30s sin tocarlo
+   * (mismo timeout visual que una oferta real, aunque esto no es una oferta:
+   * del lado del servidor no hay nada que expire). Si liberáramos el pedido
+   * en este caso, cualquier demora del chofer en responder deshace una
+   * asignación que un ADMIN decidió a mano. En vez de eso: el pedido NO
+   * cambia, y se avisa a los admins de la distribuidora (`order:assignment-
+   * declined`) para que decida un humano (reasignar a otro chofer, insistir,
+   * lo que corresponda). El rechazo en sí queda registrado por el audit log
+   * global de toda escritura (`AuditInterceptor`, CU-153) — no hace falta un
+   * registro aparte.
+   *
+   * Un `/reject` TARDÍO sobre un pedido que YA fue aceptado por una oferta
+   * real (de este chofer o de otro, lo que sea que haya pasado mientras
+   * tanto) tampoco tiene efecto: `hasActiveOffer(orderId, driverId)` ya no
+   * encuentra una oferta `OFFERED` suya (se cerró como `ACCEPTED` al
+   * aceptarse), y `onDriverRejected` es un no-op si no hay nada que cerrar.
+   *
+   * Best-effort: si el pedido ya no existe, es un no-op silencioso.
    */
   async rejectOffer(orderId: string, driverId: string) {
     const order = await this.orders.findByIdFull(orderId);
     if (!order) return { rejected: false };
+
+    // Punto 5 (segunda revisión): la oferta activa tiene que ser DE ESTE
+    // chofer. Una oferta OFFERED de OTRO chofer para el mismo pedido (una
+    // carrera del despacho automático que se cruzó con esta asignación
+    // manual) no cuenta como "yo tengo una oferta real": seguiría siendo la
+    // asignación manual de este chofer.
+    const esAsignacionManualSuya =
+      order.status === OrderStatus.ACCEPTED &&
+      order.delivery?.userId === driverId &&
+      !(await this.dispatchOffers.hasActiveOffer(orderId, driverId));
+
+    if (esAsignacionManualSuya) {
+      this.dispatch.notifyAdmins(
+        'order:assignment-declined',
+        {
+          orderId: order.orderId,
+          driverId,
+          driverName: order.delivery?.user?.fullName ?? null,
+          distributorId: order.distributorId,
+        },
+        order.distributorId,
+      );
+      return { rejected: true };
+    }
+
     await this.dispatchOrchestrator.onDriverRejected(order, driverId);
     return { rejected: true };
   }
@@ -223,14 +287,23 @@ export class OrderService {
   /**
    * Avanza el estado de un pedido. Delega en UpdateOrderStatusUseCase
    * (validación de transición + efectos de estado + side-effects de tiempo real).
+   * `actorUserId` sale SIEMPRE del token: lo necesita el caso `status: cancelled`,
+   * que delega en CancelOrderUseCase con la misma identidad que usa `/cancel`.
    */
   async updateStatus(
     id: string,
     status: OrderStatus,
     deliveryId?: string,
     role?: RoleType,
+    actorUserId?: string,
   ) {
-    return this.updateOrderStatusUseCase.execute(id, status, deliveryId, role);
+    return this.updateOrderStatusUseCase.execute(
+      id,
+      status,
+      deliveryId,
+      role,
+      actorUserId,
+    );
   }
 
   /**
@@ -268,31 +341,149 @@ export class OrderService {
 
   /**
    * Asignación MANUAL del admin (`PATCH /orders/:id/assign/:deliveryId`).
-   * Exige habilitado + validado, igual que aceptar una oferta. NO exige que
-   * esté en línea: es un acto explícito del admin, no una búsqueda por el
-   * radar.
+   * Exige habilitado + validado y sin bloqueo de flota (CU-136 a CU-138),
+   * igual que aceptar una oferta. NO exige que esté en línea: es un acto
+   * explícito del admin, no una búsqueda por el radar.
    */
   async assignDelivery(orderId: string, deliveryId: string) {
-    const order = await this.findOne(orderId);
     const delivery = await this.deliveries.findById(deliveryId);
-    // El chofer tiene que ser de la misma distribuidora que el pedido.
-    if (!delivery || delivery.distributorId !== order.distributorId) {
+    if (!delivery) {
       throw new NotFoundException('Repartidor no encontrado');
     }
-    this.deliveries.assertElegibleParaAsignacion(delivery);
-    order.deliveryId = deliveryId;
-    transitionOrder(order, OrderStatus.ACCEPTED);
-    order.acceptedAt = new Date();
-    // Igual que cuando el chofer acepta la oferta: sin este código el cliente
-    // no puede confirmar la entrega con el QR. Si se reasigna, el código nuevo
-    // deja sin efecto el del chofer anterior.
-    order.deliveryCode = generateDeliveryCode();
-    await this.orderRepository.save(order);
 
-    this.dispatch.notifyAdmins('order:accepted', {
+    // Segunda revisión, punto 2: mismo lock pesimista que cancelar/liberar
+    // (`FOR UPDATE OF "ord"`, ver `CancelOrderUseCase`/`ReleaseOrderUseCase`)
+    // — si el pedido se está cancelando en paralelo, esta asignación lo ve
+    // DENTRO del lock (con el dato fresco) y `transitionOrder` corta con 400
+    // en vez de pisar una cancelación ya confirmada.
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    let order: Order;
+    let previousDriverUserId: string | null;
+    try {
+      const locked = await queryRunner.manager
+        .createQueryBuilder(Order, 'ord')
+        .setLock('pessimistic_write', undefined, ['ord'])
+        .leftJoinAndSelect('ord.delivery', 'delivery')
+        .leftJoinAndSelect('ord.items', 'items')
+        .where('ord.orderId = :id', { id: orderId })
+        .getOne();
+
+      if (!locked) {
+        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      }
+      // El chofer tiene que ser de la misma distribuidora que el pedido. Antes
+      // que cualquier otro chequeo: lo ajeno es 404 sin revelar nada de su
+      // habilitación ni de su flota.
+      if (delivery.distributorId !== locked.distributorId) {
+        throw new NotFoundException('Repartidor no encontrado');
+      }
+      this.deliveries.assertElegibleParaAsignacion(delivery);
+      // Con el chofer bloqueado (el mismo lock que `ponerEnUso`, la baja y la
+      // aceptación): el vehículo que se lee abajo no cambia hasta el commit,
+      // y una baja que ganó la carrera se ve acá.
+      if (
+        !(await bloquearChoferVigente(queryRunner.manager, delivery.deliveryId))
+      ) {
+        throw new NotFoundException('Repartidor no encontrado');
+      }
+      // CU-136 a CU-138: mismo gate que usan `UpdateOrderStatusUseCase` y el
+      // despacho automático. Si algo está vencido, 400 con el detalle.
+      await this.fleetGate.assertChoferHabilitado(
+        delivery.userId,
+        locked.distributorId,
+      );
+      // Snapshot del vehículo en uso (decisión de nahue del 30/09): a esta
+      // altura el chofer ya pasó el gate, así que si tiene vehículo, no viene
+      // inhabilitado.
+      const vehiculo = await this.fleetGate.vehiculoEnUsoDelChofer(
+        delivery.userId,
+        locked.distributorId,
+      );
+      locked.vehicleCarId = vehiculo?.carId ?? null;
+      locked.vehiclePatent = vehiculo?.patent ?? null;
+      locked.vehicleBrand = vehiculo?.brand ?? null;
+      locked.vehicleModel = vehiculo?.model ?? null;
+
+      // Punto 7: si se reasigna de un chofer A a otro B, A se tiene que
+      // enterar (ver el aviso best-effort después del commit).
+      previousDriverUserId = locked.delivery?.userId ?? null;
+
+      locked.deliveryId = deliveryId;
+      // `order.delivery` (la relación @ManyToOne) y `order.deliveryId` (la
+      // columna) apuntan a la MISMA columna `delivery_id`. Si se reasigna de
+      // un chofer A a otro B y sólo se pisa `deliveryId`, TypeORM prioriza el
+      // valor de la relación —que el lock ya había cargado con A— al
+      // guardar, y la columna real queda con A (verificado contra la base el
+      // 30/09: mismo bug que `releaseDriverAssignment`, ver su comentario).
+      // Las dos tienen que quedar en sincro.
+      locked.delivery = delivery;
+      transitionOrder(locked, OrderStatus.ACCEPTED);
+      locked.acceptedAt = new Date();
+      // Igual que cuando el chofer acepta la oferta: sin este código el
+      // cliente no puede confirmar la entrega con el QR. Si se reasigna, el
+      // código nuevo deja sin efecto el del chofer anterior.
+      locked.deliveryCode = generateDeliveryCode();
+
+      order = await queryRunner.manager.save(locked);
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      throw e;
+    } finally {
+      await queryRunner.release();
+    }
+
+    // Best-effort, DESPUÉS del commit.
+    // Punto 5: la asignación a mano resuelve el pedido ella sola; cualquier
+    // oferta automática que hubiera quedado en curso (para este chofer u
+    // otro) queda sin efecto, así no hay dos choferes creyendo que el pedido
+    // es suyo.
+    await this.dispatchOffers
+      .closeAllActiveOffers(orderId, DispatchOfferStatus.EXPIRED)
+      .catch(() => undefined);
+
+    // Punto 7: aviso al chofer anterior si hubo reasignación de A a B (por
+    // `user_id`, nunca por `deliveryId`: son ids distintos — ver
+    // `DriversGateway.handleDriverJoin`).
+    if (previousDriverUserId && previousDriverUserId !== delivery.userId) {
+      this.dispatch.stopTracking(previousDriverUserId);
+      this.dispatch.notifyDriverOrderCancelled(previousDriverUserId, {
+        orderId: order.orderId,
+        status: order.status,
+        message: 'Este pedido se reasignó a otro chofer.',
+      });
+    }
+
+    this.dispatch.notifyAdmins(
+      'order:accepted',
+      {
+        orderId: order.orderId,
+        status: order.status,
+        totalAmount: order.totalAmount,
+      },
+      order.distributorId,
+    );
+    // H-55: el despacho automático avisa al chofer por socket
+    // (`server:new-order-request`, el mismo evento que ya escucha la app);
+    // la asignación manual no avisaba nada, así que el chofer no se enteraba
+    // hasta refrescar. Mismo evento, mismo payload que offerToNextDriver
+    // (ver DispatchOrchestratorService): el chofer lo ve como una oferta y
+    // puede "aceptarla" (no-op idempotente, ya está asignado). Si la rechaza
+    // o deja vencer el aviso, el pedido NO se libera solo: queda igual
+    // asignado y se avisa a los admins para que decidan (segunda revisión,
+    // punto 1 — ver `OrderService.rejectOffer`).
+    this.dispatch.notifyDriverNewOrder(delivery.userId, {
+      event: 'NEW_ORDER',
       orderId: order.orderId,
-      status: order.status,
       totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      expiresAt: new Date(
+        Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
+      ).toISOString(),
+      items: order.items,
     });
     // Se relee para que la respuesta traiga el chofer nuevo, no el anterior.
     return this.findOne(orderId);

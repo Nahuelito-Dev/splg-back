@@ -15,6 +15,11 @@ export const JoiValidationSchema = Joi.object({
     .integer()
     .min(1)
     .default(60),
+  // Umbral de RSS de /health (H-53): 300 MB era el de un proceso recién
+  // levantado, no el de uno trabajando (con tráfico real lo supera y el
+  // load balancer lo sacaba de servicio). 512 MB da margen para la carga
+  // normal de este proceso Node/Nest sin dejar de detectar una fuga real.
+  HEALTH_MEMORY_RSS_THRESHOLD_MB: Joi.number().integer().min(1).default(512),
   // Firebase Admin: sin estas tres no se pueden verificar los tokens.
   FIREBASE_PROJECT_ID: Joi.string().required(),
   FIREBASE_CLIENT_EMAIL: Joi.string().required(),
