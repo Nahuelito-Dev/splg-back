@@ -121,6 +121,23 @@ export class ZoneSurchargeDto {
   amount!: number;
 }
 
+/**
+ * Vehículo con el que se entrega, tal como quedó registrado en el pedido
+ * (snapshot al aceptarlo): no cambia aunque el chofer cambie de vehículo o
+ * el auto se edite/borre después.
+ */
+export class VehicleDeOrderDto {
+  @ApiProperty({ name: 'car_id', format: 'uuid' })
+  @Expose({ name: 'car_id' })
+  carId!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: 'AB123CD' })
+  patent!: string | null;
+
+  @ApiProperty({ type: String, nullable: true }) brand!: string | null;
+  @ApiProperty({ type: String, nullable: true }) model!: string | null;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
@@ -298,4 +315,13 @@ export class OrderResponseDto {
   @ApiProperty({ name: 'subtotal_items', example: 20000 })
   @Expose({ name: 'subtotal_items' })
   subtotalItems!: number;
+
+  /**
+   * Vehículo con el que se entrega (snapshot al aceptar). `null` si todavía
+   * no tiene chofer asignado, o es de antes de esta funcionalidad.
+   */
+  @ApiProperty({ name: 'vehicle', type: VehicleDeOrderDto, nullable: true })
+  @Expose({ name: 'vehicle' })
+  @Type(() => VehicleDeOrderDto)
+  vehicle!: VehicleDeOrderDto | null;
 }

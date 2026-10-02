@@ -78,11 +78,11 @@ describe('AdminService', () => {
       'admin.adminId = :admin_id',
       expect.anything(),
     );
-    await service.findAdminByTerm('admin@splg.com');
-    expect(qb.where).toHaveBeenLastCalledWith(
-      'user.email = :email',
-      expect.anything(),
-    );
+    await service.findAdminByTerm('Admin@Splg.com');
+    // Sin distinguir mayúsculas: compara el correo en minúsculas.
+    expect(qb.where).toHaveBeenLastCalledWith('LOWER(user.email) = :email', {
+      email: 'admin@splg.com',
+    });
   });
 
   it('no le cuelga un perfil de admin a un cliente', async () => {

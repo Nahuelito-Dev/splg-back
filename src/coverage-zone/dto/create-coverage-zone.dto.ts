@@ -7,6 +7,7 @@ import {
   IsISO8601,
   IsNumber,
   IsOptional,
+  ValidateIf,
   IsString,
   Matches,
   Min,
@@ -62,7 +63,8 @@ export class CreateCoverageZoneDto {
       'fixed = monto fijo en la moneda del pedido; percentage = % sobre el ' +
       'subtotal de los ítems (ya con promociones).',
   })
-  @IsOptional()
+  // `null` no es "no vino": la columna no admite nulos, así que se valida.
+  @ValidateIf((_, valor) => valor !== undefined)
   @IsEnum(CoverageZoneSurchargeType)
   surchargeType?: CoverageZoneSurchargeType;
 
@@ -72,7 +74,7 @@ export class CreateCoverageZoneDto {
     description:
       'Monto (fixed) o porcentaje 0-100 (percentage) del recargo de esta zona.',
   })
-  @IsOptional()
+  @ValidateIf((_, valor) => valor !== undefined)
   @IsNumber()
   @EsRecargoValido()
   surchargeValue?: number;

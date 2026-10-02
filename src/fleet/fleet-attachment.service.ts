@@ -16,6 +16,7 @@ import {
   StorageObjectStream,
 } from '../storage/ports/storage.port';
 import {
+  decodificarNombreDeArchivo,
   esMimeTypePermitido,
   extensionParaMimeType,
   MAX_ATTACHMENT_SIZE_BYTES,
@@ -58,6 +59,9 @@ export class FleetAttachmentService {
     if (!file) {
       throw new BadRequestException('Falta el archivo');
     }
+    if (file.size === 0) {
+      throw new BadRequestException('El archivo está vacío');
+    }
     if (!esMimeTypePermitido(file.mimetype)) {
       throw new UnsupportedMediaTypeException(
         `Tipo de archivo no permitido (${file.mimetype}). Se acepta PDF, JPG, PNG o WEBP`,
@@ -80,7 +84,7 @@ export class FleetAttachmentService {
       taskId,
       distributorId,
       storageKey: key,
-      originalName: file.originalname,
+      originalName: decodificarNombreDeArchivo(file.originalname),
       mimeType: file.mimetype,
       sizeBytes: file.size,
       uploadedByUserId,

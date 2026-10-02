@@ -18,6 +18,7 @@ describe('ReportsService', () => {
     where: jest.Mock;
     andWhere: jest.Mock;
     groupBy: jest.Mock;
+    orderBy: jest.Mock;
     getRawMany: jest.Mock;
   }
   let qb: QbFalso;
@@ -29,6 +30,7 @@ describe('ReportsService', () => {
       where: jest.fn((): QbFalso => qb),
       andWhere: jest.fn((): QbFalso => qb),
       groupBy: jest.fn((): QbFalso => qb),
+      orderBy: jest.fn((): QbFalso => qb),
       getRawMany: jest.fn(),
     };
     orders = { find: jest.fn(), createQueryBuilder: jest.fn(() => qb) };
@@ -111,5 +113,34 @@ describe('ReportsService', () => {
         totalSales: 2711800,
       },
     ]);
+  });
+
+  describe('getSalesEvolution', () => {
+    it('granularity=week agrupa por semana ISO, no por día (H-57)', async () => {
+      qb.getRawMany.mockResolvedValue([]);
+      await service.getSalesEvolution(new Date(), new Date(), 'week');
+      expect(qb.select).toHaveBeenCalledWith(
+        "date_trunc('week', order.deliveredAt)",
+        'period',
+      );
+    });
+
+    it('granularity=day agrupa por día', async () => {
+      qb.getRawMany.mockResolvedValue([]);
+      await service.getSalesEvolution(new Date(), new Date(), 'day');
+      expect(qb.select).toHaveBeenCalledWith(
+        "date_trunc('day', order.deliveredAt)",
+        'period',
+      );
+    });
+
+    it('granularity=month agrupa por mes', async () => {
+      qb.getRawMany.mockResolvedValue([]);
+      await service.getSalesEvolution(new Date(), new Date(), 'month');
+      expect(qb.select).toHaveBeenCalledWith(
+        "date_trunc('month', order.deliveredAt)",
+        'period',
+      );
+    });
   });
 });

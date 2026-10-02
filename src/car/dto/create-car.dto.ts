@@ -4,8 +4,11 @@ import {
   IsOptional,
   IsString,
   IsInt,
+  Matches,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizarPatente } from '../patente.util';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCarDto {
@@ -27,11 +30,24 @@ export class CreateCarDto {
   @IsInt()
   car_capacity?: number;
 
-  @ApiProperty({ description: 'Car patent number', required: false })
+  @ApiProperty({
+    description:
+      'Patente. Se guarda en mayúsculas, sin espacios ni guiones, y tiene que ' +
+      'quedar con al menos 4 letras o números. `null` (al editar) la borra.',
+    required: false,
+    nullable: true,
+    type: String,
+  })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarPatente(value) : value,
+  )
   @IsString()
-  @MinLength(4)
-  car_patent?: string;
+  @Matches(/^[A-Z0-9]{4,20}$/, {
+    message:
+      'car_patent debe tener entre 4 y 20 letras o números (sin contar espacios ni guiones)',
+  })
+  car_patent?: string | null;
 
   @ApiProperty({ description: 'Car brand', required: false })
   @IsOptional()

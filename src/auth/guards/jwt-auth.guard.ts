@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  HttpException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,6 +12,7 @@ import { RequestSource } from '../enum/request-source.enum';
 import { User } from '../../users/entities/user.entity';
 import { DistributorService } from '../../distributor/distributor.service';
 import { RoleType } from '../../common/constants/role-type.enum';
+import { SIN_DISTRIBUIDORA_KEY } from '../../common/decorators/sin-distribuidora.decorator';
 import type { Request } from 'express';
 
 /** Un uuid v4 canónico (para distinguir header X-Distributor id vs slug). */
@@ -35,6 +37,13 @@ export class AuthGuard implements CanActivate {
     );
 
     if (isPublic) {
+      const identificar = this.reflector.get<boolean | undefined>(
+        'identificarSiHayToken',
+        context.getHandler(),
+      );
+      if (identificar) {
+        await this.identificarSiPuede(request, context);
+      }
       return true;
     }
 
@@ -68,6 +77,43 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('No token provided');
     }
 
+    await this.identificar(request, token, requestSource, context);
+
+    return true;
+  }
+
+  /**
+   * Para rutas `@PublicIdentificable()`: con token y `X-Client-Source`
+   * válidos deja el usuario y la distribuidora en la request; en cualquier
+   * otro caso la deja anónima (`distributorId = null`) sin rechazarla.
+   */
+  private async identificarSiPuede(
+    request: Request,
+    context: ExecutionContext,
+  ): Promise<void> {
+    request.distributorId = null;
+    const token = this.extractTokenFromHeader(request);
+    const requestSource = this.extractRequestSourceFromHeader(request);
+    if (!token || !requestSource) return;
+    try {
+      await this.identificar(request, token, requestSource, context);
+    } catch (error) {
+      // Sólo un rechazo de autenticación (token vencido, usuario inexistente o
+      // bloqueado) deja la request anónima. Una falla de infraestructura (la
+      // base caída) se propaga: no se confunde con "no hay sesión".
+      if (!(error instanceof HttpException)) throw error;
+      request.user = undefined;
+      request.distributorId = null;
+    }
+  }
+
+  /** Valida el token, carga el usuario y deja usuario y tenant en la request. */
+  private async identificar(
+    request: Request,
+    token: string,
+    requestSource: RequestSource,
+    context: ExecutionContext,
+  ): Promise<void> {
     const token_user = await this.authService.decodeToken(token);
 
     if (!token_user.email) {
@@ -76,7 +122,21 @@ export class AuthGuard implements CanActivate {
 
     const local_user = await this.getUser(token_user.email, requestSource);
 
-    const distributor_id = await this.resolveDistributor(local_user, request);
+    // Rutas marcadas @SinDistribuidora() ignoran el HEADER, no el tenant:
+    // el admin/chofer sigue acotado a la distribuidora de su perfil (y
+    // sigue rechazado si no la tiene) igual que siempre. Sólo cambia para
+    // customer/super_admin, que resuelven por header: ahí se trata como si
+    // no hubiese header, así que uno residual o inexistente no rompe nada.
+    // `getAllAndOverride` mira handler Y clase: si se marca el controller
+    // entero, no queda ignorado en silencio a nivel método.
+    const sinDistribuidora = this.reflector.getAllAndOverride<
+      boolean | undefined
+    >(SIN_DISTRIBUIDORA_KEY, [context.getHandler(), context.getClass()]);
+    const distributor_id = await this.resolveDistributor(
+      local_user,
+      request,
+      sinDistribuidora,
+    );
 
     // getUser ya pasó por validateUserRoleForApp, que rechaza al usuario sin
     // rol o con un rol que no es de esta app: acá el rol es de RoleType.
@@ -88,22 +148,25 @@ export class AuthGuard implements CanActivate {
     };
     // Tenant efectivo de la request (lo lee @CurrentDistributor()).
     request.distributorId = distributor_id;
-
-    return true;
   }
 
   /**
    * Resuelve el tenant (distribuidora) efectivo de la request:
    *  - admin/delivery: se DERIVA de su perfil (server-trusted). Se ignora
    *    cualquier header X-Distributor → un staff no puede operar otro tenant.
+   *    Esto NO cambia con `ignorarHeader`: el staff nunca lee el header, así
+   *    que no hay nada que "ignorar" de más.
    *  - customer/super_admin: del header `X-Distributor` (slug o uuid), validado
-   *    contra una distribuidora activa. Sin header → null.
+   *    contra una distribuidora activa. Sin header → null. Con
+   *    `ignorarHeader` (ruta `@SinDistribuidora()`), se comporta como si el
+   *    header no hubiese llegado: no lo lee, no lo valida, no puede romper.
    * Devuelve null si no hay tenant en contexto (super_admin cross-tenant, o
    * customer que aún no eligió distribuidora).
    */
   private async resolveDistributor(
     user: User,
     request: Request,
+    ignorarHeader = false,
   ): Promise<string | null> {
     const role = user.role?.type;
 
@@ -129,7 +192,11 @@ export class AuthGuard implements CanActivate {
       return id;
     }
 
-    // customer / super_admin → header opcional
+    // customer / super_admin → header opcional, salvo que la ruta ya haya
+    // dicho que no lo necesita: en ese caso ni se lee.
+    if (ignorarHeader) {
+      return null;
+    }
     const header = request.headers['x-distributor'];
     if (!header || typeof header !== 'string') {
       return null;
@@ -139,7 +206,8 @@ export class AuthGuard implements CanActivate {
         ? await this.distributorService.assertActive(header)
         : await this.distributorService.findBySlug(header);
       return distributor.distributorId;
-    } catch {
+    } catch (error) {
+      if (!(error instanceof HttpException)) throw error;
       throw new UnauthorizedException(
         `Distribuidora '${header}' inválida o no disponible`,
       );
@@ -159,7 +227,9 @@ export class AuthGuard implements CanActivate {
     try {
       user = await this.usersService.findOneByEmail(user_email);
       this.validateUserRoleForApp(user, request_source);
-    } catch {
+    } catch (error) {
+      // Una falla de infraestructura no es "usuario inexistente".
+      if (!(error instanceof HttpException)) throw error;
       throw new UnauthorizedException(
         'User not found or invalid role for this application',
       );

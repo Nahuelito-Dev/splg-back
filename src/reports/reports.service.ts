@@ -165,22 +165,24 @@ export class ReportsService {
   }
 
   /**
-   * Evolución temporal de ventas (pedidos entregados) agrupada por día o mes,
-   * usando `date_trunc` de Postgres sobre `deliveredAt`. Devuelve los períodos
-   * ordenados cronológicamente, listos para un gráfico de líneas/barras en el
-   * panel. `granularity` = 'day' | 'month'.
+   * Evolución temporal de ventas (pedidos entregados) agrupada por día,
+   * semana o mes, usando `date_trunc` de Postgres sobre `deliveredAt`.
+   * Devuelve los períodos ordenados cronológicamente, listos para un
+   * gráfico de líneas/barras en el panel.
+   *
+   * `week` usa semanas ISO 8601 (arrancan el lunes): es el mismo criterio
+   * que `date_trunc('week', ...)` aplica nativamente, así que no hace falta
+   * ningún cálculo propio (H-57: antes se aceptaba y se trataba como 'day').
    */
   async getSalesEvolution(
     startDate: Date,
     endDate: Date,
-    granularity: 'day' | 'month',
+    granularity: 'day' | 'week' | 'month',
     distributorId?: string | null,
   ): Promise<EvolucionDeVentasDto[]> {
-    const trunc = granularity === 'month' ? 'month' : 'day';
-
     const query = this.orderRepository
       .createQueryBuilder('order')
-      .select(`date_trunc('${trunc}', order.deliveredAt)`, 'period')
+      .select(`date_trunc('${granularity}', order.deliveredAt)`, 'period')
       .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })

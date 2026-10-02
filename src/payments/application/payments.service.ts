@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
@@ -15,6 +20,8 @@ import {
   PaymentGatewayPort,
   VerifyWebhookSignatureInput,
 } from '../domain/ports/payment-gateway.port';
+import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
 import { errorMessage } from '../../common/errors/error-message';
 
 /** Input para crear un checkout: agnóstico de la pasarela concreta. */
@@ -66,6 +73,7 @@ export class PaymentsService {
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
     private readonly paymentGateway: PaymentGatewayPort,
+    private readonly orderLookup: OrderLookupService,
   ) {}
 
   /**
@@ -78,6 +86,8 @@ export class PaymentsService {
   async createCheckout(
     input: CreatePaymentCheckoutInput,
   ): Promise<CreateCheckoutResult> {
+    await this.assertPedidoCobrable(input.orderId);
+
     const ledgerPayment = await this.paymentRepository.save(
       this.paymentRepository.create({
         orderId: input.orderId,
@@ -102,6 +112,27 @@ export class PaymentsService {
     await this.paymentRepository.save(ledgerPayment);
 
     return checkout;
+  }
+
+  /** 404 si el pedido no existe; 409 si ya no se puede cobrar. */
+  private async assertPedidoCobrable(orderId: string): Promise<void> {
+    const pedido = await this.orderLookup.findPaymentState(orderId);
+    if (!pedido) {
+      throw new NotFoundException(`Pedido ${orderId} no encontrado`);
+    }
+    if (pedido.paymentStatus === PaymentStatus.PAID) {
+      throw new ConflictException('El pedido ya está pagado');
+    }
+    if (pedido.status === OrderStatus.CANCELLED) {
+      throw new ConflictException(
+        'El pedido está cancelado: no se puede cobrar',
+      );
+    }
+    if (pedido.status === OrderStatus.DELIVERED) {
+      throw new ConflictException(
+        'El pedido ya fue entregado: no se puede cobrar',
+      );
+    }
   }
 
   /**

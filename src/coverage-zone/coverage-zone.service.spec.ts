@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CoverageZoneService } from './coverage-zone.service';
+import { UpdateCoverageZoneDto } from './dto/update-coverage-zone.dto';
 import { CoverageZonePricingService } from './coverage-zone-pricing.service';
 import {
   CoverageZone,
@@ -146,11 +147,55 @@ describe('CoverageZoneService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('un recargo en null se rechaza con 400 en vez de llegar a la base', async () => {
+      repo.findOne.mockResolvedValue({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        surchargeType: CoverageZoneSurchargeType.FIXED,
+        surchargeValue: 500,
+        validFrom: null,
+        validUntil: null,
+      });
+      const conNull = {
+        surchargeType: null,
+      } as unknown as UpdateCoverageZoneDto;
+      await expect(service.update('z1', conNull, 'd1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
     it('de otra distribuidora, no se encuentra (404)', async () => {
       repo.findOne.mockResolvedValue(null);
       await expect(
         service.update('z1', { name: 'x' }, 'd1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('validFrom: null quita la vigencia (NO la convierte en 1970-01-01)', async () => {
+      repo.findOne.mockResolvedValue({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+        surchargeValue: 10,
+        validFrom: new Date('2026-01-01T00:00:00Z'),
+        validUntil: null,
+      });
+      const zona = await service.update('z1', { validFrom: null }, 'd1');
+      expect(zona.validFrom).toBeNull();
+    });
+
+    it('validUntil: null quita el vencimiento (NO lo convierte en 1970-01-01)', async () => {
+      repo.findOne.mockResolvedValue({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+        surchargeValue: 10,
+        validFrom: null,
+        validUntil: new Date('2026-12-31T00:00:00Z'),
+      });
+      const zona = await service.update('z1', { validUntil: null }, 'd1');
+      expect(zona.validUntil).toBeNull();
     });
   });
 

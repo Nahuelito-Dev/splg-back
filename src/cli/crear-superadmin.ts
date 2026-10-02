@@ -9,6 +9,7 @@
  * terminal): se lee de SUPERADMIN_PASSWORD o se pide por teclado.
  * Si ya existe un super administrador, no hace nada.
  */
+import { normalizarEmail } from '../common/utils/email.util';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { createInterface } from 'node:readline';
@@ -55,7 +56,7 @@ function pedirContraseña(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const email = argumento('email');
+  const email = normalizarEmail(argumento('email'));
   const full_name = argumento('nombre');
   const phone_number = argumento('telefono');
   const password = process.env.SUPERADMIN_PASSWORD ?? (await pedirContraseña());

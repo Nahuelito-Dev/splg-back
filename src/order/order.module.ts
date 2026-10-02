@@ -23,6 +23,7 @@ import { OrderTypeormRepository } from './infrastructure/order.typeorm.repositor
 import { CreateOrderUseCase } from './application/create-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { CancelOrderUseCase } from './application/cancel-order.use-case';
+import { ReleaseOrderUseCase } from './application/release-order.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
@@ -35,6 +36,7 @@ import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
 import { PaymentsModule } from '../payments/payments.module';
+import { FleetModule } from '../fleet/fleet.module';
 import { NotificationPort } from './domain/ports/notification.port';
 import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
@@ -65,6 +67,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CylinderModule, // ciclo del envase físico: al entregar, avanza los envases
     CoverageZoneModule, // valida cobertura de la dirección + recargo por zona
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
+    FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
   ],
   controllers: [OrderController],
   providers: [
@@ -76,6 +79,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CreateOrderUseCase,
     UpdateOrderStatusUseCase,
     CancelOrderUseCase,
+    ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,
     DispatchOrchestratorService,
     ConfirmPaymentUseCase,

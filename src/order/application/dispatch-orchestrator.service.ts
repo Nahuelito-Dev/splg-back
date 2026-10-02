@@ -7,6 +7,19 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
+
+/**
+ * Cache del bloqueo de flota DENTRO de un mismo intento de oferta
+ * (`findNearestAvailable`): un chofer que reaparece en el radio siguiente
+ * (radios progresivos, casi siempre superconjuntos) no se vuelve a consultar.
+ * Vive y muere con cada llamada; nunca se comparte entre intentos, porque el
+ * estado de la flota puede cambiar entre una oferta y la siguiente.
+ */
+interface CacheDeInhabilitacion {
+  evaluados: Set<string>;
+  inhabilitados: Set<string>;
+}
 
 /**
  * Orquestador de despacho SECUENCIAL con timeout (SRS): un pedido se ofrece al
@@ -34,6 +47,9 @@ export class DispatchOrchestratorService {
     private readonly offers: DispatchOfferRepositoryPort,
     private readonly deliveries: DeliveryService,
     private readonly notifications: NotificationsService,
+    // Bloqueo de flota (CU-136 a CU-138): un chofer con la licencia vencida,
+    // o cuyo vehículo tenga el seguro/VTV vencido, no recibe ofertas.
+    private readonly fleet: FleetDispatchLockService,
   ) {}
 
   /**
@@ -148,6 +164,23 @@ export class DispatchOrchestratorService {
     }
   }
 
+  /**
+   * El pedido vuelve a PENDING (el chofer lo liberó, o un admin lo destrabó a
+   * mano): cierra, si quedó alguna, la oferta OFFERED de ESE chofer para este
+   * pedido. Normalmente es un no-op, porque al aceptar `onDriverAccepted` ya
+   * la cerró como ACCEPTED y no queda ninguna OFFERED vigente; esto es una red
+   * de seguridad ante una carrera del despacho (p. ej. una oferta nueva que se
+   * cruza con la liberación). No re-ofrece: quien libera decide aparte si el
+   * pedido vuelve al pool.
+   */
+  async releaseOffer(orderId: string, driverId: string): Promise<void> {
+    await this.offers.closeActiveOffer(
+      orderId,
+      driverId,
+      DispatchOfferStatus.EXPIRED,
+    );
+  }
+
   /** Solo se re-ofrece un pedido pendiente y sin chofer asignado. */
   private isReofferable(order: Order): boolean {
     return order.status === OrderStatus.PENDING && !order.deliveryId;
@@ -158,6 +191,12 @@ export class DispatchOrchestratorService {
    * contactado. `getNearbyDrivers` ya devuelve ordenado por cercanía (ASC).
    * Multi-tenant: si el pedido tiene distribuidora, sólo se consideran choferes
    * de ESA distribuidora (un chofer no recibe ofertas de otro tenant).
+   *
+   * El bloqueo de flota se calcula UNA VEZ POR INTENTO DE OFERTA (esta
+   * llamada), no una vez por radio: `cacheDeFlota` (abajo) se crea acá y se
+   * pasa a cada `filterEligible`, que sólo consulta la flota de los
+   * candidatos que todavía no evaluó en este intento (los radios grandes
+   * son casi siempre superconjuntos de los chicos).
    */
   private async findNearestAvailable(
     lat: number,
@@ -165,9 +204,18 @@ export class DispatchOrchestratorService {
     exclude: Set<string>,
     distributorId?: string | null,
   ): Promise<string | null> {
+    const cacheDeFlota: CacheDeInhabilitacion = {
+      evaluados: new Set(),
+      inhabilitados: new Set(),
+    };
+
     for (const radiusKm of DispatchOrchestratorService.RADIUS_STEPS_KM) {
       const drivers = await this.dispatch.findNearbyDrivers(lat, lng, radiusKm);
-      const eligible = await this.filterEligible(drivers, distributorId);
+      const eligible = await this.filterEligible(
+        drivers,
+        distributorId,
+        cacheDeFlota,
+      );
       const next = eligible.find((id) => !exclude.has(id));
       if (next) return next;
     }
@@ -175,21 +223,48 @@ export class DispatchOrchestratorService {
   }
 
   /**
-   * Restringe una lista de choferes (por cercanía) a los habilitados y
-   * validados y, si se pasa, de la distribuidora dada, preservando el orden.
-   * `driver_id` de la oferta = `user_id` del chofer = `delivery.user_id`.
+   * Restringe una lista de choferes (por cercanía) a los habilitados,
+   * validados y SIN bloqueo de flota, y si se pasa, de la distribuidora
+   * dada, preservando el orden. `driver_id` de la oferta = `user_id` del
+   * chofer = `delivery.user_id`.
    *
    * El radar de Redis (`findNearbyDrivers`) sólo sabe de posición: no filtra
    * por habilitación ni validación. Sin este chequeo contra la base, un
    * chofer deshabilitado que igual quedara en el radar (por ejemplo,
    * conectado por socket sin pasar por el endpoint de disponibilidad) seguiría
    * recibiendo ofertas.
+   *
+   * CU-136 a CU-138: además, un chofer con la licencia vencida o cuyo
+   * vehículo tenga el seguro/VTV vencido se saltea igual que uno
+   * deshabilitado, y se pasa al siguiente candidato. Sólo se le pregunta a
+   * `choferesInhabilitados` por los candidatos que `cache` todavía no
+   * evaluó en este intento de oferta.
    */
   private async filterEligible(
     driverIds: string[],
-    distributorId?: string | null,
+    distributorId: string | null | undefined,
+    cache: CacheDeInhabilitacion,
   ): Promise<string[]> {
     if (driverIds.length === 0) return driverIds;
-    return this.deliveries.choferesElegibles(driverIds, distributorId);
+    const elegibles = await this.deliveries.choferesElegibles(
+      driverIds,
+      distributorId,
+    );
+    if (elegibles.length === 0) return elegibles;
+
+    const nuevos = elegibles.filter((id) => !cache.evaluados.has(id));
+    if (nuevos.length > 0) {
+      const inhabilitadosNuevos = await this.fleet.choferesInhabilitados(
+        nuevos,
+        distributorId,
+      );
+      for (const id of nuevos) {
+        cache.evaluados.add(id);
+        if (inhabilitadosNuevos.has(id)) cache.inhabilitados.add(id);
+      }
+    }
+
+    if (cache.inhabilitados.size === 0) return elegibles;
+    return elegibles.filter((id) => !cache.inhabilitados.has(id));
   }
 }

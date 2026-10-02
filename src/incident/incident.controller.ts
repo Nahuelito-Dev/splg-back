@@ -88,6 +88,9 @@ export class IncidentController {
     return incidents.map((i) => IncidentMapper.toDto(i));
   }
 
+  // Distribuidora obligatoria, igual que `take`/`reopen`/`resolve` de reclamos:
+  // un admin ya llega con la suya fijada por el guard; el super admin tiene
+  // que elegir una (`X-Distributor`) en vez de resolver cross-tenant.
   @Patch(':id/resolve')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Resolver una incidencia' })
@@ -95,7 +98,8 @@ export class IncidentController {
   @ApiOkResponse({ type: IncidentResponseDto })
   @ApiNotFoundResponse({ description: 'Incidencia no encontrada' })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: resolutionNote must be a string)',
+    description:
+      'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: resolutionNote must be a string)',
   })
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,

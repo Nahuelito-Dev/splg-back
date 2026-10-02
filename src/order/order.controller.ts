@@ -25,6 +25,7 @@ import {
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { ReservationService } from './application/reservation.service';
+import { mapRoleToCancelActor } from './application/cancel-order.use-case';
 import { OrderMapper } from './order.mapper';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -54,23 +55,6 @@ import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
-
-/**
- * Traduce el rol autenticado (RoleType) al actor que espera
- * `OrderService.cancelOrder`. super_admin se trata como admin.
- */
-function mapRoleToCancelActor(
-  role: RoleType,
-): 'customer' | 'driver' | 'admin' | 'superadmin' {
-  switch (role) {
-    case RoleType.CUSTOMER:
-      return 'customer';
-    case RoleType.DELIVERY:
-      return 'driver';
-    default:
-      return 'admin';
-  }
-}
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -267,18 +251,37 @@ export class OrderController {
   @ApiOperation({
     summary: 'Update order status',
     description:
-      'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red. Solo chofer/admin.',
+      'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red. Solo chofer/admin.\n\n' +
+      '- `status: cancelled` tiene EXACTAMENTE el mismo efecto que `PATCH /:id/cancel` (mismo código, mismo stock, mismos ' +
+      'avisos): cancela con devolución de stock si lo pide un admin, o LIBERA el pedido a `pending` (sin devolver stock, ' +
+      'sin motivo de cancelación) si lo pide el chofer — no cancela de verdad.\n' +
+      '- `status: pending` sobre un pedido ACCEPTED/ON_THE_WAY libera al chofer asignado (mismo camino que el punto ' +
+      'anterior): limpia el chofer, corta su tracking, cierra cualquier oferta que hubiera quedado y avisa al chofer ' +
+      'anterior, al cliente y al panel. `POST /:id/reject` sobre una asignación manual NO usa este camino: no libera, ' +
+      'sólo avisa al panel (ver `/reject`).\n' +
+      '- `status: pending` sobre una RESERVA (pedido `reserved`) la ACTIVA a mano, con las mismas condiciones que el cron ' +
+      '(seña paga y día agendado cumplido) — sólo admin/super_admin, 400 claro si no las cumple.\n' +
+      '- `status: accepted` sobre un pedido YA `accepted` con el MISMO chofer es idempotente: no regenera `acceptedAt` ' +
+      'ni el código de entrega (pasa cuando el chofer "acepta" el aviso de una asignación manual).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiOkResponse({ type: OrderResponseDto, description: 'Estado actualizado' })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description:
+      'Estado actualizado, o devuelto a pendiente si lo libera el chofer',
+  })
   @ApiResponse({
     status: 403,
-    description: 'El pedido no está asignado a este chofer',
+    description:
+      'El pedido no está asignado a este chofer, o un chofer intentó activar una reserva a mano',
   })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiBadRequestResponse({
     description:
-      'Transición de pedido inválida: cancelled → accepted · status debe ser uno de: reserved, pending, accepted, on_the_way, delivered, cancelled',
+      'Transición de pedido inválida: cancelled → accepted · status debe ser uno de: reserved, pending, accepted, ' +
+      'on_the_way, delivered, cancelled · la reserva no tiene la seña paga o todavía no llegó su fecha agendada · ' +
+      'al aceptar (status=accepted), el repartidor está deshabilitado, no está validado, o tiene un documento de ' +
+      'flota vencido que lo inhabilita (seguro, VTV o licencia)',
   })
   async updateStatus(
     @CurrentUser() user: AuthenticatedUser,
@@ -298,6 +301,9 @@ export class OrderController {
       body.status,
       deliveryId,
       user.role,
+      // El actor sale SIEMPRE del token: lo usa el caso `status: cancelled`,
+      // que delega en la misma cancelación que `PATCH /:id/cancel`.
+      user.user_id,
     );
     return OrderMapper.toDto(order);
   }
@@ -306,10 +312,16 @@ export class OrderController {
   @Auth(RoleType.DELIVERY)
   @Idempotent()
   @ApiOperation({
-    summary: 'Chofer rechaza/ignora una oferta de pedido (CU-016)',
+    summary:
+      'Chofer rechaza/ignora una oferta de pedido (CU-016) o una asignación manual (H-55)',
     description:
-      'Cierra la oferta activa del chofer como REJECTED y re-ofrece el pedido ' +
-      'al siguiente chofer más cercano de inmediato (sin esperar el timeout).',
+      'Oferta real del despacho automático: cierra la oferta activa del chofer como REJECTED y re-ofrece el pedido ' +
+      'al siguiente chofer más cercano de inmediato (sin esperar el timeout).\n\n' +
+      'Asignación MANUAL del admin (el chofer la recibe con el mismo evento de socket que una oferta, pero nunca hubo ' +
+      'una fila `OFFERED` que cerrar): el pedido NO cambia. La app manda este mismo endpoint tanto si el chofer lo ' +
+      'rechaza a propósito como si deja vencer el aviso sin tocarlo, así que "rechazarla" no puede deshacer sola una ' +
+      'asignación que un admin decidió a mano — se avisa al panel (`order:assignment-declined`) para que decida un ' +
+      'humano (reasignar, insistir, etc.); el pedido sigue asignado a este chofer.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: RechazoDeOfertaResponseDto })
@@ -397,7 +409,9 @@ export class OrderController {
     summary: 'Assign order to delivery',
     description:
       'Asignación manual del admin: exige que el chofer esté habilitado y ' +
-      'validado. NO exige que esté en línea (a diferencia del despacho ' +
+      'validado, y que ni su licencia ni el vehículo que maneja tengan un ' +
+      'documento bloqueante vencido (seguro, VTV, licencia — CU-136 a ' +
+      'CU-138). NO exige que esté en línea (a diferencia del despacho ' +
       'automático).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
@@ -406,7 +420,9 @@ export class OrderController {
   @ApiResponse({ status: 404, description: 'Order or delivery not found' })
   @ApiBadRequestResponse({
     description:
-      'El repartidor está deshabilitado, o el repartidor no está validado',
+      'El repartidor está deshabilitado, no está validado, o tiene un ' +
+      'documento de flota vencido que lo inhabilita (seguro, VTV o ' +
+      'licencia)',
   })
   async assignDelivery(
     @Param('id', ParseUUIDPipe) id: string,
@@ -462,7 +478,13 @@ export class OrderController {
 
   @Delete(':id')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Cancel order (Admin Force)' })
+  @ApiOperation({
+    summary: 'Cancel order (Admin Force)',
+    deprecated: true,
+    description:
+      'Duplica `PATCH /orders/:id/cancel` (delega en la MISMA cancelación, mismo stock, mismos avisos). ' +
+      'Se mantiene sólo por compatibilidad con clientes existentes: usar `/cancel` en código nuevo.',
+  })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({
     type: OrderResponseDto,

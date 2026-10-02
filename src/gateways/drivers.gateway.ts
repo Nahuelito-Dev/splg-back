@@ -152,7 +152,11 @@ export class DriversGateway
         'order:driver-location',
         payload,
       );
-      this.adminGateway.notifyAdmins('order:driver-location', payload);
+      this.adminGateway.notifyAdmins(
+        'order:driver-location',
+        payload,
+        active.distributorId,
+      );
     }
   }
 

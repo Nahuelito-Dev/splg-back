@@ -276,12 +276,17 @@ export class UsersController {
     description:
       'El usuario y sus perfiles quedan dados de baja y dejan de aparecer; ' +
       'sus pedidos y registros se conservan. La cuenta de Firebase se ' +
-      'deshabilita, no se borra (H-74).',
+      'deshabilita, no se borra (H-74). Un chofer con pedidos en curso no se ' +
+      'puede dar de baja (409).',
   })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiConflictResponse({
+    description:
+      'Es un chofer con pedidos aceptados o en camino: hay que cancelarlos o reasignarlos antes',
+  })
   @HttpCode(HttpStatus.OK)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,

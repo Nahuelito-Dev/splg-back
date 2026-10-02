@@ -13639,6 +13639,1116 @@
       ]
     },
     {
+      "name": "Fleet · Vehicle in use",
+      "item": [
+        {
+          "name": "GET /api/car/{id}/assignments",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/car/{{carId}}/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "car",
+                    "{{carId}}",
+                    "assignments"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Historial de choferes que usaron un vehículo"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/car/{{carId}}/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "car",
+                    "{{carId}}",
+                    "assignments"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/car/{{idInexistente}}/assignments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "car",
+                    "{{idInexistente}}",
+                    "assignments"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403 o 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403, 200]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "GET /api/delivery/me/vehicle",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/me/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "me",
+                    "vehicle"
+                  ]
+                },
+                "description": "El vehículo en uso del chofer autenticado"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/me/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "me",
+                    "vehicle"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "GET /api/delivery/{id}/vehicle",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Vehículo en uso de un chofer"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{idInexistente}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{idInexistente}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403 o 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403, 200]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "GET /api/delivery/{id}/vehicle-history",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle-history",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle-history"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Historial de vehículos de un chofer"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle-history",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle-history"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{idInexistente}}/vehicle-history",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{idInexistente}}",
+                    "vehicle-history"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "term",
+                      "value": "{{term}}",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403 o 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403, 200]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "PUT /api/delivery/{id}/vehicle",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Poner en uso un vehículo para un chofer",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carId\": \"{{fleetCarId}}\",\n  \"note\": \"Asignado por la bateria de pruebas\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2 · datos invalidos → 400",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "El ValidationPipe tiene que rechazar esto antes de tocar la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carId\": \"no-es-un-uuid\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Entrada invalida: el pipe la frena con 400.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "pm.test(\"el error explica que paso\", () => {",
+                      "  const j = pm.response.json();",
+                      "  pm.expect(j, \"falta message\").to.have.property(\"message\");",
+                      "  pm.expect(j, \"falta statusCode\").to.have.property(\"statusCode\");",
+                      "});",
+                      "pm.test(\"el error no revela rutas del servidor\", () =>",
+                      "  pm.expect(pm.response.text()).to.not.match(/\\/(Users|home|var\\/www)\\//));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carId\": \"{{fleetCarId}}\",\n  \"note\": \"Asignado por la bateria de pruebas\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{idInexistente}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{idInexistente}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carId\": \"{{fleetCarId}}\",\n  \"note\": \"Asignado por la bateria de pruebas\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/delivery/{id}/vehicle",
+          "item": [
+            {
+              "name": "1 · correcto → 200",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Liberar el vehículo en uso de un chofer"
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// El camino feliz: datos validos y permisos correctos.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 200 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+                      "if (pm.response.code < 300 && pm.response.text()) {",
+                      "  pm.test(\"devuelve JSON valido\", () => pm.response.json());",
+                      "  pm.test(\"no filtra datos sensibles\", () => {",
+                      "    const t = pm.response.text();",
+                      "    pm.expect(t, \"refreshToken\").to.not.include(\"refreshToken\");",
+                      "    pm.expect(t, \"apiKey\").to.not.include(\"apiKey\");",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3 · sin token → 401",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "",
+                    "disabled": false
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{deliveryId}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{deliveryId}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Sin cabecera de autorizacion: el AuthGuard tiene que cortar.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Esta peticion va sin token a proposito.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code).to.be.below(500));",
+                      "pm.test(\"rechaza sin token (401)\", () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4 · id inexistente → 404",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-Client-Source",
+                    "value": "{{clientSource}}"
+                  },
+                  {
+                    "key": "X-Distributor",
+                    "value": "{{distributorSlug}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/delivery/{{idInexistente}}/vehicle",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "delivery",
+                    "{{idInexistente}}",
+                    "vehicle"
+                  ]
+                },
+                "description": "Un identificador con formato valido que no existe en la base."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Recurso inexistente: 404, o lista vacia si el endpoint devuelve una coleccion. Lo que no puede ser es un 500.",
+                      "pm.test(\"nunca 5xx\", () => pm.expect(pm.response.code, \"un 5xx es siempre un defecto\").to.be.below(500));",
+                      "pm.test(\"responde 404 o 400 o 403\", () =>",
+                      "  pm.expect(pm.response.code).to.be.oneOf([404, 400, 403]));",
+                      "pm.test(\"responde en menos de 2s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Gas Cylinders",
       "item": [
         {

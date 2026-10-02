@@ -1,8 +1,9 @@
 # Colección de Postman de SPLG
 
-**441 peticiones sobre los 145 endpoints** (incluye `fleet/plans`,
-`fleet/tasks`, `fleet/expirations` y las fachadas de documentos de vehículo y
-chofer). Cada endpoint tiene su caso correcto y sus casos de fallo, cada uno
+**459 peticiones sobre los 151 endpoints** (incluye `fleet/plans`,
+`fleet/tasks`, `fleet/expirations`, las fachadas de documentos de vehículo y
+chofer, y "Fleet · Vehicle in use": qué vehículo usa cada chofer, con
+historial). Cada endpoint tiene su caso correcto y sus casos de fallo, cada uno
 con el test que corresponde.
 
 Tres endpoints de flota quedan afuera del generador automático: subir un
@@ -87,7 +88,7 @@ El detalle de cada uno está en
 
 ## Los cuerpos
 
-Los **50 endpoints que reciben cuerpo lo tienen escrito a mano y probado** contra
+Los **56 endpoints que reciben cuerpo lo tienen escrito a mano y probado** contra
 la API, en `cuerpos.py`. Cada uno trae un `ok` que funciona y un `malo` que debe
 ser rechazado.
 

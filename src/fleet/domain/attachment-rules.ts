@@ -37,3 +37,16 @@ export function extensionParaMimeType(
   };
   return extensiones[mimeType];
 }
+
+/**
+ * Multer entrega `originalname` decodificado como latin1 aunque el navegador
+ * lo haya mandado en UTF-8: "póliza.pdf" llega como "pÃ³liza.pdf". Si el
+ * nombre es el resultado de leer bytes UTF-8 como latin1 lo reconstruye; si
+ * ya viene bien (algún carácter fuera de latin1, o bytes que no son UTF-8
+ * válido) lo deja como está.
+ */
+export function decodificarNombreDeArchivo(nombre: string): string {
+  if ([...nombre].some((c) => c.charCodeAt(0) > 0xff)) return nombre;
+  const decodificado = Buffer.from(nombre, 'latin1').toString('utf8');
+  return decodificado.includes('�') ? nombre : decodificado;
+}

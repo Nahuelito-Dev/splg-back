@@ -10,9 +10,11 @@ import { Car } from './entities/car.entity';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
 import { DeliveryService } from '../delivery/delivery.service';
+import { VehicleAssignmentService } from './vehicle-assignment.service';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { CarBorradoResponseDto } from './dto/car-response.dto';
+import { normalizarPatente } from './patente.util';
 
 /**
  * El cuerpo de la API va en snake_case y la entidad en camelCase: se mapea
@@ -24,7 +26,10 @@ function columnasDelAuto(dto: UpdateCarDto): DeepPartial<Car> {
     userId: dto.user_id,
     typeCar: dto.type_car,
     carCapacity: dto.car_capacity,
-    carPatent: dto.car_patent,
+    carPatent:
+      typeof dto.car_patent === 'string'
+        ? normalizarPatente(dto.car_patent)
+        : dto.car_patent,
     carBrand: dto.car_brand,
     carModel: dto.car_model,
     carYear: dto.car_year,
@@ -41,6 +46,7 @@ export class CarService {
     private readonly carRepository: Repository<Car>,
 
     private readonly deliveryService: DeliveryService,
+    private readonly vehicleAssignments: VehicleAssignmentService,
   ) {}
 
   async create(
@@ -49,9 +55,9 @@ export class CarService {
   ): Promise<Car> {
     await this.assertDueñoEsChofer(createCarDto.user_id, distributorId);
 
-    if (createCarDto.car_patent) {
+    if (typeof createCarDto.car_patent === 'string') {
       const existingCar = await this.carRepository.findOne({
-        where: { carPatent: createCarDto.car_patent },
+        where: { carPatent: normalizarPatente(createCarDto.car_patent) },
       });
 
       if (existingCar) {
@@ -93,7 +99,7 @@ export class CarService {
     });
 
     if (!car) {
-      throw new NotFoundException(`Car with ID: ${id} not found`);
+      throw new NotFoundException(`Vehículo ${id} no encontrado`);
     }
 
     return car;
@@ -128,12 +134,15 @@ export class CarService {
 
     // Contra la patente guardada: después del preload el auto ya trae la
     // nueva y la comparación daba siempre igual.
-    if (
-      updateCarDto.car_patent &&
-      updateCarDto.car_patent !== actual.carPatent
-    ) {
+    // `''` no se saltea el chequeo (la validación del DTO ya lo rechaza, pero
+    // este servicio también lo llaman otros) y `null` borra la patente.
+    const patenteNueva =
+      typeof updateCarDto.car_patent === 'string'
+        ? normalizarPatente(updateCarDto.car_patent)
+        : undefined;
+    if (patenteNueva !== undefined && patenteNueva !== actual.carPatent) {
       const existingCar = await this.carRepository.findOne({
-        where: { carPatent: updateCarDto.car_patent },
+        where: { carPatent: patenteNueva },
       });
 
       if (existingCar && existingCar.carId !== id) {
@@ -143,24 +152,89 @@ export class CarService {
       }
     }
 
-    const car = await this.carRepository.preload({
-      carId: id,
-      ...columnasDelAuto(updateCarDto),
-    });
+    // `car_patent: null` también es un cambio: borra la patente.
+    const cambiaPatente =
+      updateCarDto.car_patent === null
+        ? actual.carPatent !== null
+        : patenteNueva !== undefined && patenteNueva !== actual.carPatent;
+    const cambiaIdentidad =
+      cambiaPatente ||
+      (updateCarDto.type_car !== undefined &&
+        updateCarDto.type_car !== actual.typeCar);
 
-    if (!car) {
-      throw new NotFoundException(`Car with ID: ${id} not found`);
+    if (!cambiaIdentidad) {
+      const car = await this.carRepository.preload({
+        carId: id,
+        ...columnasDelAuto(updateCarDto),
+      });
+      if (!car) {
+        throw new NotFoundException(`Vehículo ${id} no encontrado`);
+      }
+      return await this.carRepository.save(car);
     }
 
-    return await this.carRepository.save(car);
+    // La patente y el tipo definen la identidad y la aptitud del vehículo: no
+    // se tocan mientras un chofer lo usa. Con la fila bloqueada (el mismo lock
+    // que `remove` y `VehicleAssignmentService.ponerEnUso`) la verificación y
+    // el cambio son atómicos frente a un `PUT /delivery/:id/vehicle`.
+    try {
+      return await this.carRepository.manager.transaction(async (manager) => {
+        const bloqueado = await manager
+          .getRepository(Car)
+          .createQueryBuilder('car')
+          .setLock('pessimistic_write')
+          .where('car.carId = :id', { id })
+          .andWhere('car.distributorId = :distributorId', { distributorId })
+          .getOne();
+        if (!bloqueado) {
+          throw new NotFoundException(`Vehículo ${id} no encontrado`);
+        }
+        await this.vehicleAssignments.assertVehiculoLibre(id, manager);
+        const car = await manager.getRepository(Car).preload({
+          carId: id,
+          ...columnasDelAuto(updateCarDto),
+        });
+        if (!car) {
+          throw new NotFoundException(`Vehículo ${id} no encontrado`);
+        }
+        return await manager.getRepository(Car).save(car);
+      });
+    } catch (error) {
+      return this.handleDBExceptions(error);
+    }
   }
 
   async remove(
     id: string,
     distributorId: string,
   ): Promise<CarBorradoResponseDto> {
-    const car = await this.findOne(id, distributorId);
-    await this.carRepository.softRemove(car);
+    await this.findOne(id, distributorId); // 404 si no es de esta distribuidora
+
+    // Con la fila del vehículo bloqueada (el mismo lock que toma
+    // `VehicleAssignmentService.ponerEnUso`), verificar que está libre y darlo
+    // de baja es atómico: un `PUT /delivery/:id/vehicle` concurrente espera y,
+    // si la baja gana, no encuentra el vehículo (404); si gana el `PUT`, la
+    // baja ve el vehículo en uso y responde 409.
+    try {
+      await this.carRepository.manager.transaction(async (manager) => {
+        const car = await manager
+          .getRepository(Car)
+          .createQueryBuilder('car')
+          .setLock('pessimistic_write')
+          .where('car.carId = :id', { id })
+          .andWhere('car.distributorId = :distributorId', { distributorId })
+          .getOne();
+        if (!car) {
+          throw new NotFoundException(`Vehículo ${id} no encontrado`);
+        }
+        // No se puede dar de baja un vehículo en uso: hay que liberarlo
+        // primero (`DELETE /delivery/:id/vehicle`).
+        await this.vehicleAssignments.assertVehiculoLibre(id, manager);
+        await manager.softRemove(car);
+      });
+    } catch (error) {
+      return this.handleDBExceptions(error);
+    }
 
     return {
       message: 'Car deleted successfully',
@@ -172,7 +246,9 @@ export class CarService {
     patent: string,
     distributorId?: string | null,
   ): Promise<Car | null> {
-    const where: FindOptionsWhere<Car> = { carPatent: patent };
+    const where: FindOptionsWhere<Car> = {
+      carPatent: normalizarPatente(patent),
+    };
     if (distributorId) where.distributorId = distributorId;
 
     const car = await this.carRepository.findOne({

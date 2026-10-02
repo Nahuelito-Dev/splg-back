@@ -7,6 +7,7 @@ import {
   OrderItemResponseDto,
   OrderResponseDto,
   ProductoDelRenglonDto,
+  VehicleDeOrderDto,
   ZoneSurchargeDto,
 } from './dto/order-response.dto';
 
@@ -51,6 +52,21 @@ function recargoDeZonaDe(order: Order): ZoneSurchargeDto | null {
   return dto;
 }
 
+/**
+ * Vehículo con el que se entrega, tal como quedó en el snapshot del pedido
+ * (tomado al aceptarlo). `null` si todavía no tiene chofer, o es de antes
+ * de esta funcionalidad — en ambos casos `vehicleCarId` es `null`.
+ */
+function vehiculoDe(order: Order): VehicleDeOrderDto | null {
+  if (!order.vehicleCarId) return null;
+  const dto = new VehicleDeOrderDto();
+  dto.carId = order.vehicleCarId;
+  dto.patent = order.vehiclePatent ?? null;
+  dto.brand = order.vehicleBrand ?? null;
+  dto.model = order.vehicleModel ?? null;
+  return dto;
+}
+
 export class OrderMapper {
   static toDto(order: Order): OrderResponseDto {
     const dto = new OrderResponseDto();
@@ -78,6 +94,7 @@ export class OrderMapper {
     // Zona de cobertura: snapshot al momento de pedir (no vuelve a leer la zona).
     dto.zoneSurcharge = recargoDeZonaDe(order);
     dto.subtotalItems = Number(order.subtotalItems ?? 0);
+    dto.vehicle = vehiculoDe(order);
 
     // Status Mapping
     dto.status = this.mapStatus(order.status);

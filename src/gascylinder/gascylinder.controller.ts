@@ -21,7 +21,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { GasCylinderService } from './gascylinder.service';
-import { Public } from '../common/decorators/isPublic.decorator';
+import { PublicIdentificable } from '../common/decorators/isPublic.decorator';
 import { UpdateStockDto } from './dto/update-stock.dto';
 import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
@@ -62,13 +62,22 @@ export class GasCylinderController {
   }
 
   @Get()
-  @Public()
-  @ApiOperation({ summary: 'Get all gas cylinders with pagination' })
+  @PublicIdentificable()
+  @ApiOperation({
+    summary: 'Get all gas cylinders with pagination',
+    description:
+      'Público. Con sesión iniciada se acota a la distribuidora del usuario ' +
+      '(la del admin, o el header `X-Distributor` del super admin y del ' +
+      'cliente); sin sesión, a `?distributor=` o a la distribuidora por defecto.',
+  })
   @ApiOkResponse({ type: CatalogoDto })
-  async findAll(@Query() query: CatalogQueryDto): Promise<CatalogoDto> {
+  async findAll(
+    @Query() query: CatalogQueryDto,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CatalogoDto> {
     const pagina = await this.gasCylinderService.findAll(
       query,
-      query.distributor,
+      distributorId ?? query.distributor,
     );
     return {
       ...pagina,
@@ -111,14 +120,22 @@ export class GasCylinderController {
   }
 
   @Get('available/list')
-  @Public()
-  @ApiOperation({ summary: 'Get all available gas cylinders' })
+  @PublicIdentificable()
+  @ApiOperation({
+    summary: 'Get all available gas cylinders',
+    description:
+      'Público. Con sesión iniciada se acota a la distribuidora del usuario; ' +
+      'sin sesión, a `?distributor=` o a la distribuidora por defecto.',
+  })
   @ApiOkResponse({ type: DisponiblesDto })
   async getAvailableCylinders(
     @Query() { distributor }: DistribuidoraQueryDto,
+    @CurrentDistributor() distributorId: string | null,
   ): Promise<DisponiblesDto> {
     const { products, paymentMethods } =
-      await this.gasCylinderService.getAvailableCylinders(distributor);
+      await this.gasCylinderService.getAvailableCylinders(
+        distributorId ?? distributor,
+      );
     return {
       products: products.map((g) => GasCylinderMapper.toDto(g)),
       paymentMethods,

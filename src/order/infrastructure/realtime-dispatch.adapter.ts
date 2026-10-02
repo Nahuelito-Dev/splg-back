@@ -50,19 +50,25 @@ export class RealtimeDispatchAdapter extends RealtimeDispatchPort {
     this.customersGateway.notifyCustomer(customerId, event, payload);
   }
 
-  notifyAdmins(event: string, payload: unknown): void {
-    this.adminGateway.notifyAdmins(event, payload);
+  notifyAdmins(
+    event: string,
+    payload: unknown,
+    distributorId?: string | null,
+  ): void {
+    this.adminGateway.notifyAdmins(event, payload, distributorId);
   }
 
   startTracking(
     driverUserId: string,
     orderId: string,
     customerId: string,
+    distributorId?: string | null,
   ): void {
     // Fire-and-forget: el tracking es best-effort, no bloquea el cambio de estado.
     void this.redisService.setDriverActiveOrder(driverUserId, {
       orderId,
       customerId,
+      distributorId,
     });
   }
 

@@ -317,14 +317,19 @@ export class CreateOrderUseCase {
 
       await this.sendConfirmation(savedOrder.orderId, createOrderDto);
 
-      // Panel admin en vivo: nuevo pedido.
-      this.realtime.notifyAdmins('order:created', {
-        orderId: savedOrder.orderId,
-        distributorId: savedOrder.distributorId,
-        totalAmount: savedOrder.totalAmount,
-        status: savedOrder.status,
-        paymentMethod: savedOrder.paymentMethod,
-      });
+      // Panel admin en vivo: nuevo pedido. Sólo a los admins DE ESA
+      // distribuidora (+ super admin, que ven todas).
+      this.realtime.notifyAdmins(
+        'order:created',
+        {
+          orderId: savedOrder.orderId,
+          distributorId: savedOrder.distributorId,
+          totalAmount: savedOrder.totalAmount,
+          status: savedOrder.status,
+          paymentMethod: savedOrder.paymentMethod,
+        },
+        savedOrder.distributorId,
+      );
 
       const result = await this.orders.findByIdFull(savedOrder.orderId);
       if (!result) {

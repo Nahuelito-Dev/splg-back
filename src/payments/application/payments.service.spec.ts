@@ -1,3 +1,6 @@
+import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { Repository } from 'typeorm';
 import { PaymentsService } from './payments.service';
 import { Payment } from '../entities/payment.entity';
@@ -20,6 +23,7 @@ describe('PaymentsService', () => {
     save: jest.Mock;
     findOne: jest.Mock;
   };
+  let orderLookup: { findPaymentState: jest.Mock };
   let paymentGateway: {
     createCheckout: jest.Mock;
     getPayment: jest.Mock;
@@ -38,10 +42,60 @@ describe('PaymentsService', () => {
       verifyWebhookSignature: jest.fn(),
     };
 
+    orderLookup = {
+      findPaymentState: jest.fn().mockResolvedValue({
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.PENDING,
+      }),
+    };
+
     service = new PaymentsService(
       paymentRepository as unknown as Repository<Payment>,
       paymentGateway as unknown as PaymentGatewayPort,
+      orderLookup as unknown as OrderLookupService,
     );
+  });
+
+  describe('createCheckout: pedido que ya no se puede cobrar', () => {
+    const input = {
+      orderId: 'ord-1',
+      amount: 1000,
+      isDeposit: false,
+      items: [],
+      payerEmail: 'c@test.com',
+    };
+
+    it.each([
+      [
+        'pagado',
+        { status: OrderStatus.PENDING, paymentStatus: PaymentStatus.PAID },
+      ],
+      [
+        'cancelado',
+        { status: OrderStatus.CANCELLED, paymentStatus: PaymentStatus.PENDING },
+      ],
+      [
+        'entregado',
+        { status: OrderStatus.DELIVERED, paymentStatus: PaymentStatus.PENDING },
+      ],
+    ])(
+      'un pedido %s es 409 y no deja rastro en el ledger ni llama a la pasarela',
+      async (_n, estado) => {
+        orderLookup.findPaymentState.mockResolvedValue(estado);
+        await expect(service.createCheckout(input)).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        expect(paymentRepository.save).not.toHaveBeenCalled();
+        expect(paymentGateway.createCheckout).not.toHaveBeenCalled();
+      },
+    );
+
+    it('un pedido inexistente es 404', async () => {
+      orderLookup.findPaymentState.mockResolvedValue(null);
+      await expect(service.createCheckout(input)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
   });
 
   describe('createCheckout', () => {

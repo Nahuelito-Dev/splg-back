@@ -44,6 +44,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ApiTotal, informarTotal } from '../common/http/total';
 import { MAX_ATTACHMENT_SIZE_BYTES } from './domain/attachment-rules';
 
 /**
@@ -78,11 +79,17 @@ export class FleetTaskController {
   @Get()
   @ApiOperation({ summary: 'Listar tareas, con filtros' })
   @ApiOkResponse({ type: FleetTaskResponseDto, isArray: true })
+  @ApiTotal()
   async findAll(
     @Query() query: QueryFleetTaskDto,
+    @Res({ passthrough: true }) res: Response,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<FleetTaskResponseDto[]> {
-    const tasks = await this.tasksService.findAll(distributorId, query);
+    const [tasks, total] = await this.tasksService.findAll(
+      distributorId,
+      query,
+    );
+    informarTotal(res, total);
     return tasks.map((t) => FleetTaskMapper.toDto(t));
   }
 

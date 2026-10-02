@@ -16,7 +16,9 @@ describe('ClaimsService', () => {
     save: jest.Mock;
     find: jest.Mock;
     findOne: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
+  let bloqueo: { setLock: jest.Mock; andWhere: jest.Mock };
   let orders: { findOne: jest.Mock; assertDeLaDistribuidora: jest.Mock };
 
   const dto = {
@@ -32,6 +34,24 @@ describe('ClaimsService', () => {
       save: jest.fn((c: Claim) => Promise.resolve(c)),
       find: jest.fn(),
       findOne: jest.fn(),
+      manager: {
+        transaction: jest.fn((fn: (m: unknown) => unknown) => fn(txManager)),
+      },
+    };
+    bloqueo = {
+      setLock: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+    };
+    // `resolve`/`take`/`reopen` leen con lock y guardan en una transacción:
+    // la lectura con lock y el guardado del manager reusan los mismos mocks.
+    const txManager = {
+      createQueryBuilder: jest.fn(() => ({
+        setLock: bloqueo.setLock,
+        where: jest.fn().mockReturnThis(),
+        andWhere: bloqueo.andWhere,
+        getOne: claims.findOne,
+      })),
+      save: claims.save,
     };
     orders = { findOne: jest.fn(), assertDeLaDistribuidora: jest.fn() };
     service = new ClaimsService(
@@ -67,13 +87,43 @@ describe('ClaimsService', () => {
     await expect(
       service.resolve('c1', 'ok', ClaimStatus.RESOLVED, 'd2'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(claims.findOne).toHaveBeenCalledWith({
-      where: { claimId: 'c1', distributorId: 'd2' },
+    expect(claims.save).not.toHaveBeenCalled();
+    // El filtro por distribuidora va en la consulta con lock.
+    expect(bloqueo.andWhere).toHaveBeenCalledWith(
+      'claim.distributorId = :distributorId',
+      { distributorId: 'd2' },
+    );
+  });
+
+  it('take y reopen también acotan por la distribuidora', async () => {
+    claims.findOne.mockResolvedValue(null);
+    await expect(service.take('c1', 'd2')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(service.reopen('c1', 'm', 'd2')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(bloqueo.andWhere).toHaveBeenCalledTimes(2);
+    expect(bloqueo.andWhere).toHaveBeenCalledWith(
+      'claim.distributorId = :distributorId',
+      { distributorId: 'd2' },
+    );
+  });
+
+  it('sin distribuidora (cross-tenant) no agrega el filtro', async () => {
+    claims.findOne.mockResolvedValue({
+      claimId: 'c1',
+      status: ClaimStatus.PENDING,
     });
+    await service.take('c1');
+    expect(bloqueo.andWhere).not.toHaveBeenCalled();
   });
 
   it('resolver guarda la nota y el estado', async () => {
-    claims.findOne.mockResolvedValue({ claimId: 'c1' });
+    claims.findOne.mockResolvedValue({
+      claimId: 'c1',
+      status: ClaimStatus.PENDING,
+    });
     const r = await service.resolve('c1', 'Se cambió', ClaimStatus.RESOLVED);
     expect(r).toMatchObject({
       resolutionNote: 'Se cambió',
@@ -88,5 +138,107 @@ describe('ClaimsService', () => {
     );
     expect(orders.assertDeLaDistribuidora).toHaveBeenCalledWith('o1', 'd1');
     expect(claims.save).not.toHaveBeenCalled();
+  });
+
+  describe('máquina de estados', () => {
+    it('resolve rechaza un salto inválido (resolved → rejected sin reabrir)', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.RESOLVED,
+      });
+      await expect(
+        service.resolve('c1', 'otra vez', ClaimStatus.REJECTED),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(claims.save).not.toHaveBeenCalled();
+    });
+
+    it('resolve, take y reopen leen el reclamo con lock pesimista (FOR UPDATE)', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.PENDING,
+      });
+      await service.resolve('c1', 'ok', ClaimStatus.RESOLVED);
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.PENDING,
+      });
+      await service.take('c1');
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.RESOLVED,
+      });
+      await service.reopen('c1', 'motivo');
+      expect(bloqueo.setLock).toHaveBeenCalledTimes(3);
+      expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('resolve rechaza repetir el estado: no pisa la nota', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.IN_PROCESS,
+        resolutionNote: 'nota previa',
+      });
+      await expect(
+        service.resolve('c1', 'otra nota', ClaimStatus.IN_PROCESS),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(claims.save).not.toHaveBeenCalled();
+    });
+
+    it('take pasa un reclamo pendiente a in_process sin pisar la nota', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.PENDING,
+        resolutionNote: null,
+      });
+      const r = await service.take('c1');
+      expect(r).toMatchObject({
+        status: ClaimStatus.IN_PROCESS,
+        resolutionNote: null,
+      });
+    });
+
+    it('take rechaza un reclamo que no está pendiente', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.IN_PROCESS,
+      });
+      await expect(service.take('c1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(claims.save).not.toHaveBeenCalled();
+    });
+
+    it('reopen vuelve a in_process un reclamo resuelto y guarda el motivo', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.RESOLVED,
+      });
+      const r = await service.reopen('c1', 'El cliente mandó más info');
+      expect(r).toMatchObject({
+        status: ClaimStatus.IN_PROCESS,
+        resolutionNote: 'El cliente mandó más info',
+      });
+    });
+
+    it('reopen rechaza un reclamo pendiente o en proceso', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.PENDING,
+      });
+      await expect(service.reopen('c1', 'motivo')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(claims.save).not.toHaveBeenCalled();
+    });
+
+    it('un admin no toma/reabre reclamos de otra distribuidora (404)', async () => {
+      claims.findOne.mockResolvedValue(null);
+      await expect(service.take('c1', 'd2')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      await expect(service.reopen('c1', 'motivo', 'd2')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
   });
 });

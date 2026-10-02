@@ -10,7 +10,10 @@ import type { UpdateOrderStatusUseCase } from './application/update-order-status
 import type { CancelOrderUseCase } from './application/cancel-order.use-case';
 import type { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import type { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import type { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import type { NotificationPort } from './domain/ports/notification.port';
+import type { DataSource } from 'typeorm';
+import type { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
 
 /**
  * `PATCH /orders/:id/location` (H-91). La posición del chofer va al radar y no
@@ -48,7 +51,10 @@ describe('OrderService · posición del chofer', () => {
       {} as unknown as CancelOrderUseCase,
       {} as unknown as ConfirmDeliveryUseCase,
       {} as unknown as DispatchOrchestratorService,
+      {} as unknown as DispatchOfferRepositoryPort,
       {} as unknown as NotificationPort,
+      {} as unknown as DataSource,
+      {} as unknown as FleetDispatchLockService,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue(pedido);
   });

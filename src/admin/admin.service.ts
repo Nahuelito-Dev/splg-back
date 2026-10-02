@@ -13,6 +13,7 @@ import { CreateAdminDto } from './dto/create-admin.dto';
 import { isUUID } from 'class-validator';
 import { UsersService } from '../users/users.service';
 import { RoleService } from '../role/role.service';
+import { normalizarEmail } from '../common/utils/email.util';
 
 @Injectable()
 export class AdminService {
@@ -117,7 +118,7 @@ export class AdminService {
       .createQueryBuilder('admin')
       .leftJoinAndSelect('admin.user', 'user')
       .leftJoinAndSelect('user.role', 'role')
-      .where('user.email = :email', { email })
+      .where('LOWER(user.email) = :email', { email: normalizarEmail(email) })
       .getOne();
 
     if (!admin) {
@@ -147,7 +148,9 @@ export class AdminService {
           .where('admin.adminId = :admin_id', { admin_id: term })
           .getOne()
       : await queryBuilder
-          .where('user.email = :email', { email: term })
+          .where('LOWER(user.email) = :email', {
+            email: normalizarEmail(term),
+          })
           .getOne();
 
     if (!admin || (distributorId && admin.distributorId !== distributorId)) {

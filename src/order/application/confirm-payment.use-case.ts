@@ -5,6 +5,8 @@ import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 import { isTerminal } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { PaymentsService } from '../../payments/application/payments.service';
+import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
+import { NotificationPort } from '../domain/ports/notification.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { errorMessage } from '../../common/errors/error-message';
 
@@ -44,6 +46,8 @@ export class ConfirmPaymentUseCase {
     private readonly orders: OrderRepositoryPort,
     private readonly paymentsService: PaymentsService,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    private readonly dispatch: RealtimeDispatchPort,
+    private readonly notificationService: NotificationPort,
   ) {}
 
   async execute(input: ConfirmPaymentInput): Promise<void> {
@@ -100,6 +104,7 @@ export class ConfirmPaymentUseCase {
     await queryRunner.startTransaction();
 
     let alreadyConfirmed = false;
+    let senaPagada = false;
     try {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'order')
@@ -139,7 +144,9 @@ export class ConfirmPaymentUseCase {
         this.logger.log(
           `Seña de la reserva ${locked.orderId} pagada (MercadoPago ${paymentId})`,
         );
-        return; // no despachar: lo hace el cron de reservas el día agendado
+        // No se despacha: lo hace el cron de reservas el día agendado. El
+        // aviso sale después de liberar la conexión.
+        senaPagada = true;
       } else if (locked.paymentStatus === PaymentStatus.PAID) {
         alreadyConfirmed = true;
         await queryRunner.commitTransaction();
@@ -154,6 +161,11 @@ export class ConfirmPaymentUseCase {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+
+    if (senaPagada) {
+      this.notificarPagoAprobado(order.customerId, order.orderId, true);
+      return;
     }
 
     if (alreadyConfirmed) {
@@ -178,5 +190,48 @@ export class ConfirmPaymentUseCase {
           `Falló el despacho post-pago del pedido ${order.orderId}: ${errorMessage(error)}`,
         ),
       );
+
+    // Después del despacho y sin esperarlo: el push no demora ni al despacho
+    // ni al webhook (`notificarPagoAprobado` nunca lanza).
+    this.notificarPagoAprobado(order.customerId, order.orderId, false);
+  }
+
+  /**
+   * Avisa al cliente que su pago (o la seña de su reserva) se aprobó, en tiempo
+   * real y por push. Sólo se llama en la primera confirmación (no en los
+   * reintentos del webhook), NO se espera y nunca lanza: la confirmación ya
+   * está hecha. En una seña el pedido sigue con el pago pendiente (queda
+   * `depositPaid`), y el evento lo dice con `tipo: 'deposit'`.
+   */
+  private notificarPagoAprobado(
+    customerId: string,
+    orderId: string,
+    esSena: boolean,
+  ): void {
+    try {
+      this.dispatch.notifyCustomer(customerId, 'order:payment-approved', {
+        orderId,
+        tipo: esSena ? 'deposit' : 'payment',
+        paymentStatus: esSena ? PaymentStatus.PENDING : PaymentStatus.PAID,
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo emitir order:payment-approved del pedido ${orderId}: ${errorMessage(error)}`,
+      );
+    }
+    try {
+      void this.notificationService
+        .sendPaymentApprovedPush(customerId, orderId, esSena)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `No se pudo enviar el push de pago aprobado del pedido ${orderId}: ${errorMessage(error)}`,
+          ),
+        );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar el push de pago aprobado del pedido ${orderId}: ${errorMessage(error)}`,
+      );
+    }
   }
 }

@@ -3,6 +3,7 @@ import { DeliveryService } from './delivery.service';
 import { Delivery } from './entities/delivery.entity';
 import { DeliveryStatusFilter } from './dto/query-delivery.dto';
 import { RedisService } from '../redis/redis.service';
+import { UsersService } from '../users/users.service';
 
 /**
  * `GET /delivery` y `GET /delivery/active` aceptaban `term` (PaginationDto)
@@ -43,6 +44,7 @@ describe('DeliveryService · búsqueda de choferes', () => {
     service = new DeliveryService(
       deliveryRepo as unknown as Repository<Delivery>,
       redis as unknown as RedisService,
+      {} as unknown as UsersService,
     );
   });
 

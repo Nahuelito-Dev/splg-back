@@ -39,17 +39,30 @@ export abstract class RealtimeDispatchPort {
     payload: unknown,
   ): void;
 
-  /** Evento del ciclo de vida del pedido a TODOS los admins (panel en vivo). */
-  abstract notifyAdmins(event: string, payload: unknown): void;
+  /**
+   * Evento del ciclo de vida del pedido a los admins DE ESA distribuidora
+   * (panel en vivo) más los super admin, que ven todas. Sin `distributorId`
+   * (eventos que no son de un tenant en particular) sólo llega a los super
+   * admin.
+   */
+  abstract notifyAdmins(
+    event: string,
+    payload: unknown,
+    distributorId?: string | null,
+  ): void;
 
   /**
    * Marca que un chofer está entregando un pedido: su GPS se reenviará a este
    * cliente para tracking en vivo (se activa al pasar a ON_THE_WAY).
+   * `distributorId` viaja con el tracking para que el aviso de posición al
+   * panel (`order:driver-location`) llegue sólo a los admins de esa
+   * distribuidora (ver `DriversGateway.handleDriverLocation`).
    */
   abstract startTracking(
     driverUserId: string,
     orderId: string,
     customerId: string,
+    distributorId?: string | null,
   ): void;
 
   /** Deja de reenviar el GPS del chofer (al entregar o cancelar). */

@@ -8,6 +8,24 @@
 import request from 'supertest';
 import { TestEnv, createTestApp } from './setup/test-env';
 
+/** Estado de un indicador individual, tal como lo arma `@nestjs/terminus`. */
+interface EstadoIndicador {
+  status: 'up' | 'down';
+}
+
+/** `res.body` de `GET /health` y `/health/ready` (`HealthCheckResult`). */
+interface CuerpoHealthCheck {
+  status: 'ok' | 'error' | 'shutting_down';
+  info?: Record<string, EstadoIndicador>;
+  error?: Record<string, EstadoIndicador>;
+}
+
+/** `res.body` de `GET /health/live`. */
+interface CuerpoLive {
+  status: string;
+  timestamp: string;
+}
+
 describe('Health (e2e)', () => {
   let env: TestEnv;
 
@@ -25,10 +43,11 @@ describe('Health (e2e)', () => {
         .get('/health')
         .expect(200);
 
-      expect(res.body.status).toBe('ok');
-      expect(res.body.info.postgres.status).toBe('up');
-      expect(res.body.info.redis.status).toBe('up');
-      expect(res.body.info.memory_rss.status).toBe('up');
+      const body = res.body as CuerpoHealthCheck;
+      expect(body.status).toBe('ok');
+      expect(body.info?.postgres.status).toBe('up');
+      expect(body.info?.redis.status).toBe('up');
+      expect(body.info?.memory_rss.status).toBe('up');
     });
 
     it('responde 503 cuando Redis está caído', async () => {
@@ -38,8 +57,9 @@ describe('Health (e2e)', () => {
         .get('/health')
         .expect(503);
 
-      expect(res.body.status).toBe('error');
-      expect(res.body.error.redis.status).toBe('down');
+      const body = res.body as CuerpoHealthCheck;
+      expect(body.status).toBe('error');
+      expect(body.error?.redis.status).toBe('down');
 
       // Reiniciamos para no contaminar otras suites — pero el container
       // ya no está; lo dejamos así porque es el último test del describe.
@@ -52,8 +72,9 @@ describe('Health (e2e)', () => {
         .get('/health/live')
         .expect(200);
 
-      expect(res.body.status).toBe('ok');
-      expect(res.body.timestamp).toBeDefined();
+      const body = res.body as CuerpoLive;
+      expect(body.status).toBe('ok');
+      expect(body.timestamp).toBeDefined();
     });
   });
 
@@ -66,8 +87,9 @@ describe('Health (e2e)', () => {
       // 200 si Redis está vivo, 503 si ya se cayó
       expect([200, 503]).toContain(res.status);
       if (res.status === 200) {
-        expect(res.body.info.postgres.status).toBe('up');
-        expect(res.body.info.redis.status).toBe('up');
+        const body = res.body as CuerpoHealthCheck;
+        expect(body.info?.postgres.status).toBe('up');
+        expect(body.info?.redis.status).toBe('up');
       }
     });
   });

@@ -14,6 +14,14 @@ export class QueryFleetTaskDto extends PaginationDto {
   @IsUUID()
   deliveryId?: string;
 
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Sólo las tareas de este plan',
+  })
+  @IsOptional()
+  @IsUUID()
+  planId?: string;
+
   @ApiPropertyOptional({ enum: MaintenanceTaskStatus })
   @IsOptional()
   @IsEnum(MaintenanceTaskStatus)

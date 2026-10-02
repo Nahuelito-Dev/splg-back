@@ -41,9 +41,13 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return rows.map((r) => r.driverId);
   }
 
-  async hasActiveOffer(orderId: string): Promise<boolean> {
+  async hasActiveOffer(orderId: string, driverId?: string): Promise<boolean> {
     const count = await this.repo.count({
-      where: { orderId, status: DispatchOfferStatus.OFFERED },
+      where: {
+        orderId,
+        status: DispatchOfferStatus.OFFERED,
+        ...(driverId ? { driverId } : {}),
+      },
     });
     return count > 0;
   }
@@ -79,5 +83,16 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
       { status },
     );
     return (result.affected ?? 0) > 0;
+  }
+
+  async closeAllActiveOffers(
+    orderId: string,
+    status: DispatchOfferStatus,
+  ): Promise<number> {
+    const result = await this.repo.update(
+      { orderId, status: DispatchOfferStatus.OFFERED },
+      { status },
+    );
+    return result.affected ?? 0;
   }
 }

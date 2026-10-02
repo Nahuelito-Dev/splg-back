@@ -120,6 +120,64 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('sendPaymentApprovedPush', () => {
+    beforeEach(() => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: 'fcm-token-customer',
+      });
+    });
+
+    it('un pago manda "Pago aprobado" con el evento PAYMENT_APPROVED', async () => {
+      await service.sendPaymentApprovedPush('customer-1', 'order-abcdef123');
+      expect(sendToToken).toHaveBeenCalledWith(
+        'fcm-token-customer',
+        expect.objectContaining({
+          notification: expect.objectContaining({
+            title: 'Pago aprobado',
+            body: 'Recibimos el pago de tu pedido #order-ab.',
+          }) as unknown,
+          data: { event: 'PAYMENT_APPROVED', orderId: 'order-abcdef123' },
+        }),
+      );
+    });
+
+    it('una seña manda el texto de la reserva y el evento DEPOSIT_APPROVED', async () => {
+      await service.sendPaymentApprovedPush(
+        'customer-1',
+        'order-abcdef123',
+        true,
+      );
+      expect(sendToToken).toHaveBeenCalledWith(
+        'fcm-token-customer',
+        expect.objectContaining({
+          notification: expect.objectContaining({
+            body: 'Recibimos la seña de tu reserva #order-ab.',
+          }) as unknown,
+          data: { event: 'DEPOSIT_APPROVED', orderId: 'order-abcdef123' },
+        }),
+      );
+    });
+
+    it('sin token no manda nada y no lanza', async () => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: null,
+      });
+      await expect(
+        service.sendPaymentApprovedPush('customer-1', 'o1'),
+      ).resolves.toBeUndefined();
+      expect(sendToToken).not.toHaveBeenCalled();
+    });
+
+    it('si FCM falla no lanza', async () => {
+      sendToToken.mockRejectedValue(new Error('fcm caído'));
+      await expect(
+        service.sendPaymentApprovedPush('customer-1', 'o1'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('saveNotificationToken', () => {
     it('lo guarda como cliente si lo es', async () => {
       customers.saveNotificationToken.mockResolvedValue(true);

@@ -29,4 +29,12 @@ export class NotificationAdapter extends NotificationPort {
       driverName,
     );
   }
+
+  sendPaymentApprovedPush(customerId: string, orderId: string, esSena = false) {
+    return this.notifications.sendPaymentApprovedPush(
+      customerId,
+      orderId,
+      esSena,
+    );
+  }
 }

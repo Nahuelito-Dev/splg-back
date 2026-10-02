@@ -305,4 +305,11 @@ CUERPOS = {
         "ok": {"notes": "Cancelada por la bateria de pruebas"},
         "malo": {"notes": 12345},
     },
+    # Vehiculo en uso (decision de nahue, 30/09): "fleetCarId" (no "carId",
+    # por el mismo motivo que las fachadas de documentos, ver var_de) para
+    # que no dependa de un auto que el modulo Car ya borro en su carpeta.
+    "PUT /api/delivery/{id}/vehicle": {
+        "ok": {"carId": "<<fleetCarId>>", "note": "Asignado por la bateria de pruebas"},
+        "malo": {"carId": "no-es-un-uuid"},  # @IsUUID(): 400
+    },
 }

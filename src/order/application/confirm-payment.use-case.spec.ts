@@ -1,5 +1,5 @@
 import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
-import { Order, PaymentStatus } from '../entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 
 /**
  * Caso de uso de confirmación de pago (webhook MercadoPago). Foco: idempotencia
@@ -36,6 +36,8 @@ describe('ConfirmPaymentUseCase', () => {
   let orders: { findByIdFull: jest.Mock };
   let paymentsService: { confirmFromGateway: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
+  let dispatch: { notifyCustomer: jest.Mock };
+  let notifications: { sendPaymentApprovedPush: jest.Mock };
 
   const fullOrder = {
     orderId: 'ord-1',
@@ -77,12 +79,130 @@ describe('ConfirmPaymentUseCase', () => {
       offerToNextDriver: jest.fn().mockResolvedValue('drv-1'),
     };
 
+    dispatch = { notifyCustomer: jest.fn() };
+    notifications = {
+      sendPaymentApprovedPush: jest.fn().mockResolvedValue(undefined),
+    };
+
     useCase = new ConfirmPaymentUseCase(
       dataSource as unknown as import('typeorm').DataSource,
       orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
       paymentsService as unknown as import('../../payments/application/payments.service').PaymentsService,
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
+      dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
+      notifications as unknown as import('../domain/ports/notification.port').NotificationPort,
     );
+  });
+
+  describe('notificarResultadoDePago', () => {
+    const aprobado = {
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
+    };
+
+    beforeEach(() => {
+      orders.findByIdFull.mockResolvedValue({
+        ...fullOrder,
+        customerId: 'cus-1',
+      });
+      lockedOrder.customerId = 'cus-1';
+    });
+
+    it('al aprobarse avisa al cliente por socket y por push', async () => {
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+      expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+        'cus-1',
+        'order:payment-approved',
+        expect.objectContaining({ orderId: 'ord-1' }),
+      );
+      expect(notifications.sendPaymentApprovedPush).toHaveBeenCalledWith(
+        'cus-1',
+        'ord-1',
+        false,
+      );
+    });
+
+    it('la seña de una reserva avisa con tipo deposit y el estado real, y después de liberar la conexión', async () => {
+      lockedOrder.status = OrderStatus.RESERVED;
+      paymentsService.confirmFromGateway.mockResolvedValue({
+        ...aprobado,
+        isDeposit: true,
+      });
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+      expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+        'cus-1',
+        'order:payment-approved',
+        expect.objectContaining({
+          tipo: 'deposit',
+          paymentStatus: PaymentStatus.PENDING,
+        }),
+      );
+      expect(notifications.sendPaymentApprovedPush).toHaveBeenCalledWith(
+        'cus-1',
+        'ord-1',
+        true,
+      );
+      expect(queryRunner.release.mock.invocationCallOrder[0]).toBeLessThan(
+        notifications.sendPaymentApprovedPush.mock.invocationCallOrder[0],
+      );
+      expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    });
+
+    it('el pago completo despacha primero y el push no frena el despacho', async () => {
+      notifications.sendPaymentApprovedPush.mockReturnValue(
+        new Promise(() => undefined), // FCM colgado
+      );
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+      await expect(
+        useCase.execute({ type: 'payment', dataId: 'pay-1' }),
+      ).resolves.toBeUndefined();
+      expect(
+        dispatchOrchestrator.offerToNextDriver.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        notifications.sendPaymentApprovedPush.mock.invocationCallOrder[0],
+      );
+      expect(notifications.sendPaymentApprovedPush).toHaveBeenCalledWith(
+        'cus-1',
+        'ord-1',
+        false,
+      );
+    });
+
+    it('un reintento del webhook (ya confirmado) no vuelve a avisar', async () => {
+      lockedOrder.paymentStatus = PaymentStatus.PAID;
+      lockedOrder.gatewayPaymentId = 'pay-1';
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+      expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+      expect(notifications.sendPaymentApprovedPush).not.toHaveBeenCalled();
+    });
+
+    it('un pago rechazado no avisa de aprobación', async () => {
+      paymentsService.confirmFromGateway.mockResolvedValue({
+        ...aprobado,
+        status: 'rejected',
+      });
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+      expect(notifications.sendPaymentApprovedPush).not.toHaveBeenCalled();
+    });
+
+    it('si la notificación falla, la confirmación y el despacho siguen', async () => {
+      dispatch.notifyCustomer.mockImplementation(() => {
+        throw new Error('socket caído');
+      });
+      notifications.sendPaymentApprovedPush.mockRejectedValue(
+        new Error('fcm caído'),
+      );
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+      await expect(
+        useCase.execute({ type: 'payment', dataId: 'pay-1' }),
+      ).resolves.toBeUndefined();
+      expect(queryRunner.manager.save).toHaveBeenCalled();
+      expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('delega en PaymentsService.confirmFromGateway con type/dataId', async () => {

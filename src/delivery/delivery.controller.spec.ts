@@ -35,7 +35,7 @@ describe('DeliveryController — alcance', () => {
   } as Delivery;
 
   beforeEach(() => {
-    const real = new DeliveryService({} as never, {} as never);
+    const real = new DeliveryService({} as never, {} as never, {} as never);
     service = {
       findOne: jest.fn().mockResolvedValue(chofer),
       // La regla es la del servicio real: se prueba tal cual.

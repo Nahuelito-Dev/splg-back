@@ -17,8 +17,14 @@ export abstract class DispatchOfferRepositoryPort {
   /** IDs de choferes YA contactados para este pedido (cualquier estado). */
   abstract findOfferedDriverIds(orderId: string): Promise<string[]>;
 
-  /** True si el pedido tiene una oferta OFFERED vigente (no vencida ni cerrada). */
-  abstract hasActiveOffer(orderId: string): Promise<boolean>;
+  /**
+   * True si el pedido tiene una oferta OFFERED vigente (no vencida ni cerrada).
+   * Con `driverId`, sólo mira la de ESE chofer: una oferta activa de OTRO
+   * chofer (p. ej. una carrera del despacho automático) no cuenta como "mi
+   * oferta real" para quien pregunta (ver `OrderService.rejectOffer`, que
+   * distingue una oferta real del despacho de una asignación manual).
+   */
+  abstract hasActiveOffer(orderId: string, driverId?: string): Promise<boolean>;
 
   /** Ofertas OFFERED cuyo `expiresAt` ya pasó (para el cron de timeout). */
   abstract findExpired(now: Date): Promise<DispatchOffer[]>;
@@ -38,4 +44,17 @@ export abstract class DispatchOfferRepositoryPort {
     driverId: string,
     status: DispatchOffer['status'],
   ): Promise<boolean>;
+
+  /**
+   * Cierra TODAS las ofertas OFFERED activas de un pedido, sin filtrar por
+   * chofer. La usa una asignación MANUAL (`OrderService.assignDelivery`): el
+   * admin ya resolvió el pedido él solo, así que cualquier oferta automática
+   * que hubiera quedado en curso para otro chofer (o para el mismo) queda sin
+   * efecto — nadie más tiene que creer que el pedido sigue siendo suyo.
+   * Devuelve cuántas ofertas cerró.
+   */
+  abstract closeAllActiveOffers(
+    orderId: string,
+    status: DispatchOffer['status'],
+  ): Promise<number>;
 }

@@ -15,8 +15,11 @@ import { FleetTaskController } from './fleet-task.controller';
 import { FleetExpirationsController } from './fleet-expirations.controller';
 import { CarDocumentsController } from './car-documents.controller';
 import { DeliveryDocumentsController } from './delivery-documents.controller';
+import { DeliveryVehicleController } from './delivery-vehicle.controller';
+import { CarAssignmentsController } from './car-assignments.controller';
 import { FleetPlanService } from './fleet-plan.service';
 import { FleetTaskService } from './fleet-task.service';
+import { FleetDispatchLockService } from './fleet-dispatch-lock.service';
 import { FleetAttachmentService } from './fleet-attachment.service';
 import { FleetExpirationsService } from './fleet-expirations.service';
 import { FleetPlanSeedListener } from './fleet-plan-seed.listener';
@@ -48,17 +51,21 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     FleetExpirationsController,
     CarDocumentsController,
     DeliveryDocumentsController,
+    DeliveryVehicleController,
+    CarAssignmentsController,
   ],
   providers: [
     FleetPlanService,
     FleetTaskService,
+    FleetDispatchLockService,
     FleetAttachmentService,
     FleetExpirationsService,
     FleetPlanSeedListener,
     FleetAlertsCron,
   ],
-  // FleetTaskService: para cuando `order`/`delivery` apliquen el bloqueo al
-  // despacho (ver el informe de esta tarea para el punto de enganche exacto).
-  exports: [FleetTaskService],
+  // FleetTaskService: fachadas de sólo lectura de la flota (`/cars/:id/documents`,
+  // `/fleet/*`). FleetDispatchLockService: el gate único de bloqueo que usa
+  // `OrderModule` en los tres caminos de asignación (CU-136 a CU-138).
+  exports: [FleetTaskService, FleetDispatchLockService],
 })
 export class FleetModule {}

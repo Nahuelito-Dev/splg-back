@@ -5,7 +5,7 @@ import {
   IsOptional,
   Matches,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTimeSlotDto {
   @ApiProperty({ example: 'Mañana', description: 'Nombre del turno' })
@@ -27,7 +27,11 @@ export class CreateTimeSlotDto {
   })
   endTime!: string;
 
-  @ApiProperty({ example: 50, description: 'Capacidad máxima de pedidos' })
+  @ApiPropertyOptional({
+    example: 50,
+    default: 50,
+    description: 'Capacidad máxima de pedidos (columna con default en la base)',
+  })
   @IsInt()
   @IsOptional()
   capacity?: number;

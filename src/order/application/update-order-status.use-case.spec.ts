@@ -1,12 +1,18 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
+import { ReservationNotActivableError } from '../domain/errors/reservation-not-activable.error';
 import {
   Order,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
 } from '../entities/order.entity';
+import { RoleType } from '../../common/constants/role-type.enum';
 
 /**
  * Use-case de cambio de estado. Mockeamos repos, puerto de tiempo real y
@@ -27,14 +33,46 @@ describe('UpdateOrderStatusUseCase', () => {
     stopTracking: jest.Mock;
   };
   let notifications: { sendOrderConfirmation: jest.Mock };
-  let orders: { findByIdFull: jest.Mock; save: jest.Mock };
-  let orchestrator: { onDriverAccepted: jest.Mock };
+  let orders: {
+    findByIdFull: jest.Mock<Promise<Order | null>, [string]>;
+    save: jest.Mock<Promise<Order>, [Order]>;
+  };
+  let orchestrator: {
+    onDriverAccepted: jest.Mock;
+    releaseOffer: jest.Mock;
+    offerToNextDriver: jest.Mock;
+  };
   let cylinderLifecycle: { onOrderDelivered: jest.Mock };
+  let cancelOrderUseCase: { execute: jest.Mock };
+  let releaseOrderUseCase: { execute: jest.Mock };
+  let queryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    manager: {
+      createQueryBuilder: jest.Mock;
+      save: jest.Mock;
+      query: jest.Mock;
+    };
+  };
+  let queryBuilder: {
+    setLock: jest.Mock;
+    leftJoinAndSelect: jest.Mock;
+    where: jest.Mock;
+    getOne: jest.Mock;
+  };
+  let fleetGate: {
+    assertChoferHabilitado: jest.Mock;
+    vehiculoEnUsoDelChofer: jest.Mock;
+  };
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
       orderId: 'ord-1',
       customerId: 'cust-1',
+      distributorId: 'dist-1',
       status: OrderStatus.PENDING,
       paymentMethod: PaymentMethod.CASH,
       paymentStatus: PaymentStatus.PENDING,
@@ -69,19 +107,72 @@ describe('UpdateOrderStatusUseCase', () => {
       sendOrderConfirmation: jest.fn().mockResolvedValue(null),
     };
     orders = {
-      findByIdFull: jest.fn(),
-      save: jest.fn((o: unknown) => Promise.resolve(o)),
+      findByIdFull: jest.fn<Promise<Order | null>, [string]>(),
+      save: jest.fn((o: Order) => Promise.resolve(o)),
     };
-    orchestrator = { onDriverAccepted: jest.fn().mockResolvedValue(undefined) };
+    orchestrator = {
+      onDriverAccepted: jest.fn().mockResolvedValue(undefined),
+      releaseOffer: jest.fn().mockResolvedValue(undefined),
+      offerToNextDriver: jest.fn().mockResolvedValue(undefined),
+    };
     cylinderLifecycle = { onOrderDelivered: jest.fn().mockResolvedValue(0) };
+    cancelOrderUseCase = { execute: jest.fn() };
+    releaseOrderUseCase = { execute: jest.fn() };
+
+    // Segunda revisión, punto 2: ACCEPTED/ON_THE_WAY/DELIVERED (y la
+    // activación RESERVED→PENDING) re-leen el pedido con el MISMO lock
+    // pesimista que cancelar/liberar, en vez de `orders.findByIdFull`/
+    // `orders.save` directo. `getOne`/`manager.save` delegan en los mismos
+    // mocks `orders.findByIdFull`/`orders.save` de siempre: cada test sigue
+    // configurando el pedido con `orders.findByIdFull.mockResolvedValue(...)`
+    // sin cambios, y las aserciones sobre `orders.save` siguen valiendo.
+    queryBuilder = {
+      setLock: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(() => orders.findByIdFull('ord-1')),
+    };
+    queryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {
+        // El lock del chofer (`bloquearChoferes`): todos los pedidos existen y están vigentes.
+        query: jest.fn((_sql: string, [ids]: [string[]]) =>
+          Promise.resolve(
+            ids.map((id) => ({ delivery_id: id, deleted: false })),
+          ),
+        ),
+        createQueryBuilder: jest.fn(() => queryBuilder),
+        save: jest.fn((o: Order) => orders.save(o)),
+      },
+    };
+    const dataSource = {
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+    };
+    fleetGate = {
+      assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
+      vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue({
+        carId: 'car-1',
+        patent: 'AB123CD',
+        brand: 'Honda',
+        model: 'Wave',
+      }),
+    };
 
     useCase = new UpdateOrderStatusUseCase(
+      dataSource as unknown as import('typeorm').DataSource,
       deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
       dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
       notifications as unknown as import('../domain/ports/notification.port').NotificationPort,
       orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
       orchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
       cylinderLifecycle as unknown as import('../domain/ports/cylinder-lifecycle.port').CylinderLifecyclePort,
+      cancelOrderUseCase as unknown as import('./cancel-order.use-case').CancelOrderUseCase,
+      releaseOrderUseCase as unknown as import('./release-order.use-case').ReleaseOrderUseCase,
+      fleetGate as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
     );
   });
 
@@ -104,11 +195,85 @@ describe('UpdateOrderStatusUseCase', () => {
     expect(orders.save).not.toHaveBeenCalled();
   });
 
+  it('punto 2 (segunda revisión): usa el MISMO lock pesimista que cancelar/liberar para ACCEPTED/ON_THE_WAY/DELIVERED', async () => {
+    orders.findByIdFull.mockResolvedValue(
+      makeOrder({ status: OrderStatus.ON_THE_WAY }),
+    );
+
+    await useCase.execute('ord-1', OrderStatus.DELIVERED);
+
+    expect(queryBuilder.setLock).toHaveBeenCalledWith(
+      'pessimistic_write',
+      undefined,
+      ['ord'],
+    );
+    expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    expect(queryRunner.release).toHaveBeenCalled();
+  });
+
+  it('punto 2: la carrera real (cancelar MIENTRAS se acepta/avanza) — si el dato que trae el lock YA está CANCELLED, corta con 400 y hace rollback, sin guardar', async () => {
+    // Simula que, para cuando esta transacción consiguió el lock, una
+    // cancelación concurrente ya hizo commit: el SELECT ... FOR UPDATE del
+    // lock devuelve el estado FRESCO (CANCELLED), no el que se hubiera leído
+    // antes de pedirlo.
+    orders.findByIdFull.mockResolvedValue(
+      makeOrder({ status: OrderStatus.CANCELLED }),
+    );
+
+    await expect(
+      useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+    ).rejects.toThrow(InvalidOrderTransitionError);
+
+    expect(orders.save).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+  });
+
   describe('ACCEPTED', () => {
+    const choferVigente = {
+      deliveryId: 'drv-1',
+      distributorId: 'dist-1',
+      userId: 'user-drv-1',
+      isEnabled: true,
+      validated: true,
+      user: { fullName: 'Chofer Uno', phoneNumber: '+549110000' },
+    };
+
+    it('bloquea la fila del chofer (FOR NO KEY UPDATE) ANTES de leer su vehículo en uso', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+
+      await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+
+      const [consulta, parametros] = queryRunner.manager.query.mock
+        .calls[0] as [string, string[][]];
+      expect(consulta).toContain('FOR NO KEY UPDATE');
+      expect(parametros).toEqual([['drv-1']]);
+      expect(
+        queryRunner.manager.query.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        fleetGate.vehiculoEnUsoDelChofer.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('si el chofer fue dado de baja mientras esperaba el lock es 404 y no guarda', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      queryRunner.manager.query.mockResolvedValue([
+        { delivery_id: 'drv-1', deleted: true },
+      ]);
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
     it('asigna el chofer, setea acceptedAt, guarda y emite order:accepted', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
         deliveryId: 'drv-1',
+        distributorId: 'dist-1',
         userId: 'user-drv-1',
         isEnabled: true,
         validated: true,
@@ -143,6 +308,16 @@ describe('UpdateOrderStatusUseCase', () => {
           driver: { name: 'Chofer Uno', phone: '+549110000' },
         }),
       );
+      // Mismo gate de flota que `assignDelivery` y el despacho automático.
+      expect(fleetGate.assertChoferHabilitado).toHaveBeenCalledWith(
+        'user-drv-1',
+        'dist-1',
+      );
+      // Snapshot del vehículo en uso (decisión de nahue, "vehículo en uso").
+      expect(result.vehicleCarId).toBe('car-1');
+      expect(result.vehiclePatent).toBe('AB123CD');
+      expect(result.vehicleBrand).toBe('Honda');
+      expect(result.vehicleModel).toBe('Wave');
     });
 
     it('exige deliveryId para aceptar', async () => {
@@ -156,6 +331,7 @@ describe('UpdateOrderStatusUseCase', () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
         deliveryId: 'drv-1',
+        distributorId: 'dist-1',
         isEnabled: false,
         validated: true,
         user: {},
@@ -169,6 +345,7 @@ describe('UpdateOrderStatusUseCase', () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
         deliveryId: 'drv-1',
+        distributorId: 'dist-1',
         isEnabled: true,
         validated: false,
         user: {},
@@ -184,6 +361,137 @@ describe('UpdateOrderStatusUseCase', () => {
       await expect(
         useCase.execute('ord-1', OrderStatus.ACCEPTED, 'ghost'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    describe('idempotencia (H-55): aceptar la asignación manual propia', () => {
+      it('ACCEPTED→ACCEPTED del mismo chofer NO regenera acceptedAt ni deliveryCode', async () => {
+        const acceptedAtOriginal = new Date('2026-01-01T00:00:00Z');
+        orders.findByIdFull.mockResolvedValue(
+          makeOrder({
+            status: OrderStatus.ACCEPTED,
+            deliveryId: 'drv-1',
+            acceptedAt: acceptedAtOriginal,
+            deliveryCode: 'CODIGO-VIEJO',
+          }),
+        );
+        deliveries.buscarPorIdOUsuario.mockResolvedValue({
+          deliveryId: 'drv-1',
+          distributorId: 'dist-1',
+          userId: 'user-drv-1',
+          isEnabled: true,
+          validated: true,
+          user: { fullName: 'Chofer Uno' },
+        });
+
+        const result = await useCase.execute(
+          'ord-1',
+          OrderStatus.ACCEPTED,
+          'drv-1',
+        );
+
+        expect(result.status).toBe(OrderStatus.ACCEPTED);
+        expect(result.acceptedAt).toBe(acceptedAtOriginal);
+        expect(result.deliveryCode).toBe('CODIGO-VIEJO');
+        // No vuelve a cerrar ninguna oferta: nunca hubo una real (asignación
+        // manual, no despacho automático).
+        expect(orchestrator.onDriverAccepted).not.toHaveBeenCalled();
+      });
+
+      it('ACCEPTED de un chofer DISTINTO sí reasigna (no es el caso idempotente)', async () => {
+        orders.findByIdFull.mockResolvedValue(
+          makeOrder({
+            status: OrderStatus.ACCEPTED,
+            deliveryId: 'drv-1',
+            acceptedAt: new Date('2026-01-01'),
+            deliveryCode: 'CODIGO-VIEJO',
+          }),
+        );
+        deliveries.buscarPorIdOUsuario.mockResolvedValue({
+          deliveryId: 'drv-2',
+          distributorId: 'dist-1',
+          userId: 'user-drv-2',
+          isEnabled: true,
+          validated: true,
+          user: { fullName: 'Chofer Dos' },
+        });
+
+        const result = await useCase.execute(
+          'ord-1',
+          OrderStatus.ACCEPTED,
+          'drv-2',
+          RoleType.ADMIN,
+        );
+
+        expect(result.deliveryId).toBe('drv-2');
+        expect(result.deliveryCode).not.toBe('CODIGO-VIEJO');
+        expect(orchestrator.onDriverAccepted).toHaveBeenCalledWith(
+          'ord-1',
+          'user-drv-2',
+        );
+      });
+    });
+
+    /**
+     * Revisión cruzada, punto 1: `PATCH /orders/:id/status` con
+     * `status=accepted` (el admin con `deliveryId`, o el propio chofer
+     * aceptando desde el pool `GET /orders/available`) tenía que respetar el
+     * MISMO gate de flota que `assignDelivery` y ya no era así. Los dos
+     * escenarios rechazan igual.
+     */
+    it('CU-136/138: rechaza con el 400 del gate de flota cuando lo asigna el ADMIN (con deliveryId)', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+        distributorId: 'dist-1',
+        userId: 'user-drv-1',
+        isEnabled: true,
+        validated: true,
+        user: {},
+      });
+      fleetGate.assertChoferHabilitado.mockRejectedValue(
+        new BadRequestException(
+          'No se puede asignar: VTV: venció el 14/06/2021.',
+        ),
+      );
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.ACCEPTED,
+          'drv-1',
+          undefined, // admin: sin rol de chofer
+        ),
+      ).rejects.toThrow(/VTV: venció el 14\/06\/2021/);
+      expect(orders.save).not.toHaveBeenCalled();
+    });
+
+    it('CU-136/138: rechaza con el 400 del gate de flota cuando el propio CHOFER acepta desde el pool', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryId: undefined }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+        distributorId: 'dist-1',
+        userId: 'user-drv-1',
+        isEnabled: true,
+        validated: true,
+        user: {},
+      });
+      fleetGate.assertChoferHabilitado.mockRejectedValue(
+        new BadRequestException(
+          'No se puede asignar: Licencia de conducir: venció el 01/01/2020.',
+        ),
+      );
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.ACCEPTED,
+          'user-drv-1',
+          RoleType.DELIVERY,
+        ),
+      ).rejects.toThrow(/Licencia de conducir: venció el 01\/01\/2020/);
+      expect(orders.save).not.toHaveBeenCalled();
     });
   });
 
@@ -213,6 +521,335 @@ describe('UpdateOrderStatusUseCase', () => {
       const result = await useCase.execute('ord-1', OrderStatus.DELIVERED);
 
       expect(result.paymentStatus).toBe(PaymentStatus.PENDING);
+    });
+  });
+
+  describe('PENDING (desajuste 1: volver a pending libera al chofer)', () => {
+    it('un admin libera un pedido con chofer asignado: delega en el camino único SIN exigir dueño (ReleaseOrderUseCase)', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+      );
+      const liberado = makeOrder({ status: OrderStatus.PENDING });
+      releaseOrderUseCase.execute.mockResolvedValue(liberado);
+
+      const result = await useCase.execute(
+        'ord-1',
+        OrderStatus.PENDING,
+        undefined,
+        RoleType.ADMIN,
+      );
+
+      // Un admin puede liberar cualquier pedido: no se le exige ser "dueño"
+      // (segundo argumento `undefined`, ver punto 6 de la segunda revisión).
+      expect(releaseOrderUseCase.execute).toHaveBeenCalledWith(
+        'ord-1',
+        undefined,
+      );
+      expect(result).toBe(liberado);
+      // No duplica la mutación: no guarda ni emite side-effects acá.
+      expect(orders.save).not.toHaveBeenCalled();
+    });
+
+    it('un chofer libera lo suyo: pasa su propio user_id para que ReleaseOrderUseCase revalide dueño DENTRO del lock (punto 6)', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+      });
+      const liberado = makeOrder({ status: OrderStatus.PENDING });
+      releaseOrderUseCase.execute.mockResolvedValue(liberado);
+
+      await useCase.execute(
+        'ord-1',
+        OrderStatus.PENDING,
+        'user-drv-1',
+        RoleType.DELIVERY,
+      );
+
+      // Para un chofer, el `deliveryId` que llega acá YA es su propio
+      // `user_id` (lo resuelve el controller): se pasa tal cual, es lo que
+      // `ReleaseOrderUseCase` compara contra `order.delivery.userId` dentro
+      // del lock.
+      expect(releaseOrderUseCase.execute).toHaveBeenCalledWith(
+        'ord-1',
+        'user-drv-1',
+      );
+    });
+
+    it('un chofer sólo puede liberar lo que tiene asignado', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-ajeno',
+      });
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.PENDING,
+          'user-ajeno',
+          RoleType.DELIVERY,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(releaseOrderUseCase.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('RESERVED → PENDING (punto 9: activación manual con las mismas condiciones que el cron)', () => {
+    it('activa si la seña está paga y el día ya llegó', async () => {
+      const ayer = new Date();
+      ayer.setDate(ayer.getDate() - 1);
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.RESERVED,
+          depositPaid: true,
+          scheduledDate: ayer.toISOString().slice(0, 10),
+        }),
+      );
+
+      const result = await useCase.execute(
+        'ord-1',
+        OrderStatus.PENDING,
+        undefined,
+        RoleType.ADMIN,
+      );
+
+      expect(result.status).toBe(OrderStatus.PENDING);
+      expect(orders.save).toHaveBeenCalled();
+      expect(orchestrator.offerToNextDriver).toHaveBeenCalledWith(result);
+      expect(releaseOrderUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('rechaza activarla si la seña no está paga', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.RESERVED,
+          depositPaid: false,
+          scheduledDate: '2020-01-01',
+        }),
+      );
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.PENDING,
+          undefined,
+          RoleType.ADMIN,
+        ),
+      ).rejects.toThrow(ReservationNotActivableError);
+      expect(orders.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza activarla antes de la fecha agendada', async () => {
+      const mañana = new Date();
+      mañana.setDate(mañana.getDate() + 1);
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.RESERVED,
+          depositPaid: true,
+          scheduledDate: mañana.toISOString().slice(0, 10),
+        }),
+      );
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.PENDING,
+          undefined,
+          RoleType.ADMIN,
+        ),
+      ).rejects.toThrow(ReservationNotActivableError);
+    });
+
+    it('un chofer no puede activar una reserva a mano', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.RESERVED,
+          depositPaid: true,
+          scheduledDate: '2020-01-01',
+        }),
+      );
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.PENDING,
+          'drv-1',
+          RoleType.DELIVERY,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('punto 7 (segunda revisión): la activación usa el MISMO lock pesimista que cancelar/liberar', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.RESERVED,
+          depositPaid: true,
+          scheduledDate: '2020-01-01',
+        }),
+      );
+
+      await useCase.execute(
+        'ord-1',
+        OrderStatus.PENDING,
+        undefined,
+        RoleType.ADMIN,
+      );
+
+      expect(queryBuilder.setLock).toHaveBeenCalledWith(
+        'pessimistic_write',
+        undefined,
+        ['ord'],
+      );
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    });
+
+    it('punto 7: si el CRON ya activó la reserva mientras se pedía el lock, no duplica la oferta (idempotente, sin error)', async () => {
+      // Primera lectura (en `handlePendingTarget`, sin lock): todavía RESERVED.
+      // Segunda lectura (YA con el lock, dentro de `activarReservaConLock`):
+      // el cron (`ReservationService.activateDueReservations`) ganó la
+      // carrera y la dejó PENDING. Sin este chequeo, acá se volvería a
+      // ofertar el mismo pedido una segunda vez.
+      orders.findByIdFull
+        .mockResolvedValueOnce(
+          makeOrder({
+            status: OrderStatus.RESERVED,
+            depositPaid: true,
+            scheduledDate: '2020-01-01',
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeOrder({
+            status: OrderStatus.PENDING,
+            depositPaid: true,
+            scheduledDate: '2020-01-01',
+          }),
+        );
+
+      const result = await useCase.execute(
+        'ord-1',
+        OrderStatus.PENDING,
+        undefined,
+        RoleType.ADMIN,
+      );
+
+      expect(result.status).toBe(OrderStatus.PENDING);
+      expect(orchestrator.offerToNextDriver).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalledWith(
+        'order:pending',
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    });
+  });
+
+  describe('CANCELLED (desajuste 2: mismo efecto que /cancel)', () => {
+    it('delega en CancelOrderUseCase con el actor mapeado y el userId del token', async () => {
+      const cancelado = makeOrder({ status: OrderStatus.CANCELLED });
+      cancelOrderUseCase.execute.mockResolvedValue(cancelado);
+
+      const result = await useCase.execute(
+        'ord-1',
+        OrderStatus.CANCELLED,
+        undefined,
+        RoleType.ADMIN,
+        'admin-1',
+      );
+
+      expect(cancelOrderUseCase.execute).toHaveBeenCalledWith(
+        'ord-1',
+        'admin-1',
+        'admin',
+      );
+      expect(result).toBe(cancelado);
+      // No duplica la política: no busca el pedido ni emite side-effects acá,
+      // todo ya lo hizo CancelOrderUseCase.
+      expect(orders.findByIdFull).not.toHaveBeenCalled();
+    });
+
+    it('mapea RoleType.DELIVERY a "driver" (libera, no cancela)', async () => {
+      cancelOrderUseCase.execute.mockResolvedValue(makeOrder());
+
+      await useCase.execute(
+        'ord-1',
+        OrderStatus.CANCELLED,
+        undefined,
+        RoleType.DELIVERY,
+        'user-drv-1',
+      );
+
+      expect(cancelOrderUseCase.execute).toHaveBeenCalledWith(
+        'ord-1',
+        'user-drv-1',
+        'driver',
+      );
+    });
+
+    it('rechaza cancelar sin un actor identificado', async () => {
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.CANCELLED,
+          undefined,
+          RoleType.ADMIN,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(cancelOrderUseCase.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('H-54: el panel recibe order:on-the-way (y el alias viejo)', () => {
+    it('emite order:on_the_way (compat) y order:on-the-way (unificado) con el mismo payload', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+        distributorId: 'dist-1',
+        user: { userId: 'user-drv-1' },
+      });
+
+      await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
+
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:on_the_way',
+        expect.objectContaining({ orderId: 'ord-1' }),
+        'dist-1',
+      );
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:on-the-way',
+        expect.objectContaining({ orderId: 'ord-1' }),
+        'dist-1',
+      );
+    });
+
+    it('otros estados sólo emiten el nombre del enum, sin el alias con guión', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.PENDING }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+        distributorId: 'dist-1',
+        isEnabled: true,
+        validated: true,
+        user: {},
+      });
+
+      await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:accepted',
+        expect.anything(),
+        'dist-1',
+      );
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalledWith(
+        'order:on-the-way',
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { AuthService } from '../auth/auth.service';
+import { User } from '../users/entities/user.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import { errorMessage } from '../common/errors/error-message';
 import { SocketDeSplg, tokenDelHandshake } from './socket-data';
@@ -10,6 +11,13 @@ export interface IdentidadDeSocket {
   userId: string;
   email: string;
   role: RoleType;
+  /**
+   * Distribuidora del perfil (admin/delivery), `null` para `customer` y para
+   * `super_admin` (no tiene una sola: ve todas). La usa `AdminGateway` para
+   * unir al admin a la sala de SU distribuidora (aislamiento H-77..H-84
+   * también en tiempo real).
+   */
+  distributorId: string | null;
 }
 
 /**
@@ -58,7 +66,8 @@ export class SocketIdentityService {
       return null;
     }
 
-    // Sólo la relación que hace falta para decidir el permiso.
+    // Sólo la relación que hace falta para decidir el permiso (+ delivery/
+    // admins, livianas, para resolver la distribuidora del staff).
     const user = await this.usersService.findOneWithRoleByEmail(email);
 
     if (!user) {
@@ -71,11 +80,13 @@ export class SocketIdentityService {
       return null;
     }
 
+    const role = user.role?.type as RoleType;
     const identidad: IdentidadDeSocket = {
       userId: user.userId,
       email,
       // Un usuario sin rol no puede operar: el gateway lo rechaza por rol.
-      role: user.role?.type as RoleType,
+      role,
+      distributorId: this.resolverDistribuidora(user, role),
     };
 
     client.data.identidad = identidad;
@@ -96,5 +107,22 @@ export class SocketIdentityService {
    */
   async obtener(client: SocketDeSplg): Promise<IdentidadDeSocket | null> {
     return client.data.identidad ?? (await this.identificar(client));
+  }
+
+  /**
+   * Misma regla que `AuthGuard.resolveDistributor` en HTTP: el staff
+   * (admin/delivery) se deriva de SU perfil, nunca de lo que mande el
+   * cliente. `customer` y `super_admin` no tienen una sola (el socket no
+   * soporta "ver como", a diferencia del header `X-Distributor` en HTTP) →
+   * `null`.
+   */
+  private resolverDistribuidora(user: User, role: RoleType): string | null {
+    if (role === RoleType.DELIVERY) {
+      return user.delivery?.distributorId ?? null;
+    }
+    if (role === RoleType.ADMIN) {
+      return user.admins?.[0]?.distributorId ?? null;
+    }
+    return null;
   }
 }

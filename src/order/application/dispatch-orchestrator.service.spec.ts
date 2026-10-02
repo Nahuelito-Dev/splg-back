@@ -18,6 +18,7 @@ describe('DispatchOrchestratorService', () => {
   };
   let orders: { findByIdFull: jest.Mock };
   let deliveries: { choferesElegibles: jest.Mock };
+  let fleet: { choferesInhabilitados: jest.Mock };
   let offers: {
     create: jest.Mock;
     findOfferedDriverIds: jest.Mock;
@@ -55,6 +56,9 @@ describe('DispatchOrchestratorService', () => {
     deliveries = {
       choferesElegibles: jest.fn((ids: string[]) => Promise.resolve(ids)),
     };
+    fleet = {
+      choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
+    };
     const notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
     };
@@ -64,6 +68,7 @@ describe('DispatchOrchestratorService', () => {
       offers as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
       deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
       notifications as unknown as import('../../notifications/notifications.service').NotificationsService,
+      fleet as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
     );
   });
 
@@ -168,6 +173,58 @@ describe('DispatchOrchestratorService', () => {
       expect(result).toBe('far');
       expect(deliveries.choferesElegibles).toHaveBeenCalledWith(
         ['near', 'far'],
+        undefined,
+      );
+    });
+
+    it('CU-136/137/138: saltea al chofer inhabilitado por flota (licencia/vehículo vencido) y ofrece al siguiente', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near', 'far']);
+      fleet.choferesInhabilitados.mockResolvedValueOnce(new Set(['near']));
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBe('far');
+      expect(fleet.choferesInhabilitados).toHaveBeenCalledWith(
+        ['near', 'far'],
+        undefined,
+      );
+    });
+
+    it('CU-136/137/138: si TODOS los candidatos elegibles están inhabilitados por flota, no ofrece nada', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['near']);
+      fleet.choferesInhabilitados.mockResolvedValue(new Set(['near']));
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+      // El mismo chofer reaparece en los 4 radios; el bloqueo de flota se
+      // pregunta una sola vez por intento de oferta (punto 6 de la revisión).
+      expect(fleet.choferesInhabilitados).toHaveBeenCalledTimes(1);
+    });
+
+    it('CU-136/137/138 (revisión): el bloqueo de flota se calcula UNA VEZ por chofer en todo el intento de oferta, no una vez por radio', async () => {
+      // 'near' reaparece en el radio de 10km (superconjunto del de 5km),
+      // pero ya fue evaluado y descartado: no se vuelve a consultar.
+      dispatch.findNearbyDrivers
+        .mockResolvedValueOnce(['near']) // 5km: sólo el bloqueado
+        .mockResolvedValueOnce(['near', 'far']); // 10km: aparece uno nuevo
+      fleet.choferesInhabilitados.mockResolvedValueOnce(new Set(['near']));
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBe('far');
+      expect(fleet.choferesInhabilitados).toHaveBeenCalledTimes(2);
+      expect(fleet.choferesInhabilitados).toHaveBeenNthCalledWith(
+        1,
+        ['near'],
+        undefined,
+      );
+      // La segunda consulta sólo pregunta por el candidato NUEVO ('far'):
+      // 'near' no se repite aunque el radar lo vuelva a traer.
+      expect(fleet.choferesInhabilitados).toHaveBeenNthCalledWith(
+        2,
+        ['far'],
         undefined,
       );
     });

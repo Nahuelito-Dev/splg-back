@@ -62,7 +62,10 @@ describe('OrderService · aviso de llegada', () => {
       {} as unknown as import('./application/cancel-order.use-case').CancelOrderUseCase,
       {} as unknown as import('./application/confirm-delivery.use-case').ConfirmDeliveryUseCase,
       {} as unknown as import('./application/dispatch-orchestrator.service').DispatchOrchestratorService,
+      {} as unknown as import('./domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
       notifications as unknown as import('./domain/ports/notification.port').NotificationPort,
+      {} as unknown as import('typeorm').DataSource,
+      {} as unknown as import('../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue(pedido!);
     return service;

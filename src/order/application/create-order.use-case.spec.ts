@@ -175,6 +175,7 @@ describe('CreateOrderUseCase', () => {
       expect(realtime.notifyAdmins).toHaveBeenCalledWith(
         'order:created',
         expect.any(Object),
+        expect.any(String),
       );
     });
   });

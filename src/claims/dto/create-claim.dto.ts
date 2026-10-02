@@ -1,4 +1,5 @@
 import { IsString, IsNotEmpty, IsUUID, IsOptional } from 'class-validator';
+import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateClaimDto {
@@ -13,13 +14,11 @@ export class CreateClaimDto {
   customerId!: string;
 
   @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @TextoNoVacio()
   reason!: string;
 
   @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @TextoNoVacio()
   description!: string;
 
   @ApiProperty({ required: false })
