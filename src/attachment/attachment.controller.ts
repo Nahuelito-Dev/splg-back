@@ -9,12 +9,14 @@ import {
   ParseEnumPipe,
   ParseUUIDPipe,
   Post,
+  Query,
+  Req,
   Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -41,6 +43,12 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { servirArchivo } from '../common/http/servir-archivo';
+import {
+  DownloadLinkResponseDto,
+  DownloadMode,
+  DownloadQueryDto,
+} from '../storage/dto/download-link.dto';
+import { aEnlaceDeDescarga } from '../storage/download-link';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 const OWNER_TYPE_PARAM = {
@@ -125,22 +133,44 @@ export class AttachmentController {
   // Va antes que `:ownerType/:ownerId` para que ".../download" no se lea como un ownerId.
   @Get(':attachmentId/download')
   @ApiOperation({
-    summary:
-      'Descargar un adjunto: redirige a una URL firmada (S3) o sirve el archivo (local)',
+    summary: 'Descargar un adjunto',
+    description:
+      'Por defecto devuelve el archivo: redirige (302) a una URL firmada con ' +
+      'S3, o lo sirve por streaming con el driver local. Con `?modo=url` ' +
+      'devuelve `{ url, expiresAt }` en JSON, sin redirect: es lo que tiene ' +
+      'que usar el panel (un 302 cross-origin pierde el token y choca con CORS).',
   })
   @ApiParam({ name: 'attachmentId', description: 'Attachment UUID' })
-  @ApiOkResponse({ description: 'El archivo, con su content-type original' })
+  @ApiOkResponse({
+    description:
+      'El archivo con su content-type original; con `?modo=url`, el enlace',
+    type: DownloadLinkResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Adjunto no encontrado' })
   async download(
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Query() query: DownloadQueryDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
+    const actor = { userId: user.user_id, role: user.role };
+
+    if (query.modo === DownloadMode.URL) {
+      const signed = await this.attachmentsService.getSignedDownload(
+        attachmentId,
+        distributorId,
+        actor,
+      );
+      res.json(aEnlaceDeDescarga(signed, req.originalUrl.split('?')[0]));
+      return;
+    }
+
     const download = await this.attachmentsService.getDownload(
       attachmentId,
       distributorId,
-      { userId: user.user_id, role: user.role },
+      actor,
     );
 
     if (download.kind === 'redirect') {

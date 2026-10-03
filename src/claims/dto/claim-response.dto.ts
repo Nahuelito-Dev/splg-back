@@ -10,7 +10,15 @@ export class ClaimResponseDto {
   @ApiProperty({ format: 'uuid' }) customer_id!: string;
   @ApiProperty({ example: 'Fuga de gas' }) reason!: string;
   @ApiProperty() description!: string;
-  @ApiProperty({ type: String, nullable: true }) photoUrl!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto del reclamo (vence en minutos: pedirla de nuevo ' +
+      'con `GET /claims/:id/photo`), o `null` si no tiene foto (también con el ' +
+      'driver local, que no firma URLs: ahí se usa `GET /claims/:id/photo`).',
+  })
+  photoUrl!: string | null;
   @ApiProperty({ enum: ClaimStatus }) status!: ClaimStatus;
   @ApiProperty({ type: String, nullable: true })
   resolutionNote!: string | null;

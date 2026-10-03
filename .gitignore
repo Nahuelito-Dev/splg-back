@@ -66,3 +66,6 @@ postman/__pycache__/
 postman/ids.txt
 postman/openapi.json
 scripts/alineacion/newman-*.json
+
+# --- DATOS LOCALES DE MINIO (S3 de desarrollo) ---
+/minio-data/

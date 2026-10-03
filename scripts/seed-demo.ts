@@ -383,11 +383,7 @@ async function main() {
   const [rolCliente] = await q(
     `SELECT role_id FROM role WHERE type = 'customer'`,
   );
-  const clientes = await sembrarClientes(
-    q,
-    rolCliente?.role_id ?? null,
-    zonas,
-  );
+  const clientes = await sembrarClientes(q, rolCliente?.role_id ?? null, zonas);
   resumen.push(['customer (clientes)', clientes.length]);
   resumen.push([
     'user_address (direcciones)',

@@ -14,9 +14,11 @@ import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
 import { AttachmentOwnerResolver } from './ports/attachment-owner-resolver.port';
 import {
+  SignedDownload,
   StoragePort,
   StorageObjectStream,
 } from '../storage/ports/storage.port';
+import { StorageCleanupService } from '../storage/storage-cleanup.service';
 import {
   acotarNombreDeArchivo,
   decodificarNombreDeArchivo,
@@ -26,7 +28,6 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
 } from '../common/utils/attachment-rules';
 import { RoleType } from '../common/constants/role-type.enum';
-import { errorMessage } from '../common/errors/error-message';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 
 /** Lo que el controller necesita para responder la descarga, sea cual sea el driver activo. */
@@ -65,6 +66,7 @@ export class AttachmentService {
     private readonly attachments: Repository<Attachment>,
     private readonly registry: AttachmentOwnerRegistry,
     private readonly storage: StoragePort,
+    private readonly cleanup: StorageCleanupService,
   ) {}
 
   async upload(
@@ -100,6 +102,9 @@ export class AttachmentService {
     }
 
     const key = `attachments/${distributorId}/${ownerType}/${ownerId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
+    // Se anota la key antes de subir: si el proceso cae antes de guardar la
+    // referencia, el cron borra el objeto abandonado.
+    await this.cleanup.reserveUpload(key);
     await this.storage.put({
       key,
       body: file.buffer,
@@ -121,11 +126,15 @@ export class AttachmentService {
     });
 
     try {
-      return await this.attachments.save(attachment);
+      return await this.attachments.manager.transaction(async (manager) => {
+        const saved = await manager.save(attachment);
+        await this.cleanup.confirmUpload(manager, key);
+        return saved;
+      });
     } catch (error) {
       // El archivo ya se subió: si el registro en la base falla, no queda
       // huérfano en el storage.
-      await this.borrarDelStorage(key);
+      this.cleanup.removeInBackground(key);
       return traducirErrorDeBase(error, this.logger, 'adjuntos');
     }
   }
@@ -154,12 +163,11 @@ export class AttachmentService {
       actor,
     );
 
-    const redirectUrl = await this.storage.getDownloadUrl(
-      attachment.storageKey,
-      { fileName: attachment.originalName },
-    );
-    if (redirectUrl) {
-      return { kind: 'redirect', url: redirectUrl };
+    const signed = await this.storage.getSignedDownload(attachment.storageKey, {
+      fileName: attachment.originalName,
+    });
+    if (signed) {
+      return { kind: 'redirect', url: signed.url };
     }
 
     const stream = await this.storage.getStream(attachment.storageKey);
@@ -169,6 +177,25 @@ export class AttachmentService {
       mimeType: stream.contentType ?? attachment.mimeType,
       ...stream,
     };
+  }
+
+  /**
+   * URL firmada del adjunto (`null` con el driver local, que no tiene: ahí el
+   * controller apunta al endpoint que sirve el archivo).
+   */
+  async getSignedDownload(
+    attachmentId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+  ): Promise<SignedDownload | null> {
+    const attachment = await this.findOneOrThrow(
+      attachmentId,
+      distributorId,
+      actor,
+    );
+    return this.storage.getSignedDownload(attachment.storageKey, {
+      fileName: attachment.originalName,
+    });
   }
 
   async remove(
@@ -188,23 +215,12 @@ export class AttachmentService {
     ) {
       throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
     }
-    await this.attachments.remove(attachment);
-    await this.borrarDelStorage(attachment.storageKey);
-  }
-
-  /**
-   * Best-effort: el registro ya está resuelto y un fallo del storage no tiene
-   * que tapar el resultado (ni el error original de la subida). Queda en el
-   * log la key para limpiarla a mano.
-   */
-  private async borrarDelStorage(key: string): Promise<void> {
-    try {
-      await this.storage.remove(key);
-    } catch (error) {
-      this.logger.error(
-        `No se pudo borrar ${key} del storage; queda huérfano para limpiar: ${errorMessage(error)}`,
-      );
-    }
+    await this.attachments.manager.transaction(async (manager) => {
+      await manager.remove(attachment);
+      await this.cleanup.scheduleRemoval(manager, attachment.storageKey);
+    });
+    // Sin esperar: si el proveedor falla, se reintenta y queda registrado.
+    this.cleanup.removeInBackground(attachment.storageKey);
   }
 
   private async findOneOrThrow(

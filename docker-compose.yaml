@@ -23,3 +23,47 @@ services:
     container_name: splg-redis
     # No hace falta volumen si no te importa perder la cache al reiniciar
     # Pero para desarrollo es más rápido así.
+
+  # S3 local para desarrollo y CI (compatible con la API de AWS S3). Con
+  # STORAGE_DRIVER=s3 + STORAGE_S3_ENDPOINT=http://localhost:9000 el back sube
+  # acá igual que subiría a AWS. La imagen oficial de MinIO ya no se publica en
+  # Docker Hub ni en Quay: se usa el build de Chainguard, fijado por digest
+  # (override con MINIO_IMAGE / MINIO_MC_IMAGE). Los valores por defecto de
+  # credenciales y de la clave de cifrado son SÓLO de desarrollo; los puertos
+  # quedan abiertos únicamente en 127.0.0.1.
+  minio:
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio@sha256:4cf4831a2bbcf13ddca09c1cbcc9faff716dd3c4247e0babc32864b8ee8e0034}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-splgminio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-splgminio-secret}
+      # Sin un KMS configurado, MinIO rechaza el `ServerSideEncryption: AES256`
+      # que manda el back (en AWS no hace falta, SSE-S3 es nativo).
+      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:-splg-dev-key:c3BsZy1kZXYta2V5LW5vLXVzYXItZW4tcHJvZC0xMjM=}
+      MC_HOST_local: http://${MINIO_ROOT_USER:-splgminio}:${MINIO_ROOT_PASSWORD:-splgminio-secret}@localhost:9000
+    container_name: splg-minio
+    volumes:
+      - ./minio-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/bin/mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Crea el bucket de desarrollo y termina (idempotente, con reintentos). El
+  # cliente `mc` toma el alias `local` de la variable MC_HOST_local.
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-cgr.dev/chainguard/minio-client@sha256:b20bdc339b3f2596c8f731793f861d2445fd13a9a3cfb517ff020969f4e4bf71}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: on-failure:5
+    container_name: splg-minio-init
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-splgminio}:${MINIO_ROOT_PASSWORD:-splgminio-secret}@minio:9000
+    entrypoint: ["/usr/bin/mc"]
+    command: ["mb", "--ignore-existing", "local/${STORAGE_S3_BUCKET:-splg-dev}"]
