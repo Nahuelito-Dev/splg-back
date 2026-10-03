@@ -5,11 +5,8 @@
  * -3 todo el año, así que alcanza con una constante. Nada de acá depende de la
  * zona horaria del proceso (`TZ`): todo se calcula con componentes UTC.
  */
-import { Logger } from '@nestjs/common';
-
 export const ZONA_ARGENTINA = 'America/Argentina/Buenos_Aires';
 
-let avisoZonaEmitido = false;
 const DESFASAJE_EN_MS = 3 * 60 * 60 * 1000;
 const UN_DIA_EN_MS = 24 * 60 * 60 * 1000;
 const FORMATO_DIA = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -110,31 +107,13 @@ export function primerDiaDelMesSiguiente(dia: string): string {
 }
 
 /**
- * Zona en la que el driver `pg` guarda las columnas `timestamp` (sin zona): la
- * hora de pared del proceso Node. En un VPS suele ser UTC; en un equipo de
- * desarrollo, la local.
- */
-export function zonaDelProceso(): string {
-  const zona = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (/^[A-Za-z0-9_+\-/]+$/.test(zona)) return zona;
-  if (!avisoZonaEmitido) {
-    avisoZonaEmitido = true;
-    new Logger('dias-argentina').warn(
-      `Zona horaria del proceso no reconocida ("${zona}"): se asume UTC al agrupar por día`,
-    );
-  }
-  return 'UTC';
-}
-
-/**
- * Expresión SQL que trunca `columna` (un `timestamp` sin zona, escrito por el
- * proceso Node en `zonaColumna`) a `granularidad` en hora argentina y devuelve
- * el instante (timestamptz) en que arranca ese período en Argentina.
+ * Expresión SQL que trunca `columna` (un `timestamptz`) a `granularidad` en
+ * hora argentina y devuelve el instante (timestamptz) en que arranca ese
+ * período en Argentina. No depende de la zona del proceso ni de la sesión.
  */
 export function truncarEnArgentinaSql(
   granularidad: 'day' | 'week' | 'month',
   columna: string,
-  zonaColumna: string = zonaDelProceso(),
 ): string {
-  return `date_trunc('${granularidad}', ${columna} AT TIME ZONE '${zonaColumna}' AT TIME ZONE '${ZONA_ARGENTINA}') AT TIME ZONE '${ZONA_ARGENTINA}'`;
+  return `date_trunc('${granularidad}', ${columna} AT TIME ZONE '${ZONA_ARGENTINA}') AT TIME ZONE '${ZONA_ARGENTINA}'`;
 }

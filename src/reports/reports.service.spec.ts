@@ -1,4 +1,3 @@
-import { zonaDelProceso } from '../common/utils/dias-argentina';
 import { Repository } from 'typeorm';
 import { ReportsService } from './reports.service';
 import { Order } from '../order/entities/order.entity';
@@ -121,7 +120,7 @@ describe('ReportsService', () => {
       qb.getRawMany.mockResolvedValue([]);
       await service.getSalesEvolution(new Date(), new Date(), 'week');
       expect(qb.select).toHaveBeenCalledWith(
-        `date_trunc('week', order.deliveredAt AT TIME ZONE '${zonaDelProceso()}' AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'`,
+        `date_trunc('week', order.deliveredAt AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'`,
         'period',
       );
     });
@@ -130,7 +129,7 @@ describe('ReportsService', () => {
       qb.getRawMany.mockResolvedValue([]);
       await service.getSalesEvolution(new Date(), new Date(), 'day');
       expect(qb.select).toHaveBeenCalledWith(
-        `date_trunc('day', order.deliveredAt AT TIME ZONE '${zonaDelProceso()}' AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'`,
+        `date_trunc('day', order.deliveredAt AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'`,
         'period',
       );
     });
@@ -139,7 +138,7 @@ describe('ReportsService', () => {
       qb.getRawMany.mockResolvedValue([]);
       await service.getSalesEvolution(new Date(), new Date(), 'month');
       expect(qb.select).toHaveBeenCalledWith(
-        `date_trunc('month', order.deliveredAt AT TIME ZONE '${zonaDelProceso()}' AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'`,
+        `date_trunc('month', order.deliveredAt AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'`,
         'period',
       );
     });
