@@ -1,0 +1,282 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  PayloadTooLargeException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { randomUUID } from 'crypto';
+import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
+import { AttachmentOwnerRegistry } from './attachment-owner.registry';
+import { AttachmentOwnerResolver } from './ports/attachment-owner-resolver.port';
+import {
+  StoragePort,
+  StorageObjectStream,
+} from '../storage/ports/storage.port';
+import {
+  acotarNombreDeArchivo,
+  decodificarNombreDeArchivo,
+  esMimeTypePermitido,
+  extensionParaMimeType,
+  firmaCoincideConMimeType,
+  MAX_ATTACHMENT_SIZE_BYTES,
+} from '../common/utils/attachment-rules';
+import { RoleType } from '../common/constants/role-type.enum';
+import { errorMessage } from '../common/errors/error-message';
+import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+
+/** Lo que el controller necesita para responder la descarga, sea cual sea el driver activo. */
+export type AttachmentDownload =
+  | { kind: 'redirect'; url: string }
+  | ({
+      kind: 'stream';
+      fileName: string;
+      mimeType: string;
+    } & StorageObjectStream);
+
+/** Quién pide: el rol decide si hace falta que el dueño sea "propio". */
+export interface AttachmentActor {
+  userId: string;
+  role: RoleType;
+}
+
+/** Los únicos tipos que un chofer puede tocar, y sólo si el dueño es suyo. */
+export const OWNER_TYPES_DEL_CHOFER: readonly AttachmentOwnerType[] = [
+  AttachmentOwnerType.FUEL_LOAD,
+  AttachmentOwnerType.VEHICLE_ACCIDENT,
+  AttachmentOwnerType.DRIVER_SETTLEMENT,
+];
+
+/**
+ * Adjuntos genéricos de los módulos de empresa. Habla con `StoragePort` y
+ * delega en el resolver de cada módulo dueño la pregunta "¿existe este dueño
+ * y es de esta distribuidora?".
+ */
+@Injectable()
+export class AttachmentService {
+  private readonly logger = new Logger(AttachmentService.name);
+
+  constructor(
+    @InjectRepository(Attachment)
+    private readonly attachments: Repository<Attachment>,
+    private readonly registry: AttachmentOwnerRegistry,
+    private readonly storage: StoragePort,
+  ) {}
+
+  async upload(
+    ownerType: AttachmentOwnerType,
+    ownerId: string,
+    distributorId: string,
+    file: Express.Multer.File | undefined,
+    label: string | undefined,
+    actor: AttachmentActor,
+  ): Promise<Attachment> {
+    await this.assertAcceso(ownerType, ownerId, distributorId, actor);
+
+    if (!file) {
+      throw new BadRequestException('Falta el archivo');
+    }
+    if (file.size === 0) {
+      throw new BadRequestException('El archivo está vacío');
+    }
+    if (!esMimeTypePermitido(file.mimetype)) {
+      throw new UnsupportedMediaTypeException(
+        `Tipo de archivo no permitido (${file.mimetype}). Se acepta PDF, JPG, PNG o WEBP`,
+      );
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+      throw new PayloadTooLargeException(
+        `El archivo supera el máximo permitido (${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)} MB)`,
+      );
+    }
+    if (!firmaCoincideConMimeType(file.mimetype, file.buffer)) {
+      throw new UnsupportedMediaTypeException(
+        `El contenido del archivo no coincide con el tipo declarado (${file.mimetype})`,
+      );
+    }
+
+    const key = `attachments/${distributorId}/${ownerType}/${ownerId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
+    await this.storage.put({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+    });
+
+    const attachment = this.attachments.create({
+      distributorId,
+      ownerType,
+      ownerId,
+      label: label?.trim() || null,
+      storageKey: key,
+      originalName: acotarNombreDeArchivo(
+        decodificarNombreDeArchivo(file.originalname),
+      ),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: actor.userId,
+    });
+
+    try {
+      return await this.attachments.save(attachment);
+    } catch (error) {
+      // El archivo ya se subió: si el registro en la base falla, no queda
+      // huérfano en el storage.
+      await this.borrarDelStorage(key);
+      return traducirErrorDeBase(error, this.logger, 'adjuntos');
+    }
+  }
+
+  async list(
+    ownerType: AttachmentOwnerType,
+    ownerId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+  ): Promise<Attachment[]> {
+    await this.assertAcceso(ownerType, ownerId, distributorId, actor);
+    return this.attachments.find({
+      where: { distributorId, ownerType, ownerId },
+      order: { uploadedAt: 'DESC' },
+    });
+  }
+
+  async getDownload(
+    attachmentId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+  ): Promise<AttachmentDownload> {
+    const attachment = await this.findOneOrThrow(
+      attachmentId,
+      distributorId,
+      actor,
+    );
+
+    const redirectUrl = await this.storage.getDownloadUrl(
+      attachment.storageKey,
+      { fileName: attachment.originalName },
+    );
+    if (redirectUrl) {
+      return { kind: 'redirect', url: redirectUrl };
+    }
+
+    const stream = await this.storage.getStream(attachment.storageKey);
+    return {
+      kind: 'stream',
+      fileName: attachment.originalName,
+      mimeType: stream.contentType ?? attachment.mimeType,
+      ...stream,
+    };
+  }
+
+  async remove(
+    attachmentId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+  ): Promise<void> {
+    const attachment = await this.findOneOrThrow(
+      attachmentId,
+      distributorId,
+      actor,
+    );
+    // El chofer sólo borra lo que subió él, aunque el dueño sea suyo.
+    if (
+      actor.role === RoleType.DELIVERY &&
+      attachment.uploadedByUserId !== actor.userId
+    ) {
+      throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
+    }
+    await this.attachments.remove(attachment);
+    await this.borrarDelStorage(attachment.storageKey);
+  }
+
+  /**
+   * Best-effort: el registro ya está resuelto y un fallo del storage no tiene
+   * que tapar el resultado (ni el error original de la subida). Queda en el
+   * log la key para limpiarla a mano.
+   */
+  private async borrarDelStorage(key: string): Promise<void> {
+    try {
+      await this.storage.remove(key);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo borrar ${key} del storage; queda huérfano para limpiar: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  private async findOneOrThrow(
+    attachmentId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+  ): Promise<Attachment> {
+    const attachment = await this.attachments.findOne({
+      where: { attachmentId, distributorId },
+    });
+    if (!attachment) {
+      throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
+    }
+    // Con el dueño borrado el adjunto no puede quedar inaccesible: acá alcanza
+    // con que la fila sea de la distribuidora. El resolver se exige al subir
+    // y al listar.
+    await this.assertAcceso(
+      attachment.ownerType,
+      attachment.ownerId,
+      distributorId,
+      actor,
+      false,
+    );
+    return attachment;
+  }
+
+  /**
+   * 400 si ningún módulo registró el tipo; 404 si el dueño no existe o es de
+   * otra distribuidora (lo dice el resolver). Un chofer, además, sólo entra a
+   * los tipos que le tocan y a dueños propios.
+   */
+  private async assertAcceso(
+    ownerType: AttachmentOwnerType,
+    ownerId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+    verificarDueno = true,
+  ): Promise<void> {
+    if (!verificarDueno && actor.role !== RoleType.DELIVERY) return;
+    const resolver = this.resolverDe(ownerType);
+
+    if (
+      actor.role === RoleType.DELIVERY &&
+      !OWNER_TYPES_DEL_CHOFER.includes(ownerType)
+    ) {
+      throw new ForbiddenException(
+        `Un chofer no puede acceder a adjuntos de tipo ${ownerType}`,
+      );
+    }
+
+    if (verificarDueno) await resolver.assertOwner(ownerId, distributorId);
+
+    if (actor.role === RoleType.DELIVERY) {
+      const esPropio =
+        (await resolver.isOwnedByUser?.(
+          ownerId,
+          actor.userId,
+          distributorId,
+        )) ?? false;
+      if (!esPropio) {
+        throw new NotFoundException(`No se encontró ${ownerType} ${ownerId}`);
+      }
+    }
+  }
+
+  private resolverDe(ownerType: AttachmentOwnerType): AttachmentOwnerResolver {
+    const resolver = this.registry.find(ownerType);
+    if (!resolver) {
+      throw new BadRequestException(
+        `Todavía no se pueden adjuntar archivos a "${ownerType}"`,
+      );
+    }
+    return resolver;
+  }
+}

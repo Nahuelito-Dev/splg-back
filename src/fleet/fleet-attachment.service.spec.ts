@@ -10,7 +10,7 @@ import { FleetAttachmentService } from './fleet-attachment.service';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
 import { FleetTaskService } from './fleet-task.service';
 import { StoragePort } from '../storage/ports/storage.port';
-import { MAX_ATTACHMENT_SIZE_BYTES } from './domain/attachment-rules';
+import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 function archivo(over: Partial<Express.Multer.File> = {}): Express.Multer.File {
   return {
@@ -19,7 +19,7 @@ function archivo(over: Partial<Express.Multer.File> = {}): Express.Multer.File {
     encoding: '7bit',
     mimetype: 'application/pdf',
     size: 1024,
-    buffer: Buffer.from('contenido'),
+    buffer: Buffer.from('%PDF-1.4 contenido'),
     destination: '',
     filename: '',
     path: '',

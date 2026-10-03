@@ -45,7 +45,8 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ApiTotal, informarTotal } from '../common/http/total';
-import { MAX_ATTACHMENT_SIZE_BYTES } from './domain/attachment-rules';
+import { servirArchivo } from '../common/http/servir-archivo';
+import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 /**
  * Tareas de flota: cada vencimiento/servicio concreto (CU-136 a CU-141) y sus
@@ -237,14 +238,7 @@ export class FleetTaskController {
       return;
     }
 
-    res.set({
-      'Content-Type': download.mimeType,
-      'Content-Disposition': `attachment; filename="${download.fileName}"`,
-      ...(download.sizeBytes
-        ? { 'Content-Length': String(download.sizeBytes) }
-        : {}),
-    });
-    download.stream.pipe(res);
+    servirArchivo(res, download);
   }
 
   @Delete(':id/attachments/:attachmentId')

@@ -1,7 +1,9 @@
 import {
   decodificarNombreDeArchivo,
   esMimeTypePermitido,
+  acotarNombreDeArchivo,
   extensionParaMimeType,
+  firmaCoincideConMimeType,
   MAX_ATTACHMENT_SIZE_BYTES,
 } from './attachment-rules';
 
@@ -50,5 +52,57 @@ describe('attachment-rules', () => {
     it('deja igual un nombre latin1 que no es UTF-8 válido', () => {
       expect(decodificarNombreDeArchivo('p\u00f3liza.pdf')).toBe('póliza.pdf');
     });
+  });
+});
+
+describe('firmaCoincideConMimeType', () => {
+  const casos: Array<[Parameters<typeof firmaCoincideConMimeType>[0], Buffer]> =
+    [
+      ['application/pdf', Buffer.from('%PDF-1.7 x')],
+      [
+        'image/png',
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]),
+      ],
+      ['image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0])],
+      [
+        'image/webp',
+        Buffer.concat([
+          Buffer.from('RIFF'),
+          Buffer.alloc(4),
+          Buffer.from('WEBPVP8 '),
+        ]),
+      ],
+    ];
+
+  it.each(casos)('acepta la firma real de %s', (mime, buffer) => {
+    expect(firmaCoincideConMimeType(mime, buffer)).toBe(true);
+  });
+
+  it.each(casos)('rechaza un HTML declarado como %s', (mime) => {
+    expect(firmaCoincideConMimeType(mime, Buffer.from('<html><script>'))).toBe(
+      false,
+    );
+  });
+
+  it('rechaza un buffer más corto que la firma', () => {
+    expect(firmaCoincideConMimeType('image/png', Buffer.from([0x89]))).toBe(
+      false,
+    );
+  });
+});
+
+describe('acotarNombreDeArchivo', () => {
+  it('deja intacto un nombre que entra', () => {
+    expect(acotarNombreDeArchivo('dni.pdf')).toBe('dni.pdf');
+  });
+
+  it('recorta a 255 conservando la extensión', () => {
+    const r = acotarNombreDeArchivo(`${'a'.repeat(400)}.pdf`);
+    expect([...r].length).toBe(255);
+    expect(r.endsWith('.pdf')).toBe(true);
+  });
+
+  it('sin extensión recorta igual', () => {
+    expect([...acotarNombreDeArchivo('b'.repeat(400))].length).toBe(255);
   });
 });

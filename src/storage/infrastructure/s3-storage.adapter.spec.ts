@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
 import {
@@ -91,6 +92,18 @@ describe('S3StorageAdapter', () => {
     );
   });
 
+  it('con fileName, la URL firmada lleva ResponseContentDisposition', async () => {
+    (getSignedUrl as jest.Mock).mockResolvedValue('https://s3.example.com/x');
+    await adapter.getDownloadUrl('fleet/doc.pdf', { fileName: "o'brien.pdf" });
+    const [, comando] = jest.mocked(getSignedUrl).mock.calls.at(-1) as [
+      unknown,
+      GetObjectCommand,
+    ];
+    expect(comando.input.ResponseContentDisposition).toContain(
+      "filename*=UTF-8''o%27brien.pdf",
+    );
+  });
+
   it('devuelve el stream, content-type y tamaño del objeto', async () => {
     const stream = Readable.from([Buffer.from('contenido')]);
     send.mockImplementation(
@@ -116,6 +129,15 @@ describe('S3StorageAdapter', () => {
 
     await expect(adapter.getStream('fleet/doc.pdf')).rejects.toThrow(
       'no se pudo leer como stream',
+    );
+  });
+
+  it('un objeto que no existe es 404, no 500', async () => {
+    send.mockRejectedValue(
+      Object.assign(new Error('x'), { name: 'NoSuchKey' }) as never,
+    );
+    await expect(adapter.getStream('fleet/falta.pdf')).rejects.toBeInstanceOf(
+      NotFoundException,
     );
   });
 });
