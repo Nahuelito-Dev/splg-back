@@ -19,6 +19,7 @@ describe('OrderMapper · datos del panel', () => {
   const pedidoBase = (): Order =>
     ({
       orderId: 'o1',
+      distributorId: 'd1',
       totalAmount: 22600,
       createdAt: new Date('2026-09-01T12:00:00Z'),
       deliveryInstructions: null,
@@ -164,5 +165,36 @@ describe('OrderMapper · datos del panel', () => {
       brand: 'Honda',
       model: 'Wave',
     });
+  });
+
+  it('cada renglón trae unit_price y subtotal guardados, no el precio vigente del catálogo', () => {
+    const pedido = {
+      ...pedidoBase(),
+      items: [
+        {
+          quantity: 2,
+          unitPrice: '14155.00',
+          subtotal: 28310,
+          gasCylinder: {
+            gasCylinderId: 'g1',
+            type: '10kg',
+            weight: 10,
+            price: 14900,
+            description: null,
+          },
+        },
+      ],
+    } as unknown as Order;
+
+    const [renglon] = OrderMapper.toDto(pedido).items;
+
+    expect(renglon.unitPrice).toBe(14155);
+    expect(renglon.subtotal).toBe(28310);
+    expect(renglon.cylinder?.price).toBe(14900);
+  });
+
+  it('trae la distribuidora del pedido (el super admin la usa para asignar chofer)', () => {
+    const dto = OrderMapper.toDto(pedidoBase());
+    expect(dto.distributorId).toBe('d1');
   });
 });

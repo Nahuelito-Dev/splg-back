@@ -118,4 +118,17 @@ describe('OrderPricingService', () => {
       expect(subtotal.toString()).toBe('0.3');
     });
   });
+
+  describe('priceItem — centavos', () => {
+    it('el subtotal es cantidad × precio unitario ya redondeado a centavos', () => {
+      // 10,53 con 5% de descuento = 10,0035 → 10,00; 3 × 10,00 = 30,00 (no 30,01).
+      const { unitPrice, subtotal } = pricing.priceItem(
+        '10.53',
+        [{ quantity: 1, discountPercentage: 5 }],
+        3,
+      );
+      expect(unitPrice.toNumber()).toBe(10);
+      expect(subtotal.toNumber()).toBe(30);
+    });
+  });
 });

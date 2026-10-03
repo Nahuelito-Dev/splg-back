@@ -10,14 +10,14 @@ export class ResumenDePedidosDto {
 
 /**
  * Importe vendido (pedidos entregados) en cada período. `week` es la SEMANA
- * CALENDARIO (domingo a sábado en curso), no los últimos 7 días.
+ * ISO (lunes a domingo en curso, en hora argentina), no los últimos 7 días.
  */
 export class VentasDto {
   @ApiProperty({ example: 22600 }) today!: number;
   @ApiProperty({
     example: 958500,
     description:
-      'Semana calendario en curso (domingo a sábado), no los últimos 7 días',
+      'Semana ISO en curso (lunes a domingo, hora argentina), no los últimos 7 días',
   })
   week!: number;
   @ApiProperty({

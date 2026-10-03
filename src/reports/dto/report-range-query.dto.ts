@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, Matches } from 'class-validator';
 
 /** Cómo se agrupan los resultados en el tiempo. */
 export enum Granularidad {
@@ -18,25 +18,26 @@ export enum Granularidad {
 export class ReportRangeQueryDto {
   @ApiPropertyOptional({
     description:
-      'Desde, en formato YYYY-MM-DD. Si no viene, el servicio elige un rango por defecto.',
+      'Desde (día en hora argentina), formato YYYY-MM-DD. Si no viene: igual a `to`, o hoy si tampoco viene `to`.',
     example: '2026-09-01',
   })
   @IsOptional()
-  @IsDateString(
-    { strict: false },
-    { message: 'from debe ser una fecha en formato YYYY-MM-DD' },
-  )
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'from debe ser una fecha en formato YYYY-MM-DD',
+  })
+  @IsDateString({ strict: true }, { message: 'from no es una fecha válida' })
   from?: string;
 
   @ApiPropertyOptional({
-    description: 'Hasta, en formato YYYY-MM-DD',
+    description:
+      'Hasta (día en hora argentina, inclusive), formato YYYY-MM-DD. Si no viene: igual a `from`, o hoy.',
     example: '2026-09-30',
   })
   @IsOptional()
-  @IsDateString(
-    { strict: false },
-    { message: 'to debe ser una fecha en formato YYYY-MM-DD' },
-  )
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'to debe ser una fecha en formato YYYY-MM-DD',
+  })
+  @IsDateString({ strict: true }, { message: 'to no es una fecha válida' })
   to?: string;
 }
 
