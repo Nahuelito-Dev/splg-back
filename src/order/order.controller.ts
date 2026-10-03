@@ -123,7 +123,7 @@ export class OrderController {
   })
   @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   @ApiBadRequestResponse({
-    description: 'status, from o to inválidos',
+    description: 'status, from o to inválidos, o from posterior a to',
   })
   async findAll(
     @Query() queryDto: QueryOrdersDto,

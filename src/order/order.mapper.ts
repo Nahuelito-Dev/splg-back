@@ -72,6 +72,7 @@ export class OrderMapper {
     const dto = new OrderResponseDto();
 
     dto.id = order.orderId;
+    dto.distributorId = order.distributorId;
     dto.total = Number(order.totalAmount); // Ensure number
     dto.createdAt = order.createdAt;
     dto.deliveryNotes = order.deliveryInstructions || null;
@@ -144,6 +145,8 @@ export class OrderMapper {
     dto.items = (order.items ?? []).map((item) => {
       const renglon = new OrderItemResponseDto();
       renglon.quantity = item.quantity;
+      renglon.unitPrice = Number(item.unitPrice);
+      renglon.subtotal = Number(item.subtotal);
       renglon.cylinder = null;
       if (item.gasCylinder) {
         const producto = new ProductoDelRenglonDto();

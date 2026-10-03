@@ -5,12 +5,27 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, MoreThanOrEqual, Between } from 'typeorm';
+import {
+  And,
+  DataSource,
+  LessThan,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderMapper } from './order.mapper';
+import {
+  diaArgentino,
+  lunesDeLaSemana,
+  inicioDelDiaArgentino,
+  primerDiaDelMes,
+  primerDiaDelMesSiguiente,
+  sumarDias,
+  truncarEnArgentinaSql,
+} from '../common/utils/dias-argentina';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { DeliveryService } from '../delivery/delivery.service';
@@ -159,6 +174,10 @@ export class OrderService {
 
   async findAll(queryDto: QueryOrdersDto, distributorId?: string | null) {
     const { limit = 10, offset = 0, term, status, from, to } = queryDto;
+    // Mismo criterio que /reports: un rango invertido es un error, no un listado vacío.
+    if (from && to && from > to) {
+      throw new BadRequestException('from no puede ser posterior a to');
+    }
     return this.orders.findAllPaginated(limit, offset, distributorId, {
       term,
       status,
@@ -513,26 +532,22 @@ export class OrderService {
   async getOrderStats(distributorId?: string | null) {
     const dist = distributorId ? { distributorId } : {};
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const hoy = diaArgentino();
+    const today = inicioDelDiaArgentino(hoy) as Date;
+    const tomorrow = inicioDelDiaArgentino(sumarDias(hoy, 1)) as Date;
 
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+    const inicioSemana = lunesDeLaSemana(hoy);
+    const weekStart = inicioDelDiaArgentino(inicioSemana) as Date;
+    const weekEnd = inicioDelDiaArgentino(sumarDias(inicioSemana, 7)) as Date;
 
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    const monthEnd = new Date(monthStart);
-    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    const monthStart = inicioDelDiaArgentino(primerDiaDelMes(hoy)) as Date;
+    const monthEnd = inicioDelDiaArgentino(
+      primerDiaDelMesSiguiente(hoy),
+    ) as Date;
 
     const delivered = (from: Date, to: Date) => ({
       status: OrderStatus.DELIVERED,
-      deliveredAt: Between(from, to),
+      deliveredAt: And(MoreThanOrEqual(from), LessThan(to)),
       ...dist,
     });
 
@@ -663,18 +678,19 @@ export class OrderService {
    * 7 queries secuenciales.
    */
   async getSalesChartData(distributorId?: string | null) {
-    const start = new Date();
-    start.setDate(start.getDate() - 6);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+    const hoy = diaArgentino();
+    const start = inicioDelDiaArgentino(sumarDias(hoy, -6)) as Date;
+    const end = inicioDelDiaArgentino(sumarDias(hoy, 1)) as Date;
 
     const qb = this.orderRepository
       .createQueryBuilder('order')
-      .select(`date_trunc('day', order.deliveredAt)`, 'day')
+      .select(truncarEnArgentinaSql('day', 'order.deliveredAt'), 'day')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
-      .andWhere('order.deliveredAt BETWEEN :start AND :end', { start, end });
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
+        start,
+        end,
+      });
 
     if (distributorId) {
       qb.andWhere('order.distributorId = :distributorId', { distributorId });
@@ -687,17 +703,16 @@ export class OrderService {
     // Mapa día(YYYY-MM-DD) → total, para rellenar los días sin ventas con 0.
     const byDay = new Map<string, number>();
     for (const r of rows) {
-      const key = new Date(r.day).toISOString().split('T')[0];
-      byDay.set(key, Number(r.total) || 0);
+      byDay.set(diaArgentino(new Date(r.day)), Number(r.total) || 0);
     }
 
     const chartData: { name: string; date: string; sales: number }[] = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      d.setHours(0, 0, 0, 0);
-      const key = d.toISOString().split('T')[0];
-      const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' });
+      const key = sumarDias(hoy, -i);
+      const dayName = new Date(`${key}T12:00:00Z`).toLocaleDateString('es-ES', {
+        weekday: 'short',
+        timeZone: 'UTC',
+      });
       chartData.push({
         name: dayName.charAt(0).toUpperCase() + dayName.slice(1),
         date: key,

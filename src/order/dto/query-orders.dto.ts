@@ -42,7 +42,7 @@ export class QueryOrdersDto extends PaginationDto {
     type: String,
     format: 'date',
     example: '2026-09-01',
-    description: 'Fecha desde (inclusive), en formato YYYY-MM-DD',
+    description: 'Fecha desde (inclusive), día en hora argentina, YYYY-MM-DD',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
@@ -55,7 +55,7 @@ export class QueryOrdersDto extends PaginationDto {
     type: String,
     format: 'date',
     example: '2026-09-30',
-    description: 'Fecha hasta (inclusive, en la fecha local), YYYY-MM-DD',
+    description: 'Fecha hasta (inclusive), día en hora argentina, YYYY-MM-DD',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {

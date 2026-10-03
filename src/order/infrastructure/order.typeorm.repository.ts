@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
+import {
+  inicioDelDiaArgentino,
+  rangoDelDiaArgentino,
+} from '../../common/utils/dias-argentina';
 import { Order, OrderStatus } from '../entities/order.entity';
 import {
   OrderListFilters,
@@ -91,16 +95,14 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     if (filters.status) {
       filtro.andWhere('order.status = :status', { status: filters.status });
     }
-    if (filters.from) {
-      // Fecha local (sin `Z`): Node la interpreta en la zona horaria del server.
-      filtro.andWhere('order.createdAt >= :from', {
-        from: new Date(`${filters.from}T00:00:00`),
-      });
+    // Días en hora argentina, `to` inclusivo (misma regla que /reports).
+    const desde = filters.from ? inicioDelDiaArgentino(filters.from) : null;
+    if (desde) {
+      filtro.andWhere('order.createdAt >= :from', { from: desde });
     }
-    if (filters.to) {
-      const hastaElDiaSiguiente = new Date(`${filters.to}T00:00:00`);
-      hastaElDiaSiguiente.setDate(hastaElDiaSiguiente.getDate() + 1);
-      filtro.andWhere('order.createdAt < :to', { to: hastaElDiaSiguiente });
+    const hasta = filters.to ? rangoDelDiaArgentino(filters.to) : null;
+    if (hasta) {
+      filtro.andWhere('order.createdAt < :to', { to: hasta.hasta });
     }
     const termino = filters.term?.trim();
     if (termino) {

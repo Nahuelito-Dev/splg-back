@@ -31,6 +31,22 @@ export class OrderItemResponseDto {
   quantity!: number;
 
   @ApiProperty({
+    name: 'unit_price',
+    example: 14900,
+    description:
+      'Precio unitario con el que se vendió el renglón (snapshot, no el del catálogo).',
+  })
+  @Expose({ name: 'unit_price' })
+  unitPrice!: number;
+
+  @ApiProperty({
+    example: 29800,
+    description: 'Subtotal del renglón tal como quedó guardado.',
+  })
+  @Expose({ name: 'subtotal' })
+  subtotal!: number;
+
+  @ApiProperty({
     name: 'gas_cylinder',
     type: ProductoDelRenglonDto,
     nullable: true,
@@ -142,6 +158,11 @@ export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
   id!: string;
+
+  /** Distribuidora dueña del pedido: el super admin la necesita para operar sin «Ver como». */
+  @ApiProperty({ name: 'distributor_id', format: 'uuid' })
+  @Expose({ name: 'distributor_id' })
+  distributorId!: string;
 
   @ApiProperty({ name: 'total_amount', example: 22600 })
   @Expose({ name: 'total_amount' })

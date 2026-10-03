@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, And, MoreThanOrEqual, LessThan } from 'typeorm';
 import { Order, OrderStatus } from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
+import { truncarEnArgentinaSql } from '../common/utils/dias-argentina';
 import Decimal from 'decimal.js';
 import {
   EvolucionDeVentasDto,
@@ -29,6 +30,9 @@ export class ReportsService {
   ) {}
 
   /**
+   * Los rangos son `[startDate, endDate)`: el controlador los arma desde días
+   * en hora argentina con `to` inclusivo (ver `rangoDeDiasArgentinos`).
+   *
    * `distributorId` opcional: si viene (admin de distribuidora), acota el
    * reporte a SUS pedidos. `null`/`undefined` (super_admin sin header) →
    * sin filtro, ve todas las distribuidoras.
@@ -41,7 +45,7 @@ export class ReportsService {
     const orders = await this.orderRepository.find({
       where: {
         status: OrderStatus.DELIVERED,
-        deliveredAt: Between(startDate, endDate),
+        deliveredAt: And(MoreThanOrEqual(startDate), LessThan(endDate)),
         ...(distributorId ? { distributorId } : {}),
       },
       // Historial: el chofer, el cliente o la dirección dados de baja siguen
@@ -99,7 +103,7 @@ export class ReportsService {
       .innerJoinAndSelect('order.items', 'item')
       .innerJoinAndSelect('item.gasCylinder', 'product')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
-      .andWhere('order.deliveredAt BETWEEN :start AND :end', {
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
         start: startDate,
         end: endDate,
       });
@@ -142,7 +146,7 @@ export class ReportsService {
       .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
-      .andWhere('order.deliveredAt BETWEEN :start AND :end', {
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
         start: startDate,
         end: endDate,
       });
@@ -166,7 +170,7 @@ export class ReportsService {
 
   /**
    * Evolución temporal de ventas (pedidos entregados) agrupada por día,
-   * semana o mes, usando `date_trunc` de Postgres sobre `deliveredAt`.
+   * semana o mes, usando `date_trunc` de Postgres sobre `deliveredAt` en hora argentina.
    * Devuelve los períodos ordenados cronológicamente, listos para un
    * gráfico de líneas/barras en el panel.
    *
@@ -182,11 +186,11 @@ export class ReportsService {
   ): Promise<EvolucionDeVentasDto[]> {
     const query = this.orderRepository
       .createQueryBuilder('order')
-      .select(`date_trunc('${granularity}', order.deliveredAt)`, 'period')
+      .select(truncarEnArgentinaSql(granularity, 'order.deliveredAt'), 'period')
       .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
-      .andWhere('order.deliveredAt BETWEEN :start AND :end', {
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
         start: startDate,
         end: endDate,
       });

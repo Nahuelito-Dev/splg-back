@@ -50,6 +50,9 @@ export class OrderPricingService {
       unitPrice = unitPrice.times(discountFactor);
     }
 
+    // El renglón guarda los dos a 2 decimales: el subtotal sale del precio ya
+    // redondeado, así cantidad × precio guardado coincide siempre con el subtotal.
+    unitPrice = unitPrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const subtotal = unitPrice.times(new Decimal(quantity));
     return { unitPrice, subtotal };
   }

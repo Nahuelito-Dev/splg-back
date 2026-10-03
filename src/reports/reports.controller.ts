@@ -20,6 +20,10 @@ import {
   ReportRangeQueryDto,
   ReportEvolutionQueryDto,
 } from './dto/report-range-query.dto';
+import {
+  diaArgentino,
+  rangoDeDiasArgentinos,
+} from '../common/utils/dias-argentina';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Reports')
@@ -29,26 +33,40 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  /**
+   * `startDate` inclusive y `endDate` EXCLUSIVO: `[inicio de from, inicio del
+   * día siguiente a to)` en hora argentina.
+   */
   private parseDates(
     from?: string,
     to?: string,
   ): { startDate: Date; endDate: Date } {
-    const startDate = from
-      ? new Date(from)
-      : new Date(new Date().setHours(0, 0, 0, 0)); // Default today 00:00
-    const endDate = to ? new Date(to) : new Date(); // Default now
+    // Sin from/to: hoy en hora argentina. Con uno solo, el rango es ese día.
+    const hoy = diaArgentino();
+    const desde = from ?? to ?? hoy;
+    const hasta = to ?? from ?? hoy;
+    const rango = rangoDeDiasArgentinos(desde, hasta);
 
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    if (!rango) {
       throw new BadRequestException('Invalid date format (YYYY-MM-DD)');
     }
+    if (desde > hasta) {
+      throw new BadRequestException('from no puede ser posterior a to');
+    }
 
-    return { startDate, endDate };
+    return { startDate: rango.desde, endDate: rango.hasta };
   }
 
   @Get('sales-by-driver')
-  @ApiOperation({ summary: 'Ventas por Repartidor' })
+  @ApiOperation({
+    summary: 'Ventas por Repartidor',
+    description:
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma el total del pedido (con recargos) de los pedidos entregados.',
+  })
   @ApiOkResponse({ type: VentasPorChoferDto, isArray: true })
-  @ApiBadRequestResponse({ description: 'Fecha con formato inválido' })
+  @ApiBadRequestResponse({
+    description: 'Fecha con formato inválido o from posterior a to',
+  })
   async getSalesByDriver(
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
@@ -63,9 +81,15 @@ export class ReportsController {
   }
 
   @Get('sales-by-product')
-  @ApiOperation({ summary: 'Ventas por Producto' })
+  @ApiOperation({
+    summary: 'Ventas por Producto',
+    description:
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma los subtotales de los renglones (sin recargos): por eso el total puede ser menor al de sales-by-driver/sales-by-payment, que suman el total del pedido.',
+  })
   @ApiOkResponse({ type: VentasPorProductoDto, isArray: true })
-  @ApiBadRequestResponse({ description: 'Fecha con formato inválido' })
+  @ApiBadRequestResponse({
+    description: 'Fecha con formato inválido o from posterior a to',
+  })
   async getSalesByProduct(
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
@@ -79,9 +103,15 @@ export class ReportsController {
   }
 
   @Get('sales-by-payment')
-  @ApiOperation({ summary: 'Ventas por Método de Pago' })
+  @ApiOperation({
+    summary: 'Ventas por Método de Pago',
+    description:
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma el total del pedido (con recargos) de los pedidos entregados.',
+  })
   @ApiOkResponse({ type: VentasPorMedioDePagoDto, isArray: true })
-  @ApiBadRequestResponse({ description: 'Fecha con formato inválido' })
+  @ApiBadRequestResponse({
+    description: 'Fecha con formato inválido o from posterior a to',
+  })
   async getSalesByPayment(
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
@@ -95,9 +125,15 @@ export class ReportsController {
   }
 
   @Get('sales-evolution')
-  @ApiOperation({ summary: 'Evolución de ventas por período (día/semana/mes)' })
+  @ApiOperation({
+    summary: 'Evolución de ventas por período (día/semana/mes)',
+    description:
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Los períodos (día, semana ISO lunes a domingo, mes) se agrupan en hora argentina y `period` es el instante en que arranca cada uno. Suma el total del pedido (con recargos).',
+  })
   @ApiOkResponse({ type: EvolucionDeVentasDto, isArray: true })
-  @ApiBadRequestResponse({ description: 'Fecha con formato inválido' })
+  @ApiBadRequestResponse({
+    description: 'Fecha con formato inválido o from posterior a to',
+  })
   async getSalesEvolution(
     @Query() rango: ReportEvolutionQueryDto,
     @CurrentDistributor() distributorId?: string | null,
