@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
-import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
+import { Order } from '../entities/order.entity';
+import {
+  DispatchOfferRepositoryPort,
+  DriverOfferState,
+} from '../domain/ports/dispatch-offer.repository.port';
 import {
   DispatchOffer,
   DispatchOfferStatus,
@@ -33,12 +37,29 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return this.repo.save(offer);
   }
 
-  async findOfferedDriverIds(orderId: string): Promise<string[]> {
+  async findDriverOfferState(
+    orderId: string,
+    now: Date,
+    cooldownMs: number,
+  ): Promise<DriverOfferState> {
     const rows = await this.repo.find({
       where: { orderId },
-      select: { driverId: true },
+      select: { driverId: true, status: true, expiresAt: true },
     });
-    return rows.map((r) => r.driverId);
+    const cooldownHasta = now.getTime() - cooldownMs;
+    const blocked = new Set<string>();
+    const contactados = new Set<string>();
+    for (const row of rows) {
+      contactados.add(row.driverId);
+      const venciaHaceMucho =
+        row.status === DispatchOfferStatus.EXPIRED &&
+        row.expiresAt.getTime() <= cooldownHasta;
+      if (!venciaHaceMucho) blocked.add(row.driverId);
+    }
+    return {
+      blocked: [...blocked],
+      reofferable: [...contactados].filter((id) => !blocked.has(id)),
+    };
   }
 
   async hasActiveOffer(orderId: string, driverId?: string): Promise<boolean> {
@@ -50,6 +71,36 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
       },
     });
     return count > 0;
+  }
+
+  async recordDriverHeldOrder(
+    orderId: string,
+    driverId: string,
+  ): Promise<void> {
+    const cerradas = await this.closeActiveOffer(
+      orderId,
+      driverId,
+      DispatchOfferStatus.ACCEPTED,
+    );
+    if (cerradas) return;
+    const yaConstancia = await this.repo.count({
+      where: { orderId, driverId, status: DispatchOfferStatus.ACCEPTED },
+    });
+    if (yaConstancia > 0) return;
+    const order = await this.repo.manager.findOne(Order, {
+      where: { orderId },
+      select: { orderId: true, distributorId: true },
+    });
+    if (!order) return;
+    await this.repo.save(
+      this.repo.create({
+        orderId,
+        driverId,
+        distributorId: order.distributorId ?? undefined,
+        expiresAt: new Date(),
+        status: DispatchOfferStatus.ACCEPTED,
+      }),
+    );
   }
 
   findExpired(now: Date): Promise<DispatchOffer[]> {

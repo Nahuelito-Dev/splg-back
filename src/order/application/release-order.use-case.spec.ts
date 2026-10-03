@@ -32,7 +32,10 @@ describe('ReleaseOrderUseCase', () => {
     notifyCustomer: jest.Mock;
     notifyAdmins: jest.Mock;
   };
-  let dispatchOrchestrator: { releaseOffer: jest.Mock };
+  let dispatchOrchestrator: {
+    releaseOffer: jest.Mock;
+    onOrderClosed: jest.Mock;
+  };
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
@@ -78,6 +81,7 @@ describe('ReleaseOrderUseCase', () => {
     };
     dispatchOrchestrator = {
       releaseOffer: jest.fn().mockResolvedValue(undefined),
+      onOrderClosed: jest.fn().mockResolvedValue(undefined),
     };
 
     useCase = new ReleaseOrderUseCase(
@@ -217,6 +221,7 @@ describe('ReleaseOrderUseCase', () => {
 
       expect(dispatch.stopTracking).not.toHaveBeenCalled();
       expect(dispatchOrchestrator.releaseOffer).not.toHaveBeenCalled();
+      expect(dispatchOrchestrator.onOrderClosed).toHaveBeenCalledWith('ord-1');
       expect(dispatch.notifyDriverOrderCancelled).not.toHaveBeenCalled();
       expect(dispatch.notifyCustomer).toHaveBeenCalled();
       expect(dispatch.notifyAdmins).toHaveBeenCalled();

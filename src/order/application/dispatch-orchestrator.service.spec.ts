@@ -15,18 +15,30 @@ describe('DispatchOrchestratorService', () => {
   let dispatch: {
     findNearbyDrivers: jest.Mock;
     notifyDriverNewOrder: jest.Mock;
+    notifyAdmins: jest.Mock;
+  };
+  let redis: {
+    withLock: jest.Mock;
+    setIfAbsent: jest.Mock;
+    del: jest.Mock;
   };
   let orders: { findByIdFull: jest.Mock };
   let deliveries: { choferesElegibles: jest.Mock };
   let fleet: { choferesInhabilitados: jest.Mock };
   let offers: {
     create: jest.Mock;
-    findOfferedDriverIds: jest.Mock;
+    findDriverOfferState: jest.Mock;
     hasActiveOffer: jest.Mock;
     findExpired: jest.Mock;
     updateStatus: jest.Mock;
     closeActiveOffer: jest.Mock;
+    recordDriverHeldOrder: jest.Mock;
   };
+
+  const estado = (blocked: string[], reofferable: string[] = []) => ({
+    blocked,
+    reofferable,
+  });
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
@@ -43,15 +55,29 @@ describe('DispatchOrchestratorService', () => {
     dispatch = {
       findNearbyDrivers: jest.fn().mockResolvedValue([]),
       notifyDriverNewOrder: jest.fn(),
+      notifyAdmins: jest.fn(),
     };
-    orders = { findByIdFull: jest.fn() };
+    redis = {
+      withLock: jest.fn(
+        async (_k: string, _ttl: number, fn: () => unknown) => ({
+          obtenido: true,
+          valor: await fn(),
+        }),
+      ),
+      setIfAbsent: jest.fn().mockResolvedValue(true),
+      del: jest.fn().mockResolvedValue(undefined),
+    };
+    orders = { findByIdFull: jest.fn().mockResolvedValue(makeOrder()) };
     offers = {
       create: jest.fn().mockResolvedValue({} as DispatchOffer),
-      findOfferedDriverIds: jest.fn().mockResolvedValue([]),
+      findDriverOfferState: jest
+        .fn()
+        .mockResolvedValue({ blocked: [], reofferable: [] }),
       hasActiveOffer: jest.fn().mockResolvedValue(false),
       findExpired: jest.fn().mockResolvedValue([]),
       updateStatus: jest.fn().mockResolvedValue(undefined),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
+      recordDriverHeldOrder: jest.fn().mockResolvedValue(undefined),
     };
     deliveries = {
       choferesElegibles: jest.fn((ids: string[]) => Promise.resolve(ids)),
@@ -69,6 +95,7 @@ describe('DispatchOrchestratorService', () => {
       deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
       notifications as unknown as import('../../notifications/notifications.service').NotificationsService,
       fleet as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
+      redis as unknown as import('../../redis/redis.service').RedisService,
     );
   });
 
@@ -99,7 +126,7 @@ describe('DispatchOrchestratorService', () => {
     });
 
     it('SALTEA choferes ya contactados y ofrece al siguiente nuevo', async () => {
-      offers.findOfferedDriverIds.mockResolvedValue(['d1']);
+      offers.findDriverOfferState.mockResolvedValue(estado(['d1']));
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['d1', 'd2']);
 
       const result = await orchestrator.offerToNextDriver(makeOrder());
@@ -114,7 +141,7 @@ describe('DispatchOrchestratorService', () => {
     });
 
     it('radio progresivo: si en 5km todos ya fueron contactados, amplía a 10km', async () => {
-      offers.findOfferedDriverIds.mockResolvedValue(['d1']);
+      offers.findDriverOfferState.mockResolvedValue(estado(['d1']));
       dispatch.findNearbyDrivers
         .mockResolvedValueOnce(['d1']) // 5km: solo el ya contactado
         .mockResolvedValueOnce(['d1', 'd2']); // 10km: aparece uno nuevo
@@ -137,7 +164,7 @@ describe('DispatchOrchestratorService', () => {
     });
 
     it('devuelve null y no crea oferta si no hay choferes nuevos en ningún radio', async () => {
-      offers.findOfferedDriverIds.mockResolvedValue([]);
+      offers.findDriverOfferState.mockResolvedValue(estado([]));
       // findNearbyDrivers siempre [] (default)
       const result = await orchestrator.offerToNextDriver(makeOrder());
 
@@ -230,6 +257,167 @@ describe('DispatchOrchestratorService', () => {
     });
   });
 
+  describe('re-oferta de ofertas vencidas y aviso sin choferes', () => {
+    it('prefiere a un chofer nunca contactado antes que a uno re-ofertable', async () => {
+      offers.findDriverOfferState.mockResolvedValue(estado([], ['venció']));
+      dispatch.findNearbyDrivers.mockResolvedValue(['venció', 'nuevo']);
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBe('nuevo');
+    });
+
+    it('re-ofrece al que dejó vencer (pasado el cooldown) si no hay choferes nuevos', async () => {
+      offers.findDriverOfferState.mockResolvedValue(estado([], ['venció']));
+      dispatch.findNearbyDrivers.mockResolvedValue(['venció']);
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBe('venció');
+      expect(offers.findDriverOfferState).toHaveBeenCalledWith(
+        'ord-1',
+        expect.any(Date),
+        DispatchOrchestratorService.REOFFER_COOLDOWN_MS,
+      );
+      expect(redis.setIfAbsent).not.toHaveBeenCalled();
+    });
+
+    it('NUNCA re-ofrece a quien rechazó (o está en cooldown): no hay oferta y avisa a los admins', async () => {
+      offers.findDriverOfferState.mockResolvedValue(estado(['rechazó']));
+      dispatch.findNearbyDrivers.mockResolvedValue(['rechazó']);
+
+      const result = await orchestrator.offerToNextDriver(
+        makeOrder({ distributorId: 'dist-1' }),
+      );
+
+      expect(result).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({
+          orderId: 'ord-1',
+          reason: 'all_drivers_exhausted',
+        }),
+        'dist-1',
+      );
+    });
+
+    it('sin choferes en el radar el motivo es no_drivers_in_range', async () => {
+      await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_drivers_in_range' }),
+        undefined,
+      );
+    });
+
+    it('avisa UNA sola vez por agotamiento: si la marca ya existe no vuelve a emitir', async () => {
+      redis.setIfAbsent.mockResolvedValue(false);
+
+      await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalled();
+    });
+
+    it('una oferta a un chofer nuevo borra la marca; una re-oferta no', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['nuevo']);
+      await orchestrator.offerToNextDriver(makeOrder());
+      expect(redis.del).toHaveBeenCalledWith('dispatch:no-drivers:ord-1');
+
+      redis.del.mockClear();
+      offers.findDriverOfferState.mockResolvedValue(estado([], ['nuevo']));
+      await orchestrator.offerToNextDriver(makeOrder());
+      expect(redis.del).not.toHaveBeenCalled();
+    });
+
+    it('no crea una segunda oferta si el pedido ya tiene una OFFERED vigente', async () => {
+      offers.hasActiveOffer.mockResolvedValue(true);
+      dispatch.findNearbyDrivers.mockResolvedValue(['d1']);
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalled();
+    });
+
+    it('si el pedido ya no está PENDING dentro del lock (aceptado/asignado/cancelado), no ofrece ni emite NEW_ORDER', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-x' }),
+      );
+      dispatch.findNearbyDrivers.mockResolvedValue(['d1']);
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+      expect(dispatch.notifyDriverNewOrder).not.toHaveBeenCalled();
+    });
+
+    it('si el pedido se borró dentro del lock, no ofrece', async () => {
+      orders.findByIdFull.mockResolvedValue(null);
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+      expect(result).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('motivo exacto: si ahora hay choferes elegibles en rango (todos excluidos) es all_drivers_exhausted, aunque no haya contactados bloqueados', async () => {
+      offers.findDriverOfferState.mockResolvedValue(estado(['rechazó']));
+      dispatch.findNearbyDrivers.mockResolvedValue(['rechazó']);
+      await orchestrator.offerToNextDriver(makeOrder());
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'all_drivers_exhausted' }),
+        undefined,
+      );
+    });
+
+    it('motivo exacto: hubo contactados pero ahora no hay ningún chofer en rango => no_drivers_in_range', async () => {
+      offers.findDriverOfferState.mockResolvedValue(estado(['rechazó']));
+      // radar vacío
+      await orchestrator.offerToNextDriver(makeOrder());
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_drivers_in_range' }),
+        undefined,
+      );
+    });
+
+    it('sin punto de entrega emite order:no-drivers con no_delivery_point (una vez)', async () => {
+      await orchestrator.offerToNextDriver(makeOrder({ deliveryPoint: null }));
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:no-drivers',
+        expect.objectContaining({ reason: 'no_delivery_point' }),
+        undefined,
+      );
+
+      dispatch.notifyAdmins.mockClear();
+      redis.setIfAbsent.mockResolvedValue(false);
+      await orchestrator.offerToNextDriver(makeOrder({ deliveryPoint: null }));
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalled();
+    });
+
+    it('si otro proceso tiene el lock del pedido, no ofrece', async () => {
+      redis.withLock.mockResolvedValue({ obtenido: false });
+      dispatch.findNearbyDrivers.mockResolvedValue(['d1']);
+
+      const result = await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(result).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('propaga el error si falla la creación de la oferta', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['d1']);
+      offers.create.mockRejectedValue(new Error('db'));
+
+      await expect(orchestrator.offerToNextDriver(makeOrder())).rejects.toThrow(
+        'db',
+      );
+    });
+  });
+
   describe('handleExpiredOffers', () => {
     const expiredOffer = (over = {}): DispatchOffer =>
       ({
@@ -243,7 +431,7 @@ describe('DispatchOrchestratorService', () => {
     it('marca la oferta vencida EXPIRED y re-ofrece al siguiente si el pedido sigue pendiente', async () => {
       offers.findExpired.mockResolvedValue([expiredOffer()]);
       orders.findByIdFull.mockResolvedValue(makeOrder());
-      offers.findOfferedDriverIds.mockResolvedValue(['d1']);
+      offers.findDriverOfferState.mockResolvedValue(estado(['d1']));
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['d1', 'd2']);
 
       await orchestrator.handleExpiredOffers();
@@ -314,13 +502,28 @@ describe('DispatchOrchestratorService', () => {
   });
 
   describe('onDriverAccepted / onDriverRejected', () => {
-    it('onDriverAccepted cierra la oferta activa como ACCEPTED', async () => {
+    it('onDriverAccepted deja constancia ACCEPTED del chofer y limpia el aviso', async () => {
       await orchestrator.onDriverAccepted('ord-1', 'd1');
-      expect(offers.closeActiveOffer).toHaveBeenCalledWith(
-        'ord-1',
-        'd1',
-        DispatchOfferStatus.ACCEPTED,
-      );
+      expect(offers.recordDriverHeldOrder).toHaveBeenCalledWith('ord-1', 'd1');
+      expect(redis.del).toHaveBeenCalledWith('dispatch:no-drivers:ord-1');
+    });
+
+    it('onOrderAssigned (asignación manual) registra al chofer asignado y limpia el aviso', async () => {
+      await orchestrator.onOrderAssigned('ord-1', 'd1');
+      expect(offers.recordDriverHeldOrder).toHaveBeenCalledWith('ord-1', 'd1');
+      expect(redis.del).toHaveBeenCalledWith('dispatch:no-drivers:ord-1');
+    });
+
+    it('releaseOffer deja al chofer que lo tuvo como ACCEPTED (nunca se le re-ofrece) y limpia el aviso', async () => {
+      await orchestrator.releaseOffer('ord-1', 'd1');
+      expect(offers.recordDriverHeldOrder).toHaveBeenCalledWith('ord-1', 'd1');
+      expect(offers.closeActiveOffer).not.toHaveBeenCalled();
+      expect(redis.del).toHaveBeenCalledWith('dispatch:no-drivers:ord-1');
+    });
+
+    it('onOrderClosed borra la marca de sin choferes', async () => {
+      await orchestrator.onOrderClosed('ord-1');
+      expect(redis.del).toHaveBeenCalledWith('dispatch:no-drivers:ord-1');
     });
 
     it('onDriverRejected cierra REJECTED y ofrece al siguiente', async () => {

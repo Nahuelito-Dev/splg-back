@@ -46,7 +46,10 @@ describe('CancelOrderUseCase', () => {
     notifyAdmins: jest.Mock;
     stopTracking: jest.Mock;
   };
-  let dispatchOrchestrator: { releaseOffer: jest.Mock };
+  let dispatchOrchestrator: {
+    releaseOffer: jest.Mock;
+    onOrderClosed: jest.Mock;
+  };
   let releaseOrder: ReleaseOrderUseCase;
   let lockedOrder: Order;
 
@@ -95,6 +98,7 @@ describe('CancelOrderUseCase', () => {
     };
     dispatchOrchestrator = {
       releaseOffer: jest.fn().mockResolvedValue(undefined),
+      onOrderClosed: jest.fn().mockResolvedValue(undefined),
     };
     // ReleaseOrderUseCase REAL: `applyRelease` es pura (sin I/O), así que
     // usarla tal cual verifica de punta a punta que CancelOrderUseCase
@@ -111,6 +115,7 @@ describe('CancelOrderUseCase', () => {
       stock as unknown as import('../../gascylinder/gascylinder.service').GasCylinderService,
       dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
       releaseOrder,
+      dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
     );
   });
 
@@ -189,6 +194,11 @@ describe('CancelOrderUseCase', () => {
   });
 
   describe('customer/admin: cancela con devolución de stock', () => {
+    it('al cancelar de verdad limpia la marca de sin choferes del despacho', async () => {
+      await useCase.execute('ord-1', 'cust-1', 'customer');
+      expect(dispatchOrchestrator.onOrderClosed).toHaveBeenCalledWith('ord-1');
+    });
+
     it('customer cancela y se devuelve el stock', async () => {
       const result = await useCase.execute('ord-1', 'cust-1', 'customer');
 

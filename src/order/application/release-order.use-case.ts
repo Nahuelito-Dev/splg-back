@@ -144,6 +144,10 @@ export class ReleaseOrderUseCase {
         status: order.status,
         message: 'El pedido se liberó. No hace falta que vayas.',
       });
+    } else {
+      await this.dispatchOrchestrator
+        .onOrderClosed(order.orderId)
+        .catch(() => undefined);
     }
 
     this.dispatch.notifyCustomer(order.customerId, 'order:searching-driver', {

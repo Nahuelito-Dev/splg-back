@@ -460,6 +460,11 @@ export class OrderService {
     // oferta automática que hubiera quedado en curso (para este chofer u
     // otro) queda sin efecto, así no hay dos choferes creyendo que el pedido
     // es suyo.
+    // El chofer asignado queda registrado como quien lo tuvo (ACCEPTED): si lo
+    // libera, el despacho no se lo vuelve a ofrecer.
+    await this.dispatchOrchestrator
+      .onOrderAssigned(orderId, delivery.userId)
+      .catch(() => undefined);
     await this.dispatchOffers
       .closeAllActiveOffers(orderId, DispatchOfferStatus.EXPIRED)
       .catch(() => undefined);

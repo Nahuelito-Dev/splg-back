@@ -37,6 +37,7 @@ describe('OrderService · asignación manual', () => {
     stopTracking: jest.Mock;
   };
   let dispatchOffers: { closeAllActiveOffers: jest.Mock };
+  let orchestrator: { onOrderAssigned: jest.Mock };
   let dataSource: { createQueryRunner: jest.Mock };
   let queryRunner: {
     connect: jest.Mock;
@@ -127,6 +128,7 @@ describe('OrderService · asignación manual', () => {
     dispatchOffers = {
       closeAllActiveOffers: jest.fn().mockResolvedValue(0),
     };
+    orchestrator = { onOrderAssigned: jest.fn().mockResolvedValue(undefined) };
     const deliveries = {
       findById: jest.fn((id: string) => Promise.resolve(CHOFERES[id])),
       assertElegibleParaAsignacion: jest.fn(),
@@ -149,7 +151,7 @@ describe('OrderService · asignación manual', () => {
       {} as unknown as UpdateOrderStatusUseCase,
       {} as unknown as CancelOrderUseCase,
       {} as unknown as ConfirmDeliveryUseCase,
-      {} as unknown as DispatchOrchestratorService,
+      orchestrator as unknown as DispatchOrchestratorService,
       dispatchOffers as unknown as DispatchOfferRepositoryPort,
       {} as unknown as NotificationPort,
       dataSource as unknown as DataSource,
@@ -286,6 +288,15 @@ describe('OrderService · asignación manual', () => {
     );
   });
 
+  it('el chofer asignado a mano queda registrado como quien tuvo el pedido (no se le re-ofrece si lo libera)', async () => {
+    await service.assignDelivery(PEDIDO, CHOFER);
+
+    expect(orchestrator.onOrderAssigned).toHaveBeenCalledWith(
+      PEDIDO,
+      CHOFER_USER_ID,
+    );
+  });
+
   it('punto 7 (segunda revisión): reasignar de A a B avisa al chofer A (ya no es suyo)', async () => {
     queryBuilder.getOne.mockResolvedValueOnce(
       makeLockedOrder({
@@ -354,7 +365,9 @@ describe('OrderService · asignación manual', () => {
       {} as unknown as UpdateOrderStatusUseCase,
       {} as unknown as CancelOrderUseCase,
       {} as unknown as ConfirmDeliveryUseCase,
-      {} as unknown as DispatchOrchestratorService,
+      {
+        onOrderAssigned: jest.fn().mockResolvedValue(undefined),
+      } as unknown as DispatchOrchestratorService,
       dispatchOffers as unknown as DispatchOfferRepositoryPort,
       {} as unknown as NotificationPort,
       dataSource as unknown as DataSource,
