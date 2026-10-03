@@ -36,9 +36,13 @@ export abstract class StoragePort {
    * URL para descargar el archivo directo desde el proveedor (p. ej. una URL
    * firmada de S3, con expiración corta), sin pasar por este backend.
    * `null` si el driver no soporta esto (el caso de `local`): ahí el caller
-   * tiene que usar `getStream` y servir el archivo él mismo.
+   * tiene que usar `getStream` y servir el archivo él mismo. Con `fileName`,
+   * la URL fuerza la descarga con ese nombre (`Content-Disposition`).
    */
-  abstract getDownloadUrl(key: string): Promise<string | null>;
+  abstract getDownloadUrl(
+    key: string,
+    options?: { fileName?: string },
+  ): Promise<string | null>;
 
   /** Lee el objeto para servirlo por streaming a través de este backend. */
   abstract getStream(key: string): Promise<StorageObjectStream>;

@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream } from 'fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
@@ -63,7 +67,12 @@ export class LocalDiskStorageAdapter extends StoragePort {
 
   async getStream(key: string): Promise<StorageObjectStream> {
     const filePath = this.resolveKey(key);
-    const info = await stat(filePath);
+    const info = await stat(filePath).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new NotFoundException('El archivo no está en el almacenamiento');
+      }
+      throw error;
+    });
     const contentType = await this.readContentType(filePath);
     return {
       stream: createReadStream(filePath),

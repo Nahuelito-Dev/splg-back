@@ -36,6 +36,7 @@ import { FleetModule } from './fleet/fleet.module';
 import { CartModule } from './cart/cart.module';
 import { AuditModule } from './audit/audit.module';
 import { DocumentSequenceModule } from './document-sequence/document-sequence.module';
+import { AttachmentModule } from './attachment/attachment.module';
 
 // Importa el interceptor de timeout
 import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
@@ -171,6 +172,7 @@ import { FirebaseModule } from './firebase/firebase.module';
     CartModule,
     AuditModule,
     DocumentSequenceModule,
+    AttachmentModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

@@ -16,11 +16,13 @@ import {
   StorageObjectStream,
 } from '../storage/ports/storage.port';
 import {
+  acotarNombreDeArchivo,
   decodificarNombreDeArchivo,
   esMimeTypePermitido,
   extensionParaMimeType,
+  firmaCoincideConMimeType,
   MAX_ATTACHMENT_SIZE_BYTES,
-} from './domain/attachment-rules';
+} from '../common/utils/attachment-rules';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 
 /** Lo que el controller necesita para responder la descarga, sea cual sea el driver activo. */
@@ -72,6 +74,11 @@ export class FleetAttachmentService {
         `El archivo supera el máximo permitido (${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)} MB)`,
       );
     }
+    if (!firmaCoincideConMimeType(file.mimetype, file.buffer)) {
+      throw new UnsupportedMediaTypeException(
+        `El contenido del archivo no coincide con el tipo declarado (${file.mimetype})`,
+      );
+    }
 
     const key = `fleet/${distributorId}/${taskId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
     await this.storage.put({
@@ -84,7 +91,9 @@ export class FleetAttachmentService {
       taskId,
       distributorId,
       storageKey: key,
-      originalName: decodificarNombreDeArchivo(file.originalname),
+      originalName: acotarNombreDeArchivo(
+        decodificarNombreDeArchivo(file.originalname),
+      ),
       mimeType: file.mimetype,
       sizeBytes: file.size,
       uploadedByUserId,
@@ -95,7 +104,7 @@ export class FleetAttachmentService {
     } catch (error) {
       // El archivo ya se subió: si el registro en la base falla, no queda
       // huérfano en el storage.
-      await this.storage.remove(key);
+      await this.storage.remove(key).catch(() => undefined);
       return traducirErrorDeBase(error, this.logger, 'adjuntos de flota');
     }
   }
@@ -124,6 +133,7 @@ export class FleetAttachmentService {
 
     const redirectUrl = await this.storage.getDownloadUrl(
       attachment.storageKey,
+      { fileName: attachment.originalName },
     );
     if (redirectUrl) {
       return { kind: 'redirect', url: redirectUrl };

@@ -1,4 +1,9 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { contentDisposition } from '../../common/http/servir-archivo';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
@@ -67,17 +72,35 @@ export class S3StorageAdapter extends StoragePort {
     );
   }
 
-  async getDownloadUrl(key: string): Promise<string | null> {
-    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+  async getDownloadUrl(
+    key: string,
+    options?: { fileName?: string },
+  ): Promise<string | null> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ...(options?.fileName
+        ? {
+            ResponseContentDisposition: contentDisposition(options.fileName),
+          }
+        : {}),
+    });
     return getSignedUrl(this.client, command, {
       expiresIn: this.signedUrlTtlSeconds,
     });
   }
 
   async getStream(key: string): Promise<StorageObjectStream> {
-    const result = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-    );
+    const result = await this.client
+      .send(new GetObjectCommand({ Bucket: this.bucket, Key: key }))
+      .catch((error: unknown) => {
+        if ((error as { name?: string }).name === 'NoSuchKey') {
+          throw new NotFoundException(
+            'El archivo no está en el almacenamiento',
+          );
+        }
+        throw error;
+      });
 
     if (!this.esLegible(result.Body)) {
       throw new InternalServerErrorException(

@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -73,5 +74,11 @@ describe('LocalDiskStorageAdapter', () => {
         contentType: 'application/pdf',
       }),
     ).rejects.toBeInstanceOf(Error);
+  });
+
+  it('leer una clave que no existe es 404, no 500', async () => {
+    await expect(adapter.getStream('fleet/falta.pdf')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
