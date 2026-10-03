@@ -1,3 +1,5 @@
+import type { Response } from 'express';
+import { ApiTotal, informarTotal } from '../common/http/total';
 import {
   Body,
   Controller,
@@ -7,13 +9,12 @@ import {
   Patch,
   Post,
   Query,
-  ParseEnumPipe,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
-  ApiQuery,
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -30,7 +31,7 @@ import {
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 import { AssignCylindersDto } from './dto/assign-cylinders.dto';
-import { CylinderState } from './entities/cylinder.entity';
+import { QueryCylindersDto } from './dto/query-cylinders.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -89,17 +90,31 @@ export class CylinderController {
 
   @Get()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Listar envases (scopeado por distribuidora)' })
-  @ApiQuery({ name: 'state', enum: CylinderState, required: false })
+  @ApiOperation({
+    summary: 'Listar envases (scopeado por distribuidora)',
+    description:
+      'Filtros combinables: `state`, `orderId` (envases que salieron en ese ' +
+      'pedido, también los de un pedido ya entregado) y `customerUserId` ' +
+      '(user_id del cliente, no el customer_id del perfil: los envases que ' +
+      'tiene hoy). Paginación opcional con `limit`/`offset`; sin ellos ' +
+      'devuelve todos. `X-Total-Count` trae el total sin paginar. Cada ítem ' +
+      'trae `lastMovementAt`.',
+  })
   @ApiOkResponse({ type: CylinderResponseDto, isArray: true })
+  @ApiTotal()
+  @ApiBadRequestResponse({
+    description: 'Estado inválido, UUID inválido o paginación fuera de rango',
+  })
   async findAll(
+    @Query() query: QueryCylindersDto,
+    @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId: string | null,
-    // El tipo CylinderState no existe en tiempo de ejecucion: sin el pipe, un
-    // estado inventado llegaba a la consulta y Postgres respondia con un 500.
-    @Query('state', new ParseEnumPipe(CylinderState, { optional: true }))
-    state?: CylinderState,
   ): Promise<CylinderResponseDto[]> {
-    const cylinders = await this.cylinderService.findAll(distributorId, state);
+    const [cylinders, total] = await this.cylinderService.findAll(
+      distributorId,
+      query,
+    );
+    informarTotal(res, total);
     return cylinders.map((c) => CylinderMapper.toDto(c));
   }
 

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
@@ -12,6 +12,17 @@ import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 import { assertTransition } from './domain/cylinder-state.machine';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { errorCode } from '../common/errors/error-message';
+
+/** Filtros del listado de envases. */
+export interface FiltrosDeEnvases {
+  state?: CylinderState;
+  orderId?: string;
+  /** user_id del cliente. */
+  customerUserId?: string;
+  /** Sin `limit` no pagina. */
+  limit?: number;
+  offset?: number;
+}
 
 /** Lo que el panel muestra de cada envase: de qué producto es y quién lo tiene. */
 const CON_PRODUCTO_Y_CLIENTE = ['gasCylinder', 'currentCustomer'];
@@ -65,21 +76,78 @@ export class CylinderService {
     return saved;
   }
 
-  /** Lista los envases, scopeados por tenant si se pasa distributorId, filtrando por estado si se pide. */
+  /**
+   * Lista los envases, scopeados por tenant si se pasa distributorId.
+   *
+   * Filtros (se combinan con AND):
+   *  - `state`: estado físico actual.
+   *  - `customerUserId`: id de usuario del cliente; los envases que tiene HOY en su
+   *    poder (`current_customer_id`).
+   *  - `orderId`: los envases que salieron en ese pedido: los que lo tienen como
+   *    `current_order_id` o que registraron algún movimiento con ese `order_id`.
+   *    El movimiento es append-only, así que un pedido ya entregado (o cuyo
+   *    envase ya volvió vacío o se reasignó a otro pedido) sigue mostrando sus
+   *    series.
+   *
+   * Cada envase trae `lastMovementAt`: la fecha de su último movimiento.
+   * Devuelve la página y el total sin paginar.
+   */
   async findAll(
     distributorId?: string | null,
-    state?: CylinderState,
-  ): Promise<Cylinder[]> {
-    const where: FindOptionsWhere<Cylinder> = {
-      ...(distributorId ? { distributorId } : {}),
-      ...(state ? { state } : {}),
-    };
+    filtros: FiltrosDeEnvases = {},
+  ): Promise<[Cylinder[], number]> {
+    const { state, orderId, customerUserId, limit, offset } = filtros;
+    const qb = this.cylinderRepository
+      .createQueryBuilder('cylinder')
+      .leftJoinAndSelect('cylinder.gasCylinder', 'gasCylinder')
+      .leftJoinAndSelect('cylinder.currentCustomer', 'currentCustomer')
+      .addSelect(
+        `(SELECT MAX(ult."createdAt") FROM cylinder_movement ult ` +
+          `WHERE ult.cylinder_id = cylinder.cylinder_id)`,
+        'ultimo_movimiento',
+      )
+      .orderBy('cylinder.createdAt', 'DESC')
+      .addOrderBy('cylinder.cylinderId', 'ASC');
 
-    return this.cylinderRepository.find({
-      where,
-      relations: CON_PRODUCTO_Y_CLIENTE,
-      order: { createdAt: 'DESC' },
-    });
+    if (distributorId) {
+      qb.andWhere('cylinder.distributorId = :distributorId', { distributorId });
+    }
+    if (state) qb.andWhere('cylinder.state = :state', { state });
+    if (customerUserId) {
+      qb.andWhere('cylinder.currentCustomerId = :customerUserId', {
+        customerUserId,
+      });
+    }
+    if (orderId) {
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('cylinder.currentOrderId = :orderId').orWhere(
+            `EXISTS (SELECT 1 FROM cylinder_movement mov ` +
+              `WHERE mov.cylinder_id = cylinder.cylinder_id ` +
+              `AND mov.order_id = :orderId)`,
+          );
+        }),
+        { orderId },
+      );
+    }
+
+    const total = await qb.getCount();
+    // Las uniones son many-to-one: limit/offset (no take/skip) mantienen una
+    // fila por envase y alineadas las filas crudas con las entidades.
+    if (limit !== undefined) qb.limit(limit).offset(offset ?? 0);
+
+    const { entities, raw } = await qb.getRawAndEntities<{
+      cylinder_cylinder_id: string;
+      ultimo_movimiento: Date | string | null;
+    }>();
+    const ultimoPorEnvase = new Map(
+      raw.map((r) => [r.cylinder_cylinder_id, r.ultimo_movimiento]),
+    );
+    for (const cylinder of entities) {
+      const fecha = ultimoPorEnvase.get(cylinder.cylinderId);
+      cylinder.lastMovementAt = fecha ? new Date(fecha) : null;
+    }
+    return [entities, total];
   }
 
   /** Busca un envase por id, scopeado por tenant si se pasa distributorId. */

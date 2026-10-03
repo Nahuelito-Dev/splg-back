@@ -15,7 +15,7 @@ import {
 } from '../delivery/events/chofer-dado-de-baja.event';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
-import { PaginationDto } from '../common/dtos/pagination.dto';
+import { QueryUsersDto } from './dto/query-users.dto';
 import { ConfigService } from '@nestjs/config';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 
@@ -100,10 +100,10 @@ export class UsersService {
    * clientes que le compraron (H-66). Sin él, todos.
    */
   async findAll(
-    paginationDto: PaginationDto,
+    paginationDto: QueryUsersDto,
     distributorId?: string | null,
   ): Promise<{ users: User[]; maxUsers: number }> {
-    const { limit = 10, offset = 0, term } = paginationDto;
+    const { limit = 10, offset = 0, term, role } = paginationDto;
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
@@ -117,6 +117,10 @@ export class UsersService {
       queryBuilder.andWhere(usuarioDeLaDistribuidora('user.userId'), {
         distributorId,
       });
+    }
+
+    if (role) {
+      queryBuilder.andWhere('role.type = :role', { role });
     }
 
     if (term) {

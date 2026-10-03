@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CustomersService } from './customer.service';
 import { Customer } from './entities/customer.entity';
+import { CustomerStatusFilter } from './dto/query-customers.dto';
 
 /**
  * Lo que protege el servicio de clientes es la propiedad del dato: un cliente
@@ -80,5 +81,49 @@ describe('CustomersService', () => {
       message: 'Customer deleted successfully',
     });
     expect(customers.softDelete).toHaveBeenCalledWith({ customerId: 'c1' });
+  });
+
+  describe('findAll', () => {
+    const armarQb = () => {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      (
+        customers as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      return qb;
+    };
+
+    it('sin status no filtra por cuenta bloqueada', async () => {
+      const qb = armarQb();
+      await service.findAll({});
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [CustomerStatusFilter.ACTIVE, false],
+      [CustomerStatusFilter.BLOCKED, true],
+    ])('status=%s filtra user.blocked = %s', async (status, blocked) => {
+      const qb = armarQb();
+      await service.findAll({ status });
+      expect(qb.andWhere).toHaveBeenCalledWith('user.blocked = :blocked', {
+        blocked,
+      });
+    });
+
+    it('combina status con el aislamiento por distribuidora', async () => {
+      const qb = armarQb();
+      await service.findAll({ status: CustomerStatusFilter.ACTIVE }, 'd1');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('pertenencia.distributor_id = :distributorId'),
+        { distributorId: 'd1' },
+      );
+      expect(qb.andWhere).toHaveBeenCalledTimes(2);
+    });
   });
 });
