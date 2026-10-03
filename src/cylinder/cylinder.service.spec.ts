@@ -313,4 +313,82 @@ describe('CylinderService', () => {
       expect(orderRepo.findRef).not.toHaveBeenCalled();
     });
   });
+
+  describe('findAll', () => {
+    const armarQb = (
+      entities: Cylinder[] = [],
+      raw: Array<Record<string, unknown>> = [],
+    ) => {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(7),
+        getRawAndEntities: jest.fn().mockResolvedValue({ entities, raw }),
+      };
+      (
+        cylinderRepo as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      return qb;
+    };
+
+    it('sin filtros ni tenant no agrega condiciones', async () => {
+      const qb = armarQb();
+      await service.findAll();
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('aplica tenant, estado, cliente y pedido', async () => {
+      const qb = armarQb();
+      await service.findAll(DIST, {
+        state: CylinderState.WITH_CUSTOMER,
+        customerUserId: 'u1',
+        orderId: 'o1',
+      });
+      const condiciones = (qb.andWhere.mock.calls as unknown[][]).map(
+        (c) => c[0],
+      );
+      expect(condiciones).toContain('cylinder.distributorId = :distributorId');
+      expect(condiciones).toContain('cylinder.state = :state');
+      expect(condiciones).toContain(
+        'cylinder.currentCustomerId = :customerUserId',
+      );
+      expect(condiciones).toHaveLength(4);
+      expect(qb.andWhere).toHaveBeenCalledWith(expect.anything(), {
+        orderId: 'o1',
+      });
+    });
+
+    it('sin limit no pagina; con limit pagina y devuelve el total sin paginar', async () => {
+      const qb = armarQb();
+      const [, total] = await service.findAll(DIST);
+      expect(qb.limit).not.toHaveBeenCalled();
+      expect(total).toBe(7);
+      await service.findAll(DIST, { limit: 5, offset: 10 });
+      expect(qb.limit).toHaveBeenCalledWith(5);
+      expect(qb.offset).toHaveBeenCalledWith(10);
+    });
+
+    it('completa lastMovementAt con la fecha del último movimiento', async () => {
+      const con = makeCylinder({ cylinderId: 'a' });
+      const sin = makeCylinder({ cylinderId: 'b' });
+      armarQb(
+        [con, sin],
+        [
+          {
+            cylinder_cylinder_id: 'a',
+            ultimo_movimiento: '2026-10-01T10:00:00.000Z',
+          },
+          { cylinder_cylinder_id: 'b', ultimo_movimiento: null },
+        ],
+      );
+      const [r] = await service.findAll(DIST);
+      expect(r[0].lastMovementAt).toEqual(new Date('2026-10-01T10:00:00.000Z'));
+      expect(r[1].lastMovementAt).toBeNull();
+    });
+  });
 });

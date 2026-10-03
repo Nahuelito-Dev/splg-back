@@ -10,7 +10,10 @@ import { Customer } from './entities/customer.entity';
 import { puntoDesdeLatLng } from '../common/geo/punto';
 import { clienteDeLaDistribuidora } from '../common/tenancy/pertenencia';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { PaginationDto } from '../common/dtos/pagination.dto';
+import {
+  CustomerStatusFilter,
+  QueryCustomersDto,
+} from './dto/query-customers.dto';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
@@ -84,10 +87,10 @@ export class CustomersService {
   }
 
   async findAll(
-    paginationDto: PaginationDto,
+    paginationDto: QueryCustomersDto,
     distributorId?: string | null,
   ): Promise<[Customer[], number]> {
-    const { limit = 10, offset = 0, term } = paginationDto;
+    const { limit = 10, offset = 0, term, status } = paginationDto;
 
     const qb = this.customerRepository
       .createQueryBuilder('customer')
@@ -108,6 +111,12 @@ export class CustomersService {
         }),
         { term: `%${term}%` },
       );
+    }
+
+    if (status) {
+      qb.andWhere('user.blocked = :blocked', {
+        blocked: status === CustomerStatusFilter.BLOCKED,
+      });
     }
 
     if (distributorId) {

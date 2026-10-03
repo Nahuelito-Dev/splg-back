@@ -131,4 +131,10 @@ export class Cylinder {
 
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt!: Date | null;
+
+  /**
+   * Fecha del último movimiento. No es una columna: la calcula el listado
+   * (`CylinderService.findAll`) y queda `undefined` en el resto de las lecturas.
+   */
+  lastMovementAt?: Date | null;
 }

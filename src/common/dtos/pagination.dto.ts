@@ -25,11 +25,6 @@ export class PaginationDto {
   @Type(() => Number)
   offset?: number = 0;
 
-  @ApiPropertyOptional({ description: 'Filtra por tipo de rol' })
-  @IsOptional()
-  @IsString()
-  role?: string;
-
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @IsPositive()

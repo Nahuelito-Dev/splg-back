@@ -31,7 +31,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CustomerMapper } from './customer.mapper';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
-import { PaginationDto } from '../common/dtos/pagination.dto';
+import { QueryCustomersDto } from './dto/query-customers.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -54,7 +54,7 @@ export class CustomersController {
   @ApiOkResponse({ type: CustomerResponseDto, isArray: true })
   @ApiTotal()
   async findAll(
-    @Query() paginationDto: PaginationDto,
+    @Query() paginationDto: QueryCustomersDto,
     @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<CustomerResponseDto[]> {

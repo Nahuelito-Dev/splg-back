@@ -54,6 +54,15 @@ export class CylinderResponseDto {
   last_inspection_at!: Date | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: String, format: 'date-time' }) updatedAt!: Date;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Fecha del último movimiento del envase. Sólo lo completa el listado ' +
+      '(GET /cylinders); en el resto de las lecturas es null.',
+  })
+  lastMovementAt!: Date | null;
 }
 
 /** Un movimiento del envase: registro de sólo escritura. */

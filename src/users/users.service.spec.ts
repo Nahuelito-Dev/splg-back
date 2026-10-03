@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
+import { RoleType } from '../common/constants/role-type.enum';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { RedisService } from '../redis/redis.service';
@@ -276,5 +277,39 @@ describe('UsersService', () => {
       service.update('u1', { password: 'Nueva1234' }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(firebase.updateUser).not.toHaveBeenCalled();
+  });
+
+  describe('findAll', () => {
+    const armarQb = () => {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      (
+        users as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      return qb;
+    };
+
+    it('sin role no filtra por rol', async () => {
+      const qb = armarQb();
+      await service.findAll({});
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('filtra por el tipo de rol y acota por distribuidora', async () => {
+      const qb = armarQb();
+      await service.findAll({ role: RoleType.DELIVERY }, 'd1');
+      expect(qb.andWhere).toHaveBeenCalledWith('role.type = :role', {
+        role: 'delivery',
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('pert_d.distributor_id = :distributorId'),
+        { distributorId: 'd1' },
+      );
+    });
   });
 });

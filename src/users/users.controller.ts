@@ -1,3 +1,5 @@
+import type { Response } from 'express';
+import { ApiTotal, informarTotal } from '../common/http/total';
 import {
   Controller,
   Get,
@@ -7,6 +9,7 @@ import {
   Param,
   Delete,
   Query,
+  Res,
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
@@ -27,7 +30,7 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { PaginationDto } from '../common/dtos/pagination.dto';
+import { QueryUsersDto } from './dto/query-users.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { CheckUserExistsDto } from './dto/check-user-exists.dto';
 import { BlockUserDto } from './dto/block-user.dto';
@@ -92,18 +95,24 @@ export class UsersController {
   @ApiOperation({
     summary: 'Get all users with pagination and search',
     description:
-      '`term` busca en correo, nombre y teléfono. Un admin de empresa ve ' +
-      'sólo los usuarios de su distribuidora (H-66).',
+      '`term` busca en correo, nombre y teléfono; `role` filtra por tipo ' +
+      'de rol. Un admin de empresa ve sólo los usuarios de su distribuidora ' +
+      '(H-66); un super admin ve todos, o los de la distribuidora que ' +
+      'indique en `X-Distributor`.',
   })
   @ApiOkResponse({ type: ListadoDeUsuariosDto })
+  @ApiTotal()
+  @ApiBadRequestResponse({ description: 'role inválido' })
   async findAll(
-    @Query() paginationDto: PaginationDto,
+    @Query() paginationDto: QueryUsersDto,
+    @Res({ passthrough: true }) res: Response,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<ListadoDeUsuariosDto> {
     const { users, maxUsers } = await this.usersService.findAll(
       paginationDto,
       distributorId,
     );
+    informarTotal(res, maxUsers);
     return { users: users.map((u) => UserMapper.toDto(u)), maxUsers };
   }
 

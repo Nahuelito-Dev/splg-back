@@ -31,6 +31,7 @@ export class CylinderMapper {
     dto.last_inspection_at = c.lastInspectionAt;
     dto.createdAt = c.createdAt;
     dto.updatedAt = c.updatedAt;
+    dto.lastMovementAt = c.lastMovementAt ?? null;
     return dto;
   }
 
