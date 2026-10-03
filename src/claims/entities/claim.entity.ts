@@ -58,8 +58,13 @@ export class Claim {
   @Column('text')
   description!: string;
 
+  /** URL externa que mandaban las apps antes de que la foto se subiera al storage. */
   @Column({ type: 'varchar', nullable: true })
   photoUrl!: string | null;
+
+  /** Key de la foto en el storage (`claims/{distribuidora}/{reclamo}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
 
   @Column({
     type: 'enum',

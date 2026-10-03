@@ -8,33 +8,31 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { S3StorageAdapter } from './s3-storage.adapter';
+import { buildS3ClientConfig, S3StorageAdapter } from './s3-storage.adapter';
 
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: jest.fn(),
 }));
 
 /**
- * El cliente de S3 se mockea a nivel de `S3Client.prototype.send`: no hay
- * credenciales reales en este entorno (`STORAGE_S3_*` sin valores, ver
- * `.env.example`), así que la única forma de probar el adapter es simulando
- * las respuestas del SDK.
+ * Acá el cliente de S3 se mockea a nivel de `S3Client.prototype.send`: sirve
+ * para los casos de error y de armado de comandos. El comportamiento real
+ * (subir, URL firmada, descargar, borrar) se prueba contra MinIO en
+ * `test/integration/storage-s3.e2e-spec.ts`.
  */
 describe('S3StorageAdapter', () => {
   let adapter: S3StorageAdapter;
   let send: jest.SpiedFunction<typeof S3Client.prototype.send>;
 
+  const valores: Record<string, string> = {
+    STORAGE_S3_BUCKET: 'splg-fleet-docs',
+    STORAGE_S3_REGION: 'sa-east-1',
+    STORAGE_S3_ACCESS_KEY_ID: 'AKIA-test',
+    STORAGE_S3_SECRET_ACCESS_KEY: 'secret-test',
+  };
   const config = {
-    getOrThrow: jest.fn((key: string) => {
-      const valores: Record<string, string> = {
-        STORAGE_S3_BUCKET: 'splg-fleet-docs',
-        STORAGE_S3_REGION: 'sa-east-1',
-        STORAGE_S3_ACCESS_KEY_ID: 'AKIA-test',
-        STORAGE_S3_SECRET_ACCESS_KEY: 'secret-test',
-      };
-      return valores[key];
-    }),
-    get: jest.fn((_key: string, def: number) => def),
+    getOrThrow: jest.fn((key: string) => valores[key]),
+    get: jest.fn((key: string, def?: unknown) => valores[key] ?? def),
   } as unknown as ConfigService;
 
   beforeEach(() => {
@@ -63,6 +61,7 @@ describe('S3StorageAdapter', () => {
       Bucket: 'splg-fleet-docs',
       Key: 'fleet/doc.pdf',
       ContentType: 'application/pdf',
+      ServerSideEncryption: 'AES256',
     });
   });
 
@@ -82,9 +81,13 @@ describe('S3StorageAdapter', () => {
       'https://s3.example.com/firmada',
     );
 
-    const url = await adapter.getDownloadUrl('fleet/doc.pdf');
+    const signed = await adapter.getSignedDownload('fleet/doc.pdf');
 
-    expect(url).toBe('https://s3.example.com/firmada');
+    expect(signed?.url).toBe('https://s3.example.com/firmada');
+    expect(signed?.expiresAt.getTime()).toBeGreaterThan(Date.now() + 290_000);
+    await expect(adapter.getDownloadUrl('fleet/doc.pdf')).resolves.toBe(
+      'https://s3.example.com/firmada',
+    );
     expect(getSignedUrl).toHaveBeenCalledWith(
       expect.any(S3Client),
       expect.any(GetObjectCommand),
@@ -94,7 +97,9 @@ describe('S3StorageAdapter', () => {
 
   it('con fileName, la URL firmada lleva ResponseContentDisposition', async () => {
     (getSignedUrl as jest.Mock).mockResolvedValue('https://s3.example.com/x');
-    await adapter.getDownloadUrl('fleet/doc.pdf', { fileName: "o'brien.pdf" });
+    await adapter.getSignedDownload('fleet/doc.pdf', {
+      fileName: "o'brien.pdf",
+    });
     const [, comando] = jest.mocked(getSignedUrl).mock.calls.at(-1) as [
       unknown,
       GetObjectCommand,
@@ -139,5 +144,91 @@ describe('S3StorageAdapter', () => {
     await expect(adapter.getStream('fleet/falta.pdf')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  describe('configuración del cliente', () => {
+    function configDe(valores: Record<string, string | undefined>) {
+      return {
+        getOrThrow: jest.fn((key: string) => {
+          const v = valores[key];
+          if (!v) throw new Error(`falta ${key}`);
+          return v;
+        }),
+        get: jest.fn((key: string, def?: unknown) => valores[key] ?? def),
+      } as unknown as ConfigService;
+    }
+
+    const BASE = {
+      STORAGE_S3_BUCKET: 'splg',
+      STORAGE_S3_REGION: 'sa-east-1',
+    };
+
+    it('sin credenciales explícitas NO pasa `credentials` al cliente: queda la cadena de AWS', () => {
+      for (const vacias of [
+        {},
+        { STORAGE_S3_ACCESS_KEY_ID: '', STORAGE_S3_SECRET_ACCESS_KEY: '' },
+      ]) {
+        const cfg = buildS3ClientConfig(configDe({ ...BASE, ...vacias }));
+        expect('credentials' in cfg).toBe(false);
+      }
+    });
+
+    it('con una sola de las dos claves tampoco pasa credentials', () => {
+      const cfg = buildS3ClientConfig(
+        configDe({ ...BASE, STORAGE_S3_ACCESS_KEY_ID: 'AKIA' }),
+      );
+      expect('credentials' in cfg).toBe(false);
+    });
+
+    it('con credenciales explícitas, las usa', async () => {
+      const a = new S3StorageAdapter(
+        configDe({
+          ...BASE,
+          STORAGE_S3_ACCESS_KEY_ID: 'AKIA-test',
+          STORAGE_S3_SECRET_ACCESS_KEY: 'secret-test',
+        }),
+      );
+      const client = (a as unknown as { client: S3Client }).client;
+      await expect(client.config.credentials()).resolves.toMatchObject({
+        accessKeyId: 'AKIA-test',
+      });
+    });
+
+    it('toma el endpoint y el direccionamiento por path de MinIO', async () => {
+      const a = new S3StorageAdapter(
+        configDe({
+          ...BASE,
+          STORAGE_S3_ENDPOINT: 'http://localhost:9000',
+          STORAGE_S3_FORCE_PATH_STYLE: 'true',
+        }),
+      );
+      const client = (a as unknown as { client: S3Client }).client;
+      expect(client.config.forcePathStyle).toBe(true);
+      const endpoint = await client.config.endpoint?.();
+      expect(endpoint?.hostname).toBe('localhost');
+      expect(endpoint?.port).toBe(9000);
+    });
+
+    it('sin bucket falla al construirse, con un mensaje claro', () => {
+      expect(
+        () => new S3StorageAdapter(configDe({ STORAGE_S3_REGION: 'x' })),
+      ).toThrow('STORAGE_S3_BUCKET');
+    });
+  });
+
+  describe('expiresAt', () => {
+    it('con credenciales temporales que vencen antes que el TTL, expiresAt es la expiración de la sesión', async () => {
+      const antes = new Date(Date.now() + 60_000);
+      (adapter as unknown as { client: S3Client }).client.config.credentials =
+        () =>
+          Promise.resolve({
+            accessKeyId: 'a',
+            secretAccessKey: 'b',
+            expiration: antes,
+          });
+      (getSignedUrl as jest.Mock).mockResolvedValue('https://s3/x');
+      const signed = await adapter.getSignedDownload('k');
+      expect(signed?.expiresAt).toEqual(antes);
+    });
   });
 });

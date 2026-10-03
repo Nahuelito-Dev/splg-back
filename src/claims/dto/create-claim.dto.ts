@@ -21,7 +21,13 @@ export class CreateClaimDto {
   @TextoNoVacio()
   description!: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({
+    required: false,
+    deprecated: true,
+    description:
+      'Obsoleto: la foto se sube después con `POST /claims/:id/photo`. Se ' +
+      'sigue aceptando por compatibilidad con las apps ya publicadas.',
+  })
   @IsOptional()
   @IsString()
   photoUrl?: string;

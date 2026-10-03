@@ -12,9 +12,11 @@ import { randomUUID } from 'crypto';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
 import { FleetTaskService } from './fleet-task.service';
 import {
+  SignedDownload,
   StoragePort,
   StorageObjectStream,
 } from '../storage/ports/storage.port';
+import { StorageCleanupService } from '../storage/storage-cleanup.service';
 import {
   acotarNombreDeArchivo,
   decodificarNombreDeArchivo,
@@ -48,6 +50,7 @@ export class FleetAttachmentService {
     private readonly attachments: Repository<MaintenanceTaskAttachment>,
     private readonly taskService: FleetTaskService,
     private readonly storage: StoragePort,
+    private readonly cleanup: StorageCleanupService,
   ) {}
 
   async upload(
@@ -81,6 +84,9 @@ export class FleetAttachmentService {
     }
 
     const key = `fleet/${distributorId}/${taskId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
+    // Se anota la key antes de subir: si el proceso cae antes de guardar la
+    // referencia, el cron borra el objeto abandonado.
+    await this.cleanup.reserveUpload(key);
     await this.storage.put({
       key,
       body: file.buffer,
@@ -100,11 +106,15 @@ export class FleetAttachmentService {
     });
 
     try {
-      return await this.attachments.save(attachment);
+      return await this.attachments.manager.transaction(async (manager) => {
+        const saved = await manager.save(attachment);
+        await this.cleanup.confirmUpload(manager, key);
+        return saved;
+      });
     } catch (error) {
       // El archivo ya se subió: si el registro en la base falla, no queda
       // huérfano en el storage.
-      await this.storage.remove(key).catch(() => undefined);
+      this.cleanup.removeInBackground(key);
       return traducirErrorDeBase(error, this.logger, 'adjuntos de flota');
     }
   }
@@ -131,12 +141,11 @@ export class FleetAttachmentService {
       distributorId,
     );
 
-    const redirectUrl = await this.storage.getDownloadUrl(
-      attachment.storageKey,
-      { fileName: attachment.originalName },
-    );
-    if (redirectUrl) {
-      return { kind: 'redirect', url: redirectUrl };
+    const signed = await this.storage.getSignedDownload(attachment.storageKey, {
+      fileName: attachment.originalName,
+    });
+    if (signed) {
+      return { kind: 'redirect', url: signed.url };
     }
 
     const stream = await this.storage.getStream(attachment.storageKey);
@@ -146,6 +155,22 @@ export class FleetAttachmentService {
       mimeType: stream.contentType ?? attachment.mimeType,
       ...stream,
     };
+  }
+
+  /** URL firmada del adjunto; `null` con el driver local. */
+  async getSignedDownload(
+    taskId: string,
+    attachmentId: string,
+    distributorId: string,
+  ): Promise<SignedDownload | null> {
+    const attachment = await this.findOneOrThrow(
+      taskId,
+      attachmentId,
+      distributorId,
+    );
+    return this.storage.getSignedDownload(attachment.storageKey, {
+      fileName: attachment.originalName,
+    });
   }
 
   async remove(
@@ -158,8 +183,12 @@ export class FleetAttachmentService {
       attachmentId,
       distributorId,
     );
-    await this.attachments.remove(attachment);
-    await this.storage.remove(attachment.storageKey);
+    await this.attachments.manager.transaction(async (manager) => {
+      await manager.remove(attachment);
+      await this.cleanup.scheduleRemoval(manager, attachment.storageKey);
+    });
+    // Sin esperar: si el proveedor falla, se reintenta y queda registrado.
+    this.cleanup.removeInBackground(attachment.storageKey);
   }
 
   private async findOneOrThrow(

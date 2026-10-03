@@ -16,7 +16,12 @@ const ID = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
  */
 describe('ClaimsController · distribuidora obligatoria', () => {
   let app: INestApplication<Server>;
-  let claims: { take: jest.Mock; reopen: jest.Mock; resolve: jest.Mock };
+  let claims: {
+    take: jest.Mock;
+    reopen: jest.Mock;
+    resolve: jest.Mock;
+    photoUrlFor: jest.Mock;
+  };
   let distributorId: string | null;
 
   beforeEach(async () => {
@@ -25,6 +30,7 @@ describe('ClaimsController · distribuidora obligatoria', () => {
       take: jest.fn().mockResolvedValue({}),
       reopen: jest.fn().mockResolvedValue({}),
       resolve: jest.fn().mockResolvedValue({}),
+      photoUrlFor: jest.fn().mockResolvedValue(null),
     };
     const modulo = await Test.createTestingModule({
       controllers: [ClaimsController],

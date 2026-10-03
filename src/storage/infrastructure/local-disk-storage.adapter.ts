@@ -9,6 +9,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, normalize, resolve } from 'path';
 import {
   StorageObjectInput,
+  SignedDownload,
   StorageObjectStream,
   StoragePort,
 } from '../ports/storage.port';
@@ -24,7 +25,7 @@ interface Meta {
  * distribuidoras chicas antes de migrar a `S3StorageAdapter`.
  *
  * Los archivos quedan en `STORAGE_LOCAL_PATH` (fuera de `src`, ignorada por
- * git). No hay URL pública: `getDownloadUrl` devuelve `null` siempre, y el
+ * git). No hay URL pública: `getSignedDownload` devuelve `null` siempre, y el
  * caller sirve el archivo con `getStream` a través de un endpoint propio
  * (con la autenticación de este backend, no de un bucket).
  */
@@ -61,7 +62,7 @@ export class LocalDiskStorageAdapter extends StoragePort {
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-unused-vars
-  async getDownloadUrl(_key: string): Promise<string | null> {
+  async getSignedDownload(_key: string): Promise<SignedDownload | null> {
     return null;
   }
 

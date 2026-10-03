@@ -1,8 +1,17 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  PayloadTooLargeException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ClaimsService } from './claims.service';
 import { Claim, ClaimStatus } from './entities/claim.entity';
 import { OrderService } from '../order/order.service';
+import { StoragePort } from '../storage/ports/storage.port';
+import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { RoleType } from '../common/constants/role-type.enum';
 
 /**
  * Un reclamo cuelga de un pedido: tiene que existir, ser del cliente que
@@ -20,6 +29,17 @@ describe('ClaimsService', () => {
   };
   let bloqueo: { setLock: jest.Mock; andWhere: jest.Mock };
   let orders: { findOne: jest.Mock; assertDeLaDistribuidora: jest.Mock };
+  let storage: {
+    put: jest.Mock;
+    getSignedDownload: jest.Mock;
+    getStream: jest.Mock;
+  };
+  let cleanup: {
+    removeInBackground: jest.Mock;
+    reserveUpload: jest.Mock;
+    confirmUpload: jest.Mock;
+    scheduleRemoval: jest.Mock;
+  };
 
   const dto = {
     orderId: 'o1',
@@ -54,9 +74,22 @@ describe('ClaimsService', () => {
       save: claims.save,
     };
     orders = { findOne: jest.fn(), assertDeLaDistribuidora: jest.fn() };
+    storage = {
+      put: jest.fn().mockResolvedValue(undefined),
+      getSignedDownload: jest.fn(),
+      getStream: jest.fn(),
+    };
+    cleanup = {
+      removeInBackground: jest.fn(),
+      reserveUpload: jest.fn().mockResolvedValue(undefined),
+      confirmUpload: jest.fn().mockResolvedValue(undefined),
+      scheduleRemoval: jest.fn().mockResolvedValue(undefined),
+    };
     service = new ClaimsService(
       claims as unknown as Repository<Claim>,
       orders as unknown as OrderService,
+      storage as unknown as StoragePort,
+      cleanup as unknown as StorageCleanupService,
     );
   });
 
@@ -239,6 +272,192 @@ describe('ClaimsService', () => {
       await expect(service.reopen('c1', 'motivo', 'd2')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('foto del reclamo', () => {
+    const CLIENTE = { userId: 'u1', role: RoleType.CUSTOMER };
+    const ADMIN = { userId: 'a1', role: RoleType.ADMIN };
+    const PNG = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
+    ]);
+    const archivo = (over: Partial<Express.Multer.File> = {}) =>
+      ({
+        buffer: PNG,
+        size: PNG.length,
+        mimetype: 'image/png',
+        originalname: 'foto.png',
+        ...over,
+      }) as Express.Multer.File;
+    const reclamo = (over: Partial<Claim> = {}) =>
+      ({
+        claimId: 'c1',
+        distributorId: 'd1',
+        customerId: 'u1',
+        status: ClaimStatus.PENDING,
+        photoKey: null,
+        photoUrl: 'https://viejo/ext.jpg',
+        ...over,
+      }) as Claim;
+
+    it('guarda la foto en claims/{distribuidora}/{reclamo}/{uuid}.{ext} y limpia la URL externa', async () => {
+      claims.findOne.mockResolvedValue(reclamo());
+      const r = await service.uploadPhoto('c1', archivo(), null, CLIENTE);
+      const [put] = storage.put.mock.calls[0] as [
+        { key: string; contentType: string },
+      ];
+      expect(put.key).toMatch(/^claims\/d1\/c1\/[0-9a-f-]{36}\.png$/);
+      expect(put.contentType).toBe('image/png');
+      expect(r.photoKey).toBe(put.key);
+      expect(r.photoUrl).toBeNull();
+      expect(cleanup.removeInBackground).not.toHaveBeenCalled();
+      // Reserva antes del put y confirmación en la transacción del reclamo.
+      expect(cleanup.reserveUpload).toHaveBeenCalledWith(put.key);
+      expect(cleanup.reserveUpload.mock.invocationCallOrder[0]).toBeLessThan(
+        storage.put.mock.invocationCallOrder[0],
+      );
+      expect(cleanup.confirmUpload).toHaveBeenCalledWith(
+        expect.anything(),
+        put.key,
+      );
+      // Se serializa con lock pesimista (dos subidas simultáneas no se pisan).
+      expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('reemplazar la foto borra la anterior', async () => {
+      claims.findOne.mockResolvedValue(
+        reclamo({ photoKey: 'claims/viejo.jpg' }),
+      );
+      await service.uploadPhoto('c1', archivo(), null, CLIENTE);
+      // El borrado de la anterior se anota en la transacción y recién después se intenta.
+      expect(cleanup.scheduleRemoval).toHaveBeenCalledWith(
+        expect.anything(),
+        'claims/viejo.jpg',
+      );
+      expect(cleanup.removeInBackground).toHaveBeenCalledWith(
+        'claims/viejo.jpg',
+      );
+      expect(cleanup.scheduleRemoval.mock.invocationCallOrder[0]).toBeLessThan(
+        cleanup.removeInBackground.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('si el reclamo no se puede guardar, la foto recién subida no queda huérfana', async () => {
+      claims.findOne.mockResolvedValue(reclamo());
+      claims.save.mockRejectedValue(new Error('base caída'));
+      await expect(
+        service.uploadPhoto('c1', archivo(), null, CLIENTE),
+      ).rejects.toThrow('base caída');
+      const [{ key }] = storage.put.mock.calls[0] as [{ key: string }];
+      expect(cleanup.removeInBackground).toHaveBeenCalledWith(key);
+    });
+
+    it('un reclamo resuelto o rechazado no admite cambiar la foto (409) y no sube nada', async () => {
+      for (const status of [ClaimStatus.RESOLVED, ClaimStatus.REJECTED]) {
+        claims.findOne.mockResolvedValue(reclamo({ status }));
+        await expect(
+          service.uploadPhoto('c1', archivo(), null, CLIENTE),
+        ).rejects.toBeInstanceOf(ConflictException);
+      }
+      expect(cleanup.reserveUpload).not.toHaveBeenCalled();
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it('si lo cierran mientras se sube (dentro del lock), 409 y la foto subida se borra', async () => {
+      claims.findOne
+        .mockResolvedValueOnce(reclamo())
+        .mockResolvedValueOnce(reclamo({ status: ClaimStatus.RESOLVED }));
+      await expect(
+        service.uploadPhoto('c1', archivo(), null, CLIENTE),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(claims.save).not.toHaveBeenCalled();
+      expect(cleanup.confirmUpload).not.toHaveBeenCalled();
+      expect(cleanup.removeInBackground).toHaveBeenCalledTimes(1);
+    });
+
+    it('un cliente no sube foto al reclamo de otro (404)', async () => {
+      claims.findOne.mockResolvedValue(null);
+      await expect(
+        service.uploadPhoto('c1', archivo(), null, CLIENTE),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(claims.findOne).toHaveBeenCalledWith({
+        where: { claimId: 'c1', customerId: 'u1' },
+      });
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it('un admin queda acotado a su distribuidora', async () => {
+      claims.findOne.mockResolvedValue(null);
+      await expect(
+        service.uploadPhoto('c1', archivo(), 'd2', ADMIN),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(claims.findOne).toHaveBeenCalledWith({
+        where: { claimId: 'c1', distributorId: 'd2' },
+      });
+    });
+
+    it('rechaza lo que no es imagen (415), lo que no coincide con su firma (415), lo vacío y lo enorme', async () => {
+      claims.findOne.mockResolvedValue(reclamo());
+      await expect(
+        service.uploadPhoto(
+          'c1',
+          archivo({ mimetype: 'application/pdf' }),
+          null,
+          CLIENTE,
+        ),
+      ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+      await expect(
+        service.uploadPhoto(
+          'c1',
+          archivo({ buffer: Buffer.from('<html>'), size: 6 }),
+          null,
+          CLIENTE,
+        ),
+      ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+      await expect(
+        service.uploadPhoto('c1', archivo({ size: 0 }), null, CLIENTE),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.uploadPhoto(
+          'c1',
+          archivo({ size: 10 * 1024 * 1024 + 1 }),
+          null,
+          CLIENTE,
+        ),
+      ).rejects.toBeInstanceOf(PayloadTooLargeException);
+      await expect(
+        service.uploadPhoto('c1', undefined, null, CLIENTE),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it('ver la foto de un reclamo sin foto es 404', async () => {
+      claims.findOne.mockResolvedValue(reclamo());
+      await expect(
+        service.getPhotoSignedDownload('c1', null, CLIENTE),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('ver la foto devuelve la URL firmada del storage', async () => {
+      claims.findOne.mockResolvedValue(reclamo({ photoKey: 'claims/k.png' }));
+      const firmada = { url: 'https://s3/firmada', expiresAt: new Date() };
+      storage.getSignedDownload.mockResolvedValue(firmada);
+      await expect(
+        service.getPhotoSignedDownload('c1', null, CLIENTE),
+      ).resolves.toBe(firmada);
+      expect(storage.getSignedDownload).toHaveBeenCalledWith('claims/k.png');
+    });
+
+    it('photoUrlFor: sin foto o con el driver local es null, y un fallo del storage no rompe', async () => {
+      await expect(service.photoUrlFor(reclamo())).resolves.toBeNull();
+      storage.getSignedDownload.mockResolvedValueOnce(null);
+      await expect(
+        service.photoUrlFor(reclamo({ photoKey: 'k.png' })),
+      ).resolves.toBeNull();
+      storage.getSignedDownload.mockRejectedValueOnce(new Error('sdk'));
+      await expect(
+        service.photoUrlFor(reclamo({ photoKey: 'k.png' })),
+      ).resolves.toBeNull();
     });
   });
 });

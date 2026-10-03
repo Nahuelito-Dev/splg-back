@@ -14,6 +14,19 @@ export const ALLOWED_ATTACHMENT_MIME_TYPES = [
 export type AllowedAttachmentMimeType =
   (typeof ALLOWED_ATTACHMENT_MIME_TYPES)[number];
 
+/** Las imágenes que se aceptan como foto (reclamos): los mismos formatos, sin PDF. */
+export const ALLOWED_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
+
+export function esImagenPermitida(
+  mimeType: string,
+): mimeType is Exclude<AllowedAttachmentMimeType, 'application/pdf'> {
+  return (ALLOWED_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
 /** 10 MB: de sobra para una foto o un PDF escaneado de una póliza/VTV/licencia. */
 export const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 

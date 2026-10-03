@@ -12,6 +12,7 @@ import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
 import { AttachmentOwnerResolver } from './ports/attachment-owner-resolver.port';
 import { StoragePort } from '../storage/ports/storage.port';
+import { StorageCleanupService } from '../storage/storage-cleanup.service';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 import { RoleType } from '../common/constants/role-type.enum';
 
@@ -42,11 +43,18 @@ describe('AttachmentService', () => {
     find: jest.Mock;
     findOne: jest.Mock;
     remove: jest.Mock;
+    manager: { transaction: jest.Mock };
+  };
+  let cleanup: {
+    removeInBackground: jest.Mock;
+    reserveUpload: jest.Mock;
+    confirmUpload: jest.Mock;
+    scheduleRemoval: jest.Mock;
   };
   let storage: {
     put: jest.Mock;
     remove: jest.Mock;
-    getDownloadUrl: jest.Mock;
+    getSignedDownload: jest.Mock;
     getStream: jest.Mock;
   };
   let resolverEmpleado: {
@@ -66,11 +74,22 @@ describe('AttachmentService', () => {
       find: jest.fn(),
       findOne: jest.fn(),
       remove: jest.fn(),
+      manager: {
+        transaction: jest.fn((fn: (m: unknown) => unknown) =>
+          fn({ save: attachments.save, remove: attachments.remove }),
+        ),
+      },
+    };
+    cleanup = {
+      removeInBackground: jest.fn(),
+      reserveUpload: jest.fn().mockResolvedValue(undefined),
+      confirmUpload: jest.fn().mockResolvedValue(undefined),
+      scheduleRemoval: jest.fn().mockResolvedValue(undefined),
     };
     storage = {
       put: jest.fn().mockResolvedValue(undefined),
       remove: jest.fn().mockResolvedValue(undefined),
-      getDownloadUrl: jest.fn(),
+      getSignedDownload: jest.fn(),
       getStream: jest.fn(),
     };
     resolverEmpleado = {
@@ -90,6 +109,7 @@ describe('AttachmentService', () => {
       attachments as unknown as Repository<Attachment>,
       registry,
       storage as unknown as StoragePort,
+      cleanup as unknown as StorageCleanupService,
     );
   });
 
@@ -209,21 +229,6 @@ describe('AttachmentService', () => {
       expect(result.originalName.endsWith('.pdf')).toBe(true);
     });
 
-    it('si el storage también falla al limpiar, sale el error original', async () => {
-      attachments.save.mockRejectedValue(new Error('boom'));
-      storage.remove.mockRejectedValue(new Error('storage caído'));
-      await expect(
-        service.upload(
-          AttachmentOwnerType.EMPLOYEE,
-          'e1',
-          'd1',
-          archivo(),
-          undefined,
-          ADMIN,
-        ),
-      ).rejects.not.toThrow(/storage caído/);
-    });
-
     it('si falla el guardado en la base, borra el archivo del storage', async () => {
       attachments.save.mockRejectedValue(new Error('boom'));
       await expect(
@@ -236,7 +241,8 @@ describe('AttachmentService', () => {
           ADMIN,
         ),
       ).rejects.toBeDefined();
-      expect(storage.remove).toHaveBeenCalledTimes(1);
+      expect(cleanup.removeInBackground).toHaveBeenCalledTimes(1);
+      expect(storage.remove).not.toHaveBeenCalled();
     });
   });
 
@@ -274,6 +280,7 @@ describe('AttachmentService', () => {
         attachments as unknown as Repository<Attachment>,
         registry,
         storage as unknown as StoragePort,
+        cleanup as unknown as StorageCleanupService,
       );
       await expect(
         s.list(AttachmentOwnerType.FUEL_LOAD, 'c1', 'd1', CHOFER),
@@ -330,7 +337,10 @@ describe('AttachmentService', () => {
 
     it('redirige si el storage da una URL firmada', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
-      storage.getDownloadUrl.mockResolvedValue('https://s3/firmada');
+      storage.getSignedDownload.mockResolvedValue({
+        url: 'https://s3/firmada',
+        expiresAt: new Date(),
+      });
       await expect(service.getDownload('a1', 'd1', ADMIN)).resolves.toEqual({
         kind: 'redirect',
         url: 'https://s3/firmada',
@@ -339,7 +349,7 @@ describe('AttachmentService', () => {
 
     it('sirve el stream con el nombre original si no hay URL', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
-      storage.getDownloadUrl.mockResolvedValue(null);
+      storage.getSignedDownload.mockResolvedValue(null);
       storage.getStream.mockResolvedValue({
         stream: Readable.from(['x']),
         contentType: null,
@@ -356,7 +366,10 @@ describe('AttachmentService', () => {
     it('con el dueño borrado, el admin igual baja y borra el adjunto', async () => {
       resolverEmpleado.assertOwner.mockRejectedValue(new NotFoundException());
       attachments.findOne.mockResolvedValue(adjunto);
-      storage.getDownloadUrl.mockResolvedValue('https://s3/firmada');
+      storage.getSignedDownload.mockResolvedValue({
+        url: 'https://s3/firmada',
+        expiresAt: new Date(),
+      });
       await expect(service.getDownload('a1', 'd1', ADMIN)).resolves.toEqual({
         kind: 'redirect',
         url: 'https://s3/firmada',
@@ -368,16 +381,18 @@ describe('AttachmentService', () => {
 
     it('pide la URL firmada con el nombre original', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
-      storage.getDownloadUrl.mockResolvedValue('https://s3/firmada');
+      storage.getSignedDownload.mockResolvedValue({
+        url: 'https://s3/firmada',
+        expiresAt: new Date(),
+      });
       await service.getDownload('a1', 'd1', ADMIN);
-      expect(storage.getDownloadUrl).toHaveBeenCalledWith('k', {
+      expect(storage.getSignedDownload).toHaveBeenCalledWith('k', {
         fileName: 'dni.pdf',
       });
     });
 
-    it('si el storage falla al borrar, igual se borra el registro y no hay error', async () => {
+    it('el borrado del archivo no espera ni puede romper la respuesta', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
-      storage.remove.mockRejectedValue(new Error('S3 caído'));
       await expect(service.remove('a1', 'd1', ADMIN)).resolves.toBeUndefined();
       expect(attachments.remove).toHaveBeenCalledWith(adjunto);
     });
@@ -386,7 +401,76 @@ describe('AttachmentService', () => {
       attachments.findOne.mockResolvedValue(adjunto);
       await service.remove('a1', 'd1', ADMIN);
       expect(attachments.remove).toHaveBeenCalledWith(adjunto);
-      expect(storage.remove).toHaveBeenCalledWith('k');
+      expect(cleanup.removeInBackground).toHaveBeenCalledWith('k');
+    });
+  });
+
+  describe('huérfanos: la intención se anota antes', () => {
+    it('al subir: reserva la key ANTES del put y la confirma en la transacción que guarda', async () => {
+      await service.upload(
+        AttachmentOwnerType.EMPLOYEE,
+        'e1',
+        'd1',
+        archivo(),
+        undefined,
+        ADMIN,
+      );
+      const key = (storage.put.mock.calls[0] as [{ key: string }])[0].key;
+      expect(cleanup.reserveUpload).toHaveBeenCalledWith(key);
+      expect(cleanup.reserveUpload.mock.invocationCallOrder[0]).toBeLessThan(
+        storage.put.mock.invocationCallOrder[0],
+      );
+      expect(cleanup.confirmUpload).toHaveBeenCalledWith(
+        expect.anything(),
+        key,
+      );
+      expect(attachments.manager.transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('si falla el guardado la reserva NO se confirma y el objeto se borra en segundo plano', async () => {
+      attachments.save.mockRejectedValue(new Error('boom'));
+      await expect(
+        service.upload(
+          AttachmentOwnerType.EMPLOYEE,
+          'e1',
+          'd1',
+          archivo(),
+          undefined,
+          ADMIN,
+        ),
+      ).rejects.toBeDefined();
+      expect(cleanup.confirmUpload).not.toHaveBeenCalled();
+      expect(cleanup.removeInBackground).toHaveBeenCalledTimes(1);
+    });
+
+    it('al borrar: anota el borrado en la MISMA transacción que quita el registro, y recién después lo intenta', async () => {
+      attachments.findOne.mockResolvedValue({
+        attachmentId: 'a1',
+        ownerType: AttachmentOwnerType.EMPLOYEE,
+        ownerId: 'e1',
+        storageKey: 'k',
+      });
+      await service.remove('a1', 'd1', ADMIN);
+      expect(attachments.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(cleanup.scheduleRemoval).toHaveBeenCalledWith(
+        expect.anything(),
+        'k',
+      );
+      expect(cleanup.scheduleRemoval.mock.invocationCallOrder[0]).toBeLessThan(
+        cleanup.removeInBackground.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('si la transacción del borrado falla, no se intenta borrar el objeto', async () => {
+      attachments.findOne.mockResolvedValue({
+        attachmentId: 'a1',
+        ownerType: AttachmentOwnerType.EMPLOYEE,
+        ownerId: 'e1',
+        storageKey: 'k',
+      });
+      attachments.remove.mockRejectedValue(new Error('base caída'));
+      await expect(service.remove('a1', 'd1', ADMIN)).rejects.toThrow();
+      expect(cleanup.removeInBackground).not.toHaveBeenCalled();
     });
   });
 });

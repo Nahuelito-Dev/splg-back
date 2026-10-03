@@ -16,6 +16,12 @@ export interface StorageObjectStream {
   sizeBytes: number | null;
 }
 
+/** URL de descarga directa desde el proveedor, con su vencimiento. */
+export interface SignedDownload {
+  url: string;
+  expiresAt: Date;
+}
+
 /**
  * PUERTO de almacenamiento de archivos. Los servicios que guardan adjuntos
  * (hoy sólo `fleet`, mañana cualquiera) hablan con ESTA interfaz, nunca con
@@ -33,16 +39,24 @@ export abstract class StoragePort {
   abstract remove(key: string): Promise<void>;
 
   /**
-   * URL para descargar el archivo directo desde el proveedor (p. ej. una URL
-   * firmada de S3, con expiración corta), sin pasar por este backend.
-   * `null` si el driver no soporta esto (el caso de `local`): ahí el caller
-   * tiene que usar `getStream` y servir el archivo él mismo. Con `fileName`,
-   * la URL fuerza la descarga con ese nombre (`Content-Disposition`).
+   * URL firmada para descargar el archivo directo desde el proveedor (p. ej.
+   * S3, con expiración corta), sin pasar por este backend. `null` si el driver
+   * no soporta esto (el caso de `local`): ahí el caller tiene que usar
+   * `getStream` y servir el archivo él mismo. Con `fileName`, la URL fuerza la
+   * descarga con ese nombre (`Content-Disposition`).
    */
-  abstract getDownloadUrl(
+  abstract getSignedDownload(
     key: string,
     options?: { fileName?: string },
-  ): Promise<string | null>;
+  ): Promise<SignedDownload | null>;
+
+  /** Igual que `getSignedDownload`, pero sólo la URL. */
+  async getDownloadUrl(
+    key: string,
+    options?: { fileName?: string },
+  ): Promise<string | null> {
+    return (await this.getSignedDownload(key, options))?.url ?? null;
+  }
 
   /** Lee el objeto para servirlo por streaming a través de este backend. */
   abstract getStream(key: string): Promise<StorageObjectStream>;

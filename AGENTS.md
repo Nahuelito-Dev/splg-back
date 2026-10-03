@@ -15,6 +15,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Integración (necesita Postgres y Redis arriba) | `npm run test:integration` |
 | Migraciones | `npm run migration:generate -- src/migrations/<Nombre>` · `npm run migration:run` |
 | Seeds | `npm run seed` (roles, distribuidora, usuarios con Firebase) · `npm run seed:demo` |
+| Archivos (S3 en prod, MinIO en dev: `docker compose up -d minio minio-init`) | `docs/S3.md` |
 | OpenAPI | `GET /docs-json` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`) |
 
 ## Convenciones

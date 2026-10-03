@@ -10,6 +10,7 @@ import { FleetAttachmentService } from './fleet-attachment.service';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
 import { FleetTaskService } from './fleet-task.service';
 import { StoragePort } from '../storage/ports/storage.port';
+import { StorageCleanupService } from '../storage/storage-cleanup.service';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 function archivo(over: Partial<Express.Multer.File> = {}): Express.Multer.File {
@@ -36,12 +37,19 @@ describe('FleetAttachmentService', () => {
     find: jest.Mock;
     findOne: jest.Mock;
     remove: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
   let taskService: { findOne: jest.Mock };
+  let cleanup: {
+    removeInBackground: jest.Mock;
+    reserveUpload: jest.Mock;
+    confirmUpload: jest.Mock;
+    scheduleRemoval: jest.Mock;
+  };
   let storage: {
     put: jest.Mock;
     remove: jest.Mock;
-    getDownloadUrl: jest.Mock;
+    getSignedDownload: jest.Mock;
     getStream: jest.Mock;
   };
 
@@ -52,12 +60,23 @@ describe('FleetAttachmentService', () => {
       find: jest.fn(),
       findOne: jest.fn(),
       remove: jest.fn(),
+      manager: {
+        transaction: jest.fn((fn: (m: unknown) => unknown) =>
+          fn({ save: attachments.save, remove: attachments.remove }),
+        ),
+      },
     };
     taskService = { findOne: jest.fn().mockResolvedValue({ taskId: 't1' }) };
+    cleanup = {
+      removeInBackground: jest.fn(),
+      reserveUpload: jest.fn().mockResolvedValue(undefined),
+      confirmUpload: jest.fn().mockResolvedValue(undefined),
+      scheduleRemoval: jest.fn().mockResolvedValue(undefined),
+    };
     storage = {
       put: jest.fn().mockResolvedValue(undefined),
       remove: jest.fn().mockResolvedValue(undefined),
-      getDownloadUrl: jest.fn(),
+      getSignedDownload: jest.fn(),
       getStream: jest.fn(),
     };
 
@@ -65,6 +84,7 @@ describe('FleetAttachmentService', () => {
       attachments as unknown as Repository<MaintenanceTaskAttachment>,
       taskService as unknown as FleetTaskService,
       storage as unknown as StoragePort,
+      cleanup as unknown as StorageCleanupService,
     );
   });
 
@@ -141,7 +161,7 @@ describe('FleetAttachmentService', () => {
       await expect(
         service.upload('t1', 'd1', archivo(), 'u1'),
       ).rejects.toThrow();
-      expect(storage.remove).toHaveBeenCalled();
+      expect(cleanup.removeInBackground).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -153,7 +173,10 @@ describe('FleetAttachmentService', () => {
         originalName: 'poliza.pdf',
         mimeType: 'application/pdf',
       });
-      storage.getDownloadUrl.mockResolvedValue('https://s3/firmada');
+      storage.getSignedDownload.mockResolvedValue({
+        url: 'https://s3/firmada',
+        expiresAt: new Date(),
+      });
 
       const result = await service.getDownload('t1', 'a1', 'd1');
       expect(result).toEqual({ kind: 'redirect', url: 'https://s3/firmada' });
@@ -166,7 +189,7 @@ describe('FleetAttachmentService', () => {
         originalName: 'poliza.pdf',
         mimeType: 'application/pdf',
       });
-      storage.getDownloadUrl.mockResolvedValue(null);
+      storage.getSignedDownload.mockResolvedValue(null);
       const stream = Readable.from([Buffer.from('x')]);
       storage.getStream.mockResolvedValue({
         stream,
@@ -198,7 +221,8 @@ describe('FleetAttachmentService', () => {
       });
       await service.remove('t1', 'a1', 'd1');
       expect(attachments.remove).toHaveBeenCalled();
-      expect(storage.remove).toHaveBeenCalledWith('k1');
+      expect(cleanup.removeInBackground).toHaveBeenCalledWith('k1');
+      expect(storage.remove).not.toHaveBeenCalled();
     });
   });
 });
