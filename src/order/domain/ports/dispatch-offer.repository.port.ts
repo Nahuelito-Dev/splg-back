@@ -1,5 +1,11 @@
 import { DispatchOffer } from '../../entities/dispatch-offer.entity';
 
+/** Ver `DispatchOfferRepositoryPort.findDriverOfferState`. */
+export interface DriverOfferState {
+  blocked: string[];
+  reofferable: string[];
+}
+
 /**
  * PUERTO de persistencia de ofertas de despacho. El orquestador habla con esta
  * interfaz; el adapter TypeORM resuelve el cómo. Aislar la persistencia permite
@@ -14,8 +20,18 @@ export abstract class DispatchOfferRepositoryPort {
     distributorId?: string | null,
   ): Promise<DispatchOffer>;
 
-  /** IDs de choferes YA contactados para este pedido (cualquier estado). */
-  abstract findOfferedDriverIds(orderId: string): Promise<string[]>;
+  /**
+   * Clasifica a los choferes ya contactados para este pedido:
+   *  - `blocked`: no se les vuelve a ofrecer ahora (rechazó, aceptó, tiene una
+   *    oferta vigente o su oferta venció hace menos de `cooldownMs`).
+   *  - `reofferable`: todas sus ofertas vencieron hace más de `cooldownMs`;
+   *    pueden volver a ser candidatos si no hay choferes nuevos.
+   */
+  abstract findDriverOfferState(
+    orderId: string,
+    now: Date,
+    cooldownMs: number,
+  ): Promise<DriverOfferState>;
 
   /**
    * True si el pedido tiene una oferta OFFERED vigente (no vencida ni cerrada).
@@ -25,6 +41,17 @@ export abstract class DispatchOfferRepositoryPort {
    * distingue una oferta real del despacho de una asignación manual).
    */
   abstract hasActiveOffer(orderId: string, driverId?: string): Promise<boolean>;
+
+  /**
+   * Deja constancia de que `driverId` TUVO el pedido (aceptó por oferta o se
+   * le asignó a mano): cierra su oferta OFFERED como ACCEPTED o, si no tenía
+   * ninguna, inserta una fila ACCEPTED. Así nunca vuelve a ser candidato de
+   * ese pedido, aunque después lo libere. Idempotente.
+   */
+  abstract recordDriverHeldOrder(
+    orderId: string,
+    driverId: string,
+  ): Promise<void>;
 
   /** Ofertas OFFERED cuyo `expiresAt` ya pasó (para el cron de timeout). */
   abstract findExpired(now: Date): Promise<DispatchOffer[]>;

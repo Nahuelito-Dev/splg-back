@@ -11,6 +11,7 @@ import { transitionOrder } from '../domain/order-status.machine';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { ReleaseOrderUseCase } from './release-order.use-case';
+import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { RoleType } from '../../common/constants/role-type.enum';
 
 /** Quién dispara la cancelación (define la política de estado y stock). */
@@ -57,6 +58,7 @@ export class CancelOrderUseCase {
     private readonly stock: GasCylinderService,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly releaseOrder: ReleaseOrderUseCase,
+    private readonly dispatchOrchestrator: DispatchOrchestratorService,
   ) {}
 
   async execute(
@@ -148,6 +150,9 @@ export class CancelOrderUseCase {
     if (role === 'driver') {
       await this.releaseOrder.notifyReleased(order, previousDriverUserId);
     } else {
+      await this.dispatchOrchestrator
+        .onOrderClosed(order.orderId)
+        .catch(() => undefined);
       this.notify(order, previousDriverUserId);
     }
 

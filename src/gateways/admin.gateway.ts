@@ -20,6 +20,13 @@ import { SocketDeSplg } from './socket-data';
  * soporta "ver como", a diferencia del header `X-Distributor` en HTTP): se une
  * a una sala aparte que recibe todo.
  *
+ * Eventos del despacho (además de los `order:*` del ciclo de vida):
+ *  - `order:no-drivers` `{ orderId, distributorId, reason, at }`: un pedido
+ *    PENDING se quedó sin choferes a quién ofrecérselo. `reason` es
+ *    `no_drivers_in_range` (no hay choferes elegibles cerca) o
+ *    `all_drivers_exhausted` (los que había rechazaron o están en espera de
+ *    re-oferta). Se emite una vez por agotamiento, no en cada reintento.
+ *
  * El join lo decide el SERVIDOR a partir de la identidad resuelta del token
  * (`SocketIdentityService`), nunca el cliente: el panel no manda nada especial
  * al conectar, sigue siendo `io(url + '/admin', { auth: { token } })`.

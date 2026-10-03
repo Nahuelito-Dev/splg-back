@@ -92,6 +92,45 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Ejecuta `fn` bajo un lock distribuido sobre `key` con extensión automática
+   * (Redlock `using`): mientras `fn` corre, el lock se renueva solo, así la
+   * sección crítica nunca excede su vigencia. Si otro proceso tiene el lock,
+   * no ejecuta `fn` y devuelve `{ obtenido: false }`; los errores de `fn` se
+   * propagan.
+   */
+  async withLock<T>(
+    key: string,
+    ttlMs: number,
+    fn: () => Promise<T>,
+  ): Promise<{ obtenido: true; valor: T } | { obtenido: false }> {
+    let ejecutando = false;
+    try {
+      const valor = await this.redlock.using(
+        [`lock:${key}`],
+        ttlMs,
+        async () => {
+          ejecutando = true;
+          return fn();
+        },
+      );
+      return { obtenido: true, valor };
+    } catch (err) {
+      // Sin lock (otro proceso lo tiene): no es un error. Si falló `fn`, sí.
+      if (!ejecutando) return { obtenido: false };
+      throw err;
+    }
+  }
+
+  /**
+   * SET NX con TTL en segundos: marca `key` sólo si no existía. Devuelve true
+   * si la creó (el caller es el primero), false si ya estaba.
+   */
+  async setIfAbsent(key: string, ttlSec: number): Promise<boolean> {
+    const res = await this.client.set(key, '1', 'EX', ttlSec, 'NX');
+    return res === 'OK';
+  }
+
+  /**
    * Incrementa un contador y le pone TTL de `windowSec` la PRIMERA vez que
    * se crea (no lo resetea en cada incremento). Patrón "fixed window" para
    * rate-limiting distribuido: todas las instancias comparten el mismo
