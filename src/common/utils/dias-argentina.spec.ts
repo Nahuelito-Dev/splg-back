@@ -59,9 +59,9 @@ describe('dias-argentina', () => {
     expect(inicioDelDiaArgentino('2026-07-07x')).toBeNull();
   });
 
-  it('el SQL convierte desde la zona en que se guardó la columna hacia la argentina', () => {
-    expect(truncarEnArgentinaSql('day', 'o.x', 'UTC')).toBe(
-      "date_trunc('day', o.x AT TIME ZONE 'UTC' AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'",
+  it('el SQL trunca el timestamptz directo en la zona argentina, sin zona de proceso', () => {
+    expect(truncarEnArgentinaSql('day', 'o.x')).toBe(
+      "date_trunc('day', o.x AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'",
     );
   });
 

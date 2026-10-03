@@ -71,6 +71,6 @@ export class Claim {
   @Column({ type: 'text', nullable: true })
   resolutionNote!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

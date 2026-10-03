@@ -226,14 +226,14 @@ export class Order {
   })
   deliveryPoint!: Point | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   acceptedAt!: Date | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   onTheWayAt!: Date | null;
 
   @Index()
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   deliveredAt!: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
