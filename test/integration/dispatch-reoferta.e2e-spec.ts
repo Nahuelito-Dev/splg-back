@@ -226,4 +226,53 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
       distributor.distributorId,
     );
   }, 60000);
+
+  it('tope de re-ofertas: tras 3 vencidas el único chofer queda agotado, avisa una vez y un chofer nuevo sí recibe', async () => {
+    const { distributor, order } = await nuevoPedido();
+    const mudo = (await nuevoChofer(distributor, LAT + 0.001)).userId;
+    const fullOrder = await ds
+      .getRepository(Order)
+      .findOneOrFail({ where: { orderId: order.orderId } });
+    const max = DispatchOrchestratorService.MAX_REOFERTAS_POR_CHOFER;
+
+    expect(await orchestrator.offerToNextDriver(fullOrder)).toBe(mudo);
+    for (let i = 1; i < max; i++) {
+      // Vence hace más del cooldown: el cron lo re-ofrece al mismo chofer.
+      await vencerOfertaVigente(order.orderId, 10);
+      expect(await ofertas(order.orderId)).toHaveLength(i + 1);
+    }
+    expect(notifyAdmins).not.toHaveBeenCalled();
+
+    // La última vence: llegó al tope, no se crea otra oferta y se avisa.
+    await vencerOfertaVigente(order.orderId, 10);
+    let lista = await ofertas(order.orderId);
+    expect(lista).toHaveLength(max);
+    expect(lista.every((o) => o.driverId === mudo)).toBe(true);
+    expect(lista.every((o) => o.status === DispatchOfferStatus.EXPIRED)).toBe(
+      true,
+    );
+    expect(notifyAdmins).toHaveBeenCalledTimes(1);
+    expect(notifyAdmins).toHaveBeenCalledWith(
+      'order:no-drivers',
+      expect.objectContaining({
+        orderId: order.orderId,
+        reason: 'all_drivers_exhausted',
+      }),
+      distributor.distributorId,
+    );
+
+    // Los ticks siguientes no ofrecen ni repiten el aviso.
+    await orchestrator.ensureOffered(fullOrder);
+    await orchestrator.ensureOffered(fullOrder);
+    expect(await ofertas(order.orderId)).toHaveLength(max);
+    expect(notifyAdmins).toHaveBeenCalledTimes(1);
+
+    // Un chofer nuevo recibe la oferta con normalidad.
+    const nuevo = (await nuevoChofer(distributor, LAT + 0.002)).userId;
+    await orchestrator.ensureOffered(fullOrder);
+    lista = await ofertas(order.orderId);
+    expect(lista).toHaveLength(max + 1);
+    expect(lista[max].driverId).toBe(nuevo);
+    expect(lista[max].status).toBe(DispatchOfferStatus.OFFERED);
+  }, 60000);
 });

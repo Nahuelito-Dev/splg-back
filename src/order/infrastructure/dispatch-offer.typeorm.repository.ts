@@ -41,6 +41,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     orderId: string,
     now: Date,
     cooldownMs: number,
+    maxReofertas: number,
   ): Promise<DriverOfferState> {
     const rows = await this.repo.find({
       where: { orderId },
@@ -49,12 +50,22 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     const cooldownHasta = now.getTime() - cooldownMs;
     const blocked = new Set<string>();
     const contactados = new Set<string>();
+    const vencidasPorChofer = new Map<string, number>();
     for (const row of rows) {
       contactados.add(row.driverId);
+      if (row.status === DispatchOfferStatus.EXPIRED) {
+        vencidasPorChofer.set(
+          row.driverId,
+          (vencidasPorChofer.get(row.driverId) ?? 0) + 1,
+        );
+      }
       const venciaHaceMucho =
         row.status === DispatchOfferStatus.EXPIRED &&
         row.expiresAt.getTime() <= cooldownHasta;
       if (!venciaHaceMucho) blocked.add(row.driverId);
+    }
+    for (const [driverId, vencidas] of vencidasPorChofer) {
+      if (vencidas >= maxReofertas) blocked.add(driverId);
     }
     return {
       blocked: [...blocked],

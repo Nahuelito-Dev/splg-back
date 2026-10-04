@@ -23,14 +23,17 @@ export abstract class DispatchOfferRepositoryPort {
   /**
    * Clasifica a los choferes ya contactados para este pedido:
    *  - `blocked`: no se les vuelve a ofrecer ahora (rechazó, aceptó, tiene una
-   *    oferta vigente o su oferta venció hace menos de `cooldownMs`).
-   *  - `reofferable`: todas sus ofertas vencieron hace más de `cooldownMs`;
-   *    pueden volver a ser candidatos si no hay choferes nuevos.
+   *    oferta vigente, su oferta venció hace menos de `cooldownMs` o ya
+   *    acumuló `maxReofertas` ofertas vencidas: agotado para este pedido).
+   *  - `reofferable`: todas sus ofertas vencieron hace más de `cooldownMs` y
+   *    tienen menos de `maxReofertas`; pueden volver a ser candidatos si no
+   *    hay choferes nuevos.
    */
   abstract findDriverOfferState(
     orderId: string,
     now: Date,
     cooldownMs: number,
+    maxReofertas: number,
   ): Promise<DriverOfferState>;
 
   /**

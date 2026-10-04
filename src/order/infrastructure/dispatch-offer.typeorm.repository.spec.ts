@@ -7,6 +7,7 @@ import {
 
 describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
   const COOLDOWN = 3 * 60 * 1000;
+  const MAX = 3;
   const now = new Date('2026-10-03T12:00:00Z');
   const hace = (ms: number) => new Date(now.getTime() - ms);
 
@@ -25,7 +26,7 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
         expiresAt: hace(COOLDOWN + 1000),
       },
     ]);
-    expect(await repo.findDriverOfferState('o', now, COOLDOWN)).toEqual({
+    expect(await repo.findDriverOfferState('o', now, COOLDOWN, MAX)).toEqual({
       blocked: [],
       reofferable: ['d1'],
     });
@@ -39,7 +40,7 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
         expiresAt: hace(COOLDOWN - 1000),
       },
     ]);
-    expect(await repo.findDriverOfferState('o', now, COOLDOWN)).toEqual({
+    expect(await repo.findDriverOfferState('o', now, COOLDOWN, MAX)).toEqual({
       blocked: ['d1'],
       reofferable: [],
     });
@@ -57,9 +58,39 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
       },
       { driverId: 'r', status: DispatchOfferStatus.EXPIRED, expiresAt: vieja },
     ]);
-    const res = await repo.findDriverOfferState('ord', now, COOLDOWN);
+    const res = await repo.findDriverOfferState('ord', now, COOLDOWN, MAX);
     expect(res.blocked.sort()).toEqual(['a', 'o', 'r']);
     expect(res.reofferable).toEqual([]);
+  });
+
+  it('con menos del tope de ofertas vencidas sigue siendo re-ofertable', async () => {
+    const vieja = hace(COOLDOWN * 10);
+    const repo = repoCon(
+      [1, 2].map(() => ({
+        driverId: 'd1',
+        status: DispatchOfferStatus.EXPIRED,
+        expiresAt: vieja,
+      })),
+    );
+    expect(await repo.findDriverOfferState('o', now, COOLDOWN, MAX)).toEqual({
+      blocked: [],
+      reofferable: ['d1'],
+    });
+  });
+
+  it('con el tope de ofertas vencidas queda agotado (bloqueado) aunque pasó el cooldown', async () => {
+    const vieja = hace(COOLDOWN * 10);
+    const repo = repoCon(
+      [1, 2, 3].map(() => ({
+        driverId: 'd1',
+        status: DispatchOfferStatus.EXPIRED,
+        expiresAt: vieja,
+      })),
+    );
+    expect(await repo.findDriverOfferState('o', now, COOLDOWN, MAX)).toEqual({
+      blocked: ['d1'],
+      reofferable: [],
+    });
   });
 });
 
