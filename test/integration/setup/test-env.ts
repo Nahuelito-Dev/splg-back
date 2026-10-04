@@ -15,7 +15,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { generateKeyPairSync, randomUUID } from 'crypto';
+import { generateKeyPairSync, randomInt, randomUUID } from 'crypto';
 import { FirebaseAuthPort } from '../../../src/firebase/ports/firebase-auth.port';
 import { Distributor } from '../../../src/distributor/entities/distributor.entity';
 import { Role } from '../../../src/role/entities/role.entity';
@@ -53,6 +53,14 @@ function clavePrivadaDescartable(): string {
     publicKeyEncoding: { type: 'spki', format: 'pem' },
   });
   return privateKey.replace(/\n/g, '\\n');
+}
+
+/**
+ * Teléfono único para los seeds: 10 dígitos al azar (no derivados del sufijo
+ * del correo, que tiene pocos dígitos y choca con el UNIQUE de `phone_number`).
+ */
+export function telefonoDePrueba(): string {
+  return `+549${String(randomInt(0, 10_000_000_000)).padStart(10, '0')}`;
 }
 
 export async function createTestApp(): Promise<TestEnv> {
@@ -128,6 +136,10 @@ export async function createTestApp(): Promise<TestEnv> {
   try {
     asegurarBaseDescartable(app.get(DataSource), pgContainer);
     await app.init();
+    // Escucha en loopback con puerto propio: si no, supertest hace un
+    // `listen(0)` por request y a veces le toca un puerto que otro proceso
+    // ya usa en 127.0.0.1.
+    await app.listen(0, '127.0.0.1');
   } catch (error) {
     await cleanup();
     throw error;
@@ -223,7 +235,7 @@ export async function sembrarClienteAutenticado(app: TestApp): Promise<{
   const user = await dataSource.getRepository(User).save({
     email,
     fullName: 'Test Customer',
-    phoneNumber: `+549${sufijo.replace(/\D/g, '').padEnd(10, '1').slice(0, 10)}`,
+    phoneNumber: telefonoDePrueba(),
     roleId: rol.roleId,
   } as Partial<User>);
   await dataSource.getRepository(Customer).save({

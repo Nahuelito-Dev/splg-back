@@ -11,7 +11,12 @@ import { join } from 'path';
 import { NotFoundException } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
-import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  truncateAllTables,
+  telefonoDePrueba,
+} from './setup/test-env';
 import { AttachmentOwnerRegistry } from '../../src/attachment/attachment-owner.registry';
 import {
   Attachment,
@@ -97,7 +102,7 @@ describe('Adjuntos genéricos (e2e)', () => {
     const user = await dataSource.getRepository(User).save({
       email,
       fullName: `Test ${tipo}`,
-      phoneNumber: `+549${sufijo.replace(/\D/g, '').padEnd(10, '2').slice(0, 10)}`,
+      phoneNumber: telefonoDePrueba(),
       roleId: (await rol(tipo)).roleId,
     } as Partial<User>);
     if (tipo === 'admin') {

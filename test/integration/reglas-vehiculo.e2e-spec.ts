@@ -10,7 +10,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
-import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  truncateAllTables,
+  telefonoDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -87,7 +92,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
     const user = (await dataSource.getRepository(User).save({
       email: email ?? `chofer.${sufijo}@test.local`,
       fullName: `Chofer ${sufijo}`,
-      phoneNumber: `+549${sufijo.replace(/\D/g, '').padEnd(10, '0').slice(0, 10)}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>)) as User;
     const delivery = (await dataSource.getRepository(Delivery).save({
       distributorId,
@@ -119,7 +124,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
     const cliente = (await dataSource.getRepository(User).save({
       email: `cliente.${sufijo}@test.local`,
       fullName: 'Cliente Test',
-      phoneNumber: `+540000${sufijo.replace(/\D/g, '').padEnd(8, '1').slice(0, 8)}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>)) as User;
     await dataSource.getRepository(Customer).save({
       userId: cliente.userId,

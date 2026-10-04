@@ -431,10 +431,53 @@ describe('ClaimsService', () => {
       expect(storage.put).not.toHaveBeenCalled();
     });
 
-    it('ver la foto de un reclamo sin foto es 404', async () => {
-      claims.findOne.mockResolvedValue(reclamo());
+    it('el enlace a la foto de un reclamo sin foto es kind none, no 404', async () => {
+      claims.findOne.mockResolvedValue(reclamo({ photoUrl: null }));
+      await expect(service.getPhotoLink('c1', null, CLIENTE)).resolves.toEqual({
+        kind: 'none',
+      });
+      expect(storage.getSignedDownload).not.toHaveBeenCalled();
+    });
+
+    it('sin photoKey pero con photoUrl externa, el enlace es esa URL y el archivo un 302 a ella', async () => {
+      claims.findOne.mockResolvedValue(
+        reclamo({ photoUrl: 'https://externa/foto.jpg' }),
+      );
+      await expect(service.getPhotoLink('c1', null, CLIENTE)).resolves.toEqual({
+        kind: 'external',
+        url: 'https://externa/foto.jpg',
+      });
+      await expect(service.getPhotoFile('c1', null, CLIENTE)).resolves.toEqual({
+        kind: 'redirect',
+        url: 'https://externa/foto.jpg',
+      });
+      expect(storage.getSignedDownload).not.toHaveBeenCalled();
+    });
+
+    it.each(['javascript:alert(1)', 'no es una url'])(
+      'una photoUrl vieja inválida (%s) cuenta como sin foto: url null y archivo 404',
+      async (viejo) => {
+        claims.findOne.mockResolvedValue(reclamo({ photoUrl: viejo }));
+        await expect(
+          service.getPhotoLink('c1', null, CLIENTE),
+        ).resolves.toEqual({ kind: 'none' });
+        await expect(
+          service.getPhotoFile('c1', null, CLIENTE),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      },
+    );
+
+    it('el enlace a la foto de un reclamo ajeno sigue siendo 404', async () => {
+      claims.findOne.mockResolvedValue(null);
       await expect(
-        service.getPhotoSignedDownload('c1', null, CLIENTE),
+        service.getPhotoLink('c1', null, CLIENTE),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('la foto misma de un reclamo sin foto es 404', async () => {
+      claims.findOne.mockResolvedValue(reclamo({ photoUrl: null }));
+      await expect(
+        service.getPhotoFile('c1', null, CLIENTE),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -442,9 +485,10 @@ describe('ClaimsService', () => {
       claims.findOne.mockResolvedValue(reclamo({ photoKey: 'claims/k.png' }));
       const firmada = { url: 'https://s3/firmada', expiresAt: new Date() };
       storage.getSignedDownload.mockResolvedValue(firmada);
-      await expect(
-        service.getPhotoSignedDownload('c1', null, CLIENTE),
-      ).resolves.toBe(firmada);
+      await expect(service.getPhotoLink('c1', null, CLIENTE)).resolves.toEqual({
+        kind: 'stored',
+        signed: firmada,
+      });
       expect(storage.getSignedDownload).toHaveBeenCalledWith('claims/k.png');
     });
 

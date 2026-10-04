@@ -25,7 +25,7 @@
  * propios datos con ids únicos.
  */
 import { DataSource } from 'typeorm';
-import { TestEnv, createTestApp } from './setup/test-env';
+import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -86,7 +86,7 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
     const userA = (await userRepo.save({
       email: `chofer-a-${seq}-${Date.now()}@splg.local`,
       fullName: 'Chofer A',
-      phoneNumber: `+5400001${seq}${Date.now() % 10000}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>)) as User;
     const driverA = (await deliveryRepo.save({
       userId: userA.userId,
@@ -98,7 +98,7 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
     const userB = (await userRepo.save({
       email: `chofer-b-${seq}-${Date.now()}@splg.local`,
       fullName: 'Chofer B',
-      phoneNumber: `+5400002${seq}${Date.now() % 10000}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>)) as User;
     const driverB = (await deliveryRepo.save({
       userId: userB.userId,
@@ -128,7 +128,7 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
     const customerUser = (await userRepo.save({
       email: `cliente-${seq}-${Date.now()}@splg.local`,
       fullName: 'Cliente Test',
-      phoneNumber: `+5400003${seq}${Date.now() % 10000}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>)) as User;
     await customerRepo.save({
       userId: customerUser.userId,

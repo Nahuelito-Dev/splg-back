@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsUUID, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsUUID,
+  IsOptional,
+  IsUrl,
+} from 'class-validator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -30,5 +36,6 @@ export class CreateClaimDto {
   })
   @IsOptional()
   @IsString()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
   photoUrl?: string;
 }

@@ -44,6 +44,29 @@ export type ClaimPhotoFile =
       mimeType: string;
     } & StorageObjectStream);
 
+/**
+ * La URL externa de un reclamo viejo sólo se sirve si es http(s): nunca un
+ * `javascript:` ni un texto cualquiera guardado antes de validar el campo.
+ */
+function esUrlHttp(url: string | null): url is string {
+  if (!url) return false;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * El enlace a la foto para `?modo=url`: la subida al storage (`signed` es `null`
+ * con el driver local), la URL externa que traía el reclamo, o nada.
+ */
+export type ClaimPhotoLink =
+  | { kind: 'none' }
+  | { kind: 'external'; url: string }
+  | { kind: 'stored'; signed: SignedDownload | null };
+
 @Injectable()
 export class ClaimsService {
   private readonly logger = new Logger(ClaimsService.name);
@@ -279,14 +302,25 @@ export class ClaimsService {
     }
   }
 
-  /** CU-175: URL firmada de la foto (`null` con el driver local). 404 si no tiene. */
-  async getPhotoSignedDownload(
+  /**
+   * CU-175: el enlace a la foto para `?modo=url`. Un reclamo sin foto no es un
+   * error: es `{ kind: 'none' }` (el panel lo pregunta al abrir el detalle).
+   */
+  async getPhotoLink(
     id: string,
     distributorId: string | null,
     actor: ClaimActor,
-  ): Promise<SignedDownload | null> {
-    const key = await this.photoKeyOrThrow(id, distributorId, actor);
-    return this.storage.getSignedDownload(key);
+  ): Promise<ClaimPhotoLink> {
+    const claim = await this.findForPhoto(id, distributorId, actor);
+    if (!claim.photoKey) {
+      return esUrlHttp(claim.photoUrl)
+        ? { kind: 'external', url: claim.photoUrl }
+        : { kind: 'none' };
+    }
+    return {
+      kind: 'stored',
+      signed: await this.storage.getSignedDownload(claim.photoKey),
+    };
   }
 
   /** CU-175: la foto misma, para `?modo=archivo`. */
@@ -295,7 +329,14 @@ export class ClaimsService {
     distributorId: string | null,
     actor: ClaimActor,
   ): Promise<ClaimPhotoFile> {
-    const key = await this.photoKeyOrThrow(id, distributorId, actor);
+    const claim = await this.findForPhoto(id, distributorId, actor);
+    if (!claim.photoKey) {
+      if (esUrlHttp(claim.photoUrl)) {
+        return { kind: 'redirect', url: claim.photoUrl };
+      }
+      throw new NotFoundException('El reclamo no tiene foto');
+    }
+    const key = claim.photoKey;
     const signed = await this.storage.getSignedDownload(key);
     if (signed) return { kind: 'redirect', url: signed.url };
 
@@ -325,18 +366,6 @@ export class ClaimsService {
       );
       return null;
     }
-  }
-
-  private async photoKeyOrThrow(
-    id: string,
-    distributorId: string | null,
-    actor: ClaimActor,
-  ): Promise<string> {
-    const claim = await this.findForPhoto(id, distributorId, actor);
-    if (!claim.photoKey) {
-      throw new NotFoundException('El reclamo no tiene foto');
-    }
-    return claim.photoKey;
   }
 
   /**
