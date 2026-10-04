@@ -25,7 +25,12 @@
 import { randomUUID } from 'crypto';
 import { ConflictException, Logger } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
-import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  truncateAllTables,
+  telefonoDePrueba,
+} from './setup/test-env';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { User } from '../../src/users/entities/user.entity';
@@ -58,7 +63,7 @@ describe('Vehículo en uso — invariante de base (e2e)', () => {
     const user = (await userRepo.save({
       email: `chofer.${sufijo}@test.local`,
       fullName: `Chofer ${sufijo}`,
-      phoneNumber: `+549${sufijo.replace(/\D/g, '').padEnd(10, '0').slice(0, 10)}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>)) as User;
 
     const delivery = (await deliveryRepo.save({

@@ -5,7 +5,7 @@
  */
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { TestEnv, createTestApp } from './setup/test-env';
+import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -56,7 +56,7 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
     const user = await ds.getRepository(User).save({
       email: `chofer-${sufijo}@splg.local`,
       fullName: `Chofer ${sufijo}`,
-      phoneNumber: `+5411${sufijo.replace(/\D/g, '').padEnd(8, '7').slice(0, 8)}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>);
     const delivery = await ds.getRepository(Delivery).save({
       userId: user.userId,
@@ -88,7 +88,7 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
     const cliente = await ds.getRepository(User).save({
       email: `cli-${sufijo}@splg.local`,
       fullName: 'Cliente',
-      phoneNumber: `+5411${sufijo.replace(/\D/g, '').padEnd(8, '3').slice(0, 8)}`,
+      phoneNumber: telefonoDePrueba(),
     } as Partial<User>);
     await ds.getRepository(Customer).save({
       userId: cliente.userId,

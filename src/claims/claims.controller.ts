@@ -35,12 +35,12 @@ import {
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { ClaimResponseDto } from './dto/claim-response.dto';
+import { ClaimPhotoLinkResponseDto } from './dto/claim-photo-link.dto';
 import { ClaimMapper } from './claims.mapper';
 import type { Claim } from './entities/claim.entity';
 import { servirArchivo } from '../common/http/servir-archivo';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 import {
-  DownloadLinkResponseDto,
   DownloadMode,
   DownloadQueryDto,
 } from '../storage/dto/download-link.dto';
@@ -251,15 +251,19 @@ export class ClaimsController {
       '(302 a la URL firmada con S3, o streaming con el driver local). Con ' +
       '`?modo=url` devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin ' +
       'redirect (con el driver local `url` es esta misma ruta y se pide con el ' +
-      'token). Se puede ver aunque el reclamo esté cerrado.',
+      'token); si el reclamo no tiene foto subida devuelve su `photoUrl` externa, o ' +
+      '200 con `url: null` si no tiene ninguna. ' +
+      'Se puede ver aunque el reclamo esté cerrado.',
   })
   @ApiParam({ name: 'id', description: 'Claim UUID' })
   @ApiOkResponse({
-    description: 'La foto; con `?modo=url`, el enlace',
-    type: DownloadLinkResponseDto,
+    description:
+      'La foto; con `?modo=url`, el enlace (`url: null` si no tiene foto)',
+    type: ClaimPhotoLinkResponseDto,
   })
   @ApiNotFoundResponse({
-    description: 'El reclamo no existe, no es del cliente o no tiene foto',
+    description:
+      'El reclamo no existe o no es del cliente; sin `modo`, también si no tiene foto',
   })
   async getPhoto(
     @Param('id', ParseUUIDPipe) id: string,
@@ -272,12 +276,20 @@ export class ClaimsController {
     const actor = { userId: user.user_id, role: user.role };
 
     if (query.modo === DownloadMode.URL) {
-      const signed = await this.claimsService.getPhotoSignedDownload(
+      const link = await this.claimsService.getPhotoLink(
         id,
         distributorId,
         actor,
       );
-      res.json(aEnlaceDeDescarga(signed, req.originalUrl.split('?')[0]));
+      if (link.kind !== 'stored') {
+        const dto = new ClaimPhotoLinkResponseDto();
+        dto.url = link.kind === 'external' ? link.url : null;
+        dto.expiresAt = null;
+        dto.requiresAuth = false;
+        res.json(dto);
+        return;
+      }
+      res.json(aEnlaceDeDescarga(link.signed, req.originalUrl.split('?')[0]));
       return;
     }
 

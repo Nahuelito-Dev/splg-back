@@ -21,6 +21,7 @@ import {
   createTestApp,
   sembrarClienteAutenticado,
   truncateAllTables,
+  telefonoDePrueba,
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
 import { S3StorageAdapter } from '../../src/storage/infrastructure/s3-storage.adapter';
@@ -195,7 +196,7 @@ describe('Storage S3 contra MinIO (e2e)', () => {
     const user = await dataSource.getRepository(User).save({
       email,
       fullName: 'Test admin',
-      phoneNumber: `+549${sufijo.replace(/\D/g, '').padEnd(10, '2').slice(0, 10)}`,
+      phoneNumber: telefonoDePrueba(),
       roleId: (await rol('admin')).roleId,
     } as Partial<User>);
     await dataSource
@@ -305,7 +306,9 @@ describe('Storage S3 contra MinIO (e2e)', () => {
   });
 
   describe('foto del reclamo (CU-174 / CU-175)', () => {
-    async function escenario() {
+    const FOTO_EXTERNA = 'https://externa.example/foto-vieja.jpg';
+
+    async function escenario(photoUrl: string | null = FOTO_EXTERNA) {
       const { user, distributor, headers } = await sembrarClienteAutenticado(
         env.app,
       );
@@ -332,7 +335,7 @@ describe('Storage S3 contra MinIO (e2e)', () => {
         customerId: user.userId,
         reason: 'Fuga',
         description: 'Huele a gas',
-        photoUrl: 'https://externa.example/foto-vieja.jpg',
+        photoUrl,
       } as Partial<Claim>)) as Claim;
       return { user, distributor, headers, admin, reclamo };
     }
@@ -348,6 +351,28 @@ describe('Storage S3 contra MinIO (e2e)', () => {
         .set(headers)
         .attach('file', buffer, { filename: 'foto', contentType: mime });
 
+    it('un reclamo sin ninguna foto: modo=url es 200 con url null y el archivo es 404; el ajeno sigue en 404', async () => {
+      const { headers, reclamo } = await escenario(null);
+      const enlace = await request(env.app.getHttpServer())
+        .get(`/claims/${reclamo.claimId}/photo?modo=url`)
+        .set(headers)
+        .expect(200);
+      expect(enlace.body).toEqual({
+        url: null,
+        expiresAt: null,
+        requiresAuth: false,
+      });
+      await request(env.app.getHttpServer())
+        .get(`/claims/${reclamo.claimId}/photo`)
+        .set(headers)
+        .expect(404);
+      const otro = await sembrarClienteAutenticado(env.app);
+      await request(env.app.getHttpServer())
+        .get(`/claims/${reclamo.claimId}/photo?modo=url`)
+        .set(otro.headers)
+        .expect(404);
+    });
+
     it('el cliente sube la foto, la ve por URL firmada y al reemplazarla se borra la anterior', async () => {
       const { distributor, headers, admin, reclamo } = await escenario();
 
@@ -359,10 +384,21 @@ describe('Storage S3 contra MinIO (e2e)', () => {
       expect((antes.body as Array<{ photoUrl: string }>)[0].photoUrl).toBe(
         'https://externa.example/foto-vieja.jpg',
       );
-      await request(env.app.getHttpServer())
+      // Sin `photoKey` pero con la URL externa: el enlace y el archivo son esa URL.
+      const externa = await request(env.app.getHttpServer())
+        .get(`/claims/${reclamo.claimId}/photo?modo=url`)
+        .set(headers)
+        .expect(200);
+      expect(externa.body).toEqual({
+        url: FOTO_EXTERNA,
+        expiresAt: null,
+        requiresAuth: false,
+      });
+      const redirigida = await request(env.app.getHttpServer())
         .get(`/claims/${reclamo.claimId}/photo`)
         .set(headers)
-        .expect(404);
+        .expect(302);
+      expect(redirigida.headers.location).toBe(FOTO_EXTERNA);
 
       const primera = await subir(
         headers,
@@ -465,6 +501,10 @@ describe('Storage S3 contra MinIO (e2e)', () => {
         await subir(quien, reclamo.claimId, PNG, 'image/png').expect(404);
         await request(env.app.getHttpServer())
           .get(`/claims/${reclamo.claimId}/photo`)
+          .set(quien)
+          .expect(404);
+        await request(env.app.getHttpServer())
+          .get(`/claims/${reclamo.claimId}/photo?modo=url`)
           .set(quien)
           .expect(404);
       }
