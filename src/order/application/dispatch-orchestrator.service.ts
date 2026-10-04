@@ -36,7 +36,8 @@ interface CacheDeInhabilitacion {
  *
  * Re-oferta: un chofer cuya oferta VENCIÓ vuelve a ser candidato del mismo
  * pedido pasado `REOFFER_COOLDOWN_MS` desde ese vencimiento, pero sólo si no
- * hay choferes nuevos (los nunca contactados van siempre primero). Quien
+ * hay choferes nuevos (los nunca contactados van siempre primero) y hasta
+ * `MAX_REOFERTAS_POR_CHOFER` vencimientos: después queda agotado. Quien
  * RECHAZÓ (o ya aceptó y liberó) no recibe nunca más ese pedido. Si no queda
  * ningún candidato, se avisa a los admins con `order:no-drivers`, una vez por
  * agotamiento.
@@ -59,6 +60,15 @@ export class DispatchOrchestratorService {
    * `ConfigurableProcess`).
    */
   static readonly REOFFER_COOLDOWN_MS = 3 * 60 * 1000;
+
+  /**
+   * Tope de ofertas VENCIDAS por chofer para un mismo pedido: con esa cantidad
+   * el chofer queda agotado para ese pedido y no se le vuelve a ofrecer
+   * (evita re-ofrecer sin fin a quien no responde). Cuenta la oferta original:
+   * con 3 son la original y dos re-ofertas. Constante del despacho, igual
+   * criterio que el cooldown.
+   */
+  static readonly MAX_REOFERTAS_POR_CHOFER = 3;
 
   /**
    * Vigencia inicial del lock que serializa la oferta de un pedido; Redlock lo
@@ -121,6 +131,7 @@ export class DispatchOrchestratorService {
       order.orderId,
       new Date(),
       DispatchOrchestratorService.REOFFER_COOLDOWN_MS,
+      DispatchOrchestratorService.MAX_REOFERTAS_POR_CHOFER,
     );
     const nuncaContactadosOBloqueados = new Set([...blocked, ...reofferable]);
 

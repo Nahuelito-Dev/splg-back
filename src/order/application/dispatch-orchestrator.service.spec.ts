@@ -278,6 +278,7 @@ describe('DispatchOrchestratorService', () => {
         'ord-1',
         expect.any(Date),
         DispatchOrchestratorService.REOFFER_COOLDOWN_MS,
+        DispatchOrchestratorService.MAX_REOFERTAS_POR_CHOFER,
       );
       expect(redis.setIfAbsent).not.toHaveBeenCalled();
     });
