@@ -1,8 +1,9 @@
 /**
  * Ciclo de adjuntos genéricos contra la API con Postgres real: subir ->
  * listar -> descargar -> borrar, el aislamiento entre distribuidoras, los
- * límites del archivo y lo que puede tocar un chofer. Los módulos dueños
- * todavía no existen: el test registra resolvers de ejemplo.
+ * límites del archivo y lo que puede tocar un chofer. El dueño `employee` es
+ * el real (módulo Personal); los demás todavía no existen y el test registra
+ * resolvers de ejemplo.
  */
 import { randomUUID } from 'crypto';
 import { mkdtempSync, rmSync } from 'fs';
@@ -27,6 +28,15 @@ import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
+import {
+  Employee,
+  EmployeeDocumentType,
+  EmploymentType,
+} from '../../src/employee/entities/employee.entity';
+import {
+  JobPosition,
+  JobPositionCategory,
+} from '../../src/employee/entities/job-position.entity';
 
 interface Dueno {
   distributorId: string;
@@ -38,7 +48,6 @@ describe('Adjuntos genéricos (e2e)', () => {
   let env: TestEnv;
   let dataSource: DataSource;
   // El "dueño" de ejemplo: id -> a qué distribuidora (y a qué usuario) pertenece.
-  const empleados = new Map<string, Dueno>();
   const cargas = new Map<string, Dueno>();
 
   beforeAll(async () => {
@@ -55,10 +64,6 @@ describe('Adjuntos genéricos (e2e)', () => {
       return Promise.resolve();
     };
     registry.register({
-      ownerType: AttachmentOwnerType.EMPLOYEE,
-      assertOwner: asegurar(empleados),
-    });
-    registry.register({
       ownerType: AttachmentOwnerType.FUEL_LOAD,
       assertOwner: asegurar(cargas),
       isOwnedByUser: (id, userId) =>
@@ -73,7 +78,6 @@ describe('Adjuntos genéricos (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(env.app);
-    empleados.clear();
     cargas.clear();
   });
 
@@ -91,6 +95,26 @@ describe('Adjuntos genéricos (e2e)', () => {
       name: `Distribuidora ${sufijo}`,
       slug: `dist-${sufijo}`,
     } as Partial<Distributor>);
+  }
+
+  async function seedEmpleado(distributorId: string): Promise<string> {
+    const puesto = await dataSource.getRepository(JobPosition).save({
+      distributorId,
+      name: 'Puesto de prueba',
+      category: JobPositionCategory.OTHER,
+    } as Partial<JobPosition>);
+    const empleado = await dataSource.getRepository(Employee).save({
+      distributorId,
+      positionId: puesto.positionId,
+      fileNumber: '0001',
+      firstName: 'Ana',
+      lastName: 'Pérez',
+      documentType: EmployeeDocumentType.DNI,
+      documentNumber: randomUUID().slice(0, 8),
+      hireDate: '2026-03-01',
+      employmentType: EmploymentType.PERMANENT,
+    } as Partial<Employee>);
+    return empleado.employeeId;
   }
 
   async function seedUsuario(
@@ -151,8 +175,7 @@ describe('Adjuntos genéricos (e2e)', () => {
     const d2 = await seedDistribuidora();
     const admin1 = await seedUsuario('admin', d1.distributorId);
     const admin2 = await seedUsuario('admin', d2.distributorId);
-    const empleado = randomUUID();
-    empleados.set(empleado, { distributorId: d1.distributorId });
+    const empleado = await seedEmpleado(d1.distributorId);
     return { d1, d2, admin1, admin2, empleado };
   }
 
@@ -329,7 +352,10 @@ describe('Adjuntos genéricos (e2e)', () => {
     );
     const id = (creado.body as { attachmentId: string }).attachmentId;
 
-    empleados.delete(empleado); // el resolver deja de encontrarlo
+    // El resolver deja de encontrarlo: el legajo se dio de baja.
+    await dataSource
+      .getRepository(Employee)
+      .softDelete({ employeeId: empleado });
     await request(env.app.getHttpServer())
       .get(`/attachments/employee/${empleado}`)
       .set(admin1.headers)

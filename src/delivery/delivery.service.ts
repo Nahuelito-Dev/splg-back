@@ -535,6 +535,39 @@ export class DeliveryService {
     return delivery;
   }
 
+  /** El perfil de chofer de un usuario dentro de la transacción de quien llama, o null si no tiene. */
+  findByUserIdEnTransaccion(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<Delivery | null> {
+    return manager.getRepository(Delivery).findOne({ where: { userId } });
+  }
+
+  /**
+   * Deshabilita al chofer y lo pone fuera de línea, dentro de la transacción de
+   * quien llama (el egreso de un empleado). Sacarlo del radar de Redis es
+   * `quitarDelRadar`, que se hace recién con la transacción confirmada.
+   */
+  async deshabilitarEnTransaccion(
+    manager: EntityManager,
+    deliveryId: string,
+  ): Promise<void> {
+    await manager
+      .getRepository(Delivery)
+      .update({ deliveryId }, { isEnabled: false, isAvailable: false });
+  }
+
+  /** Saca al chofer del radar de despacho. Si Redis falla se registra: no revierte nada. */
+  async quitarDelRadar(userId: string): Promise<void> {
+    try {
+      await this.redisService.removeDriver(userId);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo sacar al chofer del usuario ${userId} del radar de despacho: ${errorMessage(error)}`,
+      );
+    }
+  }
+
   /**
    * Presencia (`PATCH /delivery/user/:userId/availability`), la pone el
    * propio chofer al conectarse/desconectarse desde su app.

@@ -52,7 +52,15 @@ export function traducirErrorDeBase(
     case CODIGOS.UNICO_VIOLADO:
       // El `detail` de Postgres nombra la tabla y la columna: sirve en el log,
       // no en la respuesta.
-      logger.warn(`Unicidad violada${donde}: ${e.detail ?? e.message}`);
+      // En los legajos el `detail` trae el documento o el CUIL (datos
+      // personales): de esos sólo se registra el nombre de la restricción.
+      logger.warn(
+        `Unicidad violada${donde}: ${
+          e.constraint?.startsWith('UQ_employee_')
+            ? e.constraint
+            : (e.detail ?? e.message)
+        }`,
+      );
       throw new ConflictException(
         `Ya existe un registro con esos datos${donde}`,
       );
@@ -106,6 +114,7 @@ interface DatosDeErrorDeBase {
   code?: string;
   detail?: string;
   column?: string;
+  constraint?: string;
   message: string;
   stack?: string;
 }
@@ -122,6 +131,7 @@ function datosDelError(error: unknown): DatosDeErrorDeBase {
     code: campo('code'),
     detail: campo('detail'),
     column: campo('column'),
+    constraint: campo('constraint'),
     message: campo('message') ?? 'error sin mensaje',
     stack: campo('stack'),
   };

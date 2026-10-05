@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
@@ -7,9 +8,11 @@ import {
   IsString,
   IsUUID,
   Matches,
+  ValidateNested,
   MinLength,
   IsLatLong,
 } from 'class-validator';
+import { LegajoDeChoferDto } from './legajo-de-chofer.dto';
 import { ROLES_REGISTRABLES } from '../politica-de-registro';
 import type { RolRegistrable } from '../politica-de-registro';
 
@@ -108,4 +111,24 @@ export class RegistrarUsuarioDto extends RegistrarClienteDto {
   @IsOptional()
   @IsString()
   actual_location?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Chofer o admin: legajo existente (sin cuenta) al que se vincula el usuario ' +
+      'en vez de crear otro. El puesto tiene que admitir el rol. Excluye a `legajo`',
+  })
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  @ApiPropertyOptional({
+    type: LegajoDeChoferDto,
+    description:
+      'Chofer: datos del legajo que se crea con la cuenta, en la misma transacción',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LegajoDeChoferDto)
+  legajo?: LegajoDeChoferDto;
 }

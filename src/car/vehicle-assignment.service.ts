@@ -255,11 +255,13 @@ export class VehicleAssignmentService {
   /**
    * Libera el vehículo en uso si tenía uno, sin tirar si no tenía (baja de
    * chofer). Con `manager` corre dentro de la transacción de la baja: si
-   * esto falla, la baja se revierte.
+   * esto falla, la baja se revierte. `motivo` reemplaza el texto de la nota
+   * (p. ej. el egreso del legajo) y `actorUserId` queda como quien lo liberó.
    */
   async liberarSiTieneUno(
     deliveryId: string,
     manager: EntityManager,
+    opciones: { motivo?: string; actorUserId?: string } = {},
   ): Promise<void> {
     const repo = manager.getRepository(VehicleAssignment);
     const abierta = await repo.findOne({
@@ -268,9 +270,11 @@ export class VehicleAssignmentService {
     if (!abierta) return;
 
     abierta.releasedAt = new Date();
-    abierta.note = abierta.note
-      ? `${abierta.note}\n\nLiberado automáticamente: el chofer fue dado de baja.`
-      : 'Liberado automáticamente: el chofer fue dado de baja.';
+    const nota =
+      opciones.motivo ??
+      'Liberado automáticamente: el chofer fue dado de baja.';
+    abierta.note = abierta.note ? `${abierta.note}\n\n${nota}` : nota;
+    if (opciones.actorUserId) abierta.releasedByUserId = opciones.actorUserId;
     await repo.save(abierta);
     this.logger.log(
       `Vehículo ${abierta.carId} liberado por baja del chofer ${deliveryId}`,
