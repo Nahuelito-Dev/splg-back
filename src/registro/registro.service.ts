@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -12,6 +13,7 @@ import { RoleService } from '../role/role.service';
 import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminService } from '../admin/admin.service';
+import { EmployeeService } from '../employee/employee.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
@@ -36,7 +38,9 @@ import {
  * 2. Se controla que el correo y el teléfono estén libres.
  * 3. Se crea la cuenta en Firebase.
  * 4. En UNA transacción: la fila del usuario y el perfil de su rol, cada uno
- *    por el servicio dueño de su tabla.
+ *    por el servicio dueño de su tabla. Un chofer es un empleado (CU-177):
+ *    su legajo se crea en la misma transacción, o se vincula el existente si
+ *    el pedido trae `employeeId`. Lo mismo vale para un admin de distribuidora.
  * 5. Si el paso 4 falla, se borra la cuenta de Firebase del paso 3, por su
  *    uid: nunca una que no haya creado esta llamada (H-70).
  * 6. Confirmada el alta, se publica `usuario.registrado`.
@@ -54,6 +58,7 @@ export class RegistroService {
     private readonly deliveries: DeliveryService,
     private readonly admins: AdminService,
     private readonly distributors: DistributorService,
+    private readonly employees: EmployeeService,
     private readonly eventos: EventEmitter2,
   ) {}
 
@@ -70,6 +75,21 @@ export class RegistroService {
     if (!rol) {
       throw new InternalServerErrorException(
         `No existe el rol ${alta.rol}: falta correr el seed de roles`,
+      );
+    }
+
+    if (
+      (datos.employeeId || datos.legajo) &&
+      alta.rol !== RoleType.DELIVERY &&
+      alta.rol !== RoleType.ADMIN
+    ) {
+      throw new BadRequestException(
+        'employeeId y legajo sólo valen para choferes y administradores',
+      );
+    }
+    if (datos.employeeId && datos.legajo) {
+      throw new BadRequestException(
+        'Indicá employeeId (vincular un legajo existente) o legajo (crear uno), no los dos',
       );
     }
 
@@ -122,29 +142,72 @@ export class RegistroService {
           lat_lang: datos.lat_lang,
           notification_token: datos.notification_token,
         });
-      case RoleType.DELIVERY:
-        return this.deliveries.crearPerfil(
+      case RoleType.DELIVERY: {
+        const distributorId = this.distribuidoraDe(alta);
+        await this.deliveries.crearPerfil(manager, userId, distributorId, {
+          latLng: datos.latLng,
+          actual_location: datos.actual_location,
+          validated: datos.validated,
+          // El campo del alta se sigue llamando `isActive` (contrato
+          // externo, lo usan el panel y el seed): internamente ahora es la
+          // habilitación administrativa (`delivery.isEnabled`).
+          isEnabled: datos.isActive,
+        });
+        await this.legajoDelUsuario(
           manager,
           userId,
-          this.distribuidoraDe(alta),
-          {
-            latLng: datos.latLng,
-            actual_location: datos.actual_location,
-            validated: datos.validated,
-            // El campo del alta se sigue llamando `isActive` (contrato
-            // externo, lo usan el panel y el seed): internamente ahora es la
-            // habilitación administrativa (`delivery.isEnabled`).
-            isEnabled: datos.isActive,
-          },
+          distributorId,
+          alta,
+          datos,
         );
-      case RoleType.ADMIN:
-        return this.admins.crearPerfil(
+        return;
+      }
+      case RoleType.ADMIN: {
+        const distributorId = this.distribuidoraDe(alta);
+        await this.admins.crearPerfil(manager, userId, distributorId);
+        await this.legajoDelUsuario(
           manager,
           userId,
-          this.distribuidoraDe(alta),
+          distributorId,
+          alta,
+          datos,
         );
+        return;
+      }
       case RoleType.SUPER_ADMIN:
         return this.admins.crearPerfil(manager, userId, null);
+    }
+  }
+
+  /**
+   * El legajo del chofer o del admin de distribuidora: se crea, o se vincula
+   * el que trae `employeeId`.
+   */
+  private async legajoDelUsuario(
+    manager: EntityManager,
+    userId: string,
+    distributorId: string,
+    alta: AltaAutorizada,
+    datos: RegistrarUsuarioDto,
+  ): Promise<void> {
+    if (datos.employeeId) {
+      await this.employees.vincularUsuario(manager, {
+        employeeId: datos.employeeId,
+        userId,
+        distributorId,
+        rol: alta.rol,
+      });
+      return;
+    }
+    if (alta.rol === RoleType.DELIVERY || alta.rol === RoleType.ADMIN) {
+      await this.employees.crearParaUsuario(manager, {
+        rol: alta.rol,
+        distributorId,
+        userId,
+        fullName: datos.full_name,
+        phoneNumber: datos.phone_number,
+        legajo: datos.legajo,
+      });
     }
   }
 

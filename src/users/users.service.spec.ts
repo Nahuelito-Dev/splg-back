@@ -219,7 +219,11 @@ describe('UsersService', () => {
       const user = { userId: 'u1', firebaseUid: 'fb', delivery: null };
       users.findOne.mockResolvedValue(user);
       await service.remove('u1');
-      expect(eventos.emitAsync).not.toHaveBeenCalled();
+      expect(eventos.emitAsync).toHaveBeenCalledTimes(1);
+      expect(eventos.emitAsync).toHaveBeenCalledWith(
+        'usuario.dado-de-baja',
+        expect.anything(),
+      );
       expect(orderLookup.countActiveByDelivery).not.toHaveBeenCalled();
     });
 

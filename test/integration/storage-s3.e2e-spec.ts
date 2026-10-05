@@ -25,8 +25,15 @@ import {
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
 import { S3StorageAdapter } from '../../src/storage/infrastructure/s3-storage.adapter';
-import { AttachmentOwnerRegistry } from '../../src/attachment/attachment-owner.registry';
-import { AttachmentOwnerType } from '../../src/attachment/entities/attachment.entity';
+import {
+  Employee,
+  EmployeeDocumentType,
+  EmploymentType,
+} from '../../src/employee/entities/employee.entity';
+import {
+  JobPosition,
+  JobPositionCategory,
+} from '../../src/employee/entities/job-position.entity';
 import { Attachment } from '../../src/attachment/entities/attachment.entity';
 import { Claim } from '../../src/claims/entities/claim.entity';
 import {
@@ -68,20 +75,12 @@ describe('Storage S3 contra MinIO (e2e)', () => {
   let minio: TestMinio;
   let env: TestEnv;
   let dataSource: DataSource;
-  const duenos = new Map<string, string>();
 
   beforeAll(async () => {
     minio = await startMinio();
     Object.assign(process.env, minio.env);
     env = await createTestApp();
     dataSource = env.app.get(DataSource);
-    env.app.get(AttachmentOwnerRegistry).register({
-      ownerType: AttachmentOwnerType.EMPLOYEE,
-      assertOwner: (id: string, distributorId: string) =>
-        duenos.get(id) === distributorId
-          ? Promise.resolve()
-          : Promise.reject(new NotFoundException(`No existe ${id}`)),
-    });
   }, 240000);
 
   afterAll(async () => {
@@ -92,8 +91,28 @@ describe('Storage S3 contra MinIO (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(env.app);
-    duenos.clear();
   });
+
+  /** Un legajo real: el dueño `employee` de los adjuntos lo resuelve el módulo Personal. */
+  async function crearDueno(distributorId: string): Promise<string> {
+    const puesto = await dataSource.getRepository(JobPosition).save({
+      distributorId,
+      name: 'Puesto de prueba',
+      category: JobPositionCategory.OTHER,
+    } as Partial<JobPosition>);
+    const empleado = await dataSource.getRepository(Employee).save({
+      distributorId,
+      positionId: puesto.positionId,
+      fileNumber: '0001',
+      firstName: 'Ana',
+      lastName: 'Pérez',
+      documentType: EmployeeDocumentType.DNI,
+      documentNumber: randomUUID().slice(0, 8),
+      hireDate: '2026-03-01',
+      employmentType: EmploymentType.PERMANENT,
+    } as Partial<Employee>);
+    return empleado.employeeId;
+  }
 
   async function existe(key: string): Promise<boolean> {
     try {
@@ -223,8 +242,7 @@ describe('Storage S3 contra MinIO (e2e)', () => {
     it('subir -> modo=url -> descargar con la URL firmada -> 302 -> borrar saca el objeto del bucket', async () => {
       const d1 = await seedDistribuidora();
       const admin = await seedAdmin(d1.distributorId);
-      const dueno = randomUUID();
-      duenos.set(dueno, d1.distributorId);
+      const dueno = await crearDueno(d1.distributorId);
 
       const creado = await request(env.app.getHttpServer())
         .post(`/attachments/employee/${dueno}`)
@@ -287,8 +305,7 @@ describe('Storage S3 contra MinIO (e2e)', () => {
       const d2 = await seedDistribuidora();
       const admin1 = await seedAdmin(d1.distributorId);
       const admin2 = await seedAdmin(d2.distributorId);
-      const dueno = randomUUID();
-      duenos.set(dueno, d1.distributorId);
+      const dueno = await crearDueno(d1.distributorId);
       const creado = await request(env.app.getHttpServer())
         .post(`/attachments/employee/${dueno}`)
         .set(admin1.headers)
@@ -648,8 +665,7 @@ describe('Storage S3 contra MinIO (e2e)', () => {
     it('subir y borrar un adjunto no deja filas pendientes', async () => {
       const d1 = await seedDistribuidora();
       const admin = await seedAdmin(d1.distributorId);
-      const dueno = randomUUID();
-      duenos.set(dueno, d1.distributorId);
+      const dueno = await crearDueno(d1.distributorId);
       const creado = await request(env.app.getHttpServer())
         .post(`/attachments/employee/${dueno}`)
         .set(admin.headers)

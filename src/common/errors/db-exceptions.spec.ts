@@ -31,6 +31,25 @@ describe('traducirErrorDeBase', () => {
     ).toThrow(ConflictException);
   });
 
+  it('en las unicidades de un legajo no se registran los valores (datos personales), sólo la restricción', () => {
+    expect(() =>
+      traducirErrorDeBase(
+        {
+          code: '23505',
+          constraint: 'UQ_employee_document_vigente',
+          detail:
+            'Key (distributor_id, document_number)=(d1, 30123456) already exists.',
+          message: 'duplicate key',
+        },
+        logger,
+        'legajo',
+      ),
+    ).toThrow(ConflictException);
+    const registrado = JSON.stringify(warn.mock.calls);
+    expect(registrado).toContain('UQ_employee_document_vigente');
+    expect(registrado).not.toContain('30123456');
+  });
+
   it('40P01 (deadlock) es 409, no 500', () => {
     expect(() =>
       traducirErrorDeBase(

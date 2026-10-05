@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RegistroService } from './registro.service';
@@ -9,6 +9,7 @@ import { RoleService } from '../role/role.service';
 import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminService } from '../admin/admin.service';
+import { EmployeeService } from '../employee/employee.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { EVENTO_USUARIO_REGISTRADO } from './events/usuario-registrado.event';
@@ -41,6 +42,7 @@ describe('RegistroService', () => {
   let deliveries: { crearPerfil: jest.Mock };
   let admins: { crearPerfil: jest.Mock };
   let distributors: { assertActive: jest.Mock };
+  let employees: { crearParaUsuario: jest.Mock; vincularUsuario: jest.Mock };
   let eventos: { emit: jest.Mock };
   let service: RegistroService;
 
@@ -63,6 +65,7 @@ describe('RegistroService', () => {
     deliveries = { crearPerfil: jest.fn() };
     admins = { crearPerfil: jest.fn() };
     distributors = { assertActive: jest.fn() };
+    employees = { crearParaUsuario: jest.fn(), vincularUsuario: jest.fn() };
     eventos = { emit: jest.fn() };
     const dataSource = {
       transaction: (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
@@ -76,6 +79,7 @@ describe('RegistroService', () => {
       deliveries as unknown as DeliveryService,
       admins as unknown as AdminService,
       distributors as unknown as DistributorService,
+      employees as unknown as EmployeeService,
       eventos as unknown as EventEmitter2,
     );
   });
@@ -175,5 +179,116 @@ describe('RegistroService', () => {
     ).rejects.toThrow();
     expect(users.assertDisponible).not.toHaveBeenCalled();
     expect(firebase.createUserSafe).not.toHaveBeenCalled();
+  });
+
+  describe('legajo del empleado (CU-003 incluye CU-177)', () => {
+    it('un chofer crea su legajo en la misma transacción, con sus datos', async () => {
+      await service.registrar(
+        alta({
+          rol: RoleType.DELIVERY,
+          distributorId: 'd1',
+          full_name: 'Ana Pérez',
+          legajo: { documentNumber: '30123456' },
+        }),
+        { tipo: 'sistema' },
+      );
+
+      expect(employees.crearParaUsuario).toHaveBeenCalledWith(manager, {
+        rol: RoleType.DELIVERY,
+        distributorId: 'd1',
+        userId: 'u1',
+        fullName: 'Ana Pérez',
+        phoneNumber: '+5493764000000',
+        legajo: { documentNumber: '30123456' },
+      });
+      expect(employees.vincularUsuario).not.toHaveBeenCalled();
+    });
+
+    it('con employeeId vincula el legajo existente en vez de crear otro', async () => {
+      await service.registrar(
+        alta({
+          rol: RoleType.DELIVERY,
+          distributorId: 'd1',
+          employeeId: 'e1',
+        }),
+        { tipo: 'sistema' },
+      );
+
+      expect(employees.vincularUsuario).toHaveBeenCalledWith(manager, {
+        employeeId: 'e1',
+        userId: 'u1',
+        distributorId: 'd1',
+        rol: RoleType.DELIVERY,
+      });
+      expect(employees.crearParaUsuario).not.toHaveBeenCalled();
+    });
+
+    it('un admin de distribuidora también crea su legajo, o vincula el que trae', async () => {
+      await service.registrar(
+        alta({ rol: RoleType.ADMIN, distributorId: 'd1' }),
+        { tipo: 'sistema' },
+      );
+      expect(employees.crearParaUsuario).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({ rol: RoleType.ADMIN, distributorId: 'd1' }),
+      );
+
+      await service.registrar(
+        alta({ rol: RoleType.ADMIN, distributorId: 'd1', employeeId: 'e2' }),
+        { tipo: 'sistema' },
+      );
+      expect(employees.vincularUsuario).toHaveBeenCalledWith(
+        manager,
+        expect.objectContaining({ employeeId: 'e2', rol: RoleType.ADMIN }),
+      );
+    });
+
+    it('un cliente o un super admin con employeeId o legajo es 400', async () => {
+      for (const rol of [RoleType.CUSTOMER, RoleType.SUPER_ADMIN]) {
+        await expect(
+          service.registrar(alta({ rol, employeeId: 'e1' }), {
+            tipo: 'sistema',
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          service.registrar(alta({ rol, legajo: {} }), { tipo: 'sistema' }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      }
+      expect(firebase.createUserSafe).not.toHaveBeenCalled();
+    });
+
+    it('employeeId y legajo juntos es un 400 antes de crear nada en Firebase', async () => {
+      await expect(
+        service.registrar(
+          alta({
+            rol: RoleType.DELIVERY,
+            distributorId: 'd1',
+            employeeId: 'e1',
+            legajo: {},
+          }),
+          { tipo: 'sistema' },
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(firebase.createUserSafe).not.toHaveBeenCalled();
+    });
+
+    it('si falla el legajo, el alta entera se revierte: se borra la cuenta de Firebase y no se avisa', async () => {
+      employees.crearParaUsuario.mockRejectedValue(
+        new ConflictException('documento repetido'),
+      );
+
+      await expect(
+        service.registrar(
+          alta({ rol: RoleType.DELIVERY, distributorId: 'd1' }),
+          { tipo: 'sistema' },
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(firebase.deleteUserSafe).toHaveBeenCalledWith(
+        'uid-nuevo',
+        expect.anything(),
+      );
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
   });
 });

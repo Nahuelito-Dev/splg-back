@@ -6,13 +6,18 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, Brackets, EntityManager } from 'typeorm';
+import { Repository, DataSource, Brackets, EntityManager, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User } from './entities/user.entity';
 import {
   ChoferDadoDeBajaEvent,
   EVENTO_CHOFER_DADO_DE_BAJA,
 } from '../delivery/events/chofer-dado-de-baja.event';
+import {
+  EVENTO_USUARIO_DADO_DE_BAJA,
+  UsuarioDadoDeBajaEvent,
+} from './events/usuario-dado-de-baja.event';
+import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { QueryUsersDto } from './dto/query-users.dto';
@@ -328,31 +333,43 @@ export class UsersService {
       throw new NotFoundException(`User with ID: ${id} not found`);
     }
 
-    await this.dataSource.transaction(async (manager) => {
-      if (user.delivery) {
-        // Con el chofer bloqueado: una aceptación o asignación en curso
-        // termina antes del conteo, y la que llega después ve la baja.
-        await bloquearChoferes(manager, [user.delivery.deliveryId]);
-        const pedidos = await this.orderLookup.countActiveByDelivery(
-          user.delivery.deliveryId,
-          manager,
-        );
-        if (pedidos > 0) {
-          throw new ConflictException(
-            `El chofer tiene ${pedidos} pedido(s) en curso: cancelalos o reasignalos antes de darlo de baja`,
+    // Orden de locks: chofer (y usuario) primero, legajo después. Un choque
+    // (deadlock, 40P01) se reintenta; agotados los intentos sale como 409.
+    await withTransactionRetry(
+      () =>
+        this.dataSource.transaction(async (manager) => {
+          if (user.delivery) {
+            // Con el chofer bloqueado: una aceptación o asignación en curso
+            // termina antes del conteo, y la que llega después ve la baja.
+            await bloquearChoferes(manager, [user.delivery.deliveryId]);
+            const pedidos = await this.orderLookup.countActiveByDelivery(
+              user.delivery.deliveryId,
+              manager,
+            );
+            if (pedidos > 0) {
+              throw new ConflictException(
+                `El chofer tiene ${pedidos} pedido(s) en curso: cancelalos o reasignalos antes de darlo de baja`,
+              );
+            }
+          }
+
+          await manager.softRemove(user);
+
+          if (user.delivery) {
+            await this.eventos.emitAsync(
+              EVENTO_CHOFER_DADO_DE_BAJA,
+              new ChoferDadoDeBajaEvent(user.delivery.deliveryId, manager),
+            );
+          }
+          // Después del chofer: el orden de locks es usuario/chofer y recién
+          // después el legajo (el mismo que sigue el egreso del empleado).
+          await this.eventos.emitAsync(
+            EVENTO_USUARIO_DADO_DE_BAJA,
+            new UsuarioDadoDeBajaEvent(user.userId, manager),
           );
-        }
-      }
-
-      await manager.softRemove(user);
-
-      if (user.delivery) {
-        await this.eventos.emitAsync(
-          EVENTO_CHOFER_DADO_DE_BAJA,
-          new ChoferDadoDeBajaEvent(user.delivery.deliveryId, manager),
-        );
-      }
-    });
+        }),
+      { context: 'baja de usuario' },
+    );
 
     // Recién con la baja confirmada sale del radar de despacho. Si Redis
     // falla la baja ya está hecha: se registra, no se revierte.
@@ -467,6 +484,38 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  /** El tipo de rol de cada usuario (los que no existen no aparecen). */
+  async findRoleTypes(userIds: string[]): Promise<Map<string, string>> {
+    if (userIds.length === 0) return new Map();
+    const usuarios = await this.userRepository.find({
+      where: { userId: In(userIds) },
+      relations: { role: true },
+      withDeleted: true,
+    });
+    return new Map(
+      usuarios.flatMap((u) => (u.role ? [[u.userId, u.role.type]] : [])),
+    );
+  }
+
+  /**
+   * Bloquea la cuenta dentro de la transacción de quien llama (el egreso de un
+   * empleado). A diferencia de `toggleBlockUser`, no tiene vida propia: si la
+   * transacción se revierte, el bloqueo también.
+   */
+  async bloquearEnTransaccion(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<void> {
+    const { affected } = await manager.update(
+      User,
+      { userId },
+      { blocked: true },
+    );
+    if (!affected) {
+      throw new NotFoundException(`User with ID: ${userId} not found`);
+    }
   }
 
   async toggleBlockUser(
