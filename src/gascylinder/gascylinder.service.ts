@@ -201,7 +201,7 @@ export class GasCylinderService {
     }
 
     // Si vinieron promociones, reemplazan a las anteriores (las que no están
-    // en la lista se borran: orphanedRowAction). Cambiarle el tipo al de otro
+    // en la lista se dan de baja: orphanedRowAction). Cambiarle el tipo al de otro
     // producto de la distribuidora choca con la unicidad: 409 (H-88).
     try {
       await this.gasCylinderRepository.save(gasCylinder);

@@ -13,7 +13,8 @@ describe('CustomersService', () => {
   let customers: {
     findOne: jest.Mock;
     save: jest.Mock;
-    softDelete: jest.Mock;
+    softRemove: jest.Mock;
+    create: jest.Mock;
     preload: jest.Mock;
   };
 
@@ -28,7 +29,8 @@ describe('CustomersService', () => {
     customers = {
       findOne: jest.fn(),
       save: jest.fn((c: Customer) => Promise.resolve(c)),
-      softDelete: jest.fn(),
+      softRemove: jest.fn(),
+      create: jest.fn((c: Partial<Customer>) => c),
       preload: jest.fn(),
     };
     service = new CustomersService(
@@ -80,7 +82,7 @@ describe('CustomersService', () => {
     await expect(service.remove('c1')).resolves.toEqual({
       message: 'Customer deleted successfully',
     });
-    expect(customers.softDelete).toHaveBeenCalledWith({ customerId: 'c1' });
+    expect(customers.softRemove).toHaveBeenCalledWith({ customerId: 'c1' });
   });
 
   describe('findAll', () => {
