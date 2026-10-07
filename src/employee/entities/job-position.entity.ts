@@ -28,6 +28,8 @@ export enum JobPositionCategory {
  * migración `CrearPersonal` (TypeORM no modela expresiones; `synchronize: false`
  * evita que `migration:generate` quiera borrarlo, igual que `IDX_user_email_lower`).
  */
+// `category` usa el nombre de enum por defecto (`job_position_category_enum`): no
+// se declara `enumName` (ver la nota en `employee.entity.ts`).
 @Index('UQ_job_position_name_vigente', { synchronize: false })
 @Entity('job_position')
 export class JobPosition {
@@ -49,7 +51,6 @@ export class JobPosition {
     name: 'category',
     type: 'enum',
     enum: JobPositionCategory,
-    enumName: 'job_position_category_enum',
   })
   category!: JobPositionCategory;
 
