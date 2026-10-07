@@ -48,6 +48,11 @@ export enum EmployeeStatus {
  * Los índices únicos parciales son los "vigentes": no cuentan los legajos dados
  * de baja por alta errónea (`deletedAt`). La salida normal es el egreso.
  */
+// Los enums `employee_document_type_enum`, `employee_termination_reason_enum` y
+// `employee_status_enum` llevan el nombre por defecto de TypeORM
+// (`<tabla>_<columna>_enum`): NO se declara `enumName`. Con un `enumName`
+// explícito igual al de por defecto, el esquema de la base (que no lo guarda
+// aparte) no coincide con la entidad y `schema:log` quiere recrear el tipo.
 @Entity('employee')
 @Index('UQ_employee_user_vigente', ['userId'], {
   unique: true,
@@ -115,7 +120,6 @@ export class Employee {
     name: 'document_type',
     type: 'enum',
     enum: EmployeeDocumentType,
-    enumName: 'employee_document_type_enum',
   })
   documentType!: EmployeeDocumentType;
 
@@ -190,7 +194,6 @@ export class Employee {
     name: 'termination_reason',
     type: 'enum',
     enum: EmployeeTerminationReason,
-    enumName: 'employee_termination_reason_enum',
     nullable: true,
   })
   terminationReason!: EmployeeTerminationReason | null;
@@ -207,7 +210,6 @@ export class Employee {
     name: 'status',
     type: 'enum',
     enum: EmployeeStatus,
-    enumName: 'employee_status_enum',
     default: EmployeeStatus.ACTIVE,
   })
   status!: EmployeeStatus;
