@@ -67,7 +67,24 @@ export function telefonoDePrueba(): string {
   return `+549${String(randomInt(0, 10_000_000_000)).padStart(10, '0')}`;
 }
 
-export async function createTestApp(): Promise<TestEnv> {
+/**
+ * S3 por defecto de las suites que no prueban archivos: la app exige bucket y
+ * región para arrancar, y el endpoint apunta a un puerto donde no escucha
+ * nadie, así que ningún test llega a AWS por accidente. Las suites que sí
+ * suben archivos pasan el entorno de su MinIO (`startMinio().env`).
+ */
+const S3_SIN_SERVICIO: Record<string, string> = {
+  AWS_REGION: 'us-east-1',
+  AWS_S3_BUCKET: 'splg-test-sin-s3',
+  AWS_ACCESS_KEY_ID: 'sin-s3',
+  AWS_SECRET_ACCESS_KEY: 'sin-s3',
+  AWS_S3_ENDPOINT: 'http://127.0.0.1:1',
+  AWS_S3_FORCE_PATH_STYLE: 'true',
+};
+
+export async function createTestApp(
+  opciones: { s3?: Record<string, string> } = {},
+): Promise<TestEnv> {
   // 1. Postgres (con PostGIS) y Redis efímeros
   const pgContainer = await new PostgreSqlContainer(IMAGEN_POSTGIS)
     .withDatabase('splg_test')
@@ -101,6 +118,8 @@ export async function createTestApp(): Promise<TestEnv> {
     FIREBASE_PROJECT_ID: 'splg-test',
     FIREBASE_CLIENT_EMAIL: 'test@splg-test.iam.gserviceaccount.com',
     FIREBASE_PRIVATE_KEY: clavePrivadaDescartable(),
+    ...S3_SIN_SERVICIO,
+    ...opciones.s3,
   });
 
   // 3. Recién ahora se importa la app: `ConfigModule.forRoot` valida el

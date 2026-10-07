@@ -39,56 +39,36 @@ export const JoiValidationSchema = Joi.object({
   MP_SUCCESS_URL: Joi.string().optional(),
   MP_FAILURE_URL: Joi.string().optional(),
   MP_PENDING_URL: Joi.string().optional(),
-  // Almacenamiento de archivos (adjuntos de flota y de empresa, foto del
-  // reclamo). Con STORAGE_DRIVER=s3 el bucket y la región son obligatorios; con
-  // 'local' (default) no hace falta nada más. Una variable vacía
-  // (`STORAGE_S3_ENDPOINT=`) cuenta como no definida.
-  STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
-  STORAGE_LOCAL_PATH: Joi.string().default('./storage-local'),
-  STORAGE_S3_BUCKET: Joi.string()
+  // Archivos en Amazon S3 (adjuntos de flota y de empresa, foto del reclamo).
+  // Bucket y región son obligatorios: sin ellos la app no arranca. Una variable
+  // vacía (`AWS_S3_ENDPOINT=`) cuenta como no definida.
+  AWS_S3_BUCKET: Joi.string()
     .empty('')
-    .when('STORAGE_DRIVER', {
-      is: 's3',
-      then: Joi.required().messages({
-        'any.required':
-          'STORAGE_S3_BUCKET es obligatorio con STORAGE_DRIVER=s3',
-      }),
-      otherwise: Joi.optional(),
-    }),
-  STORAGE_S3_REGION: Joi.string()
-    .empty('')
-    .when('STORAGE_DRIVER', {
-      is: 's3',
-      then: Joi.required().messages({
-        'any.required':
-          'STORAGE_S3_REGION es obligatorio con STORAGE_DRIVER=s3 (p. ej. sa-east-1)',
-      }),
-      otherwise: Joi.optional(),
-    }),
+    .required()
+    .messages({ 'any.required': 'AWS_S3_BUCKET es obligatorio' }),
+  AWS_REGION: Joi.string().empty('').required().messages({
+    'any.required': 'AWS_REGION es obligatorio (p. ej. sa-east-1)',
+  }),
   // Opcionales: sin ellas el SDK usa la cadena por defecto de AWS (rol IAM del
   // servidor). Si se define una, tiene que estar la otra.
-  STORAGE_S3_ACCESS_KEY_ID: Joi.string().empty('').optional(),
-  STORAGE_S3_SECRET_ACCESS_KEY: Joi.string().empty('').optional(),
+  AWS_ACCESS_KEY_ID: Joi.string().empty('').optional(),
+  AWS_SECRET_ACCESS_KEY: Joi.string().empty('').optional(),
   // Sólo para S3 compatibles (MinIO en desarrollo): URL del servicio y
   // direccionamiento por path (http://host:9000/bucket/key).
-  STORAGE_S3_ENDPOINT: Joi.string()
+  AWS_S3_ENDPOINT: Joi.string()
     .empty('')
     .uri({ scheme: ['http', 'https'] })
     .optional(),
-  STORAGE_S3_FORCE_PATH_STYLE: Joi.boolean().default(false),
-  STORAGE_S3_SIGNED_URL_TTL_SECONDS: Joi.number()
+  AWS_S3_FORCE_PATH_STYLE: Joi.boolean().default(false),
+  AWS_S3_SIGNED_URL_TTL_SECONDS: Joi.number()
     .integer()
     .min(1)
     .max(604800)
     .optional(),
-  //AWS_REGION: Joi.string().required(),
-  //AWS_ACCESS_KEY_ID: Joi.string().required(),
-  //AWS_SECRET_ACCESS_KEY: Joi.string().required(),
-  //AWS_PUBLIC_BUCKET_NAME: Joi.string().required(),
   //GOOGLE_MAPS_API_KEY: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_API_KEY: Joi.string().required(),
   // MERCADO_PAGO_MARKETPLACE_CLIENT_ID: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_CLIENT_SECRET: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_REDIRECT_URI: Joi.string().required(),
   //MARKET_PLACE_ID: Joi.string().required(),
-}).and('STORAGE_S3_ACCESS_KEY_ID', 'STORAGE_S3_SECRET_ACCESS_KEY');
+}).and('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY');

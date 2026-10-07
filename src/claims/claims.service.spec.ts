@@ -9,8 +9,8 @@ import { Repository } from 'typeorm';
 import { ClaimsService } from './claims.service';
 import { Claim, ClaimStatus } from './entities/claim.entity';
 import { OrderService } from '../order/order.service';
-import { StoragePort } from '../storage/ports/storage.port';
-import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { S3Service } from '../s3/s3.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { RoleType } from '../common/constants/role-type.enum';
 
 /**
@@ -32,7 +32,6 @@ describe('ClaimsService', () => {
   let storage: {
     put: jest.Mock;
     getSignedDownload: jest.Mock;
-    getStream: jest.Mock;
   };
   let cleanup: {
     removeInBackground: jest.Mock;
@@ -77,7 +76,6 @@ describe('ClaimsService', () => {
     storage = {
       put: jest.fn().mockResolvedValue(undefined),
       getSignedDownload: jest.fn(),
-      getStream: jest.fn(),
     };
     cleanup = {
       removeInBackground: jest.fn(),
@@ -88,8 +86,8 @@ describe('ClaimsService', () => {
     service = new ClaimsService(
       claims as unknown as Repository<Claim>,
       orders as unknown as OrderService,
-      storage as unknown as StoragePort,
-      cleanup as unknown as StorageCleanupService,
+      storage as unknown as S3Service,
+      cleanup as unknown as S3CleanupService,
     );
   });
 
@@ -447,10 +445,9 @@ describe('ClaimsService', () => {
         kind: 'external',
         url: 'https://externa/foto.jpg',
       });
-      await expect(service.getPhotoFile('c1', null, CLIENTE)).resolves.toEqual({
-        kind: 'redirect',
-        url: 'https://externa/foto.jpg',
-      });
+      await expect(service.getPhotoFile('c1', null, CLIENTE)).resolves.toBe(
+        'https://externa/foto.jpg',
+      );
       expect(storage.getSignedDownload).not.toHaveBeenCalled();
     });
 
@@ -492,12 +489,8 @@ describe('ClaimsService', () => {
       expect(storage.getSignedDownload).toHaveBeenCalledWith('claims/k.png');
     });
 
-    it('photoUrlFor: sin foto o con el driver local es null, y un fallo del storage no rompe', async () => {
+    it('photoUrlFor: sin foto es null, y un fallo de la firma no rompe', async () => {
       await expect(service.photoUrlFor(reclamo())).resolves.toBeNull();
-      storage.getSignedDownload.mockResolvedValueOnce(null);
-      await expect(
-        service.photoUrlFor(reclamo({ photoKey: 'k.png' })),
-      ).resolves.toBeNull();
       storage.getSignedDownload.mockRejectedValueOnce(new Error('sdk'));
       await expect(
         service.photoUrlFor(reclamo({ photoKey: 'k.png' })),

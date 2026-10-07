@@ -13,12 +13,8 @@ import { randomUUID } from 'crypto';
 import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
 import { AttachmentOwnerResolver } from './ports/attachment-owner-resolver.port';
-import {
-  SignedDownload,
-  StoragePort,
-  StorageObjectStream,
-} from '../storage/ports/storage.port';
-import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { S3Service, SignedDownload } from '../s3/s3.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
 import {
   acotarNombreDeArchivo,
   decodificarNombreDeArchivo,
@@ -29,15 +25,6 @@ import {
 } from '../common/utils/attachment-rules';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
-
-/** Lo que el controller necesita para responder la descarga, sea cual sea el driver activo. */
-export type AttachmentDownload =
-  | { kind: 'redirect'; url: string }
-  | ({
-      kind: 'stream';
-      fileName: string;
-      mimeType: string;
-    } & StorageObjectStream);
 
 /** Quién pide: el rol decide si hace falta que el dueño sea "propio". */
 export interface AttachmentActor {
@@ -53,7 +40,7 @@ export const OWNER_TYPES_DEL_CHOFER: readonly AttachmentOwnerType[] = [
 ];
 
 /**
- * Adjuntos genéricos de los módulos de empresa. Habla con `StoragePort` y
+ * Adjuntos genéricos de los módulos de empresa. Habla con `S3Service` y
  * delega en el resolver de cada módulo dueño la pregunta "¿existe este dueño
  * y es de esta distribuidora?".
  */
@@ -65,8 +52,8 @@ export class AttachmentService {
     @InjectRepository(Attachment)
     private readonly attachments: Repository<Attachment>,
     private readonly registry: AttachmentOwnerRegistry,
-    private readonly storage: StoragePort,
-    private readonly cleanup: StorageCleanupService,
+    private readonly storage: S3Service,
+    private readonly cleanup: S3CleanupService,
   ) {}
 
   async upload(
@@ -133,7 +120,7 @@ export class AttachmentService {
       });
     } catch (error) {
       // El archivo ya se subió: si el registro en la base falla, no queda
-      // huérfano en el storage.
+      // huérfano en el bucket.
       this.cleanup.removeInBackground(key);
       return traducirErrorDeBase(error, this.logger, 'adjuntos');
     }
@@ -156,7 +143,7 @@ export class AttachmentService {
     attachmentId: string,
     distributorId: string,
     actor: AttachmentActor,
-  ): Promise<AttachmentDownload> {
+  ): Promise<string> {
     const attachment = await this.findOneOrThrow(
       attachmentId,
       distributorId,
@@ -166,28 +153,17 @@ export class AttachmentService {
     const signed = await this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
     });
-    if (signed) {
-      return { kind: 'redirect', url: signed.url };
-    }
-
-    const stream = await this.storage.getStream(attachment.storageKey);
-    return {
-      kind: 'stream',
-      fileName: attachment.originalName,
-      mimeType: stream.contentType ?? attachment.mimeType,
-      ...stream,
-    };
+    return signed.url;
   }
 
   /**
-   * URL firmada del adjunto (`null` con el driver local, que no tiene: ahí el
-   * controller apunta al endpoint que sirve el archivo).
+   * URL firmada del adjunto.
    */
   async getSignedDownload(
     attachmentId: string,
     distributorId: string,
     actor: AttachmentActor,
-  ): Promise<SignedDownload | null> {
+  ): Promise<SignedDownload> {
     const attachment = await this.findOneOrThrow(
       attachmentId,
       distributorId,

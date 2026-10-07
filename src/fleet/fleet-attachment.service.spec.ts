@@ -5,12 +5,11 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
-import { Readable } from 'stream';
 import { FleetAttachmentService } from './fleet-attachment.service';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
 import { FleetTaskService } from './fleet-task.service';
-import { StoragePort } from '../storage/ports/storage.port';
-import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { S3Service } from '../s3/s3.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 function archivo(over: Partial<Express.Multer.File> = {}): Express.Multer.File {
@@ -50,7 +49,6 @@ describe('FleetAttachmentService', () => {
     put: jest.Mock;
     remove: jest.Mock;
     getSignedDownload: jest.Mock;
-    getStream: jest.Mock;
   };
 
   beforeEach(() => {
@@ -77,14 +75,13 @@ describe('FleetAttachmentService', () => {
       put: jest.fn().mockResolvedValue(undefined),
       remove: jest.fn().mockResolvedValue(undefined),
       getSignedDownload: jest.fn(),
-      getStream: jest.fn(),
     };
 
     service = new FleetAttachmentService(
       attachments as unknown as Repository<MaintenanceTaskAttachment>,
       taskService as unknown as FleetTaskService,
-      storage as unknown as StoragePort,
-      cleanup as unknown as StorageCleanupService,
+      storage as unknown as S3Service,
+      cleanup as unknown as S3CleanupService,
     );
   });
 
@@ -166,7 +163,7 @@ describe('FleetAttachmentService', () => {
   });
 
   describe('getDownload', () => {
-    it('si el storage da URL firmada, la devuelve para redirigir', async () => {
+    it('devuelve la URL firmada para redirigir', async () => {
       attachments.findOne.mockResolvedValue({
         attachmentId: 'a1',
         storageKey: 'k1',
@@ -179,30 +176,7 @@ describe('FleetAttachmentService', () => {
       });
 
       const result = await service.getDownload('t1', 'a1', 'd1');
-      expect(result).toEqual({ kind: 'redirect', url: 'https://s3/firmada' });
-    });
-
-    it('sin URL firmada (local), devuelve el stream para servirlo', async () => {
-      attachments.findOne.mockResolvedValue({
-        attachmentId: 'a1',
-        storageKey: 'k1',
-        originalName: 'poliza.pdf',
-        mimeType: 'application/pdf',
-      });
-      storage.getSignedDownload.mockResolvedValue(null);
-      const stream = Readable.from([Buffer.from('x')]);
-      storage.getStream.mockResolvedValue({
-        stream,
-        contentType: 'application/pdf',
-        sizeBytes: 1,
-      });
-
-      const result = await service.getDownload('t1', 'a1', 'd1');
-      expect(result).toMatchObject({
-        kind: 'stream',
-        fileName: 'poliza.pdf',
-        mimeType: 'application/pdf',
-      });
+      expect(result).toBe('https://s3/firmada');
     });
 
     it('un adjunto que no existe es 404', async () => {

@@ -1,7 +1,7 @@
 /**
- * Storage contra un S3 REAL (MinIO en un contenedor efímero), sin mocks del
- * SDK: el adapter por sí solo y los flujos HTTP de punta a punta con
- * `STORAGE_DRIVER=s3` (adjunto genérico y foto del reclamo, CU-174/175).
+ * S3 REAL (MinIO en un contenedor efímero), sin mocks del SDK: `S3Service` por
+ * sí solo y los flujos HTTP de punta a punta (adjunto genérico y foto del
+ * reclamo, CU-174/175).
  */
 import { randomUUID } from 'crypto';
 import {
@@ -10,10 +10,6 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
-import { NotFoundException } from '@nestjs/common';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
@@ -24,7 +20,7 @@ import {
   telefonoDePrueba,
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
-import { S3StorageAdapter } from '../../src/storage/infrastructure/s3-storage.adapter';
+import { S3Service } from '../../src/s3/s3.service';
 import {
   Employee,
   EmployeeDocumentType,
@@ -46,9 +42,8 @@ import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
-import { migrar } from '../../scripts/migrar-storage-local-a-s3';
-import { StorageCleanupService } from '../../src/storage/storage-cleanup.service';
-import { StorageOrphan } from '../../src/storage/entities/storage-orphan.entity';
+import { S3CleanupService } from '../../src/s3/s3-cleanup.service';
+import { StorageOrphan } from '../../src/s3/entities/storage-orphan.entity';
 import { ReintentosDeHuerfanosDeStorage1791070100000 } from '../../src/migrations/1791070100000-ReintentosDeHuerfanosDeStorage';
 import { FotoDeReclamoYHuerfanosDeStorage1791070000000 } from '../../src/migrations/1791070000000-FotoDeReclamoYHuerfanosDeStorage';
 
@@ -71,22 +66,20 @@ async function esperar(condicion: () => Promise<boolean>): Promise<boolean> {
   return false;
 }
 
-describe('Storage S3 contra MinIO (e2e)', () => {
+describe('S3 contra MinIO (e2e)', () => {
   let minio: TestMinio;
   let env: TestEnv;
   let dataSource: DataSource;
 
   beforeAll(async () => {
     minio = await startMinio();
-    Object.assign(process.env, minio.env);
-    env = await createTestApp();
+    env = await createTestApp({ s3: minio.env });
     dataSource = env.app.get(DataSource);
   }, 240000);
 
   afterAll(async () => {
     await env?.cleanup();
     await minio?.stop();
-    process.env.STORAGE_DRIVER = 'local';
   });
 
   beforeEach(async () => {
@@ -134,7 +127,7 @@ describe('Storage S3 contra MinIO (e2e)', () => {
 
   describe('adapter', () => {
     const adapter = () =>
-      new S3StorageAdapter({
+      new S3Service({
         getOrThrow: (k: string) => minio.env[k],
         get: (k: string, def?: unknown) => minio.env[k] ?? def,
       } as unknown as ConfigService);
@@ -153,8 +146,8 @@ describe('Storage S3 contra MinIO (e2e)', () => {
         fileName: 'póliza 2026.pdf',
       });
       expect(firmada).not.toBeNull();
-      expect(firmada!.expiresAt.getTime()).toBeGreaterThan(Date.now());
-      const res = await fetch(firmada!.url);
+      expect(firmada.expiresAt.getTime()).toBeGreaterThan(Date.now());
+      const res = await fetch(firmada.url);
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('application/pdf');
       expect(res.headers.get('content-disposition')).toContain(
@@ -162,32 +155,24 @@ describe('Storage S3 contra MinIO (e2e)', () => {
       );
       expect(Buffer.from(await res.arrayBuffer()).equals(PDF)).toBe(true);
 
-      const { stream, contentType, sizeBytes } = await s3.getStream(key);
-      const trozos: Buffer[] = [];
-      for await (const t of stream) trozos.push(t as Buffer);
-      expect(Buffer.concat(trozos).equals(PDF)).toBe(true);
-      expect(contentType).toBe('application/pdf');
-      expect(sizeBytes).toBe(PDF.length);
-
       await s3.remove(key);
-      expect((await fetch(firmada!.url)).status).toBe(404);
-      await expect(s3.getStream(key)).rejects.toBeInstanceOf(NotFoundException);
+      expect((await fetch(firmada.url)).status).toBe(404);
       // Borrar algo que ya no está no falla (idempotente).
       await expect(s3.remove(key)).resolves.toBeUndefined();
     });
 
     it('una URL firmada vencida deja de servir', async () => {
-      const s3 = new S3StorageAdapter({
+      const s3 = new S3Service({
         getOrThrow: (k: string) => minio.env[k],
         get: (k: string, def?: unknown) =>
-          k === 'STORAGE_S3_SIGNED_URL_TTL_SECONDS' ? 1 : (minio.env[k] ?? def),
+          k === 'AWS_S3_SIGNED_URL_TTL_SECONDS' ? 1 : (minio.env[k] ?? def),
       } as unknown as ConfigService);
       const key = `it/${randomUUID()}.pdf`;
       await s3.put({ key, body: PDF, contentType: 'application/pdf' });
       const firmada = await s3.getSignedDownload(key);
-      expect((await fetch(firmada!.url)).status).toBe(200);
+      expect((await fetch(firmada.url)).status).toBe(200);
       await new Promise((r) => setTimeout(r, 2500));
-      expect((await fetch(firmada!.url)).status).toBe(403);
+      expect((await fetch(firmada.url)).status).toBe(403);
       await s3.remove(key);
     });
 
@@ -580,67 +565,10 @@ describe('Storage S3 contra MinIO (e2e)', () => {
     });
   });
 
-  describe('script migrar-storage-local-a-s3', () => {
-    it('sube con la misma key y su content-type, es idempotente y --dry-run no sube', async () => {
-      const origen = mkdtempSync(join(tmpdir(), 'splg-migrar-'));
-      const prefijo = `migrado-${randomUUID()}`;
-      try {
-        mkdirSync(join(origen, prefijo, 'sub'), { recursive: true });
-        writeFileSync(join(origen, prefijo, 'a.pdf'), PDF);
-        writeFileSync(
-          join(origen, prefijo, 'a.pdf.meta.json'),
-          JSON.stringify({ contentType: 'application/pdf' }),
-        );
-        writeFileSync(join(origen, prefijo, 'sub', 'b.png'), PNG);
-        writeFileSync(join(origen, prefijo, '.DS_Store'), 'basura');
-        symlinkSync('/etc/hosts', join(origen, prefijo, 'enlace.txt'));
-        const opciones = {
-          origen,
-          bucket: BUCKET_DE_PRUEBA,
-          client: minio.client,
-        };
-
-        const simulacro = await migrar({ ...opciones, dryRun: true });
-        expect(simulacro.subidos).toHaveLength(2);
-        expect(simulacro.omitidos).toHaveLength(2);
-        expect(await claves(prefijo)).toEqual([]);
-
-        const primera = await migrar({ ...opciones, dryRun: false });
-        expect(primera.subidos).toEqual([
-          `${prefijo}/a.pdf`,
-          `${prefijo}/sub/b.png`,
-        ]);
-        expect(primera.errores).toEqual([]);
-        const a = await minio.client.send(
-          new HeadObjectCommand({
-            Bucket: BUCKET_DE_PRUEBA,
-            Key: `${prefijo}/a.pdf`,
-          }),
-        );
-        expect(a.ContentType).toBe('application/pdf');
-        expect(a.ServerSideEncryption).toBe('AES256');
-        // Sin sidecar, el content-type sale de la extensión.
-        const b = await minio.client.send(
-          new HeadObjectCommand({
-            Bucket: BUCKET_DE_PRUEBA,
-            Key: `${prefijo}/sub/b.png`,
-          }),
-        );
-        expect(b.ContentType).toBe('image/png');
-
-        const segunda = await migrar({ ...opciones, dryRun: false });
-        expect(segunda.subidos).toEqual([]);
-        expect(segunda.yaEstaban).toHaveLength(2);
-      } finally {
-        rmSync(origen, { recursive: true, force: true });
-      }
-    });
-  });
-
   describe('huérfanos', () => {
     it('una subida abandonada (reservada, sin referencia) la barre el cron pasada la gracia', async () => {
       const key = `claims/abandonada/${randomUUID()}.png`;
-      const cleanup = env.app.get(StorageCleanupService);
+      const cleanup = env.app.get(S3CleanupService);
       await cleanup.reserveUpload(key);
       await minio.client.send(
         new PutObjectCommand({ Bucket: BUCKET_DE_PRUEBA, Key: key, Body: PNG }),

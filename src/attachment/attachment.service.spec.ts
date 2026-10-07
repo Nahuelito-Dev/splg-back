@@ -6,13 +6,12 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
-import { Readable } from 'stream';
 import { AttachmentActor, AttachmentService } from './attachment.service';
 import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
 import { AttachmentOwnerResolver } from './ports/attachment-owner-resolver.port';
-import { StoragePort } from '../storage/ports/storage.port';
-import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { S3Service } from '../s3/s3.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 import { RoleType } from '../common/constants/role-type.enum';
 
@@ -55,7 +54,6 @@ describe('AttachmentService', () => {
     put: jest.Mock;
     remove: jest.Mock;
     getSignedDownload: jest.Mock;
-    getStream: jest.Mock;
   };
   let resolverEmpleado: {
     ownerType: AttachmentOwnerType;
@@ -90,7 +88,6 @@ describe('AttachmentService', () => {
       put: jest.fn().mockResolvedValue(undefined),
       remove: jest.fn().mockResolvedValue(undefined),
       getSignedDownload: jest.fn(),
-      getStream: jest.fn(),
     };
     resolverEmpleado = {
       ownerType: AttachmentOwnerType.EMPLOYEE,
@@ -108,8 +105,8 @@ describe('AttachmentService', () => {
     service = new AttachmentService(
       attachments as unknown as Repository<Attachment>,
       registry,
-      storage as unknown as StoragePort,
-      cleanup as unknown as StorageCleanupService,
+      storage as unknown as S3Service,
+      cleanup as unknown as S3CleanupService,
     );
   });
 
@@ -279,8 +276,8 @@ describe('AttachmentService', () => {
       const s = new AttachmentService(
         attachments as unknown as Repository<Attachment>,
         registry,
-        storage as unknown as StoragePort,
-        cleanup as unknown as StorageCleanupService,
+        storage as unknown as S3Service,
+        cleanup as unknown as S3CleanupService,
       );
       await expect(
         s.list(AttachmentOwnerType.FUEL_LOAD, 'c1', 'd1', CHOFER),
@@ -335,32 +332,15 @@ describe('AttachmentService', () => {
       });
     });
 
-    it('redirige si el storage da una URL firmada', async () => {
+    it('devuelve la URL firmada para redirigir', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
       storage.getSignedDownload.mockResolvedValue({
         url: 'https://s3/firmada',
         expiresAt: new Date(),
       });
-      await expect(service.getDownload('a1', 'd1', ADMIN)).resolves.toEqual({
-        kind: 'redirect',
-        url: 'https://s3/firmada',
-      });
-    });
-
-    it('sirve el stream con el nombre original si no hay URL', async () => {
-      attachments.findOne.mockResolvedValue(adjunto);
-      storage.getSignedDownload.mockResolvedValue(null);
-      storage.getStream.mockResolvedValue({
-        stream: Readable.from(['x']),
-        contentType: null,
-        sizeBytes: 1,
-      });
-      const res = await service.getDownload('a1', 'd1', ADMIN);
-      expect(res).toMatchObject({
-        kind: 'stream',
-        fileName: 'dni.pdf',
-        mimeType: 'application/pdf',
-      });
+      await expect(service.getDownload('a1', 'd1', ADMIN)).resolves.toBe(
+        'https://s3/firmada',
+      );
     });
 
     it('con el dueño borrado, el admin igual baja y borra el adjunto', async () => {
@@ -370,10 +350,9 @@ describe('AttachmentService', () => {
         url: 'https://s3/firmada',
         expiresAt: new Date(),
       });
-      await expect(service.getDownload('a1', 'd1', ADMIN)).resolves.toEqual({
-        kind: 'redirect',
-        url: 'https://s3/firmada',
-      });
+      await expect(service.getDownload('a1', 'd1', ADMIN)).resolves.toBe(
+        'https://s3/firmada',
+      );
       await service.remove('a1', 'd1', ADMIN);
       expect(attachments.remove).toHaveBeenCalled();
       expect(resolverEmpleado.assertOwner).not.toHaveBeenCalled();

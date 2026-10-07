@@ -1,7 +1,7 @@
 /**
- * MinIO efímero para las suites que prueban el storage contra un S3 real.
+ * MinIO efímero para las suites que prueban S3 contra un servicio real.
  * Levanta el contenedor con testcontainers (igual que Postgres y Redis),
- * crea el bucket y deja las variables `STORAGE_*` listas para la app.
+ * crea el bucket y deja las variables `AWS_*` listas para la app.
  *
  * La imagen se puede cambiar con `TEST_MINIO_IMAGE`: la oficial de MinIO ya no
  * se publica en Docker Hub ni en Quay, por defecto se usa el build de Chainguard.
@@ -19,7 +19,7 @@ export const BUCKET_DE_PRUEBA = 'splg-test';
 export interface TestMinio {
   container: StartedTestContainer;
   endpoint: string;
-  /** Variables que activan `STORAGE_DRIVER=s3` contra este MinIO. */
+  /** Variables `AWS_*` que apuntan la app a este MinIO. */
   env: Record<string, string>;
   client: S3Client;
   stop: () => Promise<void>;
@@ -53,13 +53,12 @@ export async function startMinio(): Promise<TestMinio> {
     endpoint,
     client,
     env: {
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_BUCKET: BUCKET_DE_PRUEBA,
-      STORAGE_S3_REGION: 'us-east-1',
-      STORAGE_S3_ENDPOINT: endpoint,
-      STORAGE_S3_FORCE_PATH_STYLE: 'true',
-      STORAGE_S3_ACCESS_KEY_ID: USUARIO,
-      STORAGE_S3_SECRET_ACCESS_KEY: CLAVE,
+      AWS_S3_BUCKET: BUCKET_DE_PRUEBA,
+      AWS_REGION: 'us-east-1',
+      AWS_S3_ENDPOINT: endpoint,
+      AWS_S3_FORCE_PATH_STYLE: 'true',
+      AWS_ACCESS_KEY_ID: USUARIO,
+      AWS_SECRET_ACCESS_KEY: CLAVE,
     },
     stop: async () => {
       client.destroy();

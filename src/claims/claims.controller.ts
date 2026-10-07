@@ -38,13 +38,9 @@ import { ClaimResponseDto } from './dto/claim-response.dto';
 import { ClaimPhotoLinkResponseDto } from './dto/claim-photo-link.dto';
 import { ClaimMapper } from './claims.mapper';
 import type { Claim } from './entities/claim.entity';
-import { servirArchivo } from '../common/http/servir-archivo';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
-import {
-  DownloadMode,
-  DownloadQueryDto,
-} from '../storage/dto/download-link.dto';
-import { aEnlaceDeDescarga } from '../storage/download-link';
+import { DownloadMode, DownloadQueryDto } from '../s3/dto/download-link.dto';
+import { aEnlaceDeDescarga } from '../s3/download-link';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -196,7 +192,7 @@ export class ClaimsController {
       'Multipart, campo `file`: JPG, PNG o WEBP de hasta 10 MB (el tipo se ' +
       'valida por el contenido, no por el header). Sólo mientras el reclamo no ' +
       'esté resuelto ni rechazado (409). Si ya tenía ' +
-      'foto, la anterior se borra del storage. La puede subir el cliente dueño ' +
+      'foto, la anterior se borra del bucket. La puede subir el cliente dueño ' +
       'del reclamo o un admin de la distribuidora.',
   })
   @ApiParam({ name: 'id', description: 'Claim UUID' })
@@ -248,10 +244,9 @@ export class ClaimsController {
     summary: 'Ver la foto de un reclamo (CU-175)',
     description:
       'Igual que las descargas de adjuntos: por defecto devuelve la foto ' +
-      '(302 a la URL firmada con S3, o streaming con el driver local). Con ' +
+      '(302 a la URL firmada de S3). Con ' +
       '`?modo=url` devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin ' +
-      'redirect (con el driver local `url` es esta misma ruta y se pide con el ' +
-      'token); si el reclamo no tiene foto subida devuelve su `photoUrl` externa, o ' +
+      'redirect; si el reclamo no tiene foto subida devuelve su `photoUrl` externa, o ' +
       '200 con `url: null` si no tiene ninguna. ' +
       'Se puede ver aunque el reclamo esté cerrado.',
   })
@@ -289,19 +284,11 @@ export class ClaimsController {
         res.json(dto);
         return;
       }
-      res.json(aEnlaceDeDescarga(link.signed, req.originalUrl.split('?')[0]));
+      res.json(aEnlaceDeDescarga(link.signed));
       return;
     }
 
-    const photo = await this.claimsService.getPhotoFile(
-      id,
-      distributorId,
-      actor,
-    );
-    if (photo.kind === 'redirect') {
-      res.redirect(HttpStatus.FOUND, photo.url);
-      return;
-    }
-    servirArchivo(res, photo);
+    const url = await this.claimsService.getPhotoFile(id, distributorId, actor);
+    res.redirect(HttpStatus.FOUND, url);
   }
 }

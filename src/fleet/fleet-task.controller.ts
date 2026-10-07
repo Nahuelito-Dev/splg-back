@@ -10,15 +10,15 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import {
   ApiBadRequestResponse,
+  ApiFoundResponse,
   ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
@@ -46,13 +46,12 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ApiTotal, informarTotal } from '../common/http/total';
-import { servirArchivo } from '../common/http/servir-archivo';
 import {
   DownloadLinkResponseDto,
   DownloadMode,
   DownloadQueryDto,
-} from '../storage/dto/download-link.dto';
-import { aEnlaceDeDescarga } from '../storage/download-link';
+} from '../s3/dto/download-link.dto';
+import { aEnlaceDeDescarga } from '../s3/download-link';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 /**
@@ -223,17 +222,21 @@ export class FleetTaskController {
   @ApiOperation({
     summary: 'Descargar un adjunto',
     description:
-      'Por defecto devuelve el archivo: redirige (302) a una URL firmada con ' +
-      'S3, o lo sirve por streaming con el driver local. Con `?modo=url` ' +
-      'devuelve `{ url, expiresAt }` en JSON, sin redirect: es lo que tiene ' +
+      'Por defecto devuelve el archivo: redirige (302) a una URL firmada de ' +
+      'S3. Con `?modo=url` ' +
+      'devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin redirect: es lo que tiene ' +
       'que usar el panel (un 302 cross-origin pierde el token y choca con CORS).',
   })
   @ApiParam({ name: 'id', description: 'Task UUID' })
   @ApiParam({ name: 'attachmentId', description: 'Attachment UUID' })
   @ApiOkResponse({
     description:
-      'El archivo con su content-type original; con `?modo=url`, el enlace',
+      'Con `?modo=url`: el enlace `{ url, expiresAt, requiresAuth }`',
     type: DownloadLinkResponseDto,
+  })
+  @ApiFoundResponse({
+    description:
+      'Sin `modo`: redirección (302) a la URL firmada de S3, que sirve el archivo con su content-type original',
   })
   @ApiNotFoundResponse({ description: 'Tarea o adjunto no encontrado' })
   async downloadAttachment(
@@ -241,7 +244,6 @@ export class FleetTaskController {
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
     @Query() query: DownloadQueryDto,
     @CurrentDistributor({ required: true }) distributorId: string,
-    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     if (query.modo === DownloadMode.URL) {
@@ -250,22 +252,16 @@ export class FleetTaskController {
         attachmentId,
         distributorId,
       );
-      res.json(aEnlaceDeDescarga(signed, req.originalUrl.split('?')[0]));
+      res.json(aEnlaceDeDescarga(signed));
       return;
     }
 
-    const download = await this.attachmentsService.getDownload(
+    const url = await this.attachmentsService.getDownload(
       id,
       attachmentId,
       distributorId,
     );
-
-    if (download.kind === 'redirect') {
-      res.redirect(HttpStatus.FOUND, download.url);
-      return;
-    }
-
-    servirArchivo(res, download);
+    res.redirect(HttpStatus.FOUND, url);
   }
 
   @Delete(':id/attachments/:attachmentId')

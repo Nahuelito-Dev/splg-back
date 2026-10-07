@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Attachment } from './entities/attachment.entity';
-import { StorageModule } from '../storage/storage.module';
+import { S3Module } from '../s3/s3.module';
 import { AttachmentController } from './attachment.controller';
 import { AttachmentService } from './attachment.service';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
@@ -12,7 +12,7 @@ import { AttachmentOwnerRegistry } from './attachment-owner.registry';
  * `AttachmentOwnerResolver` en `AttachmentOwnerRegistry`.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Attachment]), StorageModule],
+  imports: [TypeOrmModule.forFeature([Attachment]), S3Module],
   controllers: [AttachmentController],
   providers: [AttachmentService, AttachmentOwnerRegistry],
   exports: [AttachmentOwnerRegistry],

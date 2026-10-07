@@ -11,12 +11,8 @@ import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
 import { FleetTaskService } from './fleet-task.service';
-import {
-  SignedDownload,
-  StoragePort,
-  StorageObjectStream,
-} from '../storage/ports/storage.port';
-import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { S3Service, SignedDownload } from '../s3/s3.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
 import {
   acotarNombreDeArchivo,
   decodificarNombreDeArchivo,
@@ -27,19 +23,10 @@ import {
 } from '../common/utils/attachment-rules';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 
-/** Lo que el controller necesita para responder la descarga, sea cual sea el driver activo. */
-export type FleetAttachmentDownload =
-  | { kind: 'redirect'; url: string }
-  | ({
-      kind: 'stream';
-      fileName: string;
-      mimeType: string;
-    } & StorageObjectStream);
-
 /**
  * Adjuntos de una tarea de flota: la foto o el PDF de la póliza, la VTV o la
- * licencia (CU-136 a CU-139). Habla con `StoragePort`, nunca con `fs` ni el
- * SDK de S3 directo: no le importa cuál de los dos está activo.
+ * licencia (CU-136 a CU-139). Guarda y sirve los archivos a través de
+ * `S3Service`.
  */
 @Injectable()
 export class FleetAttachmentService {
@@ -49,8 +36,8 @@ export class FleetAttachmentService {
     @InjectRepository(MaintenanceTaskAttachment)
     private readonly attachments: Repository<MaintenanceTaskAttachment>,
     private readonly taskService: FleetTaskService,
-    private readonly storage: StoragePort,
-    private readonly cleanup: StorageCleanupService,
+    private readonly storage: S3Service,
+    private readonly cleanup: S3CleanupService,
   ) {}
 
   async upload(
@@ -113,7 +100,7 @@ export class FleetAttachmentService {
       });
     } catch (error) {
       // El archivo ya se subió: si el registro en la base falla, no queda
-      // huérfano en el storage.
+      // huérfano en el bucket.
       this.cleanup.removeInBackground(key);
       return traducirErrorDeBase(error, this.logger, 'adjuntos de flota');
     }
@@ -134,7 +121,7 @@ export class FleetAttachmentService {
     taskId: string,
     attachmentId: string,
     distributorId: string,
-  ): Promise<FleetAttachmentDownload> {
+  ): Promise<string> {
     const attachment = await this.findOneOrThrow(
       taskId,
       attachmentId,
@@ -144,25 +131,15 @@ export class FleetAttachmentService {
     const signed = await this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
     });
-    if (signed) {
-      return { kind: 'redirect', url: signed.url };
-    }
-
-    const stream = await this.storage.getStream(attachment.storageKey);
-    return {
-      kind: 'stream',
-      fileName: attachment.originalName,
-      mimeType: stream.contentType ?? attachment.mimeType,
-      ...stream,
-    };
+    return signed.url;
   }
 
-  /** URL firmada del adjunto; `null` con el driver local. */
+  /** URL firmada del adjunto. */
   async getSignedDownload(
     taskId: string,
     attachmentId: string,
     distributorId: string,
-  ): Promise<SignedDownload | null> {
+  ): Promise<SignedDownload> {
     const attachment = await this.findOneOrThrow(
       taskId,
       attachmentId,
