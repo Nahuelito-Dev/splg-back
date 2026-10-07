@@ -271,10 +271,13 @@ export class UsersService {
    * identidad con el token de la persona: nunca por `PATCH /users/:id`.
    */
   async cambiarEmail(id: string, email: string): Promise<void> {
-    await this.userRepository.update(
-      { userId: id },
-      { email: normalizarEmail(email), emailVerified: false },
-    );
+    // Con `save` y no `update`: sólo así TypeORM anuncia el cambio y queda
+    // en la auditoría de datos con el correo anterior.
+    const user = await this.userRepository.findOneBy({ userId: id });
+    if (!user) return;
+    user.email = normalizarEmail(email);
+    user.emailVerified = false;
+    await this.userRepository.save(user);
   }
 
   private async cambiarContraseña(uid: string, password: string) {

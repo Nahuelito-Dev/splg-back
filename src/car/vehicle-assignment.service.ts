@@ -21,6 +21,9 @@ import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { OrderStatus } from '../order/entities/order.entity';
 import { bloquearChoferes } from '../common/locks/chofer-lock';
+import { AuditoriaDeDatos } from '../audit/data/auditoria-de-datos';
+import { cambioDeCampo } from '../audit/data/audit-value';
+import { AuditActionTypeId } from '../audit/entities/audit-action-type.entity';
 
 /**
  * Estados de pedido con los que no se le puede tocar el vehículo al chofer:
@@ -143,7 +146,7 @@ export class VehicleAssignmentService {
             // fases independientes y podían tomar esos bloqueos en orden
             // cruzado (40P01). Una sola sentencia con las dos condiciones
             // hace que Postgres recorra las mismas filas en el mismo orden.
-            await repo
+            const cerradas = await repo
               .createQueryBuilder()
               .update(VehicleAssignment)
               .set({ releasedAt: ahora, releasedByUserId: actorUserId })
@@ -155,7 +158,26 @@ export class VehicleAssignmentService {
                   }).orWhere('car_id = :carId', { carId: car.carId });
                 }),
               )
+              .returning(['assignmentId', 'distributorId'])
               .execute();
+
+            // El query builder no pasa por el subscriber de auditoría: cada
+            // asignación cerrada se registra a mano, en esta transacción.
+            for (const fila of cerradas.raw as Array<{
+              assignment_id: string;
+              distributor_id: string;
+            }>) {
+              await AuditoriaDeDatos.registrar(manager, {
+                actionTypeId: AuditActionTypeId.UPDATE,
+                entity: VehicleAssignment.name,
+                recordId: fila.assignment_id,
+                distributorId: fila.distributor_id,
+                details: [
+                  cambioDeCampo('releasedAt', null, ahora),
+                  cambioDeCampo('releasedByUserId', null, actorUserId),
+                ].filter((c) => c !== null),
+              });
+            }
 
             const nueva = repo.create({
               distributorId,

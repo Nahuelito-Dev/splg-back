@@ -27,6 +27,7 @@ describe('VehicleAssignmentService', () => {
     set: jest.Mock;
     where: jest.Mock;
     andWhere: jest.Mock;
+    returning: jest.Mock;
     execute: jest.Mock;
   };
   let txRepo: {
@@ -65,7 +66,8 @@ describe('VehicleAssignmentService', () => {
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      returning: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 0, raw: [] }),
     };
     txRepo = {
       createQueryBuilder: jest.fn(() => qb),
@@ -88,9 +90,11 @@ describe('VehicleAssignmentService', () => {
       // sobreescribe. El lock de los choferes no devuelve nada que se use.
       query: jest.fn((sql: string, params?: unknown[]) =>
         Promise.resolve(
-          sql.includes('EXISTS')
-            ? [{ existe: false }]
-            : choferesVigentes(params),
+          sql.includes('INSERT INTO "audit"')
+            ? []
+            : sql.includes('EXISTS')
+              ? [{ existe: false }]
+              : choferesVigentes(params),
         ),
       ),
     };
@@ -142,6 +146,12 @@ describe('VehicleAssignmentService', () => {
       );
       expect(qb.where).toHaveBeenCalledWith('released_at IS NULL');
       expect(qb.andWhere).toHaveBeenCalledTimes(1);
+      // El query builder no pasa por el subscriber: pide los ids cerrados
+      // para auditarlos a mano.
+      expect(qb.returning).toHaveBeenCalledWith([
+        'assignmentId',
+        'distributorId',
+      ]);
       expect(resultado).toMatchObject({
         carId: 'c1',
         deliveryId: 'dl1',
@@ -156,6 +166,34 @@ describe('VehicleAssignmentService', () => {
         'car.distributorId = :distributorId',
         { distributorId: 'd1' },
       );
+    });
+
+    it('audita a mano cada asignación que cierra, con la misma transacción', async () => {
+      choferDelTenant();
+      autoDelTenant();
+      abiertas(null, null);
+      qb.execute.mockResolvedValue({
+        affected: 1,
+        raw: [{ assignment_id: 'a1', distributor_id: 'd1' }],
+      });
+
+      await service.ponerEnUso('dl1', 'c1', null, 'd1', 'admin-1');
+
+      const auditoria = manager.query.mock.calls.find((c) =>
+        (c as [string])[0].includes('INSERT INTO "audit"'),
+      ) as [string, unknown[]] | undefined;
+      expect(auditoria).toBeDefined();
+      expect(auditoria?.[1]).toEqual(
+        expect.arrayContaining(['VehicleAssignment', 'a1', 'd1']),
+      );
+      expect(JSON.parse(String(auditoria?.[1][7]))).toEqual([
+        expect.objectContaining({ field: 'releasedAt', old_value: null }),
+        {
+          field: 'releasedByUserId',
+          old_value: null,
+          new_value: 'admin-1',
+        },
+      ]);
     });
 
     it('un chofer de otra distribuidora es 404', async () => {

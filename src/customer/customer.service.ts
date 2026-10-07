@@ -258,7 +258,11 @@ export class CustomersService {
 
   async remove(id: string): Promise<MessageResponseDto> {
     await this.findOne(id);
-    await this.customerRepository.softDelete({ customerId: id });
+    // `softRemove` y no `softDelete`: sólo así TypeORM anuncia la baja y queda
+    // en la auditoría de datos. Va sólo con el id para no arrastrar relaciones.
+    await this.customerRepository.softRemove(
+      this.customerRepository.create({ customerId: id }),
+    );
     return MessageResponseDto.of('Customer deleted successfully');
   }
 

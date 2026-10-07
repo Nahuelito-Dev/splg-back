@@ -26,6 +26,10 @@ import {
   StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
+import {
+  AUDIT_ACTION_TYPE_NAMES,
+  AuditActionType,
+} from '../../../src/audit/entities/audit-action-type.entity';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
  * devuelva algo que `supertest` acepta sin pasar por `any`. */
@@ -136,6 +140,7 @@ export async function createTestApp(): Promise<TestEnv> {
   try {
     asegurarBaseDescartable(app.get(DataSource), pgContainer);
     await app.init();
+    await sembrarCatalogoDeAuditoria(app.get(DataSource));
     // Escucha en loopback con puerto propio: si no, supertest hace un
     // `listen(0)` por request y a veces le toca un puerto que otro proceso
     // ya usa en 127.0.0.1.
@@ -185,6 +190,21 @@ function asegurarBaseDescartable(
   }
 }
 
+/**
+ * El catálogo TipoAccionAuditoria lo siembra la migración; con `DB_SYNC` el
+ * esquema sale de las entidades y hay que sembrarlo. Sin él, toda auditoría
+ * falla por la clave foránea.
+ */
+async function sembrarCatalogoDeAuditoria(dataSource: DataSource) {
+  await dataSource.getRepository(AuditActionType).upsert(
+    Object.entries(AUDIT_ACTION_TYPE_NAMES).map(([id, name]) => ({
+      actionTypeId: Number(id),
+      name,
+    })),
+    ['actionTypeId'],
+  );
+}
+
 export async function truncateAllTables(app: TestApp): Promise<void> {
   // `app.get('DataSource' as any)` (el token en string) no resuelve: Nest
   // registra el provider con la CLASE `DataSource` como token, no con el
@@ -193,7 +213,11 @@ export async function truncateAllTables(app: TestApp): Promise<void> {
   asegurarBaseDescartable(dataSource);
   const entities = dataSource.entityMetadatas;
   // TRUNCATE CASCADE limpia todas las tablas respetando FKs.
-  const tables = entities.map((e) => `"${e.tableName}"`).join(', ');
+  // El catálogo de acciones de auditoría es dato de referencia: no se vacía.
+  const tables = entities
+    .filter((e) => e.tableName !== 'audit_action_type')
+    .map((e) => `"${e.tableName}"`)
+    .join(', ');
   // Tras un pedido quedan tareas en segundo plano (auditoría, notificaciones,
   // despacho) escribiendo: pueden chocar con el TRUNCATE. Se reintenta.
   for (let intento = 1; ; intento++) {
