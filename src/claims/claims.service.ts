@@ -14,12 +14,8 @@ import { Claim, ClaimStatus } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { OrderService } from '../order/order.service';
 import { assertClaimTransition } from './claim-status.machine';
-import {
-  SignedDownload,
-  StorageObjectStream,
-  StoragePort,
-} from '../storage/ports/storage.port';
-import { StorageCleanupService } from '../storage/storage-cleanup.service';
+import { S3Service, SignedDownload } from '../s3/s3.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { errorMessage } from '../common/errors/error-message';
 import {
@@ -34,15 +30,6 @@ export interface ClaimActor {
   userId: string;
   role: RoleType;
 }
-
-/** La foto del reclamo lista para responder, sea cual sea el driver activo. */
-export type ClaimPhotoFile =
-  | { kind: 'redirect'; url: string }
-  | ({
-      kind: 'stream';
-      fileName: string;
-      mimeType: string;
-    } & StorageObjectStream);
 
 /**
  * La URL externa de un reclamo viejo sólo se sirve si es http(s): nunca un
@@ -59,13 +46,12 @@ function esUrlHttp(url: string | null): url is string {
 }
 
 /**
- * El enlace a la foto para `?modo=url`: la subida al storage (`signed` es `null`
- * con el driver local), la URL externa que traía el reclamo, o nada.
+ * El enlace a la foto para `?modo=url`: la subida a S3, la URL externa que traía el reclamo, o nada.
  */
 export type ClaimPhotoLink =
   | { kind: 'none' }
   | { kind: 'external'; url: string }
-  | { kind: 'stored'; signed: SignedDownload | null };
+  | { kind: 'stored'; signed: SignedDownload };
 
 @Injectable()
 export class ClaimsService {
@@ -74,8 +60,8 @@ export class ClaimsService {
   constructor(
     @InjectRepository(Claim) private readonly claimRepo: Repository<Claim>,
     private readonly orderService: OrderService,
-    private readonly storage: StoragePort,
-    private readonly cleanup: StorageCleanupService,
+    private readonly storage: S3Service,
+    private readonly cleanup: S3CleanupService,
   ) {}
 
   async create(
@@ -226,7 +212,7 @@ export class ClaimsService {
 
   /**
    * CU-174: sube (o reemplaza) la foto del reclamo. Valida el tipo por la firma
-   * del archivo, la guarda en el storage y recién ahí apunta el reclamo a la
+   * del archivo, la guarda en S3 y recién ahí apunta el reclamo a la
    * key nueva; la foto anterior se borra en segundo plano.
    */
   async uploadPhoto(
@@ -323,43 +309,31 @@ export class ClaimsService {
     };
   }
 
-  /** CU-175: la foto misma, para `?modo=archivo`. */
+  /** CU-175: la URL a la que se redirige para `?modo=archivo` (firmada, o la externa del reclamo). */
   async getPhotoFile(
     id: string,
     distributorId: string | null,
     actor: ClaimActor,
-  ): Promise<ClaimPhotoFile> {
+  ): Promise<string> {
     const claim = await this.findForPhoto(id, distributorId, actor);
     if (!claim.photoKey) {
       if (esUrlHttp(claim.photoUrl)) {
-        return { kind: 'redirect', url: claim.photoUrl };
+        return claim.photoUrl;
       }
       throw new NotFoundException('El reclamo no tiene foto');
     }
-    const key = claim.photoKey;
-    const signed = await this.storage.getSignedDownload(key);
-    if (signed) return { kind: 'redirect', url: signed.url };
-
-    const stream = await this.storage.getStream(key);
-    return {
-      kind: 'stream',
-      fileName: `reclamo-${id}.${key.split('.').pop() ?? 'jpg'}`,
-      mimeType: stream.contentType ?? 'application/octet-stream',
-      ...stream,
-    };
+    return (await this.storage.getSignedDownload(claim.photoKey)).url;
   }
 
   /**
    * URL firmada para el campo `photoUrl` del reclamo. Nunca rompe la respuesta:
-   * si no hay foto, el driver no firma (local) o el cálculo falla, es `null` y
+   * si no hay foto o el cálculo de la firma falla, es `null` y
    * el mapper deja la URL externa que el reclamo traía de antes.
    */
   async photoUrlFor(claim: Claim): Promise<string | null> {
     if (!claim.photoKey) return null;
     try {
-      return (
-        (await this.storage.getSignedDownload(claim.photoKey))?.url ?? null
-      );
+      return (await this.storage.getSignedDownload(claim.photoKey)).url;
     } catch (error) {
       this.logger.warn(
         `No se pudo firmar la foto del reclamo ${claim.claimId}: ${errorMessage(error)}`,

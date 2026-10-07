@@ -23,7 +23,7 @@ import { Admin } from '../../src/admin/entities/admin.entity';
 import { Customer } from '../../src/customer/entities/customer.entity';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
-import { StorageOrphan } from '../../src/storage/entities/storage-orphan.entity';
+import { StorageOrphan } from '../../src/s3/entities/storage-orphan.entity';
 import { RoleType } from '../../src/common/constants/role-type.enum';
 import { Car } from '../../src/car/entities/car.entity';
 import { VehicleAssignmentService } from '../../src/car/vehicle-assignment.service';

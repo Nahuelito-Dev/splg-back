@@ -21,8 +21,8 @@ export enum StorageOrphanStatus {
 }
 
 /**
- * Intención de borrar un objeto del storage, registrada ANTES de la operación
- * que puede dejarlo sin dueño (ver `StorageCleanupService`). El cron la sigue
+ * Intención de borrar un objeto del bucket, registrada ANTES de la operación
+ * que puede dejarlo sin dueño (ver `S3CleanupService`). El cron la sigue
  * reintentando con backoff hasta que el borrado sale.
  */
 @Entity('storage_orphan')

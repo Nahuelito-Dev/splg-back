@@ -25,7 +25,7 @@ services:
     # Pero para desarrollo es más rápido así.
 
   # S3 local para desarrollo y CI (compatible con la API de AWS S3). Con
-  # STORAGE_DRIVER=s3 + STORAGE_S3_ENDPOINT=http://localhost:9000 el back sube
+  # AWS_S3_ENDPOINT=http://localhost:9000 el back sube
   # acá igual que subiría a AWS. La imagen oficial de MinIO ya no se publica en
   # Docker Hub ni en Quay: se usa el build de Chainguard, fijado por digest
   # (override con MINIO_IMAGE / MINIO_MC_IMAGE). Los valores por defecto de
@@ -66,4 +66,4 @@ services:
     environment:
       MC_HOST_local: http://${MINIO_ROOT_USER:-splgminio}:${MINIO_ROOT_PASSWORD:-splgminio-secret}@minio:9000
     entrypoint: ["/usr/bin/mc"]
-    command: ["mb", "--ignore-existing", "local/${STORAGE_S3_BUCKET:-splg-dev}"]
+    command: ["mb", "--ignore-existing", "local/${AWS_S3_BUCKET:-splg-dev}"]

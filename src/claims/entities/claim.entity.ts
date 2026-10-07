@@ -58,11 +58,11 @@ export class Claim {
   @Column('text')
   description!: string;
 
-  /** URL externa que mandaban las apps antes de que la foto se subiera al storage. */
+  /** URL externa que mandaban las apps antes de que la foto se subiera a S3. */
   @Column({ type: 'varchar', nullable: true })
   photoUrl!: string | null;
 
-  /** Key de la foto en el storage (`claims/{distribuidora}/{reclamo}/{uuid}.{ext}`). */
+  /** Key de la foto en el bucket (`claims/{distribuidora}/{reclamo}/{uuid}.{ext}`). */
   @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
   photoKey!: string | null;
 

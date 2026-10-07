@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
 import { EntityManager, LessThanOrEqual, Repository } from 'typeorm';
-import { StoragePort } from './ports/storage.port';
+import { S3Service } from './s3.service';
 import {
   StorageOrphan,
   StorageOrphanKind,
@@ -25,7 +25,7 @@ const ORPHANS_PER_RUN = 100;
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
- * Evita objetos sin dueño en el storage, sin bloquear la respuesta HTTP: se
+ * Evita objetos sin dueño en el bucket, sin bloquear la respuesta HTTP: se
  * registra la INTENCIÓN antes de la operación que puede dejar basura.
  *
  * - Borrar/reemplazar: `scheduleRemoval(manager, key)` anota la key en la MISMA
@@ -41,11 +41,11 @@ const HOUR_MS = 60 * 60 * 1000;
  *   `MAX_ORPHAN_ATTEMPTS` la marca como fallida y lo deja en el log.
  */
 @Injectable()
-export class StorageCleanupService {
-  private readonly logger = new Logger(StorageCleanupService.name);
+export class S3CleanupService {
+  private readonly logger = new Logger(S3CleanupService.name);
 
   constructor(
-    private readonly storage: StoragePort,
+    private readonly s3: S3Service,
     @InjectRepository(StorageOrphan)
     private readonly orphans: Repository<StorageOrphan>,
   ) {}
@@ -91,12 +91,12 @@ export class StorageCleanupService {
   async removeWithRetry(key: string): Promise<void> {
     for (let attempt = 0; attempt <= REMOVE_RETRY_DELAYS_MS.length; attempt++) {
       try {
-        await this.storage.remove(key);
+        await this.s3.remove(key);
         await this.forget(key);
         return;
       } catch (error) {
         this.logger.warn(
-          `No se pudo borrar ${key} del storage (intento ${attempt + 1}): ${errorMessage(error)}`,
+          `No se pudo borrar ${key} del bucket (intento ${attempt + 1}): ${errorMessage(error)}`,
         );
         if (attempt < REMOVE_RETRY_DELAYS_MS.length) {
           await this.sleep(REMOVE_RETRY_DELAYS_MS[attempt]);
@@ -104,7 +104,7 @@ export class StorageCleanupService {
       }
     }
     this.logger.error(
-      `${key} sigue en el storage tras los reintentos; el cron lo va a reintentar`,
+      `${key} sigue en el bucket tras los reintentos; el cron lo va a reintentar`,
     );
     await this.registerFailure(key, 'borrado en segundo plano agotado');
   }
@@ -122,7 +122,7 @@ export class StorageCleanupService {
     });
     for (const orphan of due) {
       try {
-        await this.storage.remove(orphan.storageKey);
+        await this.s3.remove(orphan.storageKey);
         await this.orphans.delete({ orphanId: orphan.orphanId });
       } catch (error) {
         const reason = errorMessage(error);

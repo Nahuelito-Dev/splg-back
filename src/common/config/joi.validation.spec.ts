@@ -20,75 +20,58 @@ function validar(extra: Record<string, string>): {
   );
 }
 
-describe('JoiValidationSchema · almacenamiento', () => {
-  it('con el driver local no pide nada de S3, aunque las variables vengan vacías', () => {
-    const { error } = validar({
-      STORAGE_S3_BUCKET: '',
-      STORAGE_S3_REGION: '',
-      STORAGE_S3_ACCESS_KEY_ID: '',
-      STORAGE_S3_SECRET_ACCESS_KEY: '',
-      STORAGE_S3_ENDPOINT: '',
-    });
-    expect(error).toBeUndefined();
+describe('JoiValidationSchema · S3', () => {
+  it('sin bucket ni región la app no arranca, y el error dice cuál falta', () => {
+    expect(validar({ AWS_REGION: 'sa-east-1' }).error?.message).toContain(
+      'AWS_S3_BUCKET es obligatorio',
+    );
+    expect(validar({ AWS_S3_BUCKET: 'splg' }).error?.message).toContain(
+      'AWS_REGION es obligatorio',
+    );
   });
 
-  it('con s3 el bucket es obligatorio y el error lo dice', () => {
-    const { error } = validar({
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_REGION: 'sa-east-1',
-    });
-    expect(error?.message).toContain('STORAGE_S3_BUCKET es obligatorio');
+  it('bucket y región vacíos cuentan como no definidos', () => {
+    const { error } = validar({ AWS_S3_BUCKET: '', AWS_REGION: '' });
+    expect(error?.message).toContain('es obligatorio');
   });
 
-  it('con s3 la región es obligatoria, también si viene vacía', () => {
-    const { error } = validar({
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_BUCKET: 'splg',
-      STORAGE_S3_REGION: '',
-    });
-    expect(error?.message).toContain('STORAGE_S3_REGION es obligatorio');
-  });
-
-  it('con s3, bucket y región alcanzan: las credenciales son opcionales (rol IAM)', () => {
+  it('bucket y región alcanzan: las credenciales son opcionales (rol IAM)', () => {
     const { error, value } = validar({
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_BUCKET: 'splg',
-      STORAGE_S3_REGION: 'sa-east-1',
-      STORAGE_S3_ACCESS_KEY_ID: '',
-      STORAGE_S3_SECRET_ACCESS_KEY: '',
+      AWS_S3_BUCKET: 'splg',
+      AWS_REGION: 'sa-east-1',
+      AWS_ACCESS_KEY_ID: '',
+      AWS_SECRET_ACCESS_KEY: '',
+      AWS_S3_ENDPOINT: '',
     });
     expect(error).toBeUndefined();
-    expect(value.STORAGE_S3_FORCE_PATH_STYLE).toBe(false);
+    expect(value.AWS_S3_FORCE_PATH_STYLE).toBe(false);
   });
 
   it('las credenciales van juntas: una sola es un error', () => {
     const { error } = validar({
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_BUCKET: 'splg',
-      STORAGE_S3_REGION: 'sa-east-1',
-      STORAGE_S3_ACCESS_KEY_ID: 'AKIA',
+      AWS_S3_BUCKET: 'splg',
+      AWS_REGION: 'sa-east-1',
+      AWS_ACCESS_KEY_ID: 'AKIA',
     });
     expect(error).toBeDefined();
   });
 
   it('acepta el endpoint de MinIO y el direccionamiento por path', () => {
     const { error, value } = validar({
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_BUCKET: 'splg-dev',
-      STORAGE_S3_REGION: 'us-east-1',
-      STORAGE_S3_ENDPOINT: 'http://localhost:9000',
-      STORAGE_S3_FORCE_PATH_STYLE: 'true',
+      AWS_S3_BUCKET: 'splg-dev',
+      AWS_REGION: 'us-east-1',
+      AWS_S3_ENDPOINT: 'http://localhost:9000',
+      AWS_S3_FORCE_PATH_STYLE: 'true',
     });
     expect(error).toBeUndefined();
-    expect(value.STORAGE_S3_FORCE_PATH_STYLE).toBe(true);
+    expect(value.AWS_S3_FORCE_PATH_STYLE).toBe(true);
   });
 
   it('rechaza un endpoint que no es una URL', () => {
     const { error } = validar({
-      STORAGE_DRIVER: 's3',
-      STORAGE_S3_BUCKET: 'splg',
-      STORAGE_S3_REGION: 'sa-east-1',
-      STORAGE_S3_ENDPOINT: 'localhost:9000',
+      AWS_S3_BUCKET: 'splg',
+      AWS_REGION: 'sa-east-1',
+      AWS_S3_ENDPOINT: 'localhost:9000',
     });
     expect(error).toBeDefined();
   });

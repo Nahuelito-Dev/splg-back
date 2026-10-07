@@ -14,7 +14,6 @@
     "start:prod": "node dist/main",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
     "seed:demo": "ts-node -r tsconfig-paths/register scripts/seed-demo.ts",
-    "storage:migrar": "ts-node -r tsconfig-paths/register scripts/migrar-storage-local-a-s3.ts",
     "crear-superadmin": "node dist/cli/crear-superadmin.js",
     "crear-superadmin:dev": "ts-node -r tsconfig-paths/register src/cli/crear-superadmin.ts",
     "typeorm": "typeorm-ts-node-commonjs -d src/data-source.ts",

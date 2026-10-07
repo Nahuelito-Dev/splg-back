@@ -3,9 +3,9 @@ import { IsEnum, IsOptional } from 'class-validator';
 
 /** Cómo quiere el cliente recibir un archivo. */
 export enum DownloadMode {
-  /** `{ url, expiresAt }`: el cliente baja el archivo por su cuenta. */
+  /** `{ url, expiresAt, requiresAuth }`: el cliente baja el archivo por su cuenta. */
   URL = 'url',
-  /** El archivo mismo (redirección a la URL firmada o streaming). */
+  /** El archivo mismo (redirección 302 a la URL firmada de S3). */
   FILE = 'archivo',
 }
 
@@ -15,10 +15,9 @@ export class DownloadQueryDto {
     enumName: 'DownloadMode',
     required: false,
     description:
-      '`url` devuelve `{ url, expiresAt }` en JSON (sin redirect: sirve para ' +
+      '`url` devuelve `{ url, expiresAt, requiresAuth }` en JSON (sin redirect: sirve para ' +
       'el panel y las apps, que no siguen un 302 cross-origin con el token). ' +
-      '`archivo` devuelve el archivo (302 a la URL firmada con S3, streaming con ' +
-      'el driver local).',
+      '`archivo` devuelve el archivo (302 a la URL firmada de S3).',
   })
   @IsOptional()
   @IsEnum(DownloadMode)
@@ -27,9 +26,7 @@ export class DownloadQueryDto {
 
 export class DownloadLinkResponseDto {
   @ApiProperty({
-    description:
-      'Con S3: URL firmada, se abre sin token. Con el driver local: la ruta ' +
-      'de este mismo backend, que hay que pedir con el token.',
+    description: 'URL firmada de S3: se abre sin token.',
   })
   url!: string;
 
@@ -37,12 +34,15 @@ export class DownloadLinkResponseDto {
     type: String,
     format: 'date-time',
     nullable: true,
-    description: 'Cuándo vence la URL; `null` si no vence (driver local).',
+    description:
+      'Cuándo vence la URL; `null` si no vence (p. ej. la URL externa de un reclamo viejo).',
   })
   expiresAt!: Date | null;
 
   @ApiProperty({
-    description: '`true` si pedir `url` exige el token de la sesión.',
+    description:
+      'Siempre `false`: la URL firmada se abre sin token. Se conserva en el ' +
+      'contrato por compatibilidad con el panel y las apps.',
   })
   requiresAuth!: boolean;
 }

@@ -9,7 +9,7 @@ import { CarModule } from '../car/car.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { AdminModule } from '../admin/admin.module';
 import { EmailModule } from '../email/email.module';
-import { StorageModule } from '../storage/storage.module';
+import { S3Module } from '../s3/s3.module';
 import { FleetPlanController } from './fleet-plan.controller';
 import { FleetTaskController } from './fleet-task.controller';
 import { FleetExpirationsController } from './fleet-expirations.controller';
@@ -43,7 +43,7 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     DeliveryModule, // ídem para "el chofer existe y es de esta distribuidora"
     AdminModule, // a quién avisar (FleetAlertsCron)
     EmailModule, // cómo avisar (FleetAlertsCron, vía EmailSenderPort)
-    StorageModule, // dónde viven los adjuntos (disco local o S3)
+    S3Module, // dónde viven los adjuntos
   ],
   controllers: [
     FleetPlanController,

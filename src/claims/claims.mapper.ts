@@ -6,7 +6,7 @@ import { UserMapper } from '../users/user.mapper';
 export class ClaimMapper {
   /**
    * `photoUrl` es la URL firmada ya calculada (ver `ClaimsService.photoUrlFor`):
-   * el mapper es síncrono y no conoce el storage. Sin ella, sale la URL
+   * el mapper es síncrono y no conoce S3. Sin ella, sale la URL
    * externa que el reclamo traía de antes, si la tiene.
    */
   static toDto(claim: Claim, photoUrl?: string | null): ClaimResponseDto {

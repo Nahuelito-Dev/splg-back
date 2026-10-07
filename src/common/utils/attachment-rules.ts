@@ -38,7 +38,7 @@ export function esMimeTypePermitido(
   );
 }
 
-/** Extensión de archivo por mime type, para armar la key del storage. */
+/** Extensión de archivo por mime type, para armar la key del objeto en S3. */
 export function extensionParaMimeType(
   mimeType: AllowedAttachmentMimeType,
 ): string {

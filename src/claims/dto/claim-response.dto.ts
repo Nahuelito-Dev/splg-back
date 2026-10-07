@@ -15,8 +15,7 @@ export class ClaimResponseDto {
     nullable: true,
     description:
       'URL firmada de la foto del reclamo (vence en minutos: pedirla de nuevo ' +
-      'con `GET /claims/:id/photo`), o `null` si no tiene foto (también con el ' +
-      'driver local, que no firma URLs: ahí se usa `GET /claims/:id/photo`).',
+      'con `GET /claims/:id/photo`), o `null` si no tiene foto.',
   })
   photoUrl!: string | null;
   @ApiProperty({ enum: ClaimStatus }) status!: ClaimStatus;

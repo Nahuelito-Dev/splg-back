@@ -14,7 +14,7 @@ import { User } from '../../users/entities/user.entity';
 /**
  * Adjunto de una tarea de flota: la foto o el PDF de la póliza, la VTV o la
  * licencia. Una tarea puede tener uno o más (p. ej. el frente y el dorso de
- * la licencia). El contenido vive en el `StoragePort` (disco local o S3);
+ * la licencia). El contenido vive en S3;
  * acá sólo la referencia (`storageKey`) y la metadata.
  * Casos: CU-136 a CU-139.
  */
@@ -39,7 +39,7 @@ export class MaintenanceTaskAttachment {
   @Column({ name: 'distributor_id', type: 'uuid' })
   distributorId!: string;
 
-  /** Clave dentro del `StoragePort` activo (disco local o S3). */
+  /** Clave del objeto dentro del bucket de S3. */
   @Column({ name: 'storage_key', type: 'varchar', length: 255 })
   storageKey!: string;
 

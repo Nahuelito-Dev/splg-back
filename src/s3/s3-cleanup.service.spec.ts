@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
-import { StoragePort } from './ports/storage.port';
+import { S3Service } from './s3.service';
 import {
   StorageOrphan,
   StorageOrphanKind,
@@ -9,11 +9,11 @@ import {
 import {
   MAX_ORPHAN_ATTEMPTS,
   REMOVE_RETRY_DELAYS_MS,
-  StorageCleanupService,
+  S3CleanupService,
   UPLOAD_GRACE_MS,
-} from './storage-cleanup.service';
+} from './s3-cleanup.service';
 
-describe('StorageCleanupService', () => {
+describe('S3CleanupService', () => {
   let storage: { remove: jest.Mock };
   let filas: Map<string, StorageOrphan>;
   let orphans: {
@@ -26,7 +26,7 @@ describe('StorageCleanupService', () => {
   };
   let manager: { upsert: jest.Mock; delete: jest.Mock };
   let errorLog: jest.SpyInstance;
-  let service: StorageCleanupService;
+  let service: S3CleanupService;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -72,8 +72,8 @@ describe('StorageCleanupService', () => {
         return Promise.resolve({});
       }),
     };
-    service = new StorageCleanupService(
-      storage as unknown as StoragePort,
+    service = new S3CleanupService(
+      storage as unknown as S3Service,
       orphans as unknown as Repository<StorageOrphan>,
     );
   });

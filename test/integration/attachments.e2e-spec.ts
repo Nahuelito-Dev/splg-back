@@ -6,9 +6,7 @@
  * resolvers de ejemplo.
  */
 import { randomUUID } from 'crypto';
-import { mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { NotFoundException } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
@@ -18,6 +16,7 @@ import {
   truncateAllTables,
   telefonoDePrueba,
 } from './setup/test-env';
+import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
 import { AttachmentOwnerRegistry } from '../../src/attachment/attachment-owner.registry';
 import {
   Attachment,
@@ -44,16 +43,15 @@ interface Dueno {
 }
 
 describe('Adjuntos genéricos (e2e)', () => {
-  const storageDir = mkdtempSync(join(tmpdir(), 'splg-attachments-'));
+  let minio: TestMinio;
   let env: TestEnv;
   let dataSource: DataSource;
   // El "dueño" de ejemplo: id -> a qué distribuidora (y a qué usuario) pertenece.
   const cargas = new Map<string, Dueno>();
 
   beforeAll(async () => {
-    process.env.STORAGE_DRIVER = 'local';
-    process.env.STORAGE_LOCAL_PATH = storageDir;
-    env = await createTestApp();
+    minio = await startMinio();
+    env = await createTestApp({ s3: minio.env });
     dataSource = env.app.get(DataSource);
 
     const registry = env.app.get(AttachmentOwnerRegistry);
@@ -69,17 +67,33 @@ describe('Adjuntos genéricos (e2e)', () => {
       isOwnedByUser: (id, userId) =>
         Promise.resolve(cargas.get(id)?.userId === userId),
     });
-  }, 120000);
+  }, 240000);
 
   afterAll(async () => {
-    await env.cleanup();
-    rmSync(storageDir, { recursive: true, force: true });
+    await env?.cleanup();
+    await minio?.stop();
   });
 
   beforeEach(async () => {
     await truncateAllTables(env.app);
     cargas.clear();
   });
+
+  /** Pide el enlace (`?modo=url`) y baja el archivo desde la URL firmada de S3. */
+  async function descargar(headers: Record<string, string>, id: string) {
+    const enlace = await request(env.app.getHttpServer())
+      .get(`/attachments/${id}/download`)
+      .query({ modo: 'url' })
+      .set(headers)
+      .expect(200);
+    const { url } = enlace.body as { url: string };
+    const res = await fetch(url);
+    return {
+      status: res.status,
+      headers: res.headers,
+      body: Buffer.from(await res.arrayBuffer()),
+    };
+  }
 
   async function rol(type: string): Promise<Role> {
     const roles = dataSource.getRepository(Role);
@@ -204,21 +218,13 @@ describe('Adjuntos genéricos (e2e)', () => {
       .expect(200);
     expect((listado.body as unknown[]).length).toBe(1);
 
-    const descarga = await request(env.app.getHttpServer())
-      .get(`/attachments/${id}/download`)
-      .set(admin1.headers)
-      .buffer(true)
-      .parse((res, cb) => {
-        const trozos: Buffer[] = [];
-        res.on('data', (t: Buffer) => trozos.push(t));
-        res.on('end', () => cb(null, Buffer.concat(trozos)));
-      })
-      .expect(200);
-    expect(descarga.headers['content-type']).toContain('application/pdf');
-    expect(descarga.headers['content-disposition']).toContain(
+    const descarga = await descargar(admin1.headers, id);
+    expect(descarga.status).toBe(200);
+    expect(descarga.headers.get('content-type')).toContain('application/pdf');
+    expect(descarga.headers.get('content-disposition')).toContain(
       "filename*=UTF-8''p%C3%B3liza%202026.pdf",
     );
-    expect((descarga.body as Buffer).equals(PDF)).toBe(true);
+    expect(descarga.body.equals(PDF)).toBe(true);
 
     await request(env.app.getHttpServer())
       .delete(`/attachments/${id}`)
@@ -336,11 +342,8 @@ describe('Adjuntos genéricos (e2e)', () => {
       nombre: "o'brien (1).pdf",
     }).expect(201);
     const id = (creado.body as { attachmentId: string }).attachmentId;
-    const res = await request(env.app.getHttpServer())
-      .get(`/attachments/${id}/download`)
-      .set(admin1.headers)
-      .expect(200);
-    expect(res.headers['content-disposition']).toContain(
+    const res = await descargar(admin1.headers, id);
+    expect(res.headers.get('content-disposition')).toContain(
       "filename*=UTF-8''o%27brien%20%281%29.pdf",
     );
   });
@@ -360,28 +363,30 @@ describe('Adjuntos genéricos (e2e)', () => {
       .get(`/attachments/employee/${empleado}`)
       .set(admin1.headers)
       .expect(404);
-    await request(env.app.getHttpServer())
-      .get(`/attachments/${id}/download`)
-      .set(admin1.headers)
-      .expect(200);
+    expect((await descargar(admin1.headers, id)).status).toBe(200);
     await request(env.app.getHttpServer())
       .delete(`/attachments/${id}`)
       .set(admin1.headers)
       .expect(204);
   });
 
-  it('si el archivo falta en el storage, la descarga responde 404 y el proceso sigue vivo', async () => {
+  it('si el archivo falta en el bucket, la URL firmada responde 404 y el proceso sigue vivo', async () => {
     const { admin1, empleado } = await escenario();
     const creado = await subir(admin1.headers, 'employee', empleado).expect(
       201,
     );
     const id = (creado.body as { attachmentId: string }).attachmentId;
-    rmSync(storageDir, { recursive: true, force: true });
+    const fila = await dataSource
+      .getRepository(Attachment)
+      .findOneByOrFail({ attachmentId: id });
+    await minio.client.send(
+      new DeleteObjectCommand({
+        Bucket: BUCKET_DE_PRUEBA,
+        Key: fila.storageKey,
+      }),
+    );
 
-    await request(env.app.getHttpServer())
-      .get(`/attachments/${id}/download`)
-      .set(admin1.headers)
-      .expect(404);
+    expect((await descargar(admin1.headers, id)).status).toBe(404);
     await request(env.app.getHttpServer())
       .get(`/attachments/employee/${empleado}`)
       .set(admin1.headers)

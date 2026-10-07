@@ -25,7 +25,7 @@ export enum AttachmentOwnerType {
 
 /**
  * Adjunto genérico (legajo, combustible, multas, siniestros, remitos,
- * rendiciones...). El contenido vive en el `StoragePort`; acá la referencia y
+ * rendiciones...). El contenido vive en S3; acá la referencia y
  * la metadata. `ownerType` + `ownerId` apuntan al dueño sin FK, a propósito:
  * la tabla es polimórfica y no puede referenciar a la vez nueve tablas. La
  * existencia del dueño y su distribuidora los valida el
@@ -59,7 +59,7 @@ export class Attachment {
   @Column({ name: 'label', type: 'varchar', length: 80, nullable: true })
   label!: string | null;
 
-  /** Clave dentro del `StoragePort` activo (disco local o S3). */
+  /** Clave del objeto dentro del bucket de S3. */
   @Column({ name: 'storage_key', type: 'varchar', length: 255 })
   storageKey!: string;
 
