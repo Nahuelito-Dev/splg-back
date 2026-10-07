@@ -14,6 +14,10 @@ export class RatingMapper {
     dto.stars = r.stars;
     dto.comment = r.comment;
     dto.createdAt = r.createdAt;
+    dto.hidden = r.hidden;
+    dto.hiddenReason = r.hiddenReason;
+    dto.hiddenAt = r.hiddenAt;
+    dto.hiddenByUserId = r.hiddenByUserId;
     if (r.fromUser) dto.fromUser = UserMapper.toDto(r.fromUser);
     return dto;
   }

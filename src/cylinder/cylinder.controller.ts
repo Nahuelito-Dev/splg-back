@@ -30,6 +30,8 @@ import {
 } from './dto/cylinder-response.dto';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
+import { UpdateCylinderDto } from './dto/update-cylinder.dto';
+import { RetireCylinderDto } from './dto/retire-cylinder.dto';
 import { AssignCylindersDto } from './dto/assign-cylinders.dto';
 import { QueryCylindersDto } from './dto/query-cylinders.dto';
 import { Auth } from '../common/decorators/auth.decorator';
@@ -148,6 +150,62 @@ export class CylinderController {
       distributorId,
     );
     return movimientos.map((m) => CylinderMapper.movimientoToDto(m));
+  }
+
+  @Patch(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Editar datos maestros del envase (no el estado)',
+    description:
+      'Serial, producto, depósito y fechas de fabricación, inspección y ' +
+      'vencimiento. El estado cambia sólo por `/transition` y `/retire`.',
+  })
+  @ApiParam({ name: 'id', description: 'Cylinder UUID' })
+  @ApiOkResponse({ type: CylinderResponseDto })
+  @ApiBadRequestResponse({ description: 'Datos inválidos' })
+  @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  @ApiConflictResponse({
+    description: 'Serial repetido en la distribuidora, o envase dado de baja',
+  })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCylinderDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<CylinderResponseDto> {
+    return CylinderMapper.toDto(
+      await this.cylinderService.update(id, dto, distributorId),
+    );
+  }
+
+  @Patch(':id/retire')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Dar de baja el envase (estado terminal RETIRED), con motivo',
+    description:
+      'Sólo desde `in_depot` o `empty_returned`. El registro no se borra: ' +
+      'queda para histórico y el motivo en el historial.',
+  })
+  @ApiParam({ name: 'id', description: 'Cylinder UUID' })
+  @ApiOkResponse({ type: CylinderResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Motivo faltante o el envase no está en un estado dable de baja',
+  })
+  @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  async retire(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RetireCylinderDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CylinderResponseDto> {
+    return CylinderMapper.toDto(
+      await this.cylinderService.retire(
+        id,
+        dto.reason,
+        distributorId,
+        user.user_id,
+      ),
+    );
   }
 
   @Patch(':id/transition')

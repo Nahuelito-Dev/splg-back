@@ -5,23 +5,28 @@ import { InvalidCylinderTransitionError } from './errors/invalid-cylinder-transi
  * Máquina de estados del ciclo de vida FÍSICO del envase (dominio puro).
  *
  * Reglas:
- *  - IN_DEPOT       → FILLED (se carga en planta)
+ *  - IN_DEPOT       → FILLED (se carga en planta) | RETIRED (baja)
  *  - FILLED         → DISPATCHED (sale a reparto) | IN_DEPOT (se revierte el llenado)
  *  - DISPATCHED     → WITH_CUSTOMER (se entregó) | IN_DEPOT (volvió sin entregar)
  *  - WITH_CUSTOMER  → EMPTY_RETURNED (el cliente devuelve el envase vacío)
- *  - EMPTY_RETURNED → IN_DEPOT (reingresa a depósito para volver a llenarse)
+ *  - EMPTY_RETURNED → IN_DEPOT (reingresa a depósito para volver a llenarse) | RETIRED (baja)
+ *  - RETIRED        → terminal: nunca con un cliente ni en reparto, y no vuelve
  */
 export const CYLINDER_TRANSITIONS: Readonly<
   Record<CylinderState, CylinderState[]>
 > = {
-  [CylinderState.IN_DEPOT]: [CylinderState.FILLED],
+  [CylinderState.IN_DEPOT]: [CylinderState.FILLED, CylinderState.RETIRED],
   [CylinderState.FILLED]: [CylinderState.DISPATCHED, CylinderState.IN_DEPOT],
   [CylinderState.DISPATCHED]: [
     CylinderState.WITH_CUSTOMER,
     CylinderState.IN_DEPOT,
   ],
   [CylinderState.WITH_CUSTOMER]: [CylinderState.EMPTY_RETURNED],
-  [CylinderState.EMPTY_RETURNED]: [CylinderState.IN_DEPOT],
+  [CylinderState.EMPTY_RETURNED]: [
+    CylinderState.IN_DEPOT,
+    CylinderState.RETIRED,
+  ],
+  [CylinderState.RETIRED]: [],
 };
 
 export function canTransition(from: CylinderState, to: CylinderState): boolean {

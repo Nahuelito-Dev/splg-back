@@ -119,11 +119,11 @@ export class DispatchOrchestratorService {
     if (!fresco || !this.isReofferable(fresco)) return null;
     if (await this.offers.hasActiveOffer(order.orderId)) return null;
 
-    const destino = coordenadasDePunto(order.deliveryPoint);
+    const destino = coordenadasDePunto(fresco.deliveryPoint);
     // Sin punto de entrega no hay contra qué medir la cercanía: se avisa al
     // panel en vez de quedar en silencio.
     if (!destino) {
-      await this.avisarSinChoferes(order, 'no_delivery_point');
+      await this.avisarSinChoferes(fresco, 'no_delivery_point');
       return null;
     }
 
@@ -187,10 +187,10 @@ export class DispatchOrchestratorService {
     this.dispatch.notifyDriverNewOrder(candidate, {
       event: 'NEW_ORDER',
       orderId: order.orderId,
-      totalAmount: order.totalAmount,
-      paymentMethod: order.paymentMethod,
+      totalAmount: fresco.totalAmount,
+      paymentMethod: fresco.paymentMethod,
       expiresAt: expiresAt.toISOString(),
-      items: order.items,
+      items: fresco.items,
     });
 
     // Push FCM complementario: si el chofer tiene la app cerrada/en background,

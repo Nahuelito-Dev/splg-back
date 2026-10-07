@@ -1,8 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Incident, IncidentStatus } from './entities/incident.entity';
 import { CreateIncidentDto } from './dto/create-incident.dto';
+import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
 import { OrderService } from '../order/order.service';
 
@@ -105,10 +110,46 @@ export class IncidentService {
     return incident;
   }
 
+  /** Ficha de la incidencia: con su pedido y el cliente del pedido. */
+  async findDetail(
+    id: string,
+    distributorId?: string | null,
+  ): Promise<Incident> {
+    const incident = await this.incidentRepository.findOne({
+      where: {
+        incidentId: id,
+        ...(distributorId ? { distributorId } : {}),
+      },
+      withDeleted: true,
+      relations: ['order', 'order.customer'],
+    });
+    if (!incident) {
+      throw new NotFoundException('Incidencia no encontrada');
+    }
+    return incident;
+  }
+
+  /** Edita descripción y tipo mientras la incidencia está abierta. */
+  async update(
+    id: string,
+    dto: UpdateIncidentDto,
+    distributorId?: string | null,
+  ): Promise<Incident> {
+    const incident = await this.findOne(id, distributorId);
+    if (incident.status !== IncidentStatus.OPEN) {
+      throw new ConflictException('Sólo se edita una incidencia abierta');
+    }
+    if (dto.description !== undefined) incident.description = dto.description;
+    if (dto.type !== undefined) incident.type = dto.type;
+    await this.incidentRepository.save(incident);
+    return this.findDetail(id, distributorId);
+  }
+
   /**
-   * Marca la incidencia como resuelta con su nota de resolución.
-   * `distributorId` opcional: sin él (super admin sin `X-Distributor`) se
-   * resuelve cross-tenant, igual que en `claims.resolve`.
+   * Cierra la incidencia: resuelta (default) o descartada, siempre con nota
+   * (el motivo del descarte). `distributorId` opcional: sin él (super admin
+   * sin `X-Distributor`) se cierra cross-tenant, igual que en `claims.resolve`.
+   * Descartar sólo una incidencia abierta; una descartada no se vuelve a tocar.
    */
   async resolve(
     id: string,
@@ -116,11 +157,19 @@ export class IncidentService {
     distributorId?: string | null,
   ): Promise<Incident> {
     const incident = await this.findOne(id, distributorId);
-
-    incident.status = IncidentStatus.RESOLVED;
+    const destino = dto.status ?? IncidentStatus.RESOLVED;
+    if (
+      incident.status === IncidentStatus.DISCARDED ||
+      (destino === IncidentStatus.DISCARDED &&
+        incident.status !== IncidentStatus.OPEN)
+    ) {
+      throw new ConflictException(
+        'Sólo se descarta una incidencia abierta, y una descartada no se modifica',
+      );
+    }
+    incident.status = destino;
     incident.resolutionNote = dto.resolutionNote;
     incident.resolvedAt = new Date();
-
     return this.incidentRepository.save(incident);
   }
 }

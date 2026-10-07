@@ -14,6 +14,17 @@ export class RatingResponseDto {
   @ApiProperty({ minimum: 1, maximum: 5 }) stars!: number;
   @ApiProperty({ type: String, nullable: true }) comment!: string | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+  @ApiProperty({
+    description:
+      'Moderación: una calificación oculta no cuenta en promedios ni se ' +
+      'muestra a clientes',
+  })
+  hidden!: boolean;
+  @ApiProperty({ type: String, nullable: true }) hiddenReason!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  hiddenAt!: Date | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  hiddenByUserId!: string | null;
   @ApiPropertyOptional({ type: UserResponseDto })
   fromUser?: UserResponseDto;
 }

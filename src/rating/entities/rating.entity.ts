@@ -94,4 +94,25 @@ export class Rating {
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
+
+  /**
+   * Moderación: una calificación oculta no cuenta en promedios ni resúmenes ni
+   * se muestra a clientes; el admin la ve marcada. Nunca se borra.
+   */
+  @Index()
+  @Column({ type: 'boolean', default: false })
+  hidden!: boolean;
+
+  @Column({ name: 'hidden_reason', type: 'text', nullable: true })
+  hiddenReason!: string | null;
+
+  @Column({ name: 'hidden_at', type: 'timestamptz', nullable: true })
+  hiddenAt!: Date | null;
+
+  @Column({ name: 'hidden_by_user_id', type: 'uuid', nullable: true })
+  hiddenByUserId!: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'hidden_by_user_id' })
+  hiddenByUser?: User;
 }

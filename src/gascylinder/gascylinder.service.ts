@@ -311,12 +311,34 @@ export class GasCylinderService {
     manager: EntityManager,
     items: MovimientoDeStock[],
   ): Promise<void> {
-    for (const item of items) {
+    // Siempre en el mismo orden (por id) para no cruzar locks con otra
+    // transacción que reserva las mismas garrafas.
+    const ordenados = [...items].sort((a, b) =>
+      a.gasCylinderId.localeCompare(b.gasCylinderId),
+    );
+    for (const item of ordenados) {
       const gasCylinder = await this.bloquear(manager, item.gasCylinderId);
       if (gasCylinder) {
         gasCylinder.stock += item.quantity;
         await manager.save(gasCylinder);
       }
+    }
+  }
+
+  /**
+   * Toma el lock de varios productos de una sola vez, siempre por id
+   * ascendente. Una operación que primero devuelve y después reserva (la
+   * edición de un pedido) la llama con la unión de ids viejos y nuevos antes
+   * de tocar nada: así ningún orden parcial se cruza con otra transacción.
+   * Los ids que no existen se ignoran (los resuelve quien reserva).
+   */
+  async bloquearEnOrden(
+    manager: EntityManager,
+    gasCylinderIds: string[],
+  ): Promise<void> {
+    const ids = [...new Set(gasCylinderIds)].sort((a, b) => a.localeCompare(b));
+    for (const id of ids) {
+      await this.bloquear(manager, id);
     }
   }
 

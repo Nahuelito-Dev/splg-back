@@ -22,6 +22,7 @@ import { OrderRepositoryPort } from './domain/ports/order.repository.port';
 import { OrderTypeormRepository } from './infrastructure/order.typeorm.repository';
 import { CreateOrderUseCase } from './application/create-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
+import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ReleaseOrderUseCase } from './application/release-order.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
@@ -77,6 +78,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     DispatchService,
     OrderPricingService,
     CreateOrderUseCase,
+    UpdateOrderUseCase,
     UpdateOrderStatusUseCase,
     CancelOrderUseCase,
     ReleaseOrderUseCase,

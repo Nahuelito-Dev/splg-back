@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common';
@@ -96,5 +97,26 @@ export class AdminController {
     }
     const admins = await this.adminService.findAll(distributorId);
     return admins.map((a) => AdminMapper.toDto(a));
+  }
+
+  @Get(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Ficha de un administrador (scopeado por distribuidora)',
+    description:
+      'La edición y la baja del administrador van por `/users` (es un usuario ' +
+      'con perfil de admin).',
+  })
+  @ApiOkResponse({ type: AdminResponseDto })
+  @ApiNotFoundResponse({
+    description: 'No existe o es de otra distribuidora',
+  })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<AdminResponseDto> {
+    return AdminMapper.toDto(
+      await this.adminService.findDetail(id, distributorId),
+    );
   }
 }

@@ -16,11 +16,13 @@ import {
   ApiOkResponse,
   ApiTags,
   ApiBadRequestResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { IncidentService } from './incident.service';
 import { IncidentMapper } from './incident.mapper';
 import { IncidentResponseDto } from './dto/incident-response.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
+import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -88,15 +90,66 @@ export class IncidentController {
     return incidents.map((i) => IncidentMapper.toDto(i));
   }
 
+  @Get(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Ficha de la incidencia (con pedido y cliente)' })
+  @ApiParam({ name: 'id', description: 'Incident UUID' })
+  @ApiOkResponse({ type: IncidentResponseDto })
+  @ApiNotFoundResponse({
+    description: 'La incidencia no existe o es de otra distribuidora',
+  })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<IncidentResponseDto> {
+    return IncidentMapper.toDto(
+      await this.incidentService.findDetail(id, distributorId),
+    );
+  }
+
+  @Patch(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Editar descripción y tipo de una incidencia abierta',
+    description:
+      'Sólo mientras esté `open`. Eliminar una incidencia es descartarla con ' +
+      'motivo: `PATCH /incidents/:id/resolve` con `status: discarded`. Nunca se borran.',
+  })
+  @ApiParam({ name: 'id', description: 'Incident UUID' })
+  @ApiOkResponse({ type: IncidentResponseDto })
+  @ApiBadRequestResponse({ description: 'Datos inválidos' })
+  @ApiNotFoundResponse({
+    description: 'La incidencia no existe o es de otra distribuidora',
+  })
+  @ApiConflictResponse({ description: 'La incidencia ya no está abierta' })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateIncidentDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<IncidentResponseDto> {
+    return IncidentMapper.toDto(
+      await this.incidentService.update(id, dto, distributorId),
+    );
+  }
+
   // Distribuidora obligatoria, igual que `take`/`reopen`/`resolve` de reclamos:
   // un admin ya llega con la suya fijada por el guard; el super admin tiene
   // que elegir una (`X-Distributor`) en vez de resolver cross-tenant.
   @Patch(':id/resolve')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Resolver una incidencia' })
+  @ApiOperation({
+    summary: 'Resolver o descartar una incidencia',
+    description:
+      '`status: resolved` (default) la resuelve; `status: discarded` la ' +
+      'descarta (baja lógica, sólo si está abierta). Ambos exigen ' +
+      '`resolutionNote`.',
+  })
   @ApiParam({ name: 'id', description: 'Incident UUID' })
   @ApiOkResponse({ type: IncidentResponseDto })
   @ApiNotFoundResponse({ description: 'Incidencia no encontrada' })
+  @ApiConflictResponse({
+    description: 'Se intenta descartar una no abierta, o tocar una descartada',
+  })
   @ApiBadRequestResponse({
     description:
       'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: resolutionNote must be a string)',

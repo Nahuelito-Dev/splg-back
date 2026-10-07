@@ -46,6 +46,30 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
     });
   });
 
+  it('una oferta retirada por edición del pedido no cuenta: ni bloquea, ni vencida, ni contactado', async () => {
+    const repo = repoCon([
+      {
+        driverId: 'd1',
+        status: DispatchOfferStatus.SUPERSEDED,
+        expiresAt: new Date(now.getTime() + 20_000),
+      },
+      {
+        driverId: 'd1',
+        status: DispatchOfferStatus.SUPERSEDED,
+        expiresAt: new Date(now.getTime() + 20_000),
+      },
+      {
+        driverId: 'd1',
+        status: DispatchOfferStatus.SUPERSEDED,
+        expiresAt: new Date(now.getTime() + 20_000),
+      },
+    ]);
+    expect(await repo.findDriverOfferState('o', now, COOLDOWN, MAX)).toEqual({
+      blocked: [],
+      reofferable: [],
+    });
+  });
+
   it('rechazó, aceptó u oferta vigente: bloqueado siempre, aunque haya otra oferta vencida vieja', async () => {
     const vieja = hace(COOLDOWN * 10);
     const repo = repoCon([

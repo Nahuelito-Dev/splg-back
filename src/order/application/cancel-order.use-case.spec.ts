@@ -31,6 +31,7 @@ describe('CancelOrderUseCase', () => {
     manager: {
       createQueryBuilder: jest.Mock;
       save: jest.Mock;
+      find: jest.Mock;
     };
   };
   let queryBuilder: {
@@ -84,6 +85,7 @@ describe('CancelOrderUseCase', () => {
       manager: {
         createQueryBuilder: jest.fn(() => queryBuilder),
         save: jest.fn((o: unknown) => Promise.resolve(o)),
+        find: jest.fn(() => Promise.resolve(lockedOrder.items)),
       },
     };
     dataSource = {

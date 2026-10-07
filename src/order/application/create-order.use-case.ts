@@ -7,7 +7,8 @@ import {
   HttpException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import type { Point } from 'typeorm';
 import Decimal from 'decimal.js';
 
 import {
@@ -24,7 +25,10 @@ import { CreateOrderDto } from '../dto/create-order.dto';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
-import { CoverageZonePricingService } from '../../coverage-zone/coverage-zone-pricing.service';
+import {
+  CoverageZonePricingService,
+  ZonaParaRecargo,
+} from '../../coverage-zone/coverage-zone-pricing.service';
 import type { CoverageZoneResumenDto } from '../../coverage-zone/dto/coverage-zone-response.dto';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
@@ -34,7 +38,7 @@ import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { DistributorService } from '../../distributor/distributor.service';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
-import { errorMessage } from '../../common/errors/error-message';
+import { errorCode, errorMessage } from '../../common/errors/error-message';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { DomainError } from '../../common/errors/domain.error';
 
@@ -131,32 +135,19 @@ export class CreateOrderUseCase {
         throw new NotFoundException('Dirección no encontrada');
       }
 
-      // Zona de cobertura: si la distribuidora definió zonas (PostGIS), la
-      // dirección debe caer dentro de alguna → si no, se rechaza el pedido
-      // ANTES de reservar stock. La zona ganadora puede tener un recargo fijo
-      // o porcentual; el porcentual se calcula más abajo, sobre el subtotal
-      // de los ítems (todavía no se conoce en este punto). Si la distribuidora
-      // NO definió zonas, checkCoverage devuelve covered:true / zone:null
-      // (no-op).
-      let coverageZone: CoverageZoneResumenDto | null = null;
-      const punto = coordenadasDePunto(address.location);
-      if (distributorId && punto) {
-        const coverage = await this.coverageZoneService.checkCoverage(
-          distributorId,
-          punto.lat,
-          punto.lng,
-        );
-        if (!coverage.covered) {
-          throw new BadRequestException(
-            'La dirección está fuera de la zona de cobertura de la distribuidora',
-          );
-        }
-        coverageZone = coverage.zone;
-      }
+      // Zona de cobertura: ver `resolverZona` (rechaza ANTES de reservar stock).
+      const coverageZone = await this.resolverZona(distributorId, address);
 
       // Agendamiento: validar cupo de la franja DENTRO de la transacción y con
       // lock pesimista sobre la franja, para que reservas concurrentes no
       // superen la capacidad (antes corría fuera de la tx y sin lock = race).
+      if (createOrderDto.timeSlotId && !createOrderDto.scheduledDate) {
+        await this.timeSlotService.assertSlotUsableTx(
+          queryRunner.manager,
+          createOrderDto.timeSlotId,
+          distributorId,
+        );
+      }
       if (createOrderDto.scheduledDate && createOrderDto.timeSlotId) {
         await this.timeSlotService.assertSlotAvailableTx(
           queryRunner.manager,
@@ -166,75 +157,18 @@ export class CreateOrderUseCase {
         );
       }
 
-      let totalAmount = new Decimal(0);
-      const orderItems: OrderItem[] = [];
-      // Ítems para el checkout de MercadoPago (título legible + precio de
-      // SERVIDOR). Se arman en el mismo loop para no releer las garrafas.
-      const checkoutItems: PaymentCheckoutItem[] = [];
-
-      for (const itemDto of createOrderDto.items) {
-        // Reserva de stock con lock pesimista (dentro de ESTA transacción).
-        // Devuelve la garrafa bloqueada para leer precio/promos de la misma fila.
-        const gasCylinder = await this.stock.reservarStock(
+      // Reserva de stock con lock + precios de servidor (ver `reservarRenglones`).
+      const { orderItems, checkoutItems, subtotalItems } =
+        await this.reservarRenglones(
           queryRunner.manager,
-          itemDto.gasCylinderId,
-          itemDto.quantity,
+          createOrderDto.items,
+          distributorId,
         );
 
-        // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
-        // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
-        // como una con `distributor_id` null (dato sin backfillear), que antes
-        // se colaba en cualquier tenant.
-        if (distributorId && gasCylinder.distributorId !== distributorId) {
-          throw new BadRequestException(
-            `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
-          );
-        }
-
-        // Pricing: precio de lista (DB, nunca del cliente) + promos por volumen.
-        const { unitPrice, subtotal } = this.pricing.priceItem(
-          gasCylinder.price,
-          gasCylinder.promotions,
-          itemDto.quantity,
-        );
-
-        totalAmount = totalAmount.plus(subtotal);
-
-        orderItems.push(
-          this.orderItemRepository.create({
-            gasCylinderId: itemDto.gasCylinderId,
-            quantity: itemDto.quantity,
-            unitPrice: unitPrice.toNumber(),
-            subtotal: subtotal.toNumber(),
-          }),
-        );
-
-        checkoutItems.push({
-          id: itemDto.gasCylinderId,
-          title: `Garrafa ${gasCylinder.type}`,
-          quantity: itemDto.quantity,
-          unitPrice: unitPrice.toNumber(),
-        });
-      }
-
-      // Subtotal de los ítems YA con promociones, antes de cualquier recargo.
-      // Se guarda en el pedido (snapshot) para poder reconstruir el total aun
-      // si la zona se edita o se borra después.
-      const subtotalItems = totalAmount;
-
-      // Recargo por zona de cobertura: fijo (monto) o porcentual (sobre
-      // `subtotalItems`), ANTES del recargo por método de pago — ese último
-      // se sigue aplicando sobre el total con el recargo de zona ya sumado
-      // (delivery + costo online, no sólo delivery).
-      const zoneSurchargeAmount = this.coverageZonePricing.zoneSurcharge(
+      // Recargos de zona y de método de pago (ver `calcularTotales`).
+      const { totalAmount, zoneSurchargeAmount } = this.calcularTotales(
         subtotalItems,
         coverageZone,
-      );
-      totalAmount = totalAmount.plus(zoneSurchargeAmount);
-
-      // Recargo por método de pago (dominio): +10% en pagos online (MP/Transfer).
-      totalAmount = this.pricing.applyPaymentSurcharge(
-        totalAmount,
         createOrderDto.paymentMethod,
       );
 
@@ -345,6 +279,12 @@ export class CreateOrderUseCase {
       // Los errores de quien pide (validación, stock, cobertura, pertenencia)
       // se devuelven tal cual. Antes sólo pasaban los que traían `status` 400 o
       // 404: los de dominio no lo traen, y "sin stock" salía como 500 (H-85).
+      // Deadlock o fallo de serialización: se deja pasar tal cual para que
+      // `withTransactionRetry` (en el controller) reintente; si se agotan los
+      // intentos sale 409, no 500.
+      if (['40P01', '40001'].includes(errorCode(error) ?? '')) {
+        throw error;
+      }
       if (
         error instanceof DomainError ||
         (error instanceof HttpException && error.getStatus() < 500)
@@ -356,6 +296,125 @@ export class CreateOrderUseCase {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Zona de cobertura: si la distribuidora definió zonas (PostGIS), la
+   * dirección debe caer dentro de alguna; si no, se rechaza. La zona ganadora
+   * puede tener un recargo fijo o porcentual. Sin zonas definidas (o sin punto
+   * en la dirección) es un no-op y devuelve null.
+   */
+  async resolverZona(
+    distributorId: string | null | undefined,
+    address: { location?: Point | null },
+  ): Promise<CoverageZoneResumenDto | null> {
+    const punto = coordenadasDePunto(address.location);
+    if (!distributorId || !punto) return null;
+    const coverage = await this.coverageZoneService.checkCoverage(
+      distributorId,
+      punto.lat,
+      punto.lng,
+    );
+    if (!coverage.covered) {
+      throw new BadRequestException(
+        'La dirección está fuera de la zona de cobertura de la distribuidora',
+      );
+    }
+    return coverage.zone;
+  }
+
+  /**
+   * Reserva el stock de cada renglón (lock pesimista, dentro de la transacción
+   * de `manager`) y lo valoriza con el precio de SERVIDOR más las promociones
+   * por volumen. Compartido por el alta y la edición del pedido.
+   */
+  async reservarRenglones(
+    manager: EntityManager,
+    items: Array<{ gasCylinderId: string; quantity: number }>,
+    distributorId: string | null | undefined,
+  ): Promise<{
+    orderItems: OrderItem[];
+    checkoutItems: PaymentCheckoutItem[];
+    subtotalItems: Decimal;
+  }> {
+    let subtotalItems = new Decimal(0);
+    const orderItems: OrderItem[] = [];
+    // Ítems para el checkout de MercadoPago (título legible + precio de
+    // SERVIDOR). Se arman en el mismo loop para no releer las garrafas.
+    const checkoutItems: PaymentCheckoutItem[] = [];
+
+    // Los locks de las garrafas se toman siempre en el mismo orden (por id):
+    // dos pedidos con las mismas garrafas en distinto orden no se cruzan.
+    const ordenados = [...items].sort((a, b) =>
+      a.gasCylinderId.localeCompare(b.gasCylinderId),
+    );
+    for (const itemDto of ordenados) {
+      // Devuelve la garrafa bloqueada para leer precio/promos de la misma fila.
+      const gasCylinder = await this.stock.reservarStock(
+        manager,
+        itemDto.gasCylinderId,
+        itemDto.quantity,
+      );
+
+      // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
+      // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
+      // como una con `distributor_id` null (dato sin backfillear), que antes
+      // se colaba en cualquier tenant.
+      if (distributorId && gasCylinder.distributorId !== distributorId) {
+        throw new BadRequestException(
+          `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
+        );
+      }
+
+      // Pricing: precio de lista (DB, nunca del cliente) + promos por volumen.
+      const { unitPrice, subtotal } = this.pricing.priceItem(
+        gasCylinder.price,
+        gasCylinder.promotions,
+        itemDto.quantity,
+      );
+
+      subtotalItems = subtotalItems.plus(subtotal);
+
+      orderItems.push(
+        this.orderItemRepository.create({
+          gasCylinderId: itemDto.gasCylinderId,
+          quantity: itemDto.quantity,
+          unitPrice: unitPrice.toNumber(),
+          subtotal: subtotal.toNumber(),
+        }),
+      );
+
+      checkoutItems.push({
+        id: itemDto.gasCylinderId,
+        title: `Garrafa ${gasCylinder.type}`,
+        quantity: itemDto.quantity,
+        unitPrice: unitPrice.toNumber(),
+      });
+    }
+
+    return { orderItems, checkoutItems, subtotalItems };
+  }
+
+  /**
+   * Total del pedido a partir del subtotal de ítems (YA con promociones):
+   * recargo de zona (fijo, o porcentual sobre el subtotal) y DESPUÉS recargo
+   * por método de pago (+10% online), que se aplica sobre el total con el
+   * recargo de zona ya sumado.
+   */
+  calcularTotales(
+    subtotalItems: Decimal.Value,
+    coverageZone: ZonaParaRecargo | null,
+    paymentMethod: PaymentMethod,
+  ): { totalAmount: Decimal; zoneSurchargeAmount: Decimal } {
+    const zoneSurchargeAmount = this.coverageZonePricing.zoneSurcharge(
+      subtotalItems,
+      coverageZone,
+    );
+    const totalAmount = this.pricing.applyPaymentSurcharge(
+      zoneSurchargeAmount.plus(subtotalItems),
+      paymentMethod,
+    );
+    return { totalAmount, zoneSurchargeAmount };
   }
 
   private async sendConfirmation(

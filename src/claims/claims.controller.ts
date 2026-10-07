@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { ClaimsService } from './claims.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
+import { UpdateClaimDto } from './dto/update-claim.dto';
 import { ResolveClaimDto } from './dto/resolve-claim.dto';
 import { ReopenClaimDto } from './dto/reopen-claim.dto';
 import {
@@ -96,6 +97,45 @@ export class ClaimsController {
   ): Promise<ClaimResponseDto[]> {
     const claims = await this.claimsService.findAll(distributorId);
     return Promise.all(claims.map((c) => this.toDto(c)));
+  }
+
+  @Get(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Ficha del reclamo (con pedido y cliente)' })
+  @ApiParam({ name: 'id', description: 'Claim UUID' })
+  @ApiOkResponse({ type: ClaimResponseDto })
+  @ApiNotFoundResponse({
+    description: 'El reclamo no existe o es de otra distribuidora',
+  })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<ClaimResponseDto> {
+    return this.toDto(await this.claimsService.findDetail(id, distributorId));
+  }
+
+  @Patch(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Editar motivo y descripción de un reclamo pendiente',
+    description:
+      'Sólo mientras esté `pending` (nadie lo tomó). Eliminar un reclamo es ' +
+      'rechazarlo con motivo: `PATCH /claims/:id/resolve` con `status: rejected`. ' +
+      'Los reclamos nunca se borran.',
+  })
+  @ApiParam({ name: 'id', description: 'Claim UUID' })
+  @ApiOkResponse({ type: ClaimResponseDto })
+  @ApiBadRequestResponse({ description: 'Datos inválidos' })
+  @ApiNotFoundResponse({
+    description: 'El reclamo no existe o es de otra distribuidora',
+  })
+  @ApiConflictResponse({ description: 'El reclamo ya no está pendiente' })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdateClaimDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<ClaimResponseDto> {
+    return this.toDto(await this.claimsService.update(id, body, distributorId));
   }
 
   @Patch(':id/resolve')

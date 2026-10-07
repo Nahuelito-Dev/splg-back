@@ -1,16 +1,19 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, EntityManager, Repository } from 'typeorm';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
+import { UpdateCylinderDto } from './dto/update-cylinder.dto';
 import { assertTransition } from './domain/cylinder-state.machine';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { errorCode } from '../common/errors/error-message';
 
 /** Filtros del listado de envases. */
@@ -35,6 +38,7 @@ export class CylinderService {
     @InjectRepository(CylinderMovement)
     private readonly movementRepository: Repository<CylinderMovement>,
     private readonly orders: OrderLookupService,
+    private readonly gasCylinders: GasCylinderService,
   ) {}
 
   /**
@@ -46,6 +50,10 @@ export class CylinderService {
     dto: CreateCylinderDto,
     distributorId: string,
   ): Promise<Cylinder> {
+    // El producto tiene que existir y ser de la misma distribuidora (404).
+    if (dto.gasCylinderId) {
+      await this.gasCylinders.findOne(dto.gasCylinderId, distributorId);
+    }
     const cylinder = this.cylinderRepository.create({
       distributorId,
       serial: dto.serial,
@@ -189,7 +197,11 @@ export class CylinderService {
     distributorId: string,
     actorUserId?: string,
   ): Promise<Cylinder> {
-    const cylinder = await this.findOne(id, distributorId);
+    if (dto.toState === CylinderState.RETIRED) {
+      throw new BadRequestException(
+        'La baja del envase va por PATCH /cylinders/:id/retire, con motivo',
+      );
+    }
 
     let customerId: string | null = null;
     if (dto.orderId) {
@@ -201,12 +213,107 @@ export class CylinderService {
       }
     }
 
-    return this.recordTransition(cylinder, dto.toState, {
-      orderId: dto.orderId,
-      actorUserId,
-      note: dto.note,
-      customerId,
+    // Con el envase bloqueado: una transición y una baja simultáneas se
+    // serializan y la segunda valida contra el estado que dejó la primera.
+    await this.cylinderRepository.manager.transaction(async (manager) => {
+      const cylinder = await this.bloquear(manager, id, distributorId);
+      await this.recordTransition(
+        cylinder,
+        dto.toState,
+        {
+          orderId: dto.orderId,
+          actorUserId,
+          note: dto.note,
+          customerId,
+        },
+        manager,
+      );
     });
+    return this.findOne(id, distributorId);
+  }
+
+  /** Lee el envase de la distribuidora con lock pesimista (`FOR UPDATE`). */
+  private async bloquear(
+    manager: EntityManager,
+    id: string,
+    distributorId: string,
+  ): Promise<Cylinder> {
+    const cylinder = await manager
+      .createQueryBuilder(Cylinder, 'cylinder')
+      .setLock('pessimistic_write')
+      .where('cylinder.cylinderId = :id', { id })
+      .andWhere('cylinder.distributorId = :distributorId', { distributorId })
+      .getOne();
+    if (!cylinder) throw new NotFoundException('Envase no encontrado');
+    return cylinder;
+  }
+
+  /**
+   * Edita los datos maestros del envase (serial, producto, depósito, fechas).
+   * El estado no se toca. Un envase dado de baja ya no se edita.
+   */
+  async update(
+    id: string,
+    dto: UpdateCylinderDto,
+    distributorId: string,
+  ): Promise<Cylinder> {
+    if (dto.gasCylinderId) {
+      await this.gasCylinders.findOne(dto.gasCylinderId, distributorId);
+    }
+    try {
+      await this.cylinderRepository.manager.transaction(async (manager) => {
+        const cylinder = await this.bloquear(manager, id, distributorId);
+        if (cylinder.state === CylinderState.RETIRED) {
+          throw new ConflictException(
+            'El envase está dado de baja y no se edita',
+          );
+        }
+        Object.assign(cylinder, {
+          ...(dto.serial !== undefined && { serial: dto.serial }),
+          ...(dto.gasCylinderId !== undefined && {
+            gasCylinderId: dto.gasCylinderId,
+          }),
+          ...(dto.deposit !== undefined && { deposit: dto.deposit }),
+          ...(dto.manufacturedAt !== undefined && {
+            manufacturedAt: dto.manufacturedAt,
+          }),
+          ...(dto.lastInspectionAt !== undefined && {
+            lastInspectionAt: dto.lastInspectionAt,
+          }),
+          ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt }),
+        });
+        await manager.save(cylinder);
+      });
+    } catch (error) {
+      if (errorCode(error) === '23505') {
+        throw new ConflictException('El serial ya existe en tu distribuidora');
+      }
+      throw error;
+    }
+    return this.findOne(id, distributorId);
+  }
+
+  /**
+   * Da de baja el envase (estado terminal RETIRED). Sólo desde IN_DEPOT o
+   * EMPTY_RETURNED, lo valida la máquina de estados. El motivo queda en el
+   * movimiento. El registro no se borra.
+   */
+  async retire(
+    id: string,
+    reason: string,
+    distributorId: string,
+    actorUserId?: string,
+  ): Promise<Cylinder> {
+    await this.cylinderRepository.manager.transaction(async (manager) => {
+      const cylinder = await this.bloquear(manager, id, distributorId);
+      await this.recordTransition(
+        cylinder,
+        CylinderState.RETIRED,
+        { actorUserId, note: `Baja: ${reason}` },
+        manager,
+      );
+    });
+    return this.findOne(id, distributorId);
   }
 
   /**
@@ -295,7 +402,14 @@ export class CylinderService {
       note?: string | null;
       customerId?: string | null;
     },
+    manager?: EntityManager,
   ): Promise<Cylinder> {
+    const cylinders = manager
+      ? manager.getRepository(Cylinder)
+      : this.cylinderRepository;
+    const movements = manager
+      ? manager.getRepository(CylinderMovement)
+      : this.movementRepository;
     const fromState = cylinder.state;
     assertTransition(fromState, toState);
 
@@ -308,11 +422,13 @@ export class CylinderService {
       cylinder.currentCustomerId = null;
     }
 
-    cylinder.state = toState;
-    const saved = await this.cylinderRepository.save(cylinder);
+    if (toState === CylinderState.RETIRED) cylinder.currentOrderId = null;
 
-    await this.movementRepository.save(
-      this.movementRepository.create({
+    cylinder.state = toState;
+    const saved = await cylinders.save(cylinder);
+
+    await movements.save(
+      movements.create({
         cylinderId: saved.cylinderId,
         distributorId: saved.distributorId,
         fromState,

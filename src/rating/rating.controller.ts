@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   ParseUUIDPipe,
 } from '@nestjs/common';
@@ -14,12 +15,14 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { RatingService } from './rating.service';
 import { RatingMapper } from './rating.mapper';
 import { RatingResponseDto, RatingSummaryDto } from './dto/rating-response.dto';
+import { ModerateRatingDto } from './dto/moderate-rating.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -89,5 +92,79 @@ export class RatingController {
   ): Promise<RatingResponseDto[]> {
     const ratings = await this.ratingService.findForUser(userId, distributorId);
     return ratings.map((r) => RatingMapper.toDto(r));
+  }
+
+  @Get(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Ficha de una calificación (incluye las ocultas)' })
+  @ApiParam({ name: 'id', description: 'Rating UUID' })
+  @ApiOkResponse({ type: RatingResponseDto })
+  @ApiNotFoundResponse({
+    description: 'La calificación no existe o es de otra distribuidora',
+  })
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<RatingResponseDto> {
+    return RatingMapper.toDto(
+      await this.ratingService.findOne(id, distributorId),
+    );
+  }
+
+  @Patch(':id/hide')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Ocultar una calificación (moderación), con motivo',
+    description:
+      'No se borra: deja de contar en promedios y resúmenes y no se muestra a ' +
+      'clientes; el admin la sigue viendo marcada (`hidden: true`).',
+  })
+  @ApiParam({ name: 'id', description: 'Rating UUID' })
+  @ApiOkResponse({ type: RatingResponseDto })
+  @ApiBadRequestResponse({ description: 'Falta el motivo' })
+  @ApiNotFoundResponse({
+    description: 'La calificación no existe o es de otra distribuidora',
+  })
+  @ApiConflictResponse({ description: 'Ya está oculta' })
+  async hide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ModerateRatingDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<RatingResponseDto> {
+    return RatingMapper.toDto(
+      await this.ratingService.hide(
+        id,
+        dto.reason,
+        user.user_id,
+        distributorId,
+      ),
+    );
+  }
+
+  @Patch(':id/unhide')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Volver a mostrar una calificación oculta, con motivo',
+    description:
+      'Vuelve a contar en los promedios. El motivo queda en el registro de ' +
+      'auditoría (la calificación sólo conserva el de la última ocultación ' +
+      'vigente).',
+  })
+  @ApiParam({ name: 'id', description: 'Rating UUID' })
+  @ApiOkResponse({ type: RatingResponseDto })
+  @ApiBadRequestResponse({ description: 'Falta el motivo' })
+  @ApiNotFoundResponse({
+    description: 'La calificación no existe o es de otra distribuidora',
+  })
+  @ApiConflictResponse({ description: 'No está oculta' })
+  async unhide(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ModerateRatingDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<RatingResponseDto> {
+    return RatingMapper.toDto(
+      await this.ratingService.unhide(id, dto.reason, distributorId),
+    );
   }
 }

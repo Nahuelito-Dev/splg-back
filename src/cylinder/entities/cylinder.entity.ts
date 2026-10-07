@@ -26,6 +26,8 @@ export enum CylinderState {
   DISPATCHED = 'dispatched',
   WITH_CUSTOMER = 'with_customer',
   EMPTY_RETURNED = 'empty_returned',
+  /** Dado de baja: estado terminal, ya no vuelve a circular. */
+  RETIRED = 'retired',
 }
 
 /**

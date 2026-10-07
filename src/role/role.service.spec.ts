@@ -9,6 +9,13 @@ import { RoleType } from '../common/constants/role-type.enum';
  * se renombran o se borran, deja de funcionar el alta. Eso es lo que protege
  * el servicio, además de traducir a 409 el borrado de un rol en uso.
  */
+interface QbDeUsuarios {
+  innerJoin: jest.Mock;
+  withDeleted: jest.Mock;
+  where: jest.Mock;
+  getCount: jest.Mock;
+}
+
 describe('RoleService', () => {
   let service: RoleService;
   let repo: {
@@ -17,8 +24,10 @@ describe('RoleService', () => {
     find: jest.Mock;
     findOne: jest.Mock;
     preload: jest.Mock;
-    remove: jest.Mock;
+    softRemove: jest.Mock;
+    createQueryBuilder: jest.Mock;
   };
+  let usuariosDelRol: number;
 
   const rol = (type: string, role_id = 'rol-1'): Role =>
     ({ roleId: role_id, type, createdAt: null, updatedAt: null }) as Role;
@@ -30,8 +39,18 @@ describe('RoleService', () => {
       find: jest.fn(),
       findOne: jest.fn(),
       preload: jest.fn(),
-      remove: jest.fn(),
+      softRemove: jest.fn(),
+      createQueryBuilder: jest.fn(() => {
+        const qb: QbDeUsuarios = {
+          innerJoin: jest.fn((): QbDeUsuarios => qb),
+          withDeleted: jest.fn((): QbDeUsuarios => qb),
+          where: jest.fn((): QbDeUsuarios => qb),
+          getCount: jest.fn(() => Promise.resolve(usuariosDelRol)),
+        };
+        return qb;
+      }),
     };
+    usuariosDelRol = 0;
     service = new RoleService(repo as unknown as Repository<Role>);
   });
 
@@ -62,23 +81,34 @@ describe('RoleService', () => {
     await expect(service.remove('rol-1')).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(repo.remove).not.toHaveBeenCalled();
+    expect(repo.softRemove).not.toHaveBeenCalled();
   });
 
-  it('borrar un rol con usuarios es un 409 y no un 500', async () => {
+  it('borrar un rol con usuarios es un 409 y no se da de baja', async () => {
     repo.findOne.mockResolvedValue(rol('qa_pruebas'));
-    repo.remove.mockRejectedValue({ code: '23503', detail: 'en uso' });
+    usuariosDelRol = 2;
+    await expect(service.remove('rol-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.softRemove).not.toHaveBeenCalled();
+  });
+
+  it('un error de clave foránea al dar de baja también es 409', async () => {
+    repo.findOne.mockResolvedValue(rol('qa_pruebas'));
+    repo.softRemove.mockRejectedValue({ code: '23503', detail: 'en uso' });
     await expect(service.remove('rol-1')).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
 
-  it('borra un rol propio sin usuarios', async () => {
-    repo.findOne.mockResolvedValue(rol('qa_pruebas'));
-    repo.remove.mockResolvedValue(undefined);
+  it('la baja de un rol propio sin usuarios es lógica (softRemove)', async () => {
+    const propio = rol('qa_pruebas');
+    repo.findOne.mockResolvedValue(propio);
+    repo.softRemove.mockResolvedValue(undefined);
     await expect(service.remove('rol-1')).resolves.toEqual({
       message: 'Role deleted successfully',
     });
+    expect(repo.softRemove).toHaveBeenCalledWith(propio);
   });
 
   it('la siembra crea sólo los roles que faltan', async () => {

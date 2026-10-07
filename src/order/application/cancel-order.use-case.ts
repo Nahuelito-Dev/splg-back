@@ -7,6 +7,7 @@ import {
 import { DataSource } from 'typeorm';
 
 import { Order, OrderStatus } from '../entities/order.entity';
+import { OrderItem } from '../entities/order-item.entity';
 import { transitionOrder } from '../domain/order-status.machine';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -85,13 +86,20 @@ export class CancelOrderUseCase {
         .createQueryBuilder(Order, 'ord')
         .setLock('pessimistic_write', undefined, ['ord'])
         .leftJoinAndSelect('ord.delivery', 'delivery')
-        .leftJoinAndSelect('ord.items', 'items')
         .where('ord.orderId = :id', { id: orderId })
         .getOne();
 
       if (!locked) {
         throw new NotFoundException(`Order with ID: ${orderId} not found`);
       }
+
+      // Los renglones se leen DESPUÉS del lock y en una consulta aparte: en
+      // READ COMMITTED, un SELECT que esperó el lock re-lee la fila del pedido
+      // pero no los renglones que otra transacción cambió en el medio (una
+      // edición), y se devolvería stock de renglones viejos.
+      locked.items = await queryRunner.manager.find(OrderItem, {
+        where: { orderId },
+      });
 
       // Antes que el estado: quién pide tiene que poder tocar este pedido. El
       // cliente, sólo los suyos (lo ajeno = 404); el chofer, sólo el que tiene

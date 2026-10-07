@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,6 +19,8 @@ import { RatingSummaryDto } from './dto/rating-response.dto';
 
 @Injectable()
 export class RatingService {
+  private readonly logger = new Logger(RatingService.name);
+
   constructor(
     @InjectRepository(Rating)
     private readonly ratingRepository: Repository<Rating>,
@@ -123,7 +126,8 @@ export class RatingService {
       .createQueryBuilder('r')
       .select('COALESCE(AVG(r.stars), 0)', 'average')
       .addSelect('COUNT(r.ratingId)', 'count')
-      .where('r.toUserId = :toUserId', { toUserId });
+      .where('r.toUserId = :toUserId', { toUserId })
+      .andWhere('r.hidden = false');
 
     if (distributorId) {
       qb.andWhere('r.distributorId = :distributorId', { distributorId });
@@ -134,6 +138,68 @@ export class RatingService {
       raw ? Math.round(Number(raw.average) * 100) / 100 : 0,
       raw ? Number(raw.count) : 0,
     );
+  }
+
+  /** Ficha de una calificación (oculta o no), acotada por tenant. */
+  async findOne(id: string, distributorId?: string | null): Promise<Rating> {
+    const rating = await this.ratingRepository.findOne({
+      where: {
+        ratingId: id,
+        ...(distributorId ? { distributorId } : {}),
+      },
+      withDeleted: true,
+      relations: ['fromUser'],
+    });
+    if (!rating) throw new NotFoundException('Calificación no encontrada');
+    return rating;
+  }
+
+  /**
+   * Oculta una calificación con motivo (moderación en vez de borrar). Deja de
+   * contar en promedios; si era del cliente al chofer, se recalcula el
+   * promedio de su perfil.
+   */
+  async hide(
+    id: string,
+    reason: string,
+    actorUserId: string,
+    distributorId: string,
+  ): Promise<Rating> {
+    const rating = await this.findOne(id, distributorId);
+    if (rating.hidden) {
+      throw new ConflictException('La calificación ya está oculta');
+    }
+    rating.hidden = true;
+    rating.hiddenReason = reason;
+    rating.hiddenAt = new Date();
+    rating.hiddenByUserId = actorUserId;
+    return this.guardarModerada(rating);
+  }
+
+  /** Vuelve a mostrar una calificación oculta; vuelve a contar en los promedios. */
+  async unhide(
+    id: string,
+    reason: string,
+    distributorId: string,
+  ): Promise<Rating> {
+    const rating = await this.findOne(id, distributorId);
+    if (!rating.hidden) {
+      throw new ConflictException('La calificación no está oculta');
+    }
+    this.logger.log(`Calificación ${id} vuelve a mostrarse: ${reason}`);
+    rating.hidden = false;
+    rating.hiddenReason = null;
+    rating.hiddenAt = null;
+    rating.hiddenByUserId = null;
+    return this.guardarModerada(rating);
+  }
+
+  private async guardarModerada(rating: Rating): Promise<Rating> {
+    await this.ratingRepository.save(rating);
+    if (rating.fromRole === RaterRole.CUSTOMER) {
+      await this.refreshDeliveryAverage(rating.toUserId);
+    }
+    return this.findOne(rating.ratingId, rating.distributorId);
   }
 
   /** Calificaciones recibidas por un usuario (historial), scopeado por tenant. */
