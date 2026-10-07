@@ -52,6 +52,8 @@ export class CylinderResponseDto {
   manufactured_at!: Date | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   last_inspection_at!: Date | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  expires_at!: Date | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: String, format: 'date-time' }) updatedAt!: Date;
   @ApiProperty({

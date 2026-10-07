@@ -35,7 +35,7 @@ describe('FleetAttachmentService', () => {
     save: jest.Mock;
     find: jest.Mock;
     findOne: jest.Mock;
-    remove: jest.Mock;
+    softRemove: jest.Mock;
     manager: { transaction: jest.Mock };
   };
   let taskService: { findOne: jest.Mock };
@@ -57,10 +57,10 @@ describe('FleetAttachmentService', () => {
       save: jest.fn((a: MaintenanceTaskAttachment) => Promise.resolve(a)),
       find: jest.fn(),
       findOne: jest.fn(),
-      remove: jest.fn(),
+      softRemove: jest.fn(),
       manager: {
         transaction: jest.fn((fn: (m: unknown) => unknown) =>
-          fn({ save: attachments.save, remove: attachments.remove }),
+          fn({ save: attachments.save }),
         ),
       },
     };
@@ -188,14 +188,15 @@ describe('FleetAttachmentService', () => {
   });
 
   describe('remove', () => {
-    it('borra el registro y el archivo del storage', async () => {
+    it('la baja es lógica: marca el registro y NO toca el archivo del storage', async () => {
       attachments.findOne.mockResolvedValue({
         attachmentId: 'a1',
         storageKey: 'k1',
       });
       await service.remove('t1', 'a1', 'd1');
-      expect(attachments.remove).toHaveBeenCalled();
-      expect(cleanup.removeInBackground).toHaveBeenCalledWith('k1');
+      expect(attachments.softRemove).toHaveBeenCalled();
+      expect(cleanup.removeInBackground).not.toHaveBeenCalled();
+      expect(cleanup.scheduleRemoval).not.toHaveBeenCalled();
       expect(storage.remove).not.toHaveBeenCalled();
     });
   });

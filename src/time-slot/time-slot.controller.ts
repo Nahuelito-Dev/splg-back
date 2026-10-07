@@ -5,6 +5,7 @@ import {
   Body,
   Param,
   Delete,
+  Patch,
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import { ListarFranjasQueryDto } from './dto/listar-franjas-query.dto';
 import { TimeSlotService } from './time-slot.service';
 import { AvailabilityQueryDto } from './dto/availability-query.dto';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
+import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -103,6 +105,28 @@ export class TimeSlotController {
   ): Promise<TimeSlotResponseDto> {
     return TimeSlotMapper.toDto(
       await this.timeSlotService.findOne(id, distributorId),
+    );
+  }
+
+  @Patch(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Editar una franja (parcial); isActive:true la reactiva',
+  })
+  @ApiOkResponse({ type: TimeSlotResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos o rango con inicio >= fin',
+  })
+  @ApiNotFoundResponse({
+    description: 'La franja no existe o es de otra distribuidora',
+  })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTimeSlotDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<TimeSlotResponseDto> {
+    return TimeSlotMapper.toDto(
+      await this.timeSlotService.update(id, dto, distributorId),
     );
   }
 

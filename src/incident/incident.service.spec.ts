@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { IncidentService } from './incident.service';
 import {
@@ -215,6 +219,87 @@ describe('IncidentService', () => {
           'distribuidora-a',
         ),
       ).resolves.toMatchObject({ status: IncidentStatus.RESOLVED });
+    });
+  });
+
+  describe('ficha, edición y descarte', () => {
+    const abierta = (over: Partial<Incident> = {}) =>
+      ({
+        incidentId: 'i1',
+        status: IncidentStatus.OPEN,
+        description: 'a',
+        ...over,
+      }) as Incident;
+
+    it('la ficha de otra distribuidora es 404', async () => {
+      incidents.findOne.mockResolvedValue(null);
+      await expect(service.findDetail('i1', 'otra')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(incidents.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { incidentId: 'i1', distributorId: 'otra' },
+        }),
+      );
+    });
+
+    it('edita la descripción de una incidencia abierta', async () => {
+      incidents.findOne.mockResolvedValue(abierta());
+      await service.update('i1', { description: 'nueva' }, 'd1');
+      expect(incidents.save).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'nueva' }),
+      );
+    });
+
+    it.each([IncidentStatus.RESOLVED, IncidentStatus.DISCARDED])(
+      'una incidencia %s no se edita (409)',
+      async (status) => {
+        incidents.findOne.mockResolvedValue(abierta({ status }));
+        await expect(
+          service.update('i1', { description: 'x' }, 'd1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(incidents.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('descartar una abierta guarda el motivo y la fecha', async () => {
+      incidents.findOne.mockResolvedValue(abierta());
+      const r = await service.resolve(
+        'i1',
+        { resolutionNote: 'duplicada', status: IncidentStatus.DISCARDED },
+        'd1',
+      );
+      expect(r).toMatchObject({
+        status: IncidentStatus.DISCARDED,
+        resolutionNote: 'duplicada',
+      });
+      expect(r.resolvedAt).toBeInstanceOf(Date);
+    });
+
+    it('no se descarta una resuelta ni se toca una descartada (409)', async () => {
+      incidents.findOne.mockResolvedValue(
+        abierta({ status: IncidentStatus.RESOLVED }),
+      );
+      await expect(
+        service.resolve(
+          'i1',
+          { resolutionNote: 'x', status: IncidentStatus.DISCARDED },
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      incidents.findOne.mockResolvedValue(
+        abierta({ status: IncidentStatus.DISCARDED }),
+      );
+      await expect(
+        service.resolve('i1', { resolutionNote: 'x' }, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('sin status resuelve, como siempre', async () => {
+      incidents.findOne.mockResolvedValue(abierta());
+      const r = await service.resolve('i1', { resolutionNote: 'ok' }, 'd1');
+      expect(r.status).toBe(IncidentStatus.RESOLVED);
     });
   });
 });

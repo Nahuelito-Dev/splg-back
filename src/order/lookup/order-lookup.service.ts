@@ -82,6 +82,28 @@ export class OrderLookupService {
       : this.orderRepository.count({ where });
   }
 
+  /**
+   * Mayor cantidad de pedidos no cancelados que tiene la franja en un mismo día
+   * desde `desdeFecha` (inclusive): lo que la capacidad nunca puede bajar de.
+   */
+  async maxBookedFrom(
+    timeSlotId: string,
+    desdeFecha: string,
+    manager: EntityManager,
+  ): Promise<number> {
+    const fila = await manager
+      .createQueryBuilder(Order, 'o')
+      .select('COUNT(*)', 'n')
+      .where('o.timeSlotId = :timeSlotId', { timeSlotId })
+      .andWhere('o.status != :cancelled', { cancelled: OrderStatus.CANCELLED })
+      .andWhere('o.scheduledDate >= :desdeFecha', { desdeFecha })
+      .groupBy('o.scheduledDate')
+      .orderBy('n', 'DESC')
+      .limit(1)
+      .getRawOne<{ n: string }>();
+    return fila ? Number(fila.n) : 0;
+  }
+
   /** Pedidos que el chofer tiene tomados y todavía no entregó. */
   countActiveByDelivery(
     deliveryId: string,

@@ -35,7 +35,11 @@ export class RoleService {
 
   async create(createRoleDto: CreateRoleDto): Promise<Role> {
     const role = this.roleRepository.create(createRoleDto);
-    return await this.roleRepository.save(role);
+    try {
+      return await this.roleRepository.save(role);
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'roles');
+    }
   }
 
   async findAll(): Promise<Role[]> {
@@ -74,12 +78,24 @@ export class RoleService {
     const role = await this.findOne(id);
     this.assertNoEsDelSistema(role.type, 'borrar');
 
+    // Baja lógica: la clave foránea ya no frena el borrado de un rol con
+    // usuarios, así que se chequea a mano (incluye usuarios dados de baja,
+    // que volverían a quedar apuntando a un rol borrado si se restauran).
+    const usuarios = await this.roleRepository
+      .createQueryBuilder('r')
+      .innerJoin('r.users', 'u')
+      .withDeleted()
+      .where('r.roleId = :id', { id })
+      .getCount();
+    if (usuarios > 0) {
+      throw new ConflictException(
+        `El rol '${role.type}' todavía tiene ${usuarios} usuario(s): reasignalos antes de borrarlo`,
+      );
+    }
+
     try {
-      await this.roleRepository.remove(role);
+      await this.roleRepository.softRemove(role);
     } catch (error) {
-      // Borrar un rol que todavia tiene usuarios violaba la clave foranea y
-      // salia un 500 sin explicacion. Ahora es un 409 que dice cual es el
-      // problema.
       traducirErrorDeBase(error, this.logger, 'roles');
     }
     return MessageResponseDto.of('Role deleted successfully');

@@ -12,6 +12,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository, FindOptionsWhere } from 'typeorm';
 import { Claim, ClaimStatus } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
+import { UpdateClaimDto } from './dto/update-claim.dto';
 import { OrderService } from '../order/order.service';
 import { assertClaimTransition } from './claim-status.machine';
 import { S3Service, SignedDownload } from '../s3/s3.service';
@@ -121,6 +122,42 @@ export class ClaimsService {
     if (!claim) throw new NotFoundException('Reclamo no encontrado');
 
     return claim;
+  }
+
+  /** Ficha del reclamo: con su pedido y su cliente (aunque estén dados de baja). */
+  async findDetail(id: string, distributorId?: string | null): Promise<Claim> {
+    const where: FindOptionsWhere<Claim> = { claimId: id };
+    if (distributorId) where.distributorId = distributorId;
+
+    const claim = await this.claimRepo.findOne({
+      where,
+      withDeleted: true,
+      relations: ['order', 'customer'],
+    });
+    if (!claim) throw new NotFoundException('Reclamo no encontrado');
+    return claim;
+  }
+
+  /**
+   * Edita motivo y descripción mientras el reclamo está pendiente (nadie lo
+   * tomó). Con lock, el estado se re-chequea adentro: si lo toman en el
+   * medio, 409 y no se pisa nada.
+   */
+  async update(
+    id: string,
+    dto: UpdateClaimDto,
+    distributorId?: string | null,
+  ): Promise<Claim> {
+    await this.modificar(id, distributorId, (claim) => {
+      if (claim.status !== ClaimStatus.PENDING) {
+        throw new ConflictException(
+          'Sólo se edita un reclamo pendiente (sin tomar)',
+        );
+      }
+      if (dto.reason !== undefined) claim.reason = dto.reason;
+      if (dto.description !== undefined) claim.description = dto.description;
+    });
+    return this.findDetail(id, distributorId);
   }
 
   /**

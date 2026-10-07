@@ -224,7 +224,7 @@ describe('S3 contra MinIO (e2e)', () => {
   }
 
   describe('adjunto genérico', () => {
-    it('subir -> modo=url -> descargar con la URL firmada -> 302 -> borrar saca el objeto del bucket', async () => {
+    it('subir -> modo=url -> descargar con la URL firmada -> 302 -> borrar es lógico y deja el objeto en el bucket', async () => {
       const d1 = await seedDistribuidora();
       const admin = await seedAdmin(d1.distributorId);
       const dueno = await crearDueno(d1.distributorId);
@@ -279,10 +279,12 @@ describe('S3 contra MinIO (e2e)', () => {
         .delete(`/attachments/${id}`)
         .set(admin.headers)
         .expect(204);
-      expect(await esperar(async () => !(await existe(fila.storageKey)))).toBe(
-        true,
-      );
-      expect((await fetch(link.url)).status).toBe(404);
+      // Baja lógica: ya no se baja por la API, pero el objeto queda de respaldo.
+      await request(env.app.getHttpServer())
+        .get(`/attachments/${id}/download?modo=url`)
+        .set(admin.headers)
+        .expect(404);
+      expect(await existe(fila.storageKey)).toBe(true);
     });
 
     it('otra distribuidora no obtiene la URL firmada (404)', async () => {

@@ -724,6 +724,11 @@ describe('Personal: puestos y legajos (e2e)', () => {
       const delivery = await dataSource
         .getRepository(Delivery)
         .findOneByOrFail({ userId });
+      // El alta toma "hoy" como ingreso: se fija una fecha anterior para que los
+      // egresos con fecha fija del test no dependan del día en que corre.
+      await dataSource
+        .getRepository(Employee)
+        .update({ userId }, { hireDate: '2026-01-01' });
       const empleado = await dataSource
         .getRepository(Employee)
         .findOneByOrFail({ userId });
@@ -1485,6 +1490,9 @@ describe('Personal: puestos y legajos (e2e)', () => {
       const { admin1 } = await escenario();
       for (let i = 0; i < 4; i++) {
         const userId = idDe(await altaDeChofer(admin1.headers).expect(201));
+        await dataSource
+          .getRepository(Employee)
+          .update({ userId }, { hireDate: '2026-01-01' });
         const legajo = await dataSource
           .getRepository(Employee)
           .findOneByOrFail({ userId });

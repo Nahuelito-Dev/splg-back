@@ -23,6 +23,11 @@ describe('RatingService', () => {
     create: jest.Mock;
     save: jest.Mock;
     createQueryBuilder: jest.Mock;
+    findOne: jest.Mock;
+  };
+  let qbDelResumen: {
+    where: jest.Mock;
+    andWhere: jest.Mock;
   };
   let orders: { findById: jest.Mock };
   let deliveries: {
@@ -59,7 +64,9 @@ describe('RatingService', () => {
       create: jest.fn((d: Partial<Rating>) => d),
       save: jest.fn((r: Rating) => Promise.resolve(r)),
       createQueryBuilder: jest.fn((): QbFalso => qb),
+      findOne: jest.fn(),
     };
+    qbDelResumen = qb;
     orders = { findById: jest.fn().mockResolvedValue(entregado) };
     deliveries = {
       findById: jest.fn().mockResolvedValue({ userId: 'chofer' }),
@@ -122,5 +129,73 @@ describe('RatingService', () => {
     await expect(
       service.create(dto, 'cliente', RoleType.CUSTOMER),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe('moderación', () => {
+    const calificacion = (over: Partial<Rating> = {}) =>
+      ({
+        ratingId: 'r1',
+        distributorId: 'd1',
+        toUserId: 'chofer',
+        fromRole: RaterRole.CUSTOMER,
+        hidden: false,
+        hiddenReason: null,
+        ...over,
+      }) as Rating;
+
+    it('el resumen no cuenta las ocultas', async () => {
+      await service.getSummaryForUser('chofer');
+      expect(qbDelResumen.andWhere).toHaveBeenCalledWith('r.hidden = false');
+    });
+
+    it('ocultar guarda motivo, fecha y quién, y recalcula el promedio del chofer', async () => {
+      ratings.findOne.mockResolvedValue(calificacion());
+      await service.hide('r1', 'ofensivo', 'admin-1', 'd1');
+      expect(ratings.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hidden: true,
+          hiddenReason: 'ofensivo',
+          hiddenByUserId: 'admin-1',
+          hiddenAt: expect.any(Date) as Date,
+        }),
+      );
+      expect(deliveries.updateCalificationByUserId).toHaveBeenCalledWith(
+        'chofer',
+        4.5,
+      );
+    });
+
+    it('ocultar una oculta es 409; mostrar una visible es 409', async () => {
+      ratings.findOne.mockResolvedValue(calificacion({ hidden: true }));
+      await expect(
+        service.hide('r1', 'x', 'admin-1', 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      ratings.findOne.mockResolvedValue(calificacion());
+      await expect(service.unhide('r1', 'x', 'd1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('mostrar limpia la moderación y vuelve a contar', async () => {
+      ratings.findOne.mockResolvedValue(
+        calificacion({ hidden: true, hiddenReason: 'ofensivo' }),
+      );
+      await service.unhide('r1', 'error mío', 'd1');
+      expect(ratings.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hidden: false,
+          hiddenReason: null,
+          hiddenAt: null,
+          hiddenByUserId: null,
+        }),
+      );
+    });
+
+    it('la ficha de otra distribuidora es 404', async () => {
+      ratings.findOne.mockResolvedValue(null);
+      await expect(service.findOne('r1', 'otra')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
   });
 });

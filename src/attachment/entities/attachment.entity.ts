@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  DeleteDateColumn,
   Index,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -81,4 +82,11 @@ export class Attachment {
 
   @CreateDateColumn({ name: 'uploaded_at', type: 'timestamptz' })
   uploadedAt!: Date;
+
+  /**
+   * Baja lógica: el registro queda para histórico y el archivo NO se borra del
+   * storage (queda de respaldo). Los listados y descargas no lo muestran.
+   */
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt!: Date | null;
 }

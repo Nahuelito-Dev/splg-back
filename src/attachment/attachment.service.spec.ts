@@ -41,7 +41,7 @@ describe('AttachmentService', () => {
     save: jest.Mock;
     find: jest.Mock;
     findOne: jest.Mock;
-    remove: jest.Mock;
+    softRemove: jest.Mock;
     manager: { transaction: jest.Mock };
   };
   let cleanup: {
@@ -71,10 +71,10 @@ describe('AttachmentService', () => {
       save: jest.fn((a: Attachment) => Promise.resolve(a)),
       find: jest.fn(),
       findOne: jest.fn(),
-      remove: jest.fn(),
+      softRemove: jest.fn(),
       manager: {
         transaction: jest.fn((fn: (m: unknown) => unknown) =>
-          fn({ save: attachments.save, remove: attachments.remove }),
+          fn({ save: attachments.save }),
         ),
       },
     };
@@ -295,7 +295,7 @@ describe('AttachmentService', () => {
       await expect(service.remove('a1', 'd1', CHOFER)).rejects.toBeInstanceOf(
         NotFoundException,
       );
-      expect(attachments.remove).not.toHaveBeenCalled();
+      expect(attachments.softRemove).not.toHaveBeenCalled();
     });
   });
 
@@ -354,7 +354,7 @@ describe('AttachmentService', () => {
         'https://s3/firmada',
       );
       await service.remove('a1', 'd1', ADMIN);
-      expect(attachments.remove).toHaveBeenCalled();
+      expect(attachments.softRemove).toHaveBeenCalled();
       expect(resolverEmpleado.assertOwner).not.toHaveBeenCalled();
     });
 
@@ -373,14 +373,16 @@ describe('AttachmentService', () => {
     it('el borrado del archivo no espera ni puede romper la respuesta', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
       await expect(service.remove('a1', 'd1', ADMIN)).resolves.toBeUndefined();
-      expect(attachments.remove).toHaveBeenCalledWith(adjunto);
+      expect(attachments.softRemove).toHaveBeenCalledWith(adjunto);
     });
 
-    it('borra el registro y el archivo', async () => {
+    it('la baja es lógica: marca el registro y NO toca el archivo del storage', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
       await service.remove('a1', 'd1', ADMIN);
-      expect(attachments.remove).toHaveBeenCalledWith(adjunto);
-      expect(cleanup.removeInBackground).toHaveBeenCalledWith('k');
+      expect(attachments.softRemove).toHaveBeenCalledWith(adjunto);
+      expect(cleanup.removeInBackground).not.toHaveBeenCalled();
+      expect(cleanup.scheduleRemoval).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
     });
   });
 
@@ -422,34 +424,17 @@ describe('AttachmentService', () => {
       expect(cleanup.removeInBackground).toHaveBeenCalledTimes(1);
     });
 
-    it('al borrar: anota el borrado en la MISMA transacción que quita el registro, y recién después lo intenta', async () => {
+    it('si la baja lógica falla, el error se propaga y no se toca el storage', async () => {
       attachments.findOne.mockResolvedValue({
         attachmentId: 'a1',
         ownerType: AttachmentOwnerType.EMPLOYEE,
         ownerId: 'e1',
         storageKey: 'k',
       });
-      await service.remove('a1', 'd1', ADMIN);
-      expect(attachments.manager.transaction).toHaveBeenCalledTimes(1);
-      expect(cleanup.scheduleRemoval).toHaveBeenCalledWith(
-        expect.anything(),
-        'k',
-      );
-      expect(cleanup.scheduleRemoval.mock.invocationCallOrder[0]).toBeLessThan(
-        cleanup.removeInBackground.mock.invocationCallOrder[0],
-      );
-    });
-
-    it('si la transacción del borrado falla, no se intenta borrar el objeto', async () => {
-      attachments.findOne.mockResolvedValue({
-        attachmentId: 'a1',
-        ownerType: AttachmentOwnerType.EMPLOYEE,
-        ownerId: 'e1',
-        storageKey: 'k',
-      });
-      attachments.remove.mockRejectedValue(new Error('base caída'));
+      attachments.softRemove.mockRejectedValue(new Error('base caída'));
       await expect(service.remove('a1', 'd1', ADMIN)).rejects.toThrow();
       expect(cleanup.removeInBackground).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
     });
   });
 });

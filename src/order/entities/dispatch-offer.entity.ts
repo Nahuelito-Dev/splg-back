@@ -17,12 +17,15 @@ import { User } from '../../users/entities/user.entity';
  *  - ACCEPTED : el chofer la tomó (el pedido pasa a ACCEPTED).
  *  - REJECTED : el chofer la rechazó → se ofrece al siguiente.
  *  - EXPIRED  : venció sin respuesta → se ofrece al siguiente.
+ *  - SUPERSEDED: se retiró porque el pedido se editó; no cuenta como intento
+ *    del chofer (ni vencida ni bloqueo): puede recibir la oferta nueva.
  */
 export enum DispatchOfferStatus {
   OFFERED = 'offered',
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
   EXPIRED = 'expired',
+  SUPERSEDED = 'superseded',
 }
 
 /**

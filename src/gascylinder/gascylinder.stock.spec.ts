@@ -106,4 +106,15 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       expect(save).not.toHaveBeenCalled();
     });
   });
+
+  describe('bloquearEnOrden', () => {
+    it('bloquea la unión sin repetidos, por id ascendente', async () => {
+      await service.bloquearEnOrden(manager, ['c', 'a', 'b', 'a']);
+      const ids = (qb.where.mock.calls as unknown[][]).map(
+        (c) => (c[1] as { id: string }).id,
+      );
+      expect(ids).toEqual(['a', 'b', 'c']);
+      expect(qb.setLock).toHaveBeenCalledTimes(3);
+    });
+  });
 });

@@ -1,4 +1,7 @@
-import { PartialType } from '@nestjs/swagger';
+import { PartialType, PickType } from '@nestjs/swagger';
 import { CreateClaimDto } from './create-claim.dto';
 
-export class UpdateClaimDto extends PartialType(CreateClaimDto) {}
+/** Lo único editable de un reclamo pendiente: motivo y descripción. */
+export class UpdateClaimDto extends PartialType(
+  PickType(CreateClaimDto, ['reason', 'description'] as const),
+) {}

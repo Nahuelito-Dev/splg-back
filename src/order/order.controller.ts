@@ -22,12 +22,15 @@ import {
   ApiBadRequestResponse,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
+import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { ReservationService } from './application/reservation.service';
 import { mapRoleToCancelActor } from './application/cancel-order.use-case';
 import { OrderMapper } from './order.mapper';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
@@ -64,6 +67,7 @@ export class OrderController {
   constructor(
     private readonly orderService: OrderService,
     private readonly reservationService: ReservationService,
+    private readonly updateOrderUseCase: UpdateOrderUseCase,
   ) {}
 
   @Post()
@@ -474,6 +478,40 @@ export class OrderController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<OrderStatsResponseDto> {
     return await this.orderService.getOrderStats(distributorId);
+  }
+
+  @Patch(':id')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Editar un pedido pendiente (sin chofer asignado)',
+    description:
+      'Dirección, franja/fecha, medio de pago, notas y renglones. Si vienen ' +
+      '`items` reemplazan a los actuales: se devuelve el stock viejo y se ' +
+      'reserva el nuevo con los precios y recargos vigentes (mismas reglas ' +
+      'que el alta). Fuera de `pending`, o con pago online, responde 409. ' +
+      'Para eliminar un pedido: `PATCH /orders/:id/cancel`.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos, sin stock, o dirección fuera de cobertura',
+  })
+  @ApiConflictResponse({
+    description: 'El pedido no está pendiente, tiene chofer o pago online',
+  })
+  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
+  async update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateOrderDto,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    const order = await withTransactionRetry(
+      () =>
+        this.updateOrderUseCase.execute(id, dto, user.user_id, distributorId),
+      { context: 'OrderService.update' },
+    );
+    return OrderMapper.toDto(order);
   }
 
   @Delete(':id')

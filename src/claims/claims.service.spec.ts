@@ -171,6 +171,51 @@ describe('ClaimsService', () => {
     expect(claims.save).not.toHaveBeenCalled();
   });
 
+  describe('ficha y edición', () => {
+    it('la ficha trae pedido y cliente y acota por distribuidora', async () => {
+      claims.findOne.mockResolvedValue({ claimId: 'c1' });
+      await service.findDetail('c1', 'd1');
+      expect(claims.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { claimId: 'c1', distributorId: 'd1' },
+          relations: ['order', 'customer'],
+        }),
+      );
+    });
+
+    it('la ficha de un reclamo de otra distribuidora es 404', async () => {
+      claims.findOne.mockResolvedValue(null);
+      await expect(service.findDetail('c1', 'otra')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('edita motivo y descripción de un reclamo pendiente', async () => {
+      claims.findOne.mockResolvedValue({
+        claimId: 'c1',
+        status: ClaimStatus.PENDING,
+        reason: 'a',
+        description: 'b',
+      });
+      await service.update('c1', { description: 'nueva' }, 'd1');
+      expect(claims.save).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'a', description: 'nueva' }),
+      );
+    });
+
+    it.each([
+      ClaimStatus.IN_PROCESS,
+      ClaimStatus.RESOLVED,
+      ClaimStatus.REJECTED,
+    ])('un reclamo %s no se edita (409)', async (status) => {
+      claims.findOne.mockResolvedValue({ claimId: 'c1', status });
+      await expect(
+        service.update('c1', { reason: 'x' }, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(claims.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('máquina de estados', () => {
     it('resolve rechaza un salto inválido (resolved → rejected sin reabrir)', async () => {
       claims.findOne.mockResolvedValue({

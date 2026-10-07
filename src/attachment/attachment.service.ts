@@ -191,12 +191,8 @@ export class AttachmentService {
     ) {
       throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
     }
-    await this.attachments.manager.transaction(async (manager) => {
-      await manager.remove(attachment);
-      await this.cleanup.scheduleRemoval(manager, attachment.storageKey);
-    });
-    // Sin esperar: si el proveedor falla, se reintenta y queda registrado.
-    this.cleanup.removeInBackground(attachment.storageKey);
+    // Baja lógica: el archivo queda en el storage como respaldo.
+    await this.attachments.softRemove(attachment);
   }
 
   private async findOneOrThrow(

@@ -113,6 +113,25 @@ export class AdminService {
     return admin;
   }
 
+  /**
+   * Ficha del administrador (con usuario, rol y distribuidora). Con
+   * distribuidora en contexto sólo encuentra a los de ella: los de otra y los
+   * super admin responden 404.
+   */
+  async findDetail(
+    id: string,
+    distributorId: string | null = null,
+  ): Promise<Admin> {
+    const admin = await this.adminRepository.findOne({
+      where: { adminId: id, ...(distributorId ? { distributorId } : {}) },
+      relations: ['user', 'user.role', 'distributor'],
+    });
+    if (!admin) {
+      throw new NotFoundException(`Admin with ID: ${id} not found`);
+    }
+    return admin;
+  }
+
   async findOneByEmail(email: string): Promise<Admin> {
     const admin = await this.adminRepository
       .createQueryBuilder('admin')

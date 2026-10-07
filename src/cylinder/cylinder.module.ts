@@ -4,6 +4,7 @@ import { CylinderService } from './cylinder.service';
 import { CylinderController } from './cylinder.controller';
 import { Cylinder } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
+import { GasCylinderModule } from '../gascylinder/gascylinder.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { CylinderInspection } from './entities/cylinder-inspection.entity';
 import { CylinderRecoveryCase } from './entities/cylinder-recovery-case.entity';
@@ -21,6 +22,7 @@ import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.enti
       CylinderRecoveryNotice,
     ]),
     OrderLookupModule,
+    GasCylinderModule, // el producto del envase tiene que existir y ser del tenant
   ],
   controllers: [CylinderController],
   providers: [CylinderService],

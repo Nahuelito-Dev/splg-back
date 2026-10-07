@@ -6,7 +6,7 @@
  * resolvers de ejemplo.
  */
 import { randomUUID } from 'crypto';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { NotFoundException } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
@@ -234,7 +234,28 @@ describe('Adjuntos genéricos (e2e)', () => {
       .get(`/attachments/${id}/download`)
       .set(admin1.headers)
       .expect(404);
-    expect(await dataSource.getRepository(Attachment).count()).toBe(0);
+
+    // Baja lógica: no se lista ni se baja, pero el registro y el archivo siguen.
+    const despues = await request(env.app.getHttpServer())
+      .get(`/attachments/employee/${empleado}`)
+      .set(admin1.headers)
+      .expect(200);
+    expect(despues.body).toEqual([]);
+    const repo = dataSource.getRepository(Attachment);
+    expect(await repo.count()).toBe(0);
+    const fila = await repo.findOne({
+      where: { attachmentId: id },
+      withDeleted: true,
+    });
+    expect(fila?.deletedAt).toBeInstanceOf(Date);
+    await expect(
+      minio.client.send(
+        new HeadObjectCommand({
+          Bucket: BUCKET_DE_PRUEBA,
+          Key: fila?.storageKey ?? 'no-hay',
+        }),
+      ),
+    ).resolves.toBeDefined();
   });
 
   it('otra distribuidora no puede subir, listar, descargar ni borrar: 404', async () => {

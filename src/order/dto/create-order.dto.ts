@@ -2,6 +2,7 @@
 import {
   IsUUID,
   IsString,
+  IsInt,
   IsNumber,
   IsOptional,
   IsEnum,
@@ -20,8 +21,9 @@ export class OrderItemDto {
   @IsUUID()
   gasCylinderId!: string;
 
-  @ApiProperty({ description: 'Cantidad' })
-  @IsNumber()
+  @ApiProperty({ description: 'Cantidad (entero, mínimo 1)', minimum: 1 })
+  @IsInt()
+  @Min(1)
   quantity!: number;
 
   @ApiProperty({ description: 'Precio unitario' })

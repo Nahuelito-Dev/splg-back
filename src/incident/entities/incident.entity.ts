@@ -27,6 +27,8 @@ export enum IncidentMoment {
 export enum IncidentStatus {
   OPEN = 'open',
   RESOLVED = 'resolved',
+  /** Descartada con motivo (reporte inválido o duplicado). Es la baja lógica. */
+  DISCARDED = 'discarded',
 }
 
 /**

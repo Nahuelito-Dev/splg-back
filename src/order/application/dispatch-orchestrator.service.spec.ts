@@ -174,7 +174,14 @@ describe('DispatchOrchestratorService', () => {
       expect(dispatch.findNearbyDrivers).toHaveBeenCalledTimes(4); // agotó 5,10,15,20
     });
 
+    it('mide contra el punto FRESCO del pedido, no contra el objeto recibido', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      await orchestrator.offerToNextDriver(makeOrder({ deliveryPoint: null }));
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(-26.8, -65.2, 5);
+    });
+
     it('sin punto de entrega no busca choferes (no mide contra 0,0)', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder({ deliveryPoint: null }));
       const result = await orchestrator.offerToNextDriver(
         makeOrder({ deliveryPoint: null }),
       );
@@ -386,6 +393,7 @@ describe('DispatchOrchestratorService', () => {
     });
 
     it('sin punto de entrega emite order:no-drivers con no_delivery_point (una vez)', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder({ deliveryPoint: null }));
       await orchestrator.offerToNextDriver(makeOrder({ deliveryPoint: null }));
       expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
         'order:no-drivers',

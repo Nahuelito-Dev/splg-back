@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,12 +8,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 import { TimeSlot } from './entities/time-slot.entity';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
+import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 import { DistributorService } from '../distributor/distributor.service';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { SlotAvailabilityDto } from './dto/time-slot-response.dto';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Minutos desde medianoche de un "HH:MM" o "HH:MM:SS". */
+function aMinutos(hora: string): number {
+  const [h, m] = hora.split(':');
+  return Number(h) * 60 + Number(m);
+}
 
 export type SlotAvailability = SlotAvailabilityDto;
 
@@ -83,6 +91,52 @@ export class TimeSlotService {
     const timeSlot = await this.timeSlotRepository.findOne({ where });
     if (!timeSlot) throw new NotFoundException('Time slot not found');
     return timeSlot;
+  }
+
+  /**
+   * Edita una franja del tenant. Sólo toca los campos que vienen; el rango
+   * resultante (con lo que ya tenía la franja) tiene que ser inicio < fin.
+   * `isActive: true` la reactiva.
+   */
+  async update(
+    id: string,
+    dto: UpdateTimeSlotDto,
+    distributorId: string,
+  ): Promise<TimeSlot> {
+    // Mismo lock que `assertSlotAvailableTx`: una reserva en curso y una baja
+    // de capacidad se serializan, y el conteo ve lo último que se agendó.
+    return this.timeSlotRepository.manager.transaction(async (manager) => {
+      const timeSlot = await manager.findOne(TimeSlot, {
+        where: { timeSlotId: id, distributorId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!timeSlot) throw new NotFoundException('Time slot not found');
+
+      const startTime = dto.startTime ?? timeSlot.startTime;
+      const endTime = dto.endTime ?? timeSlot.endTime;
+      if (aMinutos(startTime) >= aMinutos(endTime)) {
+        throw new BadRequestException(
+          'La hora de inicio tiene que ser anterior a la de fin',
+        );
+      }
+      if (dto.capacity !== undefined && dto.capacity < timeSlot.capacity) {
+        const hoy = new Date().toISOString().slice(0, 10);
+        const agendados = await this.orders.maxBookedFrom(id, hoy, manager);
+        if (dto.capacity < agendados) {
+          throw new ConflictException(
+            `La franja ya tiene ${agendados} pedidos agendados en un mismo día: la capacidad no puede ser menor`,
+          );
+        }
+      }
+      Object.assign(timeSlot, {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.startTime !== undefined && { startTime: dto.startTime }),
+        ...(dto.endTime !== undefined && { endTime: dto.endTime }),
+        ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      });
+      return manager.save(timeSlot);
+    });
   }
 
   async remove(id: string, distributorId: string): Promise<TimeSlot> {
@@ -170,6 +224,28 @@ export class TimeSlotService {
       throw new BadRequestException(
         `La franja "${slot.name}" del ${date} está completa`,
       );
+    }
+  }
+
+  /**
+   * La franja existe, está activa y es de la distribuidora (400 si no). Para
+   * cuando se guarda una franja sin fecha: no hay cupo que contar, pero la
+   * referencia tiene que ser válida (ni de otro tenant ni inexistente).
+   */
+  async assertSlotUsableTx(
+    manager: EntityManager,
+    timeSlotId: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const slot = await manager.findOne(TimeSlot, {
+      where: {
+        timeSlotId,
+        isActive: true,
+        ...(distributorId ? { distributorId } : {}),
+      },
+    });
+    if (!slot) {
+      throw new BadRequestException('Franja horaria inválida o inactiva');
     }
   }
 

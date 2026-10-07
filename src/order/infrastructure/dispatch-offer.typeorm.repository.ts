@@ -52,6 +52,8 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     const contactados = new Set<string>();
     const vencidasPorChofer = new Map<string, number>();
     for (const row of rows) {
+      // Una oferta retirada por una edición del pedido no es un intento.
+      if (row.status === DispatchOfferStatus.SUPERSEDED) continue;
       contactados.add(row.driverId);
       if (row.status === DispatchOfferStatus.EXPIRED) {
         vencidasPorChofer.set(

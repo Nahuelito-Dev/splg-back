@@ -1,10 +1,16 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { CylinderService } from './cylinder.service';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
+import { InvalidCylinderTransitionError } from './domain/errors/invalid-cylinder-transition.error';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 
 /**
@@ -22,6 +28,8 @@ describe('CylinderService', () => {
     Pick<Repository<CylinderMovement>, 'create' | 'save' | 'find'>
   >;
   let orderRepo: { findRef: jest.Mock };
+  let gasCylinders: { findOne: jest.Mock };
+  let lockQb: { getOne: jest.Mock; [k: string]: jest.Mock };
 
   const DIST = 'dist-1';
 
@@ -53,11 +61,32 @@ describe('CylinderService', () => {
       find: jest.fn(),
     } as unknown as typeof movementRepo;
     orderRepo = { findRef: jest.fn() };
+    gasCylinders = { findOne: jest.fn().mockResolvedValue({}) };
+
+    // Transacción con el envase bloqueado: el "SELECT ... FOR UPDATE" devuelve
+    // lo que se configure en `cylinderRepo.findOne`, y los repos son los mismos.
+    lockQb = {
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn(() => cylinderRepo.findOne({})),
+    };
+    const manager = {
+      createQueryBuilder: jest.fn(() => lockQb),
+      getRepository: jest.fn((entity: unknown) =>
+        entity === Cylinder ? cylinderRepo : movementRepo,
+      ),
+      save: (e: unknown) => cylinderRepo.save(e as Cylinder),
+    };
+    (cylinderRepo as unknown as { manager: unknown }).manager = {
+      transaction: (fn: (m: unknown) => unknown) => fn(manager),
+    };
 
     service = new CylinderService(
       cylinderRepo as unknown as Repository<Cylinder>,
       movementRepo as unknown as Repository<CylinderMovement>,
       orderRepo as unknown as OrderLookupService,
+      gasCylinders as unknown as GasCylinderService,
     );
   });
 
@@ -389,6 +418,118 @@ describe('CylinderService', () => {
       const [r] = await service.findAll(DIST);
       expect(r[0].lastMovementAt).toEqual(new Date('2026-10-01T10:00:00.000Z'));
       expect(r[1].lastMovementAt).toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    it('edita sólo datos maestros y no toca el estado', async () => {
+      const c = makeCylinder({ state: CylinderState.WITH_CUSTOMER });
+      cylinderRepo.findOne.mockResolvedValue(c);
+      await service.update('cyl-1', { serial: 'SN-NEW', deposit: 10 }, DIST);
+      expect(cylinderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serial: 'SN-NEW',
+          deposit: 10,
+          state: CylinderState.WITH_CUSTOMER,
+        }),
+      );
+      expect(movementRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('serial duplicado => 409', async () => {
+      cylinderRepo.findOne.mockResolvedValue(makeCylinder());
+      cylinderRepo.save.mockRejectedValue({ code: '23505' });
+      await expect(
+        service.update('cyl-1', { serial: 'SN-X' }, DIST),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('un envase dado de baja no se edita (409)', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.RETIRED }),
+      );
+      await expect(
+        service.update('cyl-1', { serial: 'SN-X' }, DIST),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('retire', () => {
+    it('desde IN_DEPOT pasa a RETIRED y registra el motivo en el movimiento', async () => {
+      cylinderRepo.findOne.mockResolvedValue(makeCylinder());
+      await service.retire('cyl-1', 'prueba vencida', DIST, 'admin-1');
+      expect(cylinderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ state: CylinderState.RETIRED }),
+      );
+      expect(movementRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromState: CylinderState.IN_DEPOT,
+          toState: CylinderState.RETIRED,
+          actorUserId: 'admin-1',
+          note: 'Baja: prueba vencida',
+        }),
+      );
+    });
+
+    it.each([
+      CylinderState.WITH_CUSTOMER,
+      CylinderState.DISPATCHED,
+      CylinderState.FILLED,
+      CylinderState.RETIRED,
+    ])('desde %s se rechaza y no persiste', async (state) => {
+      cylinderRepo.findOne.mockResolvedValue(makeCylinder({ state }));
+      await expect(service.retire('cyl-1', 'x', DIST)).rejects.toBeInstanceOf(
+        InvalidCylinderTransitionError,
+      );
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('/transition no admite RETIRED (la baja exige motivo)', async () => {
+      await expect(
+        service.transition('cyl-1', { toState: CylinderState.RETIRED }, DIST),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('un envase dado de baja no se asigna a pedidos', async () => {
+      orderRepo.findRef.mockResolvedValue({ customerId: 'c' });
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.RETIRED }),
+      );
+      await expect(
+        service.assignToOrder('o1', ['SN-001'], DIST),
+      ).rejects.toBeInstanceOf(InvalidCylinderTransitionError);
+    });
+  });
+
+  describe('concurrencia y producto', () => {
+    it('retire y transition leen el envase con lock pesimista', async () => {
+      cylinderRepo.findOne.mockImplementation(() =>
+        Promise.resolve(makeCylinder()),
+      );
+      await service.retire('cyl-1', 'x', DIST);
+      await service.transition(
+        'cyl-1',
+        { toState: CylinderState.FILLED } as TransitionCylinderDto,
+        DIST,
+      );
+      expect(lockQb.setLock).toHaveBeenCalledTimes(2);
+      expect(lockQb.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('alta y edición validan que el producto sea de la distribuidora', async () => {
+      gasCylinders.findOne.mockRejectedValue(new NotFoundException('x'));
+      await expect(
+        service.create(
+          { serial: 'S', gasCylinderId: 'g-ajena' } as CreateCylinderDto,
+          DIST,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.update('cyl-1', { gasCylinderId: 'g-ajena' }, DIST),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(gasCylinders.findOne).toHaveBeenCalledWith('g-ajena', DIST);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
     });
   });
 });
