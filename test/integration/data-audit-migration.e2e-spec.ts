@@ -125,9 +125,17 @@ describe('Migración AuditoriaDeDatos (e2e)', () => {
   });
 
   it('se puede deshacer y volver a aplicar', async () => {
-    // la última migración es la de promociones; la de auditoría es la anterior
-    await ds.undoLastMigration();
-    await ds.undoLastMigration();
+    // Se deshace desde la última hacia atrás hasta sacar la de auditoría, sin
+    // depender de cuántas migraciones posteriores haya.
+    const auditoriaExiste = async () => {
+      const [{ existe }] = await ds.query<Array<{ existe: boolean }>>(
+        `SELECT to_regclass('public.audit') IS NOT NULL AS existe`,
+      );
+      return existe;
+    };
+    for (let i = 0; i < 10 && (await auditoriaExiste()); i++) {
+      await ds.undoLastMigration();
+    }
     const [{ existe }] = await ds.query<Array<{ existe: boolean }>>(
       `SELECT to_regclass('public.audit') IS NOT NULL AS existe`,
     );

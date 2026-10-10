@@ -9,7 +9,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
+  Res,
+  UploadedFile,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -21,9 +24,11 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { EmployeeService } from './employee.service';
 import { TerminateEmployeeUseCase } from './application/terminate-employee.use-case';
-import { EmployeeMapper } from './employee.mapper';
+import { EmployeeConPuesto, EmployeeMapper } from './employee.mapper';
+import { EmployeePhotoService } from './employee-photo.service';
 import {
   CreateEmployeeDto,
   UpdateEmployeeDto,
@@ -42,6 +47,13 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import { DownloadQueryDto } from '../s3/dto/download-link.dto';
+import {
+  ApiSubirFoto,
+  ApiVerFoto,
+  responderFoto,
+  SubirFotoInterceptor,
+} from '../s3/photo-http';
 
 /**
  * Legajos del personal (CU-177 a CU-181). Los datos personales (documento,
@@ -56,7 +68,17 @@ export class EmployeeController {
   constructor(
     private readonly employees: EmployeeService,
     private readonly terminate: TerminateEmployeeUseCase,
+    private readonly photo: EmployeePhotoService,
   ) {}
+
+  /** El legajo con `photoUrl` como URL firmada vigente. */
+  private async toDto(
+    empleado: EmployeeConPuesto,
+    deliveryId: string | null,
+  ): Promise<EmployeeResponseDto> {
+    await this.photo.firmar(empleado);
+    return EmployeeMapper.toDto(empleado, deliveryId);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Registrar el legajo de un empleado (CU-177)' })
@@ -74,10 +96,7 @@ export class EmployeeController {
     @Body() dto: CreateEmployeeDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<EmployeeResponseDto> {
-    return EmployeeMapper.toDto(
-      await this.employees.create(dto, distributorId),
-      null,
-    );
+    return this.toDto(await this.employees.create(dto, distributorId), null);
   }
 
   @Get()
@@ -90,6 +109,7 @@ export class EmployeeController {
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<EmployeePageDto> {
     const { data, total } = await this.employees.findAll(query, distributorId);
+    await this.photo.firmar(data);
     return { data: data.map((e) => EmployeeMapper.toListItem(e)), total };
   }
 
@@ -106,7 +126,63 @@ export class EmployeeController {
       id,
       distributorId,
     );
-    return EmployeeMapper.toDto(empleado, deliveryId);
+    return this.toDto(empleado, deliveryId);
+  }
+
+  @Put(':id/photo')
+  @ApiSubirFoto(
+    'Subir o reemplazar la foto del legajo',
+    EmployeeResponseDto,
+    'Sólo para un legajo sin cuenta de acceso: con cuenta, la foto es la de ' +
+      'perfil del usuario (409).',
+  )
+  @ApiConflictResponse({ description: 'El legajo tiene cuenta de acceso' })
+  @ApiParam({ name: 'id', description: 'Empleado UUID' })
+  @SubirFotoInterceptor()
+  async uploadPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<EmployeeResponseDto> {
+    const empleado = await this.photo.subir(id, distributorId, file);
+    return EmployeeMapper.toDto(
+      empleado,
+      await this.employees.deliveryIdDe(empleado),
+    );
+  }
+
+  @Delete(':id/photo')
+  @ApiOperation({
+    summary: 'Sacar la foto del legajo',
+    description:
+      'Quita la referencia (el objeto se borra del bucket en segundo plano); ' +
+      'no elimina el legajo. Con cuenta de acceso responde 409.',
+  })
+  @ApiParam({ name: 'id', description: 'Empleado UUID' })
+  @ApiOkResponse({ type: EmployeeResponseDto })
+  @ApiNotFoundResponse({ description: 'Empleado no encontrado' })
+  @ApiConflictResponse({ description: 'El legajo tiene cuenta de acceso' })
+  async removePhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<EmployeeResponseDto> {
+    const empleado = await this.photo.quitar(id, distributorId);
+    return EmployeeMapper.toDto(
+      empleado,
+      await this.employees.deliveryIdDe(empleado),
+    );
+  }
+
+  @Get(':id/photo')
+  @ApiVerFoto('Ver la foto del legajo (la del usuario si tiene cuenta)')
+  @ApiParam({ name: 'id', description: 'Empleado UUID' })
+  async getPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: DownloadQueryDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    responderFoto(res, query.modo, await this.photo.enlace(id, distributorId));
   }
 
   @Patch(':id')
@@ -126,7 +202,7 @@ export class EmployeeController {
       dto,
       distributorId,
     );
-    return EmployeeMapper.toDto(empleado, deliveryId);
+    return this.toDto(empleado, deliveryId);
   }
 
   @Delete(':id')
@@ -173,7 +249,7 @@ export class EmployeeController {
       distributorId,
       actorUserId,
     );
-    return EmployeeMapper.toDto(empleado, deliveryId);
+    return this.toDto(empleado, deliveryId);
   }
 
   @Post(':id/reinstatement')
@@ -199,6 +275,6 @@ export class EmployeeController {
       dto,
       distributorId,
     );
-    return EmployeeMapper.toDto(empleado, deliveryId);
+    return this.toDto(empleado, deliveryId);
   }
 }

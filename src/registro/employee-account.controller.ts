@@ -20,6 +20,7 @@ import { GrantEmployeeAccountUseCase } from './grant-employee-account.use-case';
 import { GrantEmployeeAccountDto } from '../employee/dto/grant-account.dto';
 import { EmployeeResponseDto } from '../employee/dto/employee-response.dto';
 import { EmployeeMapper } from '../employee/employee.mapper';
+import { EmployeePhotoService } from '../employee/employee-photo.service';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -31,7 +32,10 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('employees')
 export class EmployeeAccountController {
-  constructor(private readonly grant: GrantEmployeeAccountUseCase) {}
+  constructor(
+    private readonly grant: GrantEmployeeAccountUseCase,
+    private readonly photo: EmployeePhotoService,
+  ) {}
 
   @Post(':id/account')
   @HttpCode(HttpStatus.OK)
@@ -65,6 +69,7 @@ export class EmployeeAccountController {
       distributorId,
       { tipo: 'usuario', usuario },
     );
+    await this.photo.firmar(empleado);
     return EmployeeMapper.toDto(empleado, deliveryId);
   }
 }

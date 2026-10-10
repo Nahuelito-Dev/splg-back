@@ -153,4 +153,11 @@ export class Car {
 
   @Column({ name: 'in_service_since', type: 'timestamptz', nullable: true })
   inServiceSince!: Date | null;
+
+  /** Key de la foto del vehículo en el bucket (`cars/{distribuidora}/{vehículo}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
 }

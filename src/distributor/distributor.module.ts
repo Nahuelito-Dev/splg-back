@@ -4,6 +4,8 @@ import { DistributorService } from './distributor.service';
 import { DistributorController } from './distributor.controller';
 import { Distributor } from './entities/distributor.entity';
 import { ModuleConfig } from './entities/module-config.entity';
+import { DistributorLogoService } from './distributor-logo.service';
+import { S3Module } from '../s3/s3.module';
 
 /**
  * Global: `DistributorService` es transversal (lo consumen AuthGuard y el
@@ -13,9 +15,12 @@ import { ModuleConfig } from './entities/module-config.entity';
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Distributor, ModuleConfig])],
+  imports: [
+    TypeOrmModule.forFeature([Distributor, ModuleConfig]),
+    S3Module, // logo
+  ],
   controllers: [DistributorController],
-  providers: [DistributorService],
+  providers: [DistributorService, DistributorLogoService],
   exports: [DistributorService],
 })
 export class DistributorModule {}

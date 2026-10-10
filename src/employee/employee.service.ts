@@ -31,6 +31,8 @@ import {
   DocType,
   DocumentSequenceService,
 } from '../document-sequence/document-sequence.service';
+import { S3CleanupService } from '../s3/s3-cleanup.service';
+import { User } from '../users/entities/user.entity';
 import { DeliveryService } from '../delivery/delivery.service';
 import { UsersService } from '../users/users.service';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -95,6 +97,7 @@ export class EmployeeService {
     private readonly deliveries: DeliveryService,
     private readonly users: UsersService,
     private readonly rules: EmployeeRulesRegistry,
+    private readonly cleanup: S3CleanupService,
   ) {}
 
   /** registrarEmpleado (CU-177). */
@@ -228,8 +231,34 @@ export class EmployeeService {
         `El puesto "${puesto.name}" (categoría ${puesto.category}) no admite una cuenta con rol ${datos.rol}`,
       );
     }
+    await this.pasarFotoAlUsuario(manager, empleado, datos.userId);
     empleado.userId = datos.userId;
     return manager.getRepository(Employee).save(empleado);
+  }
+
+  /**
+   * Con cuenta, la foto es la del usuario (una sola fuente de verdad). La del
+   * legajo pasa al usuario si no tiene una; si ya tiene, va a limpieza. Todo
+   * en la transacción del alta, así la key nunca queda sin dueño.
+   */
+  private async pasarFotoAlUsuario(
+    manager: EntityManager,
+    empleado: Employee,
+    userId: string,
+  ): Promise<void> {
+    const key = empleado.photoKey;
+    if (!key) return;
+    const usuarios = manager.getRepository(User);
+    const usuario = await usuarios.findOne({
+      where: { userId },
+      select: { userId: true, photoKey: true },
+    });
+    if (usuario && !usuario.photoKey) {
+      await usuarios.update({ userId }, { photoKey: key });
+    } else {
+      await this.cleanup.scheduleRemoval(manager, key);
+    }
+    empleado.photoKey = null;
   }
 
   /** consultarEmpleados (CU-180): sin datos personales sensibles. */

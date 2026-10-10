@@ -23,8 +23,21 @@ export class DistributorResponseDto {
   @ApiProperty({ type: String, nullable: true })
   phone!: string | null;
 
-  @ApiProperty({ type: String, nullable: true })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Texto libre guardado (el que se edita con PATCH). No es el logo de S3: para mostrar usar `photoUrl ?? logo_url`.',
+  })
   logo_url!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Logo subido a S3: URL firmada de corta vigencia, o null si no hay. Sólo de salida.',
+  })
+  photoUrl!: string | null;
 
   @ApiProperty({ enum: DistributorStatus })
   status!: DistributorStatus;

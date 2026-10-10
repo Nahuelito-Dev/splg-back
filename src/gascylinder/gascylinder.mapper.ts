@@ -12,6 +12,7 @@ export class GasCylinderMapper {
     dto.stock = g.stock;
     dto.description = g.description;
     dto.isActive = g.isActive;
+    dto.photoUrl = g.photoSignedUrl ?? null;
     // Sin promociones sale null, como cuando eran una columna JSON.
     dto.promotions = g.promotions?.length
       ? [...g.promotions]

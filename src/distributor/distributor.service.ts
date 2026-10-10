@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -24,6 +25,12 @@ import {
 function columnasDeLaDistribuidora(
   dto: UpdateDistributorDto,
 ): Partial<Distributor> {
+  // Una URL firmada de S3 vence: guardarla dejaría un logo roto.
+  if (dto.logo_url && /X-Amz-Signature/i.test(dto.logo_url)) {
+    throw new BadRequestException(
+      'logo_url no puede ser una URL firmada de S3; el logo se sube con PUT /distributor/:id/logo',
+    );
+  }
   return sinIndefinidos({
     name: dto.name,
     legalName: dto.legal_name,

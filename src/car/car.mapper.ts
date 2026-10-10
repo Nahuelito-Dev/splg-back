@@ -15,6 +15,7 @@ export class CarMapper {
     dto.car_model = c.carModel;
     dto.car_year = c.carYear;
     dto.car_color = c.carColor;
+    dto.photoUrl = c.photoSignedUrl ?? null;
     dto.createdAt = c.createdAt;
     dto.updatedAt = c.updatedAt;
     if (c.user) dto.user = UserMapper.toDto(c.user);

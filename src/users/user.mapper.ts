@@ -12,6 +12,7 @@ export class UserMapper {
     dto.role_id = user.roleId ?? null;
     dto.full_name = user.fullName ?? null;
     dto.selfie = user.selfie ?? null;
+    dto.photoUrl = user.photoSignedUrl ?? null;
     dto.email = user.email ?? null;
     dto.phone_number = user.phoneNumber ?? null;
     dto.phone_verified = user.phoneVerified;

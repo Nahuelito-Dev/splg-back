@@ -5,6 +5,7 @@ import request from 'supertest';
 import type { Server } from 'http';
 import { GasCylinderController } from './gascylinder.controller';
 import { GasCylinderService } from './gascylinder.service';
+import { GasCylinderPhotoService } from './gascylinder-photo.service';
 
 /**
  * El catálogo es público (la app cliente lo ve sin sesión), pero con un
@@ -33,7 +34,13 @@ describe('GasCylinderController · catálogo público con identidad opcional', (
     };
     const modulo = await Test.createTestingModule({
       controllers: [GasCylinderController],
-      providers: [{ provide: GasCylinderService, useValue: productos }],
+      providers: [
+        { provide: GasCylinderService, useValue: productos },
+        {
+          provide: GasCylinderPhotoService,
+          useValue: { firmar: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
     }).compile();
     app = modulo.createNestApplication<INestApplication<Server>>();
     app.use((req: Request, _res: Response, next: NextFunction) => {

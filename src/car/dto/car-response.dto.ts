@@ -16,6 +16,13 @@ export class CarResponseDto {
   @ApiProperty({ type: String, nullable: true }) car_model!: string | null;
   @ApiProperty({ type: Number, nullable: true }) car_year!: number | null;
   @ApiProperty({ type: String, nullable: true }) car_color!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto del vehículo (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: String, format: 'date-time' }) updatedAt!: Date;
   @ApiPropertyOptional({ type: UserResponseDto }) user?: UserResponseDto;

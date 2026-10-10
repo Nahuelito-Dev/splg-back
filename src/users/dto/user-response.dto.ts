@@ -24,6 +24,14 @@ export class UserResponseDto {
   @ApiProperty({ type: String, nullable: true })
   selfie!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto de perfil (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
+
   @ApiProperty({ type: String, nullable: true })
   email!: string | null;
 

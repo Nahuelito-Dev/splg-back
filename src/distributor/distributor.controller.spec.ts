@@ -2,15 +2,19 @@ import { NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { DistributorController } from './distributor.controller';
 import { DistributorService } from './distributor.service';
+import { DistributorLogoService } from './distributor-logo.service';
 import { Distributor } from './entities/distributor.entity';
 import { ROLES_KEY } from '../common/decorators/roles.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 
 describe('DistributorController — la distribuidora de la sesión', () => {
   const findOne = jest.fn();
-  const controller = new DistributorController({
-    findOne,
-  } as unknown as DistributorService);
+  const controller = new DistributorController(
+    { findOne } as unknown as DistributorService,
+    {
+      firmar: jest.fn().mockResolvedValue(undefined),
+    } as unknown as DistributorLogoService,
+  );
 
   beforeEach(() => findOne.mockReset());
 

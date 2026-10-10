@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { S3Service } from './s3.service';
 import { S3CleanupService } from './s3-cleanup.service';
+import { EntityPhotoService } from './entity-photo.service';
 import { StorageOrphan } from './entities/storage-orphan.entity';
 
 /**
@@ -12,7 +13,7 @@ import { StorageOrphan } from './entities/storage-orphan.entity';
  */
 @Module({
   imports: [ConfigModule, TypeOrmModule.forFeature([StorageOrphan])],
-  providers: [S3Service, S3CleanupService],
-  exports: [S3Service, S3CleanupService],
+  providers: [S3Service, S3CleanupService, EntityPhotoService],
+  exports: [S3Service, S3CleanupService, EntityPhotoService],
 })
 export class S3Module {}

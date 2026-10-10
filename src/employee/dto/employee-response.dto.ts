@@ -43,6 +43,15 @@ export class EmployeeListItemDto {
 
   @ApiProperty({ description: 'Tiene cuenta de acceso' })
   hasAccount!: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la foto (se abre sin token, vence); `null` si no tiene. ' +
+      'Con cuenta de acceso es la foto de perfil del usuario; sin cuenta, la del legajo.',
+  })
+  photoUrl!: string | null;
 }
 
 /** El legajo completo (CU-179): lo único que expone los datos personales. */

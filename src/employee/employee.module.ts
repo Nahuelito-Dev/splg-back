@@ -11,6 +11,8 @@ import { JobPositionSeedListener } from './job-position-seed.listener';
 import { EmployeeRulesRegistry } from './employee-rules.registry';
 import { EmployeeAttachmentOwnerResolver } from './employee-attachment-owner.resolver';
 import { TerminateEmployeeUseCase } from './application/terminate-employee.use-case';
+import { EmployeePhotoService } from './employee-photo.service';
+import { S3Module } from '../s3/s3.module';
 import { UsersModule } from '../users/users.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { CarModule } from '../car/car.module';
@@ -32,10 +34,12 @@ import { AttachmentModule } from '../attachment/attachment.module';
     OrderLookupModule, // pedidos en curso del chofer
     DocumentSequenceModule, // número de legajo
     AttachmentModule, // dueño `employee` de los adjuntos
+    S3Module, // foto del legajo
   ],
   controllers: [JobPositionController, EmployeeController],
   providers: [
     EmployeeService,
+    EmployeePhotoService,
     JobPositionService,
     JobPositionSeedListener,
     EmployeeUserRemovedListener,
@@ -43,6 +47,6 @@ import { AttachmentModule } from '../attachment/attachment.module';
     EmployeeAttachmentOwnerResolver,
     TerminateEmployeeUseCase,
   ],
-  exports: [EmployeeService, EmployeeRulesRegistry],
+  exports: [EmployeeService, EmployeePhotoService, EmployeeRulesRegistry],
 })
 export class EmployeeModule {}
