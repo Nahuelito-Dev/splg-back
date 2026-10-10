@@ -51,7 +51,7 @@ const TEST_USERS: TestUser[] = [
   {
     role: 'admin',
     email: 'admin@splg.com',
-    full_name: 'Admin Jeny',
+    full_name: 'Admin Demo',
     phone_number: '+5493815550002',
   },
   {
@@ -70,7 +70,7 @@ const TEST_USERS: TestUser[] = [
 
 /**
  * Staff de la 2da distribuidora demo (Gas Andino), para probar el aislamiento
- * multi-tenant: su admin/chofer NO deben ver los datos de Jeny Gas y viceversa.
+ * multi-tenant: su admin/chofer NO deben ver los datos de Distribuidora Demo y viceversa.
  * El customer es global (una identidad puede pedir a cualquier distribuidora
  * vía header X-Distributor), por eso no se duplica.
  */
@@ -111,20 +111,27 @@ async function bootstrap() {
     // 2) Multi-tenant: distribuidora default ───────────────────────────────
     // Se crea ANTES que los usuarios: delivery.distributor_id es NOT NULL, asi
     // que el chofer necesita su tenant ya existente al momento del alta.
-    const jenyGas = await ensureDistributor(distributorService, {
-      name: 'Jeny Gas',
-      slug: 'jeny-gas',
-      legalName: 'Jeny Gas S.R.L.',
+    const distribuidoraDemo = await ensureDistributor(distributorService, {
+      name: 'Distribuidora Demo',
+      slug: 'demo',
+      legalName: 'Distribuidora Demo S.R.L.',
       taxId: '30-11111111-1',
       email: 'contacto@splg.com',
       phone: '+543764000001',
     });
-    logger.log(`✅ Distribuidora default: ${jenyGas.name} (${jenyGas.slug})`);
+    logger.log(
+      `✅ Distribuidora default: ${distribuidoraDemo.name} (${distribuidoraDemo.slug})`,
+    );
 
     // 3) Usuarios de prueba ────────────────────────────────────────────────
     for (const u of TEST_USERS) {
       results.push(
-        await ensureUser(u, usersService, registro, jenyGas.distributorId),
+        await ensureUser(
+          u,
+          usersService,
+          registro,
+          distribuidoraDemo.distributorId,
+        ),
       );
     }
 
@@ -134,7 +141,7 @@ async function bootstrap() {
     for (const table of SCOPED_TABLES) {
       await dataSource.query(
         `UPDATE ${table} SET distributor_id = $1 WHERE distributor_id IS NULL`,
-        [jenyGas.distributorId],
+        [distribuidoraDemo.distributorId],
       );
     }
     // En admin, null es un valor válido: es el super admin, que no pertenece a
@@ -145,7 +152,7 @@ async function bootstrap() {
            AND user_id IN (SELECT u.user_id FROM "user" u
                              JOIN role r ON r.role_id = u.role_id
                             WHERE r.type = 'admin')`,
-      [jenyGas.distributorId],
+      [distribuidoraDemo.distributorId],
     );
     logger.log(
       '✅ Backfill: datos pre-existentes asignados a la distribuidora default',
@@ -177,7 +184,7 @@ async function bootstrap() {
     // Catálogo propio de la distribuidora demo (idempotente: sólo si no tiene).
     await ensureDemoCatalog(dataSource, gasAndino.distributorId);
     logger.log(
-      '✅ Staff + catálogo de Gas Andino listos (aislados de Jeny Gas)',
+      '✅ Staff + catálogo de Gas Andino listos (aislados de Distribuidora Demo)',
     );
   } finally {
     printSummary(results);

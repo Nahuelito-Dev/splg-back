@@ -43,9 +43,9 @@ describe('DistributorService', () => {
   });
 
   it('no se repite el slug', async () => {
-    repo.findOne.mockResolvedValue({ slug: 'jeny-gas' });
+    repo.findOne.mockResolvedValue({ slug: 'demo' });
     await expect(
-      service.create({ name: 'Otra', slug: 'jeny-gas' }),
+      service.create({ name: 'Otra', slug: 'demo' }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -60,9 +60,9 @@ describe('DistributorService', () => {
   });
 
   it('la de por defecto sale del slug configurado', async () => {
-    repo.findOne.mockResolvedValue({ slug: 'jeny-gas' });
+    repo.findOne.mockResolvedValue({ slug: 'demo' });
     await service.getDefault();
-    expect(repo.findOne).toHaveBeenCalledWith({ where: { slug: 'jeny-gas' } });
+    expect(repo.findOne).toHaveBeenCalledWith({ where: { slug: 'demo' } });
   });
 
   it('sin la de por defecto, cae en la activa más antigua', async () => {

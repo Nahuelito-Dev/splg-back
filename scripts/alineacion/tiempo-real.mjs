@@ -17,7 +17,7 @@ const login = async (ruta, origen, email) => {
     headers: {
       'Content-Type': 'application/json',
       'X-Client-Source': origen,
-      'X-Distributor': 'jeny-gas',
+      'X-Distributor': 'demo',
     },
     body: JSON.stringify({ email, password: 'Test1234' }),
   });

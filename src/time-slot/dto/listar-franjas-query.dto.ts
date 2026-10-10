@@ -5,7 +5,7 @@ import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 export class ListarFranjasQueryDto {
   @ApiPropertyOptional({
     description: 'Slug o id de la distribuidora (sólo super_admin)',
-    example: 'jeny-gas',
+    example: 'demo',
   })
   @IsOptional()
   @IsString()

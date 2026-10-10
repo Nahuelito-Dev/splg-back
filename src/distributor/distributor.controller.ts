@@ -77,7 +77,7 @@ export class DistributorController {
   @ApiConflictResponse({ description: 'slug duplicado' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: name must be longer than or equal to 2 characters; slug debe ser minúsculas, números y guiones (ej: jeny-gas))',
+      'Datos inválidos (p. ej.: name must be longer than or equal to 2 characters; slug debe ser minúsculas, números y guiones (ej: demo))',
   })
   async create(
     @Body() dto: CreateDistributorDto,

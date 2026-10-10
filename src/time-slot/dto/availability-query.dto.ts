@@ -21,7 +21,7 @@ export class AvailabilityQueryDto {
 
   @ApiPropertyOptional({
     description: 'Distribuidora, por slug o por id',
-    example: 'jeny-gas',
+    example: 'demo',
   })
   @IsOptional()
   @IsString()

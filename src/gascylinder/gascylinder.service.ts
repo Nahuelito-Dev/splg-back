@@ -62,7 +62,7 @@ export class GasCylinderService {
    * `?distributor=` (el guard no corre en rutas @Public).
    *
    * Compatibilidad hacia atrás: si NO se pasa distribuidora, cae a la default
-   * (Jeny Gas) en vez de mezclar catálogos de todos los tenants — así la app
+   * (Distribuidora Demo) en vez de mezclar catálogos de todos los tenants — así la app
    * cliente previa al multi-tenant sigue viendo un catálogo coherente.
    */
   async resolveDistributor(slugOrId?: string): Promise<string | null> {

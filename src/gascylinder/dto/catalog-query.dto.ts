@@ -3,12 +3,12 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 
 /**
- * La distribuidora del catálogo público, por slug (`jeny-gas`) o uuid. Sin
+ * La distribuidora del catálogo público, por slug (`demo`) o uuid. Sin
  * ella se usa la distribuidora por defecto, así la app previa al
  * multi-tenant sigue viendo un catálogo coherente.
  */
 export class DistribuidoraQueryDto {
-  @ApiPropertyOptional({ example: 'jeny-gas' })
+  @ApiPropertyOptional({ example: 'demo' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
@@ -17,7 +17,7 @@ export class DistribuidoraQueryDto {
 
 /** Query del catálogo público: paginación y distribuidora. */
 export class CatalogQueryDto extends PaginationDto {
-  @ApiPropertyOptional({ example: 'jeny-gas' })
+  @ApiPropertyOptional({ example: 'demo' })
   @IsOptional()
   @IsString()
   @MaxLength(100)

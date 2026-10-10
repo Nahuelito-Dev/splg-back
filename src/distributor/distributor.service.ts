@@ -101,15 +101,12 @@ export class DistributorService {
    * Distribuidora por defecto (compatibilidad hacia atrás). Los flujos de
    * cliente que aún NO mandan `X-Distributor` (apps previas al multi-tenant)
    * caen acá para seguir funcionando como single-tenant. Resolución:
-   *   1. la de slug `DEFAULT_DISTRIBUTOR_SLUG` (env; default 'jeny-gas'),
+   *   1. la de slug `DEFAULT_DISTRIBUTOR_SLUG` (env; default 'demo'),
    *   2. si no existe, la distribuidora activa más antigua,
    *   3. null si no hay ninguna.
    */
   async getDefault(): Promise<Distributor | null> {
-    const slug = this.config.get<string>(
-      'DEFAULT_DISTRIBUTOR_SLUG',
-      'jeny-gas',
-    );
+    const slug = this.config.get<string>('DEFAULT_DISTRIBUTOR_SLUG', 'demo');
     const bySlug = await this.repo.findOne({ where: { slug } });
     if (bySlug) return bySlug;
     return this.repo.findOne({

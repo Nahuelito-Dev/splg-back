@@ -10,7 +10,7 @@
  * corrida no sube nada. No toca usuarios, choferes ni legajos.
  *
  * Variables: las de la base (`DB_*`), las del bucket (`AWS_*`) y
- * `SEED_DISTRIBUTOR` (slug, por defecto `jeny-gas`). Se niega a correr contra
+ * `SEED_DISTRIBUTOR` (slug, por defecto `demo`). Se niega a correr contra
  * algo que parezca producción salvo `SEED_ALLOW_PRODUCTION=true`.
  */
 import 'dotenv/config';
@@ -28,7 +28,7 @@ import {
 } from './lib/completar-fotos';
 import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
 
-const SLUG = process.env.SEED_DISTRIBUTOR ?? 'jeny-gas';
+const SLUG = process.env.SEED_DISTRIBUTOR ?? 'demo';
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main(): Promise<void> {

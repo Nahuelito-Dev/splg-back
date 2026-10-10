@@ -97,11 +97,11 @@ describe('UsersController — alcance', () => {
       controller.findOneByEmail(
         { email: 'yo@splg.com' },
         usuario(RoleType.SUPER_ADMIN),
-        'jeny',
+        'demo',
       ),
     ).resolves.toBeDefined();
     await expect(
-      controller.findOne('yo', usuario(RoleType.SUPER_ADMIN), 'jeny'),
+      controller.findOne('yo', usuario(RoleType.SUPER_ADMIN), 'demo'),
     ).resolves.toBeDefined();
     expect(service.perteneceA).not.toHaveBeenCalled();
   });

@@ -23,7 +23,7 @@
  *   SEED_DRIVERS=0      choferes; en 0 quedan vacías las tablas que cuelgan
  *                       de un chofer (delivery, car, rating, ofertas)
  *   SEED_ORDERS=180     pedidos repartidos en los últimos 90 días
- *   SEED_DISTRIBUTOR=jeny-gas   slug de la distribuidora que recibe todo
+ *   SEED_DISTRIBUTOR=demo   slug de la distribuidora que recibe todo
  */
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
@@ -34,7 +34,7 @@ import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
 const CANT_CLIENTES = Number(process.env.SEED_CUSTOMERS ?? 25);
 const CANT_CHOFERES = Number(process.env.SEED_DRIVERS ?? 0);
 const CANT_PEDIDOS = Number(process.env.SEED_ORDERS ?? 180);
-const SLUG = process.env.SEED_DISTRIBUTOR ?? 'jeny-gas';
+const SLUG = process.env.SEED_DISTRIBUTOR ?? 'demo';
 /** Con esto en true la base queda con una sola distribuidora, la de SLUG. */
 const SOLO_UNA = (process.env.SEED_SINGLE_TENANT ?? 'true') === 'true';
 

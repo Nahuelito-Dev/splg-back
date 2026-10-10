@@ -21,12 +21,12 @@ describe('DistributorController — la distribuidora de la sesión', () => {
   it('devuelve la distribuidora que resolvió el guard', async () => {
     findOne.mockResolvedValue({
       distributorId: 'd1',
-      name: 'Jeny Gas',
-      slug: 'jeny-gas',
+      name: 'Distribuidora Demo',
+      slug: 'demo',
     } as Distributor);
     const dto = await controller.findCurrent('d1');
     expect(findOne).toHaveBeenCalledWith('d1');
-    expect(dto).toMatchObject({ name: 'Jeny Gas', slug: 'jeny-gas' });
+    expect(dto).toMatchObject({ name: 'Distribuidora Demo', slug: 'demo' });
   });
 
   it('sin distribuidora elegida contesta 404', async () => {
