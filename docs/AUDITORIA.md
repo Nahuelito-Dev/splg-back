@@ -70,14 +70,27 @@ tablas de auditoría y `audit_log`, `document_sequence`, `storage_orphan`,
 TypeORM no anuncia `update()`, `softDelete()`, `delete()` ni los query builders.
 Para una entidad de negocio se escribe con `save`/`softRemove` sobre la entidad
 cargada, o se llama a `AuditoriaDeDatos.registrar(manager, ...)` en la misma
-transacción. El borrado físico (`remove`, `delete`) no se audita.
+transacción. El borrado físico con `remove` sí queda (Baja física, tipo 5, vía
+`afterRemove`); `delete()` y los query builders no.
 
 ### API (admin y super admin)
 
-- `GET /audit/entries?entity&recordId&userId&actionType&from&to&page&limit` →
+- `GET /audit/entries?entity&recordId&orderId&userId&actionType&from&to&page&limit` →
   `{ data, total }`. Cada entrada: `auditId`, `actionType {id, name}`,
   `user {userId, fullName, email} | null`, `distributorId`, `entity`,
   `recordId`, `ip`, `dateTime`, `details[] {auditDetailId, field, oldValue, newValue}`.
+- `orderId` (uuid, mayúsculas o minúsculas) trae el historial de un pedido: los asientos del `Order`, de sus
+  renglones (`OrderItem`) y de sus pagos (`Payment`), que se reconocen por el campo
+  `orderId` de su detalle. Todo asiento de un `OrderItem` o un `Payment` (alta,
+  modificación, baja) lleva además un detalle `orderId` aunque no haya cambiado
+  (`CONTEXTO_DE_PEDIDO` en `audit-exclusions.ts`), para que una modificación como la
+  del webhook de pago también aparezca. Los hijos se acotan por la distribuidora del pedido, no por
+  la del request (el renglón no tiene columna propia). Se combina con `entity`
+  (`Order`, `OrderItem`, `Payment`), las fechas y la paginación. Los renglones que una
+  edición de `PATCH /orders/:id` reemplaza se borran con `remove` y quedan como Baja
+  física (tipo 5) con los valores que tenían (el `orderId` en el valor anterior), así
+  que el historial del pedido muestra alta, modificación y baja de cada renglón. La
+  búsqueda usa dos índices parciales sobre `audit_detail` (`field = 'orderId'`).
 - `GET /audit/entries/:id` → una entrada. Otra distribuidora: 404.
 - `GET /audit/action-types` → el catálogo.
 

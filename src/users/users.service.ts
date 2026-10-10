@@ -26,6 +26,7 @@ import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { errorMessage } from '../common/errors/error-message';
+import { RoleType } from '../common/constants/role-type.enum';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import {
   BloqueoDeUsuarioDto,
@@ -253,6 +254,19 @@ export class UsersService {
     await queryRunner.startTransaction();
 
     try {
+      // Bloquear por acá es lo mismo que por `toggleBlockUser`: misma regla.
+      if (updateUserDto.blocked === true) {
+        const objetivo = await queryRunner.manager.findOne(User, {
+          where: { userId: id },
+          relations: ['role', 'admins'],
+        });
+        if (objetivo) {
+          await this.asegurarQueQuedaAdministrador(
+            queryRunner.manager,
+            objetivo,
+          );
+        }
+      }
       await queryRunner.manager.save(user);
       await queryRunner.commitTransaction();
       await queryRunner.release();
@@ -326,11 +340,16 @@ export class UsersService {
    * el evento `chofer.dado-de-baja` que escucha `VehicleReleaseOnBajaListener`
    * (así `users` no depende de `car`, CONVENCIONES §4): si la liberación
    * falla, la baja se revierte.
+   *
+   * Un administrador activo no se da de baja si es el último de su
+   * distribuidora (o el último super administrador): 409. Se evalúa dentro de
+   * la transacción y con un lock por distribuidora, así dos bajas simultáneas
+   * no la saltean, venga la baja por `/users` o por `/admin`.
    */
   async remove(id: string): Promise<MessageResponseDto> {
     const user = await this.userRepository.findOne({
       where: { userId: id },
-      relations: ['customer', 'delivery', 'addresses'],
+      relations: ['customer', 'delivery', 'addresses', 'role', 'admins'],
     });
     if (!user) {
       throw new NotFoundException(`User with ID: ${id} not found`);
@@ -341,6 +360,7 @@ export class UsersService {
     await withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          await this.asegurarQueQuedaAdministrador(manager, user);
           if (user.delivery) {
             // Con el chofer bloqueado: una aceptación o asignación en curso
             // termina antes del conteo, y la que llega después ve la baja.
@@ -395,6 +415,53 @@ export class UsersService {
     }
 
     return MessageResponseDto.of('Usuario dado de baja');
+  }
+
+  /**
+   * No dejar a una distribuidora (ni a la plataforma) sin administrador
+   * activo: activo es sin baja, sin bloqueo y con el rol del perfil. Vale para
+   * la baja y para el bloqueo. Primero toma el lock del ámbito y recién
+   * después lee el estado del destino y cuenta a los demás, así dos bajas o
+   * bloqueos simultáneos se ven entre sí. Un administrador ya bloqueado no
+   * cuenta, así que darlo de baja no cambia nada. Lectura cruda de `admin`, la
+   * misma excepción de `common/tenancy/pertenencia.ts`.
+   */
+  private async asegurarQueQuedaAdministrador(
+    manager: EntityManager,
+    user: User,
+  ): Promise<void> {
+    const perfil = user.admins?.[0];
+    const tipo = user.role?.type;
+    if (
+      !perfil ||
+      (tipo !== String(RoleType.ADMIN) && tipo !== String(RoleType.SUPER_ADMIN))
+    ) {
+      return;
+    }
+    const esSuper = tipo === String(RoleType.SUPER_ADMIN);
+    const ambito = esSuper ? 'super' : (perfil.distributorId ?? 'sin-empresa');
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `admin-baja:${ambito}`,
+    ]);
+    const estado: { blocked: boolean }[] = await manager.query(
+      `SELECT blocked FROM "user" WHERE user_id = $1 AND "deletedAt" IS NULL`,
+      [user.userId],
+    );
+    if (estado.length === 0 || estado[0].blocked) return;
+    const filas: { n: string }[] = await manager.query(
+      `SELECT count(*) AS n FROM admin a
+         JOIN "user" u ON u.user_id = a.user_id AND u."deletedAt" IS NULL AND u.blocked = false
+         JOIN role r ON r.role_id = u.role_id AND r.type = $1
+        WHERE a.user_id <> $2 AND a.distributor_id IS NOT DISTINCT FROM $3::uuid`,
+      [tipo, user.userId, esSuper ? null : perfil.distributorId],
+    );
+    if (Number(filas[0].n) === 0) {
+      throw new ConflictException(
+        esSuper
+          ? 'Es el último super administrador activo: dá de alta o desbloqueá a otro antes'
+          : 'Es el último administrador activo de la distribuidora: dá de alta o desbloqueá a otro antes',
+      );
+    }
   }
 
   private async deshabilitarCuenta(
@@ -521,15 +588,31 @@ export class UsersService {
     }
   }
 
+  /**
+   * Bloquear o desbloquear. Bloquear a un administrador pasa por la misma
+   * regla que su baja: no se bloquea al último administrador activo de la
+   * distribuidora ni al último super administrador (409).
+   */
   async toggleBlockUser(
     id: string,
     shouldBlock: boolean,
   ): Promise<BloqueoDeUsuarioDto> {
-    const user = await this.userRepository.findOne({ where: { userId: id } });
+    const user = await this.userRepository.findOne({
+      where: { userId: id },
+      relations: ['role', 'admins'],
+    });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
+    await this.dataSource.transaction(async (manager) => {
+      if (shouldBlock) await this.asegurarQueQuedaAdministrador(manager, user);
+      // `save` y no `update`: sólo así el cambio queda en la auditoría de datos.
+      const actual = await manager.findOneByOrFail(User, {
+        userId: user.userId,
+      });
+      actual.blocked = shouldBlock;
+      await manager.save(actual);
+    });
     user.blocked = shouldBlock;
-    await this.userRepository.save(user);
 
     return {
       id: user.userId,

@@ -1,6 +1,7 @@
 import { Expose, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
+import { PaymentMethod, PaymentStatus } from '../entities/order.entity';
 
 /*
  * El contrato de pedidos que consumen las apps y el panel. Los nombres de la
@@ -193,6 +194,28 @@ export class OrderResponseDto {
   })
   @Expose({ name: 'payment_method' })
   paymentMethod!: string; // mapped value (online/cash)
+
+  @ApiProperty({
+    enum: PaymentMethod,
+    example: 'transfer',
+    description:
+      'Medio de pago real del pedido (`payment_method` agrupa como online todo lo que no es efectivo)',
+  })
+  paymentMethodDetail!: PaymentMethod;
+
+  @ApiProperty({
+    enum: PaymentStatus,
+    example: 'pending',
+    description: 'Estado del pago: pendiente, cobrado o fallido',
+  })
+  paymentStatus!: PaymentStatus;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'Regla del pedido, no del rol: está pendiente, sin chofer y sin pago online en curso o cobrado. No dice si quien lo consulta puede editarlo: `PATCH /orders/:id` es de administradores (un cliente o un chofer recibe 403 aunque sea `true`).',
+  })
+  editable!: boolean;
 
   @ApiProperty({
     name: 'delivery_address',

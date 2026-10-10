@@ -1,6 +1,7 @@
 import type { Point } from 'typeorm';
 import { coordenadasDePunto } from '../common/geo/punto';
 import { Order, OrderStatus, PaymentType } from './entities/order.entity';
+import { esEditable } from './domain/order-editable';
 import type { User } from '../users/entities/user.entity';
 import {
   CustomerDeOrderDto,
@@ -110,6 +111,9 @@ export class OrderMapper {
 
     // Payment Method Mapping
     dto.paymentMethod = this.mapPaymentType(order.paymentType);
+    dto.paymentMethodDetail = order.paymentMethod;
+    dto.paymentStatus = order.paymentStatus;
+    dto.editable = esEditable(order);
 
     // Address Mapping
     if (order.address) {

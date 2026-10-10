@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
+import { Repository, EntityManager, IsNull, Not } from 'typeorm';
 import { Admin } from './entities/admin.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
@@ -14,6 +14,8 @@ import { isUUID } from 'class-validator';
 import { UsersService } from '../users/users.service';
 import { RoleService } from '../role/role.service';
 import { normalizarEmail } from '../common/utils/email.util';
+import { UpdateAdminDto } from './dto/update-admin.dto';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
 
 @Injectable()
 export class AdminService {
@@ -89,13 +91,16 @@ export class AdminService {
   }
 
   /**
-   * Lista admins. Scopeado por tenant: si viene `distributorId` (admin de
+   * Lista admins (los dados de baja no aparecen). Scopeado por tenant: si viene `distributorId` (admin de
    * distribuidora, o super_admin con "ver como") devuelve solo los de esa
    * empresa; sin él (super_admin cross-tenant) devuelve todos.
    */
   async findAll(distributorId?: string | null): Promise<Admin[]> {
     return await this.adminRepository.find({
-      where: distributorId ? { distributorId } : {},
+      where: {
+        ...(distributorId ? { distributorId } : {}),
+        user: { userId: Not(IsNull()) },
+      },
       relations: ['user', 'user.role', 'distributor'],
     });
   }
@@ -115,15 +120,19 @@ export class AdminService {
 
   /**
    * Ficha del administrador (con usuario, rol y distribuidora). Con
-   * distribuidora en contexto sólo encuentra a los de ella: los de otra y los
-   * super admin responden 404.
+   * distribuidora en contexto sólo encuentra a los de ella: los de otra, los
+   * super admin y los dados de baja responden 404.
    */
   async findDetail(
     id: string,
     distributorId: string | null = null,
   ): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
-      where: { adminId: id, ...(distributorId ? { distributorId } : {}) },
+      where: {
+        adminId: id,
+        ...(distributorId ? { distributorId } : {}),
+        user: { userId: Not(IsNull()) },
+      },
       relations: ['user', 'user.role', 'distributor'],
     });
     if (!admin) {
@@ -177,5 +186,36 @@ export class AdminService {
     }
 
     return admin;
+  }
+
+  /**
+   * Edita los datos de la persona del administrador (nombre y teléfono). El
+   * correo no: es su identidad de acceso y cambia por `POST /email/change-email`.
+   * Con distribuidora en contexto sólo encuentra a los de ella (404).
+   */
+  async update(
+    id: string,
+    dto: UpdateAdminDto,
+    distributorId: string | null,
+  ): Promise<Admin> {
+    const admin = await this.findDetail(id, distributorId);
+    await this.usersService.update(admin.userId, {
+      full_name: dto.fullName,
+      phone_number: dto.phoneNumber,
+    });
+    return this.findDetail(id, distributorId);
+  }
+
+  /**
+   * Baja lógica del administrador: es la baja del usuario (`UsersService.remove`:
+   * `deletedAt`, cuenta de acceso deshabilitada, nada se borra), con su regla
+   * de no dejar a la distribuidora ni a la plataforma sin administrador activo (409).
+   */
+  async remove(
+    id: string,
+    distributorId: string | null,
+  ): Promise<MessageResponseDto> {
+    const admin = await this.findDetail(id, distributorId);
+    return this.usersService.remove(admin.userId);
   }
 }

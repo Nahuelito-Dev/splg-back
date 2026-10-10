@@ -7,13 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import {
-  Order,
-  OrderStatus,
-  PaymentMethod,
-  PaymentStatus,
-  PaymentType,
-} from '../entities/order.entity';
+import { Order, PaymentMethod, PaymentType } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import {
   DispatchOffer,
@@ -30,6 +24,7 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import type { ZonaParaRecargo } from '../../coverage-zone/coverage-zone-pricing.service';
 import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { motivoNoEditable } from '../domain/order-editable';
 
 /**
  * Caso de uso: editar un pedido PENDIENTE (sin chofer asignado).
@@ -176,7 +171,9 @@ export class UpdateOrderUseCase {
           ...dto.items.map((i) => i.gasCylinderId),
         ]);
         await this.stock.restituirStock(manager, order.items);
-        await manager.delete(OrderItem, { orderId: order.orderId });
+        // `remove` y no `delete`: el borrado de un renglón reemplazado deja una
+        // Baja física en la auditoría, con sus campos (incluido orderId).
+        await manager.remove(OrderItem, order.items);
         const reservado = await this.create.reservarRenglones(
           manager,
           dto.items,
@@ -276,19 +273,8 @@ export class UpdateOrderUseCase {
 
   /** Sólo se edita un pedido pendiente, sin chofer y sin pago online. */
   private assertEditable(order: Order, dto: UpdateOrderDto): void {
-    if (order.status !== OrderStatus.PENDING || order.deliveryId) {
-      throw new ConflictException(
-        `Sólo se edita un pedido pendiente sin chofer asignado (estado actual: ${order.status})`,
-      );
-    }
-    if (
-      order.paymentMethod === PaymentMethod.MERCADOPAGO ||
-      order.paymentStatus !== PaymentStatus.PENDING
-    ) {
-      throw new ConflictException(
-        'El pedido tiene un pago online en curso o ya cobrado: no se edita',
-      );
-    }
+    const noEditable = motivoNoEditable(order);
+    if (noEditable) throw new ConflictException(noEditable.mensaje);
     if (dto.paymentMethod === PaymentMethod.MERCADOPAGO) {
       throw new BadRequestException(
         'No se puede pasar un pedido a MercadoPago al editarlo: cancelalo y creá uno nuevo',

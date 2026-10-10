@@ -15,6 +15,7 @@ import { ColumnMetadata } from 'typeorm/metadata/ColumnMetadata';
 import { EntityMetadata } from 'typeorm/metadata/EntityMetadata';
 import { AuditActionTypeId } from '../entities/audit-action-type.entity';
 import {
+  CONTEXTO_DE_PEDIDO,
   ENTIDADES_DE_LA_DISTRIBUIDORA_DEL_REQUEST,
   PROPIEDADES_EXCLUIDAS,
   TABLAS_EXCLUIDAS,
@@ -257,6 +258,17 @@ export class DataAuditSubscriber implements EntitySubscriberInterface {
         `${metadata.name}: cambio sin id de registro, no se audita`,
       );
       return;
+    }
+    const campoDelPedido = CONTEXTO_DE_PEDIDO[metadata.name];
+    if (campoDelPedido && !details.some((d) => d.field === campoDelPedido)) {
+      const valor: unknown = entidad[campoDelPedido];
+      const pedido = textoDe(valor);
+      if (pedido) {
+        details = [
+          ...details,
+          { field: campoDelPedido, oldValue: pedido, newValue: pedido },
+        ];
+      }
     }
     // La distribuidora del propio registro manda; si no tiene, la del request.
     await AuditoriaDeDatos.registrar(manager, {

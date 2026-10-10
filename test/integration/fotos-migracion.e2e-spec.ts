@@ -72,7 +72,7 @@ describe('migraciones de fotos de entidades (e2e)', () => {
     }
   });
 
-  it('revierte las dos migraciones, conserva el resto y vuelve a correr', async () => {
+  it('revierte las migraciones de fotos (y las posteriores), conserva el resto y vuelve a correr', async () => {
     const [distribuidora] = await consultar<{ distributor_id: string }>(
       `INSERT INTO "distributor" ("name", "slug", "logo_url")
        VALUES ('Dist', 'dist-mig', 'https://viejo.example/logo.png')
@@ -93,8 +93,11 @@ describe('migraciones de fotos de entidades (e2e)', () => {
       [distribuidora.distributor_id, puesto.position_id],
     );
 
-    await ds.undoLastMigration();
-    await ds.undoLastMigration();
+    // Revierte desde la última hasta la que crea las fotos (las posteriores,
+    // como los índices de auditoría, también salen).
+    for (let i = 0; i < 10 && (await columna('user', 'photo_key')); i++) {
+      await ds.undoLastMigration();
+    }
     for (const [tabla, nombre] of COLUMNAS) {
       expect(await columna(tabla, nombre)).toBeNull();
     }

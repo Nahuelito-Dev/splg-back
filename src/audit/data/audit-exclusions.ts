@@ -73,3 +73,14 @@ export const ENTIDADES_DE_LA_DISTRIBUIDORA_DEL_REQUEST: ReadonlySet<string> =
     'CylinderRecoveryNotice',
     'MaintenanceWindowProposal',
   ]);
+
+/**
+ * Entidades hijas de un pedido y la propiedad que lo nombra. Todo asiento de
+ * ellas (alta, modificación, baja) lleva un detalle con ese campo aunque no
+ * haya cambiado, para encontrarlas en el historial del pedido
+ * (`GET /audit/entries?orderId=`).
+ */
+export const CONTEXTO_DE_PEDIDO: Readonly<Record<string, string>> = {
+  OrderItem: 'orderId',
+  Payment: 'orderId',
+};
