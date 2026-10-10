@@ -30,6 +30,8 @@ import { UpdateCustomerLocationDto } from './dto/update-customer-location.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CustomerMapper } from './customer.mapper';
+import { Customer } from './entities/customer.entity';
+import { UserPhotoService } from '../users/user-photo.service';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { QueryCustomersDto } from './dto/query-customers.dto';
 import { Auth } from '../common/decorators/auth.decorator';
@@ -43,7 +45,16 @@ import { alcanceDelDueño, esAdministrador } from '../common/utils/alcance.util'
 @ApiBearerAuth()
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly userPhoto: UserPhotoService,
+  ) {}
+
+  /** El DTO del cliente con la foto de su usuario como URL firmada vigente. */
+  private async aDto(customer: Customer): Promise<CustomerResponseDto> {
+    await this.userPhoto.firmar(customer.user);
+    return CustomerMapper.toDto(customer);
+  }
 
   @Get()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -63,6 +74,9 @@ export class CustomersController {
       distributorId,
     );
     informarTotal(res, total);
+    await this.userPhoto.firmar(
+      customers.flatMap((c) => (c.user ? [c.user] : [])),
+    );
     return customers.map((c) => CustomerMapper.toDto(c));
   }
 
@@ -79,7 +93,7 @@ export class CustomersController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
-    return CustomerMapper.toDto(
+    return this.aDto(
       await this.customersService.findOne(id, alcanceDelDueño(user)),
     );
   }
@@ -97,7 +111,7 @@ export class CustomersController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ user_id: userId }, user, distributorId);
-    return CustomerMapper.toDto(
+    return this.aDto(
       await this.customersService.findOneByUserId(
         userId,
         alcanceDelDueño(user),
@@ -125,7 +139,7 @@ export class CustomersController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
-    return CustomerMapper.toDto(
+    return this.aDto(
       await this.customersService.update(
         id,
         updateCustomerDto,
@@ -152,7 +166,7 @@ export class CustomersController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
-    return CustomerMapper.toDto(
+    return this.aDto(
       await this.customersService.updateLocation(
         id,
         dto.latLng,

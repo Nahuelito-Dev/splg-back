@@ -242,4 +242,18 @@ describe('UsersController — alcance', () => {
       expect(photo.enlace).not.toHaveBeenCalled();
     });
   });
+
+  it('el super admin sube y saca su propia foto aunque esté en "ver como" otra distribuidora', async () => {
+    service.perteneceA.mockResolvedValue(false);
+    const yo = usuario(RoleType.SUPER_ADMIN, 'sa');
+    const archivo = {} as Express.Multer.File;
+    await controller.uploadPhoto('sa', archivo, yo, 'dA');
+    await controller.removePhoto('sa', yo, 'dA');
+    expect(photo.subir).toHaveBeenCalledWith('sa', archivo);
+    expect(photo.quitar).toHaveBeenCalledWith('sa');
+    // La de otro usuario sigue acotada por distribuidora.
+    await expect(
+      controller.uploadPhoto('otro', archivo, yo, 'dA'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
 });

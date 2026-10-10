@@ -763,6 +763,100 @@ describe('Fotos de entidades en S3 (e2e)', () => {
     });
   });
 
+  describe('usuario anidado en chofer y cliente', () => {
+    it('el chofer y el cliente salen con user.photoUrl firmada (detalle, por usuario y listado)', async () => {
+      const { d1, admin1 } = await escenario();
+      const chofer = await seedChofer(d1.distributorId);
+      const cliente = await seedCliente(d1);
+      await seedPedido(d1.distributorId, cliente.user.userId);
+      await subir(`/users/${chofer.user.userId}/photo`, admin1.headers).expect(
+        200,
+      );
+      await subir(`/users/${cliente.user.userId}/photo`, {
+        ...(await seedAdmin(null)).headers,
+        'X-Distributor': d1.slug,
+      }).expect(200);
+
+      type ConUsuario = { user?: { photoUrl: string | null; user_id: string } };
+      const fotoDe = (fila: ConUsuario | undefined) => fila?.user?.photoUrl;
+
+      const deliveryId = (
+        await dataSource
+          .getRepository(Delivery)
+          .findOneByOrFail({ userId: chofer.user.userId })
+      ).deliveryId;
+      const customerId = (
+        await dataSource
+          .getRepository(Customer)
+          .findOneByOrFail({ userId: cliente.user.userId })
+      ).customerId;
+
+      const detalle = await http()
+        .get(`/delivery/${deliveryId}`)
+        .set(admin1.headers)
+        .expect(200);
+      expect(fotoDe(detalle.body as ConUsuario)).toContain(BUCKET_DE_PRUEBA);
+      const porUsuario = await http()
+        .get(`/delivery/user/${chofer.user.userId}`)
+        .set(admin1.headers)
+        .expect(200);
+      expect(fotoDe(porUsuario.body as ConUsuario)).toContain(BUCKET_DE_PRUEBA);
+      const lista = await http()
+        .get('/delivery')
+        .set(admin1.headers)
+        .expect(200);
+      expect(
+        fotoDe(
+          (lista.body as ConUsuario[]).find(
+            (f) => f.user?.user_id === chofer.user.userId,
+          ),
+        ),
+      ).toContain(BUCKET_DE_PRUEBA);
+
+      const cDetalle = await http()
+        .get(`/customers/${customerId}`)
+        .set(admin1.headers)
+        .expect(200);
+      expect(fotoDe(cDetalle.body as ConUsuario)).toContain(BUCKET_DE_PRUEBA);
+      const cPorUsuario = await http()
+        .get(`/customers/user/${cliente.user.userId}`)
+        .set(admin1.headers)
+        .expect(200);
+      expect(fotoDe(cPorUsuario.body as ConUsuario)).toContain(
+        BUCKET_DE_PRUEBA,
+      );
+      const cLista = await http()
+        .get('/customers')
+        .set(admin1.headers)
+        .expect(200);
+      expect(
+        fotoDe(
+          (cLista.body as ConUsuario[]).find(
+            (f) => f.user?.user_id === cliente.user.userId,
+          ),
+        ),
+      ).toContain(BUCKET_DE_PRUEBA);
+    });
+
+    it('el aislamiento sigue: el admin de otra distribuidora recibe 404 del chofer', async () => {
+      const { d1, admin2 } = await escenario();
+      const chofer = await seedChofer(d1.distributorId);
+      await http()
+        .get(`/delivery/user/${chofer.user.userId}`)
+        .set(admin2.headers)
+        .expect(404);
+    });
+
+    it('el super admin en "ver como" sube, ve y saca su propia foto', async () => {
+      const { d1, superAdmin } = await escenario();
+      const headers = { ...superAdmin.headers, 'X-Distributor': d1.slug };
+      const ruta = `/users/${superAdmin.user.userId}/photo`;
+      await subir(ruta, headers).expect(200);
+      await http().get(`${ruta}?modo=url`).set(headers).expect(200);
+      await http().delete(ruta).set(headers).expect(200);
+    });
+  });
+
   describe('legajo', () => {
     it('con cuenta de acceso, la foto del legajo es la del usuario y no se sube aparte', async () => {
       const { d1, admin1 } = await escenario();
