@@ -193,7 +193,9 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto> {
-    await this.assertPuedeAdministrar(id, user, distributorId);
+    if (id !== user.user_id) {
+      await this.assertPuedeAdministrar(id, user, distributorId);
+    }
     return UserMapper.toDto(await this.userPhoto.subir(id, file));
   }
 
@@ -214,7 +216,9 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto> {
-    await this.assertPuedeAdministrar(id, user, distributorId);
+    if (id !== user.user_id) {
+      await this.assertPuedeAdministrar(id, user, distributorId);
+    }
     return UserMapper.toDto(await this.userPhoto.quitar(id));
   }
 

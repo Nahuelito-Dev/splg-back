@@ -37,6 +37,8 @@ import { QueryDeliveryDto } from './dto/query-delivery.dto';
 import { DeliveryResponseDto } from './dto/delivery-response.dto';
 import { DisponibilidadDelChoferDto } from './dto/disponibilidad-response.dto';
 import { DeliveryMapper } from './delivery.mapper';
+import { Delivery } from './entities/delivery.entity';
+import { UserPhotoService } from '../users/user-photo.service';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Auth } from '../common/decorators/auth.decorator';
@@ -49,7 +51,23 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 @ApiBearerAuth()
 @Controller('delivery')
 export class DeliveryController {
-  constructor(private readonly deliveryService: DeliveryService) {}
+  constructor(
+    private readonly deliveryService: DeliveryService,
+    private readonly userPhoto: UserPhotoService,
+  ) {}
+
+  /** El DTO del chofer con la foto de su usuario como URL firmada vigente. */
+  private async aDto(delivery: Delivery): Promise<DeliveryResponseDto> {
+    await this.userPhoto.firmar(delivery.user);
+    return DeliveryMapper.toDto(delivery);
+  }
+
+  private async aDtos(deliveries: Delivery[]): Promise<DeliveryResponseDto[]> {
+    await this.userPhoto.firmar(
+      deliveries.flatMap((d) => (d.user ? [d.user] : [])),
+    );
+    return deliveries.map((d) => DeliveryMapper.toDto(d));
+  }
 
   @Get()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -78,7 +96,7 @@ export class DeliveryController {
       query.status,
     );
     informarTotal(res, total);
-    return deliveries.map((d) => DeliveryMapper.toDto(d));
+    return this.aDtos(deliveries);
   }
 
   // H-64: los choferes activos (con su ubicación) los ve un administrador, y el
@@ -109,7 +127,7 @@ export class DeliveryController {
       distributorId,
     );
     informarTotal(res, total);
-    return deliveries.map((d) => DeliveryMapper.toDto(d));
+    return this.aDtos(deliveries);
   }
 
   @Get(':id')
@@ -131,7 +149,7 @@ export class DeliveryController {
       alcanceDelDueño(user),
       distributorId,
     );
-    return DeliveryMapper.toDto(delivery);
+    return this.aDto(delivery);
   }
 
   @Get('user/:userId')
@@ -153,7 +171,7 @@ export class DeliveryController {
       alcanceDelDueño(user),
       distributorId,
     );
-    return DeliveryMapper.toDto(delivery);
+    return this.aDto(delivery);
   }
 
   @Patch(':id')

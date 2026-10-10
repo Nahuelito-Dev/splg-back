@@ -2,6 +2,8 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { Delivery } from './entities/delivery.entity';
+import { UserPhotoService } from '../users/user-photo.service';
+import { User } from '../users/entities/user.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
@@ -18,6 +20,7 @@ describe('DeliveryController — alcance', () => {
     remove: jest.Mock;
     toggleAvailability: jest.Mock;
   };
+  let firmar: jest.Mock;
 
   const usuario = (role: RoleType, user_id = 'yo'): AuthenticatedUser => ({
     user_id,
@@ -44,7 +47,17 @@ describe('DeliveryController — alcance', () => {
       remove: jest.fn(),
       toggleAvailability: jest.fn(),
     };
-    controller = new DeliveryController(service as unknown as DeliveryService);
+    // Firmar completa el campo transitorio, como el servicio real.
+    firmar = jest.fn().mockImplementation((usuario?: User) => {
+      if (usuario) usuario.photoSignedUrl = `https://s3.test/${usuario.userId}`;
+      return Promise.resolve();
+    });
+    controller = new DeliveryController(
+      service as unknown as DeliveryService,
+      {
+        firmar,
+      } as unknown as UserPhotoService,
+    );
   });
 
   it('el chofer de otra distribuidora no existe para el admin', async () => {
@@ -88,5 +101,19 @@ describe('DeliveryController — alcance', () => {
       'dB',
     );
     expect(dto).not.toHaveProperty('notification_token');
+  });
+
+  it('firma la foto del usuario del chofer en el detalle', async () => {
+    const conUsuario = {
+      ...chofer,
+      user: { userId: 'u-chofer', photoKey: 'users/u-chofer/a.jpg' } as User,
+    } as Delivery;
+    service.findOne.mockResolvedValue(conUsuario);
+    const dto = await controller.findOne(
+      'dl1',
+      usuario(RoleType.DELIVERY, 'u-chofer'),
+      'dB',
+    );
+    expect(dto.user?.photoUrl).toBe('https://s3.test/u-chofer');
   });
 });
