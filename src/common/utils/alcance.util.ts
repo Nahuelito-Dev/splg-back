@@ -14,3 +14,13 @@ export function esAdministrador(user: AuthenticatedUser): boolean {
 export function alcanceDelDueño(user: AuthenticatedUser): string | undefined {
   return esAdministrador(user) ? undefined : user.user_id;
 }
+
+/**
+ * Si el id (de una ruta o de un registro) es el del usuario autenticado. Los
+ * UUID son iguales sin importar mayúsculas: `ParseUUIDPipe` deja pasar la ruta
+ * tal como llegó, y comparar el texto dejaba escapar una auto-baja o un
+ * auto-bloqueo escrito en mayúsculas.
+ */
+export function esElMismoUsuario(id: string, user: AuthenticatedUser): boolean {
+  return id.toLowerCase() === user.user_id.toLowerCase();
+}

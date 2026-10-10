@@ -14,6 +14,15 @@ import { Audit } from './audit.entity';
  * sensibles se guardan como `[oculto]`.
  */
 @Entity('audit_detail')
+// Historial de un pedido (`GET /audit/entries?orderId=`): sus renglones y pagos
+// se encuentran por el detalle `orderId`. En una baja física el id queda en el
+// valor anterior. Parciales: sólo indexan ese campo.
+@Index('IDX_audit_detail_order_nuevo', ['newValue'], {
+  where: `"field" = 'orderId'`,
+})
+@Index('IDX_audit_detail_order_anterior', ['oldValue'], {
+  where: `"field" = 'orderId'`,
+})
 export class AuditDetail {
   @PrimaryGeneratedColumn('uuid', { name: 'audit_detail_id' })
   auditDetailId!: string;

@@ -108,3 +108,129 @@ describe('AdminController · GET /admin', () => {
     });
   });
 });
+
+/**
+ * `PATCH` y `DELETE /admin/:id`: el super admin llega a cualquiera; un admin de
+ * empresa no se toca a sí mismo ni a un super admin (404 para no revelarlo).
+ */
+describe('AdminController · PATCH y DELETE /admin/:id', () => {
+  const ID = '7c1f0b3e-5a2d-4e8f-9b6a-1d2c3e4f5a60';
+  let app: INestApplication<Server>;
+  let admins: { findDetail: jest.Mock; update: jest.Mock; remove: jest.Mock };
+  let rol: RoleType;
+
+  const perfil = (over: object = {}) => ({
+    adminId: ID,
+    userId: 'otro',
+    distributorId: EMPRESA_A,
+    user: { role: { type: RoleType.ADMIN } },
+    ...over,
+  });
+
+  beforeEach(async () => {
+    admins = {
+      findDetail: jest.fn().mockResolvedValue(perfil()),
+      update: jest.fn().mockResolvedValue(perfil()),
+      remove: jest.fn().mockResolvedValue({ message: 'ok' }),
+    };
+    const modulo = await Test.createTestingModule({
+      controllers: [AdminController],
+      providers: [{ provide: AdminService, useValue: admins }],
+    }).compile();
+    app = modulo.createNestApplication<INestApplication<Server>>();
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      req.user = {
+        email: 'x@splg.com',
+        role: rol,
+        user_id: 'yo',
+        distributor_id: EMPRESA_A,
+      };
+      req.distributorId = EMPRESA_A;
+      next();
+    });
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('un admin de empresa edita y da de baja a otro de su empresa', async () => {
+    rol = RoleType.ADMIN;
+    await request(app.getHttpServer())
+      .patch(`/admin/${ID}`)
+      .send({ fullName: 'Ana' })
+      .expect(200);
+    expect(admins.update).toHaveBeenCalledWith(
+      ID,
+      { fullName: 'Ana' },
+      EMPRESA_A,
+    );
+    await request(app.getHttpServer()).delete(`/admin/${ID}`).expect(200);
+    expect(admins.remove).toHaveBeenCalledWith(ID, EMPRESA_A);
+  });
+
+  it('un admin de empresa no se edita ni se da de baja a sí mismo (403)', async () => {
+    rol = RoleType.ADMIN;
+    admins.findDetail.mockResolvedValue(perfil({ userId: 'yo' }));
+    await request(app.getHttpServer())
+      .patch(`/admin/${ID}`)
+      .send({ fullName: 'Ana' })
+      .expect(403);
+    await request(app.getHttpServer()).delete(`/admin/${ID}`).expect(403);
+    expect(admins.update).not.toHaveBeenCalled();
+    expect(admins.remove).not.toHaveBeenCalled();
+  });
+
+  it('un super admin tampoco se da de baja a sí mismo (403), pero sí edita su perfil', async () => {
+    rol = RoleType.SUPER_ADMIN;
+    admins.findDetail.mockResolvedValue(
+      perfil({
+        userId: 'yo',
+        user: { role: { type: RoleType.SUPER_ADMIN } },
+      }),
+    );
+    await request(app.getHttpServer()).delete(`/admin/${ID}`).expect(403);
+    expect(admins.remove).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .patch(`/admin/${ID}`)
+      .send({ fullName: 'Yo' })
+      .expect(200);
+  });
+
+  it('un admin de empresa no toca a un super admin (404)', async () => {
+    rol = RoleType.ADMIN;
+    admins.findDetail.mockResolvedValue(
+      perfil({ user: { role: { type: RoleType.SUPER_ADMIN } } }),
+    );
+    await request(app.getHttpServer()).delete(`/admin/${ID}`).expect(404);
+    expect(admins.remove).not.toHaveBeenCalled();
+  });
+
+  it('el super admin llega a cualquiera, incluso a otro super admin', async () => {
+    rol = RoleType.SUPER_ADMIN;
+    admins.findDetail.mockResolvedValue(
+      perfil({ user: { role: { type: RoleType.SUPER_ADMIN } } }),
+    );
+    await request(app.getHttpServer()).delete(`/admin/${ID}`).expect(200);
+  });
+
+  it('rechaza el correo y los campos que no son editables (400)', async () => {
+    rol = RoleType.SUPER_ADMIN;
+    await request(app.getHttpServer())
+      .patch(`/admin/${ID}`)
+      .send({ email: 'x@y.com' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/admin/${ID}`)
+      .send({ phoneNumber: '1234' })
+      .expect(400);
+  });
+});

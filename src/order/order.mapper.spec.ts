@@ -198,3 +198,51 @@ describe('OrderMapper · datos del panel', () => {
     expect(dto.distributorId).toBe('d1');
   });
 });
+
+describe('OrderMapper · medio de pago, estado de pago y editable', () => {
+  const base = (over: Partial<Order>): Order =>
+    ({
+      orderId: 'o1',
+      distributorId: 'd1',
+      totalAmount: 1000,
+      createdAt: new Date('2026-09-01T12:00:00Z'),
+      status: OrderStatus.PENDING,
+      deliveryId: null,
+      paymentType: PaymentType.CASH,
+      paymentMethod: PaymentMethod.CASH,
+      paymentStatus: PaymentStatus.PENDING,
+      items: [],
+      ...over,
+    }) as unknown as Order;
+
+  it('la transferencia sigue agrupada como online en payment_method y se distingue en paymentMethodDetail', () => {
+    const dto = OrderMapper.toDto(
+      base({
+        paymentType: PaymentType.ONLINE,
+        paymentMethod: PaymentMethod.TRANSFER,
+      }),
+    );
+    expect(dto.paymentMethod).toBe('online');
+    expect(dto.paymentMethodDetail).toBe('transfer');
+    expect(dto.paymentStatus).toBe('pending');
+    expect(dto.editable).toBe(true);
+  });
+
+  it('efectivo pendiente y sin chofer es editable', () => {
+    const dto = OrderMapper.toDto(base({}));
+    expect(dto.paymentMethodDetail).toBe('cash');
+    expect(dto.editable).toBe(true);
+  });
+
+  it.each([
+    ['mercadopago', { paymentMethod: PaymentMethod.MERCADOPAGO }],
+    ['pago ya cobrado', { paymentStatus: PaymentStatus.PAID }],
+    ['pago fallido', { paymentStatus: PaymentStatus.FAILED }],
+    ['con chofer', { deliveryId: 'c1' }],
+    ['aceptado', { status: OrderStatus.ACCEPTED }],
+    ['entregado', { status: OrderStatus.DELIVERED }],
+    ['reservado', { status: OrderStatus.RESERVED }],
+  ])('no es editable: %s', (_caso, over) => {
+    expect(OrderMapper.toDto(base(over)).editable).toBe(false);
+  });
+});

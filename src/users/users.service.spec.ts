@@ -91,10 +91,78 @@ describe('UsersService', () => {
       await service.remove('u1');
       expect(users.findOne).toHaveBeenCalledWith({
         where: { userId: 'u1' },
-        relations: ['customer', 'delivery', 'addresses'],
+        relations: ['customer', 'delivery', 'addresses', 'role', 'admins'],
       });
       expect(manager.softRemove).toHaveBeenCalledWith(user);
       expect(users.delete).not.toHaveBeenCalled();
+    });
+
+    describe('no dejar sin administrador', () => {
+      const admin = (over: object = {}) => ({
+        userId: 'u1',
+        blocked: false,
+        role: { type: RoleType.ADMIN },
+        admins: [{ distributorId: 'd1' }],
+        ...over,
+      });
+      /** `bloqueado`: lo que dice la base del destino, leído dentro del lock. */
+      const base = (otros: number, bloqueado = false) =>
+        manager.query.mockImplementation((sql: string) => {
+          if (sql.includes('count(*)'))
+            return Promise.resolve([{ n: String(otros) }]);
+          if (sql.includes('SELECT blocked')) {
+            return Promise.resolve([{ blocked: bloqueado }]);
+          }
+          return Promise.resolve([]);
+        });
+
+      it('el último admin activo de la distribuidora es 409, con lock por distribuidora', async () => {
+        users.findOne.mockResolvedValue(admin());
+        base(0);
+        await expect(service.remove('u1')).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        expect(manager.query).toHaveBeenCalledWith(
+          expect.stringContaining('pg_advisory_xact_lock'),
+          ['admin-baja:d1'],
+        );
+        expect(manager.softRemove).not.toHaveBeenCalled();
+      });
+
+      it('el último super admin activo es 409, con su propio lock', async () => {
+        users.findOne.mockResolvedValue(
+          admin({
+            role: { type: RoleType.SUPER_ADMIN },
+            admins: [{ distributorId: null }],
+          }),
+        );
+        base(0);
+        await expect(service.remove('u1')).rejects.toThrow(/super/);
+        expect(manager.query).toHaveBeenCalledWith(
+          expect.stringContaining('pg_advisory_xact_lock'),
+          ['admin-baja:super'],
+        );
+      });
+
+      it('con otro activo se da de baja', async () => {
+        users.findOne.mockResolvedValue(admin());
+        base(1);
+        await service.remove('u1');
+        expect(manager.softRemove).toHaveBeenCalled();
+      });
+
+      it('si el destino ya está bloqueado en la base (leído tras el lock), no hay que contar a nadie', async () => {
+        // la copia cargada antes de la transacción dice que no está bloqueado
+        users.findOne.mockResolvedValue(admin({ blocked: false }));
+        base(0, true);
+        await service.remove('u1');
+        expect(manager.softRemove).toHaveBeenCalled();
+        const sqls = (manager.query.mock.calls as [string][]).map(([q]) => q);
+        expect(sqls.some((q) => q.includes('count(*)'))).toBe(false);
+        // y el lock se tomó ANTES de leer el estado
+        expect(sqls[0]).toContain('pg_advisory_xact_lock');
+        expect(sqls[1]).toContain('SELECT blocked');
+      });
     });
 
     it('un chofer dado de baja sale del radar de Redis, por user_id y después del commit', async () => {
@@ -314,6 +382,58 @@ describe('UsersService', () => {
         expect.stringContaining('pert_d.distributor_id = :distributorId'),
         { distributorId: 'd1' },
       );
+    });
+  });
+
+  describe('toggleBlockUser', () => {
+    const admin = {
+      userId: 'u1',
+      email: 'a@splg.com',
+      blocked: false,
+      role: { type: RoleType.ADMIN },
+      admins: [{ distributorId: 'd1' }],
+    };
+    const conManager = (otros: number) => {
+      const m = {
+        query: jest.fn((sql: string) =>
+          Promise.resolve(
+            sql.includes('count(*)')
+              ? [{ n: String(otros) }]
+              : sql.includes('SELECT blocked')
+                ? [{ blocked: false }]
+                : [],
+          ),
+        ),
+        findOneByOrFail: jest
+          .fn()
+          .mockResolvedValue({ userId: 'u1', blocked: false }),
+        save: jest.fn(),
+      };
+      dataSource.transaction.mockImplementation(
+        (fn: (x: unknown) => Promise<unknown>) => fn(m),
+      );
+      return m;
+    };
+
+    it('bloquear al último admin activo es 409 y no guarda nada', async () => {
+      users.findOne.mockResolvedValue(admin);
+      const m = conManager(0);
+      await expect(service.toggleBlockUser('u1', true)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(m.save).not.toHaveBeenCalled();
+    });
+
+    it('con otro activo bloquea, y desbloquear no pasa por la regla', async () => {
+      users.findOne.mockResolvedValue(admin);
+      const m = conManager(1);
+      await service.toggleBlockUser('u1', true);
+      expect(m.save).toHaveBeenCalledWith(
+        expect.objectContaining({ blocked: true }),
+      );
+      m.query.mockClear();
+      await service.toggleBlockUser('u1', false);
+      expect(m.query).not.toHaveBeenCalled();
     });
   });
 });

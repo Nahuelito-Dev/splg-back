@@ -58,7 +58,8 @@ export class TimeSlotService {
   }
 
   /**
-   * Lista las franjas activas. Prioridad de tenant:
+   * Lista las franjas activas (con `includeInactive`, también las dadas de
+   * baja). Prioridad de tenant:
    *  - `distributorSlug` (query `?distributor=`, lo usa la app cliente por slug),
    *  - si no, `distributorId` (el tenant del admin autenticado, @CurrentDistributor).
    * Solo un super_admin sin ninguno de los dos ve las de todas las empresas.
@@ -66,12 +67,15 @@ export class TimeSlotService {
   async findAll(
     distributorSlug?: string,
     distributorId?: string | null,
+    includeInactive = false,
   ): Promise<TimeSlot[]> {
     const effective = distributorSlug
       ? await this.resolveDistributor(distributorSlug)
       : (distributorId ?? null);
 
-    const where: FindOptionsWhere<TimeSlot> = { isActive: true };
+    const where: FindOptionsWhere<TimeSlot> = includeInactive
+      ? {}
+      : { isActive: true };
     if (effective) where.distributorId = effective;
 
     return await this.timeSlotRepository.find({

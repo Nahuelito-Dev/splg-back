@@ -32,6 +32,8 @@ import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Time Slots')
@@ -62,16 +64,23 @@ export class TimeSlotController {
   @ApiOperation({
     summary:
       'List active time slots (scopeado por la distribuidora del admin; ' +
-      '?distributor lo overridea para super_admin)',
+      '?distributor lo overridea sólo para super_admin; un admin queda en su ' +
+      'distribuidora)',
+    description:
+      'Con `?includeInactive=true` incluye también las franjas dadas de baja ' +
+      '(cada una trae `isActive`); se reactivan con `PATCH /time-slot/:id {isActive:true}`.',
   })
   @ApiOkResponse({ type: TimeSlotResponseDto, isArray: true })
   async findAll(
     @CurrentDistributor() distributorId: string | null,
-    @Query() { distributor }: ListarFranjasQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() { distributor, includeInactive }: ListarFranjasQueryDto,
   ): Promise<TimeSlotResponseDto[]> {
+    // `?distributor=` es sólo del super admin: un admin queda en su tenant.
     const slots = await this.timeSlotService.findAll(
-      distributor,
+      user.role === RoleType.SUPER_ADMIN ? distributor : undefined,
       distributorId,
+      includeInactive,
     );
     return slots.map((s) => TimeSlotMapper.toDto(s));
   }

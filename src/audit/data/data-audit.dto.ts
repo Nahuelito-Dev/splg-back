@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsDate,
   IsInt,
@@ -29,6 +29,18 @@ export class QueryAuditEntriesDto {
   @IsString()
   @MaxLength(64)
   recordId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Historial de un pedido: los asientos del Order, de sus renglones (OrderItem) y de sus pagos (Payment). Se combina con el resto de los filtros.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
+  @IsUUID()
+  orderId?: string;
 
   @ApiPropertyOptional({
     format: 'uuid',

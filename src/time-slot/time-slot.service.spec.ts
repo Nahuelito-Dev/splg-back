@@ -70,6 +70,29 @@ describe('TimeSlotService', () => {
     expect(d).toMatchObject({ capacity: 2, booked: 5, remaining: 0 });
   });
 
+  describe('findAll', () => {
+    it('por defecto lista sólo las activas', async () => {
+      slots.find.mockResolvedValue([]);
+      await service.findAll(undefined, 'd1');
+      expect(
+        (slots.find.mock.calls[0] as [{ where: object }])[0].where,
+      ).toEqual({
+        isActive: true,
+        distributorId: 'd1',
+      });
+    });
+
+    it('con includeInactive no filtra por isActive pero sigue acotando al tenant', async () => {
+      slots.find.mockResolvedValue([]);
+      await service.findAll(undefined, 'd1', true);
+      expect(
+        (slots.find.mock.calls[0] as [{ where: object }])[0].where,
+      ).toEqual({
+        distributorId: 'd1',
+      });
+    });
+  });
+
   describe('update', () => {
     const existente = () => ({
       timeSlotId: 't1',

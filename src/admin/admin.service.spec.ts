@@ -21,8 +21,9 @@ describe('AdminService', () => {
     create: jest.Mock;
     save: jest.Mock;
     exists: jest.Mock;
+    findOne: jest.Mock;
   };
-  let users: { findById: jest.Mock };
+  let users: { findById: jest.Mock; update: jest.Mock; remove: jest.Mock };
   let roles: { findOne: jest.Mock };
   let qb: { leftJoinAndSelect: jest.Mock; where: jest.Mock; getOne: jest.Mock };
 
@@ -39,8 +40,9 @@ describe('AdminService', () => {
       create: jest.fn((d: Partial<Admin>) => d),
       save: jest.fn((a: Admin) => Promise.resolve(a)),
       exists: jest.fn().mockResolvedValue(false),
+      findOne: jest.fn(),
     };
-    users = { findById: jest.fn() };
+    users = { findById: jest.fn(), update: jest.fn(), remove: jest.fn() };
     roles = { findOne: jest.fn() };
     service = new AdminService(
       admins as unknown as Repository<Admin>,
@@ -63,12 +65,32 @@ describe('AdminService', () => {
     admins.find.mockResolvedValue([]);
     await service.findAll('dist-1');
     expect(admins.find).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { distributorId: 'dist-1' } }),
+      expect.objectContaining({
+        where: expect.objectContaining({
+          distributorId: 'dist-1',
+        }) as unknown,
+      }),
     );
     await service.findAll(null);
-    expect(admins.find).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: {} }),
+    const donde = (
+      admins.find.mock.calls[1] as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(donde.distributorId).toBeUndefined();
+  });
+
+  it('el listado y la ficha dejan afuera a los administradores dados de baja', async () => {
+    admins.find.mockResolvedValue([]);
+    admins.findOne.mockResolvedValue(null);
+    await service.findAll('dist-1');
+    expect(
+      (admins.find.mock.calls[0] as [{ where: object }])[0].where,
+    ).toHaveProperty('user');
+    await expect(service.findDetail('a1')).rejects.toBeInstanceOf(
+      NotFoundException,
     );
+    expect(
+      (admins.findOne.mock.calls[0] as [{ where: object }])[0].where,
+    ).toHaveProperty('user');
   });
 
   it('busca por id si el término es un uuid y por correo si no', async () => {
@@ -140,6 +162,58 @@ describe('AdminService', () => {
       displayName: 'Ana',
       fullName: 'Ana',
       rol: RoleType.ADMIN,
+    });
+  });
+
+  describe('update y remove', () => {
+    const perfil = (over: Partial<Admin> = {}): Admin =>
+      ({
+        adminId: 'a1',
+        userId: 'u1',
+        distributorId: 'd1',
+        user: { blocked: false },
+        ...over,
+      }) as unknown as Admin;
+
+    it('update edita nombre y teléfono del usuario del perfil, acotado por distribuidora', async () => {
+      admins.findOne.mockResolvedValue(perfil());
+      await service.update(
+        'a1',
+        { fullName: 'Ana', phoneNumber: '+5493764000000' },
+        'd1',
+      );
+      expect(users.update).toHaveBeenCalledWith('u1', {
+        full_name: 'Ana',
+        phone_number: '+5493764000000',
+      });
+      expect(
+        (admins.findOne.mock.calls[0] as [{ where: object }])[0].where,
+      ).toMatchObject({ adminId: 'a1', distributorId: 'd1' });
+    });
+
+    it('update de un admin inexistente o de otra empresa es 404 y no toca al usuario', async () => {
+      admins.findOne.mockResolvedValue(null);
+      await expect(
+        service.update('a1', { fullName: 'Ana' }, 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(users.update).not.toHaveBeenCalled();
+    });
+
+    it('baja: es la baja del usuario del perfil (con su regla del último admin)', async () => {
+      admins.findOne.mockResolvedValue(perfil());
+      users.remove.mockResolvedValue({ message: 'ok' });
+      await expect(service.remove('a1', 'd1')).resolves.toEqual({
+        message: 'ok',
+      });
+      expect(users.remove).toHaveBeenCalledWith('u1');
+    });
+
+    it('baja de un admin inexistente o de otra empresa: 404 y no toca al usuario', async () => {
+      admins.findOne.mockResolvedValue(null);
+      await expect(service.remove('a1', 'd1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(users.remove).not.toHaveBeenCalled();
     });
   });
 });

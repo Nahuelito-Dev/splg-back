@@ -136,6 +136,43 @@ describe('UsersController — alcance', () => {
     expect(service.remove).not.toHaveBeenCalled();
   });
 
+  it.each([RoleType.ADMIN, RoleType.SUPER_ADMIN])(
+    'nadie se da de baja a sí mismo (%s): 403 y no llega al servicio',
+    async (rol) => {
+      await expect(
+        controller.remove('yo', usuario(rol, 'yo'), null),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(service.remove).not.toHaveBeenCalled();
+    },
+  );
+
+  it('la auto-baja se detecta aunque el UUID venga en mayúsculas', async () => {
+    const yo = usuario(
+      RoleType.SUPER_ADMIN,
+      'abcdef01-0000-4000-8000-000000000001',
+    );
+    await expect(
+      controller.remove('ABCDEF01-0000-4000-8000-000000000001', yo, null),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.remove).not.toHaveBeenCalled();
+  });
+
+  it('nadie se bloquea a sí mismo, ni por /block ni por PATCH, en mayúsculas o no (403)', async () => {
+    const yo = usuario(
+      RoleType.SUPER_ADMIN,
+      'abcdef01-0000-4000-8000-000000000001',
+    );
+    const mio = 'ABCDEF01-0000-4000-8000-000000000001';
+    await expect(
+      controller.blockUser(mio, { block: true }, yo, null),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      controller.update(mio, { blocked: true }, yo, null),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(service.toggleBlockUser).not.toHaveBeenCalled();
+    expect(service.update).not.toHaveBeenCalled();
+  });
+
   it('el administrador general sí administra a un cliente', async () => {
     service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
     await controller.blockUser(

@@ -6,6 +6,7 @@ import {
   In,
   LessThanOrEqual,
   MoreThanOrEqual,
+  Raw,
   Repository,
 } from 'typeorm';
 import { Audit } from '../entities/audit.entity';
@@ -39,7 +40,7 @@ export class DataAuditService {
     distributorId: string | null,
   ): Promise<AuditEntriesPageDto> {
     const where: FindOptionsWhere<Audit> = {};
-    if (distributorId) where.distributorId = distributorId;
+    if (distributorId && !filtros.orderId) where.distributorId = distributorId;
     if (filtros.entity) where.entity = filtros.entity;
     if (filtros.recordId) where.recordId = filtros.recordId;
     if (filtros.userId) where.userId = filtros.userId;
@@ -51,8 +52,15 @@ export class DataAuditService {
     } else if (filtros.to) {
       where.createdAt = LessThanOrEqual(filtros.to);
     }
+    const condiciones = filtros.orderId
+      ? this.delPedido(filtros.orderId, where, distributorId, filtros.entity)
+      : where;
+    // Un arreglo vacío de condiciones en TypeORM no filtra nada: sería todo.
+    if (Array.isArray(condiciones) && condiciones.length === 0) {
+      return { data: [], total: 0 };
+    }
     const [filas, total] = await this.audits.findAndCount({
-      where,
+      where: condiciones,
       relations: { actionType: true, user: true },
       withDeleted: true,
       order: { createdAt: 'DESC', auditId: 'ASC' },
@@ -66,6 +74,50 @@ export class DataAuditService {
       ),
       total,
     };
+  }
+
+  /**
+   * Historial de un pedido: su asiento (`Order`) y los de sus renglones y
+   * pagos, que apuntan al pedido por el campo `orderId` de su detalle (en el
+   * valor nuevo, o en el anterior si es una baja física). El
+   * renglón no tiene distribuidora propia (toma la del request), así que el
+   * aislamiento de lo hijo se decide por el pedido: se ven sólo si el
+   * pedido tiene asientos de la distribuidora en contexto. `entity` y
+   * `recordId` siguen filtrando dentro del historial (el de un renglón o un pago;
+   * el del pedido es el propio `orderId`).
+   */
+  private delPedido(
+    orderId: string,
+    base: FindOptionsWhere<Audit>,
+    distributorId: string | null,
+    entity?: string,
+  ): FindOptionsWhere<Audit>[] {
+    const hijos = ['OrderItem', 'Payment'];
+    const filas: FindOptionsWhere<Audit>[] = [];
+    const pidePedido = !base.recordId || base.recordId === orderId;
+    if ((!entity || entity === 'Order') && pidePedido) {
+      filas.push({
+        ...base,
+        entity: 'Order',
+        recordId: orderId,
+        ...(distributorId && { distributorId }),
+      });
+    }
+    if (!entity || hijos.includes(entity)) {
+      const delTenant = distributorId
+        ? ` AND EXISTS (SELECT 1 FROM audit o WHERE o.entity = 'Order' AND o.record_id = :orderId AND o.distributor_id = :tenant)`
+        : '';
+      filas.push({
+        ...base,
+        entity: entity ?? In(hijos),
+        auditId: Raw(
+          (alias) =>
+            `${alias} IN (SELECT audit_id FROM audit_detail WHERE field = 'orderId' AND (new_value = :orderId OR old_value = :orderId))${delTenant}`,
+          { orderId, tenant: distributorId },
+        ),
+      });
+    }
+    return filas;
   }
 
   async findOne(

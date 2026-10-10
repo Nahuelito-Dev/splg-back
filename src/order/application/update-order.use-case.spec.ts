@@ -38,7 +38,7 @@ describe('UpdateOrderUseCase', () => {
     manager: {
       createQueryBuilder: jest.Mock;
       save: jest.Mock;
-      delete: jest.Mock;
+      remove: jest.Mock;
       create: jest.Mock;
       find: jest.Mock;
       update: jest.Mock;
@@ -104,7 +104,7 @@ describe('UpdateOrderUseCase', () => {
       manager: {
         createQueryBuilder: jest.fn(() => qb),
         save: jest.fn((o: unknown) => Promise.resolve(o)),
-        delete: jest.fn().mockResolvedValue(undefined),
+        remove: jest.fn().mockResolvedValue(undefined),
         create: jest.fn((_: unknown, o: unknown) => o),
         find: jest.fn((entidad: unknown) =>
           Promise.resolve(entidad === OrderItem ? locked?.items : ofertasVivas),
@@ -208,6 +208,10 @@ describe('UpdateOrderUseCase', () => {
       'd1',
     );
     expect(stock.restituirStock).toHaveBeenCalledWith(queryRunner.manager, [
+      { gasCylinderId: 'g1', quantity: 1 },
+    ]);
+    // los renglones reemplazados se borran con `remove` (queda en la auditoría)
+    expect(queryRunner.manager.remove).toHaveBeenCalledWith(OrderItem, [
       { gasCylinderId: 'g1', quantity: 1 },
     ]);
     expect(create.reservarRenglones).toHaveBeenCalledWith(

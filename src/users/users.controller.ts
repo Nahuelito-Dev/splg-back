@@ -49,7 +49,10 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { esAdministrador } from '../common/utils/alcance.util';
+import {
+  esAdministrador,
+  esElMismoUsuario,
+} from '../common/utils/alcance.util';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { UserMapper } from './user.mapper';
@@ -104,7 +107,7 @@ export class UsersController {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
     const encontrado = await this.usersService.findOneByEmail(email);
-    if (esAdministrador(user) && encontrado.userId !== user.user_id) {
+    if (esAdministrador(user) && !esElMismoUsuario(encontrado.userId, user)) {
       await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
     }
     return this.toDto(encontrado);
@@ -193,7 +196,7 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto> {
-    if (id !== user.user_id) {
+    if (!esElMismoUsuario(id, user)) {
       await this.assertPuedeAdministrar(id, user, distributorId);
     }
     return UserMapper.toDto(await this.userPhoto.subir(id, file));
@@ -216,7 +219,7 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto> {
-    if (id !== user.user_id) {
+    if (!esElMismoUsuario(id, user)) {
       await this.assertPuedeAdministrar(id, user, distributorId);
     }
     return UserMapper.toDto(await this.userPhoto.quitar(id));
@@ -233,10 +236,10 @@ export class UsersController {
     @CurrentDistributor() distributorId: string | null,
     @Res() res: Response,
   ): Promise<void> {
-    if (!esAdministrador(user) && id !== user.user_id) {
+    if (!esAdministrador(user) && !esElMismoUsuario(id, user)) {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
-    if (esAdministrador(user) && id !== user.user_id) {
+    if (esAdministrador(user) && !esElMismoUsuario(id, user)) {
       await this.assertDeSuDistribuidora(id, distributorId);
     }
     responderFoto(res, query.modo, await this.userPhoto.enlace(id));
@@ -254,10 +257,10 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto> {
-    if (!esAdministrador(user) && id !== user.user_id) {
+    if (!esAdministrador(user) && !esElMismoUsuario(id, user)) {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
-    if (esAdministrador(user) && id !== user.user_id) {
+    if (esAdministrador(user) && !esElMismoUsuario(id, user)) {
       await this.assertDeSuDistribuidora(id, distributorId);
     }
     return this.toDto(await this.usersService.findOne(id));
@@ -320,11 +323,14 @@ export class UsersController {
 
     // Ownership: un no-admin SOLO puede modificarse a sí mismo (anti-IDOR), y
     // sólo sus datos de contacto.
-    if (!isAdmin && id !== user.user_id) {
+    if (!isAdmin && !esElMismoUsuario(id, user)) {
       throw new ForbiddenException('No podés modificar a otro usuario');
     }
 
     if (isAdmin) {
+      if (updateUserDto.blocked === true && esElMismoUsuario(id, user)) {
+        throw new ForbiddenException('No podés bloquearte a vos mismo');
+      }
       await this.assertPuedeAdministrar(id, user, distributorId);
     }
 
@@ -416,11 +422,13 @@ export class UsersController {
   })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
-  @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
+  @ApiForbiddenResponse({
+    description: 'Es la cuenta de un cliente, o la propia',
+  })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
     description:
-      'Es un chofer con pedidos aceptados o en camino: hay que cancelarlos o reasignarlos antes',
+      'Es un chofer con pedidos aceptados o en camino (hay que cancelarlos o reasignarlos antes), o el último administrador activo de su distribuidora o el último super administrador',
   })
   @HttpCode(HttpStatus.OK)
   async remove(
@@ -428,16 +436,30 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<MessageResponseDto> {
+    if (esElMismoUsuario(id, user)) {
+      throw new ForbiddenException('No podés darte de baja a vos mismo');
+    }
     await this.assertPuedeAdministrar(id, user, distributorId);
     return await this.usersService.remove(id);
   }
 
   @Patch(':id/block')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'ADMIN: Bloquear/Desbloquear usuario' })
+  @ApiOperation({
+    summary: 'ADMIN: Bloquear/Desbloquear usuario',
+    description:
+      'Nadie se bloquea a sí mismo, y no se bloquea al último administrador ' +
+      'activo de una distribuidora ni al último super administrador.',
+  })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: BloqueoDeUsuarioDto })
-  @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
+  @ApiForbiddenResponse({
+    description: 'Es la cuenta de un cliente, o la propia (al bloquear)',
+  })
+  @ApiConflictResponse({
+    description:
+      'Es el último administrador activo de su distribuidora o el último super administrador',
+  })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiBadRequestResponse({
     description: 'Datos inválidos (p. ej.: block tiene que ser true o false)',
@@ -448,6 +470,9 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<BloqueoDeUsuarioDto> {
+    if (dto.block && esElMismoUsuario(id, user)) {
+      throw new ForbiddenException('No podés bloquearte a vos mismo');
+    }
     await this.assertPuedeAdministrar(id, user, distributorId);
     return this.usersService.toggleBlockUser(id, dto.block);
   }
