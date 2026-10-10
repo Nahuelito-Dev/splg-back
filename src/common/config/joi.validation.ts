@@ -7,7 +7,7 @@ export const JoiValidationSchema = Joi.object({
   DB_PORT: Joi.number().default(5433),
   DB_USERNAME: Joi.required(),
   // Distribuidora de los clientes que todavía no mandan X-Distributor.
-  DEFAULT_DISTRIBUTOR_SLUG: Joi.string().default('jeny-gas'),
+  DEFAULT_DISTRIBUTOR_SLUG: Joi.string().default('demo'),
   // Horas que una reserva espera el pago de la seña antes de vencer.
   RESERVATION_DEPOSIT_TTL_HOURS: Joi.number().integer().min(1).default(48),
   // Minutos que un pedido con MercadoPago espera el pago antes de vencer.

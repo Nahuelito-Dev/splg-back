@@ -5,10 +5,10 @@ export class DistributorResponseDto {
   @ApiProperty({ format: 'uuid' })
   distributor_id!: string;
 
-  @ApiProperty({ example: 'Jeny Gas' })
+  @ApiProperty({ example: 'Distribuidora Demo' })
   name!: string;
 
-  @ApiProperty({ example: 'jeny-gas' })
+  @ApiProperty({ example: 'demo' })
   slug!: string;
 
   @ApiProperty({ type: String, nullable: true })

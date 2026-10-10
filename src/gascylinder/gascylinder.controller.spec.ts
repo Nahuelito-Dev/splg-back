@@ -70,11 +70,11 @@ describe('GasCylinderController · catálogo público con identidad opcional', (
 
   it('GET /gascylinder anónimo sigue usando ?distributor= (o la por defecto)', async () => {
     await request(app.getHttpServer())
-      .get('/gascylinder?distributor=jeny-gas')
+      .get('/gascylinder?distributor=demo')
       .expect(200);
     expect(productos.findAll).toHaveBeenLastCalledWith(
       expect.anything(),
-      'jeny-gas',
+      'demo',
     );
     await request(app.getHttpServer()).get('/gascylinder').expect(200);
     expect(productos.findAll).toHaveBeenLastCalledWith(
@@ -95,8 +95,8 @@ describe('GasCylinderController · catálogo público con identidad opcional', (
 
   it('GET /gascylinder/available/list anónimo usa ?distributor=', async () => {
     await request(app.getHttpServer())
-      .get('/gascylinder/available/list?distributor=jeny-gas')
+      .get('/gascylinder/available/list?distributor=demo')
       .expect(200);
-    expect(productos.getAvailableCylinders).toHaveBeenCalledWith('jeny-gas');
+    expect(productos.getAvailableCylinders).toHaveBeenCalledWith('demo');
   });
 });

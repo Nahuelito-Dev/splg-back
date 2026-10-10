@@ -54,13 +54,13 @@ describe('FleetAlertsCron', () => {
   it('avisa a los admins con email y marca alertedAt', async () => {
     getMany.mockResolvedValue([tareaPorVencer()]);
     adminService.findAll.mockResolvedValue([
-      { user: { email: 'admin@jenygas.com' } },
+      { user: { email: 'admin@demo.splg.app' } },
     ]);
 
     await cron.avisarVencimientosPendientes();
 
     expect(emailSender.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'admin@jenygas.com' }),
+      expect.objectContaining({ to: 'admin@demo.splg.app' }),
     );
     const alertedAtMatcher: unknown = expect.any(Date);
     expect(update).toHaveBeenCalledWith(['t1'], {
@@ -81,7 +81,7 @@ describe('FleetAlertsCron', () => {
   it('si falla el envío, NO marca alertedAt (se reintenta al día siguiente)', async () => {
     getMany.mockResolvedValue([tareaPorVencer()]);
     adminService.findAll.mockResolvedValue([
-      { user: { email: 'admin@jenygas.com' } },
+      { user: { email: 'admin@demo.splg.app' } },
     ]);
     emailSender.send.mockRejectedValue(new Error('smtp caído'));
 

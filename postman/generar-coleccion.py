@@ -647,7 +647,7 @@ json.dump(col, open(f"{SP}/SPLG.postman_collection.json", "w"), indent=2, ensure
 valores = [
   {"key":"baseUrl","value":"http://localhost:3000/api","enabled":True},
   {"key":"clientSource","value":"panel-app","enabled":True,"description":"panel-app | customer-app | driver-app"},
-  {"key":"distributorSlug","value":"jeny-gas","enabled":True},
+  {"key":"distributorSlug","value":"demo","enabled":True},
   {"key":"idInexistente","value":INEXISTENTE,"enabled":True,"description":"UUID con formato valido que no existe"},
   {"key":"customerIdBorrable","value":"","enabled":True,"description":"Lo llena 01 · Preparacion"},
   {"key":"deliveryIdBorrable","value":"","enabled":True,"description":"Lo llena 01 · Preparacion"},

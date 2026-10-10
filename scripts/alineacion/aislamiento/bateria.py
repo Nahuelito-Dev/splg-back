@@ -38,7 +38,7 @@ B = dict(slot=b(1), zona=b(2), gas=b(3), car=b(4), ordEnt=b(5), ordPen=b(6), cyl
 B['addr'] = sys.argv[1] if len(sys.argv) > 1 else ''
 A_DIST = 'af0c1b75-8090-42ed-bea9-7a043adc61cd'
 A_CYL = 'bbbb0000-0000-4000-8000-0000000000a1'  # envase lleno de A (fixture-b.sql)
-A_FLEET_PLAN_VTV = '90f6fca3-ab06-4cd7-8749-bfc9b3824c2d'  # plan base "VTV" de Jeny Gas (mismo origen: la migración)
+A_FLEET_PLAN_VTV = '90f6fca3-ab06-4cd7-8749-bfc9b3824c2d'  # plan base "VTV" de Distribuidora Demo (mismo origen: la migración)
 
 def call(actor, method, path, body=None):
     h = {'Authorization': f'Bearer {ACT[actor]}', 'Content-Type': 'application/json'}

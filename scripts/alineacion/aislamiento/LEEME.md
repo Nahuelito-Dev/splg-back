@@ -24,4 +24,4 @@ Resultado del 26/09, con los casos de flota (`fleet/plans`, `fleet/tasks`,
 agregados: 231 casos, 0 fallas. Corrido contra la instancia de flota (:3400):
 usa dos planes base fijos de B (`planVtv`, `planLicencia`, sembrados por la
 migración `SembrarPlanesBaseDeFlota`, con UUID aleatorio anotado a mano) y el
-plan VTV de A (Jeny Gas) como contraparte.
+plan VTV de A (Distribuidora Demo) como contraparte.

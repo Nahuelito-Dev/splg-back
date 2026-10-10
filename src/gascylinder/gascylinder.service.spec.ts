@@ -84,16 +84,14 @@ describe('GasCylinderService', () => {
     });
 
     it('acepta el slug o el uuid', async () => {
-      await expect(service.resolveDistributor('jeny-gas')).resolves.toBe(
-        'd-slug',
-      );
+      await expect(service.resolveDistributor('demo')).resolves.toBe('d-slug');
       await expect(
         service.resolveDistributor('0c8b00a8-7d75-4793-9362-5855689be8c6'),
       ).resolves.toBe('d-uuid');
     });
 
     it('el listado sólo trae productos activos de esa distribuidora', async () => {
-      await service.findAll({ limit: 10, offset: 0 }, 'jeny-gas');
+      await service.findAll({ limit: 10, offset: 0 }, 'demo');
       expect(productos.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { isActive: true, distributorId: 'd-slug' },
@@ -102,7 +100,7 @@ describe('GasCylinderService', () => {
     });
 
     it('term busca por tipo o descripción sin salir de la distribuidora', async () => {
-      await service.findAll({ limit: 10, offset: 0, term: ' 45 ' }, 'jeny-gas');
+      await service.findAll({ limit: 10, offset: 0, term: ' 45 ' }, 'demo');
       expect(productos.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: [
