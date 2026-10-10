@@ -65,6 +65,13 @@ export class Distributor {
   })
   logoUrl!: string | null;
 
+  /** Key de el logo en el bucket (`distributors/{distribuidora}/logo/{uuid}.{ext}`). */
+  @Column({ name: 'logo_key', type: 'varchar', length: 512, nullable: true })
+  logoKey!: string | null;
+
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   @Column({
     type: 'enum',
     enum: DistributorStatus,

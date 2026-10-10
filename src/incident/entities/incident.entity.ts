@@ -89,6 +89,13 @@ export class Incident {
   })
   photoUrl!: string | null;
 
+  /** Key de la foto de la incidencia en el bucket (`incidents/{distribuidora}/{incidencia}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   @Column({
     type: 'enum',
     enum: IncidentStatus,

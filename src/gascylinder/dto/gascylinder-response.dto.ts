@@ -27,6 +27,14 @@ export class GasCylinderResponseDto {
   @ApiProperty()
   isActive!: boolean;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de la imagen del producto (se abre sin token, vence); `null` si no tiene.',
+  })
+  photoUrl!: string | null;
+
   @ApiProperty({ type: PromocionDto, isArray: true, nullable: true })
   promotions!: PromocionDto[] | null;
 

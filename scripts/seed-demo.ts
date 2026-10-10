@@ -27,6 +27,9 @@
  */
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
+import { FiguraDemo, generarImagenDemo } from './lib/imagenes-demo';
+import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
+import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
 
 const CANT_CLIENTES = Number(process.env.SEED_CUSTOMERS ?? 25);
 const CANT_CHOFERES = Number(process.env.SEED_DRIVERS ?? 0);
@@ -283,7 +286,101 @@ const ds = new DataSource({
 
 const resumen: Array<[string, number]> = [];
 
+/** S3 (o MinIO) para las fotos de ejemplo; `null` si el entorno no lo configura. */
+const almacen: AlmacenDemo | null = crearAlmacenDemo();
+let fotosSubidas = 0;
+
+/**
+ * Sube una imagen de ejemplo y deja la key en la fila. Sin S3 configurado no
+ * hace nada: la fila queda sin foto (nunca con una URL inventada).
+ */
+async function adjuntarFoto(
+  q: Q,
+  fila: {
+    tabla: string;
+    columnaId: string;
+    id: string;
+    columnaKey: string;
+  },
+  carpeta: string,
+  figura: FiguraDemo,
+  variante: number,
+): Promise<void> {
+  if (!almacen) return;
+  const key = await almacen.subirPng(
+    carpeta,
+    generarImagenDemo({ figura, variante }),
+  );
+  await q(
+    `UPDATE "${fila.tabla}" SET "${fila.columnaKey}" = $1 WHERE "${fila.columnaId}" = $2`,
+    [key, fila.id],
+  );
+  fotosSubidas += 1;
+}
+
+/** Dónde guarda cada entidad la key de su foto en el bucket. */
+const COLUMNAS_DE_FOTO: Array<[tabla: string, columna: string]> = [
+  ['claims', 'photo_key'],
+  ['incident', 'photo_key'],
+  ['gas_cylinder', 'photo_key'],
+  ['car', 'photo_key'],
+  ['distributor', 'logo_key'],
+  ['user', 'photo_key'],
+  ['employee', 'photo_key'],
+];
+
+/** Objetos de corridas anteriores que hay que borrar cuando sus filas ya no estén. */
+const clavesAnteriores = new Set<string>();
+
+/**
+ * Anota (sin borrar nada) las fotos que el seed anterior dejó en la
+ * distribuidora y en sus usuarios de demostración. El objeto se borra recién
+ * en `borrarObjetosSinFila`, cuando la base ya confirmó que la fila no está.
+ */
+async function anotarFotosAnteriores(q: Q, distId: string): Promise<void> {
+  if (!almacen) return;
+  const consultas = [
+    `SELECT photo_key AS key FROM claims WHERE distributor_id = $1`,
+    `SELECT photo_key AS key FROM incident WHERE distributor_id = $1`,
+    `SELECT photo_key AS key FROM gas_cylinder WHERE distributor_id = $1`,
+    `SELECT photo_key AS key FROM car WHERE distributor_id = $1`,
+    `SELECT logo_key AS key FROM distributor WHERE distributor_id = $1`,
+    `SELECT photo_key AS key FROM employee WHERE distributor_id = $1`,
+  ];
+  for (const sql of consultas) {
+    const filas: Array<{ key: string | null }> = await q(sql, [distId]);
+    for (const f of filas) if (f.key) clavesAnteriores.add(f.key);
+  }
+  const usuarios: Array<{ key: string | null }> = await q(
+    `SELECT photo_key AS key FROM "user" WHERE firebase_uid IS NULL`,
+  );
+  for (const f of usuarios) if (f.key) clavesAnteriores.add(f.key);
+  // El logo se reemplaza en el lugar (la fila de la distribuidora queda).
+  await q(`UPDATE distributor SET logo_key = NULL WHERE distributor_id = $1`, [
+    distId,
+  ]);
+}
+
+/**
+ * Borra de S3 las fotos anotadas que ninguna fila referencia ya. Va DESPUÉS de
+ * los borrados de filas: si el seed falla a mitad de camino, las filas que
+ * sobrevivan siguen apuntando a un objeto que existe.
+ */
+async function borrarObjetosSinFila(q: Q): Promise<void> {
+  if (!almacen || clavesAnteriores.size === 0) return;
+  const vigentes = new Set<string>();
+  for (const [tabla, columna] of COLUMNAS_DE_FOTO) {
+    const filas: Array<{ key: string | null }> = await q(
+      `SELECT "${columna}" AS key FROM "${tabla}" WHERE "${columna}" IS NOT NULL`,
+    );
+    for (const f of filas) if (f.key) vigentes.add(f.key);
+  }
+  await almacen.borrar([...clavesAnteriores].filter((k) => !vigentes.has(k)));
+  clavesAnteriores.clear();
+}
+
 async function main() {
+  resguardoDeProduccion();
   await ds.initialize();
   const q = (sql: string, params: any[] = []) => ds.query(sql, params);
 
@@ -309,6 +406,7 @@ async function main() {
   // declaradas el borrado fallaba.
   if (SOLO_UNA) await borrarOtrasDistribuidoras(q, distId);
   await limpiar(q, distId);
+  await borrarObjetosSinFila(q);
 
   // ── 3. Catálogo ────────────────────────────────────────────────────────────
   const productos: Array<{
@@ -338,8 +436,37 @@ async function main() {
       price: p.price,
       weight: p.weight,
     });
+    // Foto a todos menos al último, para ver también el producto sin imagen.
+    if (productos.length < CATALOGO.length) {
+      await adjuntarFoto(
+        q,
+        {
+          tabla: 'gas_cylinder',
+          columnaId: 'gas_cylinder_id',
+          id: row.gas_cylinder_id,
+          columnaKey: 'photo_key',
+        },
+        `gascylinders/${distId}/${row.gas_cylinder_id}`,
+        'garrafa',
+        productos.length,
+      );
+    }
   }
   resumen.push(['gas_cylinder (catálogo)', productos.length]);
+
+  // Logo de la distribuidora (reemplaza al `logo_url` de texto).
+  await adjuntarFoto(
+    q,
+    {
+      tabla: 'distributor',
+      columnaId: 'distributor_id',
+      id: distId,
+      columnaKey: 'logo_key',
+    },
+    `distributors/${distId}/logo`,
+    'logo',
+    0,
+  );
 
   // ── 4. Franjas horarias ────────────────────────────────────────────────────
   const franjas: string[] = [];
@@ -449,6 +576,7 @@ interface PedidoSembrado {
  * panel y a las apps.
  */
 async function limpiar(q: Q, distId: string) {
+  await anotarFotosAnteriores(q, distId);
   await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [
@@ -519,6 +647,7 @@ async function borrarOtrasDistribuidoras(q: Q, distId: string) {
 
   for (const d of otras) {
     const id = d.distributor_id;
+    await anotarFotosAnteriores(q, id);
     await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [id]);
     await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [id]);
     await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [id]);
@@ -740,6 +869,22 @@ async function sembrarChoferes(q: Q, distId: string) {
         alguno(['Blanco', 'Gris', 'Negro', 'Rojo']),
       ],
     );
+
+    // Los dos primeros vehículos llevan foto; el resto queda sin imagen.
+    if (i <= 2) {
+      await adjuntarFoto(
+        q,
+        {
+          tabla: 'car',
+          columnaId: 'car_id',
+          id: car.car_id,
+          columnaKey: 'photo_key',
+        },
+        `cars/${distId}/${car.car_id}`,
+        'camioneta',
+        i,
+      );
+    }
 
     // Vehículo en uso + historial: el primer chofer tuvo antes otro vehículo
     // (ya liberado), para que el historial no quede vacío en la demo.
@@ -1045,18 +1190,21 @@ async function sembrarReclamos(
       'resolved',
       'rejected',
     ] as const);
-    await q(
+    const motivo = alguno(MOTIVOS_RECLAMO);
+    // El azar se consume igual con o sin S3, para que los datos no cambien.
+    const conFoto = quizas(0.4);
+    const [reclamo] = await q(
       `INSERT INTO claims
-         (distributor_id, order_id, customer_id, reason, description, "photoUrl",
+         (distributor_id, order_id, customer_id, reason, description,
           status, "resolutionNote", "createdAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING claim_id`,
       [
         distId,
         p.id,
         p.clienteUserId,
-        alguno(MOTIVOS_RECLAMO),
+        motivo,
         'El cliente informó el problema por la app apenas recibió el pedido. Se pidió foto del envase para verificar el estado.',
-        quizas(0.4) ? `https://storage.splg.app/reclamos/demo-${n}.jpg` : null,
         estado,
         estado === 'resolved'
           ? 'Se repuso el envase sin cargo y se acreditó el descuento en el próximo pedido.'
@@ -1066,6 +1214,20 @@ async function sembrarReclamos(
         masMinutos(p.entregadoEl ?? p.creadoEl, entre(30, 2880)),
       ],
     );
+    if (conFoto) {
+      await adjuntarFoto(
+        q,
+        {
+          tabla: 'claims',
+          columnaId: 'claim_id',
+          id: reclamo.claim_id,
+          columnaKey: 'photo_key',
+        },
+        `claims/${distId}/${reclamo.claim_id}`,
+        'garrafa',
+        n,
+      );
+    }
     n += 1;
   }
   resumen.push(['claims (reclamos)', n]);
@@ -1116,20 +1278,19 @@ async function sembrarIncidencias(
     ] as const);
     const cerrada = quizas(0.6);
     const creada = masMinutos(p.entregadoEl ?? p.creadoEl, entre(5, 200));
-    await q(
+    const conFoto = quizas(0.3);
+    const [incidencia] = await q(
       `INSERT INTO incident
-         (order_id, distributor_id, reported_by, type, description, photo_url,
+         (order_id, distributor_id, reported_by, type, description,
           status, resolution_note, "createdAt", "resolvedAt")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING incident_id`,
       [
         p.id,
         distId,
         reportante(),
         tipo,
         DESCRIPCIONES[tipo],
-        quizas(0.3)
-          ? `https://storage.splg.app/incidencias/demo-${n}.jpg`
-          : null,
         cerrada ? 'resolved' : 'open',
         cerrada
           ? 'Resuelto con el cliente. Se dejó asentado para el informe del mes.'
@@ -1138,6 +1299,20 @@ async function sembrarIncidencias(
         cerrada ? masMinutos(creada, entre(60, 4000)) : null,
       ],
     );
+    if (conFoto) {
+      await adjuntarFoto(
+        q,
+        {
+          tabla: 'incident',
+          columnaId: 'incident_id',
+          id: incidencia.incident_id,
+          columnaKey: 'photo_key',
+        },
+        `incidents/${distId}/${incidencia.incident_id}`,
+        'aviso',
+        n,
+      );
+    }
     n += 1;
   }
   resumen.push(['incident (incidencias)', n]);
@@ -1379,6 +1554,12 @@ async function archivarUsuariosHuerfanos(q: Q) {
 }
 
 function imprimirResumen() {
+  resumen.push([
+    almacen
+      ? 'fotos de ejemplo subidas a S3'
+      : 'fotos de ejemplo (sin AWS_S3_BUCKET/AWS_REGION: se omitieron)',
+    fotosSubidas,
+  ]);
   console.log('\n──────────── DATOS SEMBRADOS ────────────');
   for (const [tabla, cantidad] of resumen) {
     console.log(`  ${tabla.padEnd(34)} ${String(cantidad).padStart(5)}`);

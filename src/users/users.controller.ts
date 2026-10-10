@@ -4,12 +4,14 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
   Delete,
   Query,
   Res,
+  UploadedFile,
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
@@ -28,7 +30,16 @@ import {
   ApiConflictResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { User } from './entities/user.entity';
 import { UsersService } from './users.service';
+import { UserPhotoService } from './user-photo.service';
+import { DownloadQueryDto } from '../s3/dto/download-link.dto';
+import {
+  ApiSubirFoto,
+  ApiVerFoto,
+  responderFoto,
+  SubirFotoInterceptor,
+} from '../s3/photo-http';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
@@ -54,7 +65,16 @@ import {
 @ApiBearerAuth()
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly userPhoto: UserPhotoService,
+  ) {}
+
+  /** El DTO del usuario con `photoUrl` como URL firmada vigente. */
+  private async toDto(user: User): Promise<UserResponseDto> {
+    await this.userPhoto.firmar(user);
+    return UserMapper.toDto(user);
+  }
 
   @Get('email/:email')
   @ApiOperation({
@@ -87,7 +107,7 @@ export class UsersController {
     if (esAdministrador(user) && encontrado.userId !== user.user_id) {
       await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
     }
-    return UserMapper.toDto(encontrado);
+    return this.toDto(encontrado);
   }
 
   @Get()
@@ -113,7 +133,109 @@ export class UsersController {
       distributorId,
     );
     informarTotal(res, maxUsers);
+    await this.userPhoto.firmar(users);
     return { users: users.map((u) => UserMapper.toDto(u)), maxUsers };
+  }
+
+  @Put('me/photo')
+  @ApiSubirFoto(
+    'Subir o reemplazar mi foto de perfil',
+    UserResponseDto,
+    'La sube cada usuario (cliente, chofer o admin) para su propia cuenta.',
+  )
+  @SubirFotoInterceptor()
+  async uploadMyPhoto(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UserResponseDto> {
+    return UserMapper.toDto(await this.userPhoto.subir(user.user_id, file));
+  }
+
+  @Delete('me/photo')
+  @ApiOperation({
+    summary: 'Sacar mi foto de perfil',
+    description:
+      'Quita la referencia a la foto (el objeto se borra del bucket en ' +
+      'segundo plano). No da de baja la cuenta.',
+  })
+  @ApiOkResponse({ type: UserResponseDto })
+  async removeMyPhoto(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UserResponseDto> {
+    return UserMapper.toDto(await this.userPhoto.quitar(user.user_id));
+  }
+
+  @Get('me/photo')
+  @ApiVerFoto('Ver mi foto de perfil')
+  async getMyPhoto(
+    @Query() query: DownloadQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    responderFoto(res, query.modo, await this.userPhoto.enlace(user.user_id));
+  }
+
+  @Put(':id/photo')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiSubirFoto(
+    'Subir o reemplazar la foto de perfil de un usuario',
+    UserResponseDto,
+    'Un admin de empresa sólo la de su personal (choferes y admins de su ' +
+      'distribuidora); la de un cliente es de su propia cuenta o del ' +
+      'administrador general (403 para el admin de empresa).',
+  )
+  @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
+  @ApiParam({ name: 'id', description: 'User UUID' })
+  @SubirFotoInterceptor()
+  async uploadPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<UserResponseDto> {
+    await this.assertPuedeAdministrar(id, user, distributorId);
+    return UserMapper.toDto(await this.userPhoto.subir(id, file));
+  }
+
+  @Delete(':id/photo')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Sacar la foto de perfil de un usuario',
+    description:
+      'Mismas reglas que subirla. Quita la referencia (el objeto se borra ' +
+      'del bucket en segundo plano); no da de baja al usuario.',
+  })
+  @ApiParam({ name: 'id', description: 'User UUID' })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
+  @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  async removePhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<UserResponseDto> {
+    await this.assertPuedeAdministrar(id, user, distributorId);
+    return UserMapper.toDto(await this.userPhoto.quitar(id));
+  }
+
+  @Get(':id/photo')
+  @ApiVerFoto('Ver la foto de perfil de un usuario')
+  @ApiParam({ name: 'id', description: 'User UUID' })
+  @ApiForbiddenResponse({ description: 'No es su cuenta' })
+  async getPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: DownloadQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!esAdministrador(user) && id !== user.user_id) {
+      throw new ForbiddenException('No podés ver a otro usuario');
+    }
+    if (esAdministrador(user) && id !== user.user_id) {
+      await this.assertDeSuDistribuidora(id, distributorId);
+    }
+    responderFoto(res, query.modo, await this.userPhoto.enlace(id));
   }
 
   @Get(':id')
@@ -134,7 +256,7 @@ export class UsersController {
     if (esAdministrador(user) && id !== user.user_id) {
       await this.assertDeSuDistribuidora(id, distributorId);
     }
-    return UserMapper.toDto(await this.usersService.findOne(id));
+    return this.toDto(await this.usersService.findOne(id));
   }
 
   @Get('phone/:phoneNumber')
@@ -153,7 +275,7 @@ export class UsersController {
     const encontrado = await this.usersService.findOneByPhone(phoneNumber);
     if (!encontrado) return null;
     await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
-    return UserMapper.toDto(encontrado);
+    return this.toDto(encontrado);
   }
 
   @Public()
@@ -218,7 +340,7 @@ export class UsersController {
       ? updateUserDto
       : this.pickSelfEditableFields(updateUserDto);
 
-    return UserMapper.toDto(await this.usersService.update(id, payload));
+    return this.toDto(await this.usersService.update(id, payload));
   }
 
   /**

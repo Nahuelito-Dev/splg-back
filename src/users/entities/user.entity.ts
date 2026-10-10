@@ -56,6 +56,13 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   selfie?: string;
 
+  /** Key de la foto de perfil en el bucket (`users/{usuario}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   @Column({ type: 'varchar', unique: true, nullable: true })
   email?: string;
 

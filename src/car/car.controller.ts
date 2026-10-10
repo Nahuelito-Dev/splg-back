@@ -7,6 +7,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -19,7 +23,10 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CarService } from './car.service';
+import { Car } from './entities/car.entity';
+import { CarPhotoService } from './car-photo.service';
 import { CarMapper } from './car.mapper';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
@@ -28,13 +35,34 @@ import { CarBorradoResponseDto, CarResponseDto } from './dto/car-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { DownloadQueryDto } from '../s3/dto/download-link.dto';
+import {
+  ApiSubirFoto,
+  ApiVerFoto,
+  responderFoto,
+  SubirFotoInterceptor,
+} from '../s3/photo-http';
 
 @ApiTags('Cars')
 @ApiBearerAuth()
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('car')
 export class CarController {
-  constructor(private readonly carService: CarService) {}
+  constructor(
+    private readonly carService: CarService,
+    private readonly carPhoto: CarPhotoService,
+  ) {}
+
+  /** El DTO del vehículo (y de su chofer) con las fotos como URL firmada. */
+  private async toDto(car: Car): Promise<CarResponseDto> {
+    await this.carPhoto.firmar(car);
+    return CarMapper.toDto(car);
+  }
+
+  private async toDtos(cars: Car[]): Promise<CarResponseDto[]> {
+    await this.carPhoto.firmar(cars);
+    return cars.map((c) => CarMapper.toDto(c));
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new car' })
@@ -45,7 +73,7 @@ export class CarController {
     @Body() createCarDto: CreateCarDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<CarResponseDto> {
-    return CarMapper.toDto(
+    return this.toDto(
       await this.carService.create(createCarDto, distributorId),
     );
   }
@@ -57,7 +85,7 @@ export class CarController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CarResponseDto[]> {
     const cars = await this.carService.findAll(distributorId ?? undefined);
-    return cars.map((c) => CarMapper.toDto(c));
+    return this.toDtos(cars);
   }
 
   @Get(':id')
@@ -69,7 +97,7 @@ export class CarController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CarResponseDto> {
-    return CarMapper.toDto(await this.carService.findOne(id, distributorId));
+    return this.toDto(await this.carService.findOne(id, distributorId));
   }
 
   @Get('user/:userId')
@@ -81,7 +109,7 @@ export class CarController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CarResponseDto[]> {
     const cars = await this.carService.findByUserId(userId, distributorId);
-    return cars.map((c) => CarMapper.toDto(c));
+    return this.toDtos(cars);
   }
 
   @Get('patent/:patent')
@@ -95,7 +123,55 @@ export class CarController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<CarResponseDto | null> {
     const car = await this.carService.findByPatent(patent, distributorId);
-    return car ? CarMapper.toDto(car) : null;
+    return car ? this.toDto(car) : null;
+  }
+
+  @Put(':id/photo')
+  @ApiSubirFoto(
+    'Subir o reemplazar la foto principal del vehículo',
+    CarResponseDto,
+  )
+  @ApiParam({ name: 'id', description: 'Car UUID' })
+  @SubirFotoInterceptor()
+  async uploadPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CarResponseDto> {
+    return this.toDto(await this.carPhoto.subir(id, distributorId, file));
+  }
+
+  @Delete(':id/photo')
+  @ApiOperation({
+    summary: 'Sacar la foto del vehículo',
+    description:
+      'Quita la referencia (el objeto se borra del bucket en segundo plano); ' +
+      'no da de baja el vehículo.',
+  })
+  @ApiParam({ name: 'id', description: 'Car UUID' })
+  @ApiOkResponse({ type: CarResponseDto })
+  @ApiNotFoundResponse({ description: 'Car not found' })
+  async removePhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CarResponseDto> {
+    return this.toDto(await this.carPhoto.quitar(id, distributorId));
+  }
+
+  @Get(':id/photo')
+  @ApiVerFoto('Ver la foto del vehículo')
+  @ApiParam({ name: 'id', description: 'Car UUID' })
+  async getPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: DownloadQueryDto,
+    @CurrentDistributor() distributorId: string | null,
+    @Res() res: Response,
+  ): Promise<void> {
+    responderFoto(
+      res,
+      query.modo,
+      await this.carPhoto.enlace(id, distributorId),
+    );
   }
 
   @Patch(':id')
@@ -113,7 +189,7 @@ export class CarController {
     @Body() updateCarDto: UpdateCarDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<CarResponseDto> {
-    return CarMapper.toDto(
+    return this.toDto(
       await this.carService.update(id, updateCarDto, distributorId),
     );
   }

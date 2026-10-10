@@ -7,6 +7,10 @@ import {
   Param,
   Delete,
   Query,
+  Req,
+  Put,
+  Res,
+  UploadedFile,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import {
@@ -20,7 +24,10 @@ import {
   ApiBadRequestResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
 import { GasCylinderService } from './gascylinder.service';
+import { GasCylinder } from './entities/gascylinder.entity';
+import { GasCylinderPhotoService } from './gascylinder-photo.service';
 import { PublicIdentificable } from '../common/decorators/isPublic.decorator';
 import { UpdateStockDto } from './dto/update-stock.dto';
 import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
@@ -40,12 +47,33 @@ import { GasCylinderMapper } from './gascylinder.mapper';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { DownloadQueryDto } from '../s3/dto/download-link.dto';
+import {
+  ApiSubirFoto,
+  ApiVerFoto,
+  responderFoto,
+  SubirFotoInterceptor,
+} from '../s3/photo-http';
 
 @ApiTags('Gas Cylinders')
 @ApiBearerAuth()
 @Controller('gascylinder')
 export class GasCylinderController {
-  constructor(private readonly gasCylinderService: GasCylinderService) {}
+  constructor(
+    private readonly gasCylinderService: GasCylinderService,
+    private readonly gasCylinderPhoto: GasCylinderPhotoService,
+  ) {}
+
+  /** El DTO del producto con `photoUrl` como URL firmada vigente. */
+  private async toDto(g: GasCylinder): Promise<GasCylinderResponseDto> {
+    await this.gasCylinderPhoto.firmar(g);
+    return GasCylinderMapper.toDto(g);
+  }
+
+  private async toDtos(gs: GasCylinder[]): Promise<GasCylinderResponseDto[]> {
+    await this.gasCylinderPhoto.firmar(gs);
+    return gs.map((g) => GasCylinderMapper.toDto(g));
+  }
 
   @Post()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -56,7 +84,7 @@ export class GasCylinderController {
     @Body() createGasCylinderDto: CreateGasCylinderDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<GasCylinderResponseDto> {
-    return GasCylinderMapper.toDto(
+    return this.toDto(
       await this.gasCylinderService.create(createGasCylinderDto, distributorId),
     );
   }
@@ -81,7 +109,7 @@ export class GasCylinderController {
     );
     return {
       ...pagina,
-      gasCylinders: pagina.gasCylinders.map((g) => GasCylinderMapper.toDto(g)),
+      gasCylinders: await this.toDtos(pagina.gasCylinders),
     };
   }
 
@@ -95,7 +123,7 @@ export class GasCylinderController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<GasCylinderResponseDto> {
     // El catálogo es público: no se acota por distribuidora.
-    return GasCylinderMapper.toDto(await this.gasCylinderService.findOne(id));
+    return this.toDto(await this.gasCylinderService.findOne(id));
   }
 
   @Get('type/:type')
@@ -111,7 +139,7 @@ export class GasCylinderController {
     @Param() { type }: TipoParamDto,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<GasCylinderResponseDto> {
-    return GasCylinderMapper.toDto(
+    return this.toDto(
       await this.gasCylinderService.findByType(
         type,
         distributorId ?? undefined,
@@ -137,7 +165,7 @@ export class GasCylinderController {
         distributorId ?? distributor,
       );
     return {
-      products: products.map((g) => GasCylinderMapper.toDto(g)),
+      products: await this.toDtos(products),
       paymentMethods,
     };
   }
@@ -157,12 +185,73 @@ export class GasCylinderController {
     @Body() updateGasCylinderDto: UpdateGasCylinderDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<GasCylinderResponseDto> {
-    return GasCylinderMapper.toDto(
+    return this.toDto(
       await this.gasCylinderService.update(
         id,
         updateGasCylinderDto,
         distributorId,
       ),
+    );
+  }
+
+  @Put(':id/photo')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiSubirFoto(
+    'Subir o reemplazar la imagen del producto',
+    GasCylinderResponseDto,
+    'Aparece como `photoUrl` en el catálogo que ven las apps.',
+  )
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @SubirFotoInterceptor()
+  async uploadPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<GasCylinderResponseDto> {
+    return GasCylinderMapper.toDto(
+      await this.gasCylinderPhoto.subir(id, distributorId, file),
+    );
+  }
+
+  @Delete(':id/photo')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Sacar la imagen del producto',
+    description:
+      'Quita la referencia (el objeto se borra del bucket en segundo plano); ' +
+      'no da de baja el producto.',
+  })
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @ApiOkResponse({ type: GasCylinderResponseDto })
+  @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  async removePhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<GasCylinderResponseDto> {
+    return GasCylinderMapper.toDto(
+      await this.gasCylinderPhoto.quitar(id, distributorId),
+    );
+  }
+
+  @Get(':id/photo')
+  @PublicIdentificable()
+  @ApiVerFoto('Ver la imagen del producto')
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  async getPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: DownloadQueryDto,
+    @CurrentDistributor() distributorId: string | null,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    // El catálogo es público: sin sesión no se acota por distribuidora, y un
+    // producto dado de baja sólo lo ve el personal del panel.
+    const rol = req.user?.role;
+    const esPersonal = rol === RoleType.ADMIN || rol === RoleType.SUPER_ADMIN;
+    responderFoto(
+      res,
+      query.modo,
+      await this.gasCylinderPhoto.enlace(id, distributorId, !esPersonal),
     );
   }
 
@@ -178,7 +267,7 @@ export class GasCylinderController {
     @Body() dto: UpdateStockDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<GasCylinderResponseDto> {
-    return GasCylinderMapper.toDto(
+    return this.toDto(
       await this.gasCylinderService.updateStock(
         id,
         dto.quantity,

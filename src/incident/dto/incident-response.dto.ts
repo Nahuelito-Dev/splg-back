@@ -10,7 +10,13 @@ export class IncidentResponseDto {
   reported_by!: string;
   @ApiProperty({ enum: IncidentType }) type!: IncidentType;
   @ApiProperty() description!: string;
-  @ApiProperty({ type: String, nullable: true }) photo_url!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Foto: URL firmada de S3 si se subió una (vence), si no la URL externa que traía.',
+  })
+  photo_url!: string | null;
   @ApiProperty({ enum: IncidentStatus }) status!: IncidentStatus;
   @ApiProperty({ type: String, nullable: true })
   resolution_note!: string | null;

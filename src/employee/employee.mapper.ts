@@ -80,6 +80,7 @@ export class EmployeeMapper {
     dto.status = empleado.status;
     dto.hireDate = empleado.hireDate;
     dto.hasAccount = empleado.userId !== null;
+    dto.photoUrl = empleado.photoSignedUrl ?? null;
     return dto;
   }
 }

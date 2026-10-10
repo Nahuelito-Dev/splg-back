@@ -62,6 +62,13 @@ export class GasCylinder {
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 
+  /** Key de la imagen del producto en el bucket (`gascylinders/{distribuidora}/{producto}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   /** Promociones por volumen; se guardan y se reemplazan junto con el producto. */
   @OneToMany(() => GasCylinderPromotion, (p) => p.gasCylinder, {
     cascade: true,

@@ -220,6 +220,17 @@ export class Employee {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
 
+  /**
+   * Key de la foto del legajo en el bucket
+   * (`employees/{distribuidora}/{legajo}/{uuid}.{ext}`). Sólo la usa un legajo
+   * SIN cuenta: con cuenta, la foto es la del usuario.
+   */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
+  /** URL firmada; la completa `EmployeePhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

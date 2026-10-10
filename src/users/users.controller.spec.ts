@@ -1,6 +1,8 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import type { Response } from 'express';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { UserPhotoService } from './user-photo.service';
 import { User } from './entities/user.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -12,6 +14,12 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
  */
 describe('UsersController — alcance', () => {
   let controller: UsersController;
+  let photo: {
+    firmar: jest.Mock;
+    subir: jest.Mock;
+    quitar: jest.Mock;
+    enlace: jest.Mock;
+  };
   let service: {
     findOne: jest.Mock;
     findOneByEmail: jest.Mock;
@@ -39,7 +47,16 @@ describe('UsersController — alcance', () => {
       perteneceA: jest.fn().mockResolvedValue(true),
       findAlcance: jest.fn().mockResolvedValue({ rol: RoleType.DELIVERY }),
     };
-    controller = new UsersController(service as unknown as UsersService);
+    photo = {
+      firmar: jest.fn().mockResolvedValue(undefined),
+      subir: jest.fn().mockResolvedValue({ userId: 'x' }),
+      quitar: jest.fn().mockResolvedValue({ userId: 'x' }),
+      enlace: jest.fn().mockResolvedValue({ kind: 'none' }),
+    };
+    controller = new UsersController(
+      service as unknown as UsersService,
+      photo as unknown as UserPhotoService,
+    );
   });
 
   it('un cliente no lee la cuenta de otro', async () => {
@@ -151,6 +168,78 @@ describe('UsersController — alcance', () => {
     expect(service.update).toHaveBeenCalledWith('yo', {
       full_name: 'Ana',
       phone_number: '+5493764000000',
+    });
+  });
+
+  describe('foto de perfil', () => {
+    const resp = {
+      json: jest.fn(),
+      redirect: jest.fn(),
+    } as unknown as Response;
+
+    it('cada usuario sube y saca la suya por /me/photo, sin pasar id', async () => {
+      await controller.uploadMyPhoto(undefined, usuario(RoleType.CUSTOMER));
+      await controller.removeMyPhoto(usuario(RoleType.CUSTOMER));
+      expect(photo.subir).toHaveBeenCalledWith('yo', undefined);
+      expect(photo.quitar).toHaveBeenCalledWith('yo');
+    });
+
+    it('el admin de empresa sube la foto de un chofer de su distribuidora', async () => {
+      await controller.uploadPhoto(
+        'chofer',
+        undefined,
+        usuario(RoleType.ADMIN),
+        'd1',
+      );
+      expect(photo.subir).toHaveBeenCalledWith('chofer', undefined);
+    });
+
+    it('el admin de empresa no toca la foto de un cliente (403)', async () => {
+      service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
+      await expect(
+        controller.uploadPhoto(
+          'otro',
+          undefined,
+          usuario(RoleType.ADMIN),
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        controller.removePhoto('otro', usuario(RoleType.ADMIN), 'd1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(photo.subir).not.toHaveBeenCalled();
+      expect(photo.quitar).not.toHaveBeenCalled();
+    });
+
+    it('un usuario de otra distribuidora no existe para el admin (404)', async () => {
+      service.perteneceA.mockResolvedValue(false);
+      await expect(
+        controller.uploadPhoto(
+          'otro',
+          undefined,
+          usuario(RoleType.ADMIN),
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(photo.subir).not.toHaveBeenCalled();
+    });
+
+    it('el administrador general sí sube la foto de un cliente', async () => {
+      service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
+      await controller.uploadPhoto(
+        'otro',
+        undefined,
+        usuario(RoleType.SUPER_ADMIN),
+        null,
+      );
+      expect(photo.subir).toHaveBeenCalledWith('otro', undefined);
+    });
+
+    it('un cliente no ve la foto de otro (403)', async () => {
+      await expect(
+        controller.getPhoto('otro', {}, usuario(RoleType.CUSTOMER), null, resp),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(photo.enlace).not.toHaveBeenCalled();
     });
   });
 });
