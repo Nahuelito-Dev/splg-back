@@ -3,6 +3,8 @@ import { GasCylinderService } from './gascylinder.service';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { GasCylinderNotFoundError } from './domain/errors/gas-cylinder-not-found.error';
 import { InsufficientStockError } from './domain/errors/insufficient-stock.error';
+import { VendibleInsuficienteError } from './domain/errors/vendible-insuficiente.error';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DistributorService } from '../distributor/distributor.service';
 
 /**
@@ -38,6 +40,7 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
     service = new GasCylinderService(
       {} as Repository<GasCylinder>,
       {} as DistributorService,
+      { emitAsync: jest.fn() } as unknown as EventEmitter2,
     );
   });
 
@@ -103,6 +106,66 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       await service.restituirStock(manager, [
         { gasCylinderId: 'x', quantity: 2 },
       ]);
+      expect(save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ajustarVendible (el vendible sigue al físico)', () => {
+    const delProducto = (id: string, stock: number, distributorId = 'd1') =>
+      ({
+        gasCylinderId: id,
+        distributorId,
+        type: `Garrafa ${id}`,
+        stock,
+      }) as GasCylinder;
+
+    it('suma y resta con lock pesimista y por id ascendente', async () => {
+      const a = delProducto('a', 5);
+      const b = delProducto('b', 5);
+      lecturas.push(a, b);
+      await service.ajustarVendible(manager, 'd1', [
+        { gasCylinderId: 'b', delta: -2 },
+        { gasCylinderId: 'a', delta: 4 },
+      ]);
+      expect(a.stock).toBe(9);
+      expect(b.stock).toBe(3);
+      expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+      const ids = (qb.where.mock.calls as unknown[][]).map(
+        (c) => (c[1] as { id: string }).id,
+      );
+      expect(ids).toEqual(['a', 'b']);
+    });
+
+    it('nunca deja el vendible negativo: lo que falta está reservado por pedidos', async () => {
+      const g = delProducto('a', 3);
+      lecturas.push(g);
+      await expect(
+        service.ajustarVendible(manager, 'd1', [
+          { gasCylinderId: 'a', delta: -4 },
+        ]),
+      ).rejects.toBeInstanceOf(VendibleInsuficienteError);
+      expect(g.stock).toBe(3);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('con exactamente el vendible alcanza', async () => {
+      const g = delProducto('a', 3);
+      lecturas.push(g);
+      await service.ajustarVendible(manager, 'd1', [
+        { gasCylinderId: 'a', delta: -3 },
+      ]);
+      expect(g.stock).toBe(0);
+    });
+
+    it('un producto de otra distribuidora es 404 y no se toca', async () => {
+      const g = delProducto('a', 3, 'otra');
+      lecturas.push(g);
+      await expect(
+        service.ajustarVendible(manager, 'd1', [
+          { gasCylinderId: 'a', delta: 1 },
+        ]),
+      ).rejects.toBeInstanceOf(GasCylinderNotFoundError);
+      expect(g.stock).toBe(3);
       expect(save).not.toHaveBeenCalled();
     });
   });

@@ -25,6 +25,14 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   'order_status_history',
   'cylinder_movement',
   'vehicle_usage_log',
+  // Stock físico: el libro de movimientos ya es el registro de cada cambio, el
+  // saldo es su suma materializada y el renglón de un ajuste lo cubre la
+  // cabecera del ajuste.
+  'stock_movement',
+  'stock_balance',
+  'stock_adjustment_item',
+  // Firma del último aviso de conciliación: estado operativo del cron.
+  'stock_reconciliation_alert',
   // Estado transitorio de compra: cada alta y baja de renglón es ruido; lo
   // que vale es el pedido que sale de ahí.
   'cart',

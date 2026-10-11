@@ -29,7 +29,6 @@ import { GasCylinderService } from './gascylinder.service';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { GasCylinderPhotoService } from './gascylinder-photo.service';
 import { PublicIdentificable } from '../common/decorators/isPublic.decorator';
-import { UpdateStockDto } from './dto/update-stock.dto';
 import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
 import {
@@ -252,27 +251,6 @@ export class GasCylinderController {
       res,
       query.modo,
       await this.gasCylinderPhoto.enlace(id, distributorId, !esPersonal),
-    );
-  }
-
-  @Patch(':id/stock')
-  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Update gas cylinder stock' })
-  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
-  @ApiOkResponse({ type: GasCylinderResponseDto })
-  @ApiBadRequestResponse({ description: 'El stock quedaría negativo' })
-  @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
-  async updateStock(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateStockDto,
-    @CurrentDistributor({ required: true }) distributorId: string,
-  ): Promise<GasCylinderResponseDto> {
-    return this.toDto(
-      await this.gasCylinderService.updateStock(
-        id,
-        dto.quantity,
-        distributorId,
-      ),
     );
   }
 

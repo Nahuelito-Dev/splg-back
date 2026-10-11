@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ILike, Repository } from 'typeorm';
 import { GasCylinderService } from './gascylinder.service';
 import { GasCylinder } from './entities/gascylinder.entity';
@@ -19,6 +20,7 @@ describe('GasCylinderService', () => {
     andWhere: jest.Mock;
   };
   let txManager: { createQueryBuilder: jest.Mock; save: jest.Mock };
+  let eventos: { emitAsync: jest.Mock };
   let distribuidoras: {
     getDefault: jest.Mock;
     findBySlug: jest.Mock;
@@ -58,6 +60,7 @@ describe('GasCylinderService', () => {
       })),
       save: jest.fn((g: GasCylinder) => Promise.resolve(g)),
     };
+    eventos = { emitAsync: jest.fn().mockResolvedValue([]) };
     distribuidoras = {
       getDefault: jest.fn().mockResolvedValue({ distributorId: 'd-default' }),
       findBySlug: jest.fn().mockResolvedValue({ distributorId: 'd-slug' }),
@@ -66,6 +69,7 @@ describe('GasCylinderService', () => {
     service = new GasCylinderService(
       productos as unknown as Repository<GasCylinder>,
       distribuidoras as unknown as DistributorService,
+      eventos as unknown as EventEmitter2,
     );
   });
 
@@ -122,6 +126,64 @@ describe('GasCylinderService', () => {
       service.create({ type: '10kg', weight: 10, price: 100 }, 'd1'),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(productos.save).not.toHaveBeenCalled();
+  });
+
+  describe('stock vendible inicial y edición', () => {
+    it('un producto nuevo con stock publica el evento para que el stock lo registre como físico', async () => {
+      productos.findOne.mockResolvedValue(null);
+      txManager.save.mockImplementation((g: GasCylinder) =>
+        Promise.resolve({ ...g, gasCylinderId: 'nuevo' }),
+      );
+      await service.create(
+        { type: '5kg', weight: 5, price: 100, stock: 12 },
+        'd1',
+      );
+      // Con el manager de la transacción del alta: el físico se escribe ahí.
+      expect(eventos.emitAsync).toHaveBeenCalledWith(
+        'garrafa.creada',
+        expect.objectContaining({
+          gasCylinderId: 'nuevo',
+          distributorId: 'd1',
+          stock: 12,
+          manager: txManager,
+        }),
+      );
+    });
+
+    it('si el listener falla, el alta falla (misma transacción)', async () => {
+      productos.findOne.mockResolvedValue(null);
+      txManager.save.mockImplementation((g: GasCylinder) =>
+        Promise.resolve({ ...g, gasCylinderId: 'nuevo' }),
+      );
+      eventos.emitAsync.mockRejectedValue(new Error('sin depósito'));
+      await expect(
+        service.create({ type: '5kg', weight: 5, price: 100, stock: 3 }, 'd1'),
+      ).rejects.toThrow();
+    });
+
+    it('sin stock inicial no publica nada', async () => {
+      productos.findOne.mockResolvedValue(null);
+      await service.create({ type: '5kg', weight: 5, price: 100 }, 'd1');
+      expect(eventos.emitAsync).not.toHaveBeenCalled();
+    });
+
+    it('la edición con stock es 400 y no guarda nada: el stock cambia sólo con un ajuste', async () => {
+      productos.findOne.mockResolvedValue(producto(5));
+      const preload = jest.fn().mockResolvedValue(producto(5));
+      (productos as unknown as { preload: jest.Mock }).preload = preload;
+      await expect(
+        service.update('g1', { price: 200, stock: 999 }, 'd1'),
+      ).rejects.toThrow(/ajuste de stock/);
+      expect(preload).not.toHaveBeenCalled();
+    });
+
+    it('la edición sin stock sigue funcionando', async () => {
+      productos.findOne.mockResolvedValue(producto(5));
+      const preload = jest.fn().mockResolvedValue(producto(5));
+      (productos as unknown as { preload: jest.Mock }).preload = preload;
+      await service.update('g1', { price: 200 }, 'd1');
+      expect(preload).toHaveBeenCalledWith({ gasCylinderId: 'g1', price: 200 });
+    });
   });
 
   describe('updateStock', () => {

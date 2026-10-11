@@ -1,0 +1,444 @@
+import { DataSource, EntityManager } from 'typeorm';
+import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import { EmailSenderPort } from '../../email/ports/email-sender.port';
+import { AdminService } from '../../admin/admin.service';
+import { StockAdminNotifier } from './stock-admin-notifier.service';
+import { StockReconciliationCron } from './stock-reconciliation.cron';
+import { StockReconciliationService } from './stock-reconciliation.service';
+import { StockLowCron } from './stock-low.cron';
+import { ReapplyDeliveriesUseCase } from './reapply-deliveries.use-case';
+import {
+  ResultadoDeEntrega,
+  StockDeliveryService,
+} from './stock-delivery.service';
+import { EntregaDePedido } from '../../order/domain/ports/stock-delivery.port';
+
+const DIST = 'dddddddd-0000-4000-8000-000000000001';
+const G1 = '10000000-0000-4000-8000-000000000001';
+const G2 = '10000000-0000-4000-8000-000000000002';
+
+function armarConciliacion(datos: {
+  garrafas: Array<{ gas_cylinder_id: string; type: string; stock: number }>;
+  fisicas: Array<{ gas_cylinder_id: string; total: string }>;
+  reservadas: Record<string, number>;
+  desde?: Date | null;
+  entregadas?: Array<{
+    orderId: string;
+    deliveredAt: Date;
+    gasCylinderId: string;
+    quantity: number;
+  }>;
+  conMovimiento?: Array<{ reference_id: string; gas_cylinder_id: string }>;
+}) {
+  const query = jest.fn((sql: string) => {
+    if (sql.includes('FROM "gas_cylinder"'))
+      return Promise.resolve(datos.garrafas);
+    if (sql.includes('FROM "stock_balance"'))
+      return Promise.resolve(datos.fisicas);
+    if (sql.includes('MIN("occurred_at")'))
+      return Promise.resolve([{ desde: datos.desde ?? null }]);
+    if (sql.includes(`"reason" = 'delivery'`))
+      return Promise.resolve(datos.conMovimiento ?? []);
+    throw new Error(sql);
+  });
+  const manager = { query } as unknown as EntityManager;
+  const transaction = jest.fn(
+    (_iso: string, cb: (m: EntityManager) => Promise<unknown>) => cb(manager),
+  );
+  const dataSource = { transaction } as unknown as DataSource;
+  const orders = {
+    reservedByCylinder: jest
+      .fn()
+      .mockResolvedValue(new Map(Object.entries(datos.reservadas))),
+    deliveredItemsSince: jest.fn().mockResolvedValue(datos.entregadas ?? []),
+  };
+  const service = new StockReconciliationService(
+    dataSource,
+    orders as unknown as OrderLookupService,
+  );
+  return { service, transaction, query, orders, manager };
+}
+
+describe('StockReconciliationService (invariante del vendible, D4)', () => {
+  it('cierra cuando vendible = llenas − reservadas en todas las garrafas', async () => {
+    const { service } = armarConciliacion({
+      garrafas: [{ gas_cylinder_id: G1, type: '10kg', stock: 70 }],
+      fisicas: [{ gas_cylinder_id: G1, total: '100' }],
+      reservadas: { [G1]: 30 },
+    });
+    const r = await service.conciliar(DIST);
+    expect(r.consistent).toBe(true);
+    expect(r.cylinders[0]).toMatchObject({ expected: 70, difference: 0 });
+  });
+
+  it('detecta una garrafa descuadrada y informa la diferencia (no corrige)', async () => {
+    const { service, query } = armarConciliacion({
+      garrafas: [
+        { gas_cylinder_id: G1, type: '10kg', stock: 70 },
+        { gas_cylinder_id: G2, type: '15kg', stock: 50 },
+      ],
+      fisicas: [
+        { gas_cylinder_id: G1, total: '100' },
+        { gas_cylinder_id: G2, total: '40' },
+      ],
+      reservadas: { [G1]: 30, [G2]: 0 },
+    });
+    const r = await service.conciliar(DIST);
+    expect(r.consistent).toBe(false);
+    expect(r.cylinders.find((c) => c.gasCylinderId === G2)).toMatchObject({
+      sellable: 50,
+      expected: 40,
+      difference: 10,
+    });
+    const escrituras = query.mock.calls.filter((c) =>
+      /INSERT|UPDATE|DELETE/i.test(c[0]),
+    );
+    expect(escrituras).toHaveLength(0);
+  });
+
+  it('una garrafa sin saldo físico cuenta como cero llenas', async () => {
+    const { service } = armarConciliacion({
+      garrafas: [{ gas_cylinder_id: G1, type: '10kg', stock: 5 }],
+      fisicas: [],
+      reservadas: {},
+    });
+    expect((await service.conciliar(DIST)).cylinders[0]).toMatchObject({
+      physicalFull: 0,
+      difference: 5,
+    });
+  });
+
+  it('lee las tres cifras en una transacción REPEATABLE READ (mismo instante)', async () => {
+    const { service, transaction, orders, manager } = armarConciliacion({
+      garrafas: [],
+      fisicas: [],
+      reservadas: {},
+    });
+    await service.conciliar(DIST);
+    expect(transaction.mock.calls[0][0]).toBe('REPEATABLE READ');
+    expect(orders.reservedByCylinder).toHaveBeenCalledWith(DIST, manager);
+  });
+
+  it('lista las entregas posteriores al arranque que no descontaron el físico', async () => {
+    const entregadas = [
+      {
+        orderId: 'o1',
+        deliveredAt: new Date(),
+        gasCylinderId: G1,
+        quantity: 2,
+      },
+      {
+        orderId: 'o2',
+        deliveredAt: new Date(),
+        gasCylinderId: G1,
+        quantity: 1,
+      },
+    ];
+    const { service, orders } = armarConciliacion({
+      garrafas: [{ gas_cylinder_id: G1, type: '10kg', stock: 70 }],
+      fisicas: [{ gas_cylinder_id: G1, total: '100' }],
+      reservadas: { [G1]: 30 },
+      desde: new Date('2026-10-01'),
+      entregadas,
+      conMovimiento: [{ reference_id: 'o1', gas_cylinder_id: G1 }],
+    });
+    const r = await service.conciliar(DIST);
+    expect(orders.deliveredItemsSince).toHaveBeenCalledWith(
+      DIST,
+      new Date('2026-10-01'),
+      expect.anything(),
+    );
+    expect(r.deliveriesWithoutMovement).toEqual([
+      expect.objectContaining({
+        orderId: 'o2',
+        gasCylinderType: '10kg',
+        quantity: 1,
+      }),
+    ]);
+    expect(r.consistent).toBe(false);
+  });
+
+  it('sin movimientos de arranque no hay entregas que auditar', async () => {
+    const { service, orders } = armarConciliacion({
+      garrafas: [],
+      fisicas: [],
+      reservadas: {},
+      desde: null,
+    });
+    const r = await service.conciliar(DIST);
+    expect(orders.deliveredItemsSince).not.toHaveBeenCalled();
+    expect(r.deliveriesWithoutMovement).toEqual([]);
+  });
+});
+
+describe('StockReconciliationCron', () => {
+  const diferencia = (difference = 5) => ({
+    consistent: false,
+    cylinders: [
+      {
+        gasCylinderId: G1,
+        gasCylinderType: '10kg',
+        sellable: 5,
+        physicalFull: 0,
+        reserved: 0,
+        expected: 0,
+        difference,
+      },
+    ],
+    deliveriesWithoutMovement: [],
+  });
+  /** Simula la tabla de firmas del último aviso. */
+  const armarAvisos = (resultados: unknown[]) => {
+    let firma: string | undefined;
+    const query = jest.fn((sql: string, params: unknown[] = []) => {
+      if (sql.startsWith('SELECT'))
+        return Promise.resolve(firma ? [{ signature: firma }] : []);
+      if (sql.includes('INSERT')) firma = params[1] as string;
+      if (sql.includes('DELETE')) firma = undefined;
+      return Promise.resolve([]);
+    });
+    const conciliar = jest.fn();
+    resultados.forEach((r) => conciliar.mockResolvedValueOnce(r));
+    const avisar = jest.fn().mockResolvedValue(true);
+    const cron = new StockReconciliationCron(
+      { query } as unknown as DataSource,
+      { conciliar } as unknown as StockReconciliationService,
+      { avisar } as unknown as StockAdminNotifier,
+    );
+    return { cron, avisar };
+  };
+
+  it('no repite el aviso de la MISMA diferencia noche tras noche', async () => {
+    const { cron, avisar } = armarAvisos([diferencia(), diferencia()]);
+    await cron.conciliar(DIST);
+    await cron.conciliar(DIST);
+    expect(avisar).toHaveBeenCalledTimes(1);
+  });
+
+  it('avisa de nuevo si la diferencia cambia', async () => {
+    const { cron, avisar } = armarAvisos([diferencia(5), diferencia(7)]);
+    await cron.conciliar(DIST);
+    await cron.conciliar(DIST);
+    expect(avisar).toHaveBeenCalledTimes(2);
+  });
+
+  it('si vuelve a cerrar y se desvía otra vez, avisa de nuevo', async () => {
+    const cierra = {
+      consistent: true,
+      cylinders: [],
+      deliveriesWithoutMovement: [],
+    };
+    const { cron, avisar } = armarAvisos([diferencia(), cierra, diferencia()]);
+    await cron.conciliar(DIST);
+    await cron.conciliar(DIST);
+    await cron.conciliar(DIST);
+    expect(avisar).toHaveBeenCalledTimes(2);
+  });
+
+  it('avisa por email si hay diferencias y NO corrige nada', async () => {
+    const reconciliation = {
+      conciliar: jest.fn().mockResolvedValue({
+        consistent: false,
+        cylinders: [
+          {
+            gasCylinderId: G1,
+            gasCylinderType: '10kg',
+            sellable: 5,
+            physicalFull: 0,
+            reserved: 0,
+            expected: 0,
+            difference: 5,
+          },
+        ],
+        deliveriesWithoutMovement: [],
+      }),
+    };
+    const send = jest.fn().mockResolvedValue(undefined);
+    const admins = {
+      findAll: jest.fn().mockResolvedValue([{ user: { email: 'a@x.com' } }]),
+    };
+    const notifier = new StockAdminNotifier(
+      admins as unknown as AdminService,
+      { send } as unknown as EmailSenderPort,
+    );
+    const cron = new StockReconciliationCron(
+      { query: jest.fn().mockResolvedValue([]) } as unknown as DataSource,
+      reconciliation as unknown as StockReconciliationService,
+      notifier,
+    );
+    await cron.conciliar(DIST);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'a@x.com',
+        subject: expect.stringContaining('diferencias') as string,
+      }),
+    );
+  });
+
+  it('si todo cierra no manda nada', async () => {
+    const reconciliation = {
+      conciliar: jest.fn().mockResolvedValue({
+        consistent: true,
+        cylinders: [],
+        deliveriesWithoutMovement: [],
+      }),
+    };
+    const notifier = { avisar: jest.fn() };
+    const cron = new StockReconciliationCron(
+      { query: jest.fn() } as unknown as DataSource,
+      reconciliation as unknown as StockReconciliationService,
+      notifier as unknown as StockAdminNotifier,
+    );
+    await cron.conciliar(DIST);
+    expect(notifier.avisar).not.toHaveBeenCalled();
+  });
+
+  it('un fallo en una distribuidora no corta a las demás', async () => {
+    const reconciliation = {
+      conciliar: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce({
+          consistent: true,
+          cylinders: [],
+          deliveriesWithoutMovement: [],
+        }),
+    };
+    const dataSource = {
+      query: jest
+        .fn()
+        .mockResolvedValue([
+          { distributor_id: 'd1' },
+          { distributor_id: 'd2' },
+        ]),
+    };
+    const cron = new StockReconciliationCron(
+      dataSource as unknown as DataSource,
+      reconciliation as unknown as StockReconciliationService,
+      { avisar: jest.fn() } as unknown as StockAdminNotifier,
+    );
+    await cron.conciliarTodas();
+    expect(reconciliation.conciliar).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('StockLowCron (alerted_at)', () => {
+  const fila = (over: Record<string, unknown>) => ({
+    threshold_id: 't1',
+    distributor_id: DIST,
+    warehouse_name: 'Central',
+    type: '10kg',
+    min_full: 20,
+    current_full: 5,
+    alerted_at: null,
+    ...over,
+  });
+  const armar = (filas: unknown[], emailFalla = false) => {
+    const query = jest.fn<Promise<unknown[]>, [string, unknown[]?]>((sql) =>
+      sql.includes('SELECT') ? Promise.resolve(filas) : Promise.resolve([]),
+    );
+    const avisar = jest.fn<Promise<boolean>, [string, string, string]>();
+    if (emailFalla) avisar.mockRejectedValue(new Error('smtp'));
+    else avisar.mockResolvedValue(true);
+    const cron = new StockLowCron(
+      { query } as unknown as DataSource,
+      { avisar } as unknown as StockAdminNotifier,
+    );
+    return { cron, query, avisar };
+  };
+  const escrituras = (
+    query: jest.Mock<Promise<unknown[]>, [string, unknown[]?]>,
+  ) => query.mock.calls.filter((c) => c[0].includes('UPDATE'));
+
+  it('avisa lo que bajó del mínimo y marca alerted_at', async () => {
+    const { cron, avisar, query } = armar([fila({})]);
+    await cron.avisarStockBajo();
+    expect(avisar).toHaveBeenCalledTimes(1);
+    expect(avisar.mock.calls[0][2]).toContain('Central');
+    expect(escrituras(query)[0][0]).toContain('"alerted_at" = now()');
+    expect(escrituras(query)[0][1]).toEqual([['t1']]);
+  });
+
+  it('no repite el aviso mientras siga bajo el mínimo', async () => {
+    const { cron, avisar, query } = armar([fila({ alerted_at: new Date() })]);
+    await cron.avisarStockBajo();
+    expect(avisar).not.toHaveBeenCalled();
+    expect(escrituras(query)).toHaveLength(0);
+  });
+
+  it('cuando el depósito se recupera limpia alerted_at para volver a avisar después', async () => {
+    const { cron, avisar, query } = armar([
+      fila({ current_full: 30, alerted_at: new Date() }),
+    ]);
+    await cron.avisarStockBajo();
+    expect(avisar).not.toHaveBeenCalled();
+    expect(escrituras(query)[0][0]).toContain('"alerted_at" = NULL');
+  });
+
+  it('con mínimo cero no avisa nunca', async () => {
+    const { cron, avisar } = armar([fila({ min_full: 0, current_full: 0 })]);
+    await cron.avisarStockBajo();
+    expect(avisar).not.toHaveBeenCalled();
+  });
+
+  it('si el envío falla NO marca alerted_at: se reintenta mañana', async () => {
+    const { cron, query } = armar([fila({})], true);
+    await cron.avisarStockBajo();
+    expect(escrituras(query)).toHaveLength(0);
+  });
+
+  it('agrupa por distribuidora: un mail por cada una', async () => {
+    const { cron, avisar } = armar([
+      fila({}),
+      fila({ threshold_id: 't2', distributor_id: 'otra' }),
+    ]);
+    await cron.avisarStockBajo();
+    expect(avisar).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ReapplyDeliveriesUseCase', () => {
+  it('reaplica por pedido (agrupando renglones) y cuenta reaplicados y pendientes', async () => {
+    const dataSource = {
+      query: jest.fn().mockResolvedValue([{ desde: new Date('2026-10-01') }]),
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb({})),
+    };
+    const orders = {
+      deliveredItemsSince: jest.fn().mockResolvedValue([
+        { orderId: 'o1', vehicleCarId: 'c1', gasCylinderId: G1, quantity: '2' },
+        { orderId: 'o1', vehicleCarId: 'c1', gasCylinderId: G2, quantity: '1' },
+        { orderId: 'o2', vehicleCarId: null, gasCylinderId: G1, quantity: '4' },
+        { orderId: 'o3', vehicleCarId: null, gasCylinderId: G1, quantity: '1' },
+      ]),
+    };
+    const delivery = {
+      registrarEntrega: jest
+        .fn<Promise<ResultadoDeEntrega>, [unknown, EntregaDePedido]>()
+        .mockResolvedValueOnce({
+          aplicadas: [
+            { gasCylinderId: G1, origen: 'vehiculo' },
+            { gasCylinderId: G2, origen: 'vehiculo' },
+          ],
+          omitidas: [],
+        })
+        .mockResolvedValueOnce({ aplicadas: [], omitidas: [G1] })
+        .mockResolvedValueOnce({ aplicadas: [], omitidas: [] }),
+    };
+    const uc = new ReapplyDeliveriesUseCase(
+      dataSource as unknown as DataSource,
+      orders as unknown as OrderLookupService,
+      delivery as unknown as StockDeliveryService,
+    );
+    const r = await uc.execute(DIST);
+    expect(delivery.registrarEntrega).toHaveBeenCalledTimes(3);
+    expect(delivery.registrarEntrega.mock.calls[0][1]).toMatchObject({
+      orderId: 'o1',
+      items: [
+        { gasCylinderId: G1, quantity: 2 },
+        { gasCylinderId: G2, quantity: 1 },
+      ],
+    });
+    // o3 ya estaba registrada: no cuenta.
+    expect(r).toEqual({ revisados: 2, reaplicados: 1, pendientes: 1 });
+  });
+});

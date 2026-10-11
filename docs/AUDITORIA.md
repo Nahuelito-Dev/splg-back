@@ -61,7 +61,9 @@ después de los guards).
 Una sola lista, con el porqué, en `src/audit/data/audit-exclusions.ts`: las
 tablas de auditoría y `audit_log`, `document_sequence`, `storage_orphan`,
 `order_dispatch_offer`, `route_batch_offer`, los historiales que sólo se agregan
-(`order_status_history`, `cylinder_movement`, `vehicle_usage_log`), el carrito
+(`order_status_history`, `cylinder_movement`, `vehicle_usage_log`), el libro de
+stock físico (`stock_movement`, su saldo materializado `stock_balance` y el
+renglón `stock_adjustment_item`, que cubre la cabecera del ajuste), el carrito
 (`cart`, `cart_item`), la posición del chofer (`Delivery.location` y
 `actualLocation`) y la marca `MaintenanceTask.alertedAt`.
 

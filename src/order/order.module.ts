@@ -38,6 +38,7 @@ import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
 import { PaymentsModule } from '../payments/payments.module';
 import { FleetModule } from '../fleet/fleet.module';
+import { StockModule } from '../stock/stock.module';
 import { NotificationPort } from './domain/ports/notification.port';
 import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
@@ -69,6 +70,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CoverageZoneModule, // valida cobertura de la dirección + recargo por zona
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
+    StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
   ],
   controllers: [OrderController],
   providers: [

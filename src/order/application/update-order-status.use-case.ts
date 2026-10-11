@@ -22,6 +22,7 @@ import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
+import { StockDeliveryPort } from '../domain/ports/stock-delivery.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { ReleaseOrderUseCase } from './release-order.use-case';
 import {
@@ -82,6 +83,8 @@ export class UpdateOrderStatusUseCase {
     // esta vía (admin con deliveryId, o el propio chofer desde el pool)
     // tampoco puede darle el pedido a un chofer inhabilitado.
     private readonly fleetGate: FleetDispatchLockService,
+    // Stock físico: la entrega descuenta la llena del camión o del depósito.
+    private readonly stockDelivery: StockDeliveryPort,
   ) {}
 
   async execute(
@@ -513,6 +516,19 @@ export class UpdateOrderStatusUseCase {
             `Pedido ${order.orderId} entregado: ${advanced} envase(s) → with_customer`,
           );
         }
+        // Stock físico (D5, D6): sale la llena del camión del chofer o del
+        // depósito y entra la vacía de canje. También por el MISMO manager:
+        // por otra conexión esperaría el lock del pedido (FK). Nunca bloquea
+        // la entrega: si no hay saldo, queda para la conciliación.
+        await this.stockDelivery.onOrderDelivered(manager, {
+          orderId: order.orderId,
+          distributorId: order.distributorId,
+          vehicleCarId: order.vehicleCarId,
+          items: (order.items ?? []).map((i) => ({
+            gasCylinderId: i.gasCylinderId,
+            quantity: i.quantity,
+          })),
+        });
         return SIN_EFECTOS;
       }
 

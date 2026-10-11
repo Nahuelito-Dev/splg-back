@@ -21,6 +21,8 @@ import { DistributorService } from '../src/distributor/distributor.service';
 import { RegistroService } from '../src/registro/registro.service';
 import type { RolRegistrable } from '../src/registro/politica-de-registro';
 import { Distributor } from '../src/distributor/entities/distributor.entity';
+import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
+import { sembrarFisico } from './lib/stock-demo';
 
 const PASSWORD = 'Test1234'; // Firebase exige >= 6 caracteres.
 
@@ -90,6 +92,7 @@ const DEMO_STAFF: TestUser[] = [
 ];
 
 async function bootstrap() {
+  resguardoDeProduccion();
   const logger = new Logger('Seed');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['warn', 'error'],
@@ -183,6 +186,8 @@ async function bootstrap() {
 
     // Catálogo propio de la distribuidora demo (idempotente: sólo si no tiene).
     await ensureDemoCatalog(dataSource, gasAndino.distributorId);
+    // Su stock vendible inicial es físico: por el ledger, en el depósito central.
+    await sembrarFisico(dataSource, gasAndino.distributorId);
     logger.log(
       '✅ Staff + catálogo de Gas Andino listos (aislados de Distribuidora Demo)',
     );

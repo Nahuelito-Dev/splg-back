@@ -15,6 +15,7 @@ import { S3Module } from '../s3/s3.module';
   ],
   controllers: [GasCylinderController],
   providers: [GasCylinderService, GasCylinderPhotoService],
-  exports: [GasCylinderService],
+  // GasCylinderPhotoService: `stock` devuelve el producto con su foto al ajustar a mano.
+  exports: [GasCylinderService, GasCylinderPhotoService],
 })
 export class GasCylinderModule {}
