@@ -94,6 +94,15 @@ export class UpdateOrderStatusUseCase {
     role?: RoleType,
     actorUserId?: string,
   ): Promise<Order> {
+    // La entrega es la prueba de que el cliente recibió el pedido: se confirma
+    // con el QR del chofer (`ConfirmDeliveryUseCase`, que llega acá SIN rol) o
+    // la cierra un administrador. El chofer no puede cerrarla por su cuenta.
+    if (status === OrderStatus.DELIVERED && role === RoleType.DELIVERY) {
+      throw new ForbiddenException(
+        'La entrega se confirma con el QR del cliente',
+      );
+    }
+
     // Cancelar por ESTE endpoint tiene que producir EXACTAMENTE el mismo
     // efecto que `PATCH /orders/:id/cancel` (mismo stock, mismos avisos, sin
     // doble devolución si se reintenta): delega por completo en

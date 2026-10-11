@@ -266,7 +266,9 @@ export class OrderController {
       '- `status: pending` sobre una RESERVA (pedido `reserved`) la ACTIVA a mano, con las mismas condiciones que el cron ' +
       '(seña paga y día agendado cumplido) — sólo admin/super_admin, 400 claro si no las cumple.\n' +
       '- `status: accepted` sobre un pedido YA `accepted` con el MISMO chofer es idempotente: no regenera `acceptedAt` ' +
-      'ni el código de entrega (pasa cuando el chofer "acepta" el aviso de una asignación manual).',
+      'ni el código de entrega (pasa cuando el chofer "acepta" el aviso de una asignación manual).\n' +
+      '- `status: delivered` NO lo puede pedir el chofer (403): la entrega se confirma con el QR del cliente en ' +
+      '`POST /:id/confirm-delivery`. El admin/super_admin sí puede marcarla por acá (cliente sin celular).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({
@@ -277,7 +279,8 @@ export class OrderController {
   @ApiResponse({
     status: 403,
     description:
-      'El pedido no está asignado a este chofer, o un chofer intentó activar una reserva a mano',
+      'El pedido no está asignado a este chofer, un chofer intentó activar una reserva a mano, o un chofer intentó marcar ' +
+      '`delivered` (la entrega se confirma con el QR del cliente)',
   })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiBadRequestResponse({

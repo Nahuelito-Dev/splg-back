@@ -135,7 +135,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     await expect(
       uc.execute(
         'f1f1f1f1-0000-4000-8000-000000000003',
-        OrderStatus.DELIVERED,
+        OrderStatus.ON_THE_WAY,
         'user-ajeno',
         RoleType.DELIVERY,
       ),
@@ -186,6 +186,36 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
         RoleType.DELIVERY,
       ),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('el chofer asignado NO puede marcar delivered: la entrega se confirma con el QR del cliente', async () => {
+    armar(DELIVERY_ASIGNADO);
+    deliveries.buscarPorIdOUsuario.mockResolvedValue({
+      deliveryId: DELIVERY_ASIGNADO,
+      userId: 'user-asignado',
+    });
+
+    await expect(
+      uc.execute(
+        'f1f1f1f1-0000-4000-8000-000000000003',
+        OrderStatus.DELIVERED,
+        'user-asignado',
+        RoleType.DELIVERY,
+      ),
+    ).rejects.toThrow('La entrega se confirma con el QR del cliente');
+
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+  });
+
+  it('la entrega sin rol (la que dispara confirm-delivery con el QR válido) sí avanza', async () => {
+    armar(DELIVERY_ASIGNADO);
+
+    await expect(
+      uc.execute('f1f1f1f1-0000-4000-8000-000000000003', OrderStatus.DELIVERED),
+    ).resolves.toBeDefined();
+
+    expect(queryRunner.commitTransaction).toHaveBeenCalled();
   });
 
   it('deja pasar al administrador sin mirar a qué chofer está asignado', async () => {
