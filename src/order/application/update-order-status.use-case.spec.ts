@@ -49,6 +49,7 @@ describe('UpdateOrderStatusUseCase', () => {
     connect: jest.Mock;
     startTransaction: jest.Mock;
     commitTransaction: jest.Mock;
+    isTransactionActive: boolean;
     rollbackTransaction: jest.Mock;
     release: jest.Mock;
     manager: {
@@ -136,6 +137,7 @@ describe('UpdateOrderStatusUseCase', () => {
       connect: jest.fn().mockResolvedValue(undefined),
       startTransaction: jest.fn().mockResolvedValue(undefined),
       commitTransaction: jest.fn().mockResolvedValue(undefined),
+      isTransactionActive: true,
       rollbackTransaction: jest.fn().mockResolvedValue(undefined),
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
@@ -267,6 +269,77 @@ describe('UpdateOrderStatusUseCase', () => {
         useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('si la transacción ya no está activa, no intenta el rollback y sale el error original', async () => {
+      orders.findByIdFull.mockResolvedValue(null);
+      queryRunner.isTransactionActive = false;
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
+      expect(queryRunner.release).toHaveBeenCalled();
+    });
+
+    it('al entregar, los envases avanzan por el manager de la transacción', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ON_THE_WAY }),
+      );
+
+      await useCase.execute('ord-1', OrderStatus.DELIVERED);
+
+      expect(cylinderLifecycle.onOrderDelivered).toHaveBeenCalledWith(
+        'ord-1',
+        'dist-1',
+        queryRunner.manager,
+      );
+    });
+
+    it('si falla el avance de envases, la entrega no se confirma (rollback)', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ON_THE_WAY }),
+      );
+      cylinderLifecycle.onOrderDelivered.mockRejectedValue(new Error('boom'));
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.DELIVERED),
+      ).rejects.toThrow('boom');
+      expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('la constancia de la oferta se escribe DESPUÉS del commit, con el lock del pedido ya liberado', async () => {
+      // Escribir adentro (otra conexión, FK al pedido bloqueado con FOR UPDATE)
+      // dejaba la transacción colgada para siempre.
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({
+        deliveryId: 'drv-1',
+        distributorId: 'dist-1',
+        userId: 'user-drv-1',
+        isEnabled: true,
+        validated: true,
+        user: { fullName: 'Chofer Uno', phoneNumber: '+549110000' },
+      });
+
+      await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+
+      const commit = queryRunner.commitTransaction.mock.invocationCallOrder[0];
+      const constancia =
+        orchestrator.onDriverAccepted.mock.invocationCallOrder[0];
+      expect(constancia).toBeGreaterThan(commit);
+    });
+
+    it('si el rollback falla, sale el error original y la conexión se libera', async () => {
+      orders.findByIdFull.mockResolvedValue(null);
+      queryRunner.rollbackTransaction.mockRejectedValue(
+        new Error('conexión caída'),
+      );
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(queryRunner.release).toHaveBeenCalled();
     });
 
     it('asigna el chofer, setea acceptedAt, guarda y emite order:accepted', async () => {

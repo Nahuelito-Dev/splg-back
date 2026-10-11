@@ -45,6 +45,28 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
     host = makeHost();
   });
 
+  it.each(['55P03', '57014'])(
+    'un error de base %s (lock/statement timeout) responde 503 en castellano',
+    (code) => {
+      // QueryFailedError de TypeORM: el SQLSTATE puede venir en driverError.
+      filter.catch(
+        Object.assign(new Error('canceling statement'), {
+          driverError: { code },
+        }),
+        host,
+      );
+
+      expect(applicationRef.reply).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          statusCode: 503,
+          message: 'El sistema está ocupado, reintentá en unos segundos',
+        }),
+        503,
+      );
+    },
+  );
+
   it('mapea InvalidOrderTransitionError a 400 con el mismo mensaje', () => {
     const error = new InvalidOrderTransitionError(
       OrderStatus.PENDING,

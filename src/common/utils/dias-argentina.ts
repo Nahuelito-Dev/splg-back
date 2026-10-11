@@ -73,6 +73,12 @@ export function diaArgentino(instante: Date = new Date()): string {
     .slice(0, 10);
 }
 
+/** Minutos transcurridos desde las 00:00 (hora argentina) de un instante. */
+export function minutosDelDiaArgentino(instante: Date = new Date()): number {
+  const local = new Date(instante.getTime() - DESFASAJE_EN_MS);
+  return local.getUTCHours() * 60 + local.getUTCMinutes();
+}
+
 /** Suma `dias` (puede ser negativo) a un día `YYYY-MM-DD`. */
 export function sumarDias(dia: string, dias: number): string {
   const p = partes(dia);

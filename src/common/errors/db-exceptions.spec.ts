@@ -3,6 +3,7 @@ import {
   ConflictException,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { traducirErrorDeBase } from './db-exceptions';
 
@@ -20,6 +21,18 @@ describe('traducirErrorDeBase', () => {
   const logger = { warn, error } as unknown as Logger;
 
   beforeEach(() => jest.clearAllMocks());
+
+  it.each(['55P03', '57014'])(
+    '%s (timeout de lock/consulta) es 503',
+    (code) => {
+      expect(() =>
+        traducirErrorDeBase({ code, message: 'timeout' }, logger, 'pedido'),
+      ).toThrow(ServiceUnavailableException);
+      expect(() =>
+        traducirErrorDeBase({ code, message: 'timeout' }, logger),
+      ).toThrow('El sistema está ocupado, reintentá en unos segundos');
+    },
+  );
 
   it('23505 (unicidad violada) es 409', () => {
     expect(() =>

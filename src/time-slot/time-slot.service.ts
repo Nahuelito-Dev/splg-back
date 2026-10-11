@@ -4,6 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  diaArgentino,
+  minutosDelDiaArgentino,
+} from '../common/utils/dias-argentina';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 import { TimeSlot } from './entities/time-slot.entity';
@@ -21,6 +25,23 @@ function aMinutos(hora: string): number {
   const [h, m] = hora.split(':');
   return Number(h) * 60 + Number(m);
 }
+
+/**
+ * La franja de HOY (día argentino) ya terminó: su hora de fin pasó en hora
+ * argentina. Una franja de otro día nunca está terminada.
+ */
+function franjaTerminada(
+  slot: Pick<TimeSlot, 'endTime'>,
+  fecha: string,
+  ahora: Date = new Date(),
+): boolean {
+  return (
+    fecha === diaArgentino(ahora) &&
+    aMinutos(slot.endTime) <= minutosDelDiaArgentino(ahora)
+  );
+}
+
+const MENSAJE_FRANJA_TERMINADA = 'La franja ya terminó, elegí otra';
 
 export type SlotAvailability = SlotAvailabilityDto;
 
@@ -124,7 +145,7 @@ export class TimeSlotService {
         );
       }
       if (dto.capacity !== undefined && dto.capacity < timeSlot.capacity) {
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = diaArgentino();
         const agendados = await this.orders.maxBookedFrom(id, hoy, manager);
         if (dto.capacity < agendados) {
           throw new ConflictException(
@@ -190,7 +211,10 @@ export class TimeSlotService {
         endTime: slot.endTime,
         capacity: slot.capacity,
         booked,
-        remaining: Math.max(0, slot.capacity - booked),
+        // Una franja de hoy que ya terminó no se puede elegir: sin cupos.
+        remaining: franjaTerminada(slot, date)
+          ? 0
+          : Math.max(0, slot.capacity - booked),
       });
     }
     return result;
@@ -218,9 +242,12 @@ export class TimeSlotService {
     }
 
     // No agendar en el pasado (compara sólo la fecha, permite same-day = hoy).
-    const today = new Date().toISOString().slice(0, 10);
+    const today = diaArgentino();
     if (date < today) {
       throw new BadRequestException('No se puede agendar en una fecha pasada');
+    }
+    if (franjaTerminada(slot, date)) {
+      throw new BadRequestException(MENSAJE_FRANJA_TERMINADA);
     }
 
     const booked = await this.countBooked(timeSlotId, date, distributorId);
@@ -280,9 +307,12 @@ export class TimeSlotService {
       throw new BadRequestException('Franja horaria inválida o inactiva');
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = diaArgentino();
     if (date < today) {
       throw new BadRequestException('No se puede agendar en una fecha pasada');
+    }
+    if (franjaTerminada(slot, date)) {
+      throw new BadRequestException(MENSAJE_FRANJA_TERMINADA);
     }
 
     const booked = await this.orders.countBooked(

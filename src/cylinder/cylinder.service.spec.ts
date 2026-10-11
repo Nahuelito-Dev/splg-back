@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { CylinderService } from './cylinder.service';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
@@ -329,6 +329,46 @@ describe('CylinderService', () => {
           currentCustomerId: 'cust-7',
         }),
       );
+    });
+
+    it('con manager, lee y escribe envases y movimientos SOLO por él (la tx tiene el pedido bloqueado)', async () => {
+      const txCylinders = {
+        find: jest.fn().mockResolvedValue([
+          makeCylinder({
+            cylinderId: 'cyl-1',
+            state: CylinderState.DISPATCHED,
+            currentOrderId: 'ord-1',
+          }),
+          makeCylinder({
+            cylinderId: 'cyl-2',
+            state: CylinderState.DISPATCHED,
+            currentOrderId: 'ord-1',
+          }),
+        ]),
+        save: jest.fn((e: Cylinder) => Promise.resolve(e)),
+      };
+      const txMovements = {
+        create: jest.fn((e: CylinderMovement) => e),
+        save: jest.fn((e: CylinderMovement) => Promise.resolve(e)),
+      };
+      const manager = {
+        getRepository: jest.fn((entity: unknown) =>
+          entity === Cylinder ? txCylinders : txMovements,
+        ),
+      } as unknown as EntityManager;
+      orderRepo.findRef.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: 'cust-7',
+      });
+
+      const count = await service.onOrderDelivered('ord-1', DIST, manager);
+
+      expect(count).toBe(2);
+      expect(txCylinders.save).toHaveBeenCalledTimes(2);
+      expect(txMovements.save).toHaveBeenCalledTimes(2);
+      expect(cylinderRepo.find).not.toHaveBeenCalled();
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+      expect(movementRepo.save).not.toHaveBeenCalled();
     });
 
     it('es no-op (devuelve 0) si el pedido no tiene envases asignados', async () => {

@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { TimeSlotService } from './time-slot.service';
 import { TimeSlot } from './entities/time-slot.entity';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
@@ -19,7 +19,19 @@ describe('TimeSlotService', () => {
   let orders: { countBooked: jest.Mock; maxBookedFrom: jest.Mock };
 
   const manana = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-  const franja = { time_slot_id: 't1', name: 'Mañana', capacity: 2 };
+  const franja = {
+    time_slot_id: 't1',
+    name: 'Mañana',
+    capacity: 2,
+    startTime: '09:00',
+    endTime: '13:00',
+  };
+  const franjaNoche = {
+    ...franja,
+    name: 'Noche',
+    startTime: '20:00',
+    endTime: '23:30',
+  };
 
   beforeEach(() => {
     slots = { findOne: jest.fn(), find: jest.fn() };
@@ -43,6 +55,76 @@ describe('TimeSlotService', () => {
     await expect(
       service.assertSlotAvailable('t1', '2020-01-01'),
     ).rejects.toThrow('fecha pasada');
+  });
+
+  describe('el "hoy" es el día argentino, no el UTC', () => {
+    // 22:30 del 10/10 en Argentina = 01:30 UTC del 11/10.
+    beforeEach(() => {
+      jest.useFakeTimers({ now: new Date('2026-10-11T01:30:00Z') });
+      slots.findOne.mockResolvedValue(franjaNoche);
+      orders.countBooked.mockResolvedValue(0);
+    });
+    afterEach(() => jest.useRealTimers());
+
+    it('a las 22:30 ART se puede agendar para hoy', async () => {
+      await expect(
+        service.assertSlotAvailable('t1', '2026-10-10'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('a las 22:30 ART se puede agendar para hoy (dentro de la transacción)', async () => {
+      const manager = { findOne: jest.fn().mockResolvedValue(franjaNoche) };
+      await expect(
+        service.assertSlotAvailableTx(
+          manager as unknown as EntityManager,
+          't1',
+          '2026-10-10',
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('ayer argentino sigue siendo pasado', async () => {
+      await expect(
+        service.assertSlotAvailable('t1', '2026-10-09'),
+      ).rejects.toThrow('fecha pasada');
+    });
+
+    it('una franja de hoy que ya terminó (fin 13:00) se rechaza', async () => {
+      slots.findOne.mockResolvedValue(franja);
+      await expect(
+        service.assertSlotAvailable('t1', '2026-10-10'),
+      ).rejects.toThrow('La franja ya terminó, elegí otra');
+    });
+
+    it('lo mismo dentro de la transacción', async () => {
+      const manager = { findOne: jest.fn().mockResolvedValue(franja) };
+      await expect(
+        service.assertSlotAvailableTx(
+          manager as unknown as EntityManager,
+          't1',
+          '2026-10-10',
+        ),
+      ).rejects.toThrow('La franja ya terminó, elegí otra');
+    });
+
+    it('la misma franja mañana sigue disponible', async () => {
+      slots.findOne.mockResolvedValue(franja);
+      await expect(
+        service.assertSlotAvailable('t1', '2026-10-11'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('la disponibilidad de hoy muestra sin cupos las franjas terminadas', async () => {
+      slots.find.mockResolvedValue([
+        { ...franja, timeSlotId: 'a' },
+        { ...franjaNoche, timeSlotId: 'b' },
+      ]);
+      const r = await service.getAvailability('2026-10-10');
+      expect(r.map((x) => [x.timeSlotId, x.remaining])).toEqual([
+        ['a', 0],
+        ['b', 2],
+      ]);
+    });
   });
 
   it('una franja llena rechaza el pedido', async () => {
@@ -146,6 +228,21 @@ describe('TimeSlotService', () => {
         service.update('t1', { startTime: '14:00' }, 'd1'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('a las 22:30 ART la baja de capacidad cuenta lo agendado desde HOY argentino (no el día UTC)', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-11T01:30:00Z') });
+      try {
+        manager.findOne.mockResolvedValue(existente());
+        await service.update('t1', { capacity: 5 }, 'd1');
+        expect(orders.maxBookedFrom).toHaveBeenCalledWith(
+          't1',
+          '2026-10-10',
+          manager,
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('no baja la capacidad por debajo de lo ya agendado: 409', async () => {

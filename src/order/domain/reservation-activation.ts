@@ -1,4 +1,5 @@
 import { Order } from '../entities/order.entity';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 import { ReservationNotActivableError } from './errors/reservation-not-activable.error';
 
 /**
@@ -15,7 +16,7 @@ export function assertReservaActivable(order: Order): void {
     );
   }
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = diaArgentino();
   if (!order.scheduledDate || order.scheduledDate > hoy) {
     throw new ReservationNotActivableError(
       'No se puede activar la reserva antes de la fecha agendada',

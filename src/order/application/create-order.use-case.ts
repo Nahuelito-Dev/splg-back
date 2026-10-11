@@ -42,6 +42,7 @@ import { TimeSlotService } from '../../time-slot/time-slot.service';
 import { errorCode, errorMessage } from '../../common/errors/error-message';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { DomainError } from '../../common/errors/domain.error';
+import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
 
 /** Resultado de crear un pedido: la entidad y, si es pago online, la URL de checkout. */
 export interface CreateOrderResult {
@@ -295,6 +296,12 @@ export class CreateOrderUseCase {
       // `withTransactionRetry` (en el controller) reintente; si se agotan los
       // intentos sale 409, no 500.
       if (['40P01', '40001'].includes(errorCode(error) ?? '')) {
+        throw error;
+      }
+      // Timeout de lock/consulta: no se reintenta (cada intento esperaría el
+      // timeout completo y la respuesta pasaría el del interceptor); el filtro
+      // global lo traduce a 503.
+      if (esTimeoutDeBase(error)) {
         throw error;
       }
       if (
