@@ -24,6 +24,7 @@ describe('ClaimsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     find: jest.Mock;
+    findAndCount: jest.Mock;
     findOne: jest.Mock;
     manager: { transaction: jest.Mock };
   };
@@ -52,6 +53,7 @@ describe('ClaimsService', () => {
       create: jest.fn((d: Partial<Claim>) => d),
       save: jest.fn((c: Claim) => Promise.resolve(c)),
       find: jest.fn(),
+      findAndCount: jest.fn(),
       findOne: jest.fn(),
       manager: {
         transaction: jest.fn((fn: (m: unknown) => unknown) => fn(txManager)),
@@ -169,6 +171,36 @@ describe('ClaimsService', () => {
     );
     expect(orders.assertDeLaDistribuidora).toHaveBeenCalledWith('o1', 'd1');
     expect(claims.save).not.toHaveBeenCalled();
+  });
+
+  describe('mis reclamos', () => {
+    it('filtra por el cliente y la distribuidora, pagina y trae el total', async () => {
+      claims.findAndCount.mockResolvedValue([[{ claimId: 'c1' }], 7]);
+      await expect(
+        service.findMine('u1', { limit: 5, offset: 10 }, 'd1'),
+      ).resolves.toEqual([[{ claimId: 'c1' }], 7]);
+      expect(claims.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { customerId: 'u1', distributorId: 'd1' },
+          take: 5,
+          skip: 10,
+          order: { createdAt: 'DESC' },
+          relations: ['order'],
+        }),
+      );
+    });
+
+    it('sin distribuidora en contexto filtra sólo por el cliente', async () => {
+      claims.findAndCount.mockResolvedValue([[], 0]);
+      await service.findMine('u1', {}, null);
+      expect(claims.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { customerId: 'u1' },
+          take: 10,
+          skip: 0,
+        }),
+      );
+    });
   });
 
   describe('ficha y edición', () => {

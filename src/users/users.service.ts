@@ -22,6 +22,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { ConfigService } from '@nestjs/config';
+import { bloquearCuentaParaBaja } from '../common/locks/cuenta-lock';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
@@ -346,7 +347,10 @@ export class UsersService {
    * la transacción y con un lock por distribuidora, así dos bajas simultáneas
    * no la saltean, venga la baja por `/users` o por `/admin`.
    */
-  async remove(id: string): Promise<MessageResponseDto> {
+  async remove(
+    id: string,
+    opciones: { rechazarConPedidosEnCurso?: boolean } = {},
+  ): Promise<MessageResponseDto> {
     const user = await this.userRepository.findOne({
       where: { userId: id },
       relations: ['customer', 'delivery', 'addresses', 'role', 'admins'],
@@ -360,6 +364,14 @@ export class UsersService {
     await withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          // La cuenta del cliente se bloquea ANTES que cualquier otra fila:
+          // un pedido que se está creando termina antes del conteo, y el que
+          // llega después ve la baja (`cuenta-lock`). Si otra baja propia
+          // ganó la carrera, no hay nada más que hacer.
+          if (opciones.rechazarConPedidosEnCurso) {
+            const cuenta = await bloquearCuentaParaBaja(manager, user.userId);
+            if (cuenta.deBaja) return;
+          }
           await this.asegurarQueQuedaAdministrador(manager, user);
           if (user.delivery) {
             // Con el chofer bloqueado: una aceptación o asignación en curso
@@ -372,6 +384,18 @@ export class UsersService {
             if (pedidos > 0) {
               throw new ConflictException(
                 `El chofer tiene ${pedidos} pedido(s) en curso: cancelalos o reasignalos antes de darlo de baja`,
+              );
+            }
+          }
+
+          if (opciones.rechazarConPedidosEnCurso) {
+            const pedidos = await this.orderLookup.countActiveByCustomer(
+              user.userId,
+              manager,
+            );
+            if (pedidos > 0) {
+              throw new ConflictException(
+                `Tenés ${pedidos} pedido(s) en curso: esperá a que se entreguen o cancelalos antes de dar de baja tu cuenta`,
               );
             }
           }
@@ -462,6 +486,33 @@ export class UsersService {
           : 'Es el último administrador activo de la distribuidora: dá de alta o desbloqueá a otro antes',
       );
     }
+  }
+
+  /**
+   * El cliente da de baja su propia cuenta. Misma baja lógica que `remove`
+   * (usuario, perfil y direcciones con `deletedAt`, Firebase deshabilitado,
+   * auditoría por el subscriber), con una regla más: si tiene pedidos en curso,
+   * en cualquier distribuidora, es 409. Es idempotente: repetirla sobre una
+   * cuenta ya dada de baja responde igual, sin tocar nada más que reintentar
+   * la deshabilitación en Firebase.
+   */
+  async removeOwnAccount(userId: string): Promise<MessageResponseDto> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      withDeleted: true,
+      select: { userId: true, firebaseUid: true, deletedAt: true },
+    });
+    if (!user) {
+      throw new NotFoundException(`User with ID: ${userId} not found`);
+    }
+    if (user.deletedAt) {
+      if (user.firebaseUid) {
+        await this.deshabilitarCuenta(userId, user.firebaseUid);
+      }
+      return MessageResponseDto.of('Tu cuenta ya estaba dada de baja');
+    }
+    await this.remove(userId, { rechazarConPedidosEnCurso: true });
+    return MessageResponseDto.of('Tu cuenta fue dada de baja');
   }
 
   private async deshabilitarCuenta(

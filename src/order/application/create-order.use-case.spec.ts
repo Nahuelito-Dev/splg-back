@@ -22,7 +22,7 @@ describe('CreateOrderUseCase', () => {
     rollbackTransaction: jest.Mock;
     release: jest.Mock;
     isTransactionActive: boolean;
-    manager: { save: jest.Mock };
+    manager: { save: jest.Mock; query: jest.Mock };
   };
   let customers: { buscarComprador: jest.Mock };
   let addresses: { buscarDelUsuario: jest.Mock };
@@ -53,6 +53,7 @@ describe('CreateOrderUseCase', () => {
       release: jest.fn().mockResolvedValue(undefined),
       isTransactionActive: true,
       manager: {
+        query: jest.fn().mockResolvedValue([{ deleted: false }]),
         save: jest.fn((o: Record<string, unknown>) =>
           Promise.resolve({ ...o, orderId: 'ord-1' }),
         ),
@@ -177,6 +178,32 @@ describe('CreateOrderUseCase', () => {
         expect.any(Object),
         expect.any(String),
       );
+    });
+  });
+
+  describe('cuenta del cliente (carrera con la baja)', () => {
+    it('toma el lock de la cuenta (FOR SHARE) antes que el stock y la franja', async () => {
+      await useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH });
+      const [sql, params] = queryRunner.manager.query.mock.calls[0] as [
+        string,
+        string[],
+      ];
+      expect(sql).toContain('FROM "user"');
+      expect(sql).toContain('FOR SHARE');
+      expect(params).toEqual(['cust-1']);
+      expect(
+        queryRunner.manager.query.mock.invocationCallOrder[0],
+      ).toBeLessThan(stock.reservarStock.mock.invocationCallOrder[0]);
+    });
+
+    it('si la baja ganó la carrera es 404, no reserva stock y no guarda', async () => {
+      queryRunner.manager.query.mockResolvedValueOnce([{ deleted: true }]);
+      await expect(
+        useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH }),
+      ).rejects.toThrow('Cliente no encontrado');
+      expect(stock.reservarStock).not.toHaveBeenCalled();
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     });
   });
 

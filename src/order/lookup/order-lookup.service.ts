@@ -117,4 +117,27 @@ export class OrderLookupService {
       ? manager.count(Order, { where })
       : this.orderRepository.count({ where });
   }
+
+  /**
+   * Pedidos del cliente que todavía no terminaron (reservados, pendientes,
+   * aceptados o en camino), de cualquier distribuidora: el cliente es uno solo
+   * para todas.
+   */
+  countActiveByCustomer(
+    customerId: string,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const where: FindOptionsWhere<Order> = {
+      customerId,
+      status: In([
+        OrderStatus.RESERVED,
+        OrderStatus.PENDING,
+        OrderStatus.ACCEPTED,
+        OrderStatus.ON_THE_WAY,
+      ]),
+    };
+    return manager
+      ? manager.count(Order, { where })
+      : this.orderRepository.count({ where });
+  }
 }

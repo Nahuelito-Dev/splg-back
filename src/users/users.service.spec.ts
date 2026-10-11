@@ -21,7 +21,10 @@ describe('UsersService', () => {
   };
   let firebase: { deleteUserSafe: jest.Mock; updateUser: jest.Mock };
   let eventos: { emitAsync: jest.Mock };
-  let orderLookup: { countActiveByDelivery: jest.Mock };
+  let orderLookup: {
+    countActiveByDelivery: jest.Mock;
+    countActiveByCustomer: jest.Mock;
+  };
   let redis: { removeDriver: jest.Mock };
   let manager: { softRemove: jest.Mock; query: jest.Mock };
   let dataSource: { transaction: jest.Mock };
@@ -37,7 +40,10 @@ describe('UsersService', () => {
     firebase = { deleteUserSafe: jest.fn(), updateUser: jest.fn() };
     eventos = { emitAsync: jest.fn().mockResolvedValue([]) };
     redis = { removeDriver: jest.fn().mockResolvedValue(undefined) };
-    orderLookup = { countActiveByDelivery: jest.fn().mockResolvedValue(0) };
+    orderLookup = {
+      countActiveByDelivery: jest.fn().mockResolvedValue(0),
+      countActiveByCustomer: jest.fn().mockResolvedValue(0),
+    };
     manager = { softRemove: jest.fn(), query: jest.fn().mockResolvedValue([]) };
     dataSource = {
       transaction: jest.fn((fn: (m: unknown) => Promise<unknown>) =>
@@ -349,6 +355,125 @@ describe('UsersService', () => {
       service.update('u1', { password: 'Nueva1234' }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(firebase.updateUser).not.toHaveBeenCalled();
+  });
+
+  describe('removeOwnAccount', () => {
+    const cliente = (over: object = {}) => ({
+      userId: 'u1',
+      firebaseUid: 'fb1',
+      customer: { customerId: 'c1' },
+      ...over,
+    });
+
+    it('da de baja lógica la cuenta, deshabilita Firebase y avisa a los oyentes', async () => {
+      const user = cliente();
+      users.findOne
+        .mockResolvedValueOnce({ userId: 'u1', firebaseUid: 'fb1' })
+        .mockResolvedValueOnce(user);
+      await expect(service.removeOwnAccount('u1')).resolves.toEqual({
+        message: 'Tu cuenta fue dada de baja',
+      });
+      expect(orderLookup.countActiveByCustomer).toHaveBeenCalledWith(
+        'u1',
+        manager,
+      );
+      expect(manager.softRemove).toHaveBeenCalledWith(user);
+      expect(users.delete).not.toHaveBeenCalled();
+      expect(firebase.updateUser).toHaveBeenCalledWith('fb1', {
+        disabled: true,
+      });
+      expect(eventos.emitAsync).toHaveBeenCalledWith(
+        'usuario.dado-de-baja',
+        expect.objectContaining({ userId: 'u1' }),
+      );
+    });
+
+    it('con pedidos en curso es 409 y no toca nada', async () => {
+      users.findOne
+        .mockResolvedValueOnce({ userId: 'u1', firebaseUid: 'fb1' })
+        .mockResolvedValueOnce(cliente());
+      orderLookup.countActiveByCustomer.mockResolvedValue(2);
+      const error: unknown = await service
+        .removeOwnAccount('u1')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).message).toMatch(
+        /2 pedido\(s\) en curso/,
+      );
+      expect(manager.softRemove).not.toHaveBeenCalled();
+      expect(firebase.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('cuenta los pedidos del usuario autenticado, de cualquier distribuidora', async () => {
+      users.findOne
+        .mockResolvedValueOnce({ userId: 'u1' })
+        .mockResolvedValueOnce(cliente({ firebaseUid: null }));
+      await service.removeOwnAccount('u1');
+      // Sin filtro de tenant: lo del otro tenant también bloquea la baja.
+      expect(orderLookup.countActiveByCustomer.mock.calls[0]).toEqual([
+        'u1',
+        manager,
+      ]);
+      expect(firebase.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('repetida sobre una cuenta ya dada de baja es inocua: no vuelve a darla de baja', async () => {
+      users.findOne.mockResolvedValueOnce({
+        userId: 'u1',
+        firebaseUid: 'fb1',
+        deletedAt: new Date(),
+      });
+      await expect(service.removeOwnAccount('u1')).resolves.toEqual({
+        message: 'Tu cuenta ya estaba dada de baja',
+      });
+      expect(manager.softRemove).not.toHaveBeenCalled();
+      expect(eventos.emitAsync).not.toHaveBeenCalled();
+      expect(firebase.updateUser).toHaveBeenCalledWith('fb1', {
+        disabled: true,
+      });
+    });
+
+    it('un usuario inexistente es 404', async () => {
+      users.findOne.mockResolvedValueOnce(null);
+      await expect(service.removeOwnAccount('nadie')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('bloquea la cuenta (FOR NO KEY UPDATE) antes de contar los pedidos', async () => {
+      users.findOne
+        .mockResolvedValueOnce({ userId: 'u1' })
+        .mockResolvedValueOnce(cliente());
+      manager.query.mockResolvedValueOnce([{ deleted: false }]);
+      await service.removeOwnAccount('u1');
+      const [sql, params] = manager.query.mock.calls[0] as [string, string[]];
+      expect(sql).toContain('FROM "user"');
+      expect(sql).toContain('FOR NO KEY UPDATE');
+      expect(params).toEqual(['u1']);
+      expect(manager.query.mock.invocationCallOrder[0]).toBeLessThan(
+        orderLookup.countActiveByCustomer.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('doble baja concurrente: la que llega después de la otra no repite la baja', async () => {
+      users.findOne
+        .mockResolvedValueOnce({ userId: 'u1', firebaseUid: 'fb1' })
+        .mockResolvedValueOnce(cliente());
+      manager.query.mockResolvedValueOnce([{ deleted: true }]);
+      await expect(service.removeOwnAccount('u1')).resolves.toEqual({
+        message: 'Tu cuenta fue dada de baja',
+      });
+      expect(orderLookup.countActiveByCustomer).not.toHaveBeenCalled();
+      expect(manager.softRemove).not.toHaveBeenCalled();
+      expect(eventos.emitAsync).not.toHaveBeenCalled();
+    });
+
+    it('la baja que hace un admin (remove) no mira los pedidos del cliente', async () => {
+      users.findOne.mockResolvedValue(cliente());
+      orderLookup.countActiveByCustomer.mockResolvedValue(5);
+      await service.remove('u1');
+      expect(manager.softRemove).toHaveBeenCalled();
+    });
   });
 
   describe('findAll', () => {

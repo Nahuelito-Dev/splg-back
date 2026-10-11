@@ -1,3 +1,4 @@
+import { bloquearCuentaParaPedido } from '../../common/locks/cuenta-lock';
 import {
   Injectable,
   Logger,
@@ -119,6 +120,17 @@ export class CreateOrderUseCase {
     await queryRunner.startTransaction();
 
     try {
+      // Primer lock de la transacción (ver `cuenta-lock`): una baja de la
+      // cuenta del cliente en curso termina antes, y el pedido no cuelga de
+      // una cuenta dada de baja.
+      const cuentaVigente = await bloquearCuentaParaPedido(
+        queryRunner.manager,
+        createOrderDto.customerId,
+      );
+      if (!cuentaVigente) {
+        throw new NotFoundException('Cliente no encontrado');
+      }
+
       const customer = await this.customers.buscarComprador(
         createOrderDto.customerId,
       );
