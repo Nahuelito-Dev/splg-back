@@ -364,8 +364,12 @@ export class CylinderService {
   async onOrderDelivered(
     orderId: string,
     distributorId?: string | null,
+    manager?: EntityManager,
   ): Promise<number> {
-    const cylinders = await this.cylinderRepository.find({
+    const repo = manager
+      ? manager.getRepository(Cylinder)
+      : this.cylinderRepository;
+    const cylinders = await repo.find({
       where: {
         currentOrderId: orderId,
         state: CylinderState.DISPATCHED,
@@ -378,11 +382,16 @@ export class CylinderService {
     const customerId = order?.customerId ?? null;
 
     for (const cylinder of cylinders) {
-      await this.recordTransition(cylinder, CylinderState.WITH_CUSTOMER, {
-        orderId,
-        note: 'Entregado (auto al confirmar la entrega del pedido)',
-        customerId,
-      });
+      await this.recordTransition(
+        cylinder,
+        CylinderState.WITH_CUSTOMER,
+        {
+          orderId,
+          note: 'Entregado (auto al confirmar la entrega del pedido)',
+          customerId,
+        },
+        manager,
+      );
     }
     return cylinders.length;
   }

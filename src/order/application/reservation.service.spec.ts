@@ -173,4 +173,23 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
 
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
+
+  describe('el "hoy" es el día argentino', () => {
+    beforeEach(() => {
+      // 22:30 del 10/10 en Argentina = 01:30 UTC del 11/10.
+      jest.useFakeTimers({ now: new Date('2026-10-11T01:30:00Z') });
+    });
+    afterEach(() => jest.useRealTimers());
+
+    it('activateDueReservations activa las agendadas hasta HOY argentino (10/10), no hasta el día UTC', async () => {
+      await service.activateDueReservations();
+
+      const where = (
+        orderRepository.find.mock.calls[0] as [
+          { where: { scheduledDate: { value: string } } },
+        ]
+      )[0].where;
+      expect(where.scheduledDate.value).toBe('2026-10-10');
+    });
+  });
 });

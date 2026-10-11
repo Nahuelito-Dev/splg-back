@@ -4,6 +4,7 @@ import {
   HttpException,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 
 /**
@@ -17,6 +18,8 @@ const CODIGOS = {
   SINTAXIS_INVALIDA: '22P02',
   DEADLOCK: '40P01',
   FALLA_DE_SERIALIZACION: '40001',
+  LOCK_TIMEOUT: '55P03',
+  STATEMENT_TIMEOUT: '57014',
 } as const;
 
 /**
@@ -97,6 +100,10 @@ export function traducirErrorDeBase(
         `Dos operaciones chocaron al mismo tiempo${donde}. Probá de nuevo.`,
       );
 
+    case CODIGOS.LOCK_TIMEOUT:
+    case CODIGOS.STATEMENT_TIMEOUT:
+      throw ocupado(e.code, e.message, logger, donde);
+
     default:
       // Lo que no sabemos traducir sigue siendo un 500, pero deja rastro.
       logger.error(
@@ -107,6 +114,43 @@ export function traducirErrorDeBase(
         'Ocurrió un error inesperado. Si persiste, avisá al soporte.',
       );
   }
+}
+
+export const MENSAJE_SISTEMA_OCUPADO =
+  'El sistema está ocupado, reintentá en unos segundos';
+
+function ocupado(
+  code: string | undefined,
+  message: string,
+  logger: Logger,
+  donde: string,
+): ServiceUnavailableException {
+  logger.warn(
+    `Timeout de base de datos${donde} (${code ?? 'sin código'}): ${message}`,
+  );
+  return new ServiceUnavailableException(MENSAJE_SISTEMA_OCUPADO);
+}
+
+/**
+ * `true` si el error es un corte por `lock_timeout` (55P03) o
+ * `statement_timeout` (57014): la base está ocupada, no rota.
+ */
+export function esTimeoutDeBase(error: unknown): boolean {
+  const code = codigoSqlDelError(error);
+  return code === CODIGOS.LOCK_TIMEOUT || code === CODIGOS.STATEMENT_TIMEOUT;
+}
+
+/** SQLSTATE del error, esté en el error o en el `driverError` de TypeORM. */
+export function codigoSqlDelError(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const directo: unknown = (error as Record<string, unknown>).code;
+  if (typeof directo === 'string') return directo;
+  const driver: unknown = (error as Record<string, unknown>).driverError;
+  if (typeof driver === 'object' && driver !== null) {
+    const c: unknown = (driver as Record<string, unknown>).code;
+    if (typeof c === 'string') return c;
+  }
+  return undefined;
 }
 
 /** Campos que trae un error del driver de Postgres (vía TypeORM), si los trae. */

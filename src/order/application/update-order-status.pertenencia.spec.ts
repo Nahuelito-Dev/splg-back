@@ -28,6 +28,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     connect: jest.Mock;
     startTransaction: jest.Mock;
     commitTransaction: jest.Mock;
+    isTransactionActive: boolean;
     rollbackTransaction: jest.Mock;
     release: jest.Mock;
     manager: {
@@ -69,6 +70,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       connect: jest.fn().mockResolvedValue(undefined),
       startTransaction: jest.fn().mockResolvedValue(undefined),
       commitTransaction: jest.fn().mockResolvedValue(undefined),
+      isTransactionActive: true,
       rollbackTransaction: jest.fn().mockResolvedValue(undefined),
       release: jest.fn().mockResolvedValue(undefined),
       manager: {

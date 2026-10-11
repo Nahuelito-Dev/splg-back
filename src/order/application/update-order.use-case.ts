@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 import { DataSource } from 'typeorm';
 
 import { Order, PaymentMethod, PaymentType } from '../entities/order.entity';
@@ -145,7 +146,7 @@ export class UpdateOrderUseCase {
         );
       }
       if (cambiaAgenda && timeSlotId && scheduledDate) {
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = diaArgentino();
         if (dto.scheduledDate === undefined && scheduledDate < hoy) {
           throw new BadRequestException(
             'La fecha agendada del pedido ya pasó: indicá una fecha nueva (scheduledDate) para cambiar la franja',

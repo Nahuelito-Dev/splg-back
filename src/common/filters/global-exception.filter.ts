@@ -6,12 +6,17 @@ import {
   HttpStatus,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import {
   BadRequestDomainError,
   NotFoundDomainError,
 } from '../errors/domain.error';
+import {
+  MENSAJE_SISTEMA_OCUPADO,
+  esTimeoutDeBase,
+} from '../errors/db-exceptions';
 import type { Request } from 'express';
 
 /**
@@ -93,6 +98,14 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
     if (exception instanceof BadRequestDomainError) {
       return new BadRequestException(exception.message);
+    }
+    // lock_timeout / statement_timeout de Postgres: la base está ocupada, no
+    // rota. 503 con mensaje claro en vez de un 500 genérico.
+    if (!(exception instanceof HttpException) && esTimeoutDeBase(exception)) {
+      this.logger.warn(
+        `Timeout de base de datos: ${exception instanceof Error ? exception.message : 'sin mensaje'}`,
+      );
+      return new ServiceUnavailableException(MENSAJE_SISTEMA_OCUPADO);
     }
     return exception;
   }

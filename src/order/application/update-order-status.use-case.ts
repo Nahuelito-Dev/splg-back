@@ -5,7 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 
 import {
   Order,
@@ -32,6 +32,18 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
 import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
+
+/** Resultado de aplicar los efectos de un estado dentro de la transacción. */
+interface EfectosDelEstado {
+  deliveryUser: User | null;
+  /** `user_id` del chofer que aceptó, para cerrar su oferta tras el commit. */
+  aceptacionDelChoferUserId: string | null;
+}
+
+const SIN_EFECTOS: EfectosDelEstado = {
+  deliveryUser: null,
+  aceptacionDelChoferUserId: null,
+};
 
 /** Evento de tiempo real emitido al cliente por cada estado del pedido. */
 const STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
@@ -115,6 +127,9 @@ export class UpdateOrderStatusUseCase {
 
     let order: Order;
     let deliveryUser: User | null;
+    // Chofer cuya aceptación hay que dejar registrada en el despacho: se hace
+    // DESPUÉS del commit (ver abajo).
+    let aceptacionADespachar: string | null = null;
     try {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'ord')
@@ -135,21 +150,36 @@ export class UpdateOrderStatusUseCase {
       // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
       const previousStatus = locked.status;
       transitionOrder(locked, status);
-      deliveryUser = await this.applyStatusEffects(
+      const efectos = await this.applyStatusEffects(
         locked,
         status,
         previousStatus,
         queryRunner.manager,
         deliveryId,
       );
+      deliveryUser = efectos.deliveryUser;
+      aceptacionADespachar = efectos.aceptacionDelChoferUserId;
 
       order = await queryRunner.manager.save(locked);
       await queryRunner.commitTransaction();
     } catch (e) {
-      await queryRunner.rollbackTransaction();
+      await this.rollbackSeguro(queryRunner);
       throw e;
     } finally {
       await queryRunner.release();
+    }
+
+    // La constancia de la oferta escribe en `order_dispatch_offer` por OTRA
+    // conexión del pool, y esa tabla tiene una FK al pedido: el chequeo de
+    // la FK pide `FOR KEY SHARE` sobre la fila que esta transacción tenía
+    // bloqueada con `FOR UPDATE`. Hecho adentro, la transacción esperaba a
+    // esa escritura y la escritura a la transacción: un deadlock de
+    // aplicación que Postgres no detecta (queda `idle in transaction` para
+    // siempre). Por eso va acá, con el lock ya liberado. Best-effort.
+    if (aceptacionADespachar) {
+      await this.dispatchOrchestrator
+        .onDriverAccepted(order.orderId, aceptacionADespachar)
+        .catch(() => undefined);
     }
 
     this.emitStatusEvent(order, status, deliveryUser);
@@ -181,6 +211,20 @@ export class UpdateOrderStatusUseCase {
     await this.notifyCustomer(order);
 
     return order;
+  }
+
+  /**
+   * Rollback que nunca tapa el error original ni deja la conexión sin
+   * liberar: si la transacción ya no está activa (o la conexión se cayó) el
+   * rollback tira, y ese error pisaría al verdadero.
+   */
+  private async rollbackSeguro(queryRunner: QueryRunner): Promise<void> {
+    if (!queryRunner.isTransactionActive) return;
+    try {
+      await queryRunner.rollbackTransaction();
+    } catch (err) {
+      this.logger.error(`Falló el rollback: ${errorMessage(err)}`);
+    }
   }
 
   /**
@@ -269,7 +313,7 @@ export class UpdateOrderStatusUseCase {
       order = await queryRunner.manager.save(locked);
       await queryRunner.commitTransaction();
     } catch (e) {
-      await queryRunner.rollbackTransaction();
+      await this.rollbackSeguro(queryRunner);
       throw e;
     } finally {
       await queryRunner.release();
@@ -332,7 +376,7 @@ export class UpdateOrderStatusUseCase {
     previousStatus: OrderStatus,
     manager: EntityManager,
     deliveryId?: string,
-  ): Promise<User | null> {
+  ): Promise<EfectosDelEstado> {
     switch (status) {
       case OrderStatus.ACCEPTED: {
         if (!deliveryId || deliveryId.trim() === '') {
@@ -388,6 +432,7 @@ export class UpdateOrderStatusUseCase {
         // que no era una oferta real), no reprocesar: no regenerar
         // `acceptedAt` ni `deliveryCode`, ni volver a cerrar una oferta que
         // nunca existió.
+        let aceptacionDelChoferUserId: string | null = null;
         const yaAceptadoPorEsteChofer =
           previousStatus === OrderStatus.ACCEPTED &&
           order.deliveryId === delivery.deliveryId;
@@ -407,19 +452,20 @@ export class UpdateOrderStatusUseCase {
           // el pedido pase a ON_THE_WAY.
           order.deliveryCode = generateDeliveryCode();
 
-          // Cierra la oferta de despacho como ACCEPTED (best-effort, audit).
-          // El offer.driver_id es el user_id, el mismo que usa el GEO/WS.
-          await this.dispatchOrchestrator
-            .onDriverAccepted(order.orderId, delivery.userId)
-            .catch(() => undefined);
+          // La oferta de despacho se cierra como ACCEPTED después del commit
+          // (el offer.driver_id es el user_id, el mismo que usa el GEO/WS).
+          aceptacionDelChoferUserId = delivery.userId;
         }
 
-        return delivery.user;
+        return {
+          deliveryUser: delivery.user,
+          aceptacionDelChoferUserId,
+        };
       }
 
       case OrderStatus.ON_THE_WAY: {
         order.onTheWayAt = new Date();
-        if (!order.deliveryId) return null;
+        if (!order.deliveryId) return SIN_EFECTOS;
         const existingDelivery = await this.deliveries.buscarPorIdOUsuario(
           order.deliveryId,
           true,
@@ -434,7 +480,10 @@ export class UpdateOrderStatusUseCase {
             order.distributorId,
           );
         }
-        return existingDelivery?.user ?? null;
+        return {
+          deliveryUser: existingDelivery?.user ?? null,
+          aceptacionDelChoferUserId: null,
+        };
       }
 
       case OrderStatus.DELIVERED: {
@@ -451,30 +500,24 @@ export class UpdateOrderStatusUseCase {
           if (del?.user) this.dispatch.stopTracking(del.user.userId);
         }
         // Ciclo del envase: avanza los envases despachados en este pedido a
-        // WITH_CUSTOMER. Best-effort: si falla (o la distribuidora no usa
-        // envases, en cuyo caso es no-op) NO rompe la entrega del pedido.
-        try {
-          const advanced = await this.cylinderLifecycle.onOrderDelivered(
-            order.orderId,
-            order.distributorId,
-          );
-          if (advanced > 0) {
-            this.logger.log(
-              `Pedido ${order.orderId} entregado: ${advanced} envase(s) → with_customer`,
-            );
-          }
-        } catch (err) {
-          this.logger.warn(
-            `No se pudieron avanzar los envases del pedido ${order.orderId}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+        // WITH_CUSTOMER (no-op si no hay). Va por el MISMO manager y es
+        // atómico con la entrega: por otra conexión esperaría el lock del
+        // pedido (FK) y dejaría los envases a medias.
+        const advanced = await this.cylinderLifecycle.onOrderDelivered(
+          order.orderId,
+          order.distributorId,
+          manager,
+        );
+        if (advanced > 0) {
+          this.logger.log(
+            `Pedido ${order.orderId} entregado: ${advanced} envase(s) → with_customer`,
           );
         }
-        return null;
+        return SIN_EFECTOS;
       }
 
       default:
-        return null;
+        return SIN_EFECTOS;
     }
   }
 

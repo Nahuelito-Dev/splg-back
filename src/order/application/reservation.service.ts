@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -136,7 +137,7 @@ export class ReservationService {
    */
   @Cron('0 */5 * * * *') // cada 5 minutos
   async activateDueReservations(): Promise<void> {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = diaArgentino();
     const due = await this.orderRepository.find({
       where: {
         status: OrderStatus.RESERVED,

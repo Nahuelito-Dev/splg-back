@@ -44,6 +44,7 @@ import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { enteroPositivoDeEnv } from './common/config/entero-positivo';
 import { EnvConfiguration } from './common/config/env.config';
 import { JoiValidationSchema } from './common/config/joi.validation';
 import { RedisModule } from './redis/redis.module';
@@ -118,6 +119,26 @@ import { FirebaseModule } from './firebase/firebase.module';
             // consulta pide una segunda: con el pool chico, 10 pedidos
             // simultáneos se bloquean entre sí.
             max: Number(configService.get('DB_POOL_SIZE') ?? 10),
+            // Red de seguridad contra transacciones/consultas colgadas (un
+            // deadlock de aplicación entre dos conexiones no lo detecta
+            // Postgres): la sesión que quede `idle in transaction`, la
+            // consulta que espere un lock o la que no termine se cortan solas
+            // en vez de bloquear pedidos para siempre. En ms.
+            idle_in_transaction_session_timeout: enteroPositivoDeEnv(
+              'DB_IDLE_IN_TX_TIMEOUT_MS',
+              configService.get('DB_IDLE_IN_TX_TIMEOUT_MS'),
+              60_000,
+            ),
+            lock_timeout: enteroPositivoDeEnv(
+              'DB_LOCK_TIMEOUT_MS',
+              configService.get('DB_LOCK_TIMEOUT_MS'),
+              30_000,
+            ),
+            statement_timeout: enteroPositivoDeEnv(
+              'DB_STATEMENT_TIMEOUT_MS',
+              configService.get('DB_STATEMENT_TIMEOUT_MS'),
+              90_000,
+            ),
             ...(isSslEnabled ? { ssl: { rejectUnauthorized: false } } : {}),
           },
 

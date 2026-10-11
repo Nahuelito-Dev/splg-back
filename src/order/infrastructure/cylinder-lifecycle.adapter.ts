@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { CylinderService } from '../../cylinder/cylinder.service';
 
@@ -17,7 +18,8 @@ export class CylinderLifecycleAdapter extends CylinderLifecyclePort {
   onOrderDelivered(
     orderId: string,
     distributorId?: string | null,
+    manager?: EntityManager,
   ): Promise<number> {
-    return this.cylinders.onOrderDelivered(orderId, distributorId);
+    return this.cylinders.onOrderDelivered(orderId, distributorId, manager);
   }
 }

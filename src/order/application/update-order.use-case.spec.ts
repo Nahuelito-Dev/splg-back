@@ -303,6 +303,28 @@ describe('UpdateOrderUseCase', () => {
     expect(slots.assertSlotAvailableTx).not.toHaveBeenCalled();
   });
 
+  describe('a las 22:30 ART (ya es el día siguiente en UTC)', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({ now: new Date('2026-10-11T01:30:00Z') });
+    });
+    afterEach(() => jest.useRealTimers());
+
+    it('cambiar sólo la franja de un pedido agendado para HOY argentino es válido', async () => {
+      locked = makeOrder({ timeSlotId: 's1', scheduledDate: '2026-10-10' });
+      await expect(
+        useCase.execute('o1', { timeSlotId: 's2' }, 'u1', 'd1'),
+      ).resolves.toBeDefined();
+      expect(slots.assertSlotAvailableTx).toHaveBeenCalled();
+    });
+
+    it('un pedido agendado para AYER argentino sigue pidiendo fecha nueva (400)', async () => {
+      locked = makeOrder({ timeSlotId: 's1', scheduledDate: '2026-10-09' });
+      await expect(
+        useCase.execute('o1', { timeSlotId: 's2' }, 'u1', 'd1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   it('con una oferta viva: la vence en la transacción, avisa al chofer, al cliente y vuelve a ofrecer', async () => {
     ofertasVivas = [{ driverId: 'chofer-1' }];
     await useCase.execute(
