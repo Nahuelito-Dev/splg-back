@@ -117,6 +117,9 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
         assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
         vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue(null),
       } as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
+      {
+        onOrderDelivered: jest.fn().mockResolvedValue(undefined),
+      } as unknown as import('../domain/ports/stock-delivery.port').StockDeliveryPort,
     );
     return { order, queryRunner, queryBuilder };
   };

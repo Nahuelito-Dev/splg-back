@@ -29,6 +29,7 @@ import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { FiguraDemo, generarImagenDemo } from './lib/imagenes-demo';
 import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
+import { limpiarStock, sembrarFisico } from './lib/stock-demo';
 import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
 
 const CANT_CLIENTES = Number(process.env.SEED_CUSTOMERS ?? 25);
@@ -540,6 +541,13 @@ async function main() {
   await ajustarStock(q, distId);
   await archivarUsuariosHuerfanos(q);
 
+  // Stock físico de la base nueva, por el ledger: la invariante del vendible
+  // (stock = llenas − pedidos abiertos) tiene que cerrar desde el primer día.
+  resumen.push([
+    'stock físico (productos con saldo inicial)',
+    await sembrarFisico(ds, distId),
+  ]);
+
   imprimirResumen();
 }
 
@@ -577,6 +585,8 @@ interface PedidoSembrado {
  */
 async function limpiar(q: Q, distId: string) {
   await anotarFotosAnteriores(q, distId);
+  // El stock cuelga de gas_cylinder y de car: va antes que ellos.
+  await limpiarStock(ds, [distId]);
   await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [distId]);
   await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [
@@ -648,6 +658,7 @@ async function borrarOtrasDistribuidoras(q: Q, distId: string) {
   for (const d of otras) {
     const id = d.distributor_id;
     await anotarFotosAnteriores(q, id);
+    await limpiarStock(ds, [id]);
     await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [id]);
     await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [id]);
     await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [id]);

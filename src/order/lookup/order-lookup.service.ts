@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
+import { OrderItem } from '../entities/order-item.entity';
 
 /** Lo mínimo de un pedido que necesitan los módulos que no son `order`. */
 export interface OrderRef {
@@ -139,5 +140,73 @@ export class OrderLookupService {
     return manager
       ? manager.count(Order, { where })
       : this.orderRepository.count({ where });
+  }
+
+  /**
+   * Unidades de cada garrafa en pedidos abiertos (reservados, pendientes,
+   * aceptados o en camino) de la distribuidora: lo que ya se descontó del
+   * vendible y todavía no salió físicamente. Con `manager` lee dentro de esa
+   * transacción.
+   */
+  async reservedByCylinder(
+    distributorId: string,
+    manager?: EntityManager,
+  ): Promise<Map<string, number>> {
+    const filas = await (manager ?? this.orderRepository.manager)
+      .createQueryBuilder(OrderItem, 'item')
+      .innerJoin('item.order', 'ord')
+      .select('item.gasCylinderId', 'gasCylinderId')
+      .addSelect('SUM(item.quantity)', 'quantity')
+      .where('ord.distributorId = :distributorId', { distributorId })
+      .andWhere('ord.status IN (:...abiertos)', {
+        abiertos: [
+          OrderStatus.RESERVED,
+          OrderStatus.PENDING,
+          OrderStatus.ACCEPTED,
+          OrderStatus.ON_THE_WAY,
+        ],
+      })
+      .groupBy('item.gasCylinderId')
+      .getRawMany<{ gasCylinderId: string; quantity: string }>();
+    return new Map(filas.map((f) => [f.gasCylinderId, Number(f.quantity)]));
+  }
+
+  /** Renglones de pedidos entregados desde `desde` (inclusive). */
+  async deliveredItemsSince(
+    distributorId: string,
+    desde: Date,
+    manager?: EntityManager,
+  ): Promise<
+    Array<{
+      orderId: string;
+      deliveredAt: Date;
+      vehicleCarId: string | null;
+      gasCylinderId: string;
+      quantity: number;
+    }>
+  > {
+    const filas = await (manager ?? this.orderRepository.manager)
+      .createQueryBuilder(OrderItem, 'item')
+      .innerJoin('item.order', 'ord')
+      .select('ord.orderId', 'orderId')
+      .addSelect('ord.deliveredAt', 'deliveredAt')
+      .addSelect('ord.vehicleCarId', 'vehicleCarId')
+      .addSelect('item.gasCylinderId', 'gasCylinderId')
+      .addSelect('item.quantity', 'quantity')
+      .where('ord.distributorId = :distributorId', { distributorId })
+      .andWhere('ord.status = :entregado', {
+        entregado: OrderStatus.DELIVERED,
+      })
+      .andWhere('ord.deliveredAt >= :desde', { desde })
+      .orderBy('ord.deliveredAt', 'ASC')
+      .addOrderBy('ord.orderId', 'ASC')
+      .getRawMany<{
+        orderId: string;
+        deliveredAt: Date;
+        vehicleCarId: string | null;
+        gasCylinderId: string;
+        quantity: number;
+      }>();
+    return filas;
   }
 }

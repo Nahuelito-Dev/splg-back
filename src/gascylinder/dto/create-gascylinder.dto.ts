@@ -41,7 +41,11 @@ export class CreateGasCylinderDto {
   @IsPositive({ message: 'price debe ser mayor que 0' })
   price!: number;
 
-  @ApiPropertyOptional({ description: 'Stock disponible' })
+  @ApiPropertyOptional({
+    description:
+      'Stock vendible inicial: se registra como físico del depósito predeterminado. ' +
+      'En la edición (PATCH /gascylinder/{id}) no se admite: responde 400; el stock cambia con PATCH /gascylinder/{id}/stock.',
+  })
   @IsOptional()
   @IsInt({ message: 'stock debe ser un número entero' })
   @Min(0, { message: 'stock no puede ser negativo' })

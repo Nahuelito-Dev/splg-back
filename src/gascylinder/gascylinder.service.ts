@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   Repository,
   MoreThan,
@@ -23,6 +24,11 @@ import { DistributorService } from '../distributor/distributor.service';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { GasCylinderNotFoundError } from './domain/errors/gas-cylinder-not-found.error';
 import { InsufficientStockError } from './domain/errors/insufficient-stock.error';
+import {
+  EVENTO_GARRAFA_CREADA,
+  GarrafaCreadaEvent,
+} from './events/garrafa-creada.event';
+import { VendibleInsuficienteError } from './domain/errors/vendible-insuficiente.error';
 import {
   BajaDeProductoDto,
   MedioDePagoDto,
@@ -54,6 +60,7 @@ export class GasCylinderService {
     @InjectRepository(GasCylinder)
     private readonly gasCylinderRepository: Repository<GasCylinder>,
     private readonly distributorService: DistributorService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   /**
@@ -98,7 +105,27 @@ export class GasCylinderService {
       distributorId,
     });
     try {
-      return await this.gasCylinderRepository.save(gasCylinder);
+      return await this.gasCylinderRepository.manager.transaction(
+        async (manager) => {
+          const guardado = await manager.save(gasCylinder);
+          // El stock inicial es vendible: el módulo de stock lo registra como
+          // físico del depósito predeterminado EN ESTA transacción (con el
+          // `manager`), para que las dos cifras no se desalineen nunca. Si el
+          // listener falla, el producto tampoco se crea.
+          if (guardado.stock > 0) {
+            await this.eventos.emitAsync(
+              EVENTO_GARRAFA_CREADA,
+              new GarrafaCreadaEvent(
+                guardado.gasCylinderId,
+                distributorId,
+                guardado.stock,
+                manager,
+              ),
+            );
+          }
+          return guardado;
+        },
+      );
     } catch (error) {
       return this.handleDBExceptions(error);
     }
@@ -191,9 +218,18 @@ export class GasCylinderService {
     await this.findOne(id, distributorId);
     assertPromocionesSinRepetir(updateGasCylinderDto.promotions);
 
+    // El stock no se edita acá: cambia con un ajuste, que deja el rastro en el
+    // libro y mantiene el vendible igual al físico. Ignorarlo en silencio
+    // dejaba al panel creyendo que lo había guardado.
+    if (updateGasCylinderDto.stock !== undefined) {
+      throw new BadRequestException(
+        'El stock se cambia con un ajuste de stock (PATCH /gascylinder/{id}/stock o POST /stock/adjustments), no al editar el producto',
+      );
+    }
+    const cambios = updateGasCylinderDto;
     const gasCylinder = await this.gasCylinderRepository.preload({
       gasCylinderId: id,
-      ...updateGasCylinderDto,
+      ...cambios,
     });
 
     if (!gasCylinder) {
@@ -211,6 +247,11 @@ export class GasCylinderService {
     return this.findOne(id, distributorId);
   }
 
+  /**
+   * @deprecated Ninguna ruta lo usa: el ajuste manual del catálogo pasa por el
+   * módulo de stock (`PATCH /gascylinder/:id/stock`), que mantiene el físico.
+   * Cambiar el vendible por acá lo desalinea del físico.
+   */
   async updateStock(
     id: string,
     quantity: number,
@@ -322,6 +363,42 @@ export class GasCylinderService {
         gasCylinder.stock += item.quantity;
         await manager.save(gasCylinder);
       }
+    }
+  }
+
+  /**
+   * Suma o resta unidades al stock VENDIBLE (`gas_cylinder.stock`) dentro de la
+   * transacción de quien llama. Lo usa el módulo de stock para que el vendible
+   * siga al físico (recepción, ajuste, merma, conteo): el vendible es lo que el
+   * pedido reserva, así que es la misma fila y el mismo lock pesimista que
+   * `reservarStock`. Los ids se bloquean siempre en orden ascendente.
+   *
+   * @throws GasCylinderNotFoundError si el producto no existe o es de otra
+   *   distribuidora (404).
+   * @throws VendibleInsuficienteError si el vendible quedaría negativo (400):
+   *   lo que falta está reservado por pedidos abiertos.
+   */
+  async ajustarVendible(
+    manager: EntityManager,
+    distributorId: string,
+    cambios: ReadonlyArray<{ gasCylinderId: string; delta: number }>,
+  ): Promise<void> {
+    const ordenados = [...cambios].sort((a, b) =>
+      a.gasCylinderId.localeCompare(b.gasCylinderId),
+    );
+    for (const { gasCylinderId, delta } of ordenados) {
+      const gasCylinder = await this.bloquear(manager, gasCylinderId);
+      if (!gasCylinder || gasCylinder.distributorId !== distributorId) {
+        throw new GasCylinderNotFoundError(gasCylinderId);
+      }
+      if (gasCylinder.stock + delta < 0) {
+        throw new VendibleInsuficienteError(
+          gasCylinder.type,
+          gasCylinder.stock,
+        );
+      }
+      gasCylinder.stock += delta;
+      await manager.save(gasCylinder);
     }
   }
 

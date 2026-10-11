@@ -43,6 +43,7 @@ describe('UpdateOrderStatusUseCase', () => {
     offerToNextDriver: jest.Mock;
   };
   let cylinderLifecycle: { onOrderDelivered: jest.Mock };
+  let stockDelivery: { onOrderDelivered: jest.Mock };
   let cancelOrderUseCase: { execute: jest.Mock };
   let releaseOrderUseCase: { execute: jest.Mock };
   let queryRunner: {
@@ -154,6 +155,9 @@ describe('UpdateOrderStatusUseCase', () => {
     const dataSource = {
       createQueryRunner: jest.fn().mockReturnValue(queryRunner),
     };
+    stockDelivery = {
+      onOrderDelivered: jest.fn().mockResolvedValue(undefined),
+    };
     fleetGate = {
       assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
       vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue({
@@ -175,6 +179,7 @@ describe('UpdateOrderStatusUseCase', () => {
       cancelOrderUseCase as unknown as import('./cancel-order.use-case').CancelOrderUseCase,
       releaseOrderUseCase as unknown as import('./release-order.use-case').ReleaseOrderUseCase,
       fleetGate as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
+      stockDelivery as unknown as import('../domain/ports/stock-delivery.port').StockDeliveryPort,
     );
   });
 
@@ -581,6 +586,43 @@ describe('UpdateOrderStatusUseCase', () => {
 
       expect(result.deliveredAt).toBeInstanceOf(Date);
       expect(result.paymentStatus).toBe(PaymentStatus.PAID);
+    });
+
+    it('descuenta el stock físico por el MISMO manager de la transacción del pedido', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.ON_THE_WAY,
+          paymentMethod: PaymentMethod.CASH,
+          vehicleCarId: 'car-9',
+          items: [
+            { gasCylinderId: 'g1', quantity: 2 },
+            { gasCylinderId: 'g2', quantity: 1 },
+          ] as unknown as Order['items'],
+        }),
+      );
+
+      await useCase.execute('ord-1', OrderStatus.DELIVERED);
+
+      expect(stockDelivery.onOrderDelivered).toHaveBeenCalledTimes(1);
+      expect(stockDelivery.onOrderDelivered).toHaveBeenCalledWith(
+        queryRunner.manager,
+        expect.objectContaining({
+          orderId: 'ord-1',
+          vehicleCarId: 'car-9',
+          items: [
+            { gasCylinderId: 'g1', quantity: 2 },
+            { gasCylinderId: 'g2', quantity: 1 },
+          ],
+        }),
+      );
+    });
+
+    it('no descuenta stock si la transición a entregado es inválida', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      await expect(
+        useCase.execute('ord-1', OrderStatus.DELIVERED),
+      ).rejects.toThrow();
+      expect(stockDelivery.onOrderDelivered).not.toHaveBeenCalled();
     });
 
     it('NO marca pagado si el método es MERCADOPAGO (lo resuelve el webhook)', async () => {
