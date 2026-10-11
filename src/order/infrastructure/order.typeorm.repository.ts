@@ -73,7 +73,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         skip: offset,
         withDeleted: true,
         relations: FULL_RELATIONS,
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', orderId: 'DESC' },
       });
       return { orders, total, limit, offset };
     }
@@ -120,6 +120,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     const { entities: pagina } = await filtro
       .clone()
       .orderBy('order.createdAt', 'DESC')
+      .addOrderBy('order.orderId', 'DESC')
       .take(limit)
       .skip(offset)
       .getRawAndEntities();
@@ -132,7 +133,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       where: { orderId: In(ids) },
       withDeleted: true,
       relations: FULL_RELATIONS,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', orderId: 'DESC' },
     });
     return { orders, total, limit, offset };
   }
@@ -158,7 +159,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         'address',
         'timeSlot',
       ],
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'ASC', orderId: 'ASC' },
     });
     return { orders, total, limit, offset };
   }
@@ -184,7 +185,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         'address',
         'timeSlot',
       ],
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', orderId: 'DESC' },
     });
     return { orders, total, limit, offset };
   }
@@ -208,7 +209,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         'address',
         'timeSlot',
       ],
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', orderId: 'DESC' },
     });
     return { orders, total, limit, offset };
   }
