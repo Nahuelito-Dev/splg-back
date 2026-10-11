@@ -1,6 +1,6 @@
 import { In, Repository } from 'typeorm';
 import { OrderTypeormRepository } from './order.typeorm.repository';
-import { Order, OrderStatus } from '../entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 
 /**
  * `findAllPaginated` con filtros (`term`/`status`/`from`/`to`) arma el WHERE a
@@ -70,6 +70,23 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
       }),
     );
     expect(orderRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('con paymentStatus usa el query builder, filtra por el pago y conserva el tenant', async () => {
+    qb.getCount.mockResolvedValue(0);
+    qb.getRawAndEntities.mockResolvedValue({ raw: [], entities: [] });
+    await repo.findAllPaginated(10, 0, 'dist-1', {
+      paymentStatus: PaymentStatus.UNPAID,
+    });
+    expect(orderRepo.findAndCount).not.toHaveBeenCalled();
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'order.paymentStatus = :paymentStatus',
+      { paymentStatus: PaymentStatus.UNPAID },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'order.distributorId = :distributorId',
+      { distributorId: 'dist-1' },
+    );
   });
 
   it('con term arma el WHERE por nombre/email/teléfono del cliente y por el id del pedido', async () => {

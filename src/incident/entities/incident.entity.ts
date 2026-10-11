@@ -15,6 +15,8 @@ export enum IncidentType {
   DAMAGED = 'damaged',
   OUT_OF_STOCK = 'out_of_stock',
   NO_SHOW = 'no_show',
+  /** El cliente recibió el pedido en efectivo y no pagó. */
+  UNPAID_COLLECTION = 'unpaid_collection',
   OTHER = 'other',
 }
 
@@ -37,6 +39,10 @@ export enum IncidentStatus {
  * Tenant-scoped (distributor_id denormalizado del pedido) para que el panel
  * pueda filtrar/listar por distribuidora.
  */
+@Index('UQ_incident_cobro_impago', ['orderId'], {
+  unique: true,
+  where: `"type" = 'unpaid_collection' AND "status" IN ('open', 'resolved')`,
+})
 @Entity('incident')
 export class Incident {
   @PrimaryGeneratedColumn('uuid', { name: 'incident_id' })

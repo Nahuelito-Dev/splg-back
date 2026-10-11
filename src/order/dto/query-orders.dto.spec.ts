@@ -1,7 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { QueryOrdersDto } from './query-orders.dto';
-import { OrderStatus } from '../entities/order.entity';
+import { OrderStatus, PaymentStatus } from '../entities/order.entity';
 
 const parse = async (query: Record<string, string>) => {
   const dto = plainToInstance(QueryOrdersDto, query);
@@ -23,6 +23,19 @@ describe('QueryOrdersDto — status', () => {
 
   it('rechaza un estado inexistente', async () => {
     const { errors } = await parse({ status: 'en_camino' });
+    expect(errors).toHaveLength(1);
+  });
+});
+
+describe('QueryOrdersDto — paymentStatus', () => {
+  it.each(Object.values(PaymentStatus))('acepta %s', async (valor) => {
+    const { dto, errors } = await parse({ paymentStatus: valor });
+    expect(errors).toHaveLength(0);
+    expect(dto.paymentStatus).toBe(valor);
+  });
+
+  it('rechaza un estado de pago inexistente', async () => {
+    const { errors } = await parse({ paymentStatus: 'debe' });
     expect(errors).toHaveLength(1);
   });
 });

@@ -26,6 +26,8 @@ import {
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
+import { CashCollectionUseCase } from './application/cash-collection.use-case';
+import { ResolveUnpaidDto } from './dto/resolve-unpaid.dto';
 import { ReservationService } from './application/reservation.service';
 import { mapRoleToCancelActor } from './application/cancel-order.use-case';
 import { OrderMapper } from './order.mapper';
@@ -68,6 +70,7 @@ export class OrderController {
     private readonly orderService: OrderService,
     private readonly reservationService: ReservationService,
     private readonly updateOrderUseCase: UpdateOrderUseCase,
+    private readonly cashCollection: CashCollectionUseCase,
   ) {}
 
   @Post()
@@ -408,6 +411,79 @@ export class OrderController {
       user.role,
     );
     return OrderMapper.toDto(order);
+  }
+
+  @Patch(':id/payment/cash-received')
+  @Auth(RoleType.DELIVERY)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'El chofer confirma que cobró el efectivo ("pago recibido")',
+    description:
+      'Sin body. Entregar un pedido en efectivo no lo marca pagado: queda `paymentStatus: pending` hasta ' +
+      'que el chofer asignado confirma acá que cobró. Pasa a `paid` y registra `paymentConfirmedAt` y ' +
+      '`paymentConfirmedBy` (el chofer). Sólo pedidos `delivered` pagados en efectivo. Repetirlo sobre un ' +
+      'pedido ya `paid` devuelve el pedido tal cual (idempotente; también vía header `Idempotency-Key`). ' +
+      'Si el pago ya se informó como impago responde 409: lo resuelve un admin.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({
+    type: OrderResponseDto,
+    description: 'Pedido con `paymentStatus: paid`',
+  })
+  @ApiBadRequestResponse({
+    description: 'El pedido no está entregado o no se pagó en efectivo',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'El pedido no está asignado a este chofer',
+  })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  @ApiConflictResponse({
+    description: 'El pago ya se informó como impago (lo resuelve un admin)',
+  })
+  async confirmCashReceived(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    await this.cashCollection.confirmReceived(id, user.user_id);
+    return this.orderService.getOne(id, distributorId);
+  }
+
+  @Patch(':id/payment/resolve-unpaid')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Resolver un cobro en efectivo impago',
+    description:
+      'Cierra un pedido con `paymentStatus: unpaid`: `resolution: paid` (el cliente pagó después) o ' +
+      '`resolution: written_off` (se da por perdido). Exige `note` con el motivo; quedan registrados ' +
+      'quién y cuándo (`paymentConfirmedBy`, `paymentConfirmedAt`, `paymentResolutionNote`) y la auditoría. ' +
+      'Repetir la misma resolución es idempotente. No cierra la incidencia: eso va por ' +
+      '`PATCH /incidents/:id/resolve`.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({ description: 'resolution o note inválidos' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  @ApiConflictResponse({
+    description: 'El pedido no tiene el pago informado como impago',
+  })
+  async resolveUnpaid(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveUnpaidDto,
+    @CurrentDistributor() distributorId: string | null,
+  ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    await this.cashCollection.resolveUnpaid(
+      id,
+      user.user_id,
+      dto.resolution,
+      dto.note,
+    );
+    return this.orderService.getOne(id, distributorId);
   }
 
   @Patch(':id/assign/:deliveryId')

@@ -7,12 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 
-import {
-  Order,
-  OrderStatus,
-  PaymentMethod,
-  PaymentStatus,
-} from '../entities/order.entity';
+import { Order, OrderStatus } from '../entities/order.entity';
 import { User } from '../../users/entities/user.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
@@ -500,9 +495,6 @@ export class UpdateOrderStatusUseCase {
 
       case OrderStatus.DELIVERED: {
         order.deliveredAt = new Date();
-        if (order.paymentMethod === PaymentMethod.CASH) {
-          order.paymentStatus = PaymentStatus.PAID;
-        }
         // Corta el tracking del chofer que entregó.
         if (order.deliveryId) {
           const del = await this.deliveries.buscarPorIdOUsuario(

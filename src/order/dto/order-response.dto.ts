@@ -206,9 +206,34 @@ export class OrderResponseDto {
   @ApiProperty({
     enum: PaymentStatus,
     example: 'pending',
-    description: 'Estado del pago: pendiente, cobrado o fallido',
+    description:
+      'Estado del pago: pendiente, cobrado, fallido, impago (el chofer informó que el cliente no pagó el efectivo) o perdido (`written_off`, impago dado por perdido por un admin). Un pedido en efectivo entregado queda `pending` hasta que el chofer confirma el cobro.',
   })
   paymentStatus!: PaymentStatus;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo se confirmó el cobro en efectivo (chofer) o se resolvió el impago (admin)',
+  })
+  paymentConfirmedAt!: Date | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Usuario que confirmó el cobro o resolvió el impago',
+  })
+  paymentConfirmedBy!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Motivo con el que el admin resolvió un impago',
+  })
+  paymentResolutionNote!: string | null;
 
   @ApiProperty({
     example: true,

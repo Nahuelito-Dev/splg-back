@@ -25,6 +25,7 @@ import { UpdateOrderStatusUseCase } from './application/update-order-status.use-
 import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ReleaseOrderUseCase } from './application/release-order.use-case';
+import { CashCollectionUseCase } from './application/cash-collection.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
@@ -85,6 +86,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CancelOrderUseCase,
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,
+    CashCollectionUseCase,
     DispatchOrchestratorService,
     ConfirmPaymentUseCase,
     ReservationService,
@@ -103,6 +105,6 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     // Puerto de notificación al cliente → adapter que delega en NotificationsService.
     { provide: NotificationPort, useClass: NotificationAdapter },
   ],
-  exports: [OrderService],
+  exports: [OrderService, CashCollectionUseCase],
 })
 export class OrderModule {}

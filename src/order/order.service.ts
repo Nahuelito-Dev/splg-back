@@ -12,6 +12,10 @@ import {
   MoreThanOrEqual,
   Repository,
 } from 'typeorm';
+import {
+  soloVentaCobrada,
+  ventaCobradaWhere,
+} from '../common/utils/venta-cobrada';
 import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -173,7 +177,15 @@ export class OrderService {
   }
 
   async findAll(queryDto: QueryOrdersDto, distributorId?: string | null) {
-    const { limit = 10, offset = 0, term, status, from, to } = queryDto;
+    const {
+      limit = 10,
+      offset = 0,
+      term,
+      status,
+      paymentStatus,
+      from,
+      to,
+    } = queryDto;
     // Mismo criterio que /reports: un rango invertido es un error, no un listado vacío.
     if (from && to && from > to) {
       throw new BadRequestException('from no puede ser posterior a to');
@@ -181,6 +193,7 @@ export class OrderService {
     return this.orders.findAllPaginated(limit, offset, distributorId, {
       term,
       status,
+      paymentStatus,
       from,
       to,
     });
@@ -555,6 +568,9 @@ export class OrderService {
       deliveredAt: And(MoreThanOrEqual(from), LessThan(to)),
       ...dist,
     });
+    // Las ventas son lo entregado y COBRADO (ver `venta-cobrada.ts`).
+    const cobrado = (from: Date, to: Date) =>
+      ventaCobradaWhere(delivered(from, to));
 
     const [
       todaySales,
@@ -562,6 +578,7 @@ export class OrderService {
       monthSales,
       totalSales,
       deliveredToday,
+      cobradosHoy,
       pending,
       accepted,
       onTheWay,
@@ -570,14 +587,15 @@ export class OrderService {
       cash,
       mercadopago,
     ] = await Promise.all([
-      this.orderRepository.sum('totalAmount', delivered(today, tomorrow)),
-      this.orderRepository.sum('totalAmount', delivered(weekStart, weekEnd)),
-      this.orderRepository.sum('totalAmount', delivered(monthStart, monthEnd)),
-      this.orderRepository.sum('totalAmount', {
-        status: OrderStatus.DELIVERED,
-        ...dist,
-      }),
+      this.orderRepository.sum('totalAmount', cobrado(today, tomorrow)),
+      this.orderRepository.sum('totalAmount', cobrado(weekStart, weekEnd)),
+      this.orderRepository.sum('totalAmount', cobrado(monthStart, monthEnd)),
+      this.orderRepository.sum(
+        'totalAmount',
+        ventaCobradaWhere({ status: OrderStatus.DELIVERED, ...dist }),
+      ),
       this.orderRepository.count({ where: delivered(today, tomorrow) }),
+      this.orderRepository.count({ where: cobrado(today, tomorrow) }),
       this.orderRepository.count({
         where: { status: OrderStatus.PENDING, ...dist },
       }),
@@ -625,7 +643,7 @@ export class OrderService {
       performance: {
         activeDeliveries,
         enabledDeliveries,
-        avgOrderValue: deliveredToday > 0 ? todaySalesN / deliveredToday : 0,
+        avgOrderValue: cobradosHoy > 0 ? todaySalesN / cobradosHoy : 0,
         // Deprecado: duplica deliveredToday exacto (ver el DTO). Se mantiene
         // por contrato, no se borra.
         ordersPerDay: deliveredToday,
@@ -696,6 +714,7 @@ export class OrderService {
         start,
         end,
       });
+    soloVentaCobrada(qb, 'order');
 
     if (distributorId) {
       qb.andWhere('order.distributorId = :distributorId', { distributorId });

@@ -113,6 +113,9 @@ export class OrderMapper {
     dto.paymentMethod = this.mapPaymentType(order.paymentType);
     dto.paymentMethodDetail = order.paymentMethod;
     dto.paymentStatus = order.paymentStatus;
+    dto.paymentConfirmedAt = order.paymentConfirmedAt ?? null;
+    dto.paymentConfirmedBy = order.paymentConfirmedBy ?? null;
+    dto.paymentResolutionNote = order.paymentResolutionNote ?? null;
     dto.editable = esEditable(order);
 
     // Address Mapping

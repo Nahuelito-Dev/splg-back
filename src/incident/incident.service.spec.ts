@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -60,6 +61,59 @@ describe('IncidentService', () => {
       distributorId: 'd1',
       reportedBy: 'chofer-1',
       status: IncidentStatus.OPEN,
+    });
+  });
+
+  describe('tipo cobro impago (sólo por /payment/unpaid)', () => {
+    it('POST /incidents no lo acepta', async () => {
+      await expect(
+        service.create(
+          {
+            orderId: 'o1',
+            type: IncidentType.UNPAID_COLLECTION,
+            description: 'x',
+          },
+          'chofer-1',
+          null,
+          false,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('PATCH no cambia hacia unpaid_collection', async () => {
+      incidents.findOne.mockResolvedValue({
+        incidentId: 'i1',
+        status: IncidentStatus.OPEN,
+        type: IncidentType.OTHER,
+      });
+      await expect(
+        service.update('i1', { type: IncidentType.UNPAID_COLLECTION }),
+      ).rejects.toThrow(BadRequestException);
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('PATCH no cambia desde unpaid_collection', async () => {
+      incidents.findOne.mockResolvedValue({
+        incidentId: 'i1',
+        status: IncidentStatus.OPEN,
+        type: IncidentType.UNPAID_COLLECTION,
+      });
+      await expect(
+        service.update('i1', { type: IncidentType.OTHER }),
+      ).rejects.toThrow(BadRequestException);
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('PATCH de la descripción de una de cobro impago sí se puede', async () => {
+      incidents.findOne.mockResolvedValue({
+        incidentId: 'i1',
+        status: IncidentStatus.OPEN,
+        type: IncidentType.UNPAID_COLLECTION,
+        description: 'a',
+      });
+      await service.update('i1', { description: 'b' });
+      expect(incidents.save).toHaveBeenCalled();
     });
   });
 

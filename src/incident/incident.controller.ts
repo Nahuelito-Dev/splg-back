@@ -75,7 +75,7 @@ export class IncidentController {
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: orderId must be a UUID; type must be one of the following values: damaged, out_of_stock, no_show, other)',
+      'Datos inválidos (p. ej.: orderId must be a UUID; type must be one of the following values: damaged, out_of_stock, no_show, other). `unpaid_collection` no se acepta acá: se crea con `PATCH /orders/{id}/payment/unpaid`',
   })
   async create(
     @Body() dto: CreateIncidentDto,
@@ -149,7 +149,7 @@ export class IncidentController {
   @ApiOperation({
     summary: 'Editar descripción y tipo de una incidencia abierta',
     description:
-      'Sólo mientras esté `open`. Eliminar una incidencia es descartarla con ' +
+      'Sólo mientras esté `open`. El tipo `unpaid_collection` no se asigna ni se cambia a mano (400). Eliminar una incidencia es descartarla con ' +
       'motivo: `PATCH /incidents/:id/resolve` con `status: discarded`. Nunca se borran.',
   })
   @ApiParam({ name: 'id', description: 'Incident UUID' })

@@ -15,6 +15,7 @@ import {
   Order,
   OrderStatus,
   PaymentMethod,
+  PaymentStatus,
 } from '../../src/order/entities/order.entity';
 import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
@@ -71,6 +72,8 @@ describe('Reportes y estadísticas en hora argentina (e2e)', () => {
         addressId: address.addressId,
         status: estado,
         paymentMethod: PaymentMethod.CASH,
+        // Las ventas cuentan lo cobrado: el efectivo entregado ya confirmado.
+        paymentStatus: PaymentStatus.PAID,
         subtotalItems: 1000,
         totalAmount: 1100, // 1000 de renglón + 100 de recargo
         deliveredAt: entregado ? new Date(entregado) : null,

@@ -9,7 +9,7 @@ export class ResumenDePedidosDto {
 }
 
 /**
- * Importe vendido (pedidos entregados) en cada período. `week` es la SEMANA
+ * Importe vendido (pedidos entregados y COBRADOS: `paid`, o `pending` en medios que no son efectivo; el efectivo sin confirmar, los impagos y las pérdidas no suman) en cada período. `week` es la SEMANA
  * ISO (lunes a domingo en curso, en hora argentina), no los últimos 7 días.
  */
 export class VentasDto {
