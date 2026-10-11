@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository, FindOptionsWhere } from 'typeorm';
 import { Claim, ClaimStatus } from './entities/claim.entity';
+import { QueryMyClaimsDto } from './dto/query-my-claims.dto';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { UpdateClaimDto } from './dto/update-claim.dto';
 import { OrderService } from '../order/order.service';
@@ -107,6 +108,29 @@ export class ClaimsService {
       // apareciendo en lo que ya pasó (H-74).
       withDeleted: true,
       relations: ['order', 'customer'],
+    });
+  }
+
+  /**
+   * Los reclamos del cliente, del más nuevo al más viejo. Con distribuidora en
+   * contexto, sólo los de ella; sin ella, los de todas (el cliente es uno solo).
+   */
+  async findMine(
+    customerId: string,
+    { limit = 10, offset = 0 }: QueryMyClaimsDto,
+    distributorId?: string | null,
+  ): Promise<[Claim[], number]> {
+    const where: FindOptionsWhere<Claim> = { customerId };
+    if (distributorId) where.distributorId = distributorId;
+
+    return await this.claimRepo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
+      // Ni el reclamo ni el pedido se dan de baja (no tienen `deletedAt`) y el
+      // cliente no se carga: no hace falta `withDeleted`.
+      relations: ['order'],
     });
   }
 

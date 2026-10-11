@@ -5,6 +5,10 @@ import request from 'supertest';
 import type { Server } from 'http';
 import { ClaimsController } from './claims.controller';
 import { ClaimsService } from './claims.service';
+import { APP_GUARD } from '@nestjs/core';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { RoleType } from '../common/constants/role-type.enum';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 const ID = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
 
@@ -117,6 +121,122 @@ describe('ClaimsController · distribuidora obligatoria', () => {
     await request(app.getHttpServer())
       .patch(`/claims/${ID}/resolve`)
       .send({ resolution: 'ok', status: 'in_process' })
+      .expect(400);
+  });
+});
+
+/**
+ * `GET /claims/mine`: el cliente ve sus reclamos; ningún otro rol entra. El
+ * guard de autenticación no corre acá: un middleware deja el usuario y el
+ * tenant que dejaría, y se registra el `RolesGuard` real.
+ */
+describe('ClaimsController · mis reclamos', () => {
+  let app: INestApplication<Server>;
+  let claims: { findMine: jest.Mock; photoUrlFor: jest.Mock };
+  let usuario: AuthenticatedUser;
+  let distributorId: string | null;
+
+  const reclamo = {
+    claimId: 'c1',
+    orderId: 'o1',
+    customerId: 'u1',
+    distributorId: 'd1',
+    reason: 'Fuga',
+    description: 'Pierde gas',
+    status: 'pending',
+    photoUrl: null,
+    resolutionNote: null,
+    createdAt: new Date('2026-10-01T10:00:00Z'),
+    order: {
+      orderId: 'o1',
+      status: 'delivered',
+      totalAmount: 14900,
+      createdAt: new Date('2026-09-30T10:00:00Z'),
+      scheduledDate: null,
+      customerId: 'u1',
+      deliveryId: 'interno',
+    },
+  };
+
+  beforeEach(async () => {
+    usuario = { user_id: 'u1', email: 'c@splg.com', role: RoleType.CUSTOMER };
+    distributorId = 'd1';
+    claims = {
+      findMine: jest.fn().mockResolvedValue([[reclamo], 3]),
+      photoUrlFor: jest.fn().mockResolvedValue(null),
+    };
+    const modulo = await Test.createTestingModule({
+      controllers: [ClaimsController],
+      providers: [
+        { provide: ClaimsService, useValue: claims },
+        { provide: APP_GUARD, useClass: RolesGuard },
+      ],
+    }).compile();
+    app = modulo.createNestApplication<INestApplication<Server>>();
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      req.user = usuario;
+      req.distributorId = distributorId;
+      next();
+    });
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('devuelve los del usuario autenticado, paginados, con el total en la cabecera', async () => {
+    const res = await request(app.getHttpServer()).get(
+      '/claims/mine?limit=5&offset=5',
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers['x-total-count']).toBe('3');
+    expect(res.body).toEqual([
+      {
+        claimId: 'c1',
+        status: 'pending',
+        reason: 'Fuga',
+        description: 'Pierde gas',
+        createdAt: '2026-10-01T10:00:00.000Z',
+        order: {
+          orderId: 'o1',
+          status: 'delivered',
+          totalAmount: 14900,
+          createdAt: '2026-09-30T10:00:00.000Z',
+          scheduledDate: null,
+        },
+        photoUrl: null,
+        resolutionNote: null,
+      },
+    ]);
+    expect(claims.findMine).toHaveBeenCalledWith(
+      'u1',
+      expect.objectContaining({ limit: 5, offset: 5 }),
+      'd1',
+    );
+  });
+
+  it('acota por la distribuidora de la request: sin ella, pasa null', async () => {
+    distributorId = null;
+    await request(app.getHttpServer()).get('/claims/mine').expect(200);
+    expect(claims.findMine).toHaveBeenCalledWith('u1', expect.anything(), null);
+  });
+
+  it.each([RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY])(
+    'el rol %s no entra (403)',
+    async (role) => {
+      usuario = { ...usuario, role };
+      await request(app.getHttpServer()).get('/claims/mine').expect(403);
+      expect(claims.findMine).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rechaza una paginación inválida (400)', async () => {
+    await request(app.getHttpServer())
+      .get('/claims/mine?limit=1000')
       .expect(400);
   });
 });

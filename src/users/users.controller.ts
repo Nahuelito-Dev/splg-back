@@ -178,6 +178,32 @@ export class UsersController {
     responderFoto(res, query.modo, await this.userPhoto.enlace(user.user_id));
   }
 
+  @Delete('me')
+  @Auth(RoleType.CUSTOMER)
+  @ApiOperation({
+    summary: 'El cliente da de baja su propia cuenta (baja lógica)',
+    description:
+      'Su usuario, perfil y direcciones quedan dados de baja y dejan de ' +
+      'aparecer; sus pedidos y registros se conservan. La cuenta de Firebase ' +
+      'se deshabilita, no se borra. **Es definitivo desde la app**: no puede ' +
+      'volver a iniciar sesión, el correo y el teléfono quedan reservados ' +
+      '(no se puede registrar de nuevo con los mismos: 409) y, para ' +
+      'reactivarla, tiene que contactar a la distribuidora. Si tiene pedidos ' +
+      'en curso (reservados, pendientes, aceptados o en camino, en cualquier ' +
+      'distribuidora) se rechaza con 409. Con el token anterior, el servidor ' +
+      'responde 401: la sesión terminó con la baja.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiConflictResponse({
+    description: 'Tiene pedidos en curso: hay que esperar o cancelarlos',
+  })
+  @HttpCode(HttpStatus.OK)
+  async removeMe(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MessageResponseDto> {
+    return await this.usersService.removeOwnAccount(user.user_id);
+  }
+
   @Put(':id/photo')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiSubirFoto(

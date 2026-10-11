@@ -35,6 +35,9 @@ import {
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
+import { QueryMyClaimsDto } from './dto/query-my-claims.dto';
+import { MyClaimResponseDto } from './dto/my-claim-response.dto';
+import { CABECERA_TOTAL, informarTotal } from '../common/http/total';
 import { ClaimResponseDto } from './dto/claim-response.dto';
 import { ClaimPhotoLinkResponseDto } from './dto/claim-photo-link.dto';
 import { ClaimMapper } from './claims.mapper';
@@ -97,6 +100,47 @@ export class ClaimsController {
   ): Promise<ClaimResponseDto[]> {
     const claims = await this.claimsService.findAll(distributorId);
     return Promise.all(claims.map((c) => this.toDto(c)));
+  }
+
+  @Get('mine')
+  @Auth(RoleType.CUSTOMER)
+  @ApiOperation({
+    summary: 'El cliente ve sus propios reclamos',
+    description:
+      'Del más nuevo al más viejo, paginado con `limit` y `offset`; el total ' +
+      'sin paginar viaja en la cabecera `X-Total-Count`. Con `X-Distributor` ' +
+      'sólo los de esa distribuidora; sin el header, los de todas.',
+  })
+  // El 200 lleva la cabecera del total en la misma respuesta: `ApiTotal` aparte
+  // pisaría este `ApiOkResponse` en el OpenAPI.
+  @ApiOkResponse({
+    type: MyClaimResponseDto,
+    isArray: true,
+    headers: {
+      [CABECERA_TOTAL]: {
+        description: 'Total de reclamos del cliente sin paginar',
+        schema: { type: 'integer' },
+      },
+    },
+  })
+  @ApiBadRequestResponse({ description: 'limit u offset inválidos' })
+  async findMine(
+    @Query() query: QueryMyClaimsDto,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<MyClaimResponseDto[]> {
+    const [claims, total] = await this.claimsService.findMine(
+      user.user_id,
+      query,
+      distributorId,
+    );
+    informarTotal(res, total);
+    return Promise.all(
+      claims.map(async (c) =>
+        ClaimMapper.toMyDto(c, await this.claimsService.photoUrlFor(c)),
+      ),
+    );
   }
 
   @Get(':id')
