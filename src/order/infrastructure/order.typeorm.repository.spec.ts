@@ -16,6 +16,7 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
     andWhere: jest.Mock;
     clone: jest.Mock;
     orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
     take: jest.Mock;
     skip: jest.Mock;
     getCount: jest.Mock;
@@ -37,6 +38,7 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
       andWhere: jest.fn(() => fake),
       clone: jest.fn(() => fake),
       orderBy: jest.fn(() => fake),
+      addOrderBy: jest.fn(() => fake),
       take: jest.fn(() => fake),
       skip: jest.fn(() => fake),
       getCount: jest.fn().mockResolvedValue(0),
@@ -133,6 +135,16 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
     });
   });
 
+  it('con filtros, la página desempata por id', async () => {
+    qb.getCount.mockResolvedValue(1);
+    await repo.findAllPaginated(10, 0, 'dist-1', {
+      status: OrderStatus.PENDING,
+    });
+
+    expect(qb.orderBy).toHaveBeenCalledWith('order.createdAt', 'DESC');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('order.orderId', 'DESC');
+  });
+
   it('sin resultados no llama a buscar el detalle completo', async () => {
     qb.getCount.mockResolvedValue(0);
 
@@ -142,5 +154,54 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
 
     expect(resultado).toEqual({ orders: [], total: 0, limit: 10, offset: 0 });
     expect(orderRepo.find).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Los listados paginan con `skip`/`take`: si el orden sólo mira `createdAt`,
+ * dos pedidos con la misma fecha pueden repetirse o saltearse entre páginas.
+ * El id desempata y deja el orden total.
+ */
+describe('OrderTypeormRepository · orden estable al paginar', () => {
+  const desempata = (orden: unknown, sentido: 'ASC' | 'DESC'): void => {
+    expect(orden).toEqual({ createdAt: sentido, orderId: sentido });
+  };
+
+  const armar = () => {
+    const orderRepo = {
+      findAndCount: jest
+        .fn<Promise<[Order[], number]>, [{ order: unknown }]>()
+        .mockResolvedValue([[], 0]),
+    };
+    const repo = new OrderTypeormRepository(
+      orderRepo as unknown as Repository<Order>,
+    );
+    const ordenUsado = (): unknown =>
+      orderRepo.findAndCount.mock.calls[0][0].order;
+    return { repo, ordenUsado };
+  };
+
+  it('findByDelivery desempata por id', async () => {
+    const { repo, ordenUsado } = armar();
+    await repo.findByDelivery('d-1', 20, 0, 'dist-1');
+    desempata(ordenUsado(), 'DESC');
+  });
+
+  it('findByCustomer desempata por id', async () => {
+    const { repo, ordenUsado } = armar();
+    await repo.findByCustomer('c-1', 20, 0, 'dist-1');
+    desempata(ordenUsado(), 'DESC');
+  });
+
+  it('findAvailable desempata por id', async () => {
+    const { repo, ordenUsado } = armar();
+    await repo.findAvailable(20, 0, 'dist-1');
+    desempata(ordenUsado(), 'ASC');
+  });
+
+  it('findAllPaginated sin filtros desempata por id', async () => {
+    const { repo, ordenUsado } = armar();
+    await repo.findAllPaginated(20, 0, 'dist-1');
+    desempata(ordenUsado(), 'DESC');
   });
 });
