@@ -574,7 +574,7 @@ describe('UpdateOrderStatusUseCase', () => {
   });
 
   describe('DELIVERED', () => {
-    it('marca pagado automáticamente si el método es CASH', async () => {
+    it('NO marca pagado al entregar en CASH: el cobro lo confirma el chofer', async () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({
           status: OrderStatus.ON_THE_WAY,
@@ -585,7 +585,7 @@ describe('UpdateOrderStatusUseCase', () => {
       const result = await useCase.execute('ord-1', OrderStatus.DELIVERED);
 
       expect(result.deliveredAt).toBeInstanceOf(Date);
-      expect(result.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(result.paymentStatus).toBe(PaymentStatus.PENDING);
     });
 
     it('descuenta el stock físico por el MISMO manager de la transacción del pedido', async () => {

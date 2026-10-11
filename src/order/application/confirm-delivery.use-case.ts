@@ -21,7 +21,7 @@ import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
  * estuvo presente.
  *
  * La VALIDACIÓN del código vive acá. Los EFECTOS de pasar a DELIVERED
- * (timestamp, CASH→PAID, stopTracking del chofer, eventos de tiempo real)
+ * (timestamp, stopTracking del chofer, eventos de tiempo real)
  * se delegan en UpdateOrderStatusUseCase — el MISMO que usa el chofer/admin
  * en `PATCH :id/status` — para no duplicar esa lógica.
  */

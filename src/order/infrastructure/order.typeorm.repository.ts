@@ -66,7 +66,13 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     filters?: OrderListFilters,
   ): Promise<PaginatedOrders> {
     // Sin filtros de búsqueda: se mantiene la consulta simple de siempre.
-    if (!filters?.term && !filters?.status && !filters?.from && !filters?.to) {
+    if (
+      !filters?.term &&
+      !filters?.status &&
+      !filters?.paymentStatus &&
+      !filters?.from &&
+      !filters?.to
+    ) {
       const [orders, total] = await this.orderRepository.findAndCount({
         where: this.scoped({}, distributorId),
         take: limit,
@@ -94,6 +100,11 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     }
     if (filters.status) {
       filtro.andWhere('order.status = :status', { status: filters.status });
+    }
+    if (filters.paymentStatus) {
+      filtro.andWhere('order.paymentStatus = :paymentStatus', {
+        paymentStatus: filters.paymentStatus,
+      });
     }
     // Días en hora argentina, `to` inclusivo (misma regla que /reports).
     const desde = filters.from ? inicioDelDiaArgentino(filters.from) : null;

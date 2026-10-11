@@ -13,7 +13,12 @@ describe('OrderService.getOrderStats — días en hora argentina', () => {
 
   /** Los dos extremos de `And(MoreThanOrEqual(a), LessThan(b))`. */
   function extremos(donde: unknown): [string, string] {
-    const { deliveredAt } = donde as { deliveredAt: FindOperator<Date> };
+    // `donde` es un arreglo de alternativas (cobrado en efectivo o no): ambas
+    // llevan el mismo rango.
+    const unico = (Array.isArray(donde) ? donde[0] : donde) as {
+      deliveredAt: FindOperator<Date>;
+    };
+    const { deliveredAt } = unico;
     const [desde, hasta] = (
       deliveredAt as unknown as { value: FindOperator<Date>[] }
     ).value;
@@ -88,5 +93,20 @@ describe('OrderService.getOrderStats — días en hora argentina', () => {
       '2026-08-01T03:00:00.000Z',
       '2026-09-01T03:00:00.000Z',
     ]);
+  });
+
+  it('las ventas cuentan sólo lo cobrado: paid, o pending en medios que no son efectivo', async () => {
+    await service.getOrderStats('d1');
+    for (const llamada of sum.mock.calls as [string, unknown][]) {
+      const alternativas = llamada[1] as {
+        paymentStatus: unknown;
+        paymentMethod?: { value?: unknown };
+      }[];
+      expect(Array.isArray(alternativas)).toBe(true);
+      expect(alternativas).toHaveLength(2);
+      expect(alternativas[0].paymentStatus).toBe('paid');
+      expect(alternativas[1].paymentStatus).toBe('pending');
+      expect(alternativas[1].paymentMethod).toBeDefined();
+    }
   });
 });

@@ -1,11 +1,16 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
-import { Incident, IncidentStatus } from './entities/incident.entity';
+import {
+  Incident,
+  IncidentStatus,
+  IncidentType,
+} from './entities/incident.entity';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
@@ -32,6 +37,11 @@ export class IncidentService {
     distributorId: string | null,
     esChofer: boolean,
   ): Promise<Incident> {
+    if (dto.type === IncidentType.UNPAID_COLLECTION) {
+      throw new BadRequestException(
+        'La incidencia de cobro impago se crea informando el impago: PATCH /orders/:id/payment/unpaid',
+      );
+    }
     const order = await this.orderService.findById(dto.orderId);
     // El pedido de otra distribuidora no existe para quien reporta.
     if (!order || (distributorId && order.distributorId !== distributorId)) {
@@ -138,6 +148,16 @@ export class IncidentService {
     const incident = await this.findOne(id, distributorId);
     if (incident.status !== IncidentStatus.OPEN) {
       throw new ConflictException('Sólo se edita una incidencia abierta');
+    }
+    if (
+      dto.type !== undefined &&
+      dto.type !== incident.type &&
+      (dto.type === IncidentType.UNPAID_COLLECTION ||
+        incident.type === IncidentType.UNPAID_COLLECTION)
+    ) {
+      throw new BadRequestException(
+        'El tipo cobro impago no se asigna ni se cambia a mano: lo fija el informe de impago',
+      );
     }
     if (dto.description !== undefined) incident.description = dto.description;
     if (dto.type !== undefined) incident.type = dto.type;

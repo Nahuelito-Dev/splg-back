@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsDateString, IsEnum, IsOptional, Matches } from 'class-validator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
-import { OrderStatus } from '../entities/order.entity';
+import { OrderStatus, PaymentStatus } from '../entities/order.entity';
 
 /**
  * El filtro acepta el vocabulario de `OrderResponseDto.status`: la respuesta
@@ -37,6 +37,18 @@ export class QueryOrdersDto extends PaginationDto {
     message: 'status debe ser un estado de pedido válido',
   })
   status?: OrderStatus;
+
+  @ApiPropertyOptional({
+    enum: PaymentStatus,
+    description:
+      'Filtra por estado del pago. `pending` + `status=delivered` lista el efectivo entregado sin confirmar; ' +
+      '`unpaid` los impagos sin resolver; `written_off` las pérdidas. Siempre acotado a la distribuidora en contexto.',
+  })
+  @IsOptional()
+  @IsEnum(PaymentStatus, {
+    message: 'paymentStatus debe ser un estado de pago válido',
+  })
+  paymentStatus?: PaymentStatus;
 
   @ApiPropertyOptional({
     type: String,

@@ -1,6 +1,10 @@
 import { Repository } from 'typeorm';
 import { ReportsService } from './reports.service';
-import { Order } from '../order/entities/order.entity';
+import {
+  Order,
+  PaymentMethod,
+  PaymentStatus,
+} from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
 
 /**
@@ -8,6 +12,11 @@ import { OrderItem } from '../order/entities/order-item.entity';
  * que las ventas se sumen con precisión decimal y que las filas crudas de
  * Postgres se conviertan a números.
  */
+const COBRADO = {
+  paymentStatus: PaymentStatus.PAID,
+  paymentMethod: PaymentMethod.CASH,
+};
+
 describe('ReportsService', () => {
   let service: ReportsService;
   let orders: { find: jest.Mock; createQueryBuilder: jest.Mock };
@@ -43,9 +52,9 @@ describe('ReportsService', () => {
   it('suma las ventas de cada chofer sin errores de redondeo', async () => {
     const chofer = { userId: 'u1', user: { fullName: 'Juan' } };
     orders.find.mockResolvedValue([
-      { delivery: chofer, totalAmount: 0.1 },
-      { delivery: chofer, totalAmount: 0.2 },
-      { delivery: null, totalAmount: 99 },
+      { delivery: chofer, totalAmount: 0.1, ...COBRADO },
+      { delivery: chofer, totalAmount: 0.2, ...COBRADO },
+      { delivery: null, totalAmount: 99, ...COBRADO },
     ]);
     const r = await service.getSalesByDriver(new Date(), new Date());
     expect(r).toEqual([
@@ -153,5 +162,75 @@ describe('ReportsService', () => {
       'order.deliveredAt >= :start AND order.deliveredAt < :end',
       { start, end },
     );
+  });
+
+  describe('ventas = entregado y cobrado', () => {
+    it('por chofer no cuenta efectivo pendiente, impago ni pérdida; sí transferencia pendiente y efectivo cobrado', async () => {
+      const chofer = { userId: 'u1', user: { fullName: 'Juan' } };
+      const p = (
+        paymentStatus: PaymentStatus,
+        paymentMethod: PaymentMethod,
+        totalAmount: number,
+      ) => ({ delivery: chofer, totalAmount, paymentStatus, paymentMethod });
+      orders.find.mockResolvedValue([
+        p(PaymentStatus.PAID, PaymentMethod.CASH, 100),
+        p(PaymentStatus.PENDING, PaymentMethod.TRANSFER, 10),
+        p(PaymentStatus.PENDING, PaymentMethod.CASH, 1000),
+        p(PaymentStatus.UNPAID, PaymentMethod.CASH, 2000),
+        p(PaymentStatus.WRITTEN_OFF, PaymentMethod.CASH, 4000),
+      ]);
+      const r = await service.getSalesByDriver(new Date(), new Date());
+      expect(r).toEqual([
+        { driverId: 'u1', driverName: 'Juan', totalOrders: 2, totalSales: 110 },
+      ]);
+    });
+
+    it.each([
+      [
+        'por medio de pago',
+        (s: ReportsService) =>
+          s.getSalesByPaymentMethod(new Date(), new Date()),
+      ],
+      [
+        'por producto',
+        (s: ReportsService) => s.getSalesByProduct(new Date(), new Date()),
+      ],
+      [
+        'evolución',
+        (s: ReportsService) =>
+          s.getSalesEvolution(new Date(), new Date(), 'day'),
+      ],
+    ])('%s filtra por cobrado en la consulta', async (_n, llamar) => {
+      qb.getRawMany.mockResolvedValue([]);
+      const extra = qb as unknown as Record<string, jest.Mock>;
+      extra.innerJoinAndSelect = jest.fn(() => qb);
+      extra.addGroupBy = jest.fn(() => qb);
+      orders.createQueryBuilder.mockReturnValue(qb);
+      await llamar(service);
+      const filtroDeCobro = qb.andWhere.mock.calls.some(
+        ([arg]: [unknown]) =>
+          typeof arg === 'object' && arg !== null && 'whereFactory' in arg,
+      );
+      expect(filtroDeCobro).toBe(true);
+    });
+  });
+
+  describe('getCollections', () => {
+    it('separa efectivo pendiente, impagos y pérdidas, y arma 0 lo que no hay', async () => {
+      qb.getRawMany.mockResolvedValue([
+        { status: 'pending', count: '3', total: '30000.5' },
+        { status: 'unpaid', count: '1', total: '9500' },
+      ]);
+      const r = await service.getCollections(new Date(), new Date(), 'd1');
+      expect(r).toEqual({
+        pendingCash: { totalOrders: 3, totalAmount: 30000.5 },
+        unpaid: { totalOrders: 1, totalAmount: 9500 },
+        writtenOff: { totalOrders: 0, totalAmount: 0 },
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'order.distributorId = :distributorId',
+        { distributorId: 'd1' },
+      );
+    });
   });
 });

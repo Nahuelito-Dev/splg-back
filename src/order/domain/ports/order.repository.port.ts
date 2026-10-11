@@ -1,4 +1,4 @@
-import { Order, OrderStatus } from '../../entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from '../../entities/order.entity';
 
 /** Resultado paginado uniforme de las consultas de pedidos. */
 export interface PaginatedOrders {
@@ -16,6 +16,7 @@ export interface PaginatedOrders {
 export interface OrderListFilters {
   term?: string;
   status?: OrderStatus;
+  paymentStatus?: PaymentStatus;
   from?: string;
   to?: string;
 }

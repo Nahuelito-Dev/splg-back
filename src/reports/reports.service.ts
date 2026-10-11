@@ -1,11 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, And, MoreThanOrEqual, LessThan } from 'typeorm';
-import { Order, OrderStatus } from '../order/entities/order.entity';
+import {
+  esVentaCobrada,
+  soloVentaCobrada,
+} from '../common/utils/venta-cobrada';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
 import { truncarEnArgentinaSql } from '../common/utils/dias-argentina';
 import Decimal from 'decimal.js';
 import {
+  CobrosDeEfectivoDto,
   EvolucionDeVentasDto,
   VentasPorChoferDto,
   VentasPorMedioDePagoDto,
@@ -65,6 +75,7 @@ export class ReportsService {
     > = {};
 
     for (const order of orders) {
+      if (!esVentaCobrada(order)) continue;
       if (!order.delivery || !order.delivery.user) continue;
 
       const driverName = order.delivery.user.fullName;
@@ -108,6 +119,8 @@ export class ReportsService {
         end: endDate,
       });
 
+    soloVentaCobrada(query, 'order');
+
     // Sólo filtramos por tenant si vino distributorId (super_admin ve todo).
     if (distributorId) {
       query.andWhere('order.distributorId = :distributorId', {
@@ -150,6 +163,8 @@ export class ReportsService {
         start: startDate,
         end: endDate,
       });
+
+    soloVentaCobrada(query, 'order');
 
     if (distributorId) {
       query.andWhere('order.distributorId = :distributorId', {
@@ -195,6 +210,8 @@ export class ReportsService {
         end: endDate,
       });
 
+    soloVentaCobrada(query, 'order');
+
     if (distributorId) {
       query.andWhere('order.distributorId = :distributorId', {
         distributorId,
@@ -211,5 +228,55 @@ export class ReportsService {
       totalOrders: numero(row['count']),
       totalSales: numero(row['total']),
     }));
+  }
+
+  /**
+   * Cifras aparte de las ventas: el efectivo entregado que el chofer todavía
+   * no confirmó, los impagos y lo dado por perdido, de los pedidos entregados
+   * en el rango. No suman a las ventas.
+   */
+  async getCollections(
+    startDate: Date,
+    endDate: Date,
+    distributorId?: string | null,
+  ): Promise<CobrosDeEfectivoDto> {
+    const query = this.orderRepository
+      .createQueryBuilder('order')
+      .select('order.paymentStatus', 'status')
+      .addSelect('COUNT(order.orderId)', 'count')
+      .addSelect('SUM(order.totalAmount)', 'total')
+      .where('order.status = :status', { status: OrderStatus.DELIVERED })
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
+        start: startDate,
+        end: endDate,
+      })
+      .andWhere('order.paymentMethod = :cash', { cash: PaymentMethod.CASH })
+      .andWhere('order.paymentStatus IN (:...estados)', {
+        estados: [
+          PaymentStatus.PENDING,
+          PaymentStatus.UNPAID,
+          PaymentStatus.WRITTEN_OFF,
+        ],
+      });
+
+    if (distributorId) {
+      query.andWhere('order.distributorId = :distributorId', {
+        distributorId,
+      });
+    }
+
+    const rows = await query.groupBy('order.paymentStatus').getRawMany<Fila>();
+    const cifra = (estado: PaymentStatus) => {
+      const fila = rows.find((r) => r['status'] === estado);
+      return {
+        totalOrders: fila ? numero(fila['count']) : 0,
+        totalAmount: fila ? numero(fila['total']) : 0,
+      };
+    };
+    return {
+      pendingCash: cifra(PaymentStatus.PENDING),
+      unpaid: cifra(PaymentStatus.UNPAID),
+      writtenOff: cifra(PaymentStatus.WRITTEN_OFF),
+    };
   }
 }

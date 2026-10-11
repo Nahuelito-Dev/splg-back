@@ -12,6 +12,7 @@ import { Observable, firstValueFrom, of } from 'rxjs';
 import { RedisService } from '../../redis/redis.service';
 import { IDEMPOTENT_KEY } from '../decorators/idempotent.decorator';
 import type { Request } from 'express';
+import { createHash } from 'crypto';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -82,8 +83,21 @@ export class IdempotencyInterceptor implements NestInterceptor {
       );
     }
 
-    const cacheKey = `idempotency:${rawKey}`;
-    const lockKey = `idempotency-lock:${rawKey}`;
+    // La clave del cliente sola no alcanza: la misma en otra ruta, otro método
+    // u otro usuario es otra operación y no puede devolver la respuesta ajena.
+    const user = (request as Request & { user?: { user_id?: string } }).user;
+    const alcance = [
+      user?.user_id ?? 'anon',
+      request.method,
+      (request.route as { path?: string } | undefined)?.path ?? request.path,
+      JSON.stringify(request.params ?? {}),
+    ].join('|');
+    const huella = createHash('sha256')
+      .update(alcance)
+      .digest('hex')
+      .slice(0, 24);
+    const cacheKey = `idempotency:${huella}:${rawKey}`;
+    const lockKey = `idempotency-lock:${huella}:${rawKey}`;
 
     // Fast path: respuesta ya cacheada
     const cached = await this.redisService.get(cacheKey);

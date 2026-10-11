@@ -57,6 +57,10 @@ export enum PaymentStatus {
   PENDING = 'pending',
   PAID = 'paid',
   FAILED = 'failed',
+  /** Efectivo entregado y el chofer informó que el cliente no pagó. */
+  UNPAID = 'unpaid',
+  /** Impago que el administrador dio por perdido. */
+  WRITTEN_OFF = 'written_off',
 }
 
 @Entity('order')
@@ -196,6 +200,18 @@ export class Order {
     default: PaymentStatus.PENDING,
   })
   paymentStatus!: PaymentStatus;
+
+  /** Cuándo se confirmó el cobro (pago recibido por el chofer o resolución del admin). */
+  @Column({ name: 'payment_confirmed_at', type: 'timestamptz', nullable: true })
+  paymentConfirmedAt!: Date | null;
+
+  /** Usuario que confirmó el cobro (el chofer, o el admin que resolvió el impago). */
+  @Column({ name: 'payment_confirmed_by', type: 'uuid', nullable: true })
+  paymentConfirmedBy!: string | null;
+
+  /** Motivo con el que el admin resolvió un impago. */
+  @Column({ name: 'payment_resolution_note', type: 'text', nullable: true })
+  paymentResolutionNote!: string | null;
 
   @Column({
     type: 'decimal',

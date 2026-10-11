@@ -7,6 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  CobrosDeEfectivoDto,
   EvolucionDeVentasDto,
   VentasPorChoferDto,
   VentasPorMedioDePagoDto,
@@ -61,7 +62,7 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Ventas por Repartidor',
     description:
-      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma el total del pedido (con recargos) de los pedidos entregados.',
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma el total del pedido (con recargos) de los pedidos entregados. Cuenta sólo lo COBRADO: `paymentStatus: paid`, o `pending` en medios que no son efectivo; el efectivo pendiente de confirmar, los impagos y las pérdidas no suman (ver `GET /reports/collections`).',
   })
   @ApiOkResponse({ type: VentasPorChoferDto, isArray: true })
   @ApiBadRequestResponse({
@@ -84,7 +85,7 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Ventas por Producto',
     description:
-      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma los subtotales de los renglones (sin recargos): por eso el total puede ser menor al de sales-by-driver/sales-by-payment, que suman el total del pedido.',
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma los subtotales de los renglones (sin recargos): por eso el total puede ser menor al de sales-by-driver/sales-by-payment, que suman el total del pedido. Cuenta sólo lo COBRADO: `paymentStatus: paid`, o `pending` en medios que no son efectivo; el efectivo pendiente de confirmar, los impagos y las pérdidas no suman (ver `GET /reports/collections`).',
   })
   @ApiOkResponse({ type: VentasPorProductoDto, isArray: true })
   @ApiBadRequestResponse({
@@ -106,7 +107,7 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Ventas por Método de Pago',
     description:
-      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma el total del pedido (con recargos) de los pedidos entregados.',
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Suma el total del pedido (con recargos) de los pedidos entregados. Cuenta sólo lo COBRADO: `paymentStatus: paid`, o `pending` en medios que no son efectivo; el efectivo pendiente de confirmar, los impagos y las pérdidas no suman (ver `GET /reports/collections`).',
   })
   @ApiOkResponse({ type: VentasPorMedioDePagoDto, isArray: true })
   @ApiBadRequestResponse({
@@ -128,7 +129,7 @@ export class ReportsController {
   @ApiOperation({
     summary: 'Evolución de ventas por período (día/semana/mes)',
     description:
-      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Los períodos (día, semana ISO lunes a domingo, mes) se agrupan en hora argentina y `period` es el instante en que arranca cada uno. Suma el total del pedido (con recargos).',
+      'Días en hora argentina (America/Argentina/Buenos_Aires); `to` es inclusivo. Cuenta pedidos entregados en el rango, por fecha de entrega (el listado de pedidos filtra por fecha de creación). Los períodos (día, semana ISO lunes a domingo, mes) se agrupan en hora argentina y `period` es el instante en que arranca cada uno. Suma el total del pedido (con recargos). Cuenta sólo lo COBRADO: `paymentStatus: paid`, o `pending` en medios que no son efectivo; el efectivo pendiente de confirmar, los impagos y las pérdidas no suman (ver `GET /reports/collections`).',
   })
   @ApiOkResponse({ type: EvolucionDeVentasDto, isArray: true })
   @ApiBadRequestResponse({
@@ -143,6 +144,30 @@ export class ReportsController {
       startDate,
       endDate,
       this.aGranularidadSql(rango.granularity),
+      distributorId,
+    );
+  }
+
+  @Get('collections')
+  @ApiOperation({
+    summary: 'Cobros en efectivo fuera de las ventas',
+    description:
+      'Días en hora argentina; `to` es inclusivo; por fecha de entrega. Cifras que NO suman a las ventas: ' +
+      'efectivo entregado pendiente de confirmar por el chofer (`pendingCash`), impagos sin resolver (`unpaid`) ' +
+      'y pérdidas (`writtenOff`).',
+  })
+  @ApiOkResponse({ type: CobrosDeEfectivoDto })
+  @ApiBadRequestResponse({
+    description: 'Fecha con formato inválido o from posterior a to',
+  })
+  async getCollections(
+    @Query() rango: ReportRangeQueryDto,
+    @CurrentDistributor() distributorId?: string | null,
+  ): Promise<CobrosDeEfectivoDto> {
+    const { startDate, endDate } = this.parseDates(rango.from, rango.to);
+    return this.reportsService.getCollections(
+      startDate,
+      endDate,
       distributorId,
     );
   }
