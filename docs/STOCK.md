@@ -76,7 +76,9 @@ Módulo `src/stock/` (M-C parte 1; el diseño completo está en
 ## Endpoints
 
 Todos `@Auth(ADMIN, SUPER_ADMIN)` con la distribuidora en contexto; lo de otra responde 404.
-Los `POST` que mueven stock aceptan `Idempotency-Key` (UUID v4).
+Los `POST` que mueven stock aceptan `Idempotency-Key` (UUID v4). La clave queda atada al body (SHA-256 del JSON con
+las claves ordenadas): repetirla con el mismo body devuelve la respuesta guardada; con otro body responde **422**
+("Esa clave de idempotencia ya se usó con otros datos…") y no ejecuta nada. Vale para todo `@Idempotent`.
 Swagger: `GET /docs-json`. Rutas: `/warehouses`, `/stock`, `/stock/summary`, `/stock/locations`,
 `/stock/movements`, `/stock/transfers`, `/stock/initial-counts`, `/stock/adjustments`,
 `/stock/thresholds`, `/stock/reconciliation` (+ `/adjustments`, `/reapply-deliveries`),

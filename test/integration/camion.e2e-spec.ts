@@ -1387,6 +1387,31 @@ describe('Carga y rendición del camión (e2e)', () => {
       expect(await enElCamion(c.carId, g, 'full')).toBe(15);
     }, 60000);
 
+    it('la misma Idempotency-Key con otro body en reload: 422 y el stock no se mueve', async () => {
+      const e = await seedDistribuidora();
+      const c = await seedChofer(e);
+      const g = e.garrafa.gasCylinderId;
+      await stockInicial(e, 50);
+      const carga = await abrirOk(e, c, [{ loadedFull: 10 }]);
+      await accion(e, carga.loadId, 'depart').expect(200);
+      const clave = randomUUID();
+      const reload = (quantity: number) =>
+        http()
+          .patch(`/truck-loads/${carga.loadId}/reload`)
+          .set(e.headers)
+          .set('Idempotency-Key', clave)
+          .send({ items: [{ gasCylinderId: g, quantity }] });
+
+      await reload(5).expect(200);
+      const otro = await reload(7).expect(422);
+      expect(cuerpo<Mensaje>(otro).message).toMatch(
+        /ya se usó con otros datos/,
+      );
+      expect(await enElCamion(c.carId, g, 'full')).toBe(15);
+      await reload(5).expect(200);
+      expect(await enElCamion(c.carId, g, 'full')).toBe(15);
+    }, 60000);
+
     it('las entregas y el efectivo de la carga salen del mismo criterio: chofer + camión + ventana; otro vehículo no cuenta', async () => {
       const e = await seedDistribuidora();
       const c = await seedChofer(e);

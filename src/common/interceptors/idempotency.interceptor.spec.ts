@@ -1,7 +1,11 @@
-import { ExecutionContext } from '@nestjs/common';
+import { ExecutionContext, UnprocessableEntityException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { lastValueFrom, of } from 'rxjs';
-import { IdempotencyInterceptor } from './idempotency.interceptor';
+import {
+  IdempotencyInterceptor,
+  MENSAJE_CLAVE_OTROS_DATOS,
+  hashDeBody,
+} from './idempotency.interceptor';
 
 const KEY = '7a1b2c3d-1111-4222-8333-444455556666';
 
@@ -10,6 +14,7 @@ interface Pedido {
   method?: string;
   route: string;
   params?: Record<string, string>;
+  body?: unknown;
 }
 
 describe('IdempotencyInterceptor', () => {
@@ -45,6 +50,7 @@ describe('IdempotencyInterceptor', () => {
           route: { path: p.route },
           path: p.route,
           params: p.params ?? { id: 'o1' },
+          body: p.body,
           user: { user_id: p.userId ?? 'u1' },
         }),
       }),
@@ -89,5 +95,39 @@ describe('IdempotencyInterceptor', () => {
       'B',
     );
     expect(r.body).toBe('B');
+  });
+
+  it('misma clave con otro body: 422 y no ejecuta', async () => {
+    await run({ route: '/x/:id/reload', body: { qty: 5 } }, 'A');
+    await expect(
+      run({ route: '/x/:id/reload', body: { qty: 6 } }, 'B'),
+    ).rejects.toThrow(UnprocessableEntityException);
+    await expect(
+      run({ route: '/x/:id/reload', body: { qty: 6 } }, 'B'),
+    ).rejects.toThrow(MENSAJE_CLAVE_OTROS_DATOS);
+  });
+
+  it('mismo body con las claves en otro orden: mismo hash, devuelve lo cacheado', async () => {
+    await run(
+      {
+        route: '/x/:id/reload',
+        body: { a: 1, b: { c: 2, d: [1, { f: 1, e: 2 }] } },
+      },
+      'A',
+    );
+    const r = await run(
+      {
+        route: '/x/:id/reload',
+        body: { b: { d: [1, { e: 2, f: 1 }], c: 2 }, a: 1 },
+      },
+      'B',
+    );
+    expect(r.body).toBe('A');
+    expect(r.ejecutado).toBe(0);
+  });
+
+  it('hashDeBody distingue el orden de un arreglo y trata sin body como {}', () => {
+    expect(hashDeBody({ l: [1, 2] })).not.toBe(hashDeBody({ l: [2, 1] }));
+    expect(hashDeBody(undefined)).toBe(hashDeBody({}));
   });
 });

@@ -1,4 +1,5 @@
-import { SetMetadata } from '@nestjs/common';
+import { SetMetadata, applyDecorators } from '@nestjs/common';
+import { ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 
 export const IDEMPOTENT_KEY = 'idempotent';
 
@@ -13,6 +14,9 @@ export const IDEMPOTENT_KEY = 'idempotent';
  *   3. Si no hay nada → adquiere lock, ejecuta handler, cachea response
  *      por 24h.
  *
+ * La misma key con otro body (hash SHA-256 del JSON con claves ordenadas)
+ * responde 422: la key identifica una operación y sólo esa.
+ *
  * Solo se cachean respuestas 2xx. Errores se propagan sin cachear,
  * permitiendo retry posterior con la misma key.
  *
@@ -24,4 +28,11 @@ export const IDEMPOTENT_KEY = 'idempotent';
  * Si el cliente NO envía el header, el handler se ejecuta normalmente
  * (no se aplica idempotencia). Esto mantiene backward compat.
  */
-export const Idempotent = () => SetMetadata(IDEMPOTENT_KEY, true);
+export const Idempotent = () =>
+  applyDecorators(
+    SetMetadata(IDEMPOTENT_KEY, true),
+    ApiUnprocessableEntityResponse({
+      description:
+        'La `Idempotency-Key` ya se usó con otro body. Revisá si la operación anterior se registró antes de reintentar.',
+    }),
+  );

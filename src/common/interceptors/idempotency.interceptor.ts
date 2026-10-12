@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
   NestInterceptor,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable, firstValueFrom, of } from 'rxjs';
@@ -24,7 +25,34 @@ const HEADER = 'idempotency-key';
 interface CachedResponse {
   status: number;
   body: unknown;
+  /** Huella del body de la request que produjo la respuesta. */
+  bodyHash?: string;
   cachedAt: string;
+}
+
+export const MENSAJE_CLAVE_OTROS_DATOS =
+  'Esa clave de idempotencia ya se usó con otros datos. Revisá si la operación anterior se registró antes de reintentar.';
+
+/** JSON con las claves de los objetos ordenadas, para que el orden no cambie el hash. */
+function canonico(valor: unknown): string {
+  if (Array.isArray(valor)) {
+    return `[${valor.map((v) => canonico(v)).join(',')}]`;
+  }
+  if (valor && typeof valor === 'object') {
+    const o = valor as Record<string, unknown>;
+    const campos = Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonico(o[k])}`);
+    return `{${campos.join(',')}}`;
+  }
+  return JSON.stringify(valor ?? null);
+}
+
+export function hashDeBody(body: unknown): string {
+  return createHash('sha256')
+    .update(canonico(body ?? {}))
+    .digest('hex');
 }
 
 /**
@@ -43,6 +71,9 @@ interface CachedResponse {
  *   EXECUTE handler
  *   SET cache (solo si 2xx)
  *   RELEASE lock
+ *
+ * La respuesta guardada lleva el hash del body. La misma clave con otro body
+ * es 422: no se devuelve la respuesta de una operación distinta.
  *
  * Solo se cachean respuestas 2xx. Si el handler lanza, no se cachea
  * y el cliente puede reintentar con la misma key.
@@ -99,10 +130,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const cacheKey = `idempotency:${huella}:${rawKey}`;
     const lockKey = `idempotency-lock:${huella}:${rawKey}`;
 
+    const bodyHash = hashDeBody(request.body);
+
     // Fast path: respuesta ya cacheada
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
-      return of(this.parseCached(cached));
+      return of(this.parseCached(cached, bodyHash));
     }
 
     // Adquirir lock distribuido para serializar requests con misma key
@@ -117,7 +150,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       // Double-check: entre el GET y el lock alguien pudo haber terminado
       const cachedAfterLock = await this.redisService.get(cacheKey);
       if (cachedAfterLock) {
-        return of(this.parseCached(cachedAfterLock));
+        return of(this.parseCached(cachedAfterLock, bodyHash));
       }
 
       // Ejecutar el handler. Si lanza, se propaga sin cachear.
@@ -127,6 +160,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       const payload: CachedResponse = {
         status: 200, // si llegó acá, fue éxito
         body: response,
+        bodyHash,
         cachedAt: new Date().toISOString(),
       };
       await this.redisService.setex(
@@ -143,15 +177,20 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
   }
 
-  private parseCached(raw: string): unknown {
+  private parseCached(raw: string, bodyHash: string): unknown {
+    let parsed: CachedResponse;
     try {
-      const parsed = JSON.parse(raw) as CachedResponse;
-      this.logger.debug(`Idempotency hit (cachedAt=${parsed.cachedAt})`);
-      return parsed.body;
+      parsed = JSON.parse(raw) as CachedResponse;
     } catch {
       // Cache corrupto: lo borramos y dejamos que el siguiente request lo regenere
       this.logger.warn('Cache de idempotencia corrupto, ignorando');
       return null;
     }
+    // Entradas viejas sin hash: se aceptan como antes.
+    if (parsed.bodyHash && parsed.bodyHash !== bodyHash) {
+      throw new UnprocessableEntityException(MENSAJE_CLAVE_OTROS_DATOS);
+    }
+    this.logger.debug(`Idempotency hit (cachedAt=${parsed.cachedAt})`);
+    return parsed.body;
   }
 }
