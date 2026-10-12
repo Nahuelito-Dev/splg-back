@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -147,6 +148,13 @@ export class WarehouseService {
               );
             }
             if (dto.isDefault === true && !warehouse.isDefault) {
+              // La entrega acredita la vacía en el predeterminado y un depósito
+              // inactivo no recibe stock: omitiría todo el pedido.
+              if ((dto.isActive ?? warehouse.isActive) === false) {
+                throw new BadRequestException(
+                  'El depósito predeterminado no puede estar inactivo: activalo o elegí otro como predeterminado',
+                );
+              }
               await this.sacarPredeterminado(manager, distributorId);
               warehouse.isDefault = true;
             }

@@ -3,6 +3,7 @@
  * `resguardoDeProduccion` las frena antes de llegar acá).
  */
 import { DataSource } from 'typeorm';
+import { limpiarCompras } from './purchase-demo';
 import { GasCylinderService } from '../../src/gascylinder/gascylinder.service';
 import { StockLedgerService } from '../../src/stock/application/stock-ledger.service';
 import {
@@ -31,6 +32,7 @@ export async function limpiarStock(
     await m.query(
       `ALTER TABLE "stock_movement" DISABLE TRIGGER "stock_movement_inmutable"`,
     );
+    await limpiarCompras(m, distributorIds);
     const ids = [distributorIds];
     await m.query(
       `DELETE FROM "stock_adjustment_item" WHERE "adjustment_id" IN

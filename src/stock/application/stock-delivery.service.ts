@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
+import { StockInsuficienteError } from '../domain/errors/stock.errors';
 import {
   EntregaDePedido,
   StockDeliveryPort,
@@ -77,7 +78,14 @@ export class StockDeliveryService extends StockDeliveryPort {
         // lectura o un deadlock, no puede abortar la transacción del pedido.
         return await manager.transaction((m) => this.intentar(m, entrega));
       } catch (error) {
-        if (codigoDe(error) === DEADLOCK && intento < INTENTOS) {
+        // Un deadlock, o un saldo que otra operación vació entre la lectura sin
+        // lock y el libro (`StockInsuficienteError`), se reintentan en un savepoint
+        // nuevo: la relectura ve el saldo de ahora, descuenta las garrafas que
+        // alcanzan y omite sólo la que no. Sin reintento se omitía TODO el pedido.
+        const reintentable =
+          codigoDe(error) === DEADLOCK ||
+          error instanceof StockInsuficienteError;
+        if (reintentable && intento < INTENTOS) {
           await new Promise((r) => setTimeout(r, 25 * intento));
           continue;
         }

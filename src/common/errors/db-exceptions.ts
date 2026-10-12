@@ -16,6 +16,7 @@ const CODIGOS = {
   CLAVE_FORANEA: '23503',
   NO_NULO: '23502',
   SINTAXIS_INVALIDA: '22P02',
+  VALOR_FUERA_DE_RANGO: '22003',
   DEADLOCK: '40P01',
   FALLA_DE_SERIALIZACION: '40001',
   LOCK_TIMEOUT: '55P03',
@@ -87,6 +88,12 @@ export function traducirErrorDeBase(
       logger.warn(`Valor con formato inválido${donde}: ${e.message}`);
       throw new BadRequestException(
         `Alguno de los valores enviados tiene un formato inválido${donde}`,
+      );
+
+    case CODIGOS.VALOR_FUERA_DE_RANGO:
+      logger.warn(`Valor numérico fuera de rango${donde}: ${e.message}`);
+      throw new BadRequestException(
+        `Alguno de los valores numéricos es demasiado grande${donde}`,
       );
 
     case CODIGOS.DEADLOCK:

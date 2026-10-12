@@ -62,6 +62,18 @@ export class InitialCountUseCase {
             distributorId,
             dto.warehouseId,
           );
+          // Orden global de locks (docs/STOCK.md): primero `gas_cylinder`, por id
+          // ascendente. El conteo cambia llenas, así que va `FOR UPDATE` (lo mismo
+          // que tomaría el ledger). Tomar el depósito antes cruzaba este conteo con
+          // un ajuste o una transferencia (que toman garrafas y después el depósito
+          // `FOR SHARE`) y Postgres abortaba uno por deadlock.
+          await manager.query(
+            `SELECT 1 FROM "gas_cylinder"
+             WHERE "gas_cylinder_id" = ANY($1::uuid[]) AND "distributor_id" = $2
+             ORDER BY "gas_cylinder_id"
+             FOR UPDATE`,
+            [[...garrafas], distributorId],
+          );
           // Lock exclusivo del depósito: ninguna operación de stock lo usa
           // mientras se cuenta, así el saldo que se lee es el que se corrige.
           await manager
