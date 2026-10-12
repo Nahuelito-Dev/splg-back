@@ -25,6 +25,7 @@ import {
   IncidentStatus,
   IncidentType,
 } from '../../src/incident/entities/incident.entity';
+import { IncidentService } from '../../src/incident/incident.service';
 import { UnpaidCashService } from '../../src/incident/unpaid-cash.service';
 import { CashCollectionUseCase } from '../../src/order/application/cash-collection.use-case';
 import { ReportsService } from '../../src/reports/reports.service';
@@ -231,7 +232,7 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
     }
   }, 60000);
 
-  it('los reportes y las estadísticas cuentan lo cobrado; el resto va aparte', async () => {
+  it('los reportes y las estadísticas cuentan sólo lo pagado (la transferencia pendiente no); el resto va aparte', async () => {
     const { order, distributor } = await pedidoEntregado();
     const repo = dataSource.getRepository(Order);
     const copia = (
@@ -260,10 +261,10 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
 
     const porMedio = await reports.getSalesByPaymentMethod(desde, hasta, d);
     const total = porMedio.reduce((a, f) => a + f.totalSales, 0);
-    expect(total).toBe(110);
+    expect(total).toBe(100);
 
     const evolucion = await reports.getSalesEvolution(desde, hasta, 'day', d);
-    expect(evolucion.reduce((a, f) => a + f.totalSales, 0)).toBe(110);
+    expect(evolucion.reduce((a, f) => a + f.totalSales, 0)).toBe(100);
 
     const cobros = await reports.getCollections(desde, hasta, d);
     expect(cobros.pendingCash).toEqual({ totalOrders: 2, totalAmount: 2000 });
@@ -271,10 +272,10 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
     expect(cobros.writtenOff).toEqual({ totalOrders: 1, totalAmount: 4000 });
 
     const stats = await orders.getOrderStats(d);
-    expect(stats.sales.total).toBe(110);
-    expect(stats.sales.month).toBe(110);
+    expect(stats.sales.total).toBe(100);
+    expect(stats.sales.month).toBe(100);
     const grafico = await orders.getSalesChartData(d);
-    expect(grafico.reduce((a, p) => a + p.sales, 0)).toBe(110);
+    expect(grafico.reduce((a, p) => a + p.sales, 0)).toBe(100);
 
     const impagos = await orders.findAll(
       { paymentStatus: PaymentStatus.UNPAID } as never,
@@ -286,5 +287,99 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
       '00000000-0000-4000-8000-000000000000',
     );
     expect(otraDistribuidora.total).toBe(0);
+  }, 60000);
+
+  /** Pedido impago con su incidencia abierta, listo para que un admin lo resuelva. */
+  async function pedidoImpago() {
+    const base = await pedidoEntregado();
+    await unpaid.report(
+      base.order.orderId,
+      { note: 'no pagó' },
+      base.chofer.userId,
+      base.distributor.distributorId,
+    );
+    const admin = (await dataSource.getRepository(User).save({
+      email: `admin-cobro-${Date.now()}-${seq}@splg.local`,
+      fullName: 'Admin Cobro',
+      phoneNumber: telefonoDePrueba(),
+    } as Partial<User>)) as User;
+    const admin2 = (await dataSource.getRepository(User).save({
+      email: `admin2-cobro-${Date.now()}-${seq}@splg.local`,
+      fullName: 'Admin Dos',
+      phoneNumber: telefonoDePrueba(),
+    } as Partial<User>)) as User;
+    return { ...base, admin, admin2 };
+  }
+
+  const pedidoGuardado = (orderId: string) =>
+    dataSource.getRepository(Order).findOneOrFail({ where: { orderId } });
+
+  it('dos admins resuelven a la vez: una sola resolución y la incidencia queda coherente con el pedido', async () => {
+    const { order, admin, admin2 } = await pedidoImpago();
+
+    const [a, b] = await Promise.all([
+      cash.resolveUnpaid(order.orderId, admin.userId, 'written_off', 'nota A'),
+      cash.resolveUnpaid(order.orderId, admin2.userId, 'written_off', 'nota B'),
+    ]);
+
+    expect([a.changed, b.changed].filter(Boolean)).toHaveLength(1);
+    const guardado = await pedidoGuardado(order.orderId);
+    const [inc] = await incidenciasDe(order.orderId);
+    expect(guardado.paymentStatus).toBe(PaymentStatus.WRITTEN_OFF);
+    expect(inc.status).toBe(IncidentStatus.RESOLVED);
+    expect(inc.resolutionNote).toBe(guardado.paymentResolutionNote);
+    expect(inc.resolvedAt).toBeInstanceOf(Date);
+    expect(guardado.paymentResolvedBy).toBe(
+      a.changed ? admin.userId : admin2.userId,
+    );
+    // Una pérdida no es un cobro.
+    expect(guardado.paymentConfirmedAt).toBeNull();
+    expect(guardado.paymentConfirmedBy).toBeNull();
+  }, 60000);
+
+  it('repetir la resolución no pisa ni la nota del pedido ni la de la incidencia', async () => {
+    const { order, admin, admin2 } = await pedidoImpago();
+    await cash.resolveUnpaid(order.orderId, admin.userId, 'paid', 'primera');
+    const antes = await pedidoGuardado(order.orderId);
+    const [incAntes] = await incidenciasDe(order.orderId);
+
+    const r = await cash.resolveUnpaid(
+      order.orderId,
+      admin2.userId,
+      'paid',
+      'segunda',
+    );
+
+    expect(r.changed).toBe(false);
+    const despues = await pedidoGuardado(order.orderId);
+    const [incDespues] = await incidenciasDe(order.orderId);
+    expect(despues.paymentResolutionNote).toBe('primera');
+    expect(despues.paymentResolvedBy).toBe(antes.paymentResolvedBy);
+    expect(despues.paymentConfirmedBy).toBe(admin.userId);
+    expect(incDespues.resolutionNote).toBe('primera');
+    expect(incDespues.resolvedAt?.getTime()).toBe(
+      incAntes.resolvedAt?.getTime(),
+    );
+  }, 60000);
+
+  it('la puerta genérica de incidencias da 409 mientras el pedido siga impago, y no pisa la ya resuelta', async () => {
+    const { order, admin } = await pedidoImpago();
+    const incidents = env.app.get(IncidentService);
+    const [inc] = await incidenciasDe(order.orderId);
+
+    await expect(
+      incidents.resolve(inc.incidentId, { resolutionNote: 'por la puerta' }),
+    ).rejects.toThrow(/Resolvé el cobro del pedido/);
+    expect((await incidenciasDe(order.orderId))[0].status).toBe(
+      IncidentStatus.OPEN,
+    );
+
+    await cash.resolveUnpaid(order.orderId, admin.userId, 'paid', 'cobrado');
+    await expect(
+      incidents.resolve(inc.incidentId, { resolutionNote: 'pisa' }),
+    ).rejects.toThrow(/ya está resuelta/);
+    expect((await incidenciasDe(order.orderId))[0].resolutionNote).toBe(
+      'cobrado',
+    );
   }, 60000);
 });

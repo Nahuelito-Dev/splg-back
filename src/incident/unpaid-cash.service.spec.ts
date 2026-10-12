@@ -82,7 +82,10 @@ describe('UnpaidCashService', () => {
     expect(gateway.notifyAdmins).toHaveBeenCalledTimes(1);
     expect(gateway.notifyAdmins).toHaveBeenCalledWith(
       'incident:created',
-      expect.objectContaining({ incidentId: 'inc-1' }),
+      expect.objectContaining({
+        incidentId: 'inc-1',
+        distributorId: 'dist-1',
+      }),
       'dist-1',
     );
   });

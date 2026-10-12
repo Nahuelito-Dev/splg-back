@@ -201,6 +201,7 @@ export class UpdateOrderStatusUseCase {
     // admins DE ESA distribuidora (+ super admin, que ven todas).
     const adminPayload = {
       orderId: order.orderId,
+      distributorId: order.distributorId,
       status: order.status,
       totalAmount: order.totalAmount,
     };

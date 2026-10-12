@@ -8,6 +8,11 @@ import {
 import { DataSource, EntityManager } from 'typeorm';
 
 import {
+  Incident,
+  IncidentStatus,
+  IncidentType,
+} from '../../incident/entities/incident.entity';
+import {
   Order,
   OrderStatus,
   PaymentMethod,
@@ -106,7 +111,14 @@ export class CashCollectionUseCase {
     });
   }
 
-  /** El administrador cierra un impago: cobrado después o pérdida. */
+  /**
+   * El administrador cierra un impago: cobrado después o pérdida. En la misma
+   * transacción y con el pedido bloqueado cierra la incidencia abierta de cobro
+   * impago con la misma nota. Si el pedido ya estaba en el destino (reintento o
+   * segundo admin) no toca nada: `changed: false`.
+   * Un cobro (`paid`) llena `paymentConfirmed*`; una pérdida no es un cobro y
+   * sólo llena `paymentResolved*`.
+   */
   async resolveUnpaid(
     orderId: string,
     adminUserId: string,
@@ -131,9 +143,27 @@ export class CashCollectionUseCase {
         );
       }
       order.paymentStatus = destino;
-      order.paymentConfirmedAt = new Date();
-      order.paymentConfirmedBy = adminUserId;
+      const ahora = new Date();
+      if (destino === PaymentStatus.PAID) {
+        order.paymentConfirmedAt = ahora;
+        order.paymentConfirmedBy = adminUserId;
+      }
+      order.paymentResolvedAt = ahora;
+      order.paymentResolvedBy = adminUserId;
       order.paymentResolutionNote = note;
+      await manager.update(
+        Incident,
+        {
+          orderId: order.orderId,
+          type: IncidentType.UNPAID_COLLECTION,
+          status: IncidentStatus.OPEN,
+        },
+        {
+          status: IncidentStatus.RESOLVED,
+          resolutionNote: note,
+          resolvedAt: ahora,
+        },
+      );
       return {
         order: await manager.save(order),
         changed: true,

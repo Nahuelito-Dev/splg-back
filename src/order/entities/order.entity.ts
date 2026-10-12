@@ -210,6 +210,14 @@ export class Order {
   paymentConfirmedBy!: string | null;
 
   /** Motivo con el que el admin resolvió un impago. */
+  /** Cuándo un admin resolvió el impago (cobrado después o pérdida). */
+  @Column({ name: 'payment_resolved_at', type: 'timestamptz', nullable: true })
+  paymentResolvedAt!: Date | null;
+
+  /** Admin que resolvió el impago. */
+  @Column({ name: 'payment_resolved_by', type: 'uuid', nullable: true })
+  paymentResolvedBy!: string | null;
+
   @Column({ name: 'payment_resolution_note', type: 'text', nullable: true })
   paymentResolutionNote!: string | null;
 

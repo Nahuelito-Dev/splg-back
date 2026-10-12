@@ -81,6 +81,7 @@ export class UnpaidCashService {
         {
           incidentId: incident.incidentId,
           orderId: incident.orderId,
+          distributorId: incident.distributorId,
           type: incident.type,
           description: incident.description,
           createdAt: incident.createdAt,

@@ -1,3 +1,4 @@
+import { PaymentStatus } from '../order/entities/order.entity';
 import {
   BadRequestException,
   ConflictException,
@@ -348,6 +349,55 @@ describe('IncidentService', () => {
         service.resolve('i1', { resolutionNote: 'x' }, 'd1'),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('una incidencia ya resuelta no se sobrescribe (409)', async () => {
+      incidents.findOne.mockResolvedValue(
+        abierta({ status: IncidentStatus.RESOLVED, resolutionNote: 'orig' }),
+      );
+      await expect(
+        service.resolve('i1', { resolutionNote: 'otra' }, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('la de cobro impago no se resuelve por la puerta genérica mientras el pedido siga unpaid (409)', async () => {
+      incidents.findOne.mockResolvedValue(
+        abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
+      );
+      orders.findById.mockResolvedValue({
+        orderId: 'o1',
+        paymentStatus: PaymentStatus.UNPAID,
+      });
+      await expect(
+        service.resolve('i1', { resolutionNote: 'x' }, 'd1'),
+      ).rejects.toThrow(/Resolvé el cobro del pedido/);
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('la de cobro impago se puede descartar, y resolver si el pedido ya no está unpaid', async () => {
+      incidents.findOne.mockResolvedValue(
+        abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
+      );
+      orders.findById.mockResolvedValue({
+        orderId: 'o1',
+        paymentStatus: PaymentStatus.UNPAID,
+      });
+      const d = await service.resolve(
+        'i1',
+        { resolutionNote: 'dup', status: IncidentStatus.DISCARDED },
+        'd1',
+      );
+      expect(d.status).toBe(IncidentStatus.DISCARDED);
+      incidents.findOne.mockResolvedValue(
+        abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
+      );
+      orders.findById.mockResolvedValue({
+        orderId: 'o1',
+        paymentStatus: PaymentStatus.PAID,
+      });
+      const r = await service.resolve('i1', { resolutionNote: 'ok' }, 'd1');
+      expect(r.status).toBe(IncidentStatus.RESOLVED);
     });
 
     it('sin status resuelve, como siempre', async () => {

@@ -20,6 +20,7 @@ describe('CashCollectionUseCase', () => {
   let uc: CashCollectionUseCase;
   let save: jest.Mock;
   let getOne: jest.Mock;
+  let update: jest.Mock;
   let setLock: jest.Mock;
   let dentro: jest.Mock;
 
@@ -32,6 +33,8 @@ describe('CashCollectionUseCase', () => {
       paymentConfirmedAt: null,
       paymentConfirmedBy: null,
       paymentResolutionNote: null,
+      paymentResolvedAt: null,
+      paymentResolvedBy: null,
       delivery: { userId: CHOFER },
       ...over,
     }) as unknown as Order;
@@ -49,7 +52,8 @@ describe('CashCollectionUseCase', () => {
       where: jest.fn().mockReturnThis(),
       getOne,
     };
-    const manager = { createQueryBuilder: jest.fn(() => qb), save };
+    update = jest.fn().mockResolvedValue({ affected: 1 });
+    const manager = { createQueryBuilder: jest.fn(() => qb), save, update };
     const dataSource = {
       transaction: jest.fn((fn: (m: unknown) => Promise<unknown>) =>
         fn(manager),
@@ -214,12 +218,40 @@ describe('CashCollectionUseCase', () => {
       expect(r.order.paymentConfirmedBy).toBe(ADMIN);
       expect(r.order.paymentResolutionNote).toBe('transfirió');
       expect(r.order.paymentConfirmedAt).toBeInstanceOf(Date);
+      expect(r.order.paymentResolvedBy).toBe(ADMIN);
+      expect(r.order.paymentResolvedAt).toBeInstanceOf(Date);
+    });
+
+    it('cierra la incidencia abierta de cobro impago con la misma nota, en la misma transacción', async () => {
+      con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
+      await uc.resolveUnpaid('ord-1', ADMIN, 'paid', 'transfirió');
+      expect(update).toHaveBeenCalledTimes(1);
+      const [, donde, cambios] = update.mock.calls[0] as [
+        unknown,
+        Record<string, unknown>,
+        Record<string, unknown>,
+      ];
+      expect(donde).toMatchObject({
+        orderId: 'ord-1',
+        type: 'unpaid_collection',
+        status: 'open',
+      });
+      expect(cambios).toMatchObject({
+        status: 'resolved',
+        resolutionNote: 'transfirió',
+      });
+      expect(cambios.resolvedAt).toBeInstanceOf(Date);
     });
 
     it('written_off: pérdida', async () => {
       con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
       const r = await uc.resolveUnpaid('ord-1', ADMIN, 'written_off', 'no hay');
       expect(r.order.paymentStatus).toBe(PaymentStatus.WRITTEN_OFF);
+      // Una pérdida no es un cobro: no llena paymentConfirmed*.
+      expect(r.order.paymentConfirmedAt).toBeNull();
+      expect(r.order.paymentConfirmedBy).toBeNull();
+      expect(r.order.paymentResolvedBy).toBe(ADMIN);
+      expect(r.order.paymentResolvedAt).toBeInstanceOf(Date);
     });
 
     it('un PAID confirmado por el chofer no es un impago resuelto: 409', async () => {
@@ -239,7 +271,9 @@ describe('CashCollectionUseCase', () => {
       );
       const r = await uc.resolveUnpaid('ord-1', ADMIN, 'written_off', 'x');
       expect(r.changed).toBe(false);
+      expect(r.order.paymentResolutionNote).toBe('no hay');
       expect(save).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
 
     it('un pedido que no está impago: 409', async () => {

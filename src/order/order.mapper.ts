@@ -115,6 +115,8 @@ export class OrderMapper {
     dto.paymentStatus = order.paymentStatus;
     dto.paymentConfirmedAt = order.paymentConfirmedAt ?? null;
     dto.paymentConfirmedBy = order.paymentConfirmedBy ?? null;
+    dto.paymentResolvedAt = order.paymentResolvedAt ?? null;
+    dto.paymentResolvedBy = order.paymentResolvedBy ?? null;
     dto.paymentResolutionNote = order.paymentResolutionNote ?? null;
     dto.editable = esEditable(order);
 
