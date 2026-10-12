@@ -154,6 +154,97 @@ export interface RenglonDeCierre {
   balanceDefective?: number;
 }
 
+/**
+ * Garrafas que el camión entregó DESPUÉS de declarar la vuelta (`entregas` son
+ * los movimientos del camión desde `returnedAt`). Si hay alguna, la declaración
+ * quedó vieja y el cierre se rechaza: hay que volver a declarar.
+ */
+export function entregasTardias(
+  entregas: Array<{ deliveredFull: number }>,
+): number {
+  return entregas.reduce((n, m) => n + m.deliveredFull, 0);
+}
+
+export interface RenglonDeCargaParaCierre {
+  gasCylinderId: string;
+  loadedFull: number;
+  reloadedFull: number;
+  loadedEmpty: number;
+  declaredReturnFull: number | null;
+  declaredReturnEmpty: number | null;
+}
+
+export interface MovidoDelCamion {
+  deliveredFull: number;
+  collectedEmpty: number;
+}
+
+export interface SaldoDeGarrafaEnCamion {
+  full: number;
+  empty: number;
+  defective: number;
+}
+
+/**
+ * Los renglones que alimentan a `planDeCierre`: los de la carga con su esperado
+ * (cargado + repuesto - entregado) y, por cada garrafa que el camión tiene sin
+ * renglón (una transferencia a mano), uno en cero para que se rinda igual.
+ * Lo comparten el cierre real y la vista previa del detalle.
+ */
+export function renglonesDeCierre(args: {
+  items: RenglonDeCargaParaCierre[];
+  sinRenglon: string[];
+  movidos: Map<string, MovidoDelCamion>;
+  saldoDe: (gasCylinderId: string) => SaldoDeGarrafaEnCamion;
+}): {
+  renglones: RenglonDeCierre[];
+  figuras: Map<string, MovidoDelCamion>;
+} {
+  const renglones: RenglonDeCierre[] = [];
+  const figuras = new Map<string, MovidoDelCamion>();
+  for (const item of args.items) {
+    const m = args.movidos.get(item.gasCylinderId);
+    const deliveredFull = m?.deliveredFull ?? 0;
+    const collectedEmpty = m?.collectedEmpty ?? 0;
+    figuras.set(item.gasCylinderId, { deliveredFull, collectedEmpty });
+    const saldo = args.saldoDe(item.gasCylinderId);
+    renglones.push({
+      gasCylinderId: item.gasCylinderId,
+      ...esperadoDe({
+        loadedFull: item.loadedFull,
+        reloadedFull: item.reloadedFull,
+        deliveredFull,
+        loadedEmpty: item.loadedEmpty,
+        collectedEmpty,
+      }),
+      declaredFull: item.declaredReturnFull ?? 0,
+      declaredEmpty: item.declaredReturnEmpty ?? 0,
+      balanceFull: saldo.full,
+      balanceEmpty: saldo.empty,
+      balanceDefective: saldo.defective,
+    });
+  }
+  for (const g of args.sinRenglon) {
+    const m = args.movidos.get(g);
+    figuras.set(g, {
+      deliveredFull: m?.deliveredFull ?? 0,
+      collectedEmpty: m?.collectedEmpty ?? 0,
+    });
+    const saldo = args.saldoDe(g);
+    renglones.push({
+      gasCylinderId: g,
+      expectedFull: 0,
+      expectedEmpty: 0,
+      declaredFull: 0,
+      declaredEmpty: 0,
+      balanceFull: saldo.full,
+      balanceEmpty: saldo.empty,
+      balanceDefective: saldo.defective,
+    });
+  }
+  return { renglones, figuras };
+}
+
 export interface PlanDeCierre {
   movimientos: MovimientoDeStock[];
   renglones: Array<{

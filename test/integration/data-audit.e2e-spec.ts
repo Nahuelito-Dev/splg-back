@@ -708,6 +708,53 @@ describe('Auditoría de datos (e2e)', () => {
       );
     });
 
+    it('el alta, la edición y la baja de un depósito quedan auditadas y el historial lo devuelve', async () => {
+      const d = await distribuidora();
+      const admin = await seedAdmin(RoleType.ADMIN, d.distributorId);
+      const escribir = (metodo: 'post' | 'patch' | 'delete', url: string) =>
+        request(env.app.getHttpServer())
+          [metodo](url)
+          .set('Authorization', `Bearer ${admin.email}`)
+          .set('X-Client-Source', 'panel-app');
+
+      // El primero es el predeterminado y no se da de baja.
+      await escribir('post', '/warehouses')
+        .send({ name: 'Central', code: 'CENTRAL' })
+        .expect(201);
+      const alta = await escribir('post', '/warehouses')
+        .send({ name: 'Galpón Norte', code: 'NORTE' })
+        .expect(201);
+      const { warehouseId } = alta.body as { warehouseId: string };
+      await escribir('patch', `/warehouses/${warehouseId}`)
+        .send({ address: 'Ruta 9 km 12' })
+        .expect(200);
+      await escribir('delete', `/warehouses/${warehouseId}`).expect(200);
+
+      const historial = await get(
+        admin,
+        `/audit/entries?entity=Warehouse&recordId=${warehouseId}`,
+      ).expect(200);
+      const pagina = historial.body as Pagina;
+      expect(pagina.data.map((e) => e.actionType.name).sort()).toEqual([
+        'Alta',
+        'Baja lógica',
+        'Modificación',
+      ]);
+      const edicion = pagina.data.find(
+        (e) => e.actionType.name === 'Modificación',
+      );
+      expect(edicion?.details).toEqual([
+        expect.objectContaining({
+          field: 'address',
+          oldValue: null,
+          newValue: 'Ruta 9 km 12',
+        }),
+      ]);
+      expect(pagina.data.every((e) => e.user?.userId === admin.userId)).toBe(
+        true,
+      );
+    });
+
     it('filtra por tipo de acción, usuario y fechas, y pagina', async () => {
       const d = await distribuidora();
       const g = await garrafa(d.distributorId);

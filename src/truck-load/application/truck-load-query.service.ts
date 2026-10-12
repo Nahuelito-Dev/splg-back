@@ -17,7 +17,13 @@ import { StockQueryService } from '../../stock/application/stock-query.service';
 import { StockReferenceType } from '../../stock/domain/stock.enums';
 import { CargaNoEncontradaError } from '../domain/errors/truck-load.errors';
 import { ESTADOS_ABIERTOS, TruckLoadStatus } from '../domain/truck-load.enums';
-import { diferenciaDe, esperadoDe } from '../domain/truck-load-rules';
+import {
+  diferenciaDe,
+  entregasTardias,
+  esperadoDe,
+  planDeCierre,
+  renglonesDeCierre,
+} from '../domain/truck-load-rules';
 import {
   MyTruckLoadDto,
   QueryTruckLoadDto,
@@ -200,6 +206,7 @@ export class TruckLoadQueryService {
         [fila.car_id],
       );
     const enElCamion = new Map<string, number>();
+    const conSaldo = new Set<string>();
     const vivos = new Map<
       string,
       { deliveredFull: number; collectedEmpty: number }
@@ -216,6 +223,7 @@ export class TruckLoadQueryService {
       );
       for (const s of saldos) {
         enElCamion.set(`${s.gas_cylinder_id}|${s.condition}`, s.quantity);
+        conSaldo.add(s.gas_cylinder_id);
       }
       if (abierta) {
         for (const m of await this.onHand.movimientosDelCamion(
@@ -272,6 +280,57 @@ export class TruckLoadQueryService {
       };
     });
 
+    // Lo que daría el cierre: el mismo plan que usa `CloseTruckLoadUseCase`,
+    // sólo si ya se declaró la vuelta de todos los renglones.
+    const declarada =
+      abierta &&
+      ubicacion !== undefined &&
+      renglones.length > 0 &&
+      renglones.every(
+        (r) =>
+          r.declared_return_full !== null && r.declared_return_empty !== null,
+      );
+    let hayDiferencia: boolean | null = null;
+    let requiereVolverADeclarar = false;
+    if (declarada && ubicacion && fila.returned_at) {
+      // Mismo criterio que el cierre: una entrega del camión después de la
+      // declaración la deja vieja y el cierre responde 409.
+      requiereVolverADeclarar =
+        entregasTardias(
+          await this.onHand.movimientosDelCamion(
+            this.dataSource.manager,
+            ubicacion.location_id,
+            fila.returned_at,
+          ),
+        ) > 0;
+    }
+    if (declarada && !requiereVolverADeclarar) {
+      const { renglones: paraCierre } = renglonesDeCierre({
+        items: renglones.map((r) => ({
+          gasCylinderId: r.gas_cylinder_id,
+          loadedFull: r.loaded_full,
+          reloadedFull: r.reloaded_full,
+          loadedEmpty: r.loaded_empty,
+          declaredReturnFull: r.declared_return_full,
+          declaredReturnEmpty: r.declared_return_empty,
+        })),
+        sinRenglon: [...conSaldo].filter(
+          (g) => !renglones.some((r) => r.gas_cylinder_id === g),
+        ),
+        movidos: vivos,
+        saldoDe: (g) => ({
+          full: enElCamion.get(`${g}|full`) ?? 0,
+          empty: enElCamion.get(`${g}|empty`) ?? 0,
+          defective: enElCamion.get(`${g}|defective`) ?? 0,
+        }),
+      });
+      hayDiferencia = planDeCierre(
+        ubicacion.location_id,
+        fila.origin_location_id,
+        paraCierre,
+      ).hayDiferencia;
+    }
+
     const entregados = await this.orders.entregadosPorVehiculo({
       distributorId,
       deliveryId: fila.delivery_id,
@@ -288,6 +347,8 @@ export class TruckLoadQueryService {
     return {
       ...resumen(fila),
       items,
+      hayDiferencia,
+      requiereVolverADeclarar,
       differenceNote: fila.difference_note,
       cancelReason: fila.cancel_reason,
       notes: fila.notes,

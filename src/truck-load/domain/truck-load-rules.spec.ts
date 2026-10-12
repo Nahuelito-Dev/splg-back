@@ -7,11 +7,13 @@ import { TruckLoadStatus } from './truck-load.enums';
 import {
   RenglonDeCierre,
   diferenciaDe,
+  entregasTardias,
   esperadoDe,
   motivoSinPedidos,
   estadoDeCierre,
   planDeCierre,
   puedeHacer,
+  renglonesDeCierre,
   validarDeclaracion,
   validarQueLlevaAlgo,
   validarRenglones,
@@ -361,6 +363,90 @@ describe('truck-load-rules', () => {
           }),
         ).toEqual({ codigo: 'otro-vehiculo', number: 4 });
       }
+    });
+  });
+
+  describe('renglonesDeCierre', () => {
+    const item = {
+      gasCylinderId: 'g-10',
+      loadedFull: 20,
+      reloadedFull: 5,
+      loadedEmpty: 4,
+      declaredReturnFull: 18,
+      declaredReturnEmpty: 6,
+    };
+    const saldo = (full: number, empty: number) => () => ({
+      full,
+      empty,
+      defective: 0,
+    });
+
+    it('arma el esperado (cargado + repuesto - entregado) y lo declarado', () => {
+      const { renglones } = renglonesDeCierre({
+        items: [item],
+        sinRenglon: [],
+        movidos: new Map([['g-10', { deliveredFull: 7, collectedEmpty: 2 }]]),
+        saldoDe: saldo(18, 6),
+      });
+      expect(renglones[0]).toMatchObject({
+        expectedFull: 18,
+        expectedEmpty: 6,
+        declaredFull: 18,
+        declaredEmpty: 6,
+      });
+      expect(planDeCierre(CAMION, DEPOSITO, renglones).hayDiferencia).toBe(
+        false,
+      );
+    });
+
+    it('lo declarado distinto del esperado, o un camión con otra cosa que lo declarado, es diferencia', () => {
+      const movidos = new Map([
+        ['g-10', { deliveredFull: 7, collectedEmpty: 2 }],
+      ]);
+      const faltan = renglonesDeCierre({
+        items: [{ ...item, declaredReturnFull: 15 }],
+        sinRenglon: [],
+        movidos,
+        saldoDe: saldo(15, 6),
+      });
+      expect(
+        planDeCierre(CAMION, DEPOSITO, faltan.renglones).hayDiferencia,
+      ).toBe(true);
+      const camionConDeMas = renglonesDeCierre({
+        items: [item],
+        sinRenglon: [],
+        movidos,
+        saldoDe: saldo(20, 6),
+      });
+      expect(
+        planDeCierre(CAMION, DEPOSITO, camionConDeMas.renglones).hayDiferencia,
+      ).toBe(true);
+    });
+
+    it('una garrafa en el camión sin renglón entra con esperado y declarado en cero', () => {
+      const { renglones, figuras } = renglonesDeCierre({
+        items: [],
+        sinRenglon: ['g-45'],
+        movidos: new Map(),
+        saldoDe: saldo(3, 0),
+      });
+      expect(renglones).toHaveLength(1);
+      expect(figuras.get('g-45')).toEqual({
+        deliveredFull: 0,
+        collectedEmpty: 0,
+      });
+      expect(planDeCierre(CAMION, DEPOSITO, renglones).hayDiferencia).toBe(
+        true,
+      );
+    });
+  });
+
+  describe('entregasTardias', () => {
+    it('suma las llenas entregadas después de la declaración', () => {
+      expect(entregasTardias([])).toBe(0);
+      expect(
+        entregasTardias([{ deliveredFull: 0 }, { deliveredFull: 2 }]),
+      ).toBe(2);
     });
   });
 });

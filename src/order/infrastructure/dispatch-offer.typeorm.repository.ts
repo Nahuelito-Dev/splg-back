@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { EntityManager, In, LessThan, Repository } from 'typeorm';
 import { Order } from '../entities/order.entity';
 import {
   DispatchOfferRepositoryPort,
@@ -149,14 +149,23 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return (result.affected ?? 0) > 0;
   }
 
-  async closeAllActiveOffers(
+  async withdrawOtherActiveOffers(
+    manager: EntityManager,
     orderId: string,
+    exceptDriverId: string | null,
     status: DispatchOfferStatus,
-  ): Promise<number> {
-    const result = await this.repo.update(
-      { orderId, status: DispatchOfferStatus.OFFERED },
+  ): Promise<string[]> {
+    const abiertas = await manager.find(DispatchOffer, {
+      where: { orderId, status: DispatchOfferStatus.OFFERED },
+      select: { offerId: true, driverId: true },
+    });
+    const aRetirar = abiertas.filter((o) => o.driverId !== exceptDriverId);
+    if (aRetirar.length === 0) return [];
+    await manager.update(
+      DispatchOffer,
+      { offerId: In(aRetirar.map((o) => o.offerId)) },
       { status },
     );
-    return result.affected ?? 0;
+    return [...new Set(aRetirar.map((o) => o.driverId))];
   }
 }

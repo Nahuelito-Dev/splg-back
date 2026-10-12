@@ -56,6 +56,11 @@ después de los guards).
   request; las de la persona o globales (User, Customer, UserAddress, Role)
   quedan sin distribuidora y sólo las ve el super admin.
 
+Los depósitos (`Warehouse`) quedan auditados con el resto: alta, edición (incluido el cambio del
+predeterminado, que son dos asientos) y baja lógica; `GET /audit/entries?entity=Warehouse&recordId=` devuelve
+su historial. La entrega manual de un pedido (por `PATCH /orders/:id/status` o por `POST /orders/:id/confirm-delivery` de un admin) agrega al `Order` el detalle `manualDeliveryReason` (ver
+`docs/STOCK.md`).
+
 ### Qué no se audita
 
 Una sola lista, con el porqué, en `src/audit/data/audit-exclusions.ts`: las

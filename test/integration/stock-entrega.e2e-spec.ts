@@ -22,7 +22,7 @@ import { Customer } from '../../src/customer/entities/customer.entity';
 import { Car } from '../../src/car/entities/car.entity';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
-import { UpdateOrderStatusUseCase } from '../../src/order/application/update-order-status.use-case';
+import { entregarComoAdmin } from './setup/entrega-admin';
 import { StockLedgerPort } from '../../src/stock/domain/ports/stock-ledger.port';
 import { WarehouseService } from '../../src/stock/application/warehouse.service';
 import { StockLocationService } from '../../src/stock/application/stock-location.service';
@@ -33,7 +33,6 @@ import {
   StockReferenceType,
 } from '../../src/stock/domain/stock.enums';
 import { StockAdjustmentUseCase } from '../../src/stock/application/stock-adjustment.use-case';
-import { RoleType } from '../../src/common/constants/role-type.enum';
 
 describe('Entrega de un pedido y stock físico (e2e, Postgres real)', () => {
   let env: TestEnv;
@@ -209,10 +208,53 @@ describe('Entrega de un pedido y stock físico (e2e, Postgres real)', () => {
     );
     return Number(n);
   };
-  const entregar = (id: string) =>
-    env.app
-      .get(UpdateOrderStatusUseCase)
-      .execute(id, OrderStatus.DELIVERED, undefined, RoleType.ADMIN, 'admin-1');
+  const entregar = (id: string) => entregarComoAdmin(env, id);
+
+  it('si falla el asiento del historial de la entrega manual, se deshace TODO: pedido, stock y libro', async () => {
+    const e = await escenario({ cantidad: 3, vendible: 7 });
+    const camion = await env.app
+      .get(StockLocationService)
+      .ubicacionDeVehiculo(
+        ds.manager,
+        e.distributor.distributorId,
+        e.auto.carId,
+      );
+    await poner(
+      e.distributor.distributorId,
+      camion.locationId,
+      e.garrafa.gasCylinderId,
+      10,
+    );
+    await ds.query(`
+      CREATE FUNCTION falla_historial() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'historial caído'; END;
+      $$ LANGUAGE plpgsql`);
+    await ds.query(`
+      CREATE TRIGGER falla_historial BEFORE INSERT ON order_status_history
+      FOR EACH ROW EXECUTE FUNCTION falla_historial()`);
+    try {
+      await expect(entregar(e.pedido.orderId)).rejects.toBeDefined();
+    } finally {
+      await ds.query(`DROP TRIGGER falla_historial ON order_status_history`);
+      await ds.query(`DROP FUNCTION falla_historial()`);
+    }
+
+    const [pedido] = await ds.query<Array<{ status: string }>>(
+      `SELECT status FROM "order" WHERE order_id = $1`,
+      [e.pedido.orderId],
+    );
+    expect(pedido.status).toBe(OrderStatus.ON_THE_WAY);
+    expect(
+      await saldo(camion.locationId, e.garrafa.gasCylinderId, 'full'),
+    ).toBe(10);
+    expect(await movimientosDelPedido(e.pedido.orderId)).toEqual([]);
+    expect(
+      await ds.query(`SELECT 1 FROM order_status_history WHERE order_id = $1`, [
+        e.pedido.orderId,
+      ]),
+    ).toEqual([]);
+    expect(await colgadas()).toBe(0);
+  }, 60000);
 
   it('con saldo en el camión: sale la llena del camión, entra la vacía de canje y el vendible no se toca', async () => {
     const e = await escenario({ cantidad: 3, vendible: 7 });

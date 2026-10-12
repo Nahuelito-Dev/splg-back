@@ -18,6 +18,8 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { StockDeliveryPort } from '../domain/ports/stock-delivery.port';
+import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
+import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { ReleaseOrderUseCase } from './release-order.use-case';
@@ -30,12 +32,21 @@ import { errorMessage } from '../../common/errors/error-message';
 import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
 import { EntityPhotoService } from '../../s3/entity-photo.service';
+import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
+import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
+import { OrderStatusHistory } from '../entities/order-status-history.entity';
+import {
+  MOTIVO_ENTREGA_MANUAL_MAX,
+  MOTIVO_ENTREGA_MANUAL_MIN,
+} from '../dto/update-order-status.dto';
 
 /** Resultado de aplicar los efectos de un estado dentro de la transacción. */
 interface EfectosDelEstado {
   deliveryUser: User | null;
   /** `user_id` del chofer que aceptó, para cerrar su oferta tras el commit. */
   aceptacionDelChoferUserId: string | null;
+  /** `user_id` de los choferes a quienes se les retiró la oferta del pedido. */
+  ofertasRetiradas: string[];
 }
 
 /** Tope para firmar la foto del chofer en el evento de socket. */
@@ -44,6 +55,7 @@ const FIRMA_TIMEOUT_MS = 500;
 const SIN_EFECTOS: EfectosDelEstado = {
   deliveryUser: null,
   aceptacionDelChoferUserId: null,
+  ofertasRetiradas: [],
 };
 
 /** Evento de tiempo real emitido al cliente por cada estado del pedido. */
@@ -89,6 +101,8 @@ export class UpdateOrderStatusUseCase {
     private readonly fotos: EntityPhotoService,
     // D5: con control de carga activo, el chofer necesita una carga de camión abierta para aceptar.
     private readonly truckLoadGate: TruckLoadGatePort,
+    // Ofertas de despacho: tomar un pedido del pool retira las de los demás choferes.
+    private readonly offers: DispatchOfferRepositoryPort,
   ) {}
 
   async execute(
@@ -97,6 +111,7 @@ export class UpdateOrderStatusUseCase {
     deliveryId?: string,
     role?: RoleType,
     actorUserId?: string,
+    reason?: string,
   ): Promise<Order> {
     // La entrega es la prueba de que el cliente recibió el pedido: se confirma
     // con el QR del chofer (`ConfirmDeliveryUseCase`, que llega acá SIN rol) o
@@ -106,6 +121,11 @@ export class UpdateOrderStatusUseCase {
         'La entrega se confirma con el QR del cliente',
       );
     }
+
+    // La entrega manual del administrador no tiene la prueba del QR: queda
+    // asentada con el motivo (historial de estados y auditoría). La que llega
+    // sin rol es la del QR, que ya tiene su prueba.
+    const motivoDeEntrega = this.motivoDeEntregaManual(status, role, reason);
 
     // Cancelar por ESTE endpoint tiene que producir EXACTAMENTE el mismo
     // efecto que `PATCH /orders/:id/cancel` (mismo stock, mismos avisos, sin
@@ -146,6 +166,7 @@ export class UpdateOrderStatusUseCase {
     // Chofer cuya aceptación hay que dejar registrada en el despacho: se hace
     // DESPUÉS del commit (ver abajo).
     let aceptacionADespachar: string | null = null;
+    let ofertasRetiradas: string[] = [];
     try {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'ord')
@@ -175,8 +196,18 @@ export class UpdateOrderStatusUseCase {
       );
       deliveryUser = efectos.deliveryUser;
       aceptacionADespachar = efectos.aceptacionDelChoferUserId;
+      ofertasRetiradas = efectos.ofertasRetiradas;
 
       order = await queryRunner.manager.save(locked);
+      if (motivoDeEntrega) {
+        await this.asentarEntregaManual(
+          queryRunner.manager,
+          order,
+          previousStatus,
+          motivoDeEntrega,
+          actorUserId,
+        );
+      }
       await queryRunner.commitTransaction();
     } catch (e) {
       await this.rollbackSeguro(queryRunner);
@@ -196,6 +227,13 @@ export class UpdateOrderStatusUseCase {
       await this.dispatchOrchestrator
         .onDriverAccepted(order.orderId, aceptacionADespachar)
         .catch(() => undefined);
+    }
+
+    for (const driverUserId of ofertasRetiradas) {
+      this.dispatch.notifyDriverOrderCancelled(driverUserId, {
+        orderId: order.orderId,
+        message: 'El pedido ya fue tomado: la oferta ya no está vigente',
+      });
     }
 
     await this.emitStatusEvent(order, status, deliveryUser);
@@ -228,6 +266,58 @@ export class UpdateOrderStatusUseCase {
     await this.notifyCustomer(order);
 
     return order;
+  }
+
+  /** El motivo de una entrega manual del admin (400 si falta o es muy corto); `null` si no aplica. */
+  private motivoDeEntregaManual(
+    status: OrderStatus,
+    role?: RoleType,
+    reason?: string,
+  ): string | null {
+    if (status !== OrderStatus.DELIVERED) return null;
+    if (role !== RoleType.ADMIN && role !== RoleType.SUPER_ADMIN) return null;
+    const motivo = reason?.trim() ?? '';
+    if (motivo.length < MOTIVO_ENTREGA_MANUAL_MIN) {
+      throw new BadRequestException(
+        `reason: indicá el motivo de la entrega manual (al menos ${MOTIVO_ENTREGA_MANUAL_MIN} caracteres)`,
+      );
+    }
+    if (motivo.length > MOTIVO_ENTREGA_MANUAL_MAX) {
+      throw new BadRequestException(
+        `reason: hasta ${MOTIVO_ENTREGA_MANUAL_MAX} caracteres`,
+      );
+    }
+    return motivo;
+  }
+
+  /** Historial de estados y auditoría de datos, en la transacción de la entrega. */
+  private async asentarEntregaManual(
+    manager: EntityManager,
+    order: Order,
+    desde: OrderStatus,
+    motivo: string,
+    actorUserId?: string,
+  ): Promise<void> {
+    await manager.insert(OrderStatusHistory, {
+      orderId: order.orderId,
+      fromStatus: desde,
+      toStatus: OrderStatus.DELIVERED,
+      changedByUserId: actorUserId ?? null,
+      reason: motivo,
+    });
+    await AuditoriaDeDatos.registrar(manager, {
+      actionTypeId: AuditActionTypeId.UPDATE,
+      entity: Order.name,
+      recordId: order.orderId,
+      distributorId: order.distributorId,
+      details: [
+        {
+          field: 'manualDeliveryReason',
+          oldValue: null,
+          newValue: motivo,
+        },
+      ],
+    });
   }
 
   /**
@@ -464,6 +554,7 @@ export class UpdateOrderStatusUseCase {
         // `acceptedAt` ni `deliveryCode`, ni volver a cerrar una oferta que
         // nunca existió.
         let aceptacionDelChoferUserId: string | null = null;
+        let ofertasRetiradas: string[] = [];
         const yaAceptadoPorEsteChofer =
           previousStatus === OrderStatus.ACCEPTED &&
           order.deliveryId === delivery.deliveryId;
@@ -486,11 +577,20 @@ export class UpdateOrderStatusUseCase {
           // La oferta de despacho se cierra como ACCEPTED después del commit
           // (el offer.driver_id es el user_id, el mismo que usa el GEO/WS).
           aceptacionDelChoferUserId = delivery.userId;
+          // Las ofertas abiertas a los demás choferes se retiran en esta misma
+          // transacción: el pedido ya tiene dueño.
+          ofertasRetiradas = await this.offers.withdrawOtherActiveOffers(
+            manager,
+            order.orderId,
+            delivery.userId,
+            DispatchOfferStatus.SUPERSEDED,
+          );
         }
 
         return {
           deliveryUser: delivery.user,
           aceptacionDelChoferUserId,
+          ofertasRetiradas,
         };
       }
 
@@ -514,6 +614,7 @@ export class UpdateOrderStatusUseCase {
         return {
           deliveryUser: existingDelivery?.user ?? null,
           aceptacionDelChoferUserId: null,
+          ofertasRetiradas: [],
         };
       }
 

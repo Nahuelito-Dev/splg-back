@@ -332,6 +332,7 @@ export class OrderService {
     deliveryId?: string,
     role?: RoleType,
     actorUserId?: string,
+    reason?: string,
   ) {
     return this.updateOrderStatusUseCase.execute(
       id,
@@ -339,6 +340,7 @@ export class OrderService {
       deliveryId,
       role,
       actorUserId,
+      reason,
     );
   }
 
@@ -371,8 +373,15 @@ export class OrderService {
     code: string,
     userId: string,
     role: RoleType,
+    reason?: string,
   ) {
-    return this.confirmDeliveryUseCase.execute(orderId, code, userId, role);
+    return this.confirmDeliveryUseCase.execute(
+      orderId,
+      code,
+      userId,
+      role,
+      reason,
+    );
   }
 
   /**
@@ -398,6 +407,7 @@ export class OrderService {
 
     let order: Order;
     let previousDriverUserId: string | null;
+    let ofertasRetiradas: string[];
     try {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'ord')
@@ -468,6 +478,15 @@ export class OrderService {
       locked.deliveryCode = generateDeliveryCode();
 
       order = await queryRunner.manager.save(locked);
+      // Punto 5: la asignación a mano resuelve el pedido ella sola; cualquier
+      // oferta automática en curso para OTRO chofer se retira en la misma
+      // transacción, así no hay dos choferes creyendo que el pedido es suyo.
+      ofertasRetiradas = await this.dispatchOffers.withdrawOtherActiveOffers(
+        queryRunner.manager,
+        orderId,
+        delivery.userId,
+        DispatchOfferStatus.SUPERSEDED,
+      );
       await queryRunner.commitTransaction();
     } catch (e) {
       await queryRunner.rollbackTransaction();
@@ -477,17 +496,18 @@ export class OrderService {
     }
 
     // Best-effort, DESPUÉS del commit.
-    // Punto 5: la asignación a mano resuelve el pedido ella sola; cualquier
-    // oferta automática que hubiera quedado en curso (para este chofer u
-    // otro) queda sin efecto, así no hay dos choferes creyendo que el pedido
-    // es suyo.
+    // A los choferes a quienes se les retiró la oferta se les avisa por el
+    // mismo evento con que la app descarta una oferta que ya no está vigente.
+    for (const driverUserId of ofertasRetiradas) {
+      this.dispatch.notifyDriverOrderCancelled(driverUserId, {
+        orderId: order.orderId,
+        message: 'El pedido ya fue asignado: la oferta ya no está vigente',
+      });
+    }
     // El chofer asignado queda registrado como quien lo tuvo (ACCEPTED): si lo
     // libera, el despacho no se lo vuelve a ofrecer.
     await this.dispatchOrchestrator
       .onOrderAssigned(orderId, delivery.userId)
-      .catch(() => undefined);
-    await this.dispatchOffers
-      .closeAllActiveOffers(orderId, DispatchOfferStatus.EXPIRED)
       .catch(() => undefined);
 
     // Punto 7: aviso al chofer anterior si hubo reasignación de A a B (por

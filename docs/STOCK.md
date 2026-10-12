@@ -46,6 +46,19 @@ Módulo `src/stock/` (M-C parte 1; el diseño completo está en
   entra una vacía de canje 1 a 1. Nunca bloquea la entrega: sin saldo en ningún lado queda para
   la conciliación (`deliveriesWithoutMovement`) y se reaplica con
   `POST /stock/reconciliation/reapply-deliveries`. Idempotente por pedido y garrafa.
+- **Entrega manual del administrador:** un `admin`/`super_admin` que pasa un pedido a `delivered` tiene que dar
+  un motivo (`reason`, 10 a 500 caracteres, 400 si falta) por LAS DOS vías: `PATCH /orders/:id/status` con
+  `{ status: 'delivered', reason }` y `POST /orders/:id/confirm-delivery` con `{ code, reason }` (el admin obtiene
+  el código con `GET /orders/:id/delivery-code`, y por eso el QR tampoco lo exime). Queda en `order_status_history`
+  (estado anterior, nuevo, quién y el motivo) y en la auditoría de datos (`GET /audit/entries?orderId=`, campo
+  `manualDeliveryReason` del `Order`), en la misma transacción de la entrega y del movimiento de stock: si falla
+  el asiento, se deshace todo. El cliente que confirma con el QR no manda `reason` y, si lo manda, se ignora. En
+  `PATCH .../status` el largo máximo sólo se valida con `delivered`.
+- **Ofertas de despacho al asignar:** cuando el admin asigna un pedido a mano (`assignDelivery`) o un chofer lo
+  toma del pool (`status: accepted`), las ofertas `offered` abiertas a los demás choferes pasan a `superseded`
+  (no cuenta como intento vencido ni bloquea una oferta futura) EN la transacción de la asignación, y después
+  del commit cada chofer recibe `order:cancelled` por su socket. La del chofer que se queda la cierra la
+  constancia `accepted`.
 - **Conteo inicial:** una vez por depósito; registra las diferencias contra el saldo actual como
   un ajuste `initial_count`. Los depósitos existentes arrancan con la migración `StockFisico`
   (llenas = vendible + pedidos abiertos, vacías en cero).
@@ -161,6 +174,14 @@ que mueven stock o numeran aceptan `Idempotency-Key`):
 | GET, POST | `/purchase-receipts` (`supplierId`, `purchaseOrderId`, `paymentStatus`, `status`, `from`, `to`) |
 | GET | `/purchase-receipts/average-costs`, `/purchase-receipts/:id` |
 | PATCH | `/purchase-receipts/:id/void`, `/purchase-receipts/:id/payment-status` |
+| GET, POST | `/attachments/purchase_receipt/:receiptId` (foto o PDF del remito del proveedor; ver abajo) |
+
+**Foto del remito.** El dueño `purchase_receipt` del módulo de adjuntos (`PurchaseReceiptAttachmentOwnerResolver`)
+cuelga de la recepción: subida multipart por el back con token (`POST /attachments/purchase_receipt/:receiptId`,
+campo `file` y `label` opcional), JPG/PNG/WEBP/PDF de hasta 10 MB validados por tipo y contenido, cifrado SSE
+AES256 en S3 y lectura sólo por URL firmada (`GET /attachments/:id/download?modo=url`). Una recepción de otra
+distribuidora responde 404 (en alta, listado y descarga) y el chofer no accede (403). Las recepciones anuladas
+conservan su foto. Reglas generales en `docs/S3.md`.
 
 ## Carga y rendición del camión (parte 3)
 
@@ -211,6 +232,20 @@ una entrega en curso se ve completa y una posterior ya no encuentra stock en el 
 Una entrega que se asienta entre la declaración del chofer y el cierre aparece como diferencia en la
 rendición (el cierre recalcula bajo lock).
 
+**Vista previa del cierre.** `GET /truck-loads/:id` devuelve `hayDiferencia`: para una carga abierta
+(`loading`, `on_route`, `returned`) con la vuelta declarada en TODOS los renglones, es lo que daría el cierre
+(`true` si la rendición necesitaría la nota de diferencia). Usa el mismo cálculo que `PATCH .../close`
+(`renglonesDeCierre` + `planDeCierre`, en `domain/truck-load-rules.ts`) sobre los saldos y entregas del
+momento: cuenta también un camión con garrafas que la carga no lista o con una cifra distinta de la
+declarada, no sólo declarado - esperado. Por renglón siguen `expectedFull/Empty`, `declaredReturnFull/Empty`
+y `differenceFull/Empty`. Es `null` mientras falte declarar y en cargas cerradas o canceladas (ahí valen el
+estado y las diferencias congeladas).
+
+`requiereVolverADeclarar` (boolean, siempre presente): `true` si el camión entregó garrafas DESPUÉS de
+`returnedAt`; es el mismo criterio con que `PATCH .../close` responde 409 ("Se entregaron N garrafas... volver a
+declarar", `entregasTardias` en `truck-load-rules.ts`). En ese caso `hayDiferencia` es `null` hasta que el chofer
+declare de nuevo. En cualquier otro caso es `false`.
+
 **Quién recibe y acepta pedidos** (`motivoSinPedidos`, puerto `TruckLoadGatePort`; se aplica a las ofertas del despacho
 automático, a la aceptación del chofer o del administrador con `deliveryId`, a la asignación manual
 `PATCH /orders/:id/assign/:deliveryId` y al pool `GET /orders/available`):
@@ -254,7 +289,7 @@ es 404; los `POST`/`PATCH` que mueven stock aceptan `Idempotency-Key`):
 | GET | `/truck-loads/mine` (`DELIVERY`: su carga abierta y `requireOpenTruckLoad`) |
 | GET, PUT | `/truck-loads/settings` |
 | GET | `/truck-loads/cars/:carId/stock` (stock actual del camión) |
-| GET | `/truck-loads/:id` (admin o el chofer de la carga: renglones, esperado, diferencias, pedidos, `cash` y movimientos) |
+| GET | `/truck-loads/:id` (admin o el chofer de la carga: renglones, esperado, diferencias, `hayDiferencia`, pedidos, `cash` y movimientos) |
 | PUT | `/truck-loads/:id/items` (sólo en `loading`) |
 | PATCH | `/truck-loads/:id/depart` (admin o el chofer de la carga), `/reload` (con `Idempotency-Key`), `/return` (admin o el chofer), `/close`, `/cancel` |
 

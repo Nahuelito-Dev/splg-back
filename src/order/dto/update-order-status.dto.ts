@@ -1,8 +1,19 @@
 import { Transform } from 'class-transformer';
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import {
+  ValidateIf,
+  IsOptional,
+  IsEnum,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { OrderStatus } from '../entities/order.entity';
 import { ESTADOS_DE_LA_RESPUESTA } from './query-orders.dto';
+
+/** Largo mínimo del motivo de una entrega manual del administrador. */
+export const MOTIVO_ENTREGA_MANUAL_MIN = 10;
+export const MOTIVO_ENTREGA_MANUAL_MAX = 500;
 
 /**
  * Body de `PATCH /orders/:id/status`. Valida que `status` sea un estado real del
@@ -39,4 +50,23 @@ export class UpdateOrderStatusDto {
   @IsOptional()
   @IsUUID()
   deliveryId?: string;
+
+  @ApiProperty({
+    description:
+      'Motivo de la entrega manual. Obligatorio (mínimo 10 caracteres) cuando un ' +
+      'admin/super_admin pasa el pedido a `delivered`; queda en el historial de ' +
+      'estados y en la auditoría. Se ignora en los demás estados.',
+    required: false,
+    minLength: MOTIVO_ENTREGA_MANUAL_MIN,
+    maxLength: MOTIVO_ENTREGA_MANUAL_MAX,
+    example: 'El cliente no tiene celular: confirmó la entrega por teléfono',
+  })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @ValidateIf((o: UpdateOrderStatusDto) => o.status === OrderStatus.DELIVERED)
+  @IsOptional()
+  @IsString()
+  @MaxLength(MOTIVO_ENTREGA_MANUAL_MAX)
+  reason?: string;
 }

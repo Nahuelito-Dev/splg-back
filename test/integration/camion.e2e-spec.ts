@@ -25,6 +25,7 @@ import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { UpdateOrderStatusUseCase } from '../../src/order/application/update-order-status.use-case';
+import { entregarComoAdmin } from './setup/entrega-admin';
 import { CashCollectionUseCase } from '../../src/order/application/cash-collection.use-case';
 import {
   Order,
@@ -95,6 +96,8 @@ interface Carga {
   carId: string;
   deliveryId: string;
   items: Renglon[];
+  hayDiferencia: boolean | null;
+  requiereVolverADeclarar: boolean;
   orders: Array<{ orderId: string }>;
   cash: {
     deliveredOrders: number;
@@ -317,16 +320,7 @@ describe('Carga y rendición del camión (e2e)', () => {
     return o;
   }
 
-  const entregar = (orderId: string) =>
-    env.app
-      .get(UpdateOrderStatusUseCase)
-      .execute(
-        orderId,
-        OrderStatus.DELIVERED,
-        undefined,
-        RoleType.ADMIN,
-        'admin-1',
-      );
+  const entregar = (orderId: string) => entregarComoAdmin(env, orderId);
 
   const saldo = async (locationId: string, g: string, condition: string) => {
     const [f] = await ds.query<Array<{ quantity: number }>>(
@@ -598,6 +592,7 @@ describe('Carga y rendición del camión (e2e)', () => {
       // esperado: llenas 20-5=15, vacías 4+5=9. Vuelven 12 llenas y 8 vacías.
       await accion(e, carga.loadId, 'return', declarar(12, 8, e)).expect(200);
       const previo = await detalle(e, carga.loadId);
+      expect(previo.hayDiferencia).toBe(true);
       expect(previo.items[0]).toMatchObject({
         differenceFull: -3,
         differenceEmpty: -1,
@@ -638,7 +633,9 @@ describe('Carga y rendición del camión (e2e)', () => {
       const g = e.garrafa.gasCylinderId;
       const carga = await jornada(e, c, 5);
       const vendibleAntes = await vendible(g);
+      expect((await detalle(e, carga.loadId)).hayDiferencia).toBeNull();
       await accion(e, carga.loadId, 'return', declarar(17, 9, e)).expect(200);
+      expect((await detalle(e, carga.loadId)).hayDiferencia).toBe(true);
 
       await accion(e, carga.loadId, 'close').expect(400);
       const cerrada = cuerpo<Carga>(
@@ -1198,9 +1195,18 @@ describe('Carga y rendición del camión (e2e)', () => {
       const carga = await abrirOk(e, c, [{ loadedFull: 20, loadedEmpty: 2 }]);
       await accion(e, carga.loadId, 'depart').expect(200);
       await accion(e, carga.loadId, 'return', declarar(20, 2, e)).expect(200);
+      expect(await detalle(e, carga.loadId)).toMatchObject({
+        hayDiferencia: false,
+        requiereVolverADeclarar: false,
+      });
       // se asienta una entrega que ya estaba en camino cuando declaró
       const tarde = await pedido(e, c, 2);
       await entregar(tarde.orderId);
+      // la vista previa avisa lo mismo que respondería el cierre
+      expect(await detalle(e, carga.loadId)).toMatchObject({
+        hayDiferencia: null,
+        requiereVolverADeclarar: true,
+      });
       const vendibleAntes = await vendible(g);
       const fisicoAntes = await saldo(e.locationId, g, 'full');
 
@@ -1216,6 +1222,10 @@ describe('Carga y rendición del camión (e2e)', () => {
       expect(await saldo(e.locationId, g, 'full')).toBe(fisicoAntes);
 
       await accion(e, carga.loadId, 'return', declarar(18, 4, e)).expect(200);
+      expect(await detalle(e, carga.loadId)).toMatchObject({
+        hayDiferencia: false,
+        requiereVolverADeclarar: false,
+      });
       const cerrada = cuerpo<Carga>(
         await accion(e, carga.loadId, 'close').expect(200),
       );

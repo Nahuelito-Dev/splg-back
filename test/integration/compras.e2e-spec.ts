@@ -29,8 +29,7 @@ import {
   PaymentMethod,
 } from '../../src/order/entities/order.entity';
 import { OrderItem } from '../../src/order/entities/order-item.entity';
-import { UpdateOrderStatusUseCase } from '../../src/order/application/update-order-status.use-case';
-import { RoleType } from '../../src/common/constants/role-type.enum';
+import { entregarComoAdmin } from './setup/entrega-admin';
 
 type Headers = Record<string, string>;
 
@@ -1275,16 +1274,7 @@ describe('Compras (e2e)', () => {
             .then((r) => r.status),
         ),
         ...enCamino.map((o) =>
-          env.app
-            .get(UpdateOrderStatusUseCase)
-            .execute(
-              o.orderId,
-              OrderStatus.DELIVERED,
-              undefined,
-              RoleType.ADMIN,
-              'admin-1',
-            )
-            .then(() => 200),
+          entregarComoAdmin(env, o.orderId).then(() => 200),
         ),
       ];
       const estados = await Promise.all(trabajo);
