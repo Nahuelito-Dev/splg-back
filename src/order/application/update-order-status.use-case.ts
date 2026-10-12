@@ -18,6 +18,7 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { StockDeliveryPort } from '../domain/ports/stock-delivery.port';
+import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { ReleaseOrderUseCase } from './release-order.use-case';
 import {
@@ -86,6 +87,8 @@ export class UpdateOrderStatusUseCase {
     private readonly stockDelivery: StockDeliveryPort,
     // La foto del chofer sale firmada en el tracking del cliente.
     private readonly fotos: EntityPhotoService,
+    // D5: con control de carga activo, el chofer necesita una carga de camión abierta para aceptar.
+    private readonly truckLoadGate: TruckLoadGatePort,
   ) {}
 
   async execute(
@@ -429,6 +432,20 @@ export class UpdateOrderStatusUseCase {
           delivery.userId,
           order.distributorId,
         );
+        // D5: si la distribuidora exige carga de camión abierta, el chofer sin
+        // ella no acepta (repetir una aceptación que ya era suya no se vuelve a
+        // controlar).
+        if (
+          !(
+            previousStatus === OrderStatus.ACCEPTED &&
+            order.deliveryId === delivery.deliveryId
+          )
+        ) {
+          await this.truckLoadGate.assertPuedeAceptar(
+            order.distributorId,
+            delivery.deliveryId,
+          );
+        }
         // Snapshot del vehículo en uso (decisión de nahue del 30/09): a
         // esta altura el chofer ya pasó el gate, así que si tiene
         // vehículo, no viene inhabilitado.

@@ -45,6 +45,7 @@ describe('UpdateOrderStatusUseCase', () => {
   let cylinderLifecycle: { onOrderDelivered: jest.Mock };
   let stockDelivery: { onOrderDelivered: jest.Mock };
   let fotos: { urlDe: jest.Mock };
+  let truckGate: { assertPuedeAceptar: jest.Mock };
   let cancelOrderUseCase: { execute: jest.Mock };
   let releaseOrderUseCase: { execute: jest.Mock };
   let queryRunner: {
@@ -159,6 +160,7 @@ describe('UpdateOrderStatusUseCase', () => {
     stockDelivery = {
       onOrderDelivered: jest.fn().mockResolvedValue(undefined),
     };
+    truckGate = { assertPuedeAceptar: jest.fn().mockResolvedValue(undefined) };
     fotos = {
       urlDe: jest.fn((key: string | null) =>
         Promise.resolve(key ? 'https://s3/firmada-chofer' : null),
@@ -187,6 +189,7 @@ describe('UpdateOrderStatusUseCase', () => {
       fleetGate as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
       stockDelivery as unknown as import('../domain/ports/stock-delivery.port').StockDeliveryPort,
       fotos as unknown as import('../../s3/entity-photo.service').EntityPhotoService,
+      truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
   });
 
@@ -268,6 +271,34 @@ describe('UpdateOrderStatusUseCase', () => {
       ).toBeLessThan(
         fleetGate.vehiculoEnUsoDelChofer.mock.invocationCallOrder[0],
       );
+    });
+
+    it('D5: si la distribuidora exige carga abierta y el chofer no la tiene, no acepta y no guarda', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      truckGate.assertPuedeAceptar.mockRejectedValue(
+        new BadRequestException('Tu distribuidora exige una carga abierta'),
+      );
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(truckGate.assertPuedeAceptar).toHaveBeenCalledWith(
+        'dist-1',
+        'drv-1',
+      );
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('D5: repetir la aceptación que ya era del mismo chofer no vuelve a pedir la carga', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+
+      await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+
+      expect(truckGate.assertPuedeAceptar).not.toHaveBeenCalled();
     });
 
     it('si el chofer fue dado de baja mientras esperaba el lock es 404 y no guarda', async () => {

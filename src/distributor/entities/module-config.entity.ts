@@ -23,6 +23,8 @@ export enum ConfigurableProcess {
   ROUTE_BATCHING = 'route_batching',
   CYLINDER_RECOVERY = 'cylinder_recovery',
   EXPRESS_DISPATCH = 'express_dispatch',
+  /** Control del stock del camión (`requireOpenTruckLoad`). */
+  STOCK_CONTROL = 'stock_control',
 }
 
 /**

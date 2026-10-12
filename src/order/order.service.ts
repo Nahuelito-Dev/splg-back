@@ -1,3 +1,4 @@
+import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import {
   Injectable,
   NotFoundException,
@@ -84,6 +85,9 @@ export class OrderService {
     // `UpdateOrderStatusUseCase` y el despacho automático: la asignación
     // manual tampoco puede darle un pedido a un chofer inhabilitado.
     private readonly fleetGate: FleetDispatchLockService,
+    // D5: con control de carga activo, el administrador tampoco asigna un pedido
+    // a un chofer sin la carga del día abierta.
+    private readonly truckLoadGate: TruckLoadGatePort,
   ) {}
 
   /**
@@ -421,6 +425,10 @@ export class OrderService {
       ) {
         throw new NotFoundException('Repartidor no encontrado');
       }
+      await this.truckLoadGate.assertPuedeAsignar(
+        locked.distributorId,
+        delivery.deliveryId,
+      );
       // CU-136 a CU-138: mismo gate que usan `UpdateOrderStatusUseCase` y el
       // despacho automático. Si algo está vencido, 400 con el detalle.
       await this.fleetGate.assertChoferHabilitado(

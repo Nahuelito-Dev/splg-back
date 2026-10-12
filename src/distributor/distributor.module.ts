@@ -5,6 +5,7 @@ import { DistributorController } from './distributor.controller';
 import { Distributor } from './entities/distributor.entity';
 import { ModuleConfig } from './entities/module-config.entity';
 import { DistributorLogoService } from './distributor-logo.service';
+import { ModuleConfigService } from './module-config.service';
 import { S3Module } from '../s3/s3.module';
 
 /**
@@ -20,7 +21,7 @@ import { S3Module } from '../s3/s3.module';
     S3Module, // logo
   ],
   controllers: [DistributorController],
-  providers: [DistributorService, DistributorLogoService],
-  exports: [DistributorService],
+  providers: [DistributorService, DistributorLogoService, ModuleConfigService],
+  exports: [DistributorService, ModuleConfigService],
 })
 export class DistributorModule {}

@@ -66,6 +66,9 @@ describe('OrderService · aviso de llegada', () => {
       notifications as unknown as import('./domain/ports/notification.port').NotificationPort,
       {} as unknown as import('typeorm').DataSource,
       {} as unknown as import('../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
+      {
+        assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
+      } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue(pedido!);
     return service;

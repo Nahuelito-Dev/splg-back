@@ -9,6 +9,7 @@ import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repo
 import { NotificationsService } from '../../notifications/notifications.service';
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
 import { RedisService } from '../../redis/redis.service';
+import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
 export type MotivoSinChoferes =
@@ -92,6 +93,8 @@ export class DispatchOrchestratorService {
     // o cuyo vehículo tenga el seguro/VTV vencido, no recibe ofertas.
     private readonly fleet: FleetDispatchLockService,
     private readonly redis: RedisService,
+    // D5: si la distribuidora exige carga de camión abierta, un chofer sin ella no recibe ofertas.
+    private readonly truckLoadGate: TruckLoadGatePort,
   ) {}
 
   /**
@@ -404,7 +407,27 @@ export class DispatchOrchestratorService {
       }
     }
 
-    if (cache.inhabilitados.size === 0) return elegibles;
-    return elegibles.filter((id) => !cache.inhabilitados.has(id));
+    const sinBloqueo =
+      cache.inhabilitados.size === 0
+        ? elegibles
+        : elegibles.filter((id) => !cache.inhabilitados.has(id));
+    return this.conCargaSiSeExige(sinBloqueo, distributorId);
+  }
+
+  /**
+   * Sólo reciben ofertas los choferes que pueden trabajar según su carga de
+   * camión: con carga abierta, sólo en ruta; sin carga, sólo si la
+   * distribuidora no exige tenerla (D5).
+   */
+  private async conCargaSiSeExige(
+    driverIds: string[],
+    distributorId: string | null | undefined,
+  ): Promise<string[]> {
+    if (!distributorId || driverIds.length === 0) return driverIds;
+    const pueden = await this.truckLoadGate.choferesQuePuedenRecibir(
+      distributorId,
+      driverIds,
+    );
+    return driverIds.filter((id) => pueden.has(id));
   }
 }

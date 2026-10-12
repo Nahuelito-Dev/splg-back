@@ -137,6 +137,7 @@ export class VehicleAssignmentService {
             for (const chofer of choferes) {
               await this.assertSinViajeEnCurso(chofer, manager);
             }
+            await this.assertSinCargaAbierta(manager, choferes, car.carId);
 
             const ahora = new Date();
 
@@ -213,6 +214,7 @@ export class VehicleAssignmentService {
       await this.dataSource.transaction(async (manager) => {
         await this.bloquearYValidarChoferes(manager, [deliveryId], deliveryId);
         await this.assertSinViajeEnCurso(deliveryId, manager);
+        await this.assertSinCargaAbierta(manager, [deliveryId], null);
         const repo = manager.getRepository(VehicleAssignment);
         const abierta = await repo.findOne({
           where: { deliveryId, releasedAt: IsNull() },
@@ -270,6 +272,33 @@ export class VehicleAssignmentService {
     if (filas[0]?.existe) {
       throw new ConflictException(
         'No se puede modificar el vehículo de un chofer con un pedido en curso (aceptado o en camino)',
+      );
+    }
+  }
+
+  /**
+   * 409 si alguno de los choferes, o el camión, tiene abierta una carga de
+   * camión (`loading`, `on_route` o `returned`): cambiar el vehículo en medio de
+   * la jornada dejaría el stock cargado en un camión que el chofer ya no usa. Se
+   * cierra o cancela la carga antes. Lee `truck_load` de sólo lectura, la misma
+   * excepción que `assertSinViajeEnCurso` (`car` no puede depender de
+   * `truck-load`, que depende de `car`).
+   */
+  private async assertSinCargaAbierta(
+    manager: EntityManager,
+    deliveryIds: string[],
+    carId: string | null,
+  ): Promise<void> {
+    const filas = await manager.query<Array<{ number: number }>>(
+      `SELECT "number" FROM "truck_load"
+       WHERE ("delivery_id" = ANY($1::uuid[]) OR "car_id" = $2::uuid)
+         AND "status"::text IN ('loading', 'on_route', 'returned')
+       LIMIT 1`,
+      [deliveryIds, carId],
+    );
+    if (filas.length > 0) {
+      throw new ConflictException(
+        `No se puede cambiar el vehículo mientras haya una carga de camión abierta (carga N° ${filas[0].number}): cerrala o cancelala antes`,
       );
     }
   }

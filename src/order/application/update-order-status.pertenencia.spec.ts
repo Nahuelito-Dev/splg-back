@@ -123,6 +123,9 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         urlDe: jest.fn().mockResolvedValue(null),
       } as unknown as import('../../s3/entity-photo.service').EntityPhotoService,
+      {
+        assertPuedeAceptar: jest.fn().mockResolvedValue(undefined),
+      } as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
     return { order, queryRunner, queryBuilder };
   };

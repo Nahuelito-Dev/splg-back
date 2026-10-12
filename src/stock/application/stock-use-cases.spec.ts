@@ -85,7 +85,11 @@ function armar(
       ) =>
         Promise.resolve(
           ref.carId
-            ? { locationId: L2, kind: StockLocationKind.VEHICLE }
+            ? {
+                locationId: L2,
+                kind: StockLocationKind.VEHICLE,
+                carId: ref.carId,
+              }
             : {
                 locationId: ref.warehouseId === W1 ? L1 : L2,
                 kind: StockLocationKind.WAREHOUSE,
@@ -280,34 +284,98 @@ describe('StockTransferUseCase', () => {
     );
   const items = [{ gasCylinderId: G1, quantity: 6 }];
 
-  it('transfiere de un depósito al camión: movimientos transfer con el mismo lote', async () => {
+  const esperado = (
+    batchId: string,
+    from: string,
+    to: string,
+    notes: string,
+  ) => ({
+    distributorId: DIST,
+    referenceType: StockReferenceType.TRANSFER,
+    referenceId: batchId,
+    batchId,
+    actorUserId: 'u1',
+    notes,
+    movimientos: [
+      {
+        gasCylinderId: G1,
+        quantity: 6,
+        from: { locationId: from, condition: Cond.FULL },
+        to: { locationId: to, condition: Cond.FULL },
+        reason: Razon.TRANSFER,
+      },
+    ],
+  });
+
+  it('transfiere entre depósitos: movimientos transfer con el mismo lote', async () => {
     const a = armar();
     const batchId = await crear(a).execute(
       {
         from: { warehouseId: W1 },
-        to: { carId: 'car-1' },
+        to: { warehouseId: 'w2' },
         items,
         notes: 'mañana',
       },
       DIST,
       'u1',
     );
-    expect(a.ledger.aplicar).toHaveBeenCalledWith(a.manager, {
-      distributorId: DIST,
-      referenceType: StockReferenceType.TRANSFER,
-      referenceId: batchId,
-      batchId,
-      actorUserId: 'u1',
-      notes: 'mañana',
-      movimientos: [
+    expect(a.ledger.aplicar).toHaveBeenCalledWith(
+      a.manager,
+      esperado(batchId, L1, L2, 'mañana'),
+    );
+  });
+
+  it('el camión se carga sólo desde la carga del día: no se transfiere a un vehículo', async () => {
+    const a = armar();
+    await expect(
+      crear(a).execute(
         {
-          gasCylinderId: G1,
-          quantity: 6,
-          from: { locationId: L1, condition: Cond.FULL },
-          to: { locationId: L2, condition: Cond.FULL },
-          reason: Razon.TRANSFER,
+          from: { warehouseId: W1 },
+          to: { carId: 'car-1' },
+          items,
+          notes: 'x',
         },
-      ],
+        DIST,
+        'u1',
+      ),
+    ).rejects.toThrow('El camión se carga y se rinde desde la carga del día');
+    expect(a.ledger.aplicar).not.toHaveBeenCalled();
+  });
+
+  describe('regularizar el stock suelto de un vehículo (vehículo -> depósito)', () => {
+    const devolver = {
+      from: { carId: 'car-1' },
+      to: { warehouseId: W1 },
+      items,
+    };
+
+    it('sin carga abierta y con nota, vuelve al depósito', async () => {
+      const a = armar();
+      const batchId = await crear(a).execute(
+        { ...devolver, notes: 'Regularización AB102CH' },
+        DIST,
+        'u1',
+      );
+      expect(a.ledger.aplicar).toHaveBeenCalledWith(
+        a.manager,
+        esperado(batchId, L2, L1, 'Regularización AB102CH'),
+      );
+    });
+
+    it('con una carga abierta es 409: se rinde desde la carga', async () => {
+      const a = armar({ saldos: [{ number: 3 }] });
+      await expect(
+        crear(a).execute({ ...devolver, notes: 'x' }, DIST, 'u1'),
+      ).rejects.toThrow(/carga N° 3/);
+      expect(a.ledger.aplicar).not.toHaveBeenCalled();
+    });
+
+    it('sin nota es 400', async () => {
+      const a = armar();
+      await expect(
+        crear(a).execute({ ...devolver, notes: '  ' }, DIST, 'u1'),
+      ).rejects.toThrow(/indicá en las notas/);
+      expect(a.ledger.aplicar).not.toHaveBeenCalled();
     });
   });
 

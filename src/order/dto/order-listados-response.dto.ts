@@ -11,6 +11,22 @@ export class PaginatedOrdersResponseDto {
   @ApiProperty({ example: 0 }) offset!: number;
 }
 
+/** `GET /orders/available`: la lista del pool y si el chofer tiene que abrir su carga. */
+export class AvailableOrdersResponseDto extends PaginatedOrdersResponseDto {
+  @ApiProperty({
+    example: false,
+    description:
+      'true si la distribuidora exige la carga del día abierta y el chofer no la tiene: `orders` viene vacío y la app avisa `message`',
+  })
+  openLoadRequired!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Abrí tu carga para recibir pedidos',
+  })
+  message!: string | null;
+}
+
 export class RenglonDeReservaDto {
   @ApiProperty({ example: 2 }) quantity!: number;
   @ApiProperty({ type: String, nullable: true, example: '10kg' })

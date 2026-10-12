@@ -41,6 +41,7 @@ import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.ad
 import { PaymentsModule } from '../payments/payments.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { StockModule } from '../stock/stock.module';
+import { TruckLoadModule } from '../truck-load/truck-load.module';
 import { S3Module } from '../s3/s3.module';
 import { NotificationPort } from './domain/ports/notification.port';
 import { NotificationAdapter } from './infrastructure/notification.adapter';
@@ -75,6 +76,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
     StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
+    TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
   ],
   controllers: [OrderController],
   providers: [

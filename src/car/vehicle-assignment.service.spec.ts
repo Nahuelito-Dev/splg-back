@@ -92,9 +92,11 @@ describe('VehicleAssignmentService', () => {
         Promise.resolve(
           sql.includes('INSERT INTO "audit"')
             ? []
-            : sql.includes('EXISTS')
-              ? [{ existe: false }]
-              : choferesVigentes(params),
+            : sql.includes('"truck_load"')
+              ? []
+              : sql.includes('EXISTS')
+                ? [{ existe: false }]
+                : choferesVigentes(params),
         ),
       ),
     };
@@ -241,9 +243,11 @@ describe('VehicleAssignmentService', () => {
       autoDelTenant();
       manager.query.mockImplementation((sql: string, params?: unknown[]) =>
         Promise.resolve(
-          sql.includes('EXISTS')
-            ? [{ existe: true }]
-            : choferesVigentes(params),
+          sql.includes('"truck_load"')
+            ? []
+            : sql.includes('EXISTS')
+              ? [{ existe: true }]
+              : choferesVigentes(params),
         ),
       );
       await expect(
@@ -282,8 +286,27 @@ describe('VehicleAssignmentService', () => {
         expect.any(String),
         [['dl-0', 'dl1']],
       ]);
-      expect(sqls.slice(1).every((q) => q.includes('EXISTS'))).toBe(true);
-      expect(sqls).toHaveLength(3); // lock + un EXISTS por chofer
+      expect(sqls.slice(1, 3).every((q) => q.includes('EXISTS'))).toBe(true);
+      expect(sqls[3]).toContain('"truck_load"'); // y después la carga abierta
+      expect(sqls).toHaveLength(4); // lock + un EXISTS por chofer + la carga
+    });
+
+    it('409 si el chofer o el camión tienen una carga de camión abierta: el vehículo no se cambia en la jornada', async () => {
+      choferDelTenant();
+      autoDelTenant();
+      manager.query.mockImplementation((sql: string, params?: unknown[]) =>
+        Promise.resolve(
+          sql.includes('"truck_load"')
+            ? [{ number: 7 }]
+            : sql.includes('EXISTS')
+              ? [{ existe: false }]
+              : choferesVigentes(params),
+        ),
+      );
+      await expect(
+        service.ponerEnUso('dl1', 'c1', null, 'd1', 'admin-1'),
+      ).rejects.toThrow(/carga de camión abierta \(carga N° 7\)/);
+      expect(txRepo.save).not.toHaveBeenCalled();
     });
 
     it('si el chofer fue dado de baja mientras esperaba el lock es 404 y no inserta', async () => {
@@ -291,9 +314,11 @@ describe('VehicleAssignmentService', () => {
       autoDelTenant();
       manager.query.mockImplementation((sql: string) =>
         Promise.resolve(
-          sql.includes('EXISTS')
-            ? [{ existe: false }]
-            : [{ delivery_id: 'dl1', deleted: true }],
+          sql.includes('"truck_load"')
+            ? []
+            : sql.includes('EXISTS')
+              ? [{ existe: false }]
+              : [{ delivery_id: 'dl1', deleted: true }],
         ),
       );
       await expect(
@@ -308,12 +333,14 @@ describe('VehicleAssignmentService', () => {
       abiertas(null, { assignmentId: 'a-otro', deliveryId: 'dl-0' });
       manager.query.mockImplementation((sql: string) =>
         Promise.resolve(
-          sql.includes('EXISTS')
-            ? [{ existe: false }]
-            : [
-                { delivery_id: 'dl-0', deleted: true },
-                { delivery_id: 'dl1', deleted: false },
-              ],
+          sql.includes('"truck_load"')
+            ? []
+            : sql.includes('EXISTS')
+              ? [{ existe: false }]
+              : [
+                  { delivery_id: 'dl-0', deleted: true },
+                  { delivery_id: 'dl1', deleted: false },
+                ],
         ),
       );
       await expect(
@@ -356,6 +383,24 @@ describe('VehicleAssignmentService', () => {
       expect(sqlsDelManager()[0]).toContain('FOR NO KEY UPDATE');
     });
 
+    it('409 si el chofer tiene una carga de camión abierta: no se libera el vehículo', async () => {
+      choferDelTenant();
+      txRepo.findOne.mockResolvedValue({ assignmentId: 'a1' });
+      manager.query.mockImplementation((sql: string, params?: unknown[]) =>
+        Promise.resolve(
+          sql.includes('"truck_load"')
+            ? [{ number: 2 }]
+            : sql.includes('EXISTS')
+              ? [{ existe: false }]
+              : choferesVigentes(params),
+        ),
+      );
+      await expect(service.liberar('dl1', 'd1', 'admin-1')).rejects.toThrow(
+        /carga N° 2/,
+      );
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
     it('404 si el chofer no tiene un vehículo en uso', async () => {
       choferDelTenant();
       txRepo.findOne.mockResolvedValue(null);
@@ -368,9 +413,11 @@ describe('VehicleAssignmentService', () => {
       choferDelTenant();
       manager.query.mockImplementation((sql: string, params?: unknown[]) =>
         Promise.resolve(
-          sql.includes('EXISTS')
-            ? [{ existe: true }]
-            : choferesVigentes(params),
+          sql.includes('"truck_load"')
+            ? []
+            : sql.includes('EXISTS')
+              ? [{ existe: true }]
+              : choferesVigentes(params),
         ),
       );
       await expect(

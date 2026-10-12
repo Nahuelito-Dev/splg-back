@@ -46,6 +46,7 @@ import { OrderResponseDto } from './dto/order-response.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import {
   CodigoDeEntregaResponseDto,
+  AvailableOrdersResponseDto,
   PaginatedOrdersResponseDto,
   RechazoDeOfertaResponseDto,
   ReservaResponseDto,
@@ -62,6 +63,7 @@ import { DownloadQueryDto } from '../s3/dto/download-link.dto';
 import { ApiVerFoto, responderFoto } from '../s3/photo-http';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { RoleType } from '../common/constants/role-type.enum';
+import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -81,6 +83,8 @@ export class OrderController {
     private readonly updateOrderUseCase: UpdateOrderUseCase,
     private readonly cashCollection: CashCollectionUseCase,
     private readonly driverPhoto: OrderDriverPhotoService,
+    // D5: el chofer sin la carga del día abierta no ve el pool si se exige.
+    private readonly truckLoadGate: TruckLoadGatePort,
   ) {}
 
   @Post()
@@ -219,11 +223,34 @@ export class OrderController {
   @Get('available')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get available orders for delivery' })
-  @ApiOkResponse({ type: PaginatedOrdersResponseDto })
+  @ApiOkResponse({
+    type: AvailableOrdersResponseDto,
+    description:
+      'Si el chofer no puede recibir pedidos por su carga de camión (sin carga con el control activo, carga sin salir o ya devuelta), `orders` viene vacío, `openLoadRequired` es true y `message` dice por qué ("Abrí tu carga para recibir pedidos"). La app también lo sabe por `GET /truck-loads/mine`.',
+  })
   async findAvailableOrders(
     @Query() paginationDto: PaginationDto,
     @CurrentDistributor() distributorId: string | null,
-  ) {
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AvailableOrdersResponseDto> {
+    const { limit = 10, offset = 0 } = paginationDto;
+    const motivo =
+      user.role === RoleType.DELIVERY && distributorId
+        ? await this.truckLoadGate.motivoParaNoRecibir(
+            distributorId,
+            user.user_id,
+          )
+        : null;
+    if (motivo) {
+      return {
+        orders: [],
+        total: 0,
+        limit,
+        offset,
+        openLoadRequired: true,
+        message: motivo,
+      };
+    }
     // Pool de pedidos disponibles ACOTADO a la distribuidora del chofer.
     const result = await this.orderService.findAvailableOrders(
       paginationDto,
@@ -232,6 +259,8 @@ export class OrderController {
     return {
       ...result,
       orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      openLoadRequired: false,
+      message: null,
     };
   }
 
