@@ -27,7 +27,7 @@
     "test": "jest",
     "test:tz": "TZ=UTC jest src/order/order.service.stats.spec.ts src/common/utils/dias-argentina.spec.ts src/reports",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test:cov": "jest --ci --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:integration": "jest --config ./test/jest-e2e.json --testPathPatterns=integration/.*\\.e2e-spec\\.ts$",
     "test:integration:health": "jest --config ./test/jest-e2e.json --testPathPatterns=health\\.e2e-spec\\.ts$",
@@ -38,7 +38,7 @@
     "test:perf:orders": "ts-node test/performance/orders-load.ts",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "verify": "npm run typecheck && npm run lint:check && jest && nest build"
+    "verify": "npm run typecheck && npm run lint:check && jest --ci --coverage && nest build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1141.0",
@@ -99,6 +99,7 @@
     "autocannon": "^8.0.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-jest": "^28.14.0",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "jest": "^30.0.0",
@@ -125,9 +126,252 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!main.ts",
+      "!data-source.ts",
+      "!migrations/**",
+      "!**/index.ts"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "clearMocks": true,
+    "restoreMocks": true,
+    "errorOnDeprecated": true,
+    "coverageThreshold": {
+      "global": {
+        "statements": 0,
+        "branches": 0,
+        "functions": 0,
+        "lines": 0
+      },
+      "./src/admin/": {
+        "statements": 84,
+        "branches": 76,
+        "functions": 60,
+        "lines": 85
+      },
+      "./src/attachment/": {
+        "statements": 58,
+        "branches": 53,
+        "functions": 54,
+        "lines": 57
+      },
+      "./src/audit/": {
+        "statements": 35,
+        "branches": 30,
+        "functions": 32,
+        "lines": 36
+      },
+      "./src/auth/": {
+        "statements": 75,
+        "branches": 54,
+        "functions": 79,
+        "lines": 76
+      },
+      "./src/car/": {
+        "statements": 62,
+        "branches": 52,
+        "functions": 47,
+        "lines": 63
+      },
+      "./src/cart/": {
+        "statements": 0,
+        "branches": 0,
+        "functions": 0,
+        "lines": 0
+      },
+      "./src/claims/": {
+        "statements": 87,
+        "branches": 77,
+        "functions": 76,
+        "lines": 88
+      },
+      "./src/cli/": {
+        "statements": 0,
+        "branches": 0,
+        "functions": 0,
+        "lines": 0
+      },
+      "./src/common/": {
+        "statements": 77,
+        "branches": 60,
+        "functions": 78,
+        "lines": 78
+      },
+      "./src/coverage-zone/": {
+        "statements": 55,
+        "branches": 51,
+        "functions": 53,
+        "lines": 56
+      },
+      "./src/customer/": {
+        "statements": 60,
+        "branches": 46,
+        "functions": 45,
+        "lines": 61
+      },
+      "./src/cylinder/": {
+        "statements": 56,
+        "branches": 47,
+        "functions": 38,
+        "lines": 57
+      },
+      "./src/delivery/": {
+        "statements": 64,
+        "branches": 59,
+        "functions": 33,
+        "lines": 66
+      },
+      "./src/distributor/": {
+        "statements": 81,
+        "branches": 73,
+        "functions": 50,
+        "lines": 82
+      },
+      "./src/document-sequence/": {
+        "statements": 52,
+        "branches": 60,
+        "functions": 66,
+        "lines": 56
+      },
+      "./src/email/": {
+        "statements": 46,
+        "branches": 31,
+        "functions": 52,
+        "lines": 47
+      },
+      "./src/employee/": {
+        "statements": 43,
+        "branches": 37,
+        "functions": 42,
+        "lines": 43
+      },
+      "./src/firebase/": {
+        "statements": 34,
+        "branches": 33,
+        "functions": 26,
+        "lines": 34
+      },
+      "./src/fleet/": {
+        "statements": 56,
+        "branches": 50,
+        "functions": 56,
+        "lines": 57
+      },
+      "./src/gascylinder/": {
+        "statements": 74,
+        "branches": 67,
+        "functions": 49,
+        "lines": 75
+      },
+      "./src/gateways/": {
+        "statements": 41,
+        "branches": 42,
+        "functions": 39,
+        "lines": 41
+      },
+      "./src/health/": {
+        "statements": 63,
+        "branches": 67,
+        "functions": 50,
+        "lines": 62
+      },
+      "./src/incident/": {
+        "statements": 73,
+        "branches": 70,
+        "functions": 52,
+        "lines": 74
+      },
+      "./src/notifications/": {
+        "statements": 33,
+        "branches": 34,
+        "functions": 33,
+        "lines": 33
+      },
+      "./src/order/": {
+        "statements": 70,
+        "branches": 63,
+        "functions": 50,
+        "lines": 70
+      },
+      "./src/payments/": {
+        "statements": 73,
+        "branches": 67,
+        "functions": 68,
+        "lines": 74
+      },
+      "./src/purchase/": {
+        "statements": 76,
+        "branches": 69,
+        "functions": 56,
+        "lines": 77
+      },
+      "./src/rating/": {
+        "statements": 61,
+        "branches": 50,
+        "functions": 40,
+        "lines": 62
+      },
+      "./src/redis/": {
+        "statements": 13,
+        "branches": 23,
+        "functions": 0,
+        "lines": 11
+      },
+      "./src/registro/": {
+        "statements": 62,
+        "branches": 52,
+        "functions": 50,
+        "lines": 64
+      },
+      "./src/reports/": {
+        "statements": 86,
+        "branches": 78,
+        "functions": 81,
+        "lines": 87
+      },
+      "./src/role/": {
+        "statements": 57,
+        "branches": 24,
+        "functions": 42,
+        "lines": 59
+      },
+      "./src/s3/": {
+        "statements": 94,
+        "branches": 87,
+        "functions": 97,
+        "lines": 95
+      },
+      "./src/stock/": {
+        "statements": 68,
+        "branches": 54,
+        "functions": 57,
+        "lines": 70
+      },
+      "./src/time-slot/": {
+        "statements": 48,
+        "branches": 46,
+        "functions": 46,
+        "lines": 48
+      },
+      "./src/truck-load/": {
+        "statements": 44,
+        "branches": 31,
+        "functions": 43,
+        "lines": 44
+      },
+      "./src/user-address/": {
+        "statements": 48,
+        "branches": 36,
+        "functions": 35,
+        "lines": 49
+      },
+      "./src/users/": {
+        "statements": 72,
+        "branches": 75,
+        "functions": 39,
+        "lines": 73
+      }
+    }
   }
 }

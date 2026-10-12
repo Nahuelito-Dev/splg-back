@@ -1503,10 +1503,13 @@ describe('Carga y rendición del camión (e2e)', () => {
       // chofer vuelve a declarar; si no, cierra y las entregas salen del depósito.
       expect([200, 409]).toContain(cierre.status);
       expect(mockReintentos.n).toBe(0);
+      const motivoDelRechazo =
+        cierre.status === 409 ? cuerpo<Mensaje>(cierre).message : null;
+      expect(
+        motivoDelRechazo === null ||
+          /después de declarar la vuelta/.test(motivoDelRechazo),
+      ).toBe(true);
       if (cierre.status === 409) {
-        expect(cuerpo<Mensaje>(cierre).message).toMatch(
-          /después de declarar la vuelta/,
-        );
         const actual = await enElCamion(c.carId, g, 'full');
         await accion(
           e,

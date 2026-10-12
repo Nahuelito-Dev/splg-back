@@ -37,6 +37,30 @@ describe('Health (e2e)', () => {
     await env.cleanup();
   });
 
+  describe('GET /health/live', () => {
+    it('responde 200 sin chequear dependencias', async () => {
+      const res = await request(env.app.getHttpServer())
+        .get('/health/live')
+        .expect(200);
+
+      const body = res.body as CuerpoLive;
+      expect(body.status).toBe('ok');
+      expect(body.timestamp).toBeDefined();
+    });
+  });
+
+  describe('GET /health/ready', () => {
+    it('responde 200 con DB + Redis sanos', async () => {
+      const res = await request(env.app.getHttpServer())
+        .get('/health/ready')
+        .expect(200);
+
+      const body = res.body as CuerpoHealthCheck;
+      expect(body.info?.postgres.status).toBe('up');
+      expect(body.info?.redis.status).toBe('up');
+    });
+  });
+
   describe('GET /health', () => {
     it('responde 200 con status "ok" cuando todo está sano', async () => {
       const res = await request(env.app.getHttpServer())
@@ -61,36 +85,16 @@ describe('Health (e2e)', () => {
       expect(body.status).toBe('error');
       expect(body.error?.redis.status).toBe('down');
 
-      // Reiniciamos para no contaminar otras suites — pero el container
-      // ya no está; lo dejamos así porque es el último test del describe.
+      // El container de Redis queda detenido: este describe es el último del archivo.
     });
-  });
 
-  describe('GET /health/live', () => {
-    it('responde 200 sin chequear dependencias', async () => {
+    it('/health/ready también responde 503 con Redis caído', async () => {
       const res = await request(env.app.getHttpServer())
-        .get('/health/live')
-        .expect(200);
+        .get('/health/ready')
+        .expect(503);
 
-      const body = res.body as CuerpoLive;
-      expect(body.status).toBe('ok');
-      expect(body.timestamp).toBeDefined();
-    });
-  });
-
-  describe('GET /health/ready', () => {
-    it('responde 200 solo con DB + Redis sanos', async () => {
-      // Este test corre antes del shutdown de Redis en /health
-      // Si /health corre antes, este puede fallar — Jest serializa por defecto.
-      const res = await request(env.app.getHttpServer()).get('/health/ready');
-
-      // 200 si Redis está vivo, 503 si ya se cayó
-      expect([200, 503]).toContain(res.status);
-      if (res.status === 200) {
-        const body = res.body as CuerpoHealthCheck;
-        expect(body.info?.postgres.status).toBe('up');
-        expect(body.info?.redis.status).toBe('up');
-      }
+      const body = res.body as CuerpoHealthCheck;
+      expect(body.error?.redis.status).toBe('down');
     });
   });
 });

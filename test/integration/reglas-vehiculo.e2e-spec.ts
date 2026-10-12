@@ -663,13 +663,14 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
       const inexistente = randomUUID();
 
       const mensaje = async (deliveryId: string) => {
-        try {
-          await vehiculos.assertChoferDelTenant(deliveryId, d1.distributorId);
-          return null;
-        } catch (e) {
-          expect(e).toBeInstanceOf(NotFoundException);
-          return (e as NotFoundException).message.replace(deliveryId, 'ID');
-        }
+        const error = await vehiculos
+          .assertChoferDelTenant(deliveryId, d1.distributorId)
+          .then(
+            () => null,
+            (e: unknown) => e,
+          );
+        expect(error).toBeInstanceOf(NotFoundException);
+        return (error as NotFoundException).message.replace(deliveryId, 'ID');
       };
 
       const deInexistente = await mensaje(inexistente);
@@ -714,6 +715,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
       await nueva(otroPlan.planId, mismaFecha);
 
       const ids: string[] = [];
+      const paginas: MaintenanceTask[][] = [];
       for (let offset = 0; offset < 5; offset += 2) {
         const [pagina, total] = await tareas.findAll(d.distributorId, {
           planId: plan.planId,
@@ -722,10 +724,10 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
         });
         expect(total).toBe(5);
         ids.push(...pagina.map((t) => t.taskId));
-        if (offset === 0) {
-          expect(pagina.every((t) => t.dueAt !== null)).toBe(true);
-        }
+        paginas.push(pagina);
       }
+      // NULLS LAST: la primera página trae las dos tareas con fecha
+      expect(paginas[0].map((t) => t.dueAt !== null)).toEqual([true, true]);
       expect(new Set(ids).size).toBe(5);
 
       const [todas] = await tareas.findAll(d.distributorId, {
