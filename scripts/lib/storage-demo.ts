@@ -11,24 +11,42 @@ import {
 } from '@aws-sdk/client-s3';
 
 export interface AlmacenDemo {
-  /** Sube un PNG a `{carpeta}/{uuid}.png` y devuelve la key. */
-  subirPng(carpeta: string, png: Buffer): Promise<string>;
+  /** La key de una foto nueva: `{carpeta}/{uuid}.png`. */
+  nuevaKey(carpeta: string): string;
+  /** Sube un PNG a una key ya reservada en `storage_orphan`. */
+  subirPng(key: string, png: Buffer): Promise<void>;
   /** Borra objetos; los que ya no están no cuentan como error. */
   borrar(keys: readonly string[]): Promise<void>;
+}
+
+/**
+ * Todo acceso a S3 de los seeds exige `SEED_S3=1`: el `.env` suele apuntar al
+ * bucket real y un ensayo no debe tocarlo por accidente.
+ */
+export function s3DelSeedHabilitado(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.SEED_S3 === '1';
 }
 
 export function crearAlmacenDemo(): AlmacenDemo | null {
   const bucket = process.env.AWS_S3_BUCKET;
   const region = process.env.AWS_REGION;
   if (!bucket || !region) return null;
+  if (!s3DelSeedHabilitado()) {
+    console.warn(
+      '  ! Sin SEED_S3=1 el seed no toca S3: las filas quedan sin foto.',
+    );
+    return null;
+  }
   const cliente = new S3Client({
     region,
     endpoint: process.env.AWS_S3_ENDPOINT || undefined,
     forcePathStyle: process.env.AWS_S3_FORCE_PATH_STYLE === 'true',
   });
   return {
-    async subirPng(carpeta, png) {
-      const key = `${carpeta}/${randomUUID()}.png`;
+    nuevaKey: (carpeta) => `${carpeta}/${randomUUID()}.png`,
+    async subirPng(key, png) {
       await cliente.send(
         new PutObjectCommand({
           Bucket: bucket,
@@ -38,7 +56,6 @@ export function crearAlmacenDemo(): AlmacenDemo | null {
           ServerSideEncryption: 'AES256',
         }),
       );
-      return key;
     },
     async borrar(keys) {
       for (const key of keys) {

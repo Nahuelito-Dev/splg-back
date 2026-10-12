@@ -14,8 +14,8 @@ const DESTINO: DestinoDeFoto = {
 };
 
 /**
- * Logo de la distribuidora en S3. El texto libre `logo_url` queda como
- * respaldo: se sigue devolviendo mientras no se suba un logo.
+ * Logo de la distribuidora en S3. La columna `logo_url` (texto) es legada: no
+ * se expone ni se sirve.
  */
 @Injectable()
 export class DistributorLogoService {
@@ -62,7 +62,7 @@ export class DistributorLogoService {
 
   async enlace(id: string, alcance: string | null): Promise<EnlaceDeFoto> {
     const distribuidora = await this.resolver(id, alcance);
-    return this.fotos.enlace(distribuidora.logoKey, distribuidora.logoUrl);
+    return this.fotos.enlace(distribuidora.logoKey);
   }
 
   private async recargar(id: string): Promise<Distributor> {

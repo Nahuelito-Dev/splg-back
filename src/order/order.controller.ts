@@ -8,6 +8,7 @@ import {
   Param,
   Delete,
   Query,
+  Res,
   ParseUUIDPipe,
   ForbiddenException,
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiConflictResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
@@ -52,6 +54,10 @@ import {
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Auth } from '../common/decorators/auth.decorator';
+import type { Response } from 'express';
+import { DownloadQueryDto } from '../s3/dto/download-link.dto';
+import { ApiVerFoto, responderFoto } from '../s3/photo-http';
+import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -71,6 +77,7 @@ export class OrderController {
     private readonly reservationService: ReservationService,
     private readonly updateOrderUseCase: UpdateOrderUseCase,
     private readonly cashCollection: CashCollectionUseCase,
+    private readonly driverPhoto: OrderDriverPhotoService,
   ) {}
 
   @Post()
@@ -233,6 +240,33 @@ export class OrderController {
   @ApiOkResponse({ type: ReservaResponseDto, isArray: true })
   async findReservations(@CurrentDistributor() distributorId: string | null) {
     return this.reservationService.findReservations(distributorId);
+  }
+
+  @Get(':id/driver-photo')
+  @Auth(
+    RoleType.CUSTOMER,
+    RoleType.DELIVERY,
+    RoleType.ADMIN,
+    RoleType.SUPER_ADMIN,
+  )
+  @ApiVerFoto('Foto del chofer asignado al pedido')
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiConflictResponse({
+    description: 'El pedido no está aceptado ni en camino',
+  })
+  @ApiForbiddenResponse({ description: 'El pedido lo tiene otro chofer' })
+  async getDriverPhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: DownloadQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+    @Res() res: Response,
+  ): Promise<void> {
+    responderFoto(
+      res,
+      query.modo,
+      await this.driverPhoto.enlace(id, user, distributorId),
+    );
   }
 
   @Get(':id')

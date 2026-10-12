@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Post,
@@ -13,7 +14,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { ClaimsService } from './claims.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
@@ -42,6 +42,7 @@ import { ClaimResponseDto } from './dto/claim-response.dto';
 import { ClaimPhotoLinkResponseDto } from './dto/claim-photo-link.dto';
 import { ClaimMapper } from './claims.mapper';
 import type { Claim } from './entities/claim.entity';
+import { archivoConTope } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 import { DownloadMode, DownloadQueryDto } from '../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../s3/download-link';
@@ -301,13 +302,7 @@ export class ClaimsController {
     description: 'No es JPG, PNG ni WEBP (o el contenido no coincide)',
   })
   @ApiPayloadTooLargeResponse({ description: 'La foto supera los 10 MB' })
-  @UseInterceptors(
-    FileInterceptor('file', {
-      // Techo técnico por arriba del límite de negocio (el 413 documentado lo
-      // da ClaimsService): sólo una salvaguarda contra abuso.
-      limits: { fileSize: MAX_ATTACHMENT_SIZE_BYTES * 2 },
-    }),
-  )
+  @UseInterceptors(archivoConTope(MAX_ATTACHMENT_SIZE_BYTES, 'foto'))
   async uploadPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -322,6 +317,38 @@ export class ClaimsController {
     );
   }
 
+  @Delete(':id/photo')
+  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Sacar la foto de un reclamo',
+    description:
+      'Quita la referencia (el objeto se borra del bucket en segundo plano). ' +
+      'La puede sacar el cliente dueño del reclamo o un admin de la ' +
+      'distribuidora, y sólo mientras el reclamo no esté resuelto ni ' +
+      'rechazado (409). Sin foto es idempotente: responde igual.',
+  })
+  @ApiParam({ name: 'id', description: 'Claim UUID' })
+  @ApiOkResponse({ type: ClaimResponseDto })
+  @ApiNotFoundResponse({
+    description:
+      'El reclamo no existe, no es del cliente o es de otra distribuidora',
+  })
+  @ApiConflictResponse({
+    description: 'El reclamo está resuelto o rechazado: se reabre antes',
+  })
+  async removePhoto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<ClaimResponseDto> {
+    return this.toDto(
+      await this.claimsService.removePhoto(id, distributorId, {
+        userId: user.user_id,
+        role: user.role,
+      }),
+    );
+  }
+
   @Get(':id/photo')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
@@ -330,8 +357,7 @@ export class ClaimsController {
       'Igual que las descargas de adjuntos: por defecto devuelve la foto ' +
       '(302 a la URL firmada de S3). Con ' +
       '`?modo=url` devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin ' +
-      'redirect; si el reclamo no tiene foto subida devuelve su `photoUrl` externa, o ' +
-      '200 con `url: null` si no tiene ninguna. ' +
+      'redirect; si el reclamo no tiene foto, 200 con `url: null`. ' +
       'Se puede ver aunque el reclamo esté cerrado.',
   })
   @ApiParam({ name: 'id', description: 'Claim UUID' })
@@ -362,7 +388,7 @@ export class ClaimsController {
       );
       if (link.kind !== 'stored') {
         const dto = new ClaimPhotoLinkResponseDto();
-        dto.url = link.kind === 'external' ? link.url : null;
+        dto.url = null;
         dto.expiresAt = null;
         dto.requiresAuth = false;
         res.json(dto);

@@ -121,8 +121,8 @@ describe('IncidentPhotoService', () => {
     expect(fotos.guardar).not.toHaveBeenCalled();
   });
 
-  it('el enlace cae a la photo_url externa cuando no hay foto subida', async () => {
+  it('el enlace usa sólo la key de S3, nunca la photo_url externa', async () => {
     await servicio.enlace('i1', admin, 'd1');
-    expect(fotos.enlace).toHaveBeenCalledWith(null, 'https://ext/x.jpg');
+    expect(fotos.enlace).toHaveBeenCalledWith(null);
   });
 });

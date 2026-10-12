@@ -1,4 +1,8 @@
-import { contentDisposition } from './content-disposition';
+import {
+  contentDisposition,
+  Disposicion,
+  disposicionSegura,
+} from './content-disposition';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -69,15 +73,31 @@ export class S3Service {
 
   async getSignedDownload(
     key: string,
-    options?: { fileName?: string },
+    options?: {
+      fileName?: string;
+      /** `inline` sólo se respeta si `contentType` es de los que se muestran sin riesgo. */
+      disposition?: Disposicion;
+      /** Tipo guardado del archivo; con `inline` seguro se fuerza en la respuesta. */
+      contentType?: string;
+    },
   ): Promise<SignedDownload> {
+    const disposicion = disposicionSegura(
+      options?.disposition,
+      options?.contentType,
+    );
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
       ...(options?.fileName
         ? {
-            ResponseContentDisposition: contentDisposition(options.fileName),
+            ResponseContentDisposition: contentDisposition(
+              options.fileName,
+              disposicion,
+            ),
           }
+        : {}),
+      ...(disposicion === 'inline' && options?.contentType
+        ? { ResponseContentType: options.contentType.split(';')[0].trim() }
         : {}),
     });
     let expiresAt = new Date(Date.now() + this.signedUrlTtlSeconds * 1000);

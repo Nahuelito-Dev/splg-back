@@ -22,7 +22,7 @@ const DESTINO: DestinoDeFoto = {
 
 /**
  * Foto de la incidencia: la sube quien la reportó (el chofer) o un admin de
- * la distribuidora. `photo_url` (URL externa de antes) queda como respaldo.
+ * la distribuidora.
  */
 @Injectable()
 export class IncidentPhotoService {
@@ -100,7 +100,7 @@ export class IncidentPhotoService {
     distributorId: string | null,
   ): Promise<EnlaceDeFoto> {
     const incident = await this.cargar(id, user, distributorId);
-    return this.fotos.enlace(incident.photoKey, incident.photoUrl);
+    return this.fotos.enlace(incident.photoKey);
   }
 
   private async recargar(

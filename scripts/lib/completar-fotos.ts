@@ -8,7 +8,11 @@
  */
 import { randomUUID } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import { FiguraDemo, generarImagenDemo } from './imagenes-demo';
+import {
+  FiguraDemo,
+  generarImagenDemo,
+  VARIANTES_DE_PERSONA,
+} from './imagenes-demo';
 
 /** Lo que el script necesita del almacenamiento (lo cumplen S3Service y un doble en tests). */
 export interface AlmacenDeFotos {
@@ -37,12 +41,46 @@ export interface TablaDeFotos {
   columnaUrl?: string;
   /** Columna que filtra por distribuidora. */
   columnaDistribuidora: string;
+  /**
+   * Condición SQL (con `$1` = id de la distribuidora) que reemplaza a
+   * `columnaDistribuidora = $1` cuando la tabla no tiene esa columna (los
+   * usuarios pertenecen a la distribuidora por su rol o sus pedidos).
+   */
+  condicion?: string;
   /** Condición extra (filas dadas de baja). */
   filtro?: string;
+  /** Si la foto es de una persona, el color sale de su id (estable entre corridas). */
+  colorPorId?: boolean;
   figura: FiguraDemo;
   /** Prefijo de la key, sin barra final (misma convención que la app). */
   carpeta: (distribuidoraId: string, id: string) => string;
 }
+
+/**
+ * Los usuarios que son **sólo** de la distribuidora (`$1`): sus choferes, sus
+ * admins, los clientes que le compraron y las personas con legajo y cuenta
+ * (misma pertenencia que `common/tenancy/pertenencia.ts`), siempre que no
+ * tengan ningún vínculo con otra distribuidora. Un cliente compartido (que
+ * también compró en otra) queda afuera: la foto es del usuario y se vería en
+ * las dos, así que no se la inventamos desde la demo.
+ */
+export const USUARIOS_DE_LA_DISTRIBUIDORA = `"user_id" IN (
+    SELECT user_id FROM delivery WHERE distributor_id = $1
+    UNION SELECT a.user_id FROM admin a
+          JOIN "user" u ON u.user_id = a.user_id
+          JOIN role r ON r.role_id = u.role_id
+         WHERE a.distributor_id = $1 AND r.type = 'admin'
+    UNION SELECT customer_id FROM "order" WHERE distributor_id = $1
+    UNION SELECT user_id FROM employee
+         WHERE distributor_id = $1 AND user_id IS NOT NULL)
+  AND NOT EXISTS (SELECT 1 FROM "order" o
+                   WHERE o.customer_id = "user".user_id AND o.distributor_id <> $1)
+  AND NOT EXISTS (SELECT 1 FROM delivery d
+                   WHERE d.user_id = "user".user_id AND d.distributor_id <> $1)
+  AND NOT EXISTS (SELECT 1 FROM admin a2
+                   WHERE a2.user_id = "user".user_id AND a2.distributor_id <> $1)
+  AND NOT EXISTS (SELECT 1 FROM employee e
+                   WHERE e.user_id = "user".user_id AND e.distributor_id <> $1)`;
 
 export const TABLAS_DE_FOTOS: readonly TablaDeFotos[] = [
   {
@@ -95,6 +133,30 @@ export const TABLAS_DE_FOTOS: readonly TablaDeFotos[] = [
     figura: 'logo',
     carpeta: (d) => `distributors/${d}/logo`,
   },
+  {
+    nombre: 'user (sólo de esta distribuidora)',
+    tabla: 'user',
+    columnaId: 'user_id',
+    columnaKey: 'photo_key',
+    columnaDistribuidora: 'distributor_id',
+    condicion: USUARIOS_DE_LA_DISTRIBUIDORA,
+    filtro: '"deletedAt" IS NULL',
+    figura: 'persona',
+    colorPorId: true,
+    carpeta: (_d, id) => `users/${id}`,
+  },
+  {
+    // Con cuenta, la foto del legajo es la del usuario (ver la tabla anterior).
+    nombre: 'employee (legajos sin cuenta)',
+    tabla: 'employee',
+    columnaId: 'employee_id',
+    columnaKey: 'photo_key',
+    columnaDistribuidora: 'distributor_id',
+    filtro: '"deletedAt" IS NULL AND "user_id" IS NULL',
+    figura: 'persona',
+    colorPorId: true,
+    carpeta: (d, id) => `employees/${d}/${id}`,
+  },
 ];
 
 export type Motivo = 'sin foto' | 'URL externa' | 'key rota';
@@ -121,6 +183,13 @@ export interface OpcionesDeCompletado {
   dryRun?: boolean;
   /** Para informar cada error de subida; por defecto no hace nada. */
   alFallar?: (tabla: string, id: string, error: unknown) => void;
+}
+
+/** Número estable (0..n-1) a partir de un id: el mismo id siempre da el mismo color. */
+export function varianteDeId(id: string, n: number): number {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % n;
 }
 
 const esHttp = (valor: string): boolean => /^https?:\/\//i.test(valor.trim());
@@ -159,7 +228,7 @@ async function filasDe(
   const filas: unknown = await ds.query(
     `SELECT "${t.columnaId}" AS id, "${t.columnaKey}" AS key, ${url} AS url
        FROM "${t.tabla}"
-      WHERE "${t.columnaDistribuidora}" = $1 ${t.filtro ? `AND ${t.filtro}` : ''}
+      WHERE ${t.condicion ?? `"${t.columnaDistribuidora}" = $1`} ${t.filtro ? `AND ${t.filtro}` : ''}
       ORDER BY "${t.columnaId}"`,
     [distribuidoraId],
   );
@@ -214,7 +283,12 @@ export async function completarFotos(
         await reservas.reserveUpload(key);
         await almacen.put({
           key,
-          body: generarImagenDemo({ figura: t.figura, variante }),
+          body: generarImagenDemo({
+            figura: t.figura,
+            variante: t.colorPorId
+              ? varianteDeId(fila.id, VARIANTES_DE_PERSONA)
+              : variante,
+          }),
           contentType: 'image/png',
         });
         await ds.transaction(async (manager) => {
@@ -245,11 +319,11 @@ export function formatearResumen(
 ): string {
   const cabecera = dryRun ? 'a subir' : 'subidas';
   const lineas = [
-    `${'tabla'.padEnd(28)} ${cabecera.padStart(8)} ${'ya bien'.padStart(8)} ${'omitidas'.padStart(9)} ${'fallidas'.padStart(9)}`,
+    `${'tabla'.padEnd(36)} ${cabecera.padStart(8)} ${'ya bien'.padStart(8)} ${'omitidas'.padStart(9)} ${'fallidas'.padStart(9)}`,
   ];
   for (const r of resumenes) {
     lineas.push(
-      `${r.nombre.padEnd(28)} ${String(r.subidas).padStart(8)} ${String(r.yaEstabanBien).padStart(8)} ${String(r.omitidas).padStart(9)} ${String(r.fallidas).padStart(9)}`,
+      `${r.nombre.padEnd(36)} ${String(r.subidas).padStart(8)} ${String(r.yaEstabanBien).padStart(8)} ${String(r.omitidas).padStart(9)} ${String(r.fallidas).padStart(9)}`,
     );
   }
   return lineas.join('\n');

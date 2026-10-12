@@ -11,9 +11,8 @@ export class DistributorMapper {
     dto.tax_id = d.taxId;
     dto.email = d.email;
     dto.phone = d.phone;
-    // `logo_url` es sólo el texto guardado (el que acepta el alta/edición);
-    // el logo de S3 sale aparte, firmado, en `photoUrl`.
-    dto.logo_url = d.logoUrl;
+    // `logo_url` es una columna legada: el logo sale sólo firmado, en `photoUrl`.
+    dto.logo_url = null;
     dto.photoUrl = d.photoSignedUrl ?? null;
     dto.status = d.status;
     dto.plan = d.plan;

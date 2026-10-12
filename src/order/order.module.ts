@@ -22,6 +22,7 @@ import { OrderRepositoryPort } from './domain/ports/order.repository.port';
 import { OrderTypeormRepository } from './infrastructure/order.typeorm.repository';
 import { CreateOrderUseCase } from './application/create-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
+import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ReleaseOrderUseCase } from './application/release-order.use-case';
@@ -40,6 +41,7 @@ import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.ad
 import { PaymentsModule } from '../payments/payments.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { StockModule } from '../stock/stock.module';
+import { S3Module } from '../s3/s3.module';
 import { NotificationPort } from './domain/ports/notification.port';
 import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
@@ -59,6 +61,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
       RouteBatchStop,
       RouteBatchOffer,
     ]),
+    S3Module, // foto firmada del chofer en el tracking
     GasCylinderModule, // catálogo: reserva y devolución de stock
     DeliveryModule, // choferes: pertenencia, asignación y disponibles
     CustomersModule, // el cliente del pedido tiene que existir
@@ -83,6 +86,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CreateOrderUseCase,
     UpdateOrderUseCase,
     UpdateOrderStatusUseCase,
+    OrderDriverPhotoService,
     CancelOrderUseCase,
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,

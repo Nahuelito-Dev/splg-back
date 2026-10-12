@@ -21,7 +21,12 @@ export function FechaCalendarioOpcional(
 ): PropertyDecorator {
   return applyDecorators(
     VacioANulo(valorVacio),
-    ApiPropertyOptional({ example: ejemplo, format: 'date', nullable: true }),
+    ApiPropertyOptional({
+      type: String,
+      example: ejemplo,
+      format: 'date',
+      nullable: true,
+    }),
     IsOptional(),
     Matches(SOLO_FECHA, { message: MENSAJE }),
     IsISO8601({ strict: true }, { message: MENSAJE }),

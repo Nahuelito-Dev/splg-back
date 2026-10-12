@@ -120,6 +120,9 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         onOrderDelivered: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('../domain/ports/stock-delivery.port').StockDeliveryPort,
+      {
+        urlDe: jest.fn().mockResolvedValue(null),
+      } as unknown as import('../../s3/entity-photo.service').EntityPhotoService,
     );
     return { order, queryRunner, queryBuilder };
   };

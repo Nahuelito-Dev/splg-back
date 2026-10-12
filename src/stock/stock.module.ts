@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
+import { AttachmentModule } from '../attachment/attachment.module';
 import { CarModule } from '../car/car.module';
 import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
 import { EmailModule } from '../email/email.module';
@@ -13,6 +14,7 @@ import { InitialCountUseCase } from './application/initial-count.use-case';
 import { ReapplyDeliveriesUseCase } from './application/reapply-deliveries.use-case';
 import { ReverseBatchUseCase } from './application/reverse-batch.use-case';
 import { StockAdjustmentUseCase } from './application/stock-adjustment.use-case';
+import { StockAdjustmentAttachmentOwnerResolver } from './application/stock-adjustment-attachment-owner.resolver';
 import { StockAdminNotifier } from './application/stock-admin-notifier.service';
 import { StockDeliveryService } from './application/stock-delivery.service';
 import { StockLedgerService } from './application/stock-ledger.service';
@@ -66,6 +68,7 @@ import { WarehouseController } from './presentation/warehouse.controller';
     OrderLookupModule, // reservado por pedidos abiertos y entregas
     AdminModule, // a quién avisar
     EmailModule, // cómo avisar
+    AttachmentModule, // dueño `stock_adjustment` de los adjuntos
   ],
   controllers: [WarehouseController, StockController, CatalogStockController],
   providers: [
@@ -85,6 +88,7 @@ import { WarehouseController } from './presentation/warehouse.controller';
     ReapplyDeliveriesUseCase,
     ReconciliationAdjustmentUseCase,
     CatalogStockAdjustmentUseCase,
+    StockAdjustmentAttachmentOwnerResolver,
     StockAdminNotifier,
     StockLowCron,
     StockReconciliationCron,

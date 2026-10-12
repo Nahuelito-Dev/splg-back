@@ -168,6 +168,58 @@ describe('completar fotos de la demo (e2e)', () => {
     ];
     ids.car = [await insertar('car', { distributor_id: distId })];
 
+    // Personas: chofer, admin, cliente (por un pedido) y alguien ajeno.
+    const rolAdmin = await insertar('role', { type: 'admin' });
+    const usuario = (valores: Record<string, unknown> = {}) =>
+      insertar('user', { full_name: 'Persona', ...valores });
+    ids.chofer = [await usuario()];
+    ids.admin = [await usuario({ role_id: rolAdmin })];
+    ids.cliente = [await usuario()];
+    ids.ajeno = [await usuario()];
+    ids.conFoto = [await usuario()];
+    await insertar('delivery', {
+      distributor_id: distId,
+      user_id: ids.chofer[0],
+    });
+    await insertar('admin', { distributor_id: distId, user_id: ids.admin[0] });
+    await insertar('order', {
+      distributor_id: distId,
+      customer_id: ids.cliente[0],
+    });
+    await insertar('order', {
+      distributor_id: distId,
+      customer_id: ids.conFoto[0],
+    });
+    // Un cliente compartido: también le compró a otra distribuidora.
+    const otraDist = await insertar('distributor', { slug: 'otra-demo' });
+    ids.compartido = [await usuario()];
+    await insertar('order', {
+      distributor_id: distId,
+      customer_id: ids.compartido[0],
+    });
+    await insertar('order', {
+      distributor_id: otraDist,
+      customer_id: ids.compartido[0],
+    });
+    // Legajos: uno sin cuenta (lleva foto propia) y uno con cuenta (vale la del usuario).
+    ids.employee = [
+      await insertar('employee', { distributor_id: distId }),
+      await insertar('employee', {
+        distributor_id: distId,
+        user_id: ids.chofer[0],
+      }),
+    ];
+    const fotoDeUsuario = `users/${ids.conFoto[0]}/propia.png`;
+    await almacen.put({
+      key: fotoDeUsuario,
+      body: Buffer.from('png'),
+      contentType: 'image/png',
+    });
+    await ds.query(`UPDATE "user" SET photo_key = $1 WHERE user_id = $2`, [
+      fotoDeUsuario,
+      ids.conFoto[0],
+    ]);
+
     // Un producto con foto buena y un vehículo con key rota.
     const buena = `gascylinders/${distId}/${ids.gas_cylinder[1]}/buena.png`;
     await almacen.put({
@@ -201,6 +253,11 @@ describe('completar fotos de la demo (e2e)', () => {
     ).toEqual(['URL externa', 'sin foto']);
     expect(porNombre(r, 'car').detalle[0].motivo).toBe('key rota');
     expect(porNombre(r, 'gas_cylinder').yaEstabanBien).toBe(1);
+    expect(porNombre(r, 'user')).toMatchObject({
+      subidas: 3,
+      yaEstabanBien: 1,
+    });
+    expect(porNombre(r, 'employee').subidas).toBe(1);
     expect(puts).toHaveLength(0);
     const [c] = await consultar<{ photo_key: string | null }>(
       `SELECT photo_key FROM claims WHERE claim_id = $1`,
@@ -219,7 +276,36 @@ describe('completar fotos de la demo (e2e)', () => {
     });
     expect(porNombre(r, 'car').subidas).toBe(1);
     expect(porNombre(r, 'distributor').subidas).toBe(1);
-    expect(puts).toHaveLength(6);
+    expect(porNombre(r, 'user')).toMatchObject({
+      subidas: 3,
+      yaEstabanBien: 1,
+    });
+    expect(porNombre(r, 'employee').subidas).toBe(1);
+    expect(puts).toHaveLength(10);
+
+    // Chofer, admin y cliente tienen avatar; el ajeno no; el que ya tenía, la suya.
+    const fotos = await consultar<{ id: string; k: string | null }>(
+      `SELECT user_id AS id, photo_key AS k FROM "user"`,
+    );
+    const keyDe = (id: string) => fotos.find((f) => f.id === id)?.k ?? null;
+    for (const id of [ids.chofer[0], ids.admin[0], ids.cliente[0]]) {
+      expect(keyDe(id)).toMatch(
+        new RegExp(`^users/${id}/[0-9a-f-]{36}\\.png$`),
+      );
+      expect(await existeEnBucket(keyDe(id)!)).toBe(true);
+    }
+    expect(keyDe(ids.ajeno[0])).toBeNull();
+    expect(keyDe(ids.compartido[0])).toBeNull();
+    expect(keyDe(ids.conFoto[0])).toBe(`users/${ids.conFoto[0]}/propia.png`);
+
+    // El legajo sin cuenta lleva foto; el que tiene cuenta, no (vale la del usuario).
+    const legajos = await consultar<{ id: string; k: string | null }>(
+      `SELECT employee_id AS id, photo_key AS k FROM employee`,
+    );
+    expect(legajos.find((l) => l.id === ids.employee[0])?.k).toContain(
+      `employees/${distId}/${ids.employee[0]}/`,
+    );
+    expect(legajos.find((l) => l.id === ids.employee[1])?.k).toBeNull();
 
     const [reclamo] = await consultar<{ k: string; u: string | null }>(
       `SELECT photo_key AS k, "photoUrl" AS u FROM claims WHERE claim_id = $1`,

@@ -229,8 +229,8 @@ export class IncidentController {
   @ApiOperation({
     summary: 'Sacar la foto de una incidencia',
     description:
-      'Quita la referencia (el objeto se borra del bucket en segundo plano); ' +
-      'si traía una `photo_url` externa, vuelve a valer. Mismos permisos que subirla.',
+      'Quita la referencia (el objeto se borra del bucket en segundo plano). ' +
+      'Mismos permisos que subirla.',
   })
   @ApiParam({ name: 'id', description: 'Incident UUID' })
   @ApiOkResponse({ type: IncidentResponseDto })

@@ -14,7 +14,7 @@ export class IncidentResponseDto {
     type: String,
     nullable: true,
     description:
-      'Foto: URL firmada de S3 si se subió una (vence), si no la URL externa que traía.',
+      'URL firmada de la foto en S3 (vence en minutos), o `null` si no tiene.',
   })
   photo_url!: string | null;
   @ApiProperty({ enum: IncidentStatus }) status!: IncidentStatus;

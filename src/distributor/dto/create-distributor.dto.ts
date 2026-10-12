@@ -49,11 +49,6 @@ export class CreateDistributorDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  logo_url?: string;
-
   @ApiPropertyOptional({ enum: DistributorStatus })
   @IsOptional()
   @IsEnum(DistributorStatus, {

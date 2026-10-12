@@ -4,7 +4,6 @@ import {
   NotFoundException,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -19,16 +18,12 @@ import type { Response } from 'express';
 import { DownloadMode } from './dto/download-link.dto';
 import { aEnlaceDeDescarga } from './download-link';
 import { PhotoLinkResponseDto } from './dto/photo-link.dto';
-import { EnlaceDeFoto, MAX_FOTO_BYTES } from './entity-photo.service';
+import { EnlaceDeFoto } from './entity-photo.service';
+import { archivoConTope, MAX_FOTO_BYTES } from './upload-limits';
 
-/**
- * Recibe el campo multipart `file`. El tope técnico va por arriba del límite
- * de negocio (el 413 documentado lo da `EntityPhotoService`): sólo frena abusos.
- */
+/** Recibe el campo multipart `file`, con el tope de 5 MB aplicado en multer (413). */
 export function SubirFotoInterceptor(): MethodDecorator {
-  return UseInterceptors(
-    FileInterceptor('file', { limits: { fileSize: MAX_FOTO_BYTES * 2 } }),
-  );
+  return UseInterceptors(archivoConTope(MAX_FOTO_BYTES, 'foto'));
 }
 
 /** Swagger de `PUT .../photo`: multipart, formatos, tope y errores. */
@@ -72,7 +67,7 @@ export function ApiVerFoto(resumen: string): MethodDecorator {
     ApiOperation({
       summary: resumen,
       description:
-        'Por defecto redirige (302) a la URL firmada de S3 (una URL externa nunca se redirige: va en JSON). Con `?modo=url` ' +
+        'Por defecto redirige (302) a la URL firmada de S3. Con `?modo=url` ' +
         'devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin redirect; si ' +
         'no tiene foto, `url: null`.',
     }),
@@ -86,21 +81,20 @@ export function ApiVerFoto(resumen: string): MethodDecorator {
 
 /**
  * Responde `GET .../photo`: JSON con `?modo=url`, redirect 302 a la URL firmada
- * si no. La URL externa (la eligió quien reportó) nunca se redirige: se
- * devuelve en JSON para que no sirva de open redirect.
+ * si no. Sólo se sirven fotos del bucket: nunca una URL de texto.
  */
 export function responderFoto(
   res: Response,
   modo: DownloadMode | undefined,
   enlace: EnlaceDeFoto,
 ): void {
-  if (modo === DownloadMode.URL || enlace.kind === 'external') {
+  if (modo === DownloadMode.URL) {
     if (enlace.kind === 'stored') {
       res.json(aEnlaceDeDescarga(enlace.signed));
       return;
     }
     const dto = new PhotoLinkResponseDto();
-    dto.url = enlace.kind === 'external' ? enlace.url : null;
+    dto.url = null;
     dto.expiresAt = null;
     dto.requiresAuth = false;
     res.json(dto);

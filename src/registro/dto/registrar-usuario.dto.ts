@@ -77,11 +77,6 @@ export class RegistrarUsuarioDto extends RegistrarClienteDto {
   @IsUUID()
   distributorId?: string;
 
-  @ApiPropertyOptional({ description: 'URL de la foto del usuario' })
-  @IsOptional()
-  @IsString()
-  selfie?: string;
-
   @ApiPropertyOptional({
     description:
       'Chofer ya validado por el administrador. Los clientes no se validan: se registran y compran',

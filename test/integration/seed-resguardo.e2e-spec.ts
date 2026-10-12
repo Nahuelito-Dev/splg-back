@@ -1,4 +1,8 @@
-import { resguardoDeProduccion } from '../../scripts/lib/resguardo-de-produccion';
+import { s3DelSeedHabilitado } from '../../scripts/lib/storage-demo';
+import {
+  purgaS3Habilitada,
+  resguardoDeProduccion,
+} from '../../scripts/lib/resguardo-de-produccion';
 
 describe('resguardo del seed de demostración', () => {
   it.each([
@@ -23,5 +27,31 @@ describe('resguardo del seed de demostración', () => {
         SEED_ALLOW_PRODUCTION: 'true',
       }),
     ).not.toThrow();
+  });
+});
+
+describe('purga de S3 del seed de demostración', () => {
+  it.each([[{}], [{ SEED_PURGE_S3: '0' }], [{ SEED_PURGE_S3: 'true' }]])(
+    'no borra objetos con %j',
+    (env) => {
+      expect(purgaS3Habilitada(env)).toBe(false);
+    },
+  );
+
+  it('borra sólo con SEED_PURGE_S3=1', () => {
+    expect(purgaS3Habilitada({ SEED_PURGE_S3: '1' })).toBe(true);
+  });
+});
+
+describe('acceso a S3 de los seeds', () => {
+  it.each([[{}], [{ SEED_S3: '0' }], [{ SEED_S3: 'true' }]])(
+    'no toca S3 con %j',
+    (env) => {
+      expect(s3DelSeedHabilitado(env)).toBe(false);
+    },
+  );
+
+  it('toca S3 sólo con SEED_S3=1', () => {
+    expect(s3DelSeedHabilitado({ SEED_S3: '1' })).toBe(true);
   });
 });

@@ -14,7 +14,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import {
   ApiBadRequestResponse,
@@ -45,9 +44,10 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 import {
   DownloadLinkResponseDto,
   DownloadMode,
-  DownloadQueryDto,
+  DownloadAttachmentQueryDto,
 } from '../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../s3/download-link';
+import { archivoConTope } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 const OWNER_TYPE_PARAM = {
@@ -101,13 +101,7 @@ export class AttachmentController {
   @ApiPayloadTooLargeResponse({
     description: 'El archivo supera el máximo permitido',
   })
-  @UseInterceptors(
-    FileInterceptor('file', {
-      // Techo técnico por arriba del límite de negocio (el 413 documentado lo
-      // da AttachmentService): sólo una salvaguarda contra abuso.
-      limits: { fileSize: MAX_ATTACHMENT_SIZE_BYTES * 2 },
-    }),
-  )
+  @UseInterceptors(archivoConTope(MAX_ATTACHMENT_SIZE_BYTES, 'archivo'))
   async upload(
     @Param('ownerType', new ParseEnumPipe(AttachmentOwnerType))
     ownerType: AttachmentOwnerType,
@@ -135,7 +129,8 @@ export class AttachmentController {
     summary: 'Descargar un adjunto',
     description:
       'Por defecto devuelve el archivo: redirige (302) a una URL firmada de ' +
-      'S3. Con `?modo=url` ' +
+      'S3. Con `?disposicion=inline` el navegador lo muestra en vez de bajarlo ' +
+      '(sólo PDF e imágenes; HTML, SVG y demás se entregan siempre como descarga). Con `?modo=url` ' +
       'devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin redirect: es lo que tiene ' +
       'que usar el panel (un 302 cross-origin pierde el token y choca con CORS).',
   })
@@ -152,7 +147,7 @@ export class AttachmentController {
   @ApiNotFoundResponse({ description: 'Adjunto no encontrado' })
   async download(
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
-    @Query() query: DownloadQueryDto,
+    @Query() query: DownloadAttachmentQueryDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
@@ -164,6 +159,7 @@ export class AttachmentController {
         attachmentId,
         distributorId,
         actor,
+        query.disposicion,
       );
       res.json(aEnlaceDeDescarga(signed));
       return;
@@ -173,6 +169,7 @@ export class AttachmentController {
       attachmentId,
       distributorId,
       actor,
+      query.disposicion,
     );
     res.redirect(HttpStatus.FOUND, url);
   }

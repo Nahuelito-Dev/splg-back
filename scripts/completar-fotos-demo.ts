@@ -4,10 +4,14 @@
  *   npm run fotos:demo             sube y guarda las fotos que faltan
  *   npm run fotos:demo -- --dry-run   lista qué haría, sin escribir
  *
- * Deja con foto en S3 a los reclamos, incidencias, productos, vehículos y al
- * logo de la distribuidora que hoy tienen una URL externa, una key rota (el
- * objeto no existe en el bucket) o ninguna foto. Es idempotente: una segunda
- * corrida no sube nada. No toca usuarios, choferes ni legajos.
+ * Deja con foto en S3 a los reclamos, incidencias, productos, vehículos, al
+ * logo de la distribuidora, a sus usuarios (admins, choferes y clientes) y a
+ * los legajos sin cuenta que hoy tienen una URL externa, una key rota (el
+ * objeto no existe en el bucket) o ninguna foto. Las personas reciben un
+ * avatar generado en código (silueta de un color por persona). Es idempotente:
+ * una segunda corrida no sube nada, y las fotos que ya existen no se tocan.
+ *
+ * Exige `SEED_S3=1`: sin esa bandera avisa y no toca S3.
  *
  * Variables: las de la base (`DB_*`), las del bucket (`AWS_*`) y
  * `SEED_DISTRIBUTOR` (slug, por defecto `demo`). Se niega a correr contra
@@ -27,12 +31,20 @@ import {
   formatearResumen,
 } from './lib/completar-fotos';
 import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
+import { s3DelSeedHabilitado } from './lib/storage-demo';
 
 const SLUG = process.env.SEED_DISTRIBUTOR ?? 'demo';
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main(): Promise<void> {
   resguardoDeProduccion();
+  if (!s3DelSeedHabilitado()) {
+    console.warn(
+      '\nSin SEED_S3=1 este script no toca S3 (ni siquiera para mirar): no se hizo nada.\n' +
+        'Repetí con SEED_S3=1 (y confirmá que el .env apunta al bucket que querés).\n',
+    );
+    return;
+  }
 
   const config = new ConfigService();
   if (!config.get('AWS_S3_BUCKET') || !config.get('AWS_REGION')) {

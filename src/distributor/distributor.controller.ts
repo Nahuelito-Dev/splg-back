@@ -145,8 +145,7 @@ export class DistributorController {
     'Subir o reemplazar el logo de la distribuidora',
     DistributorResponseDto,
     'Un admin sólo el de su distribuidora; el super admin, el de cualquiera. ' +
-      'El logo sale en `photoUrl` (URL firmada); `logo_url` es sólo el texto ' +
-      'guardado, que el panel usa de respaldo.',
+      'El logo sale en `photoUrl` (URL firmada).',
   )
   @ApiParam({ name: 'id', description: 'Distributor UUID' })
   @SubirFotoInterceptor()
@@ -167,7 +166,7 @@ export class DistributorController {
     summary: 'Sacar el logo de la distribuidora',
     description:
       'Quita la referencia (el objeto se borra del bucket en segundo plano) y ' +
-      '`photoUrl` queda en null (vale el `logo_url` de texto, si tenía). No da de baja la distribuidora.',
+      '`photoUrl` queda en null. No da de baja la distribuidora.',
   })
   @ApiParam({ name: 'id', description: 'Distributor UUID' })
   @ApiOkResponse({ type: DistributorResponseDto })

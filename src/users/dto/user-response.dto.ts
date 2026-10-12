@@ -21,7 +21,13 @@ export class UserResponseDto {
   @ApiProperty({ type: String, nullable: true })
   full_name!: string | null;
 
-  @ApiProperty({ type: String, nullable: true })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    deprecated: true,
+    description:
+      'Obsoleto: siempre `null`. La foto de perfil es `photoUrl` (URL firmada de S3).',
+  })
   selfie!: string | null;
 
   @ApiProperty({

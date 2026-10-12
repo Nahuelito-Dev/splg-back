@@ -14,7 +14,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import {
   ApiBadRequestResponse,
@@ -49,9 +48,10 @@ import { ApiTotal, informarTotal } from '../common/http/total';
 import {
   DownloadLinkResponseDto,
   DownloadMode,
-  DownloadQueryDto,
+  DownloadAttachmentQueryDto,
 } from '../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../s3/download-link';
+import { archivoConTope } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 /**
@@ -186,14 +186,7 @@ export class FleetTaskController {
   @ApiPayloadTooLargeResponse({
     description: 'El archivo supera el máximo permitido',
   })
-  @UseInterceptors(
-    FileInterceptor('file', {
-      // Techo técnico por arriba del límite de negocio (ver
-      // MAX_ATTACHMENT_SIZE_BYTES en FleetAttachmentService, que da el 413
-      // documentado): esto es sólo una salvaguarda contra abuso.
-      limits: { fileSize: MAX_ATTACHMENT_SIZE_BYTES * 2 },
-    }),
-  )
+  @UseInterceptors(archivoConTope(MAX_ATTACHMENT_SIZE_BYTES, 'archivo'))
   async uploadAttachment(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -223,7 +216,8 @@ export class FleetTaskController {
     summary: 'Descargar un adjunto',
     description:
       'Por defecto devuelve el archivo: redirige (302) a una URL firmada de ' +
-      'S3. Con `?modo=url` ' +
+      'S3. Con `?disposicion=inline` el navegador lo muestra en vez de bajarlo ' +
+      '(sólo PDF e imágenes; HTML, SVG y demás se entregan siempre como descarga). Con `?modo=url` ' +
       'devuelve `{ url, expiresAt, requiresAuth }` en JSON, sin redirect: es lo que tiene ' +
       'que usar el panel (un 302 cross-origin pierde el token y choca con CORS).',
   })
@@ -242,7 +236,7 @@ export class FleetTaskController {
   async downloadAttachment(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
-    @Query() query: DownloadQueryDto,
+    @Query() query: DownloadAttachmentQueryDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -251,6 +245,7 @@ export class FleetTaskController {
         id,
         attachmentId,
         distributorId,
+        query.disposicion,
       );
       res.json(aEnlaceDeDescarga(signed));
       return;
@@ -260,6 +255,7 @@ export class FleetTaskController {
       id,
       attachmentId,
       distributorId,
+      query.disposicion,
     );
     res.redirect(HttpStatus.FOUND, url);
   }

@@ -110,7 +110,6 @@ export class RegistroService {
           email,
           fullName: datos.full_name,
           phoneNumber: datos.phone_number,
-          selfie: datos.selfie,
           firebaseUid: cuenta.uid,
           roleId: rol.roleId,
         });

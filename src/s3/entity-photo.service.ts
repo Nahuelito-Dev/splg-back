@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'crypto';
 import { DataSource, EntityTarget, ObjectLiteral } from 'typeorm';
 import { S3Service, SignedDownload } from './s3.service';
+import { MAX_FOTO_BYTES } from './upload-limits';
 import { S3CleanupService } from './s3-cleanup.service';
 import { errorMessage } from '../common/errors/error-message';
 import {
@@ -17,9 +18,7 @@ import {
   firmaCoincideConMimeType,
 } from '../common/utils/attachment-rules';
 
-/** 5 MB: tope de las fotos de perfil, vehículo, producto, logo e incidencia. */
-export const MAX_FOTO_BYTES = 5 * 1024 * 1024;
-
+export { MAX_FOTO_BYTES };
 /**
  * Dónde vive la foto de una entidad: la entidad, la propiedad de su
  * identificador y la propiedad que guarda la key del objeto en el bucket
@@ -55,22 +54,7 @@ export interface ImagenValida {
 /** El enlace a la foto para `?modo=url`. */
 export type EnlaceDeFoto =
   | { kind: 'none' }
-  | { kind: 'external'; url: string }
   | { kind: 'stored'; signed: SignedDownload };
-
-/**
- * La URL externa que algunas entidades traían antes de S3 sólo se sirve si es
- * http(s): nunca un `javascript:` ni un texto cualquiera.
- */
-export function esUrlHttp(url: string | null | undefined): url is string {
-  if (!url) return false;
-  try {
-    const { protocol } = new URL(url);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Lo común de las fotos de entidades (patrón de la foto del reclamo): validar
@@ -216,19 +200,12 @@ export class EntityPhotoService {
     );
   }
 
-  /** El enlace para `?modo=url` o el redirect; `externa` es la URL vieja, si la entidad la traía. */
-  async enlace(
-    key: string | null | undefined,
-    externa?: string | null,
-  ): Promise<EnlaceDeFoto> {
-    if (key) {
-      return {
-        kind: 'stored',
-        signed: await this.storage.getSignedDownload(key),
-      };
-    }
-    return esUrlHttp(externa)
-      ? { kind: 'external', url: externa }
-      : { kind: 'none' };
+  /** El enlace para `?modo=url` o el redirect: la foto firmada, o nada. */
+  async enlace(key: string | null | undefined): Promise<EnlaceDeFoto> {
+    if (!key) return { kind: 'none' };
+    return {
+      kind: 'stored',
+      signed: await this.storage.getSignedDownload(key),
+    };
   }
 }
