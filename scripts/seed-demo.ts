@@ -32,6 +32,7 @@ import {
   purgaS3Habilitada,
   resguardoDeProduccion,
 } from './lib/resguardo-de-produccion';
+import { sembrarCompras } from './lib/purchase-demo';
 import { limpiarStock, sembrarFisico } from './lib/stock-demo';
 import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
 
@@ -291,7 +292,15 @@ const ds = new DataSource({
 const resumen: Array<[string, number]> = [];
 
 /** S3 (o MinIO) para las fotos de ejemplo; `null` si el entorno no lo configura. */
-const almacen: AlmacenDemo | null = crearAlmacenDemo();
+// Subir o borrar en el bucket es destructivo si la base es una copia de otra
+// (los ids apuntan a los mismos objetos): sólo con la bandera explícita.
+const almacen: AlmacenDemo | null =
+  process.env.SEED_S3 === '1' ? crearAlmacenDemo() : null;
+if (process.env.SEED_S3 !== '1') {
+  console.log(
+    '  · S3 apagado: el seed no sube ni borra archivos (SEED_S3=1 para usarlo)',
+  );
+}
 let fotosSubidas = 0;
 
 /**
@@ -567,6 +576,10 @@ async function main() {
   resumen.push([
     'stock físico (productos con saldo inicial)',
     await sembrarFisico(ds, distId),
+  ]);
+  resumen.push([
+    'compras (2 proveedores, 1 orden recibida; garrafas compradas)',
+    await sembrarCompras(ds, distId),
   ]);
 
   imprimirResumen();

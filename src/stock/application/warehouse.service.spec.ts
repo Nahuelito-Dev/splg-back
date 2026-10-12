@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Warehouse } from '../entities/warehouse.entity';
 import { StockLocation } from '../entities/stock-location.entity';
@@ -202,6 +206,35 @@ describe('WarehouseService', () => {
       const sql = query.mock.calls[0][0];
       expect(sql).toMatch(/ORDER BY "warehouse_id"\s+FOR UPDATE/);
       expect(query.mock.calls[0][1]).toEqual([DIST, 'w1']);
+    });
+
+    it('un depósito inactivo no puede ser el predeterminado (ni al marcarlo ni junto con desactivarlo)', async () => {
+      const inactivo = armar({
+        warehouse: deposito({ isDefault: false, isActive: false }),
+        defaults: [deposito({ warehouseId: 'w0', isDefault: true })],
+      });
+      await expect(
+        inactivo.service.update('w1', { isDefault: true }, DIST),
+      ).rejects.toThrow(/predeterminado no puede estar inactivo/);
+      const junto = armar({
+        warehouse: deposito({ isDefault: false }),
+        defaults: [deposito({ warehouseId: 'w0', isDefault: true })],
+      });
+      await expect(
+        junto.service.update('w1', { isDefault: true, isActive: false }, DIST),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      // activándolo en el mismo pedido sí se puede
+      const activando = armar({
+        warehouse: deposito({ isDefault: false, isActive: false }),
+        defaults: [deposito({ warehouseId: 'w0', isDefault: true })],
+      });
+      await expect(
+        activando.service.update(
+          'w1',
+          { isDefault: true, isActive: true },
+          DIST,
+        ),
+      ).resolves.toBeDefined();
     });
 
     it('no se le saca la marca ni se desactiva al predeterminado', async () => {

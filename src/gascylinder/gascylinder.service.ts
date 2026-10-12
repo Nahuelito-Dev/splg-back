@@ -402,6 +402,43 @@ export class GasCylinderService {
     }
   }
 
+  /** Costo promedio ponderado vigente del producto (`null` si nunca se compró). */
+  async costoPromedio(
+    manager: EntityManager,
+    distributorId: string,
+    gasCylinderId: string,
+  ): Promise<number | null> {
+    const filas: Array<{ average_unit_cost: string | null }> =
+      await manager.query(
+        `SELECT "average_unit_cost" FROM "gas_cylinder"
+         WHERE "gas_cylinder_id" = $1 AND "distributor_id" = $2`,
+        [gasCylinderId, distributorId],
+      );
+    if (filas.length === 0) throw new GasCylinderNotFoundError(gasCylinderId);
+    const costo = filas[0].average_unit_cost;
+    return costo === null ? null : Number(costo);
+  }
+
+  /**
+   * Fija el costo promedio ponderado. Lo llama la recepción de compras en la
+   * transacción donde ya tiene el lock de `gas_cylinder` (lo toma el ledger al
+   * subir las llenas).
+   */
+  async fijarCostoPromedio(
+    manager: EntityManager,
+    distributorId: string,
+    gasCylinderId: string,
+    costo: number | null,
+  ): Promise<void> {
+    const filas: unknown[] = await manager.query(
+      `UPDATE "gas_cylinder" SET "average_unit_cost" = $3
+       WHERE "gas_cylinder_id" = $1 AND "distributor_id" = $2
+       RETURNING 1`,
+      [gasCylinderId, distributorId, costo],
+    );
+    if (filas.length === 0) throw new GasCylinderNotFoundError(gasCylinderId);
+  }
+
   /**
    * Toma el lock de varios productos de una sola vez, siempre por id
    * ascendente. Una operación que primero devuelve y después reserva (la

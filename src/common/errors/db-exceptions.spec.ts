@@ -99,6 +99,15 @@ describe('traducirErrorDeBase', () => {
     ).toThrow(BadRequestException);
   });
 
+  it('22003 (valor numérico fuera de rango) es 400', () => {
+    expect(() =>
+      traducirErrorDeBase(
+        { code: '22003', message: 'numeric field overflow' },
+        logger,
+      ),
+    ).toThrow(BadRequestException);
+  });
+
   it('una excepción HTTP ya decidida no se pisa', () => {
     const original = new ConflictException('ya decidido');
     expect(() => traducirErrorDeBase(original, logger)).toThrow(original);

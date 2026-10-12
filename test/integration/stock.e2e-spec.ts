@@ -5,6 +5,7 @@
  * mismo saldo.
  */
 import { randomUUID } from 'crypto';
+import { codigoSqlDelError } from '../../src/common/errors/db-exceptions';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
@@ -65,6 +66,34 @@ interface Mensaje {
 /** El cuerpo de una respuesta de supertest, con el tipo que el test espera. */
 const cuerpo = <T>(res: { body: unknown }): T => res.body as T;
 type Headers = Record<string, string>;
+
+/**
+ * Cuenta los deadlocks (40P01) y fallas de serialización que
+ * `withTransactionRetry` reintenta en silencio: un test que los permitiera
+ * escondería un orden de locks roto.
+ */
+const mockReintentos = { n: 0 };
+jest.mock('../../src/common/utils/with-transaction-retry', () => {
+  const real = jest.requireActual<
+    typeof import('../../src/common/utils/with-transaction-retry')
+  >('../../src/common/utils/with-transaction-retry');
+  return {
+    ...real,
+    withTransactionRetry: <T>(
+      fn: () => Promise<T>,
+      options?: Parameters<typeof real.withTransactionRetry>[1],
+    ): Promise<T> =>
+      real.withTransactionRetry(async () => {
+        try {
+          return await fn();
+        } catch (error) {
+          const code = codigoSqlDelError(error);
+          if (code === '40P01' || code === '40001') mockReintentos.n += 1;
+          throw error;
+        }
+      }, options),
+  };
+});
 
 describe('Stock físico (e2e)', () => {
   let env: TestEnv;
@@ -884,6 +913,39 @@ describe('Stock físico (e2e)', () => {
   });
 
   describe('concurrencia sobre el mismo saldo', () => {
+    it('conteo inicial y ajuste simultáneos sobre el mismo depósito: sin deadlock ni reintentos', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      mockReintentos.n = 0;
+      // Cada depósito admite un solo conteo inicial: una ronda por depósito.
+      const rondas = await Promise.all(
+        Array.from({ length: 12 }, async (_, i) => {
+          const res = await http()
+            .post('/warehouses')
+            .set(e.headers)
+            .send({ name: `Depósito ${i}`, code: `D${i}` })
+            .expect(201);
+          return cuerpo<Deposito>(res);
+        }),
+      );
+      const respuestas = await Promise.all(
+        rondas.flatMap((d) => [
+          http()
+            .post('/stock/initial-counts')
+            .set(e.headers)
+            .send({
+              warehouseId: d.warehouseId,
+              items: [{ gasCylinderId: g.gasCylinderId, full: 5, empty: 0 }],
+            }),
+          ajuste(e.headers, { warehouseId: d.warehouseId }, g, 'found', 1),
+        ]),
+      );
+      expect(respuestas.map((r) => r.status)).toEqual(
+        Array.from({ length: 24 }, () => 201),
+      );
+      expect(mockReintentos.n).toBe(0);
+    }, 90000);
+
     it('dos ajustes simultáneos que juntos no entran: uno gana, el otro es 400, nunca negativo', async () => {
       const e = await seedDistribuidora();
       const g = await seedGarrafa(e.distributorId);

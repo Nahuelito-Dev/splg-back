@@ -223,6 +223,39 @@ describe('StockDeliveryService (entrega de un pedido: D5 y D6)', () => {
     expect(r.aplicadas).toHaveLength(1);
   });
 
+  it('si un saldo se vació entre la lectura y el libro, reintenta releyendo: descuenta las que alcanzan y omite sólo la que no', async () => {
+    const { service, manager, ledger, query } = armar({
+      llenas: { [`${DEPOSITO}|${G1}`]: 5, [`${DEPOSITO}|${G2}`]: 5 },
+    });
+    // Entre el primer intento y el segundo, G2 se quedó sin saldo.
+    ledger.aplicar.mockImplementationOnce(() => {
+      query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes(`"reason" = 'delivery'`)
+            ? []
+            : [
+                { location_id: DEPOSITO, gas_cylinder_id: G1, quantity: 5 },
+                { location_id: DEPOSITO, gas_cylinder_id: G2, quantity: 0 },
+              ],
+        ),
+      );
+      return Promise.reject(new StockInsuficienteError([]));
+    });
+    const r = await service.registrarEntrega(
+      manager,
+      entrega(
+        [
+          { gasCylinderId: G1, quantity: 2 },
+          { gasCylinderId: G2, quantity: 2 },
+        ],
+        null,
+      ),
+    );
+    expect(ledger.aplicar).toHaveBeenCalledTimes(2);
+    expect(r.aplicadas).toEqual([{ gasCylinderId: G1, origen: 'deposito' }]);
+    expect(r.omitidas).toEqual([G2]);
+  });
+
   it('reintenta el savepoint ante un deadlock (40P01) y termina descontando', async () => {
     const { service, manager, ledger } = armar({
       llenas: { [`${CAMION}|${G1}`]: 5 },

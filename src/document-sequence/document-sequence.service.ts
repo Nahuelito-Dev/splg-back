@@ -4,6 +4,7 @@ import { EntityManager } from 'typeorm';
 /** Tipos de documento numerados. Cada módulo agrega el suyo al usarlo. */
 export enum DocType {
   PURCHASE_ORDER = 'purchase_order',
+  PURCHASE_RECEIPT = 'purchase_receipt',
   INTERNAL_DELIVERY_NOTE = 'internal_delivery_note',
   TRUCK_LOAD = 'truck_load',
   DRIVER_SETTLEMENT = 'driver_settlement',

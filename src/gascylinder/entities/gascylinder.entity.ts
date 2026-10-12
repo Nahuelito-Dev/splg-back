@@ -56,6 +56,17 @@ export class GasCylinder {
   @Column({ type: 'int', default: 0 })
   stock!: number;
 
+  /** Costo promedio ponderado de las llenas compradas; lo mantiene la recepción de compras. */
+  @Column({
+    name: 'average_unit_cost',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: columnNumericTransformer,
+  })
+  averageUnitCost!: number | null;
+
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 

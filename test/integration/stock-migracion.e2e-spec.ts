@@ -35,7 +35,12 @@ describe('Migración StockFisico (e2e)', () => {
     .filter((f) => f.endsWith('.ts'))
     .sort()
     .map((f) => join(dir, f));
-  const anteriores = todas.filter((f) => !/Stock(Fisico|Conciliacion)/.test(f));
+  // Las que van antes de StockFisico; las posteriores (conciliación, compras…)
+  // dependen de sus tablas y corren con `todas`.
+  const anteriores = todas.slice(
+    0,
+    todas.findIndex((f) => /StockFisico/.test(f)),
+  );
 
   // Escenario: distribuidora A con dos productos y pedidos en todos los
   // estados; distribuidora B con un producto sin stock.

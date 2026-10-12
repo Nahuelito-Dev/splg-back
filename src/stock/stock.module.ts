@@ -20,6 +20,7 @@ import { StockDeliveryService } from './application/stock-delivery.service';
 import { StockLedgerService } from './application/stock-ledger.service';
 import { StockLocationService } from './application/stock-location.service';
 import { StockLowCron } from './application/stock-low.cron';
+import { StockOnHandService } from './application/stock-on-hand.service';
 import { StockQueryService } from './application/stock-query.service';
 import { StockReconciliationCron } from './application/stock-reconciliation.cron';
 import { StockReconciliationService } from './application/stock-reconciliation.service';
@@ -79,6 +80,7 @@ import { WarehouseController } from './presentation/warehouse.controller';
     WarehouseService,
     StockLocationService,
     StockQueryService,
+    StockOnHandService,
     StockThresholdService,
     StockReconciliationService,
     StockAdjustmentUseCase,
@@ -100,6 +102,7 @@ import { WarehouseController } from './presentation/warehouse.controller';
     StockDeliveryPort,
     WarehouseService,
     StockLocationService,
+    StockOnHandService,
   ],
 })
 export class StockModule {}
