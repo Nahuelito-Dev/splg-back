@@ -1213,13 +1213,12 @@ describe('Fotos de entidades en S3 (e2e)', () => {
         .expect(200);
       const filas = vistaDelChofer.body as Cuerpo[];
       expect(filas).toHaveLength(2);
-      for (const f of filas) {
-        if (f.incident_id === propia.incidentId) {
-          expect(f.photo_url).toContain(BUCKET_DE_PRUEBA);
-        } else {
-          expect(f.photo_url).toBeNull();
-        }
-      }
+      const fotoPropia = filas.find((f) => f.incident_id === propia.incidentId);
+      const fotosAjenas = filas
+        .filter((f) => f.incident_id !== propia.incidentId)
+        .map((f) => f.photo_url);
+      expect(fotoPropia?.photo_url).toContain(BUCKET_DE_PRUEBA);
+      expect(fotosAjenas).toEqual([null]);
       const vistaAdmin = await http()
         .get(`/incidents/order/${propia.orderId}`)
         .set(admin1.headers)

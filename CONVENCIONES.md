@@ -215,6 +215,34 @@ un puerto que justifique otra cosa.
 - Un refactor no cambia comportamiento: la batería tiene que dar lo mismo antes
   y después, y **las respuestas tienen que conservar su forma**.
 
+### Reglas de Jest (las hace cumplir `npm run verify`)
+
+- **Cobertura con piso por módulo.** `verify` corre `jest --ci --coverage` y falla si
+  un módulo baja de su piso (`coverageThreshold` en `package.json`: una entrada por
+  carpeta de `src/` y `global` para lo que no tiene entrada propia). Los pisos son la
+  cobertura medida, redondeada hacia abajo: **sólo se suben**, nunca se bajan para
+  pasar el gate. Un módulo nuevo entra con su propia entrada. Sólo quedan fuera de la
+  cobertura `main.ts`, `data-source.ts`, `migrations/` y los `index.ts`; los
+  `*.module.ts` y `cli/` cuentan, porque tienen lógica (configuración de la base,
+  guardas del CLI).
+- Por eso `jest --coverage` sobre un solo archivo falla por los pisos de los demás
+  módulos: para correr un archivo suelto se usa `npx jest <archivo>` sin cobertura.
+- **Mocks limpios entre tests** en los unitarios (`clearMocks` y `restoreMocks`): un
+  test no puede depender de un mock o un `spyOn` armado en otro. Los de integración
+  (`test/jest-e2e.json`) no lo tienen.
+- **ESLint en los tests** (`eslint-plugin-jest`): prohibido `.only`, `.skip` y los
+  tests comentados; todo test tiene al menos una aserción (`expect`, el `.expect(...)`
+  de supertest o `desempata`, que hace `expect` adentro; un helper nuevo se suma a
+  `assertFunctionNames` sólo si adentro tira o hace `expect`); prohibido el `expect`
+  de Jest dentro de un `if` o un `catch`, porque si la rama no se ejecuta el test pasa
+  sin verificar nada. En una carrera se arma el resultado y se compara una sola vez
+  contra los finales válidos.
+- **Control de mutación.** Un test nuevo tiene que fallar si se revierte el arreglo que
+  prueba; la entrega dice cómo se comprobó.
+- **`node_modules` limpio.** La extensión Console Ninja de VS Code reescribe archivos de
+  `node_modules` (`jest-runner`, `@nestjs/core`) y con eso Jest se cae al azar
+  (SIGSEGV, 404 en specs de controladores). Si el gate falla sin motivo, `npm ci`.
+
 ## 12. Módulo terminado
 
 Un módulo está alineado cuando cumple las doce:

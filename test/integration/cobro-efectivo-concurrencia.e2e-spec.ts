@@ -217,19 +217,26 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
       .getRepository(Order)
       .findOneOrFail({ where: { orderId: order.orderId } });
     const incidencias = await incidenciasDe(order.orderId);
-    if (guardado.paymentStatus === PaymentStatus.PAID) {
-      expect(incidencias).toHaveLength(0);
-      expect(guardado.paymentConfirmedBy).toBe(chofer.userId);
-    } else {
-      expect(guardado.paymentStatus).toBe(PaymentStatus.UNPAID);
-      expect(incidencias).toHaveLength(1);
-    }
+    // Gane quien gane la carrera, el pedido queda en uno de los dos finales coherentes.
+    const pagado = guardado.paymentStatus === PaymentStatus.PAID;
+    expect({
+      estado: guardado.paymentStatus,
+      incidencias: incidencias.length,
+      confirmadoPor: pagado ? guardado.paymentConfirmedBy : null,
+    }).toEqual(
+      pagado
+        ? {
+            estado: PaymentStatus.PAID,
+            incidencias: 0,
+            confirmadoPor: chofer.userId,
+          }
+        : { estado: PaymentStatus.UNPAID, incidencias: 1, confirmadoPor: null },
+    );
     // Lo que perdió la carrera fue un 409 limpio, nunca un error de base.
-    for (const i of intentos) {
-      if (i.status === 'rejected') {
-        expect((i.reason as { status?: number }).status).toBe(409);
-      }
-    }
+    const rechazos = intentos
+      .filter((i): i is PromiseRejectedResult => i.status === 'rejected')
+      .map((i) => (i.reason as { status?: number }).status);
+    expect(rechazos).toEqual(rechazos.map(() => 409));
   }, 60000);
 
   it('los reportes y las estadísticas cuentan sólo lo pagado (la transferencia pendiente no); el resto va aparte', async () => {

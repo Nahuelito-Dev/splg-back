@@ -9,7 +9,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 
 | Para | Comando |
 |---|---|
-| Gate completo (lo que tiene que quedar verde) | `npm run verify` — tipos, lint, unit tests y build |
+| Gate completo (lo que tiene que quedar verde) | `npm run verify` — tipos, lint (con reglas de Jest), unit tests con piso de cobertura por módulo y build (ver `CONVENCIONES.md` §11) |
 | Levantar en desarrollo | `../splg-dev.sh` (infra + back :3000 + panel :3001) o `npm run start:dev` |
 | Unit tests | `npm test` (Jest, `src/**/*.spec.ts`) |
 | Integración (necesita Postgres y Redis arriba) | `npm run test:integration` |
