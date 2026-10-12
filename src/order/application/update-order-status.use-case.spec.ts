@@ -3,7 +3,10 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
+import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
+import { OrderStatusHistory } from '../entities/order-status-history.entity';
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import { ReservationNotActivableError } from '../domain/errors/reservation-not-activable.error';
 import {
@@ -26,7 +29,9 @@ describe('UpdateOrderStatusUseCase', () => {
     buscarPorIdOUsuario: jest.Mock;
     assertElegibleParaAsignacion: jest.Mock;
   };
+  let offers: { withdrawOtherActiveOffers: jest.Mock };
   let dispatch: {
+    notifyDriverOrderCancelled: jest.Mock;
     notifyCustomer: jest.Mock;
     notifyAdmins: jest.Mock;
     startTracking: jest.Mock;
@@ -58,6 +63,7 @@ describe('UpdateOrderStatusUseCase', () => {
     manager: {
       createQueryBuilder: jest.Mock;
       save: jest.Mock;
+      insert: jest.Mock;
       query: jest.Mock;
     };
   };
@@ -101,7 +107,9 @@ describe('UpdateOrderStatusUseCase', () => {
         },
       ),
     };
+    offers = { withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]) };
     dispatch = {
+      notifyDriverOrderCancelled: jest.fn(),
       notifyCustomer: jest.fn(),
       notifyAdmins: jest.fn(),
       startTracking: jest.fn(),
@@ -152,6 +160,7 @@ describe('UpdateOrderStatusUseCase', () => {
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
         save: jest.fn((o: Order) => orders.save(o)),
+        insert: jest.fn().mockResolvedValue(undefined),
       },
     };
     const dataSource = {
@@ -190,6 +199,7 @@ describe('UpdateOrderStatusUseCase', () => {
       stockDelivery as unknown as import('../domain/ports/stock-delivery.port').StockDeliveryPort,
       fotos as unknown as import('../../s3/entity-photo.service').EntityPhotoService,
       truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      offers as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
     );
   });
 
@@ -290,6 +300,44 @@ describe('UpdateOrderStatusUseCase', () => {
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
 
+    it('al tomar el pedido retira las ofertas de los demás choferes en la misma transacción y les avisa', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      offers.withdrawOtherActiveOffers.mockResolvedValue([
+        'user-otro-1',
+        'user-otro-2',
+      ]);
+
+      await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+
+      expect(offers.withdrawOtherActiveOffers).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'ord-1',
+        'user-drv-1',
+        DispatchOfferStatus.SUPERSEDED,
+      );
+      expect(
+        offers.withdrawOtherActiveOffers.mock.invocationCallOrder[0],
+      ).toBeLessThan(queryRunner.commitTransaction.mock.invocationCallOrder[0]);
+      expect(dispatch.notifyDriverOrderCancelled).toHaveBeenCalledTimes(2);
+      expect(dispatch.notifyDriverOrderCancelled).toHaveBeenCalledWith(
+        'user-otro-1',
+        expect.objectContaining({ orderId: 'ord-1' }),
+      );
+    });
+
+    it('si la transacción falla, no se avisa a nadie', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      offers.withdrawOtherActiveOffers.mockResolvedValue(['user-otro-1']);
+      queryRunner.commitTransaction.mockRejectedValue(new Error('commit'));
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toThrow('commit');
+      expect(dispatch.notifyDriverOrderCancelled).not.toHaveBeenCalled();
+    });
+
     it('D5: repetir la aceptación que ya era del mismo chofer no vuelve a pedir la carga', async () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
@@ -323,6 +371,81 @@ describe('UpdateOrderStatusUseCase', () => {
       ).rejects.toThrow(NotFoundException);
       expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
       expect(queryRunner.release).toHaveBeenCalled();
+    });
+
+    describe('entrega manual del administrador', () => {
+      let registrar: jest.SpyInstance;
+      beforeEach(() => {
+        registrar = jest
+          .spyOn(AuditoriaDeDatos, 'registrar')
+          .mockResolvedValue(undefined);
+        orders.findByIdFull.mockResolvedValue(
+          makeOrder({ status: OrderStatus.ON_THE_WAY }),
+        );
+      });
+      afterEach(() => registrar.mockRestore());
+
+      it.each([undefined, '', '   ', 'corto'])(
+        'sin un motivo válido (%p) el admin recibe 400 y no se toca nada',
+        async (reason) => {
+          await expect(
+            useCase.execute(
+              'ord-1',
+              OrderStatus.DELIVERED,
+              undefined,
+              RoleType.ADMIN,
+              'admin-1',
+              reason,
+            ),
+          ).rejects.toThrow(BadRequestException);
+          expect(queryRunner.startTransaction).not.toHaveBeenCalled();
+          expect(orders.save).not.toHaveBeenCalled();
+          expect(stockDelivery.onOrderDelivered).not.toHaveBeenCalled();
+        },
+      );
+
+      it('con motivo, lo deja en el historial de estados y en la auditoría, en la misma transacción', async () => {
+        await useCase.execute(
+          'ord-1',
+          OrderStatus.DELIVERED,
+          undefined,
+          RoleType.SUPER_ADMIN,
+          'admin-1',
+          '  El cliente no tiene celular  ',
+        );
+
+        expect(queryRunner.manager.insert).toHaveBeenCalledWith(
+          OrderStatusHistory,
+          {
+            orderId: 'ord-1',
+            fromStatus: OrderStatus.ON_THE_WAY,
+            toStatus: OrderStatus.DELIVERED,
+            changedByUserId: 'admin-1',
+            reason: 'El cliente no tiene celular',
+          },
+        );
+        expect(registrar).toHaveBeenCalledWith(
+          queryRunner.manager,
+          expect.objectContaining({
+            entity: 'Order',
+            recordId: 'ord-1',
+            details: [
+              {
+                field: 'manualDeliveryReason',
+                oldValue: null,
+                newValue: 'El cliente no tiene celular',
+              },
+            ],
+          }),
+        );
+        expect(queryRunner.commitTransaction).toHaveBeenCalled();
+      });
+
+      it('la entrega por QR (sin rol) no pide motivo ni escribe el asiento manual', async () => {
+        await useCase.execute('ord-1', OrderStatus.DELIVERED);
+        expect(queryRunner.manager.insert).not.toHaveBeenCalled();
+        expect(registrar).not.toHaveBeenCalled();
+      });
     });
 
     it('al entregar, los envases avanzan por el manager de la transacción', async () => {

@@ -36,7 +36,7 @@ describe('OrderService · asignación manual', () => {
     notifyDriverOrderCancelled: jest.Mock;
     stopTracking: jest.Mock;
   };
-  let dispatchOffers: { closeAllActiveOffers: jest.Mock };
+  let dispatchOffers: { withdrawOtherActiveOffers: jest.Mock };
   let orchestrator: { onOrderAssigned: jest.Mock };
   let dataSource: { createQueryRunner: jest.Mock };
   let queryRunner: {
@@ -127,7 +127,7 @@ describe('OrderService · asignación manual', () => {
       stopTracking: jest.fn(),
     };
     dispatchOffers = {
-      closeAllActiveOffers: jest.fn().mockResolvedValue(0),
+      withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
     };
     orchestrator = { onOrderAssigned: jest.fn().mockResolvedValue(undefined) };
     const deliveries = {
@@ -282,12 +282,34 @@ describe('OrderService · asignación manual', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
 
-  it('punto 5 (segunda revisión): cierra cualquier oferta automática en curso del pedido al asignar a mano', async () => {
+  it('punto 5: retira en la misma transacción las ofertas abiertas a otros choferes y les avisa por socket', async () => {
+    dispatchOffers.withdrawOtherActiveOffers.mockResolvedValue(['user-otro']);
+
     await service.assignDelivery(PEDIDO, CHOFER);
 
-    expect(dispatchOffers.closeAllActiveOffers).toHaveBeenCalledWith(
+    expect(dispatchOffers.withdrawOtherActiveOffers).toHaveBeenCalledWith(
+      queryRunner.manager,
       PEDIDO,
-      DispatchOfferStatus.EXPIRED,
+      CHOFER_USER_ID,
+      DispatchOfferStatus.SUPERSEDED,
+    );
+    expect(
+      dispatchOffers.withdrawOtherActiveOffers.mock.invocationCallOrder[0],
+    ).toBeLessThan(queryRunner.commitTransaction.mock.invocationCallOrder[0]);
+    expect(dispatch.notifyDriverOrderCancelled).toHaveBeenCalledWith(
+      'user-otro',
+      expect.objectContaining({ orderId: PEDIDO }),
+    );
+  });
+
+  it('punto 5: si la asignación se deshace, no se avisa a los choferes de las otras ofertas', async () => {
+    dispatchOffers.withdrawOtherActiveOffers.mockResolvedValue(['user-otro']);
+    queryRunner.commitTransaction.mockRejectedValue(new Error('commit'));
+
+    await expect(service.assignDelivery(PEDIDO, CHOFER)).rejects.toThrow();
+    expect(dispatch.notifyDriverOrderCancelled).not.toHaveBeenCalledWith(
+      'user-otro',
+      expect.anything(),
     );
   });
 

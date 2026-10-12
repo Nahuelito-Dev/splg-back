@@ -37,6 +37,7 @@ export class ConfirmDeliveryUseCase {
     code: string,
     userId: string,
     role: RoleType,
+    reason?: string,
   ): Promise<Order> {
     const order = await this.orders.findByIdFull(orderId);
     if (!order)
@@ -66,6 +67,20 @@ export class ConfirmDeliveryUseCase {
       throw new BadRequestException('Código de entrega inválido');
     }
 
+    // El admin que entrega por el QR (el código lo consigue con
+    // `GET /:id/delivery-code`) deja asentado el motivo igual que por
+    // `PATCH :id/status`: se le pasa el rol y el actor. El cliente confirma
+    // sin rol: su escaneo es la prueba y `reason` se ignora.
+    if (role === RoleType.ADMIN || role === RoleType.SUPER_ADMIN) {
+      return this.updateOrderStatusUseCase.execute(
+        order.orderId,
+        OrderStatus.DELIVERED,
+        undefined,
+        role,
+        userId,
+        reason,
+      );
+    }
     return this.updateOrderStatusUseCase.execute(
       order.orderId,
       OrderStatus.DELIVERED,

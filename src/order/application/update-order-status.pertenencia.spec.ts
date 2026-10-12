@@ -1,3 +1,4 @@
+import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { ForbiddenException } from '@nestjs/common';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { OrderStatus } from '../entities/order.entity';
@@ -16,6 +17,7 @@ import { RoleType } from '../../common/constants/role-type.enum';
  * lock (no hace falta duplicar `findByIdFull`/`save` del puerto para este
  * tramo).
  */
+
 describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   const DELIVERY_ASIGNADO = 'd1d1d1d1-0000-4000-8000-000000000001';
   const DELIVERY_AJENO = 'd2d2d2d2-0000-4000-8000-000000000002';
@@ -34,6 +36,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     manager: {
       createQueryBuilder: jest.Mock;
       save: jest.Mock;
+      insert: jest.Mock;
       query: jest.Mock;
     };
   };
@@ -44,6 +47,10 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     getOne: jest.Mock;
   };
   let uc: UpdateOrderStatusUseCase;
+
+  beforeEach(() => {
+    jest.spyOn(AuditoriaDeDatos, 'registrar').mockResolvedValue(undefined);
+  });
 
   const armar = (
     deliveryId: string | null,
@@ -82,6 +89,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
         save: jest.fn((o: unknown) => Promise.resolve(o)),
+        insert: jest.fn().mockResolvedValue(undefined),
       },
     };
     const dataSource = {
@@ -126,6 +134,9 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         assertPuedeAceptar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {
+        withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
+      } as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
     );
     return { order, queryRunner, queryBuilder };
   };
@@ -233,6 +244,8 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
         OrderStatus.DELIVERED,
         undefined,
         RoleType.ADMIN,
+        'admin-1',
+        'El cliente confirmó por teléfono',
       ),
     ).resolves.toBeDefined();
 

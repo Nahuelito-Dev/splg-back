@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { DispatchOfferTypeormRepository } from './dispatch-offer.typeorm.repository';
 import {
   DispatchOffer,
@@ -172,5 +172,65 @@ describe('DispatchOfferTypeormRepository.recordDriverHeldOrder', () => {
     const { orm, repo } = montar({ yaAceptada: 1 });
     await repo.recordDriverHeldOrder('o', 'd');
     expect(orm.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('DispatchOfferTypeormRepository.withdrawOtherActiveOffers', () => {
+  const montar = (abiertas: Array<Partial<DispatchOffer>>) => {
+    const manager = {
+      find: jest.fn().mockResolvedValue(abiertas),
+      update: jest.fn().mockResolvedValue({ affected: abiertas.length }),
+    };
+    const repo = new DispatchOfferTypeormRepository(
+      {} as unknown as Repository<DispatchOffer>,
+    );
+    return {
+      manager: manager as unknown as EntityManager,
+      manager_: manager,
+      repo,
+    };
+  };
+
+  it('retira las ofertas OFFERED de los demás con el manager recibido y devuelve a quién avisar', async () => {
+    const { manager, manager_, repo } = montar([
+      { offerId: 'of-1', driverId: 'a' },
+      { offerId: 'of-2', driverId: 'b' },
+      { offerId: 'of-3', driverId: 'dueño' },
+    ]);
+
+    const avisar = await repo.withdrawOtherActiveOffers(
+      manager,
+      'ord-1',
+      'dueño',
+      DispatchOfferStatus.SUPERSEDED,
+    );
+
+    expect(avisar).toEqual(['a', 'b']);
+    expect(manager_.find).toHaveBeenCalledWith(
+      DispatchOffer,
+      expect.objectContaining({
+        where: { orderId: 'ord-1', status: DispatchOfferStatus.OFFERED },
+      }),
+    );
+    expect(manager_.update).toHaveBeenCalledWith(
+      DispatchOffer,
+      { offerId: In(['of-1', 'of-2']) },
+      { status: DispatchOfferStatus.SUPERSEDED },
+    );
+  });
+
+  it('sin otras ofertas no escribe nada', async () => {
+    const { manager, manager_, repo } = montar([
+      { offerId: 'of-3', driverId: 'dueño' },
+    ]);
+    expect(
+      await repo.withdrawOtherActiveOffers(
+        manager,
+        'ord-1',
+        'dueño',
+        DispatchOfferStatus.SUPERSEDED,
+      ),
+    ).toEqual([]);
+    expect(manager_.update).not.toHaveBeenCalled();
   });
 });

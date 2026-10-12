@@ -116,7 +116,12 @@ export class CreatePurchaseReceiptDto {
   @IsISO8601()
   receivedAt?: string;
 
-  @ApiPropertyOptional({ example: 'Llegó en el camión de las 14' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    example: 'Llegó en el camión de las 14',
+  })
   @VacioANulo()
   @IsOptional()
   @IsString()

@@ -76,7 +76,12 @@ export class CreatePurchaseOrderDto {
   @FechaCalendarioOpcional('2026-10-20', undefined)
   expectedDate?: string | null;
 
-  @ApiPropertyOptional({ example: 'Entrega en horario de la mañana' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    example: 'Entrega en horario de la mañana',
+  })
   @VacioANulo()
   @IsOptional()
   @IsString()

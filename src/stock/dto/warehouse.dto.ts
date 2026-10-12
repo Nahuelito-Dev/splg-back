@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
@@ -57,7 +62,17 @@ export class CreateWarehouseDto {
   isDefault?: boolean;
 }
 
-export class UpdateWarehouseDto extends PartialType(CreateWarehouseDto) {
+export class UpdateWarehouseDto extends PartialType(
+  OmitType(CreateWarehouseDto, ['kind'] as const),
+) {
+  @ApiPropertyOptional({
+    enum: WarehouseKind,
+    description: 'Sólo cambia si se envía; si falta, conserva el tipo actual',
+  })
+  @IsOptional()
+  @IsEnum(WarehouseKind)
+  kind?: WarehouseKind;
+
   @ApiPropertyOptional({
     description:
       'false lo deja fuera de las listas de operación; no se puede con el predeterminado',

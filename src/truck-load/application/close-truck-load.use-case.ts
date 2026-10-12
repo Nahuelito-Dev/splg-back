@@ -15,11 +15,11 @@ import {
   TransicionDeCargaInvalidaError,
 } from '../domain/errors/truck-load.errors';
 import {
-  RenglonDeCierre,
-  esperadoDe,
+  entregasTardias,
   estadoDeCierre,
   planDeCierre,
   puedeHacer,
+  renglonesDeCierre,
 } from '../domain/truck-load-rules';
 import { CloseTruckLoadDto } from '../dto/truck-load.dto';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
@@ -99,13 +99,13 @@ export class CloseTruckLoadUseCase {
           // declaración vieja: se pediría un físico que ya no es el del camión.
           // Se rechaza (409) y se vuelve a declarar, en vez de recalcular en
           // silencio contra un conteo que el chofer no hizo.
-          const tardias = (
+          const tardias = entregasTardias(
             await this.onHand.movimientosDelCamion(
               manager,
               camion.locationId,
               carga.returnedAt!,
-            )
-          ).reduce((n, m) => n + m.deliveredFull, 0);
+            ),
+          );
           if (tardias > 0) {
             throw new ConflictException(
               `Se entregaron ${tardias} garrafas del camión después de declarar la vuelta: el chofer tiene que volver a declarar lo que trae antes de cerrar`,
@@ -114,53 +114,16 @@ export class CloseTruckLoadUseCase {
           const saldoDe = (g: string, c: StockCondition) =>
             saldos.get(claveDeSaldo(camion.locationId, g, c)) ?? 0;
 
-          const renglones: RenglonDeCierre[] = [];
-          const figuras = new Map<
-            string,
-            { deliveredFull: number; collectedEmpty: number }
-          >();
-          for (const item of items) {
-            const m = movidos.get(item.gasCylinderId);
-            const deliveredFull = m?.deliveredFull ?? 0;
-            const collectedEmpty = m?.collectedEmpty ?? 0;
-            figuras.set(item.gasCylinderId, { deliveredFull, collectedEmpty });
-            const esperado = esperadoDe({
-              loadedFull: item.loadedFull,
-              reloadedFull: item.reloadedFull,
-              deliveredFull,
-              loadedEmpty: item.loadedEmpty,
-              collectedEmpty,
-            });
-            renglones.push({
-              gasCylinderId: item.gasCylinderId,
-              ...esperado,
-              declaredFull: item.declaredReturnFull ?? 0,
-              declaredEmpty: item.declaredReturnEmpty ?? 0,
-              balanceFull: saldoDe(item.gasCylinderId, StockCondition.FULL),
-              balanceEmpty: saldoDe(item.gasCylinderId, StockCondition.EMPTY),
-              balanceDefective: saldoDe(
-                item.gasCylinderId,
-                StockCondition.DEFECTIVE,
-              ),
-            });
-          }
-          for (const g of sinRenglon) {
-            const m = movidos.get(g);
-            figuras.set(g, {
-              deliveredFull: m?.deliveredFull ?? 0,
-              collectedEmpty: m?.collectedEmpty ?? 0,
-            });
-            renglones.push({
-              gasCylinderId: g,
-              expectedFull: 0,
-              expectedEmpty: 0,
-              declaredFull: 0,
-              declaredEmpty: 0,
-              balanceFull: saldoDe(g, StockCondition.FULL),
-              balanceEmpty: saldoDe(g, StockCondition.EMPTY),
-              balanceDefective: saldoDe(g, StockCondition.DEFECTIVE),
-            });
-          }
+          const { renglones, figuras } = renglonesDeCierre({
+            items,
+            sinRenglon,
+            movidos,
+            saldoDe: (g) => ({
+              full: saldoDe(g, StockCondition.FULL),
+              empty: saldoDe(g, StockCondition.EMPTY),
+              defective: saldoDe(g, StockCondition.DEFECTIVE),
+            }),
+          });
 
           const plan = planDeCierre(
             camion.locationId,

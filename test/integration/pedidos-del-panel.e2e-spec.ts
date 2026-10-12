@@ -429,6 +429,149 @@ describe('Pedidos del panel (e2e)', () => {
       ).toBe(0);
     }, 60000);
 
+    it('la entrega manual del admin exige un motivo y lo deja en el historial de estados y en la auditoría', async () => {
+      const { a, b, adminA, adminB, cliente } = await escenario();
+      const p = await producto(a.distributorId);
+      const id = await pedidoPorApi(a.slug, cliente, p);
+      await ds.query(
+        `UPDATE "order" SET status = 'on_the_way' WHERE order_id = $1`,
+        [id],
+      );
+      const entregar = (q: Quien, body: object) =>
+        patch(q, `/orders/${id}/status`, body).set('X-Distributor', a.slug);
+
+      // sin motivo, vacío o demasiado corto: 400 y el pedido no se mueve
+      for (const body of [
+        { status: 'delivered' },
+        { status: 'delivered', reason: '   ' },
+        { status: 'delivered', reason: 'corto' },
+      ]) {
+        const r = await entregar(adminA, body).expect(400);
+        expect(JSON.stringify(r.body)).toMatch(/motivo/);
+      }
+      const intacto = await ds
+        .getRepository(Order)
+        .findOneByOrFail({ orderId: id });
+      expect(intacto.status).toBe('on_the_way');
+
+      // otra distribuidora no lo toca (404)
+      await patch(adminB, `/orders/${id}/status`, {
+        status: 'delivered',
+        reason: 'El cliente no tiene celular',
+      })
+        .set('X-Distributor', b.slug)
+        .expect(404);
+
+      await entregar(adminA, {
+        status: 'delivered',
+        reason: '  El cliente no tiene celular  ',
+      }).expect(200);
+      const entregado = await ds
+        .getRepository(Order)
+        .findOneByOrFail({ orderId: id });
+      expect(entregado.status).toBe('delivered');
+
+      const historial = await ds.query<
+        Array<{
+          from_status: string;
+          to_status: string;
+          reason: string;
+          changed_by_user_id: string;
+        }>
+      >(
+        `SELECT from_status, to_status, reason, changed_by_user_id FROM order_status_history WHERE order_id = $1`,
+        [id],
+      );
+      expect(historial).toEqual([
+        {
+          from_status: 'on_the_way',
+          to_status: 'delivered',
+          reason: 'El cliente no tiene celular',
+          changed_by_user_id: adminA.user.userId,
+        },
+      ]);
+
+      const auditoria = json<Pagina>(
+        await get(adminA, `/audit/entries?orderId=${id}&entity=Order`).expect(
+          200,
+        ),
+      );
+      const motivo = auditoria.data
+        .flatMap((e) => e.details)
+        .find((d) => d.field === 'manualDeliveryReason');
+      expect(motivo?.newValue).toBe('El cliente no tiene celular');
+    });
+
+    it('la entrega por QR: el admin también necesita motivo (queda en historial y auditoría); el cliente no', async () => {
+      const { a, adminA, cliente } = await escenario();
+      const p = await producto(a.distributorId);
+      const delAdmin = await pedidoPorApi(a.slug, cliente, p);
+      const delCliente = await pedidoPorApi(a.slug, cliente, p);
+      await ds.query(
+        `UPDATE "order" SET status = 'on_the_way', "deliveryCode" = 'QRCODE1234' WHERE order_id = ANY($1)`,
+        [[delAdmin, delCliente]],
+      );
+      const confirmar = (q: Quien, id: string, body: object) =>
+        http()
+          .post(`/orders/${id}/confirm-delivery`)
+          .set(q.headers)
+          .set('X-Distributor', a.slug)
+          .send(body);
+
+      for (const reason of [undefined, '', 'corto']) {
+        const r = await confirmar(adminA, delAdmin, {
+          code: 'QRCODE1234',
+          reason,
+        }).expect(400);
+        expect(JSON.stringify(r.body)).toMatch(/motivo/);
+      }
+      expect(
+        (await ds.getRepository(Order).findOneByOrFail({ orderId: delAdmin }))
+          .status,
+      ).toBe('on_the_way');
+
+      await confirmar(adminA, delAdmin, {
+        code: 'QRCODE1234',
+        reason: 'Entrega asistida por teléfono',
+      }).expect(201);
+      const historial = await ds.query<
+        Array<{ reason: string; changed_by_user_id: string }>
+      >(
+        `SELECT reason, changed_by_user_id FROM order_status_history WHERE order_id = $1`,
+        [delAdmin],
+      );
+      expect(historial).toEqual([
+        {
+          reason: 'Entrega asistida por teléfono',
+          changed_by_user_id: adminA.user.userId,
+        },
+      ]);
+      const auditoria = json<Pagina>(
+        await get(
+          adminA,
+          `/audit/entries?orderId=${delAdmin}&entity=Order`,
+        ).expect(200),
+      );
+      expect(
+        auditoria.data
+          .flatMap((e) => e.details)
+          .find((d) => d.field === 'manualDeliveryReason')?.newValue,
+      ).toBe('Entrega asistida por teléfono');
+
+      // el cliente escanea sin motivo y no deja asiento manual
+      await confirmar(cliente, delCliente, { code: 'QRCODE1234' }).expect(201);
+      expect(
+        await ds.query(
+          `SELECT 1 FROM order_status_history WHERE order_id = $1`,
+          [delCliente],
+        ),
+      ).toEqual([]);
+      expect(
+        (await ds.getRepository(Order).findOneByOrFail({ orderId: delCliente }))
+          .status,
+      ).toBe('delivered');
+    });
+
     it('el pedido expone paymentMethodDetail, paymentStatus y editable con la regla de PATCH', async () => {
       const { a, adminA, cliente } = await escenario();
       const p = await producto(a.distributorId);

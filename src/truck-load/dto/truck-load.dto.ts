@@ -340,6 +340,19 @@ export class TruckLoadSummaryDto {
 export class TruckLoadResponseDto extends TruckLoadSummaryDto {
   @ApiProperty({ type: TruckLoadItemResponseDto, isArray: true })
   items!: TruckLoadItemResponseDto[];
+  @ApiProperty({
+    nullable: true,
+    type: Boolean,
+    description:
+      'Vista previa del cierre (mismo cálculo que `close`): true si la rendición tendría diferencias (declarado distinto del esperado, o el camión con otra cosa que lo declarado). null mientras no se declaró la vuelta de todos los renglones y en cargas cerradas o canceladas (ahí vale el estado).',
+  })
+  hayDiferencia!: boolean | null;
+  @ApiProperty({
+    example: false,
+    description:
+      'true si el camión entregó garrafas DESPUÉS de declarar la vuelta: el cierre respondería 409 hasta que el chofer vuelva a declarar. En ese caso `hayDiferencia` es null.',
+  })
+  requiereVolverADeclarar!: boolean;
   @ApiProperty({ nullable: true, type: String }) differenceNote!: string | null;
   @ApiProperty({ nullable: true, type: String }) cancelReason!: string | null;
   @ApiProperty({ nullable: true, type: String }) notes!: string | null;

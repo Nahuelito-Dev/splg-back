@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AttachmentModule } from '../attachment/attachment.module';
 import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
 import { StockModule } from '../stock/stock.module';
 import { PurchaseOrderService } from './application/purchase-order.service';
+import { PurchaseReceiptAttachmentOwnerResolver } from './application/purchase-receipt-attachment-owner.resolver';
 import { PurchaseQueryService } from './application/purchase-query.service';
 import { PurchaseReceiptService } from './application/purchase-receipt.service';
 import { ReceivePurchaseUseCase } from './application/receive-purchase.use-case';
@@ -34,6 +36,7 @@ import { SupplierController } from './presentation/supplier.controller';
     StockModule, // ledger, ubicaciones, depósitos y existencias
     GasCylinderModule, // costo promedio
     DocumentSequenceModule, // número de la orden y del remito
+    AttachmentModule, // dueño `purchase_receipt` de los adjuntos
   ],
   controllers: [
     SupplierController,
@@ -47,6 +50,7 @@ import { SupplierController } from './presentation/supplier.controller';
     ReceivePurchaseUseCase,
     VoidPurchaseReceiptUseCase,
     PurchaseQueryService,
+    PurchaseReceiptAttachmentOwnerResolver,
   ],
 })
 export class PurchaseModule {}

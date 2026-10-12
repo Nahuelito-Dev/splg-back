@@ -26,6 +26,13 @@ import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
+import { PurchaseReceipt } from '../../src/purchase/entities/purchase-receipt.entity';
+import { Supplier } from '../../src/purchase/entities/supplier.entity';
+import { Warehouse } from '../../src/stock/entities/warehouse.entity';
+import {
+  SupplierDocumentType,
+  SupplierKind,
+} from '../../src/purchase/domain/purchase.enums';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import {
   Employee,
@@ -318,6 +325,92 @@ describe('Adjuntos genéricos (e2e)', () => {
       .set(admin1.headers)
       .expect(400);
     expect(await dataSource.getRepository(Attachment).count()).toBe(0);
+  });
+
+  it('la foto del remito de una recepción de compra: sube por el back, se lee sólo por URL firmada y es de su distribuidora', async () => {
+    const { d1, admin1, admin2 } = await escenario();
+    const proveedor = await dataSource.getRepository(Supplier).save({
+      distributorId: d1.distributorId,
+      businessName: 'Gas del Litoral',
+      cuit: '30715123456',
+      kind: SupplierKind.FILLING_PLANT,
+    } as Partial<Supplier>);
+    const deposito = await dataSource.getRepository(Warehouse).save({
+      distributorId: d1.distributorId,
+      name: 'Central',
+      code: 'CENTRAL',
+    } as Partial<Warehouse>);
+    const recepcion = await dataSource.getRepository(PurchaseReceipt).save({
+      distributorId: d1.distributorId,
+      number: 1,
+      supplierId: proveedor.supplierId,
+      warehouseId: deposito.warehouseId,
+      supplierDocumentType: SupplierDocumentType.DELIVERY_NOTE,
+      supplierDocumentNumber: '0001-00000001',
+      receivedAt: new Date(),
+      receivedByUserId: admin1.user.userId,
+      totalAmount: 1000,
+      batchId: randomUUID(),
+    } as Partial<PurchaseReceipt>);
+    const id = recepcion.receiptId;
+    const FOTO = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      Buffer.from('remito de prueba'),
+    ]);
+
+    const creado = await subir(admin1.headers, 'purchase_receipt', id, {
+      nombre: 'remito.jpg',
+      mime: 'image/jpeg',
+      buffer: FOTO,
+      label: 'Remito del proveedor',
+    }).expect(201);
+    expect(creado.body).toMatchObject({
+      ownerType: 'purchase_receipt',
+      ownerId: id,
+      label: 'Remito del proveedor',
+    });
+    expect(creado.body).not.toHaveProperty('storageKey');
+    const adjuntoId = (creado.body as { attachmentId: string }).attachmentId;
+
+    const fila = await dataSource
+      .getRepository(Attachment)
+      .findOneByOrFail({ attachmentId: adjuntoId });
+    const cifrado = await minio.client.send(
+      new HeadObjectCommand({
+        Bucket: BUCKET_DE_PRUEBA,
+        Key: fila.storageKey,
+      }),
+    );
+    expect(cifrado.ServerSideEncryption).toBe('AES256');
+
+    const descarga = await descargar(admin1.headers, adjuntoId);
+    expect(descarga.status).toBe(200);
+    expect(descarga.body.equals(FOTO)).toBe(true);
+
+    // otra distribuidora: no existe (404); sin credencial: 401; chofer: 403
+    await subir(admin2.headers, 'purchase_receipt', id, {
+      nombre: 'remito.jpg',
+      mime: 'image/jpeg',
+      buffer: FOTO,
+    }).expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/purchase_receipt/${id}`)
+      .set(admin2.headers)
+      .expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/${adjuntoId}/download`)
+      .set(admin2.headers)
+      .expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/purchase_receipt/${id}`)
+      .expect(401);
+    const chofer = await seedUsuario('delivery', d1.distributorId);
+    await subir(chofer.headers, 'purchase_receipt', id, {
+      nombre: 'remito.jpg',
+      mime: 'image/jpeg',
+      buffer: FOTO,
+    }).expect(403);
+    expect(await dataSource.getRepository(Attachment).count()).toBe(1);
   });
 
   it('la subida queda en la auditoría', async () => {

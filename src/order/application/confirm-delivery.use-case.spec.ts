@@ -99,6 +99,49 @@ describe('ConfirmDeliveryUseCase', () => {
     expect(result).toBe(delivered);
   });
 
+  it('el cliente que manda un reason no lo hace pesar: se ignora', async () => {
+    orders.findByIdFull.mockResolvedValue(makeOrder());
+    updateOrderStatusUseCase.execute.mockResolvedValue({});
+
+    await useCase.execute(
+      'ord-1',
+      'A1B2C3D4E5',
+      'cust-1',
+      RoleType.CUSTOMER,
+      'lo que sea',
+    );
+
+    expect(updateOrderStatusUseCase.execute).toHaveBeenCalledWith(
+      'ord-1',
+      OrderStatus.DELIVERED,
+    );
+  });
+
+  it.each([RoleType.ADMIN, RoleType.SUPER_ADMIN])(
+    '%s por el QR: pasa el rol, el actor y el motivo a la entrega',
+    async (rol) => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      updateOrderStatusUseCase.execute.mockResolvedValue({});
+
+      await useCase.execute(
+        'ord-1',
+        'A1B2C3D4E5',
+        'admin-1',
+        rol,
+        'Cliente sin celular, confirmó por teléfono',
+      );
+
+      expect(updateOrderStatusUseCase.execute).toHaveBeenCalledWith(
+        'ord-1',
+        OrderStatus.DELIVERED,
+        undefined,
+        rol,
+        'admin-1',
+        'Cliente sin celular, confirmó por teléfono',
+      );
+    },
+  );
+
   it('es idempotente: si ya está DELIVERED, devuelve el pedido sin re-procesar ni exigir código', async () => {
     const order = makeOrder({ status: OrderStatus.DELIVERED });
     orders.findByIdFull.mockResolvedValue(order);

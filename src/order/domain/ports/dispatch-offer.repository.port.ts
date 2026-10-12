@@ -1,3 +1,4 @@
+import { EntityManager } from 'typeorm';
 import { DispatchOffer } from '../../entities/dispatch-offer.entity';
 
 /** Ver `DispatchOfferRepositoryPort.findDriverOfferState`. */
@@ -76,15 +77,18 @@ export abstract class DispatchOfferRepositoryPort {
   ): Promise<boolean>;
 
   /**
-   * Cierra TODAS las ofertas OFFERED activas de un pedido, sin filtrar por
-   * chofer. La usa una asignación MANUAL (`OrderService.assignDelivery`): el
-   * admin ya resolvió el pedido él solo, así que cualquier oferta automática
-   * que hubiera quedado en curso para otro chofer (o para el mismo) queda sin
-   * efecto — nadie más tiene que creer que el pedido sigue siendo suyo.
-   * Devuelve cuántas ofertas cerró.
+   * Retira las ofertas OFFERED activas de un pedido que ya se resolvió por otra
+   * vía (el admin lo asignó a mano, o un chofer lo tomó del pool), salvo la de
+   * `exceptDriverId` (el que se queda con el pedido: su constancia la deja
+   * `recordDriverHeldOrder`). Escribe con el `manager` de la transacción que
+   * asigna el pedido, así la asignación y el retiro son atómicos y no hay otra
+   * conexión esperando el lock de la fila del pedido. Devuelve los `driverId`
+   * (user_id) de los choferes a quienes se les retiró, para avisarles.
    */
-  abstract closeAllActiveOffers(
+  abstract withdrawOtherActiveOffers(
+    manager: EntityManager,
     orderId: string,
+    exceptDriverId: string | null,
     status: DispatchOffer['status'],
-  ): Promise<number>;
+  ): Promise<string[]>;
 }

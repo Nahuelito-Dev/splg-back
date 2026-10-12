@@ -337,7 +337,7 @@ export class OrderController {
       '- `status: accepted` sobre un pedido YA `accepted` con el MISMO chofer es idempotente: no regenera `acceptedAt` ' +
       'ni el código de entrega (pasa cuando el chofer "acepta" el aviso de una asignación manual).\n' +
       '- `status: delivered` NO lo puede pedir el chofer (403): la entrega se confirma con el QR del cliente en ' +
-      '`POST /:id/confirm-delivery`. El admin/super_admin sí puede marcarla por acá (cliente sin celular).',
+      '`POST /:id/confirm-delivery`. El admin/super_admin sí puede marcarla por acá (cliente sin celular), pero tiene que mandar `reason` (mínimo 10 caracteres, 400 si falta): queda en el historial de estados (`order_status_history`) y en la auditoría de datos (campo `manualDeliveryReason` del `Order`).',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({
@@ -380,6 +380,7 @@ export class OrderController {
       // El actor sale SIEMPRE del token: lo usa el caso `status: cancelled`,
       // que delega en la misma cancelación que `PATCH /:id/cancel`.
       user.user_id,
+      body.reason,
     );
     return OrderMapper.toDto(order);
   }
@@ -447,7 +448,9 @@ export class OrderController {
     description:
       'El cliente escanea el QR que muestra el chofer y envía el código leído. ' +
       'Si coincide con `order.deliveryCode` y el pedido está ON_THE_WAY, se marca DELIVERED. ' +
-      'Idempotente vía header `Idempotency-Key`: reintentos de red no re-procesan la entrega.',
+      'Idempotente vía header `Idempotency-Key`: reintentos de red no re-procesan la entrega. ' +
+      'Si lo confirma un admin/super_admin, `reason` es obligatorio (10 a 500 caracteres, 400 si falta) y queda ' +
+      'en el historial de estados y en la auditoría; para el cliente no se pide y se ignora.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiCreatedResponse({
@@ -475,6 +478,7 @@ export class OrderController {
       body.code,
       user.user_id,
       user.role,
+      body.reason,
     );
     return OrderMapper.toDto(order);
   }

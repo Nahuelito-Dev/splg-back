@@ -72,14 +72,24 @@ export class CreateSupplierDto {
   @IsEnum(SupplierKind)
   kind!: SupplierKind;
 
-  @ApiPropertyOptional({ example: 'Marta Gómez', maxLength: 80 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Marta Gómez',
+    maxLength: 80,
+  })
   @VacioANulo()
   @IsOptional()
   @IsString()
   @MaxLength(80)
   contactName?: string | null;
 
-  @ApiPropertyOptional({ example: '+5493624123456', maxLength: 30 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '+5493624123456',
+    maxLength: 30,
+  })
   @VacioANulo()
   @IsOptional()
   @IsString()
@@ -89,14 +99,24 @@ export class CreateSupplierDto {
   })
   phone?: string | null;
 
-  @ApiPropertyOptional({ example: 'compras@gasdellitoral.com.ar' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    format: 'email',
+    example: 'compras@gasdellitoral.com.ar',
+  })
   @VacioANulo()
   @IsOptional()
   @IsEmail()
   @MaxLength(120)
   email?: string | null;
 
-  @ApiPropertyOptional({ example: 'Ruta 11 km 1005, Resistencia' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Ruta 11 km 1005, Resistencia',
+    maxLength: 300,
+  })
   @VacioANulo()
   @IsOptional()
   @IsString()
@@ -104,7 +124,11 @@ export class CreateSupplierDto {
   address?: string | null;
 
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
     example: 30,
+    minimum: 0,
+    maximum: 365,
     description: 'Plazo de pago en días (0 = contado)',
   })
   @IsOptional()

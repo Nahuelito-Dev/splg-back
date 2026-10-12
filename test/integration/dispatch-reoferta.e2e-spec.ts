@@ -24,7 +24,9 @@ import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { DispatchOrchestratorService } from '../../src/order/application/dispatch-orchestrator.service';
 import { OrderService } from '../../src/order/order.service';
+import { UpdateOrderStatusUseCase } from '../../src/order/application/update-order-status.use-case';
 import { ReleaseOrderUseCase } from '../../src/order/application/release-order.use-case';
+import { RoleType } from '../../src/common/constants/role-type.enum';
 import { RealtimeDispatchPort } from '../../src/order/domain/ports/realtime-dispatch.port';
 
 const LAT = -34.6037;
@@ -36,6 +38,7 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
   let orchestrator: DispatchOrchestratorService;
   let realtime: RealtimeDispatchPort;
   let notifyAdmins: jest.SpyInstance;
+  let notifyDriverCancelled: jest.SpyInstance;
 
   beforeAll(async () => {
     env = await createTestApp();
@@ -43,13 +46,17 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
     orchestrator = env.app.get(DispatchOrchestratorService);
     realtime = env.app.get(RealtimeDispatchPort);
     notifyAdmins = jest.spyOn(realtime, 'notifyAdmins');
+    notifyDriverCancelled = jest.spyOn(realtime, 'notifyDriverOrderCancelled');
   }, 120000);
 
   afterAll(async () => {
     await env.cleanup();
   });
 
-  beforeEach(() => notifyAdmins.mockClear());
+  beforeEach(() => {
+    notifyAdmins.mockClear();
+    notifyDriverCancelled.mockClear();
+  });
 
   async function nuevoChofer(distributor: Distributor, lat: number) {
     const sufijo = randomUUID().slice(0, 8);
@@ -224,6 +231,72 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
         reason: 'all_drivers_exhausted',
       }),
       distributor.distributorId,
+    );
+  }, 60000);
+
+  const ofertarA = (orderId: string, distributorId: string, driverId: string) =>
+    ds.getRepository(DispatchOffer).save({
+      orderId,
+      distributorId,
+      driverId,
+      status: DispatchOfferStatus.OFFERED,
+      expiresAt: new Date(Date.now() + 60_000),
+    } as Partial<DispatchOffer>);
+
+  const estados = async (orderId: string) =>
+    new Map((await ofertas(orderId)).map((o) => [o.driverId, o.status]));
+
+  it('el admin asigna a mano con ofertas abiertas a otros choferes: se retiran y se les avisa', async () => {
+    const { distributor, order } = await nuevoPedido();
+    const otro1 = await nuevoChofer(distributor, LAT + 0.001);
+    const otro2 = await nuevoChofer(distributor, LAT + 0.002);
+    const asignado = await nuevoChofer(distributor, LAT + 0.003);
+    await ofertarA(order.orderId, distributor.distributorId, otro1.userId);
+    await ofertarA(order.orderId, distributor.distributorId, otro2.userId);
+    await ofertarA(order.orderId, distributor.distributorId, asignado.userId);
+
+    await env.app
+      .get(OrderService)
+      .assignDelivery(order.orderId, asignado.deliveryId);
+
+    const final = await estados(order.orderId);
+    expect(final.get(otro1.userId)).toBe(DispatchOfferStatus.SUPERSEDED);
+    expect(final.get(otro2.userId)).toBe(DispatchOfferStatus.SUPERSEDED);
+    expect(final.get(asignado.userId)).toBe(DispatchOfferStatus.ACCEPTED);
+    const avisados = notifyDriverCancelled.mock.calls.map(
+      ([driverId]: [string]) => driverId,
+    );
+    expect(avisados).toEqual(
+      expect.arrayContaining([otro1.userId, otro2.userId]),
+    );
+    expect(avisados).not.toContain(asignado.userId);
+    // el pedido no vuelve a ofrecerse a los retirados como si hubieran vencido
+    expect(await ofertas(order.orderId)).toHaveLength(3);
+  }, 60000);
+
+  it('un chofer toma el pedido del pool con ofertas abiertas a otros: se retiran y se les avisa', async () => {
+    const { distributor, order } = await nuevoPedido();
+    const otro = await nuevoChofer(distributor, LAT + 0.001);
+    const quien = await nuevoChofer(distributor, LAT + 0.002);
+    await ofertarA(order.orderId, distributor.distributorId, otro.userId);
+
+    const tomado = await env.app
+      .get(UpdateOrderStatusUseCase)
+      .execute(
+        order.orderId,
+        OrderStatus.ACCEPTED,
+        quien.userId,
+        RoleType.DELIVERY,
+        quien.userId,
+      );
+
+    expect(tomado.status).toBe(OrderStatus.ACCEPTED);
+    const final = await estados(order.orderId);
+    expect(final.get(otro.userId)).toBe(DispatchOfferStatus.SUPERSEDED);
+    expect(final.get(quien.userId)).toBe(DispatchOfferStatus.ACCEPTED);
+    expect(notifyDriverCancelled).toHaveBeenCalledWith(
+      otro.userId,
+      expect.objectContaining({ orderId: order.orderId }),
     );
   }, 60000);
 
