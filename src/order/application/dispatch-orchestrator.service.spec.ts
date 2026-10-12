@@ -25,6 +25,7 @@ describe('DispatchOrchestratorService', () => {
   let orders: { findByIdFull: jest.Mock };
   let deliveries: { choferesElegibles: jest.Mock };
   let fleet: { choferesInhabilitados: jest.Mock };
+  let truckGate: { choferesQuePuedenRecibir: jest.Mock };
   let offers: {
     create: jest.Mock;
     findDriverOfferState: jest.Mock;
@@ -85,6 +86,12 @@ describe('DispatchOrchestratorService', () => {
     fleet = {
       choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
     };
+    truckGate = {
+      // Por defecto todos los candidatos pueden trabajar.
+      choferesQuePuedenRecibir: jest.fn((_dist: string, ids: string[]) =>
+        Promise.resolve(new Set(ids)),
+      ),
+    };
     const notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
     };
@@ -96,7 +103,44 @@ describe('DispatchOrchestratorService', () => {
       notifications as unknown as import('../../notifications/notifications.service').NotificationsService,
       fleet as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
       redis as unknown as import('../../redis/redis.service').RedisService,
+      truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
+  });
+
+  describe('offerToNextDriver · carga del camión', () => {
+    const conTenant = () => makeOrder({ distributorId: 'dist-1' });
+
+    it('ofrece al más cercano QUE PUEDE recibir (según su carga), salteando al que no', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce([
+        'sin-carga',
+        'en-ruta',
+      ]);
+      truckGate.choferesQuePuedenRecibir.mockResolvedValue(
+        new Set(['en-ruta']),
+      );
+
+      const result = await orchestrator.offerToNextDriver(conTenant());
+
+      expect(result).toBe('en-ruta');
+      expect(truckGate.choferesQuePuedenRecibir).toHaveBeenCalledWith(
+        'dist-1',
+        ['sin-carga', 'en-ruta'],
+      );
+    });
+
+    it('si nadie puede recibir, no ofrece a nadie', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['a', 'b']);
+      truckGate.choferesQuePuedenRecibir.mockResolvedValue(new Set());
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('si todos pueden, ofrece al más cercano', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+    });
   });
 
   describe('offerToNextDriver', () => {

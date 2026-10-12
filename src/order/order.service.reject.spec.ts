@@ -69,6 +69,9 @@ describe('OrderService · rejectOffer', () => {
       {} as unknown as NotificationPort,
       {} as unknown as DataSource,
       {} as unknown as FleetDispatchLockService,
+      {
+        assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
+      } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
   });
 

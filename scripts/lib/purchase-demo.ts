@@ -56,7 +56,7 @@ export async function limpiarCompras(
  * método del servicio de garrafas que el ledger usa, con su misma regla
  * (lock de la fila, no queda negativo).
  */
-const garrafasDelSeed = {
+export const garrafasDelSeed = {
   async ajustarVendible(
     m: EntityManager,
     distributorId: string,

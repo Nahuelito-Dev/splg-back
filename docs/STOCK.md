@@ -160,7 +160,103 @@ que mueven stock o numeran aceptan `Idempotency-Key`):
 | GET | `/purchase-receipts/average-costs`, `/purchase-receipts/:id` |
 | PATCH | `/purchase-receipts/:id/void`, `/purchase-receipts/:id/payment-status` |
 
-## Pendiente (parte 3)
+## Carga y rendición del camión (parte 3)
 
-La carga y rendición del camión usa `StockLedgerPort` (`aplicar` y `contraasentar`). La caja de las compras
-(M-D) completará `cash_movement_id`. Ver la entrega de la tanda.
+Módulo `src/truck-load/`. La jornada de un camión: se abre la carga, se carga, sale, se repone en
+ruta, se entrega, vuelve y se rinde. Toda salida y entrada de garrafas pasa por `StockLedgerPort`; el
+módulo guarda el documento y las reglas (`domain/truck-load-rules.ts`).
+
+| Tabla | Qué es |
+|---|---|
+| `truck_load` | Hoja de carga: camión, chofer, ayudante (legajo, opcional), depósito de origen, día de negocio (hora argentina), número (`document_sequence`, tipo `truck_load`) y estado. Únicos parciales `(car_id)` y `(delivery_id)` `WHERE status IN ('loading','on_route','returned')`: un camión y un chofer tienen **una sola** carga abierta. |
+| `truck_load_item` | Un renglón por tipo de garrafa: cargadas (`loaded_full`, `loaded_empty`), repuestas (`reloaded_full`), lo declarado al volver y, al cerrar, lo congelado (entregado, recolectado, esperado y diferencia). |
+
+**Estados:** `loading -> on_route -> returned -> closed | closed_with_difference`; `cancelled` sólo desde
+`loading`. Se puede volver a declarar la vuelta (`returned -> returned`) hasta cerrar.
+
+**Qué mueve el ledger y cuándo:**
+
+| Acción | Movimientos |
+|---|---|
+| Abrir (`POST /truck-loads`) | Ninguno: guarda renglones y numera. Exige que el camión esté en uso por el chofer (`vehicle_assignment` abierta). |
+| Salir (`PATCH .../depart`) | `truck_load`: depósito de origen -> camión, llenas y vacías (para canje). Si no alcanza el depósito, 400 y no sale nada. |
+| Reponer (`PATCH .../reload`) | `truck_load`: más llenas del depósito al camión, sobre la misma carga y sólo en ruta. |
+| Entregar | Ya existe (parte 1): sale la llena del camión del pedido y entra la vacía de canje 1 a 1. |
+| Rendir (`PATCH .../close`) | `truck_return`: lo declarado vuelve camión -> depósito. La diferencia, en la misma operación: faltante = `shrinkage` (baja el vendible), sobrante = `adjustment` (sube el vendible). |
+| Defectuosas del camión | Vuelven al depósito tal cual (`truck_return`, condición `defective`) sin declaración ni diferencia: el camión queda en cero en TODAS las condiciones. |
+| Cancelar | Ninguno: en `loading` todavía no se movió nada; sólo libera camión y chofer. |
+
+**Rendición (D6).** Por tipo de garrafa, `esperado llenas = cargadas + repuestas - entregadas` y `esperado
+vacías = cargadas + recolectadas`. Lo entregado y recolectado se leen del libro: los movimientos
+`delivery` y `empty_collected` del camión desde que se abrió la carga, netos de contraasientos. La
+diferencia es `declarado - esperado`; el detalle la muestra en vivo apenas el chofer declara y al cerrar queda
+congelada. **Invariante: al cerrar, el saldo del camión queda en cero.** Los ajustes se calculan contra el
+saldo real del camión bajo lock (coincide con el esperado salvo que alguien lo haya movido a mano), y
+cualquier ajuste del libro cuenta como diferencia. Con diferencia, `differenceNote` es obligatoria (400
+sin ella, antes de tocar el ledger) y la carga queda `closed_with_difference`. Lo que el camión tenga y la carga
+no liste (una transferencia manual) se rinde con un renglón propio declarado en cero.
+
+**Efectivo de la jornada (informativo).** El detalle trae `cash`: de los pedidos que el chofer entregó con ese
+camión durante la carga, el efectivo cobrado (`paid`, confirmado por el chofer), el impago (`unpaid` y
+`written_off`) y el pendiente de confirmar. No mueve nada: la caja (M-D) no existe.
+
+**Orden de locks de la carga** (se suma al de arriba): `car` (`FOR SHARE`, frena a `ponerEnUso`) -> `delivery` ->
+`gas_cylinder` (`FOR KEY SHARE`, por id) -> `document_sequence`, al abrir. Para operar una carga abierta, el
+**primer** lock es la fila de `truck_load` y después va el del ledger. La rendición toma ella misma, en el
+orden del ledger, `gas_cylinder FOR UPDATE` (puede mover el vendible; no se sube de modo después) ->
+depósito `FOR SHARE` -> saldos del depósito y del camión `FOR UPDATE` ordenados, ANTES de leer lo entregado:
+una entrega en curso se ve completa y una posterior ya no encuentra stock en el camión y sale del depósito.
+Una entrega que se asienta entre la declaración del chofer y el cierre aparece como diferencia en la
+rendición (el cierre recalcula bajo lock).
+
+**Quién recibe y acepta pedidos** (`motivoSinPedidos`, puerto `TruckLoadGatePort`; se aplica a las ofertas del despacho
+automático, a la aceptación del chofer o del administrador con `deliveryId`, a la asignación manual
+`PATCH /orders/:id/assign/:deliveryId` y al pool `GET /orders/available`):
+- **con carga abierta, sólo en ruta** (`on_route`), con o sin D5: en `loading` todavía no salió el stock y en `returned` ya
+  declaró la vuelta, así que lo que entregara después sería stock fantasma en la rendición. Además su vehículo en uso tiene que ser el
+  camión de la carga;
+- **sin carga**: recibe y acepta como siempre, salvo que la distribuidora active D5. `stock_control.requireOpenTruckLoad`
+  (por distribuidora, `module_config`, proceso `stock_control`; por defecto `false`) exige tenerla; se lee y cambia con
+  `GET|PUT /truck-loads/settings`.
+Aceptar o asignar sin poder responde 400 con el motivo ("Tu distribuidora exige una carga de camión abierta...", "El chofer no tiene la
+carga del día abierta", "La carga N° n todavía no salió...", "...ya volvió..."). `GET /orders/available` devuelve la lista vacía con
+`openLoadRequired: true` y `message` (por ejemplo "Abrí tu carga para recibir pedidos"); la app también lo sabe por
+`GET /truck-loads/mine` (`requireOpenTruckLoad`, y la carga con su estado). Repetir una aceptación que ya era del chofer no se vuelve a controlar.
+
+**Reglas de la jornada**
+- **El stock del camión sólo entra y sale por la carga.** `POST /stock/transfers` rechaza (400) transferir a un vehículo: "El camión se
+  carga y se rinde desde la carga del día". La única excepción es **regularizar**: devolver al depósito lo que un vehículo tiene suelto,
+  con transferencia vehículo -> depósito, sólo si el camión no tiene carga abierta (409 si la tiene) y con nota obligatoria. Se eligió
+  esa vía y no un endpoint aparte porque deja el mismo rastro (lote, libro, auditoría, idempotencia). Un camión sale vacío: `depart` responde
+  400 si todavía tiene garrafas.
+- **No se declara la vuelta con pedidos en curso:** `return` responde 409 si el chofer tiene pedidos `accepted` u `on_the_way`
+  ("Tenés N pedidos en curso: entregalos o liberalos antes de volver").
+- **Entrega después de declarar:** si el libro tiene entregas del camión posteriores a `returned_at`, `close` responde 409 y el
+  chofer vuelve a declarar. Se eligió rechazar y no recalcular porque recalcular daría por buena una cuenta que el chofer no hizo.
+- **Cambio de vehículo:** `PUT|DELETE /delivery/:id/vehicle` responde 409 mientras el chofer, o el camión, tengan una carga abierta.
+- **Reposición:** `reload` exige `Idempotency-Key` (400 sin ella): repetirla suma otra vez. `depart`, `return`, `close` y `cancel` son
+  idempotentes por estado.
+- **Reloj:** `opened_at` y `returned_at` salen del reloj de la base (`clock_timestamp()`); delimitan qué entregas son de la carga.
+- **Mismo criterio para stock y efectivo:** lo entregado en stock es lo que salió del camión de la carga en `[opened_at, ahora o cierre]`; el
+  efectivo (`cash`) y la lista `orders` son los pedidos entregados por el chofer de la carga CON ese camión (`order.vehicle_car_id`) en la
+  misma ventana. "Cobrado" es `paid` (cualquier medio); `unpaid` y `written_off` son impago; el efectivo `pending` está sin confirmar. Un pedido
+  entregado con otro vehículo no cuenta en ninguno de los dos.
+
+**Endpoints** (`@Auth(ADMIN, SUPER_ADMIN)` salvo indicación; un chofer sólo ve y toca las cargas suyas, lo ajeno
+es 404; los `POST`/`PATCH` que mueven stock aceptan `Idempotency-Key`):
+
+| Método | Ruta |
+|---|---|
+| POST | `/truck-loads` (abre y numera) |
+| GET | `/truck-loads` (`status`, `date`, `from`, `to`, `carId`, `deliveryId`, `page`, `limit`) |
+| GET | `/truck-loads/mine` (`DELIVERY`: su carga abierta y `requireOpenTruckLoad`) |
+| GET, PUT | `/truck-loads/settings` |
+| GET | `/truck-loads/cars/:carId/stock` (stock actual del camión) |
+| GET | `/truck-loads/:id` (admin o el chofer de la carga: renglones, esperado, diferencias, pedidos, `cash` y movimientos) |
+| PUT | `/truck-loads/:id/items` (sólo en `loading`) |
+| PATCH | `/truck-loads/:id/depart` (admin o el chofer de la carga), `/reload` (con `Idempotency-Key`), `/return` (admin o el chofer), `/close`, `/cancel` |
+
+## Pendiente
+
+La caja de las compras y de la rendición (M-D) completará `cash_movement_id` y podrá cargar la diferencia de una
+rendición al chofer. Ver la entrega de la tanda.

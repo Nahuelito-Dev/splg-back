@@ -21,6 +21,13 @@ import { Admin } from '../../src/admin/entities/admin.entity';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { Car } from '../../src/car/entities/car.entity';
 import { WarehouseService } from '../../src/stock/application/warehouse.service';
+import { StockLocationService } from '../../src/stock/application/stock-location.service';
+import { StockLedgerPort } from '../../src/stock/domain/ports/stock-ledger.port';
+import {
+  StockCondition,
+  StockMovementReason,
+  StockReferenceType,
+} from '../../src/stock/domain/stock.enums';
 
 interface Movimiento {
   movementId: string;
@@ -116,6 +123,37 @@ describe('Stock físico (e2e)', () => {
   });
 
   const http = () => request(env.app.getHttpServer());
+
+  /** Deja llenas en un camión como lo haría la carga: depósito -> camión por el libro. */
+  const alCamion = (
+    e: { distributorId: string; locationId: string },
+    carId: string,
+    gasCylinderId: string,
+    quantity: number,
+  ) =>
+    ds.transaction(async (manager) => {
+      const camion = await env.app
+        .get(StockLocationService)
+        .ubicacionDeVehiculo(manager, e.distributorId, carId);
+      await env.app.get(StockLedgerPort).aplicar(manager, {
+        distributorId: e.distributorId,
+        referenceType: StockReferenceType.TRANSFER,
+        referenceId: null,
+        actorUserId: null,
+        movimientos: [
+          {
+            gasCylinderId,
+            quantity,
+            from: { locationId: e.locationId, condition: StockCondition.FULL },
+            to: {
+              locationId: camion.locationId,
+              condition: StockCondition.FULL,
+            },
+            reason: StockMovementReason.TRANSFER,
+          },
+        ],
+      });
+    });
 
   async function rol(type: string): Promise<Role> {
     const roles = ds.getRepository(Role);
@@ -273,24 +311,20 @@ describe('Stock físico (e2e)', () => {
       );
 
       // 2. Transferencia de 10 llenas al camión (depósito → vehículo).
-      const transfer = await http()
+      // Por la API ya no: el camión se carga desde la carga del día.
+      const rechazada = await http()
         .post('/stock/transfers')
         .set(e.headers)
-        .set('Idempotency-Key', randomUUID())
         .send({
           from: { warehouseId: e.warehouseId },
           to: { carId: auto.carId },
           items: [{ gasCylinderId: g.gasCylinderId, quantity: 10 }],
-          notes: 'Carga de la mañana',
         })
-        .expect(201);
-      expect(cuerpo<Operacion>(transfer).movements).toHaveLength(1);
-      expect(cuerpo<Operacion>(transfer).movements[0]).toMatchObject({
-        reason: 'transfer',
-        quantity: 10,
-        fromCondition: 'full',
-        toCondition: 'full',
-      });
+        .expect(400);
+      expect(cuerpo<Mensaje>(rechazada).message).toMatch(
+        /se carga y se rinde desde la carga del día/,
+      );
+      await alCamion(e, auto.carId, g.gasCylinderId, 10);
       expect(await saldo(e.locationId, g.gasCylinderId)).toBe(30);
       expect(await vendible(g.gasCylinderId)).toBe(35); // la transferencia no cambia el vendible
 
@@ -427,15 +461,7 @@ describe('Stock físico (e2e)', () => {
       } as Partial<User>)) as User;
       const auto = await seedAuto(e.distributorId, chofer.userId);
       await conteoInicial(e, g, 10).expect(201);
-      await http()
-        .post('/stock/transfers')
-        .set(e.headers)
-        .send({
-          from: { warehouseId: e.warehouseId },
-          to: { carId: auto.carId },
-          items: [{ gasCylinderId: g.gasCylinderId, quantity: 5 }],
-        })
-        .expect(201);
+      await alCamion(e, auto.carId, g.gasCylinderId, 5);
 
       const res = await http()
         .post('/stock/adjustments')
@@ -828,15 +854,7 @@ describe('Stock físico (e2e)', () => {
       } as Partial<User>)) as User;
       const auto = await seedAuto(e.distributorId, chofer.userId);
       await conteoInicial(e, g, 10).expect(201);
-      await http()
-        .post('/stock/transfers')
-        .set(e.headers)
-        .send({
-          from: { warehouseId: e.warehouseId },
-          to: { carId: auto.carId },
-          items: [{ gasCylinderId: g.gasCylinderId, quantity: 8 }],
-        })
-        .expect(201);
+      await alCamion(e, auto.carId, g.gasCylinderId, 8);
       const r = await http()
         .patch(`/gascylinder/${g.gasCylinderId}/stock`)
         .set(e.headers)

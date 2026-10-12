@@ -33,6 +33,7 @@ import {
   resguardoDeProduccion,
 } from './lib/resguardo-de-produccion';
 import { sembrarCompras } from './lib/purchase-demo';
+import { sembrarCarga } from './lib/truck-load-demo';
 import { limpiarStock, sembrarFisico } from './lib/stock-demo';
 import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
 
@@ -580,6 +581,10 @@ async function main() {
   resumen.push([
     'compras (2 proveedores, 1 orden recibida; garrafas compradas)',
     await sembrarCompras(ds, distId),
+  ]);
+  resumen.push([
+    'carga de camión (1 rendida con diferencia, por el ledger)',
+    await sembrarCarga(ds, distId),
   ]);
 
   imprimirResumen();

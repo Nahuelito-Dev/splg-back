@@ -57,6 +57,7 @@ describe('OrderService · asignación manual', () => {
     where: jest.Mock;
     getOne: jest.Mock;
   };
+  let truckGate: { assertPuedeAsignar: jest.Mock };
   let fleetGate: {
     assertChoferHabilitado: jest.Mock;
     vehiculoEnUsoDelChofer: jest.Mock;
@@ -142,6 +143,7 @@ describe('OrderService · asignación manual', () => {
         model: 'Wave',
       }),
     };
+    truckGate = { assertPuedeAsignar: jest.fn().mockResolvedValue(undefined) };
     service = new OrderService(
       {} as unknown as Repository<Order>,
       deliveries as unknown as DeliveryService,
@@ -156,6 +158,7 @@ describe('OrderService · asignación manual', () => {
       {} as unknown as NotificationPort,
       dataSource as unknown as DataSource,
       fleetGate as unknown as FleetDispatchLockService,
+      truckGate as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
     // La respuesta final releé el pedido; en vez de volver a pedir el lock
     // (consumiría la cola de `mockResolvedValueOnce` de cada test), devuelve
@@ -347,6 +350,19 @@ describe('OrderService · asignación manual', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
 
+  it('D5: si la distribuidora exige carga y el chofer no la tiene, no se asigna (400) y se hace rollback', async () => {
+    truckGate.assertPuedeAsignar.mockRejectedValue(
+      new BadRequestException('El chofer no tiene la carga del día abierta'),
+    );
+
+    await expect(service.assignDelivery(PEDIDO, CHOFER)).rejects.toThrow(
+      'El chofer no tiene la carga del día abierta',
+    );
+    expect(truckGate.assertPuedeAsignar).toHaveBeenCalledWith('dist', CHOFER);
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+  });
+
   it('un chofer de otra distribuidora es 404 y ni siquiera consulta la flota', async () => {
     const deliveries = {
       findById: jest.fn().mockResolvedValue({
@@ -372,6 +388,9 @@ describe('OrderService · asignación manual', () => {
       {} as unknown as NotificationPort,
       dataSource as unknown as DataSource,
       fleetGate as unknown as FleetDispatchLockService,
+      {
+        assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
+      } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
     );
 
     await expect(service.assignDelivery(PEDIDO, CHOFER)).rejects.toThrow(

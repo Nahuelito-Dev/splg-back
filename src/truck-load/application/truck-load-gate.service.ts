@@ -1,0 +1,139 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { TruckLoadGatePort } from '../../order/domain/ports/truck-load-gate.port';
+import { ESTADOS_ABIERTOS, TruckLoadStatus } from '../domain/truck-load.enums';
+import { MotivoSinPedidos, motivoSinPedidos } from '../domain/truck-load-rules';
+import { StockControlSettingsService } from './stock-control-settings.service';
+
+export const MENSAJE_SIN_CARGA =
+  'Tu distribuidora exige una carga de camión abierta para trabajar: pedile al administrador que abra tu carga del día';
+export const MENSAJE_SIN_CARGA_DEL_CHOFER =
+  'El chofer no tiene la carga del día abierta';
+/** Lo que la app le muestra al chofer que tiene que abrir su carga. */
+export const MENSAJE_ABRIR_CARGA = 'Abrí tu carga para recibir pedidos';
+
+interface FilaDeChofer {
+  user_id: string;
+  delivery_id: string;
+  number: number | null;
+  status: TruckLoadStatus | null;
+  car_id: string | null;
+  en_uso: string | null;
+}
+
+/**
+ * Implementación del puerto del despacho: quién recibe y acepta pedidos según
+ * su carga de camión (ver `motivoSinPedidos`). Lee `truck_load` y la
+ * asignación del vehículo en una sola consulta.
+ */
+@Injectable()
+export class TruckLoadGateService extends TruckLoadGatePort {
+  constructor(
+    private readonly settings: StockControlSettingsService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+  ) {
+    super();
+  }
+
+  async choferesQuePuedenRecibir(
+    distributorId: string,
+    userIds: string[],
+  ): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const exige = (await this.settings.obtener(distributorId))
+      .requireOpenTruckLoad;
+    const filas = await this.leer(distributorId, 'd."user_id"', userIds);
+    return new Set(
+      filas
+        .filter((f) => this.motivoDe(exige, f) === null)
+        .map((f) => f.user_id),
+    );
+  }
+
+  async motivoParaNoRecibir(
+    distributorId: string,
+    userId: string,
+  ): Promise<string | null> {
+    const exige = (await this.settings.obtener(distributorId))
+      .requireOpenTruckLoad;
+    const [fila] = await this.leer(distributorId, 'd."user_id"', [userId]);
+    const motivo = fila ? this.motivoDe(exige, fila) : null;
+    return motivo ? this.textoParaLaApp(motivo) : null;
+  }
+
+  async assertPuedeAceptar(
+    distributorId: string,
+    deliveryId: string,
+  ): Promise<void> {
+    await this.exigir(distributorId, deliveryId, MENSAJE_SIN_CARGA);
+  }
+
+  async assertPuedeAsignar(
+    distributorId: string,
+    deliveryId: string,
+  ): Promise<void> {
+    await this.exigir(distributorId, deliveryId, MENSAJE_SIN_CARGA_DEL_CHOFER);
+  }
+
+  private async exigir(
+    distributorId: string,
+    deliveryId: string,
+    mensajeSinCarga: string,
+  ): Promise<void> {
+    const exige = (await this.settings.obtener(distributorId))
+      .requireOpenTruckLoad;
+    const [fila] = await this.leer(distributorId, 'd."delivery_id"', [
+      deliveryId,
+    ]);
+    const motivo = fila ? this.motivoDe(exige, fila) : null;
+    if (!motivo) return;
+    throw new BadRequestException(
+      motivo.codigo === 'sin-carga'
+        ? mensajeSinCarga
+        : this.textoParaLaApp(motivo),
+    );
+  }
+
+  private motivoDe(exige: boolean, f: FilaDeChofer): MotivoSinPedidos | null {
+    return motivoSinPedidos({
+      exige,
+      carga:
+        f.number !== null && f.status !== null && f.car_id !== null
+          ? { number: f.number, status: f.status, carId: f.car_id }
+          : null,
+      vehiculoEnUsoId: f.en_uso,
+    });
+  }
+
+  private textoParaLaApp(m: MotivoSinPedidos): string {
+    switch (m.codigo) {
+      case 'sin-carga':
+        return MENSAJE_ABRIR_CARGA;
+      case 'sin-salir':
+        return `La carga N° ${m.number} todavía no salió: confirmá la salida del camión para recibir pedidos`;
+      case 'devuelta':
+        return `La carga N° ${m.number} ya volvió: no se reciben pedidos hasta cerrar su rendición`;
+      case 'otro-vehiculo':
+        return `El vehículo en uso no es el de la carga N° ${m.number}`;
+    }
+  }
+
+  private leer(
+    distributorId: string,
+    columna: string,
+    valores: string[],
+  ): Promise<FilaDeChofer[]> {
+    return this.dataSource.query(
+      `SELECT d."user_id", d."delivery_id", l."number", l."status", l."car_id",
+              va."car_id" AS en_uso
+       FROM "delivery" d
+       LEFT JOIN "truck_load" l ON l."delivery_id" = d."delivery_id"
+         AND l."status"::text = ANY($3::text[])
+       LEFT JOIN "vehicle_assignment" va ON va."delivery_id" = d."delivery_id"
+         AND va."released_at" IS NULL
+       WHERE d."distributor_id" = $1 AND ${columna} = ANY($2::uuid[])`,
+      [distributorId, valores, ESTADOS_ABIERTOS],
+    );
+  }
+}

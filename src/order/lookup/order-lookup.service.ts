@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, FindOptionsWhere, In, Not, Repository } from 'typeorm';
-import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 
 /** Lo mínimo de un pedido que necesitan los módulos que no son `order`. */
@@ -208,5 +213,69 @@ export class OrderLookupService {
         quantity: number;
       }>();
     return filas;
+  }
+
+  /**
+   * Pedidos que un chofer entregó con un vehículo desde `desde` (inclusive) y,
+   * si se pasa, hasta `hasta` (inclusive): lo que se muestra en la rendición del
+   * camión, con cómo se cobró cada uno.
+   */
+  async entregadosPorVehiculo(args: {
+    distributorId: string;
+    deliveryId: string;
+    carId: string;
+    desde: Date;
+    hasta?: Date | null;
+  }): Promise<
+    Array<{
+      orderId: string;
+      totalAmount: number;
+      paymentMethod: PaymentMethod;
+      paymentStatus: PaymentStatus;
+      deliveredAt: Date;
+    }>
+  > {
+    const consulta = this.orderRepository
+      .createQueryBuilder('ord')
+      .select('ord.orderId', 'orderId')
+      .addSelect('ord.totalAmount', 'totalAmount')
+      .addSelect('ord.paymentMethod', 'paymentMethod')
+      .addSelect('ord.paymentStatus', 'paymentStatus')
+      .addSelect('ord.deliveredAt', 'deliveredAt')
+      .where('ord.distributorId = :distributorId', {
+        distributorId: args.distributorId,
+      })
+      .andWhere('ord.deliveryId = :deliveryId', {
+        deliveryId: args.deliveryId,
+      })
+      .andWhere('ord.vehicleCarId = :carId', { carId: args.carId })
+      .andWhere('ord.status = :entregado', { entregado: OrderStatus.DELIVERED })
+      .andWhere('ord.deliveredAt >= :desde', { desde: args.desde });
+    if (args.hasta) {
+      consulta.andWhere('ord.deliveredAt <= :hasta', { hasta: args.hasta });
+    }
+    const filas = await consulta
+      .orderBy('ord.deliveredAt', 'ASC')
+      .addOrderBy('ord.orderId', 'ASC')
+      .getRawMany<{
+        orderId: string;
+        totalAmount: string;
+        paymentMethod: PaymentMethod;
+        paymentStatus: PaymentStatus;
+        deliveredAt: Date;
+      }>();
+    return filas.map((f) => ({ ...f, totalAmount: Number(f.totalAmount) }));
+  }
+
+  /** Pedidos aceptados o en camino de un chofer: lo que tiene en curso. */
+  countEnCurso(deliveryId: string, manager?: EntityManager): Promise<number> {
+    return (manager ?? this.orderRepository.manager)
+      .getRepository(Order)
+      .count({
+        where: {
+          deliveryId,
+          status: In([OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY]),
+        },
+      });
   }
 }

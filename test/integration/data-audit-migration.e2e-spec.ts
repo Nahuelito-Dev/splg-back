@@ -133,7 +133,7 @@ describe('Migración AuditoriaDeDatos (e2e)', () => {
       );
       return existe;
     };
-    for (let i = 0; i < 10 && (await auditoriaExiste()); i++) {
+    for (let i = 0; i < 50 && (await auditoriaExiste()); i++) {
       await ds.undoLastMigration();
     }
     const [{ existe }] = await ds.query<Array<{ existe: boolean }>>(

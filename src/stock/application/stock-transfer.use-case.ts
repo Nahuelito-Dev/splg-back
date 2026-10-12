@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { OperacionDeStockInvalidaError } from '../domain/errors/stock.errors';
 import {
@@ -17,11 +17,22 @@ import {
 import { CreateTransferDto } from '../dto/stock-operations.dto';
 import { StockLocationService } from './stock-location.service';
 
+export const MENSAJE_CAMION_POR_CARGA =
+  'El camión se carga y se rinde desde la carga del día';
+
 /**
- * Transferencia entre dos ubicaciones: depósito a depósito, o depósito a
- * vehículo (y de vuelta). Sin tabla propia: son movimientos del libro con el
- * mismo lote y `reason = transfer`. El vendible no cambia (las llenas siguen
- * dentro del conjunto depósitos + camiones).
+ * Transferencia entre dos ubicaciones: depósito a depósito, o de un vehículo
+ * al depósito. Sin tabla propia: son movimientos del libro con el mismo lote y
+ * `reason = transfer`. El vendible no cambia (las llenas siguen dentro del
+ * conjunto depósitos + camiones).
+ *
+ * El stock del camión entra y sale SÓLO por la carga del día (`truck-load`):
+ * no se transfiere a un vehículo. La única excepción es regularizar —devolver al
+ * depósito lo que un vehículo tiene suelto— y sólo si no tiene una carga abierta
+ * y con una nota que lo explique. Se eligió esta vía y no un endpoint aparte
+ * porque deja el mismo rastro (lote, libro, auditoría, idempotencia) y la regla
+ * cabe en una línea; el endpoint de regularización sería la misma transferencia
+ * con otro nombre.
  */
 @Injectable()
 export class StockTransferUseCase {
@@ -30,6 +41,33 @@ export class StockTransferUseCase {
     private readonly ledger: StockLedgerPort,
     private readonly locations: StockLocationService,
   ) {}
+
+  /**
+   * Devolver al depósito lo que un vehículo tiene suelto: sin carga abierta (si
+   * la tiene, se rinde desde la carga) y con nota. Lee `truck_load` sólo para
+   * saber si hay una carga abierta; no escribe nada de ese módulo.
+   */
+  private async validarRegularizacion(
+    manager: EntityManager,
+    carId: string | null,
+    notes: string | undefined,
+  ): Promise<void> {
+    const [abierta]: Array<{ number: number }> = await manager.query(
+      `SELECT "number" FROM "truck_load"
+       WHERE "car_id" = $1 AND "status"::text IN ('loading', 'on_route', 'returned')`,
+      [carId],
+    );
+    if (abierta) {
+      throw new ConflictException(
+        `${MENSAJE_CAMION_POR_CARGA}: el camión tiene abierta la carga N° ${abierta.number}`,
+      );
+    }
+    if (!notes?.trim()) {
+      throw new OperacionDeStockInvalidaError(
+        'Para devolver al depósito el stock suelto de un camión indicá en las notas por qué',
+      );
+    }
+  }
 
   /** Devuelve el id del lote. */
   async execute(
@@ -72,6 +110,12 @@ export class StockTransferUseCase {
             throw new OperacionDeStockInvalidaError(
               'No se transfiere de un vehículo a otro: pasá por un depósito',
             );
+          }
+          if (destino.kind === StockLocationKind.VEHICLE) {
+            throw new OperacionDeStockInvalidaError(MENSAJE_CAMION_POR_CARGA);
+          }
+          if (origen.kind === StockLocationKind.VEHICLE) {
+            await this.validarRegularizacion(manager, origen.carId, dto.notes);
           }
           const batchId = randomUUID();
           const movimientos: MovimientoDeStock[] = dto.items.map((item) => {

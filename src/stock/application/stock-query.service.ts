@@ -214,6 +214,9 @@ export class StockQueryService {
       agregar((n) => `m."reference_type" = $${n}`, query.referenceType);
     }
     if (query.batchId) agregar((n) => `m."batch_id" = $${n}`, query.batchId);
+    if (query.referenceId) {
+      agregar((n) => `m."reference_id" = $${n}`, query.referenceId);
+    }
 
     if (query.from || query.to) {
       const desde = query.from ?? query.to!;

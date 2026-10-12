@@ -103,6 +103,7 @@ import { WarehouseController } from './presentation/warehouse.controller';
     WarehouseService,
     StockLocationService,
     StockOnHandService,
+    StockQueryService,
   ],
 })
 export class StockModule {}

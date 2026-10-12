@@ -78,6 +78,15 @@ export class QueryStockMovementDto extends PickType(PaginationDto, [
   @IsUUID()
   batchId?: string;
 
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Movimientos de un documento (por ejemplo el id de una carga de camión, con referenceType)',
+  })
+  @IsOptional()
+  @IsUUID()
+  referenceId?: string;
+
   @FechaCalendarioOpcional('2026-10-01', undefined)
   from?: string;
 
