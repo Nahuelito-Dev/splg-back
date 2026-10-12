@@ -29,7 +29,10 @@ import {
 import { OrderService } from './order.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
-import { ResolveUnpaidDto } from './dto/resolve-unpaid.dto';
+import {
+  ResolveUnpaidDto,
+  ResolveUnpaidResponseDto,
+} from './dto/resolve-unpaid.dto';
 import { ReservationService } from './application/reservation.service';
 import { mapRoleToCancelActor } from './application/cancel-order.use-case';
 import { OrderMapper } from './order.mapper';
@@ -493,12 +496,14 @@ export class OrderController {
     description:
       'Cierra un pedido con `paymentStatus: unpaid`: `resolution: paid` (el cliente pagó después) o ' +
       '`resolution: written_off` (se da por perdido). Exige `note` con el motivo; quedan registrados ' +
-      'quién y cuándo (`paymentConfirmedBy`, `paymentConfirmedAt`, `paymentResolutionNote`) y la auditoría. ' +
-      'Repetir la misma resolución es idempotente. No cierra la incidencia: eso va por ' +
-      '`PATCH /incidents/:id/resolve`.',
+      'quién y cuándo (`paymentResolvedBy`, `paymentResolvedAt`, `paymentResolutionNote`) y la auditoría; ' +
+      '`paymentConfirmedAt/By` se llenan sólo con `paid` (una pérdida no es un cobro). En la misma transacción ' +
+      'cierra la incidencia `unpaid_collection` del pedido (`resolved`, con la misma nota). Repetir la resolución ' +
+      '(mismo admin u otro) es idempotente: no toca la nota ni la incidencia y responde 200 con ' +
+      '`alreadyResolved: true`; si cambió algo, `false`.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
-  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiOkResponse({ type: ResolveUnpaidResponseDto })
   @ApiBadRequestResponse({ description: 'resolution o note inválidos' })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiConflictResponse({
@@ -511,13 +516,14 @@ export class OrderController {
     @CurrentDistributor() distributorId: string | null,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
-    await this.cashCollection.resolveUnpaid(
+    const { changed } = await this.cashCollection.resolveUnpaid(
       id,
       user.user_id,
       dto.resolution,
       dto.note,
     );
-    return this.orderService.getOne(id, distributorId);
+    const order = await this.orderService.getOne(id, distributorId);
+    return Object.assign(order, { alreadyResolved: !changed });
   }
 
   @Patch(':id/assign/:deliveryId')

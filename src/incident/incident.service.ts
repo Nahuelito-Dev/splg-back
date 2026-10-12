@@ -14,6 +14,7 @@ import {
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
+import { PaymentStatus } from '../order/entities/order.entity';
 import { OrderService } from '../order/order.service';
 
 @Injectable()
@@ -168,7 +169,9 @@ export class IncidentService {
    * Cierra la incidencia: resuelta (default) o descartada, siempre con nota
    * (el motivo del descarte). `distributorId` opcional: sin él (super admin
    * sin `X-Distributor`) se cierra cross-tenant, igual que en `claims.resolve`.
-   * Descartar sólo una incidencia abierta; una descartada no se vuelve a tocar.
+   * Descartar sólo una incidencia abierta; una descartada o ya resuelta no se
+   * vuelve a tocar. Una de cobro impago no se resuelve por acá mientras el
+   * pedido siga `unpaid`: se resuelve el cobro del pedido (409).
    */
   async resolve(
     id: string,
@@ -177,6 +180,20 @@ export class IncidentService {
   ): Promise<Incident> {
     const incident = await this.findOne(id, distributorId);
     const destino = dto.status ?? IncidentStatus.RESOLVED;
+    if (incident.status === IncidentStatus.RESOLVED) {
+      throw new ConflictException('La incidencia ya está resuelta');
+    }
+    if (
+      incident.type === IncidentType.UNPAID_COLLECTION &&
+      destino === IncidentStatus.RESOLVED
+    ) {
+      const order = await this.orderService.findById(incident.orderId);
+      if (order?.paymentStatus === PaymentStatus.UNPAID) {
+        throw new ConflictException(
+          'Resolvé el cobro del pedido: PATCH /orders/:id/payment/resolve-unpaid',
+        );
+      }
+    }
     if (
       incident.status === IncidentStatus.DISCARDED ||
       (destino === IncidentStatus.DISCARDED &&

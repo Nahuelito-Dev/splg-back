@@ -165,7 +165,7 @@ describe('ReportsService', () => {
   });
 
   describe('ventas = entregado y cobrado', () => {
-    it('por chofer no cuenta efectivo pendiente, impago ni pérdida; sí transferencia pendiente y efectivo cobrado', async () => {
+    it('por chofer sólo cuenta lo pagado: ni efectivo pendiente, ni transferencia pendiente, ni impago, ni pérdida', async () => {
       const chofer = { userId: 'u1', user: { fullName: 'Juan' } };
       const p = (
         paymentStatus: PaymentStatus,
@@ -181,7 +181,7 @@ describe('ReportsService', () => {
       ]);
       const r = await service.getSalesByDriver(new Date(), new Date());
       expect(r).toEqual([
-        { driverId: 'u1', driverName: 'Juan', totalOrders: 2, totalSales: 110 },
+        { driverId: 'u1', driverName: 'Juan', totalOrders: 1, totalSales: 100 },
       ]);
     });
 
@@ -208,8 +208,10 @@ describe('ReportsService', () => {
       orders.createQueryBuilder.mockReturnValue(qb);
       await llamar(service);
       const filtroDeCobro = qb.andWhere.mock.calls.some(
-        ([arg]: [unknown]) =>
-          typeof arg === 'object' && arg !== null && 'whereFactory' in arg,
+        ([arg, params]: [unknown, unknown]) =>
+          typeof arg === 'string' &&
+          arg.endsWith('.paymentStatus = :vcPaid') &&
+          (params as { vcPaid?: string }).vcPaid === 'paid',
       );
       expect(filtroDeCobro).toBe(true);
     });

@@ -38,10 +38,10 @@ export class UnpaidCashController {
     summary: 'El chofer informa que el cliente no pagó el efectivo',
     description:
       'Pasa el pago a `unpaid` y abre una incidencia `unpaid_collection` (avisa a los admins por el panel en vivo, ' +
-      'evento `incident:created`). Body opcional: `note`. Para adjuntar foto, subirla con ' +
+      'evento `incident:created` con `incidentId`, `orderId`, `distributorId`, `type`, `description`, `createdAt`). Body opcional: `note`. Para adjuntar foto, subirla con ' +
       '`PUT /incidents/{incident.incident_id}/photo`. Sólo el chofer asignado, sólo pedidos `delivered` en efectivo ' +
       'con el pago pendiente. Repetirlo (o reintentar con la misma `Idempotency-Key`) devuelve la misma ' +
-      'incidencia, sin duplicar. Un admin lo resuelve con `PATCH /orders/{id}/payment/resolve-unpaid`.',
+      'incidencia, sin duplicar. Un admin lo resuelve con `PATCH /orders/{id}/payment/resolve-unpaid`, que también cierra la incidencia.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: UnpaidCashResponseDto })

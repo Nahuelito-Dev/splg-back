@@ -95,18 +95,17 @@ describe('OrderService.getOrderStats — días en hora argentina', () => {
     ]);
   });
 
-  it('las ventas cuentan sólo lo cobrado: paid, o pending en medios que no son efectivo', async () => {
+  it('las ventas cuentan sólo lo pagado (paid), cualquiera sea el medio', async () => {
     await service.getOrderStats('d1');
     for (const llamada of sum.mock.calls as [string, unknown][]) {
       const alternativas = llamada[1] as {
         paymentStatus: unknown;
-        paymentMethod?: { value?: unknown };
+        paymentMethod?: unknown;
       }[];
       expect(Array.isArray(alternativas)).toBe(true);
-      expect(alternativas).toHaveLength(2);
+      expect(alternativas).toHaveLength(1);
       expect(alternativas[0].paymentStatus).toBe('paid');
-      expect(alternativas[1].paymentStatus).toBe('pending');
-      expect(alternativas[1].paymentMethod).toBeDefined();
+      expect(alternativas[0].paymentMethod).toBeUndefined();
     }
   });
 });

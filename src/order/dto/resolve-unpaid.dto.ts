@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
+import { OrderResponseDto } from './order-response.dto';
 import type { ResolucionDeImpago } from '../application/cash-collection.use-case';
 
 export const RESOLUCIONES_DE_IMPAGO: ResolucionDeImpago[] = [
@@ -25,4 +26,14 @@ export class ResolveUnpaidDto {
   })
   @TextoNoVacio()
   note!: string;
+}
+
+/** Respuesta de `PATCH /orders/:id/payment/resolve-unpaid`: el pedido y si ya estaba resuelto. */
+export class ResolveUnpaidResponseDto extends OrderResponseDto {
+  @ApiProperty({
+    example: false,
+    description:
+      '`true` si el pedido ya estaba en el destino pedido (reintento o segundo admin): no se tocó nada, ni la nota del pedido ni la incidencia.',
+  })
+  alreadyResolved!: boolean;
 }

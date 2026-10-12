@@ -216,7 +216,7 @@ export class OrderResponseDto {
     format: 'date-time',
     nullable: true,
     description:
-      'Cuándo se confirmó el cobro en efectivo (chofer) o se resolvió el impago (admin)',
+      'Cuándo se COBRÓ el efectivo: lo confirmó el chofer o el admin resolvió el impago como `paid`. Queda `null` si el impago se dio por perdido (`written_off`): una pérdida no es un cobro, ver `paymentResolvedAt`.',
   })
   paymentConfirmedAt!: Date | null;
 
@@ -224,9 +224,27 @@ export class OrderResponseDto {
     type: String,
     format: 'uuid',
     nullable: true,
-    description: 'Usuario que confirmó el cobro o resolvió el impago',
+    description:
+      'Usuario que confirmó el cobro (chofer o admin). `null` si el impago se dio por perdido.',
   })
   paymentConfirmedBy!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo un admin resolvió el impago (`paid` o `written_off`). `null` si nunca fue impago.',
+  })
+  paymentResolvedAt!: Date | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Admin que resolvió el impago (`paid` o `written_off`).',
+  })
+  paymentResolvedBy!: string | null;
 
   @ApiProperty({
     type: String,
