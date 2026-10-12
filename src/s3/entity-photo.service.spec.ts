@@ -8,7 +8,6 @@ import type { DataSource, EntityManager } from 'typeorm';
 import {
   DestinoDeFoto,
   EntityPhotoService,
-  esUrlHttp,
   MAX_FOTO_BYTES,
 } from './entity-photo.service';
 import type { S3Service } from './s3.service';
@@ -35,17 +34,6 @@ function archivo(
 ): Express.Multer.File {
   return { buffer, mimetype, size } as Express.Multer.File;
 }
-
-describe('esUrlHttp', () => {
-  it('acepta http(s) y rechaza el resto', () => {
-    expect(esUrlHttp('https://x.example/a.png')).toBe(true);
-    expect(esUrlHttp('http://x.example/a.png')).toBe(true);
-    expect(esUrlHttp('javascript:alert(1)')).toBe(false);
-    expect(esUrlHttp('no es una url')).toBe(false);
-    expect(esUrlHttp(null)).toBe(false);
-    expect(esUrlHttp(undefined)).toBe(false);
-  });
-});
 
 describe('EntityPhotoService', () => {
   const DESTINO: DestinoDeFoto = {
@@ -275,18 +263,10 @@ describe('EntityPhotoService', () => {
       expect(items[1].photoSignedUrl).toBeNull();
     });
 
-    it('enlace: la key manda, si no la URL http externa, si no nada', async () => {
-      expect((await servicio.enlace('k', 'https://ext/x.png')).kind).toBe(
-        'stored',
-      );
-      expect(await servicio.enlace(null, 'https://ext/x.png')).toEqual({
-        kind: 'external',
-        url: 'https://ext/x.png',
-      });
-      expect(await servicio.enlace(null, 'javascript:alert(1)')).toEqual({
-        kind: 'none',
-      });
+    it('enlace: la foto firmada si hay key, nada si no (nunca una URL de texto)', async () => {
+      expect((await servicio.enlace('k')).kind).toBe('stored');
       expect(await servicio.enlace(null)).toEqual({ kind: 'none' });
+      expect(await servicio.enlace(undefined)).toEqual({ kind: 'none' });
     });
   });
 });

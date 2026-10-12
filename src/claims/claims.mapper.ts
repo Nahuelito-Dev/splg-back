@@ -7,8 +7,8 @@ import { UserMapper } from '../users/user.mapper';
 export class ClaimMapper {
   /**
    * `photoUrl` es la URL firmada ya calculada (ver `ClaimsService.photoUrlFor`):
-   * el mapper es síncrono y no conoce S3. Sin ella, sale la URL
-   * externa que el reclamo traía de antes, si la tiene.
+   * el mapper es síncrono y no conoce S3. Sin ella, `null`: la
+   * columna `photoUrl` del reclamo es legada y no se expone.
    */
   static toDto(claim: Claim, photoUrl?: string | null): ClaimResponseDto {
     const dto = new ClaimResponseDto();
@@ -18,7 +18,7 @@ export class ClaimMapper {
     dto.customer_id = claim.customerId;
     dto.reason = claim.reason;
     dto.description = claim.description;
-    dto.photoUrl = photoUrl ?? claim.photoUrl;
+    dto.photoUrl = photoUrl ?? null;
     dto.status = claim.status;
     dto.resolutionNote = claim.resolutionNote;
     dto.createdAt = claim.createdAt;
@@ -42,7 +42,7 @@ export class ClaimMapper {
       createdAt: claim.order.createdAt,
       scheduledDate: claim.order.scheduledDate ?? null,
     };
-    dto.photoUrl = photoUrl ?? claim.photoUrl;
+    dto.photoUrl = photoUrl ?? null;
     dto.resolutionNote = claim.resolutionNote;
     return dto;
   }

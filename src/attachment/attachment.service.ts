@@ -25,6 +25,7 @@ import {
 } from '../common/utils/attachment-rules';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import type { Disposicion } from '../s3/content-disposition';
 
 /** Quién pide: el rol decide si hace falta que el dueño sea "propio". */
 export interface AttachmentActor {
@@ -143,6 +144,7 @@ export class AttachmentService {
     attachmentId: string,
     distributorId: string,
     actor: AttachmentActor,
+    disposition?: Disposicion,
   ): Promise<string> {
     const attachment = await this.findOneOrThrow(
       attachmentId,
@@ -152,6 +154,8 @@ export class AttachmentService {
 
     const signed = await this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
+      disposition,
+      contentType: attachment.mimeType,
     });
     return signed.url;
   }
@@ -163,6 +167,7 @@ export class AttachmentService {
     attachmentId: string,
     distributorId: string,
     actor: AttachmentActor,
+    disposition?: Disposicion,
   ): Promise<SignedDownload> {
     const attachment = await this.findOneOrThrow(
       attachmentId,
@@ -171,6 +176,8 @@ export class AttachmentService {
     );
     return this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
+      disposition,
+      contentType: attachment.mimeType,
     });
   }
 

@@ -48,7 +48,6 @@ export interface DatosDeUsuarioNuevo {
   email: string;
   fullName: string;
   phoneNumber: string;
-  selfie?: string;
   firebaseUid: string;
   roleId: string;
 }
@@ -229,7 +228,6 @@ export class UsersService {
       ...sinIndefinidos({
         fullName: updateUserDto.full_name,
         phoneNumber: updateUserDto.phone_number,
-        selfie: updateUserDto.selfie,
         blocked: updateUserDto.blocked,
       }),
     });

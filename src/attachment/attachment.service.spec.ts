@@ -367,6 +367,8 @@ describe('AttachmentService', () => {
       await service.getDownload('a1', 'd1', ADMIN);
       expect(storage.getSignedDownload).toHaveBeenCalledWith('k', {
         fileName: 'dni.pdf',
+        disposition: undefined,
+        contentType: 'application/pdf',
       });
     });
 

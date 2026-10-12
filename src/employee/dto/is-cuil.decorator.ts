@@ -11,6 +11,7 @@ import { esCuilValido, normalizarCuil } from '../domain/cuil';
 export function Cuil(valorVacio: null | undefined = null): PropertyDecorator {
   return applyDecorators(
     ApiPropertyOptional({
+      type: String,
       example: '20123456786',
       description: 'Once dígitos; se valida el dígito verificador',
       nullable: true,

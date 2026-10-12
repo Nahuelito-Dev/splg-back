@@ -33,26 +33,9 @@ export interface ClaimActor {
   role: RoleType;
 }
 
-/**
- * La URL externa de un reclamo viejo sólo se sirve si es http(s): nunca un
- * `javascript:` ni un texto cualquiera guardado antes de validar el campo.
- */
-function esUrlHttp(url: string | null): url is string {
-  if (!url) return false;
-  try {
-    const { protocol } = new URL(url);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * El enlace a la foto para `?modo=url`: la subida a S3, la URL externa que traía el reclamo, o nada.
- */
+/** El enlace a la foto para `?modo=url`: la subida a S3, o nada. */
 export type ClaimPhotoLink =
   | { kind: 'none' }
-  | { kind: 'external'; url: string }
   | { kind: 'stored'; signed: SignedDownload };
 
 @Injectable()
@@ -91,7 +74,6 @@ export class ClaimsService {
       distributorId: order.distributorId,
       reason: createClaimDto.reason,
       description: createClaimDto.description,
-      photoUrl: createClaimDto.photoUrl,
     });
 
     return await this.claimRepo.save(claim);
@@ -337,6 +319,34 @@ export class ClaimsService {
     }
   }
 
+  /**
+   * Saca la foto del reclamo: la referencia queda en null y el objeto va a
+   * limpieza en la misma transacción. Mismos permisos y mismo candado de
+   * estado que subirla.
+   */
+  async removePhoto(
+    id: string,
+    distributorId: string | null,
+    actor: ClaimActor,
+  ): Promise<Claim> {
+    const claim = await this.findForPhoto(id, distributorId, actor);
+    this.assertAbierto(claim);
+
+    let anterior: string | null = null;
+    const updated = await this.modificar(
+      id,
+      claim.distributorId,
+      async (c, manager) => {
+        this.assertAbierto(c);
+        anterior = c.photoKey;
+        c.photoKey = null;
+        if (anterior) await this.cleanup.scheduleRemoval(manager, anterior);
+      },
+    );
+    if (anterior) this.cleanup.removeInBackground(anterior);
+    return updated;
+  }
+
   /** Un reclamo resuelto o rechazado ya no admite cambios de foto (se reabre antes). */
   private assertAbierto(claim: Claim): void {
     if (
@@ -359,37 +369,28 @@ export class ClaimsService {
     actor: ClaimActor,
   ): Promise<ClaimPhotoLink> {
     const claim = await this.findForPhoto(id, distributorId, actor);
-    if (!claim.photoKey) {
-      return esUrlHttp(claim.photoUrl)
-        ? { kind: 'external', url: claim.photoUrl }
-        : { kind: 'none' };
-    }
+    if (!claim.photoKey) return { kind: 'none' };
     return {
       kind: 'stored',
       signed: await this.storage.getSignedDownload(claim.photoKey),
     };
   }
 
-  /** CU-175: la URL a la que se redirige para `?modo=archivo` (firmada, o la externa del reclamo). */
+  /** CU-175: la URL firmada a la que se redirige para `?modo=archivo`. */
   async getPhotoFile(
     id: string,
     distributorId: string | null,
     actor: ClaimActor,
   ): Promise<string> {
     const claim = await this.findForPhoto(id, distributorId, actor);
-    if (!claim.photoKey) {
-      if (esUrlHttp(claim.photoUrl)) {
-        return claim.photoUrl;
-      }
+    if (!claim.photoKey)
       throw new NotFoundException('El reclamo no tiene foto');
-    }
     return (await this.storage.getSignedDownload(claim.photoKey)).url;
   }
 
   /**
    * URL firmada para el campo `photoUrl` del reclamo. Nunca rompe la respuesta:
-   * si no hay foto o el cálculo de la firma falla, es `null` y
-   * el mapper deja la URL externa que el reclamo traía de antes.
+   * si no hay foto o el cálculo de la firma falla, es `null`.
    */
   async photoUrlFor(claim: Claim): Promise<string | null> {
     if (!claim.photoKey) return null;

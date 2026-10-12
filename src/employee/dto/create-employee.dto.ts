@@ -78,63 +78,108 @@ export class CreateEmployeeDto {
   @FechaCalendarioOpcional('1990-05-17')
   birthDate?: string | null;
 
-  @ApiPropertyOptional({ example: 'Av. Corrientes 1234', maxLength: 200 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Av. Corrientes 1234',
+    maxLength: 200,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(200)
   addressLine?: string | null;
 
-  @ApiPropertyOptional({ example: 'Posadas', maxLength: 80 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Posadas',
+    maxLength: 80,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(80)
   city?: string | null;
 
-  @ApiPropertyOptional({ example: 'Misiones', maxLength: 80 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Misiones',
+    maxLength: 80,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(80)
   province?: string | null;
 
-  @ApiPropertyOptional({ example: '3300', maxLength: 10 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '3300',
+    maxLength: 10,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(10)
   postalCode?: string | null;
 
-  @ApiPropertyOptional({ example: '+5493764000000', maxLength: 30 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '+5493764000000',
+    maxLength: 30,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(30)
   phone?: string | null;
 
-  @ApiPropertyOptional({ example: 'ana@correo.com', maxLength: 120 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'ana@correo.com',
+    maxLength: 120,
+  })
   @IsOptional()
   @VacioANulo()
   @IsEmail()
   @MaxLength(120)
   personalEmail?: string | null;
 
-  @ApiPropertyOptional({ example: 'Luis Pérez', maxLength: 120 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Luis Pérez',
+    maxLength: 120,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(120)
   emergencyContactName?: string | null;
 
-  @ApiPropertyOptional({ example: '+5493764111111', maxLength: 30 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '+5493764111111',
+    maxLength: 30,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
   @MaxLength(30)
   emergencyContactPhone?: string | null;
 
-  @ApiPropertyOptional({ example: 'Hermano', maxLength: 40 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Hermano',
+    maxLength: 40,
+  })
   @IsOptional()
   @VacioANulo()
   @IsString()
@@ -149,6 +194,8 @@ export class CreateEmployeeDto {
   employmentType!: EmploymentType;
 
   @ApiPropertyOptional({
+    type: String,
+    nullable: true,
     example: '0170099220000067890123',
     description: '22 dígitos',
   })
@@ -157,7 +204,7 @@ export class CreateEmployeeDto {
   @Matches(/^\d{22}$/, { message: 'bankCbu tiene que tener 22 dígitos' })
   bankCbu?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @VacioANulo()
   @IsString()

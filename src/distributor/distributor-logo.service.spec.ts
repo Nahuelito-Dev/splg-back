@@ -62,11 +62,8 @@ describe('DistributorLogoService', () => {
     expect(fotos.quitar).toHaveBeenCalled();
   });
 
-  it('el enlace usa el logo_url de texto como respaldo', async () => {
+  it('el enlace usa sólo la key de S3, nunca el logo_url de texto', async () => {
     await servicio.enlace('d1', 'd1');
-    expect(fotos.enlace).toHaveBeenCalledWith(
-      null,
-      'https://viejo.example/logo.png',
-    );
+    expect(fotos.enlace).toHaveBeenCalledWith(null);
   });
 });

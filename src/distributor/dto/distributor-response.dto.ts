@@ -27,7 +27,7 @@ export class DistributorResponseDto {
     type: String,
     nullable: true,
     description:
-      'Texto libre guardado (el que se edita con PATCH). No es el logo de S3: para mostrar usar `photoUrl ?? logo_url`.',
+      'Obsoleto: siempre `null`. El logo se muestra con `photoUrl` (URL firmada de S3).',
   })
   logo_url!: string | null;
 

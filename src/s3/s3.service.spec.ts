@@ -125,6 +125,51 @@ describe('S3Service', () => {
     );
   });
 
+  describe('disposición de la descarga', () => {
+    async function comando(
+      options: Parameters<S3Service['getSignedDownload']>[1],
+    ) {
+      (getSignedUrl as jest.Mock).mockResolvedValue('https://s3.example.com/x');
+      await service.getSignedDownload('k', options);
+      const [, cmd] = jest.mocked(getSignedUrl).mock.calls.at(-1) as [
+        unknown,
+        GetObjectCommand,
+      ];
+      return cmd.input;
+    }
+
+    it('inline de un PDF: Content-Disposition inline y el tipo forzado', async () => {
+      const input = await comando({
+        fileName: 'acta.pdf',
+        disposition: 'inline',
+        contentType: 'application/pdf',
+      });
+      expect(input.ResponseContentDisposition).toMatch(/^inline;/);
+      expect(input.ResponseContentType).toBe('application/pdf');
+    });
+
+    it.each(['text/html', 'image/svg+xml'])(
+      'inline de %s se fuerza a attachment y no pisa el tipo',
+      async (contentType) => {
+        const input = await comando({
+          fileName: 'x.html',
+          disposition: 'inline',
+          contentType,
+        });
+        expect(input.ResponseContentDisposition).toMatch(/^attachment;/);
+        expect(input.ResponseContentType).toBeUndefined();
+      },
+    );
+
+    it('sin disposición es attachment', async () => {
+      const input = await comando({
+        fileName: 'a.pdf',
+        contentType: 'application/pdf',
+      });
+      expect(input.ResponseContentDisposition).toMatch(/^attachment;/);
+    });
+  });
+
   describe('configuración del cliente', () => {
     function configDe(valores: Record<string, string | undefined>) {
       return {

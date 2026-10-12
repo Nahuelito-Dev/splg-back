@@ -9,6 +9,14 @@ export enum DownloadMode {
   FILE = 'archivo',
 }
 
+/** Cómo entrega el navegador el archivo de la URL firmada. */
+export enum DownloadDisposition {
+  /** Lo baja (`Content-Disposition: attachment`). Es el valor por defecto. */
+  ATTACHMENT = 'attachment',
+  /** Lo muestra en el navegador. Sólo PDF e imágenes; el resto se baja igual. */
+  INLINE = 'inline',
+}
+
 export class DownloadQueryDto {
   @ApiProperty({
     enum: DownloadMode,
@@ -22,6 +30,22 @@ export class DownloadQueryDto {
   @IsOptional()
   @IsEnum(DownloadMode)
   modo?: DownloadMode;
+}
+
+/** Descarga de adjuntos (documentos): además del modo, cómo se muestra. */
+export class DownloadAttachmentQueryDto extends DownloadQueryDto {
+  @ApiProperty({
+    enum: DownloadDisposition,
+    enumName: 'DownloadDisposition',
+    required: false,
+    description:
+      '`attachment` (por defecto) baja el archivo; `inline` lo muestra en el ' +
+      'navegador. `inline` sólo se respeta para PDF, JPG, PNG, WEBP y GIF: ' +
+      'cualquier otro tipo (HTML, SVG...) se entrega como `attachment`.',
+  })
+  @IsOptional()
+  @IsEnum(DownloadDisposition)
+  disposicion?: DownloadDisposition;
 }
 
 export class DownloadLinkResponseDto {

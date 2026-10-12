@@ -44,6 +44,7 @@ describe('UpdateOrderStatusUseCase', () => {
   };
   let cylinderLifecycle: { onOrderDelivered: jest.Mock };
   let stockDelivery: { onOrderDelivered: jest.Mock };
+  let fotos: { urlDe: jest.Mock };
   let cancelOrderUseCase: { execute: jest.Mock };
   let releaseOrderUseCase: { execute: jest.Mock };
   let queryRunner: {
@@ -158,6 +159,11 @@ describe('UpdateOrderStatusUseCase', () => {
     stockDelivery = {
       onOrderDelivered: jest.fn().mockResolvedValue(undefined),
     };
+    fotos = {
+      urlDe: jest.fn((key: string | null) =>
+        Promise.resolve(key ? 'https://s3/firmada-chofer' : null),
+      ),
+    };
     fleetGate = {
       assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
       vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue({
@@ -180,6 +186,7 @@ describe('UpdateOrderStatusUseCase', () => {
       releaseOrderUseCase as unknown as import('./release-order.use-case').ReleaseOrderUseCase,
       fleetGate as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
       stockDelivery as unknown as import('../domain/ports/stock-delivery.port').StockDeliveryPort,
+      fotos as unknown as import('../../s3/entity-photo.service').EntityPhotoService,
     );
   });
 
@@ -347,6 +354,39 @@ describe('UpdateOrderStatusUseCase', () => {
       expect(queryRunner.release).toHaveBeenCalled();
     });
 
+    it.each([
+      ['tarda más del tope', () => new Promise<string>(() => undefined)],
+      ['falla', () => Promise.reject(new Error('firma caída'))],
+    ])(
+      'si la firma de la foto %s, el evento sale igual con photoUrl null y sin demora',
+      async (_n, firma) => {
+        fotos.urlDe.mockImplementation(firma);
+        orders.findByIdFull.mockResolvedValue(makeOrder());
+        deliveries.buscarPorIdOUsuario.mockResolvedValue({
+          deliveryId: 'drv-1',
+          distributorId: 'dist-1',
+          userId: 'user-drv-1',
+          isEnabled: true,
+          validated: true,
+          user: {
+            fullName: 'Chofer Uno',
+            phoneNumber: '+549110000',
+            photoKey: 'users/u1/foto.png',
+          },
+        });
+        const t0 = Date.now();
+        await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+        expect(Date.now() - t0).toBeLessThan(2000);
+        expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+          'cust-1',
+          'order:accepted',
+          expect.objectContaining({
+            driver: expect.objectContaining({ photoUrl: null }) as unknown,
+          }),
+        );
+      },
+    );
+
     it('asigna el chofer, setea acceptedAt, guarda y emite order:accepted', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue({
@@ -355,7 +395,11 @@ describe('UpdateOrderStatusUseCase', () => {
         userId: 'user-drv-1',
         isEnabled: true,
         validated: true,
-        user: { fullName: 'Chofer Uno', phoneNumber: '+549110000' },
+        user: {
+          fullName: 'Chofer Uno',
+          phoneNumber: '+549110000',
+          photoKey: 'users/u1/foto.png',
+        },
       });
 
       const result = await useCase.execute(
@@ -383,10 +427,15 @@ describe('UpdateOrderStatusUseCase', () => {
         'order:accepted',
         expect.objectContaining({
           status: OrderStatus.ACCEPTED,
-          driver: { name: 'Chofer Uno', phone: '+549110000' },
+          driver: {
+            name: 'Chofer Uno',
+            phone: '+549110000',
+            photoUrl: 'https://s3/firmada-chofer',
+          },
         }),
       );
       // Mismo gate de flota que `assignDelivery` y el despacho automático.
+      expect(fotos.urlDe).toHaveBeenCalledWith('users/u1/foto.png');
       expect(fleetGate.assertChoferHabilitado).toHaveBeenCalledWith(
         'user-drv-1',
         'dist-1',

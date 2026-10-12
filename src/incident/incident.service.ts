@@ -61,7 +61,6 @@ export class IncidentService {
       reportedBy: reportedByUserId,
       type: dto.type,
       description: dto.description,
-      photoUrl: dto.photoUrl ?? null,
       status: IncidentStatus.OPEN,
     });
 

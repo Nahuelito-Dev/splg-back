@@ -22,6 +22,7 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
 } from '../common/utils/attachment-rules';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import type { Disposicion } from '../s3/content-disposition';
 
 /**
  * Adjuntos de una tarea de flota: la foto o el PDF de la póliza, la VTV o la
@@ -121,6 +122,7 @@ export class FleetAttachmentService {
     taskId: string,
     attachmentId: string,
     distributorId: string,
+    disposition?: Disposicion,
   ): Promise<string> {
     const attachment = await this.findOneOrThrow(
       taskId,
@@ -130,6 +132,8 @@ export class FleetAttachmentService {
 
     const signed = await this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
+      disposition,
+      contentType: attachment.mimeType,
     });
     return signed.url;
   }
@@ -139,6 +143,7 @@ export class FleetAttachmentService {
     taskId: string,
     attachmentId: string,
     distributorId: string,
+    disposition?: Disposicion,
   ): Promise<SignedDownload> {
     const attachment = await this.findOneOrThrow(
       taskId,
@@ -147,6 +152,8 @@ export class FleetAttachmentService {
     );
     return this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
+      disposition,
+      contentType: attachment.mimeType,
     });
   }
 

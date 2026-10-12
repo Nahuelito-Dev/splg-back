@@ -28,6 +28,7 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
 import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
+import { EntityPhotoService } from '../../s3/entity-photo.service';
 
 /** Resultado de aplicar los efectos de un estado dentro de la transacción. */
 interface EfectosDelEstado {
@@ -35,6 +36,9 @@ interface EfectosDelEstado {
   /** `user_id` del chofer que aceptó, para cerrar su oferta tras el commit. */
   aceptacionDelChoferUserId: string | null;
 }
+
+/** Tope para firmar la foto del chofer en el evento de socket. */
+const FIRMA_TIMEOUT_MS = 500;
 
 const SIN_EFECTOS: EfectosDelEstado = {
   deliveryUser: null,
@@ -80,6 +84,8 @@ export class UpdateOrderStatusUseCase {
     private readonly fleetGate: FleetDispatchLockService,
     // Stock físico: la entrega descuenta la llena del camión o del depósito.
     private readonly stockDelivery: StockDeliveryPort,
+    // La foto del chofer sale firmada en el tracking del cliente.
+    private readonly fotos: EntityPhotoService,
   ) {}
 
   async execute(
@@ -189,7 +195,7 @@ export class UpdateOrderStatusUseCase {
         .catch(() => undefined);
     }
 
-    this.emitStatusEvent(order, status, deliveryUser);
+    await this.emitStatusEvent(order, status, deliveryUser);
     // Panel admin en vivo: los valores del enum (accepted/on_the_way/delivered)
     // coinciden con los eventos que escucha la campana del panel. Sólo a los
     // admins DE ESA distribuidora (+ super admin, que ven todas).
@@ -538,16 +544,37 @@ export class UpdateOrderStatusUseCase {
     }
   }
 
+  /** URL firmada de la foto, o `null` si no hay, falla o tarda más de `FIRMA_TIMEOUT_MS`. */
+  private async firmarConTimeout(key: string | null): Promise<string | null> {
+    if (!key) return null;
+    let timer: NodeJS.Timeout | undefined;
+    const vencido = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), FIRMA_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([
+        this.fotos.urlDe(key).catch(() => null),
+        vencido,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** Notifica el cambio de estado al cliente por WebSocket (best-effort). */
-  private emitStatusEvent(
+  private async emitStatusEvent(
     order: Order,
     status: OrderStatus,
     deliveryUser: User | null,
-  ): void {
+  ): Promise<void> {
     const eventName = STATUS_EVENT[status];
     if (!eventName) return;
 
     try {
+      // La foto no puede demorar el aviso: si la firma tarda, sale null.
+      const photoUrl = deliveryUser
+        ? await this.firmarConTimeout(deliveryUser.photoKey)
+        : null;
       this.dispatch.notifyCustomer(order.customerId, eventName, {
         orderId: order.orderId,
         status: order.status,
@@ -557,6 +584,7 @@ export class UpdateOrderStatusUseCase {
           ? {
               name: deliveryUser.fullName,
               phone: deliveryUser.phoneNumber,
+              photoUrl,
             }
           : null,
       });

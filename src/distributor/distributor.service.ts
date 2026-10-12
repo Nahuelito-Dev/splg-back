@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -18,26 +17,19 @@ import {
 } from './events/distribuidora-creada.event';
 
 /**
- * El cuerpo de la API lleva `legal_name`, `tax_id` y `logo_url`; la entidad,
+ * El cuerpo de la API lleva `legal_name` y `tax_id`; la entidad,
  * camelCase. Se mapea campo por campo: `Object.assign(entidad, dto)` no da
  * error de tipos y pierde esos datos en silencio.
  */
 function columnasDeLaDistribuidora(
   dto: UpdateDistributorDto,
 ): Partial<Distributor> {
-  // Una URL firmada de S3 vence: guardarla dejaría un logo roto.
-  if (dto.logo_url && /X-Amz-Signature/i.test(dto.logo_url)) {
-    throw new BadRequestException(
-      'logo_url no puede ser una URL firmada de S3; el logo se sube con PUT /distributor/:id/logo',
-    );
-  }
   return sinIndefinidos({
     name: dto.name,
     legalName: dto.legal_name,
     taxId: dto.tax_id,
     email: dto.email,
     phone: dto.phone,
-    logoUrl: dto.logo_url,
     status: dto.status,
     plan: dto.plan,
   });

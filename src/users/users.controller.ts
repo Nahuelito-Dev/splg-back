@@ -428,11 +428,10 @@ export class UsersController {
 
   /** Campos que un usuario puede cambiar de su propio perfil. */
   private pickSelfEditableFields(dto: UpdateUserDto): Partial<UpdateUserDto> {
-    const { full_name, phone_number, selfie } = dto;
+    const { full_name, phone_number } = dto;
     return {
       ...(full_name !== undefined && { full_name }),
       ...(phone_number !== undefined && { phone_number }),
-      ...(selfie !== undefined && { selfie }),
     };
   }
 

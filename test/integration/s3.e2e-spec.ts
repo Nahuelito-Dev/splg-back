@@ -31,7 +31,7 @@ import {
   JobPositionCategory,
 } from '../../src/employee/entities/job-position.entity';
 import { Attachment } from '../../src/attachment/entities/attachment.entity';
-import { Claim } from '../../src/claims/entities/claim.entity';
+import { Claim, ClaimStatus } from '../../src/claims/entities/claim.entity';
 import {
   Order,
   OrderStatus,
@@ -287,6 +287,110 @@ describe('S3 contra MinIO (e2e)', () => {
       expect(await existe(fila.storageKey)).toBe(true);
     });
 
+    it('disposicion=inline muestra PDF/imagen en el navegador; un tipo peligroso se fuerza a attachment', async () => {
+      const d1 = await seedDistribuidora();
+      const admin = await seedAdmin(d1.distributorId);
+      const dueno = await crearDueno(d1.distributorId);
+      const creado = await request(env.app.getHttpServer())
+        .post(`/attachments/employee/${dueno}`)
+        .set(admin.headers)
+        .attach('file', PDF, {
+          filename: 'acta.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201);
+      const id = (creado.body as { attachmentId: string }).attachmentId;
+
+      const verUrl = async (query: string) => {
+        const r = await request(env.app.getHttpServer())
+          .get(`/attachments/${id}/download?${query}`)
+          .set(admin.headers)
+          .expect(200);
+        return fetch((r.body as { url: string }).url);
+      };
+
+      const inline = await verUrl('modo=url&disposicion=inline');
+      expect(inline.status).toBe(200);
+      expect(inline.headers.get('content-disposition')).toMatch(/^inline;/);
+      expect(inline.headers.get('content-type')).toBe('application/pdf');
+      const descarga = await verUrl('modo=url&disposicion=attachment');
+      expect(descarga.headers.get('content-disposition')).toMatch(
+        /^attachment;/,
+      );
+      const porDefecto = await verUrl('modo=url');
+      expect(porDefecto.headers.get('content-disposition')).toMatch(
+        /^attachment;/,
+      );
+      const redirect = await request(env.app.getHttpServer())
+        .get(`/attachments/${id}/download?disposicion=inline`)
+        .set(admin.headers)
+        .redirects(0)
+        .expect(302);
+      expect(
+        (await fetch(redirect.headers.location)).headers.get(
+          'content-disposition',
+        ),
+      ).toMatch(/^inline;/);
+      await request(env.app.getHttpServer())
+        .get(`/attachments/${id}/download?modo=url&disposicion=otra`)
+        .set(admin.headers)
+        .expect(400);
+
+      // Un adjunto cuyo tipo guardado es peligroso (no entra por la API, pero
+      // si hubiera uno): inline se fuerza a attachment.
+      const key = `attachments/${d1.distributorId}/peligroso.html`;
+      await minio.client.send(
+        new PutObjectCommand({
+          Bucket: BUCKET_DE_PRUEBA,
+          Key: key,
+          Body: Buffer.from('<script>alert(1)</script>'),
+          ContentType: 'text/html',
+        }),
+      );
+      const fila = await dataSource
+        .getRepository(Attachment)
+        .findOneByOrFail({ attachmentId: id });
+      const peligroso = await dataSource.getRepository(Attachment).save(
+        dataSource.getRepository(Attachment).create({
+          ...fila,
+          attachmentId: undefined,
+          storageKey: key,
+          mimeType: 'text/html',
+          originalName: 'x.html',
+        }),
+      );
+      const r = await request(env.app.getHttpServer())
+        .get(
+          `/attachments/${peligroso.attachmentId}/download?modo=url&disposicion=inline`,
+        )
+        .set(admin.headers)
+        .expect(200);
+      const bajada = await fetch((r.body as { url: string }).url);
+      expect(bajada.headers.get('content-disposition')).toMatch(/^attachment;/);
+    });
+
+    it('un archivo más grande que el tope se corta en multer (413) y no llega al bucket', async () => {
+      const d1 = await seedDistribuidora();
+      const admin = await seedAdmin(d1.distributorId);
+      const dueno = await crearDueno(d1.distributorId);
+      const enorme = Buffer.concat([
+        Buffer.from('%PDF-1.4 '),
+        Buffer.alloc(10 * 1024 * 1024 + 1024),
+      ]);
+      const res = await request(env.app.getHttpServer())
+        .post(`/attachments/employee/${dueno}`)
+        .set(admin.headers)
+        .attach('file', enorme, {
+          filename: 'enorme.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(413);
+      expect(JSON.stringify(res.body)).toContain(
+        'El archivo supera el máximo permitido (10 MB)',
+      );
+      expect(await claves(`attachments/${d1.distributorId}/`)).toEqual([]);
+    });
+
     it('otra distribuidora no obtiene la URL firmada (404)', async () => {
       const d1 = await seedDistribuidora();
       const d2 = await seedDistribuidora();
@@ -380,29 +484,27 @@ describe('S3 contra MinIO (e2e)', () => {
     it('el cliente sube la foto, la ve por URL firmada y al reemplazarla se borra la anterior', async () => {
       const { distributor, headers, admin, reclamo } = await escenario();
 
-      // Antes de subir, `photoUrl` sigue siendo la URL externa que traía.
+      // La `photoUrl` de texto guardada antes no se expone ni se sirve.
       const antes = await request(env.app.getHttpServer())
         .get('/claims')
         .set(admin.headers)
         .expect(200);
-      expect((antes.body as Array<{ photoUrl: string }>)[0].photoUrl).toBe(
-        'https://externa.example/foto-vieja.jpg',
-      );
-      // Sin `photoKey` pero con la URL externa: el enlace y el archivo son esa URL.
-      const externa = await request(env.app.getHttpServer())
+      expect(
+        (antes.body as Array<{ photoUrl: string | null }>)[0].photoUrl,
+      ).toBeNull();
+      const sinFoto = await request(env.app.getHttpServer())
         .get(`/claims/${reclamo.claimId}/photo?modo=url`)
         .set(headers)
         .expect(200);
-      expect(externa.body).toEqual({
-        url: FOTO_EXTERNA,
+      expect(sinFoto.body).toEqual({
+        url: null,
         expiresAt: null,
         requiresAuth: false,
       });
-      const redirigida = await request(env.app.getHttpServer())
+      await request(env.app.getHttpServer())
         .get(`/claims/${reclamo.claimId}/photo`)
         .set(headers)
-        .expect(302);
-      expect(redirigida.headers.location).toBe(FOTO_EXTERNA);
+        .expect(404);
 
       const primera = await subir(
         headers,
@@ -471,6 +573,90 @@ describe('S3 contra MinIO (e2e)', () => {
       expect(await claves(`claims/${distributor.distributorId}/`)).toEqual([
         key2,
       ]);
+    });
+
+    it('POST /claims rechaza photoUrl de texto (400) y crea el reclamo sin foto', async () => {
+      const { user, headers, reclamo } = await escenario(null);
+      const cuerpo = {
+        orderId: reclamo.orderId,
+        customerId: user.userId,
+        reason: 'Fuga',
+        description: 'Otra vez',
+      };
+      const rechazado = await request(env.app.getHttpServer())
+        .post('/claims')
+        .set(headers)
+        .send({ ...cuerpo, photoUrl: 'https://externa.example/x.jpg' })
+        .expect(400);
+      expect(JSON.stringify(rechazado.body)).toContain(
+        'property photoUrl should not exist',
+      );
+      const creado = await request(env.app.getHttpServer())
+        .post('/claims')
+        .set(headers)
+        .send(cuerpo)
+        .expect(201);
+      expect((creado.body as { photoUrl: string | null }).photoUrl).toBeNull();
+    });
+
+    it('DELETE /claims/:id/photo: el dueño y el admin la sacan, el objeto se borra, el ajeno es 404 y el cerrado 409', async () => {
+      const { distributor, headers, admin, reclamo } = await escenario(null);
+      const ruta = `/claims/${reclamo.claimId}/photo`;
+      const key = async () =>
+        (
+          await dataSource
+            .getRepository(Claim)
+            .findOneByOrFail({ claimId: reclamo.claimId })
+        ).photoKey;
+
+      // Sin foto es idempotente.
+      await request(env.app.getHttpServer())
+        .delete(ruta)
+        .set(headers)
+        .expect(200);
+
+      await subir(headers, reclamo.claimId, PNG, 'image/png').expect(201);
+      const k1 = (await key())!;
+      const otro = await sembrarClienteAutenticado(env.app);
+      await request(env.app.getHttpServer())
+        .delete(ruta)
+        .set(otro.headers)
+        .expect(404);
+      expect(await key()).toBe(k1);
+
+      const sin = await request(env.app.getHttpServer())
+        .delete(ruta)
+        .set(headers)
+        .expect(200);
+      expect((sin.body as { photoUrl: string | null }).photoUrl).toBeNull();
+      expect(await key()).toBeNull();
+      expect(await esperar(async () => !(await existe(k1)))).toBe(true);
+      await request(env.app.getHttpServer()).get(ruta).set(headers).expect(404);
+
+      // El admin de la distribuidora también.
+      await subir(admin.headers, reclamo.claimId, JPG, 'image/jpeg').expect(
+        201,
+      );
+      const k2 = (await key())!;
+      await request(env.app.getHttpServer())
+        .delete(ruta)
+        .set(admin.headers)
+        .expect(200);
+      expect(await esperar(async () => !(await existe(k2)))).toBe(true);
+      expect(await claves(`claims/${distributor.distributorId}/`)).toEqual([]);
+
+      // Cerrado: 409 y el objeto queda.
+      await subir(headers, reclamo.claimId, PNG, 'image/png').expect(201);
+      const k3 = (await key())!;
+      await dataSource
+        .getRepository(Claim)
+        .update({ claimId: reclamo.claimId }, { status: ClaimStatus.RESOLVED });
+      await request(env.app.getHttpServer())
+        .delete(ruta)
+        .set(headers)
+        .expect(409);
+      expect(await key()).toBe(k3);
+      expect(await existe(k3)).toBe(true);
     });
 
     it('rechaza lo que no es una imagen y no deja nada en el bucket', async () => {

@@ -28,7 +28,10 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { FiguraDemo, generarImagenDemo } from './lib/imagenes-demo';
-import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
+import {
+  purgaS3Habilitada,
+  resguardoDeProduccion,
+} from './lib/resguardo-de-produccion';
 import { limpiarStock, sembrarFisico } from './lib/stock-demo';
 import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
 
@@ -308,14 +311,21 @@ async function adjuntarFoto(
   variante: number,
 ): Promise<void> {
   if (!almacen) return;
-  const key = await almacen.subirPng(
-    carpeta,
-    generarImagenDemo({ figura, variante }),
+  const key = almacen.nuevaKey(carpeta);
+  // Se anota antes de subir (como la app): si algo cae a mitad, el cron o una
+  // purga pueden limpiar el objeto. Se confirma cuando la fila ya lo referencia.
+  await q(
+    `INSERT INTO storage_orphan (storage_key, kind, status, next_attempt_at)
+     VALUES ($1, 'upload', 'pending', now() + interval '1 hour')
+     ON CONFLICT (storage_key) DO NOTHING`,
+    [key],
   );
+  await almacen.subirPng(key, generarImagenDemo({ figura, variante }));
   await q(
     `UPDATE "${fila.tabla}" SET "${fila.columnaKey}" = $1 WHERE "${fila.columnaId}" = $2`,
     [key, fila.id],
   );
+  await q(`DELETE FROM storage_orphan WHERE storage_key = $1`, [key]);
   fotosSubidas += 1;
 }
 
@@ -330,6 +340,8 @@ const COLUMNAS_DE_FOTO: Array<[tabla: string, columna: string]> = [
   ['employee', 'photo_key'],
 ];
 
+let avisoDePurgaDado = false;
+
 /** Objetos de corridas anteriores que hay que borrar cuando sus filas ya no estén. */
 const clavesAnteriores = new Set<string>();
 
@@ -340,6 +352,15 @@ const clavesAnteriores = new Set<string>();
  */
 async function anotarFotosAnteriores(q: Q, distId: string): Promise<void> {
   if (!almacen) return;
+  if (!purgaS3Habilitada()) {
+    if (!avisoDePurgaDado) {
+      console.warn(
+        '  ! No se borra ningún objeto de S3 (falta SEED_PURGE_S3=1): las fotos de corridas anteriores quedan en el bucket.',
+      );
+      avisoDePurgaDado = true;
+    }
+    return;
+  }
   const consultas = [
     `SELECT photo_key AS key FROM claims WHERE distributor_id = $1`,
     `SELECT photo_key AS key FROM incident WHERE distributor_id = $1`,
@@ -368,7 +389,7 @@ async function anotarFotosAnteriores(q: Q, distId: string): Promise<void> {
  * sobrevivan siguen apuntando a un objeto que existe.
  */
 async function borrarObjetosSinFila(q: Q): Promise<void> {
-  if (!almacen || clavesAnteriores.size === 0) return;
+  if (!almacen || !purgaS3Habilitada() || clavesAnteriores.size === 0) return;
   const vigentes = new Set<string>();
   for (const [tabla, columna] of COLUMNAS_DE_FOTO) {
     const filas: Array<{ key: string | null }> = await q(
@@ -1568,7 +1589,7 @@ function imprimirResumen() {
   resumen.push([
     almacen
       ? 'fotos de ejemplo subidas a S3'
-      : 'fotos de ejemplo (sin AWS_S3_BUCKET/AWS_REGION: se omitieron)',
+      : 'fotos de ejemplo (sin SEED_S3=1 o sin AWS_S3_BUCKET/AWS_REGION: se omitieron)',
     fotosSubidas,
   ]);
   console.log('\n──────────── DATOS SEMBRADOS ────────────');

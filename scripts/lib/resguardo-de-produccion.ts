@@ -19,3 +19,13 @@ export function resguardoDeProduccion(
     );
   }
 }
+
+/**
+ * Borrar objetos del bucket es irreversible y el `.env` real apunta al bucket
+ * real: el seed sólo purga S3 con `SEED_PURGE_S3=1` explícito.
+ */
+export function purgaS3Habilitada(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.SEED_PURGE_S3 === '1';
+}

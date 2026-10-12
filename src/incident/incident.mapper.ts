@@ -11,8 +11,8 @@ export class IncidentMapper {
     dto.reported_by = i.reportedBy;
     dto.type = i.type;
     dto.description = i.description;
-    // La foto subida a S3 (URL firmada) manda; sin ella, la URL externa de antes.
-    dto.photo_url = i.photoSignedUrl ?? i.photoUrl;
+    // Sólo la foto de S3, firmada: la columna `photo_url` es legada y no se expone.
+    dto.photo_url = i.photoSignedUrl ?? null;
     dto.status = i.status;
     dto.resolution_note = i.resolutionNote;
     dto.createdAt = i.createdAt;

@@ -5,7 +5,7 @@
  */
 import { deflateSync } from 'zlib';
 
-export type FiguraDemo = 'garrafa' | 'camioneta' | 'logo' | 'aviso';
+export type FiguraDemo = 'garrafa' | 'camioneta' | 'logo' | 'aviso' | 'persona';
 
 type Rgb = readonly [number, number, number];
 
@@ -35,6 +35,61 @@ const PALETAS: Rgb[][] = [
     [173, 20, 87],
   ],
 ];
+
+/** Colores de los avatares: una pareja (claro, oscuro) distinta por variante. */
+const PALETAS_PERSONA: Rgb[][] = [
+  [
+    [255, 204, 128],
+    [230, 81, 0],
+  ],
+  [
+    [165, 214, 167],
+    [27, 94, 32],
+  ],
+  [
+    [144, 202, 249],
+    [13, 71, 161],
+  ],
+  [
+    [244, 143, 177],
+    [136, 14, 79],
+  ],
+  [
+    [206, 147, 216],
+    [74, 20, 140],
+  ],
+  [
+    [128, 222, 234],
+    [0, 96, 100],
+  ],
+  [
+    [255, 245, 157],
+    [158, 118, 0],
+  ],
+  [
+    [188, 170, 164],
+    [62, 39, 35],
+  ],
+  [
+    [159, 168, 218],
+    [26, 35, 126],
+  ],
+  [
+    [239, 154, 154],
+    [183, 28, 28],
+  ],
+  [
+    [128, 203, 196],
+    [0, 77, 64],
+  ],
+  [
+    [176, 190, 197],
+    [38, 50, 56],
+  ],
+];
+
+/** Cuántos colores distintos hay para los avatares. */
+export const VARIANTES_DE_PERSONA = PALETAS_PERSONA.length;
 
 const TABLA_CRC = (() => {
   const tabla = new Uint32Array(256);
@@ -89,10 +144,18 @@ const mezclar = (a: Rgb, b: Rgb, t: number): Rgb => [
   Math.round(a[2] + (b[2] - a[2]) * t),
 ];
 
-/** Genera un PNG de ejemplo (degradé de fondo y una figura plana). */
+/**
+ * Genera un PNG de ejemplo (degradé de fondo y una figura plana). La figura
+ * `persona` es un avatar genérico (silueta) de 256x256 por defecto; la
+ * variante elige su color.
+ */
 export function generarImagenDemo(opciones: OpcionesDeImagen): Buffer {
-  const { figura, variante = 0, ancho = 320, alto = 240 } = opciones;
-  const [claro, oscuro] = PALETAS[variante % PALETAS.length];
+  const { figura, variante = 0 } = opciones;
+  const esPersona = figura === 'persona';
+  const ancho = opciones.ancho ?? (esPersona ? 256 : 320);
+  const alto = opciones.alto ?? (esPersona ? 256 : 240);
+  const paletas = esPersona ? PALETAS_PERSONA : PALETAS;
+  const [claro, oscuro] = paletas[variante % paletas.length];
   const BLANCO: Rgb = [250, 250, 250];
   const GRIS: Rgb = [55, 55, 60];
   const rgb = Buffer.alloc(ancho * alto * 3);
@@ -133,6 +196,13 @@ export function generarImagenDemo(opciones: OpcionesDeImagen): Buffer {
         if (d < 0.18) return BLANCO;
         if (d < 0.34) return oscuro;
         return null;
+      }
+      case 'persona': {
+        // Cabeza y hombros, en blanco sobre el degradé.
+        const cabeza = Math.hypot((u - 0.5) * (ancho / alto), v - 0.37) < 0.17;
+        const hombros =
+          v > 0.62 && Math.hypot((u - 0.5) / 0.36, (v - 1.02) / 0.4) < 1;
+        return cabeza || hombros ? BLANCO : null;
       }
       case 'aviso': {
         // Triángulo de advertencia con el signo de exclamación.

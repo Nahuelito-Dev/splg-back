@@ -384,7 +384,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       carpeta: new RegExp(
         `^incidents/${d1.distributorId}/${incidencia.incidentId}/[0-9a-f-]{36}\\.(png|jpg)$`,
       ),
-      urlSinFoto: FOTO_EXTERNA,
+      urlSinFoto: null,
       leer: async () => {
         const res = await http()
           .get('/incidents')
@@ -532,18 +532,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
         .expect(200);
       expect((link.body as Cuerpo).url).toBe(c.urlSinFoto);
       expect((link.body as Cuerpo).requiresAuth).toBe(false);
-      if (c.urlSinFoto) {
-        // Con respaldo externo (incidencia) no se redirige (open redirect):
-        // la URL va en JSON.
-        const directo = await http()
-          .get(c.ruta)
-          .set(c.admin)
-          .redirects(0)
-          .expect(200);
-        expect((directo.body as Cuerpo).url).toBe(c.urlSinFoto);
-      } else {
-        await http().get(c.ruta).set(c.admin).expect(404);
-      }
+      await http().get(c.ruta).set(c.admin).expect(404);
     });
 
     it('subir -> se ve por URL firmada -> reemplazar borra la anterior -> sacar la borra', async () => {
@@ -622,13 +611,15 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       ).expect(415);
       // Un PNG declarado como JPEG: la firma no coincide.
       await subir(c.ruta, c.admin, PNG, 'image/jpeg').expect(415);
-      // Pasa el tope técnico de Multer pero no los 5 MB de negocio.
-      await subir(
+      // Más de 5 MB: lo corta Multer en el stream (nunca llega a memoria).
+      const grande = await subir(
         c.ruta,
         c.admin,
         Buffer.concat([PNG, Buffer.alloc(6 * 1024 * 1024)]),
       ).expect(413);
-      // Pasa de largo el tope técnico.
+      expect(JSON.stringify(grande.body)).toContain(
+        'La foto supera el máximo permitido (5 MB)',
+      );
       await subir(
         c.ruta,
         c.admin,
@@ -1271,7 +1262,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       }
     });
 
-    it('la foto subida manda sobre la photo_url externa, que queda como respaldo', async () => {
+    it('la photo_url externa guardada no se expone: sólo la foto de S3 firmada', async () => {
       const { d1, admin1 } = await escenario();
       const chofer = await seedChofer(d1.distributorId);
       const incidencia = await seedIncidencia(
@@ -1298,12 +1289,12 @@ describe('Fotos de entidades en S3 (e2e)', () => {
           (await http().get('/incidents').set(admin1.headers).expect(200))
             .body as Cuerpo[]
         )[0].photo_url,
-      ).toBe(FOTO_EXTERNA);
+      ).toBeNull();
     });
   });
 
   describe('logo de la distribuidora', () => {
-    it('logo_url queda como texto de respaldo y el logo de S3 sale aparte en photoUrl', async () => {
+    it('el logo_url de texto no se expone: el logo de S3 sale firmado en photoUrl', async () => {
       const d = await seedDistribuidora({
         logoUrl: 'https://viejo.example/logo.png',
       });
@@ -1312,26 +1303,24 @@ describe('Fotos de entidades en S3 (e2e)', () => {
 
       const actual = () =>
         http().get('/distributor/current').set(admin.headers).expect(200);
-      expect(((await actual()).body as Cuerpo).logo_url).toBe(
-        'https://viejo.example/logo.png',
-      );
+      expect(((await actual()).body as Cuerpo).logo_url).toBeNull();
       const link = await http()
         .get(`${ruta}?modo=url`)
         .set(admin.headers)
         .expect(200);
-      expect((link.body as Cuerpo).url).toBe('https://viejo.example/logo.png');
+      expect((link.body as Cuerpo).url).toBeNull();
 
       expect(((await actual()).body as Cuerpo).photoUrl).toBeNull();
       await subir(ruta, admin.headers).expect(200);
       const conLogo = (await actual()).body as Cuerpo;
       expect(conLogo.photoUrl).toContain(BUCKET_DE_PRUEBA);
-      // `logo_url` sigue siendo sólo el texto guardado: nunca la URL firmada.
-      expect(conLogo.logo_url).toBe('https://viejo.example/logo.png');
+      // `logo_url` es legado: nunca sale, ni la URL firmada ni el texto guardado.
+      expect(conLogo.logo_url).toBeNull();
       await http().delete(ruta).set(admin.headers).expect(200);
       const sinLogo = (await actual()).body as Cuerpo;
       expect(sinLogo.photoUrl).toBeNull();
-      expect(sinLogo.logo_url).toBe('https://viejo.example/logo.png');
-      // El texto libre nunca se pisó.
+      expect(sinLogo.logo_url).toBeNull();
+      // La columna no se tocó (se borra con una migración futura).
       expect(
         (
           await dataSource
@@ -1341,36 +1330,39 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       ).toBe('https://viejo.example/logo.png');
     });
 
-    it('logo_url no acepta una URL firmada de S3 (vence) y no se guarda', async () => {
-      const d = await seedDistribuidora({
-        logoUrl: 'https://viejo.example/l.png',
-      });
-      const admin = await seedAdmin(d.distributorId);
+    it('POST y PATCH /distributor rechazan logo_url (400) y no se guarda', async () => {
+      const d = await seedDistribuidora();
       const superAdmin = await seedAdmin(null);
-      await subir(`/distributor/${d.distributorId}/logo`, admin.headers).expect(
-        200,
-      );
-      const actual = (
-        await http().get('/distributor/current').set(admin.headers).expect(200)
-      ).body as Cuerpo;
       const ruta = `/distributor/${d.distributorId}`;
+      for (const logo_url of [
+        'https://nuevo.example/l.png',
+        'https://s3/x?X-Amz-Signature=abc',
+      ]) {
+        const res = await http()
+          .patch(ruta)
+          .set(superAdmin.headers)
+          .send({ logo_url, phone: '123' })
+          .expect(400);
+        expect(JSON.stringify(res.body)).toContain(
+          'property logo_url should not exist',
+        );
+      }
       await http()
-        .patch(ruta)
+        .post('/distributor')
         .set(superAdmin.headers)
-        .send({ logo_url: actual.photoUrl })
+        .send({
+          name: 'Nueva',
+          slug: 'nueva-x',
+          logo_url: 'https://a.example/l.png',
+        })
         .expect(400);
-      await http()
-        .patch(ruta)
-        .set(superAdmin.headers)
-        .send({ logo_url: 'https://nuevo.example/l.png', phone: '123' })
-        .expect(200);
       expect(
         (
           await dataSource
             .getRepository(Distributor)
             .findOneByOrFail({ distributorId: d.distributorId })
         ).logoUrl,
-      ).toBe('https://nuevo.example/l.png');
+      ).toBeNull();
     });
 
     it('el super admin sube el de cualquiera, sin elegir distribuidora, y lo ve en el listado', async () => {

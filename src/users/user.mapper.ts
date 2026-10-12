@@ -11,7 +11,7 @@ export class UserMapper {
     dto.user_id = user.userId;
     dto.role_id = user.roleId ?? null;
     dto.full_name = user.fullName ?? null;
-    dto.selfie = user.selfie ?? null;
+    dto.selfie = null; // columna legada: la foto sale firmada en `photoUrl`
     dto.photoUrl = user.photoSignedUrl ?? null;
     dto.email = user.email ?? null;
     dto.phone_number = user.phoneNumber ?? null;

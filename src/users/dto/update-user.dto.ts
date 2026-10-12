@@ -19,11 +19,6 @@ export class UpdateUserDto {
   @IsString()
   phone_number?: string;
 
-  @ApiPropertyOptional({ description: 'URL de la foto del usuario' })
-  @IsOptional()
-  @IsString()
-  selfie?: string;
-
   @ApiPropertyOptional({ description: 'Sólo administradores' })
   @IsOptional()
   @IsBoolean()
