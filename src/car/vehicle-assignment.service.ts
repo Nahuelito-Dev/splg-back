@@ -288,6 +288,7 @@ export class VehicleAssignmentService {
     manager: EntityManager,
     deliveryIds: string[],
     carId: string | null,
+    accion = 'No se puede cambiar el vehículo',
   ): Promise<void> {
     const filas = await manager.query<Array<{ number: number }>>(
       `SELECT "number" FROM "truck_load"
@@ -298,7 +299,7 @@ export class VehicleAssignmentService {
     );
     if (filas.length > 0) {
       throw new ConflictException(
-        `No se puede cambiar el vehículo mientras haya una carga de camión abierta (carga N° ${filas[0].number}): cerrala o cancelala antes`,
+        `${accion} mientras haya una carga de camión abierta (carga N° ${filas[0].number}): cerrala o cancelala antes`,
       );
     }
   }
@@ -306,7 +307,10 @@ export class VehicleAssignmentService {
   /**
    * Libera el vehículo en uso si tenía uno, sin tirar si no tenía (baja de
    * chofer). Con `manager` corre dentro de la transacción de la baja: si
-   * esto falla, la baja se revierte. `motivo` reemplaza el texto de la nota
+   * esto falla, la baja se revierte. Si el chofer tiene una carga de camión
+   * abierta responde 409: liberar el camión dejaría la carga sin dueño (el
+   * stock cargado en un camión que nadie usa); se cierra o cancela primero.
+   * `motivo` reemplaza el texto de la nota
    * (p. ej. el egreso del legajo) y `actorUserId` queda como quien lo liberó.
    */
   async liberarSiTieneUno(
@@ -319,6 +323,12 @@ export class VehicleAssignmentService {
       where: { deliveryId, releasedAt: IsNull() },
     });
     if (!abierta) return;
+    await this.assertSinCargaAbierta(
+      manager,
+      [deliveryId],
+      null,
+      'No se puede dar de baja al chofer',
+    );
 
     abierta.releasedAt = new Date();
     const nota =

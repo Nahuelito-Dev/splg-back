@@ -235,6 +235,7 @@ export class GasCylinderService {
     if (!gasCylinder) {
       throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
     }
+    this.sinEscribirElVendible(gasCylinder);
 
     // Si vinieron promociones, reemplazan a las anteriores (las que no están
     // en la lista se dan de baja: orphanedRowAction). Cambiarle el tipo al de otro
@@ -278,9 +279,24 @@ export class GasCylinderService {
     return this.findOne(id, distributorId);
   }
 
+  /**
+   * El ABM del catálogo nunca escribe `stock` ni `reservation_deficit`: los
+   * mueven los pedidos y el módulo de stock bajo el lock de la fila. `save` de
+   * una entidad leída antes volvería a escribir esos valores viejos y pisaría una
+   * reserva o un recorte confirmados en el medio; con `undefined` TypeORM no los
+   * incluye en el UPDATE.
+   */
+  private sinEscribirElVendible(gasCylinder: GasCylinder): void {
+    Object.assign(gasCylinder, {
+      stock: undefined,
+      reservationDeficit: undefined,
+    });
+  }
+
   async remove(id: string, distributorId: string): Promise<BajaDeProductoDto> {
     const gasCylinder = await this.findOne(id, distributorId);
     gasCylinder.isActive = false;
+    this.sinEscribirElVendible(gasCylinder);
 
     await this.gasCylinderRepository.save(gasCylinder);
 
@@ -344,6 +360,71 @@ export class GasCylinderService {
   }
 
   /**
+   * El producto bloqueado (`FOR UPDATE`) con sus promociones, SIN tocar el
+   * stock: para repreciar los renglones de un pedido cuya reserva ya se ajustó
+   * con `reajustarReserva`.
+   *
+   * @throws GasCylinderNotFoundError si el producto no existe (404).
+   */
+  async leerBloqueada(
+    manager: EntityManager,
+    gasCylinderId: string,
+  ): Promise<GasCylinder> {
+    const gasCylinder = await this.bloquear(manager, gasCylinderId);
+    if (!gasCylinder) throw new GasCylinderNotFoundError(gasCylinderId);
+    gasCylinder.promotions = await manager.find(GasCylinderPromotion, {
+      where: { gasCylinderId },
+    });
+    return gasCylinder;
+  }
+
+  /**
+   * Edición de un pedido: ajusta la reserva por la DIFERENCIA NETA de cada
+   * garrafa entre los renglones que tenía y los nuevos, bajo el lock de cada una
+   * (por id ascendente). Pedir más reserva sólo el aumento (400 si no alcanza el
+   * vendible); pedir menos devuelve sólo lo que sobra, cubriendo primero el
+   * déficit de reservas; igual no toca nada. Devolver todo y volver a reservar
+   * fallaba cuando la garrafa tenía déficit: lo devuelto cubría el déficit y no
+   * volvía a ser vendible, y la nueva reserva ya no encontraba stock.
+   *
+   * @throws InsufficientStockError si el aumento no alcanza (400).
+   * @throws GasCylinderNotFoundError si un renglón nuevo es de un producto que no existe (404).
+   */
+  async reajustarReserva(
+    manager: EntityManager,
+    anteriores: ReadonlyArray<MovimientoDeStock>,
+    nuevos: ReadonlyArray<MovimientoDeStock>,
+  ): Promise<void> {
+    const neto = new Map<string, number>();
+    for (const i of nuevos)
+      neto.set(i.gasCylinderId, (neto.get(i.gasCylinderId) ?? 0) + i.quantity);
+    for (const i of anteriores)
+      neto.set(i.gasCylinderId, (neto.get(i.gasCylinderId) ?? 0) - i.quantity);
+    const ids = [...neto.keys()].sort((a, b) => a.localeCompare(b));
+    for (const id of ids) {
+      const delta = neto.get(id)!;
+      if (delta === 0) continue;
+      const gasCylinder = await this.bloquear(manager, id);
+      if (!gasCylinder) {
+        // Un producto que ya no existe se ignora al devolver (como `restituirStock`).
+        if (delta > 0) throw new GasCylinderNotFoundError(id);
+        continue;
+      }
+      if (delta > 0) {
+        if (gasCylinder.stock < delta) {
+          throw new InsufficientStockError(gasCylinder.type);
+        }
+        gasCylinder.stock -= delta;
+      } else {
+        const cubierto = Math.min(gasCylinder.reservationDeficit, -delta);
+        gasCylinder.reservationDeficit -= cubierto;
+        gasCylinder.stock += -delta - cubierto;
+      }
+      await manager.save(gasCylinder);
+    }
+  }
+
+  /**
    * Devuelve el stock de los ítems de un pedido cancelado, en la transacción
    * de quien llama y con el mismo lock. Un producto que ya no existe se
    * ignora: el pedido se cancela igual.
@@ -360,7 +441,14 @@ export class GasCylinderService {
     for (const item of ordenados) {
       const gasCylinder = await this.bloquear(manager, item.gasCylinderId);
       if (gasCylinder) {
-        gasCylinder.stock += item.quantity;
+        // Lo que se libera cubre primero las reservas que el físico no cubría:
+        // sólo el resto vuelve a ser vendible.
+        const cubierto = Math.min(
+          gasCylinder.reservationDeficit,
+          item.quantity,
+        );
+        gasCylinder.reservationDeficit -= cubierto;
+        gasCylinder.stock += item.quantity - cubierto;
         await manager.save(gasCylinder);
       }
     }
@@ -373,16 +461,31 @@ export class GasCylinderService {
    * pedido reserva, así que es la misma fila y el mismo lock pesimista que
    * `reservarStock`. Los ids se bloquean siempre en orden ascendente.
    *
+   * Con `recortarEnCero` (modo "el físico manda") el vendible nunca queda negativo
+   * pero tampoco frena la operación. Una baja que lo llevaría por debajo de cero
+   * lo deja en cero y suma lo que faltó a `reservationDeficit` (reservas que el
+   * físico no cubre). Un alta (hallazgo, recepción, cancelación) cubre primero
+   * ese déficit y sólo el resto sube el vendible. Así el vendible siempre es
+   * `max(0, llenas − reservadas)`, sin sobreventa al cancelar después de un
+   * recorte. Sin la opción el cambio es exacto y estricto.
+   *
    * @throws GasCylinderNotFoundError si el producto no existe o es de otra
    *   distribuidora (404).
-   * @throws VendibleInsuficienteError si el vendible quedaría negativo (400):
-   *   lo que falta está reservado por pedidos abiertos.
+   * @throws VendibleInsuficienteError (400) si el vendible quedaría negativo y no
+   *   se pidió `recortarEnCero`: lo que falta está reservado por pedidos abiertos.
+   * @returns las garrafas cuyo vendible se recortó, con lo que faltó.
    */
   async ajustarVendible(
     manager: EntityManager,
     distributorId: string,
     cambios: ReadonlyArray<{ gasCylinderId: string; delta: number }>,
-  ): Promise<void> {
+    opciones: { recortarEnCero?: boolean } = {},
+  ): Promise<Array<{ gasCylinderId: string; type: string; faltante: number }>> {
+    const recortes: Array<{
+      gasCylinderId: string;
+      type: string;
+      faltante: number;
+    }> = [];
     const ordenados = [...cambios].sort((a, b) =>
       a.gasCylinderId.localeCompare(b.gasCylinderId),
     );
@@ -391,15 +494,32 @@ export class GasCylinderService {
       if (!gasCylinder || gasCylinder.distributorId !== distributorId) {
         throw new GasCylinderNotFoundError(gasCylinderId);
       }
-      if (gasCylinder.stock + delta < 0) {
-        throw new VendibleInsuficienteError(
-          gasCylinder.type,
-          gasCylinder.stock,
-        );
+      let resultado = gasCylinder.stock + delta;
+      if (opciones.recortarEnCero && delta > 0) {
+        const cubierto = Math.min(gasCylinder.reservationDeficit, delta);
+        gasCylinder.reservationDeficit -= cubierto;
+        resultado -= cubierto;
       }
-      gasCylinder.stock += delta;
+      if (resultado < 0) {
+        if (!opciones.recortarEnCero) {
+          throw new VendibleInsuficienteError(
+            gasCylinder.type,
+            gasCylinder.stock,
+          );
+        }
+        recortes.push({
+          gasCylinderId,
+          type: gasCylinder.type,
+          faltante: -resultado,
+        });
+        gasCylinder.reservationDeficit += -resultado;
+        gasCylinder.stock = 0;
+      } else {
+        gasCylinder.stock = resultado;
+      }
       await manager.save(gasCylinder);
     }
+    return recortes;
   }
 
   /** Costo promedio ponderado vigente del producto (`null` si nunca se compró). */

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import {
@@ -13,14 +14,15 @@ import {
   StockMovementReason,
   StockReferenceType,
 } from '../../stock/domain/stock.enums';
-import {
-  CargaInvalidaError,
-  TransicionDeCargaInvalidaError,
-} from '../domain/errors/truck-load.errors';
+import { CargaInvalidaError } from '../domain/errors/truck-load.errors';
 import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { puedeHacer, validarQueLlevaAlgo } from '../domain/truck-load-rules';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
-import { asegurarAlcance, bloquearCarga } from './truck-load-support';
+import {
+  TransicionDeCargaInvalidaError,
+  asegurarAlcance,
+  bloquearCarga,
+} from './truck-load-support';
 
 /**
  * Confirma la salida: el ledger pasa lo cargado del depósito de origen al
@@ -101,7 +103,7 @@ export class DepartTruckLoadUseCase {
             movimientos,
           });
           carga.status = TruckLoadStatus.ON_ROUTE;
-          carga.departedAt = new Date();
+          carga.departedAt = await ahoraDeLaBase(manager);
           await manager.save(carga);
         }),
       { context: 'salida del camión' },

@@ -25,6 +25,44 @@ export interface MovimientoDeCamion {
  */
 @Injectable()
 export class StockOnHandService {
+  /**
+   * Cuándo arrancó el stock físico de la distribuidora: la inserción más vieja
+   * del libro (`createdAt`, el momento real del asiento). NO es `occurred_at`:
+   * esa fecha la puede elegir el usuario (una recepción con fecha pasada) y
+   * correría el piso de la reaplicación de entregas hacia pedidos anteriores al
+   * módulo. `null` si todavía no hay movimientos.
+   */
+  async inicioDelLibro(
+    manager: EntityManager,
+    distributorId: string,
+  ): Promise<Date | null> {
+    const [fila]: Array<{ desde: Date | null }> = await manager.query(
+      `SELECT MIN("createdAt") AS desde FROM "stock_movement" WHERE "distributor_id" = $1`,
+      [distributorId],
+    );
+    return fila?.desde ?? null;
+  }
+
+  /**
+   * Cuándo se hizo el conteo inicial del depósito, o `null` si no lo tuvo. Un
+   * movimiento fechado antes de ese conteo ya estaría incluido en él (se
+   * contaría dos veces). Sin conteo no hay piso: el depósito arrancó vacío.
+   */
+  async inicioDeStockDelDeposito(
+    manager: EntityManager,
+    distributorId: string,
+    warehouseId: string,
+  ): Promise<Date | null> {
+    const [fila]: Array<{ desde: Date | null }> = await manager.query(
+      `SELECT MIN(a."createdAt") AS desde FROM "stock_adjustment" a
+       JOIN "stock_location" l ON l."location_id" = a."location_id"
+       WHERE a."distributor_id" = $1 AND l."warehouse_id" = $2
+         AND a."reason" = 'initial_count'`,
+      [distributorId, warehouseId],
+    );
+    return fila?.desde ?? null;
+  }
+
   /** Llenas de la garrafa en todos los depósitos y camiones de la distribuidora. */
   async llenasTotales(
     manager: EntityManager,

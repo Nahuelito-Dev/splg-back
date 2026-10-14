@@ -23,6 +23,7 @@ import {
   esperadoDe,
   planDeCierre,
   renglonesDeCierre,
+  saldoACobrar,
 } from '../domain/truck-load-rules';
 import {
   MyTruckLoadDto,
@@ -338,6 +339,9 @@ export class TruckLoadQueryService {
       desde: fila.opened_at,
       hasta: abierta ? null : fila.closed_at,
     });
+    const senas = await this.senasPagas(entregados.map((o) => o.orderId));
+    const aCobrar = (o: { orderId: string; totalAmount: number }): number =>
+      saldoACobrar(o.totalAmount, senas.get(o.orderId) ?? 0);
     const movimientos = await this.stockQuery.movimientos(distributorId, {
       referenceType: StockReferenceType.TRUCK_LOAD,
       referenceId: id,
@@ -357,21 +361,46 @@ export class TruckLoadQueryService {
         (o): TruckLoadOrderDto => ({
           orderId: o.orderId,
           totalAmount: o.totalAmount,
+          remainingBalance: aCobrar(o),
           paymentMethod: o.paymentMethod,
           paymentStatus: o.paymentStatus,
           deliveredAt: o.deliveredAt,
         }),
       ),
-      cash: this.efectivoDe(entregados),
+      cash: this.efectivoDe(
+        entregados.map((o) => ({ ...o, remainingBalance: aCobrar(o) })),
+      ),
       movements: movimientos.data.reverse(),
       createdAt: fila.created_at,
     };
   }
 
-  /** El efectivo de la jornada; informativo (la caja todavía no existe). */
+  /**
+   * Seña ya paga de cada pedido (0 si no hubo o no se pagó). Lee `order` de sólo
+   * lectura, como el resto de este servicio: `entregadosPorVehiculo` (módulo
+   * `order`) no la trae.
+   */
+  private async senasPagas(orderIds: string[]): Promise<Map<string, number>> {
+    if (orderIds.length === 0) return new Map();
+    const filas: Array<{ order_id: string; sena: string }> =
+      await this.dataSource.query(
+        `SELECT "order_id", "deposit_amount" AS sena FROM "order"
+         WHERE "order_id" = ANY($1::uuid[]) AND "deposit_paid" = true`,
+        [orderIds],
+      );
+    return new Map(filas.map((f) => [f.order_id, Number(f.sena)]));
+  }
+
+  /**
+   * El efectivo de la jornada; informativo (la caja todavía no existe). En
+   * efectivo se cuenta lo que el chofer cobra al entregar: el saldo
+   * (`remainingBalance`: total menos la seña ya paga, igual que `OrderMapper`),
+   * no el total.
+   */
   private efectivoDe(
     pedidos: Array<{
       totalAmount: number;
+      remainingBalance: number;
       paymentMethod: PaymentMethod;
       paymentStatus: PaymentStatus;
     }>,
@@ -394,16 +423,16 @@ export class TruckLoadQueryService {
           cash.nonCashAmount += p.totalAmount;
         }
       } else if (p.paymentStatus === PaymentStatus.PAID) {
-        cash.cashCollectedAmount += p.totalAmount;
+        cash.cashCollectedAmount += p.remainingBalance;
         cash.cashCollectedCount += 1;
       } else if (
         p.paymentStatus === PaymentStatus.UNPAID ||
         p.paymentStatus === PaymentStatus.WRITTEN_OFF
       ) {
-        cash.unpaidAmount += p.totalAmount;
+        cash.unpaidAmount += p.remainingBalance;
         cash.unpaidCount += 1;
       } else {
-        cash.pendingConfirmationAmount += p.totalAmount;
+        cash.pendingConfirmationAmount += p.remainingBalance;
         cash.pendingConfirmationCount += 1;
       }
     }

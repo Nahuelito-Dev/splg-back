@@ -1,7 +1,8 @@
 import { PurchaseOrderStatus as E } from './purchase.enums';
 import {
   costoPromedioPonderado,
-  costoPromedioAlAnular,
+  recalcularCostoPromedio,
+  type CompraDeLaGarrafa,
   estadoSegunRecibido,
   excesosDeRecepcion,
   pendienteDe,
@@ -145,72 +146,129 @@ describe('costo promedio ponderado', () => {
   });
 });
 
-describe('costo promedio al anular una recepción', () => {
-  const base = {
-    costoActual: 150,
-    costoPrevio: 100,
-    existenciaPrevia: 10,
+describe('costo promedio recalculado al anular recepciones', () => {
+  // 25 llenas sin costo ya en el depósito; después tres compras de 10:
+  // R1 a $100 (existencia previa 25), R2 a $300 (35) y R3 a $100 (45).
+  const compra = (
+    numero: number,
+    costoUnitario: number,
+    existenciaPrevia: number,
+    costoPrevio: number | null,
+    extra: Partial<CompraDeLaGarrafa> = {},
+  ): CompraDeLaGarrafa => ({
+    numero,
     cantidad: 10,
-    costoRecibido: 200,
-    hayOtrasCompras: true,
-    hayCompraPosterior: false,
-    promedioDeLasOtras: 100,
-  };
+    costoUnitario,
+    costoPrevio,
+    existenciaPrevia,
+    vigente: true,
+    altaEn: numero * 1000,
+    anuladaEn: null,
+    ...extra,
+  });
+  const R1 = (e: Partial<CompraDeLaGarrafa> = {}) =>
+    compra(1, 100, 25, null, e);
+  const R2 = (e: Partial<CompraDeLaGarrafa> = {}) => compra(2, 300, 35, 100, e);
+  const R3 = (e: Partial<CompraDeLaGarrafa> = {}) =>
+    compra(3, 100, 45, 144.44, e);
+  const ahora = 10_000;
+  const anulada = (en = ahora) => ({ vigente: false, anuladaEn: en });
 
-  it('la única compra: el costo vuelve a null', () => {
+  it('sin anular nada repite el promedio que dejó cada compra', () => {
+    expect(recalcularCostoPromedio([R1(), R2(), R3()])).toBe(136.36);
+  });
+
+  it('anular la del medio deja el promedio de las que quedan, no uno menor que todas', () => {
+    expect(recalcularCostoPromedio([R1(), R2(anulada()), R3()])).toBe(100);
+  });
+
+  it('anular la última vuelve a lo que había', () => {
+    expect(recalcularCostoPromedio([R1(), R2(), R3(anulada())])).toBe(144.44);
+  });
+
+  it('anular la primera descuenta sus llenas de la existencia de las siguientes', () => {
+    // R2 queda sobre 25 sin costo -> 300; R3 sobre 35: (35x300 + 10x100)/45
+    expect(recalcularCostoPromedio([R1(anulada()), R2(), R3()])).toBe(255.56);
+  });
+
+  it('varias anulaciones seguidas dan lo mismo en cualquier orden', () => {
+    // R2 se anuló en t=5000 (después de crearse R3, t=3000) y R3 recién ahora.
+    const primeroR2 = recalcularCostoPromedio([
+      R1(),
+      R2(anulada(5000)),
+      R3(anulada()),
+    ]);
+    // R3 se anuló primero y R2 ahora.
+    const primeroR3 = recalcularCostoPromedio([
+      R1(),
+      R2(anulada()),
+      R3(anulada(5000)),
+    ]);
+    expect(primeroR2).toBe(100);
+    expect(primeroR3).toBe(100);
+  });
+
+  it('una anulación anterior a la compra siguiente ya no está en su existencia guardada', () => {
+    // R2 se anuló (t=1500) antes de que existiera R3 (t=3000): el 45 de R3 ya no la cuenta.
+    const r3 = compra(3, 100, 35, 100);
+    expect(recalcularCostoPromedio([R1(), R2(anulada(1500)), r3])).toBe(100);
+  });
+
+  it('sin ninguna recepción vigente vuelve al promedio de partida', () => {
     expect(
-      costoPromedioAlAnular({
-        ...base,
-        hayOtrasCompras: false,
-        costoPrevio: null,
-        promedioDeLasOtras: null,
-      }),
+      recalcularCostoPromedio([R1(anulada()), R2(anulada(5000))]),
     ).toBeNull();
+    expect(recalcularCostoPromedio([])).toBeNull();
   });
 
-  it.each([0, 1, 2, 5])(
-    'sin compras posteriores vuelve EXACTO al previo aunque se hayan vendido %s',
-    () => {
-      // las ventas no cambian el promedio: el actual sigue siendo 150
-      expect(costoPromedioAlAnular(base)).toBe(100);
-    },
-  );
-
-  it('con una compra posterior resta lo que esta compra había movido', () => {
-    // movió (200 - 100) x 10 / 20 = 50; hoy 160 -> 110
-    expect(
-      costoPromedioAlAnular({
-        ...base,
-        costoActual: 160,
-        hayCompraPosterior: true,
+  it('el promedio no depende de las ventas: la existencia guardada ya las trae', () => {
+    // se vendieron 20 antes de R3: existencia previa 25 en lugar de 45
+    const r3 = compra(3, 100, 25, 144.44);
+    expect(recalcularCostoPromedio([R1(), R2(), r3])).toBe(
+      costoPromedioPonderado({
+        existenciaPrevia: 25,
+        costoPrevio: 144.44,
+        cantidad: 10,
+        costoNuevo: 100,
       }),
-    ).toBe(110);
-  });
-
-  it('nunca queda negativo', () => {
-    expect(
-      costoPromedioAlAnular({
-        ...base,
-        costoActual: 10,
-        hayCompraPosterior: true,
-      }),
-    ).toBe(0);
-  });
-
-  it('sin costo previo usa el promedio de las otras compras', () => {
-    expect(
-      costoPromedioAlAnular({
-        ...base,
-        costoPrevio: null,
-        promedioDeLasOtras: 130.5,
-      }),
-    ).toBe(130.5);
-  });
-
-  it('una recepción vieja sin snapshot no cambia el promedio', () => {
-    expect(costoPromedioAlAnular({ ...base, existenciaPrevia: null })).toBe(
-      150,
     );
+  });
+
+  it('una recepción que lee su existencia después de una anulación no la resta de nuevo, aunque su transacción haya empezado antes', () => {
+    // R1 se anula en t=5. R3 empezó su transacción en t=4 pero leyó la existencia
+    // (10, ya sin R1) en t=6: el momento que cuenta es el de la lectura.
+    const r3 = compra(3, 100, 10, 300, { altaEn: 6 });
+    expect(
+      recalcularCostoPromedio([
+        R1(anulada(5)),
+        R2({ costoPrevio: null, existenciaPrevia: 0 }),
+        r3,
+      ]),
+    ).toBe(200);
+  });
+
+  it('si la lectura fue antes de la anulación, esa existencia sí incluía a la anulada', () => {
+    const r3 = compra(3, 100, 20, 300, { altaEn: 4 });
+    expect(
+      recalcularCostoPromedio([
+        R1(anulada(5)),
+        R2({ costoPrevio: null, existenciaPrevia: 0 }),
+        r3,
+      ]),
+    ).toBe(200);
+  });
+
+  it('una recepción vieja sin existencia guardada no se puede reconstruir', () => {
+    expect(
+      recalcularCostoPromedio([R1({ existenciaPrevia: null }), R2(anulada())]),
+    ).toBe('no-reconstruible');
+    expect(
+      recalcularCostoPromedio([
+        R1(),
+        R2({ existenciaPrevia: null }),
+        R3(anulada()),
+      ]),
+    ).toBe('no-reconstruible');
   });
 });
 

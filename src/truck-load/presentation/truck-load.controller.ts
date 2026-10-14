@@ -29,6 +29,7 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { Idempotent } from '../../common/decorators/idempotent.decorator';
+import { IdempotencyKeyObligatoria } from '../../stock/presentation/idempotency-key-obligatoria.decorator';
 import { CancelTruckLoadUseCase } from '../application/cancel-truck-load.use-case';
 import { CloseTruckLoadUseCase } from '../application/close-truck-load.use-case';
 import { DepartTruckLoadUseCase } from '../application/depart-truck-load.use-case';
@@ -55,7 +56,8 @@ import {
 } from '../dto/truck-load.dto';
 
 const NO_ENCONTRADA = 'No existe o es de otra distribuidora';
-const ESTADO_INVALIDO = 'La carga no está en un estado que lo permita';
+const ESTADO_INVALIDO =
+  'La carga no está en un estado que lo permita (conflicto de estado)';
 
 /**
  * Carga y rendición del camión (CU de M-C parte 3): abrir la carga del día,
@@ -207,7 +209,8 @@ export class TruckLoadController {
   })
   @ApiParam({ name: 'id', description: 'Carga UUID' })
   @ApiOkResponse({ type: TruckLoadResponseDto })
-  @ApiBadRequestResponse({ description: ESTADO_INVALIDO })
+  @ApiBadRequestResponse({ description: 'Renglones inválidos' })
+  @ApiConflictResponse({ description: ESTADO_INVALIDO })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   async items(
     @Param('id', ParseUUIDPipe) id: string,
@@ -231,8 +234,9 @@ export class TruckLoadController {
   @ApiOkResponse({ type: TruckLoadResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Estado inválido, carga vacía o stock insuficiente en el depósito',
+      'Carga vacía, camión con garrafas o stock insuficiente en el depósito',
   })
+  @ApiConflictResponse({ description: ESTADO_INVALIDO })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   async departAction(
     @Param('id', ParseUUIDPipe) id: string,
@@ -245,7 +249,7 @@ export class TruckLoadController {
   }
 
   @Patch(':id/reload')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Reposición en ruta: más llenas del depósito al camión',
     description:
@@ -254,8 +258,10 @@ export class TruckLoadController {
   @ApiParam({ name: 'id', description: 'Carga UUID' })
   @ApiOkResponse({ type: TruckLoadResponseDto })
   @ApiBadRequestResponse({
-    description: 'La carga no está en ruta o no alcanza el stock del depósito',
+    description:
+      'Sin `Idempotency-Key`, no alcanza el stock del depósito o la carga pasaría de 20 tipos de garrafa',
   })
+  @ApiConflictResponse({ description: 'La carga no está en ruta' })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   async reloadAction(
     @Param('id', ParseUUIDPipe) id: string,
@@ -285,8 +291,10 @@ export class TruckLoadController {
   })
   @ApiParam({ name: 'id', description: 'Carga UUID' })
   @ApiOkResponse({ type: TruckLoadResponseDto })
-  @ApiBadRequestResponse({
-    description: 'Estado inválido o declaración incompleta',
+  @ApiBadRequestResponse({ description: 'Declaración incompleta' })
+  @ApiConflictResponse({
+    description:
+      'La carga no está en ruta ni devuelta, o el chofer tiene pedidos en curso',
   })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   async returnAction(
@@ -312,8 +320,10 @@ export class TruckLoadController {
   })
   @ApiParam({ name: 'id', description: 'Carga UUID' })
   @ApiOkResponse({ type: TruckLoadResponseDto })
-  @ApiBadRequestResponse({
-    description: 'Estado inválido o diferencia sin nota',
+  @ApiBadRequestResponse({ description: 'Diferencia sin nota' })
+  @ApiConflictResponse({
+    description:
+      'La carga no está devuelta, o se entregaron garrafas después de declarar la vuelta',
   })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   async closeAction(
@@ -334,7 +344,7 @@ export class TruckLoadController {
   })
   @ApiParam({ name: 'id', description: 'Carga UUID' })
   @ApiOkResponse({ type: TruckLoadResponseDto })
-  @ApiBadRequestResponse({ description: ESTADO_INVALIDO })
+  @ApiConflictResponse({ description: ESTADO_INVALIDO })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   async cancelAction(
     @Param('id', ParseUUIDPipe) id: string,

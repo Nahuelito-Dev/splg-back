@@ -1,3 +1,4 @@
+import { EntityManager } from 'typeorm';
 import Decimal from 'decimal.js';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { CreateOrderDto } from '../dto/create-order.dto';
@@ -29,7 +30,7 @@ describe('CreateOrderUseCase', () => {
   let orderItemRepository: { create: jest.Mock };
   let orderRepository: { create: jest.Mock };
   let pricing: { priceItem: jest.Mock; applyPaymentSurcharge: jest.Mock };
-  let stock: { reservarStock: jest.Mock };
+  let stock: { reservarStock: jest.Mock; leerBloqueada: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
   let notificationService: { sendOrderConfirmation: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
@@ -87,6 +88,13 @@ describe('CreateOrderUseCase', () => {
       applyPaymentSurcharge: jest.fn((amount: unknown) => amount),
     };
     stock = {
+      leerBloqueada: jest.fn().mockResolvedValue({
+        gasCylinderId: 'gc-1',
+        type: '10kg',
+        price: 1000,
+        promotions: null,
+        distributorId: 'dist-default',
+      }),
       reservarStock: jest.fn().mockResolvedValue({
         gasCylinderId: 'gc-1',
         type: '10kg',
@@ -204,6 +212,21 @@ describe('CreateOrderUseCase', () => {
       expect(stock.reservarStock).not.toHaveBeenCalled();
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
       expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+  });
+
+  describe('reservarRenglones con la reserva ya ajustada (edición)', () => {
+    it('sólo bloquea y lee el precio: no vuelve a descontar el stock', async () => {
+      const manager = queryRunner.manager as unknown as EntityManager;
+      const r = await useCase.reservarRenglones(
+        manager,
+        [{ gasCylinderId: 'gc-1', quantity: 2 }],
+        'dist-default',
+        true,
+      );
+      expect(stock.leerBloqueada).toHaveBeenCalledWith(manager, 'gc-1');
+      expect(stock.reservarStock).not.toHaveBeenCalled();
+      expect(r.orderItems).toHaveLength(1);
     });
   });
 

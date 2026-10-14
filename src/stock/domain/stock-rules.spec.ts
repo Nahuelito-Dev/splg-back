@@ -293,6 +293,20 @@ describe('conciliarVendible (invariante D4)', () => {
     });
   });
 
+  it('si las reservas pasan al físico el esperado es 0 y el exceso se informa aparte', () => {
+    expect(conciliarVendible(G1, 0, 3, 5)).toMatchObject({
+      expected: 0,
+      overReserved: 2,
+      difference: 0,
+    });
+    expect(conciliarVendible(G1, 4, 3, 5)).toMatchObject({
+      expected: 0,
+      overReserved: 2,
+      difference: 4,
+    });
+    expect(conciliarVendible(G1, 70, 100, 30).overReserved).toBe(0);
+  });
+
   it('informa la diferencia con su signo', () => {
     expect(conciliarVendible(G1, 75, 100, 30).difference).toBe(5);
     expect(conciliarVendible(G1, 60, 100, 30).difference).toBe(-10);

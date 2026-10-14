@@ -35,9 +35,36 @@ Módulo `src/stock/` (M-C parte 1; el diseño completo está en
   `FOR SHARE`) y daba deadlock; hay un test de integración con 12 conteos y 12 ajustes simultáneos.
   Sin el paso 1 una entrega tomaba saldos y recién al insertar el libro pedía `gas_cylinder`, al
   revés que un ajuste: deadlock. La entrega además reintenta su savepoint ante `40P01`.
-- **Vendible (D4):** `gas_cylinder.stock = Σ llenas (depósitos y camiones) − Σ pedidos abiertos`
+- **Vendible (D4):** `gas_cylinder.stock = max(0, Σ llenas (depósitos y camiones) − Σ pedidos abiertos)`
   (`reserved`, `pending`, `accepted`, `on_the_way`). Entrar o sacar llenas mueve el vendible lo
-  mismo y nunca lo deja negativo; las transferencias no lo tocan. La entrega no lo toca (ya se
+  mismo y nunca lo deja negativo; las transferencias no lo tocan.
+  **Una pérdida física se registra siempre** (merma, faltante de una rendición, ajuste, anulación de una compra,
+  conteo): si el vendible no alcanza queda en 0 y el libro asienta igual (`ajustarVendible` con `recortarEnCero`;
+  queda un warning en el log). El físico es la verdad; lo que las reservas pasan del físico no se oculta:
+  la conciliación lo informa como `overReserved` (`max(0, reservadas − llenas)`), marca `consistent: false`, entra en el
+  mail de las 03:00 y se resuelve cancelando pedidos o reponiendo stock.
+  **Sin sobreventa al cancelar:** el recorte se recuerda en `gas_cylinder.reservation_deficit` (= `overReserved`, las reservas que
+  el físico no cubre). Cualquier suma al vendible en modo "el físico manda" (una cancelación o expiración que restituye stock, un
+  hallazgo, una recepción, una anulación) cubre PRIMERO ese déficit y sólo el resto sube el vendible. Ejemplo: llenas 20, reservadas
+  15 (vendible 5), merma de 10 → vendible 0 y déficit 5; se cancelan 5 → llenas 10, reservadas 10: el vendible sigue en 0 (no 5);
+  se cancelan 3 más → vendible 3. Se eligió persistir el déficit y no recalcular desde el físico y las reservas porque el
+  vendible se mueve desde varios módulos (pedidos, stock) dentro de sus propias transacciones y el déficit se actualiza bajo el
+  mismo lock de `gas_cylinder`, sin que `gascylinder` lea pedidos. Invariante: `vendible − déficit = llenas − reservadas`.
+  `POST /stock/reconciliation/adjustments` deja el vendible exacto y reescribe el déficit con `overReserved`.
+  **Editar un pedido** (`PATCH /orders/:id` con renglones) ajusta la reserva por la **diferencia neta por garrafa**
+  (`GasCylinderService.reajustarReserva`, bajo el lock de cada garrafa en orden de id): pide más → reserva sólo el aumento (400 si
+  el vendible no alcanza); pide menos → devuelve sólo lo que sobra, cubriendo primero el déficit; igual → no toca nada. Devolver todo y
+  reservar de nuevo fallaba con una garrafa en déficit (lo devuelto cubría el déficit y la nueva reserva no encontraba vendible).
+  `reservarRenglones(…, stockYaReservado = true)` sólo bloquea y lee el precio. **El ABM del catálogo nunca escribe `stock` ni
+  `reservation_deficit`** (`update` y baja lógica los dejan `undefined` en el `save`): una reserva o un recorte confirmados entre la
+  lectura y el guardado ya no se pisan con el valor viejo.
+  **Conciliación y déficit:** `GET /stock/reconciliation` trae por garrafa `reservationDeficit` (el guardado) y `deficitDifference =
+  reservationDeficit − overReserved`; un desfasaje del déficit con `difference = 0` deja `consistent: false`, entra en el mail del cron y se
+  corrige con `POST /stock/reconciliation/adjustments` (queda un documento sin renglón, porque la variación 0 no es válida). El ajuste se
+  **rechaza con 409 mientras haya entregas sin descontar el físico** de esa garrafa ("primero reaplicá las entregas"): con el físico de más,
+  el esperado sale mal y, al reaplicarlas, quedaría sobreventa. Se eligió rechazar y no descontar las pendientes del esperado porque la
+  reaplicación es una acción explícita del administrador y puede dejar entregas pendientes sin saldo de dónde sacar.
+  Sólo las reservas de pedidos (`reservarStock`) y la corrección de conciliación siguen siendo estrictas. La entrega no lo toca (ya se
   descontó al reservar). `GET /stock/reconciliation` y el cron de las 03:00 ART lo verifican y
   avisan; **no corrigen**.
 - **Entrega (D5 y D6):** al pasar un pedido a `delivered`, `UpdateOrderStatusUseCase` llama a
@@ -59,6 +86,10 @@ Módulo `src/stock/` (M-C parte 1; el diseño completo está en
   (no cuenta como intento vencido ni bloquea una oferta futura) EN la transacción de la asignación, y después
   del commit cada chofer recibe `order:cancelled` por su socket. La del chofer que se queda la cierra la
   constancia `accepted`.
+- **Piso de la reaplicación:** `reapply-deliveries` y la conciliación sólo miran entregas desde que se asentó el primer
+  movimiento del libro (`MIN(stock_movement."createdAt")`, el momento real del asiento). **No** usan `occurred_at`, que el
+  usuario puede elegir (la fecha de una recepción): con una recepción fechada antes del módulo el piso retrocedía y se
+  reaplicaban pedidos anteriores al stock físico, destruyendo el saldo.
 - **Conteo inicial:** una vez por depósito; registra las diferencias contra el saldo actual como
   un ajuste `initial_count`. Los depósitos existentes arrancan con la migración `StockFisico`
   (llenas = vendible + pedidos abiertos, vacías en cero).
@@ -74,6 +105,11 @@ Módulo `src/stock/` (M-C parte 1; el diseño completo está en
   `reconciliation`, nota obligatoria, que corrige SÓLO `gas_cylinder.stock` (sin movimientos
   físicos: el físico no cambió). El cron avisa una vez por diferencia (firma en
   `stock_reconciliation_alert`).
+- **Depósito de origen de una carga:** no se da de baja (`DELETE /warehouses/:id`) ni se desactiva (`PATCH {isActive:false}`)
+  mientras sea el origen de una carga abierta (`loading`, `on_route` o `returned`): **409** con el número de la carga. La
+  rendición le devuelve las garrafas, así que sin depósito (o inactivo) la carga quedaba trabada. Abrir una carga desde un
+  depósito inactivo es **400**. La apertura toma el depósito `FOR SHARE` (después de las garrafas, es el orden global) y la
+  baja o desactivación `FOR UPDATE`: una carga que se abre en paralelo se ve o espera.
 - **Depósito predeterminado:** no puede estar inactivo (400 al marcarlo si está inactivo o al marcarlo junto con
   `isActive: false`; desactivarlo o sacarle la marca da 409). La entrega acredita ahí la vacía de canje y un depósito
   inactivo no recibe stock: omitiría todo el pedido.
@@ -84,12 +120,19 @@ Módulo `src/stock/` (M-C parte 1; el diseño completo está en
 - **Estados:** un depósito inactivo o un vehículo dado de baja no reciben stock pero pueden
   entregar el que les queda.
 - **Crons (zona `America/Argentina/Buenos_Aires`):** stock bajo 08:00 (mail a los admins, una
-  vez por bajada) y conciliación 03:00 (mail si hay diferencias).
+  vez por bajada) y conciliación 03:00 (mail si hay diferencias o reservas por encima del físico). Corren bajo un lock
+  distribuido de Redis (`cron:stock-low`, `cron:stock-reconciliation`): con varias instancias sale un solo mail.
 
 ## Endpoints
 
 Todos `@Auth(ADMIN, SUPER_ADMIN)` con la distribuidora en contexto; lo de otra responde 404.
-Los `POST` que mueven stock aceptan `Idempotency-Key` (UUID v4). La clave queda atada al body (SHA-256 del JSON con
+Las escrituras que crean movimientos con ids nuevos **exigen** `Idempotency-Key` (UUID v4) y responden **400** sin ella:
+`POST /stock/transfers`, `/stock/adjustments`, `/stock/initial-counts`, `/stock/movements/batches/:batchId/reverse`,
+`/stock/reconciliation/adjustments`, `PATCH /gascylinder/:id/stock` (suma o resta relativa), `POST /purchase-receipts`
+y `PATCH /purchase-receipts/:id/void` (`reload` de la carga ya lo exigía); el OpenAPI la declara como header requerido
+(`@IdempotencyKeyObligatoria`). `reapply-deliveries` y las acciones de la carga (`depart`, `return`, `close`, `cancel`) la aceptan
+pero no la exigen: no repiten el efecto porque el estado ya cambió, pero **un reintento sin clave responde 409** (conflicto de
+estado, p. ej. "La carga N° 7 está en ruta…"); con la misma clave devuelve la respuesta guardada, que es lo que conviene mandar. La clave queda atada al body (SHA-256 del JSON con
 las claves ordenadas): repetirla con el mismo body devuelve la respuesta guardada; con otro body responde **422**
 ("Esa clave de idempotencia ya se usó con otros datos…") y no ejecuta nada. Vale para todo `@Idempotent`.
 Swagger: `GET /docs-json`. Rutas: `/warehouses`, `/stock`, `/stock/summary`, `/stock/locations`,
@@ -132,21 +175,31 @@ transiciones viven en `domain/purchase-rules.ts`. Sólo se edita en borrador.
 4. `received_quantity` y estado de la orden; 5. número interno y remito.
 Documento del proveedor: único por `(distribuidora, proveedor, tipo, número)`: remito y factura numeran aparte.
 Límites de los DTO (`dto/purchase-limits.ts`): 20 renglones, 5.000 unidades y $90.000 por garrafa, para que
-ningún total desborde `numeric(12,2)`; `traducirErrorDeBase` además traduce `22003` a 400.
+ningún total desborde `numeric(12,2)`; `traducirErrorDeBase` además traduce `22003` a 400 y, en compras, `22001` (texto más largo
+que la columna) también es 400.
+**Fecha de la recepción:** `receivedAt` no puede ser futura ni anterior al **conteo inicial** del depósito, si lo tuvo (400: esas
+garrafas ya están en el conteo). Sin conteo inicial no hay piso: se acepta una fecha pasada, porque el piso de la reaplicación de
+entregas ya no depende de `occurred_at`.
 
 **Anular (`PATCH /purchase-receipts/:id/void`):** contraasiento del lote por el ledger (las llenas salen del
 depósito, las vacías vuelven). Si las llenas ya no están en el depósito (vendidas, cargadas a un camión,
 transferidas) responde **409** y dice dónde están hoy. No se anula una recepción marcada como pagada (400).
 
-**Costo promedio al anular** (`costoPromedioAlAnular`). Las ventas, mermas y ajustes NO cambian el promedio
-(sólo una compra lo cambia), por eso:
-1. si no queda otra recepción confirmada de esa garrafa, el costo vuelve a `null`;
-2. si es la última compra, vuelve EXACTO al `previous_average_cost` guardado, hayan pasado las ventas que hayan pasado;
-3. si hubo compras posteriores no se puede reconstruir exacto: se resta del promedio de hoy lo que esta
-   compra lo había movido, `cantidad x (costo recibido - costo previo) / (existencia previa + cantidad)`, con
-   piso en 0 (las compras posteriores lo diluyeron: es una aproximación);
-4. si antes no había costo previo, el promedio de las otras compras confirmadas;
-5. una recepción anterior a esta columna (sin snapshot) deja el promedio como está.
+**Costo promedio al anular** (`recalcularCostoPromedio`, exacto y determinístico). Las ventas, mermas y ajustes NO cambian el
+promedio (sólo una compra lo cambia), así que al anular se **repiten, en orden de número, las recepciones de llenas que siguen
+confirmadas** con la misma fórmula de la recepción y se fija el resultado:
+1. parte del promedio que había antes de la primera recepción de esa garrafa (`previous_average_cost` guardado);
+2. de cada recepción vigente usa su `previous_on_hand` (existencia previa que se guardó, ya con las ventas del medio) y le
+   resta las llenas de las recepciones anteriores que se anularon **después** de que ésta leyó esa existencia (si se anularon
+   antes, la existencia guardada ya no las incluía); piso 0. El instante de la lectura es `previous_on_hand_at`
+   (`clock_timestamp()` de la base, bajo el lock de la garrafa); `createdAt` no sirve porque es el inicio de la transacción y una
+   anulación puede cruzarse en el medio. Una recepción anterior a esa columna usa su `createdAt`;
+3. sin ninguna recepción vigente vuelve al promedio de partida (`null` si nunca hubo costo);
+4. si alguna recepción necesaria es anterior a las columnas `previous_*` no se puede reconstruir: el promedio queda como está.
+El resultado no depende del orden en que se anulen varias: R1 $100, R2 $300 y R3 $100 (10 c/u, 25 llenas sin costo antes) dejan
+136,36; anular R2 deja 100 (antes 91,92), anular R3 deja 144,44, anular las dos deja 100. La fecha de anulación (`voided_at`)
+sale del reloj de la base. El texto de `stock_movement.notes` (varchar 300) se arma con el motivo y se corta con `…` si
+no entra; el motivo completo queda entero en `purchase_receipt.void_reason`.
 
 **Pago:** `payment_status` (`unpaid`/`paid`) es sólo una marca (`PATCH /purchase-receipts/:id/payment-status`).
 `cash_movement_id` queda en `null` hasta que exista el módulo de caja (M-D), sin clave foránea.
@@ -195,7 +248,8 @@ módulo guarda el documento y las reglas (`domain/truck-load-rules.ts`).
 | `truck_load_item` | Un renglón por tipo de garrafa: cargadas (`loaded_full`, `loaded_empty`), repuestas (`reloaded_full`), lo declarado al volver y, al cerrar, lo congelado (entregado, recolectado, esperado y diferencia). |
 
 **Estados:** `loading -> on_route -> returned -> closed | closed_with_difference`; `cancelled` sólo desde
-`loading`. Se puede volver a declarar la vuelta (`returned -> returned`) hasta cerrar.
+`loading`. Pedir una acción que el estado no permite es **409** (conflicto de estado), igual que en compras; los 400 quedan
+para datos inválidos. Se puede volver a declarar la vuelta (`returned -> returned`) hasta cerrar.
 
 **Qué mueve el ledger y cuándo:**
 
@@ -222,6 +276,13 @@ no liste (una transferencia manual) se rinde con un renglón propio declarado en
 **Efectivo de la jornada (informativo).** El detalle trae `cash`: de los pedidos que el chofer entregó con ese
 camión durante la carga, el efectivo cobrado (`paid`, confirmado por el chofer), el impago (`unpaid` y
 `written_off`) y el pendiente de confirmar. No mueve nada: la caja (M-D) no existe.
+**Los importes en efectivo son el saldo que el chofer cobra al entregar**, no el total: `remainingBalance = total − seña`
+(la seña sólo si `deposit_paid`), la misma regla que `OrderMapper`. Una reserva de $20.000 con $5.000 de seña paga por
+adelantado suma $15.000 a `cashCollectedAmount`, `unpaidAmount` o `pendingConfirmationAmount` según su estado de pago. Cada
+pedido de `orders` trae `totalAmount` y `remainingBalance`. `nonCashAmount` sigue sumando el total de lo cobrado por otro medio.
+El cierre de la carga (`PATCH …/close`) no calcula efectivo: sólo rinde stock, así que no hay otro cálculo que corregir.
+Nota: `CashCollectionUseCase.confirmReceived` (módulo `order`) pasa el pedido a `paid` pero no registra el monto cobrado; la
+rendición lo deduce del pedido. Si algún día el chofer cobra un monto distinto del saldo, hay que guardarlo ahí.
 
 **Orden de locks de la carga** (se suma al de arriba): `car` (`FOR SHARE`, frena a `ponerEnUso`) -> `delivery` ->
 `gas_cylinder` (`FOR KEY SHARE`, por id) -> `document_sequence`, al abrir. Para operar una carga abierta, el
@@ -263,7 +324,10 @@ carga del día abierta", "La carga N° n todavía no salió...", "...ya volvió.
 **Reglas de la jornada**
 - **El stock del camión sólo entra y sale por la carga.** `POST /stock/transfers` rechaza (400) transferir a un vehículo: "El camión se
   carga y se rinde desde la carga del día". La única excepción es **regularizar**: devolver al depósito lo que un vehículo tiene suelto,
-  con transferencia vehículo -> depósito, sólo si el camión no tiene carga abierta (409 si la tiene) y con nota obligatoria. Se eligió
+  con transferencia vehículo -> depósito, sólo si el camión no tiene carga abierta (409 si la tiene) y con nota obligatoria.
+  El **contraasiento** de esa regularización devolvería las garrafas al camión (y el de una transferencia desde un camión con
+  carga abierta las sacaría): **409**, con las mismas reglas que la transferencia. Se contraasientan las transferencias entre depósitos y, por los datos históricos, una depósito -> camión
+  (el contraasiento vuelve del camión al depósito: sólo si el camión no tiene carga abierta). Nunca hacia un camión. Se eligió
   esa vía y no un endpoint aparte porque deja el mismo rastro (lote, libro, auditoría, idempotencia). Un camión sale vacío: `depart` responde
   400 si todavía tiene garrafas.
 - **No se declara la vuelta con pedidos en curso:** `return` responde 409 si el chofer tiene pedidos `accepted` u `on_the_way`
@@ -271,9 +335,18 @@ carga del día abierta", "La carga N° n todavía no salió...", "...ya volvió.
 - **Entrega después de declarar:** si el libro tiene entregas del camión posteriores a `returned_at`, `close` responde 409 y el
   chofer vuelve a declarar. Se eligió rechazar y no recalcular porque recalcular daría por buena una cuenta que el chofer no hizo.
 - **Cambio de vehículo:** `PUT|DELETE /delivery/:id/vehicle` responde 409 mientras el chofer, o el camión, tengan una carga abierta.
-- **Reposición:** `reload` exige `Idempotency-Key` (400 sin ella): repetirla suma otra vez. `depart`, `return`, `close` y `cancel` son
-  idempotentes por estado.
-- **Reloj:** `opened_at` y `returned_at` salen del reloj de la base (`clock_timestamp()`); delimitan qué entregas son de la carga.
+- **Reposición:** `reload` exige `Idempotency-Key` (400 sin ella): repetirla suma otra vez. `depart`, `return`, `close` y `cancel` no
+  repiten el efecto (el estado ya cambió), pero un reintento sin clave es 409; con la misma `Idempotency-Key` devuelve lo guardado.
+- **Reloj:** un solo reloj, el de la base (`clock_timestamp()`), para todo lo que se compara en la ventana de la carga:
+  `opened_at`, `departed_at`, `returned_at`, `closed_at` y el `occurred_at` de los movimientos del libro (que no traen fecha
+  propia). Delimitan qué entregas son de la carga. Sólo la recepción de compras puede llevar una fecha elegida por el usuario.
+  **Pendiente:** `order.deliveredAt` se sigue grabando con el reloj del proceso (`new Date()`, módulo `order`); la ventana de la carga
+  compara contra el reloj de la base, así que un servidor desfasado podría dejar una entrega adentro o afuera. Lo arregla quien
+  tenga `src/order`; hasta que se integre queda pendiente.
+- **Reposición y tipos:** declarar la vuelta lista todos los tipos de la carga y el DTO admite 20: una reposición que haría
+  pasar la carga de 20 tipos distintos es 400.
+- **Baja del chofer o egreso del legajo con una carga abierta:** 409 y la baja se revierte (cerrá o cancelá la carga antes). Liberar
+  el vehículo dejaría el stock cargado en un camión que nadie usa; la rendición la puede declarar y cerrar el administrador.
 - **Mismo criterio para stock y efectivo:** lo entregado en stock es lo que salió del camión de la carga en `[opened_at, ahora o cierre]`; el
   efectivo (`cash`) y la lista `orders` son los pedidos entregados por el chofer de la carga CON ese camión (`order.vehicle_car_id`) en la
   misma ventana. "Cobrado" es `paid` (cualquier medio); `unpaid` y `written_off` son impago; el efectivo `pending` está sin confirmar. Un pedido

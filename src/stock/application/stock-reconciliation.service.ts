@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import { StockOnHandService } from './stock-on-hand.service';
 import { conciliarVendible } from '../domain/stock-rules';
 import {
   DiferenciaDeVendibleDto,
@@ -12,7 +13,7 @@ import {
 /**
  * Verifica la invariante del vendible (D4):
  *
- *   gas_cylinder.stock = Σ llenas (depósitos + camiones) − Σ pedidos abiertos
+ *   gas_cylinder.stock = max(0, Σ llenas (depósitos + camiones) − Σ pedidos abiertos)
  *
  * y busca las entregas que no descontaron el físico. Sólo informa: NUNCA
  * corrige. Lee todo en una transacción `REPEATABLE READ`, así las tres cifras
@@ -24,15 +25,21 @@ export class StockReconciliationService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly orders: OrderLookupService,
+    private readonly onHand: StockOnHandService,
   ) {}
 
   async conciliar(distributorId: string): Promise<StockReconciliationDto> {
     return this.dataSource.transaction('REPEATABLE READ', async (manager) => {
       const [garrafas, fisicas, reservadas, arranque] = await Promise.all([
         manager.query<
-          Array<{ gas_cylinder_id: string; type: string; stock: number }>
+          Array<{
+            gas_cylinder_id: string;
+            type: string;
+            stock: number;
+            reservation_deficit: number;
+          }>
         >(
-          `SELECT "gas_cylinder_id", "type", "stock" FROM "gas_cylinder"
+          `SELECT "gas_cylinder_id", "type", "stock", "reservation_deficit" FROM "gas_cylinder"
            WHERE "distributor_id" = $1 ORDER BY "type"`,
           [distributorId],
         ),
@@ -43,10 +50,7 @@ export class StockReconciliationService {
           [distributorId],
         ),
         this.orders.reservedByCylinder(distributorId, manager),
-        manager.query<Array<{ desde: Date | null }>>(
-          `SELECT MIN("occurred_at") AS desde FROM "stock_movement" WHERE "distributor_id" = $1`,
-          [distributorId],
-        ),
+        this.onHand.inicioDelLibro(manager, distributorId),
       ]);
       const tipos = new Map(garrafas.map((g) => [g.gas_cylinder_id, g.type]));
       const fisicoPorGarrafa = new Map(
@@ -63,46 +67,86 @@ export class StockReconciliationService {
         return {
           ...d,
           gasCylinderType: g.type,
-          correction: -d.difference,
+          correction: 0 - d.difference,
+          reservationDeficit: g.reservation_deficit,
+          deficitDifference: g.reservation_deficit - d.overReserved,
         };
       });
 
-      // Sólo cuentan las entregas posteriores al arranque del módulo: las
-      // anteriores no tenían stock físico que descontar.
-      const deliveriesWithoutMovement: PedidoEntregadoSinMovimientoDto[] = [];
-      const desde = arranque[0]?.desde;
-      if (desde) {
-        const entregadas = await this.orders.deliveredItemsSince(
-          distributorId,
-          desde,
-          manager,
-        );
-        const hechos = await this.entregasConMovimiento(
-          manager,
-          distributorId,
-          entregadas.map((e) => e.orderId),
-        );
-        for (const e of entregadas) {
-          if (hechos.has(`${e.orderId}|${e.gasCylinderId}`)) continue;
-          deliveriesWithoutMovement.push({
-            orderId: e.orderId,
-            deliveredAt: e.deliveredAt,
-            gasCylinderId: e.gasCylinderId,
-            gasCylinderType: tipos.get(e.gasCylinderId) ?? e.gasCylinderId,
-            quantity: Number(e.quantity),
-          });
-        }
-      }
+      const deliveriesWithoutMovement = await this.entregasSinMovimiento(
+        manager,
+        distributorId,
+        arranque,
+        tipos,
+      );
 
       return {
         checkedAt: new Date(),
         consistent:
-          cylinders.every((c) => c.difference === 0) &&
-          deliveriesWithoutMovement.length === 0,
+          cylinders.every(
+            (c) =>
+              c.difference === 0 &&
+              c.overReserved === 0 &&
+              c.deficitDifference === 0,
+          ) && deliveriesWithoutMovement.length === 0,
         cylinders,
         deliveriesWithoutMovement,
       };
     });
+  }
+
+  /**
+   * Renglones entregados desde el arranque del módulo que no descontaron el
+   * físico (sólo cuentan los posteriores al arranque: los anteriores no tenían
+   * stock físico que descontar).
+   */
+  private async entregasSinMovimiento(
+    manager: DataSource['manager'],
+    distributorId: string,
+    desde: Date | null,
+    tipos: Map<string, string>,
+  ): Promise<PedidoEntregadoSinMovimientoDto[]> {
+    const pendientes: PedidoEntregadoSinMovimientoDto[] = [];
+    if (!desde) return pendientes;
+    const entregadas = await this.orders.deliveredItemsSince(
+      distributorId,
+      desde,
+      manager,
+    );
+    const hechos = await this.entregasConMovimiento(
+      manager,
+      distributorId,
+      entregadas.map((e) => e.orderId),
+    );
+    for (const e of entregadas) {
+      if (hechos.has(`${e.orderId}|${e.gasCylinderId}`)) continue;
+      pendientes.push({
+        orderId: e.orderId,
+        deliveredAt: e.deliveredAt,
+        gasCylinderId: e.gasCylinderId,
+        gasCylinderType: tipos.get(e.gasCylinderId) ?? e.gasCylinderId,
+        quantity: Number(e.quantity),
+      });
+    }
+    return pendientes;
+  }
+
+  /** Unidades entregadas de una garrafa que todavía no descontaron el físico. */
+  async unidadesSinMovimientoDe(
+    manager: DataSource['manager'],
+    distributorId: string,
+    gasCylinderId: string,
+  ): Promise<number> {
+    const desde = await this.onHand.inicioDelLibro(manager, distributorId);
+    const pendientes = await this.entregasSinMovimiento(
+      manager,
+      distributorId,
+      desde,
+      new Map(),
+    );
+    return pendientes
+      .filter((p) => p.gasCylinderId === gasCylinderId)
+      .reduce((total, p) => total + p.quantity, 0);
   }
 
   private async entregasConMovimiento(

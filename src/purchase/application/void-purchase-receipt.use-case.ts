@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { StockLedgerPort } from '../../stock/domain/ports/stock-ledger.port';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import {
@@ -12,8 +13,8 @@ import {
 import { PaymentStatus, PurchaseReceiptStatus } from '../domain/purchase.enums';
 import {
   ESTADOS_QUE_SIGUEN_A_LO_RECIBIDO,
-  costoPromedioAlAnular,
   estadoSegunRecibido,
+  recalcularCostoPromedio,
   validarTransicion,
 } from '../domain/purchase-rules';
 import { VoidPurchaseReceiptDto } from '../dto/purchase-receipt.dto';
@@ -22,6 +23,16 @@ import { PurchaseReceiptItem } from '../entities/purchase-receipt-item.entity';
 import { PurchaseReceipt } from '../entities/purchase-receipt.entity';
 import { PurchaseOrderService } from './purchase-order.service';
 import { traducirErrorDeCompra } from './traducir-error-de-compra';
+
+/** `stock_movement.notes` es `varchar(300)`; el motivo completo queda en `void_reason`. */
+const LARGO_MAXIMO_DE_NOTA = 300;
+
+export function notaDeAnulacion(numero: number, motivo: string): string {
+  const nota = `Anulación de la recepción N° ${numero}: ${motivo}`;
+  return nota.length <= LARGO_MAXIMO_DE_NOTA
+    ? nota
+    : `${nota.slice(0, LARGO_MAXIMO_DE_NOTA - 1)}…`;
+}
 
 /**
  * Anula una recepción confirmada con un contraasiento del libro: las llenas
@@ -86,11 +97,13 @@ export class VoidPurchaseReceiptUseCase {
               actorUserId,
               items,
             );
+            const anuladaEn = await ahoraDeLaBase(manager);
             await this.recalcularCostos(
               manager,
               distributorId,
               recepcion,
               items,
+              anuladaEn,
             );
             if (orden) {
               const renglones = await manager.find(PurchaseOrderItem, {
@@ -121,7 +134,7 @@ export class VoidPurchaseReceiptUseCase {
             }
             recepcion.status = PurchaseReceiptStatus.VOIDED;
             recepcion.voidReason = dto.reason;
-            recepcion.voidedAt = new Date();
+            recepcion.voidedAt = anuladaEn;
             recepcion.voidedByUserId = actorUserId;
             await manager.save(recepcion);
             return id;
@@ -181,7 +194,7 @@ export class VoidPurchaseReceiptUseCase {
         distributorId,
         batchId: recepcion.batchId,
         actorUserId,
-        notes: `Anulación de la recepción N° ${recepcion.number}: ${motivo}`,
+        notes: notaDeAnulacion(recepcion.number, motivo),
       });
       recepcion.voidBatchId = batchId;
     } catch (error) {
@@ -228,15 +241,17 @@ export class VoidPurchaseReceiptUseCase {
   }
 
   /**
-   * Costo promedio de cada garrafa al anular (regla en `costoPromedioAlAnular`).
-   * El ledger ya tomó el lock de `gas_cylinder`, así que ninguna otra compra
-   * cambia el promedio ni las demás recepciones mientras se recalcula.
+   * Costo promedio de cada garrafa al anular: se recalcula repitiendo, en orden,
+   * las recepciones que siguen confirmadas (`recalcularCostoPromedio`). El ledger
+   * ya tomó el lock de `gas_cylinder`, así que ninguna otra compra cambia el
+   * promedio ni las demás recepciones mientras se recalcula.
    */
   private async recalcularCostos(
     manager: EntityManager,
     distributorId: string,
     recepcion: PurchaseReceipt,
     items: PurchaseReceiptItem[],
+    anuladaEn: Date,
   ): Promise<void> {
     for (const item of items.filter((i) => i.quantityFull > 0)) {
       const actual = await this.products.costoPromedio(
@@ -244,39 +259,52 @@ export class VoidPurchaseReceiptUseCase {
         distributorId,
         item.gasCylinderId,
       );
-      const [otras]: Array<{
-        cantidad: number;
-        promedio: string | null;
-        posterior: boolean | null;
+      const filas: Array<{
+        receipt_id: string;
+        number: number;
+        status: string;
+        created_at: Date;
+        previous_on_hand_at: Date | null;
+        voided_at: Date | null;
+        quantity_full: number;
+        unit_cost: string;
+        previous_average_cost: string | null;
+        previous_on_hand: number | null;
       }> = await manager.query(
-        `SELECT COUNT(*)::int AS cantidad,
-                SUM(i."quantity_full" * i."unit_cost") / NULLIF(SUM(i."quantity_full"), 0) AS promedio,
-                BOOL_OR(r."number" > $4) AS posterior
+        `SELECT r."receipt_id", r."number", r."status"::text AS status,
+                r."createdAt" AS created_at, r."voided_at",
+                i."quantity_full", i."unit_cost", i."previous_average_cost", i."previous_on_hand",
+                i."previous_on_hand_at"
          FROM "purchase_receipt_item" i
          JOIN "purchase_receipt" r ON r."receipt_id" = i."receipt_id"
-         WHERE r."distributor_id" = $1 AND i."gas_cylinder_id" = $2
-           AND r."status" = 'confirmed' AND r."receipt_id" <> $3 AND i."quantity_full" > 0`,
-        [
-          distributorId,
-          item.gasCylinderId,
-          recepcion.receiptId,
-          recepcion.number,
-        ],
+         WHERE r."distributor_id" = $1 AND i."gas_cylinder_id" = $2 AND i."quantity_full" > 0
+         ORDER BY r."number"`,
+        [distributorId, item.gasCylinderId],
       );
-      const nuevo = costoPromedioAlAnular({
-        costoActual: actual,
-        costoPrevio: item.previousAverageCost,
-        existenciaPrevia: item.previousOnHand,
-        cantidad: item.quantityFull,
-        costoRecibido: item.unitCost,
-        hayOtrasCompras: otras.cantidad > 0,
-        hayCompraPosterior: otras.posterior === true,
-        promedioDeLasOtras:
-          otras.promedio === null
-            ? null
-            : Math.round(Number(otras.promedio) * 100) / 100,
-      });
-      if (nuevo !== actual) {
+      const nuevo = recalcularCostoPromedio(
+        filas.map((f) => {
+          const esta = f.receipt_id === recepcion.receiptId;
+          return {
+            numero: f.number,
+            cantidad: f.quantity_full,
+            costoUnitario: Number(f.unit_cost),
+            costoPrevio:
+              f.previous_average_cost === null
+                ? null
+                : Number(f.previous_average_cost),
+            existenciaPrevia: f.previous_on_hand,
+            vigente: f.status === 'confirmed' && !esta,
+            altaEn: (f.previous_on_hand_at ?? f.created_at).getTime(),
+            anuladaEn: esta
+              ? anuladaEn.getTime()
+              : f.voided_at
+                ? f.voided_at.getTime()
+                : null,
+          };
+        }),
+      );
+      // Una recepción vieja sin los datos guardados deja el promedio como está.
+      if (nuevo !== 'no-reconstruible' && nuevo !== actual) {
         await this.products.fijarCostoPromedio(
           manager,
           distributorId,

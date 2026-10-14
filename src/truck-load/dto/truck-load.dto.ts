@@ -276,6 +276,12 @@ export class TruckLoadItemResponseDto {
 export class TruckLoadOrderDto {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ example: 14500 }) totalAmount!: number;
+  @ApiProperty({
+    example: 9500,
+    description:
+      'Saldo que el chofer cobra al entregar: el total menos la seña ya paga',
+  })
+  remainingBalance!: number;
   @ApiProperty({ enum: PaymentMethod }) paymentMethod!: PaymentMethod;
   @ApiProperty({ enum: PaymentStatus }) paymentStatus!: PaymentStatus;
   @ApiProperty() deliveredAt!: Date;
@@ -285,7 +291,8 @@ export class TruckLoadCashDto {
   @ApiProperty({ example: 4 }) deliveredOrders!: number;
   @ApiProperty({
     example: 43500,
-    description: 'Efectivo que el chofer confirmó haber cobrado (paid)',
+    description:
+      'Efectivo que el chofer confirmó haber cobrado (paid): el saldo de cada pedido, sin la seña que ya se pagó por adelantado',
   })
   cashCollectedAmount!: number;
   @ApiProperty({ example: 3 }) cashCollectedCount!: number;

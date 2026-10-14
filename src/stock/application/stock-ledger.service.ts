@@ -26,6 +26,7 @@ import {
 } from '../domain/stock-rules';
 import { StockCondition, StockMovementReason } from '../domain/stock.enums';
 import { StockMovement } from '../entities/stock-movement.entity';
+import { ahoraDeLaBase } from './reloj-de-la-base';
 
 interface UbicacionConocida {
   locationId: string;
@@ -51,7 +52,7 @@ const MOTIVOS_SIN_EFECTO_EN_VENDIBLE: readonly StockMovementReason[] = [
  *  1. valida los movimientos y que ubicaciones y garrafas sean de la
  *     distribuidora (404 si no);
  *  2. si el vendible acompaña al físico, bloquea `gas_cylinder` (por id) y lo
- *     ajusta;
+ *     ajusta (nunca lo deja negativo: una pérdida lo deja en cero);
  *  3. asegura las filas de saldo, las bloquea `FOR UPDATE` ordenadas por
  *     (ubicación, tipo, condición) y valida que ninguna quede negativa;
  *  4. actualiza los saldos e inserta el libro.
@@ -198,9 +199,19 @@ export class StockLedgerService extends StockLedgerPort {
     for (const gasCylinderId of [...ids].sort((a, b) => a.localeCompare(b))) {
       const delta = cambio.get(gasCylinderId);
       if (delta !== undefined) {
-        await this.gasCylinders.ajustarVendible(manager, op.distributorId, [
-          { gasCylinderId, delta },
-        ]);
+        // La pérdida física se registra siempre: si el vendible no alcanza queda
+        // en cero y el exceso de reservas lo informa la conciliación.
+        const recortes = await this.gasCylinders.ajustarVendible(
+          manager,
+          op.distributorId,
+          [{ gasCylinderId, delta }],
+          { recortarEnCero: true },
+        );
+        for (const r of recortes) {
+          this.logger.warn(
+            `Vendible de ${r.type} recortado a 0: el físico bajó ${r.faltante} por debajo de lo reservado por pedidos abiertos (distribuidora ${op.distributorId})`,
+          );
+        }
       } else {
         await manager.query(
           `SELECT 1 FROM "gas_cylinder" WHERE "gas_cylinder_id" = $1 FOR KEY SHARE`,
@@ -397,7 +408,7 @@ export class StockLedgerService extends StockLedgerPort {
     op: OperacionDeStock,
     batchId: string,
   ): Promise<string[]> {
-    const ocurrio = op.occurredAt ?? new Date();
+    const ocurrio = op.occurredAt ?? (await ahoraDeLaBase(manager));
     // SQL directo y no el query builder: así el ledger funciona también con un
     // DataSource sin entidades registradas (los seeds).
     const COLUMNAS = 15;

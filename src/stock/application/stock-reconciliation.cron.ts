@@ -4,6 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { DataSource } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
+import { RedisService } from '../../redis/redis.service';
 import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import {
   escaparHtml,
@@ -24,10 +25,25 @@ export class StockReconciliationCron {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly reconciliation: StockReconciliationService,
     private readonly notifier: StockAdminNotifier,
+    private readonly redis: RedisService,
   ) {}
 
   @Cron('0 3 * * *', { timeZone: ZONA_ARGENTINA })
   async conciliarTodas(): Promise<void> {
+    // Con varias instancias corre sólo una: si no, el mail sale duplicado.
+    const lock = await this.redis.withLock(
+      'cron:stock-reconciliation',
+      5 * 60_000,
+      () => this.conciliarDistribuidoras(),
+    );
+    if (!lock.obtenido) {
+      this.logger.log(
+        'Conciliación de stock: la está corriendo otra instancia',
+      );
+    }
+  }
+
+  private async conciliarDistribuidoras(): Promise<void> {
     const distribuidoras: Array<{ distributor_id: string }> =
       await this.dataSource.query(
         `SELECT DISTINCT w."distributor_id" FROM "warehouse" w
@@ -59,15 +75,19 @@ export class StockReconciliationCron {
       // La misma diferencia de anoche no se vuelve a avisar.
       if (previo?.signature === firma) return;
       const diferencias = resultado.cylinders
-        .filter((c) => c.difference !== 0)
+        .filter(conProblema)
         .map(
           (c) =>
-            `<li>${escaparHtml(c.gasCylinderType)}: vendible ${c.sellable}, esperado ${c.expected} (llenas ${c.physicalFull} − reservadas ${c.reserved}); diferencia ${c.difference}</li>`,
+            `<li>${escaparHtml(c.gasCylinderType)}: vendible ${c.sellable}, esperado ${c.expected} (llenas ${c.physicalFull} − reservadas ${c.reserved}); diferencia ${c.difference}` +
+            (c.overReserved > 0
+              ? `; ${c.overReserved} reservada(s) de más que el físico no cubre: hay que cancelar pedidos o reponer stock`
+              : '') +
+            '</li>',
         )
         .join('');
       const sinMovimiento = resultado.deliveriesWithoutMovement.length;
       this.logger.warn(
-        `Conciliación de stock de ${distributorId}: ${resultado.cylinders.filter((c) => c.difference !== 0).length} garrafa(s) con diferencia y ${sinMovimiento} renglón(es) entregado(s) sin movimiento`,
+        `Conciliación de stock de ${distributorId}: ${resultado.cylinders.filter(conProblema).length} garrafa(s) con diferencia y ${sinMovimiento} renglón(es) entregado(s) sin movimiento`,
       );
       await this.notifier.avisar(
         distributorId,
@@ -92,15 +112,31 @@ export class StockReconciliationCron {
   }
 }
 
+/** ¿La garrafa tiene algo que avisar? Vendible desfasado, reservas de más o déficit desfasado. */
+const conProblema = (c: {
+  difference: number;
+  overReserved: number;
+  deficitDifference?: number;
+}): boolean =>
+  c.difference !== 0 || c.overReserved > 0 || (c.deficitDifference ?? 0) !== 0;
+
 /** Huella de las diferencias: cambia si cambia una cifra o una entrega pendiente. */
 function firmaDe(r: {
-  cylinders: Array<{ gasCylinderId: string; difference: number }>;
+  cylinders: Array<{
+    gasCylinderId: string;
+    difference: number;
+    overReserved: number;
+    deficitDifference?: number;
+  }>;
   deliveriesWithoutMovement: Array<{ orderId: string; gasCylinderId: string }>;
 }): string {
   const partes = [
     ...r.cylinders
-      .filter((c) => c.difference !== 0)
-      .map((c) => `c:${c.gasCylinderId}:${c.difference}`),
+      .filter(conProblema)
+      .map(
+        (c) =>
+          `c:${c.gasCylinderId}:${c.difference}:${c.overReserved}:${c.deficitDifference ?? 0}`,
+      ),
     ...r.deliveriesWithoutMovement.map(
       (e) => `e:${e.orderId}:${e.gasCylinderId}`,
     ),

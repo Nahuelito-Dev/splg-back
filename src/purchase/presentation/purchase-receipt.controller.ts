@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -22,7 +23,8 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Idempotent } from '../../common/decorators/idempotent.decorator';
+import { exigirIdempotencyKey } from '../../stock/presentation/exigir-idempotency-key';
+import { IdempotencyKeyObligatoria } from '../../stock/presentation/idempotency-key-obligatoria.decorator';
 import { PurchaseQueryService } from '../application/purchase-query.service';
 import { PurchaseReceiptService } from '../application/purchase-receipt.service';
 import { ReceivePurchaseUseCase } from '../application/receive-purchase.use-case';
@@ -52,18 +54,19 @@ export class PurchaseReceiptController {
   ) {}
 
   @Post()
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Registrar la recepción de una compra (con o sin orden)',
     description:
       'En una transacción: suma las llenas al depósito (sube el vendible), descuenta las vacías que se llevó la planta ' +
       '(sin dejar el depósito en negativo), actualiza lo recibido y el estado de la orden y recalcula el costo promedio ' +
-      'ponderado. El número del documento del proveedor es único por proveedor. Acepta `Idempotency-Key`.',
+      'ponderado. El número del documento del proveedor es único por proveedor. **Exige** `Idempotency-Key` (400 sin ella). Un `receivedAt` ' +
+      'anterior al conteo inicial del depósito responde 400.',
   })
   @ApiCreatedResponse({ type: PurchaseReceiptResponseDto })
   @ApiBadRequestResponse({
     description:
-      'La orden no es recibible, la recepción se pasa de lo pendiente, no alcanzan las vacías o faltan datos',
+      'Sin `Idempotency-Key`, orden no recibible, la recepción se pasa de lo pendiente, fecha anterior al conteo inicial del depósito, no alcanzan las vacías o faltan datos',
   })
   @ApiNotFoundResponse({
     description: 'Orden, proveedor, depósito o garrafa inexistente',
@@ -75,7 +78,9 @@ export class PurchaseReceiptController {
     @Body() dto: CreatePurchaseReceiptDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<PurchaseReceiptResponseDto> {
+    exigirIdempotencyKey(idempotencyKey, 'La recepción de una compra');
     const id = await this.receive.execute(dto, distributorId, actorUserId);
     return this.queries.recepcion(id, distributorId);
   }
@@ -119,17 +124,18 @@ export class PurchaseReceiptController {
   }
 
   @Patch(':id/void')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Anular una recepción (contraasiento del libro, con motivo)',
     description:
       'Saca las llenas que entraron y devuelve las vacías que se llevó la planta; recalcula lo recibido de la orden y el ' +
-      'costo promedio. Si las llenas ya no están en el depósito responde 409 diciendo dónde están. No se anula una recepción pagada.',
+      'costo promedio (recalculado de las recepciones que siguen confirmadas). **Exige** `Idempotency-Key`. Si las llenas ya no están en el depósito responde 409 diciendo dónde están. No se anula una recepción pagada.',
   })
   @ApiParam({ name: 'id', description: 'Recepción UUID' })
   @ApiOkResponse({ type: PurchaseReceiptResponseDto })
   @ApiBadRequestResponse({
-    description: 'Sin motivo, o la recepción figura como pagada',
+    description:
+      'Sin motivo, sin `Idempotency-Key` o la recepción figura como pagada',
   })
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   @ApiConflictResponse({
@@ -141,7 +147,9 @@ export class PurchaseReceiptController {
     @Body() dto: VoidPurchaseReceiptDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<PurchaseReceiptResponseDto> {
+    exigirIdempotencyKey(idempotencyKey, 'La anulación de una recepción');
     await this.voidReceipt.execute(id, dto, distributorId, actorUserId);
     return this.queries.recepcion(id, distributorId);
   }

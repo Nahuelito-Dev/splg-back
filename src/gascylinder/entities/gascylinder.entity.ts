@@ -56,6 +56,16 @@ export class GasCylinder {
   @Column({ type: 'int', default: 0 })
   stock!: number;
 
+  /**
+   * Unidades reservadas por pedidos abiertos que el físico no cubre
+   * (`max(0, reservadas − llenas)`). Lo escribe el módulo de stock cuando una
+   * pérdida física deja el vendible en cero: con esto el vendible vale siempre
+   * `llenas − reservadas + deficit` y una cancelación o una entrada de llenas
+   * primero cubre el déficit en lugar de inflar el vendible (sobreventa).
+   */
+  @Column({ name: 'reservation_deficit', type: 'int', default: 0 })
+  reservationDeficit!: number;
+
   /** Costo promedio ponderado de las llenas compradas; lo mantiene la recepción de compras. */
   @Column({
     name: 'average_unit_cost',

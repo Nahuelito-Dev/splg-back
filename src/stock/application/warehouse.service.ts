@@ -131,10 +131,22 @@ export class WarehouseService {
             const repo = manager.getRepository(Warehouse);
             const warehouse = await repo.findOne({
               where: { warehouseId, distributorId },
+              // Desactivar pide el lock exclusivo, como la baja: frena a la
+              // apertura de una carga que lo está tomando de origen.
+              ...(dto.isActive === false
+                ? { lock: { mode: 'pessimistic_write' as const } }
+                : {}),
             });
             if (!warehouse) {
               throw new NotFoundException(
                 `Depósito ${warehouseId} no encontrado`,
+              );
+            }
+            if (dto.isActive === false && warehouse.isActive) {
+              await this.asegurarSinCargaAbierta(
+                manager,
+                warehouseId,
+                'desactivarlo',
               );
             }
             if (dto.isDefault === false && warehouse.isDefault) {
@@ -175,8 +187,9 @@ export class WarehouseService {
 
   /**
    * Baja lógica. No se da de baja el predeterminado ni uno que todavía tiene
-   * garrafas (de cualquier condición): primero hay que transferirlas o
-   * ajustarlas. Sus umbrales se borran con él.
+   * garrafas (de cualquier condición) ni uno que es el origen de una carga de
+   * camión abierta: primero hay que transferirlas, ajustarlas o cerrar la carga.
+   * Sus umbrales se borran con él.
    */
   async remove(warehouseId: string, distributorId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
@@ -197,6 +210,7 @@ export class WarehouseService {
           'No se puede dar de baja el depósito predeterminado: elegí otro primero',
         );
       }
+      await this.asegurarSinCargaAbierta(manager, warehouseId, 'darlo de baja');
       const [{ total }]: Array<{ total: string }> = await manager.query(
         `SELECT COALESCE(SUM(b."quantity"), 0) AS total
          FROM "stock_balance" b
@@ -212,6 +226,35 @@ export class WarehouseService {
       await manager.delete(StockThreshold, { warehouseId });
       await manager.getRepository(Warehouse).softRemove(warehouse);
     });
+  }
+
+  /**
+   * 409 si el depósito es el origen de una carga de camión abierta (`loading`,
+   * `on_route` o `returned`): la rendición le devuelve las garrafas, y sin
+   * depósito (o inactivo) la carga quedaría trabada. Lee `truck_load` de sólo
+   * lectura, como la regularización de la transferencia: `stock` no depende de
+   * `truck-load`. Corre con el depósito bloqueado `FOR UPDATE`; la apertura de
+   * una carga lo toma `FOR SHARE`, así que una carga que se abre en paralelo se
+   * ve acá o espera.
+   */
+  private async asegurarSinCargaAbierta(
+    manager: EntityManager,
+    warehouseId: string,
+    accion: string,
+  ): Promise<void> {
+    const [abierta]: Array<{ number: number }> = await manager.query(
+      `SELECT t."number" FROM "truck_load" t
+       JOIN "stock_location" l ON l."location_id" = t."origin_location_id"
+       WHERE l."warehouse_id" = $1
+         AND t."status"::text IN ('loading', 'on_route', 'returned')
+       ORDER BY t."number" LIMIT 1`,
+      [warehouseId],
+    );
+    if (abierta) {
+      throw new ConflictException(
+        `El depósito es el origen de la carga N° ${abierta.number}, que sigue abierta: cerrala o cancelala antes de ${accion}`,
+      );
+    }
   }
 
   /**

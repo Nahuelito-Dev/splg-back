@@ -164,46 +164,80 @@ export function excesosDeRecepcion(
     }));
 }
 
-export interface DatosParaAnular {
-  costoActual: number | null;
-  /** Promedio y existencia (llenas totales) justo antes de la recepción; `null` si es una recepción vieja sin esos datos. */
-  costoPrevio: number | null;
-  existenciaPrevia: number | null;
+/** Una recepción de llenas de una garrafa, con lo que se guardó al confirmarla. */
+export interface CompraDeLaGarrafa {
+  /** Número interno: define el orden en que se calculó el promedio. */
+  numero: number;
   cantidad: number;
-  costoRecibido: number;
-  /** ¿Quedan otras recepciones confirmadas de esta garrafa? */
-  hayOtrasCompras: boolean;
-  /** ¿Hay una recepción confirmada POSTERIOR a ésta? */
-  hayCompraPosterior: boolean;
-  /** Σ cantidad x costo / Σ cantidad de las otras recepciones confirmadas. */
-  promedioDeLasOtras: number | null;
+  costoUnitario: number;
+  /** Promedio justo antes de esta recepción. */
+  costoPrevio: number | null;
+  /** Llenas totales justo antes de esta recepción; `null` en una recepción vieja sin esos datos. */
+  existenciaPrevia: number | null;
+  /** ¿Sigue confirmada? La que se está anulando va como `false`. */
+  vigente: boolean;
+  /**
+   * Instante (ms) en que se leyó `existenciaPrevia`, bajo el lock de la garrafa
+   * (`previous_on_hand_at`; en una recepción vieja, su `createdAt`). Es el que
+   * decide si una anulación ya estaba en esa existencia.
+   */
+  altaEn: number;
+  /**
+   * Instante en que se anuló (ms), `null` si sigue confirmada. La que se anula
+   * ahora lleva el instante actual.
+   */
+  anuladaEn: number | null;
 }
 
 /**
- * Costo promedio al anular una recepción. Las ventas, mermas y ajustes no
- * cambian el promedio (sólo lo cambia una compra), así que:
- *  1. si no queda ninguna otra compra confirmada, el costo vuelve a `null`;
- *  2. si ésta es la última compra, vuelve EXACTO al promedio que tenía antes
- *     (el guardado en el renglón), hayan pasado las ventas que hayan pasado;
- *  3. si hubo compras posteriores, se resta de hoy lo que esta compra había
- *     movido el promedio: `cantidad x (costo recibido - costo previo) / (existencia
- *     previa + cantidad)`. Es una aproximación (las compras posteriores lo
- *     diluyeron) y nunca queda negativo;
- *  4. si antes no había costo previo, el promedio es el de las otras compras;
- *  5. una recepción vieja sin los datos guardados usa la existencia actual.
+ * Costo promedio de una garrafa recalculado a partir de las recepciones que
+ * siguen confirmadas, en el orden en que se confirmaron. Es exacto y no depende
+ * del orden en que se anularon las demás:
+ *  - parte del promedio que había antes de la primera recepción;
+ *  - repite la fórmula de la recepción (`costoPromedioPonderado`) con la
+ *    existencia previa que se guardó en cada una, restándole las llenas de las
+ *    recepciones anteriores que se anularon DESPUÉS de que ésta se confirmó (si
+ *    se anularon antes, la existencia guardada ya no las incluía);
+ *  - sin ninguna recepción vigente vuelve al promedio de partida.
+ * Las ventas, mermas y ajustes no cambian el promedio, sólo lo hace una compra:
+ * por eso alcanza con repetir las compras. Si alguna recepción necesaria es
+ * anterior a las columnas `previous_*` (`existenciaPrevia` nula) no se puede
+ * reconstruir y devuelve `'no-reconstruible'`: quien llama deja el promedio como está.
+ *
+ * @param compras todas las recepciones de llenas de la garrafa (vigentes y no),
+ *   por número ascendente.
  */
-export function costoPromedioAlAnular(a: DatosParaAnular): number | null {
-  if (!a.hayOtrasCompras) return null;
-  if (a.costoPrevio === null) return a.promedioDeLasOtras;
-  if (a.existenciaPrevia === null) return a.costoActual;
-  if (!a.hayCompraPosterior) return dos(new Decimal(a.costoPrevio));
-  if (a.costoActual === null) return a.promedioDeLasOtras;
-  const desvio = new Decimal(a.costoRecibido)
-    .minus(a.costoPrevio)
-    .times(a.cantidad)
-    .div(a.existenciaPrevia + a.cantidad);
-  const nuevo = new Decimal(a.costoActual).minus(desvio);
-  return dos(nuevo.lt(0) ? new Decimal(0) : nuevo);
+export function recalcularCostoPromedio(
+  compras: CompraDeLaGarrafa[],
+): number | null | 'no-reconstruible' {
+  if (compras.length === 0) return null;
+  const vigentes = compras.filter((c) => c.vigente);
+  if (
+    compras.some(
+      (c) => (c.vigente || c === compras[0]) && c.existenciaPrevia === null,
+    )
+  ) {
+    return 'no-reconstruible';
+  }
+  let costo = compras[0].costoPrevio;
+  for (const c of vigentes) {
+    const anuladasDespues = compras
+      .filter(
+        (o) =>
+          o.numero < c.numero &&
+          !o.vigente &&
+          o.anuladaEn !== null &&
+          o.anuladaEn > c.altaEn,
+      )
+      .reduce((total, o) => total + o.cantidad, 0);
+    costo = costoPromedioPonderado({
+      existenciaPrevia: Math.max(0, c.existenciaPrevia! - anuladasDespues),
+      costoPrevio: costo,
+      cantidad: c.cantidad,
+      costoNuevo: c.costoUnitario,
+    });
+  }
+  return costo;
 }
 
 /** El total de una orden o remito tiene que entrar en `numeric(12,2)`. */

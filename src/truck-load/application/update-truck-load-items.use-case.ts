@@ -2,11 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
-import { TransicionDeCargaInvalidaError } from '../domain/errors/truck-load.errors';
 import { puedeHacer, validarRenglones } from '../domain/truck-load-rules';
 import { UpdateTruckLoadItemsDto } from '../dto/truck-load.dto';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
 import {
+  TransicionDeCargaInvalidaError,
   bloquearCarga,
   bloquearGarrafasComoClaveForanea,
 } from './truck-load-support';

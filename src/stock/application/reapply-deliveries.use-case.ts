@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { EntregaDePedido } from '../../order/domain/ports/stock-delivery.port';
 import { StockDeliveryService } from './stock-delivery.service';
+import { StockOnHandService } from './stock-on-hand.service';
 
 export interface ResultadoDeReaplicacion {
   /** Pedidos revisados que no tenían su movimiento. */
@@ -25,14 +26,14 @@ export class ReapplyDeliveriesUseCase {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly orders: OrderLookupService,
     private readonly delivery: StockDeliveryService,
+    private readonly onHand: StockOnHandService,
   ) {}
 
   async execute(distributorId: string): Promise<ResultadoDeReaplicacion> {
-    const [{ desde }]: Array<{ desde: Date | null }> =
-      await this.dataSource.query(
-        `SELECT MIN("occurred_at") AS desde FROM "stock_movement" WHERE "distributor_id" = $1`,
-        [distributorId],
-      );
+    const desde = await this.onHand.inicioDelLibro(
+      this.dataSource.manager,
+      distributorId,
+    );
     if (!desde) return { revisados: 0, reaplicados: 0, pendientes: 0 };
 
     const renglones = await this.orders.deliveredItemsSince(

@@ -5,8 +5,9 @@
  * mismo saldo.
  */
 import { randomUUID } from 'crypto';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { GasCylinderService } from '../../src/gascylinder/gascylinder.service';
 import { codigoSqlDelError } from '../../src/common/errors/db-exceptions';
-import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
   TestEnv,
@@ -14,6 +15,7 @@ import {
   telefonoDePrueba,
   truncateAllTables,
 } from './setup/test-env';
+import { conIdempotencia } from './setup/con-idempotencia';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
@@ -122,7 +124,7 @@ describe('Stock físico (e2e)', () => {
     }
   });
 
-  const http = () => request(env.app.getHttpServer());
+  const http = () => conIdempotencia(env.app.getHttpServer());
 
   /** Deja llenas en un camión como lo haría la carga: depósito -> camión por el libro. */
   const alCamion = (
@@ -449,6 +451,125 @@ describe('Stock físico (e2e)', () => {
     });
   });
 
+  describe('vendible, déficit y catálogo', () => {
+    const columnas = async (id: string) => {
+      const [f] = await ds.query<
+        Array<{ stock: number; reservation_deficit: number }>
+      >(
+        `SELECT stock, reservation_deficit FROM gas_cylinder WHERE gas_cylinder_id = $1`,
+        [id],
+      );
+      return f;
+    };
+
+    it('editar el catálogo no pisa el vendible ni el déficit que cambian en el medio', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      await ds.query(
+        `UPDATE gas_cylinder SET stock = 10, reservation_deficit = 0 WHERE gas_cylinder_id = $1`,
+        [g.gasCylinderId],
+      );
+      const repo = env.app.get<{
+        preload: (...a: unknown[]) => Promise<unknown>;
+      }>(getRepositoryToken(GasCylinder));
+      const original = repo.preload.bind(repo);
+      // entre leer la fila y guardarla, un cliente reserva 2 y una merma deja 3 de déficit
+      const espia = jest
+        .spyOn(repo, 'preload')
+        .mockImplementation(async (...args: unknown[]) => {
+          const leida = await original(...args);
+          await ds.query(
+            `UPDATE gas_cylinder SET stock = 8, reservation_deficit = 3 WHERE gas_cylinder_id = $1`,
+            [g.gasCylinderId],
+          );
+          return leida;
+        });
+      try {
+        await http()
+          .patch(`/gascylinder/${g.gasCylinderId}`)
+          .set(e.headers)
+          .send({ description: 'Descripción nueva' })
+          .expect(200);
+      } finally {
+        espia.mockRestore();
+      }
+      expect(await columnas(g.gasCylinderId)).toEqual({
+        stock: 8,
+        reservation_deficit: 3,
+      });
+      const [{ description }] = await ds.query<Array<{ description: string }>>(
+        `SELECT description FROM gas_cylinder WHERE gas_cylinder_id = $1`,
+        [g.gasCylinderId],
+      );
+      expect(description).toBe('Descripción nueva');
+    });
+
+    it('editar un pedido con la garrafa en déficit ajusta la reserva neta y no falla', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      // llenas 7, reservadas 10: vendible 0 y déficit 3
+      await ds.query(
+        `UPDATE gas_cylinder SET stock = 0, reservation_deficit = 3 WHERE gas_cylinder_id = $1`,
+        [g.gasCylinderId],
+      );
+      const servicio = env.app.get(GasCylinderService);
+      await ds.transaction((m) =>
+        servicio.reajustarReserva(
+          m,
+          [{ gasCylinderId: g.gasCylinderId, quantity: 2 }],
+          [{ gasCylinderId: g.gasCylinderId, quantity: 1 }],
+        ),
+      );
+      expect(await columnas(g.gasCylinderId)).toEqual({
+        stock: 0,
+        reservation_deficit: 2,
+      });
+      // pedir más con el vendible en cero sigue siendo 400
+      await expect(
+        ds.transaction((m) =>
+          servicio.reajustarReserva(
+            m,
+            [{ gasCylinderId: g.gasCylinderId, quantity: 1 }],
+            [{ gasCylinderId: g.gasCylinderId, quantity: 3 }],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('la conciliación muestra el déficit y un desfasaje con diferencia 0 se corrige sin tocar el vendible', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      await conteoInicial(e, g, 4).expect(201);
+      await ds.query(
+        `UPDATE gas_cylinder SET stock = 4, reservation_deficit = 2 WHERE gas_cylinder_id = $1`,
+        [g.gasCylinderId],
+      );
+      const c = cuerpo<{
+        consistent: boolean;
+        cylinders: Array<{
+          reservationDeficit: number;
+          deficitDifference: number;
+          difference: number;
+        }>;
+      }>(await http().get('/stock/reconciliation').set(e.headers).expect(200));
+      expect(c.consistent).toBe(false);
+      expect(c.cylinders[0]).toMatchObject({
+        reservationDeficit: 2,
+        deficitDifference: 2,
+        difference: 0,
+      });
+      await http()
+        .post('/stock/reconciliation/adjustments')
+        .set(e.headers)
+        .send({ gasCylinderId: g.gasCylinderId, notes: 'Corrijo el déficit' })
+        .expect(201);
+      expect(await columnas(g.gasCylinderId)).toEqual({
+        stock: 4,
+        reservation_deficit: 0,
+      });
+    });
+  });
+
   describe('casos de error', () => {
     it('no deja saldos negativos: una merma mayor al saldo del camión es 400 y no cambia nada', async () => {
       const e = await seedDistribuidora();
@@ -490,7 +611,7 @@ describe('Stock físico (e2e)', () => {
       expect(Number(n)).toBe(1); // sólo el conteo: el fallido no dejó cabecera ni número
     });
 
-    it('el vendible no queda negativo: no se pueden sacar llenas reservadas por pedidos', async () => {
+    it('una pérdida mayor al vendible se registra igual: el físico baja y el vendible queda en 0, no negativo', async () => {
       const e = await seedDistribuidora();
       const g = await seedGarrafa(e.distributorId);
       await conteoInicial(e, g, 10).expect(201);
@@ -498,9 +619,119 @@ describe('Stock físico (e2e)', () => {
         `UPDATE gas_cylinder SET stock = 2 WHERE gas_cylinder_id = $1`,
         [g.gasCylinderId],
       ); // 8 reservadas
-      const res = await ajuste(e.headers, e, g, 'lost', -3).expect(400);
-      expect(cuerpo<Mensaje>(res).message).toMatch(/vendible/);
+      await ajuste(e.headers, e, g, 'lost', -3).expect(201);
+      expect(await saldo(e.locationId, g.gasCylinderId)).toBe(7);
+      expect(await vendible(g.gasCylinderId)).toBe(0);
+    });
+
+    it('el contraasiento de una regularización no mete stock en un camión: 409 y el camión sigue en cero', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      await conteoInicial(e, g, 10).expect(201);
+      const chofer = (await ds.getRepository(User).save({
+        email: `chofer.${randomUUID().slice(0, 6)}@splg.local`,
+        fullName: 'Chofer',
+        phoneNumber: telefonoDePrueba(),
+        roleId: (await rol('delivery')).roleId,
+      } as Partial<User>)) as User;
+      const car = await seedAuto(e.distributorId, chofer.userId);
+      await alCamion(e, car.carId, g.gasCylinderId, 3);
+
+      const regularizacion = cuerpo<{ batchId: string }>(
+        await http()
+          .post('/stock/transfers')
+          .set(e.headers)
+          .send({
+            from: { carId: car.carId },
+            to: { warehouseId: e.warehouseId },
+            items: [{ gasCylinderId: g.gasCylinderId, quantity: 3 }],
+            notes: 'Regularización del stock suelto',
+          })
+          .expect(201),
+      );
+      const res = await http()
+        .post(`/stock/movements/batches/${regularizacion.batchId}/reverse`)
+        .set(e.headers)
+        .send({ notes: 'me arrepentí' })
+        .expect(409);
+      expect(cuerpo<Mensaje>(res).message).toMatch(
+        /se carga y se rinde desde la carga del día/,
+      );
+      const [{ total }] = await ds.query<Array<{ total: string }>>(
+        `SELECT COALESCE(SUM(b.quantity), 0) AS total FROM stock_balance b
+         JOIN stock_location l ON l.location_id = b.location_id WHERE l.car_id = $1`,
+        [car.carId],
+      );
+      expect(Number(total)).toBe(0);
       expect(await saldo(e.locationId, g.gasCylinderId)).toBe(10);
+    });
+
+    it.each([
+      ['POST', '/stock/transfers'],
+      ['POST', '/stock/adjustments'],
+      ['POST', '/stock/initial-counts'],
+      ['POST', '/stock/movements/batches/:lote/reverse'],
+      ['POST', '/stock/reconciliation/adjustments'],
+      ['PATCH', '/gascylinder/:garrafa/stock'],
+    ])(
+      '%s %s sin Idempotency-Key es 400 y no escribe nada',
+      async (metodo, ruta) => {
+        const e = await seedDistribuidora();
+        const g = await seedGarrafa(e.distributorId);
+        const cuerpos: Record<string, object> = {
+          '/stock/transfers': {
+            from: { warehouseId: e.warehouseId },
+            to: { warehouseId: e.warehouseId },
+            items: [{ gasCylinderId: g.gasCylinderId, quantity: 1 }],
+          },
+          '/stock/adjustments': {
+            location: { warehouseId: e.warehouseId },
+            reason: 'found',
+            notes: 'nota de prueba',
+            items: [
+              {
+                gasCylinderId: g.gasCylinderId,
+                condition: 'full',
+                quantityDelta: 1,
+              },
+            ],
+          },
+          '/stock/initial-counts': {
+            warehouseId: e.warehouseId,
+            items: [{ gasCylinderId: g.gasCylinderId, full: 1 }],
+          },
+          '/stock/reconciliation/adjustments': {
+            gasCylinderId: g.gasCylinderId,
+            notes: 'nota de prueba',
+          },
+          '/gascylinder/:garrafa/stock': { quantity: 1 },
+        };
+        const url = ruta
+          .replace(':lote', randomUUID())
+          .replace(':garrafa', g.gasCylinderId);
+        const req = metodo === 'POST' ? http().post(url) : http().patch(url);
+        const res = await req
+          .set(e.headers)
+          .unset('Idempotency-Key')
+          .send(cuerpos[ruta] ?? {})
+          .expect(400);
+        expect(cuerpo<Mensaje>(res).message).toMatch(
+          /exige el header Idempotency-Key/,
+        );
+        const [{ n }] = await ds.query<Array<{ n: string }>>(
+          `SELECT COUNT(*) AS n FROM stock_movement`,
+        );
+        expect(Number(n)).toBe(0);
+      },
+    );
+
+    it('corregir el vendible de una garrafa inexistente es 404', async () => {
+      const e = await seedDistribuidora();
+      await http()
+        .post('/stock/reconciliation/adjustments')
+        .set(e.headers)
+        .send({ gasCylinderId: randomUUID(), notes: 'nota de prueba' })
+        .expect(404);
     });
 
     it('un ajuste sin nota es 400', async () => {
@@ -1139,10 +1370,12 @@ describe('Stock físico (e2e)', () => {
           ),
         ),
       ]);
-      const reservadas = r1.filter(Boolean).length;
       const perdidas = r2.filter((r) => r.status === 201).length;
-      expect(await vendible(g.gasCylinderId)).toBe(10 - reservadas - perdidas);
-      expect(await vendible(g.gasCylinderId)).toBeGreaterThanOrEqual(0);
+      // las pérdidas se registran siempre (el físico manda); el vendible se consume
+      // hasta 0 y nunca queda negativo, en cualquier orden de llegada
+      expect(r1.filter(Boolean).length).toBeLessThanOrEqual(8);
+      expect(perdidas).toBe(4);
+      expect(await vendible(g.gasCylinderId)).toBe(0);
       expect(await saldo(e.locationId, g.gasCylinderId)).toBe(10 - perdidas);
     }, 60000);
   });

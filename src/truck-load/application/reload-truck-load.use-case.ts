@@ -9,13 +9,13 @@ import {
   StockMovementReason,
   StockReferenceType,
 } from '../../stock/domain/stock.enums';
-import {
-  CargaInvalidaError,
-  TransicionDeCargaInvalidaError,
-} from '../domain/errors/truck-load.errors';
+import { CargaInvalidaError } from '../domain/errors/truck-load.errors';
 import { puedeHacer } from '../domain/truck-load-rules';
-import { ReloadTruckLoadDto } from '../dto/truck-load.dto';
-import { bloquearCarga } from './truck-load-support';
+import { MAX_RENGLONES, ReloadTruckLoadDto } from '../dto/truck-load.dto';
+import {
+  TransicionDeCargaInvalidaError,
+  bloquearCarga,
+} from './truck-load-support';
 
 /**
  * Reposición en ruta: más llenas del depósito de origen al camión, sobre la
@@ -51,6 +51,20 @@ export class ReloadTruckLoadUseCase {
               carga.number,
               carga.status,
               'reponer garrafas',
+            );
+          }
+          // Declarar la vuelta lista TODOS los tipos de la carga y el DTO admite
+          // MAX_RENGLONES: una reposición no puede pasarla.
+          const [{ tipos }]: Array<{ tipos: number }> = await manager.query(
+            `SELECT COUNT(DISTINCT g)::int AS tipos FROM (
+               SELECT "gas_cylinder_id" AS g FROM "truck_load_item" WHERE "load_id" = $1
+               UNION SELECT unnest($2::uuid[])
+             ) t`,
+            [id, [...ids]],
+          );
+          if (tipos > MAX_RENGLONES) {
+            throw new CargaInvalidaError(
+              `La carga llegaría a ${tipos} tipos de garrafa y el máximo es ${MAX_RENGLONES}: no se podría declarar la vuelta`,
             );
           }
           const camion = await this.locations.ubicacionDeVehiculo(

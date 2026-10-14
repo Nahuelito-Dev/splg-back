@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Post,
@@ -22,6 +23,8 @@ import { Auth } from '../../common/decorators/auth.decorator';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { CurrentDistributor } from '../../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { exigirIdempotencyKey } from './exigir-idempotency-key';
+import { IdempotencyKeyObligatoria } from './idempotency-key-obligatoria.decorator';
 import { Idempotent } from '../../common/decorators/idempotent.decorator';
 import { InitialCountUseCase } from '../application/initial-count.use-case';
 import { ReapplyDeliveriesUseCase } from '../application/reapply-deliveries.use-case';
@@ -136,12 +139,13 @@ export class StockController {
   }
 
   @Post('movements/batches/:batchId/reverse')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Contraasentar una transferencia',
     description:
       'El libro no se edita: se agregan movimientos inversos (`reversal`) que ' +
-      'apuntan a los originales. Sólo transferencias; un ajuste se corrige con otro ajuste.',
+      'apuntan a los originales. Sólo transferencias; un ajuste se corrige con otro ajuste. **Exige** `Idempotency-Key` (400 sin ella). ' +
+      'No se contraasienta hacia un camión (409): el stock del camión entra sólo por la carga del día.',
   })
   @ApiParam({ name: 'batchId', description: 'Lote de la transferencia' })
   @ApiCreatedResponse({ type: StockOperationResultDto })
@@ -156,7 +160,9 @@ export class StockController {
     @Body() dto: ReverseBatchDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<StockOperationResultDto> {
+    exigirIdempotencyKey(idempotencyKey, 'Contraasentar');
     const nuevo = await this.reversals.execute(
       batchId,
       dto.notes,
@@ -167,10 +173,12 @@ export class StockController {
   }
 
   @Post('transfers')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary:
       'Transferir stock entre depósitos o entre un depósito y un vehículo (CU-212)',
+    description:
+      '**Exige** el header `Idempotency-Key` (400 sin él): un reintento sin clave duplicaría el movimiento.',
   })
   @ApiCreatedResponse({ type: StockOperationResultDto })
   @ApiBadRequestResponse({
@@ -184,7 +192,9 @@ export class StockController {
     @Body() dto: CreateTransferDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<StockOperationResultDto> {
+    exigirIdempotencyKey(idempotencyKey, 'La transferencia');
     const batchId = await this.transfers.execute(
       dto,
       distributorId,
@@ -194,11 +204,11 @@ export class StockController {
   }
 
   @Post('initial-counts')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Conteo inicial de un depósito',
     description:
-      'Carga lo que hay físicamente. Registra un ajuste `initial_count` con las ' +
+      '**Exige** `Idempotency-Key` (400 sin ella). Carga lo que hay físicamente. Registra un ajuste `initial_count` con las ' +
       'diferencias contra el saldo actual y el vendible acompaña a las llenas. ' +
       'Una vez por depósito.',
   })
@@ -215,7 +225,9 @@ export class StockController {
     @Body() dto: CreateInitialCountDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<StockAdjustmentResponseDto> {
+    exigirIdempotencyKey(idempotencyKey, 'El conteo inicial');
     const id = await this.initialCounts.execute(
       dto,
       distributorId,
@@ -225,11 +237,11 @@ export class StockController {
   }
 
   @Post('adjustments')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Registrar un ajuste o una merma de stock (CU-213)',
     description:
-      'Motivos: corrección de conteo, merma, fuga, rotura (llena a defectuosa), ' +
+      '**Exige** `Idempotency-Key` (400 sin ella). Motivos: corrección de conteo, merma, fuga, rotura (llena a defectuosa), ' +
       'pérdida y encontrado. Nota obligatoria; el número es correlativo por ' +
       'distribuidora. Si toca llenas, el vendible acompaña y nunca queda negativo.',
   })
@@ -243,7 +255,9 @@ export class StockController {
     @Body() dto: CreateAdjustmentDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<StockAdjustmentResponseDto> {
+    exigirIdempotencyKey(idempotencyKey, 'El ajuste');
     const id = await this.adjustments.execute(dto, distributorId, actorUserId);
     return this.queries.ajuste(id, distributorId);
   }
@@ -299,8 +313,9 @@ export class StockController {
   @ApiOperation({
     summary: 'Conciliar el vendible contra el físico (CU-224)',
     description:
-      'vendible = Σ llenas en depósitos y camiones − Σ pedidos abiertos. ' +
-      'Informa las diferencias y las entregas sin movimiento; no corrige nada.',
+      'vendible = max(0, Σ llenas en depósitos y camiones − Σ pedidos abiertos). ' +
+      'Informa las diferencias, las reservas que el físico no cubre (`overReserved`, p. ej. tras una merma con pedidos abiertos) ' +
+      'y las entregas sin movimiento; no corrige nada.',
   })
   @ApiOkResponse({ type: StockReconciliationDto })
   conciliar(
@@ -325,26 +340,30 @@ export class StockController {
   }
 
   @Post('reconciliation/adjustments')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Corregir el vendible de una garrafa hasta la invariante',
     description:
-      'Ajuste de conciliación: deja `gas_cylinder.stock = llenas − reservado` SIN tocar el físico ' +
+      '**Exige** `Idempotency-Key` (400 sin ella). Ajuste de conciliación: deja `gas_cylinder.stock = max(0, llenas − reservado)` SIN tocar el físico ' +
       '(`correction` de la conciliación). Documento numerado con motivo `reconciliation` y nota ' +
       'obligatoria; no genera movimientos físicos. Con `expectedDifference` falla con 409 si la ' +
       'diferencia cambió.',
   })
   @ApiCreatedResponse({ type: StockAdjustmentResponseDto })
   @ApiBadRequestResponse({
-    description:
-      'Sin diferencia, sin nota, o el físico es menor que lo reservado (corregí el físico primero)',
+    description: 'Sin diferencia, sin nota o sin `Idempotency-Key`',
+  })
+  @ApiNotFoundResponse({
+    description: 'La garrafa no existe o es de otra distribuidora',
   })
   @ApiConflictResponse({ description: 'La diferencia cambió' })
   async corregirVendible(
     @Body() dto: CreateReconciliationAdjustmentDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<StockAdjustmentResponseDto> {
+    exigirIdempotencyKey(idempotencyKey, 'La corrección del vendible');
     const id = await this.reconciliationAdjustments.execute(
       dto,
       distributorId,

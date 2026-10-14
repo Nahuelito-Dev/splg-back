@@ -7,7 +7,6 @@
  * rinde) sin deadlocks.
  */
 import { randomUUID } from 'crypto';
-import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { codigoSqlDelError } from '../../src/common/errors/db-exceptions';
 import {
@@ -16,6 +15,7 @@ import {
   telefonoDePrueba,
   truncateAllTables,
 } from './setup/test-env';
+import { conIdempotencia } from './setup/con-idempotencia';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Car } from '../../src/car/entities/car.entity';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
@@ -34,6 +34,7 @@ import {
 } from '../../src/order/entities/order.entity';
 import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { Role } from '../../src/role/entities/role.entity';
+import { VehicleAssignmentService } from '../../src/car/vehicle-assignment.service';
 import { WarehouseService } from '../../src/stock/application/warehouse.service';
 import { StockLocationService } from '../../src/stock/application/stock-location.service';
 import { StockLedgerPort } from '../../src/stock/domain/ports/stock-ledger.port';
@@ -134,7 +135,7 @@ describe('Carga y rendición del camión (e2e)', () => {
     mockReintentos.n = 0;
   });
 
-  const http = () => request(env.app.getHttpServer());
+  const http = () => conIdempotencia(env.app.getHttpServer());
 
   async function rol(type: string): Promise<Role> {
     const roles = ds.getRepository(Role);
@@ -335,6 +336,13 @@ describe('Carga y rendición del camión (e2e)', () => {
       [carId],
     );
     return f?.location_id ?? null;
+  };
+  const locationDe = async (warehouseId: string) => {
+    const [fila] = await ds.query<Array<{ location_id: string }>>(
+      `SELECT location_id FROM stock_location WHERE warehouse_id = $1`,
+      [warehouseId],
+    );
+    return fila.location_id;
   };
   const enElCamion = async (carId: string, g: string, condition: string) => {
     const loc = await ubicacionDelCamion(carId);
@@ -697,8 +705,8 @@ describe('Carga y rendición del camión (e2e)', () => {
       await accion(e, carga.loadId, 'return', declarar(15, 9, e)).expect(200);
       await accion(e, carga.loadId, 'close').expect(200);
 
-      await accion(e, carga.loadId, 'return', declarar(15, 9, e)).expect(400);
-      await accion(e, carga.loadId, 'close').expect(400);
+      await accion(e, carga.loadId, 'return', declarar(15, 9, e)).expect(409);
+      await accion(e, carga.loadId, 'close').expect(409);
     }, 60000);
 
     it('la declaración tiene que cubrir todas las garrafas de la carga', async () => {
@@ -782,9 +790,9 @@ describe('Carga y rendición del camión (e2e)', () => {
         .put(`/truck-loads/${carga.loadId}/items`)
         .set(e.headers)
         .send({ items: [{ gasCylinderId: g, loadedFull: 1 }] })
-        .expect(400);
-      await accion(e, carga.loadId, 'cancel', { reason: 'tarde' }).expect(400);
-      await accion(e, carga.loadId, 'depart').expect(400);
+        .expect(409);
+      await accion(e, carga.loadId, 'cancel', { reason: 'tarde' }).expect(409);
+      await accion(e, carga.loadId, 'depart').expect(409);
     }, 60000);
 
     it('sin llenas suficientes en el depósito no sale y no se escribe nada', async () => {
@@ -886,6 +894,198 @@ describe('Carga y rendición del camión (e2e)', () => {
       expect(await enElCamion(c.carId, g, 'full')).toBe(10);
     }, 60000);
 
+    describe('blindaje de la carga abierta', () => {
+      /** Un depósito aparte con llenas, para que sea el origen de la carga. */
+      const depositoDeOrigen = async (e: Entorno, llenas: number) => {
+        const w = cuerpo<{ warehouseId: string }>(
+          await http()
+            .post('/warehouses')
+            .set(e.headers)
+            .send({ name: 'Origen', code: `ORI${seq}` })
+            .expect(201),
+        );
+        await http()
+          .post('/stock/transfers')
+          .set(e.headers)
+          .send({
+            from: { warehouseId: e.warehouseId },
+            to: { warehouseId: w.warehouseId },
+            items: [
+              { gasCylinderId: e.garrafa.gasCylinderId, quantity: llenas },
+            ],
+          })
+          .expect(201);
+        return w.warehouseId;
+      };
+
+      it('el origen de una carga abierta no se da de baja ni se desactiva (409) y la carga se puede cerrar', async () => {
+        const e = await seedDistribuidora();
+        const c = await seedChofer(e);
+        const g = e.garrafa.gasCylinderId;
+        await stockInicial(e, 50);
+        const origen = await depositoDeOrigen(e, 10);
+        const carga = cuerpo<Carga>(
+          await abrir(e, c, [{ loadedFull: 10 }], {
+            originWarehouseId: origen,
+          }).expect(201),
+        );
+        await accion(e, carga.loadId, 'depart').expect(200);
+
+        const baja = await http()
+          .delete(`/warehouses/${origen}`)
+          .set(e.headers)
+          .expect(409);
+        expect(cuerpo<Mensaje>(baja).message).toMatch(
+          /origen de la carga N° \d+.*darlo de baja/,
+        );
+        const desactivar = await http()
+          .patch(`/warehouses/${origen}`)
+          .set(e.headers)
+          .send({ isActive: false })
+          .expect(409);
+        expect(cuerpo<Mensaje>(desactivar).message).toMatch(/desactivarlo/);
+
+        // la carga sigue gestionable: se declara y se cierra, y las garrafas vuelven al origen
+        await accion(e, carga.loadId, 'return', declarar(10, 0, e)).expect(200);
+        await accion(e, carga.loadId, 'close').expect(200);
+        expect(await saldo(await locationDe(origen), g, 'full')).toBe(10);
+
+        // sin carga abierta ya se puede desactivar, y de un inactivo no se abre carga
+        await http()
+          .patch(`/warehouses/${origen}`)
+          .set(e.headers)
+          .send({ isActive: false })
+          .expect(200);
+        const desdeInactivo = await abrir(e, c, [{ loadedFull: 1 }], {
+          originWarehouseId: origen,
+        }).expect(400);
+        expect(cuerpo<Mensaje>(desdeInactivo).message).toMatch(/inactivo/);
+      }, 60000);
+
+      it('un faltante se rinde aunque el vendible esté agotado: el vendible queda en 0 y la carga cierra con diferencia', async () => {
+        const e = await seedDistribuidora();
+        const c = await seedChofer(e);
+        const g = e.garrafa.gasCylinderId;
+        await stockInicial(e, 50);
+        const carga = await abrirOk(e, c, [{ loadedFull: 20 }]);
+        await accion(e, carga.loadId, 'depart').expect(200);
+        // todo el vendible reservado por pedidos abiertos
+        await ds.query(
+          `UPDATE gas_cylinder SET stock = 0 WHERE gas_cylinder_id = $1`,
+          [g],
+        );
+        await accion(e, carga.loadId, 'return', declarar(15, 0, e)).expect(200);
+        await accion(e, carga.loadId, 'close', {
+          differenceNote: 'Se perdieron 5 llenas',
+        }).expect(200);
+
+        expect((await detalle(e, carga.loadId)).status).toBe(
+          'closed_with_difference',
+        );
+        expect(await vendible(g)).toBe(0);
+        expect(await saldo(e.locationId, g, 'full')).toBe(45);
+        expect(await enElCamion(c.carId, g, 'full')).toBe(0);
+      }, 60000);
+
+      it('cancelar pedidos después de un recorte no sobrevende: el vendible nunca pasa de max(0, llenas − reservadas)', async () => {
+        const e = await seedDistribuidora();
+        const c = await seedChofer(e);
+        const g = e.garrafa.gasCylinderId;
+        await stockInicial(e, 20);
+        const pedidos = [
+          await pedido(e, c, 5),
+          await pedido(e, c, 5),
+          await pedido(e, c, 5),
+        ];
+        // 15 reservadas sobre 20 llenas: vendible 5 (el pedido de prueba no pasa por la reserva)
+        await ds.query(
+          `UPDATE gas_cylinder SET stock = 5 WHERE gas_cylinder_id = $1`,
+          [g],
+        );
+        await http()
+          .post('/stock/adjustments')
+          .set(e.headers)
+          .send({
+            location: { warehouseId: e.warehouseId },
+            reason: 'lost',
+            notes: 'Se perdieron 10',
+            items: [
+              { gasCylinderId: g, condition: 'full', quantityDelta: -10 },
+            ],
+          })
+          .expect(201);
+        // llenas 10, reservadas 15: vendible 0 y 5 reservadas de más
+        expect(await vendible(g)).toBe(0);
+        const conciliacion = async () =>
+          cuerpo<{
+            consistent: boolean;
+            cylinders: Array<{ overReserved: number }>;
+          }>(
+            await http()
+              .get('/stock/reconciliation')
+              .set(e.headers)
+              .expect(200),
+          );
+        expect((await conciliacion()).cylinders[0].overReserved).toBe(5);
+
+        const cancelar = (orderId: string) =>
+          http()
+            .patch(`/orders/${orderId}/cancel`)
+            .set(e.headers)
+            .send({ reason: 'Cancelado por el cliente' })
+            .expect(200);
+        await cancelar(pedidos[0].orderId);
+        // llenas 10, reservadas 10: el vendible sigue en 0 (antes subía a 5 y sobrevendía)
+        expect(await vendible(g)).toBe(0);
+        expect((await conciliacion()).cylinders[0].overReserved).toBe(0);
+        await cancelar(pedidos[1].orderId);
+        // llenas 10, reservadas 5
+        expect(await vendible(g)).toBe(5);
+        await conciliado(e);
+      }, 60000);
+
+      it('dar de baja al chofer (liberar su vehículo) con la carga abierta es 409 y no libera nada', async () => {
+        const e = await seedDistribuidora();
+        const c = await seedChofer(e);
+        await stockInicial(e, 50);
+        const carga = await abrirOk(e, c, [{ loadedFull: 5 }]);
+        const asignaciones = env.app.get(VehicleAssignmentService);
+        const liberar = () =>
+          ds.transaction((manager) =>
+            asignaciones.liberarSiTieneUno(c.deliveryId, manager),
+          );
+
+        await expect(liberar()).rejects.toThrow(/carga N° \d+/);
+        const [{ abiertas }] = await ds.query<Array<{ abiertas: string }>>(
+          `SELECT COUNT(*) AS abiertas FROM vehicle_assignment WHERE delivery_id = $1 AND released_at IS NULL`,
+          [c.deliveryId],
+        );
+        expect(Number(abiertas)).toBe(1);
+
+        await accion(e, carga.loadId, 'cancel', {
+          reason: 'Se cancela',
+        }).expect(200);
+        await liberar();
+      }, 60000);
+
+      it('los movimientos de la salida se fechan con el mismo reloj que la apertura y la salida', async () => {
+        const e = await seedDistribuidora();
+        const c = await seedChofer(e);
+        await stockInicial(e, 50);
+        const carga = await abrirOk(e, c, [{ loadedFull: 5 }]);
+        await accion(e, carga.loadId, 'depart').expect(200);
+        const [fila] = await ds.query<
+          Array<{ dentro: boolean; opened_at: Date; departed_at: Date }>
+        >(
+          `SELECT m."occurred_at" BETWEEN l."opened_at" AND l."departed_at" AS dentro, l."opened_at", l."departed_at"
+           FROM truck_load l JOIN stock_movement m ON m.reference_id = l.load_id AND m.reason = 'truck_load'
+           WHERE l.load_id = $1 LIMIT 1`,
+          [carga.loadId],
+        );
+        expect(fila.dentro).toBe(true);
+      }, 60000);
+    });
+
     it('la reposición sólo vale en ruta y no pasa del stock del depósito', async () => {
       const e = await seedDistribuidora();
       const c = await seedChofer(e);
@@ -895,7 +1095,7 @@ describe('Carga y rendición del camión (e2e)', () => {
 
       await accion(e, carga.loadId, 'reload', {
         items: [{ gasCylinderId: g, quantity: 1 }],
-      }).expect(400);
+      }).expect(409);
       await accion(e, carga.loadId, 'depart').expect(200);
       await accion(e, carga.loadId, 'reload', {
         items: [{ gasCylinderId: g, quantity: 50 }],
@@ -1378,6 +1578,7 @@ describe('Carga y rendición del camión (e2e)', () => {
       const sin = await http()
         .patch(`/truck-loads/${carga.loadId}/reload`)
         .set(e.headers)
+        .unset('Idempotency-Key')
         .send(cuerpoReload)
         .expect(400);
       expect(cuerpo<Mensaje>(sin).message).toMatch(
@@ -1567,7 +1768,7 @@ describe('Carga y rendición del camión (e2e)', () => {
       expect(await colgadas()).toBe(0);
     }, 90000);
 
-    it('dos cierres a la vez: uno cierra y el otro responde 400 sin mover stock de nuevo', async () => {
+    it('dos cierres a la vez: uno cierra y el otro responde 409 sin mover stock de nuevo', async () => {
       const e = await seedDistribuidora();
       const c = await seedChofer(e);
       const g = e.garrafa.gasCylinderId;
@@ -1581,7 +1782,7 @@ describe('Carga y rendición del camión (e2e)', () => {
         accion(e, carga.loadId, 'close'),
       ]);
 
-      expect(res.map((r) => r.status).sort()).toEqual([200, 400]);
+      expect(res.map((r) => r.status).sort()).toEqual([200, 409]);
       expect(await saldo(e.locationId, g, 'full')).toBe(40);
       expect(mockReintentos.n).toBe(0);
     }, 60000);

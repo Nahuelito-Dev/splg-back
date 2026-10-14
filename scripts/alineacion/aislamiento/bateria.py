@@ -5,7 +5,7 @@ Cada actor de la distribuidora A (admin, chofer, cliente, y el super admin
 404 (o 403 donde la regla es de rol); en los listados, 200 sin ningún id de B.
 Uso: run.sh <salida>. Ver LEEME.md.
 """
-import json, sys, time, urllib.request, os
+import json, sys, time, urllib.request, os, uuid
 API = os.environ.get('SPLG_API', 'http://localhost:3100/api')
 CLAVE = os.environ['SPLG_CLAVE']  # la de los usuarios de prueba; no se versiona
 CUENTAS = {
@@ -44,6 +44,8 @@ def call(actor, method, path, body=None):
     h = {'Authorization': f'Bearer {ACT[actor]}', 'Content-Type': 'application/json'}
     h['X-Client-Source'] = {'adm':'panel-app','sup':'panel-app','cho':'driver-app','cli':'customer-app'}[actor[:3]]
     if actor == 'supA': h['X-Distributor'] = A_DIST
+    # Las escrituras de stock y compras exigen la clave (400 sin ella, antes del chequeo de tenant).
+    if method != 'GET': h['Idempotency-Key'] = str(uuid.uuid4())
     req = urllib.request.Request(API + path, method=method, headers=h,
                                  data=json.dumps(body).encode() if body is not None else None)
     try:

@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { StockLedgerPort } from '../../stock/domain/ports/stock-ledger.port';
@@ -10,10 +11,7 @@ import {
   StockCondition,
   StockReferenceType,
 } from '../../stock/domain/stock.enums';
-import {
-  CargaInvalidaError,
-  TransicionDeCargaInvalidaError,
-} from '../domain/errors/truck-load.errors';
+import { CargaInvalidaError } from '../domain/errors/truck-load.errors';
 import {
   entregasTardias,
   estadoDeCierre,
@@ -23,7 +21,10 @@ import {
 } from '../domain/truck-load-rules';
 import { CloseTruckLoadDto } from '../dto/truck-load.dto';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
-import { bloquearCarga } from './truck-load-support';
+import {
+  TransicionDeCargaInvalidaError,
+  bloquearCarga,
+} from './truck-load-support';
 
 /**
  * Cierra la rendición. En UNA transacción:
@@ -191,7 +192,7 @@ export class CloseTruckLoadUseCase {
             }),
           );
           carga.status = estadoDeCierre(plan.hayDiferencia);
-          carga.closedAt = new Date();
+          carga.closedAt = await ahoraDeLaBase(manager);
           carga.closedByUserId = actorUserId;
           carga.differenceNote = plan.hayDiferencia ? nota : null;
           await manager.save(carga);

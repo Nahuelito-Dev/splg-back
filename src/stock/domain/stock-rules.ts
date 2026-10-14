@@ -243,26 +243,33 @@ export interface DiferenciaDeVendible {
   physicalFull: number;
   /** Σ cantidades de pedidos abiertos. */
   reserved: number;
-  /** `physicalFull - reserved`. */
+  /** `max(0, physicalFull - reserved)`. */
   expected: number;
+  /** Reservas que el físico no cubre: `max(0, reserved - physicalFull)`. */
+  overReserved: number;
   /** `sellable - expected`; distinto de cero es una discrepancia. */
   difference: number;
 }
 
-/** Invariante D4: vendible = Σ llenas físicas − Σ pedidos abiertos. */
+/**
+ * Invariante D4: vendible = max(0, Σ llenas físicas − Σ pedidos abiertos). Si
+ * las reservas pasan al físico (una merma o un faltante con pedidos abiertos) el
+ * vendible queda en cero y el exceso se informa en `overReserved`.
+ */
 export function conciliarVendible(
   gasCylinderId: string,
   sellable: number,
   physicalFull: number,
   reserved: number,
 ): DiferenciaDeVendible {
-  const expected = physicalFull - reserved;
+  const expected = Math.max(0, physicalFull - reserved);
   return {
     gasCylinderId,
     sellable,
     physicalFull,
     reserved,
     expected,
+    overReserved: Math.max(0, reserved - physicalFull),
     difference: sellable - expected,
   };
 }

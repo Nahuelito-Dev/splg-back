@@ -17,6 +17,7 @@ import {
 import { StockMovement } from '../entities/stock-movement.entity';
 import { StockLedgerService } from './stock-ledger.service';
 
+const RELOJ_DE_LA_BASE = new Date('2026-10-12T15:00:00.000Z');
 const DIST = 'dddddddd-0000-4000-8000-000000000001';
 const L1 = '00000000-0000-4000-8000-000000000001';
 const L2 = '00000000-0000-4000-8000-000000000002';
@@ -42,6 +43,10 @@ function armar(esc: Escenario = {}) {
   const ubicaciones = esc.ubicaciones ?? [L1, L2];
   const insertados: Array<Record<string, unknown>> = [];
   const query = jest.fn((sql: string, params: unknown[] = []) => {
+    if (sql.includes('clock_timestamp()')) {
+      llamadas.push('reloj');
+      return Promise.resolve([{ ahora: RELOJ_DE_LA_BASE }]);
+    }
     if (sql.includes('FOR KEY SHARE')) {
       llamadas.push('lock-garrafa');
       return Promise.resolve([]);
@@ -143,7 +148,7 @@ function armar(esc: Escenario = {}) {
   const gasCylinders = {
     ajustarVendible: jest.fn(() => {
       llamadas.push('vendible');
-      return Promise.resolve();
+      return Promise.resolve([] as Array<{ type: string; faltante: number }>);
     }),
   };
   const service = new StockLedgerService(
@@ -326,9 +331,12 @@ describe('StockLedgerService.aplicar', () => {
     it('entrar llenas desde afuera suma el vendible lo mismo', async () => {
       const { service, manager, gasCylinders } = armar();
       await service.aplicar(manager, op([entradaDeLlenas(7)]));
-      expect(gasCylinders.ajustarVendible).toHaveBeenCalledWith(manager, DIST, [
-        { gasCylinderId: G1, delta: 7 },
-      ]);
+      expect(gasCylinders.ajustarVendible).toHaveBeenCalledWith(
+        manager,
+        DIST,
+        [{ gasCylinderId: G1, delta: 7 }],
+        { recortarEnCero: true },
+      );
     });
 
     it('una transferencia no toca el vendible', async () => {
@@ -350,20 +358,59 @@ describe('StockLedgerService.aplicar', () => {
       expect(gasCylinders.ajustarVendible).not.toHaveBeenCalled();
     });
 
-    it('si el vendible no alcanza falla y no escribe saldos', async () => {
-      const { service, manager, gasCylinders, llamadas } = armar({
+    it('pide recortar en cero: una pérdida física no se frena porque el vendible esté reservado', async () => {
+      const { service, manager, gasCylinders, insertados } = armar({
         saldos: { [`${L1}|${G1}|full`]: 9 },
       });
-      gasCylinders.ajustarVendible.mockRejectedValueOnce(
-        new OperacionDeStockInvalidaError('vendible negativo'),
+      await service.aplicar(
+        manager,
+        op([{ ...transferencia(2), to: null, reason: Razon.SHRINKAGE }]),
       );
-      await expect(
-        service.aplicar(
-          manager,
-          op([{ ...transferencia(2), to: null, reason: Razon.SHRINKAGE }]),
-        ),
-      ).rejects.toThrow(/vendible negativo/);
-      expect(llamadas).not.toContain('lock-saldos');
+      expect(gasCylinders.ajustarVendible).toHaveBeenCalledWith(
+        manager,
+        DIST,
+        [{ gasCylinderId: G1, delta: -2 }],
+        { recortarEnCero: true },
+      );
+      expect(insertados).toHaveLength(1);
+    });
+
+    it('si el vendible se recortó, el movimiento se asienta igual y queda el aviso', async () => {
+      const { service, manager, gasCylinders, insertados } = armar({
+        saldos: { [`${L1}|${G1}|full`]: 9 },
+      });
+      gasCylinders.ajustarVendible.mockResolvedValueOnce([
+        { type: '10kg', faltante: 2 },
+      ]);
+      const r = await service.aplicar(
+        manager,
+        op([{ ...transferencia(2), to: null, reason: Razon.SHRINKAGE }]),
+      );
+      expect(r.movementIds).toHaveLength(1);
+      expect(insertados).toHaveLength(1);
+    });
+  });
+
+  describe('reloj', () => {
+    it('sin occurredAt el movimiento se fecha con el reloj de la base, no con el del proceso', async () => {
+      const { service, manager, insertados } = armar({
+        saldos: { [`${L1}|${G1}|full`]: 9 },
+      });
+      await service.aplicar(manager, op([transferencia(1)]));
+      expect(insertados[0].occurredAt).toBe(RELOJ_DE_LA_BASE);
+    });
+
+    it('con occurredAt explícito lo respeta y no pregunta la hora', async () => {
+      const { service, manager, insertados, llamadas } = armar({
+        saldos: { [`${L1}|${G1}|full`]: 9 },
+      });
+      const fecha = new Date('2026-01-01T00:00:00Z');
+      await service.aplicar(manager, {
+        ...op([transferencia(1)]),
+        occurredAt: fecha,
+      });
+      expect(insertados[0].occurredAt).toBe(fecha);
+      expect(llamadas).not.toContain('reloj');
     });
   });
 
@@ -558,6 +605,7 @@ describe('StockLedgerService.contraasentar (corrección sin editar el libro)', (
       ajuste.manager,
       DIST,
       [{ gasCylinderId: G1, delta: -4 }],
+      { recortarEnCero: true },
     );
 
     const entrega = armar({
