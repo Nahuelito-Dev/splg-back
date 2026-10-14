@@ -12,7 +12,7 @@ describe('UnpaidCashService', () => {
   let svc: UnpaidCashService;
   let repo: { findOne: jest.Mock; save: jest.Mock; create: jest.Mock };
   let orders: { assertDeLaDistribuidora: jest.Mock };
-  let cash: { markUnpaid: jest.Mock };
+  let cash: { markUnpaid: jest.Mock; registerUnpaidByAdmin: jest.Mock };
   let gateway: { notifyAdmins: jest.Mock };
 
   const order = {
@@ -35,6 +35,7 @@ describe('UnpaidCashService', () => {
     };
     // Simula la transacción: corre el trabajo adicional con el manager.
     cash = {
+      registerUnpaidByAdmin: jest.fn(),
       markUnpaid: jest.fn(
         async (
           _id: string,
@@ -43,6 +44,14 @@ describe('UnpaidCashService', () => {
         ) => ({ order, changed: true, extra: await dentro(manager, order) }),
       ),
     };
+    cash.registerUnpaidByAdmin = jest.fn(
+      async (
+        _id: string,
+        _u: string,
+        _r: string,
+        dentro: (m: unknown, o: Order) => Promise<unknown>,
+      ) => ({ order, changed: true, extra: await dentro(manager, order) }),
+    );
     gateway = { notifyAdmins: jest.fn() };
     svc = new UnpaidCashService(
       orders as never,
@@ -66,6 +75,7 @@ describe('UnpaidCashService', () => {
       'ord-1',
       'u-1',
       expect.any(Function),
+      'dist-1',
     );
     expect(repo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -128,5 +138,32 @@ describe('UnpaidCashService', () => {
     });
     const r = await svc.report('ord-1', {}, 'u-1', null);
     expect(r.incident.incidentId).toBe('inc-1');
+  });
+
+  it('el admin informa el impago: incidencia reportada por él, con el motivo, en la transacción', async () => {
+    const r = await svc.reportByAdmin(
+      'ord-1',
+      'El chofer no informó el impago',
+      'admin-1',
+      'dist-1',
+    );
+    expect(cash.registerUnpaidByAdmin).toHaveBeenCalledWith(
+      'ord-1',
+      'admin-1',
+      'El chofer no informó el impago',
+      expect.any(Function),
+      'dist-1',
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reportedBy: 'admin-1',
+        type: IncidentType.UNPAID_COLLECTION,
+        description: expect.stringContaining(
+          'El chofer no informó el impago',
+        ) as string,
+      }),
+    );
+    expect(r.incident.incidentId).toBe('inc-1');
+    expect(gateway.notifyAdmins).toHaveBeenCalledTimes(1);
   });
 });

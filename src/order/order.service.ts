@@ -1,9 +1,12 @@
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  GoneException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -20,7 +23,13 @@ import {
 import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderResponseDto } from './dto/order-response.dto';
+import { DriverDeOrderDto, OrderResponseDto } from './dto/order-response.dto';
+import type { CancelledBy } from './application/cancel-order.use-case';
+import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
+import { ubicacionVigente } from '../common/utils/ubicacion-vigente';
+import { errorMessage } from '../common/errors/error-message';
+import { ahoraDeLaBase } from '../common/utils/ahora-de-la-base';
+import { DriverRatingPort } from './domain/ports/driver-rating.port';
 import { OrderMapper } from './order.mapper';
 import {
   diaArgentino,
@@ -51,6 +60,8 @@ import { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -88,6 +99,8 @@ export class OrderService {
     // D5: con control de carga activo, el administrador tampoco asigna un pedido
     // a un chofer sin la carga del día abierta.
     private readonly truckLoadGate: TruckLoadGatePort,
+    // Calificación del chofer para mostrarla en el pedido del cliente.
+    private readonly driverRatings: DriverRatingPort,
   ) {}
 
   /**
@@ -138,11 +151,14 @@ export class OrderService {
    * encuentra una oferta `OFFERED` suya (se cerró como `ACCEPTED` al
    * aceptarse), y `onDriverRejected` es un no-op si no hay nada que cerrar.
    *
-   * Best-effort: si el pedido ya no existe, es un no-op silencioso.
+   * Un pedido que no existe es 404. Que el chofer ya no tenga una oferta
+   * vigente (otro la tomó, venció) no es un error: `{ rejected: true }` sin
+   * efecto.
    */
   async rejectOffer(orderId: string, driverId: string) {
     const order = await this.orders.findByIdFull(orderId);
-    if (!order) return { rejected: false };
+    if (!order)
+      throw new NotFoundException(`Order with ID: ${orderId} not found`);
 
     // Punto 5 (segunda revisión): la oferta activa tiene que ser DE ESTE
     // chofer. Una oferta OFFERED de OTRO chofer para el mismo pedido (una
@@ -261,6 +277,62 @@ export class OrderService {
     }
   }
 
+  /**
+   * Lo que hace falta para trazar la ruta de UN pedido: su destino (la dirección
+   * de entrega), su distribuidora y el chofer. Sólo lo pide el cliente dueño
+   * (con el pedido en camino) o el chofer asignado (aceptado o en camino); si es
+   * de otro, 404 sin revelar que existe; si no está en esos estados, 403. 409 si la dirección no tiene punto.
+   */
+  async datosParaLaRuta(
+    orderId: string,
+    userId: string,
+    role: RoleType,
+  ): Promise<{
+    distributorId: string;
+    choferUserId: string | null;
+    destino: { lat: number; lng: number };
+  }> {
+    const order = await this.orderRepository.findOne({
+      where: { orderId },
+      relations: { address: true, delivery: true },
+    });
+    let esSuyo = false;
+    if (order && role === RoleType.CUSTOMER) {
+      esSuyo = order.customerId === userId;
+    } else if (order && role === RoleType.DELIVERY) {
+      const chofer = await this.deliveries.buscarPorIdOUsuario(userId);
+      esSuyo = !!chofer && order.deliveryId === chofer.deliveryId;
+    }
+    if (!order || !esSuyo) {
+      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    }
+    // El cliente sólo desde que el chofer sale: la ruta nace en la posición del
+    // chofer y antes de eso esa posición no es suya (puede estar entregando otro).
+    const estadosPermitidos =
+      role === RoleType.CUSTOMER
+        ? [OrderStatus.ON_THE_WAY]
+        : [OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY];
+    if (!estadosPermitidos.includes(order.status)) {
+      throw new ForbiddenException(
+        role === RoleType.CUSTOMER
+          ? 'La ruta está disponible cuando el chofer sale con tu pedido'
+          : 'Sólo se calcula la ruta de un pedido activo (aceptado o en camino)',
+      );
+    }
+    const punto = order.address?.location;
+    if (!punto) {
+      throw new ConflictException(
+        'La dirección de entrega del pedido no tiene coordenadas',
+      );
+    }
+    const [lng, lat] = punto.coordinates;
+    return {
+      distributorId: order.distributorId,
+      choferUserId: order.delivery?.userId ?? null,
+      destino: { lat, lng },
+    };
+  }
+
   async findOne(id: string) {
     // Delega en el puerto de repositorio. Devuelve la entidad (uso interno por
     // updateStatus/cancel); getOne() mapea a DTO para el controller.
@@ -273,6 +345,8 @@ export class OrderService {
     id: string,
     distributorId?: string | null,
     customerUserId?: string | null,
+    choferUserId?: string | null,
+    incluirChofer = false,
   ): Promise<OrderResponseDto> {
     const order = await this.findOne(id);
     // Aislamiento: si hay tenant en contexto (staff, o customer con empresa
@@ -291,7 +365,116 @@ export class OrderService {
     if (customerUserId && order.customerId !== customerUserId) {
       throw new NotFoundException(`Order with ID: ${id} not found`);
     }
-    return OrderMapper.toDto(order);
+    // Un chofer solo lee lo que es suyo, lo que se le ofreció o lo que está en
+    // el pool que ve en `GET /orders/available`. Lo demás es 404.
+    if (choferUserId && !(await this.puedeLeerElChofer(order, choferUserId))) {
+      // Si el chofer TUVO el pedido (se lo liberó el admin, lo reasignaron, el
+      // control de carga lo sacó del pool), la app necesita salir de la
+      // pantalla: 410 "ya no es tuyo" en vez de un 404 que la deja con el
+      // pedido viejo. Un pedido que nunca tuvo sigue siendo 404.
+      if (await this.dispatchOffers.hasHeldOrder(order.orderId, choferUserId)) {
+        throw new GoneException('Este pedido ya no está asignado a tu usuario');
+      }
+      throw new NotFoundException(`Order with ID: ${id} not found`);
+    }
+    const dto = OrderMapper.toDto(order);
+    if (order.status === OrderStatus.CANCELLED) {
+      dto.cancelledBy = await this.quienCancelo(order.orderId);
+    }
+    if (incluirChofer) dto.driver = await this.datosDelChofer(order);
+    return dto;
+  }
+
+  /**
+   * Quién canceló el pedido, sacado de la última transición a `cancelled` del
+   * historial de estados: el rol del usuario que la hizo, o `system` si no hubo
+   * usuario (cron, webhook). `null` si no hay fila (pedido anterior al historial).
+   */
+  private async quienCancelo(orderId: string): Promise<CancelledBy | null> {
+    const filas: Array<{ user_id: string | null; type: string | null }> =
+      await this.orderRepository.manager.query(
+        `SELECT h.changed_by_user_id AS user_id, r.type
+           FROM order_status_history h
+           LEFT JOIN "user" u ON u.user_id = h.changed_by_user_id
+           LEFT JOIN role r ON r.role_id = u.role_id
+          WHERE h.order_id = $1 AND h.to_status = 'cancelled'
+          ORDER BY h.changed_at DESC LIMIT 1`,
+        [orderId],
+      );
+    const fila = filas[0];
+    if (!fila) return null;
+    if (!fila.user_id) return 'system';
+    switch (fila.type) {
+      case RoleType.CUSTOMER:
+        return 'customer';
+      case RoleType.ADMIN:
+      case RoleType.SUPER_ADMIN:
+        return 'admin';
+      case RoleType.DELIVERY:
+        return 'driver';
+      default:
+        return 'system';
+    }
+  }
+
+  /**
+   * Nombre, teléfono y calificación del chofer (y su ubicación, sólo en camino), mientras el pedido está activo
+   * y tiene chofer. Cerrado (entregado/cancelado) o sin chofer: `null`, así el
+   * teléfono no queda expuesto cuando ya no hace falta.
+   */
+  private async datosDelChofer(order: Order): Promise<DriverDeOrderDto | null> {
+    const activo =
+      order.status === OrderStatus.ACCEPTED ||
+      order.status === OrderStatus.ON_THE_WAY;
+    const chofer = order.delivery;
+    if (!activo || !chofer?.user) return null;
+    const calificacion = await this.driverRatings.resumen(chofer.userId);
+    const dto = new DriverDeOrderDto();
+    dto.userId = chofer.userId;
+    dto.fullName = chofer.user.fullName ?? null;
+    dto.phoneNumber = chofer.user.phoneNumber ?? null;
+    dto.ratingAverage = calificacion.average;
+    dto.ratingCount = calificacion.count;
+    // Best-effort: sin radar (Redis caído) el pedido se lee igual, sin posición.
+    // Sólo en camino y siendo ESTE el pedido que lleva: antes (aceptado) el
+    // chofer puede estar entregando otro y su posición no es de este cliente.
+    dto.location =
+      order.status === OrderStatus.ON_THE_WAY
+        ? ubicacionVigente(
+            await this.dispatch
+              .lastDriverLocation(chofer.userId, order.orderId)
+              .catch(() => null),
+          )
+        : null;
+    return dto;
+  }
+
+  /**
+   * Un pedido es legible por el chofer si lo tiene asignado, si tiene una oferta
+   * de despacho vigente para él, o si está en el pool de disponibles de su
+   * distribuidora (pendiente, sin chofer y con la carga del día en regla).
+   */
+  private async puedeLeerElChofer(
+    order: Order,
+    userId: string,
+  ): Promise<boolean> {
+    const chofer = await this.deliveries.buscarPorIdOUsuario(userId);
+    if (!chofer) return false;
+    if (order.deliveryId && order.deliveryId === chofer.deliveryId) return true;
+    if (await this.dispatchOffers.hasActiveOffer(order.orderId, userId)) {
+      return true;
+    }
+    const enElPool =
+      order.status === OrderStatus.PENDING &&
+      !order.deliveryId &&
+      Boolean(order.distributorId) &&
+      order.distributorId === chofer.distributorId;
+    if (!enElPool) return false;
+    const motivo = await this.truckLoadGate.motivoParaNoRecibir(
+      order.distributorId,
+      userId,
+    );
+    return motivo === null;
   }
 
   async findAvailableOrders(
@@ -390,7 +573,11 @@ export class OrderService {
    * igual que aceptar una oferta. NO exige que esté en línea: es un acto
    * explícito del admin, no una búsqueda por el radar.
    */
-  async assignDelivery(orderId: string, deliveryId: string) {
+  async assignDelivery(
+    orderId: string,
+    deliveryId: string,
+    distributorId?: string | null,
+  ) {
     const delivery = await this.deliveries.findById(deliveryId);
     if (!delivery) {
       throw new NotFoundException('Repartidor no encontrado');
@@ -409,13 +596,19 @@ export class OrderService {
     let previousDriverUserId: string | null;
     let ofertasRetiradas: string[];
     try {
-      const locked = await queryRunner.manager
+      const consulta = queryRunner.manager
         .createQueryBuilder(Order, 'ord')
         .setLock('pessimistic_write', undefined, ['ord'])
         .leftJoinAndSelect('ord.delivery', 'delivery')
         .leftJoinAndSelect('ord.items', 'items')
-        .where('ord.orderId = :id', { id: orderId })
-        .getOne();
+        .where('ord.orderId = :id', { id: orderId });
+      // Con distribuidora en contexto el lock no toma el pedido de otra: 404.
+      if (distributorId) {
+        consulta.andWhere('ord.distributorId = :distributorId', {
+          distributorId,
+        });
+      }
+      const locked = await consulta.getOne();
 
       if (!locked) {
         throw new NotFoundException(`Order with ID: ${orderId} not found`);
@@ -425,6 +618,19 @@ export class OrderService {
       // habilitación ni de su flota.
       if (delivery.distributorId !== locked.distributorId) {
         throw new NotFoundException('Repartidor no encontrado');
+      }
+      // Repetir la asignación al MISMO chofer (reintento, doble clic) no
+      // regenera el código de entrega: el QR que ya tiene el chofer sigue
+      // sirviendo.
+      if (
+        locked.status === OrderStatus.ACCEPTED &&
+        locked.deliveryId === delivery.deliveryId
+      ) {
+        order = locked;
+        previousDriverUserId = null;
+        ofertasRetiradas = [];
+        await queryRunner.commitTransaction();
+        return await this.releerAsignado(order);
       }
       this.deliveries.assertElegibleParaAsignacion(delivery);
       // Con el chofer bloqueado (el mismo lock que `ponerEnUso`, la baja y la
@@ -438,6 +644,7 @@ export class OrderService {
       await this.truckLoadGate.assertPuedeAsignar(
         locked.distributorId,
         delivery.deliveryId,
+        queryRunner.manager,
       );
       // CU-136 a CU-138: mismo gate que usan `UpdateOrderStatusUseCase` y el
       // despacho automático. Si algo está vencido, 400 con el detalle.
@@ -471,7 +678,7 @@ export class OrderService {
       // Las dos tienen que quedar en sincro.
       locked.delivery = delivery;
       transitionOrder(locked, OrderStatus.ACCEPTED);
-      locked.acceptedAt = new Date();
+      locked.acceptedAt = await ahoraDeLaBase(queryRunner.manager);
       // Igual que cuando el chofer acepta la oferta: sin este código el
       // cliente no puede confirmar la entrega con el QR. Si se reasigna, el
       // código nuevo deja sin efecto el del chofer anterior.
@@ -495,63 +702,84 @@ export class OrderService {
       await queryRunner.release();
     }
 
-    // Best-effort, DESPUÉS del commit.
-    // A los choferes a quienes se les retiró la oferta se les avisa por el
-    // mismo evento con que la app descarta una oferta que ya no está vigente.
-    for (const driverUserId of ofertasRetiradas) {
-      this.dispatch.notifyDriverOrderCancelled(driverUserId, {
-        orderId: order.orderId,
-        message: 'El pedido ya fue asignado: la oferta ya no está vigente',
-      });
-    }
-    // El chofer asignado queda registrado como quien lo tuvo (ACCEPTED): si lo
-    // libera, el despacho no se lo vuelve a ofrecer.
-    await this.dispatchOrchestrator
-      .onOrderAssigned(orderId, delivery.userId)
-      .catch(() => undefined);
+    // Desde acá la asignación está confirmada: nada de lo que sigue puede tirar
+    // el request (el reintento regeneraría el código y el QR del chofer).
+    try {
+      // Best-effort, DESPUÉS del commit.
+      // A los choferes a quienes se les retiró la oferta se les avisa por el
+      // mismo evento con que la app descarta una oferta que ya no está vigente.
+      for (const driverUserId of ofertasRetiradas) {
+        this.dispatch.notifyDriverOrderCancelled(driverUserId, {
+          orderId: order.orderId,
+          message: 'El pedido ya fue asignado: la oferta ya no está vigente',
+        });
+      }
+      // El chofer asignado queda registrado como quien lo tuvo (ACCEPTED): si lo
+      // libera, el despacho no se lo vuelve a ofrecer.
+      await this.dispatchOrchestrator
+        .onOrderAssigned(orderId, delivery.userId)
+        .catch(() => undefined);
 
-    // Punto 7: aviso al chofer anterior si hubo reasignación de A a B (por
-    // `user_id`, nunca por `deliveryId`: son ids distintos — ver
-    // `DriversGateway.handleDriverJoin`).
-    if (previousDriverUserId && previousDriverUserId !== delivery.userId) {
-      this.dispatch.stopTracking(previousDriverUserId);
-      this.dispatch.notifyDriverOrderCancelled(previousDriverUserId, {
-        orderId: order.orderId,
-        status: order.status,
-        message: 'Este pedido se reasignó a otro chofer.',
-      });
-    }
+      // Punto 7: aviso al chofer anterior si hubo reasignación de A a B (por
+      // `user_id`, nunca por `deliveryId`: son ids distintos — ver
+      // `DriversGateway.handleDriverJoin`).
+      if (previousDriverUserId && previousDriverUserId !== delivery.userId) {
+        this.dispatch.stopTracking(previousDriverUserId);
+        this.dispatch.notifyDriverOrderCancelled(previousDriverUserId, {
+          orderId: order.orderId,
+          status: order.status,
+          message: 'Este pedido se reasignó a otro chofer.',
+        });
+      }
 
-    this.dispatch.notifyAdmins(
-      'order:accepted',
-      {
+      this.dispatch.notifyAdmins(
+        'order:accepted',
+        {
+          orderId: order.orderId,
+          status: order.status,
+          totalAmount: order.totalAmount,
+        },
+        order.distributorId,
+      );
+      // H-55: el despacho automático avisa al chofer por socket
+      // (`server:new-order-request`, el mismo evento que ya escucha la app);
+      // la asignación manual no avisaba nada, así que el chofer no se enteraba
+      // hasta refrescar. Mismo evento, mismo payload que offerToNextDriver
+      // (ver DispatchOrchestratorService): el chofer lo ve como una oferta y
+      // puede "aceptarla" (no-op idempotente, ya está asignado). Si la rechaza
+      // o deja vencer el aviso, el pedido NO se libera solo: queda igual
+      // asignado y se avisa a los admins para que decidan (segunda revisión,
+      // punto 1 — ver `OrderService.rejectOffer`).
+      this.dispatch.notifyDriverNewOrder(delivery.userId, {
+        event: 'NEW_ORDER',
         orderId: order.orderId,
-        status: order.status,
         totalAmount: order.totalAmount,
-      },
-      order.distributorId,
-    );
-    // H-55: el despacho automático avisa al chofer por socket
-    // (`server:new-order-request`, el mismo evento que ya escucha la app);
-    // la asignación manual no avisaba nada, así que el chofer no se enteraba
-    // hasta refrescar. Mismo evento, mismo payload que offerToNextDriver
-    // (ver DispatchOrchestratorService): el chofer lo ve como una oferta y
-    // puede "aceptarla" (no-op idempotente, ya está asignado). Si la rechaza
-    // o deja vencer el aviso, el pedido NO se libera solo: queda igual
-    // asignado y se avisa a los admins para que decidan (segunda revisión,
-    // punto 1 — ver `OrderService.rejectOffer`).
-    this.dispatch.notifyDriverNewOrder(delivery.userId, {
-      event: 'NEW_ORDER',
-      orderId: order.orderId,
-      totalAmount: order.totalAmount,
-      paymentMethod: order.paymentMethod,
-      expiresAt: new Date(
-        Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
-      ).toISOString(),
-      items: order.items,
-    });
+        paymentMethod: order.paymentMethod,
+        expiresAt: new Date(
+          Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
+        ).toISOString(),
+        items: order.items,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Pedido ${orderId} asignado, pero falló un efecto posterior: ${errorMessage(error)}`,
+      );
+    }
     // Se relee para que la respuesta traiga el chofer nuevo, no el anterior.
-    return this.findOne(orderId);
+    return this.releerAsignado(order);
+  }
+
+  /** El pedido releído; si la relectura falla, el recién asignado (ya confirmado). */
+  private async releerAsignado(order: Order): Promise<Order> {
+    try {
+      return await this.findOne(order.orderId);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo releer el pedido ${order.orderId}: ${errorMessage(error)}`,
+      );
+      marcarRespuestaIncompleta();
+      return order;
+    }
   }
 
   /**

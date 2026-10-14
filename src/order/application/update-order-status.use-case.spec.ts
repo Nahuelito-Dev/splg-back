@@ -6,7 +6,6 @@ import {
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
-import { OrderStatusHistory } from '../entities/order-status-history.entity';
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import { ReservationNotActivableError } from '../domain/errors/reservation-not-activable.error';
 import {
@@ -23,6 +22,9 @@ import { RoleType } from '../../common/constants/role-type.enum';
  * chofer + timestamps, CASH→PAID) y que los side-effects sean best-effort.
  * La validez de la transición en sí la cubre order-status.machine.spec.
  */
+/** La hora del servidor de la base, distinta a propósito de la de Node. */
+const HORA_DE_LA_BASE = new Date('2030-01-01T10:00:00.000Z');
+
 describe('UpdateOrderStatusUseCase', () => {
   let useCase: UpdateOrderStatusUseCase;
   let deliveries: {
@@ -153,10 +155,15 @@ describe('UpdateOrderStatusUseCase', () => {
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
         // El lock del chofer (`bloquearChoferes`): todos los pedidos existen y están vigentes.
-        query: jest.fn((_sql: string, [ids]: [string[]]) =>
-          Promise.resolve(
-            ids.map((id) => ({ delivery_id: id, deleted: false })),
-          ),
+        query: jest.fn((sql: string, params?: [string[]]) =>
+          sql.includes('clock_timestamp')
+            ? Promise.resolve([{ ahora: HORA_DE_LA_BASE }])
+            : Promise.resolve(
+                (params?.[0] ?? []).map((id) => ({
+                  delivery_id: id,
+                  deleted: false,
+                })),
+              ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
         save: jest.fn((o: Order) => orders.save(o)),
@@ -266,6 +273,17 @@ describe('UpdateOrderStatusUseCase', () => {
       user: { fullName: 'Chofer Uno', phoneNumber: '+549110000' },
     };
 
+    it('acceptedAt sale del reloj de la base, no del de Node', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      const result = await useCase.execute(
+        'ord-1',
+        OrderStatus.ACCEPTED,
+        'drv-1',
+      );
+      expect(result.acceptedAt).toEqual(HORA_DE_LA_BASE);
+    });
+
     it('bloquea la fila del chofer (FOR NO KEY UPDATE) ANTES de leer su vehículo en uso', async () => {
       orders.findByIdFull.mockResolvedValue(makeOrder());
       deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
@@ -293,9 +311,11 @@ describe('UpdateOrderStatusUseCase', () => {
       await expect(
         useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
+      // Con la transacción de la aceptación: el lock de la carga es de ella.
       expect(truckGate.assertPuedeAceptar).toHaveBeenCalledWith(
         'dist-1',
         'drv-1',
+        queryRunner.manager,
       );
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
@@ -414,15 +434,11 @@ describe('UpdateOrderStatusUseCase', () => {
           '  El cliente no tiene celular  ',
         );
 
-        expect(queryRunner.manager.insert).toHaveBeenCalledWith(
-          OrderStatusHistory,
-          {
-            orderId: 'ord-1',
-            fromStatus: OrderStatus.ON_THE_WAY,
-            toStatus: OrderStatus.DELIVERED,
-            changedByUserId: 'admin-1',
-            reason: 'El cliente no tiene celular',
-          },
+        // El historial lo asienta el subscriber al guardar, con este motivo.
+        expect(queryRunner.manager.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            transitionReason: 'El cliente no tiene celular',
+          }),
         );
         expect(registrar).toHaveBeenCalledWith(
           queryRunner.manager,
@@ -776,6 +792,16 @@ describe('UpdateOrderStatusUseCase', () => {
     });
   });
 
+  describe('ON_THE_WAY', () => {
+    it('onTheWayAt sale del reloj de la base, no del de Node', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED }),
+      );
+      const result = await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
+      expect(result.onTheWayAt).toEqual(HORA_DE_LA_BASE);
+    });
+  });
+
   describe('DELIVERED', () => {
     it('NO marca pagado al entregar en CASH: el cobro lo confirma el chofer', async () => {
       orders.findByIdFull.mockResolvedValue(
@@ -789,6 +815,14 @@ describe('UpdateOrderStatusUseCase', () => {
 
       expect(result.deliveredAt).toBeInstanceOf(Date);
       expect(result.paymentStatus).toBe(PaymentStatus.PENDING);
+    });
+
+    it('deliveredAt sale del reloj de la base, no del de Node', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ON_THE_WAY }),
+      );
+      const result = await useCase.execute('ord-1', OrderStatus.DELIVERED);
+      expect(result.deliveredAt).toEqual(HORA_DE_LA_BASE);
     });
 
     it('descuenta el stock físico por el MISMO manager de la transacción del pedido', async () => {

@@ -12,7 +12,6 @@ import {
   Query,
   Res,
   UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
@@ -40,6 +39,7 @@ import { CancelFleetTaskDto } from './dto/cancel-task.dto';
 import { QueryFleetTaskDto } from './dto/query-task.dto';
 import { FleetTaskResponseDto } from './dto/task-response.dto';
 import { FleetTaskAttachmentResponseDto } from './dto/attachment-response.dto';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -51,7 +51,7 @@ import {
   DownloadAttachmentQueryDto,
 } from '../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../s3/download-link';
-import { archivoConTope } from '../s3/upload-limits';
+import { ArchivoIdempotente } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 /**
@@ -68,6 +68,7 @@ export class FleetTaskController {
   ) {}
 
   @Post()
+  @Idempotent()
   @ApiOperation({ summary: 'Crear una tarea contra un plan' })
   @ApiCreatedResponse({ type: FleetTaskResponseDto })
   @ApiBadRequestResponse({
@@ -186,7 +187,7 @@ export class FleetTaskController {
   @ApiPayloadTooLargeResponse({
     description: 'El archivo supera el máximo permitido',
   })
-  @UseInterceptors(archivoConTope(MAX_ATTACHMENT_SIZE_BYTES, 'archivo'))
+  @ArchivoIdempotente(MAX_ATTACHMENT_SIZE_BYTES, 'archivo')
   async uploadAttachment(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,

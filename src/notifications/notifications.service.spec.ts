@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { FcmPort } from '../firebase/ports/fcm.port';
 import { CustomersService } from '../customer/customer.service';
@@ -117,6 +118,29 @@ describe('NotificationsService', () => {
       await expect(
         service.sendOrderConfirmation('u9', 'order-1'),
       ).resolves.toEqual({ success: false, error: 'Customer not found' });
+    });
+  });
+
+  describe('reenviarConfirmacion (super admin)', () => {
+    it('un cliente que no existe es 404 y no manda nada', async () => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: false,
+        token: null,
+      });
+      await expect(
+        service.reenviarConfirmacion('u9', 'order-1'),
+      ).rejects.toThrow(new NotFoundException('Cliente no encontrado'));
+      expect(sendToToken).not.toHaveBeenCalled();
+    });
+
+    it('un cliente que existe recibe la confirmación', async () => {
+      customers.findNotificationToken.mockResolvedValue({
+        esCliente: true,
+        token: 'fcm-token-customer',
+      });
+      await expect(
+        service.reenviarConfirmacion('c1', 'order-abcdef123'),
+      ).resolves.toEqual({ success: true, messageId: 'msg-1' });
     });
   });
 

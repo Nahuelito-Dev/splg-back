@@ -6,6 +6,7 @@ import type { Server } from 'http';
 import { ClaimsController } from './claims.controller';
 import { ClaimsService } from './claims.service';
 import { APP_GUARD } from '@nestjs/core';
+import { RedisService } from '../redis/redis.service';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -38,7 +39,10 @@ describe('ClaimsController · distribuidora obligatoria', () => {
     };
     const modulo = await Test.createTestingModule({
       controllers: [ClaimsController],
-      providers: [{ provide: ClaimsService, useValue: claims }],
+      providers: [
+        { provide: ClaimsService, useValue: claims },
+        { provide: RedisService, useValue: {} },
+      ],
     }).compile();
     app = modulo.createNestApplication<INestApplication<Server>>();
     app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -169,6 +173,7 @@ describe('ClaimsController · mis reclamos', () => {
       controllers: [ClaimsController],
       providers: [
         { provide: ClaimsService, useValue: claims },
+        { provide: RedisService, useValue: {} },
         { provide: APP_GUARD, useClass: RolesGuard },
       ],
     }).compile();

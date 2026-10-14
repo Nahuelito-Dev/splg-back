@@ -12,9 +12,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PrecisionDeGeocodificacion } from '../entities/user-address.entity';
 
 export class CreateUserAddressDto {
-  @ApiProperty({ description: 'ID del usuario' })
+  @ApiPropertyOptional({
+    description:
+      'Dueño de la dirección. Sólo lo usa el administrador general (obligatorio para él). Un cliente o un chofer crea siempre para sí mismo con el de su token: puede omitirlo; si lo manda y es el de otro usuario, 403.',
+  })
+  @IsOptional()
   @IsUUID()
-  user_id!: string;
+  user_id?: string;
 
   @ApiProperty({ description: 'Calle y número' })
   @IsString()

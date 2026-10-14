@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { User } from '../users/entities/user.entity';
 import { Order, OrderStatus } from '../order/entities/order.entity';
 import { CustomersService } from '../customer/customer.service';
@@ -46,6 +46,24 @@ export class NotificationsService {
       );
       return { success: false, error: errorMessage(error) };
     }
+  }
+
+  /**
+   * Reenvío manual de la confirmación (super admin): a diferencia del envío
+   * automático, que es best-effort y nunca falla, un cliente que no existe es
+   * un 404 y no un `{ success: false }`.
+   */
+  async reenviarConfirmacion(
+    customerId: string,
+    orderId: string,
+    token?: string,
+  ): Promise<ResultadoDeEnvioDto> {
+    const cliente =
+      await this.customersService.findNotificationToken(customerId);
+    if (!cliente.esCliente) {
+      throw new NotFoundException('Cliente no encontrado');
+    }
+    return this.sendOrderConfirmation(customerId, orderId, token);
   }
 
   async sendOrderConfirmation(

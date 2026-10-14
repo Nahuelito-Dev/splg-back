@@ -12,6 +12,7 @@ import { OrderService } from '../order/order.service';
 import { S3Service } from '../s3/s3.service';
 import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { RoleType } from '../common/constants/role-type.enum';
+import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
 
 /**
  * Un reclamo cuelga de un pedido: tiene que existir, ser del cliente que
@@ -353,9 +354,10 @@ describe('ClaimsService', () => {
   describe('foto del reclamo', () => {
     const CLIENTE = { userId: 'u1', role: RoleType.CUSTOMER };
     const ADMIN = { userId: 'a1', role: RoleType.ADMIN };
-    const PNG = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
-    ]);
+    let PNG: Buffer;
+    beforeAll(async () => {
+      PNG = await imagenesDePrueba.png(true);
+    });
     const archivo = (over: Partial<Express.Multer.File> = {}) =>
       ({
         buffer: PNG,
@@ -397,6 +399,14 @@ describe('ClaimsService', () => {
       );
       // Se serializa con lock pesimista (dos subidas simultáneas no se pisan).
       expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('sube la foto sin EXIF ni GPS', async () => {
+      claims.findOne.mockResolvedValue(reclamo());
+      expect(await tieneExif(PNG)).toBe(true);
+      await service.uploadPhoto('c1', archivo(), null, CLIENTE);
+      const [put] = storage.put.mock.calls[0] as [{ body: Buffer }];
+      expect(await tieneExif(put.body)).toBe(false);
     });
 
     it('reemplazar la foto borra la anterior', async () => {

@@ -11,6 +11,8 @@ import {
   Res,
   ParseUUIDPipe,
   ForbiddenException,
+  HttpCode,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -28,11 +30,14 @@ import {
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
+import { QuoteOrderUseCase } from './application/quote-order.use-case';
+import { QuoteOrderDto, QuoteResponseDto } from './dto/quote-order.dto';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
 import {
   ResolveUnpaidDto,
   ResolveUnpaidResponseDto,
 } from './dto/resolve-unpaid.dto';
+import { ConfirmTransferDto, MotivoDeCobroDto } from './dto/payment-admin.dto';
 import { ReservationService } from './application/reservation.service';
 import { mapRoleToCancelActor } from './application/cancel-order.use-case';
 import { OrderMapper } from './order.mapper';
@@ -57,6 +62,8 @@ import {
 } from './dto/order-stats-response.dto';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
+import { errorMessage } from '../common/errors/error-message';
+import { Order } from './entities/order.entity';
 import { Auth } from '../common/decorators/auth.decorator';
 import type { Response } from 'express';
 import { DownloadQueryDto } from '../s3/dto/download-link.dto';
@@ -71,17 +78,21 @@ import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
+import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
 @UseInterceptors(ClassSerializerInterceptor)
 @Controller('orders')
 export class OrderController {
+  private readonly logger = new Logger(OrderController.name);
+
   constructor(
     private readonly orderService: OrderService,
     private readonly reservationService: ReservationService,
     private readonly updateOrderUseCase: UpdateOrderUseCase,
     private readonly cashCollection: CashCollectionUseCase,
+    private readonly quoteOrder: QuoteOrderUseCase,
     private readonly driverPhoto: OrderDriverPhotoService,
     // D5: el chofer sin la carga del día abierta no ve el pool si se exige.
     private readonly truckLoadGate: TruckLoadGatePort,
@@ -106,7 +117,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     // Opcional para compatibilidad: si el cliente no manda X-Distributor (apps
     // previas al multi-tenant), el use-case cae a la distribuidora default.
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     // Anti-impersonación: un cliente solo puede crear pedidos para SÍ MISMO
     // (order.customer_id es el User PK = user.user_id). Admin/delivery pueden
@@ -131,6 +142,31 @@ export class OrderController {
     // Solo presente para paymentMethod MERCADOPAGO (checkout de Checkout Pro).
     dto.paymentUrl = paymentUrl;
     return dto;
+  }
+
+  @Post('quote')
+  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Cotizar un pedido',
+    description:
+      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (+10% sobre subtotal + zona en `mercadopago` y `transfer`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta.',
+  })
+  @ApiOkResponse({ type: QuoteResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos, sin stock, dirección fuera de cobertura, o falta `customerId` con `addressId` (admin)',
+  })
+  @ApiForbiddenResponse({ description: 'Un cliente cotizando para otro' })
+  @HttpCode(200)
+  quote(
+    @Body() dto: QuoteOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
+  ): Promise<QuoteResponseDto> {
+    return this.quoteOrder.execute(dto, distributorId, {
+      userId: user.user_id,
+      role: user.role,
+    });
   }
 
   @Get()
@@ -159,13 +195,12 @@ export class OrderController {
   }
 
   @Get('customer/:customerId')
-  @Auth(
-    RoleType.CUSTOMER,
-    RoleType.DELIVERY,
-    RoleType.ADMIN,
-    RoleType.SUPER_ADMIN,
-  )
-  @ApiOperation({ summary: 'Get orders by customer ID' })
+  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Get orders by customer ID',
+    description:
+      'Cliente (el suyo), admin y super_admin. El chofer no lista pedidos por cliente: los suyos están en `GET /orders/delivery/:deliveryId` (403 si lo intenta).',
+  })
   @ApiParam({ name: 'customerId', description: 'Customer UUID' })
   @ApiOkResponse({ type: PaginatedOrdersResponseDto })
   async findByCustomer(
@@ -181,7 +216,7 @@ export class OrderController {
         'No autorizado a ver pedidos de otro cliente',
       );
     }
-    // El staff (admin/delivery) sólo ve pedidos de su distribuidora; el cliente
+    // El staff (admin) sólo ve pedidos de su distribuidora; el cliente
     // ve TODO su historial (aunque haya pedido a varias) → sin scope de tenant.
     const scope = user.role === RoleType.CUSTOMER ? null : distributorId;
     const result = await this.orderService.findByCustomer(
@@ -302,10 +337,19 @@ export class OrderController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get order by ID' })
+  @ApiOperation({
+    summary: 'Get order by ID',
+    description:
+      'El cliente lee sólo sus pedidos. El chofer lee el pedido que tiene asignado, el que tiene en oferta vigente o uno del pool de `GET /orders/available` (pendiente, sin chofer, de su distribuidora); cualquier otro responde 404 como si no existiera. Admin y super_admin leen los de su distribuidora.',
+  })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: OrderResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 410,
+    description:
+      'Sólo para el chofer: el pedido lo tuvo él y ya no es suyo (lo liberó el admin, lo reasignaron o el control de carga lo sacó del pool). La app debe salir de la pantalla del pedido.',
+  })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -315,7 +359,15 @@ export class OrderController {
     // Un CUSTOMER solo lee SUS pedidos (ownership); staff scopea por tenant.
     const customerScope =
       user.role === RoleType.CUSTOMER ? user.user_id : undefined;
-    return await this.orderService.getOne(id, distributorId, customerScope);
+    const choferScope =
+      user.role === RoleType.DELIVERY ? user.user_id : undefined;
+    return await this.orderService.getOne(
+      id,
+      distributorId,
+      customerScope,
+      choferScope,
+      user.role !== RoleType.DELIVERY,
+    );
   }
 
   @Patch(':id/status')
@@ -363,7 +415,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateOrderStatusDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     // Un chofer solo puede operar EN SU NOMBRE: ignoramos cualquier deliveryId
@@ -386,6 +438,7 @@ export class OrderController {
   }
 
   @Post(':id/reject')
+  @HttpCode(200)
   @Auth(RoleType.DELIVERY)
   @Idempotent()
   @ApiOperation({
@@ -402,10 +455,13 @@ export class OrderController {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: RechazoDeOfertaResponseDto })
+  @ApiNotFoundResponse({
+    description: 'El pedido no existe o es de otra distribuidora',
+  })
   async rejectOffer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     return this.orderService.rejectOffer(id, user.user_id);
@@ -470,7 +526,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ConfirmDeliveryDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.confirmDelivery(
@@ -514,11 +570,15 @@ export class OrderController {
   async confirmCashReceived(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
-    await this.cashCollection.confirmReceived(id, user.user_id);
-    return this.orderService.getOne(id, distributorId);
+    const { order } = await this.cashCollection.confirmReceived(
+      id,
+      user.user_id,
+      distributorId,
+    );
+    return this.pedidoTrasElCobro(id, distributorId, order);
   }
 
   @Patch(':id/payment/resolve-unpaid')
@@ -546,20 +606,86 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResolveUnpaidDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
-    const { changed } = await this.cashCollection.resolveUnpaid(
-      id,
-      user.user_id,
-      dto.resolution,
-      dto.note,
-    );
-    const order = await this.orderService.getOne(id, distributorId);
+    const { changed, order: guardado } =
+      await this.cashCollection.resolveUnpaid(
+        id,
+        user.user_id,
+        dto.resolution,
+        dto.note,
+        distributorId,
+      );
+    const order = await this.pedidoTrasElCobro(id, distributorId, guardado);
     return Object.assign(order, { alreadyResolved: !changed });
   }
 
+  @Patch(':id/payment/register-cash')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'El admin registra el cobro en efectivo de un pedido entregado',
+    description:
+      'Para el efectivo que el chofer no confirmó (no lo hizo, ya no está). Sólo pedidos `delivered` en efectivo con el pago `pending`: pasa a `paid` y registra `paymentConfirmedBy` (el admin), `paymentResolvedBy/At` y el motivo en `paymentResolutionNote`. `reason` es obligatorio (10 a 500 caracteres) y queda en el historial de estados y en la auditoría. Repetirlo sobre un pedido ya `paid` devuelve el pedido tal cual. Si el pago ya se informó como impago responde 409 (se resuelve con `resolve-unpaid`). `X-Distributor` es obligatorio para el super admin.',
+  })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Falta o es inválido el motivo, el pedido no está entregado o no es en efectivo, o falta la distribuidora',
+  })
+  @ApiConflictResponse({ description: 'El pago ya se informó como impago' })
+  async registerCash(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MotivoDeCobroDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    const { order } = await this.cashCollection.registerCashByAdmin(
+      id,
+      user.user_id,
+      dto.reason,
+      distributorId,
+    );
+    return this.pedidoTrasElCobro(id, distributorId, order);
+  }
+
+  @Patch(':id/payment/confirm-transfer')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'El admin confirma (o marca como no recibida) una transferencia',
+    description:
+      'Sólo pedidos con medio `transfer`, no cancelados, con el pago `pending`. `received: true` pasa el pago a `paid` (registra `paymentConfirmedAt/By`) y recién ahí el pedido entregado cuenta como venta en los reportes; `received: false` lo deja en `failed` (aparece en `GET /reports/collections` como `notReceivedTransfer`). `reason` obligatorio (10 a 500 caracteres): queda en `paymentResolutionNote`, en el historial de estados y en la auditoría. Repetir la misma decisión devuelve el pedido tal cual; la contraria sobre algo ya decidido es 409. `X-Distributor` es obligatorio para el super admin.',
+  })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos, el pedido no es una transferencia o está cancelado, o falta la distribuidora',
+  })
+  @ApiConflictResponse({
+    description: 'La transferencia ya se resolvió con la decisión contraria',
+  })
+  async confirmTransfer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmTransferDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    const { order } = await this.cashCollection.confirmTransfer(
+      id,
+      user.user_id,
+      dto.received,
+      dto.reason,
+      distributorId,
+    );
+    return this.pedidoTrasElCobro(id, distributorId, order);
+  }
+
   @Patch(':id/assign/:deliveryId')
+  @Idempotent()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Assign order to delivery',
@@ -583,10 +709,14 @@ export class OrderController {
   async assignDelivery(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('deliveryId', ParseUUIDPipe) deliveryId: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
-    const order = await this.orderService.assignDelivery(id, deliveryId);
+    const order = await this.orderService.assignDelivery(
+      id,
+      deliveryId,
+      distributorId,
+    );
     return OrderMapper.toDto(order);
   }
 
@@ -608,7 +738,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateLocationDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.updateLocation(
@@ -656,7 +786,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrderDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     const order = await withTransactionRetry(
       () =>
@@ -687,7 +817,7 @@ export class OrderController {
   async cancelOrder(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     // Cancelación forzada por admin. La identidad sale del token, no de un id
@@ -727,7 +857,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CancelOrderDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     const order = await this.orderService.cancelOrder(
@@ -762,13 +892,14 @@ export class OrderController {
   async notifyArrival(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     return this.orderService.notifyDriverArrived(id, user.user_id, user.role);
   }
 
   @Patch(':id/confirm-deposit')
+  @Idempotent()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Confirmar la seña de una reserva cobrada en efectivo',
@@ -785,7 +916,7 @@ export class OrderController {
   @ApiOkResponse({ type: OrderResponseDto, description: 'Seña confirmada' })
   async confirmDeposit(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     const order = await this.reservationService.confirmDeposit(
       id,
@@ -804,5 +935,27 @@ export class OrderController {
     @CurrentDistributor() distributorId: string | null,
   ): Promise<SalesChartPointDto[]> {
     return await this.orderService.getSalesChartData(distributorId);
+  }
+
+  /**
+   * El pedido para la respuesta de una operación de cobro que ya se confirmó.
+   * Si la relectura falla, se responde con el pedido que devolvió la
+   * transacción: un 500 acá, con el cobro hecho, haría que el reintento con la
+   * misma `Idempotency-Key` repitiera la operación en vez de devolver su resultado.
+   */
+  private async pedidoTrasElCobro(
+    id: string,
+    distributorId: string | null,
+    guardado: Order,
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.orderService.getOne(id, distributorId);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo releer el pedido ${id} tras el cobro: ${errorMessage(error)}`,
+      );
+      marcarRespuestaIncompleta();
+      return OrderMapper.toDto(guardado);
+    }
   }
 }

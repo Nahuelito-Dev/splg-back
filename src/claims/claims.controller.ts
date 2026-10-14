@@ -12,7 +12,6 @@ import {
   Req,
   Res,
   UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ClaimsService } from './claims.service';
@@ -42,10 +41,11 @@ import { ClaimResponseDto } from './dto/claim-response.dto';
 import { ClaimPhotoLinkResponseDto } from './dto/claim-photo-link.dto';
 import { ClaimMapper } from './claims.mapper';
 import type { Claim } from './entities/claim.entity';
-import { archivoConTope } from '../s3/upload-limits';
+import { ArchivoIdempotente } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 import { DownloadMode, DownloadQueryDto } from '../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../s3/download-link';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -67,6 +67,7 @@ export class ClaimsController {
   }
 
   @Post()
+  @Idempotent()
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cliente crea un reclamo' })
   @ApiCreatedResponse({ type: ClaimResponseDto })
@@ -75,7 +76,7 @@ export class ClaimsController {
   async create(
     @Body() createClaimDto: CreateClaimDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<ClaimResponseDto> {
     // Anti-impersonación: un cliente solo puede reclamar como SÍ MISMO (se
     // fuerza el customerId al del token, ignorando lo que venga en el body).
@@ -302,12 +303,12 @@ export class ClaimsController {
     description: 'No es JPG, PNG ni WEBP (o el contenido no coincide)',
   })
   @ApiPayloadTooLargeResponse({ description: 'La foto supera los 10 MB' })
-  @UseInterceptors(archivoConTope(MAX_ATTACHMENT_SIZE_BYTES, 'foto'))
+  @ArchivoIdempotente(MAX_ATTACHMENT_SIZE_BYTES, 'foto')
   async uploadPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<ClaimResponseDto> {
     return this.toDto(
       await this.claimsService.uploadPhoto(id, file, distributorId, {
@@ -339,7 +340,7 @@ export class ClaimsController {
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<ClaimResponseDto> {
     return this.toDto(
       await this.claimsService.removePhoto(id, distributorId, {

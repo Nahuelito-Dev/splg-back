@@ -379,6 +379,24 @@ export class GasCylinderService {
   }
 
   /**
+   * El producto con sus promociones, SIN lock y sin tocar el stock: para
+   * cotizar un pedido. El control de disponibilidad lo hace quien cotiza
+   * (después de validar la distribuidora, como el alta).
+   *
+   * @throws GasCylinderNotFoundError si el producto no existe (404).
+   */
+  async leerParaCotizar(gasCylinderId: string): Promise<GasCylinder> {
+    const gasCylinder = await this.gasCylinderRepository.findOne({
+      where: { gasCylinderId },
+      relations: CON_PROMOCIONES,
+    });
+    if (!gasCylinder) {
+      throw new GasCylinderNotFoundError(gasCylinderId);
+    }
+    return gasCylinder;
+  }
+
+  /**
    * Edición de un pedido: ajusta la reserva por la DIFERENCIA NETA de cada
    * garrafa entre los renglones que tenía y los nuevos, bajo el lock de cada una
    * (por id ascendente). Pedir más reserva sólo el aumento (400 si no alcanza el

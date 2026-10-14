@@ -69,6 +69,7 @@ describe('OrderService · aviso de llegada', () => {
       {
         assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {} as never,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue(pedido!);
     return service;

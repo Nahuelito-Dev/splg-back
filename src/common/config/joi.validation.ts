@@ -1,6 +1,9 @@
 import * as Joi from 'joi';
 
 export const JoiValidationSchema = Joi.object({
+  // Entorno de ejecución. Sólo `development` y `test` sirven la documentación
+  // sin credenciales; cualquier otro (o ninguno) falla cerrado.
+  NODE_ENV: Joi.string().valid('development', 'test', 'production').optional(),
   DB_PASSWORD: Joi.required(),
   DB_NAME: Joi.required(),
   DB_HOST: Joi.required(),
@@ -31,6 +34,22 @@ export const JoiValidationSchema = Joi.object({
   APP_URL: Joi.string()
     .uri({ scheme: ['https'] })
     .optional(),
+  // Rutas por calles (`GET /routes/driving`): clave de Google Directions DEL
+  // SERVIDOR (sin ella se usa OSRM) y, opcional, otro servidor OSRM.
+  GOOGLE_DIRECTIONS_API_KEY: Joi.string().empty('').optional(),
+  OSRM_BASE_URL: Joi.string()
+    .empty('')
+    .uri({ scheme: ['http', 'https'] })
+    .optional(),
+  // Topes de `GET /routes/driving` (cada consulta que llega al proveedor gasta
+  // cuota de Google): por usuario y por distribuidora cada 24 h, y distancia
+  // máxima entre `from` y la última posición del chofer.
+  ROUTES_DAILY_LIMIT_PER_USER: Joi.number().integer().min(1).default(100),
+  ROUTES_DAILY_LIMIT_PER_DISTRIBUTOR: Joi.number()
+    .integer()
+    .min(1)
+    .default(3000),
+  ROUTES_FROM_MAX_DISTANCE_M: Joi.number().integer().min(1).default(300),
   // MercadoPago Checkout Pro. Opcionales para no romper entornos (tests/CI)
   // sin credenciales sandbox configuradas; en runtime real deben setearse.
   MP_ACCESS_TOKEN: Joi.string().optional(),

@@ -14,6 +14,7 @@ import { S3Service } from '../s3/s3.service';
 import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 import { RoleType } from '../common/constants/role-type.enum';
+import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
 
 function archivo(over: Partial<Express.Multer.File> = {}): Express.Multer.File {
   return {
@@ -138,6 +139,36 @@ describe('AttachmentService', () => {
         originalName: 'dni.pdf',
         uploadedByUserId: 'u-admin',
       });
+    });
+
+    it('una foto con GPS se sube sin EXIF y el registro guarda el tamaño real', async () => {
+      const foto = await imagenesDePrueba.jpeg(true);
+      expect(await tieneExif(foto)).toBe(true);
+      const result = await service.upload(
+        AttachmentOwnerType.EMPLOYEE,
+        'e1',
+        'd1',
+        archivo({ mimetype: 'image/jpeg', buffer: foto, size: foto.length }),
+        undefined,
+        ADMIN,
+      );
+      const [subido] = storage.put.mock.calls[0] as [{ body: Buffer }];
+      expect(await tieneExif(subido.body)).toBe(false);
+      expect(result.sizeBytes).toBe(subido.body.length);
+    });
+
+    it('un PDF se sube sin tocarse', async () => {
+      const pdf = Buffer.from('%PDF-1.4 contenido');
+      await service.upload(
+        AttachmentOwnerType.EMPLOYEE,
+        'e1',
+        'd1',
+        archivo({ buffer: pdf, size: pdf.length }),
+        undefined,
+        ADMIN,
+      );
+      const [subido] = storage.put.mock.calls[0] as [{ body: Buffer }];
+      expect(subido.body).toBe(pdf);
     });
 
     it('un tipo sin resolver registrado es 400, no 500, y no sube nada', async () => {

@@ -1,4 +1,5 @@
 import { bloquearCuentaParaPedido } from '../../common/locks/cuenta-lock';
+import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
 import {
   Injectable,
   Logger,
@@ -10,6 +11,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import type { Point } from 'typeorm';
+import type { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import Decimal from 'decimal.js';
 
 import {
@@ -226,9 +228,64 @@ export class CreateOrderUseCase {
       const savedOrder = await queryRunner.manager.save(order);
       await queryRunner.commitTransaction();
 
-      // Side-effects post-commit: best-effort, nunca rompen la creación del pedido.
-      let paymentUrl: string | undefined;
+      // Desde acá el pedido YA está confirmado: nada de lo que sigue puede
+      // tirar el request (un 500 con el pedido creado haría que el reintento
+      // con la misma Idempotency-Key creara otro).
+      return await this.despuesDelCommit(
+        savedOrder,
+        createOrderDto,
+        isReservation,
+        depositAmount,
+        customer,
+        checkoutItems,
+      );
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      // Los errores de quien pide (validación, stock, cobertura, pertenencia)
+      // se devuelven tal cual. Antes sólo pasaban los que traían `status` 400 o
+      // 404: los de dominio no lo traen, y "sin stock" salía como 500 (H-85).
+      // Deadlock o fallo de serialización: se deja pasar tal cual para que
+      // `withTransactionRetry` (en el controller) reintente; si se agotan los
+      // intentos sale 409, no 500.
+      if (['40P01', '40001'].includes(errorCode(error) ?? '')) {
+        throw error;
+      }
+      // Timeout de lock/consulta: no se reintenta (cada intento esperaría el
+      // timeout completo y la respuesta pasaría el del interceptor); el filtro
+      // global lo traduce a 503.
+      if (esTimeoutDeBase(error)) {
+        throw error;
+      }
+      if (
+        error instanceof DomainError ||
+        (error instanceof HttpException && error.getStatus() < 500)
+      ) {
+        throw error;
+      }
+      this.logger.error(`create order falló: ${errorMessage(error)}`);
+      throw new InternalServerErrorException('Error al crear el pedido');
+    } finally {
+      await queryRunner.release();
+    }
+  }
 
+  /**
+   * Efectos posteriores al commit (checkout, despacho, aviso, panel) y relectura
+   * del pedido. Best-effort: el pedido ya existe, así que ninguna falla de
+   * acá puede devolver un error al cliente.
+   */
+  private async despuesDelCommit(
+    savedOrder: Order,
+    createOrderDto: CreateOrderDto,
+    isReservation: boolean,
+    depositAmount: number,
+    customer: { email: string | null },
+    checkoutItems: PaymentCheckoutItem[],
+  ): Promise<CreateOrderResult> {
+    let paymentUrl: string | undefined;
+    try {
       if (isReservation) {
         // Pre-reserva: NO se despacha (lo hará el cron el día agendado con la
         // seña paga). Si la seña es por MP, se crea un checkout SOLO por el
@@ -277,44 +334,26 @@ export class CreateOrderUseCase {
         },
         savedOrder.distributorId,
       );
-
-      const result = await this.orders.findByIdFull(savedOrder.orderId);
-      if (!result) {
-        throw new InternalServerErrorException(
-          'Pedido creado pero no recuperable',
-        );
-      }
-      return { order: result, paymentUrl };
     } catch (error) {
-      if (queryRunner.isTransactionActive) {
-        await queryRunner.rollbackTransaction();
-      }
-      // Los errores de quien pide (validación, stock, cobertura, pertenencia)
-      // se devuelven tal cual. Antes sólo pasaban los que traían `status` 400 o
-      // 404: los de dominio no lo traen, y "sin stock" salía como 500 (H-85).
-      // Deadlock o fallo de serialización: se deja pasar tal cual para que
-      // `withTransactionRetry` (en el controller) reintente; si se agotan los
-      // intentos sale 409, no 500.
-      if (['40P01', '40001'].includes(errorCode(error) ?? '')) {
-        throw error;
-      }
-      // Timeout de lock/consulta: no se reintenta (cada intento esperaría el
-      // timeout completo y la respuesta pasaría el del interceptor); el filtro
-      // global lo traduce a 503.
-      if (esTimeoutDeBase(error)) {
-        throw error;
-      }
-      if (
-        error instanceof DomainError ||
-        (error instanceof HttpException && error.getStatus() < 500)
-      ) {
-        throw error;
-      }
-      this.logger.error(`create order falló: ${errorMessage(error)}`);
-      throw new InternalServerErrorException('Error al crear el pedido');
-    } finally {
-      await queryRunner.release();
+      this.logger.error(
+        `Pedido ${savedOrder.orderId} creado, pero falló un efecto posterior: ${errorMessage(error)}`,
+      );
     }
+    return { order: await this.releerOUsar(savedOrder), paymentUrl };
+  }
+
+  /** El pedido completo; si la relectura falla, el recién guardado. */
+  private async releerOUsar(savedOrder: Order): Promise<Order> {
+    try {
+      const completo = await this.orders.findByIdFull(savedOrder.orderId);
+      if (completo) return completo;
+    } catch (error) {
+      this.logger.error(
+        `No se pudo releer el pedido ${savedOrder.orderId}: ${errorMessage(error)}`,
+      );
+    }
+    marcarRespuestaIncompleta();
+    return savedOrder;
   }
 
   /**
@@ -379,43 +418,65 @@ export class CreateOrderUseCase {
             itemDto.quantity,
           );
 
-      // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
-      // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
-      // como una con `distributor_id` null (dato sin backfillear), que antes
-      // se colaba en cualquier tenant.
-      if (distributorId && gasCylinder.distributorId !== distributorId) {
-        throw new BadRequestException(
-          `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
-        );
-      }
-
-      // Pricing: precio de lista (DB, nunca del cliente) + promos por volumen.
-      const { unitPrice, subtotal } = this.pricing.priceItem(
-        gasCylinder.price,
-        gasCylinder.promotions,
-        itemDto.quantity,
+      const renglon = this.valorizarRenglon(
+        gasCylinder,
+        itemDto,
+        distributorId,
       );
+      subtotalItems = subtotalItems.plus(renglon.subtotal);
+      orderItems.push(renglon.orderItem);
+      checkoutItems.push(renglon.checkoutItem);
+    }
 
-      subtotalItems = subtotalItems.plus(subtotal);
+    return { orderItems, checkoutItems, subtotalItems };
+  }
 
-      orderItems.push(
-        this.orderItemRepository.create({
-          gasCylinderId: itemDto.gasCylinderId,
-          quantity: itemDto.quantity,
-          unitPrice: unitPrice.toNumber(),
-          subtotal: subtotal.toNumber(),
-        }),
+  /**
+   * Valoriza un renglón con el precio de SERVIDOR y las promociones por
+   * volumen. Es la única regla de precio por renglón: la usan el alta, la
+   * edición y la cotización.
+   */
+  valorizarRenglon(
+    gasCylinder: GasCylinder,
+    itemDto: { gasCylinderId: string; quantity: number },
+    distributorId: string | null | undefined,
+  ): {
+    orderItem: OrderItem;
+    checkoutItem: PaymentCheckoutItem;
+    subtotal: Decimal;
+  } {
+    // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
+    // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
+    // como una con `distributor_id` null (dato sin backfillear), que antes
+    // se colaba en cualquier tenant.
+    if (distributorId && gasCylinder.distributorId !== distributorId) {
+      throw new BadRequestException(
+        `La garrafa ${gasCylinder.type} no pertenece a la distribuidora seleccionada`,
       );
+    }
 
-      checkoutItems.push({
+    // Pricing: precio de lista (DB, nunca del cliente) + promos por volumen.
+    const { unitPrice, subtotal } = this.pricing.priceItem(
+      gasCylinder.price,
+      gasCylinder.promotions,
+      itemDto.quantity,
+    );
+
+    return {
+      orderItem: this.orderItemRepository.create({
+        gasCylinderId: itemDto.gasCylinderId,
+        quantity: itemDto.quantity,
+        unitPrice: unitPrice.toNumber(),
+        subtotal: subtotal.toNumber(),
+      }),
+      checkoutItem: {
         id: itemDto.gasCylinderId,
         title: `Garrafa ${gasCylinder.type}`,
         quantity: itemDto.quantity,
         unitPrice: unitPrice.toNumber(),
-      });
-    }
-
-    return { orderItems, checkoutItems, subtotalItems };
+      },
+      subtotal,
+    };
   }
 
   /**

@@ -33,6 +33,7 @@ import { IncidentResponseDto } from './dto/incident-response.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -67,6 +68,7 @@ export class IncidentController {
   }
 
   @Post()
+  @Idempotent()
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Reportar una incidencia de entrega (chofer durante el reparto)',
@@ -80,7 +82,7 @@ export class IncidentController {
   async create(
     @Body() dto: CreateIncidentDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<IncidentResponseDto> {
     return this.toDto(
       await this.incidentService.create(
@@ -217,7 +219,7 @@ export class IncidentController {
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<IncidentResponseDto> {
     return IncidentMapper.toDto(
       await this.incidentPhoto.subir(id, user, distributorId, file),
@@ -240,7 +242,7 @@ export class IncidentController {
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<IncidentResponseDto> {
     return IncidentMapper.toDto(
       await this.incidentPhoto.quitar(id, user, distributorId),

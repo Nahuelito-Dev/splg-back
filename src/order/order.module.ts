@@ -21,6 +21,7 @@ import { RealtimeDispatchAdapter } from './infrastructure/realtime-dispatch.adap
 import { OrderRepositoryPort } from './domain/ports/order.repository.port';
 import { OrderTypeormRepository } from './infrastructure/order.typeorm.repository';
 import { CreateOrderUseCase } from './application/create-order.use-case';
+import { QuoteOrderUseCase } from './application/quote-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
@@ -44,6 +45,9 @@ import { StockModule } from '../stock/stock.module';
 import { TruckLoadModule } from '../truck-load/truck-load.module';
 import { S3Module } from '../s3/s3.module';
 import { NotificationPort } from './domain/ports/notification.port';
+import { OrderStatusHistorySubscriber } from './infrastructure/order-status-history.subscriber';
+import { DriverRatingPort } from './domain/ports/driver-rating.port';
+import { DriverRatingTypeormAdapter } from './infrastructure/driver-rating.typeorm.adapter';
 import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { OrderAddressChange } from './entities/order-address-change.entity';
@@ -86,6 +90,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     DispatchService,
     OrderPricingService,
     CreateOrderUseCase,
+    QuoteOrderUseCase,
     UpdateOrderUseCase,
     UpdateOrderStatusUseCase,
     OrderDriverPhotoService,
@@ -93,6 +98,8 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     ReleaseOrderUseCase,
     ConfirmDeliveryUseCase,
     CashCollectionUseCase,
+    // Historial de estados: una fila por transición, en la misma transacción.
+    OrderStatusHistorySubscriber,
     DispatchOrchestratorService,
     ConfirmPaymentUseCase,
     ReservationService,
@@ -108,6 +115,8 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     },
     // Puerto del ciclo del envase → adapter que delega en CylinderService.
     { provide: CylinderLifecyclePort, useClass: CylinderLifecycleAdapter },
+    // Puerto de la calificación del chofer → lectura directa de `rating`.
+    { provide: DriverRatingPort, useClass: DriverRatingTypeormAdapter },
     // Puerto de notificación al cliente → adapter que delega en NotificationsService.
     { provide: NotificationPort, useClass: NotificationAdapter },
   ],

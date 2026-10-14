@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
-import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import {

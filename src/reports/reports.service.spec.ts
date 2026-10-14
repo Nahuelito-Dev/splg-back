@@ -27,6 +27,7 @@ describe('ReportsService', () => {
     where: jest.Mock;
     andWhere: jest.Mock;
     groupBy: jest.Mock;
+    addGroupBy: jest.Mock;
     orderBy: jest.Mock;
     getRawMany: jest.Mock;
   }
@@ -39,6 +40,7 @@ describe('ReportsService', () => {
       where: jest.fn((): QbFalso => qb),
       andWhere: jest.fn((): QbFalso => qb),
       groupBy: jest.fn((): QbFalso => qb),
+      addGroupBy: jest.fn((): QbFalso => qb),
       orderBy: jest.fn((): QbFalso => qb),
       getRawMany: jest.fn(),
     };
@@ -218,21 +220,41 @@ describe('ReportsService', () => {
   });
 
   describe('getCollections', () => {
-    it('separa efectivo pendiente, impagos y pérdidas, y arma 0 lo que no hay', async () => {
-      qb.getRawMany.mockResolvedValue([
-        { status: 'pending', count: '3', total: '30000.5' },
-        { status: 'unpaid', count: '1', total: '9500' },
-      ]);
+    it('separa efectivo pendiente, impagos, pérdidas y transferencias, y arma 0 lo que no hay', async () => {
+      qb.getRawMany
+        .mockResolvedValueOnce([
+          { method: 'cash', status: 'pending', count: '3', total: '30000.5' },
+          { method: 'cash', status: 'unpaid', count: '1', total: '9500' },
+          { method: 'transfer', status: 'pending', count: '2', total: '8000' },
+        ])
+        .mockResolvedValueOnce([{ count: '2', total: '900' }]);
       const r = await service.getCollections(new Date(), new Date(), 'd1');
       expect(r).toEqual({
         pendingCash: { totalOrders: 3, totalAmount: 30000.5 },
         unpaid: { totalOrders: 1, totalAmount: 9500 },
         writtenOff: { totalOrders: 0, totalAmount: 0 },
+        pendingTransfer: { totalOrders: 2, totalAmount: 8000 },
+        notReceivedTransfer: { totalOrders: 0, totalAmount: 0 },
+        pendingRefund: { totalOrders: 2, totalAmount: 900 },
       });
       expect(qb.andWhere).toHaveBeenCalledWith(
         'order.distributorId = :distributorId',
         { distributorId: 'd1' },
       );
+    });
+
+    it('no confunde el estado de una transferencia con el del efectivo', async () => {
+      qb.getRawMany
+        .mockResolvedValueOnce([
+          { method: 'transfer', status: 'failed', count: '1', total: '500' },
+        ])
+        .mockResolvedValueOnce([{ count: '0', total: null }]);
+      const r = await service.getCollections(new Date(), new Date());
+      expect(r.pendingCash.totalOrders).toBe(0);
+      expect(r.notReceivedTransfer).toEqual({
+        totalOrders: 1,
+        totalAmount: 500,
+      });
     });
   });
 });

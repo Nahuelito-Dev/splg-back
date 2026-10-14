@@ -55,7 +55,8 @@ export class ReservaResponseDto {
 /** `POST /orders/:id/reject`: si había una oferta activa para ese chofer. */
 export class RechazoDeOfertaResponseDto {
   @ApiProperty({
-    description: 'false si el chofer no tenía una oferta activa del pedido',
+    description:
+      'true: el rechazo se registró (con oferta real, se re-ofrece; con asignación manual, se avisa al panel). El pedido que no existe responde 404, no `false`.',
   })
   rejected!: boolean;
 }

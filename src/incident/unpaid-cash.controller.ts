@@ -14,6 +14,7 @@ import { UnpaidCashService } from './unpaid-cash.service';
 import { IncidentPhotoService } from './incident-photo.service';
 import { IncidentMapper } from './incident.mapper';
 import { ReportUnpaidCashDto } from './dto/report-unpaid-cash.dto';
+import { MotivoDeCobroDto } from '../order/dto/payment-admin.dto';
 import { UnpaidCashResponseDto } from './dto/unpaid-cash-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
@@ -60,11 +61,50 @@ export class UnpaidCashController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReportUnpaidCashDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<UnpaidCashResponseDto> {
     const { order, incident } = await this.unpaidCash.report(
       id,
       dto,
+      user.user_id,
+      distributorId,
+    );
+    await this.incidentPhoto.firmar(incident);
+    const res = new UnpaidCashResponseDto();
+    res.orderId = order.orderId;
+    res.paymentStatus = order.paymentStatus;
+    res.incident = IncidentMapper.toDto(incident);
+    return res;
+  }
+
+  @Patch(':id/payment/register-unpaid')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'El admin informa el impago de un efectivo entregado',
+    description:
+      'Para cuando el chofer no lo informó (no lo hizo, ya no está). Mismo efecto que `PATCH /orders/{id}/payment/unpaid`: pasa el pago a `unpaid` y abre UNA incidencia `unpaid_collection` (reportada por el admin). `reason` es obligatorio (10 a 500 caracteres) y queda en el historial de estados y en la auditoría. Sólo pedidos `delivered` en efectivo con el pago `pending`; repetirlo devuelve la misma incidencia. Se cierra con `PATCH /orders/{id}/payment/resolve-unpaid`. `X-Distributor` es obligatorio para el super admin.',
+  })
+  @ApiOkResponse({ type: UnpaidCashResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Motivo ausente o inválido, el pedido no está entregado o no es en efectivo, o falta la distribuidora',
+  })
+  @ApiNotFoundResponse({
+    description: 'Pedido inexistente o de otra distribuidora',
+  })
+  @ApiConflictResponse({
+    description: 'El pago ya no está pendiente (cobrado o resuelto)',
+  })
+  async registerUnpaid(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MotivoDeCobroDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<UnpaidCashResponseDto> {
+    const { order, incident } = await this.unpaidCash.reportByAdmin(
+      id,
+      dto.reason,
       user.user_id,
       distributorId,
     );

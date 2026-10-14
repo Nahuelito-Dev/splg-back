@@ -20,6 +20,7 @@ import {
   telefonoDePrueba,
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
+import { JPG_REAL, PNG_REAL } from './setup/imagenes';
 import { S3Service } from '../../src/s3/s3.service';
 import {
   Employee,
@@ -48,14 +49,8 @@ import { ReintentosDeHuerfanosDeStorage1791070100000 } from '../../src/migration
 import { FotoDeReclamoYHuerfanosDeStorage1791070000000 } from '../../src/migrations/1791070000000-FotoDeReclamoYHuerfanosDeStorage';
 
 const PDF = Buffer.from('%PDF-1.4 contenido de prueba en S3');
-const PNG = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from('foto de prueba'),
-]);
-const JPG = Buffer.concat([
-  Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
-  Buffer.from('otra foto'),
-]);
+const PNG = PNG_REAL;
+const JPG = JPG_REAL;
 
 /** Espera (hasta ~5 s) a que se cumpla algo que ocurre en segundo plano. */
 async function esperar(condicion: () => Promise<boolean>): Promise<boolean> {
@@ -543,7 +538,11 @@ describe('S3 contra MinIO (e2e)', () => {
         const res = await fetch(link.url);
         expect(res.status).toBe(200);
         expect(res.headers.get('content-type')).toBe('image/png');
-        expect(Buffer.from(await res.arrayBuffer()).equals(PNG)).toBe(true);
+        expect(
+          Buffer.from(await res.arrayBuffer())
+            .subarray(0, 8)
+            .equals(PNG.subarray(0, 8)),
+        ).toBe(true);
       }
 
       const listado = await request(env.app.getHttpServer())

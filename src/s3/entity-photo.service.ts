@@ -12,6 +12,7 @@ import { S3Service, SignedDownload } from './s3.service';
 import { MAX_FOTO_BYTES } from './upload-limits';
 import { S3CleanupService } from './s3-cleanup.service';
 import { errorMessage } from '../common/errors/error-message';
+import { limpiarMetadatosDeImagen } from './limpiar-imagen';
 import {
   esImagenPermitida,
   extensionParaMimeType,
@@ -112,13 +113,14 @@ export class EntityPhotoService {
     verificar?: VerificarFila,
   ): Promise<void> {
     const imagen = this.validar(file);
+    const cuerpo = await limpiarMetadatosDeImagen(imagen.buffer, imagen.mime);
     const key = `${carpeta}/${randomUUID()}.${extensionParaMimeType(imagen.mime)}`;
     // Se anota la key antes de subir: si el proceso cae antes de que la entidad
     // apunte a la foto, el cron borra el objeto abandonado.
     await this.cleanup.reserveUpload(key);
     await this.storage.put({
       key,
-      body: imagen.buffer,
+      body: cuerpo,
       contentType: imagen.mime,
     });
     try {

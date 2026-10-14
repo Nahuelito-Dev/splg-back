@@ -146,4 +146,60 @@ describe('TruckLoadGateService', () => {
       );
     });
   });
+
+  describe('lock de la carga dentro de la transacción de la aceptación', () => {
+    let managerQuery: jest.Mock;
+    const manager = () => ({ query: managerQuery }) as never;
+
+    beforeEach(() => {
+      managerQuery = jest.fn().mockResolvedValue([]);
+    });
+
+    it('con manager toma FOR SHARE sobre la carga abierta ANTES de leer su estado, y lee por el mismo manager', async () => {
+      managerQuery.mockImplementation((sql: string) =>
+        Promise.resolve(sql.includes('FOR SHARE') ? [] : [enRuta()]),
+      );
+      await gate.assertPuedeAceptar('dist', 'd1', manager());
+      const sqls = managerQuery.mock.calls.map((c: [string]) => c[0]);
+      expect(sqls).toHaveLength(2);
+      expect(sqls[0]).toContain('FOR SHARE');
+      expect(sqls[0]).toContain('"truck_load"');
+      expect(sqls[1]).toContain('FROM "delivery"');
+      // Nada fuera de la transacción: el DataSource no se toca.
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('la asignación manual toma el mismo lock', async () => {
+      managerQuery.mockImplementation((sql: string) =>
+        Promise.resolve(sql.includes('FOR SHARE') ? [] : [enRuta()]),
+      );
+      await gate.assertPuedeAsignar('dist', 'd1', manager());
+      expect(
+        managerQuery.mock.calls.some((c: [string]) =>
+          c[0].includes('FOR SHARE'),
+        ),
+      ).toBe(true);
+    });
+
+    it('lo que lee bajo el lock decide: una carga devuelta no acepta', async () => {
+      managerQuery.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('FOR SHARE')
+            ? []
+            : [enRuta({ status: TruckLoadStatus.RETURNED })],
+        ),
+      );
+      await expect(
+        gate.assertPuedeAceptar('dist', 'd1', manager()),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('sin manager no toma ningún lock (las lecturas de la app)', async () => {
+      query.mockResolvedValue([enRuta()]);
+      await gate.assertPuedeAceptar('dist', 'd1');
+      expect(
+        query.mock.calls.some((c: [string]) => c[0].includes('FOR SHARE')),
+      ).toBe(false);
+    });
+  });
 });

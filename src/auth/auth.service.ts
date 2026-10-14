@@ -2,6 +2,8 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -24,8 +26,23 @@ export interface TokenDecodificado {
   sub: string;
 }
 
+/** Lo que responde el login cuando el email o la contraseña no sirven. */
+export const MENSAJE_CREDENCIALES = 'El email o la contraseña son incorrectos';
+
+/** Códigos de Firebase que significan "email o contraseña no sirven". */
+const CODIGOS_DE_CREDENCIALES = [
+  'auth/invalid-credential',
+  'auth/invalid-login-credentials',
+  'auth/wrong-password',
+  'auth/user-not-found',
+  'auth/invalid-email',
+  'auth/missing-password',
+];
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   /** App del SDK de cliente, para el acceso con email y contraseña. */
   private readonly clientApp: FirebaseApp | null;
 
@@ -61,12 +78,30 @@ export class AuthService {
         dto.password,
       );
     } catch (error) {
-      // Una cuenta deshabilitada (baja lógica, H-74) responde igual que una
-      // dada de baja o bloqueada, sin el texto de Firebase.
+      // Firebase informa `user-disabled` ANTES de validar la contraseña: darle
+      // un mensaje propio dejaría saber que la cuenta existe (y está dada de
+      // baja) a quien no la conoce. Se responde igual que a una credencial
+      // mala; una cuenta bloqueada que sí acierta la clave recibe su mensaje
+      // después, en `assertCuentaHabilitada`.
       if (errorCode(error) === 'auth/user-disabled') {
-        throw new UnauthorizedException('La cuenta no está habilitada');
+        throw new UnauthorizedException(MENSAJE_CREDENCIALES);
       }
-      throw new HttpException(errorMessage(error), HttpStatus.BAD_REQUEST);
+      const codigo = errorCode(error) ?? '';
+      // Usuario inexistente y contraseña equivocada dan la MISMA respuesta (no
+      // revela cuál de los dos fue) y nunca llevan el texto de Firebase.
+      if (CODIGOS_DE_CREDENCIALES.includes(codigo)) {
+        throw new UnauthorizedException(MENSAJE_CREDENCIALES);
+      }
+      if (codigo === 'auth/too-many-requests') {
+        throw new HttpException(
+          'Demasiados intentos fallidos: esperá unos minutos y probá de nuevo',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      this.logger.error(`El acceso falló: ${errorMessage(error)}`);
+      throw new ServiceUnavailableException(
+        'No pudimos iniciar sesión en este momento: probá de nuevo en unos minutos',
+      );
     }
 
     // Firebase sólo dice que la contraseña es correcta. Que la cuenta siga

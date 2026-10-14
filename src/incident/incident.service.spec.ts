@@ -23,6 +23,7 @@ describe('IncidentService', () => {
   let incidents: {
     create: jest.Mock;
     save: jest.Mock;
+    update: jest.Mock;
     find: jest.Mock;
     findOne: jest.Mock;
   };
@@ -36,6 +37,7 @@ describe('IncidentService', () => {
     incidents = {
       create: jest.fn((d: Partial<Incident>) => d),
       save: jest.fn((i: Incident) => Promise.resolve(i)),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
       find: jest.fn(),
       findOne: jest.fn(),
     };
@@ -114,7 +116,7 @@ describe('IncidentService', () => {
         description: 'a',
       });
       await service.update('i1', { description: 'b' });
-      expect(incidents.save).toHaveBeenCalled();
+      expect(incidents.update).toHaveBeenCalled();
     });
   });
 
@@ -217,6 +219,13 @@ describe('IncidentService', () => {
           else base.push(guardada);
           return Promise.resolve(guardada);
         }),
+        update: jest.fn(
+          (donde: { incidentId: string }, cambios: Partial<Incident>) => {
+            const i = base.find((b) => b.incidentId === donde.incidentId);
+            if (i) Object.assign(i, cambios);
+            return Promise.resolve({ affected: i ? 1 : 0 });
+          },
+        ),
         find: jest.fn(),
         findOne: jest.fn(
           ({
@@ -301,8 +310,9 @@ describe('IncidentService', () => {
     it('edita la descripción de una incidencia abierta', async () => {
       incidents.findOne.mockResolvedValue(abierta());
       await service.update('i1', { description: 'nueva' }, 'd1');
-      expect(incidents.save).toHaveBeenCalledWith(
-        expect.objectContaining({ description: 'nueva' }),
+      expect(incidents.update).toHaveBeenCalledWith(
+        { incidentId: 'i1', status: IncidentStatus.OPEN },
+        { description: 'nueva' },
       );
     });
 
@@ -313,7 +323,7 @@ describe('IncidentService', () => {
         await expect(
           service.update('i1', { description: 'x' }, 'd1'),
         ).rejects.toBeInstanceOf(ConflictException);
-        expect(incidents.save).not.toHaveBeenCalled();
+        expect(incidents.update).not.toHaveBeenCalled();
       },
     );
 
@@ -348,7 +358,7 @@ describe('IncidentService', () => {
       await expect(
         service.resolve('i1', { resolutionNote: 'x' }, 'd1'),
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(incidents.save).not.toHaveBeenCalled();
+      expect(incidents.update).not.toHaveBeenCalled();
     });
 
     it('una incidencia ya resuelta no se sobrescribe (409)', async () => {
@@ -358,37 +368,32 @@ describe('IncidentService', () => {
       await expect(
         service.resolve('i1', { resolutionNote: 'otra' }, 'd1'),
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(incidents.save).not.toHaveBeenCalled();
+      expect(incidents.update).not.toHaveBeenCalled();
     });
 
-    it('la de cobro impago no se resuelve por la puerta genérica mientras el pedido siga unpaid (409)', async () => {
-      incidents.findOne.mockResolvedValue(
-        abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
-      );
-      orders.findById.mockResolvedValue({
-        orderId: 'o1',
-        paymentStatus: PaymentStatus.UNPAID,
+    describe('la de cobro impago con el pedido unpaid', () => {
+      beforeEach(() => {
+        incidents.findOne.mockResolvedValue(
+          abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
+        );
+        orders.findById.mockResolvedValue({
+          orderId: 'o1',
+          paymentStatus: PaymentStatus.UNPAID,
+        });
       });
-      await expect(
-        service.resolve('i1', { resolutionNote: 'x' }, 'd1'),
-      ).rejects.toThrow(/Resolvé el cobro del pedido/);
-      expect(incidents.save).not.toHaveBeenCalled();
+
+      it.each([IncidentStatus.RESOLVED, IncidentStatus.DISCARDED] as const)(
+        'no se cierra como %s por la puerta genérica (409)',
+        async (status) => {
+          await expect(
+            service.resolve('i1', { resolutionNote: 'x', status }, 'd1'),
+          ).rejects.toThrow(/resolve-unpaid/);
+          expect(incidents.update).not.toHaveBeenCalled();
+        },
+      );
     });
 
-    it('la de cobro impago se puede descartar, y resolver si el pedido ya no está unpaid', async () => {
-      incidents.findOne.mockResolvedValue(
-        abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
-      );
-      orders.findById.mockResolvedValue({
-        orderId: 'o1',
-        paymentStatus: PaymentStatus.UNPAID,
-      });
-      const d = await service.resolve(
-        'i1',
-        { resolutionNote: 'dup', status: IncidentStatus.DISCARDED },
-        'd1',
-      );
-      expect(d.status).toBe(IncidentStatus.DISCARDED);
+    it('la de cobro impago se cierra por la genérica si el pedido ya no está unpaid', async () => {
       incidents.findOne.mockResolvedValue(
         abierta({ type: IncidentType.UNPAID_COLLECTION, orderId: 'o1' }),
       );
@@ -398,6 +403,27 @@ describe('IncidentService', () => {
       });
       const r = await service.resolve('i1', { resolutionNote: 'ok' }, 'd1');
       expect(r.status).toBe(IncidentStatus.RESOLVED);
+    });
+
+    it('si otro la cerró entre la lectura y la escritura, 409 y no pisa la resolución', async () => {
+      incidents.findOne.mockResolvedValue(abierta());
+      incidents.update.mockResolvedValue({ affected: 0 });
+      await expect(
+        service.resolve('i1', { resolutionNote: 'x' }, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(incidents.update).toHaveBeenCalledWith(
+        { incidentId: 'i1', status: IncidentStatus.OPEN },
+        expect.objectContaining({ status: IncidentStatus.RESOLVED }),
+      );
+      expect(incidents.save).not.toHaveBeenCalled();
+    });
+
+    it('editar tampoco pisa una resolución hecha en paralelo', async () => {
+      incidents.findOne.mockResolvedValue(abierta());
+      incidents.update.mockResolvedValue({ affected: 0 });
+      await expect(
+        service.update('i1', { description: 'x' }, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('sin status resuelve, como siempre', async () => {

@@ -1,3 +1,4 @@
+import { MENSAJE_FALTA_DISTRIBUIDORA } from '../common/decorators/current-distributor.decorator';
 import {
   BadRequestException,
   ConflictException,
@@ -56,7 +57,10 @@ export class AdminService {
    * del usuario: sin esta regla, a un cliente o un chofer se le colgaba un
    * perfil de admin de una empresa y pasaba a "pertenecer" a ella.
    */
-  async create(createAdminDto: CreateAdminDto): Promise<Admin> {
+  async create(
+    createAdminDto: CreateAdminDto,
+    distribuidoraElegida: string | null = null,
+  ): Promise<Admin> {
     const { user_id, distributor_id } = createAdminDto;
     const usuario = await this.usersService.findById(user_id);
     if (!usuario) {
@@ -77,6 +81,19 @@ export class AdminService {
       throw new BadRequestException(
         'Un admin de empresa lleva distribuidora y el super administrador no',
       );
+    }
+    // Como el resto de las escrituras del super administrador sobre cuentas de
+    // una empresa: la distribuidora sale del contexto elegido (X-Distributor), no
+    // sólo del cuerpo.
+    if (esAdminDeEmpresa) {
+      if (!distribuidoraElegida) {
+        throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+      }
+      if (distributor_id !== distribuidoraElegida) {
+        throw new BadRequestException(
+          'La distribuidora del perfil no coincide con la elegida (X-Distributor)',
+        );
+      }
     }
     if (await this.adminRepository.exists({ where: { userId: user_id } })) {
       throw new ConflictException(

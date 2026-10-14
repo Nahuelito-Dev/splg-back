@@ -207,6 +207,11 @@ describe('CancelOrderUseCase', () => {
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(stock.restituirStock).toHaveBeenCalledTimes(1);
       expect(dispatchOrchestrator.releaseOffer).not.toHaveBeenCalled();
+      expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+        expect.any(String),
+        'order:cancelled',
+        expect.objectContaining({ cancelledBy: 'customer' }),
+      );
     });
 
     it('customer no puede cancelar un pedido ya en camino', async () => {
@@ -234,8 +239,14 @@ describe('CancelOrderUseCase', () => {
       expect(stock.restituirStock).toHaveBeenCalledTimes(1);
       expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
         'order:cancelled',
-        expect.objectContaining({ orderId: 'ord-1' }),
+        expect.objectContaining({ orderId: 'ord-1', cancelledBy: 'admin' }),
         'dist-1',
+      );
+      // El cliente recibe el mismo aviso, con quién canceló.
+      expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+        expect.any(String),
+        'order:cancelled',
+        expect.objectContaining({ cancelledBy: 'admin', reason: 'motivo' }),
       );
       // Avisa también al chofer que tenía el pedido, por su user_id (no por
       // el id de su perfil de reparto).

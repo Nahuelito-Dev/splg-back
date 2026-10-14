@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsEnum,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -42,6 +43,10 @@ export class CreateOrderDto {
 
   @ApiProperty({ description: 'Ítems del pedido', type: [OrderItemDto] })
   @IsArray()
+  @ArrayUnique((item: OrderItemDto) => item.gasCylinderId, {
+    message:
+      'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',
+  })
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
   items!: OrderItemDto[];

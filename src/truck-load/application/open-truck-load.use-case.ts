@@ -16,7 +16,7 @@ import {
   DocumentSequenceService,
 } from '../../document-sequence/document-sequence.service';
 import { EmployeeService } from '../../employee/employee.service';
-import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { WarehouseService } from '../../stock/application/warehouse.service';
 import { CargaInvalidaError } from '../domain/errors/truck-load.errors';

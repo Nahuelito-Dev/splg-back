@@ -288,4 +288,30 @@ describe('GasCylinderService', () => {
       expect.objectContaining({ isActive: false }),
     );
   });
+
+  describe('leerParaCotizar', () => {
+    it('devuelve el producto con sus promociones, sin lock ni escritura', async () => {
+      productos.findOne.mockResolvedValue(producto(10));
+      const r = await service.leerParaCotizar('g1');
+      expect(r.gasCylinderId).toBe('g1');
+      expect(productos.findOne).toHaveBeenCalledWith({
+        where: { gasCylinderId: 'g1' },
+        relations: ['promotions'],
+      });
+      expect(txManager.createQueryBuilder).not.toHaveBeenCalled();
+      expect(productos.save).not.toHaveBeenCalled();
+    });
+
+    it('un producto inexistente es 404', async () => {
+      productos.findOne.mockResolvedValue(null);
+      await expect(service.leerParaCotizar('g1')).rejects.toThrow('g1');
+    });
+
+    it('no controla el stock (lo hace quien cotiza, después de validar la distribuidora) ni lo descuenta', async () => {
+      const p = producto(2);
+      productos.findOne.mockResolvedValue(p);
+      await expect(service.leerParaCotizar('g1')).resolves.toBe(p);
+      expect(p.stock).toBe(2);
+    });
+  });
 });

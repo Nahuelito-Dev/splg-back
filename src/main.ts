@@ -6,9 +6,8 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import basicAuth from 'express-basic-auth';
+import { montarDocumentacion } from './common/config/documentacion';
 
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
@@ -150,38 +149,7 @@ async function bootstrap() {
     ),
   );
 
-  const swaggerUser = process.env.SWAGGER_USER;
-  const swaggerPass = process.env.SWAGGER_PASSWORD;
-
-  if (swaggerUser && swaggerPass) {
-    app.use(
-      ['/docs', '/docs-json'],
-      basicAuth({
-        challenge: true,
-        users: {
-          [swaggerUser]: swaggerPass,
-        },
-      }),
-    );
-    logger.log('🔐 Swagger protegido con Basic Auth');
-  } else {
-    logger.warn('⚠️ SWAGGER_USER o SWAGGER_PASSWORD no configurados.');
-  }
-
-  const config = new DocumentBuilder()
-    .setTitle('Gas Delivery API')
-    .setDescription('API privada para sistema de delivery de gas')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      filter: true,
-    },
-  });
+  montarDocumentacion(app);
 
   // Adapter Redis para Socket.io: imprescindible para escalar a MÁS DE UNA
   // instancia. Sin esto, las rooms (driver_<id>, customer_<id>) viven solo en

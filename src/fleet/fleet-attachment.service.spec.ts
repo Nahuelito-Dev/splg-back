@@ -11,6 +11,7 @@ import { FleetTaskService } from './fleet-task.service';
 import { S3Service } from '../s3/s3.service';
 import { S3CleanupService } from '../s3/s3-cleanup.service';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
+import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
 
 function archivo(over: Partial<Express.Multer.File> = {}): Express.Multer.File {
   return {
@@ -86,6 +87,32 @@ describe('FleetAttachmentService', () => {
   });
 
   describe('upload', () => {
+    it('una foto con GPS se sube sin EXIF y el registro guarda el tamaño real', async () => {
+      const foto = await imagenesDePrueba.jpeg(true);
+      expect(await tieneExif(foto)).toBe(true);
+      const result = await service.upload(
+        't1',
+        'd1',
+        archivo({ mimetype: 'image/jpeg', buffer: foto, size: foto.length }),
+        'u1',
+      );
+      const [subido] = storage.put.mock.calls[0] as [{ body: Buffer }];
+      expect(await tieneExif(subido.body)).toBe(false);
+      expect(result.sizeBytes).toBe(subido.body.length);
+    });
+
+    it('un PDF se sube sin tocarse', async () => {
+      const pdf = Buffer.from('%PDF-1.4 contenido');
+      await service.upload(
+        't1',
+        'd1',
+        archivo({ buffer: pdf, size: pdf.length }),
+        'u1',
+      );
+      const [subido] = storage.put.mock.calls[0] as [{ body: Buffer }];
+      expect(subido.body).toBe(pdf);
+    });
+
     it('sube un PDF válido y guarda el registro', async () => {
       const result = await service.upload('t1', 'd1', archivo(), 'u1');
 

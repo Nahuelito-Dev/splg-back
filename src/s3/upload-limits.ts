@@ -7,6 +7,13 @@ import {
   NestInterceptor,
   PayloadTooLargeException,
 } from '@nestjs/common';
+import { applyDecorators, SetMetadata, UseInterceptors } from '@nestjs/common';
+import { ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import {
+  IDEMPOTENT_DESPUES_DE_MULTER_KEY,
+  IDEMPOTENT_KEY,
+} from '../common/decorators/idempotent.decorator';
+import { IdempotencyDespuesDeMulterInterceptor } from '../common/interceptors/idempotency.interceptor';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 import { Observable } from 'rxjs';
@@ -83,4 +90,28 @@ export function archivoConTope(maxBytes: number, tipo: 'foto' | 'archivo') {
     }
   }
   return mixin(ArchivoConTope);
+}
+
+/**
+ * Subida de un archivo idempotente (`Idempotency-Key`): multer primero y la
+ * idempotencia después, para que la huella incluya el archivo. Sustituye a
+ * `@Idempotent()` + `@UseInterceptors(archivoConTope(...))` en las rutas
+ * multipart.
+ */
+export function ArchivoIdempotente(
+  maxBytes: number,
+  tipo: 'foto' | 'archivo',
+): MethodDecorator {
+  return applyDecorators(
+    SetMetadata(IDEMPOTENT_KEY, true),
+    SetMetadata(IDEMPOTENT_DESPUES_DE_MULTER_KEY, true),
+    UseInterceptors(
+      archivoConTope(maxBytes, tipo),
+      IdempotencyDespuesDeMulterInterceptor,
+    ),
+    ApiUnprocessableEntityResponse({
+      description:
+        'La `Idempotency-Key` ya se usó con otro archivo u otros datos.',
+    }),
+  );
 }

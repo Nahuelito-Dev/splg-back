@@ -8,9 +8,13 @@ import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import Redlock, { Lock } from 'redlock';
 import { redisConnectionOptions } from '../common/redis/redis-connection';
+import { errorMessage } from '../common/errors/error-message';
 
 /** Cuánto espera el health check la respuesta de Redis antes de darlo por caído. */
 const PING_TIMEOUT_MS = 2000;
+
+/** Vigencia de la hora de la última ubicación del chofer. */
+const LOCATION_AT_TTL_SEC = 24 * 60 * 60;
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -104,21 +108,33 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     fn: () => Promise<T>,
   ): Promise<{ obtenido: true; valor: T } | { obtenido: false }> {
     let ejecutando = false;
+    let resultado: { valor: T } | undefined;
+    let falloLaOperacion = false;
+    let error: unknown;
     try {
-      const valor = await this.redlock.using(
-        [`lock:${key}`],
-        ttlMs,
-        async () => {
-          ejecutando = true;
-          return fn();
-        },
-      );
-      return { obtenido: true, valor };
+      await this.redlock.using([`lock:${key}`], ttlMs, async () => {
+        ejecutando = true;
+        // Lo que falle acá es de la operación; lo que falle después (renovar o
+        // soltar el lock) no puede pisar su resultado.
+        try {
+          resultado = { valor: await fn() };
+        } catch (e) {
+          falloLaOperacion = true;
+          error = e;
+        }
+      });
     } catch (err) {
-      // Sin lock (otro proceso lo tiene): no es un error. Si falló `fn`, sí.
+      // Sin lock (otro proceso lo tiene): no es un error.
       if (!ejecutando) return { obtenido: false };
-      throw err;
+      // La operación ya corrió: un error al renovar o soltar el lock se
+      // registra, pero no se convierte en un 500 de una operación confirmada.
+      this.logger.warn(
+        `Redlock: falló al renovar o soltar el lock "${key}": ${errorMessage(err)}`,
+      );
     }
+    if (falloLaOperacion) throw error;
+    if (!resultado) return { obtenido: false };
+    return { obtenido: true, valor: resultado.valor };
   }
 
   /**
@@ -225,6 +241,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     // Redis usa formato: Longitud, Latitud, ID
     // El key 'drivers:locations' es donde se guardan todos
     await this.client.geoadd('drivers:locations', lng, lat, driverId);
+    // El radar guarda la posición pero no cuándo: se anota aparte (vence a las
+    // 24 h) para poder decir "última ubicación conocida de las HH:MM".
+    await this.client.setex(
+      this.driverLocationAtKey(driverId),
+      LOCATION_AT_TTL_SEC,
+      new Date().toISOString(),
+    );
 
     // Opcional: Guardar metadata extra si la necesitas (ej: estado) en un hash separado
     // await this.client.hset(`driver:${driverId}:info`, 'status', 'AVAILABLE');
@@ -261,5 +284,24 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    */
   async removeDriver(driverId: string) {
     await this.client.zrem('drivers:locations', driverId);
+    await this.client.del(this.driverLocationAtKey(driverId));
+  }
+
+  /**
+   * Última posición conocida de un chofer en el radar, con el momento en que se
+   * registró (`at`, ISO; `null` si la posición es de antes de que se anotara).
+   * `null` si no está en el radar.
+   */
+  async getDriverLastLocation(
+    driverId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null> {
+    const [pos] = await this.client.geopos('drivers:locations', driverId);
+    if (!pos) return null;
+    const at = await this.client.get(this.driverLocationAtKey(driverId));
+    return { lat: Number(pos[1]), lng: Number(pos[0]), at };
+  }
+
+  private driverLocationAtKey(driverId: string): string {
+    return `driver:location-at:${driverId}`;
   }
 }

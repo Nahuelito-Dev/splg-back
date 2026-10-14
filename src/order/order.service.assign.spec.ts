@@ -11,6 +11,7 @@ import type { UpdateOrderStatusUseCase } from './application/update-order-status
 import type { CancelOrderUseCase } from './application/cancel-order.use-case';
 import type { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import type { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { conRespuestaVigilada } from '../common/interceptors/respuesta-incompleta';
 import type { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import type { NotificationPort } from './domain/ports/notification.port';
 import type { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
@@ -22,6 +23,9 @@ import type { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.serv
  * lock pesimista (punto 2), cierra ofertas en curso del pedido (punto 5) y
  * avisa al chofer anterior si reasigna (punto 7).
  */
+/** La hora del servidor de la base, distinta a propósito de la de Node. */
+const HORA_DE_LA_BASE = new Date('2030-01-01T10:00:00.000Z');
+
 describe('OrderService · asignación manual', () => {
   const PEDIDO = 'f1f1f1f1-0000-4000-8000-000000000002';
   const CHOFER = 'd1d1d1d1-0000-4000-8000-000000000004';
@@ -55,6 +59,7 @@ describe('OrderService · asignación manual', () => {
     setLock: jest.Mock;
     leftJoinAndSelect: jest.Mock;
     where: jest.Mock;
+    andWhere: jest.Mock;
     getOne: jest.Mock;
   };
   let truckGate: { assertPuedeAsignar: jest.Mock };
@@ -99,6 +104,7 @@ describe('OrderService · asignación manual', () => {
       setLock: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
       getOne: jest.fn(() => Promise.resolve(makeLockedOrder())),
     };
     queryRunner = {
@@ -109,10 +115,15 @@ describe('OrderService · asignación manual', () => {
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
         // El lock del chofer (`bloquearChoferes`): todos los pedidos existen y están vigentes.
-        query: jest.fn((_sql: string, [ids]: [string[]]) =>
-          Promise.resolve(
-            ids.map((id) => ({ delivery_id: id, deleted: false })),
-          ),
+        query: jest.fn((sql: string, params?: [string[]]) =>
+          sql.includes('clock_timestamp')
+            ? Promise.resolve([{ ahora: HORA_DE_LA_BASE }])
+            : Promise.resolve(
+                (params?.[0] ?? []).map((id) => ({
+                  delivery_id: id,
+                  deleted: false,
+                })),
+              ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
         // Devuelve lo mismo que se guardó, como hace TypeORM.
@@ -159,6 +170,7 @@ describe('OrderService · asignación manual', () => {
       dataSource as unknown as DataSource,
       fleetGate as unknown as FleetDispatchLockService,
       truckGate as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {} as never,
     );
     // La respuesta final releé el pedido; en vez de volver a pedir el lock
     // (consumiría la cola de `mockResolvedValueOnce` de cada test), devuelve
@@ -167,6 +179,59 @@ describe('OrderService · asignación manual', () => {
       const calls = queryRunner.manager.save.mock.calls;
       return Promise.resolve(calls[calls.length - 1][0]);
     });
+  });
+
+  it('con distribuidora, el lock filtra por ella; sin ella no agrega filtro', async () => {
+    await service.assignDelivery(PEDIDO, CHOFER, 'dist-1');
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'ord.distributorId = :distributorId',
+      { distributorId: 'dist-1' },
+    );
+    queryBuilder.andWhere.mockClear();
+    await service.assignDelivery(PEDIDO, CHOFER);
+    expect(queryBuilder.andWhere).not.toHaveBeenCalled();
+  });
+
+  it('acceptedAt de la asignación sale del reloj de la base, no del de Node', async () => {
+    const result = await service.assignDelivery(PEDIDO, CHOFER);
+    expect(result.acceptedAt).toEqual(HORA_DE_LA_BASE);
+  });
+
+  it('repetir la asignación al MISMO chofer no regenera el código ni el acceptedAt (el QR sigue sirviendo)', async () => {
+    const asignado = makeLockedOrder({
+      status: OrderStatus.ACCEPTED,
+      deliveryId: CHOFER,
+      deliveryCode: 'CODIGO-VIEJO',
+      acceptedAt: new Date('2030-01-01T09:00:00.000Z'),
+    });
+    queryBuilder.getOne.mockResolvedValue(asignado);
+    jest.spyOn(service, 'findOne').mockResolvedValue(asignado);
+    const result = await service.assignDelivery(PEDIDO, CHOFER);
+    expect(result.deliveryCode).toBe('CODIGO-VIEJO');
+    expect(result.acceptedAt).toEqual(new Date('2030-01-01T09:00:00.000Z'));
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    expect(dispatch.notifyDriverNewOrder).not.toHaveBeenCalled();
+  });
+
+  it('si falla la relectura después del commit, responde con el pedido asignado (no un 500 que invite a reintentar)', async () => {
+    jest
+      .spyOn(service, 'findOne')
+      .mockRejectedValue(new Error('conexión caída'));
+    const { valor: result, incompleta } = await conRespuestaVigilada(() =>
+      service.assignDelivery(PEDIDO, CHOFER),
+    );
+    expect(result.status).toBe(OrderStatus.ACCEPTED);
+    expect(result.deliveryCode).toMatch(/\S{4,}/);
+    expect(incompleta).toBe(true);
+  });
+
+  it('si falla un aviso posterior al commit, la asignación igual responde bien', async () => {
+    dispatch.notifyAdmins.mockImplementation(() => {
+      throw new Error('socket caído');
+    });
+    const result = await service.assignDelivery(PEDIDO, CHOFER);
+    expect(result.status).toBe(OrderStatus.ACCEPTED);
   });
 
   it('genera el código de entrega para el QR', async () => {
@@ -201,7 +266,9 @@ describe('OrderService · asignación manual', () => {
         delivery: { deliveryId: CHOFER, userId: CHOFER_USER_ID } as never,
       }),
     );
-    const segundo = (await service.assignDelivery(PEDIDO, CHOFER)).deliveryCode;
+    // A otro chofer: ahí sí se regenera el código (al mismo, no: ver más arriba).
+    const segundo = (await service.assignDelivery(PEDIDO, CHOFER_B))
+      .deliveryCode;
 
     expect(segundo).not.toBe(primero);
   });
@@ -380,7 +447,12 @@ describe('OrderService · asignación manual', () => {
     await expect(service.assignDelivery(PEDIDO, CHOFER)).rejects.toThrow(
       'El chofer no tiene la carga del día abierta',
     );
-    expect(truckGate.assertPuedeAsignar).toHaveBeenCalledWith('dist', CHOFER);
+    // Con la transacción de la asignación: el lock de la carga es de ella.
+    expect(truckGate.assertPuedeAsignar).toHaveBeenCalledWith(
+      'dist',
+      CHOFER,
+      queryRunner.manager,
+    );
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
@@ -413,6 +485,7 @@ describe('OrderService · asignación manual', () => {
       {
         assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {} as never,
     );
 
     await expect(service.assignDelivery(PEDIDO, CHOFER)).rejects.toThrow(

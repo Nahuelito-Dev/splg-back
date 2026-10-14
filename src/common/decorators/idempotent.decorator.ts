@@ -4,6 +4,14 @@ import { ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 export const IDEMPOTENT_KEY = 'idempotent';
 
 /**
+ * Marca las rutas multipart: la idempotencia corre DESPUÉS de multer (que es
+ * interceptor de método), porque antes `request.file` y `request.body` todavía
+ * no existen y no se puede comparar el archivo. El interceptor global las
+ * saltea y las atiende `IdempotencyDespuesDeMulterInterceptor`.
+ */
+export const IDEMPOTENT_DESPUES_DE_MULTER_KEY = 'idempotentDespuesDeMulter';
+
+/**
  * Marca un endpoint como idempotente. El IdempotencyInterceptor leerá
  * el header `Idempotency-Key` (UUID v4) y:
  *

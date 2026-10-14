@@ -23,6 +23,7 @@ import {
   firmaCoincideConMimeType,
   MAX_ATTACHMENT_SIZE_BYTES,
 } from '../common/utils/attachment-rules';
+import { limpiarMetadatosDeImagen } from '../s3/limpiar-imagen';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import type { Disposicion } from '../s3/content-disposition';
@@ -89,13 +90,14 @@ export class AttachmentService {
       );
     }
 
+    const cuerpo = await limpiarMetadatosDeImagen(file.buffer, file.mimetype);
     const key = `attachments/${distributorId}/${ownerType}/${ownerId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
     // Se anota la key antes de subir: si el proceso cae antes de guardar la
     // referencia, el cron borra el objeto abandonado.
     await this.cleanup.reserveUpload(key);
     await this.storage.put({
       key,
-      body: file.buffer,
+      body: cuerpo,
       contentType: file.mimetype,
     });
 
@@ -109,7 +111,7 @@ export class AttachmentService {
         decodificarNombreDeArchivo(file.originalname),
       ),
       mimeType: file.mimetype,
-      sizeBytes: file.size,
+      sizeBytes: cuerpo.length,
       uploadedByUserId: actor.userId,
     });
 

@@ -34,6 +34,7 @@ import { UpdateCylinderDto } from './dto/update-cylinder.dto';
 import { RetireCylinderDto } from './dto/retire-cylinder.dto';
 import { AssignCylindersDto } from './dto/assign-cylinders.dto';
 import { QueryCylindersDto } from './dto/query-cylinders.dto';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -66,6 +67,7 @@ export class CylinderController {
   }
 
   @Post('assign')
+  @Idempotent()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary:

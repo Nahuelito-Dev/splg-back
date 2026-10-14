@@ -86,6 +86,13 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return count > 0;
   }
 
+  async hasHeldOrder(orderId: string, driverId: string): Promise<boolean> {
+    const count = await this.repo.count({
+      where: { orderId, driverId, status: DispatchOfferStatus.ACCEPTED },
+    });
+    return count > 0;
+  }
+
   async recordDriverHeldOrder(
     orderId: string,
     driverId: string,

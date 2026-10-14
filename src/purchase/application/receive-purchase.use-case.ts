@@ -2,7 +2,7 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import {
   DocType,

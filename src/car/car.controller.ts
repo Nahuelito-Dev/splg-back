@@ -136,7 +136,7 @@ export class CarController {
   async uploadPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<CarResponseDto> {
     return this.toDto(await this.carPhoto.subir(id, distributorId, file));
   }
@@ -153,7 +153,7 @@ export class CarController {
   @ApiNotFoundResponse({ description: 'Car not found' })
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<CarResponseDto> {
     return this.toDto(await this.carPhoto.quitar(id, distributorId));
   }

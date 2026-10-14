@@ -97,6 +97,9 @@ export class OrderMapper {
     dto.zoneSurcharge = recargoDeZonaDe(order);
     dto.subtotalItems = Number(order.subtotalItems ?? 0);
     dto.vehicle = vehiculoDe(order);
+    // El chofer sólo se agrega en la lectura individual (ver `OrderService.getOne`).
+    dto.driver = null;
+    dto.cancelledBy = null;
 
     // Status Mapping
     dto.status = this.mapStatus(order.status);

@@ -1,7 +1,7 @@
-import { HttpException, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { AuthService } from './auth.service';
+import { AuthService, MENSAJE_CREDENCIALES } from './auth.service';
 import { AdminService } from '../admin/admin.service';
 import { UsersService } from '../users/users.service';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
@@ -75,14 +75,52 @@ describe('AuthService', () => {
     expect(JSON.stringify(sesion)).not.toContain('no-tiene-que-salir');
   });
 
-  it('credenciales incorrectas son un 400', async () => {
-    signIn.mockRejectedValue(new Error('auth/invalid-credential'));
-    await expect(
-      service.login({ email: 'ana@splg.com', password: 'mal' }),
-    ).rejects.toBeInstanceOf(HttpException);
+  describe('credenciales incorrectas', () => {
+    const conCodigo = (code: string) =>
+      Object.assign(new Error(`Firebase: Error (${code}).`), { code });
+    const intentar = () =>
+      service
+        .login({ email: 'ana@splg.com', password: 'mal' })
+        .catch((e: unknown) => e) as Promise<UnauthorizedException>;
+
+    it.each([
+      'auth/invalid-credential',
+      'auth/wrong-password',
+      'auth/user-not-found',
+      'auth/invalid-email',
+    ])(
+      '%s es 401 con un mensaje propio, sin el texto de Firebase',
+      async (code) => {
+        signIn.mockRejectedValue(conCodigo(code));
+        const error = await intentar();
+        expect(error).toBeInstanceOf(UnauthorizedException);
+        expect(error.message).toBe('El email o la contraseña son incorrectos');
+        expect(error.message).not.toContain('Firebase');
+      },
+    );
+
+    it('usuario inexistente y contraseña equivocada responden exactamente lo mismo', async () => {
+      signIn.mockRejectedValue(conCodigo('auth/user-not-found'));
+      const inexistente = await intentar();
+      signIn.mockRejectedValue(conCodigo('auth/wrong-password'));
+      const equivocada = await intentar();
+      expect(inexistente.getResponse()).toEqual(equivocada.getResponse());
+    });
+
+    it('demasiados intentos es 429 y otro error del proveedor es 503, sin su texto', async () => {
+      signIn.mockRejectedValue(conCodigo('auth/too-many-requests'));
+      const limite = await intentar();
+      expect(limite.getStatus()).toBe(429);
+      signIn.mockRejectedValue(
+        new Error('Firebase: Error (auth/network-request-failed).'),
+      );
+      const caido = await intentar();
+      expect(caido.getStatus()).toBe(503);
+      expect(caido.message).not.toContain('Firebase');
+    });
   });
 
-  it('una cuenta deshabilitada en Firebase es 401, sin el texto de Firebase', async () => {
+  it('una cuenta deshabilitada en Firebase es 401 con la misma respuesta que una credencial mala, sin revelar que existe', async () => {
     signIn.mockRejectedValue(
       Object.assign(new Error('Firebase: Error (auth/user-disabled).'), {
         code: 'auth/user-disabled',
@@ -90,9 +128,7 @@ describe('AuthService', () => {
     );
     await expect(
       service.login({ email: 'ana@splg.com', password: 'x' }),
-    ).rejects.toThrow(
-      new UnauthorizedException('La cuenta no está habilitada'),
-    );
+    ).rejects.toThrow(new UnauthorizedException(MENSAJE_CREDENCIALES));
   });
 
   it('una cuenta bloqueada no recibe token', async () => {

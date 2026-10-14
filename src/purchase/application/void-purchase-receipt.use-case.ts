@@ -3,7 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { StockLedgerPort } from '../../stock/domain/ports/stock-ledger.port';
-import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import {

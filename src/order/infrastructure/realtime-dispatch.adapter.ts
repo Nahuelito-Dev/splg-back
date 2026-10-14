@@ -38,6 +38,15 @@ export class RealtimeDispatchAdapter extends RealtimeDispatchPort {
     return this.redisService.updateDriverLocation(driverUserId, lat, lng);
   }
 
+  async lastDriverLocation(
+    driverUserId: string,
+    orderId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null> {
+    const activo = await this.redisService.getDriverActiveOrder(driverUserId);
+    if (activo?.orderId !== orderId) return null;
+    return this.redisService.getDriverLastLocation(driverUserId);
+  }
+
   notifyDriverNewOrder(driverId: string, payload: unknown): void {
     this.driversGateway.notifyNewOrder(driverId, payload);
   }
