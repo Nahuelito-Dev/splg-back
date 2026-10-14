@@ -22,6 +22,7 @@ import { RegistroService } from '../src/registro/registro.service';
 import type { RolRegistrable } from '../src/registro/politica-de-registro';
 import { Distributor } from '../src/distributor/entities/distributor.entity';
 import { CUENTAS_CON_LOGIN } from './lib/cuentas-demo';
+import { assignStaffToDistributor } from './lib/staff-demo';
 import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
 import { sembrarFisico } from './lib/stock-demo';
 
@@ -254,24 +255,6 @@ async function ensureDistributor(
   } catch {
     return distributorService.create(data as any);
   }
-}
-
-/**
- * Asigna el perfil de staff (admin o delivery) de `email` a una distribuidora.
- * Idempotente: sobrescribe el distributor_id del perfil.
- */
-async function assignStaffToDistributor(
-  dataSource: DataSource,
-  email: string,
-  role: 'admin' | 'super_admin' | 'customer' | 'delivery',
-  distributorId: string,
-): Promise<void> {
-  const table = role === 'delivery' ? 'delivery' : 'admin';
-  await dataSource.query(
-    `UPDATE ${table} SET distributor_id = $1
-       WHERE user_id = (SELECT user_id FROM "user" WHERE email = $2)`,
-    [distributorId, email],
-  );
 }
 
 /** Siembra un catálogo mínimo para la distribuidora demo (si no tiene). */
