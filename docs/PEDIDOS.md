@@ -140,10 +140,56 @@ lo usa para retomar al abrir en lugar de recorrer `GET /orders/delivery/:deliver
 (`customer` o `admin`) igual que la lectura posterior. Si cancela el chofer el pedido vuelve a
 `pending` y `cancelledBy` es `null`.
 
+## Editar un pedido — `PATCH /orders/:id`
+
+Lo pueden usar el **cliente dueño**, el admin y el super admin (el chofer: 403). Idempotente
+(`Idempotency-Key`). Cuerpo (todo opcional): `items` (reemplaza TODOS los renglones),
+`addressId`, `timeSlotId` (`null` la saca), `scheduledDate`, `paymentMethod` y `notes`.
+
+- **Cuándo:** sólo con el pedido `pending` **sin chofer** (ni oferta aceptada) y sin pago
+  online (`mercadopago` o cobro ya generado/pagado). Si no, **409**. Al cliente, si el pedido
+  ya lo tomó un repartidor, el mensaje es `El pedido ya fue tomado por un repartidor: no se
+puede modificar`. No se puede pasar un pedido a MercadoPago al editarlo (400).
+- **Dueño:** el cliente sólo edita lo suyo; un pedido ajeno responde **404** (igual que
+  `GET /orders/:id`). La distribuidora (`X-Distributor`) es opcional para el cliente.
+- **Precio:** siempre del servidor. El cuerpo no lleva precios (`unitPrice`/`totalAmount` no
+  se usan): el total se recalcula con las mismas funciones que el alta y `POST /orders/quote`
+  (promociones, recargo de zona —si cambia la dirección—, recargo del medio de pago).
+- **Stock:** la reserva se ajusta por la diferencia neta de cada garrafa (400 si no alcanza).
+- **Carrera con la aceptación del chofer:** la edición toma `FOR UPDATE` sobre el pedido y
+  re-chequea el estado adentro; la aceptación y la asignación manual también lo toman y
+  **releen los renglones después del lock** (un JOIN que espera el lock los traía viejos y
+  el `save` desvinculaba los nuevos). Gana quien toma el lock primero: o el chofer se queda
+  con el pedido original y la edición responde 409, o la edición entra y el chofer acepta el
+  pedido ya editado.
+- **Lock del despacho:** la edición corre bajo el lock Redis `dispatch:offer:<id>`, el mismo de
+  `offerToNextDriver`. Si lo tiene el despacho u otra edición, **reintenta hasta ~3 s** (con
+  jitter) y recién entonces responde **409** `El pedido se está despachando en este momento`.
+  Dos ediciones simultáneas se aplican en serie con el stock exacto; el despacho no reintenta.
+- **Cupo:** con la misma franja y fecha del pedido no se valida el cupo (ni "terminó"); si
+  cambian, se valida el cupo nuevo. Sin `scheduledDate` en el pedido ni en el cuerpo no se
+  asigna fecha. Lo mismo hace la cotización de edición.
+- **Despacho:** si había ofertas en curso se vencen (`superseded`), se avisa a esos choferes
+  (`order:cancelled` al chofer) y el pedido se vuelve a ofrecer con los datos nuevos.
+- **Historial:** cuando edita el cliente queda una fila de anotación (origen = destino):
+  `Pedido modificado por el cliente: renglones, notas. Total: 2000 → 5000`.
+- **Avisos:** `order:updated` al panel (admins de la distribuidora) y, si cambió el total, al
+  cliente (`{ orderId, totalAmount, previousTotalAmount }`).
+- **Auditoría:** el pedido y sus renglones pasan por `save`/`remove`: el subscriber de
+  auditoría los registra, y el request entero queda en el log de auditoría HTTP.
+
 ## Cotización — `POST /orders/quote`
 
 Mismo cuerpo que `POST /orders`; sólo `items` y `paymentMethod` son obligatorios. Con `addressId`
-(el admin además manda `customerId`) incluye el recargo de la zona. Respuesta `200`:
+(el admin además manda `customerId`) incluye el recargo de la zona. Respuesta `200`.
+
+**Cotización de edición:** con `orderId` en el cuerpo cotiza cómo quedaría ese pedido al editarlo
+con `PATCH /orders/:id`, con las mismas reglas (lo que cotiza bien, se guarda): el pedido tiene
+que ser del cliente que cotiza (o de la distribuidora del staff), si no **404**; si no es
+editable, **409** con el mensaje del PATCH. El stock se compara por la **diferencia** contra lo
+que el pedido ya tiene reservado (cantidad igual o menor siempre alcanza); la franja y la fecha
+sólo se validan si cambian; lo que el cuerpo no trae (dirección y zona, seña) se toma del pedido.
+No escribe nada.
 
 ```json
 {
@@ -232,7 +278,7 @@ rol chofer por otra vía.
 | `order:cancelled`        | cancela el cliente o un admin (los vencimientos automáticos —pago, reserva— **no** emiten el evento: el cliente se entera al leer el pedido, con `cancelledBy: system`) | `{ orderId, status: "cancelled", reason, cancelledBy }`                                                |
 | `order:searching-driver` | el chofer libera el pedido y vuelve a buscarse                                                                                                                          | `{ orderId, status: "pending" }`                                                                       |
 | `order:driver-location`  | cada posición del chofer mientras el pedido está en camino                                                                                                              | `{ orderId, driverId, lat, lng, at }`                                                                  |
-| `order:updated`          | un admin edita el pedido y cambia el total                                                                                                                              | `{ orderId, totalAmount, previousTotalAmount }`                                                        |
+| `order:updated`          | el cliente o un admin editan el pedido y cambia el total                                                                                                                | `{ orderId, totalAmount, previousTotalAmount }`                                                        |
 | `order:payment-approved` | MercadoPago aprueba el pago o la seña                                                                                                                                   | `{ orderId, tipo: "deposit" \| "payment", paymentStatus, updatedAt }`                                  |
 
 `reason` de `order:cancelled` es el motivo que se dio, o `Cancelado por <rol>` si no hubo.

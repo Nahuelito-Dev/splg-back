@@ -1,7 +1,7 @@
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { ForbiddenException } from '@nestjs/common';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
-import { OrderStatus } from '../entities/order.entity';
+import { Order, OrderStatus } from '../entities/order.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
 
 /**
@@ -38,6 +38,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
     release: jest.Mock;
     manager: {
       createQueryBuilder: jest.Mock;
+      find: jest.Mock;
       save: jest.Mock;
       insert: jest.Mock;
       query: jest.Mock;
@@ -96,6 +97,11 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
               ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
+        // Los renglones se releen después del lock, aparte del JOIN.
+        find: jest.fn(
+          async () =>
+            ((await queryBuilder.getOne()) as Order | null)?.items ?? [],
+        ),
         save: jest.fn((o: unknown) => Promise.resolve(o)),
         insert: jest.fn().mockResolvedValue(undefined),
       },

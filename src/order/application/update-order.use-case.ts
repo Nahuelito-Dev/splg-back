@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { diaArgentino } from '../../common/utils/dias-argentina';
@@ -23,9 +24,31 @@ import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import type { ZonaParaRecargo } from '../../coverage-zone/coverage-zone-pricing.service';
-import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
-import { motivoNoEditable } from '../domain/order-editable';
+import {
+  MENSAJE_NO_PASAR_A_MERCADOPAGO,
+  MENSAJE_SENA_PAGADA,
+  agendaDeEdicion,
+  mensajeDeNoEditable,
+  motivoNoEditable,
+  zonaGuardada,
+} from '../domain/order-editable';
+import { OrderStatusHistory } from '../entities/order-status-history.entity';
+import { RoleType } from '../../common/constants/role-type.enum';
+import { RedisService } from '../../redis/redis.service';
+import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
+import { errorMessage } from '../../common/errors/error-message';
+
+/** Lo que la transacción de la edición devuelve para los efectos posteriores. */
+type EdicionAplicada = {
+  sinCambios: false;
+  orderId: string;
+  saved: Order;
+  totalAnterior: number;
+  ofertasCerradas: DispatchOffer[];
+  cambioRelevante: boolean;
+};
+type ResultadoEdicion = EdicionAplicada | { sinCambios: true; orderId: string };
 
 /**
  * Caso de uso: editar un pedido PENDIENTE (sin chofer asignado).
@@ -37,11 +60,17 @@ import { motivoNoEditable } from '../domain/order-editable';
  * sin tocar stock. Si cambian los renglones, se devuelve el stock viejo y se
  * reserva el nuevo en la misma transacción.
  *
+ * Lo usan el admin y el CLIENTE DUEÑO. Para el cliente: un pedido ajeno es 404
+ * (como `GET /orders/:id`), el 409 por chofer asignado lleva un mensaje propio
+ * y la edición deja una anotación en el historial de estados con el detalle.
+ *
  * Fuera de alcance a propósito: pedidos con pago online (MercadoPago), porque
  * el checkout ya creado quedaría con otro monto.
  */
 @Injectable()
 export class UpdateOrderUseCase {
+  private readonly logger = new Logger(UpdateOrderUseCase.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly create: CreateOrderUseCase,
@@ -51,6 +80,7 @@ export class UpdateOrderUseCase {
     private readonly orders: OrderRepositoryPort,
     private readonly realtime: RealtimeDispatchPort,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    private readonly redis: RedisService,
   ) {}
 
   async execute(
@@ -58,7 +88,42 @@ export class UpdateOrderUseCase {
     dto: UpdateOrderDto,
     actorUserId: string,
     distributorId: string | null,
+    actorRole: RoleType = RoleType.ADMIN,
   ): Promise<Order> {
+    // Mismo lock que el despacho (`DispatchOrchestratorService.offerToNextDriver`):
+    // una oferta no se arma con la lectura de antes de la edición ni se inserta
+    // después de que ésta vencía las ofertas vivas. Si el despacho está
+    // ofreciendo este pedido (o hay otra edición en curso) se espera unos segundos
+    // antes de responder 409.
+    const bloqueo = await this.redis.withLock(
+      `dispatch:offer:${orderId}`,
+      UpdateOrderUseCase.LOCK_TTL_MS,
+      () =>
+        this.enTransaccion(orderId, dto, actorUserId, distributorId, actorRole),
+      UpdateOrderUseCase.LOCK_ESPERA_MS,
+    );
+    if (!bloqueo.obtenido) {
+      throw new ConflictException(
+        'El pedido se está despachando en este momento: probá de nuevo en unos segundos',
+      );
+    }
+    const tx = bloqueo.valor;
+    if (tx.sinCambios) return this.releerOrFail(orderId);
+    return this.efectosPosteriores(tx);
+  }
+
+  private static readonly LOCK_TTL_MS = 5000;
+  /** Cuánto espera el lock si el despacho u otra edición lo tienen. */
+  private static readonly LOCK_ESPERA_MS = 3000;
+
+  private async enTransaccion(
+    orderId: string,
+    dto: UpdateOrderDto,
+    actorUserId: string,
+    distributorId: string | null,
+    actorRole: RoleType,
+  ): Promise<ResultadoEdicion> {
+    const esCliente = actorRole === RoleType.CUSTOMER;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -76,11 +141,15 @@ export class UpdateOrderUseCase {
         .where('ord.orderId = :id', { id: orderId })
         .getOne();
 
-      if (!order || (distributorId && order.distributorId !== distributorId)) {
+      if (
+        !order ||
+        (distributorId && order.distributorId !== distributorId) ||
+        (esCliente && order.customerId !== actorUserId)
+      ) {
         throw new NotFoundException(`Order with ID: ${orderId} not found`);
       }
 
-      this.assertEditable(order, dto);
+      this.assertEditable(order, dto, esCliente);
 
       // Los renglones se leen DESPUÉS del lock y en una consulta aparte: un
       // SELECT que esperó el lock re-lee el pedido pero no los renglones que
@@ -93,11 +162,13 @@ export class UpdateOrderUseCase {
 
       const paymentMethod = dto.paymentMethod ?? order.paymentMethod;
       const cambiaPago = paymentMethod !== order.paymentMethod;
-      const cambiaItems = Boolean(dto.items);
+      const cambiaItems =
+        Boolean(dto.items) &&
+        this.cambiaronLosRenglones(order.items, dto.items);
 
       // Dirección: tiene que ser del cliente del pedido; cambia el punto de
       // entrega, la zona y deja el cambio en el historial de direcciones.
-      let zone: ZonaParaRecargo | null = this.zonaGuardada(order);
+      let zone: ZonaParaRecargo | null = zonaGuardada(order);
       const cambiaDireccion = Boolean(
         dto.addressId && dto.addressId !== order.addressId,
       );
@@ -132,13 +203,9 @@ export class UpdateOrderUseCase {
       // Franja y fecha. `timeSlotId: null` saca la franja. El cupo se valida
       // sólo si cambia la franja o la fecha (el propio pedido ya cuenta en la
       // que tiene) y siempre contra la fecha que corresponde.
-      const timeSlotId =
-        dto.timeSlotId !== undefined ? dto.timeSlotId : order.timeSlotId;
-      const scheduledDate = dto.scheduledDate ?? order.scheduledDate ?? null;
-      const cambiaAgenda =
-        timeSlotId !== order.timeSlotId ||
-        scheduledDate !== (order.scheduledDate ?? null);
-      if (timeSlotId && timeSlotId !== order.timeSlotId) {
+      const { timeSlotId, scheduledDate, cambiaAgenda, cambiaFranja } =
+        agendaDeEdicion(order, dto);
+      if (timeSlotId && cambiaFranja) {
         await this.timeSlotService.assertSlotUsableTx(
           manager,
           timeSlotId,
@@ -158,6 +225,19 @@ export class UpdateOrderUseCase {
           scheduledDate,
           order.distributorId,
         );
+      }
+      // Un PATCH que no cambia nada no escribe: ni historial, ni evento, ni
+      // reoferta.
+      const cambiaNotas = dto.notes !== undefined && dto.notes !== order.notes;
+      if (
+        !cambiaItems &&
+        !cambiaDireccion &&
+        !cambiaPago &&
+        !cambiaAgenda &&
+        !cambiaNotas
+      ) {
+        await queryRunner.rollbackTransaction();
+        return { sinCambios: true, orderId };
       }
       order.timeSlotId = timeSlotId;
       order.scheduledDate = scheduledDate;
@@ -192,6 +272,9 @@ export class UpdateOrderUseCase {
       if (cambiaItems || cambiaDireccion || cambiaPago) {
         const { totalAmount, zoneSurchargeAmount } =
           this.create.calcularTotales(subtotalItems, zone, paymentMethod);
+        if (order.depositPaid && totalAmount.lt(order.depositAmount)) {
+          throw new ConflictException(MENSAJE_SENA_PAGADA);
+        }
         order.subtotalItems = subtotalItems;
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();
         order.totalAmount = totalAmount.toNumber();
@@ -201,7 +284,7 @@ export class UpdateOrderUseCase {
         paymentMethod === PaymentMethod.CASH
           ? PaymentType.CASH
           : PaymentType.ONLINE;
-      if (dto.notes !== undefined) order.notes = dto.notes;
+      if (cambiaNotas) order.notes = dto.notes ?? null;
 
       // Una oferta de despacho viva quedó con datos viejos: se vence en la
       // misma transacción (después se avisa al chofer y se vuelve a ofrecer).
@@ -224,6 +307,23 @@ export class UpdateOrderUseCase {
       }
 
       saved = await manager.save(order);
+      if (esCliente) {
+        await manager.insert(OrderStatusHistory, {
+          orderId: order.orderId,
+          fromStatus: order.status,
+          toStatus: order.status,
+          changedByUserId: actorUserId,
+          reason: this.detalleDeLaEdicion(dto, {
+            cambiaItems,
+            cambiaDireccion,
+            cambiaPago,
+            cambiaAgenda,
+            cambiaNotas,
+            totalAnterior,
+            totalNuevo: order.totalAmount,
+          }),
+        });
+      }
       await queryRunner.commitTransaction();
     } catch (error) {
       if (queryRunner.isTransactionActive) {
@@ -234,72 +334,144 @@ export class UpdateOrderUseCase {
       await queryRunner.release();
     }
 
-    const result = await this.orders.findByIdFull(saved.orderId);
+    return {
+      sinCambios: false,
+      orderId,
+      saved,
+      totalAnterior,
+      ofertasCerradas,
+      cambioRelevante,
+    };
+  }
+
+  /** El pedido tal cual está, para el PATCH que no cambió nada. */
+  private async releerOrFail(orderId: string): Promise<Order> {
+    const result = await this.orders.findByIdFull(orderId);
     if (!result) {
-      throw new InternalServerErrorException(
-        'Pedido editado pero no recuperable',
+      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    }
+    return result;
+  }
+
+  /**
+   * Después del commit: relectura, avisos y reoferta. Nada de esto puede
+   * convertir en error una edición ya confirmada (un reintento con la misma
+   * `Idempotency-Key` la repetiría): si falla la relectura se responde con lo
+   * guardado y se marca la respuesta como incompleta.
+   */
+  private async efectosPosteriores(tx: EdicionAplicada): Promise<Order> {
+    const { saved, totalAnterior, ofertasCerradas, cambioRelevante } = tx;
+    let result: Order;
+    try {
+      const completo = await this.orders.findByIdFull(saved.orderId);
+      if (!completo) throw new InternalServerErrorException('sin pedido');
+      result = completo;
+    } catch (error) {
+      this.logger.error(
+        `Pedido ${saved.orderId} editado, pero no se pudo releer: ${errorMessage(error)}`,
       );
+      marcarRespuestaIncompleta();
+      result = saved;
     }
 
-    this.realtime.notifyAdmins(
-      'order:updated',
-      {
-        orderId: saved.orderId,
-        distributorId: saved.distributorId,
-        totalAmount: saved.totalAmount,
-        status: saved.status,
-      },
-      saved.distributorId,
-    );
-    // No hay un tipo de notificación push para "pedido modificado": se emite
-    // el evento de tiempo real `order:updated` al cliente si cambió el total.
-    if (saved.totalAmount !== totalAnterior) {
-      this.realtime.notifyCustomer(saved.customerId, 'order:updated', {
-        orderId: saved.orderId,
-        totalAmount: saved.totalAmount,
-        previousTotalAmount: totalAnterior,
-      });
-    }
-    for (const oferta of ofertasCerradas) {
-      this.realtime.notifyDriverOrderCancelled(oferta.driverId, {
-        orderId: saved.orderId,
-        message: 'El pedido fue modificado: la oferta ya no está vigente',
-      });
+    try {
+      this.realtime.notifyAdmins(
+        'order:updated',
+        {
+          orderId: saved.orderId,
+          distributorId: saved.distributorId,
+          totalAmount: saved.totalAmount,
+          status: saved.status,
+        },
+        saved.distributorId,
+      );
+      // No hay un tipo de notificación push para "pedido modificado": se emite
+      // el evento de tiempo real `order:updated` al cliente si cambió el total.
+      if (saved.totalAmount !== totalAnterior) {
+        this.realtime.notifyCustomer(saved.customerId, 'order:updated', {
+          orderId: saved.orderId,
+          totalAmount: saved.totalAmount,
+          previousTotalAmount: totalAnterior,
+        });
+      }
+      for (const oferta of ofertasCerradas) {
+        this.realtime.notifyDriverOrderCancelled(oferta.driverId, {
+          orderId: saved.orderId,
+          message: 'El pedido fue modificado: la oferta ya no está vigente',
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Pedido ${saved.orderId} editado, pero falló un aviso: ${errorMessage(error)}`,
+      );
     }
     if (cambioRelevante) {
       await this.dispatchOrchestrator
         .offerToNextDriver(result)
         .catch(() => undefined);
     }
-
     return result;
   }
 
+  /** ¿Los renglones nuevos difieren de los guardados (garrafa y cantidad)? */
+  private cambiaronLosRenglones(
+    actuales: ReadonlyArray<{ gasCylinderId: string; quantity: number }>,
+    nuevos:
+      | ReadonlyArray<{ gasCylinderId: string; quantity: number }>
+      | undefined,
+  ): boolean {
+    if (!nuevos) return false;
+    const mapa = (
+      r: ReadonlyArray<{ gasCylinderId: string; quantity: number }>,
+    ) => new Map(r.map((i) => [i.gasCylinderId, i.quantity]));
+    const a = mapa(actuales);
+    const n = mapa(nuevos);
+    if (a.size !== n.size) return true;
+    for (const [id, cantidad] of n) if (a.get(id) !== cantidad) return true;
+    return false;
+  }
+
   /** Sólo se edita un pedido pendiente, sin chofer y sin pago online. */
-  private assertEditable(order: Order, dto: UpdateOrderDto): void {
+  private assertEditable(
+    order: Order,
+    dto: UpdateOrderDto,
+    esCliente: boolean,
+  ): void {
     const noEditable = motivoNoEditable(order);
-    if (noEditable) throw new ConflictException(noEditable.mensaje);
-    if (dto.paymentMethod === PaymentMethod.MERCADOPAGO) {
-      throw new BadRequestException(
-        'No se puede pasar un pedido a MercadoPago al editarlo: cancelalo y creá uno nuevo',
+    if (noEditable) {
+      throw new ConflictException(
+        mensajeDeNoEditable(order, noEditable, esCliente),
       );
+    }
+    if (dto.paymentMethod === PaymentMethod.MERCADOPAGO) {
+      throw new BadRequestException(MENSAJE_NO_PASAR_A_MERCADOPAGO);
     }
   }
 
-  /**
-   * La zona que el pedido ya tenía (snapshot), para recalcular su recargo. Un
-   * pedido sin snapshot pero con recargo guardado conserva ese monto como fijo.
-   */
-  private zonaGuardada(order: Order): ZonaParaRecargo | null {
-    if (order.zoneSurchargeType && order.zoneSurchargeValue !== null) {
-      return { type: order.zoneSurchargeType, value: order.zoneSurchargeValue };
-    }
-    if (order.zoneSurchargeAmount > 0) {
-      return {
-        type: CoverageZoneSurchargeType.FIXED,
-        value: order.zoneSurchargeAmount,
-      };
-    }
-    return null;
+  /** Texto de la anotación del historial: qué tocó el cliente. */
+  private detalleDeLaEdicion(
+    dto: UpdateOrderDto,
+    c: {
+      cambiaItems: boolean;
+      cambiaDireccion: boolean;
+      cambiaPago: boolean;
+      cambiaAgenda: boolean;
+      cambiaNotas: boolean;
+      totalAnterior: number;
+      totalNuevo: number;
+    },
+  ): string {
+    const partes: string[] = [];
+    if (c.cambiaItems) partes.push('renglones');
+    if (c.cambiaDireccion) partes.push('dirección');
+    if (c.cambiaPago) partes.push('medio de pago');
+    if (c.cambiaAgenda) partes.push('franja o fecha');
+    if (c.cambiaNotas) partes.push('notas');
+    const cambios = partes.length > 0 ? partes.join(', ') : 'sin cambios';
+    const total =
+      c.totalAnterior !== c.totalNuevo
+        ? `. Total: ${c.totalAnterior} → ${c.totalNuevo}`
+        : '';
+    return `Pedido modificado por el cliente: ${cambios}${total}`;
   }
 }

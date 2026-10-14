@@ -51,6 +51,7 @@ describe('OrderService · asignación manual', () => {
     release: jest.Mock;
     manager: {
       createQueryBuilder: jest.Mock;
+      find: jest.Mock;
       save: jest.Mock<Promise<Order>, [Order]>;
       query: jest.Mock;
     };
@@ -126,6 +127,11 @@ describe('OrderService · asignación manual', () => {
               ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
+        // Los renglones se releen después del lock, aparte del JOIN.
+        find: jest.fn(
+          async () =>
+            ((await queryBuilder.getOne()) as Order | null)?.items ?? [],
+        ),
         // Devuelve lo mismo que se guardó, como hace TypeORM.
         save: jest.fn((o: Order) => Promise.resolve(o)),
       },
@@ -190,6 +196,14 @@ describe('OrderService · asignación manual', () => {
     queryBuilder.andWhere.mockClear();
     await service.assignDelivery(PEDIDO, CHOFER);
     expect(queryBuilder.andWhere).not.toHaveBeenCalled();
+  });
+
+  it('relee los renglones DESPUÉS del lock: guarda los vigentes y no los que trajo el JOIN', async () => {
+    const vigentes = [{ orderItemId: 'nuevo', quantity: 4 }];
+    queryRunner.manager.find.mockResolvedValue(vigentes);
+    await service.assignDelivery(PEDIDO, CHOFER);
+    const [guardado] = queryRunner.manager.save.mock.calls[0];
+    expect(guardado.items).toBe(vigentes);
   });
 
   it('acceptedAt de la asignación sale del reloj de la base, no del de Node', async () => {

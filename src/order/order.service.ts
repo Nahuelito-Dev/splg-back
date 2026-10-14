@@ -1,3 +1,4 @@
+import { OrderItem } from './entities/order-item.entity';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import {
   Injectable,
@@ -699,7 +700,6 @@ export class OrderService {
         .createQueryBuilder(Order, 'ord')
         .setLock('pessimistic_write', undefined, ['ord'])
         .leftJoinAndSelect('ord.delivery', 'delivery')
-        .leftJoinAndSelect('ord.items', 'items')
         .where('ord.orderId = :id', { id: orderId });
       // Con distribuidora en contexto el lock no toma el pedido de otra: 404.
       if (distributorId) {
@@ -707,11 +707,18 @@ export class OrderService {
           distributorId,
         });
       }
+      // Los renglones se leen DESPUÉS del lock y aparte: un SELECT con JOIN que
+      // esperó el lock re-lee el pedido pero no los renglones que una edición
+      // cambió en el medio (READ COMMITTED), y el `save` con cascade
+      // desvincularía los renglones nuevos.
       const locked = await consulta.getOne();
 
       if (!locked) {
         throw new NotFoundException(`Order with ID: ${orderId} not found`);
       }
+      locked.items = await queryRunner.manager.find(OrderItem, {
+        where: { orderId: locked.orderId },
+      });
       // El chofer tiene que ser de la misma distribuidora que el pedido. Antes
       // que cualquier otro chequeo: lo ajeno es 404 sin revelar nada de su
       // habilitación ni de su flota.

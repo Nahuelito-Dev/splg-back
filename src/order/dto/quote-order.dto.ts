@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsUUID } from 'class-validator';
 import {
   IntersectionType,
   OmitType,
@@ -18,7 +19,21 @@ const CAMPOS_OBLIGATORIOS = ['items', 'paymentMethod'] as const;
 export class QuoteOrderDto extends IntersectionType(
   PickType(CreateOrderDto, CAMPOS_OBLIGATORIOS),
   PartialType(OmitType(CreateOrderDto, CAMPOS_OBLIGATORIOS)),
-) {}
+) {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Cotización de EDICIÓN de un pedido existente (el del cliente que cotiza, ' +
+      'o de la distribuidora del staff; si no, 404). Sólo vale si el pedido es ' +
+      'editable (409 con el mismo mensaje que `PATCH /orders/:id`). El stock se ' +
+      'compara por la diferencia contra el pedido actual; la franja y la fecha ' +
+      'sólo se validan si cambian; lo que no se manda se toma del pedido ' +
+      '(dirección y zona incluidas).',
+  })
+  @IsOptional()
+  @IsUUID()
+  orderId?: string;
+}
 
 export class QuoteItemDto {
   @ApiProperty() gasCylinderId!: string;

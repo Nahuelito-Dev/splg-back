@@ -8,7 +8,12 @@ import { CoverageZonePricingService } from '../../coverage-zone/coverage-zone-pr
 import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
 import type { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import { InsufficientStockError } from '../../gascylinder/domain/errors/insufficient-stock.error';
-import { PaymentMethod } from '../entities/order.entity';
+import {
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
+import { ConflictException } from '@nestjs/common';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { QuoteOrderUseCase } from './quote-order.use-case';
@@ -34,6 +39,7 @@ describe('QuoteOrderUseCase', () => {
     assertSlotAvailable: jest.Mock;
   };
   let casoDeUso: QuoteOrderUseCase;
+  let manager: { findOne: jest.Mock; find: jest.Mock };
 
   const garrafa = (over: Partial<GasCylinder>): GasCylinder =>
     ({
@@ -47,6 +53,7 @@ describe('QuoteOrderUseCase', () => {
 
   beforeEach(() => {
     zona = null;
+    manager = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
     const catalogo: Record<string, GasCylinder> = {
       [G10]: garrafa({ price: 10000 }),
       // 3 o más: 10% de descuento por volumen.
@@ -85,7 +92,7 @@ describe('QuoteOrderUseCase', () => {
       addresses as never,
       distributors as never,
       timeSlots as never,
-      { manager: {} } as never,
+      { manager } as never,
     );
   });
 
@@ -333,5 +340,164 @@ describe('QuoteOrderUseCase', () => {
         CLIENTE,
       ),
     ).rejects.toBeInstanceOf(InsufficientStockError);
+  });
+
+  describe('cotización de edición (orderId)', () => {
+    const PEDIDO = 'ped-1';
+    const pedido = (over: Record<string, unknown> = {}) => ({
+      orderId: PEDIDO,
+      customerId: CLIENTE.userId,
+      distributorId: DIST,
+      addressId: 'dir-1',
+      status: OrderStatus.PENDING,
+      deliveryId: null,
+      paymentMethod: PaymentMethod.CASH,
+      paymentStatus: PaymentStatus.PENDING,
+      timeSlotId: 'franja-1',
+      scheduledDate: '2020-01-01',
+      zoneSurchargeType: null,
+      zoneSurchargeValue: null,
+      zoneSurchargeAmount: 0,
+      coverageZoneId: null,
+      zoneName: null,
+      depositAmount: 0,
+      depositPaid: false,
+      ...over,
+    });
+    const cotizar = (over: Record<string, unknown> = {}, actor = CLIENTE) =>
+      casoDeUso.execute(
+        {
+          orderId: PEDIDO,
+          items: [{ gasCylinderId: G10, quantity: 2, unitPrice: 0 }],
+          paymentMethod: PaymentMethod.CASH,
+          ...over,
+        },
+        null,
+        actor,
+      );
+    const reservadoPrevio = (cantidad: number) =>
+      manager.find.mockResolvedValue([
+        { gasCylinderId: G10, quantity: cantidad },
+      ]);
+
+    beforeEach(() => {
+      manager.findOne.mockResolvedValue(pedido());
+      reservadoPrevio(2);
+    });
+
+    it('franja propia llena y ya terminada (fecha pasada): sin cambiar la agenda no se valida ni se rechaza', async () => {
+      timeSlots.assertSlotAvailable.mockRejectedValue(
+        new BadRequestException('completa'),
+      );
+      const r = await cotizar();
+      expect(r.total).toBe(20000);
+      expect(timeSlots.assertSlotAvailable).not.toHaveBeenCalled();
+      expect(timeSlots.assertSlotUsableTx).not.toHaveBeenCalled();
+    });
+
+    it('si cambia la fecha o la franja, sí se valida', async () => {
+      await cotizar({ scheduledDate: '2099-01-01' });
+      expect(timeSlots.assertSlotAvailable).toHaveBeenCalledWith(
+        'franja-1',
+        '2099-01-01',
+        DIST,
+      );
+      await cotizar({ timeSlotId: 'franja-2', scheduledDate: '2099-01-01' });
+      expect(timeSlots.assertSlotUsableTx).toHaveBeenCalled();
+      timeSlots.assertSlotAvailable.mockRejectedValue(
+        new BadRequestException('completa'),
+      );
+      await expect(
+        cotizar({ scheduledDate: '2099-01-02' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('un pedido sin fecha agendada no recibe una si el cuerpo no la trae', async () => {
+      manager.findOne.mockResolvedValue(
+        pedido({ timeSlotId: null, scheduledDate: null }),
+      );
+      await cotizar();
+      expect(timeSlots.assertSlotAvailable).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['igual (delta 0)', 2, 50],
+      ['menor (delta negativo)', 1, 0],
+      ['igual con el vendible en cero', 2, 0],
+    ])(
+      'stock justo, cantidad %s: se cotiza',
+      async (_n, cantidad, vendible) => {
+        manager.find.mockResolvedValue([{ gasCylinderId: G10, quantity: 2 }]);
+        stock.leerParaCotizar.mockResolvedValue(garrafa({ stock: vendible }));
+        const r = await cotizar({
+          items: [{ gasCylinderId: G10, quantity: cantidad, unitPrice: 0 }],
+        });
+        expect(r.items[0].quantity).toBe(cantidad);
+      },
+    );
+
+    it('subir la cantidad compara sólo la diferencia contra el vendible', async () => {
+      stock.leerParaCotizar.mockResolvedValue(garrafa({ stock: 1 }));
+      const items3 = [{ gasCylinderId: G10, quantity: 3, unitPrice: 0 }];
+      await expect(cotizar({ items: items3 })).resolves.toBeDefined();
+      const items4 = [{ gasCylinderId: G10, quantity: 4, unitPrice: 0 }];
+      await expect(cotizar({ items: items4 })).rejects.toBeInstanceOf(
+        InsufficientStockError,
+      );
+    });
+
+    it('el pedido de otro cliente o de otra distribuidora es 404; inexistente también', async () => {
+      manager.findOne.mockResolvedValue(pedido({ customerId: 'otro' }));
+      await expect(cotizar()).rejects.toBeInstanceOf(NotFoundException);
+      manager.findOne.mockResolvedValue(pedido());
+      await expect(
+        casoDeUso.execute(
+          {
+            orderId: PEDIDO,
+            items,
+            paymentMethod: PaymentMethod.CASH,
+          },
+          'otra-dist',
+          ADMIN,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      manager.findOne.mockResolvedValue(null);
+      await expect(cotizar()).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('un pedido no editable es 409 con el mensaje del PATCH', async () => {
+      manager.findOne.mockResolvedValue(pedido({ deliveryId: 'chofer-1' }));
+      await expect(cotizar()).rejects.toThrow(
+        'El pedido ya fue tomado por un repartidor: no se puede modificar',
+      );
+      manager.findOne.mockResolvedValue(
+        pedido({ paymentMethod: PaymentMethod.MERCADOPAGO }),
+      );
+      await expect(cotizar()).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('sin dirección en el cuerpo usa la zona guardada del pedido', async () => {
+      manager.findOne.mockResolvedValue(
+        pedido({
+          zoneSurchargeType: CoverageZoneSurchargeType.FIXED,
+          zoneSurchargeValue: 500,
+          coverageZoneId: 'z1',
+          zoneName: 'Zona norte',
+        }),
+      );
+      const r = await cotizar();
+      expect(r.zoneSurcharge).toBe(500);
+      expect(r.total).toBe(20500);
+      expect(addresses.buscarDelUsuario).not.toHaveBeenCalled();
+    });
+
+    it('con la seña paga, un total por debajo de la seña es 409', async () => {
+      manager.findOne.mockResolvedValue(
+        pedido({ depositPaid: true, depositAmount: 30000 }),
+      );
+      await expect(cotizar()).rejects.toThrow(
+        'El total no puede quedar por debajo de la seña ya pagada',
+      );
+    });
   });
 });

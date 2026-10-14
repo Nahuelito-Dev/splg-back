@@ -156,7 +156,7 @@ export class OrderController {
   @ApiOperation({
     summary: 'Cotizar un pedido',
     description:
-      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (+10% sobre subtotal + zona en `mercadopago` y `transfer`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta.',
+      'Mismo cuerpo que `POST /orders` (sólo `items` y `paymentMethod` son obligatorios). Devuelve el desglose que cobrará el alta: renglones con la promoción por volumen, `subtotal`, recargo de zona (con `addressId`; el admin además manda `customerId`), recargo por medio de pago (+10% sobre subtotal + zona en `mercadopago` y `transfer`), `deposit` (si `isReservation`), `total` y `balance` (`total - deposit`). El `total` es exactamente el del pedido que se crea con el mismo cuerpo. No escribe nada ni reserva stock; sí rechaza lo que el alta rechazaría (producto de otra distribuidora, sin stock, dirección fuera de cobertura). Cliente sin `X-Distributor`: distribuidora por defecto, igual que el alta. Con `orderId` cotiza la EDICIÓN de ese pedido (mismas reglas que `PATCH /orders/:id`): pedido ajeno o inexistente 404, no editable 409, stock por diferencia contra lo ya reservado, franja y fecha sólo si cambian.',
   })
   @ApiOkResponse({ type: QuoteResponseDto })
   @ApiBadRequestResponse({
@@ -164,6 +164,12 @@ export class OrderController {
       'Datos inválidos, sin stock, dirección fuera de cobertura, o falta `customerId` con `addressId` (admin)',
   })
   @ApiForbiddenResponse({ description: 'Un cliente cotizando para otro' })
+  @ApiNotFoundResponse({
+    description: 'Con `orderId`: el pedido no existe o no es del cliente',
+  })
+  @ApiConflictResponse({
+    description: 'Con `orderId`: el pedido no es editable',
+  })
   @HttpCode(200)
   quote(
     @Body() dto: QuoteOrderDto,
@@ -834,10 +840,14 @@ export class OrderController {
   }
 
   @Patch(':id')
-  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Idempotent()
   @ApiOperation({
     summary: 'Editar un pedido pendiente (sin chofer asignado)',
     description:
+      'Admin, super admin y el CLIENTE DUEÑO del pedido (uno ajeno es 404). ' +
+      'Idempotente vía `Idempotency-Key`. Los precios y recargos los calcula SIEMPRE el servidor. ' +
+      'El cliente deja una anotación en el historial de estados. ' +
       'Dirección, franja/fecha, medio de pago, notas y renglones. Si vienen ' +
       '`items` reemplazan a los actuales: se devuelve el stock viejo y se ' +
       'reserva el nuevo con los precios y recargos vigentes (mismas reglas ' +
@@ -850,18 +860,25 @@ export class OrderController {
     description: 'Datos inválidos, sin stock, o dirección fuera de cobertura',
   })
   @ApiConflictResponse({
-    description: 'El pedido no está pendiente, tiene chofer o pago online',
+    description:
+      'El pedido no está pendiente, tiene chofer (cliente: «El pedido ya fue tomado por un repartidor: no se puede modificar») o pago online',
   })
   @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
   async update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateOrderDto,
-    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     const order = await withTransactionRetry(
       () =>
-        this.updateOrderUseCase.execute(id, dto, user.user_id, distributorId),
+        this.updateOrderUseCase.execute(
+          id,
+          dto,
+          user.user_id,
+          distributorId,
+          user.role,
+        ),
       { context: 'OrderService.update' },
     );
     return OrderMapper.toDto(order);

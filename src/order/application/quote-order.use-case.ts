@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -14,6 +15,18 @@ import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { UserAddressService } from '../../user-address/user-address.service';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { QuoteOrderDto, QuoteResponseDto } from '../dto/quote-order.dto';
+import { Order, PaymentMethod } from '../entities/order.entity';
+import { OrderItem } from '../entities/order-item.entity';
+import type { ZonaParaRecargo } from '../../coverage-zone/coverage-zone-pricing.service';
+import {
+  MENSAJE_NO_PASAR_A_MERCADOPAGO,
+  MENSAJE_SENA_PAGADA,
+  agendaDeEdicion,
+  mensajeDeNoEditable,
+  motivoNoEditable,
+  zonaGuardada,
+} from '../domain/order-editable';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 
 /**
  * Cotización de un pedido: el mismo cálculo que el alta (`CreateOrderUseCase`:
@@ -41,18 +54,28 @@ export class QuoteOrderUseCase {
     distributorId: string | null,
     actor: { userId: string; role: RoleType },
   ): Promise<QuoteResponseDto> {
-    if (!distributorId) {
+    // Cotización de edición: el pedido manda (distribuidora, cliente, zona,
+    // franja y fecha); se rechaza lo que el PATCH rechazaría.
+    const edicion = dto.orderId
+      ? await this.cargarParaEditar(dto.orderId, distributorId, actor, dto)
+      : null;
+    if (edicion) {
+      distributorId = edicion.order.distributorId;
+    } else if (!distributorId) {
       const porDefecto = await this.distributors.getDefault();
       distributorId = porDefecto?.distributorId ?? null;
     }
-    if (dto.isReservation && !dto.scheduledDate) {
+    if (!edicion && dto.isReservation && !dto.scheduledDate) {
       throw new BadRequestException(
         'Una reserva requiere scheduledDate (fecha de entrega agendada)',
       );
     }
 
-    const customerId =
-      actor.role === RoleType.CUSTOMER ? actor.userId : dto.customerId;
+    const customerId = edicion
+      ? edicion.order.customerId
+      : actor.role === RoleType.CUSTOMER
+        ? actor.userId
+        : dto.customerId;
     if (
       actor.role === RoleType.CUSTOMER &&
       dto.customerId &&
@@ -63,24 +86,33 @@ export class QuoteOrderUseCase {
       );
     }
 
-    // Misma validación de la franja que el alta (sin tomar locks).
-    if (dto.timeSlotId && !dto.scheduledDate) {
-      await this.timeSlots.assertSlotUsableTx(
-        this.dataSource.manager,
-        dto.timeSlotId,
-        distributorId,
-      );
-    }
-    if (dto.timeSlotId && dto.scheduledDate) {
-      await this.timeSlots.assertSlotAvailable(
-        dto.timeSlotId,
-        dto.scheduledDate,
-        distributorId,
-      );
+    if (edicion) {
+      await this.validarAgendaDeEdicion(edicion.order, dto, distributorId);
+    } else {
+      // Misma validación de la franja que el alta (sin tomar locks).
+      if (dto.timeSlotId && !dto.scheduledDate) {
+        await this.timeSlots.assertSlotUsableTx(
+          this.dataSource.manager,
+          dto.timeSlotId,
+          distributorId,
+        );
+      }
+      if (dto.timeSlotId && dto.scheduledDate) {
+        await this.timeSlots.assertSlotAvailable(
+          dto.timeSlotId,
+          dto.scheduledDate,
+          distributorId,
+        );
+      }
     }
 
-    let zona = null;
-    if (dto.addressId) {
+    let zona: ZonaCotizada | null = null;
+    if (
+      edicion &&
+      (!dto.addressId || dto.addressId === edicion.order.addressId)
+    ) {
+      zona = this.zonaDelPedido(edicion.order);
+    } else if (dto.addressId) {
       if (!customerId) {
         throw new BadRequestException(
           'Indicá customerId para cotizar con la zona de una dirección',
@@ -108,7 +140,12 @@ export class QuoteOrderUseCase {
         item,
         distributorId,
       );
-      if (producto.stock < item.quantity) {
+      // Alta: la cantidad entera contra el vendible. Edición: sólo la
+      // diferencia contra lo que el pedido ya tiene reservado, igual que
+      // `reajustarReserva`.
+      const yaReservado = edicion?.cantidades.get(item.gasCylinderId) ?? 0;
+      const faltante = edicion ? item.quantity - yaReservado : item.quantity;
+      if (faltante > 0 && producto.stock < faltante) {
         throw new InsufficientStockError(producto.type);
       }
       subtotal = subtotal.plus(renglon.subtotal);
@@ -127,8 +164,15 @@ export class QuoteOrderUseCase {
     // mismo que quedará en el pedido.
     const total = totalAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const deposit = new Decimal(
-      dto.isReservation ? (dto.depositAmount ?? 0) : 0,
+      edicion
+        ? edicion.order.depositAmount
+        : dto.isReservation
+          ? (dto.depositAmount ?? 0)
+          : 0,
     );
+    if (edicion?.order.depositPaid && total.lt(edicion.order.depositAmount)) {
+      throw new ConflictException(MENSAJE_SENA_PAGADA);
+    }
 
     const res = new QuoteResponseDto();
     res.items = items;
@@ -154,4 +198,94 @@ export class QuoteOrderUseCase {
     res.balance = total.minus(deposit).toNumber();
     return res;
   }
+
+  /**
+   * El pedido a editar, si quien cotiza puede verlo (el suyo; o de la
+   * distribuidora del staff) y es editable. Mismas reglas que el PATCH.
+   */
+  private async cargarParaEditar(
+    orderId: string,
+    distributorId: string | null,
+    actor: { userId: string; role: RoleType },
+    dto: QuoteOrderDto,
+  ): Promise<{ order: Order; cantidades: Map<string, number> }> {
+    const esCliente = actor.role === RoleType.CUSTOMER;
+    const order = await this.dataSource.manager.findOne(Order, {
+      where: { orderId },
+    });
+    if (
+      !order ||
+      (esCliente && order.customerId !== actor.userId) ||
+      (!esCliente && distributorId && order.distributorId !== distributorId)
+    ) {
+      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    }
+    const noEditable = motivoNoEditable(order);
+    if (noEditable) {
+      throw new ConflictException(
+        mensajeDeNoEditable(order, noEditable, esCliente),
+      );
+    }
+    if (dto.paymentMethod === PaymentMethod.MERCADOPAGO) {
+      throw new BadRequestException(MENSAJE_NO_PASAR_A_MERCADOPAGO);
+    }
+    const renglones = await this.dataSource.manager.find(OrderItem, {
+      where: { orderId },
+    });
+    const cantidades = new Map<string, number>();
+    for (const r of renglones) {
+      cantidades.set(
+        r.gasCylinderId,
+        (cantidades.get(r.gasCylinderId) ?? 0) + r.quantity,
+      );
+    }
+    return { order, cantidades };
+  }
+
+  /**
+   * Franja y fecha de una edición: sólo se validan si cambian (el pedido ya
+   * ocupa su lugar actual, aunque la franja esté llena o ya haya terminado).
+   * Misma regla que `UpdateOrderUseCase`.
+   */
+  private async validarAgendaDeEdicion(
+    order: Order,
+    dto: QuoteOrderDto,
+    distributorId: string | null,
+  ): Promise<void> {
+    const { timeSlotId, scheduledDate, cambiaFranja, cambiaAgenda } =
+      agendaDeEdicion(order, dto);
+    if (timeSlotId && cambiaFranja) {
+      await this.timeSlots.assertSlotUsableTx(
+        this.dataSource.manager,
+        timeSlotId,
+        distributorId,
+      );
+    }
+    if (cambiaAgenda && timeSlotId && scheduledDate) {
+      if (dto.scheduledDate === undefined && scheduledDate < diaArgentino()) {
+        throw new BadRequestException(
+          'La fecha agendada del pedido ya pasó: indicá una fecha nueva (scheduledDate) para cambiar la franja',
+        );
+      }
+      await this.timeSlots.assertSlotAvailable(
+        timeSlotId,
+        scheduledDate,
+        distributorId,
+      );
+    }
+  }
+
+  /** La zona que el pedido ya tiene, para recotizarla sin cambiar la dirección. */
+  private zonaDelPedido(order: Order): ZonaCotizada | null {
+    const calculo = zonaGuardada(order);
+    if (!calculo) return null;
+    return {
+      id: order.coverageZoneId ?? '',
+      name: order.zoneName ?? '',
+      type: calculo.type,
+      value: calculo.value,
+    };
+  }
 }
+
+type ZonaCotizada = ZonaParaRecargo & { id: string; name: string };

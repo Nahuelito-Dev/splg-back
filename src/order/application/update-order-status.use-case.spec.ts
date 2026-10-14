@@ -64,6 +64,7 @@ describe('UpdateOrderStatusUseCase', () => {
     release: jest.Mock;
     manager: {
       createQueryBuilder: jest.Mock;
+      find: jest.Mock;
       save: jest.Mock;
       insert: jest.Mock;
       query: jest.Mock;
@@ -166,6 +167,11 @@ describe('UpdateOrderStatusUseCase', () => {
               ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
+        // Los renglones se releen después del lock, aparte del JOIN.
+        find: jest.fn(
+          async () =>
+            ((await queryBuilder.getOne()) as Order | null)?.items ?? [],
+        ),
         save: jest.fn((o: Order) => orders.save(o)),
         insert: jest.fn().mockResolvedValue(undefined),
       },
@@ -282,6 +288,18 @@ describe('UpdateOrderStatusUseCase', () => {
         'drv-1',
       );
       expect(result.acceptedAt).toEqual(HORA_DE_LA_BASE);
+    });
+
+    it('relee los renglones DESPUÉS del lock: guarda los vigentes y no los que trajo el JOIN', async () => {
+      const vigentes = [{ orderItemId: 'nuevo', quantity: 4 }];
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      queryRunner.manager.find.mockResolvedValue(vigentes);
+
+      await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
+
+      const [guardado] = queryRunner.manager.save.mock.calls[0] as [Order];
+      expect(guardado.items).toBe(vigentes);
     });
 
     it('bloquea la fila del chofer (FOR NO KEY UPDATE) ANTES de leer su vehículo en uso', async () => {
