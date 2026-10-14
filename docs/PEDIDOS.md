@@ -17,6 +17,15 @@ back avisa en el log. Código: `src/common/config/documentacion.ts`.
 | `GET /orders/:id`                  | Sólo si el pedido es **suyo** (asignado), si tiene una **oferta de despacho vigente** para él, o si está en el **pool** que ve en `GET /orders/available` (pendiente, sin chofer, de su distribuidora, y con la carga del día en regla). Cualquier otro: **404**, como si no existiera. Si el chofer **tuvo** el pedido (lo aceptó o se lo asignaron) y ya no es suyo —lo liberó el admin, lo reasignaron o el control de carga lo sacó del pool—: **410** `Este pedido ya no está asignado a tu usuario`, sin datos del pedido, para que la app salga de la pantalla en vez de quedarse con el estado viejo. |
 | `GET /orders/customer/:customerId` | **403**. El chofer lista lo suyo con `GET /orders/delivery/:deliveryId`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
+**Super admin sin `X-Distributor` (lectura de pedidos).** El super admin es el dueño de la plataforma: sin el
+header lee los pedidos de **todas** las distribuidoras (`GET /orders/:id` y los listados de pedidos); con el
+header ve sólo los de esa distribuidora. Es a propósito y no cambia. En cambio el **historial de estados**
+(`GET /orders/:id/status-history`) y **toda escritura** exigen distribuidora: sin `X-Distributor`, 400.
+
+**Incidencias del chofer (`POST /incidents`).** El chofer sólo reporta sobre un pedido **suyo** (asignado). Mismo
+criterio que la lectura: un pedido ajeno, sin chofer o inexistente es **404**; si el chofer lo tuvo y ya no es
+suyo, **410** `Este pedido ya no está asignado a tu usuario`. En ningún caso se crea la incidencia.
+
 ## Distribuidora obligatoria en las escrituras
 
 El admin y el chofer traen su distribuidora del perfil. El **super admin** y el cliente la

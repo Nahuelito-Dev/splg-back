@@ -265,21 +265,22 @@ export class OrderService {
   }
 
   /**
-   * El chofer que opera sobre un pedido tiene que ser el que lo tiene
-   * asignado. Un pedido sin chofer tampoco es suyo.
+   * El chofer que opera sobre un pedido tiene que ser el que lo tiene asignado.
+   * Mismo criterio que la lectura: un pedido ajeno, o sin chofer, no existe para
+   * él (404); si lo tuvo y ya no es suyo, 410.
    */
-  async assertAsignadoAlChofer(
-    deliveryIdDelPedido: string | null,
+  async assertPedidoPropioDelChofer(
+    order: Order,
     userId: string,
   ): Promise<void> {
     const propio = await this.deliveries.buscarPorIdOUsuario(userId);
-    if (
-      !propio ||
-      !deliveryIdDelPedido ||
-      propio.deliveryId !== deliveryIdDelPedido
-    ) {
-      throw new ForbiddenException('Este pedido no está asignado a tu usuario');
+    if (propio && order.deliveryId && propio.deliveryId === order.deliveryId) {
+      return;
     }
+    if (await this.dispatchOffers.hasHeldOrder(order.orderId, userId)) {
+      throw new GoneException('Este pedido ya no está asignado a tu usuario');
+    }
+    throw new NotFoundException('Pedido no encontrado');
   }
 
   /**

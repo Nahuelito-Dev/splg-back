@@ -1349,8 +1349,8 @@ describe('Blindaje (e2e)', () => {
           type: IncidentType.OTHER,
           description: 'prueba de pertenencia',
         });
-      await incidencia(ajeno.orderId).expect(403);
-      await incidencia(sinAsignar.orderId).expect(403);
+      await incidencia(ajeno.orderId).expect(404);
+      await incidencia(sinAsignar.orderId).expect(404);
       await incidencia(propio.orderId).expect(201);
       expect(await ds.getRepository(Incident).count()).toBe(1);
     });

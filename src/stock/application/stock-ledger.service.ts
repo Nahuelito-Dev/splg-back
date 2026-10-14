@@ -2,7 +2,10 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { EntityManager } from 'typeorm';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
-import { traducirErrorDeBase } from '../../common/errors/db-exceptions';
+import {
+  codigoSqlDelError,
+  traducirErrorDeBase,
+} from '../../common/errors/db-exceptions';
 import {
   FaltanteDeStock,
   GarrafaNoEncontradaEnStockError,
@@ -165,6 +168,9 @@ export class StockLedgerService extends StockLedgerPort {
           `No se puede contraasentar: las garrafas ya no están donde estaban. ${error.message}`,
         );
       }
+      // Un error de dominio (depósito dado de baja o inactivo, etc.) ya trae su
+      // código HTTP; sólo lo que viene de la base se traduce.
+      if (codigoSqlDelError(error) === undefined) throw error;
       return traducirErrorDeBase(error, this.logger, 'contraasiento de stock');
     }
   }

@@ -656,6 +656,60 @@ describe('Compras (e2e)', () => {
       ).toBe('confirmed');
     });
 
+    it('con el depósito de la recepción dado de baja no se anula: 409 claro y no 500', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      const p = await proveedor(e);
+      const r = cuerpo<Recepcion>(
+        await recibir(e, {
+          supplierId: p.supplierId,
+          supplierDocumentNumber: 'R-1',
+          items: [
+            { gasCylinderId: g.gasCylinderId, quantityFull: 10, unitCost: 900 },
+          ],
+        }).expect(201),
+      );
+      const otro = cuerpo<{ warehouseId: string }>(
+        await http()
+          .post('/warehouses')
+          .set(e.headers)
+          .send({ name: 'Norte', code: 'NORTE' })
+          .expect(201),
+      );
+      await http()
+        .post('/stock/transfers')
+        .set(e.headers)
+        .send({
+          from: { warehouseId: e.warehouseId },
+          to: { warehouseId: otro.warehouseId },
+          items: [{ gasCylinderId: g.gasCylinderId, quantity: 10 }],
+        })
+        .expect(201);
+      await http()
+        .patch(`/warehouses/${otro.warehouseId}`)
+        .set(e.headers)
+        .send({ isDefault: true })
+        .expect(200);
+      await http()
+        .delete(`/warehouses/${e.warehouseId}`)
+        .set(e.headers)
+        .expect(200);
+      const res = await http()
+        .patch(`/purchase-receipts/${r.receiptId}/void`)
+        .set(e.headers)
+        .send({ reason: 'error' })
+        .expect(409);
+      expect(cuerpo<Mensaje>(res).message).toMatch(/dado de baja/);
+      expect(
+        cuerpo<Recepcion>(
+          await http()
+            .get(`/purchase-receipts/${r.receiptId}`)
+            .set(e.headers)
+            .expect(200),
+        ).status,
+      ).toBe('confirmed');
+    });
+
     it('una recepción pagada no se anula; impaga sí', async () => {
       const e = await seedDistribuidora();
       const g = await seedGarrafa(e.distributorId);
