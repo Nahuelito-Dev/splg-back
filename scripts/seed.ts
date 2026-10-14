@@ -21,10 +21,18 @@ import { DistributorService } from '../src/distributor/distributor.service';
 import { RegistroService } from '../src/registro/registro.service';
 import type { RolRegistrable } from '../src/registro/politica-de-registro';
 import { Distributor } from '../src/distributor/entities/distributor.entity';
+import { CUENTAS_CON_LOGIN } from './lib/cuentas-demo';
 import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
 import { sembrarFisico } from './lib/stock-demo';
 
 const PASSWORD = 'Test1234'; // Firebase exige >= 6 caracteres.
+
+/** Nombre de persona de cada cuenta con login (la fuente es `lib/cuentas-demo.ts`). */
+const nombreReal = (email: string): string => {
+  const c = CUENTAS_CON_LOGIN.find((x) => x.email === email);
+  if (!c) throw new Error(`Falta ${email} en CUENTAS_CON_LOGIN`);
+  return c.fullName;
+};
 
 /** Tablas scopeadas por tenant (para el backfill de datos pre-multitenant). */
 const SCOPED_TABLES = [
@@ -47,25 +55,25 @@ const TEST_USERS: TestUser[] = [
   {
     role: 'super_admin',
     email: 'superadmin@splg.com',
-    full_name: 'Super Admin',
+    full_name: nombreReal('superadmin@splg.com'),
     phone_number: '+5493815550001',
   },
   {
     role: 'admin',
     email: 'admin@splg.com',
-    full_name: 'Admin Demo',
+    full_name: nombreReal('admin@splg.com'),
     phone_number: '+5493815550002',
   },
   {
     role: 'customer',
     email: 'cliente@splg.com',
-    full_name: 'Cliente Prueba',
+    full_name: nombreReal('cliente@splg.com'),
     phone_number: '+5493815550003',
   },
   {
     role: 'delivery',
     email: 'chofer@splg.com',
-    full_name: 'Chofer Prueba',
+    full_name: nombreReal('chofer@splg.com'),
     phone_number: '+5493815550004',
   },
 ];
@@ -80,13 +88,13 @@ const DEMO_STAFF: TestUser[] = [
   {
     role: 'admin',
     email: 'admin@gasandino.com',
-    full_name: 'Admin Andino',
+    full_name: nombreReal('admin@gasandino.com'),
     phone_number: '+5493815550012',
   },
   {
     role: 'delivery',
     email: 'chofer@gasandino.com',
-    full_name: 'Chofer Andino',
+    full_name: nombreReal('chofer@gasandino.com'),
     phone_number: '+5493815550014',
   },
 ];

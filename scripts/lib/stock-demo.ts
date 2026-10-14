@@ -3,8 +3,6 @@
  * `resguardoDeProduccion` las frena antes de llegar acá).
  */
 import { DataSource } from 'typeorm';
-import { limpiarCompras } from './purchase-demo';
-import { limpiarCargas } from './truck-load-demo';
 import { GasCylinderService } from '../../src/gascylinder/gascylinder.service';
 import { StockLedgerService } from '../../src/stock/application/stock-ledger.service';
 import {
@@ -12,54 +10,6 @@ import {
   StockMovementReason,
   StockReferenceType,
 } from '../../src/stock/domain/stock.enums';
-
-/**
- * Borra todo el stock de las distribuidoras indicadas, en el orden de las
- * claves foráneas.
- *
- * `stock_movement` es de sólo escritura: un trigger rechaza UPDATE y DELETE
- * (es la garantía de que el libro no se edita). Un seed que regenera la base de
- * desarrollo tiene que poder vaciarlo, así que en SU transacción desactiva ese
- * trigger y lo vuelve a activar antes de confirmar. Si algo falla, el rollback
- * deja el trigger como estaba (el DDL de Postgres es transaccional). Esto NO
- * existe en la aplicación: sólo en los seeds.
- */
-export async function limpiarStock(
-  ds: DataSource,
-  distributorIds: string[],
-): Promise<void> {
-  if (distributorIds.length === 0) return;
-  await ds.transaction(async (m) => {
-    await m.query(
-      `ALTER TABLE "stock_movement" DISABLE TRIGGER "stock_movement_inmutable"`,
-    );
-    await limpiarCargas(m, distributorIds);
-    await limpiarCompras(m, distributorIds);
-    const ids = [distributorIds];
-    await m.query(
-      `DELETE FROM "stock_adjustment_item" WHERE "adjustment_id" IN
-         (SELECT "adjustment_id" FROM "stock_adjustment" WHERE "distributor_id" = ANY($1::uuid[]))`,
-      ids,
-    );
-    for (const tabla of [
-      'stock_adjustment',
-      'stock_threshold',
-      'stock_reconciliation_alert',
-      'stock_movement',
-      'stock_balance',
-      'stock_location',
-      'warehouse',
-    ]) {
-      await m.query(
-        `DELETE FROM "${tabla}" WHERE "distributor_id" = ANY($1::uuid[])`,
-        ids,
-      );
-    }
-    await m.query(
-      `ALTER TABLE "stock_movement" ENABLE TRIGGER "stock_movement_inmutable"`,
-    );
-  });
-}
 
 /**
  * Deja el físico de la distribuidora consistente con su catálogo, PASANDO POR

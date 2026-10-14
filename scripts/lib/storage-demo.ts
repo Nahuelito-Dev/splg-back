@@ -66,3 +66,32 @@ export function crearAlmacenDemo(): AlmacenDemo | null {
     },
   };
 }
+
+/**
+ * Carpetas de S3 que cuelgan de una distribuidora: `<carpeta>/<id>/...`. Es la
+ * ÚNICA lista de lo que el seed puede borrar (más `users/<id>/` de las personas
+ * que él mismo quita). Salen de cómo arma las keys el back (`src/*`).
+ */
+export const CARPETAS_POR_DISTRIBUIDORA: readonly string[] = [
+  'gascylinders',
+  'cars',
+  'claims',
+  'incidents',
+  'distributors',
+  'employees',
+  'attachments',
+  'fleet',
+];
+
+/** ¿Es una key que el seed puede borrar? Prefijo EXACTO, no "contiene el id". */
+export function keyEsDeLaDemo(
+  key: string,
+  distribuidoras: readonly string[],
+  usuarios: readonly string[],
+): boolean {
+  return (
+    distribuidoras.some((id) =>
+      CARPETAS_POR_DISTRIBUIDORA.some((c) => key.startsWith(`${c}/${id}/`)),
+    ) || usuarios.some((id) => key.startsWith(`users/${id}/`))
+  );
+}
