@@ -2,7 +2,6 @@ import { PaymentStatus } from '../order/entities/order.entity';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
@@ -29,7 +28,7 @@ describe('IncidentService', () => {
   };
   let orders: {
     findById: jest.Mock;
-    assertAsignadoAlChofer: jest.Mock;
+    assertPedidoPropioDelChofer: jest.Mock;
     assertDeLaDistribuidora: jest.Mock;
   };
 
@@ -43,7 +42,7 @@ describe('IncidentService', () => {
     };
     orders = {
       findById: jest.fn(),
-      assertAsignadoAlChofer: jest.fn(),
+      assertPedidoPropioDelChofer: jest.fn(),
       assertDeLaDistribuidora: jest.fn(),
     };
     service = new IncidentService(
@@ -151,7 +150,9 @@ describe('IncidentService', () => {
       distributorId: 'd1',
       deliveryId: 'otro',
     });
-    orders.assertAsignadoAlChofer.mockRejectedValue(new ForbiddenException());
+    orders.assertPedidoPropioDelChofer.mockRejectedValue(
+      new NotFoundException(),
+    );
     await expect(
       service.create(
         { orderId: 'o1', type: IncidentType.OTHER, description: 'x' },
@@ -159,11 +160,12 @@ describe('IncidentService', () => {
         'd1',
         true,
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(orders.assertAsignadoAlChofer).toHaveBeenCalledWith(
-      'otro',
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(orders.assertPedidoPropioDelChofer).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: 'o1', deliveryId: 'otro' }),
       'chofer-1',
     );
+    expect(incidents.save).not.toHaveBeenCalled();
   });
 
   it('no se resuelve una incidencia de otra distribuidora', async () => {
@@ -248,7 +250,7 @@ describe('IncidentService', () => {
           orderId: 'o1',
           distributorId: 'distribuidora-a',
         }),
-        assertAsignadoAlChofer: jest.fn(),
+        assertPedidoPropioDelChofer: jest.fn(),
         assertDeLaDistribuidora: jest.fn(),
       };
       const servicioLocal = new IncidentService(

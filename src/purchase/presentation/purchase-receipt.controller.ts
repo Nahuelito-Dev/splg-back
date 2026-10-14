@@ -129,7 +129,7 @@ export class PurchaseReceiptController {
     summary: 'Anular una recepción (contraasiento del libro, con motivo)',
     description:
       'Saca las llenas que entraron y devuelve las vacías que se llevó la planta; recalcula lo recibido de la orden y el ' +
-      'costo promedio (recalculado de las recepciones que siguen confirmadas). **Exige** `Idempotency-Key`. Si las llenas ya no están en el depósito responde 409 diciendo dónde están. No se anula una recepción pagada.',
+      'costo promedio (recalculado de las recepciones que siguen confirmadas). **Exige** `Idempotency-Key`. Si las llenas ya no están en el depósito responde 409 diciendo dónde están; si el depósito fue dado de baja, 409. No se anula una recepción pagada.',
   })
   @ApiParam({ name: 'id', description: 'Recepción UUID' })
   @ApiOkResponse({ type: PurchaseReceiptResponseDto })
@@ -140,7 +140,7 @@ export class PurchaseReceiptController {
   @ApiNotFoundResponse({ description: NO_ENCONTRADA })
   @ApiConflictResponse({
     description:
-      'Ya está anulada, o las llenas ya no están en el depósito donde entraron',
+      'Ya está anulada, las llenas ya no están en el depósito donde entraron, o ese depósito fue dado de baja',
   })
   async void(
     @Param('id', ParseUUIDPipe) id: string,

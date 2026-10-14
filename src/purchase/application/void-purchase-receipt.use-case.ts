@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { StockLedgerPort } from '../../stock/domain/ports/stock-ledger.port';
 import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
+import { UbicacionNoEncontradaError } from '../../stock/domain/errors/stock.errors';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import {
@@ -201,6 +202,11 @@ export class VoidPurchaseReceiptUseCase {
       if (error instanceof ConflictException) {
         throw new ConflictException(
           await this.explicarFaltante(manager, recepcion, items, distributorId),
+        );
+      }
+      if (error instanceof UbicacionNoEncontradaError) {
+        throw new ConflictException(
+          `No se puede anular la recepción N° ${recepcion.number}: el depósito donde entró fue dado de baja y el contraasiento tiene que devolver las garrafas a ese mismo lugar. Las garrafas ya no están ahí: corregí el stock con un ajuste en otro depósito si hace falta.`,
         );
       }
       throw error;

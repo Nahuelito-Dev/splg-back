@@ -18,6 +18,7 @@ import {
   ApiParam,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiGoneResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
@@ -74,7 +75,13 @@ export class IncidentController {
     summary: 'Reportar una incidencia de entrega (chofer durante el reparto)',
   })
   @ApiCreatedResponse({ type: IncidentResponseDto })
-  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  @ApiNotFoundResponse({
+    description:
+      'Pedido no encontrado, de otra distribuidora o (para el chofer) que no tiene asignado',
+  })
+  @ApiGoneResponse({
+    description: 'El chofer tuvo el pedido y ya no está asignado a su usuario',
+  })
   @ApiBadRequestResponse({
     description:
       'Datos inválidos (p. ej.: orderId must be a UUID; type must be one of the following values: damaged, out_of_stock, no_show, other). `unpaid_collection` no se acepta acá: se crea con `PATCH /orders/{id}/payment/unpaid`',

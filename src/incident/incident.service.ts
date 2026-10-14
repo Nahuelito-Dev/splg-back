@@ -30,7 +30,8 @@ export class IncidentService {
    * denormaliza de la order (no se confía en el body). `reportedByUserId`
    * sale del token (normalmente el chofer que entrega el pedido).
    * Con distribuidora en contexto, el pedido tiene que ser de ella; un chofer,
-   * además, sólo reporta sobre el que tiene asignado.
+   * además, sólo reporta sobre el que tiene asignado (404 si es ajeno, 410 si lo
+   * tuvo y ya no).
    */
   async create(
     dto: CreateIncidentDto,
@@ -50,8 +51,8 @@ export class IncidentService {
     }
     // El chofer reporta sobre el pedido que tiene asignado.
     if (esChofer) {
-      await this.orderService.assertAsignadoAlChofer(
-        order.deliveryId,
+      await this.orderService.assertPedidoPropioDelChofer(
+        order,
         reportedByUserId,
       );
     }

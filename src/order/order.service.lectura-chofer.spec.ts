@@ -131,3 +131,46 @@ describe('OrderController · roles de las lecturas por cliente', () => {
     );
   });
 });
+
+describe('OrderService.assertPedidoPropioDelChofer', () => {
+  const USER = 'u1u1u1u1-0000-4000-8000-000000000001';
+  const PROPIO = 'd1d1d1d1-0000-4000-8000-000000000003';
+  const hasHeldOrder = jest.fn();
+  const buscarPorIdOUsuario = jest.fn();
+  const service = Object.assign(Object.create(OrderService.prototype), {
+    deliveries: { buscarPorIdOUsuario },
+    dispatchOffers: { hasHeldOrder },
+  }) as OrderService;
+  const pedido = (deliveryId: string | null): Order =>
+    ({ orderId: 'o1', deliveryId }) as unknown as Order;
+
+  beforeEach(() => {
+    hasHeldOrder.mockReset().mockResolvedValue(false);
+    buscarPorIdOUsuario.mockReset().mockResolvedValue({ deliveryId: PROPIO });
+  });
+
+  it('el pedido asignado al chofer pasa', async () => {
+    await expect(
+      service.assertPedidoPropioDelChofer(pedido(PROPIO), USER),
+    ).resolves.toBeUndefined();
+  });
+
+  it('el pedido de otro chofer es 404', async () => {
+    await expect(
+      service.assertPedidoPropioDelChofer(pedido('otro'), USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('un pedido sin chofer es 404', async () => {
+    await expect(
+      service.assertPedidoPropioDelChofer(pedido(null), USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('si el chofer lo tuvo y ya no es suyo es 410', async () => {
+    hasHeldOrder.mockResolvedValue(true);
+    await expect(
+      service.assertPedidoPropioDelChofer(pedido('otro'), USER),
+    ).rejects.toBeInstanceOf(GoneException);
+  });
+});

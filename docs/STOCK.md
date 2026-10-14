@@ -184,6 +184,7 @@ entregas ya no depende de `occurred_at`.
 **Anular (`PATCH /purchase-receipts/:id/void`):** contraasiento del lote por el ledger (las llenas salen del
 depósito, las vacías vuelven). Si las llenas ya no están en el depósito (vendidas, cargadas a un camión,
 transferidas) responde **409** y dice dónde están hoy. No se anula una recepción marcada como pagada (400).
+Si el depósito donde entró la recepción fue dado de baja tampoco se anula: **409** (el contraasiento devuelve las garrafas a la ubicación original y un depósito dado de baja no recibe ni entrega nada). Un depósito inactivo, que no recibe stock, da **400** si el contraasiento tiene que devolverle vacías.
 
 **Costo promedio al anular** (`recalcularCostoPromedio`, exacto y determinístico). Las ventas, mermas y ajustes NO cambian el
 promedio (sólo una compra lo cambia), así que al anular se **repiten, en orden de número, las recepciones de llenas que siguen
