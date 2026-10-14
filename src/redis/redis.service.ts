@@ -13,6 +13,10 @@ import { errorMessage } from '../common/errors/error-message';
 /** Cuánto espera el health check la respuesta de Redis antes de darlo por caído. */
 const PING_TIMEOUT_MS = 2000;
 
+/** Reintentos de `withLock` con espera: cada cuánto y cuánto jitter. */
+const LOCK_RETRY_DELAY_MS = 100;
+const LOCK_RETRY_JITTER_MS = 50;
+
 /** Vigencia de la hora de la última ubicación del chofer. */
 const LOCATION_AT_TTL_SEC = 24 * 60 * 60;
 
@@ -100,19 +104,21 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * (Redlock `using`): mientras `fn` corre, el lock se renueva solo, así la
    * sección crítica nunca excede su vigencia. Si otro proceso tiene el lock,
    * no ejecuta `fn` y devuelve `{ obtenido: false }`; los errores de `fn` se
-   * propagan.
+   * propagan. Con `esperaMaxMs` reintenta (con jitter) hasta ese plazo antes de
+   * rendirse; sin él no espera.
    */
   async withLock<T>(
     key: string,
     ttlMs: number,
     fn: () => Promise<T>,
+    esperaMaxMs = 0,
   ): Promise<{ obtenido: true; valor: T } | { obtenido: false }> {
     let ejecutando = false;
     let resultado: { valor: T } | undefined;
     let falloLaOperacion = false;
     let error: unknown;
     try {
-      await this.redlock.using([`lock:${key}`], ttlMs, async () => {
+      const seccion = async () => {
         ejecutando = true;
         // Lo que falle acá es de la operación; lo que falle después (renovar o
         // soltar el lock) no puede pisar su resultado.
@@ -122,7 +128,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
           falloLaOperacion = true;
           error = e;
         }
-      });
+      };
+      const recurso = [`lock:${key}`];
+      if (esperaMaxMs > 0) {
+        await this.redlock.using(
+          recurso,
+          ttlMs,
+          {
+            retryCount: Math.ceil(esperaMaxMs / LOCK_RETRY_DELAY_MS),
+            retryDelay: LOCK_RETRY_DELAY_MS,
+            retryJitter: LOCK_RETRY_JITTER_MS,
+          },
+          seccion,
+        );
+      } else {
+        await this.redlock.using(recurso, ttlMs, seccion);
+      }
     } catch (err) {
       // Sin lock (otro proceso lo tiene): no es un error.
       if (!ejecutando) return { obtenido: false };

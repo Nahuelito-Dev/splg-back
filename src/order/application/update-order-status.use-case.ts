@@ -1,3 +1,4 @@
+import { OrderItem } from '../entities/order-item.entity';
 import {
   Injectable,
   Logger,
@@ -172,13 +173,19 @@ export class UpdateOrderStatusUseCase {
         .createQueryBuilder(Order, 'ord')
         .setLock('pessimistic_write', undefined, ['ord'])
         .leftJoinAndSelect('ord.delivery', 'delivery')
-        .leftJoinAndSelect('ord.items', 'items')
         .where('ord.orderId = :id', { id })
         .getOne();
 
+      // Los renglones se leen DESPUÉS del lock y aparte: un SELECT con JOIN que
+      // esperó el lock re-lee el pedido pero no los renglones que una edición
+      // cambió en el medio (READ COMMITTED), y el `save` con cascade
+      // desvincularía los renglones nuevos.
       if (!locked) {
         throw new NotFoundException(`Order with ID: ${id} not found`);
       }
+      locked.items = await queryRunner.manager.find(OrderItem, {
+        where: { orderId: locked.orderId },
+      });
 
       // Antes de tocar nada: el pedido tiene que ser de quien lo está moviendo.
       await this.assertPedidoDelChofer(locked, deliveryId, role);
@@ -394,13 +401,19 @@ export class UpdateOrderStatusUseCase {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'ord')
         .setLock('pessimistic_write', undefined, ['ord'])
-        .leftJoinAndSelect('ord.items', 'items')
         .where('ord.orderId = :id', { id })
         .getOne();
 
+      // Los renglones se leen DESPUÉS del lock y aparte: un SELECT con JOIN que
+      // esperó el lock re-lee el pedido pero no los renglones que una edición
+      // cambió en el medio (READ COMMITTED), y el `save` con cascade
+      // desvincularía los renglones nuevos.
       if (!locked) {
         throw new NotFoundException(`Order with ID: ${id} not found`);
       }
+      locked.items = await queryRunner.manager.find(OrderItem, {
+        where: { orderId: locked.orderId },
+      });
 
       yaActivada = locked.status !== OrderStatus.RESERVED;
       if (!yaActivada) {

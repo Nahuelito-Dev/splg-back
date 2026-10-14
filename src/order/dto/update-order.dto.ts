@@ -2,6 +2,7 @@ import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
+  ArrayUnique,
   IsArray,
   IsDateString,
   IsEnum,
@@ -83,6 +84,10 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
+  @ArrayUnique((item: UpdateOrderItemDto) => item.gasCylinderId, {
+    message:
+      'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',
+  })
   @ValidateNested({ each: true })
   @Type(() => UpdateOrderItemDto)
   items?: UpdateOrderItemDto[];

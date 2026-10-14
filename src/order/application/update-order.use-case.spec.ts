@@ -20,6 +20,10 @@ import {
 } from '../entities/order.entity';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { OrderItem } from '../entities/order-item.entity';
+import { OrderStatusHistory } from '../entities/order-status-history.entity';
+import { RedisService } from '../../redis/redis.service';
+import { conRespuestaVigilada } from '../../common/interceptors/respuesta-incompleta';
+import { RoleType } from '../../common/constants/role-type.enum';
 
 /**
  * Edición de un pedido pendiente: sólo en `pending` sin chofer y sin pago
@@ -42,10 +46,12 @@ describe('UpdateOrderUseCase', () => {
       create: jest.Mock;
       find: jest.Mock;
       update: jest.Mock;
+      insert: jest.Mock;
     };
   };
   let ofertasVivas: Array<{ driverId: string }>;
   let orquestador: { offerToNextDriver: jest.Mock };
+  let redis: { withLock: jest.Mock };
   let locked: Order | null;
   let create: {
     resolverZona: jest.Mock;
@@ -110,6 +116,7 @@ describe('UpdateOrderUseCase', () => {
           Promise.resolve(entidad === OrderItem ? locked?.items : ofertasVivas),
         ),
         update: jest.fn().mockResolvedValue(undefined),
+        insert: jest.fn().mockResolvedValue(undefined),
       },
     };
     create = {
@@ -136,6 +143,12 @@ describe('UpdateOrderUseCase', () => {
     orders = { findByIdFull: jest.fn((id: string) => Promise.resolve({ id })) };
     ofertasVivas = [];
     orquestador = { offerToNextDriver: jest.fn().mockResolvedValue(null) };
+    redis = {
+      withLock: jest.fn(async (_k: string, _t: number, fn: () => unknown) => ({
+        obtenido: true,
+        valor: await fn(),
+      })),
+    };
     realtime = {
       notifyAdmins: jest.fn(),
       notifyCustomer: jest.fn(),
@@ -152,6 +165,7 @@ describe('UpdateOrderUseCase', () => {
       orders as unknown as OrderRepositoryPort,
       realtime as unknown as RealtimeDispatchPort,
       orquestador as unknown as DispatchOrchestratorService,
+      redis as unknown as RedisService,
     );
   });
 
@@ -386,5 +400,140 @@ describe('UpdateOrderUseCase', () => {
       'd1',
     );
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
+  });
+
+  describe('el cliente dueño edita su pedido', () => {
+    const comoCliente = (dto: Parameters<UpdateOrderUseCase['execute']>[1]) =>
+      useCase.execute('o1', dto, 'c1', null, RoleType.CUSTOMER);
+
+    it('un pedido de otro cliente es 404 y no toca nada', async () => {
+      await expect(
+        useCase.execute(
+          'o1',
+          { notes: 'x' },
+          'otro-cliente',
+          null,
+          RoleType.CUSTOMER,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('con chofer asignado responde 409 con el mensaje del repartidor', async () => {
+      locked = makeOrder({ deliveryId: 'del-1' });
+      await expect(comoCliente({ notes: 'x' })).rejects.toThrow(
+        'El pedido ya fue tomado por un repartidor: no se puede modificar',
+      );
+      expect(stock.reajustarReserva).not.toHaveBeenCalled();
+    });
+
+    it('un pedido aceptado también es 409 por repartidor', async () => {
+      locked = makeOrder({ status: OrderStatus.ACCEPTED });
+      await expect(comoCliente({ notes: 'x' })).rejects.toThrow(
+        'El pedido ya fue tomado por un repartidor: no se puede modificar',
+      );
+    });
+
+    it('con un pago online generado responde 409 (medio de pago)', async () => {
+      locked = makeOrder({ paymentMethod: PaymentMethod.MERCADOPAGO });
+      await expect(
+        comoCliente({ paymentMethod: PaymentMethod.CASH }),
+      ).rejects.toThrow(/pago online/);
+    });
+
+    it('recalcula el total en el servidor y deja la anotación en el historial', async () => {
+      const dto = {
+        items: [{ gasCylinderId: 'g2', quantity: 3 }],
+        precio: 1,
+        totalAmount: 1,
+      } as Parameters<UpdateOrderUseCase['execute']>[1];
+      await comoCliente(dto);
+      expect(create.reservarRenglones).toHaveBeenCalled();
+      expect(locked?.totalAmount).toBe(3000);
+      expect(queryRunner.manager.insert).toHaveBeenCalledWith(
+        OrderStatusHistory,
+        expect.objectContaining({
+          fromStatus: OrderStatus.PENDING,
+          toStatus: OrderStatus.PENDING,
+          changedByUserId: 'c1',
+          reason: expect.stringContaining(
+            'Pedido modificado por el cliente: renglones. Total: 1000 → 3000',
+          ) as string,
+        }),
+      );
+    });
+
+    it('el admin no deja anotación de cliente en el historial', async () => {
+      await useCase.execute('o1', { notes: 'x' }, 'u1', 'd1');
+      expect(queryRunner.manager.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('despacho, repetidos, seña, sin cambios y relectura', () => {
+    it('toma el lock del despacho del pedido y, si el despacho lo tiene, responde 409 sin escribir', async () => {
+      await useCase.execute('o1', { notes: 'x' }, 'u1', 'd1');
+      expect(redis.withLock).toHaveBeenCalledWith(
+        'dispatch:offer:o1',
+        expect.any(Number) as number,
+        expect.any(Function) as () => unknown,
+        expect.any(Number) as number,
+      );
+      redis.withLock.mockResolvedValueOnce({ obtenido: false });
+      queryRunner.manager.save.mockClear();
+      await expect(
+        useCase.execute('o1', { notes: 'y' }, 'u1', 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('con la seña paga, un total por debajo de la seña es 409; por encima se permite', async () => {
+      locked = makeOrder({ depositPaid: true, depositAmount: 2000 });
+      await expect(
+        useCase.execute(
+          'o1',
+          { items: [{ gasCylinderId: 'g2', quantity: 1 }] },
+          'u1',
+          'd1',
+        ),
+      ).resolves.toBeDefined();
+      locked = makeOrder({ depositPaid: true, depositAmount: 5000 });
+      await expect(
+        useCase.execute(
+          'o1',
+          { items: [{ gasCylinderId: 'g2', quantity: 1 }] },
+          'u1',
+          'd1',
+        ),
+      ).rejects.toThrow(
+        'El total no puede quedar por debajo de la seña ya pagada',
+      );
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('un PATCH sin cambios (vacío o con los mismos valores) no escribe, no anota ni avisa', async () => {
+      locked = makeOrder({ notes: 'igual' });
+      for (const dto of [
+        {},
+        { notes: 'igual' },
+        { items: [{ gasCylinderId: 'g1', quantity: 1 }] },
+        { paymentMethod: PaymentMethod.CASH, addressId: 'a1' },
+      ]) {
+        await useCase.execute('o1', dto, 'c1', null, RoleType.CUSTOMER);
+      }
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(queryRunner.manager.insert).not.toHaveBeenCalled();
+      expect(stock.reajustarReserva).not.toHaveBeenCalled();
+      expect(realtime.notifyAdmins).not.toHaveBeenCalled();
+      expect(orquestador.offerToNextDriver).not.toHaveBeenCalled();
+    });
+
+    it('si falla la relectura después del commit responde con lo guardado y marca la respuesta incompleta', async () => {
+      orders.findByIdFull.mockRejectedValueOnce(new Error('base caída'));
+      const { valor, incompleta } = await conRespuestaVigilada(() =>
+        useCase.execute('o1', { notes: 'x' }, 'u1', 'd1'),
+      );
+      expect(valor).toBe(locked);
+      expect(incompleta).toBe(true);
+    });
   });
 });

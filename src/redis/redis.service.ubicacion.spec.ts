@@ -126,5 +126,46 @@ describe('RedisService · última ubicación del chofer', () => {
       });
       expect(fn).not.toHaveBeenCalled();
     });
+
+    it('sin esperaMaxMs no reintenta: el lock se pide con la configuración por defecto', async () => {
+      conLock();
+      await service.withLock('k', 1000, () => Promise.resolve(1));
+      expect(using).toHaveBeenCalledWith(
+        ['lock:k'],
+        1000,
+        expect.any(Function),
+      );
+    });
+
+    it('con esperaMaxMs reintenta con jitter hasta ese plazo', async () => {
+      using.mockImplementation(
+        async (
+          _k: string[],
+          _t: number,
+          _s: unknown,
+          fn: () => Promise<unknown>,
+        ) => {
+          await fn();
+        },
+      );
+      await expect(
+        service.withLock('k', 1000, () => Promise.resolve(9), 3000),
+      ).resolves.toEqual({ obtenido: true, valor: 9 });
+      expect(using).toHaveBeenCalledWith(
+        ['lock:k'],
+        1000,
+        { retryCount: 30, retryDelay: 100, retryJitter: 50 },
+        expect.any(Function),
+      );
+    });
+
+    it('con esperaMaxMs, si se agota el plazo sin lock no ejecuta y lo informa', async () => {
+      using.mockRejectedValue(new Error('ya tomado'));
+      const fn = jest.fn();
+      await expect(service.withLock('k', 1000, fn, 3000)).resolves.toEqual({
+        obtenido: false,
+      });
+      expect(fn).not.toHaveBeenCalled();
+    });
   });
 });
