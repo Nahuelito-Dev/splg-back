@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
   ForbiddenException,
   HttpCode,
+  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import {
@@ -24,6 +25,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiOkResponse,
+  ApiNoContentResponse,
   ApiCreatedResponse,
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -39,7 +41,11 @@ import {
 } from './dto/resolve-unpaid.dto';
 import { ConfirmTransferDto, MotivoDeCobroDto } from './dto/payment-admin.dto';
 import { ReservationService } from './application/reservation.service';
-import { mapRoleToCancelActor } from './application/cancel-order.use-case';
+import {
+  cancelledByDe,
+  mapRoleToCancelActor,
+} from './application/cancel-order.use-case';
+import type { CancelActor } from './application/cancel-order.use-case';
 import { OrderMapper } from './order.mapper';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -48,6 +54,7 @@ import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
+import { OrderStatusHistoryEntryDto } from './dto/order-status-history-response.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import {
   CodigoDeEntregaResponseDto,
@@ -63,7 +70,7 @@ import {
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { errorMessage } from '../common/errors/error-message';
-import { Order } from './entities/order.entity';
+import { Order, OrderStatus } from './entities/order.entity';
 import { Auth } from '../common/decorators/auth.decorator';
 import type { Response } from 'express';
 import { DownloadQueryDto } from '../s3/dto/download-link.dto';
@@ -230,6 +237,33 @@ export class OrderController {
     };
   }
 
+  @Get('delivery/me/active')
+  @Auth(RoleType.DELIVERY)
+  @ApiOperation({
+    summary: 'El pedido en curso del chofer (para retomar al abrir la app)',
+    description:
+      'Devuelve el pedido que el chofer tiene en curso, sin importar cuándo se creó: el que lleva `out_for_delivery` o, si no, el `accepted` más antiguo. Si no tiene ninguno, el pedido entregado HOY en efectivo cuyo cobro sigue `pending` (para que confirme el cobro). Responde `204` sin cuerpo si no tiene nada de eso. Sólo del chofer autenticado y de su distribuidora.',
+  })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiNoContentResponse({
+    description: 'El chofer no tiene un pedido en curso',
+  })
+  async findMyActive(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<OrderResponseDto | undefined> {
+    const order = await this.orderService.findCurrentOfDriver(
+      user.user_id,
+      distributorId,
+    );
+    if (!order) {
+      res.status(HttpStatus.NO_CONTENT);
+      return undefined;
+    }
+    return order;
+  }
+
   @Get('delivery/:deliveryId')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get orders by delivery ID' })
@@ -333,6 +367,43 @@ export class OrderController {
       res,
       query.modo,
       await this.driverPhoto.enlace(id, user, distributorId),
+    );
+  }
+
+  @Get(':id/status-history')
+  @Auth(
+    RoleType.CUSTOMER,
+    RoleType.DELIVERY,
+    RoleType.ADMIN,
+    RoleType.SUPER_ADMIN,
+  )
+  @ApiOperation({
+    summary: 'Historial de estados del pedido',
+    description:
+      'Del más viejo al más nuevo: de qué estado a cuál, cuándo, quién y el motivo. Las filas con `isNote: true` (origen = destino) son anotaciones de un cobro manual del admin, no cambios de estado. La regla de lectura es la de `GET /orders/:id`: el cliente sólo los suyos, el chofer los que ve en el detalle, admin y super admin los de su distribuidora (el super admin tiene que mandar `X-Distributor`: sin él, 400); lo ajeno responde 404. `changedBy.fullName` sólo lo ven admin y super admin. Los pedidos anteriores al historial no tienen sus transiciones pasadas.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: OrderStatusHistoryEntryDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: 'El super admin no mandó `X-Distributor`',
+  })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  @ApiResponse({
+    status: 410,
+    description:
+      'Sólo para el chofer: el pedido lo tuvo él y ya no es suyo (igual que `GET /orders/:id`).',
+  })
+  async statusHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
+  ) {
+    return this.orderService.getStatusHistory(
+      id,
+      distributorId,
+      user.role === RoleType.CUSTOMER ? user.user_id : undefined,
+      user.role === RoleType.DELIVERY ? user.user_id : undefined,
+      user.role === RoleType.ADMIN || user.role === RoleType.SUPER_ADMIN,
     );
   }
 
@@ -827,7 +898,7 @@ export class OrderController {
       user.user_id,
       'admin',
     );
-    return OrderMapper.toDto(order);
+    return this.pedidoCancelado(order, 'admin');
   }
 
   @Patch(':id/cancel')
@@ -860,13 +931,14 @@ export class OrderController {
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    const actor = mapRoleToCancelActor(user.role);
     const order = await this.orderService.cancelOrder(
       id,
       user.user_id,
-      mapRoleToCancelActor(user.role),
+      actor,
       body.reason,
     );
-    return OrderMapper.toDto(order);
+    return this.pedidoCancelado(order, actor);
   }
 
   @Patch(':id/arrived')
@@ -943,6 +1015,19 @@ export class OrderController {
    * transacción: un 500 acá, con el cobro hecho, haría que el reintento con la
    * misma `Idempotency-Key` repitiera la operación en vez de devolver su resultado.
    */
+  /**
+   * La respuesta de una cancelación lleva `cancelledBy` igual que la lectura
+   * posterior. Si el chofer "cancela" el pedido vuelve a pendiente: no está
+   * cancelado y `cancelledBy` queda `null`.
+   */
+  private pedidoCancelado(order: Order, actor: CancelActor): OrderResponseDto {
+    const dto = OrderMapper.toDto(order);
+    if (order.status === OrderStatus.CANCELLED) {
+      dto.cancelledBy = cancelledByDe(actor);
+    }
+    return dto;
+  }
+
   private async pedidoTrasElCobro(
     id: string,
     distributorId: string | null,

@@ -29,6 +29,11 @@ export interface TokenDecodificado {
 /** Lo que responde el login cuando el email o la contraseña no sirven. */
 export const MENSAJE_CREDENCIALES = 'El email o la contraseña son incorrectos';
 
+/** Lo que responde un 401 por token, sin el texto interno de Firebase. */
+export const MENSAJE_TOKEN_INVALIDO =
+  'El token es inválido: volvé a iniciar sesión';
+export const MENSAJE_TOKEN_VENCIDO = 'El token venció: volvé a iniciar sesión';
+
 /** Códigos de Firebase que significan "email o contraseña no sirven". */
 const CODIGOS_DE_CREDENCIALES = [
   'auth/invalid-credential',
@@ -170,11 +175,19 @@ export class AuthService {
         sub: decoded.sub,
       };
     } catch (error) {
+      const code = errorCode(error);
+      // El detalle de Firebase (con links a su documentación) queda en el log.
+      this.logger.warn(
+        `Token rechazado (${code ?? 'sin código'}): ${errorMessage(error)}`,
+      );
       throw new UnauthorizedException({
         statusCode: HttpStatus.UNAUTHORIZED,
         error: 'Unauthorized',
-        message: errorMessage(error),
-        code: errorCode(error),
+        message:
+          code === 'auth/id-token-expired'
+            ? MENSAJE_TOKEN_VENCIDO
+            : MENSAJE_TOKEN_INVALIDO,
+        code,
       });
     }
   }

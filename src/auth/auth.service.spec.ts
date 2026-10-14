@@ -1,7 +1,12 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { AuthService, MENSAJE_CREDENCIALES } from './auth.service';
+import {
+  AuthService,
+  MENSAJE_CREDENCIALES,
+  MENSAJE_TOKEN_INVALIDO,
+  MENSAJE_TOKEN_VENCIDO,
+} from './auth.service';
 import { AdminService } from '../admin/admin.service';
 import { UsersService } from '../users/users.service';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
@@ -157,6 +162,36 @@ describe('AuthService', () => {
     expect((error as UnauthorizedException).getResponse()).toMatchObject({
       statusCode: 401,
       code: 'auth/id-token-expired',
+    });
+  });
+
+  it('un token mal formado responde con un mensaje propio, sin el texto interno de Firebase', async () => {
+    firebase.verifyIdToken.mockRejectedValue(
+      Object.assign(
+        new Error(
+          'Decoding Firebase ID token failed. See https://firebase.google.com/docs/auth/admin/verify-id-tokens',
+        ),
+        { code: 'auth/argument-error' },
+      ),
+    );
+    const error = await service.decodeToken('basura').catch((e: unknown) => e);
+    const cuerpo = (error as UnauthorizedException).getResponse();
+    expect(cuerpo).toMatchObject({
+      statusCode: 401,
+      message: MENSAJE_TOKEN_INVALIDO,
+      code: 'auth/argument-error',
+    });
+    expect(JSON.stringify(cuerpo)).not.toMatch(/firebase/i);
+  });
+
+  it('un token vencido dice que venció', async () => {
+    firebase.verifyIdToken.mockRejectedValue({
+      code: 'auth/id-token-expired',
+      message: 'Firebase ID token has expired',
+    });
+    const error = await service.decodeToken('viejo').catch((e: unknown) => e);
+    expect((error as UnauthorizedException).getResponse()).toMatchObject({
+      message: MENSAJE_TOKEN_VENCIDO,
     });
   });
 

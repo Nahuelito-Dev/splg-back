@@ -72,16 +72,18 @@ no duplica.
 Todos con `reason` obligatorio (10 a 500 caracteres), idempotentes y auditados. Se registran
 en `order_status_history` como una fila de mismo estado de origen y destino con el motivo.
 
-| Endpoint                                                            | Qué hace                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PATCH /orders/:id/payment/register-cash` `{ reason }`              | Efectivo entregado con pago `pending` → `paid`. `paymentConfirmedBy` es el admin; el motivo queda en `paymentResolutionNote`. 409 si ya es impago.                                                                                                                                                                                                                                                              |
-| `PATCH /orders/:id/payment/register-unpaid` `{ reason }`            | Lo mismo que el aviso del chofer: pago `unpaid` + **una** incidencia `unpaid_collection` (reportada por el admin). Responde como `PATCH .../unpaid`.                                                                                                                                                                                                                                                            |
-| `PATCH /orders/:id/payment/confirm-transfer` `{ received, reason }` | Pedido `transfer`, no cancelado. `received: true` → `paid` (recién ahí cuenta como venta), desde `pending` **o desde `failed`** (la transferencia llegó después de marcarla no recibida: se corrige con motivo). `received: false` → `failed`, sólo desde `pending` y **sólo sobre un pedido entregado** (409 si no lo está: marcarla antes no frenaría nada). Repetir lo mismo: no-op; `paid` → `failed`: 409. |
+| Endpoint                                                            | Qué hace                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PATCH /orders/:id/payment/register-cash` `{ reason }`              | Efectivo entregado con pago `pending` → `paid`. `paymentConfirmedBy` es el admin; el motivo queda en `paymentResolutionNote`. 409 si ya es impago.                                                                                                                                                                                                                                                                                 |
+| `PATCH /orders/:id/payment/register-unpaid` `{ reason }`            | Lo mismo que el aviso del chofer: pago `unpaid` + **una** incidencia `unpaid_collection` (reportada por el admin). Responde como `PATCH .../unpaid`. El motivo queda también en el pedido (`paymentResolutionNote`, con `paymentResolvedBy/At`), igual que en `register-cash`; `resolve-unpaid` lo reemplaza cuando el impago se cierra (el motivo original sigue en el historial). Si el pago ya estaba `unpaid` no se toca nada. |
+| `PATCH /orders/:id/payment/confirm-transfer` `{ received, reason }` | Pedido `transfer`, no cancelado. `received: true` → `paid` (recién ahí cuenta como venta), desde `pending` **o desde `failed`** (la transferencia llegó después de marcarla no recibida: se corrige con motivo). `received: false` → `failed`, sólo desde `pending` y **sólo sobre un pedido entregado** (409 si no lo está: marcarla antes no frenaría nada). Repetir lo mismo: no-op; `paid` → `failed`: 409.                    |
 
 **Transferencia confirmada y pedido cancelado después.** La cancelación no se bloquea (el cliente
 o el admin pueden cancelar un pedido todavía no entregado), pero el dinero ya está en la
 distribuidora: `GET /reports/collections` lo informa en `pendingRefund` (pedidos `cancelled` con
-pago `paid`, por fecha de última modificación) y el pedido sigue con `paymentStatus: paid`.
+pago `paid`, por el día en que se cancelaron: la última transición a `cancelled` del historial; un
+pedido cancelado antes de que existiera el historial cae a la fecha de última modificación; la consulta usa
+el índice parcial `IDX_order_status_history_cancelacion`, migración `1792000000000`) y el pedido sigue con `paymentStatus: paid`.
 **El sistema no gestiona el reintegro**: lo hace la distribuidora por fuera y el panel debe
 mostrarlo como "reintegro pendiente".
 
@@ -103,6 +105,15 @@ otro la cerró en paralelo, 409 y no se pisa su resolución.
 olvidarse. **No hay backfill:** los pedidos anteriores a este cambio no tienen el historial de
 sus transiciones pasadas; el historial empieza el día que se despliega.
 
+**Lectura — `GET /orders/:id/status-history`.** Devuelve las filas del pedido del más viejo al más
+nuevo: `{ id, fromStatus, toStatus, isNote, reason, changedAt, changedBy }`. Los estados usan los
+mismos valores que `status` del pedido (`on_the_way` sale como `out_for_delivery`); `isNote` es
+`true` en las filas de anotación (origen = destino); `changedBy` es `{ userId, role, fullName }` o
+`null` si lo hizo el sistema, y `fullName` sólo se completa para admin y super admin. Misma regla de
+lectura que `GET /orders/:id`: el cliente sólo los suyos, el chofer los que ve en el detalle
+(410 si lo tuvo y ya no es suyo), admin y super admin los de su distribuidora (el super admin tiene que mandar `X-Distributor`: sin él, 400); lo ajeno, 404. Dos filas
+asentadas en la misma transacción comparten `changedAt`: entre ellas el orden no está garantizado.
+
 **Filas de anotación.** Los cobros manuales (`register-cash`, `register-unpaid`,
 `confirm-transfer`) no cambian el estado del pedido, pero dejan su motivo en el historial como
 una fila con `from_status = to_status` (p. ej. `delivered → delivered`) y el texto en `reason`
@@ -114,6 +125,20 @@ nota, no como un cambio de estado.
 la relectura del pedido, el back responde 2xx con lo que tiene y la `Idempotency-Key` guarda esa
 respuesta **5 minutos** en vez de 24 h: cubre el reintento inmediato (no repite la operación) y
 no deja un pedido a medias como "la respuesta" de esa clave.
+
+## Pedido en curso del chofer — `GET /orders/delivery/me/active`
+
+Sólo rol `delivery`; el chofer y la distribuidora salen del token. Devuelve el pedido que el chofer
+tiene en curso **sin importar cuándo se creó**: el que lleva `out_for_delivery` o, si no hay, el
+`accepted` más antiguo. Sin activos, el pedido entregado **hoy** (día argentino) en efectivo con el
+cobro `pending`, para que confirme el cobro. Si no tiene ninguno responde `204` sin cuerpo. La app
+lo usa para retomar al abrir en lugar de recorrer `GET /orders/delivery/:deliveryId`.
+
+## Cancelación
+
+`PATCH /orders/:id/cancel` (y el viejo `DELETE /orders/:id`) responden el pedido con `cancelledBy`
+(`customer` o `admin`) igual que la lectura posterior. Si cancela el chofer el pedido vuelve a
+`pending` y `cancelledBy` es `null`.
 
 ## Cotización — `POST /orders/quote`
 

@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 import {
   inicioDelDiaArgentino,
   rangoDelDiaArgentino,
 } from '../../common/utils/dias-argentina';
-import { Order, OrderStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 import {
   OrderListFilters,
   OrderRepositoryPort,
@@ -223,6 +228,36 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       order: { createdAt: 'DESC', orderId: 'DESC' },
     });
     return { orders, total, limit, offset };
+  }
+
+  async findCurrentOfDelivery(
+    deliveryId: string,
+    distributorId: string,
+    desde: Date,
+  ): Promise<Order | null> {
+    const activos = await this.orderRepository.find({
+      where: {
+        deliveryId,
+        distributorId,
+        status: In([OrderStatus.ON_THE_WAY, OrderStatus.ACCEPTED]),
+      },
+      relations: FULL_RELATIONS,
+      order: { acceptedAt: 'ASC', orderId: 'ASC' },
+    });
+    const enCamino = activos.find((o) => o.status === OrderStatus.ON_THE_WAY);
+    if (enCamino ?? activos[0]) return enCamino ?? activos[0];
+    return this.orderRepository.findOne({
+      where: {
+        deliveryId,
+        distributorId,
+        status: OrderStatus.DELIVERED,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PENDING,
+        deliveredAt: MoreThanOrEqual(desde),
+      },
+      relations: FULL_RELATIONS,
+      order: { deliveredAt: 'DESC', orderId: 'DESC' },
+    });
   }
 
   save(order: Order): Promise<Order> {

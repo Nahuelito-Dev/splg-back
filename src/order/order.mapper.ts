@@ -175,7 +175,8 @@ export class OrderMapper {
     return dto;
   }
 
-  private static mapStatus(status: OrderStatus): string {
+  /** El estado como lo ven las apps (`on_the_way` sale como `out_for_delivery`). */
+  static mapStatus(status: OrderStatus): string {
     switch (status) {
       case OrderStatus.PENDING:
         return 'pending';

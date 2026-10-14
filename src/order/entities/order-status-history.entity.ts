@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 import { Order, OrderStatus } from './order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -14,6 +15,11 @@ import { User } from '../../users/entities/user.entity';
  * Una fila por transición de estado de un pedido.
  * Casos: CU-018 a CU-020, CU-008 a CU-010 (decidido el 23/09)
  */
+// Cuándo se canceló cada pedido (`pendingRefund` de `GET /reports/collections`):
+// parcial, sólo indexa las transiciones a `cancelled`.
+@Index('IDX_order_status_history_cancelacion', ['orderId', 'changedAt'], {
+  where: `"to_status" = 'cancelled'`,
+})
 @Entity('order_status_history')
 export class OrderStatusHistory {
   @PrimaryGeneratedColumn('uuid', { name: 'history_id' })

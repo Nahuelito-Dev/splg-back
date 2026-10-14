@@ -288,6 +288,15 @@ export class ReportsService {
     // Pedidos cobrados (online o transferencia) y después cancelados: el dinero
     // sigue en la distribuidora y hay que devolverlo. Dato informativo: el
     // sistema no gestiona el reintegro.
+    // Se ubica por el día en que se canceló (la última transición a `cancelled`
+    // del historial), no por `updatedAt`: cualquier edición posterior movería el
+    // pedido de rango. Un pedido cancelado antes de que existiera el historial
+    // no tiene la fila y cae a `updatedAt`. Es una subconsulta por pedido (usa
+    // el índice parcial `IDX_order_status_history_cancelacion`) y no un
+    // agregado de todo el historial.
+    const cancelacion =
+      '(SELECT MAX(h.changed_at) FROM order_status_history h ' +
+      'WHERE h.order_id = order.orderId AND h.to_status = :cancelada)';
     const reintegros = this.orderRepository
       .createQueryBuilder('order')
       .select('COUNT(order.orderId)', 'count')
@@ -296,10 +305,15 @@ export class ReportsService {
       .andWhere('order.paymentStatus = :pagado', {
         pagado: PaymentStatus.PAID,
       })
-      .andWhere('order.updatedAt >= :start AND order.updatedAt < :end', {
-        start: startDate,
-        end: endDate,
-      });
+      .andWhere(
+        `COALESCE(${cancelacion}, order.updatedAt) >= :start AND ` +
+          `COALESCE(${cancelacion}, order.updatedAt) < :end`,
+        {
+          start: startDate,
+          end: endDate,
+          cancelada: OrderStatus.CANCELLED,
+        },
+      );
     if (distributorId) {
       reintegros.andWhere('order.distributorId = :distributorId', {
         distributorId,
