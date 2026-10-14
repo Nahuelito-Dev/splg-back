@@ -284,7 +284,7 @@ export class OrderResponseDto {
     format: 'date-time',
     nullable: true,
     description:
-      'Cuándo un admin resolvió el impago (`paid` o `written_off`). `null` si nunca fue impago.',
+      'Cuándo un admin resolvió el impago (`paid` o `written_off`), o registró el cobro manual (`register-cash`, `confirm-transfer`). Con `paymentStatus: unpaid` es cuándo el admin lo registró (`register-unpaid`); `resolve-unpaid` lo reemplaza. `null` si nadie lo tocó.',
   })
   paymentResolvedAt!: Date | null;
 
@@ -292,14 +292,16 @@ export class OrderResponseDto {
     type: String,
     format: 'uuid',
     nullable: true,
-    description: 'Admin que resolvió el impago (`paid` o `written_off`).',
+    description:
+      'Admin que resolvió el impago (`paid` o `written_off`) o registró el cobro manual. Con `paymentStatus: unpaid`, el admin que lo registró.',
   })
   paymentResolvedBy!: string | null;
 
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'Motivo con el que el admin resolvió un impago',
+    description:
+      'Motivo del admin: la resolución del impago, el cobro manual o, con `paymentStatus: unpaid`, el motivo con que registró el impago.',
   })
   paymentResolutionNote!: string | null;
 

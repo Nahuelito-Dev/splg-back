@@ -151,7 +151,7 @@ export class CashCollectionUseCase {
    * Un administrador informa el impago de un pedido entregado en efectivo cuyo
    * chofer no lo hizo. Mismo efecto que el aviso del chofer (`unpaid` +
    * `dentro`, que abre la incidencia en la misma transacción), con motivo
-   * obligatorio en el historial.
+   * obligatorio en el historial y en el pedido (`paymentResolution*`).
    */
   async registerUnpaidByAdmin<T>(
     orderId: string,
@@ -163,7 +163,10 @@ export class CashCollectionUseCase {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
       this.exigirEntregadoEnEfectivo(order);
-      const changed = await this.pasarAImpago(manager, order);
+      const changed = await this.pasarAImpago(manager, order, {
+        adminUserId,
+        reason,
+      });
       if (changed) {
         await this.asentarEnElHistorial(
           manager,
@@ -244,10 +247,18 @@ export class CashCollectionUseCase {
     });
   }
 
-  /** PENDING → UNPAID; `false` si ya estaba impago. 409 si ya no está pendiente. */
+  /**
+   * PENDING → UNPAID; `false` si ya estaba impago (no se toca nada, tampoco la
+   * anotación). 409 si ya no está pendiente. Con `anotacion` (el admin que lo
+   * registra) el motivo queda en el pedido, en `paymentResolved*` igual que en
+   * `register-cash` y `confirm-transfer`; `resolve-unpaid` los reemplaza cuando
+   * el impago se cierra. Como sólo se llega desde `pending`, no hay una
+   * resolución previa que pisar.
+   */
   private async pasarAImpago(
     manager: EntityManager,
     order: Order,
+    anotacion?: { adminUserId: string; reason: string },
   ): Promise<boolean> {
     if (order.paymentStatus === PaymentStatus.UNPAID) return false;
     if (order.paymentStatus !== PaymentStatus.PENDING) {
@@ -256,6 +267,11 @@ export class CashCollectionUseCase {
       );
     }
     order.paymentStatus = PaymentStatus.UNPAID;
+    if (anotacion) {
+      order.paymentResolvedAt = new Date();
+      order.paymentResolvedBy = anotacion.adminUserId;
+      order.paymentResolutionNote = anotacion.reason;
+    }
     await manager.save(order);
     return true;
   }

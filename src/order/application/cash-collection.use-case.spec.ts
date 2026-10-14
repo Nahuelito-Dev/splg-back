@@ -449,6 +449,47 @@ describe('CashCollectionUseCase', () => {
       expect(insert).toHaveBeenCalledTimes(1);
     });
 
+    it('deja el motivo, quién y cuándo en el pedido, como register-cash', async () => {
+      con(pedido());
+      const r = await uc.registerUnpaidByAdmin(
+        'ord-1',
+        ADMIN,
+        'El chofer no informó',
+        dentro,
+        'd1',
+      );
+      expect(r.order).toMatchObject({
+        paymentStatus: PaymentStatus.UNPAID,
+        paymentResolvedBy: ADMIN,
+        paymentResolutionNote: 'El chofer no informó',
+      });
+      expect(r.order.paymentResolvedAt).toBeInstanceOf(Date);
+      expect(r.order.paymentConfirmedBy).toBeNull();
+    });
+
+    it('si ya estaba impago no pisa la anotación existente', async () => {
+      const antes = new Date('2026-10-01T10:00:00Z');
+      con(
+        pedido({
+          paymentStatus: PaymentStatus.UNPAID,
+          paymentResolvedAt: antes,
+          paymentResolvedBy: 'otro-admin',
+          paymentResolutionNote: 'motivo original',
+        }),
+      );
+      const r = await uc.registerUnpaidByAdmin(
+        'ord-1',
+        ADMIN,
+        'motivo nuevo largo',
+        dentro,
+      );
+      expect(r.order).toMatchObject({
+        paymentResolvedAt: antes,
+        paymentResolvedBy: 'otro-admin',
+        paymentResolutionNote: 'motivo original',
+      });
+    });
+
     it('ya impago: no asienta de nuevo pero corre el trabajo (incidencia única)', async () => {
       con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
       const r = await uc.registerUnpaidByAdmin(

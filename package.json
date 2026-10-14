@@ -29,7 +29,7 @@
     "test:tz": "TZ=UTC jest src/order/order.service.stats.spec.ts src/common/utils/dias-argentina.spec.ts src/reports",
     "test:watch": "jest --watch",
     "test:cov": "jest --ci --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:debug": "node --inspect-brk -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:integration": "jest --config ./test/jest-e2e.json --testPathPatterns=integration/.*\\.e2e-spec\\.ts$",
     "test:integration:health": "jest --config ./test/jest-e2e.json --testPathPatterns=health\\.e2e-spec\\.ts$",
     "test:integration:concurrency": "jest --config ./test/jest-e2e.json --testPathPatterns=orders-stock-concurrency\\.e2e-spec\\.ts$",

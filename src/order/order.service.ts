@@ -24,6 +24,10 @@ import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { DriverDeOrderDto, OrderResponseDto } from './dto/order-response.dto';
+import {
+  HistorialDeEstadoActorDto,
+  OrderStatusHistoryEntryDto,
+} from './dto/order-status-history-response.dto';
 import type { CancelledBy } from './application/cancel-order.use-case';
 import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
 import { ubicacionVigente } from '../common/utils/ubicacion-vigente';
@@ -348,6 +352,32 @@ export class OrderService {
     choferUserId?: string | null,
     incluirChofer = false,
   ): Promise<OrderResponseDto> {
+    const order = await this.pedidoLegible(
+      id,
+      distributorId,
+      customerUserId,
+      choferUserId,
+    );
+    const dto = OrderMapper.toDto(order);
+    if (order.status === OrderStatus.CANCELLED) {
+      dto.cancelledBy = await this.quienCancelo(order.orderId);
+    }
+    if (incluirChofer) dto.driver = await this.datosDelChofer(order);
+    return dto;
+  }
+
+  /**
+   * El pedido, si quien pregunta puede leerlo (misma regla para el detalle y
+   * para su historial de estados): del tenant en contexto, del cliente dueño o
+   * del chofer que lo tiene, lo ofertado o el pool. Lo ajeno es 404 (410 para
+   * el chofer que lo tuvo).
+   */
+  private async pedidoLegible(
+    id: string,
+    distributorId?: string | null,
+    customerUserId?: string | null,
+    choferUserId?: string | null,
+  ): Promise<Order> {
     const order = await this.findOne(id);
     // Aislamiento: si hay tenant en contexto (staff, o customer con empresa
     // elegida), el pedido debe ser de esa distribuidora. Evita leer por PK un
@@ -377,12 +407,62 @@ export class OrderService {
       }
       throw new NotFoundException(`Order with ID: ${id} not found`);
     }
-    const dto = OrderMapper.toDto(order);
-    if (order.status === OrderStatus.CANCELLED) {
-      dto.cancelledBy = await this.quienCancelo(order.orderId);
-    }
-    if (incluirChofer) dto.driver = await this.datosDelChofer(order);
-    return dto;
+    return order;
+  }
+
+  /**
+   * Historial de estados del pedido, del más viejo al más nuevo. Lo lee quien
+   * puede leer el pedido. El nombre de quien hizo cada cambio sólo se muestra
+   * al staff (`verNombres`).
+   */
+  async getStatusHistory(
+    id: string,
+    distributorId?: string | null,
+    customerUserId?: string | null,
+    choferUserId?: string | null,
+    verNombres = false,
+  ): Promise<OrderStatusHistoryEntryDto[]> {
+    await this.pedidoLegible(id, distributorId, customerUserId, choferUserId);
+    const filas: Array<{
+      history_id: string;
+      from_status: OrderStatus | null;
+      to_status: OrderStatus;
+      reason: string | null;
+      changed_at: Date;
+      user_id: string | null;
+      full_name: string | null;
+      type: string | null;
+    }> = await this.orderRepository.manager.query(
+      `SELECT h.history_id, h.from_status, h.to_status, h.reason, h.changed_at,
+              h.changed_by_user_id AS user_id, u.full_name, r.type
+         FROM order_status_history h
+         LEFT JOIN "user" u ON u.user_id = h.changed_by_user_id
+         LEFT JOIN role r ON r.role_id = u.role_id
+        WHERE h.order_id = $1
+        ORDER BY h.changed_at ASC, h.history_id ASC`,
+      [id],
+    );
+    return filas.map((fila) => {
+      const entrada = new OrderStatusHistoryEntryDto();
+      entrada.id = fila.history_id;
+      entrada.fromStatus = fila.from_status
+        ? OrderMapper.mapStatus(fila.from_status)
+        : null;
+      entrada.toStatus = OrderMapper.mapStatus(fila.to_status);
+      entrada.isNote = fila.from_status === fila.to_status;
+      entrada.reason = fila.reason;
+      entrada.changedAt = fila.changed_at;
+      if (fila.user_id) {
+        const actor = new HistorialDeEstadoActorDto();
+        actor.userId = fila.user_id;
+        actor.role = fila.type;
+        actor.fullName = verNombres ? fila.full_name : null;
+        entrada.changedBy = actor;
+      } else {
+        entrada.changedBy = null;
+      }
+      return entrada;
+    });
   }
 
   /**
@@ -501,6 +581,25 @@ export class OrderService {
   ) {
     const { limit = 10, offset = 0 } = paginationDto;
     return this.orders.findByDelivery(deliveryId, limit, offset, distributorId);
+  }
+
+  /**
+   * El pedido en curso del chofer (ver `OrderRepositoryPort.findCurrentOfDelivery`):
+   * el activo sin importar cuándo se creó y, si no hay, el entregado en efectivo
+   * de hoy con el cobro pendiente. `null` si no tiene ninguno.
+   */
+  async findCurrentOfDriver(
+    driverUserId: string,
+    distributorId: string,
+  ): Promise<OrderResponseDto | null> {
+    const chofer = await this.deliveries.buscarPorIdOUsuario(driverUserId);
+    if (!chofer) return null;
+    const order = await this.orders.findCurrentOfDelivery(
+      chofer.deliveryId,
+      distributorId,
+      inicioDelDiaArgentino(diaArgentino()) as Date,
+    );
+    return order ? OrderMapper.toDto(order) : null;
   }
 
   /**

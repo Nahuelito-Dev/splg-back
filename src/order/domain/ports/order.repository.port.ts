@@ -70,6 +70,18 @@ export abstract class OrderRepositoryPort {
     distributorId?: string | null,
   ): Promise<PaginatedOrders>;
 
+  /**
+   * El pedido en curso de un chofer, con todas sus relaciones: el que lleva en
+   * camino o, si no, el aceptado más antiguo; y si no tiene ninguno, el
+   * entregado en efectivo desde `desde` cuyo cobro sigue pendiente. `null` si
+   * no tiene nada de eso. Sin límite de antigüedad para los activos.
+   */
+  abstract findCurrentOfDelivery(
+    deliveryId: string,
+    distributorId: string,
+    desde: Date,
+  ): Promise<Order | null>;
+
   /** Guarda (crea o actualiza) un pedido ya materializado. */
   abstract save(order: Order): Promise<Order>;
 }

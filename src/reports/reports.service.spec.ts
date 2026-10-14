@@ -243,6 +243,25 @@ describe('ReportsService', () => {
       );
     });
 
+    it('ubica el reintegro por la fecha de la cancelación del historial, con updatedAt sólo de respaldo', async () => {
+      qb.getRawMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ count: '0', total: null }]);
+      await service.getCollections(new Date(), new Date());
+      const [rango, params] = qb.andWhere.mock.calls
+        .map(([arg, p]: [unknown, unknown]) => [arg, p] as const)
+        .find(
+          ([arg]) =>
+            typeof arg === 'string' && arg.includes('order_status_history'),
+        ) as [string, Record<string, unknown>];
+      expect(rango).toContain('MAX(h.changed_at)');
+      expect(rango).toContain('h.to_status = :cancelada');
+      expect(rango).toContain('COALESCE((SELECT');
+      expect(rango).toContain('order.updatedAt) >= :start');
+      expect(rango).toContain('order.updatedAt) < :end');
+      expect(params['cancelada']).toBe('cancelled');
+    });
+
     it('no confunde el estado de una transferencia con el del efectivo', async () => {
       qb.getRawMany
         .mockResolvedValueOnce([
