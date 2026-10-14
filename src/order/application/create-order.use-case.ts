@@ -351,6 +351,8 @@ export class CreateOrderUseCase {
     manager: EntityManager,
     items: Array<{ gasCylinderId: string; quantity: number }>,
     distributorId: string | null | undefined,
+    /** La edición de un pedido ya ajustó la reserva (neta): sólo se bloquea y se lee el precio. */
+    stockYaReservado = false,
   ): Promise<{
     orderItems: OrderItem[];
     checkoutItems: PaymentCheckoutItem[];
@@ -369,11 +371,13 @@ export class CreateOrderUseCase {
     );
     for (const itemDto of ordenados) {
       // Devuelve la garrafa bloqueada para leer precio/promos de la misma fila.
-      const gasCylinder = await this.stock.reservarStock(
-        manager,
-        itemDto.gasCylinderId,
-        itemDto.quantity,
-      );
+      const gasCylinder = stockYaReservado
+        ? await this.stock.leerBloqueada(manager, itemDto.gasCylinderId)
+        : await this.stock.reservarStock(
+            manager,
+            itemDto.gasCylinderId,
+            itemDto.quantity,
+          );
 
       // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
       // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant

@@ -21,7 +21,12 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
   let manager: EntityManager;
 
   const producto = (id: string, stock: number): GasCylinder =>
-    ({ gasCylinderId: id, type: `Garrafa ${id}`, stock }) as GasCylinder;
+    ({
+      gasCylinderId: id,
+      type: `Garrafa ${id}`,
+      stock,
+      reservationDeficit: 0,
+    }) as GasCylinder;
 
   beforeEach(() => {
     lecturas = [];
@@ -87,6 +92,139 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
     });
   });
 
+  describe('restituirStock con déficit de reservas', () => {
+    it('llenas 20, reservadas 15, merma de 10 y cancelación de 5: el vendible sigue en 0 (no 5)', async () => {
+      // vendible 5 -> la merma de 10 lo recorta a 0 y deja 5 de déficit
+      const g = { ...producto('a', 5), distributorId: 'd1' } as GasCylinder;
+      lecturas.push(g);
+      await service.ajustarVendible(
+        manager,
+        'd1',
+        [{ gasCylinderId: 'a', delta: -10 }],
+        { recortarEnCero: true },
+      );
+      expect(g.stock).toBe(0);
+      expect(g.reservationDeficit).toBe(5);
+
+      lecturas.push(g);
+      await service.restituirStock(manager, [
+        { gasCylinderId: 'a', quantity: 5 },
+      ]);
+      // llenas 10, reservadas 10
+      expect(g.stock).toBe(0);
+      expect(g.reservationDeficit).toBe(0);
+
+      lecturas.push(g);
+      await service.restituirStock(manager, [
+        { gasCylinderId: 'a', quantity: 3 },
+      ]);
+      // llenas 10, reservadas 7
+      expect(g.stock).toBe(3);
+    });
+
+    it('una cancelación parcial sobre el déficit sólo libera el resto', async () => {
+      const g = { ...producto('a', 0), reservationDeficit: 2 } as GasCylinder;
+      lecturas.push(g);
+      await service.restituirStock(manager, [
+        { gasCylinderId: 'a', quantity: 5 },
+      ]);
+      expect(g.reservationDeficit).toBe(0);
+      expect(g.stock).toBe(3);
+    });
+  });
+
+  describe('reajustarReserva (edición de un pedido)', () => {
+    const conDeficit = (stock: number, reservationDeficit: number) =>
+      ({
+        ...producto('a', stock),
+        distributorId: 'd1',
+        reservationDeficit,
+      }) as GasCylinder;
+
+    it('llenas 7, reservadas 10 (vendible 0, déficit 3): editar de 2 a 1 NO falla y libera sólo lo que sobra cubriendo el déficit', async () => {
+      const g = conDeficit(0, 3);
+      lecturas.push(g);
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'a', quantity: 2 }],
+        [{ gasCylinderId: 'a', quantity: 1 }],
+      );
+      expect(g.reservationDeficit).toBe(2);
+      expect(g.stock).toBe(0);
+    });
+
+    it('pedir más reserva sólo el aumento', async () => {
+      const g = conDeficit(10, 0);
+      lecturas.push(g);
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'a', quantity: 2 }],
+        [{ gasCylinderId: 'a', quantity: 5 }],
+      );
+      expect(g.stock).toBe(7);
+    });
+
+    it('el aumento que no alcanza es InsufficientStock y no toca nada', async () => {
+      const g = conDeficit(2, 0);
+      lecturas.push(g);
+      await expect(
+        service.reajustarReserva(
+          manager,
+          [{ gasCylinderId: 'a', quantity: 2 }],
+          [{ gasCylinderId: 'a', quantity: 5 }],
+        ),
+      ).rejects.toBeInstanceOf(InsufficientStockError);
+      expect(g.stock).toBe(2);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('pedir menos sin déficit devuelve la diferencia al vendible', async () => {
+      const g = conDeficit(4, 0);
+      lecturas.push(g);
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'a', quantity: 5 }],
+        [{ gasCylinderId: 'a', quantity: 2 }],
+      );
+      expect(g.stock).toBe(7);
+    });
+
+    it('pedir menos que cubre todo el déficit sube el vendible sólo con el resto', async () => {
+      const g = conDeficit(0, 2);
+      lecturas.push(g);
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'a', quantity: 5 }],
+        [{ gasCylinderId: 'a', quantity: 1 }],
+      );
+      expect(g.reservationDeficit).toBe(0);
+      expect(g.stock).toBe(2);
+    });
+
+    it('si queda igual no toca nada (ni siquiera lo bloquea)', async () => {
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'a', quantity: 3 }],
+        [{ gasCylinderId: 'a', quantity: 3 }],
+      );
+      expect(qb.getOne).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('cambiar de garrafa devuelve la vieja y reserva la nueva, en orden de id', async () => {
+      const a = conDeficit(1, 0);
+      const b = { ...conDeficit(9, 0), gasCylinderId: 'b' } as GasCylinder;
+      lecturas.push(a, b);
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'b', quantity: 4 }],
+        [{ gasCylinderId: 'a', quantity: 1 }],
+      );
+      expect(a.stock).toBe(0);
+      expect(b.stock).toBe(13);
+    });
+  });
+
   describe('restituirStock', () => {
     it('devuelve la cantidad de cada ítem, con lock', async () => {
       const a = producto('a', 5);
@@ -117,6 +255,7 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
         distributorId,
         type: `Garrafa ${id}`,
         stock,
+        reservationDeficit: 0,
       }) as GasCylinder;
 
     it('suma y resta con lock pesimista y por id ascendente', async () => {
@@ -146,6 +285,93 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       ).rejects.toBeInstanceOf(VendibleInsuficienteError);
       expect(g.stock).toBe(3);
       expect(save).not.toHaveBeenCalled();
+    });
+
+    it('con recortarEnCero la pérdida se registra: el vendible queda en 0 (no negativo) y se informa cuánto faltó', async () => {
+      const g = delProducto('a', 3);
+      lecturas.push(g);
+      const recortes = await service.ajustarVendible(
+        manager,
+        'd1',
+        [{ gasCylinderId: 'a', delta: -5 }],
+        { recortarEnCero: true },
+      );
+      expect(g.stock).toBe(0);
+      expect(recortes).toEqual([
+        { gasCylinderId: 'a', type: 'Garrafa a', faltante: 2 },
+      ]);
+      expect(save).toHaveBeenCalledWith(g);
+    });
+
+    it('con recortarEnCero y vendible suficiente no recorta nada', async () => {
+      const g = delProducto('a', 3);
+      lecturas.push(g);
+      const recortes = await service.ajustarVendible(
+        manager,
+        'd1',
+        [{ gasCylinderId: 'a', delta: -3 }],
+        { recortarEnCero: true },
+      );
+      expect(g.stock).toBe(0);
+      expect(recortes).toEqual([]);
+    });
+
+    it('el recorte suma lo que faltó al déficit de reservas', async () => {
+      const g = delProducto('a', 3);
+      lecturas.push(g);
+      await service.ajustarVendible(
+        manager,
+        'd1',
+        [{ gasCylinderId: 'a', delta: -5 }],
+        { recortarEnCero: true },
+      );
+      expect(g.stock).toBe(0);
+      expect(g.reservationDeficit).toBe(2);
+    });
+
+    it('una entrada de llenas cubre primero el déficit y sólo el resto sube el vendible', async () => {
+      const g = {
+        ...delProducto('a', 0),
+        reservationDeficit: 5,
+      } as GasCylinder;
+      lecturas.push(g);
+      await service.ajustarVendible(
+        manager,
+        'd1',
+        [{ gasCylinderId: 'a', delta: 8 }],
+        { recortarEnCero: true },
+      );
+      expect(g.reservationDeficit).toBe(0);
+      expect(g.stock).toBe(3);
+    });
+
+    it('una entrada menor que el déficit no sube el vendible', async () => {
+      const g = {
+        ...delProducto('a', 0),
+        reservationDeficit: 5,
+      } as GasCylinder;
+      lecturas.push(g);
+      await service.ajustarVendible(
+        manager,
+        'd1',
+        [{ gasCylinderId: 'a', delta: 2 }],
+        { recortarEnCero: true },
+      );
+      expect(g.reservationDeficit).toBe(3);
+      expect(g.stock).toBe(0);
+    });
+
+    it('sin recortarEnCero el cambio es exacto y no toca el déficit', async () => {
+      const g = {
+        ...delProducto('a', 4),
+        reservationDeficit: 5,
+      } as GasCylinder;
+      lecturas.push(g);
+      await service.ajustarVendible(manager, 'd1', [
+        { gasCylinderId: 'a', delta: 2 },
+      ]);
+      expect(g.stock).toBe(6);
+      expect(g.reservationDeficit).toBe(5);
     });
 
     it('con exactamente el vendible alcanza', async () => {

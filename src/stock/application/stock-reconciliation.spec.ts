@@ -6,6 +6,8 @@ import { StockAdminNotifier } from './stock-admin-notifier.service';
 import { StockReconciliationCron } from './stock-reconciliation.cron';
 import { StockReconciliationService } from './stock-reconciliation.service';
 import { StockLowCron } from './stock-low.cron';
+import { StockOnHandService } from './stock-on-hand.service';
+import { RedisService } from '../../redis/redis.service';
 import { ReapplyDeliveriesUseCase } from './reapply-deliveries.use-case';
 import {
   ResultadoDeEntrega,
@@ -18,7 +20,12 @@ const G1 = '10000000-0000-4000-8000-000000000001';
 const G2 = '10000000-0000-4000-8000-000000000002';
 
 function armarConciliacion(datos: {
-  garrafas: Array<{ gas_cylinder_id: string; type: string; stock: number }>;
+  garrafas: Array<{
+    gas_cylinder_id: string;
+    type: string;
+    stock: number;
+    reservation_deficit?: number;
+  }>;
   fisicas: Array<{ gas_cylinder_id: string; total: string }>;
   reservadas: Record<string, number>;
   desde?: Date | null;
@@ -32,10 +39,12 @@ function armarConciliacion(datos: {
 }) {
   const query = jest.fn((sql: string) => {
     if (sql.includes('FROM "gas_cylinder"'))
-      return Promise.resolve(datos.garrafas);
+      return Promise.resolve(
+        datos.garrafas.map((g) => ({ reservation_deficit: 0, ...g })),
+      );
     if (sql.includes('FROM "stock_balance"'))
       return Promise.resolve(datos.fisicas);
-    if (sql.includes('MIN("occurred_at")'))
+    if (sql.includes('MIN("createdAt")'))
       return Promise.resolve([{ desde: datos.desde ?? null }]);
     if (sql.includes(`"reason" = 'delivery'`))
       return Promise.resolve(datos.conMovimiento ?? []);
@@ -55,6 +64,7 @@ function armarConciliacion(datos: {
   const service = new StockReconciliationService(
     dataSource,
     orders as unknown as OrderLookupService,
+    new StockOnHandService(),
   );
   return { service, transaction, query, orders, manager };
 }
@@ -158,6 +168,70 @@ describe('StockReconciliationService (invariante del vendible, D4)', () => {
     expect(r.consistent).toBe(false);
   });
 
+  it('reservas por encima del físico: el vendible queda en 0, no negativo, y se informa el exceso', async () => {
+    const { service } = armarConciliacion({
+      garrafas: [{ gas_cylinder_id: G1, type: '10kg', stock: 0 }],
+      fisicas: [{ gas_cylinder_id: G1, total: '3' }],
+      reservadas: { [G1]: 5 },
+    });
+    const r = await service.conciliar(DIST);
+    expect(r.cylinders[0]).toMatchObject({
+      expected: 0,
+      difference: 0,
+      overReserved: 2,
+      correction: 0,
+    });
+    expect(r.consistent).toBe(false);
+  });
+
+  it('el déficit guardado se muestra y un desfasaje con diferencia 0 deja la conciliación en inconsistente', async () => {
+    // vendible 0 = esperado 0, pero el déficit guardado (1) no es el real (7 − 4 = 3)
+    const { service } = armarConciliacion({
+      garrafas: [
+        { gas_cylinder_id: G1, type: '10kg', stock: 0, reservation_deficit: 1 },
+      ],
+      fisicas: [{ gas_cylinder_id: G1, total: '4' }],
+      reservadas: { [G1]: 7 },
+    });
+    const r = await service.conciliar(DIST);
+    expect(r.cylinders[0]).toMatchObject({
+      difference: 0,
+      overReserved: 3,
+      reservationDeficit: 1,
+      deficitDifference: -2,
+    });
+    expect(r.consistent).toBe(false);
+  });
+
+  it('un déficit guardado sin reservas de más es inconsistente aunque el vendible cierre', async () => {
+    const { service } = armarConciliacion({
+      garrafas: [
+        { gas_cylinder_id: G1, type: '10kg', stock: 0, reservation_deficit: 2 },
+      ],
+      fisicas: [{ gas_cylinder_id: G1, total: '10' }],
+      reservadas: { [G1]: 10 },
+    });
+    const r = await service.conciliar(DIST);
+    expect(r.cylinders[0]).toMatchObject({
+      difference: 0,
+      overReserved: 0,
+      deficitDifference: 2,
+    });
+    expect(r.consistent).toBe(false);
+  });
+
+  it('un déficit guardado que coincide con las reservas de más es consistente en el déficit', async () => {
+    const { service } = armarConciliacion({
+      garrafas: [
+        { gas_cylinder_id: G1, type: '10kg', stock: 0, reservation_deficit: 3 },
+      ],
+      fisicas: [{ gas_cylinder_id: G1, total: '4' }],
+      reservadas: { [G1]: 7 },
+    });
+    const r = await service.conciliar(DIST);
+    expect(r.cylinders[0].deficitDifference).toBe(0);
+  });
+
   it('sin movimientos de arranque no hay entregas que auditar', async () => {
     const { service, orders } = armarConciliacion({
       garrafas: [],
@@ -171,6 +245,15 @@ describe('StockReconciliationService (invariante del vendible, D4)', () => {
   });
 });
 
+/** Un Redis donde siempre se obtiene el lock, o donde otra instancia ya lo tiene. */
+const redisConLock = (obtenido = true) => {
+  const withLock = jest.fn(
+    async (_k: string, _t: number, fn: () => Promise<unknown>) =>
+      obtenido ? { obtenido: true, valor: await fn() } : { obtenido: false },
+  );
+  return { redis: { withLock } as unknown as RedisService, withLock };
+};
+
 describe('StockReconciliationCron', () => {
   const diferencia = (difference = 5) => ({
     consistent: false,
@@ -182,6 +265,7 @@ describe('StockReconciliationCron', () => {
         physicalFull: 0,
         reserved: 0,
         expected: 0,
+        overReserved: 0,
         difference,
       },
     ],
@@ -199,11 +283,14 @@ describe('StockReconciliationCron', () => {
     });
     const conciliar = jest.fn();
     resultados.forEach((r) => conciliar.mockResolvedValueOnce(r));
-    const avisar = jest.fn().mockResolvedValue(true);
+    const avisar = jest
+      .fn<Promise<boolean>, [string, string, string]>()
+      .mockResolvedValue(true);
     const cron = new StockReconciliationCron(
       { query } as unknown as DataSource,
       { conciliar } as unknown as StockReconciliationService,
       { avisar } as unknown as StockAdminNotifier,
+      redisConLock().redis,
     );
     return { cron, avisar };
   };
@@ -247,6 +334,7 @@ describe('StockReconciliationCron', () => {
             physicalFull: 0,
             reserved: 0,
             expected: 0,
+            overReserved: 0,
             difference: 5,
           },
         ],
@@ -265,6 +353,7 @@ describe('StockReconciliationCron', () => {
       { query: jest.fn().mockResolvedValue([]) } as unknown as DataSource,
       reconciliation as unknown as StockReconciliationService,
       notifier,
+      redisConLock().redis,
     );
     await cron.conciliar(DIST);
     expect(send).toHaveBeenCalledWith(
@@ -288,6 +377,7 @@ describe('StockReconciliationCron', () => {
       { query: jest.fn() } as unknown as DataSource,
       reconciliation as unknown as StockReconciliationService,
       notifier as unknown as StockAdminNotifier,
+      redisConLock().redis,
     );
     await cron.conciliar(DIST);
     expect(notifier.avisar).not.toHaveBeenCalled();
@@ -316,9 +406,56 @@ describe('StockReconciliationCron', () => {
       dataSource as unknown as DataSource,
       reconciliation as unknown as StockReconciliationService,
       { avisar: jest.fn() } as unknown as StockAdminNotifier,
+      redisConLock().redis,
     );
     await cron.conciliarTodas();
     expect(reconciliation.conciliar).toHaveBeenCalledTimes(2);
+  });
+
+  it('con varias instancias corre una sola: si otra tiene el lock, no concilia ni avisa', async () => {
+    const reconciliation = { conciliar: jest.fn() };
+    const dataSource = { query: jest.fn() };
+    const { redis, withLock } = redisConLock(false);
+    const cron = new StockReconciliationCron(
+      dataSource as unknown as DataSource,
+      reconciliation as unknown as StockReconciliationService,
+      { avisar: jest.fn() } as unknown as StockAdminNotifier,
+      redis,
+    );
+    await cron.conciliarTodas();
+    expect(withLock).toHaveBeenCalledWith(
+      'cron:stock-reconciliation',
+      expect.any(Number),
+      expect.any(Function),
+    );
+    expect(dataSource.query).not.toHaveBeenCalled();
+    expect(reconciliation.conciliar).not.toHaveBeenCalled();
+  });
+
+  it('un exceso de reservas sobre el físico aparece en el mail y cambia la huella', async () => {
+    const sobrerreservada = {
+      consistent: false,
+      cylinders: [
+        {
+          gasCylinderId: G1,
+          gasCylinderType: '10kg',
+          sellable: 0,
+          physicalFull: 3,
+          reserved: 5,
+          expected: 0,
+          overReserved: 2,
+          difference: 0,
+        },
+      ],
+      deliveriesWithoutMovement: [],
+    };
+    const { cron, avisar } = armarAvisos([sobrerreservada, sobrerreservada]);
+    await cron.conciliar(DIST);
+    await cron.conciliar(DIST);
+    expect(avisar).toHaveBeenCalledTimes(1);
+    expect(avisar.mock.calls[0]?.[2]).toMatch(
+      /2 reservada\(s\) de más que el físico no cubre/,
+    );
   });
 });
 
@@ -333,7 +470,8 @@ describe('StockLowCron (alerted_at)', () => {
     alerted_at: null,
     ...over,
   });
-  const armar = (filas: unknown[], emailFalla = false) => {
+  const armar = (filas: unknown[], emailFalla = false, lock = true) => {
+    const { redis, withLock } = redisConLock(lock);
     const query = jest.fn<Promise<unknown[]>, [string, unknown[]?]>((sql) =>
       sql.includes('SELECT') ? Promise.resolve(filas) : Promise.resolve([]),
     );
@@ -343,8 +481,9 @@ describe('StockLowCron (alerted_at)', () => {
     const cron = new StockLowCron(
       { query } as unknown as DataSource,
       { avisar } as unknown as StockAdminNotifier,
+      redis,
     );
-    return { cron, query, avisar };
+    return { cron, query, avisar, withLock };
   };
   const escrituras = (
     query: jest.Mock<Promise<unknown[]>, [string, unknown[]?]>,
@@ -387,6 +526,18 @@ describe('StockLowCron (alerted_at)', () => {
     expect(escrituras(query)).toHaveLength(0);
   });
 
+  it('con varias instancias corre una sola: si otra tiene el lock, no avisa', async () => {
+    const { cron, avisar, query, withLock } = armar([fila({})], false, false);
+    await cron.avisarStockBajo();
+    expect(withLock).toHaveBeenCalledWith(
+      'cron:stock-low',
+      expect.any(Number),
+      expect.any(Function),
+    );
+    expect(query).not.toHaveBeenCalled();
+    expect(avisar).not.toHaveBeenCalled();
+  });
+
   it('agrupa por distribuidora: un mail por cada una', async () => {
     const { cron, avisar } = armar([
       fila({}),
@@ -399,8 +550,14 @@ describe('StockLowCron (alerted_at)', () => {
 
 describe('ReapplyDeliveriesUseCase', () => {
   it('reaplica por pedido (agrupando renglones) y cuenta reaplicados y pendientes', async () => {
+    const consultas: string[] = [];
     const dataSource = {
-      query: jest.fn().mockResolvedValue([{ desde: new Date('2026-10-01') }]),
+      manager: {
+        query: jest.fn((sql: string) => {
+          consultas.push(sql);
+          return Promise.resolve([{ desde: new Date('2026-10-01') }]);
+        }),
+      },
       transaction: jest.fn((cb: (m: unknown) => unknown) => cb({})),
     };
     const orders = {
@@ -428,8 +585,16 @@ describe('ReapplyDeliveriesUseCase', () => {
       dataSource as unknown as DataSource,
       orders as unknown as OrderLookupService,
       delivery as unknown as StockDeliveryService,
+      new StockOnHandService(),
     );
     const r = await uc.execute(DIST);
+    // el piso es cuándo se asentó el primer movimiento, no la fecha que el usuario le puso
+    expect(consultas[0]).toContain('MIN("createdAt")');
+    expect(consultas[0]).not.toContain('occurred_at');
+    expect(orders.deliveredItemsSince).toHaveBeenCalledWith(
+      DIST,
+      new Date('2026-10-01'),
+    );
     expect(delivery.registrarEntrega).toHaveBeenCalledTimes(3);
     expect(delivery.registrarEntrega.mock.calls[0][1]).toMatchObject({
       orderId: 'o1',

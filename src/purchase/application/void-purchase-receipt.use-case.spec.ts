@@ -13,6 +13,35 @@ const REC = 'r0000000-0000-4000-8000-000000000001';
 const OC = 'c0000000-0000-4000-8000-000000000001';
 const G1 = '10000000-0000-4000-8000-000000000001';
 
+interface FilaDeHistorial {
+  receipt_id: string;
+  number: number;
+  status: string;
+  created_at: Date;
+  voided_at: Date | null;
+  quantity_full: number;
+  unit_cost: string;
+  previous_average_cost: string | null;
+  previous_on_hand: number | null;
+  previous_on_hand_at?: Date | null;
+}
+
+const ANTES = new Date('2026-10-01T10:00:00Z');
+const AHORA_DE_LA_BASE = new Date('2026-10-12T15:00:00Z');
+
+const fila = (over: Partial<FilaDeHistorial>): FilaDeHistorial => ({
+  receipt_id: 'otra',
+  number: 3,
+  status: 'confirmed',
+  created_at: ANTES,
+  voided_at: null,
+  quantity_full: 10,
+  unit_cost: '1000',
+  previous_average_cost: null,
+  previous_on_hand: 20,
+  ...over,
+});
+
 function armar(
   over: {
     status?: PurchaseReceiptStatus;
@@ -23,7 +52,8 @@ function armar(
     llenasHoy?: number;
     costoActual?: number | null;
     lugares?: Array<{ locationName: string; quantity: number }>;
-    otras?: { cantidad: number; promedio: string | null; posterior: boolean };
+    /** Recepciones de llenas de la garrafa, además de la que se anula. */
+    otras?: FilaDeHistorial[];
     previo?: { costo: number | null; existencia: number | null };
   } = {},
 ) {
@@ -70,19 +100,28 @@ function armar(
     ),
     getRepository: jest.fn(() => ({ createQueryBuilder: () => qb })),
     save: jest.fn((x: unknown) => Promise.resolve(x)),
-    query: jest.fn((sql: string) =>
-      Promise.resolve(
-        sql.includes('BOOL_OR')
-          ? [
-              over.otras ?? {
-                cantidad: 1,
-                promedio: '1000',
-                posterior: false,
-              },
-            ]
-          : [{ type: '10kg' }],
-      ),
-    ),
+    query: jest.fn((sql: string) => {
+      if (sql.includes('clock_timestamp()')) {
+        return Promise.resolve([{ ahora: AHORA_DE_LA_BASE }]);
+      }
+      if (sql.includes('"purchase_receipt_item"')) {
+        const esta = fila({
+          receipt_id: REC,
+          number: 4,
+          created_at: new Date('2026-10-02T10:00:00Z'),
+          quantity_full: itemsRecepcion[0].quantityFull,
+          unit_cost: String(itemsRecepcion[0].unitCost),
+          previous_average_cost:
+            itemsRecepcion[0].previousAverageCost === null
+              ? null
+              : String(itemsRecepcion[0].previousAverageCost),
+          previous_on_hand: itemsRecepcion[0].previousOnHand,
+        });
+        const todas = [...(over.otras ?? [fila({})]), esta];
+        return Promise.resolve(todas.sort((a, b) => a.number - b.number));
+      }
+      return Promise.resolve([{ type: '10kg' }]);
+    }),
   } as unknown as EntityManager;
   const dataSource = {
     transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) =>
@@ -168,8 +207,8 @@ describe('VoidPurchaseReceiptUseCase', () => {
     expect(orden.status).toBe(E.PARTIALLY_RECEIVED);
   });
 
-  it('sin compras posteriores restaura EXACTO el promedio previo, con ventas en el medio', async () => {
-    // las ventas no cambian el promedio actual (1100): vuelve al 1000 guardado
+  it('sin compras posteriores deja el promedio de las anteriores, con ventas en el medio', async () => {
+    // las ventas no cambian el promedio actual (1100): queda el de la compra anterior
     const { useCase, products } = armar({ costoActual: 1100 });
     await useCase.execute(REC, { reason: 'x' }, DIST, USER);
     expect(products.fijarCostoPromedio).toHaveBeenCalledWith(
@@ -184,7 +223,7 @@ describe('VoidPurchaseReceiptUseCase', () => {
     const { useCase, products } = armar({
       costoActual: 1400,
       previo: { costo: null, existencia: 30 },
-      otras: { cantidad: 0, promedio: null, posterior: false },
+      otras: [],
     });
     await useCase.execute(REC, { reason: 'x' }, DIST, USER);
     expect(products.fijarCostoPromedio).toHaveBeenCalledWith(
@@ -195,20 +234,116 @@ describe('VoidPurchaseReceiptUseCase', () => {
     );
   });
 
-  it('con una compra posterior resta lo que esta compra movió', async () => {
-    // movió (1400 - 1000) x 10 / 40 = 100; hoy 1250 -> 1150
+  it('con una compra posterior la repite sin las llenas de la anulada', async () => {
+    // R3: 20 llenas sin costo + 10 a 1000 -> 1000. R4 (la que se anula) 10 a 1400.
+    // R5 vio 40 llenas (20 + 10 + 10): sin R4 son 30 -> (30x1000 + 10x1100) / 40.
     const { useCase, products } = armar({
       costoActual: 1250,
       previo: { costo: 1000, existencia: 30 },
-      otras: { cantidad: 2, promedio: '1100', posterior: true },
+      otras: [
+        fila({}),
+        fila({
+          receipt_id: 'r5',
+          number: 5,
+          created_at: new Date('2026-10-03T10:00:00Z'),
+          unit_cost: '1100',
+          previous_average_cost: '1250',
+          previous_on_hand: 40,
+        }),
+      ],
     });
     await useCase.execute(REC, { reason: 'x' }, DIST, USER);
     expect(products.fijarCostoPromedio).toHaveBeenCalledWith(
       expect.anything(),
       DIST,
       G1,
-      1150,
+      1025,
     );
+  });
+
+  it('una anulación previa a la compra siguiente no se descuenta dos veces', async () => {
+    // R3 se anuló (antes de crearse R5): el 40 guardado de R5 ya no la cuenta,
+    // sólo hay que sacar la de R4: 30 llenas -> igual que arriba, con R3 anulada.
+    const { useCase, products } = armar({
+      costoActual: 1250,
+      otras: [
+        fila({
+          status: 'voided',
+          voided_at: new Date('2026-10-02T12:00:00Z'),
+        }),
+        fila({
+          receipt_id: 'r5',
+          number: 5,
+          created_at: new Date('2026-10-03T10:00:00Z'),
+          unit_cost: '1100',
+          previous_average_cost: '1250',
+          previous_on_hand: 30,
+        }),
+      ],
+    });
+    await useCase.execute(REC, { reason: 'x' }, DIST, USER);
+    // R5 sola: existencia previa 30 - 10 (R4 anulada ahora) = 20, sin costo previo -> 1100
+    expect(products.fijarCostoPromedio).toHaveBeenCalledWith(
+      expect.anything(),
+      DIST,
+      G1,
+      1100,
+    );
+  });
+
+  it('una recepción que leyó su existencia después de la anulación no la resta de nuevo, aunque su transacción haya empezado antes', async () => {
+    // R5 empezó (createdAt) antes de la anulación pero leyó su existencia (20, ya sin R4) después
+    const { useCase, products } = armar({
+      costoActual: 1100,
+      otras: [
+        fila({}),
+        fila({
+          receipt_id: 'r5',
+          number: 5,
+          created_at: new Date(AHORA_DE_LA_BASE.getTime() - 1000),
+          previous_on_hand_at: new Date(AHORA_DE_LA_BASE.getTime() + 1000),
+          unit_cost: '1100',
+          previous_average_cost: '1250',
+          previous_on_hand: 20,
+        }),
+      ],
+    });
+    await useCase.execute(REC, { reason: 'x' }, DIST, USER);
+    // (20 x 1000 + 10 x 1100) / 30
+    expect(products.fijarCostoPromedio).toHaveBeenCalledWith(
+      expect.anything(),
+      DIST,
+      G1,
+      1033.33,
+    );
+  });
+
+  it('una recepción vieja sin existencia guardada deja el promedio como está', async () => {
+    const { useCase, products } = armar({
+      costoActual: 1250,
+      otras: [fila({ previous_on_hand: null })],
+    });
+    await useCase.execute(REC, { reason: 'x' }, DIST, USER);
+    expect(products.fijarCostoPromedio).not.toHaveBeenCalled();
+  });
+
+  it('la anulación se fecha con el reloj de la base', async () => {
+    const { useCase, recepcion } = armar();
+    await useCase.execute(REC, { reason: 'x' }, DIST, USER);
+    expect((recepcion as { voidedAt?: Date }).voidedAt).toBe(AHORA_DE_LA_BASE);
+  });
+
+  it('un motivo largo no desborda las notas del libro (300): se corta con puntos suspensivos y el motivo queda entero', async () => {
+    const { useCase, ledger, recepcion } = armar();
+    const motivo = 'm'.repeat(500);
+    await useCase.execute(REC, { reason: motivo }, DIST, USER);
+    const [, args] = ledger.contraasentar.mock.calls[0] as unknown as [
+      unknown,
+      { notes: string },
+    ];
+    expect(args.notes).toHaveLength(300);
+    expect(args.notes.endsWith('…')).toBe(true);
+    expect(recepcion.voidReason).toBe(motivo);
   });
 
   it.each([E.CANCELLED, E.CLOSED_SHORT])(

@@ -57,7 +57,7 @@ describe('UpdateOrderUseCase', () => {
     assertSlotAvailableTx: jest.Mock;
     assertSlotUsableTx: jest.Mock;
   };
-  let stock: { restituirStock: jest.Mock; bloquearEnOrden: jest.Mock };
+  let stock: { reajustarReserva: jest.Mock; bloquearEnOrden: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
   let realtime: {
     notifyAdmins: jest.Mock;
@@ -130,7 +130,7 @@ describe('UpdateOrderUseCase', () => {
       assertSlotUsableTx: jest.fn().mockResolvedValue(undefined),
     };
     stock = {
-      restituirStock: jest.fn().mockResolvedValue(undefined),
+      reajustarReserva: jest.fn().mockResolvedValue(undefined),
       bloquearEnOrden: jest.fn().mockResolvedValue(undefined),
     };
     orders = { findByIdFull: jest.fn((id: string) => Promise.resolve({ id })) };
@@ -166,7 +166,7 @@ describe('UpdateOrderUseCase', () => {
     await expect(
       useCase.execute('o1', { notes: 'x', items: [] }, 'u1', 'd1'),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(stock.restituirStock).not.toHaveBeenCalled();
+    expect(stock.reajustarReserva).not.toHaveBeenCalled();
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
@@ -200,16 +200,18 @@ describe('UpdateOrderUseCase', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('con renglones nuevos devuelve el stock viejo, reserva el nuevo y recalcula', async () => {
+  it('con renglones nuevos ajusta la reserva por la diferencia neta, repondera los renglones sin volver a reservar y recalcula', async () => {
     await useCase.execute(
       'o1',
       { items: [{ gasCylinderId: 'g2', quantity: 3 }] },
       'u1',
       'd1',
     );
-    expect(stock.restituirStock).toHaveBeenCalledWith(queryRunner.manager, [
-      { gasCylinderId: 'g1', quantity: 1 },
-    ]);
+    expect(stock.reajustarReserva).toHaveBeenCalledWith(
+      queryRunner.manager,
+      [{ gasCylinderId: 'g1', quantity: 1 }],
+      [{ gasCylinderId: 'g2', quantity: 3 }],
+    );
     // los renglones reemplazados se borran con `remove` (queda en la auditoría)
     expect(queryRunner.manager.remove).toHaveBeenCalledWith(OrderItem, [
       { gasCylinderId: 'g1', quantity: 1 },
@@ -218,6 +220,7 @@ describe('UpdateOrderUseCase', () => {
       queryRunner.manager,
       [{ gasCylinderId: 'g2', quantity: 3 }],
       'd1',
+      true,
     );
     expect(queryRunner.manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ subtotalItems: 3000, totalAmount: 3000 }),
@@ -232,7 +235,7 @@ describe('UpdateOrderUseCase', () => {
 
   it('sin renglones no toca el stock', async () => {
     await useCase.execute('o1', { notes: 'nueva' }, 'u1', 'd1');
-    expect(stock.restituirStock).not.toHaveBeenCalled();
+    expect(stock.reajustarReserva).not.toHaveBeenCalled();
     expect(queryRunner.manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ notes: 'nueva' }),
     );
@@ -365,9 +368,9 @@ describe('UpdateOrderUseCase', () => {
       'g2',
     ]);
     expect(stock.bloquearEnOrden.mock.invocationCallOrder[0]).toBeLessThan(
-      stock.restituirStock.mock.invocationCallOrder[0],
+      stock.reajustarReserva.mock.invocationCallOrder[0],
     );
-    expect(stock.restituirStock.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(stock.reajustarReserva.mock.invocationCallOrder[0]).toBeLessThan(
       create.reservarRenglones.mock.invocationCallOrder[0],
     );
   });

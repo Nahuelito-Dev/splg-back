@@ -168,12 +168,30 @@ export class DiferenciaDeVendibleDto {
   physicalFull!: number;
   @ApiProperty({ description: 'Unidades de pedidos abiertos' })
   reserved!: number;
-  @ApiProperty({ description: 'Lo que debería valer el vendible' })
+  @ApiProperty({
+    description:
+      'Lo que debería valer el vendible: max(0, llenas - reservadas)',
+  })
   expected!: number;
+  @ApiProperty({
+    description:
+      'Reservas de pedidos abiertos que el físico no cubre (max(0, reservadas - llenas)). Mientras sea mayor que cero el vendible queda en 0: cancelar pedidos o reponer stock lo cubre primero y sólo el resto vuelve a ser vendible',
+  })
+  overReserved!: number;
   @ApiProperty({
     description: 'sellable - expected; distinto de cero es una discrepancia',
   })
   difference!: number;
+  @ApiProperty({
+    description:
+      'Déficit de reservas guardado (`gas_cylinder.reservation_deficit`): lo que el vendible en cero ocultó cuando una pérdida dejó las reservas por encima del físico',
+  })
+  reservationDeficit!: number;
+  @ApiProperty({
+    description:
+      '`reservationDeficit - overReserved`; distinto de cero es un desfasaje del déficit (se corrige con POST /stock/reconciliation/adjustments aunque `difference` sea 0)',
+  })
+  deficitDifference!: number;
   @ApiProperty({
     description:
       'Variación a aplicar al vendible para que cierre (-difference). Se aplica con POST /stock/reconciliation/adjustments',
@@ -193,7 +211,7 @@ export class StockReconciliationDto {
   @ApiProperty() checkedAt!: Date;
   @ApiProperty({
     description:
-      'true si todas las garrafas cumplen la invariante y no hay entregas sin movimiento',
+      'true si todas las garrafas cumplen la invariante, ninguna tiene reservas por encima del físico y no hay entregas sin movimiento',
   })
   consistent!: boolean;
   @ApiProperty({ type: DiferenciaDeVendibleDto, isArray: true })

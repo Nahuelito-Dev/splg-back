@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
-import { TransicionDeCargaInvalidaError } from '../domain/errors/truck-load.errors';
 import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { puedeHacer } from '../domain/truck-load-rules';
-import { bloquearCarga } from './truck-load-support';
+import {
+  TransicionDeCargaInvalidaError,
+  bloquearCarga,
+} from './truck-load-support';
 
 /**
  * Cancela una carga que todavía no salió. En `loading` no se movió stock (sale
@@ -35,7 +38,7 @@ export class CancelTruckLoadUseCase {
           }
           carga.status = TruckLoadStatus.CANCELLED;
           carga.cancelReason = reason;
-          carga.closedAt = new Date();
+          carga.closedAt = await ahoraDeLaBase(manager);
           carga.closedByUserId = actorUserId;
           await manager.save(carga);
         }),

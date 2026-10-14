@@ -6,7 +6,6 @@
  */
 import { randomUUID } from 'crypto';
 import { codigoSqlDelError } from '../../src/common/errors/db-exceptions';
-import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
   TestEnv,
@@ -14,6 +13,7 @@ import {
   telefonoDePrueba,
   truncateAllTables,
 } from './setup/test-env';
+import { conIdempotencia } from './setup/con-idempotencia';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
@@ -125,7 +125,7 @@ describe('Compras (e2e)', () => {
     mockReintentos.n = 0;
   });
 
-  const http = () => request(env.app.getHttpServer());
+  const http = () => conIdempotencia(env.app.getHttpServer());
 
   async function rol(type: string): Promise<Role> {
     const roles = ds.getRepository(Role);
@@ -1084,7 +1084,7 @@ describe('Compras (e2e)', () => {
       expect(await costo()).toBeNull();
     });
 
-    it('con una compra posterior resta lo que movió la anulada (nunca negativo)', async () => {
+    it('con una compra posterior repite las vigentes sin las llenas de la anulada', async () => {
       const e = await seedDistribuidora();
       const g = await seedGarrafa(e.distributorId);
       const p = await proveedor(e);
@@ -1110,14 +1110,189 @@ describe('Compras (e2e)', () => {
         .set(e.headers)
         .send({ reason: 'x' })
         .expect(200);
-      // B movió (200 - 100) x 10 / 20 = 50; 225 - 50 = 175
+      // C vio 20 llenas; sin las 10 de B eran 10: (10 x 100 + 20 x 300) / 30
       const [c] = cuerpo<Costo[]>(
         await http()
           .get('/purchase-receipts/average-costs')
           .set(e.headers)
           .expect(200),
       );
-      expect(c.averageUnitCost).toBe(175);
+      expect(c.averageUnitCost).toBe(233.33);
+    });
+
+    it.each([
+      ['R2 y después R3', [1, 2], 100],
+      ['R3 y después R2', [2, 1], 100],
+      ['sólo R2', [1], 100],
+      ['sólo R3', [2], 144.44],
+    ])(
+      'varias anulaciones seguidas (%s) dejan el promedio exacto de las compras que quedan',
+      async (_nombre, aAnular, esperado) => {
+        const e = await seedDistribuidora();
+        const g = await seedGarrafa(e.distributorId);
+        const p = await proveedor(e);
+        // 25 llenas sin costo en el depósito; después R1 a 100, R2 a 300 y R3 a 100 (10 cada una)
+        await ds.query(
+          `INSERT INTO "stock_balance" ("distributor_id","location_id","gas_cylinder_id","condition","quantity")
+           VALUES ($1, $2, $3, 'full', 25)`,
+          [e.distributorId, e.locationId, g.gasCylinderId],
+        );
+        await ds.query(
+          `UPDATE "gas_cylinder" SET "stock" = 25 WHERE "gas_cylinder_id" = $1`,
+          [g.gasCylinderId],
+        );
+        const compras: Recepcion[] = [];
+        for (const [doc, costo] of [
+          ['R1', 100],
+          ['R2', 300],
+          ['R3', 100],
+        ] as const) {
+          compras.push(
+            cuerpo<Recepcion>(
+              await recibir(e, {
+                supplierId: p.supplierId,
+                supplierDocumentNumber: doc,
+                items: [
+                  {
+                    gasCylinderId: g.gasCylinderId,
+                    quantityFull: 10,
+                    unitCost: costo,
+                  },
+                ],
+              }).expect(201),
+            ),
+          );
+        }
+        const promedio = async () =>
+          cuerpo<Costo[]>(
+            await http()
+              .get('/purchase-receipts/average-costs')
+              .set(e.headers)
+              .expect(200),
+          )[0].averageUnitCost;
+        expect(await promedio()).toBe(136.36);
+        for (const i of aAnular) {
+          await http()
+            .patch(`/purchase-receipts/${compras[i].receiptId}/void`)
+            .set(e.headers)
+            .send({ reason: 'x' })
+            .expect(200);
+        }
+        expect(await promedio()).toBe(esperado);
+      },
+    );
+
+    it('anular con un motivo largo no desborda las notas del libro: se anula y el motivo queda entero', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      const p = await proveedor(e);
+      const r = cuerpo<Recepcion>(
+        await recibir(e, {
+          supplierId: p.supplierId,
+          supplierDocumentNumber: 'LARGO',
+          items: [
+            { gasCylinderId: g.gasCylinderId, quantityFull: 2, unitCost: 10 },
+          ],
+        }).expect(201),
+      );
+      const motivo = 'm'.repeat(500);
+      await http()
+        .patch(`/purchase-receipts/${r.receiptId}/void`)
+        .set(e.headers)
+        .send({ reason: motivo })
+        .expect(200);
+      const [{ void_reason: guardado }] = await ds.query<
+        Array<{ void_reason: string }>
+      >(
+        `SELECT "void_reason" FROM "purchase_receipt" WHERE "receipt_id" = $1`,
+        [r.receiptId],
+      );
+      expect(guardado).toBe(motivo);
+      const [{ notes }] = await ds.query<Array<{ notes: string }>>(
+        `SELECT "notes" FROM "stock_movement" WHERE "reason" = 'reversal' AND "gas_cylinder_id" = $1 LIMIT 1`,
+        [g.gasCylinderId],
+      );
+      expect(notes).toHaveLength(300);
+    });
+
+    it('una recepción fechada antes del conteo inicial del depósito es 400 y no escribe', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      const p = await proveedor(e);
+      await http()
+        .post('/stock/initial-counts')
+        .set(e.headers)
+        .send({
+          warehouseId: e.warehouseId,
+          items: [{ gasCylinderId: g.gasCylinderId, full: 5 }],
+        })
+        .expect(201);
+      const antes = await ds.query<Array<{ n: string }>>(
+        `SELECT COUNT(*) AS n FROM "stock_movement" WHERE "distributor_id" = $1`,
+        [e.distributorId],
+      );
+      const r = await recibir(e, {
+        supplierId: p.supplierId,
+        supplierDocumentNumber: 'VIEJA',
+        receivedAt: '2020-01-01T10:00:00Z',
+        items: [
+          { gasCylinderId: g.gasCylinderId, quantityFull: 2, unitCost: 10 },
+        ],
+      }).expect(400);
+      expect(cuerpo<{ message: string }>(r).message).toMatch(
+        /anterior al conteo inicial de este depósito/,
+      );
+      const despues = await ds.query<Array<{ n: string }>>(
+        `SELECT COUNT(*) AS n FROM "stock_movement" WHERE "distributor_id" = $1`,
+        [e.distributorId],
+      );
+      expect(despues[0].n).toBe(antes[0].n);
+    });
+
+    it('sin conteo inicial una recepción con fecha pasada se acepta y la reaplicación no toca pedidos anteriores', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      const p = await proveedor(e);
+      await recibir(e, {
+        supplierId: p.supplierId,
+        supplierDocumentNumber: 'AYER',
+        receivedAt: '2020-01-01T10:00:00Z',
+        items: [
+          { gasCylinderId: g.gasCylinderId, quantityFull: 2, unitCost: 10 },
+        ],
+      }).expect(201);
+      await http()
+        .post('/stock/reconciliation/reapply-deliveries')
+        .set(e.headers)
+        .send({})
+        .expect(201);
+      const c = cuerpo<{
+        consistent: boolean;
+        deliveriesWithoutMovement: unknown[];
+      }>(await http().get('/stock/reconciliation').set(e.headers).expect(200));
+      expect(c.deliveriesWithoutMovement).toHaveLength(0);
+      expect(c.consistent).toBe(true);
+    });
+
+    it('las escrituras de compras sin Idempotency-Key son 400', async () => {
+      const e = await seedDistribuidora();
+      const g = await seedGarrafa(e.distributorId);
+      const p = await proveedor(e);
+      await recibir(e, {
+        supplierId: p.supplierId,
+        supplierDocumentNumber: 'SIN-CLAVE',
+        items: [
+          { gasCylinderId: g.gasCylinderId, quantityFull: 1, unitCost: 10 },
+        ],
+      })
+        .unset('Idempotency-Key')
+        .expect(400);
+      await http()
+        .patch(`/purchase-receipts/${randomUUID()}/void`)
+        .set(e.headers)
+        .unset('Idempotency-Key')
+        .send({ reason: 'x' })
+        .expect(400);
     });
 
     it('el documento del proveedor es único por tipo: remito y factura numeran aparte', async () => {

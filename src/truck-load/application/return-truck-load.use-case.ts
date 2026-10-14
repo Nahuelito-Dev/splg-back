@@ -1,18 +1,16 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
-import {
-  CargaInvalidaError,
-  TransicionDeCargaInvalidaError,
-} from '../domain/errors/truck-load.errors';
+import { CargaInvalidaError } from '../domain/errors/truck-load.errors';
 import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { puedeHacer, validarDeclaracion } from '../domain/truck-load-rules';
 import { ReturnTruckLoadDto } from '../dto/truck-load.dto';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
 import {
-  ahoraDeLaBase,
+  TransicionDeCargaInvalidaError,
   asegurarAlcance,
   bloquearCarga,
 } from './truck-load-support';

@@ -64,6 +64,18 @@ export class PurchaseReceiptItem {
   @Column({ name: 'previous_on_hand', type: 'int', nullable: true })
   previousOnHand!: number | null;
 
+  /**
+   * Instante (reloj de la base, bajo el lock de la garrafa) en que se leyó
+   * `previous_on_hand`. Ordena la recepción contra las anulaciones al recalcular
+   * el costo promedio; `createdAt` no sirve: es el inicio de la transacción.
+   */
+  @Column({
+    name: 'previous_on_hand_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  previousOnHandAt!: Date | null;
+
   @Column({
     name: 'unit_cost',
     type: 'decimal',

@@ -449,6 +449,59 @@ describe('ReverseBatchUseCase', () => {
     });
   });
 
+  describe('contraasiento de una regularización (vehículo -> depósito)', () => {
+    const conQueries = (
+      a: ReturnType<typeof armar>,
+      respuestas: { haciaCamion?: string | null; cargaAbierta?: number },
+    ) =>
+      (a.manager.query as jest.Mock).mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('"truck_load"')
+            ? respuestas.cargaAbierta === undefined
+              ? []
+              : [{ number: respuestas.cargaAbierta }]
+            : respuestas.haciaCamion === undefined ||
+                respuestas.haciaCamion === null
+              ? []
+              : [{ patente: respuestas.haciaCamion }],
+        ),
+      );
+
+    it('mete stock en un camión: 409 y no contraasienta (el camión se carga sólo por la carga del día)', async () => {
+      const a = armar({
+        primerMovimiento: { referenceType: StockReferenceType.TRANSFER },
+      });
+      conQueries(a, { haciaCamion: 'AB123CD' });
+      await expect(
+        crear(a).execute('lote-1', undefined, DIST, 'u1'),
+      ).rejects.toThrow(
+        /se carga y se rinde desde la carga del día.*camión AB123CD/,
+      );
+      expect(a.ledger.contraasentar).not.toHaveBeenCalled();
+    });
+
+    it('saca stock de un camión con la carga abierta: 409', async () => {
+      const a = armar({
+        primerMovimiento: { referenceType: StockReferenceType.TRANSFER },
+      });
+      conQueries(a, { cargaAbierta: 9 });
+      await expect(
+        crear(a).execute('lote-1', undefined, DIST, 'u1'),
+      ).rejects.toThrow(/carga N° 9/);
+      expect(a.ledger.contraasentar).not.toHaveBeenCalled();
+    });
+
+    it('una transferencia entre depósitos se contraasienta sin cambios', async () => {
+      const a = armar({
+        primerMovimiento: { referenceType: StockReferenceType.TRANSFER },
+      });
+      conQueries(a, {});
+      await expect(
+        crear(a).execute('lote-1', undefined, DIST, 'u1'),
+      ).resolves.toBe('batch-2');
+    });
+  });
+
   it('un ajuste no se contraasienta: se corrige con otro ajuste', async () => {
     const a = armar({
       primerMovimiento: { referenceType: StockReferenceType.STOCK_ADJUSTMENT },

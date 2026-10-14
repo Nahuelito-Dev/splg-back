@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
+import { RedisService } from '../../redis/redis.service';
 import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import {
   escaparHtml,
@@ -32,10 +33,21 @@ export class StockLowCron {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly notifier: StockAdminNotifier,
+    private readonly redis: RedisService,
   ) {}
 
   @Cron('0 8 * * *', { timeZone: ZONA_ARGENTINA })
   async avisarStockBajo(): Promise<void> {
+    // Con varias instancias corre sólo una: si no, el mail sale duplicado.
+    const lock = await this.redis.withLock('cron:stock-low', 5 * 60_000, () =>
+      this.avisar(),
+    );
+    if (!lock.obtenido) {
+      this.logger.log('Aviso de stock bajo: lo está corriendo otra instancia');
+    }
+  }
+
+  private async avisar(): Promise<void> {
     const filas: FilaDeUmbral[] = await this.dataSource.query(
       `SELECT t."threshold_id", t."distributor_id", w."name" AS warehouse_name, gc."type",
               t."min_full", t."alerted_at", COALESCE(b."quantity", 0) AS current_full

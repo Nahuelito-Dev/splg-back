@@ -177,6 +177,34 @@ describe('GasCylinderService', () => {
       expect(preload).not.toHaveBeenCalled();
     });
 
+    it('el ABM nunca escribe stock ni déficit: una reserva confirmada en el medio no se pisa con el valor viejo', async () => {
+      const leido = {
+        ...producto(10),
+        reservationDeficit: 3,
+      } as GasCylinder;
+      productos.findOne.mockResolvedValue(leido);
+      (productos as unknown as { preload: jest.Mock }).preload = jest
+        .fn()
+        .mockResolvedValue({ ...leido, description: 'nueva' });
+      await service.update('g1', { description: 'nueva' }, 'd1');
+      const [guardado] = productos.save.mock.calls[0] as [Partial<GasCylinder>];
+      expect(guardado.description).toBe('nueva');
+      expect(guardado.stock).toBeUndefined();
+      expect(guardado.reservationDeficit).toBeUndefined();
+    });
+
+    it('la baja lógica tampoco escribe stock ni déficit', async () => {
+      productos.findOne.mockResolvedValue({
+        ...producto(10),
+        reservationDeficit: 3,
+      });
+      await service.remove('g1', 'd1');
+      const [guardado] = productos.save.mock.calls[0] as [Partial<GasCylinder>];
+      expect(guardado.isActive).toBe(false);
+      expect(guardado.stock).toBeUndefined();
+      expect(guardado.reservationDeficit).toBeUndefined();
+    });
+
     it('la edición sin stock sigue funcionando', async () => {
       productos.findOne.mockResolvedValue(producto(5));
       const preload = jest.fn().mockResolvedValue(producto(5));

@@ -4,6 +4,10 @@ import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { StockQueryService } from '../../stock/application/stock-query.service';
 import { CargaNoEncontradaError } from '../domain/errors/truck-load.errors';
+import {
+  PaymentMethod,
+  PaymentStatus,
+} from '../../order/entities/order.entity';
 import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { StockControlSettingsService } from './stock-control-settings.service';
 import { TruckLoadQueryService } from './truck-load-query.service';
@@ -25,6 +29,14 @@ interface Escenario {
     deliveredFull: number;
     collectedEmpty: number;
   }>;
+  entregados?: Array<{
+    orderId: string;
+    totalAmount: number;
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus;
+  }>;
+  /** Señas ya pagas por pedido. */
+  senas?: Record<string, number>;
   tardias?: Array<{
     gasCylinderId: string;
     deliveredFull: number;
@@ -83,6 +95,13 @@ function armar(e: Escenario = {}) {
       if (sql.includes('FROM "truck_load" l')) return Promise.resolve([fila]);
       if (sql.includes('FROM "truck_load_item"'))
         return Promise.resolve([renglon]);
+      if (sql.includes('"deposit_paid"'))
+        return Promise.resolve(
+          Object.entries(e.senas ?? {}).map(([order_id, sena]) => ({
+            order_id,
+            sena: String(sena),
+          })),
+        );
       if (sql.includes('FROM "stock_location"'))
         return Promise.resolve([{ location_id: 'loc-camion' }]);
       return Promise.resolve(
@@ -105,7 +124,11 @@ function armar(e: Escenario = {}) {
   const service = new TruckLoadQueryService(
     dataSource as unknown as DataSource,
     {
-      entregadosPorVehiculo: jest.fn().mockResolvedValue([]),
+      entregadosPorVehiculo: jest
+        .fn()
+        .mockResolvedValue(
+          (e.entregados ?? []).map((o) => ({ ...o, deliveredAt: RETORNO })),
+        ),
     } as unknown as OrderLookupService,
     {
       movimientos: jest.fn().mockResolvedValue({ data: [], total: 0 }),
@@ -181,5 +204,52 @@ describe('TruckLoadQueryService.detalle · vista previa del cierre', () => {
     await expect(
       service.detalle(CARGA, 'dist-1', 'otro-chofer'),
     ).rejects.toBeInstanceOf(CargaNoEncontradaError);
+  });
+});
+
+describe('TruckLoadQueryService.detalle · efectivo de la jornada con seña', () => {
+  const pedido = (
+    orderId: string,
+    totalAmount: number,
+    paymentStatus: PaymentStatus,
+    paymentMethod = PaymentMethod.CASH,
+  ) => ({ orderId, totalAmount, paymentMethod, paymentStatus });
+
+  it('una reserva de $20.000 con $5.000 de seña paga: el chofer cobra $15.000, no $20.000', async () => {
+    const { service } = armar({
+      entregados: [pedido('o1', 20000, PaymentStatus.PAID)],
+      senas: { o1: 5000 },
+    });
+    const d = await service.detalle(CARGA, 'dist-1');
+    expect(d.cash.cashCollectedAmount).toBe(15000);
+    expect(d.orders[0]).toMatchObject({
+      totalAmount: 20000,
+      remainingBalance: 15000,
+    });
+  });
+
+  it('el mismo saldo vale para lo impago y lo pendiente de confirmar', async () => {
+    const { service } = armar({
+      entregados: [
+        pedido('o1', 20000, PaymentStatus.UNPAID),
+        pedido('o2', 10000, PaymentStatus.PENDING),
+        pedido('o3', 8000, PaymentStatus.PAID),
+      ],
+      senas: { o1: 5000, o2: 2000 },
+    });
+    const { cash } = await service.detalle(CARGA, 'dist-1');
+    expect(cash.unpaidAmount).toBe(15000);
+    expect(cash.pendingConfirmationAmount).toBe(8000);
+    expect(cash.cashCollectedAmount).toBe(8000);
+  });
+
+  it('un pedido sin seña (o con seña sin pagar) cuenta por el total', async () => {
+    const { service } = armar({
+      entregados: [pedido('o1', 14500, PaymentStatus.PAID)],
+      senas: {},
+    });
+    const d = await service.detalle(CARGA, 'dist-1');
+    expect(d.cash.cashCollectedAmount).toBe(14500);
+    expect(d.orders[0].remainingBalance).toBe(14500);
   });
 });

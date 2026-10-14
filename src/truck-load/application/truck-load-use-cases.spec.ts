@@ -12,10 +12,7 @@ import {
   StockCondition,
   StockMovementReason,
 } from '../../stock/domain/stock.enums';
-import {
-  CargaInvalidaError,
-  TransicionDeCargaInvalidaError,
-} from '../domain/errors/truck-load.errors';
+import { CargaInvalidaError } from '../domain/errors/truck-load.errors';
 import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
 import { TruckLoad } from '../entities/truck-load.entity';
@@ -23,6 +20,7 @@ import { CancelTruckLoadUseCase } from './cancel-truck-load.use-case';
 import { CloseTruckLoadUseCase } from './close-truck-load.use-case';
 import { DepartTruckLoadUseCase } from './depart-truck-load.use-case';
 import { ReturnTruckLoadUseCase } from './return-truck-load.use-case';
+import { TransicionDeCargaInvalidaError } from './truck-load-support';
 
 /** La primera operación que recibió el ledger de mentira. */
 const primeraOperacion = (aplicar: jest.Mock): OperacionDeStock =>
@@ -168,6 +166,8 @@ describe('casos de uso de la carga del camión', () => {
         );
       expect(guardada?.status).toBe(TruckLoadStatus.CLOSED);
       expect(guardada?.differenceNote).toBeNull();
+      // el cierre se fecha con el reloj de la base, igual que la apertura y la vuelta
+      expect(guardada?.closedAt).toEqual(new Date('2026-10-12T19:00:00Z'));
       const items = manager.save.mock.calls[0][0] as TruckLoadItem[];
       expect(items[0]).toMatchObject({
         deliveredFull: 30,
@@ -369,7 +369,7 @@ describe('casos de uso de la carga del camión', () => {
         true,
       );
       expect(c.status).toBe(TruckLoadStatus.ON_ROUTE);
-      expect(c.departedAt).toBeInstanceOf(Date);
+      expect(c.departedAt).toEqual(new Date('2026-10-12T19:00:00Z'));
       expect(manager.save).toHaveBeenCalledWith(c);
     });
 
@@ -586,6 +586,7 @@ describe('casos de uso de la carga del camión', () => {
       expect(c).toMatchObject({
         status: TruckLoadStatus.CANCELLED,
         cancelReason: 'No salió',
+        closedAt: new Date('2026-10-12T19:00:00Z'),
       });
     });
 
@@ -604,6 +605,21 @@ describe('casos de uso de la carga del camión', () => {
           'admin',
         ),
       ).rejects.toBeInstanceOf(TransicionDeCargaInvalidaError);
+    });
+  });
+
+  describe('estado inválido', () => {
+    it('es un conflicto de estado (409), no un 400, y dice el estado y la acción', () => {
+      const error = new TransicionDeCargaInvalidaError(
+        7,
+        TruckLoadStatus.CLOSED,
+        'cancelar',
+      );
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.getStatus()).toBe(409);
+      expect(error.message).toBe(
+        'La carga N° 7 está cerrada: no se puede cancelar',
+      );
     });
   });
 

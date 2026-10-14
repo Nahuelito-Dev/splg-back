@@ -29,6 +29,7 @@ import { StockLocation } from './stock-location.entity';
  */
 @Entity('stock_movement')
 @Index('IDX_stock_movement_fecha', ['distributorId', 'occurredAt'])
+@Index('IDX_stock_movement_alta', ['distributorId', 'createdAt'])
 @Index('IDX_stock_movement_garrafa_fecha', ['gasCylinderId', 'occurredAt'])
 @Index('IDX_stock_movement_origen', ['fromLocationId'])
 @Index('IDX_stock_movement_destino', ['toLocationId'])

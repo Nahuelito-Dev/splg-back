@@ -16,6 +16,7 @@ import {
   DocumentSequenceService,
 } from '../../document-sequence/document-sequence.service';
 import { EmployeeService } from '../../employee/employee.service';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { WarehouseService } from '../../stock/application/warehouse.service';
 import { CargaInvalidaError } from '../domain/errors/truck-load.errors';
@@ -25,7 +26,6 @@ import { CreateTruckLoadDto } from '../dto/truck-load.dto';
 import { TruckLoadItem } from '../entities/truck-load-item.entity';
 import { TruckLoad } from '../entities/truck-load.entity';
 import {
-  ahoraDeLaBase,
   bloquearGarrafasComoClaveForanea,
   traducirErrorDeCarga,
 } from './truck-load-support';
@@ -37,7 +37,8 @@ import {
  * carga abierta.
  *
  * Orden de locks: car (`FOR SHARE`, frena a `ponerEnUso`) -> delivery -> las
- * garrafas (`FOR KEY SHARE`) -> `document_sequence` (el número, al final).
+ * garrafas (`FOR KEY SHARE`) -> depósito de origen (`FOR SHARE`, frena su baja)
+ * -> `document_sequence` (el número, al final).
  */
 @Injectable()
 export class OpenTruckLoadUseCase {
@@ -128,19 +129,22 @@ export class OpenTruckLoadUseCase {
       await this.employees.findOne(dto.helperEmployeeId, distributorId);
     }
 
-    const { locationId: originLocationId } = dto.originWarehouseId
-      ? await this.locations.ubicacionDeDeposito(
-          manager,
-          distributorId,
-          dto.originWarehouseId,
-        )
-      : await this.warehouses.asegurarPredeterminado(distributorId, manager);
+    const origenId =
+      dto.originWarehouseId ??
+      (await this.warehouses.asegurarPredeterminado(distributorId, manager))
+        .warehouse.warehouseId;
 
     await bloquearGarrafasComoClaveForanea(
       manager,
       distributorId,
       renglones.map((r) => r.gasCylinderId),
     );
+    const { locationId: originLocationId } =
+      await this.locations.ubicacionDeOrigenDeCarga(
+        manager,
+        distributorId,
+        origenId,
+      );
     await this.asegurarSinCargaAbierta(
       manager,
       dto.carId,

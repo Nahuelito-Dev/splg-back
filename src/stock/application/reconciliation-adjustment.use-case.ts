@@ -9,12 +9,16 @@ import {
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
-import { OperacionDeStockInvalidaError } from '../domain/errors/stock.errors';
+import {
+  GarrafaNoEncontradaEnStockError,
+  OperacionDeStockInvalidaError,
+} from '../domain/errors/stock.errors';
 import { conciliarVendible } from '../domain/stock-rules';
 import { StockAdjustmentReason, StockCondition } from '../domain/stock.enums';
 import { StockAdjustment } from '../entities/stock-adjustment.entity';
 import { StockAdjustmentItem } from '../entities/stock-adjustment-item.entity';
 import { CreateReconciliationAdjustmentDto } from '../dto/stock-operations.dto';
+import { StockReconciliationService } from './stock-reconciliation.service';
 import { WarehouseService } from './warehouse.service';
 
 /**
@@ -38,6 +42,7 @@ export class ReconciliationAdjustmentUseCase {
     private readonly orders: OrderLookupService,
     private readonly sequences: DocumentSequenceService,
     private readonly warehouses: WarehouseService,
+    private readonly reconciliation: StockReconciliationService,
   ) {}
 
   /** Devuelve el id del ajuste. */
@@ -57,14 +62,15 @@ export class ReconciliationAdjustmentUseCase {
               [dto.gasCylinderId, distributorId],
             );
           if (!fila) {
-            throw new OperacionDeStockInvalidaError(
-              `Garrafa no encontrada: ${dto.gasCylinderId}`,
-            );
+            throw new GarrafaNoEncontradaEnStockError(dto.gasCylinderId);
           }
           // Primero el lock (orden: gas_cylinder antes que saldos y numeración);
           // la diferencia se calcula con él tomado.
-          const [bloqueada]: Array<{ stock: number }> = await manager.query(
-            `SELECT "stock" FROM "gas_cylinder" WHERE "gas_cylinder_id" = $1 FOR UPDATE`,
+          const [bloqueada]: Array<{
+            stock: number;
+            reservation_deficit: number;
+          }> = await manager.query(
+            `SELECT "stock", "reservation_deficit" FROM "gas_cylinder" WHERE "gas_cylinder_id" = $1 FOR UPDATE`,
             [dto.gasCylinderId],
           );
           const [{ total }]: Array<{ total: string | null }> =
@@ -83,7 +89,24 @@ export class ReconciliationAdjustmentUseCase {
             Number(total ?? 0),
             reservadas.get(dto.gasCylinderId) ?? 0,
           );
-          if (d.difference === 0) {
+          // Con entregas que todavía no descontaron el físico, el físico está de
+          // más y cualquier "diferencia" (o su ausencia) se calcula contra un
+          // número equivocado: al reaplicarlas quedaría sobreventa. Se reaplican
+          // primero, aunque el vendible parezca cuadrar.
+          const sinDescontar =
+            await this.reconciliation.unidadesSinMovimientoDe(
+              manager,
+              distributorId,
+              dto.gasCylinderId,
+            );
+          if (sinDescontar > 0) {
+            throw new ConflictException(
+              `${fila.type} tiene ${sinDescontar} unidad(es) entregadas que todavía no descontaron el stock físico: primero reaplicá las entregas (POST /stock/reconciliation/reapply-deliveries) y volvé a conciliar`,
+            );
+          }
+          const deficitDifference =
+            bloqueada.reservation_deficit - d.overReserved;
+          if (d.difference === 0 && deficitDifference === 0) {
             throw new OperacionDeStockInvalidaError(
               `${fila.type} no tiene diferencia: el vendible ya coincide con el físico menos lo reservado`,
             );
@@ -96,16 +119,18 @@ export class ReconciliationAdjustmentUseCase {
               `La diferencia cambió: ahora es ${d.difference} y se esperaba ${dto.expectedDifference}. Revisá la conciliación de nuevo`,
             );
           }
-          if (d.expected < 0) {
-            throw new OperacionDeStockInvalidaError(
-              `Las llenas físicas (${d.physicalFull}) son menos que lo reservado por pedidos (${d.reserved}): el vendible no puede quedar negativo. Corregí primero el físico con un ajuste o una transferencia`,
-            );
+          const delta = 0 - d.difference;
+          if (delta !== 0) {
+            await this.products.ajustarVendible(manager, distributorId, [
+              { gasCylinderId: dto.gasCylinderId, delta },
+            ]);
           }
-
-          const delta = -d.difference;
-          await this.products.ajustarVendible(manager, distributorId, [
-            { gasCylinderId: dto.gasCylinderId, delta },
-          ]);
+          // El vendible quedó exacto: el déficit pasa a ser lo que hoy las
+          // reservas superan al físico.
+          await manager.query(
+            `UPDATE "gas_cylinder" SET "reservation_deficit" = $2 WHERE "gas_cylinder_id" = $1`,
+            [dto.gasCylinderId, d.overReserved],
+          );
 
           const { locationId } = await this.warehouses.asegurarPredeterminado(
             distributorId,
@@ -130,12 +155,16 @@ export class ReconciliationAdjustmentUseCase {
               createdByUserId: actorUserId,
             }),
           );
-          await manager.getRepository(StockAdjustmentItem).insert({
-            adjustmentId,
-            gasCylinderId: dto.gasCylinderId,
-            condition: StockCondition.FULL,
-            quantityDelta: delta,
-          });
+          // Un desfasaje sólo del déficit no mueve el vendible: el documento queda
+          // sin renglón (la variación 0 no es válida) y la nota explica el cambio.
+          if (delta !== 0) {
+            await manager.getRepository(StockAdjustmentItem).insert({
+              adjustmentId,
+              gasCylinderId: dto.gasCylinderId,
+              condition: StockCondition.FULL,
+              quantityDelta: delta,
+            });
+          }
           return adjustmentId;
         }),
       { context: 'ajuste de conciliación' },

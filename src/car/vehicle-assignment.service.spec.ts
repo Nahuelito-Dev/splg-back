@@ -453,6 +453,25 @@ describe('VehicleAssignmentService', () => {
       expect(assignments.save).not.toHaveBeenCalled();
     });
 
+    it('409 si el chofer tiene una carga de camión abierta: la baja se rechaza y el vehículo sigue en uso', async () => {
+      txRepo.findOne.mockResolvedValue({
+        assignmentId: 'a1',
+        carId: 'c1',
+        releasedAt: null,
+        note: null,
+      });
+      manager.query.mockImplementation((sql: string) =>
+        Promise.resolve(sql.includes('"truck_load"') ? [{ number: 5 }] : []),
+      );
+
+      await expect(
+        service.liberarSiTieneUno('dl1', enLaTransaccion()),
+      ).rejects.toThrow(
+        /No se puede dar de baja al chofer mientras haya una carga de camión abierta \(carga N° 5\)/,
+      );
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
     it('no hace nada (ni tira) si no tenía vehículo en uso', async () => {
       txRepo.findOne.mockResolvedValue(null);
       await expect(

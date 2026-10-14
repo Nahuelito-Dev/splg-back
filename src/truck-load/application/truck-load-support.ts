@@ -5,8 +5,25 @@ import {
   traducirErrorDeBase,
 } from '../../common/errors/db-exceptions';
 import { GarrafaNoEncontradaEnStockError } from '../../stock/domain/errors/stock.errors';
-import { CargaNoEncontradaError } from '../domain/errors/truck-load.errors';
+import {
+  CargaNoEncontradaError,
+  estadoDeCargaEnTexto,
+} from '../domain/errors/truck-load.errors';
+import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { TruckLoad } from '../entities/truck-load.entity';
+
+/**
+ * La carga no está en un estado desde el que se pueda hacer la acción: es un
+ * conflicto de estado (409), como una orden de compra que no admite la
+ * transición.
+ */
+export class TransicionDeCargaInvalidaError extends ConflictException {
+  constructor(numero: number, desde: TruckLoadStatus, accion: string) {
+    super(
+      `La carga N° ${numero} está ${estadoDeCargaEnTexto(desde)}: no se puede ${accion}`,
+    );
+  }
+}
 
 /**
  * Lock de la fila de la carga (`FOR UPDATE`, 404 si no es de la distribuidora).
@@ -96,18 +113,4 @@ export function traducirErrorDeCarga(
     throw new ConflictException('El chofer ya tiene una carga abierta');
   }
   return traducirErrorDeBase(error, logger, contexto);
-}
-
-/**
- * El reloj de la base. `openedAt` y `returnedAt` delimitan qué entregas
- * pertenecen a la carga (se comparan con `occurred_at` del libro): salen de
- * acá y no del reloj del proceso, para que un servidor desfasado no deje afuera
- * (o adentro) una entrega. `clock_timestamp()` y no `now()`: este último es el
- * inicio de la transacción.
- */
-export async function ahoraDeLaBase(manager: EntityManager): Promise<Date> {
-  const [{ ahora }]: Array<{ ahora: Date }> = await manager.query(
-    `SELECT clock_timestamp() AS ahora`,
-  );
-  return ahora;
 }

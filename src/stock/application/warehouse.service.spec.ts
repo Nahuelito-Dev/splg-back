@@ -27,6 +27,8 @@ function armar(
     warehouse?: Warehouse | null;
     total?: string;
     defaults?: Warehouse[];
+    /** Número de una carga abierta que sale de este depósito. */
+    cargaAbierta?: number;
   } = {},
 ) {
   const warehouseRepo = {
@@ -54,7 +56,15 @@ function armar(
   };
   const query = jest
     .fn<Promise<unknown[]>, [string, unknown[]?]>()
-    .mockResolvedValue([{ total: opts.total ?? '0' }]);
+    .mockImplementation((sql: string) =>
+      Promise.resolve(
+        sql.includes('"truck_load"')
+          ? opts.cargaAbierta === undefined
+            ? []
+            : [{ number: opts.cargaAbierta }]
+          : [{ total: opts.total ?? '0' }],
+      ),
+    );
   const borrar = jest.fn().mockResolvedValue(undefined);
   const getRepository = jest.fn((e: unknown) =>
     e === Warehouse ? warehouseRepo : e === StockLocation ? locationRepo : {},
@@ -104,6 +114,18 @@ describe('WarehouseService', () => {
         ConflictException,
       );
       expect(warehouseRepo.softRemove).not.toHaveBeenCalled();
+    });
+
+    it('el origen de una carga abierta no se da de baja: 409 con el número de la carga', async () => {
+      const { service, warehouseRepo, borrar } = armar({
+        warehouse: deposito(),
+        cargaAbierta: 8,
+      });
+      await expect(service.remove('w1', DIST)).rejects.toThrow(
+        /origen de la carga N° 8.*darlo de baja/,
+      );
+      expect(warehouseRepo.softRemove).not.toHaveBeenCalled();
+      expect(borrar).not.toHaveBeenCalled();
     });
 
     it('el predeterminado no se da de baja', async () => {
@@ -235,6 +257,28 @@ describe('WarehouseService', () => {
           DIST,
         ),
       ).resolves.toBeDefined();
+    });
+
+    it('desactivar el origen de una carga abierta es 409 y toma el lock exclusivo del depósito', async () => {
+      const { service, warehouseRepo } = armar({
+        warehouse: deposito(),
+        cargaAbierta: 9,
+      });
+      await expect(
+        service.update('w1', { isActive: false }, DIST),
+      ).rejects.toThrow(/origen de la carga N° 9.*desactivarlo/);
+      expect(warehouseRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+      expect(warehouseRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('desactivar un depósito sin cargas abiertas sigue andando', async () => {
+      const { service, warehouseRepo } = armar({ warehouse: deposito() });
+      await service.update('w1', { isActive: false }, DIST);
+      expect(warehouseRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ isActive: false }),
+      );
     });
 
     it('no se le saca la marca ni se desactiva al predeterminado', async () => {

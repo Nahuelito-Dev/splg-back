@@ -6,6 +6,14 @@ import {
 import { CargaInvalidaError } from './errors/truck-load.errors';
 import { TruckLoadStatus } from './truck-load.enums';
 
+/**
+ * Lo que el chofer cobra al entregar: el total menos la seña ya paga (la misma
+ * regla que `OrderMapper.remainingBalance`). Nunca negativo.
+ */
+export function saldoACobrar(total: number, senaPaga: number): number {
+  return Math.max(0, Math.round((total - senaPaga) * 100) / 100);
+}
+
 /** Acciones sobre una carga y los estados desde los que se pueden hacer. */
 export type AccionDeCarga =
   | 'editar'

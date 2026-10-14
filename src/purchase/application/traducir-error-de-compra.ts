@@ -1,4 +1,4 @@
-import { ConflictException, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import {
   codigoSqlDelError,
   traducirErrorDeBase,
@@ -28,6 +28,13 @@ export function traducirErrorDeCompra(
   ) {
     throw new ConflictException(
       'Ya hay una recepción de este proveedor con ese número de documento',
+    );
+  }
+  // 22001: texto más largo que la columna.
+  if (codigoSqlDelError(error) === '22001') {
+    logger.warn(`Texto demasiado largo (${contexto})`);
+    throw new BadRequestException(
+      `Alguno de los textos enviados es demasiado largo (${contexto})`,
     );
   }
   return traducirErrorDeBase(error, logger, contexto);

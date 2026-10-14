@@ -171,7 +171,9 @@ export class UpdateOrderUseCase {
           ...order.items.map((i) => i.gasCylinderId),
           ...dto.items.map((i) => i.gasCylinderId),
         ]);
-        await this.stock.restituirStock(manager, order.items);
+        // Ajusta la reserva por la diferencia neta de cada garrafa (devolver todo
+        // y reservar de nuevo fallaba si la garrafa tenía reservas de más).
+        await this.stock.reajustarReserva(manager, order.items, dto.items);
         // `remove` y no `delete`: el borrado de un renglón reemplazado deja una
         // Baja física en la auditoría, con sus campos (incluido orderId).
         await manager.remove(OrderItem, order.items);
@@ -179,6 +181,7 @@ export class UpdateOrderUseCase {
           manager,
           dto.items,
           order.distributorId,
+          true,
         );
         order.items = reservado.orderItems;
         subtotalItems = reservado.subtotalItems.toNumber();

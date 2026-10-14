@@ -64,6 +64,35 @@ export class StockLocationService {
   }
 
   /**
+   * La ubicación de un depósito que va a ser el ORIGEN de una carga de camión:
+   * tiene que estar activo (la rendición le devuelve las garrafas y un depósito
+   * inactivo no recibe) y queda con `FOR SHARE`, que frena su baja o
+   * desactivación hasta que la carga se guarde. Se llama DESPUÉS de bloquear las
+   * garrafas: es el orden global (`gas_cylinder` antes que `warehouse`).
+   */
+  async ubicacionDeOrigenDeCarga(
+    manager: EntityManager,
+    distributorId: string,
+    warehouseId: string,
+  ): Promise<StockLocation> {
+    const [fila]: Array<{ is_active: boolean }> = await manager.query(
+      `SELECT "is_active" FROM "warehouse"
+       WHERE "warehouse_id" = $1 AND "distributor_id" = $2 AND "deletedAt" IS NULL
+       FOR SHARE`,
+      [warehouseId, distributorId],
+    );
+    if (!fila) {
+      throw new NotFoundException(`Depósito ${warehouseId} no encontrado`);
+    }
+    if (!fila.is_active) {
+      throw new OperacionDeStockInvalidaError(
+        'El depósito de origen está inactivo: activalo o elegí otro para abrir la carga',
+      );
+    }
+    return this.ubicacionDeDeposito(manager, distributorId, warehouseId);
+  }
+
+  /**
    * La ubicación del vehículo; si todavía no existe la crea. El vehículo tiene
    * que ser de la distribuidora (404 si no).
    */

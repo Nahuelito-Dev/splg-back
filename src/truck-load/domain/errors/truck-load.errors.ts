@@ -22,14 +22,6 @@ export class CargaNoEncontradaError extends NotFoundDomainError {
   }
 }
 
-export class TransicionDeCargaInvalidaError extends BadRequestDomainError {
-  constructor(numero: number, desde: TruckLoadStatus, accion: string) {
-    super(
-      `La carga N° ${numero} está ${estadoDeCargaEnTexto(desde)}: no se puede ${accion}`,
-    );
-  }
-}
-
 export class CargaInvalidaError extends BadRequestDomainError {
   constructor(motivo: string) {
     super(motivo);

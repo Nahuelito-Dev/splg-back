@@ -2,6 +2,7 @@ import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
+import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import {
   DocType,
@@ -165,6 +166,14 @@ export class ReceivePurchaseUseCase {
             distributorId,
             warehouseId,
           );
+          if (dto.receivedAt) {
+            await this.validarNoAnteriorAlConteo(
+              manager,
+              distributorId,
+              warehouseId,
+              receivedAt,
+            );
+          }
           const receiptId = randomUUID();
           const { batchId } = await this.aplicarAlLedger(
             manager,
@@ -220,12 +229,36 @@ export class ReceivePurchaseUseCase {
               ...r,
               previousAverageCost: previos.get(r.gasCylinderId)?.costo ?? null,
               previousOnHand: previos.get(r.gasCylinderId)?.existencia ?? null,
+              previousOnHandAt: previos.get(r.gasCylinderId)?.leidaEn ?? null,
             })),
           );
           return receiptId;
         }),
       { context: 'recepción de compra' },
     );
+  }
+
+  /**
+   * Una recepción no puede ser anterior al conteo inicial del depósito, si lo
+   * tuvo: esas garrafas ya estarían en el conteo y se contarían dos veces. Sin
+   * conteo no hay piso.
+   */
+  private async validarNoAnteriorAlConteo(
+    manager: EntityManager,
+    distributorId: string,
+    warehouseId: string,
+    receivedAt: Date,
+  ): Promise<void> {
+    const inicio = await this.onHand.inicioDeStockDelDeposito(
+      manager,
+      distributorId,
+      warehouseId,
+    );
+    if (inicio && receivedAt.getTime() < inicio.getTime()) {
+      throw new CompraInvalidaError(
+        `La fecha de recepción (${receivedAt.toISOString()}) es anterior al conteo inicial de este depósito (${inicio.toISOString()}): esas garrafas ya están en el conteo`,
+      );
+    }
   }
 
   private fechaDeRecepcion(valor: string | undefined): Date {
@@ -422,10 +455,12 @@ export class ReceivePurchaseUseCase {
     manager: EntityManager,
     distributorId: string,
     renglones: Renglon[],
-  ): Promise<Map<string, { costo: number | null; existencia: number }>> {
+  ): Promise<
+    Map<string, { costo: number | null; existencia: number; leidaEn: Date }>
+  > {
     const previos = new Map<
       string,
-      { costo: number | null; existencia: number }
+      { costo: number | null; existencia: number; leidaEn: Date }
     >();
     const conLlenas = renglones
       .filter((r) => r.quantityFull > 0)
@@ -444,6 +479,8 @@ export class ReceivePurchaseUseCase {
       previos.set(r.gasCylinderId, {
         costo: costoPrevio,
         existencia: hoy - r.quantityFull,
+        // Bajo el lock de la garrafa: ordena esta recepción contra las anulaciones.
+        leidaEn: await ahoraDeLaBase(manager),
       });
       const promedio = costoPromedioPonderado({
         existenciaPrevia: hoy - r.quantityFull,

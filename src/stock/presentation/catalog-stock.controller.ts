@@ -1,4 +1,11 @@
-import { Body, Controller, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
@@ -11,7 +18,8 @@ import { Auth } from '../../common/decorators/auth.decorator';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { CurrentDistributor } from '../../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Idempotent } from '../../common/decorators/idempotent.decorator';
+import { exigirIdempotencyKey } from './exigir-idempotency-key';
+import { IdempotencyKeyObligatoria } from './idempotency-key-obligatoria.decorator';
 import { GasCylinderResponseDto } from '../../gascylinder/dto/gascylinder-response.dto';
 import { UpdateStockDto } from '../../gascylinder/dto/update-stock.dto';
 import { GasCylinderMapper } from '../../gascylinder/gascylinder.mapper';
@@ -34,10 +42,11 @@ export class CatalogStockController {
   ) {}
 
   @Patch(':id/stock')
-  @Idempotent()
+  @IdempotencyKeyObligatoria()
   @ApiOperation({
     summary: 'Update gas cylinder stock',
     description:
+      '**Exige** `Idempotency-Key` (400 sin ella): suma y resta son relativas, un reintento sin clave ajustaría dos veces. ' +
       'Suma (positivo) o resta (negativo) llenas en el depósito predeterminado ' +
       'como un ajuste de conteo: deja el rastro en el libro de stock y mantiene ' +
       'el vendible igual al físico menos lo reservado.\n\n' +
@@ -57,7 +66,9 @@ export class CatalogStockController {
     @Body() dto: UpdateStockDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<GasCylinderResponseDto> {
+    exigirIdempotencyKey(idempotencyKey, 'El ajuste de stock del catálogo');
     const producto = await this.adjustment.execute(
       id,
       dto.quantity,

@@ -37,6 +37,8 @@ function armar(
     costoPrevio?: number | null;
     ledgerError?: Error;
     documentoRepetido?: boolean;
+    /** Cuándo empezó el stock del depósito (su conteo inicial o su alta). */
+    inicioDelDeposito?: Date | null;
   } = {},
 ) {
   const eventos: string[] = [];
@@ -110,6 +112,13 @@ function armar(
   };
   const onHand = {
     llenasTotales: jest.fn().mockResolvedValue(over.llenasHoy ?? 0),
+    inicioDeStockDelDeposito: jest
+      .fn()
+      .mockResolvedValue(
+        over.inicioDelDeposito === undefined
+          ? new Date('2026-10-11T20:00:00Z')
+          : over.inicioDelDeposito,
+      ),
   };
   const sequences = {
     siguienteNumero: jest.fn(() => {
@@ -139,6 +148,7 @@ function armar(
     items,
     orden,
     manager,
+    onHand,
   };
 }
 
@@ -423,6 +433,58 @@ describe('ReceivePurchaseUseCase', () => {
         USER,
       ),
     ).rejects.toThrow(/no puede ser futura/);
+  });
+
+  describe('fecha de recepción contra el conteo inicial del depósito', () => {
+    it('una recepción fechada antes del conteo inicial es 400 con mensaje claro y no escribe nada', async () => {
+      const { useCase, ledger, onHand } = armar({ orden: null });
+      await expect(
+        useCase.execute(
+          dto({ supplierId: SUP, receivedAt: '2026-07-01T10:00:00.000Z' }),
+          DIST,
+          USER,
+        ),
+      ).rejects.toThrow(/es anterior al conteo inicial de este depósito/);
+      expect(onHand.inicioDeStockDelDeposito).toHaveBeenCalledWith(
+        expect.anything(),
+        DIST,
+        WH,
+      );
+      expect(ledger.aplicar).not.toHaveBeenCalled();
+    });
+
+    it('una fecha posterior al inicio del depósito se respeta en el libro', async () => {
+      const { useCase, ledger } = armar({ orden: null });
+      await useCase.execute(
+        dto({ supplierId: SUP, receivedAt: '2026-10-12T09:00:00.000Z' }),
+        DIST,
+        USER,
+      );
+      const [, op] = ledger.aplicar.mock.calls[0] as unknown as [
+        unknown,
+        { occurredAt: Date },
+      ];
+      expect(op.occurredAt).toEqual(new Date('2026-10-12T09:00:00.000Z'));
+    });
+
+    it('sin conteo inicial no hay piso: una fecha pasada se acepta', async () => {
+      const { useCase, ledger } = armar({
+        orden: null,
+        inicioDelDeposito: null,
+      });
+      await useCase.execute(
+        dto({ supplierId: SUP, receivedAt: '2020-01-01T10:00:00.000Z' }),
+        DIST,
+        USER,
+      );
+      expect(ledger.aplicar).toHaveBeenCalled();
+    });
+
+    it('sin fecha (ahora) no consulta el inicio del depósito', async () => {
+      const { useCase, onHand } = armar({ orden: null });
+      await useCase.execute(dto({ supplierId: SUP }), DIST, USER);
+      expect(onHand.inicioDeStockDelDeposito).not.toHaveBeenCalled();
+    });
   });
 
   it('guarda el renglón del remito con el costo del pedido', async () => {
