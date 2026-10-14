@@ -37,6 +37,9 @@
     "test:integration:idempotency": "jest --config ./test/jest-e2e.json --testPathPatterns=orders-idempotency\\.e2e-spec\\.ts$",
     "test:integration:vehicle": "jest --config ./test/jest-e2e.json --testPathPatterns=vehicle-assignment-concurrency\\.e2e-spec\\.ts$",
     "test:perf:orders": "ts-node test/performance/orders-load.ts",
+    "postman:generar": "node scripts/postman/generar-coleccion.js",
+    "postman:guardar-ejemplos": "node scripts/postman/guardar-ejemplos.js",
+    "postman:probar": "node scripts/postman/probar.js",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "verify": "npm run typecheck && npm run lint:check && jest --ci --coverage && nest build"

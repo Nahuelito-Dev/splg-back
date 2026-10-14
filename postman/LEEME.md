@@ -1,110 +1,111 @@
-# Colección de Postman de SPLG
+# Colección Postman de SPLG
 
-**459 peticiones sobre los 151 endpoints** (incluye `fleet/plans`,
-`fleet/tasks`, `fleet/expirations`, las fachadas de documentos de vehículo y
-chofer, y "Fleet · Vehicle in use": qué vehículo usa cada chofer, con
-historial). Cada endpoint tiene su caso correcto y sus casos de fallo, cada uno
-con el test que corresponde.
+Generada desde el OpenAPI del back (280 operaciones) y los controllers. No se edita a mano: se regenera con el script. Corre contra el back y la base de la demo (`http://localhost:3010/api`, distribuidora `demo`) sin crear distribuidoras ni cuentas, y deja lo que crea dado de baja o cancelado.
 
-Tres endpoints de flota quedan afuera del generador automático: subir un
-adjunto (`POST /fleet/tasks/{id}/attachments`) y sus dos rutas que dependen de
-un adjunto real (`GET .../download`, `DELETE .../{attachmentId}`). El
-generador arma cuerpos JSON; multipart con un archivo real no entra en ese
-esquema. Se probaron a mano contra la API (ver el informe de la tarea de
-flota): subida de PDF, descarga con contenido idéntico al original, rechazo
-por tipo de archivo (415) y por tamaño (413), y borrado.
+## Archivos
 
-Corrida completa con newman, incluyendo lo de arriba: **cero fallos en las
-carpetas de Fleet.** El resto de la colección puede tener fallos propios de
-otros módulos, documentados más abajo o dependientes del estado de los datos
-de la base en el momento de la corrida.
+| Archivo | Qué es |
+|---|---|
+| `postman/SPLG.postman_collection.json` | La colección, con las respuestas reales guardadas como ejemplos. |
+| `postman/SPLG-local.postman_environment.json` | El environment (`baseUrl`, usuarios de la demo y las variables que se llenan solas). |
+| `scripts/postman/generar-coleccion.js` | Generador. Los roles de cada endpoint salen de los controllers (`roles-desde-controllers.js`); los cuerpos y flujos, de `casos.js`; la limpieza, de la tabla `LIMPIEZA` del generador. |
+| `scripts/postman/guardar-ejemplos.js` | Pone en la colección las respuestas reales de una corrida de newman. |
+| `scripts/postman/probar.js` | Corre newman sin la carpeta `Manual`. |
 
-## Cómo usarla
+## Cómo importarla
 
-1. Levantar el entorno: `./splg-dev.sh` desde la raíz de `garrafitas/`.
-2. Importar en Postman los dos archivos:
-   - `SPLG.postman_collection.json`
-   - `SPLG-local.postman_environment.json`
-3. Completar las cuatro contraseñas del environment. Son las de siembra y están
-   en `splg-dev.sh`; acá se dejan vacías a propósito para no versionarlas.
-4. Correr **en orden**: `00 · Acceso`, después `01 · Preparacion`, y recién ahí
-   el resto.
+1. Postman, Import, `postman/SPLG.postman_collection.json` y `postman/SPLG-local.postman_environment.json`.
+2. Arriba a la derecha, elegir el environment **SPLG local**.
+3. Revisar `baseUrl` (por defecto `http://localhost:3010/api`) y `choferLibreEmail` (un chofer de la demo sin pedidos en curso: `cristian.maidana@gmail.com`).
+4. Correr la colección completa (Runner), dejando afuera la carpeta `Manual`.
 
-Si algún identificador quedó viejo, `./refrescar-ids.sh` relee de la base un
-dato vivo de cada entidad y deja el environment al día.
+Los usuarios son los de la demo: `admin@splg.com`, `superadmin@splg.com`, `cliente@splg.com` y `chofer@splg.com`, todos con `Test1234` (están en el environment). Los tokens se obtienen solos: el pre-request de la colección inicia sesión por rol cuando falta el token o venció.
 
-## Las variantes de cada endpoint
+## Orden de las carpetas
 
-| Variante | Qué prueba | Espera |
-|---|---|---|
-| **1 · correcto** | Datos válidos y el rol que corresponde | 2xx |
-| **2 · datos inválidos** | Que el `ValidationPipe` frene antes de tocar la base | 400 |
-| **3 · sin token** | Que el `AuthGuard` corte | 401 |
-| **3 · público** | Los 15 que **no** exigen token (medido contra la API) | 2xx |
-| **4 · id inexistente** | Un UUID con formato válido que no existe | 404 |
+1. `00 · Acceso`: un login por rol.
+2. `00 · Preparación`: lee los ids de la demo que hacen falta (cliente, chofer, catálogo, vehículo y ubicación del chofer libre, etc.) y deja el control de carga de camión en su valor por defecto.
+3. `00 · Datos de prueba`: arma lo que comparten las pruebas, ver "Qué crea y cómo lo deja".
+4. `00 · Errores documentados`: ejemplos 500 y 504 (el back no los produce a pedido) y 503 real.
+5. `Manual`: ver abajo.
+6. Una carpeta por recurso (tag del OpenAPI) y, adentro, una subcarpeta por endpoint.
+7. `99 · Restauración`: cierra la corrida.
 
-Todas validan además que nunca haya un 5xx, que responda en menos de 2 segundos,
-que no se filtren `refreshToken`, `apiKey` ni contraseñas, y que los errores
-traigan `message` y `statusCode` sin revelar rutas del servidor.
+Cada subcarpeta trae, en orden: los pasos `Preparar ·` (crean los recursos propios de esa prueba: pedido, depósito, proveedor, etc.), el caso feliz, los casos de error y los pasos `Limpiar ·`. Por eso se puede correr un endpoint suelto (después de `00 ·`) y la corrida completa se puede repetir.
 
-## Las dos carpetas iniciales
+## Casos por endpoint
 
-**`00 · Acceso`** — los cuatro logins. El panel entra por
-`/auth/login/dashboard`, que exige ser administrador; las apps por `/auth/login`.
-Cada uno deja su token en su variable (`tokenAdmin`, `tokenSuperAdmin`,
-`tokenCliente`, `tokenChofer`) y fija `clientSource` al origen que le
-corresponde. **Esto último importa:** el guard compara el rol del token contra
-la cabecera `X-Client-Source`, y si no coinciden responde 401.
+| Caso | Qué prueba |
+|---|---|
+| `200/201 · correcto` | Cuerpo válido con un rol permitido. Verifica status, que sea JSON, el tiempo y lo propio del endpoint (por ejemplo el total de la cotización o `cancelledBy`). |
+| `400 · datos inválidos` | Cuerpo, parámetro de ruta o query inválido; verifica el `statusCode` y el `message` del filtro de excepciones. |
+| `400 · sin Idempotency-Key` | Los 9 endpoints de stock, compras y cargas que la exigen (se detectan en el OpenAPI). Todas las escrituras mandan la clave. |
+| `400 · super administrador sin X-Distributor` | Escrituras de pedidos y cobros, cotización e historial: el super admin tiene que mandar la distribuidora. |
+| `401 · sin token` | Sólo en endpoints protegidos. |
+| `401 · credenciales inválidas` / `401 · token inválido` | El 401 propio del login y el del token mal formado. |
+| `403 · rol sin permiso` | Rol que el decorador `@Auth` del controller no admite. |
+| `403 · recurso de otro usuario` | Un cliente pidiendo datos de otro cliente. |
+| `404 · no existe` / `404 · <referencia> inexistente` | Id con formato válido que no existe, en la ruta o en el cuerpo. |
+| `409`, `410` | La transferencia ya confirmada; el chofer que pide un pedido que ya no es suyo (`GET /orders/{id}` y `/status-history`). |
+| `503 · dependencia caída` | `/health` y `/health/ready`. |
 
-**`01 · Preparacion`** — crea un cliente, una garrafa y un chofer que existen
-sólo para ser borrados. Así las bajas de Customers, Gas Cylinders, Delivery y
-Users **no se llevan puesto el dato que usan los demás módulos**.
+Cuando un caso no existe no se genera, no se relaja la expectativa: endpoints públicos (sin 401), endpoints abiertos a cualquier rol (sin 403), listados sin parámetros (sin 400), listados que con un id desconocido devuelven `200` vacío (sin 404) y texto libre sin validación (sin 400). El motivo de cada excepción está en `casos.js` (`no400`, `no404`, `sinExito`).
 
-## Se puede correr muchas veces seguidas
+`POST /stock/reconciliation/adjustments` no tiene caso 201: sólo es posible con el vendible desalineado del físico y ninguna operación de la API lo produce. Se prueba el 400 "sin diferencia que corregir" con datos válidos.
 
-- Las operaciones van en orden CRUD dentro de cada módulo: crear, leer,
-  modificar, borrar.
-- El `POST` de cada módulo guarda el identificador de lo que creó y el resto del
-  módulo opera sobre eso.
-- Los borrados que afectarían a otros módulos usan los datos descartables de
-  `01 · Preparacion`.
-- `DELETE /distributor/{id}` está incluido pero conviene no correrlo suelto:
-  deja al sistema sin distribuidora.
+`GET /routes/driving` acepta `200`, `502` y `503`: depende del proveedor de rutas (Google u OSRM). Sin proveedor configurado el back responde `503`, y eso es lo que pasa hoy en la demo.
 
-## Los 31 tests que fallan a propósito
+## Qué crea y cómo lo deja
 
-No son fallas de la colección: **documentan defectos abiertos**. Cuando se
-arreglen, pasan solos y sirven de verificación.
+Todo lo que la colección crea lleva `Prueba API` en el nombre o en las notas y se da de baja al final de la carpeta que lo creó (la tabla `LIMPIEZA` del generador, en orden inverso al de alta): depósitos (después de dejarlos sin stock con un ajuste), proveedores, puestos, legajos, vehículos, garrafas, zonas, franjas, roles, direcciones y planes se dan de baja; pedidos, órdenes de compra, recepciones, cargas, tareas, reclamos, incidencias y envases se cancelan, anulan, cierran o retiran; las calificaciones se ocultan.
 
-| Cuántos | Qué documentan |
-|---:|---|
-| 12 | **H-31 / H-28** — endpoints sin DTO que aceptan datos inválidos y contestan 2xx |
-| 10 | **H-31** — endpoints sin DTO que devuelven 500 en vez de 400 |
-| 6 | **H-02** — el login devuelve el `refreshToken` y el `apiKey` de Firebase |
-| 3 | **H-37** — crear un usuario con un rol inexistente devuelve 500 |
+- **Stock de la demo:** las pruebas usan una garrafa propia (`Prueba API garrafa …`, carpeta `00 · Datos de prueba`). Las entregas de prueba descuentan del camión del chofer de esa garrafa propia, y al final se deja en cero y se da de baja. Los productos de la demo no se tocan.
+- **Cuentas:** no se crea ni se modifica ninguna cuenta (Firebase es el real y está compartido). Registro, alta/edición/bloqueo/baja de usuarios y administradores, empleados con cuenta, mails, altas y bajas de distribuidoras y los tokens de notificación del cliente (`POST /notifications/token`, `/notifications/order-confirmation`) están en `Manual`.
+- **Chofer libre:** `cristian.maidana@gmail.com` cambia de vehículo y se le arma una carga, y al terminar la prueba recupera el vehículo que tenía (el historial de asignaciones queda con las filas del cambio).
+- **Lo que no se puede deshacer por API** y queda como historial: los pedidos entregados (alrededor de 9 por corrida; un pedido entregado no se cancela), los cancelados (alrededor de 20), los movimientos y ajustes de stock, las filas de auditoría y los productos, depósitos y cargas dados de baja (se ven en el historial de cada pantalla con su nombre `Prueba API`). Los pedidos entregados los hace el chofer `chofer@splg.com`, así que cuentan en la carga abierta de ese chofer.
+- **Antes de una presentación:** la corrida deja historial de prueba en la distribuidora demo. Para volver a la demo limpia se vuelve a sembrar con el procedimiento de `docs/DEMO.md` (backup, `npm run seed`, `seed:demo`, `fotos:demo`).
 
-El detalle de cada uno está en
-`splg-docs/material-de-trabajo/HALLAZGOS-2026-09-23.md`.
+## Cómo provocar el 503
 
-## Los cuerpos
+El back responde `503` en `/api/health` y `/api/health/ready` cuando Postgres o Redis no responden. En un entorno descartable: bajar el contenedor (`docker stop <postgres>` o `docker stop <redis>`), ejecutar `503 · dependencia caída` y volver a levantarlo. Con todo sano responde `200` y el caso lo acepta. El `500` y el `504` no se disparan a pedido: están como ejemplos guardados con el formato real de error del back.
 
-Los **56 endpoints que reciben cuerpo lo tienen escrito a mano y probado** contra
-la API, en `cuerpos.py`. Cada uno trae un `ok` que funciona y un `malo` que debe
-ser rechazado.
+## Carpeta Manual
 
-Once de esos cuerpos **no salen del OpenAPI**: son los endpoints sin DTO, que
-Swagger no documenta (H-31). Están escritos leyendo el controlador.
+Queda fuera de la corrida automática porque toca cuentas reales de Firebase, distribuidoras, dispositivos, mails, archivos o necesita un usuario nuevo:
 
-## Precondiciones
+- registro (`/auth/registro`, `/users/customer-registration`), alta de usuarios (`POST /users`), alta de administrador, cuenta de un empleado, egreso y reingreso de empleados;
+- edición de usuarios (puede cambiar la contraseña), bloqueo, bajas de usuario, administrador, cliente y chofer;
+- alta, edición y baja de distribuidoras (la baja da de baja a la sembrada si se usa su id);
+- `POST /notifications/token` y `/notifications/order-confirmation` (pisan o usan el token de push del cliente real);
+- `POST /stock/reconciliation/reapply-deliveries` (reaplica descuentos de stock sobre la demo);
+- mails (`/email/*`);
+- fotos, logos y adjuntos (multipart).
 
-Veintidós endpoints dependen del **estado** del dato, no del cuerpo: el pedido
-tiene que estar en camino, el envase cargado, la transición ser válida. En esos,
-la descripción del request dice qué hace falta para que devuelva 2xx, y el test
-acepta el rechazo por regla de negocio como respuesta correcta.
+Correrlas a mano y con datos descartables, nunca con las cuentas ni la distribuidora de la demo.
 
-## Regenerarla
+## Newman
 
-    python3 postman/generar-coleccion.py
+```bash
+npm run postman:probar -- --base-url=http://localhost:3010/api --reporte=.orq/newman-reporte.json
+```
 
-Necesita, en el mismo directorio: `openapi.json` bajado de `/docs-json`,
-`ids.txt` (lo arma `refrescar-ids.sh`), `cuerpos.py` y `publicos.json`.
+Corre todo menos `Manual` (usa `npx newman@6.2.1`, no agrega dependencias).
+
+## Regenerar
+
+```bash
+# lee el OpenAPI de la API levantada (la documentación pide Basic Auth)
+SWAGGER_USER=... SWAGGER_PASSWORD=... npm run postman:generar          # colección + environment
+npm run postman:probar -- --reporte=.orq/newman-reporte.json            # corrida contra la API levantada
+npm run postman:guardar-ejemplos -- --report=.orq/newman-reporte.json   # pone las respuestas reales
+```
+
+Para leer el OpenAPI de un archivo: `node scripts/postman/generar-coleccion.js --input=ruta/openapi.yaml`.
+
+`guardar-ejemplos` oculta tokens y firmas de URLs, recorta las listas a 3 elementos y conserva los ejemplos documentales 500, 503 y 504.
+
+## Límites de la API que conviene saber
+
+- Login: 8 intentos por minuto por cuenta. Correr la colección dos veces seguidas en menos de un minuto puede dar `429` en los logins.
+- Las pruebas de camión y de vehículo usan al chofer `choferLibreEmail`; si ese chofer tiene un pedido en curso, el cambio de vehículo da `409`.
+- Si algo externo cambia `requireOpenTruckLoad` a `true` durante la corrida, la asignación de pedidos falla con "El chofer no tiene la carga del día abierta"; `00 · Preparación` lo deja en `false` al empezar.
