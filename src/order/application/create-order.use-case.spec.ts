@@ -1,5 +1,6 @@
 import { EntityManager } from 'typeorm';
 import Decimal from 'decimal.js';
+import { conRespuestaVigilada } from '../../common/interceptors/respuesta-incompleta';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { OrderStatus, PaymentMethod } from '../entities/order.entity';
@@ -186,6 +187,38 @@ describe('CreateOrderUseCase', () => {
         expect.any(Object),
         expect.any(String),
       );
+    });
+  });
+
+  describe('falla después del commit', () => {
+    it('si la relectura falla, el pedido confirmado se devuelve igual (un reintento no lo duplica)', async () => {
+      orders.findByIdFull.mockRejectedValue(new Error('conexión caída'));
+      const { valor: result, incompleta } = await conRespuestaVigilada(() =>
+        useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH }),
+      );
+      expect(result.order.orderId).toBeDefined();
+      // La idempotencia no la guarda 24 h como si fuera completa.
+      expect(incompleta).toBe(true);
+    });
+
+    it('si falla el aviso al panel, el pedido confirmado se devuelve igual', async () => {
+      realtime.notifyAdmins.mockImplementation(() => {
+        throw new Error('socket caído');
+      });
+      const result = await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.CASH,
+      });
+      expect(result.order.orderId).toBe('ord-1');
+    });
+
+    it('si la relectura no encuentra el pedido, devuelve el guardado', async () => {
+      orders.findByIdFull.mockResolvedValue(null);
+      const result = await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.CASH,
+      });
+      expect(result.order.orderId).toBeDefined();
     });
   });
 

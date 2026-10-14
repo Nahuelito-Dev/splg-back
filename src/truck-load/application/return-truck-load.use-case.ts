@@ -1,7 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { CargaInvalidaError } from '../domain/errors/truck-load.errors';

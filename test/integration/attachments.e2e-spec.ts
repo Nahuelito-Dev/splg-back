@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { NotFoundException } from '@nestjs/common';
 import request from 'supertest';
+import { JPG_REAL } from './setup/imagenes';
 import { DataSource } from 'typeorm';
 import {
   TestEnv,
@@ -353,10 +354,7 @@ describe('Adjuntos genéricos (e2e)', () => {
       batchId: randomUUID(),
     } as Partial<PurchaseReceipt>);
     const id = recepcion.receiptId;
-    const FOTO = Buffer.concat([
-      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
-      Buffer.from('remito de prueba'),
-    ]);
+    const FOTO = JPG_REAL;
 
     const creado = await subir(admin1.headers, 'purchase_receipt', id, {
       nombre: 'remito.jpg',
@@ -385,7 +383,8 @@ describe('Adjuntos genéricos (e2e)', () => {
 
     const descarga = await descargar(admin1.headers, adjuntoId);
     expect(descarga.status).toBe(200);
-    expect(descarga.body.equals(FOTO)).toBe(true);
+    // Se guarda recodificada (sin metadata): sigue siendo un JPEG.
+    expect(descarga.body.subarray(0, 3).equals(FOTO.subarray(0, 3))).toBe(true);
 
     // otra distribuidora: no existe (404); sin credencial: 401; chofer: 403
     await subir(admin2.headers, 'purchase_receipt', id, {

@@ -155,6 +155,56 @@ export class VehicleDeOrderDto {
   @ApiProperty({ type: String, nullable: true }) model!: string | null;
 }
 
+/**
+ * El chofer del pedido, visto por el cliente dueño y por el admin mientras el
+ * pedido está activo (aceptado o en camino). Es lo que la app del cliente
+ * muestra al reabrir; en vivo llega por socket (`order:accepted`).
+ */
+export class DriverLocationDto {
+  @ApiProperty({ example: -34.6037 }) lat!: number;
+  @ApiProperty({ example: -58.3816 }) lng!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '2026-10-12T20:15:00.000Z',
+    description:
+      'Cuándo se registró (ISO); `null` si la posición es anterior a que el back anotara la hora',
+  })
+  at!: string | null;
+}
+
+export class DriverDeOrderDto {
+  @ApiProperty({ format: 'uuid', description: '`user_id` del chofer' })
+  userId!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Ana Gómez' })
+  fullName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '+5491155550000' })
+  phoneNumber!: string | null;
+
+  @ApiProperty({
+    example: 4.8,
+    description:
+      'Promedio de estrellas de las calificaciones visibles (0 si todavía no tiene)',
+  })
+  ratingAverage!: number;
+
+  @ApiProperty({
+    example: 37,
+    description: 'Cantidad de calificaciones visibles',
+  })
+  ratingCount!: number;
+
+  @ApiProperty({
+    type: DriverLocationDto,
+    nullable: true,
+    description:
+      'Última ubicación conocida del chofer (la misma que se emite por `order:driver-location`); `null` si todavía no reportó ninguna',
+  })
+  location!: DriverLocationDto | null;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
@@ -411,4 +461,32 @@ export class OrderResponseDto {
   @Expose({ name: 'vehicle' })
   @Type(() => VehicleDeOrderDto)
   vehicle!: VehicleDeOrderDto | null;
+
+  /**
+   * Quién canceló el pedido: `customer`, `admin` (admin o super admin),
+   * `driver` o `system` (lo canceló el sistema, p. ej. al vencer el pago).
+   * `null` si el pedido no está cancelado o es de antes de que se registrara
+   * el historial de estados. El evento `order:cancelled` lleva el mismo campo,
+   * pero sólo cuando cancela una persona: los vencimientos automáticos no
+   * emiten el evento, así que `system` se ve únicamente al leer el pedido.
+   */
+  @ApiProperty({
+    name: 'cancelledBy',
+    enum: ['customer', 'admin', 'system', 'driver'],
+    nullable: true,
+  })
+  @Expose({ name: 'cancelledBy' })
+  cancelledBy!: 'customer' | 'admin' | 'system' | 'driver' | null;
+
+  /**
+   * Chofer asignado: nombre, teléfono y calificación. Sólo en
+   * `GET /orders/{id}`, sólo para el cliente dueño y el admin, y sólo mientras
+   * el pedido esté `accepted` o `out_for_delivery`; con el pedido cerrado, sin
+   * chofer, o visto por el chofer, es `null` (no se expone el teléfono). La
+   * patente del vehículo está en `vehicle.patent`.
+   */
+  @ApiProperty({ name: 'driver', type: DriverDeOrderDto, nullable: true })
+  @Expose({ name: 'driver' })
+  @Type(() => DriverDeOrderDto)
+  driver!: DriverDeOrderDto | null;
 }

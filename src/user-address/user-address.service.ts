@@ -43,33 +43,41 @@ export class UserAddressService {
     createUserAddressDto: CreateUserAddressDto,
     requesterUserId?: string | null,
   ): Promise<UserAddress> {
-    // Un cliente solo puede crear direcciones PARA SÍ MISMO: si no es admin,
-    // se fuerza el user_id al del que pide (ignora lo que venga en el body).
+    // Un cliente solo puede crear direcciones PARA SÍ MISMO: el dueño es el de
+    // su token. Si además manda un `user_id` y es el de otro, es un error (no
+    // se ignora en silencio).
+    let dueño = createUserAddressDto.user_id;
     if (requesterUserId) {
-      createUserAddressDto = {
-        ...createUserAddressDto,
-        user_id: requesterUserId,
-      };
+      if (dueño && dueño.toLowerCase() !== requesterUserId.toLowerCase()) {
+        throw new ForbiddenException(
+          'No podés crear direcciones para otro usuario',
+        );
+      }
+      dueño = requesterUserId;
     }
-
-    const user = await this.usersService.findById(createUserAddressDto.user_id);
-
-    if (!user) {
-      throw new NotFoundException(
-        `User with ID: ${createUserAddressDto.user_id} not found`,
+    if (!dueño) {
+      throw new BadRequestException(
+        'user_id: indicá el usuario dueño de la dirección',
       );
     }
 
+    const user = await this.usersService.findById(dueño);
+
+    if (!user) {
+      throw new NotFoundException(`User with ID: ${dueño} not found`);
+    }
+
     if (createUserAddressDto.isDefault) {
-      await this.removeDefaultFromOtherAddresses(createUserAddressDto.user_id);
+      await this.removeDefaultFromOtherAddresses(dueño);
     }
 
     // Sin `user_id`: la entidad lo lleva en camelCase y volcarlo con el resto
     // lo perdería en silencio.
     const { latitude, longitude, user_id, ...campos } = createUserAddressDto;
+    void user_id; // el dueño ya se resolvió arriba (`dueño`)
     const address = this.userAddressRepository.create({
       ...campos,
-      userId: user_id,
+      userId: dueño,
       location: puntoDesdeCoordenadas(latitude, longitude),
     });
     return await this.userAddressRepository.save(address);

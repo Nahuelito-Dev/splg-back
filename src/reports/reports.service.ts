@@ -242,7 +242,8 @@ export class ReportsService {
   ): Promise<CobrosDeEfectivoDto> {
     const query = this.orderRepository
       .createQueryBuilder('order')
-      .select('order.paymentStatus', 'status')
+      .select('order.paymentMethod', 'method')
+      .addSelect('order.paymentStatus', 'status')
       .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
@@ -250,14 +251,20 @@ export class ReportsService {
         start: startDate,
         end: endDate,
       })
-      .andWhere('order.paymentMethod = :cash', { cash: PaymentMethod.CASH })
-      .andWhere('order.paymentStatus IN (:...estados)', {
-        estados: [
-          PaymentStatus.PENDING,
-          PaymentStatus.UNPAID,
-          PaymentStatus.WRITTEN_OFF,
-        ],
-      });
+      .andWhere(
+        '((order.paymentMethod = :cash AND order.paymentStatus IN (:...estadosCash)) ' +
+          'OR (order.paymentMethod = :transfer AND order.paymentStatus IN (:...estadosTransfer)))',
+        {
+          cash: PaymentMethod.CASH,
+          estadosCash: [
+            PaymentStatus.PENDING,
+            PaymentStatus.UNPAID,
+            PaymentStatus.WRITTEN_OFF,
+          ],
+          transfer: PaymentMethod.TRANSFER,
+          estadosTransfer: [PaymentStatus.PENDING, PaymentStatus.FAILED],
+        },
+      );
 
     if (distributorId) {
       query.andWhere('order.distributorId = :distributorId', {
@@ -265,18 +272,50 @@ export class ReportsService {
       });
     }
 
-    const rows = await query.groupBy('order.paymentStatus').getRawMany<Fila>();
-    const cifra = (estado: PaymentStatus) => {
-      const fila = rows.find((r) => r['status'] === estado);
+    const rows = await query
+      .groupBy('order.paymentMethod')
+      .addGroupBy('order.paymentStatus')
+      .getRawMany<Fila>();
+    const cifra = (metodo: PaymentMethod, estado: PaymentStatus) => {
+      const fila = rows.find(
+        (r) => r['method'] === metodo && r['status'] === estado,
+      );
       return {
         totalOrders: fila ? numero(fila['count']) : 0,
         totalAmount: fila ? numero(fila['total']) : 0,
       };
     };
+    // Pedidos cobrados (online o transferencia) y después cancelados: el dinero
+    // sigue en la distribuidora y hay que devolverlo. Dato informativo: el
+    // sistema no gestiona el reintegro.
+    const reintegros = this.orderRepository
+      .createQueryBuilder('order')
+      .select('COUNT(order.orderId)', 'count')
+      .addSelect('SUM(order.totalAmount)', 'total')
+      .where('order.status = :cancelado', { cancelado: OrderStatus.CANCELLED })
+      .andWhere('order.paymentStatus = :pagado', {
+        pagado: PaymentStatus.PAID,
+      })
+      .andWhere('order.updatedAt >= :start AND order.updatedAt < :end', {
+        start: startDate,
+        end: endDate,
+      });
+    if (distributorId) {
+      reintegros.andWhere('order.distributorId = :distributorId', {
+        distributorId,
+      });
+    }
+    const [filaReintegro] = await reintegros.getRawMany<Fila>();
     return {
-      pendingCash: cifra(PaymentStatus.PENDING),
-      unpaid: cifra(PaymentStatus.UNPAID),
-      writtenOff: cifra(PaymentStatus.WRITTEN_OFF),
+      pendingRefund: {
+        totalOrders: filaReintegro ? numero(filaReintegro['count']) : 0,
+        totalAmount: filaReintegro ? numero(filaReintegro['total']) : 0,
+      },
+      pendingCash: cifra(PaymentMethod.CASH, PaymentStatus.PENDING),
+      unpaid: cifra(PaymentMethod.CASH, PaymentStatus.UNPAID),
+      writtenOff: cifra(PaymentMethod.CASH, PaymentStatus.WRITTEN_OFF),
+      pendingTransfer: cifra(PaymentMethod.TRANSFER, PaymentStatus.PENDING),
+      notReceivedTransfer: cifra(PaymentMethod.TRANSFER, PaymentStatus.FAILED),
     };
   }
 }

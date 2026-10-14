@@ -273,6 +273,14 @@ export class Order {
   cancellationReason!: string | null;
 
   /**
+   * Motivo de la transición de estado que se está guardando. No es una columna:
+   * lo lee `OrderStatusHistorySubscriber` al asentar la fila del historial y
+   * lo limpia. Si no se pone y el pedido pasa a `cancelled`, usa
+   * `cancellationReason`.
+   */
+  transitionReason?: string | null;
+
+  /**
    * ID del pago en la pasarela (MercadoPago) que marcó este pedido como PAID.
    * Índice único PARCIAL (solo cuando no es null): garantiza idempotencia del
    * webhook — un mismo `payment.id` no puede confirmar dos pedidos, y permite

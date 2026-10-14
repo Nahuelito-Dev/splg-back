@@ -1,0 +1,41 @@
+import { RealtimeDispatchAdapter } from './realtime-dispatch.adapter';
+
+describe('RealtimeDispatchAdapter.lastDriverLocation', () => {
+  const POSICION = { lat: -34.6, lng: -58.4, at: '2026-10-12T20:15:00.000Z' };
+  let redis: {
+    getDriverActiveOrder: jest.Mock;
+    getDriverLastLocation: jest.Mock;
+  };
+  let adapter: RealtimeDispatchAdapter;
+
+  beforeEach(() => {
+    redis = {
+      getDriverActiveOrder: jest.fn(),
+      getDriverLastLocation: jest.fn().mockResolvedValue(POSICION),
+    };
+    adapter = new RealtimeDispatchAdapter(
+      redis as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+  });
+
+  it('devuelve la posición cuando el pedido es el que el chofer lleva', async () => {
+    redis.getDriverActiveOrder.mockResolvedValue({ orderId: 'o1' });
+    await expect(adapter.lastDriverLocation('u1', 'o1')).resolves.toEqual(
+      POSICION,
+    );
+  });
+
+  it('si el chofer lleva OTRO pedido, no se la da al cliente de éste', async () => {
+    redis.getDriverActiveOrder.mockResolvedValue({ orderId: 'o2' });
+    await expect(adapter.lastDriverLocation('u1', 'o1')).resolves.toBeNull();
+    expect(redis.getDriverLastLocation).not.toHaveBeenCalled();
+  });
+
+  it('si no tiene pedido activo, tampoco', async () => {
+    redis.getDriverActiveOrder.mockResolvedValue(null);
+    await expect(adapter.lastDriverLocation('u1', 'o1')).resolves.toBeNull();
+  });
+});

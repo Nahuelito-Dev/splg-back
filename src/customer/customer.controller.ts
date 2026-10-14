@@ -136,7 +136,7 @@ export class CustomersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
     return this.aDto(
@@ -163,7 +163,7 @@ export class CustomersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCustomerLocationDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<CustomerResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
     return this.aDto(
@@ -185,7 +185,7 @@ export class CustomersController {
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<MessageResponseDto> {
     await this.acotar({ customer_id: id }, user, distributorId);
     // Un cliente puede comprarle a varias distribuidoras: darlo de baja lo

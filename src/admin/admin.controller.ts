@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -39,7 +40,10 @@ import {
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { esElMismoUsuario } from '../common/utils/alcance.util';
-import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import {
+  CurrentDistributor,
+  MENSAJE_FALTA_DISTRIBUIDORA,
+} from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
@@ -55,12 +59,15 @@ export class AdminController {
   @ApiCreatedResponse({ type: AdminResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · property role_id should not exist; user_id must be a UUID',
+      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · el perfil de un admin de empresa exige X-Distributor y que coincida con distributor_id · property role_id should not exist; user_id must be a UUID',
   })
   async create(
     @Body() createAdminDto: CreateAdminDto,
+    @CurrentDistributor() distributorId: string | null,
   ): Promise<AdminResponseDto> {
-    return AdminMapper.toDto(await this.adminService.create(createAdminDto));
+    return AdminMapper.toDto(
+      await this.adminService.create(createAdminDto, distributorId),
+    );
   }
 
   @Get('/term/:term')
@@ -213,7 +220,17 @@ export class AdminController {
     distributorId: string | null,
   ): Promise<Admin> {
     const destino = await this.adminService.findDetail(id, distributorId);
-    if (user.role === RoleType.SUPER_ADMIN) return destino;
+    if (user.role === RoleType.SUPER_ADMIN) {
+      // Sin distribuidora sólo se opera sobre otro super admin (que no es de
+      // ninguna); sobre un admin de empresa, por UUID, hay que decir en cuál.
+      if (
+        !distributorId &&
+        destino.user?.role?.type !== String(RoleType.SUPER_ADMIN)
+      ) {
+        throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+      }
+      return destino;
+    }
     if (destino.user?.role?.type === String(RoleType.SUPER_ADMIN)) {
       throw new NotFoundException(`Admin with ID: ${id} not found`);
     }

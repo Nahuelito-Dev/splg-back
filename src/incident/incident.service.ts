@@ -159,19 +159,45 @@ export class IncidentService {
         'El tipo cobro impago no se asigna ni se cambia a mano: lo fija el informe de impago',
       );
     }
-    if (dto.description !== undefined) incident.description = dto.description;
-    if (dto.type !== undefined) incident.type = dto.type;
-    await this.incidentRepository.save(incident);
+    const cambios: Partial<Incident> = {};
+    if (dto.description !== undefined) cambios.description = dto.description;
+    if (dto.type !== undefined) cambios.type = dto.type;
+    // Actualización condicional (sólo mientras siga abierta) y sólo de los
+    // campos editados: no pisa una resolución hecha en paralelo.
+    await this.cerrarOEditar(incident, cambios);
     return this.findDetail(id, distributorId);
   }
 
   /**
+   * UPDATE ... WHERE status = 'open': el cambio se aplica sólo si nadie cerró la
+   * incidencia entre la lectura y la escritura; si no, 409.
+   */
+  private async cerrarOEditar(
+    incident: Incident,
+    cambios: Partial<Incident>,
+  ): Promise<void> {
+    if (Object.keys(cambios).length === 0) return;
+    const { affected } = await this.incidentRepository.update(
+      { incidentId: incident.incidentId, status: IncidentStatus.OPEN },
+      cambios,
+    );
+    if (!affected) {
+      throw new ConflictException(
+        'La incidencia cambió mientras la editabas: recargala y reintentá',
+      );
+    }
+    Object.assign(incident, cambios);
+  }
+
+  /**
    * Cierra la incidencia: resuelta (default) o descartada, siempre con nota
-   * (el motivo del descarte). `distributorId` opcional: sin él (super admin
-   * sin `X-Distributor`) se cierra cross-tenant, igual que en `claims.resolve`.
+   * (el motivo del descarte). El controller exige la distribuidora (el super
+   * admin elige una con `X-Distributor`).
    * Descartar sólo una incidencia abierta; una descartada o ya resuelta no se
    * vuelve a tocar. Una de cobro impago no se resuelve por acá mientras el
-   * pedido siga `unpaid`: se resuelve el cobro del pedido (409).
+   * pedido siga `unpaid`, ni se descarta: se resuelve el cobro del pedido (409).
+   * El cierre es un UPDATE condicional a `open`: si otro admin (o
+   * `resolve-unpaid`) la cerró en paralelo, 409 y no se pisa su resolución.
    */
   async resolve(
     id: string,
@@ -183,29 +209,26 @@ export class IncidentService {
     if (incident.status === IncidentStatus.RESOLVED) {
       throw new ConflictException('La incidencia ya está resuelta');
     }
-    if (
-      incident.type === IncidentType.UNPAID_COLLECTION &&
-      destino === IncidentStatus.RESOLVED
-    ) {
-      const order = await this.orderService.findById(incident.orderId);
-      if (order?.paymentStatus === PaymentStatus.UNPAID) {
-        throw new ConflictException(
-          'Resolvé el cobro del pedido: PATCH /orders/:id/payment/resolve-unpaid',
-        );
-      }
-    }
-    if (
-      incident.status === IncidentStatus.DISCARDED ||
-      (destino === IncidentStatus.DISCARDED &&
-        incident.status !== IncidentStatus.OPEN)
-    ) {
+    if (incident.status === IncidentStatus.DISCARDED) {
       throw new ConflictException(
         'Sólo se descarta una incidencia abierta, y una descartada no se modifica',
       );
     }
-    incident.status = destino;
-    incident.resolutionNote = dto.resolutionNote;
-    incident.resolvedAt = new Date();
-    return this.incidentRepository.save(incident);
+    // La de cobro impago la cierra el cobro del pedido, nunca la puerta
+    // genérica (ni resuelta ni descartada) mientras el pedido siga `unpaid`.
+    if (incident.type === IncidentType.UNPAID_COLLECTION) {
+      const order = await this.orderService.findById(incident.orderId);
+      if (order?.paymentStatus === PaymentStatus.UNPAID) {
+        throw new ConflictException(
+          'La incidencia de cobro impago se cierra resolviendo el cobro del pedido: PATCH /orders/:id/payment/resolve-unpaid',
+        );
+      }
+    }
+    await this.cerrarOEditar(incident, {
+      status: destino,
+      resolutionNote: dto.resolutionNote,
+      resolvedAt: new Date(),
+    });
+    return incident;
   }
 }

@@ -26,7 +26,7 @@ import {
 } from '../domain/stock-rules';
 import { StockCondition, StockMovementReason } from '../domain/stock.enums';
 import { StockMovement } from '../entities/stock-movement.entity';
-import { ahoraDeLaBase } from './reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 
 interface UbicacionConocida {
   locationId: string;

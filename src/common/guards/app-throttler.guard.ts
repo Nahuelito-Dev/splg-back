@@ -12,6 +12,23 @@ const RUTAS_DE_ACCESO = ['/auth/login', '/auth/login/dashboard'];
 /** Nombre del throttler que cuenta los intentos de acceso por cuenta. */
 export const THROTTLER_CUENTA = 'cuenta';
 
+/** Nombre del throttler que cuenta las subidas de archivos por usuario. */
+export const THROTTLER_SUBIDAS = 'subidas';
+
+/**
+ * true si la petición sube un archivo (multipart). Procesar una imagen cuesta
+ * memoria y CPU: tienen un cupo propio, más bajo que el general y compartido
+ * entre todas las rutas de subida de la misma sesión.
+ */
+export function esRutaDeSubida(context: ExecutionContext): boolean {
+  if (context.getType() !== 'http') return false;
+  const req = context.switchToHttp().getRequest<Request>();
+  return (
+    ['POST', 'PUT', 'PATCH'].includes(req.method) &&
+    Boolean(req.headers?.['content-type']?.startsWith('multipart/form-data'))
+  );
+}
+
 /** true si la petición es un intento de acceso (no un registro). */
 export function esRutaDeAcceso(context: ExecutionContext): boolean {
   if (context.getType() !== 'http') return false;
@@ -109,6 +126,12 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     suffix: string,
     name: string,
   ): string {
+    if (name === THROTTLER_SUBIDAS) {
+      // Sin la ruta en la clave: el cupo es por sesión, no por endpoint.
+      return createHash('sha256')
+        .update(`${THROTTLER_SUBIDAS}-${suffix}`)
+        .digest('hex');
+    }
     if (name === THROTTLER_CUENTA) {
       const cuenta = this.cuentaDelAcceso(context);
       // Sin email (cuerpo inválido: lo rechaza el ValidationPipe después) se

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { TruckLoadGatePort } from '../../order/domain/ports/truck-load-gate.port';
 import { ESTADOS_ABIERTOS, TruckLoadStatus } from '../domain/truck-load.enums';
 import { MotivoSinPedidos, motivoSinPedidos } from '../domain/truck-load-rules';
@@ -65,27 +65,47 @@ export class TruckLoadGateService extends TruckLoadGatePort {
   async assertPuedeAceptar(
     distributorId: string,
     deliveryId: string,
+    manager?: EntityManager,
   ): Promise<void> {
-    await this.exigir(distributorId, deliveryId, MENSAJE_SIN_CARGA);
+    await this.exigir(distributorId, deliveryId, MENSAJE_SIN_CARGA, manager);
   }
 
   async assertPuedeAsignar(
     distributorId: string,
     deliveryId: string,
+    manager?: EntityManager,
   ): Promise<void> {
-    await this.exigir(distributorId, deliveryId, MENSAJE_SIN_CARGA_DEL_CHOFER);
+    await this.exigir(
+      distributorId,
+      deliveryId,
+      MENSAJE_SIN_CARGA_DEL_CHOFER,
+      manager,
+    );
   }
 
   private async exigir(
     distributorId: string,
     deliveryId: string,
     mensajeSinCarga: string,
+    manager?: EntityManager,
   ): Promise<void> {
     const exige = (await this.settings.obtener(distributorId))
       .requireOpenTruckLoad;
-    const [fila] = await this.leer(distributorId, 'd."delivery_id"', [
-      deliveryId,
-    ]);
+    if (manager) {
+      // FOR SHARE sobre la carga abierta del chofer, ANTES de leer su estado:
+      // la vuelta la toma FOR UPDATE (`bloquearCarga`), así que se serializan.
+      await manager.query(
+        `SELECT 1 FROM "truck_load" WHERE "delivery_id" = $1
+           AND "status"::text = ANY($2::text[]) FOR SHARE`,
+        [deliveryId, ESTADOS_ABIERTOS],
+      );
+    }
+    const [fila] = await this.leer(
+      distributorId,
+      'd."delivery_id"',
+      [deliveryId],
+      manager,
+    );
     const motivo = fila ? this.motivoDe(exige, fila) : null;
     if (!motivo) return;
     throw new BadRequestException(
@@ -123,8 +143,9 @@ export class TruckLoadGateService extends TruckLoadGatePort {
     distributorId: string,
     columna: string,
     valores: string[],
+    manager?: EntityManager,
   ): Promise<FilaDeChofer[]> {
-    return this.dataSource.query(
+    return (manager ?? this.dataSource).query(
       `SELECT d."user_id", d."delivery_id", l."number", l."status", l."car_id",
               va."car_id" AS en_uso
        FROM "delivery" d

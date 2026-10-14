@@ -376,7 +376,7 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
 
     await expect(
       incidents.resolve(inc.incidentId, { resolutionNote: 'por la puerta' }),
-    ).rejects.toThrow(/Resolvé el cobro del pedido/);
+    ).rejects.toThrow(/resolve-unpaid/);
     expect((await incidenciasDe(order.orderId))[0].status).toBe(
       IncidentStatus.OPEN,
     );

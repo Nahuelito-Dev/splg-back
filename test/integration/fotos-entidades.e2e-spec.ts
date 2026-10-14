@@ -47,16 +47,11 @@ import {
 import { FirebaseAuthPort } from '../../src/firebase/ports/firebase-auth.port';
 import { EmployeeService } from '../../src/employee/employee.service';
 import { RoleType } from '../../src/common/constants/role-type.enum';
+import { JPG_REAL, PNG_REAL } from './setup/imagenes';
 import { StorageOrphan } from '../../src/s3/entities/storage-orphan.entity';
 
-const PNG = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from('foto de prueba'),
-]);
-const JPG = Buffer.concat([
-  Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
-  Buffer.from('otra foto'),
-]);
+const PNG = PNG_REAL;
+const JPG = JPG_REAL;
 const HTML_COMO_PNG = Buffer.from('<html><script>alert(1)</script></html>');
 
 type Headers = Record<string, string>;
@@ -555,7 +550,11 @@ describe('Fotos de entidades en S3 (e2e)', () => {
         const res = await fetch(url ?? '');
         expect(res.status).toBe(200);
         expect(res.headers.get('content-type')).toBe('image/png');
-        expect(Buffer.from(await res.arrayBuffer()).equals(PNG)).toBe(true);
+        expect(
+          Buffer.from(await res.arrayBuffer())
+            .subarray(0, 8)
+            .equals(PNG.subarray(0, 8)),
+        ).toBe(true);
       }
       // El bucket es privado: la key sin firma no se lee.
       expect(
@@ -1419,7 +1418,11 @@ describe('Fotos de entidades en S3 (e2e)', () => {
         ).expect(200);
         const url = (res.body as Cuerpo).photoUrl as string;
         const bajada = await fetch(url);
-        expect(Buffer.from(await bajada.arrayBuffer()).equals(png)).toBe(true);
+        expect(
+          Buffer.from(await bajada.arrayBuffer())
+            .subarray(0, 8)
+            .equals(png.subarray(0, 8)),
+        ).toBe(true);
       },
     );
   });

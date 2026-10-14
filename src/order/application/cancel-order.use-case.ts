@@ -18,6 +18,14 @@ import { RoleType } from '../../common/constants/role-type.enum';
 /** Quién dispara la cancelación (define la política de estado y stock). */
 export type CancelActor = 'customer' | 'driver' | 'admin' | 'superadmin';
 
+/** Quién canceló, como lo ve el cliente en `order:cancelled` y en `GET /orders/:id`. */
+export type CancelledBy = 'customer' | 'admin' | 'system' | 'driver';
+
+/** El super admin cuenta como administrador. */
+export function cancelledByDe(actor: CancelActor): CancelledBy {
+  return actor === 'superadmin' ? 'admin' : actor;
+}
+
 /**
  * Traduce el rol autenticado (RoleType) al actor que espera `execute`.
  * super_admin se trata como admin. Único lugar de este mapeo: lo usan el
@@ -161,18 +169,27 @@ export class CancelOrderUseCase {
       await this.dispatchOrchestrator
         .onOrderClosed(order.orderId)
         .catch(() => undefined);
-      this.notify(order, previousDriverUserId);
+      this.notify(order, previousDriverUserId, role);
     }
 
     return order;
   }
 
-  /** Avisos de tiempo real de una cancelación REAL (customer/admin). */
-  private notify(order: Order, previousDriverUserId: string | null): void {
+  /**
+   * Avisos de tiempo real de una cancelación REAL (customer/admin). El payload
+   * lleva `cancelledBy` (`customer` o `admin`; el super admin cuenta como
+   * `admin`) además del motivo.
+   */
+  private notify(
+    order: Order,
+    previousDriverUserId: string | null,
+    role: CancelActor,
+  ): void {
     const payload = {
       orderId: order.orderId,
       status: order.status,
       reason: order.cancellationReason,
+      cancelledBy: cancelledByDe(role),
     };
 
     this.dispatch.notifyCustomer(order.customerId, 'order:cancelled', payload);
@@ -193,14 +210,6 @@ export class CancelOrderUseCase {
       });
     }
 
-    this.dispatch.notifyAdmins(
-      'order:cancelled',
-      {
-        orderId: order.orderId,
-        status: order.status,
-        reason: order.cancellationReason,
-      },
-      order.distributorId,
-    );
+    this.dispatch.notifyAdmins('order:cancelled', payload, order.distributorId);
   }
 }

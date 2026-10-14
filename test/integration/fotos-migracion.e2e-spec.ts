@@ -94,8 +94,14 @@ describe('migraciones de fotos de entidades (e2e)', () => {
     );
 
     // Revierte desde la última hasta la que crea las fotos (las posteriores,
-    // como los índices de auditoría, también salen).
-    for (let i = 0; i < 10 && (await columna('user', 'photo_key')); i++) {
+    // como los índices de auditoría, también salen). El tope es el total de
+    // migraciones: cada una nueva que se agregue después no rompe el test.
+    const totalDeMigraciones = ds.migrations.length;
+    for (
+      let i = 0;
+      i < totalDeMigraciones && (await columna('user', 'photo_key'));
+      i++
+    ) {
       await ds.undoLastMigration();
     }
     for (const [tabla, nombre] of COLUMNAS) {

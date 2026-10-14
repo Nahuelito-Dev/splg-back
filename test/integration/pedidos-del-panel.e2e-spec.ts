@@ -479,7 +479,7 @@ describe('Pedidos del panel (e2e)', () => {
           changed_by_user_id: string;
         }>
       >(
-        `SELECT from_status, to_status, reason, changed_by_user_id FROM order_status_history WHERE order_id = $1`,
+        `SELECT from_status, to_status, reason, changed_by_user_id FROM order_status_history WHERE order_id = $1 AND to_status = 'delivered'`,
         [id],
       );
       expect(historial).toEqual([
@@ -537,7 +537,7 @@ describe('Pedidos del panel (e2e)', () => {
       const historial = await ds.query<
         Array<{ reason: string; changed_by_user_id: string }>
       >(
-        `SELECT reason, changed_by_user_id FROM order_status_history WHERE order_id = $1`,
+        `SELECT reason, changed_by_user_id FROM order_status_history WHERE order_id = $1 AND to_status = 'delivered'`,
         [delAdmin],
       );
       expect(historial).toEqual([
@@ -562,7 +562,7 @@ describe('Pedidos del panel (e2e)', () => {
       await confirmar(cliente, delCliente, { code: 'QRCODE1234' }).expect(201);
       expect(
         await ds.query(
-          `SELECT 1 FROM order_status_history WHERE order_id = $1`,
+          `SELECT 1 FROM order_status_history WHERE order_id = $1 AND reason IS NOT NULL`,
           [delCliente],
         ),
       ).toEqual([]);
@@ -672,7 +672,11 @@ describe('Pedidos del panel (e2e)', () => {
       }).expect(404);
 
       // el super admin llega a cualquiera
-      await patch(superAdmin, url, { fullName: 'Por el super' }).expect(200);
+      // Sobre el personal de una distribuidora, el super admin dice en cuál actúa.
+      await patch(superAdmin, url, { fullName: 'Por el super' }).expect(400);
+      await patch(superAdmin, url, { fullName: 'Por el super' })
+        .set('X-Distributor', a.slug)
+        .expect(200);
     }, 60000);
 
     it('DELETE es baja lógica: deslogea, deshabilita Firebase, conserva la fila y sale del listado', async () => {
@@ -724,8 +728,12 @@ describe('Pedidos del panel (e2e)', () => {
       const pSegundo = await perfilDe(segundo);
 
       // el super admin da de baja al segundo; el primero queda solo
-      await del(superAdmin, `/admin/${pSegundo.adminId}`).expect(200);
-      const r = await del(superAdmin, `/admin/${pA.adminId}`).expect(409);
+      await del(superAdmin, `/admin/${pSegundo.adminId}`)
+        .set('X-Distributor', a.slug)
+        .expect(200);
+      const r = await del(superAdmin, `/admin/${pA.adminId}`)
+        .set('X-Distributor', a.slug)
+        .expect(409);
       expect(json<{ message: string }>(r).message).toMatch(/último/);
       expect(
         await ds
@@ -737,11 +745,15 @@ describe('Pedidos del panel (e2e)', () => {
       const tercero = await usuario(RoleType.ADMIN, a.distributorId, {
         blocked: true,
       } as Partial<User>);
-      await del(superAdmin, `/admin/${pA.adminId}`).expect(409);
+      await del(superAdmin, `/admin/${pA.adminId}`)
+        .set('X-Distributor', a.slug)
+        .expect(409);
       await ds
         .getRepository(User)
         .update({ userId: tercero.user.userId }, { blocked: false });
-      await del(superAdmin, `/admin/${pA.adminId}`).expect(200);
+      await del(superAdmin, `/admin/${pA.adminId}`)
+        .set('X-Distributor', a.slug)
+        .expect(200);
     }, 60000);
 
     it('dos bajas simultáneas de los dos últimos administradores: una sola pasa', async () => {
@@ -750,8 +762,8 @@ describe('Pedidos del panel (e2e)', () => {
       const pA = await perfilDe(adminA);
       const pS = await perfilDe(segundo);
       const [x, y] = await Promise.all([
-        del(superAdmin, `/admin/${pA.adminId}`),
-        del(superAdmin, `/admin/${pS.adminId}`),
+        del(superAdmin, `/admin/${pA.adminId}`).set('X-Distributor', a.slug),
+        del(superAdmin, `/admin/${pS.adminId}`).set('X-Distributor', a.slug),
       ]);
       expect([x.status, y.status].sort()).toEqual([200, 409]);
     }, 60000);

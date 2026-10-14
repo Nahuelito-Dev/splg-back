@@ -58,13 +58,30 @@ describe('UserAddressService', () => {
     );
   });
 
-  it('un cliente crea siempre para sí mismo, aunque mande otro user_id', async () => {
-    const d = await service.create(alta, 'u1');
-    expect(d.userId).toBe('u1');
+  it('un cliente crea para sí mismo con el user_id de su token, lo mande o no', async () => {
+    const sin = await service.create({ ...alta, user_id: undefined }, 'u1');
+    expect(sin.userId).toBe('u1');
+    const propio = await service.create({ ...alta, user_id: 'U1' }, 'u1');
+    expect(propio.userId).toBe('u1');
+  });
+
+  it('un cliente que manda el user_id de OTRO recibe 403 y no se guarda nada', async () => {
+    await expect(service.create(alta, 'u1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('el administrador general tiene que indicar el dueño (400 si falta)', async () => {
+    await expect(
+      service.create({ ...alta, user_id: undefined }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const d = await service.create(alta);
+    expect(d.userId).toBe('otro');
   });
 
   it('latitud y longitud se guardan como un punto [lng, lat]', async () => {
-    const d = await service.create(alta, 'u1');
+    const d = await service.create({ ...alta, user_id: undefined }, 'u1');
     expect(d.location).toEqual({ type: 'Point', coordinates: [-55.9, -27.4] });
     expect(d).not.toHaveProperty('latitude');
   });

@@ -194,7 +194,7 @@ export class DeliveryController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateDeliveryDto: UpdateDeliveryDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DeliveryResponseDto> {
     return DeliveryMapper.toDto(
       await this.deliveryService.update(id, updateDeliveryDto, distributorId),
@@ -214,7 +214,7 @@ export class DeliveryController {
   })
   async validateDelivery(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DeliveryResponseDto> {
     await this.acotar(id, distributorId);
     return DeliveryMapper.toDto(
@@ -235,7 +235,7 @@ export class DeliveryController {
   })
   async invalidateDelivery(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DeliveryResponseDto> {
     await this.acotar(id, distributorId);
     return DeliveryMapper.toDto(
@@ -263,7 +263,7 @@ export class DeliveryController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDeliveryLocationDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DeliveryResponseDto> {
     await this.acotar(id, distributorId);
     return DeliveryMapper.toDto(
@@ -294,7 +294,7 @@ export class DeliveryController {
   async updateBalance(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDeliveryBalanceDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DeliveryResponseDto> {
     await this.acotar(id, distributorId);
     return DeliveryMapper.toDto(
@@ -327,7 +327,7 @@ export class DeliveryController {
   async toggleStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ToggleDeliveryStatusDto,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DeliveryResponseDto> {
     await this.acotar(id, distributorId);
     return DeliveryMapper.toDto(
@@ -350,7 +350,7 @@ export class DeliveryController {
   @HttpCode(HttpStatus.OK)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<MessageResponseDto> {
     await this.acotar(id, distributorId);
     return await this.deliveryService.remove(id);
@@ -385,7 +385,7 @@ export class DeliveryController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: ToggleDeliveryAvailabilityDto,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<DisponibilidadDelChoferDto> {
     const dueno = alcanceDelDueño(user);
     if (dueno && dueno !== userId) {

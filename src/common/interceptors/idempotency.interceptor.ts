@@ -11,15 +11,21 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable, firstValueFrom, of } from 'rxjs';
 import { RedisService } from '../../redis/redis.service';
-import { IDEMPOTENT_KEY } from '../decorators/idempotent.decorator';
+import {
+  IDEMPOTENT_DESPUES_DE_MULTER_KEY,
+  IDEMPOTENT_KEY,
+} from '../decorators/idempotent.decorator';
 import type { Request } from 'express';
 import { createHash } from 'crypto';
+import { conRespuestaVigilada } from './respuesta-incompleta';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const CACHE_TTL_SEC = 60 * 60 * 24; // 24h — alineado con doc del header en RFC
-const LOCK_TTL_MS = 30_000; // 30s — debería sobrar para cualquier mutation
+/** Respuesta incompleta (falló la relectura tras confirmar): sólo cubre el reintento inmediato. */
+const CACHE_TTL_INCOMPLETA_SEC = 5 * 60;
+const LOCK_TTL_MS = 30_000; // vigencia inicial; se renueva mientras el handler corre
 const HEADER = 'idempotency-key';
 
 interface CachedResponse {
@@ -66,11 +72,14 @@ export function hashDeBody(body: unknown): string {
  * Algoritmo (anti race condition):
  *
  *   GET cache → si hit: return cached
- *   ACQUIRE lock → si falló: 409 (otra request con misma key en curso)
+ *   ACQUIRE lock (se renueva solo mientras corre) → si falló: 409
  *   GET cache AGAIN (double-check) → si hit ahora: return cached
  *   EXECUTE handler
  *   SET cache (solo si 2xx)
  *   RELEASE lock
+ *
+ * El alcance de la clave es usuario + distribuidora + método + ruta + params.
+ * Una entrada de cache corrupta se borra y la operación se ejecuta.
  *
  * La respuesta guardada lleva el hash del body. La misma clave con otro body
  * es 422: no se devuelve la respuesta de una operación distinta.
@@ -81,6 +90,9 @@ export function hashDeBody(body: unknown): string {
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
   private readonly logger = new Logger('IdempotencyInterceptor');
+
+  /** `true` en la versión de método que corre después de multer. */
+  protected readonly despuesDeMulter: boolean = false;
 
   constructor(
     private readonly redisService: RedisService,
@@ -96,6 +108,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
       [context.getHandler(), context.getClass()],
     );
     if (!isIdempotent) {
+      return next.handle();
+    }
+    // Las rutas multipart las atiende la versión que corre después de multer.
+    if (
+      !this.despuesDeMulter &&
+      this.reflector.getAllAndOverride<boolean>(
+        IDEMPOTENT_DESPUES_DE_MULTER_KEY,
+        [context.getHandler(), context.getClass()],
+      )
+    ) {
       return next.handle();
     }
 
@@ -114,11 +136,17 @@ export class IdempotencyInterceptor implements NestInterceptor {
       );
     }
 
-    // La clave del cliente sola no alcanza: la misma en otra ruta, otro método
-    // u otro usuario es otra operación y no puede devolver la respuesta ajena.
-    const user = (request as Request & { user?: { user_id?: string } }).user;
+    // La clave del cliente sola no alcanza: la misma en otra ruta, otro método,
+    // otro usuario u otra distribuidora es otra operación y no puede devolver
+    // la respuesta ajena. La distribuidora es la que resolvió el AuthGuard
+    // (un super admin que cambia de X-Distributor cambia de alcance).
+    const req = request as Request & {
+      user?: { user_id?: string };
+      distributorId?: string | null;
+    };
     const alcance = [
-      user?.user_id ?? 'anon',
+      req.user?.user_id ?? 'anon',
+      req.distributorId ?? 'sin-distribuidora',
       request.method,
       (request.route as { path?: string } | undefined)?.path ?? request.path,
       JSON.stringify(request.params ?? {}),
@@ -130,60 +158,85 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const cacheKey = `idempotency:${huella}:${rawKey}`;
     const lockKey = `idempotency-lock:${huella}:${rawKey}`;
 
-    const bodyHash = hashDeBody(request.body);
+    // En un multipart el archivo no va en el body: entra en la huella para que
+    // la misma clave con otro archivo sea otra operación (422).
+    const archivo = (request as Request & { file?: { buffer?: Buffer } }).file;
+    const cuerpo: unknown = request.body;
+    const bodyHash = hashDeBody(
+      archivo?.buffer
+        ? {
+            body: cuerpo,
+            archivo: createHash('sha256').update(archivo.buffer).digest('hex'),
+          }
+        : cuerpo,
+    );
 
     // Fast path: respuesta ya cacheada
-    const cached = await this.redisService.get(cacheKey);
-    if (cached) {
-      return of(this.parseCached(cached, bodyHash));
+    const hit = await this.leerCache(cacheKey, bodyHash);
+    if (hit) {
+      return of(hit.body);
     }
 
-    // Adquirir lock distribuido para serializar requests con misma key
-    const lock = await this.redisService.acquireLock(lockKey, LOCK_TTL_MS);
-    if (!lock) {
+    // Lock distribuido para serializar requests con la misma key. Se renueva
+    // solo mientras el handler corre: no puede vencer antes que la operación
+    // (el statement_timeout de la base y el timeout HTTP son mayores que su
+    // vigencia inicial).
+    const resultado = await this.redisService.withLock(
+      lockKey,
+      LOCK_TTL_MS,
+      async (): Promise<{ body: unknown }> => {
+        // Double-check: entre el GET y el lock alguien pudo haber terminado
+        const despuesDelLock = await this.leerCache(cacheKey, bodyHash);
+        if (despuesDelLock) return despuesDelLock;
+
+        // Ejecutar el handler. Si lanza, se propaga sin cachear.
+        const { valor: response, incompleta } =
+          await conRespuestaVigilada<unknown>(() =>
+            firstValueFrom(next.handle()),
+          );
+
+        // Persistir respuesta exitosa. Errores no llegan acá (throw arriba).
+        const payload: CachedResponse = {
+          status: 200, // si llegó acá, fue éxito
+          body: response,
+          bodyHash,
+          cachedAt: new Date().toISOString(),
+        };
+        await this.redisService.setex(
+          cacheKey,
+          incompleta ? CACHE_TTL_INCOMPLETA_SEC : CACHE_TTL_SEC,
+          JSON.stringify(payload),
+        );
+        this.logger.debug(`Idempotency cached: ${rawKey}`);
+        return { body: response };
+      },
+    );
+    if (!resultado.obtenido) {
       throw new ConflictException(
         'Request en curso con la misma Idempotency-Key. Reintente más tarde.',
       );
     }
-
-    try {
-      // Double-check: entre el GET y el lock alguien pudo haber terminado
-      const cachedAfterLock = await this.redisService.get(cacheKey);
-      if (cachedAfterLock) {
-        return of(this.parseCached(cachedAfterLock, bodyHash));
-      }
-
-      // Ejecutar el handler. Si lanza, se propaga sin cachear.
-      const response: unknown = await firstValueFrom(next.handle());
-
-      // Persistir respuesta exitosa. Errores no llegan acá (throw arriba).
-      const payload: CachedResponse = {
-        status: 200, // si llegó acá, fue éxito
-        body: response,
-        bodyHash,
-        cachedAt: new Date().toISOString(),
-      };
-      await this.redisService.setex(
-        cacheKey,
-        CACHE_TTL_SEC,
-        JSON.stringify(payload),
-      );
-
-      this.logger.debug(`Idempotency cached: ${rawKey}`);
-      return of(response);
-    } finally {
-      // Liberar lock; si ya expiró por TTL, ignorar
-      await lock.release().catch(() => undefined);
-    }
+    return of(resultado.valor.body);
   }
 
-  private parseCached(raw: string, bodyHash: string): unknown {
+  /**
+   * La respuesta guardada para esta clave, o null si no hay (o estaba corrupta:
+   * se borra y la operación se ejecuta, en vez de devolver un 2xx vacío).
+   */
+  private async leerCache(
+    cacheKey: string,
+    bodyHash: string,
+  ): Promise<{ body: unknown } | null> {
+    const raw = await this.redisService.get(cacheKey);
+    if (!raw) return null;
     let parsed: CachedResponse;
     try {
       parsed = JSON.parse(raw) as CachedResponse;
     } catch {
-      // Cache corrupto: lo borramos y dejamos que el siguiente request lo regenere
-      this.logger.warn('Cache de idempotencia corrupto, ignorando');
+      this.logger.warn(
+        'Cache de idempotencia corrupto: se descarta y se ejecuta',
+      );
+      await this.redisService.del(cacheKey);
       return null;
     }
     // Entradas viejas sin hash: se aceptan como antes.
@@ -191,6 +244,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
       throw new UnprocessableEntityException(MENSAJE_CLAVE_OTROS_DATOS);
     }
     this.logger.debug(`Idempotency hit (cachedAt=${parsed.cachedAt})`);
-    return parsed.body;
+    return { body: parsed.body };
   }
+}
+
+/**
+ * La misma idempotencia, declarada en el método DESPUÉS del interceptor de
+ * multer: ahí `request.file` y `request.body` ya están, y la huella incluye el
+ * archivo (la misma clave con otro archivo es 422).
+ */
+@Injectable()
+export class IdempotencyDespuesDeMulterInterceptor extends IdempotencyInterceptor {
+  protected override readonly despuesDeMulter: boolean = true;
 }

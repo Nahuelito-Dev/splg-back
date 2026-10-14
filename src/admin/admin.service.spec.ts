@@ -127,9 +127,21 @@ describe('AdminService', () => {
   it('el rol del perfil es el del usuario', async () => {
     users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
     roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
-    await service.create({ user_id: 'u1', distributor_id: 'd1' });
+    await service.create({ user_id: 'u1', distributor_id: 'd1' }, 'd1');
     expect(admins.save).toHaveBeenCalled();
     expect(roles.findOne).toHaveBeenCalledWith('r-admin');
+  });
+
+  it('el perfil de un admin de empresa exige X-Distributor y que coincida con el cuerpo', async () => {
+    users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
+    roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
+    await expect(
+      service.create({ user_id: 'u1', distributor_id: 'd1' }),
+    ).rejects.toThrow(/X-Distributor/);
+    await expect(
+      service.create({ user_id: 'u1', distributor_id: 'd1' }, 'd2'),
+    ).rejects.toThrow(/no coincide/);
+    expect(admins.save).not.toHaveBeenCalled();
   });
 
   it('con distribuidora en contexto, el admin de otra es 404', async () => {

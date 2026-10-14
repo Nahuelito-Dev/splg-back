@@ -1,0 +1,48 @@
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { CreateOrderDto } from './create-order.dto';
+import { QuoteOrderDto } from './quote-order.dto';
+
+const G = 'c0b2f6d2-1b6c-4a43-9d5b-0a6e5c1f7a10';
+const base = {
+  customerId: G,
+  addressId: G,
+  paymentMethod: 'cash',
+};
+
+const mensajes = async (clase: new () => object, cuerpo: object) =>
+  (await validate(plainToInstance(clase, cuerpo))).flatMap((e) =>
+    Object.values(e.constraints ?? {}),
+  );
+
+describe('items repetidos', () => {
+  const repetidos = [
+    { gasCylinderId: G, quantity: 1, unitPrice: 1 },
+    { gasCylinderId: G, quantity: 2, unitPrice: 1 },
+  ];
+
+  it.each([
+    ['el alta', CreateOrderDto],
+    ['la cotización', QuoteOrderDto],
+  ])('%s rechaza la misma garrafa en dos renglones', async (_n, clase) => {
+    expect(await mensajes(clase, { ...base, items: repetidos })).toContain(
+      'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',
+    );
+  });
+
+  it('garrafas distintas pasan', async () => {
+    expect(
+      await mensajes(CreateOrderDto, {
+        ...base,
+        items: [
+          { gasCylinderId: G, quantity: 1, unitPrice: 1 },
+          {
+            gasCylinderId: 'd0b2f6d2-1b6c-4a43-9d5b-0a6e5c1f7a11',
+            quantity: 1,
+            unitPrice: 1,
+          },
+        ],
+      }),
+    ).toEqual([]);
+  });
+});

@@ -15,6 +15,7 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
+  BadRequestException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -28,6 +29,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { User } from './entities/user.entity';
@@ -42,6 +44,7 @@ import {
 } from '../s3/photo-http';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { CheckUserExistsDto } from './dto/check-user-exists.dto';
 import { BlockUserDto } from './dto/block-user.dto';
@@ -53,7 +56,10 @@ import {
   esAdministrador,
   esElMismoUsuario,
 } from '../common/utils/alcance.util';
-import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import {
+  CurrentDistributor,
+  MENSAJE_FALTA_DISTRIBUIDORA,
+} from '../common/decorators/current-distributor.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { UserMapper } from './user.mapper';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -313,7 +319,15 @@ export class UsersController {
 
   @Public()
   @Post('check-exists')
-  @ApiOperation({ summary: 'Check if user exists by email or phone' })
+  // Público y con respuesta booleana: sirve para enumerar cuentas. Cupo bajo por
+  // IP (sin sesión el tracker es la IP) para que no se pueda recorrer una lista.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Check if user exists by email or phone',
+    description:
+      'Público. Máximo 10 consultas por minuto y por IP (429): contesta si una cuenta existe, así que no puede usarse para recorrer listas.',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Superó el cupo por minuto' })
   @ApiOkResponse({ type: UsuarioExisteDto })
   @ApiBadRequestResponse({ description: 'Sin correo ni teléfono' })
   @HttpCode(HttpStatus.OK)
@@ -412,6 +426,19 @@ export class UsersController {
     user: AuthenticatedUser,
     distributorId: string | null,
   ): Promise<void> {
+    // El super admin sin distribuidora sólo opera sobre cuentas que no son de
+    // ninguna: otro super admin o un cliente (que puede comprarle a varias,
+    // H-66, H-73). Sobre el personal de una distribuidora, por UUID, tiene que
+    // decir en cuál actúa.
+    if (user.role === RoleType.SUPER_ADMIN && !distributorId) {
+      const { rol } = await this.usersService.findAlcance(userId);
+      if (
+        rol !== String(RoleType.SUPER_ADMIN) &&
+        rol !== String(RoleType.CUSTOMER)
+      ) {
+        throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+      }
+    }
     await this.assertDeSuDistribuidora(userId, distributorId);
     if (user.role !== RoleType.ADMIN) return;
     const destino = await this.usersService.findAlcance(userId);

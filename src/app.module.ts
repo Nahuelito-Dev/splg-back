@@ -12,6 +12,8 @@ import {
   AppThrottlerGuard,
   THROTTLER_CUENTA,
   esRutaDeAcceso,
+  esRutaDeSubida,
+  THROTTLER_SUBIDAS,
 } from './common/guards/app-throttler.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { UsersModule } from './users/users.module';
@@ -54,6 +56,7 @@ import { RedisModule } from './redis/redis.module';
 import { ClaimsModule } from './claims/claims.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { ReportsModule } from './reports/reports.module';
+import { RoutesModule } from './routes/routes.module';
 import { HealthModule } from './health/health.module';
 import { FirebaseModule } from './firebase/firebase.module';
 
@@ -87,6 +90,15 @@ import { FirebaseModule } from './firebase/firebase.module';
           ttl: Number(process.env.THROTTLE_LOGIN_TTL_MS ?? 60_000),
           limit: Number(process.env.THROTTLE_LOGIN_LIMIT ?? 8),
           skipIf: (context) => !esRutaDeAcceso(context),
+        },
+        // Tercer cupo, SOLO en las subidas de archivos: cada imagen se
+        // decodifica y recodifica en el back (memoria y CPU), así que el tope
+        // por sesión es bastante más bajo que el general.
+        {
+          name: THROTTLER_SUBIDAS,
+          ttl: Number(process.env.THROTTLE_UPLOAD_TTL_MS ?? 60_000),
+          limit: Number(process.env.THROTTLE_UPLOAD_LIMIT ?? 10),
+          skipIf: (context) => !esRutaDeSubida(context),
         },
       ],
       // Storage en Redis: con más de una instancia, el rate-limit se cuenta de
@@ -188,6 +200,7 @@ import { FirebaseModule } from './firebase/firebase.module';
     TimeSlotModule,
     ReportsModule,
     HealthModule,
+    RoutesModule,
     DistributorModule,
     RatingModule,
     IncidentModule,

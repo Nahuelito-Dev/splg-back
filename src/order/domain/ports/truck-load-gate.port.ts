@@ -1,3 +1,5 @@
+import type { EntityManager } from 'typeorm';
+
 /**
  * PUERTO del control de carga del camión visto desde el despacho (decisión
  * D5 y revisión de la jornada). Un chofer con carga abierta sólo recibe y acepta
@@ -24,15 +26,26 @@ export abstract class TruckLoadGatePort {
     userId: string,
   ): Promise<string | null>;
 
-  /** Lanza 400 con un mensaje claro si el chofer (`delivery_id`) no puede aceptar. */
+  /**
+   * Lanza 400 con un mensaje claro si el chofer (`delivery_id`) no puede aceptar.
+   *
+   * Con `manager` (la transacción de la aceptación) toma `FOR SHARE` sobre la
+   * carga abierta del chofer antes de leerla: la vuelta del camión
+   * (`return`) la toma `FOR UPDATE`, así que o la aceptación termina antes y la
+   * vuelta ve el pedido en curso, o la vuelta termina antes y la aceptación ve
+   * la carga devuelta. Sin esto podía quedar un pedido aceptado sobre una
+   * carga `returned`.
+   */
   abstract assertPuedeAceptar(
     distributorId: string,
     deliveryId: string,
+    manager?: EntityManager,
   ): Promise<void>;
 
-  /** Lo mismo para la asignación manual del administrador. */
+  /** Lo mismo, con el mismo lock, para la asignación manual del administrador. */
   abstract assertPuedeAsignar(
     distributorId: string,
     deliveryId: string,
+    manager?: EntityManager,
   ): Promise<void>;
 }

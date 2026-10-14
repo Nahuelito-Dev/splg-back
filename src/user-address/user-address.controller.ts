@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -33,6 +34,7 @@ import {
   UserAddressConUsuarioDto,
 } from './dto/user-address-listado.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -56,6 +58,7 @@ export class UserAddressController {
   constructor(private readonly userAddressService: UserAddressService) {}
 
   @Post()
+  @Idempotent()
   @ApiOperation({ summary: 'Create a new user address' })
   @ApiCreatedResponse({ type: UserAddressResponseDto })
   @ApiNotFoundResponse({ description: 'El usuario no existe' })
@@ -69,12 +72,19 @@ export class UserAddressController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserAddressResponseDto> {
-    await this.acotar(
-      { userId: createUserAddressDto.user_id },
-      user,
-      distributorId,
-      true,
-    );
+    if (esAdministrador(user)) {
+      if (!createUserAddressDto.user_id) {
+        throw new BadRequestException(
+          'user_id: indicá el usuario dueño de la dirección',
+        );
+      }
+      await this.acotar(
+        { userId: createUserAddressDto.user_id },
+        user,
+        distributorId,
+        true,
+      );
+    }
     return UserAddressMapper.toDto(
       await this.userAddressService.create(
         createUserAddressDto,

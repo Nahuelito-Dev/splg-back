@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { Order, OrderStatus } from './entities/order.entity';
 import type { Repository, DataSource } from 'typeorm';
@@ -72,14 +73,15 @@ describe('OrderService · rejectOffer', () => {
       {
         assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {} as never,
     );
   });
 
-  it('pedido inexistente: no-op silencioso', async () => {
+  it('pedido inexistente: 404, no un 2xx con rejected: false', async () => {
     orders.findByIdFull.mockResolvedValue(null);
-    await expect(service.rejectOffer(PEDIDO, CHOFER_USER_ID)).resolves.toEqual({
-      rejected: false,
-    });
+    await expect(
+      service.rejectOffer(PEDIDO, CHOFER_USER_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('ACCEPTED asignado a mano (sin oferta OFFERED suya): NO cambia el pedido, avisa a los admins', async () => {

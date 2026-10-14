@@ -7,12 +7,12 @@ import {
   Res,
 } from '@nestjs/common';
 import {
-  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -48,8 +48,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesión desde las apps' })
   @ApiOkResponse({ type: SesionIniciadaDto })
-  @ApiBadRequestResponse({ description: 'Credenciales incorrectas' })
-  @ApiUnauthorizedResponse({ description: 'La cuenta no está habilitada' })
+  @ApiUnauthorizedResponse({
+    description:
+      'Email o contraseña incorrectos (misma respuesta para un usuario inexistente y para una contraseña equivocada) o cuenta dada de baja (Firebase la rechaza antes de mirar la clave: misma respuesta, no revela que existe). Con la clave correcta, una cuenta bloqueada recibe `La cuenta no está habilitada`',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Demasiados intentos fallidos' })
   login(@Body() dto: LoginDto): Promise<SesionIniciadaDto> {
     return this.authService.login(dto);
   }
@@ -60,10 +63,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesión en el panel' })
   @ApiOkResponse({ type: SesionIniciadaDto })
-  @ApiBadRequestResponse({ description: 'Credenciales incorrectas' })
   @ApiUnauthorizedResponse({
-    description: 'La cuenta no está habilitada o no es de un administrador',
+    description:
+      'Email o contraseña incorrectos, cuenta no habilitada o no es de un administrador',
   })
+  @ApiTooManyRequestsResponse({ description: 'Demasiados intentos fallidos' })
   async dashboardLogin(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,

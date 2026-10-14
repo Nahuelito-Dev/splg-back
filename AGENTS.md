@@ -16,7 +16,8 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Migraciones | `npm run migration:generate -- src/migrations/<Nombre>` · `npm run migration:run` |
 | Seeds | `npm run seed` (roles, distribuidora, usuarios con Firebase) · `npm run seed:demo` |
 | Archivos (S3 en prod, MinIO en dev: `docker compose up -d minio minio-init`) | `docs/S3.md` |
-| OpenAPI | `GET /docs-json` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`) |
+| Pedidos, cobros, cotización, historial y rutas | `docs/PEDIDOS.md` |
+| OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
 
 ## Convenciones
 

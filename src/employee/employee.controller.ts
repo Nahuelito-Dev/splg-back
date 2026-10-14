@@ -42,6 +42,7 @@ import {
   EmployeePageDto,
   EmployeeResponseDto,
 } from './dto/employee-response.dto';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -223,6 +224,7 @@ export class EmployeeController {
   }
 
   @Post(':id/termination')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -253,6 +255,7 @@ export class EmployeeController {
   }
 
   @Post(':id/reinstatement')
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:

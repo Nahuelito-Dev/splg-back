@@ -26,6 +26,7 @@ import {
   firmaCoincideConMimeType,
   MAX_ATTACHMENT_SIZE_BYTES,
 } from '../common/utils/attachment-rules';
+import { limpiarMetadatosDeImagen } from '../s3/limpiar-imagen';
 
 /** Quién pide la foto: el cliente dueño del reclamo o un admin de la distribuidora. */
 export interface ClaimActor {
@@ -285,13 +286,14 @@ export class ClaimsService {
       );
     }
 
+    const cuerpo = await limpiarMetadatosDeImagen(file.buffer, file.mimetype);
     const key = `claims/${claim.distributorId}/${claim.claimId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
     // Se anota la key antes de subir: si el proceso cae antes de que el reclamo
     // apunte a la foto, el cron borra el objeto abandonado.
     await this.cleanup.reserveUpload(key);
     await this.storage.put({
       key,
-      body: file.buffer,
+      body: cuerpo,
       contentType: file.mimetype,
     });
 

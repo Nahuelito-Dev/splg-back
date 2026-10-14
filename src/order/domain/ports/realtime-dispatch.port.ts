@@ -26,6 +26,18 @@ export abstract class RealtimeDispatchPort {
     lng: number,
   ): Promise<void>;
 
+  /**
+   * Última posición conocida del chofer (el radar) con el momento en que se
+   * registró. Sólo si `orderId` es el pedido que el chofer está entregando
+   * ahora (su pedido activo): la posición del radar es global, y no se le
+   * muestra a un cliente cuyo pedido no es el que el chofer lleva. `null` si no
+   * es su pedido activo o no está en el radar.
+   */
+  abstract lastDriverLocation(
+    driverUserId: string,
+    orderId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null>;
+
   /** Oferta de un pedido nuevo a un chofer (WebSocket). */
   abstract notifyDriverNewOrder(driverId: string, payload: unknown): void;
 

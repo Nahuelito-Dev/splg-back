@@ -12,6 +12,7 @@ import {
 } from './entity-photo.service';
 import type { S3Service } from './s3.service';
 import type { S3CleanupService } from './s3-cleanup.service';
+import { imagenesDePrueba, tieneExif } from './imagenes-de-prueba';
 
 const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -36,6 +37,14 @@ function archivo(
 }
 
 describe('EntityPhotoService', () => {
+  let pngReal: Buffer;
+  let jpegConGps: Buffer;
+
+  beforeAll(async () => {
+    pngReal = await imagenesDePrueba.png();
+    jpegConGps = await imagenesDePrueba.jpeg(true);
+  });
+
   const DESTINO: DestinoDeFoto = {
     entity: class Fila {},
     idProp: 'id',
@@ -161,7 +170,7 @@ describe('EntityPhotoService', () => {
       await servicio.guardar(
         DESTINO,
         'f1',
-        archivo(PNG, 'image/png'),
+        archivo(pngReal, 'image/png'),
         'cars/d1/f1',
       );
 
@@ -170,7 +179,7 @@ describe('EntityPhotoService', () => {
       expect(orden).toEqual(['reserve', 'put']);
       expect(storage.put).toHaveBeenCalledWith({
         key,
-        body: PNG,
+        body: expect.any(Buffer) as Buffer,
         contentType: 'image/png',
       });
       expect(cleanup.confirmUpload).toHaveBeenCalledWith(
@@ -186,7 +195,7 @@ describe('EntityPhotoService', () => {
       await servicio.guardar(
         DESTINO,
         'f1',
-        archivo(JPG, 'image/jpeg'),
+        archivo(jpegConGps, 'image/jpeg'),
         'cars/d1/f1',
       );
 
@@ -198,6 +207,30 @@ describe('EntityPhotoService', () => {
         'cars/d1/f1/vieja.png',
       );
       expect(fila?.photoKey).toMatch(/\.jpg$/);
+    });
+
+    it('sube la imagen sin EXIF ni GPS', async () => {
+      expect(await tieneExif(jpegConGps)).toBe(true);
+      await servicio.guardar(
+        DESTINO,
+        'f1',
+        archivo(jpegConGps, 'image/jpeg'),
+        'cars/d1/f1',
+      );
+      const subido = (storage.put.mock.calls[0] as [{ body: Buffer }])[0].body;
+      expect(await tieneExif(subido)).toBe(false);
+    });
+
+    it('una imagen con firma válida pero dañada no reserva ni sube', async () => {
+      const dañada = Buffer.concat([
+        Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+        Buffer.from('no es una foto'),
+      ]);
+      await expect(
+        servicio.guardar(DESTINO, 'f1', archivo(dañada, 'image/jpeg'), 'c'),
+      ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+      expect(cleanup.reserveUpload).not.toHaveBeenCalled();
+      expect(storage.put).not.toHaveBeenCalled();
     });
 
     it('un archivo inválido no sube nada ni reserva', async () => {
@@ -216,7 +249,7 @@ describe('EntityPhotoService', () => {
     it('si la entidad no existe, borra el objeto recién subido y da 404', async () => {
       fila = null;
       await expect(
-        servicio.guardar(DESTINO, 'f1', archivo(PNG, 'image/png'), 'c'),
+        servicio.guardar(DESTINO, 'f1', archivo(pngReal, 'image/png'), 'c'),
       ).rejects.toBeInstanceOf(NotFoundException);
       const key = (storage.put.mock.calls[0] as [{ key: string }])[0].key;
       expect(cleanup.removeInBackground).toHaveBeenCalledWith(key);

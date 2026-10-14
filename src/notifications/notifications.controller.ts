@@ -15,6 +15,7 @@ import {
   ApiOperation,
   ApiTags,
   ApiBadRequestResponse,
+  ApiNotFoundResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
@@ -69,10 +70,11 @@ export class NotificationsController {
     description:
       'Datos inválidos (p. ej.: customerId debe ser un UUID; orderId debe ser un UUID)',
   })
+  @ApiNotFoundResponse({ description: 'El cliente no existe' })
   async sendOrderConfirmation(
     @Body() dto: SendOrderConfirmationDto,
   ): Promise<ResultadoDeEnvioDto> {
-    return await this.notificationService.sendOrderConfirmation(
+    return await this.notificationService.reenviarConfirmacion(
       dto.customerId,
       dto.orderId,
       dto.token,

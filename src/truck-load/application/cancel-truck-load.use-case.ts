@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { ahoraDeLaBase } from '../../stock/application/reloj-de-la-base';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { TruckLoadStatus } from '../domain/truck-load.enums';
 import { puedeHacer } from '../domain/truck-load-rules';

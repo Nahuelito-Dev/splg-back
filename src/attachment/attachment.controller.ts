@@ -12,7 +12,6 @@ import {
   Query,
   Res,
   UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
@@ -47,7 +46,7 @@ import {
   DownloadAttachmentQueryDto,
 } from '../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../s3/download-link';
-import { archivoConTope } from '../s3/upload-limits';
+import { ArchivoIdempotente } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
 
 const OWNER_TYPE_PARAM = {
@@ -101,7 +100,7 @@ export class AttachmentController {
   @ApiPayloadTooLargeResponse({
     description: 'El archivo supera el máximo permitido',
   })
-  @UseInterceptors(archivoConTope(MAX_ATTACHMENT_SIZE_BYTES, 'archivo'))
+  @ArchivoIdempotente(MAX_ATTACHMENT_SIZE_BYTES, 'archivo')
   async upload(
     @Param('ownerType', new ParseEnumPipe(AttachmentOwnerType))
     ownerType: AttachmentOwnerType,

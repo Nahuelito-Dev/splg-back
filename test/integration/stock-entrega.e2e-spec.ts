@@ -249,9 +249,10 @@ describe('Entrega de un pedido y stock físico (e2e, Postgres real)', () => {
     ).toBe(10);
     expect(await movimientosDelPedido(e.pedido.orderId)).toEqual([]);
     expect(
-      await ds.query(`SELECT 1 FROM order_status_history WHERE order_id = $1`, [
-        e.pedido.orderId,
-      ]),
+      await ds.query(
+        `SELECT 1 FROM order_status_history WHERE order_id = $1 AND to_status = 'delivered'`,
+        [e.pedido.orderId],
+      ),
     ).toEqual([]);
     expect(await colgadas()).toBe(0);
   }, 60000);

@@ -18,6 +18,9 @@ import { RoleType } from '../../common/constants/role-type.enum';
  * tramo).
  */
 
+/** La hora del servidor de la base, distinta a propósito de la de Node. */
+const HORA_DE_LA_BASE = new Date('2030-01-01T10:00:00.000Z');
+
 describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
   const DELIVERY_ASIGNADO = 'd1d1d1d1-0000-4000-8000-000000000001';
   const DELIVERY_AJENO = 'd2d2d2d2-0000-4000-8000-000000000002';
@@ -82,10 +85,15 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
         // El lock del chofer (`bloquearChoferes`): todos los pedidos existen y están vigentes.
-        query: jest.fn((_sql: string, [ids]: [string[]]) =>
-          Promise.resolve(
-            ids.map((id) => ({ delivery_id: id, deleted: false })),
-          ),
+        query: jest.fn((sql: string, params?: [string[]]) =>
+          sql.includes('clock_timestamp')
+            ? Promise.resolve([{ ahora: HORA_DE_LA_BASE }])
+            : Promise.resolve(
+                (params?.[0] ?? []).map((id) => ({
+                  delivery_id: id,
+                  deleted: false,
+                })),
+              ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
         save: jest.fn((o: unknown) => Promise.resolve(o)),

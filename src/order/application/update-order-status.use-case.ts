@@ -20,6 +20,7 @@ import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { StockDeliveryPort } from '../domain/ports/stock-delivery.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
+import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { ReleaseOrderUseCase } from './release-order.use-case';
@@ -34,7 +35,6 @@ import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.servic
 import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
-import { OrderStatusHistory } from '../entities/order-status-history.entity';
 import {
   MOTIVO_ENTREGA_MANUAL_MAX,
   MOTIVO_ENTREGA_MANUAL_MIN,
@@ -198,14 +198,14 @@ export class UpdateOrderStatusUseCase {
       aceptacionADespachar = efectos.aceptacionDelChoferUserId;
       ofertasRetiradas = efectos.ofertasRetiradas;
 
+      // El historial de estados lo asienta el subscriber con este motivo.
+      if (motivoDeEntrega) locked.transitionReason = motivoDeEntrega;
       order = await queryRunner.manager.save(locked);
       if (motivoDeEntrega) {
         await this.asentarEntregaManual(
           queryRunner.manager,
           order,
-          previousStatus,
           motivoDeEntrega,
-          actorUserId,
         );
       }
       await queryRunner.commitTransaction();
@@ -290,21 +290,12 @@ export class UpdateOrderStatusUseCase {
     return motivo;
   }
 
-  /** Historial de estados y auditoría de datos, en la transacción de la entrega. */
+  /** Auditoría de datos del motivo, en la transacción de la entrega manual. */
   private async asentarEntregaManual(
     manager: EntityManager,
     order: Order,
-    desde: OrderStatus,
     motivo: string,
-    actorUserId?: string,
   ): Promise<void> {
-    await manager.insert(OrderStatusHistory, {
-      orderId: order.orderId,
-      fromStatus: desde,
-      toStatus: OrderStatus.DELIVERED,
-      changedByUserId: actorUserId ?? null,
-      reason: motivo,
-    });
     await AuditoriaDeDatos.registrar(manager, {
       actionTypeId: AuditActionTypeId.UPDATE,
       entity: Order.name,
@@ -534,6 +525,7 @@ export class UpdateOrderStatusUseCase {
           await this.truckLoadGate.assertPuedeAceptar(
             order.distributorId,
             delivery.deliveryId,
+            manager,
           );
         }
         // Snapshot del vehículo en uso (decisión de nahue del 30/09): a
@@ -567,7 +559,7 @@ export class UpdateOrderStatusUseCase {
           // valor de la relación (el chofer viejo) al guardar. Ver el mismo
           // fix en `releaseDriverAssignment`/`OrderService.assignDelivery`.
           order.delivery = delivery;
-          order.acceptedAt = new Date();
+          order.acceptedAt = await ahoraDeLaBase(manager);
           // Prueba de entrega con QR: se genera acá el código secreto que el
           // chofer mostrará en su QR y el cliente escaneará para confirmar la
           // entrega (ver ConfirmDeliveryUseCase). Ya queda listo para cuando
@@ -595,7 +587,7 @@ export class UpdateOrderStatusUseCase {
       }
 
       case OrderStatus.ON_THE_WAY: {
-        order.onTheWayAt = new Date();
+        order.onTheWayAt = await ahoraDeLaBase(manager);
         if (!order.deliveryId) return SIN_EFECTOS;
         const existingDelivery = await this.deliveries.buscarPorIdOUsuario(
           order.deliveryId,
@@ -619,7 +611,7 @@ export class UpdateOrderStatusUseCase {
       }
 
       case OrderStatus.DELIVERED: {
-        order.deliveredAt = new Date();
+        order.deliveredAt = await ahoraDeLaBase(manager);
         // Corta el tracking del chofer que entregó.
         if (order.deliveryId) {
           const del = await this.deliveries.buscarPorIdOUsuario(

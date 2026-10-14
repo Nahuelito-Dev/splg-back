@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Not } from 'typeorm';
+import { EntityManager, Not } from 'typeorm';
 import {
   Incident,
   IncidentMoment,
@@ -42,35 +42,80 @@ export class UnpaidCashService {
     const { order, extra } = await this.cashCollection.markUnpaid(
       orderId,
       driverUserId,
-      async (manager, pedido) => {
-        const repo = manager.getRepository(Incident);
-        const existente = await repo.findOne({
-          where: {
-            orderId,
-            type: IncidentType.UNPAID_COLLECTION,
-            status: Not(IncidentStatus.DISCARDED),
-          },
-        });
-        if (existente) return { incident: existente, creada: false };
-        const incident = await repo.save(
-          repo.create({
-            orderId,
-            distributorId: pedido.distributorId,
-            reportedBy: driverUserId,
-            type: IncidentType.UNPAID_COLLECTION,
-            description: dto.note?.trim() || DESCRIPCION_POR_DEFECTO,
-            photoUrl: null,
-            status: IncidentStatus.OPEN,
-            moment: IncidentMoment.POST_DELIVERY,
-          }),
-        );
-        return { incident, creada: true };
-      },
+      (manager, pedido) =>
+        this.abrirIncidencia(
+          manager,
+          pedido,
+          driverUserId,
+          dto.note?.trim() || DESCRIPCION_POR_DEFECTO,
+        ),
+      distributorId,
     );
 
     // Después del commit y una sola vez: sólo quien la creó avisa.
     if (extra.creada) this.avisarAAdmins(extra.incident);
     return { order, incident: extra.incident };
+  }
+
+  /**
+   * El administrador informa el impago de un pedido entregado en efectivo cuyo
+   * chofer no lo hizo. Mismo efecto que `report` (pago `unpaid` + una
+   * incidencia), con motivo obligatorio en el historial. La incidencia queda
+   * reportada por el admin.
+   */
+  async reportByAdmin(
+    orderId: string,
+    reason: string,
+    adminUserId: string,
+    distributorId: string,
+  ): Promise<{ order: Order; incident: Incident }> {
+    await this.orders.assertDeLaDistribuidora(orderId, distributorId);
+    const { order, extra } = await this.cashCollection.registerUnpaidByAdmin(
+      orderId,
+      adminUserId,
+      reason,
+      (manager, pedido) =>
+        this.abrirIncidencia(
+          manager,
+          pedido,
+          adminUserId,
+          `${DESCRIPCION_POR_DEFECTO} (informado por un administrador: ${reason})`,
+        ),
+      distributorId,
+    );
+    if (extra.creada) this.avisarAAdmins(extra.incident);
+    return { order, incident: extra.incident };
+  }
+
+  /** La incidencia de cobro impago del pedido: la existente o una nueva. */
+  private async abrirIncidencia(
+    manager: EntityManager,
+    pedido: Order,
+    reportedBy: string,
+    description: string,
+  ): Promise<{ incident: Incident; creada: boolean }> {
+    const repo = manager.getRepository(Incident);
+    const existente = await repo.findOne({
+      where: {
+        orderId: pedido.orderId,
+        type: IncidentType.UNPAID_COLLECTION,
+        status: Not(IncidentStatus.DISCARDED),
+      },
+    });
+    if (existente) return { incident: existente, creada: false };
+    const incident = await repo.save(
+      repo.create({
+        orderId: pedido.orderId,
+        distributorId: pedido.distributorId,
+        reportedBy,
+        type: IncidentType.UNPAID_COLLECTION,
+        description,
+        photoUrl: null,
+        status: IncidentStatus.OPEN,
+        moment: IncidentMoment.POST_DELIVERY,
+      }),
+    );
+    return { incident, creada: true };
   }
 
   /** Best-effort: la incidencia ya está guardada. */

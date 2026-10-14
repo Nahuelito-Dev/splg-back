@@ -47,6 +47,12 @@ export abstract class DispatchOfferRepositoryPort {
   abstract hasActiveOffer(orderId: string, driverId?: string): Promise<boolean>;
 
   /**
+   * ¿`driverId` (user_id) TUVO este pedido alguna vez (aceptó la oferta o se le
+   * asignó a mano)? Es la constancia de `recordDriverHeldOrder`.
+   */
+  abstract hasHeldOrder(orderId: string, driverId: string): Promise<boolean>;
+
+  /**
    * Deja constancia de que `driverId` TUVO el pedido (aceptó por oferta o se
    * le asignó a mano): cierra su oferta OFFERED como ACCEPTED o, si no tenía
    * ninguna, inserta una fila ACCEPTED. Así nunca vuelve a ser candidato de
