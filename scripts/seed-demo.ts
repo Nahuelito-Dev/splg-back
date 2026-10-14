@@ -3,43 +3,75 @@
  *
  *   npm run seed:demo
  *
- * Deja la base local con un volumen de datos realista para recorrer el panel:
- * catálogo, clientes con direcciones, franjas horarias, zonas de cobertura,
- * envases físicos con su trazabilidad, y noventa días de pedidos con sus
- * items, pagos, reclamos e incidencias.
+ * Deja la base local con una operación realista de una distribuidora de
+ * Posadas, Misiones, para recorrer el panel y las dos apps: catálogo, clientes
+ * con direcciones, franjas, zonas, personal con legajo, flota con mantenimiento,
+ * depósitos con stock, compras, cargas del camión, sesenta días de pedidos con
+ * todos sus estados y medios de pago, reclamos, incidencias, calificaciones,
+ * envases con trazabilidad y auditoría.
  *
  * Presupone que `npm run seed` ya corrió: de ahí salen los roles, la
  * distribuidora y los usuarios que tienen login real contra Firebase. Este
- * script no toca Firebase: los clientes que crea existen solo en la base, que
- * es lo que el panel necesita para mostrarlos.
+ * script no toca Firebase: las personas que crea existen solo en la base.
  *
- * Es reproducible y reentrante. Borra los datos de demostración anteriores y
- * los vuelve a generar iguales, porque el azar sale de una semilla fija. Los
- * usuarios con login sobreviven al borrado.
+ * Es reproducible y reentrante. PURGA todo lo que hay de la distribuidora (en
+ * una transacción, ver `lib/purga-demo.ts`) y lo vuelve a generar igual, porque
+ * el azar sale de una semilla fija. Los usuarios con login sobreviven y toman su
+ * nombre real. Antes de correrlo contra una base con datos que importen, hacé el
+ * backup (ver docs/DEMO.md).
  *
  * Se configura por variables de entorno:
  *
- *   SEED_CUSTOMERS=25   clientes en total, contando el que tiene login
- *   SEED_DRIVERS=0      choferes; en 0 quedan vacías las tablas que cuelgan
- *                       de un chofer (delivery, car, rating, ofertas)
- *   SEED_ORDERS=180     pedidos repartidos en los últimos 90 días
+ *   SEED_CUSTOMERS=30   clientes en total, contando el que tiene login
+ *   SEED_DRIVERS=5      choferes con vehículo, legajo y carga (máx. 5)
+ *   SEED_ORDERS=340     pedidos repartidos en los últimos 60 días
  *   SEED_DISTRIBUTOR=demo   slug de la distribuidora que recibe todo
+ *   SEED_S3=1           sube las fotos de ejemplo (a MinIO o al bucket del .env)
+ *   SEED_PURGE_S3=1     borra los objetos de la demo anterior (sólo bajo su prefijo)
  */
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
+import { diaArgentino } from '../src/common/utils/dias-argentina';
+import {
+  CUENTAS_CON_LOGIN,
+  darDeBajaFueraDeLaLista,
+  renombrarCuentasEnBase,
+} from './lib/cuentas-demo';
 import { FiguraDemo, generarImagenDemo } from './lib/imagenes-demo';
+import { sembrarAuditoria, EventoDeAuditoria } from './lib/auditoria-demo';
+import {
+  CHOFERES_DE_LA_DEMO,
+  sembrarMantenimiento,
+  sembrarPersonal,
+  sembrarUsoDeFlota,
+} from './lib/personal-flota-demo';
+import {
+  huerfanosSinLogin,
+  personasSinLoginDeAlcance,
+  purgarDistribuidoras,
+  purgarPersonasSinLogin,
+} from './lib/purga-demo';
 import {
   purgaS3Habilitada,
   resguardoDeProduccion,
 } from './lib/resguardo-de-produccion';
-import { sembrarCompras } from './lib/purchase-demo';
-import { sembrarCarga } from './lib/truck-load-demo';
-import { limpiarStock, sembrarFisico } from './lib/stock-demo';
-import { AlmacenDemo, crearAlmacenDemo } from './lib/storage-demo';
+import { sembrarStockHistoria } from './lib/stock-historia-demo';
+import {
+  AlmacenDemo,
+  crearAlmacenDemo,
+  keyEsDeLaDemo,
+} from './lib/storage-demo';
 
-const CANT_CLIENTES = Number(process.env.SEED_CUSTOMERS ?? 25);
-const CANT_CHOFERES = Number(process.env.SEED_DRIVERS ?? 0);
-const CANT_PEDIDOS = Number(process.env.SEED_ORDERS ?? 180);
+const CANT_CLIENTES = Number(process.env.SEED_CUSTOMERS ?? 30);
+const CANT_CHOFERES = Math.min(
+  Number(process.env.SEED_DRIVERS ?? CHOFERES_DE_LA_DEMO.length),
+  CHOFERES_DE_LA_DEMO.length,
+);
+const CANT_PEDIDOS = Number(process.env.SEED_ORDERS ?? 340);
+const DIAS_DE_HISTORIA = 60;
+/** El administrador que firma la auditoría, los cobros y los documentos. */
+const EMAIL_DEL_ADMIN = 'admin@splg.com';
 const SLUG = process.env.SEED_DISTRIBUTOR ?? 'demo';
 /** Con esto en true la base queda con una sola distribuidora, la de SLUG. */
 const SOLO_UNA = (process.env.SEED_SINGLE_TENANT ?? 'true') === 'true';
@@ -201,7 +233,7 @@ const BARRIOS = [
   },
 ];
 
-/** El catálogo que pidió el negocio: 5, 10, 15 y 25 kg. */
+/** El catálogo del negocio: 5, 10, 15, 25 y 45 kg. */
 const CATALOGO = [
   {
     type: 'Garrafa 5kg',
@@ -242,6 +274,15 @@ const CATALOGO = [
       'Envase de 25 kg. Uso comercial: parrillas, panaderías y hotelería.',
     promotions: [{ quantity: 3, discountPercentage: 10 }],
   },
+  {
+    type: 'Garrafa 45kg',
+    weight: 45,
+    price: 61500,
+    stock: 24,
+    description:
+      'Envase de 45 kg. Industria y gran consumo: cocinas de restaurante, lavaderos y secaderos.',
+    promotions: [{ quantity: 2, discountPercentage: 6 }],
+  },
 ] as const;
 
 const FRANJAS = [
@@ -266,6 +307,21 @@ const MOTIVOS_CANCELACION = [
   'El cliente no respondió al llamado',
   'Demora excesiva, el cliente compró en otro lado',
 ];
+
+const DOMINIOS_DE_CORREO = [
+  'gmail.com',
+  'hotmail.com',
+  'outlook.com',
+  'yahoo.com.ar',
+];
+
+/** `nombre.apellido` sin tildes ni caracteres raros, para armar un correo verosímil. */
+const correoDe = (pila: string, apellido: string): string =>
+  `${pila}.${apellido}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z.]/g, '');
 
 const hoy = new Date();
 const diasAtras = (d: number, hora = 10) => {
@@ -348,6 +404,8 @@ const COLUMNAS_DE_FOTO: Array<[tabla: string, columna: string]> = [
   ['distributor', 'logo_key'],
   ['user', 'photo_key'],
   ['employee', 'photo_key'],
+  ['attachment', 'storage_key'],
+  ['maintenance_task_attachment', 'storage_key'],
 ];
 
 let avisoDePurgaDado = false;
@@ -360,7 +418,11 @@ const clavesAnteriores = new Set<string>();
  * distribuidora y en sus usuarios de demostración. El objeto se borra recién
  * en `borrarObjetosSinFila`, cuando la base ya confirmó que la fila no está.
  */
-async function anotarFotosAnteriores(q: Q, distId: string): Promise<void> {
+async function anotarFotosAnteriores(
+  q: Q,
+  distId: string,
+  personas: string[],
+): Promise<void> {
   if (!almacen) return;
   if (!purgaS3Habilitada()) {
     if (!avisoDePurgaDado) {
@@ -378,19 +440,18 @@ async function anotarFotosAnteriores(q: Q, distId: string): Promise<void> {
     `SELECT photo_key AS key FROM car WHERE distributor_id = $1`,
     `SELECT logo_key AS key FROM distributor WHERE distributor_id = $1`,
     `SELECT photo_key AS key FROM employee WHERE distributor_id = $1`,
+    `SELECT storage_key AS key FROM attachment WHERE distributor_id = $1`,
+    `SELECT storage_key AS key FROM maintenance_task_attachment WHERE distributor_id = $1`,
   ];
   for (const sql of consultas) {
     const filas: Array<{ key: string | null }> = await q(sql, [distId]);
     for (const f of filas) if (f.key) clavesAnteriores.add(f.key);
   }
   const usuarios: Array<{ key: string | null }> = await q(
-    `SELECT photo_key AS key FROM "user" WHERE firebase_uid IS NULL`,
+    `SELECT photo_key AS key FROM "user" WHERE user_id = ANY($1::uuid[])`,
+    [personas],
   );
   for (const f of usuarios) if (f.key) clavesAnteriores.add(f.key);
-  // El logo se reemplaza en el lugar (la fila de la distribuidora queda).
-  await q(`UPDATE distributor SET logo_key = NULL WHERE distributor_id = $1`, [
-    distId,
-  ]);
 }
 
 /**
@@ -398,7 +459,11 @@ async function anotarFotosAnteriores(q: Q, distId: string): Promise<void> {
  * los borrados de filas: si el seed falla a mitad de camino, las filas que
  * sobrevivan siguen apuntando a un objeto que existe.
  */
-async function borrarObjetosSinFila(q: Q): Promise<void> {
+async function borrarObjetosSinFila(
+  q: Q,
+  distIds: string[],
+  personas: string[],
+): Promise<void> {
   if (!almacen || !purgaS3Habilitada() || clavesAnteriores.size === 0) return;
   const vigentes = new Set<string>();
   for (const [tabla, columna] of COLUMNAS_DE_FOTO) {
@@ -407,7 +472,23 @@ async function borrarObjetosSinFila(q: Q): Promise<void> {
     );
     for (const f of filas) if (f.key) vigentes.add(f.key);
   }
-  await almacen.borrar([...clavesAnteriores].filter((k) => !vigentes.has(k)));
+  // Sólo se borra lo que está bajo un prefijo EXACTO de la demo
+  // (`<carpeta>/<id de la distribuidora>/`, o `users/<id>/` de las personas que
+  // se quitan): nunca un objeto de otro origen.
+  const aBorrar: string[] = [];
+  const ajenas: string[] = [];
+  for (const key of clavesAnteriores) {
+    if (vigentes.has(key)) continue;
+    const propia = keyEsDeLaDemo(key, distIds, personas);
+    (propia ? aBorrar : ajenas).push(key);
+  }
+  if (ajenas.length > 0) {
+    console.warn(
+      `  ! ${ajenas.length} objetos de S3 no están bajo el prefijo de la demo y no se tocaron`,
+    );
+  }
+  await almacen.borrar(aBorrar);
+  console.log(`  · S3: ${aBorrar.length} objetos de la demo anterior borrados`);
   clavesAnteriores.clear();
 }
 
@@ -429,16 +510,18 @@ async function main() {
   const distId: string = dist.distributor_id;
   console.log(`\nDistribuidora: ${dist.name} (${SLUG})`);
 
-  // ── 2. Borrar lo sembrado antes ────────────────────────────────────────────
-  // El orden respeta las claves foráneas: primero lo que depende, después lo
-  // que sostiene. Los usuarios con login (los que tienen firebase_uid) no se
-  // tocan, porque volver a crearlos exigiría entrar a Firebase.
-  // Primero las otras distribuidoras: sus pedidos apuntan a clientes y
-  // direcciones que la limpieza quiere borrar, y con las claves foráneas
-  // declaradas el borrado fallaba.
-  if (SOLO_UNA) await borrarOtrasDistribuidoras(q, distId);
-  await limpiar(q, distId);
-  await borrarObjetosSinFila(q);
+  // ── 2. Purga completa y nombres reales de las cuentas con login ────────────
+  const purga = await purgar(q, distId);
+  resumen.push([
+    'usuarios de demostración anteriores quitados',
+    purga.usuariosBorrados,
+  ]);
+  if (purga.usuariosArchivados > 0) {
+    console.log(
+      `  · ${purga.usuariosArchivados} usuarios quedaron archivados: algo ajeno al seed los referencia`,
+    );
+  }
+  await renombrarCuentasEnBase(ds.manager);
 
   // ── 3. Catálogo ────────────────────────────────────────────────────────────
   const productos: Array<{
@@ -513,7 +596,6 @@ async function main() {
   resumen.push(['time_slot (franjas)', franjas.length]);
 
   // ── 5. Zonas de cobertura ──────────────────────────────────────────────────
-  // Recargo fijo por barrio; el id se guarda para la foto de la zona en cada pedido.
   const zonas = new Map<string, string>();
   for (const b of BARRIOS) {
     const anillo = [
@@ -549,45 +631,392 @@ async function main() {
     clientes.reduce((n, c) => n + c.direcciones.length, 0),
   ]);
 
-  // ── 7. Choferes ────────────────────────────────────────────────────────────
-  const choferes = await sembrarChoferes(q, distId);
-  resumen.push(['delivery (choferes)', choferes.length]);
+  // ── 7. Choferes y vehículos ────────────────────────────────────────────────
+  const [admin] = await q(
+    `SELECT u.user_id, u.full_name FROM "user" u
+       JOIN admin a ON a.user_id = u.user_id
+      WHERE a.distributor_id = $1 AND lower(u.email) = $2 AND u."deletedAt" IS NULL`,
+    [distId, EMAIL_DEL_ADMIN],
+  );
+  if (!admin) {
+    throw new Error(
+      `La distribuidora '${SLUG}' no tiene al administrador ${EMAIL_DEL_ADMIN}. Corré primero: npm run seed`,
+    );
+  }
+  const choferes = await sembrarChoferes(q, distId, admin.user_id);
 
   // ── 8. Pedidos y todo lo que cuelga de ellos ───────────────────────────────
   const pedidos = await sembrarPedidos(
     q,
     distId,
+    admin.user_id,
     clientes,
     productos,
     franjas,
     choferes,
   );
+  await bloquearAlgunosClientes(q, clientes, pedidos);
   await sembrarReclamos(q, distId, pedidos);
-  await sembrarIncidencias(q, distId, pedidos, choferes);
+  await sembrarIncidencias(q, distId, admin.user_id, pedidos, choferes);
   await sembrarCalificaciones(q, distId, pedidos);
 
   // ── 9. Envases físicos ─────────────────────────────────────────────────────
   await sembrarEnvases(q, distId, productos, clientes, pedidos);
-
   await ajustarStock(q, distId);
-  await archivarUsuariosHuerfanos(q);
 
-  // Stock físico de la base nueva, por el ledger: la invariante del vendible
-  // (stock = llenas − pedidos abiertos) tiene que cerrar desde el primer día.
+  // ── 10. Personal, flota, stock, compras, cargas y auditoría ────────────────
+  const eventos: EventoDeAuditoria[] = [];
+  const personal = await ds.transaction((m) =>
+    sembrarPersonal(
+      m,
+      distId,
+      choferes.map((c) => ({
+        userId: c.userId,
+        nombre: c.nombre,
+        dni: c.dni,
+        telefono: c.telefono,
+      })),
+      admin.user_id,
+      admin.full_name,
+    ),
+  );
+  resumen.push(['employee (legajos)', personal.total]);
+  choferes.forEach((c, i) => {
+    c.ayudanteId = i < 2 ? (personal.ayudantes[i] ?? null) : null;
+  });
+  for (const e of personal.empleados) {
+    eventos.push({
+      entidad: 'Employee',
+      recordId: e.id,
+      accion: 1,
+      cuando: e.ingreso,
+      campos: [['fullName', null, e.nombre]],
+    });
+  }
+
+  const pedidosParaStock = pedidos.map((p) => ({
+    id: p.id,
+    estado: p.estado,
+    entregadoEl: p.entregadoEl,
+    deliveryId: p.deliveryId,
+    carId: p.carId,
+    items: p.items,
+  }));
+  const stock = await sembrarStockHistoria(ds, {
+    distributorId: distId,
+    adminUserId: admin.user_id,
+    productos,
+    pedidos: pedidosParaStock,
+    choferes: choferes.map((c) => ({
+      deliveryId: c.deliveryId,
+      userId: c.userId,
+      carId: c.carId,
+      ayudanteId: c.ayudanteId,
+    })),
+  });
+  resumen.push(['warehouse (depósitos)', stock.depositos]);
+  resumen.push(['stock_threshold (mínimos)', stock.umbrales]);
   resumen.push([
-    'stock físico (productos con saldo inicial)',
-    await sembrarFisico(ds, distId),
+    'stock_movement: conteo inicial (renglones)',
+    stock.conteoInicial,
   ]);
+  resumen.push(['stock_movement: entregas en el libro', stock.entregasEnLibro]);
+  resumen.push(['transferencias entre depósitos', stock.transferencias]);
+  resumen.push(['stock_adjustment (ajustes)', stock.ajustes]);
+  resumen.push(['supplier (proveedores)', stock.proveedores]);
+  resumen.push(['purchase_order (órdenes de compra)', stock.ordenesDeCompra]);
+  resumen.push(['purchase_receipt (recepciones)', stock.recepciones]);
+  resumen.push(['truck_load (cargas del camión)', stock.cargasDeCamion]);
+  eventos.push(
+    ...stock.documentos.map((d) => ({
+      entidad: d.entidad,
+      recordId: d.id,
+      accion: 1 as const,
+      cuando: d.cuando,
+      campos: Object.entries(d.detalle).map(
+        ([campo, valor]): [string, string | null, string | null] => [
+          campo,
+          null,
+          valor,
+        ],
+      ),
+    })),
+  );
+
+  // El remito de algunas recepciones, como archivo en S3.
+  for (const r of stock.recepcionesIds.slice(0, 2)) {
+    await adjuntarRemito(q, distId, admin.user_id, r.receiptId, r.numero);
+  }
+
+  // Mantenimiento y uso de la flota.
+  const flota = choferes.map((c) => ({
+    carId: c.carId,
+    deliveryId: c.deliveryId,
+    km: c.km,
+  }));
+  const mantenimiento = await ds.transaction((m) =>
+    sembrarMantenimiento(m, distId, flota),
+  );
   resumen.push([
-    'compras (2 proveedores, 1 orden recibida; garrafas compradas)',
-    await sembrarCompras(ds, distId),
+    'maintenance_plan / maintenance_task',
+    mantenimiento.planes + mantenimiento.tareas,
   ]);
+  const uso = await ds.transaction((m) =>
+    sembrarUsoDeFlota(
+      m,
+      distId,
+      pedidos
+        .filter((p) => p.estado === 'delivered' && p.carId && p.entregadoEl)
+        .map((p) => ({ carId: p.carId!, dia: diaArgentino(p.entregadoEl!) })),
+    ),
+  );
+  resumen.push(['vehicle_usage_log (uso diario)', uso]);
+
+  // Auditoría: altas de los vehículos, y un cambio de precio con valor anterior.
+  for (const c of choferes) {
+    eventos.push({
+      entidad: 'Car',
+      recordId: c.carId,
+      accion: 1,
+      cuando: diasAtras(entre(120, 300)),
+      campos: [
+        ['carPatent', null, c.patente],
+        ['carBrand', null, c.marca],
+      ],
+    });
+  }
+  const chica = productos.find((p) => p.weight === 10);
+  if (chica) {
+    eventos.push({
+      entidad: 'GasCylinder',
+      recordId: chica.id,
+      accion: 2,
+      cuando: diasAtras(75),
+      campos: [
+        ['price', String(Math.round(chica.price * 0.92)), String(chica.price)],
+      ],
+    });
+  }
+  const auditoria = await ds.transaction((m) =>
+    sembrarAuditoria(m, {
+      distributorId: distId,
+      adminUserId: admin.user_id,
+      eventos,
+    }),
+  );
   resumen.push([
-    'carga de camión (1 rendida con diferencia, por el ledger)',
-    await sembrarCarga(ds, distId),
+    'audit / audit_detail / audit_log',
+    auditoria.audit + auditoria.detalles + auditoria.bitacora,
   ]);
 
+  await verificarConciliacion(q, distId);
+  // Recién ahora, con la siembra y la conciliación cerradas, se borra de S3.
+  await borrarObjetosSinFila(q, distribuidorasPurgadas, personasPurgadas);
   imprimirResumen();
+}
+
+async function purgar(q: Q, distId: string) {
+  const otras: Array<{
+    distributor_id: string;
+    name: string;
+    slug: string;
+    pedidos: number;
+    productos: number;
+    choferes: number;
+    admins: number;
+  }> = SOLO_UNA
+    ? await q(
+        `SELECT d.distributor_id, d.name, d.slug,
+                (SELECT count(*) FROM "order" o WHERE o.distributor_id = d.distributor_id)::int AS pedidos,
+                (SELECT count(*) FROM gas_cylinder g WHERE g.distributor_id = d.distributor_id)::int AS productos,
+                (SELECT count(*) FROM delivery x WHERE x.distributor_id = d.distributor_id)::int AS choferes,
+                (SELECT count(*) FROM admin a WHERE a.distributor_id = d.distributor_id)::int AS admins
+           FROM distributor d WHERE d.distributor_id <> $1 ORDER BY d.slug`,
+        [distId],
+      )
+    : [];
+  if (otras.length > 0) {
+    const esperado = otras.map((d) => d.slug).join(',');
+    const dado = (process.env.CONFIRMAR_DISTRIBUIDORAS ?? '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .sort()
+      .join(',');
+    if (dado !== esperado) {
+      throw new Error(
+        'Con SEED_SINGLE_TENANT=true el seed BORRA las otras distribuidoras:\n' +
+          otras
+            .map(
+              (d) =>
+                `    - ${d.slug} (${d.name}): ${d.pedidos} pedidos, ${d.productos} productos, ${d.choferes} choferes, ${d.admins} admins`,
+            )
+            .join('\n') +
+          `\n  Si es lo que querés, repetí con CONFIRMAR_DISTRIBUIDORAS=${esperado}` +
+          '\n  (o con SEED_SINGLE_TENANT=false para no tocarlas). No se cambió nada.',
+      );
+    }
+  }
+  const idsDeDistribuidoras = [distId, ...otras.map((d) => d.distributor_id)];
+
+  // Alcance explícito de las personas que se quitan (nunca "todo usuario sin login").
+  // Con una sola distribuidora también salen las cuentas con login fuera de la lista.
+  const fuera: Array<{ user_id: string }> = SOLO_UNA
+    ? await q(
+        `SELECT user_id FROM "user" WHERE firebase_uid IS NOT NULL AND NOT (lower(email) = ANY($1::text[]))`,
+        [CUENTAS_CON_LOGIN.map((c) => c.email.toLowerCase())],
+      )
+    : [];
+  const personas = await personasSinLoginDeAlcance(
+    ds.manager,
+    idsDeDistribuidoras,
+    fuera.map((f) => f.user_id),
+  );
+  // Usuarios sin login ni perfil ni pedidos en ninguna distribuidora: no se sabe de
+  // quién son. Se listan y NO se tocan, salvo confirmación aparte.
+  const huerfanos = await huerfanosSinLogin(ds.manager, personas);
+  if (huerfanos.length > 0) {
+    console.log(
+      `\n  ! ${huerfanos.length} usuarios sin login, sin perfil y sin pedidos (no se sabe de quién son):`,
+    );
+    for (const h of huerfanos.slice(0, 20)) {
+      console.log(`      - ${h.email ?? '(sin correo)'}  ${h.full_name ?? ''}`);
+    }
+    if (huerfanos.length > 20)
+      console.log(`      ... y ${huerfanos.length - 20} más`);
+    if (
+      SOLO_UNA &&
+      process.env.CONFIRMAR_HUERFANOS === String(huerfanos.length)
+    ) {
+      personas.push(...huerfanos.map((h) => h.user_id));
+      console.log('    CONFIRMAR_HUERFANOS coincide: también se quitan.');
+    } else {
+      console.log(
+        `    No se tocan. Para quitarlos: CONFIRMAR_HUERFANOS=${huerfanos.length} (sólo con SEED_SINGLE_TENANT=true).`,
+      );
+    }
+  }
+  await anotarFotosAnteriores(q, distId, personas);
+  for (const d of otras)
+    await anotarFotosAnteriores(q, d.distributor_id, personas);
+
+  const [cliente] = await q(
+    `SELECT user_id FROM "user" WHERE lower(email) = 'cliente@splg.com'`,
+  );
+  const resultado = await ds.transaction(async (m) => {
+    // Con una sola distribuidora, las únicas cuentas con login son las conocidas.
+    if (SOLO_UNA) {
+      const sacadas = await darDeBajaFueraDeLaLista(m);
+      if (sacadas.length > 0) {
+        console.log(
+          `  · ${sacadas.length} cuentas con login fuera de la lista quedaron dadas de baja`,
+        );
+      }
+    }
+    if (otras.length > 0) {
+      await purgarDistribuidoras(
+        m,
+        otras.map((d) => d.distributor_id),
+        { borrarDistribuidoras: true },
+      );
+    }
+    await purgarDistribuidoras(m, [distId], { auditoriaGlobal: SOLO_UNA });
+    // El logo se reemplaza en el lugar (la fila de la distribuidora queda).
+    await m.query(
+      `UPDATE distributor SET logo_key = NULL WHERE distributor_id = $1`,
+      [distId],
+    );
+    if (CANT_CHOFERES === 0) {
+      await m.query(`DELETE FROM delivery WHERE distributor_id = $1`, [distId]);
+    }
+    return purgarPersonasSinLogin(
+      m,
+      personas,
+      cliente ? [cliente.user_id] : [],
+      idsDeDistribuidoras,
+    );
+  });
+  personasPurgadas = personas;
+  for (const d of otras) console.log(`  · se quitó la distribuidora ${d.name}`);
+  distribuidorasPurgadas = [distId, ...otras.map((d) => d.distributor_id)];
+  return resultado;
+}
+
+/** Para borrar de S3 al final, cuando la siembra y la conciliación ya cerraron. */
+let distribuidorasPurgadas: string[] = [];
+let personasPurgadas: string[] = [];
+
+/**
+ * La conciliación de stock tiene que dar consistente: el vendible de cada
+ * producto es lo físico menos lo reservado (`vendible − déficit = llenas −
+ * reservadas`). Es la misma cuenta de `GET /stock/reconciliation`. Si no cierra,
+ * el seed falla en lugar de dejar una demo inconsistente.
+ */
+async function verificarConciliacion(q: Q, distId: string) {
+  const filas: Array<{
+    type: string;
+    stock: number;
+    deficit: number;
+    llenas: number;
+    reservadas: number;
+  }> = await q(
+    `SELECT g.type, g.stock, g.reservation_deficit AS deficit,
+            COALESCE((SELECT SUM(b.quantity) FROM stock_balance b
+                       WHERE b.gas_cylinder_id = g.gas_cylinder_id AND b.condition = 'full'), 0)::int AS llenas,
+            COALESCE((SELECT SUM(i.quantity) FROM order_item i JOIN "order" o ON o.order_id = i.order_id
+                       WHERE i.gas_cylinder_id = g.gas_cylinder_id
+                         AND o.status IN ('reserved','pending','accepted','on_the_way')), 0)::int AS reservadas
+       FROM gas_cylinder g WHERE g.distributor_id = $1 ORDER BY g.type`,
+    [distId],
+  );
+  const malas = filas.filter(
+    (f) => f.stock - f.deficit !== f.llenas - f.reservadas,
+  );
+  if (malas.length > 0) {
+    throw new Error(
+      'La conciliación de stock no cierra: ' +
+        malas
+          .map(
+            (f) =>
+              `${f.type} (vendible ${f.stock}, déficit ${f.deficit}, llenas ${f.llenas}, reservadas ${f.reservadas})`,
+          )
+          .join('; '),
+    );
+  }
+  console.log('\nConciliación de stock: consistente');
+  for (const f of filas) {
+    console.log(
+      `  ${f.type.padEnd(14)} vendible ${String(f.stock).padStart(4)} = llenas ${String(f.llenas).padStart(4)} − reservadas ${String(f.reservadas).padStart(3)}`,
+    );
+  }
+}
+
+/** Sube el remito (PNG de ejemplo) de una recepción como adjunto de la compra. */
+async function adjuntarRemito(
+  q: Q,
+  distId: string,
+  adminId: string,
+  receiptId: string,
+  numero: string,
+): Promise<void> {
+  if (!almacen) return;
+  const key = `attachments/${distId}/purchase_receipt/${receiptId}/${randomUUID()}.png`;
+  await q(
+    `INSERT INTO storage_orphan (storage_key, kind, status, next_attempt_at)
+     VALUES ($1, 'upload', 'pending', now() + interval '1 hour')
+     ON CONFLICT (storage_key) DO NOTHING`,
+    [key],
+  );
+  const png = generarImagenDemo({ figura: 'aviso', variante: 3 });
+  await almacen.subirPng(key, png);
+  await q(
+    `INSERT INTO attachment
+       (distributor_id, owner_type, owner_id, label, storage_key, original_name, mime_type, size_bytes, uploaded_by_user_id)
+     VALUES ($1, 'purchase_receipt', $2, 'Remito de la planta', $3, $4, 'image/png', $5, $6)`,
+    [distId, receiptId, key, `remito-${numero}.png`, png.length, adminId],
+  );
+  await q(`DELETE FROM storage_orphan WHERE storage_key = $1`, [key]);
+  fotosSubidas += 1;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -607,118 +1036,31 @@ interface ClienteSembrado {
   }>;
 }
 
+interface ChoferSembrado {
+  deliveryId: string;
+  userId: string;
+  nombre: string;
+  dni: string;
+  telefono: string;
+  carId: string;
+  patente: string;
+  marca: string;
+  modelo: string;
+  km: number;
+  ayudanteId: string | null;
+}
+
 interface PedidoSembrado {
   id: string;
   clienteUserId: string;
   choferUserId: string | null;
+  deliveryId: string | null;
+  carId: string | null;
   estado: string;
   entregadoEl: Date | null;
   creadoEl: Date;
   total: number;
-}
-
-/**
- * Vacía lo que este mismo script sembró antes, de la hoja hacia la raíz. Deja
- * en pie los usuarios con `firebase_uid`, que son los que permiten entrar al
- * panel y a las apps.
- */
-async function limpiar(q: Q, distId: string) {
-  await anotarFotosAnteriores(q, distId);
-  // El stock cuelga de gas_cylinder y de car: va antes que ellos.
-  await limpiarStock(ds, [distId]);
-  await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [
-    distId,
-  ]);
-  await q(`DELETE FROM rating WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM incident WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM claims WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM payment WHERE distributor_id = $1`, [distId]);
-  await q(
-    `DELETE FROM order_item WHERE order_id IN (SELECT order_id FROM "order" WHERE distributor_id = $1)`,
-    [distId],
-  );
-  await q(`DELETE FROM "order" WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM time_slot WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM coverage_zone WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM gas_cylinder WHERE distributor_id = $1`, [distId]);
-  await q(`DELETE FROM car WHERE distributor_id = $1`, [distId]);
-
-  // Perfiles y usuarios de demostración: los que no tienen cuenta en Firebase.
-  await q(
-    `DELETE FROM delivery
-      WHERE user_id IN (SELECT user_id FROM "user" WHERE firebase_uid IS NULL)`,
-  );
-  // Las direcciones se borran todas, incluidas las del cliente con login: son
-  // datos de demostración y si no, se acumulan una tanda nueva por corrida.
-  // Quedan las que usa un pedido de otra distribuidora (con
-  // SEED_SINGLE_TENANT=false): la clave foránea no deja borrarlas.
-  await q(
-    `DELETE FROM user_address a
-      WHERE a.user_id IN (SELECT user_id FROM customer)
-        AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.address_id = a.address_id)`,
-  );
-  const sinPedidos = `NOT EXISTS (SELECT 1 FROM "order" o WHERE o.customer_id = u.user_id)`;
-  await q(
-    `DELETE FROM customer c
-      USING "user" u
-      WHERE c.user_id = u.user_id AND u.firebase_uid IS NULL AND ${sinPedidos}`,
-  );
-  await q(
-    `DELETE FROM "user" u
-      WHERE u.firebase_uid IS NULL AND ${sinPedidos}
-        AND NOT EXISTS (SELECT 1 FROM customer c WHERE c.user_id = u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM delivery d WHERE d.user_id = u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM user_address a WHERE a.user_id = u.user_id)`,
-  );
-
-  // Con 0 choferes pedidos, los perfiles que quedaron de corridas anteriores
-  // también se van; el usuario sobrevive en Firebase y puede volver a darse de
-  // alta desde el panel, que es justamente el flujo a mostrar.
-  if (CANT_CHOFERES === 0) {
-    await q(`DELETE FROM delivery WHERE distributor_id = $1`, [distId]);
-  }
-}
-
-/**
- * Deja una sola distribuidora en pie. La segunda existía para probar el
- * aislamiento entre inquilinos; para mostrar el panel estorba, porque duplica
- * catálogo y staff. Los usuarios siguen en Firebase: si hace falta volver a
- * tener dos, `npm run seed` las recrea.
- */
-async function borrarOtrasDistribuidoras(q: Q, distId: string) {
-  const otras = await q(
-    `SELECT distributor_id, name FROM distributor WHERE distributor_id <> $1`,
-    [distId],
-  );
-  if (otras.length === 0) return;
-
-  for (const d of otras) {
-    const id = d.distributor_id;
-    await anotarFotosAnteriores(q, id);
-    await limpiarStock(ds, [id]);
-    await q(`DELETE FROM cylinder_movement WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM cylinder WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM order_dispatch_offer WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM rating WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM incident WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM claims WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM payment WHERE distributor_id = $1`, [id]);
-    await q(
-      `DELETE FROM order_item WHERE order_id IN (SELECT order_id FROM "order" WHERE distributor_id = $1)`,
-      [id],
-    );
-    await q(`DELETE FROM "order" WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM time_slot WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM coverage_zone WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM gas_cylinder WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM car WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM delivery WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM admin WHERE distributor_id = $1`, [id]);
-    await q(`DELETE FROM distributor WHERE distributor_id = $1`, [id]);
-    console.log(`  · se quitó la distribuidora ${d.name}`);
-  }
+  items: Array<{ gasCylinderId: string; quantity: number }>;
 }
 
 async function sembrarClientes(
@@ -734,7 +1076,9 @@ async function sembrarClientes(
     `SELECT u.user_id, u.full_name
        FROM "user" u
        JOIN customer c ON c.user_id = u.user_id
-      WHERE u.firebase_uid IS NOT NULL AND u."deletedAt" IS NULL`,
+      WHERE u.firebase_uid IS NOT NULL AND u."deletedAt" IS NULL
+        AND lower(u.email) = ANY($1::text[])`,
+    [CUENTAS_CON_LOGIN.map((c) => c.email.toLowerCase())],
   );
   for (const u of conLogin) {
     clientes.push({ userId: u.user_id, nombre: u.full_name, direcciones: [] });
@@ -743,13 +1087,15 @@ async function sembrarClientes(
   const usados = new Set<string>();
   let i = 0;
   while (clientes.length < CANT_CLIENTES) {
-    const nombre = `${alguno(NOMBRES)} ${alguno(APELLIDOS)}`;
-    const clave = nombre.toLowerCase().replace(/[^a-z]/g, '');
+    const pila = alguno(NOMBRES);
+    const apellido = alguno(APELLIDOS);
+    const nombre = `${pila} ${apellido}`;
+    const clave = correoDe(pila, apellido);
     if (usados.has(clave)) continue;
     usados.add(clave);
     i += 1;
 
-    const email = `${clave}${i}@demo.splg.com`;
+    const email = `${clave}${i}@${alguno(DOMINIOS_DE_CORREO)}`;
     const telefono = `+54376${String(4500000 + i).slice(0, 7)}`;
     const alta = diasAtras(entre(95, 400));
 
@@ -758,16 +1104,7 @@ async function sembrarClientes(
          (role_id, full_name, email, phone_number, phone_verified, email_verified, blocked, "createdAt")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING user_id`,
-      [
-        roleId,
-        nombre,
-        email,
-        telefono,
-        quizas(0.7),
-        quizas(0.85),
-        quizas(0.06),
-        alta,
-      ],
+      [roleId, nombre, email, telefono, quizas(0.7), quizas(0.85), false, alta],
     );
     await q(
       `INSERT INTO customer (user_id, "createdAt")
@@ -815,113 +1152,106 @@ async function sembrarClientes(
 }
 
 /**
- * Choferes. Por defecto no crea ninguno: el negocio pidió arrancar con la
- * flota vacía para dar de alta al primero desde el panel. Con SEED_DRIVERS>0
- * los crea, con vehículo, y habilita las tablas que dependen de ellos.
+ * Choferes con su vehículo en uso. La cuenta con login (`chofer@splg.com`) se
+ * conserva y toma el primer lugar de la lista; el resto son personas sembradas
+ * sin cuenta en Firebase (el panel las muestra igual).
  */
-async function sembrarChoferes(q: Q, distId: string) {
-  const choferes: Array<{
-    deliveryId: string;
-    userId: string;
-    nombre: string;
-  }> = [];
+async function sembrarChoferes(
+  q: Q,
+  distId: string,
+  adminUserId: string,
+): Promise<ChoferSembrado[]> {
+  const choferes: ChoferSembrado[] = [];
   if (CANT_CHOFERES <= 0) return choferes;
 
   const [rolChofer] = await q(
     `SELECT role_id FROM role WHERE type = 'delivery'`,
   );
-  // Vehículo en uso (decisión de nahue del 30/09): cada chofer sembrado
-  // necesita una asignación ABIERTA para ser elegible en el despacho.
-  // `assigned_by_user_id` es NOT NULL: lo carga un admin de la distribuidora.
-  const [adminSembrador] = await q(
-    `SELECT u.user_id FROM "user" u
-       JOIN admin a ON a.user_id = u.user_id
-      WHERE a.distributor_id = $1 LIMIT 1`,
+  const conLogin: Array<{
+    user_id: string;
+    delivery_id: string;
+    email: string;
+  }> = await q(
+    `SELECT u.user_id, d.delivery_id, lower(u.email) AS email
+       FROM "user" u JOIN delivery d ON d.user_id = u.user_id
+      WHERE d.distributor_id = $1 AND u.firebase_uid IS NOT NULL AND u."deletedAt" IS NULL`,
     [distId],
   );
-  const VEHICULOS = [
-    {
-      type_car: 'Camioneta',
-      car_brand: 'Toyota',
-      car_model: 'Hilux',
-      car_capacity: 900,
-    },
-    {
-      type_car: 'Camioneta',
-      car_brand: 'Ford',
-      car_model: 'Ranger',
-      car_capacity: 850,
-    },
-    {
-      type_car: 'Utilitario',
-      car_brand: 'Renault',
-      car_model: 'Kangoo',
-      car_capacity: 600,
-    },
-    {
-      type_car: 'Camión',
-      car_brand: 'Iveco',
-      car_model: 'Daily',
-      car_capacity: 2500,
-    },
-    {
-      type_car: 'Utilitario',
-      car_brand: 'Fiat',
-      car_model: 'Fiorino',
-      car_capacity: 500,
-    },
-  ];
 
-  for (let i = 1; i <= CANT_CHOFERES; i++) {
-    const nombre = `${alguno(NOMBRES)} ${alguno(APELLIDOS)}`;
-    const [u] = await q(
-      `INSERT INTO "user"
-         (role_id, full_name, email, phone_number, phone_verified, email_verified, "createdAt")
-       VALUES ($1,$2,$3,$4,true,true,$5) RETURNING user_id`,
-      [
-        rolChofer?.role_id ?? null,
-        nombre,
-        `chofer${i}@demo.splg.com`,
-        `+54376${String(4700000 + i).slice(0, 7)}`,
-        diasAtras(entre(120, 300)),
-      ],
-    );
-    const b = BARRIOS[0];
-    const [d] = await q(
-      `INSERT INTO delivery
-         (distributor_id, user_id, validated, "isActive", calification, balance, location, "createdAt")
-       VALUES ($1,$2,true,true,$3,$4,ST_SetSRID(ST_MakePoint($6,$5),4326),$7) RETURNING delivery_id`,
-      [
-        distId,
-        u.user_id,
-        Number((3.6 + azar() * 1.4).toFixed(2)),
-        entre(0, 45000),
-        Number((b.latMin + azar() * 0.02).toFixed(6)),
-        Number((b.lngMin + azar() * 0.02).toFixed(6)),
-        diasAtras(entre(120, 300)),
-      ],
-    );
-    const v = VEHICULOS[(i - 1) % VEHICULOS.length];
+  for (let i = 0; i < CANT_CHOFERES; i++) {
+    const c = CHOFERES_DE_LA_DEMO[i];
+    const v = c.vehiculo;
+    const login = c.emailLogin
+      ? conLogin.find((l) => l.email === c.emailLogin)
+      : undefined;
+    const alta = diasAtras(entre(300, 900));
+    let userId: string;
+    let deliveryId: string;
+    const ubicacion = [
+      Number((BARRIOS[0].latMin + azar() * 0.02).toFixed(6)),
+      Number((BARRIOS[0].lngMin + azar() * 0.02).toFixed(6)),
+    ];
+    if (login) {
+      userId = login.user_id;
+      deliveryId = login.delivery_id;
+      await q(
+        `UPDATE delivery
+            SET validated = true, "isActive" = true, "isEnabled" = true, "isAvailable" = true,
+                calification = $2, balance = 0,
+                location = ST_SetSRID(ST_MakePoint($4,$3),4326)
+          WHERE delivery_id = $1`,
+        [deliveryId, 4.8, ubicacion[0], ubicacion[1]],
+      );
+    } else {
+      const [pila, ...resto] = c.nombre.split(' ');
+      const correo = `${correoDe(pila, resto.join(''))}@gmail.com`;
+      const [u] = await q(
+        `INSERT INTO "user"
+           (role_id, full_name, email, phone_number, phone_verified, email_verified, "createdAt")
+         VALUES ($1,$2,$3,$4,true,true,$5) RETURNING user_id`,
+        [rolChofer?.role_id ?? null, c.nombre, correo, c.telefono, alta],
+      );
+      userId = u.user_id;
+      const [d] = await q(
+        `INSERT INTO delivery
+           (distributor_id, user_id, validated, "isActive", calification, balance, location, "createdAt")
+         VALUES ($1,$2,true,true,$3,$4,ST_SetSRID(ST_MakePoint($6,$5),4326),$7) RETURNING delivery_id`,
+        [
+          distId,
+          userId,
+          Number((4.1 + azar() * 0.8).toFixed(2)),
+          0,
+          ubicacion[0],
+          ubicacion[1],
+          alta,
+        ],
+      );
+      deliveryId = d.delivery_id;
+    }
+
     const [car] = await q(
       `INSERT INTO car
-         (distributor_id, user_id, type_car, car_capacity, car_patent, car_brand,
-          car_model, car_year, car_color)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING car_id`,
+         (distributor_id, user_id, type_car, car_capacity, car_patent, car_brand, car_model, car_year,
+          car_color, tare_weight_kg, max_load_kg, odometer_km, fleet_status, in_service_since, "createdAt")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active',$13,$13) RETURNING car_id`,
       [
         distId,
-        u.user_id,
-        v.type_car,
-        v.car_capacity,
-        `AB${String(100 + i)}${String.fromCharCode(65 + i)}${String.fromCharCode(70 + i)}`,
-        v.car_brand,
-        v.car_model,
-        entre(2014, 2024),
-        alguno(['Blanco', 'Gris', 'Negro', 'Rojo']),
+        userId,
+        v.tipo,
+        v.capacidad,
+        v.patente,
+        v.marca,
+        v.modelo,
+        v.anio,
+        v.color,
+        v.tara,
+        v.cargaMaxima,
+        v.km,
+        diasAtras(entre(200, 800)),
       ],
     );
-
     // Los dos primeros vehículos llevan foto; el resto queda sin imagen.
-    if (i <= 2) {
+    if (i < 2) {
       await adjuntarFoto(
         q,
         {
@@ -932,151 +1262,268 @@ async function sembrarChoferes(q: Q, distId: string) {
         },
         `cars/${distId}/${car.car_id}`,
         'camioneta',
-        i,
+        i + 1,
       );
     }
 
-    // Vehículo en uso + historial: el primer chofer tuvo antes otro vehículo
-    // (ya liberado), para que el historial no quede vacío en la demo.
-    const asignadoDesde = diasAtras(entre(10, 90));
-    if (i === 1 && adminSembrador?.user_id) {
-      const vAnterior = VEHICULOS[VEHICULOS.length - 1];
-      const [carAnterior] = await q(
+    // Vehículo en uso. El primer chofer tuvo antes otro (dado de baja), para
+    // que el historial de asignaciones no quede vacío.
+    const asignadoDesde = diasAtras(entre(70, 160));
+    if (i === 0) {
+      const [anterior] = await q(
         `INSERT INTO car
-           (distributor_id, user_id, type_car, car_capacity, car_patent, car_brand,
-            car_model, car_year, car_color)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING car_id`,
-        [
-          distId,
-          u.user_id,
-          vAnterior.type_car,
-          vAnterior.car_capacity,
-          `AC${String(100 + i)}ZZ`,
-          vAnterior.car_brand,
-          vAnterior.car_model,
-          entre(2010, 2018),
-          'Azul',
-        ],
+           (distributor_id, user_id, type_car, car_capacity, car_patent, car_brand, car_model, car_year,
+            car_color, fleet_status, "createdAt", "deletedAt")
+         VALUES ($1,$2,'Utilitario',600,'AA512FJ','Renault','Kangoo',2013,'Azul','grounded',$3,$4)
+         RETURNING car_id`,
+        [distId, userId, diasAtras(900), diasAtras(110)],
       );
       await q(
         `INSERT INTO vehicle_assignment
-           (distributor_id, car_id, delivery_id, assigned_at, released_at,
-            assigned_by_user_id, released_by_user_id, note)
+           (distributor_id, car_id, delivery_id, assigned_at, released_at, assigned_by_user_id, released_by_user_id, note)
          VALUES ($1,$2,$3,$4,$5,$6,$6,$7)`,
         [
           distId,
-          carAnterior.car_id,
-          d.delivery_id,
-          diasAtras(150),
+          anterior.car_id,
+          deliveryId,
+          diasAtras(600),
           asignadoDesde,
-          adminSembrador.user_id,
-          'Vehículo anterior (dado de baja de uso, demo)',
+          adminUserId,
+          'Se pasó a una camioneta más nueva',
         ],
       );
     }
+    await q(
+      `INSERT INTO vehicle_assignment
+         (distributor_id, car_id, delivery_id, assigned_at, released_at, assigned_by_user_id, note)
+       VALUES ($1,$2,$3,$4,NULL,$5,$6)`,
+      [
+        distId,
+        car.car_id,
+        deliveryId,
+        asignadoDesde,
+        adminUserId,
+        'Asignación vigente',
+      ],
+    );
 
-    if (adminSembrador?.user_id) {
-      await q(
-        `INSERT INTO vehicle_assignment
-           (distributor_id, car_id, delivery_id, assigned_at, released_at,
-            assigned_by_user_id, note)
-         VALUES ($1,$2,$3,$4,NULL,$5,$6)`,
-        [
-          distId,
-          car.car_id,
-          d.delivery_id,
-          asignadoDesde,
-          adminSembrador.user_id,
-          'Asignación de la demo',
-        ],
-      );
-    }
-
-    choferes.push({ deliveryId: d.delivery_id, userId: u.user_id, nombre });
+    choferes.push({
+      deliveryId,
+      userId,
+      nombre: c.nombre,
+      dni: c.dni,
+      telefono: c.telefono,
+      carId: car.car_id,
+      patente: v.patente,
+      marca: v.marca,
+      modelo: v.modelo,
+      km: v.km,
+      ayudanteId: null,
+    });
   }
-  resumen.push(['car (vehículos)', choferes.length]);
+  resumen.push(['delivery (choferes)', choferes.length]);
+  resumen.push([
+    'car (vehículos en uso + 1 dado de baja)',
+    choferes.length + 1,
+  ]);
   return choferes;
 }
+
+/** Pedidos forzados de hoy y de los últimos días: aseguran todos los estados. */
+const PEDIDOS_DE_HOY: Array<{
+  estado: 'accepted' | 'on_the_way' | 'pending' | 'reserved' | 'delivered';
+  dia: number;
+  chofer: boolean;
+  medio?: 'cash' | 'transfer';
+  /** Entregado y con el cobro todavía sin resolver. */
+  cobro?: 'unpaid' | 'pending';
+}> = [
+  { estado: 'accepted', dia: 0, chofer: true },
+  { estado: 'on_the_way', dia: 0, chofer: true },
+  { estado: 'accepted', dia: 0, chofer: true },
+  { estado: 'pending', dia: 0, chofer: false },
+  { estado: 'pending', dia: 0, chofer: false },
+  { estado: 'pending', dia: 1, chofer: false },
+  { estado: 'reserved', dia: 0, chofer: false },
+  { estado: 'reserved', dia: 1, chofer: false },
+  { estado: 'reserved', dia: 3, chofer: false },
+  { estado: 'delivered', dia: 1, chofer: true, medio: 'cash', cobro: 'unpaid' },
+  {
+    estado: 'delivered',
+    dia: 1,
+    chofer: true,
+    medio: 'transfer',
+    cobro: 'pending',
+  },
+];
+
+const MEDIOS = ['cash', 'cash', 'cash', 'mercadopago', 'transfer'] as const;
 
 async function sembrarPedidos(
   q: Q,
   distId: string,
+  adminUserId: string,
   clientes: ClienteSembrado[],
   productos: Array<{ id: string; type: string; price: number; weight: number }>,
   franjas: string[],
-  choferes: Array<{ deliveryId: string; userId: string }>,
+  choferes: ChoferSembrado[],
 ): Promise<PedidoSembrado[]> {
   const pedidos: PedidoSembrado[] = [];
   let items = 0;
   let pagos = 0;
   let ofertas = 0;
+  let historial = 0;
+
+  // Cada día reparte un chofer (con otro de apoyo de vez en cuando): así hay
+  // jornadas con varias entregas del mismo camión, que son las cargas.
+  const choferDelDia = (dia: number): ChoferSembrado | null => {
+    if (choferes.length === 0) return null;
+    const principal = choferes[(dia * 3 + 1) % choferes.length];
+    return quizas(0.85) ? principal : alguno(choferes);
+  };
+  const pesoDeProducto = (p: { weight: number }) =>
+    p.weight === 10 ? 5 : p.weight === 5 ? 2 : p.weight === 15 ? 2 : 1;
+  const elegirProducto = () => {
+    const bolsa = productos.flatMap((p) => Array(pesoDeProducto(p)).fill(p));
+    return alguno(bolsa) as (typeof productos)[number];
+  };
 
   for (let n = 0; n < CANT_PEDIDOS; n++) {
-    const cliente = alguno(clientes);
+    // Los primeros pedidos recorren a todos los clientes: ninguno queda sin compras
+    // (un cliente sin pedidos sería un usuario huérfano para la próxima purga).
+    const indice = n - PEDIDOS_DE_HOY.length;
+    const cliente =
+      indice >= 0 && indice < clientes.length
+        ? clientes[indice]
+        : alguno(clientes);
     if (cliente.direcciones.length === 0) continue;
     const dir = alguno(cliente.direcciones);
 
-    // La mayoría son entregas cerradas: es lo que da volumen a los informes.
-    // El resto se reparte entre lo que está en curso y lo que se cayó.
-    const dado = azar();
-    let estado: string;
-    if (dado < 0.72) estado = 'delivered';
-    else if (dado < 0.82) estado = 'pending';
-    else if (dado < 0.9) estado = 'cancelled';
-    else if (dado < 0.96) estado = 'reserved';
-    else
-      estado = choferes.length ? alguno(['accepted', 'on_the_way']) : 'pending';
+    const forzado = n < PEDIDOS_DE_HOY.length ? PEDIDOS_DE_HOY[n] : null;
+    const dia = forzado ? forzado.dia : entre(1, DIAS_DE_HISTORIA - 1);
+    let estado: string = forzado ? forzado.estado : 'delivered';
+    if (!forzado && quizas(0.1)) estado = 'cancelled';
 
+    const chofer: ChoferSembrado | null =
+      estado === 'delivered' || (forzado && forzado.chofer)
+        ? forzado && forzado.estado !== 'delivered'
+          ? choferes[0]
+          : choferDelDia(dia)
+        : null;
+    if (!chofer && (estado === 'accepted' || estado === 'on_the_way')) {
+      estado = 'pending';
+    }
+
+    // Jornada: se crea entre las 7 y las 17; el pedido de hoy, hace unas horas.
     const creado =
-      estado === 'reserved' ? diasAtras(entre(0, 4)) : diasAtras(entre(0, 89));
+      dia === 0
+        ? new Date(Date.now() - entre(120, 300) * 60000)
+        : diasAtras(dia, entre(7, 17));
 
     // Items: entre uno y tres productos distintos.
-    const elegidos = [...productos]
-      .sort(() => azar() - 0.5)
-      .slice(0, entre(1, 3));
+    const elegidos = new Map<string, (typeof productos)[number]>();
+    const cuantos = entre(1, 3);
+    while (elegidos.size < cuantos) {
+      const p = elegirProducto();
+      elegidos.set(p.id, p);
+    }
     let subtotal = 0;
-    const detalle = elegidos.map((p) => {
-      const cantidad = p.weight >= 25 ? entre(1, 2) : entre(1, 4);
+    const detalle = [...elegidos.values()].map((p) => {
+      const cantidad = p.weight >= 25 ? entre(1, 2) : entre(1, 3);
       const linea = p.price * cantidad;
       subtotal += linea;
       return { producto: p, cantidad, unitario: p.price, subtotal: linea };
     });
     const total = subtotal + dir.recargo;
 
-    const metodo = alguno(['cash', 'mercadopago', 'transfer'] as const);
+    const metodo =
+      forzado?.medio ??
+      (estado === 'reserved' ? 'mercadopago' : alguno([...MEDIOS]));
     const tipoPago = metodo === 'cash' ? 'cash' : 'online';
+    const reciente = dia <= 2;
+
+    // Estado de cobro según cómo terminó el pedido.
     let estadoPago: string;
-    if (estado === 'delivered')
-      estadoPago =
-        metodo === 'cash' ? 'paid' : quizas(0.94) ? 'paid' : 'failed';
-    else if (estado === 'cancelled')
-      estadoPago = quizas(0.25) ? 'failed' : 'pending';
-    else
-      estadoPago =
-        metodo === 'cash' ? 'pending' : quizas(0.5) ? 'paid' : 'pending';
+    let confirmadoEl: Date | null = null;
+    let confirmadoPor: string | null = null;
+    let resueltoEl: Date | null = null;
+    let resueltoPor: string | null = null;
+    let notaDeResolucion: string | null = null;
 
-    const esReserva = estado === 'reserved';
-    const sena = esReserva ? Math.round(total * 0.3) : 0;
-
-    const chofer =
-      ['accepted', 'on_the_way', 'delivered'].includes(estado) &&
-      choferes.length
-        ? alguno(choferes)
+    const aceptado =
+      ['accepted', 'on_the_way', 'delivered'].includes(estado) && chofer
+        ? masMinutos(creado, entre(2, 18))
         : null;
-
-    const aceptado = ['accepted', 'on_the_way', 'delivered'].includes(estado)
-      ? masMinutos(creado, entre(2, 18))
-      : null;
     const enCamino =
       ['on_the_way', 'delivered'].includes(estado) && aceptado
         ? masMinutos(aceptado, entre(5, 30))
         : null;
     const entregado =
-      estado === 'delivered' && enCamino
-        ? masMinutos(enCamino, entre(10, 55))
-        : estado === 'delivered'
-          ? masMinutos(creado, entre(35, 120))
-          : null;
+      estado === 'delivered'
+        ? masMinutos(enCamino ?? creado, entre(35, 120))
+        : null;
+
+    if (estado === 'delivered') {
+      if (metodo === 'cash') {
+        if (!reciente && quizas(0.045)) {
+          // El chofer no llegó a cobrar: el administrador lo resuelve después.
+          if (quizas(0.7)) {
+            estadoPago = 'paid';
+            confirmadoEl = masMinutos(entregado!, entre(1500, 4000));
+            confirmadoPor = adminUserId;
+            resueltoEl = confirmadoEl;
+            resueltoPor = adminUserId;
+            notaDeResolucion =
+              'El cliente pasó a pagar por el local al día siguiente.';
+          } else {
+            estadoPago = 'written_off';
+            resueltoEl = masMinutos(entregado!, entre(6000, 12000));
+            resueltoPor = adminUserId;
+            notaDeResolucion =
+              'No se pudo ubicar al cliente: se da de baja el cobro.';
+          }
+        } else if (forzado?.cobro === 'unpaid' || (reciente && quizas(0.05))) {
+          estadoPago = 'unpaid';
+        } else {
+          estadoPago = 'paid';
+          confirmadoEl = masMinutos(entregado!, entre(2, 15));
+          confirmadoPor = chofer?.userId ?? null;
+        }
+      } else if (metodo === 'transfer') {
+        if (forzado?.cobro === 'pending' || (reciente && quizas(0.1))) {
+          estadoPago = 'pending';
+        } else {
+          estadoPago = 'paid';
+          confirmadoEl = masMinutos(creado, entre(40, 400));
+          confirmadoPor = adminUserId;
+        }
+      } else {
+        estadoPago = 'paid';
+        confirmadoEl = masMinutos(creado, entre(1, 6));
+      }
+    } else if (estado === 'cancelled') {
+      estadoPago =
+        metodo === 'mercadopago' && quizas(0.4) ? 'failed' : 'pending';
+    } else {
+      estadoPago =
+        metodo === 'cash'
+          ? 'pending'
+          : metodo === 'mercadopago' && quizas(0.7)
+            ? 'paid'
+            : 'pending';
+      if (estadoPago === 'paid') confirmadoEl = masMinutos(creado, entre(1, 6));
+    }
+
+    const esReserva = estado === 'reserved';
+    const sena = esReserva ? Math.round(total * 0.3) : 0;
+    // Una reserva con la seña paga tiene el pago de la seña aprobado; si no, pendiente.
+    const senaPaga = esReserva && quizas(0.7);
+    if (esReserva) {
+      estadoPago = 'pending';
+      confirmadoEl = null;
+    }
+    const canceladoEl =
+      estado === 'cancelled' ? masMinutos(creado, entre(10, 600)) : null;
 
     const [o] = await q(
       `INSERT INTO "order"
@@ -1086,19 +1533,23 @@ async function sembrarPedidos(
           "deliveryPoint", "acceptedAt", "onTheWayAt",
           "deliveredAt", "createdAt", "updatedAt", "cancellationReason", "deliveryCode",
           subtotal_items, coverage_zone_id, zone_name, zone_surcharge_type,
-          zone_surcharge_value, zone_surcharge_amount)
+          zone_surcharge_value, zone_surcharge_amount,
+          vehicle_car_id, vehicle_patent, vehicle_brand, vehicle_model,
+          payment_confirmed_at, payment_confirmed_by, payment_resolved_at, payment_resolved_by,
+          payment_resolution_note)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
                ST_SetSRID(ST_MakePoint($17::float8, $16::float8), 4326),
-               $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'fixed',$28,$28)
+               $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'fixed',$28,$28,
+               $29,$30,$31,$32,$33,$34,$35,$36,$37)
        RETURNING order_id`,
       [
         distId,
         cliente.userId,
-        chofer?.deliveryId ?? null,
+        aceptado ? chofer!.deliveryId : null,
         quizas(0.85) ? alguno(franjas) : null,
         esReserva ? soloFecha(diasAtras(-entre(1, 12))) : null,
         sena,
-        esReserva ? quizas(0.7) : false,
+        senaPaga,
         dir.id,
         estado,
         metodo,
@@ -1119,13 +1570,22 @@ async function sembrarPedidos(
         enCamino,
         entregado,
         creado,
-        entregado ?? aceptado ?? creado,
+        canceladoEl ?? entregado ?? aceptado ?? creado,
         estado === 'cancelled' ? alguno(MOTIVOS_CANCELACION) : null,
         aceptado ? String(entre(100000, 999999)) : null,
         subtotal,
         dir.zonaId,
         dir.zona,
         dir.recargo,
+        aceptado ? chofer!.carId : null,
+        aceptado ? chofer!.patente : null,
+        aceptado ? chofer!.marca : null,
+        aceptado ? chofer!.modelo : null,
+        confirmadoEl,
+        confirmadoPor,
+        resueltoEl,
+        resueltoPor,
+        notaDeResolucion,
       ],
     );
 
@@ -1138,9 +1598,39 @@ async function sembrarPedidos(
       items += 1;
     }
 
+    // Historial de estados: el rastro de cada transición, con quién la hizo.
+    const pasos: Array<
+      [string | null, string, string | null, Date, string | null]
+    > = [
+      [null, esReserva ? 'reserved' : 'pending', cliente.userId, creado, null],
+    ];
+    if (aceptado)
+      pasos.push(['pending', 'accepted', chofer!.userId, aceptado, null]);
+    if (enCamino)
+      pasos.push(['accepted', 'on_the_way', chofer!.userId, enCamino, null]);
+    if (entregado)
+      pasos.push(['on_the_way', 'delivered', chofer!.userId, entregado, null]);
+    if (estado === 'cancelled') {
+      pasos.push([
+        'pending',
+        'cancelled',
+        quizas(0.5) ? cliente.userId : adminUserId,
+        canceladoEl!,
+        'Cancelado antes de despachar',
+      ]);
+    }
+    for (const [desde, hacia, quien, cuando, motivo] of pasos) {
+      await q(
+        `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by_user_id, reason, changed_at)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [o.order_id, desde, hacia, quien, motivo, cuando],
+      );
+      historial += 1;
+    }
+
     // Ledger de pagos: solo para lo que pasó por una pasarela.
     if (metodo === 'mercadopago') {
-      const aprobado = estadoPago === 'paid';
+      const aprobado = esReserva ? senaPaga : estadoPago === 'paid';
       const idPasarela = aprobado ? `MP-${entre(100000000, 999999999)}` : null;
       await q(
         `INSERT INTO payment
@@ -1160,18 +1650,21 @@ async function sembrarPedidos(
             : estadoPago === 'failed'
               ? 'rejected'
               : 'pending',
-          `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=demo-${n}`,
+          `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=pref-${n}`,
           esReserva,
-          JSON.stringify({ preferenceId: `demo-pref-${n}`, seed: true }),
+          JSON.stringify({ preferenceId: `pref-${n}` }),
           creado,
-          entregado ?? creado,
+          confirmadoEl ??
+            (esReserva && senaPaga
+              ? masMinutos(creado, 3)
+              : (entregado ?? creado)),
         ],
       );
       pagos += 1;
     }
 
     // Ofertas de despacho: el rastro de a quién se le ofreció el pedido.
-    if (chofer) {
+    if (aceptado && chofer) {
       const ofrecidoEl = masMinutos(creado, 1);
       // A veces el primero rechaza y el pedido pasa al siguiente.
       if (choferes.length > 1 && quizas(0.3)) {
@@ -1209,19 +1702,61 @@ async function sembrarPedidos(
     pedidos.push({
       id: o.order_id,
       clienteUserId: cliente.userId,
-      choferUserId: chofer?.userId ?? null,
+      choferUserId: aceptado ? chofer!.userId : null,
+      deliveryId: aceptado ? chofer!.deliveryId : null,
+      carId: aceptado ? chofer!.carId : null,
       estado,
       entregadoEl: entregado,
       creadoEl: creado,
       total,
+      items: detalle.map((d) => ({
+        gasCylinderId: d.producto.id,
+        quantity: d.cantidad,
+      })),
     });
   }
 
   resumen.push(['order (pedidos)', pedidos.length]);
   resumen.push(['order_item (renglones)', items]);
-  resumen.push(['payment (ledger)', pagos]);
+  resumen.push(['order_status_history (transiciones)', historial]);
+  resumen.push(['payment (ledger de pasarela)', pagos]);
   resumen.push(['order_dispatch_offer (ofertas)', ofertas]);
+  const porEstado = new Map<string, number>();
+  for (const p of pedidos)
+    porEstado.set(p.estado, (porEstado.get(p.estado) ?? 0) + 1);
+  console.log(
+    '  · pedidos por estado: ' +
+      [...porEstado].map(([e, c]) => `${e} ${c}`).join(', '),
+  );
   return pedidos;
+}
+
+/**
+ * Un par de clientes bloqueados, pero nunca uno con un pedido abierto: el
+ * bloqueo se hizo después de su última compra.
+ */
+async function bloquearAlgunosClientes(
+  q: Q,
+  clientes: ClienteSembrado[],
+  pedidos: PedidoSembrado[],
+) {
+  const conPedidoAbierto = new Set(
+    pedidos
+      .filter((p) =>
+        ['reserved', 'pending', 'accepted', 'on_the_way'].includes(p.estado),
+      )
+      .map((p) => p.clienteUserId),
+  );
+  // Los que no tienen nada abierto; se bloquean algunos, siempre los mismos.
+  const elegibles = clientes
+    .slice(1)
+    .filter((c) => !conPedidoAbierto.has(c.userId));
+  const aBloquear = elegibles.filter((_, i) => i % 9 === 4);
+  for (const c of aBloquear) {
+    await q(`UPDATE "user" SET blocked = true WHERE user_id = $1`, [c.userId]);
+  }
+  const n = aBloquear.length;
+  resumen.push(['clientes bloqueados (sin pedidos abiertos)', n]);
 }
 
 async function sembrarReclamos(
@@ -1232,7 +1767,7 @@ async function sembrarReclamos(
   const candidatos = pedidos.filter((p) => p.estado === 'delivered');
   let n = 0;
   for (const p of candidatos) {
-    if (!quizas(0.13)) continue;
+    if (!quizas(0.05)) continue;
     const estado = alguno([
       'pending',
       'in_process',
@@ -1286,18 +1821,14 @@ async function sembrarReclamos(
 async function sembrarIncidencias(
   q: Q,
   distId: string,
+  adminUserId: string,
   pedidos: PedidoSembrado[],
   choferes: Array<{ userId: string }>,
 ) {
   // Normalmente la reporta el chofer. Sin flota, la carga el administrador,
   // que es quien queda registrando lo que pasó en la calle.
-  const [admin] = await q(
-    `SELECT u.user_id FROM "user" u
-       JOIN admin a ON a.user_id = u.user_id
-      WHERE u.firebase_uid IS NOT NULL LIMIT 1`,
-  );
   const reportante = () =>
-    choferes.length ? alguno(choferes).userId : admin?.user_id;
+    choferes.length ? alguno(choferes).userId : adminUserId;
   if (!reportante()) {
     resumen.push(['incident (incidencias)', 0]);
     return;
@@ -1319,7 +1850,7 @@ async function sembrarIncidencias(
 
   let n = 0;
   for (const p of candidatos) {
-    if (!quizas(0.16)) continue;
+    if (!quizas(0.05)) continue;
     const tipo = alguno([
       'damaged',
       'out_of_stock',
@@ -1451,6 +1982,7 @@ async function sembrarEnvases(
     10: 18000,
     15: 26000,
     25: 40000,
+    45: 70000,
   };
 
   let envases = 0;
@@ -1482,26 +2014,6 @@ async function sembrarEnvases(
       const serial = `SPLG-${String(serie).padStart(5, '0')}`;
       serie += 1;
 
-      const [c] = await q(
-        `INSERT INTO cylinder
-           (distributor_id, serial, gas_cylinder_id, state, current_customer_id,
-            current_order_id, deposit, "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         RETURNING cylinder_id`,
-        [
-          distId,
-          serial,
-          p.id,
-          estado,
-          cliente,
-          pedido?.id ?? null,
-          DEPOSITO[p.weight] ?? 0,
-          diasAtras(entre(200, 700)),
-          pedido?.entregadoEl ?? diasAtras(entre(1, 60)),
-        ],
-      );
-      envases += 1;
-
       // La cadena de movimientos hasta el estado actual, en orden.
       const cadena: string[] = ['in_depot'];
       if (
@@ -1516,7 +2028,48 @@ async function sembrarEnvases(
         cadena.push('with_customer');
       if (estado === 'empty_returned') cadena.push('empty_returned');
 
-      let cuando = diasAtras(entre(30, 90));
+      // Fechas: un envase con pedido nunca se mueve antes de que exista el pedido.
+      const alta = pedido
+        ? masMinutos(pedido.creadoEl, -entre(200, 700) * 1440)
+        : diasAtras(entre(200, 700));
+      const momentos = new Map<string, Date>();
+      if (pedido && pedido.entregadoEl) {
+        momentos.set('in_depot', alta);
+        momentos.set(
+          'filled',
+          masMinutos(pedido.creadoEl, -entre(1, 3) * 1440),
+        );
+        momentos.set('dispatched', masMinutos(pedido.creadoEl, entre(10, 30)));
+        momentos.set('with_customer', pedido.entregadoEl);
+      } else {
+        let t = alta;
+        for (const paso of cadena) {
+          momentos.set(paso, t);
+          t = masMinutos(t, entre(120, 2880));
+        }
+      }
+      const ultimo = momentos.get(cadena[cadena.length - 1])!;
+
+      const [c] = await q(
+        `INSERT INTO cylinder
+           (distributor_id, serial, gas_cylinder_id, state, current_customer_id,
+            current_order_id, deposit, "createdAt", "updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         RETURNING cylinder_id`,
+        [
+          distId,
+          serial,
+          p.id,
+          estado,
+          cliente,
+          pedido?.id ?? null,
+          DEPOSITO[p.weight] ?? 0,
+          alta,
+          ultimo,
+        ],
+      );
+      envases += 1;
+
       let anterior: string | null = null;
       for (const paso of cadena) {
         await q(
@@ -1541,12 +2094,11 @@ async function sembrarEnvases(
                   : paso === 'empty_returned'
                     ? 'Vacío recibido en depósito'
                     : 'Alta del envase en el parque',
-            cuando,
+            momentos.get(paso),
           ],
         );
         movimientos += 1;
         anterior = paso;
-        cuando = masMinutos(cuando, entre(120, 2880));
       }
     }
   }
@@ -1578,29 +2130,6 @@ async function ajustarStock(q: Q, distId: string) {
       WHERE v.gas_cylinder_id = g.gas_cylinder_id AND g.distributor_id = $1`,
     [distId],
   );
-}
-
-/**
- * Deja fuera de las listas a los usuarios que quedaron sin perfil: el staff de
- * la distribuidora que se quitó y los choferes cuya alta se dio de baja. Es
- * baja lógica, no física: la cuenta sigue en Firebase y `npm run seed` la
- * vuelve a tomar si algún día hacen falta de nuevo.
- */
-async function archivarUsuariosHuerfanos(q: Q) {
-  const r = await q(
-    `UPDATE "user" u
-        SET "deletedAt" = now()
-      WHERE u."deletedAt" IS NULL
-        AND NOT EXISTS (SELECT 1 FROM customer c WHERE c.user_id = u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM delivery d WHERE d.user_id = u.user_id)
-        AND NOT EXISTS (SELECT 1 FROM admin   a WHERE a.user_id = u.user_id)
-      RETURNING u.email`,
-  );
-  // Un UPDATE ... RETURNING devuelve [filas, cantidad], no las filas sueltas.
-  const filas = Array.isArray(r?.[0]) ? r[0] : r;
-  if (filas.length) {
-    console.log(`  · quedaron archivados ${filas.length} usuarios sin perfil`);
-  }
 }
 
 function imprimirResumen() {

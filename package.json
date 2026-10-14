@@ -14,6 +14,7 @@
     "start:prod": "node dist/main",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
     "seed:demo": "ts-node -r tsconfig-paths/register scripts/seed-demo.ts",
+    "cuentas:demo": "ts-node -r tsconfig-paths/register scripts/cuentas-demo.ts",
     "s3:diagnostico": "ts-node -r tsconfig-paths/register scripts/diagnostico-bucket.ts",
     "fotos:demo": "ts-node -r tsconfig-paths/register scripts/completar-fotos-demo.ts",
     "crear-superadmin": "node dist/cli/crear-superadmin.js",
