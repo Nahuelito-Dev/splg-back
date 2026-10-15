@@ -30,6 +30,14 @@ export class ModuleConfigService {
     return fila?.params ?? null;
   }
 
+  /** La fila completa (parámetros, cuándo y quién la modificó), o `null` si no existe. */
+  fila(
+    distributorId: string,
+    module: ConfigurableProcess,
+  ): Promise<ModuleConfig | null> {
+    return this.configs.findOne({ where: { distributorId, module } });
+  }
+
   /** Reemplaza los parámetros del proceso (crea la fila la primera vez). */
   async guardar(
     distributorId: string,

@@ -10,6 +10,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
 import { RedisService } from '../../redis/redis.service';
 import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
+import { DispatchSettingsService } from '../../distributor/dispatch-settings.service';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
 export type MotivoSinChoferes =
@@ -31,8 +32,8 @@ interface CacheDeInhabilitacion {
 
 /**
  * Orquestador de despacho SECUENCIAL con timeout (SRS): un pedido se ofrece al
- * chofer más cercano disponible; si no responde en `OFFER_TTL_SECONDS`, se
- * ofrece al siguiente más cercano que no haya sido contactado, ampliando el
+ * chofer más cercano disponible; si no responde en la ventana de la
+ * distribuidora (`offerTtlSeconds`), se ofrece al siguiente más cercano que no haya sido contactado, ampliando el
  * radio de a pasos. Reemplaza el broadcast a todos.
  *
  * Re-oferta: un chofer cuya oferta VENCIÓ vuelve a ser candidato del mismo
@@ -50,9 +51,6 @@ interface CacheDeInhabilitacion {
 @Injectable()
 export class DispatchOrchestratorService {
   private readonly logger = new Logger(DispatchOrchestratorService.name);
-
-  /** Ventana de aceptación de una oferta antes de pasar al siguiente chofer. */
-  static readonly OFFER_TTL_SECONDS = 30;
 
   /**
    * Espera, desde que venció su oferta, antes de volver a ofrecerle el mismo
@@ -80,9 +78,6 @@ export class DispatchOrchestratorService {
   /** Tope de la marca de "ya avisé que no hay choferes" (se borra al ofrecer). */
   private static readonly NO_DRIVERS_MARK_TTL_SEC = 24 * 60 * 60;
 
-  /** Radio progresivo (km): del más chico al más grande. */
-  private static readonly RADIUS_STEPS_KM = [5, 10, 15, 20];
-
   constructor(
     private readonly dispatch: RealtimeDispatchPort,
     private readonly orders: OrderRepositoryPort,
@@ -95,6 +90,8 @@ export class DispatchOrchestratorService {
     private readonly redis: RedisService,
     // D5: si la distribuidora exige carga de camión abierta, un chofer sin ella no recibe ofertas.
     private readonly truckLoadGate: TruckLoadGatePort,
+    // CU-171: pasos de radio y ventana de la oferta, por distribuidora.
+    private readonly settings: DispatchSettingsService,
   ) {}
 
   /**
@@ -130,6 +127,11 @@ export class DispatchOrchestratorService {
       return null;
     }
 
+    // Se leen en cada oferta: un cambio de configuración rige para la próxima.
+    const { radiusStepsKm, offerTtlSeconds } = await this.settings.obtener(
+      order.distributorId,
+    );
+
     const { blocked, reofferable } = await this.offers.findDriverOfferState(
       order.orderId,
       new Date(),
@@ -144,6 +146,7 @@ export class DispatchOrchestratorService {
       destino.lng,
       nuncaContactadosOBloqueados,
       order.distributorId,
+      radiusStepsKm,
     );
     const candidate =
       nuevos.candidate ??
@@ -154,6 +157,7 @@ export class DispatchOrchestratorService {
               destino.lng,
               new Set(blocked),
               order.distributorId,
+              radiusStepsKm,
             )
           ).candidate
         : null);
@@ -171,9 +175,7 @@ export class DispatchOrchestratorService {
       return null;
     }
 
-    const expiresAt = new Date(
-      Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
-    );
+    const expiresAt = new Date(Date.now() + offerTtlSeconds * 1000);
     await this.offers.create(
       order.orderId,
       candidate,
@@ -237,14 +239,34 @@ export class DispatchOrchestratorService {
     this.logger.warn(`Pedido ${order.orderId} sin choferes (${reason})`);
   }
 
+  /** Distribuidoras con alguna oferta vencida sin procesar (para decidir a quiénes les toca el ciclo). */
+  async distribuidorasConOfertasVencidas(): Promise<string[]> {
+    const expired = await this.offers.findExpired(new Date());
+    return [
+      ...new Set(
+        expired.flatMap((o) => (o.distributorId ? [o.distributorId] : [])),
+      ),
+    ];
+  }
+
   /**
    * Vence las ofertas OFFERED expiradas y re-ofrece el pedido al siguiente
-   * chofer (si sigue pendiente y sin asignar). Lo llama el cron.
+   * chofer (si sigue pendiente y sin asignar). Lo llama el cron; con
+   * `distribuidoras` (CU-173) atiende sólo a las que les tocó el ciclo: las
+   * demás conservan sus ofertas vencidas para un ciclo posterior.
    */
-  async handleExpiredOffers(): Promise<void> {
+  async handleExpiredOffers(
+    distribuidoras?: ReadonlySet<string>,
+  ): Promise<void> {
     const expired = await this.offers.findExpired(new Date());
 
     for (const offer of expired) {
+      if (
+        distribuidoras &&
+        !(offer.distributorId && distribuidoras.has(offer.distributorId))
+      ) {
+        continue;
+      }
       await this.offers.updateStatus(
         offer.offerId,
         DispatchOfferStatus.EXPIRED,
@@ -343,7 +365,8 @@ export class DispatchOrchestratorService {
     lat: number,
     lng: number,
     exclude: Set<string>,
-    distributorId?: string | null,
+    distributorId: string | null | undefined,
+    radiusStepsKm: readonly number[],
   ): Promise<{ candidate: string | null; elegiblesEnRango: number }> {
     const cacheDeFlota: CacheDeInhabilitacion = {
       evaluados: new Set(),
@@ -351,7 +374,7 @@ export class DispatchOrchestratorService {
     };
     const enRango = new Set<string>();
 
-    for (const radiusKm of DispatchOrchestratorService.RADIUS_STEPS_KM) {
+    for (const radiusKm of radiusStepsKm) {
       const drivers = await this.dispatch.findNearbyDrivers(lat, lng, radiusKm);
       const eligible = await this.filterEligible(
         drivers,

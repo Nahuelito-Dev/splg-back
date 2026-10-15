@@ -25,12 +25,16 @@ export enum ConfigurableProcess {
   EXPRESS_DISPATCH = 'express_dispatch',
   /** Control del stock del camión (`requireOpenTruckLoad`). */
   STOCK_CONTROL = 'stock_control',
+  /** Pasos de radio y ventana de la oferta del despacho (M1, CU-171). */
+  DISPATCH = 'dispatch',
+  /** Frecuencia de las tareas programadas (CU-173). */
+  SCHEDULED_TASKS = 'scheduled_tasks',
 }
 
 /**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
- * Casos: CU-105 a CU-108 y CU-149 (parametrización)
+ * Casos: CU-105 a CU-108, CU-149, CU-171 y CU-173 (parametrización)
  */
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

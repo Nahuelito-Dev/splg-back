@@ -57,6 +57,7 @@ import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import { NotificationPort } from './domain/ports/notification.port';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { DispatchSettingsService } from '../distributor/dispatch-settings.service';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
 import { generateDeliveryCode } from './domain/delivery-code.util';
@@ -106,6 +107,8 @@ export class OrderService {
     private readonly truckLoadGate: TruckLoadGatePort,
     // Calificación del chofer para mostrarla en el pedido del cliente.
     private readonly driverRatings: DriverRatingPort,
+    // CU-171: la asignación manual avisa al chofer con la misma ventana del despacho.
+    private readonly dispatchSettings: DispatchSettingsService,
   ) {}
 
   /**
@@ -559,6 +562,11 @@ export class OrderService {
     return motivo === null;
   }
 
+  /** Distribuidoras con pedidos pendientes sin chofer. */
+  distribuidorasConPedidosDisponibles(): Promise<string[]> {
+    return this.orders.findDistributorsWithAvailable();
+  }
+
   async findAvailableOrders(
     paginationDto: PaginationDto,
     distributorId?: string | null,
@@ -857,14 +865,15 @@ export class OrderService {
       // o deja vencer el aviso, el pedido NO se libera solo: queda igual
       // asignado y se avisa a los admins para que decidan (segunda revisión,
       // punto 1 — ver `OrderService.rejectOffer`).
+      const { offerTtlSeconds } = await this.dispatchSettings.obtener(
+        order.distributorId,
+      );
       this.dispatch.notifyDriverNewOrder(delivery.userId, {
         event: 'NEW_ORDER',
         orderId: order.orderId,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
-        expiresAt: new Date(
-          Date.now() + DispatchOrchestratorService.OFFER_TTL_SECONDS * 1000,
-        ).toISOString(),
+        expiresAt: new Date(Date.now() + offerTtlSeconds * 1000).toISOString(),
         items: order.items,
       });
     } catch (error) {

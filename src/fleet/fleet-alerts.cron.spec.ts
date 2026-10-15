@@ -10,6 +10,7 @@ describe('FleetAlertsCron', () => {
   let update: jest.Mock;
   let adminService: { findAll: jest.Mock };
   let emailSender: { send: jest.Mock };
+  let esLaHora: jest.Mock;
 
   const tareaPorVencer = (over: Partial<MaintenanceTask> = {}) =>
     ({
@@ -37,10 +38,14 @@ describe('FleetAlertsCron', () => {
     adminService = { findAll: jest.fn().mockResolvedValue([]) };
     emailSender = { send: jest.fn().mockResolvedValue(undefined) };
 
+    esLaHora = jest.fn().mockResolvedValue(true);
     cron = new FleetAlertsCron(
       tasks as unknown as Repository<MaintenanceTask>,
       adminService as unknown as AdminService,
       emailSender as unknown as EmailSenderPort,
+      {
+        esLaHoraDelAvisoDeFlota: esLaHora,
+      } as unknown as import('../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
     );
   });
 
@@ -114,5 +119,24 @@ describe('FleetAlertsCron', () => {
     expect(adminService.findAll).toHaveBeenCalledWith('d1');
     expect(adminService.findAll).toHaveBeenCalledWith('d2');
     expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it('CU-173: avisa sólo a la distribuidora cuya hora es la actual', async () => {
+    getMany.mockResolvedValue([
+      tareaPorVencer({ taskId: 't1', distributorId: 'd1' }),
+      tareaPorVencer({ taskId: 't2', distributorId: 'd2' }),
+    ]);
+    adminService.findAll.mockResolvedValue([]);
+    esLaHora.mockImplementation((id: string) => Promise.resolve(id === 'd2'));
+    // 14:30 UTC = 11:30 en Argentina (UTC-3).
+    jest.useFakeTimers({ now: new Date('2026-10-15T14:30:00Z') });
+
+    await cron.avisarVencimientosPendientes();
+    jest.useRealTimers();
+
+    expect(esLaHora).toHaveBeenCalledWith('d1', 11);
+    expect(adminService.findAll).not.toHaveBeenCalledWith('d1');
+    expect(adminService.findAll).toHaveBeenCalledWith('d2');
+    expect(update).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,14 +3,19 @@ import { Cron } from '@nestjs/schedule';
 import { OrderService } from './order.service';
 import { RedisService } from '../redis/redis.service';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
 
 /**
  * Motor de tiempo del despacho secuencial. Corre cada 15s y, tomando un lock
  * distribuido (una sola instancia por tick):
- *   1. vence las ofertas que pasaron su ventana de 30s y las re-ofrece al
+ *   1. vence las ofertas que pasaron su ventana y las re-ofrece al
  *      siguiente chofer más cercano (DispatchOrchestrator.handleExpiredOffers);
  *   2. arranca pedidos pendientes que quedaron sin oferta activa (ej: al crearse
  *      no había choferes cerca) con DispatchOrchestrator.ensureOffered.
+ *
+ * El tic de 15s es fijo; la frecuencia de cada distribuidora (CU-173,
+ * `dispatchRetrySeconds`) es múltiplo de él y en cada tic se atiende sólo a las
+ * que les toca.
  *
  * La lógica de a-quién-ofrecer vive en el orquestador; este servicio solo aporta
  * el reloj y el lock multi-instancia.
@@ -26,6 +31,7 @@ export class DispatchService {
     private readonly orderService: OrderService,
     private readonly redisService: RedisService,
     private readonly orchestrator: DispatchOrchestratorService,
+    private readonly frecuencias: ScheduledTasksSettingsService,
   ) {}
 
   @Cron('*/15 * * * * *') // cada 15 segundos
@@ -35,27 +41,51 @@ export class DispatchService {
     const lock = await this.redisService.acquireLock('dispatch:tick', 12000);
     if (!lock) return;
 
+    // Al empezar el tic, de una sola pasada: a qué distribuidoras les toca
+    // (con trabajo pendiente). Sus marcas quedan puestas desde ahora.
+    let corren = new Set<string>();
     try {
-      await this.orchestrator.handleExpiredOffers();
-      await this.bootstrapPendingWithoutOffer();
+      const candidatas = new Set([
+        ...(await this.orchestrator.distribuidorasConOfertasVencidas()),
+        ...(await this.orderService.distribuidorasConPedidosDisponibles()),
+      ]);
+      corren = await this.frecuencias.distribuidorasQueCorren(
+        'dispatchRetrySeconds',
+        [...candidatas],
+      );
+      await this.orchestrator.handleExpiredOffers(corren);
+      await this.bootstrapPendingWithoutOffer(corren);
     } catch (err) {
       this.logger.error(`tick de dispatch falló: ${(err as Error)?.message}`);
+      // Las distribuidoras que no se llegaron a procesar no pierden su intervalo.
+      for (const id of corren) {
+        await this.frecuencias
+          .liberarMarca('dispatchRetrySeconds', id)
+          .catch(() => undefined);
+      }
     } finally {
       await lock.release().catch(() => undefined);
     }
   }
 
-  /** Ofrece a pedidos pendientes (con antigüedad mínima) que no tienen oferta. */
-  private async bootstrapPendingWithoutOffer(): Promise<void> {
-    const { orders } = await this.orderService.findAvailableOrders({
-      limit: 50,
-      offset: 0,
-    });
+  /**
+   * Ofrece a pedidos pendientes (con antigüedad mínima) que no tienen oferta.
+   * El límite es por distribuidora: ninguna tapa a otra.
+   */
+  private async bootstrapPendingWithoutOffer(
+    distribuidoras: ReadonlySet<string>,
+  ): Promise<void> {
     const staleBefore = new Date(Date.now() - DispatchService.MIN_AGE_MS);
 
-    for (const order of orders) {
-      if (new Date(order.createdAt) > staleBefore) continue;
-      await this.orchestrator.ensureOffered(order);
+    for (const distributorId of distribuidoras) {
+      const { orders } = await this.orderService.findAvailableOrders(
+        { limit: 50, offset: 0 },
+        distributorId,
+      );
+      for (const order of orders) {
+        if (new Date(order.createdAt) > staleBefore) continue;
+        await this.orchestrator.ensureOffered(order);
+      }
     }
   }
 }

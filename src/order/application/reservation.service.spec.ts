@@ -34,6 +34,10 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
   let stock: { restituirStock: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
+  let frecuencias: {
+    distribuidorasQueCorren: jest.Mock;
+    liberarMarca: jest.Mock;
+  };
 
   const staleOrder = {
     orderId: 'ord-mp-1',
@@ -74,12 +78,20 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
     orders = { findByIdFull: jest.fn() };
     dispatchOrchestrator = { offerToNextDriver: jest.fn() };
 
+    frecuencias = {
+      distribuidorasQueCorren: jest.fn((_t: string, ids: string[]) =>
+        Promise.resolve(new Set(ids)),
+      ),
+      liberarMarca: jest.fn().mockResolvedValue(undefined),
+    };
+
     service = new ReservationService(
       orderRepository as unknown as import('typeorm').Repository<Order>,
       dataSource as unknown as import('typeorm').DataSource,
       orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
       stock as unknown as import('../../gascylinder/gascylinder.service').GasCylinderService,
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
+      frecuencias as unknown as import('../../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
       {
         getOrThrow: jest.fn((key: string) => {
           if (key === 'RESERVATION_DEPOSIT_TTL_HOURS') return 48;
@@ -172,6 +184,120 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
     ).resolves.not.toThrow();
 
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+  });
+
+  describe('CU-173: frecuencia por distribuidora', () => {
+    const delPedido = (distributorId: string, n = 1) =>
+      ({
+        ...staleOrder,
+        orderId: `ord-${distributorId}-${n}`,
+        distributorId,
+      }) as Order;
+
+    /** Las consultas completas (con `take`), no la que sólo busca distribuidoras. */
+    const consultasDeLote = () =>
+      (
+        orderRepository.find.mock.calls as Array<
+          [
+            {
+              where: { distributorId?: string };
+              take?: number;
+              order?: unknown;
+            },
+          ]
+        >
+      )
+        .map((c) => c[0])
+        .filter((c) => c.take !== undefined);
+
+    it('decide de una pasada qué distribuidoras corren (con la tarea del vencimiento de MercadoPago) y sólo consulta las que corren', async () => {
+      orderRepository.find.mockResolvedValue([
+        delPedido('dist-ok'),
+        delPedido('dist-espera'),
+      ]);
+      frecuencias.distribuidorasQueCorren.mockResolvedValue(
+        new Set(['dist-ok']),
+      );
+
+      await service.expireUnpaidMercadoPagoOrders();
+
+      expect(frecuencias.distribuidorasQueCorren).toHaveBeenCalledTimes(1);
+      expect(frecuencias.distribuidorasQueCorren).toHaveBeenCalledWith(
+        'unpaidMercadoPagoExpirySeconds',
+        ['dist-ok', 'dist-espera'],
+      );
+      expect(consultasDeLote().map((c) => c.where.distributorId)).toEqual([
+        'dist-ok',
+      ]);
+    });
+
+    it('si a ninguna distribuidora le toca, no consulta más ni toca nada', async () => {
+      orderRepository.find.mockResolvedValue([delPedido('dist-espera')]);
+      frecuencias.distribuidorasQueCorren.mockResolvedValue(new Set());
+
+      await service.expireUnpaidMercadoPagoOrders();
+
+      expect(orderRepository.find).toHaveBeenCalledTimes(1);
+      expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    });
+
+    it('cada distribuidora tiene su propio límite de 50 y orden por antigüedad: ninguna tapa a otra', async () => {
+      orderRepository.find.mockResolvedValue([
+        delPedido('d1'),
+        delPedido('d2'),
+      ]);
+
+      await service.expireUnpaidMercadoPagoOrders();
+
+      const lotes = consultasDeLote();
+      expect(lotes.map((c) => c.where.distributorId)).toEqual(['d1', 'd2']);
+      expect(lotes.map((c) => c.take)).toEqual([50, 50]);
+      expect(lotes.map((c) => c.order)).toEqual([
+        { createdAt: 'ASC' },
+        { createdAt: 'ASC' },
+      ]);
+    });
+
+    it('si falla la consulta de una distribuidora le devuelve la marca y sigue con las demás', async () => {
+      orderRepository.find.mockImplementation(
+        (opciones: { where: { distributorId?: string }; take?: number }) => {
+          if (opciones.take === undefined) {
+            return Promise.resolve([delPedido('d1'), delPedido('d2')]);
+          }
+          return opciones.where.distributorId === 'd1'
+            ? Promise.reject(new Error('base caída'))
+            : Promise.resolve([]);
+        },
+      );
+
+      await service.expireUnpaidMercadoPagoOrders();
+
+      expect(frecuencias.liberarMarca).toHaveBeenCalledTimes(1);
+      expect(frecuencias.liberarMarca).toHaveBeenCalledWith(
+        'unpaidMercadoPagoExpirySeconds',
+        'd1',
+      );
+      expect(consultasDeLote().map((c) => c.where.distributorId)).toEqual([
+        'd1',
+        'd2',
+      ]);
+    });
+
+    it('reservas sin seña y activación de reservas usan cada una su propia tarea', async () => {
+      orderRepository.find.mockResolvedValue([delPedido('d1')]);
+
+      await service.expireUnpaidReservations();
+      await service.activateDueReservations();
+
+      expect(
+        (frecuencias.distribuidorasQueCorren.mock.calls as Array<[string]>).map(
+          (c) => c[0],
+        ),
+      ).toEqual([
+        'unpaidReservationExpirySeconds',
+        'reservationActivationSeconds',
+      ]);
+    });
   });
 
   describe('el "hoy" es el día argentino', () => {

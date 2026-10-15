@@ -23,6 +23,7 @@ describe('DispatchOrchestratorService', () => {
     del: jest.Mock;
   };
   let orders: { findByIdFull: jest.Mock };
+  let settings: { obtener: jest.Mock };
   let deliveries: { choferesElegibles: jest.Mock };
   let fleet: { choferesInhabilitados: jest.Mock };
   let truckGate: { choferesQuePuedenRecibir: jest.Mock };
@@ -69,6 +70,12 @@ describe('DispatchOrchestratorService', () => {
       del: jest.fn().mockResolvedValue(undefined),
     };
     orders = { findByIdFull: jest.fn().mockResolvedValue(makeOrder()) };
+    settings = {
+      obtener: jest.fn().mockResolvedValue({
+        radiusStepsKm: [5, 10, 15, 20],
+        offerTtlSeconds: 30,
+      }),
+    };
     offers = {
       create: jest.fn().mockResolvedValue({} as DispatchOffer),
       findDriverOfferState: jest
@@ -104,6 +111,7 @@ describe('DispatchOrchestratorService', () => {
       fleet as unknown as import('../../fleet/fleet-dispatch-lock.service').FleetDispatchLockService,
       redis as unknown as import('../../redis/redis.service').RedisService,
       truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      settings as unknown as import('../../distributor/dispatch-settings.service').DispatchSettingsService,
     );
   });
 
@@ -167,6 +175,49 @@ describe('DispatchOrchestratorService', () => {
         'near',
         expect.objectContaining({ event: 'NEW_ORDER', orderId: 'ord-1' }),
       );
+    });
+
+    it('CU-171: la oferta vence con la ventana configurada de la distribuidora del pedido', async () => {
+      settings.obtener.mockResolvedValue({
+        radiusStepsKm: [5],
+        offerTtlSeconds: 120,
+      });
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+
+      const before = Date.now();
+      await orchestrator.offerToNextDriver(
+        makeOrder({ distributorId: 'dist-1' }),
+      );
+
+      expect(settings.obtener).toHaveBeenCalledWith('dist-1');
+      const expiresAt = (
+        offers.create.mock.calls[0] as [string, string, Date]
+      )[2];
+      const ttlMs = expiresAt.getTime() - before;
+      expect(ttlMs).toBeGreaterThanOrEqual(119_000);
+      expect(ttlMs).toBeLessThanOrEqual(121_000);
+      const [, payload] = dispatch.notifyDriverNewOrder.mock.calls[0] as [
+        string,
+        { expiresAt: string },
+      ];
+      expect(new Date(payload.expiresAt).getTime()).toBe(expiresAt.getTime());
+    });
+
+    it('CU-171: busca con los pasos de radio configurados, no con los de siempre', async () => {
+      settings.obtener.mockResolvedValue({
+        radiusStepsKm: [2, 7],
+        offerTtlSeconds: 30,
+      });
+
+      await orchestrator.offerToNextDriver(makeOrder());
+
+      expect(
+        (
+          dispatch.findNearbyDrivers.mock.calls as Array<
+            [number, number, number]
+          >
+        ).map((c) => c[2]),
+      ).toEqual([2, 7]);
     });
 
     it('SALTEA choferes ya contactados y ofrece al siguiente nuevo', async () => {
@@ -499,6 +550,35 @@ describe('DispatchOrchestratorService', () => {
         expect.any(Date),
         undefined,
       );
+    });
+
+    it('CU-173: sólo vence y re-ofrece las ofertas de las distribuidoras a las que les toca', async () => {
+      offers.findExpired.mockResolvedValue([
+        expiredOffer({ offerId: 'off-a', distributorId: 'dist-ok' }),
+        expiredOffer({ offerId: 'off-b', distributorId: 'dist-espera' }),
+      ]);
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      dispatch.findNearbyDrivers.mockResolvedValue(['d9']);
+
+      await orchestrator.handleExpiredOffers(new Set(['dist-ok']));
+
+      expect(offers.updateStatus).toHaveBeenCalledTimes(1);
+      expect(offers.updateStatus).toHaveBeenCalledWith(
+        'off-a',
+        DispatchOfferStatus.EXPIRED,
+      );
+    });
+
+    it('distribuidorasConOfertasVencidas: sin repetidos', async () => {
+      offers.findExpired.mockResolvedValue([
+        expiredOffer({ offerId: 'a', distributorId: 'd1' }),
+        expiredOffer({ offerId: 'b', distributorId: 'd1' }),
+        expiredOffer({ offerId: 'c', distributorId: 'd2' }),
+      ]);
+      expect(await orchestrator.distribuidorasConOfertasVencidas()).toEqual([
+        'd1',
+        'd2',
+      ]);
     });
 
     it('NO re-ofrece si el pedido ya fue aceptado (tiene delivery asignado)', async () => {

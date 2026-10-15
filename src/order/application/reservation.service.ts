@@ -10,6 +10,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   DataSource,
+  FindOptionsOrder,
+  FindOptionsWhere,
   IsNull,
   LessThan,
   LessThanOrEqual,
@@ -22,6 +24,8 @@ import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { errorMessage } from '../../common/errors/error-message';
+import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
+import type { TareaConIntervalo } from '../../distributor/scheduled-tasks-settings';
 
 /**
  * Procesos AUTOMÁTICOS de las pre-reservas (Módulo Inteligente / DSS del scope:
@@ -44,6 +48,9 @@ import { errorMessage } from '../../common/errors/error-message';
 export class ReservationService {
   private readonly logger = new Logger(ReservationService.name);
 
+  /** Pedidos que cada ciclo procesa por distribuidora. */
+  private static readonly LOTE_POR_DISTRIBUIDORA = 50;
+
   /** Horas que una reserva puede esperar el pago de la seña antes de expirar. */
   private readonly depositTtlHours: number;
 
@@ -61,6 +68,7 @@ export class ReservationService {
     private readonly orders: OrderRepositoryPort,
     private readonly stock: GasCylinderService,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    private readonly frecuencias: ScheduledTasksSettingsService,
     config: ConfigService,
   ) {
     // Validadas y con su valor por defecto en joi.validation.ts.
@@ -70,6 +78,51 @@ export class ReservationService {
     this.mpPendingTtlMinutes = config.getOrThrow<number>(
       'ORDER_MERCADOPAGO_PENDING_TTL_MINUTES',
     );
+  }
+
+  /**
+   * Corre una tarea por distribuidora (CU-173). Al empezar decide, de una sola
+   * pasada, a cuáles les toca el ciclo (poniendo sus marcas); después consulta
+   * cada una con su propio límite y orden, así ninguna tapa a otra. Si falla
+   * antes de procesar una distribuidora, le devuelve la marca para que no
+   * pierda un intervalo entero.
+   */
+  private async porDistribuidora(
+    tarea: TareaConIntervalo,
+    where: FindOptionsWhere<Order>,
+    opciones: {
+      order: FindOptionsOrder<Order>;
+      relations?: string[];
+    },
+    procesar: (pedidos: Order[]) => Promise<void>,
+  ): Promise<void> {
+    const filas = await this.orderRepository.find({
+      where,
+      select: { orderId: true, distributorId: true },
+    });
+    if (filas.length === 0) return;
+
+    const corren = await this.frecuencias.distribuidorasQueCorren(tarea, [
+      ...new Set(filas.map((o) => o.distributorId)),
+    ]);
+    for (const distributorId of corren) {
+      try {
+        const pedidos = await this.orderRepository.find({
+          where: { ...where, distributorId },
+          order: opciones.order,
+          relations: opciones.relations,
+          take: ReservationService.LOTE_POR_DISTRIBUIDORA,
+        });
+        await procesar(pedidos);
+      } catch (error) {
+        await this.frecuencias
+          .liberarMarca(tarea, distributorId)
+          .catch(() => undefined);
+        this.logger.error(
+          `Falló ${tarea} para la distribuidora ${distributorId}: ${errorMessage(error)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -138,14 +191,19 @@ export class ReservationService {
   @Cron('0 */5 * * * *') // cada 5 minutos
   async activateDueReservations(): Promise<void> {
     const today = diaArgentino();
-    const due = await this.orderRepository.find({
-      where: {
+    await this.porDistribuidora(
+      'reservationActivationSeconds',
+      {
         status: OrderStatus.RESERVED,
         depositPaid: true,
         scheduledDate: LessThanOrEqual(today),
       },
-      take: 50,
-    });
+      { order: { scheduledDate: 'ASC', createdAt: 'ASC' } },
+      (due) => this.activarReservas(due),
+    );
+  }
+
+  private async activarReservas(due: Order[]): Promise<void> {
     if (due.length === 0) return;
 
     this.logger.log(`Activando ${due.length} reserva(s) con día cumplido`);
@@ -176,15 +234,19 @@ export class ReservationService {
   @Cron('0 0 * * * *') // cada hora
   async expireUnpaidReservations(): Promise<void> {
     const cutoff = new Date(Date.now() - this.depositTtlHours * 3600 * 1000);
-    const stale = await this.orderRepository.find({
-      where: {
+    await this.porDistribuidora(
+      'unpaidReservationExpirySeconds',
+      {
         status: OrderStatus.RESERVED,
         depositPaid: false,
         createdAt: LessThan(cutoff),
       },
-      relations: ['items'],
-      take: 50,
-    });
+      { order: { createdAt: 'ASC' }, relations: ['items'] },
+      (stale) => this.expirarReservasSinSena(stale),
+    );
+  }
+
+  private async expirarReservasSinSena(stale: Order[]): Promise<void> {
     if (stale.length === 0) return;
 
     this.logger.log(`Expirando ${stale.length} reserva(s) con seña impaga`);
@@ -236,16 +298,20 @@ export class ReservationService {
   @Cron('0 */30 * * * *') // cada 30 minutos
   async expireUnpaidMercadoPagoOrders(): Promise<void> {
     const cutoff = new Date(Date.now() - this.mpPendingTtlMinutes * 60 * 1000);
-    const stale = await this.orderRepository.find({
-      where: {
+    await this.porDistribuidora(
+      'unpaidMercadoPagoExpirySeconds',
+      {
         status: OrderStatus.PENDING,
         paymentMethod: PaymentMethod.MERCADOPAGO,
         gatewayPaymentId: IsNull(),
         createdAt: LessThan(cutoff),
       },
-      relations: ['items'],
-      take: 50,
-    });
+      { order: { createdAt: 'ASC' }, relations: ['items'] },
+      (stale) => this.expirarPedidosMercadoPago(stale),
+    );
+  }
+
+  private async expirarPedidosMercadoPago(stale: Order[]): Promise<void> {
     if (stale.length === 0) return;
 
     this.logger.log(
