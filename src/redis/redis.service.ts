@@ -167,6 +167,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return res === 'OK';
   }
 
+  /** Incrementa un contador sin vencimiento y devuelve el valor nuevo. */
+  async incr(key: string): Promise<number> {
+    return this.client.incr(key);
+  }
+
+  /**
+   * Igual que `setIfAbsent` pero con el TTL en milisegundos: para marcas cuya
+   * vigencia no es un número entero de segundos.
+   */
+  async setIfAbsentMs(key: string, ttlMs: number): Promise<boolean> {
+    const res = await this.client.set(key, '1', 'PX', ttlMs, 'NX');
+    return res === 'OK';
+  }
+
   /**
    * Incrementa un contador y le pone TTL de `windowSec` la PRIMERA vez que
    * se crea (no lo resetea en cada incremento). Patrón "fixed window" para

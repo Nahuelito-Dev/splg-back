@@ -74,6 +74,7 @@ describe('OrderService · rejectOffer', () => {
         assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
       {} as never,
+      {} as never,
     );
   });
 

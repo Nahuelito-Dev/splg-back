@@ -6,6 +6,9 @@ import { Distributor } from './entities/distributor.entity';
 import { ModuleConfig } from './entities/module-config.entity';
 import { DistributorLogoService } from './distributor-logo.service';
 import { ModuleConfigService } from './module-config.service';
+import { ModuleConfigController } from './module-config.controller';
+import { DispatchSettingsService } from './dispatch-settings.service';
+import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.service';
 import { S3Module } from '../s3/s3.module';
 
 /**
@@ -20,8 +23,19 @@ import { S3Module } from '../s3/s3.module';
     TypeOrmModule.forFeature([Distributor, ModuleConfig]),
     S3Module, // logo
   ],
-  controllers: [DistributorController],
-  providers: [DistributorService, DistributorLogoService, ModuleConfigService],
-  exports: [DistributorService, ModuleConfigService],
+  controllers: [DistributorController, ModuleConfigController],
+  providers: [
+    DistributorService,
+    DistributorLogoService,
+    ModuleConfigService,
+    DispatchSettingsService,
+    ScheduledTasksSettingsService,
+  ],
+  exports: [
+    DistributorService,
+    ModuleConfigService,
+    DispatchSettingsService,
+    ScheduledTasksSettingsService,
+  ],
 })
 export class DistributorModule {}

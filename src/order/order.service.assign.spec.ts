@@ -11,6 +11,7 @@ import type { UpdateOrderStatusUseCase } from './application/update-order-status
 import type { CancelOrderUseCase } from './application/cancel-order.use-case';
 import type { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import type { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import type { DispatchSettingsService } from '../distributor/dispatch-settings.service';
 import { conRespuestaVigilada } from '../common/interceptors/respuesta-incompleta';
 import type { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import type { NotificationPort } from './domain/ports/notification.port';
@@ -42,6 +43,7 @@ describe('OrderService · asignación manual', () => {
   };
   let dispatchOffers: { withdrawOtherActiveOffers: jest.Mock };
   let orchestrator: { onOrderAssigned: jest.Mock };
+  let dispatchSettings: { obtener: jest.Mock };
   let dataSource: { createQueryRunner: jest.Mock };
   let queryRunner: {
     connect: jest.Mock;
@@ -147,6 +149,11 @@ describe('OrderService · asignación manual', () => {
       withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
     };
     orchestrator = { onOrderAssigned: jest.fn().mockResolvedValue(undefined) };
+    dispatchSettings = {
+      obtener: jest
+        .fn()
+        .mockResolvedValue({ radiusStepsKm: [5], offerTtlSeconds: 30 }),
+    };
     const deliveries = {
       findById: jest.fn((id: string) => Promise.resolve(CHOFERES[id])),
       assertElegibleParaAsignacion: jest.fn(),
@@ -177,6 +184,7 @@ describe('OrderService · asignación manual', () => {
       fleetGate as unknown as FleetDispatchLockService,
       truckGate as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
       {} as never,
+      dispatchSettings as unknown as DispatchSettingsService,
     );
     // La respuesta final releé el pedido; en vez de volver a pedir el lock
     // (consumiría la cola de `mockResolvedValueOnce` de cada test), devuelve
@@ -327,6 +335,25 @@ describe('OrderService · asignación manual', () => {
         totalAmount: 9900,
       }),
     );
+  });
+
+  it('CU-171: el aviso al chofer vence con la ventana configurada de la distribuidora del pedido', async () => {
+    dispatchSettings.obtener.mockResolvedValue({
+      radiusStepsKm: [5],
+      offerTtlSeconds: 90,
+    });
+    const antes = Date.now();
+
+    await service.assignDelivery(PEDIDO, CHOFER);
+
+    expect(dispatchSettings.obtener).toHaveBeenCalledWith('dist');
+    const [, payload] = dispatch.notifyDriverNewOrder.mock.calls[0] as [
+      string,
+      { expiresAt: string },
+    ];
+    const vencimiento = new Date(payload.expiresAt).getTime();
+    expect(vencimiento - antes).toBeGreaterThanOrEqual(90_000);
+    expect(vencimiento - antes).toBeLessThan(95_000);
   });
 
   it('punto 2 (segunda revisión): usa el MISMO lock pesimista que cancelar/liberar', async () => {
@@ -499,6 +526,7 @@ describe('OrderService · asignación manual', () => {
       {
         assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {} as never,
       {} as never,
     );
 

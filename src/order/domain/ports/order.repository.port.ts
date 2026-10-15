@@ -50,6 +50,9 @@ export abstract class OrderRepositoryPort {
    * Con `distributorId` se restringe al pool de esa distribuidora: un chofer
    * NO debe ver pedidos disponibles de otro tenant.
    */
+  /** Distribuidoras con algún pedido pendiente sin chofer (para el ciclo del despacho). */
+  abstract findDistributorsWithAvailable(): Promise<string[]>;
+
   abstract findAvailable(
     limit: number,
     offset: number,

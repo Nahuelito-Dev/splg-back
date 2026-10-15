@@ -13,6 +13,11 @@ import {
   ExpirationStatus,
 } from './domain/expiration-status';
 import { errorMessage } from '../common/errors/error-message';
+import {
+  minutosDelDiaArgentino,
+  ZONA_ARGENTINA,
+} from '../common/utils/dias-argentina';
+import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
 
 const ESTADOS_CERRADOS = [
   MaintenanceTaskStatus.DONE,
@@ -27,6 +32,9 @@ const ESTADOS_CERRADOS = [
  * existe, sin agregar otro), y marca `alertedAt` — una sola vez por tarea, no
  * se re-notifica todos los días.
  *
+ * El tic es de una hora y cada distribuidora recibe el aviso a la hora que
+ * configuró (CU-173, `fleetAlertHour`; por omisión las 8).
+ *
  * Si el envío falla, NO marca `alertedAt`: se reintenta al día siguiente.
  * Si no hay ningún admin con email en la distribuidora, se marca igual (no
  * hay a quién avisarle una segunda vez).
@@ -40,16 +48,26 @@ export class FleetAlertsCron {
     private readonly tasks: Repository<MaintenanceTask>,
     private readonly adminService: AdminService,
     private readonly emailSender: EmailSenderPort,
+    private readonly frecuencias: ScheduledTasksSettingsService,
   ) {}
 
-  @Cron('0 8 * * *') // todos los días a las 8 AM (hora del servidor)
+  @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
   async avisarVencimientosPendientes(): Promise<void> {
     const candidatas = await this.tareasSinAvisar();
     if (candidatas.length === 0) return;
 
     const porDistribuidora = this.agruparPorDistribuidora(candidatas);
+    const horaActual = Math.floor(minutosDelDiaArgentino() / 60);
 
     for (const [distributorId, tareas] of porDistribuidora) {
+      if (
+        !(await this.frecuencias.esLaHoraDelAvisoDeFlota(
+          distributorId,
+          horaActual,
+        ))
+      ) {
+        continue;
+      }
       await this.avisarDistribuidora(distributorId, tareas);
     }
   }

@@ -154,6 +154,15 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     return { orders, total, limit, offset };
   }
 
+  async findDistributorsWithAvailable(): Promise<string[]> {
+    const filas = await this.orderRepository.find({
+      where: { status: OrderStatus.PENDING, deliveryId: IsNull() },
+      select: { orderId: true, distributorId: true },
+      withDeleted: true,
+    });
+    return [...new Set(filas.map((o) => o.distributorId))];
+  }
+
   async findAvailable(
     limit: number,
     offset: number,
