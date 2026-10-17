@@ -23,7 +23,15 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CylinderService } from './cylinder.service';
+import { CylinderVigenciaService } from './cylinder-vigencia.service';
 import { CylinderMapper } from './cylinder.mapper';
+import {
+  CylinderVigenciaResponseDto,
+  ExpiringCylindersResponseDto,
+} from './dto/cylinder-vigencia-response.dto';
+import { CylinderExpiredResponseDto } from './cylinder-vencido.exception';
+import { RegisterInspectionDto } from './dto/register-inspection.dto';
+import { QueryExpiringCylindersDto } from './dto/query-expiring-cylinders.dto';
 import {
   CylinderMovementResponseDto,
   CylinderResponseDto,
@@ -45,7 +53,10 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 @ApiBearerAuth()
 @Controller('cylinders')
 export class CylinderController {
-  constructor(private readonly cylinderService: CylinderService) {}
+  constructor(
+    private readonly cylinderService: CylinderService,
+    private readonly vigencia: CylinderVigenciaService,
+  ) {}
 
   @Post()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -75,7 +86,16 @@ export class CylinderController {
   })
   @ApiCreatedResponse({ type: CylinderResponseDto, isArray: true })
   @ApiBadRequestResponse({
-    description: 'Algún envase no está FILLED (no se puede despachar)',
+    description:
+      'Algún envase no está FILLED (no se puede despachar) o hay seriales repetidos',
+  })
+  @ApiConflictResponse({
+    type: CylinderExpiredResponseDto,
+    description:
+      'Algún envase tiene la revisión vencida: se rechaza la asignación ' +
+      'completa y no se asigna ninguno. El cuerpo trae `code: ' +
+      'CYLINDER_EXPIRED` y `serials` con los vencidos. Los envases sin ' +
+      'vencimiento cargado pasan.',
   })
   @ApiNotFoundResponse({ description: 'Pedido o envase no encontrado' })
   async assign(
@@ -122,6 +142,57 @@ export class CylinderController {
     return cylinders.map((c) => CylinderMapper.toDto(c));
   }
 
+  @Get('vigencia/proximos-a-vencer')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Envases próximos a vencer (CU-134)',
+    description:
+      'Separa los ya vencidos, los que vencen dentro de la ventana de `days` ' +
+      'días (default 30) y los sin revisión registrada, que no tienen fecha ' +
+      'con la cual comparar. Cada grupo va ordenado por vencimiento, del más ' +
+      'urgente al menos, y se pagina por separado con `limit` (default 100, ' +
+      'máx. 500) y `offset`; `totals` trae el total de cada grupo. No incluye ' +
+      'envases dados de baja.',
+  })
+  @ApiOkResponse({ type: ExpiringCylindersResponseDto })
+  @ApiBadRequestResponse({
+    description: '`days` o la paginación fuera de rango',
+  })
+  async expiring(
+    @Query() query: QueryExpiringCylindersDto,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<ExpiringCylindersResponseDto> {
+    return CylinderMapper.vencimientosToDto(
+      await this.vigencia.findExpiring(
+        query.days ?? 30,
+        distributorId,
+        query.limit ?? 100,
+        query.offset ?? 0,
+      ),
+    );
+  }
+
+  @Get('vigencia/serial/:serial')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Vigencia de un envase por número de serie (CU-133)',
+    description:
+      'Lo que se escanea: el serial grabado en el envase. El serial es único ' +
+      'por distribuidora, así que el super admin tiene que elegir una con ' +
+      '`X-Distributor` (400 si no).',
+  })
+  @ApiParam({ name: 'serial', example: 'SN-000123' })
+  @ApiOkResponse({ type: CylinderVigenciaResponseDto })
+  @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  async vigenciaBySerial(
+    @Param('serial') serial: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<CylinderVigenciaResponseDto> {
+    return CylinderMapper.vigenciaToDto(
+      await this.vigencia.getVigenciaBySerial(serial, distributorId),
+    );
+  }
+
   @Get(':id')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Ver un envase' })
@@ -134,6 +205,62 @@ export class CylinderController {
   ): Promise<CylinderResponseDto> {
     return CylinderMapper.toDto(
       await this.cylinderService.findOne(id, distributorId),
+    );
+  }
+
+  @Get(':id/vigencia')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Vigencia de un envase (CU-133)',
+    description:
+      'Fabricación, última revisión, vencimiento, días que faltan e historial ' +
+      'de revisiones. `status`: `valid`, `expired` o `unverified` (sin revisión ' +
+      'registrada: no es lo mismo que vencido y no bloquea el despacho).',
+  })
+  @ApiParam({ name: 'id', description: 'Cylinder UUID' })
+  @ApiOkResponse({ type: CylinderVigenciaResponseDto })
+  @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  async getVigencia(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor() distributorId: string | null,
+  ): Promise<CylinderVigenciaResponseDto> {
+    return CylinderMapper.vigenciaToDto(
+      await this.vigencia.getVigencia(id, distributorId),
+    );
+  }
+
+  @Post(':id/inspections')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Registrar la revisión periódica de un envase (CU-132)',
+    description:
+      'Guarda la revisión en el historial y copia la última fecha y el ' +
+      'vencimiento en la ficha. Un resultado `rejected` deja el vencimiento ' +
+      'en la fecha de la revisión: el envase queda alcanzado por el bloqueo ' +
+      'del despacho. Si está en poder de un cliente o en reparto no se lo ' +
+      'saca de circulación: `withdrawalPending` lo marca para retirar.',
+  })
+  @ApiParam({ name: 'id', description: 'Cylinder UUID' })
+  @ApiCreatedResponse({ type: CylinderVigenciaResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Fecha de revisión futura, vencimiento faltante o no posterior a la revisión',
+  })
+  @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  @ApiConflictResponse({ description: 'El envase está dado de baja' })
+  async registerInspection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RegisterInspectionDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CylinderVigenciaResponseDto> {
+    return CylinderMapper.vigenciaToDto(
+      await this.vigencia.registerInspection(
+        id,
+        dto,
+        distributorId,
+        user.user_id,
+      ),
     );
   }
 
@@ -219,6 +346,12 @@ export class CylinderController {
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
   @ApiOkResponse({ type: CylinderResponseDto })
   @ApiBadRequestResponse({ description: 'Transición inválida' })
+  @ApiConflictResponse({
+    type: CylinderExpiredResponseDto,
+    description:
+      'Despachar (`dispatched`) un envase con la revisión vencida: el mismo ' +
+      '409 `CYLINDER_EXPIRED` que la asignación a un pedido.',
+  })
   @ApiNotFoundResponse({ description: 'Envase no encontrado' })
   async transition(
     @Param('id', ParseUUIDPipe) id: string,

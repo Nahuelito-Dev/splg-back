@@ -18,6 +18,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Archivos (Amazon S3; los e2e usan un MinIO efímero con testcontainers) | `docs/S3.md` |
 | Pedidos, cobros, cotización, historial y rutas | `docs/PEDIDOS.md` |
 | Parámetros del despacho y frecuencia de tareas programadas (M1) | `docs/PARAMETROS-DESPACHO.md` |
+| Vigencia de envases, revisiones y bloqueo del despacho (C-11) | `docs/VIGENCIA-ENVASES.md` |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
 
 ## Convenciones

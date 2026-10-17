@@ -4,6 +4,18 @@ import {
   CylinderMovementResponseDto,
   CylinderResponseDto,
 } from './dto/cylinder-response.dto';
+import { CylinderInspection } from './entities/cylinder-inspection.entity';
+import {
+  CylinderInspectionResponseDto,
+  CylinderVencimientoDto,
+  CylinderVigenciaResponseDto,
+  ExpiringCylindersResponseDto,
+} from './dto/cylinder-vigencia-response.dto';
+import type {
+  EnvaseConVigencia,
+  VencimientosDelParque,
+  VigenciaDeEnvase,
+} from './cylinder-vigencia.service';
 
 export class CylinderMapper {
   static toDto(c: Cylinder): CylinderResponseDto {
@@ -48,5 +60,61 @@ export class CylinderMapper {
     dto.note = m.note;
     dto.createdAt = m.createdAt;
     return dto;
+  }
+
+  static inspectionToDto(i: CylinderInspection): CylinderInspectionResponseDto {
+    const dto = new CylinderInspectionResponseDto();
+    dto.inspectionId = i.inspectionId;
+    dto.cylinderId = i.cylinderId;
+    dto.inspectedAt = i.inspectedAt;
+    dto.result = i.result;
+    dto.nextDueAt = i.nextDueAt;
+    dto.notes = i.notes;
+    return dto;
+  }
+
+  static vencimientoToDto(e: EnvaseConVigencia): CylinderVencimientoDto {
+    const dto = new CylinderVencimientoDto();
+    CylinderMapper.llenarVencimiento(dto, e);
+    return dto;
+  }
+
+  static vigenciaToDto(v: VigenciaDeEnvase): CylinderVigenciaResponseDto {
+    const dto = new CylinderVigenciaResponseDto();
+    CylinderMapper.llenarVencimiento(dto, v);
+    dto.manufacturedAt = v.cylinder.manufacturedAt;
+    dto.withdrawalPending = v.retiroPendiente;
+    dto.inspections = v.inspections.map((i) =>
+      CylinderMapper.inspectionToDto(i),
+    );
+    return dto;
+  }
+
+  static vencimientosToDto(
+    v: VencimientosDelParque,
+  ): ExpiringCylindersResponseDto {
+    const dto = new ExpiringCylindersResponseDto();
+    dto.windowDays = v.windowDays;
+    dto.totals = v.totals;
+    dto.expired = v.expired.map((e) => CylinderMapper.vencimientoToDto(e));
+    dto.expiring = v.expiring.map((e) => CylinderMapper.vencimientoToDto(e));
+    dto.unverified = v.unverified.map((e) =>
+      CylinderMapper.vencimientoToDto(e),
+    );
+    return dto;
+  }
+
+  private static llenarVencimiento(
+    dto: CylinderVencimientoDto,
+    e: EnvaseConVigencia,
+  ): void {
+    dto.cylinderId = e.cylinder.cylinderId;
+    dto.serial = e.cylinder.serial;
+    dto.state = e.cylinder.state;
+    dto.productType = e.cylinder.gasCylinder?.type ?? null;
+    dto.lastInspectionAt = e.cylinder.lastInspectionAt;
+    dto.expiresAt = e.cylinder.expiresAt;
+    dto.status = e.vigencia.estado;
+    dto.daysRemaining = e.vigencia.diasRestantes;
   }
 }

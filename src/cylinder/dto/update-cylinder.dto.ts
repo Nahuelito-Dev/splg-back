@@ -13,7 +13,8 @@ import { Type } from 'class-transformer';
 
 /**
  * Datos maestros del envase. El estado NO se edita acá: cambia sólo por la
- * máquina de estados (`/transition`, `/retire`).
+ * máquina de estados (`/transition`, `/retire`). La última revisión y el
+ * vencimiento tampoco: se asientan sólo con `POST /cylinders/:id/inspections`.
  */
 export class UpdateCylinderDto {
   @ApiPropertyOptional({ example: 'SN-000123' })
@@ -43,24 +44,4 @@ export class UpdateCylinderDto {
   @Type(() => Date)
   @IsDate()
   manufacturedAt?: Date;
-
-  @ApiPropertyOptional({
-    type: String,
-    format: 'date-time',
-    description: 'Fecha de la última prueba hidráulica / inspección',
-  })
-  @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  lastInspectionAt?: Date;
-
-  @ApiPropertyOptional({
-    type: String,
-    format: 'date-time',
-    description: 'Fecha de vencimiento',
-  })
-  @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  expiresAt?: Date;
 }

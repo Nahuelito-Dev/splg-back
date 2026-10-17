@@ -233,14 +233,19 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
         serial: 'SN-1B',
         deposit: 7000,
         manufacturedAt: '2020-05-01T00:00:00.000Z',
-        expiresAt: '2030-05-01T00:00:00.000Z',
       }).expect(200);
       expect(r.body).toMatchObject({
         serial: 'SN-1B',
         deposit: 7000,
         state: 'in_depot',
       });
-      expect((r.body as { expires_at: string }).expires_at).toContain('2030');
+      // La revisión y el vencimiento se asientan sólo por /inspections (CU-132).
+      await patch(adminA, `/cylinders/${uno.cylinderId}`, {
+        expiresAt: '2030-05-01T00:00:00.000Z',
+      }).expect(400);
+      await patch(adminA, `/cylinders/${uno.cylinderId}`, {
+        lastInspectionAt: '2030-05-01T00:00:00.000Z',
+      }).expect(400);
 
       await patch(adminA, `/cylinders/${uno.cylinderId}`, {
         serial: 'SN-2',
