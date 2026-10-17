@@ -3,7 +3,10 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EntityManager, Repository } from 'typeorm';
+import { EnvasesVencidosException } from './cylinder-vencido.exception';
+import { EVENTO_DESPACHO_BLOQUEADO } from './events/despacho-bloqueado.event';
 import { CylinderService } from './cylinder.service';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
@@ -29,7 +32,8 @@ describe('CylinderService', () => {
   >;
   let orderRepo: { findRef: jest.Mock };
   let gasCylinders: { findOne: jest.Mock };
-  let lockQb: { getOne: jest.Mock; [k: string]: jest.Mock };
+  let lockQb: { getOne: jest.Mock; getMany: jest.Mock; [k: string]: jest.Mock };
+  let eventos: { emit: jest.Mock };
 
   const DIST = 'dist-1';
 
@@ -69,8 +73,11 @@ describe('CylinderService', () => {
       setLock: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
       getOne: jest.fn(() => cylinderRepo.findOne({})),
+      getMany: jest.fn(),
     };
+    eventos = { emit: jest.fn() };
     const manager = {
       createQueryBuilder: jest.fn(() => lockQb),
       getRepository: jest.fn((entity: unknown) =>
@@ -87,6 +94,7 @@ describe('CylinderService', () => {
       movementRepo as unknown as Repository<CylinderMovement>,
       orderRepo as unknown as OrderLookupService,
       gasCylinders as unknown as GasCylinderService,
+      eventos as unknown as EventEmitter2,
     );
   });
 
@@ -233,26 +241,20 @@ describe('CylinderService', () => {
   });
 
   describe('assignToOrder', () => {
-    it('despacha cada envase (FILLED→DISPATCHED) y lo vincula al pedido', async () => {
-      orderRepo.findRef.mockResolvedValue({
-        orderId: 'ord-1',
-        customerId: 'cust-1',
+    const PEDIDO = { orderId: 'ord-1', customerId: 'cust-1' };
+    const filled = (serial: string, over: Partial<Cylinder> = {}) =>
+      makeCylinder({
+        cylinderId: `cyl-${serial}`,
+        serial,
+        state: CylinderState.FILLED,
+        ...over,
       });
-      cylinderRepo.findOne
-        .mockResolvedValueOnce(
-          makeCylinder({
-            cylinderId: 'cyl-1',
-            serial: 'SN-001',
-            state: CylinderState.FILLED,
-          }),
-        )
-        .mockResolvedValueOnce(
-          makeCylinder({
-            cylinderId: 'cyl-2',
-            serial: 'SN-002',
-            state: CylinderState.FILLED,
-          }),
-        );
+    const ayer = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const manana = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    it('despacha cada envase (FILLED→DISPATCHED) y lo vincula al pedido', async () => {
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([filled('SN-001'), filled('SN-002')]);
 
       const result = await service.assignToOrder(
         'ord-1',
@@ -267,6 +269,7 @@ describe('CylinderService', () => {
       );
       expect(result.every((c) => c.currentOrderId === 'ord-1')).toBe(true);
       expect(movementRepo.save).toHaveBeenCalledTimes(2);
+      expect(eventos.emit).not.toHaveBeenCalled();
     });
 
     it('lanza 404 si el pedido no existe', async () => {
@@ -286,17 +289,141 @@ describe('CylinderService', () => {
     });
 
     it('propaga el 400 si un envase no está FILLED (no se puede despachar)', async () => {
-      orderRepo.findRef.mockResolvedValue({
-        orderId: 'ord-1',
-        customerId: 'cust-1',
-      });
-      cylinderRepo.findOne.mockResolvedValue(
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([
         makeCylinder({ state: CylinderState.IN_DEPOT }),
-      );
+      ]);
 
       await expect(
         service.assignToOrder('ord-1', ['SN-001'], DIST),
       ).rejects.toThrow(/Transición de envase inválida/);
+    });
+
+    it('404 si algún serial no existe o es de otra distribuidora, sin escribir', async () => {
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([filled('SN-001')]);
+
+      await expect(
+        service.assignToOrder('ord-1', ['SN-001', 'SN-AJENO'], DIST),
+      ).rejects.toThrow(NotFoundException);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('400 si repite un serial', async () => {
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      await expect(
+        service.assignToOrder('ord-1', ['SN-001', 'SN-001'], DIST),
+      ).rejects.toThrow(BadRequestException);
+      expect(lockQb.getMany).not.toHaveBeenCalled();
+    });
+
+    it('CU-135: un envase vencido rechaza la asignación completa, informa los seriales y avisa al panel', async () => {
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([
+        filled('SN-001', { expiresAt: manana }),
+        filled('SN-002', { expiresAt: ayer }),
+        filled('SN-003', { expiresAt: ayer }),
+      ]);
+
+      const error: unknown = await service
+        .assignToOrder('ord-1', ['SN-001', 'SN-002', 'SN-003'], DIST)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(EnvasesVencidosException);
+      expect((error as EnvasesVencidosException).serials).toEqual([
+        'SN-002',
+        'SN-003',
+      ]);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+      expect(movementRepo.save).not.toHaveBeenCalled();
+      expect(eventos.emit).toHaveBeenCalledWith(
+        EVENTO_DESPACHO_BLOQUEADO,
+        expect.objectContaining({
+          distributorId: DIST,
+          orderId: 'ord-1',
+          serials: ['SN-002', 'SN-003'],
+        }),
+      );
+    });
+
+    it('un despacho inválido (no está lleno) es 400 aunque otro envase esté vencido, y no avisa', async () => {
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([
+        filled('SN-001', { expiresAt: ayer }),
+        makeCylinder({ serial: 'SN-002', state: CylinderState.IN_DEPOT }),
+      ]);
+
+      await expect(
+        service.assignToOrder('ord-1', ['SN-001', 'SN-002'], DIST),
+      ).rejects.toBeInstanceOf(InvalidCylinderTransitionError);
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('CU-135: un envase sin vencimiento cargado pasa y queda anotado', async () => {
+      orderRepo.findRef.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([
+        filled('SN-001', { expiresAt: null }),
+        filled('SN-002', { expiresAt: manana }),
+      ]);
+
+      await service.assignToOrder('ord-1', ['SN-001', 'SN-002'], DIST);
+
+      const notas = movementRepo.save.mock.calls.map(
+        ([m]) => (m as unknown as { note: string }).note,
+      );
+      expect(notas[0]).toContain('sin revisión registrada');
+      expect(notas[1]).not.toContain('sin revisión registrada');
+    });
+  });
+
+  describe('transition a DISPATCHED (cualquier puerta al despacho)', () => {
+    it('un envase vencido no se despacha por /transition: 409 y avisa', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({
+          state: CylinderState.FILLED,
+          expiresAt: new Date(Date.now() - 86400000),
+        }),
+      );
+
+      await expect(
+        service.transition(
+          'cyl-1',
+          { toState: CylinderState.DISPATCHED },
+          DIST,
+        ),
+      ).rejects.toBeInstanceOf(EnvasesVencidosException);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+      expect(eventos.emit).toHaveBeenCalledWith(
+        EVENTO_DESPACHO_BLOQUEADO,
+        expect.objectContaining({ serials: ['SN-001'], orderId: null }),
+      );
+    });
+
+    it('vigente o sin fecha se despacha', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.FILLED, expiresAt: null }),
+      );
+      const r = await service.transition(
+        'cyl-1',
+        { toState: CylinderState.DISPATCHED },
+        DIST,
+      );
+      expect(r.state).toBe(CylinderState.DISPATCHED);
+    });
+
+    it('un vencido sí puede volver al depósito (no es un despacho)', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({
+          state: CylinderState.FILLED,
+          expiresAt: new Date(Date.now() - 86400000),
+        }),
+      );
+      const r = await service.transition(
+        'cyl-1',
+        { toState: CylinderState.IN_DEPOT },
+        DIST,
+      );
+      expect(r.state).toBe(CylinderState.IN_DEPOT);
     });
   });
 
@@ -533,9 +660,9 @@ describe('CylinderService', () => {
 
     it('un envase dado de baja no se asigna a pedidos', async () => {
       orderRepo.findRef.mockResolvedValue({ customerId: 'c' });
-      cylinderRepo.findOne.mockResolvedValue(
+      lockQb.getMany.mockResolvedValue([
         makeCylinder({ state: CylinderState.RETIRED }),
-      );
+      ]);
       await expect(
         service.assignToOrder('o1', ['SN-001'], DIST),
       ).rejects.toBeInstanceOf(InvalidCylinderTransitionError);

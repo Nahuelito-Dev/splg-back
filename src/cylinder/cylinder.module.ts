@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CylinderService } from './cylinder.service';
+import { CylinderVigenciaService } from './cylinder-vigencia.service';
+import { DespachoBloqueadoListener } from './events/despacho-bloqueado.listener';
+import { GatewaysModule } from '../gateways/gateways.module';
 import { CylinderController } from './cylinder.controller';
 import { Cylinder } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
@@ -22,10 +25,15 @@ import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.enti
       CylinderRecoveryNotice,
     ]),
     OrderLookupModule,
+    GatewaysModule, // el aviso al panel cuando se bloquea un despacho
     GasCylinderModule, // el producto del envase tiene que existir y ser del tenant
   ],
   controllers: [CylinderController],
-  providers: [CylinderService],
+  providers: [
+    CylinderService,
+    CylinderVigenciaService,
+    DespachoBloqueadoListener,
+  ],
   exports: [CylinderService],
 })
 export class CylinderModule {}

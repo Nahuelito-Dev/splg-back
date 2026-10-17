@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Brackets, EntityManager, Repository } from 'typeorm';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
@@ -12,6 +13,16 @@ import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
 import { UpdateCylinderDto } from './dto/update-cylinder.dto';
 import { assertTransition } from './domain/cylinder-state.machine';
+import {
+  EstadoDeVigencia,
+  FiltroDeVigencia,
+  estaVencido,
+} from './domain/cylinder-vigencia';
+import { EnvasesVencidosException } from './cylinder-vencido.exception';
+import {
+  DespachoBloqueadoEvent,
+  EVENTO_DESPACHO_BLOQUEADO,
+} from './events/despacho-bloqueado.event';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { errorCode } from '../common/errors/error-message';
@@ -22,6 +33,9 @@ export interface FiltrosDeEnvases {
   orderId?: string;
   /** user_id del cliente. */
   customerUserId?: string;
+  gasCylinderId?: string;
+  /** Vigencia de la revisión (CU-135 paso 5: buscar un reemplazo). */
+  vigencia?: FiltroDeVigencia;
   /** Sin `limit` no pagina. */
   limit?: number;
   offset?: number;
@@ -39,6 +53,7 @@ export class CylinderService {
     private readonly movementRepository: Repository<CylinderMovement>,
     private readonly orders: OrderLookupService,
     private readonly gasCylinders: GasCylinderService,
+    private readonly eventos: EventEmitter2,
   ) {}
 
   /**
@@ -104,7 +119,15 @@ export class CylinderService {
     distributorId?: string | null,
     filtros: FiltrosDeEnvases = {},
   ): Promise<[Cylinder[], number]> {
-    const { state, orderId, customerUserId, limit, offset } = filtros;
+    const {
+      state,
+      orderId,
+      customerUserId,
+      gasCylinderId,
+      vigencia,
+      limit,
+      offset,
+    } = filtros;
     const qb = this.cylinderRepository
       .createQueryBuilder('cylinder')
       .leftJoinAndSelect('cylinder.gasCylinder', 'gasCylinder')
@@ -125,6 +148,23 @@ export class CylinderService {
       qb.andWhere('cylinder.currentCustomerId = :customerUserId', {
         customerUserId,
       });
+    }
+    if (gasCylinderId) {
+      qb.andWhere('cylinder.gasCylinderId = :gasCylinderId', { gasCylinderId });
+    }
+    // El mismo reloj (el de Node) que usa el bloqueo del despacho.
+    const ahora = new Date();
+    if (vigencia === EstadoDeVigencia.VIGENTE) {
+      qb.andWhere('cylinder.expiresAt > :ahora', { ahora });
+    } else if (vigencia === EstadoDeVigencia.VENCIDO) {
+      qb.andWhere('cylinder.expiresAt <= :ahora', { ahora });
+    } else if (vigencia === EstadoDeVigencia.SIN_ACREDITAR) {
+      qb.andWhere('cylinder.expiresAt IS NULL');
+    } else if (vigencia === 'dispatchable') {
+      qb.andWhere(
+        '(cylinder.expiresAt IS NULL OR cylinder.expiresAt > :ahora)',
+        { ahora },
+      );
     }
     if (orderId) {
       qb.andWhere(
@@ -215,20 +255,25 @@ export class CylinderService {
 
     // Con el envase bloqueado: una transición y una baja simultáneas se
     // serializan y la segunda valida contra el estado que dejó la primera.
-    await this.cylinderRepository.manager.transaction(async (manager) => {
-      const cylinder = await this.bloquear(manager, id, distributorId);
-      await this.recordTransition(
-        cylinder,
-        dto.toState,
-        {
-          orderId: dto.orderId,
-          actorUserId,
-          note: dto.note,
-          customerId,
-        },
-        manager,
-      );
-    });
+    try {
+      await this.cylinderRepository.manager.transaction(async (manager) => {
+        const cylinder = await this.bloquear(manager, id, distributorId);
+        await this.recordTransition(
+          cylinder,
+          dto.toState,
+          {
+            orderId: dto.orderId,
+            actorUserId,
+            note: dto.note,
+            customerId,
+          },
+          manager,
+        );
+      });
+    } catch (error) {
+      this.avisarSiHayVencidos(error, distributorId, dto.orderId ?? null);
+      throw error;
+    }
     return this.findOne(id, distributorId);
   }
 
@@ -277,10 +322,6 @@ export class CylinderService {
           ...(dto.manufacturedAt !== undefined && {
             manufacturedAt: dto.manufacturedAt,
           }),
-          ...(dto.lastInspectionAt !== undefined && {
-            lastInspectionAt: dto.lastInspectionAt,
-          }),
-          ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt }),
         });
         await manager.save(cylinder);
       });
@@ -320,9 +361,13 @@ export class CylinderService {
    * Asigna una lista de envases (por serial) a un pedido y los despacha
    * (FILLED → DISPATCHED). Se usa cuando el chofer/admin carga en el camión los
    * envases que salen a repartir para ese pedido. Deja `current_order_id` para
-   * que, al confirmar la entrega, `onOrderDelivered` los avance solo. Si algún
-   * envase no está FILLED, la transición es inválida y lanza 400 (hay que
-   * llenarlo antes de despacharlo).
+   * que, al confirmar la entrega, `onOrderDelivered` los avance solo.
+   *
+   * Es atómica: con los envases bloqueados se valida todo antes de escribir y
+   * una falla en cualquiera deja a todos como estaban. Un envase con la
+   * revisión vencida rechaza la asignación completa (409 con la lista de
+   * seriales, CU-135); uno sin vencimiento cargado pasa y queda anotado. Si
+   * algún envase no está FILLED, la transición es inválida y lanza 400.
    */
   async assignToOrder(
     orderId: string,
@@ -335,23 +380,93 @@ export class CylinderService {
     if (!order) {
       throw new NotFoundException('Pedido no encontrado');
     }
+    if (new Set(serials).size !== serials.length) {
+      throw new BadRequestException('Hay seriales repetidos');
+    }
 
-    const assigned: Cylinder[] = [];
-    for (const serial of serials) {
-      const cylinder = await this.findBySerial(serial, distributorId);
-      cylinder.currentOrderId = orderId;
-      const saved = await this.recordTransition(
-        cylinder,
-        CylinderState.DISPATCHED,
-        {
-          orderId,
-          actorUserId,
-          note: `Asignado al pedido ${orderId}`,
+    try {
+      return await this.cylinderRepository.manager.transaction(
+        async (manager) => {
+          const cylinders = await this.bloquearPorSerial(
+            manager,
+            serials,
+            distributorId,
+          );
+          // Primero la máquina de estados (400): un despacho inválido no es
+          // un bloqueo por vencimiento.
+          for (const cylinder of cylinders) {
+            assertTransition(cylinder.state, CylinderState.DISPATCHED);
+          }
+          const ahora = new Date();
+          const vencidos = cylinders
+            .filter((c) => estaVencido(c.expiresAt, ahora))
+            .map((c) => c.serial);
+          if (vencidos.length > 0) throw new EnvasesVencidosException(vencidos);
+
+          const assigned: Cylinder[] = [];
+          for (const cylinder of cylinders) {
+            cylinder.currentOrderId = orderId;
+            const sinFecha = cylinder.expiresAt === null;
+            assigned.push(
+              await this.recordTransition(
+                cylinder,
+                CylinderState.DISPATCHED,
+                {
+                  orderId,
+                  actorUserId,
+                  note:
+                    `Asignado al pedido ${orderId}` +
+                    (sinFecha ? ' (sin revisión registrada)' : ''),
+                },
+                manager,
+              ),
+            );
+          }
+          return assigned;
         },
       );
-      assigned.push(saved);
+    } catch (error) {
+      this.avisarSiHayVencidos(error, distributorId, orderId);
+      throw error;
     }
-    return assigned;
+  }
+
+  /** Un despacho rechazado por vencimiento se avisa al panel; el rechazo no depende del aviso. */
+  private avisarSiHayVencidos(
+    error: unknown,
+    distributorId: string,
+    orderId: string | null,
+  ): void {
+    if (!(error instanceof EnvasesVencidosException)) return;
+    this.eventos.emit(
+      EVENTO_DESPACHO_BLOQUEADO,
+      new DespachoBloqueadoEvent(distributorId, orderId, error.serials),
+    );
+  }
+
+  /**
+   * Bloquea los envases de la distribuidora, en el orden pedido. Si alguno no
+   * existe o es de otra distribuidora, 404 sin revelar cuál.
+   */
+  private async bloquearPorSerial(
+    manager: EntityManager,
+    serials: string[],
+    distributorId: string,
+  ): Promise<Cylinder[]> {
+    // Orden fijo por serial: dos asignaciones cruzadas no se bloquean entre sí.
+    const encontrados = await manager
+      .createQueryBuilder(Cylinder, 'cylinder')
+      .setLock('pessimistic_write')
+      .where('cylinder.serial IN (:...serials)', { serials })
+      .andWhere('cylinder.distributorId = :distributorId', { distributorId })
+      .orderBy('cylinder.serial', 'ASC')
+      .getMany();
+    if (encontrados.length !== serials.length) {
+      throw new NotFoundException('Envase no encontrado');
+    }
+    const porSerial = new Map(encontrados.map((c) => [c.serial, c]));
+    // Seriales únicos y todos encontrados: cada uno está en el mapa.
+    return serials.map((serial) => porSerial.get(serial) as Cylinder);
   }
 
   /**
@@ -421,6 +536,13 @@ export class CylinderService {
       : this.movementRepository;
     const fromState = cylinder.state;
     assertTransition(fromState, toState);
+    // Toda puerta al despacho (asignar, transición suelta, chofer) pasa por acá.
+    if (
+      toState === CylinderState.DISPATCHED &&
+      estaVencido(cylinder.expiresAt)
+    ) {
+      throw new EnvasesVencidosException([cylinder.serial]);
+    }
 
     if (toState === CylinderState.WITH_CUSTOMER) {
       cylinder.currentCustomerId = ctx.customerId ?? null;

@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsPositive,
@@ -10,6 +11,10 @@ import {
   Min,
 } from 'class-validator';
 import { CylinderState } from '../entities/cylinder.entity';
+import {
+  FILTROS_DE_VIGENCIA,
+  type FiltroDeVigencia,
+} from '../domain/cylinder-vigencia';
 
 /** `GET /cylinders`: filtros combinables y paginación opcional. */
 export class QueryCylindersDto {
@@ -39,6 +44,26 @@ export class QueryCylindersDto {
   @IsOptional()
   @IsUUID()
   customerUserId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Tipo de producto del envase (para buscar un reemplazo).',
+  })
+  @IsOptional()
+  @IsUUID()
+  gasCylinderId?: string;
+
+  @ApiPropertyOptional({
+    enum: FILTROS_DE_VIGENCIA,
+    description:
+      'Vigencia de la revisión: `valid` (no venció), `expired` (venció, no ' +
+      'se puede despachar), `unverified` (sin revisión registrada) o ' +
+      '`dispatchable` (vigentes y sin revisión registrada: los que se pueden ' +
+      'asignar a un pedido).',
+  })
+  @IsOptional()
+  @IsIn(FILTROS_DE_VIGENCIA)
+  vigencia?: FiltroDeVigencia;
 
   @ApiPropertyOptional({
     maximum: 100,
