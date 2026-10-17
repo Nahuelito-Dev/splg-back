@@ -12,10 +12,10 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Gate completo (lo que tiene que quedar verde) | `npm run verify` — tipos, lint (con reglas de Jest), unit tests con piso de cobertura por módulo y build (ver `CONVENCIONES.md` §11) |
 | Levantar en desarrollo | `../splg-dev.sh` (infra + back :3000 + panel :3001) o `npm run start:dev` |
 | Unit tests | `npm test` (Jest, `src/**/*.spec.ts`) |
-| Integración (necesita Postgres y Redis arriba) | `npm run test:integration` |
+| Integración (necesita Docker: testcontainers levanta y borra sus propios contenedores) | `npm run test:integration` |
 | Migraciones | `npm run migration:generate -- src/migrations/<Nombre>` · `npm run migration:run` |
 | Seeds | `npm run seed` (roles, distribuidora, usuarios con Firebase) · `npm run seed:demo` |
-| Archivos (S3 en prod, MinIO en dev: `docker compose up -d minio minio-init`) | `docs/S3.md` |
+| Archivos (Amazon S3; los e2e usan un MinIO efímero con testcontainers) | `docs/S3.md` |
 | Pedidos, cobros, cotización, historial y rutas | `docs/PEDIDOS.md` |
 | Parámetros del despacho y frecuencia de tareas programadas (M1) | `docs/PARAMETROS-DESPACHO.md` |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
