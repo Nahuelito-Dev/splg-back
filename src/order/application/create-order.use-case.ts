@@ -555,7 +555,7 @@ export class CreateOrderUseCase {
       }),
       checkoutItem: {
         id: itemDto.gasCylinderId,
-        title: `Garrafa ${gasCylinder.type}`,
+        title: gasCylinder.type,
         quantity: itemDto.quantity,
         unitPrice: unitPrice.toNumber(),
       },
