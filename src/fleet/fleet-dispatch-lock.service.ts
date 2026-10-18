@@ -7,6 +7,10 @@ import {
 } from './entities/maintenance-task.entity';
 import { VehicleAssignmentService } from '../car/vehicle-assignment.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { EmployeeService } from '../employee/employee.service';
+import { EmployeeStatus } from '../employee/entities/employee.entity';
+import { LeaveService } from '../leave/leave.service';
+import { diaArgentino } from '../common/utils/dias-argentina';
 import {
   describirVencimiento,
   tareasQueInhabilitan,
@@ -21,6 +25,11 @@ const ESTADOS_CERRADOS = [
 
 /** Sin fecha ni chofer: el motivo "no tiene un vehículo asignado" no viene de ninguna tarea. */
 const MOTIVO_SIN_VEHICULO = 'no tiene un vehículo asignado';
+
+/** CU-246: motivos laborales que no vienen de ninguna tarea. */
+export const MOTIVO_LEGAJO_EGRESADO = 'su legajo está egresado';
+export const MOTIVO_DE_LICENCIA =
+  'tiene una licencia aprobada que cubre el día de hoy';
 
 /** Una tarea abierta junto con su estado de vencimiento, para filtrarla con `tareasQueInhabilitan`. */
 interface TareaConEstado extends HabilitacionRelevante {
@@ -41,6 +50,8 @@ interface InhabilitacionesPorChofer {
   porTarea: Map<string, MaintenanceTask[]>;
   /** `user_id` de los que no tienen NINGÚN vehículo en uso (inhabilita igual, sin tarea de por medio). */
   sinVehiculo: Set<string>;
+  /** `user_id` → motivos laborales sin tarea de por medio: legajo egresado, licencia aprobada de hoy (CU-246). */
+  laborales: Map<string, string[]>;
 }
 
 /**
@@ -74,6 +85,8 @@ export class FleetDispatchLockService {
     private readonly tasks: Repository<MaintenanceTask>,
     private readonly vehicleAssignments: VehicleAssignmentService,
     private readonly deliveryService: DeliveryService,
+    private readonly employees: EmployeeService,
+    private readonly leaves: LeaveService,
   ) {}
 
   /**
@@ -88,11 +101,9 @@ export class FleetDispatchLockService {
     driverUserIds: string[],
     distributorId?: string | null,
   ): Promise<Set<string>> {
-    const { porTarea, sinVehiculo } = await this.tareasInhabilitantesPorChofer(
-      driverUserIds,
-      distributorId,
-    );
-    return new Set([...porTarea.keys(), ...sinVehiculo]);
+    const { porTarea, sinVehiculo, laborales } =
+      await this.tareasInhabilitantesPorChofer(driverUserIds, distributorId);
+    return new Set([...porTarea.keys(), ...sinVehiculo, ...laborales.keys()]);
   }
 
   /**
@@ -106,13 +117,14 @@ export class FleetDispatchLockService {
     driverUserId: string,
     distributorId?: string | null,
   ): Promise<string[]> {
-    const { porTarea, sinVehiculo } = await this.tareasInhabilitantesPorChofer(
-      [driverUserId],
-      distributorId,
-    );
-    const motivos = (porTarea.get(driverUserId) ?? []).map((t) =>
-      describirVencimiento(t.plan.name, t.dueAt),
-    );
+    const { porTarea, sinVehiculo, laborales } =
+      await this.tareasInhabilitantesPorChofer([driverUserId], distributorId);
+    const motivos = [
+      ...(laborales.get(driverUserId) ?? []),
+      ...(porTarea.get(driverUserId) ?? []).map((t) =>
+        describirVencimiento(t.plan.name, t.dueAt),
+      ),
+    ];
     if (sinVehiculo.has(driverUserId)) {
       motivos.push(MOTIVO_SIN_VEHICULO);
     }
@@ -174,11 +186,13 @@ export class FleetDispatchLockService {
 
   /**
    * El corazón de las anteriores: para cada chofer (`user_id`), las tareas
-   * ABIERTAS que lo inhabilitan (las propias de su licencia, o las del
-   * vehículo que tiene EN USO) y quiénes no tienen ningún vehículo en uso.
-   * Tres consultas en total, sin importar cuántos choferes se pidan: las
-   * deliveries, los vehículos en uso, y las tareas abiertas de todos esos
-   * sujetos a la vez.
+   * ABIERTAS que lo inhabilitan (las de su licencia, las de su legajo o las
+   * del vehículo que tiene EN USO), quiénes no tienen ningún vehículo en uso
+   * y los motivos laborales (CU-246): legajo egresado o licencia aprobada que
+   * cubre hoy. Cinco consultas en total, sin importar cuántos choferes se
+   * pidan: las deliveries, los vehículos en uso, los legajos, las licencias
+   * de hoy y las tareas abiertas de todos esos sujetos a la vez. Un chofer sin
+   * legajo conserva el comportamiento anterior.
    */
   private async tareasInhabilitantesPorChofer(
     driverUserIds: string[],
@@ -186,13 +200,15 @@ export class FleetDispatchLockService {
   ): Promise<InhabilitacionesPorChofer> {
     const porTarea = new Map<string, MaintenanceTask[]>();
     const sinVehiculo = new Set<string>();
-    if (driverUserIds.length === 0) return { porTarea, sinVehiculo };
+    const laborales = new Map<string, string[]>();
+    const vacio = { porTarea, sinVehiculo, laborales };
+    if (driverUserIds.length === 0) return vacio;
 
     const deliveries = await this.deliveryService.findDeliveryIdsByUserIds(
       driverUserIds,
       distributorId,
     );
-    if (deliveries.length === 0) return { porTarea, sinVehiculo };
+    if (deliveries.length === 0) return vacio;
 
     const vehiculos =
       await this.vehicleAssignments.findVehiculosEnUsoPorDeliveryIds(
@@ -203,17 +219,47 @@ export class FleetDispatchLockService {
       vehiculos.map((v) => [v.deliveryId, v.carId]),
     );
 
+    const legajos = await this.employees.findByUserIds(
+      deliveries.map((d) => d.userId),
+      distributorId,
+    );
+    const legajoPorCuenta = new Map(
+      legajos.flatMap((l) => (l.userId ? [[l.userId, l] as const] : [])),
+    );
+    const deLicencia = await this.leaves.empleadosDeLicenciaEn(
+      legajos.map((l) => l.employeeId),
+      diaArgentino(),
+    );
+
     const tareasAbiertas = await this.tareasAbiertasDe(
       deliveries.map((d) => d.deliveryId),
       vehiculos.map((v) => v.carId),
+      legajos.map((l) => l.employeeId),
       distributorId,
     );
-    const { porDelivery, porCar } = this.agruparPorSujeto(tareasAbiertas);
+    const { porDelivery, porCar, porEmployee } =
+      this.agruparPorSujeto(tareasAbiertas);
 
     for (const d of deliveries) {
-      const inhabilitantesLicencia = this.filtrarInhabilitantes(
-        porDelivery.get(d.deliveryId) ?? [],
-      );
+      const legajo = legajoPorCuenta.get(d.userId);
+      const motivosLaborales: string[] = [];
+      if (legajo) {
+        if (legajo.status !== EmployeeStatus.ACTIVE) {
+          motivosLaborales.push(MOTIVO_LEGAJO_EGRESADO);
+        }
+        if (deLicencia.has(legajo.employeeId)) {
+          motivosLaborales.push(MOTIVO_DE_LICENCIA);
+        }
+        if (motivosLaborales.length > 0)
+          laborales.set(d.userId, motivosLaborales);
+      }
+
+      const inhabilitantesLicencia = [
+        ...this.filtrarInhabilitantes(porDelivery.get(d.deliveryId) ?? []),
+        ...this.filtrarInhabilitantes(
+          legajo ? (porEmployee.get(legajo.employeeId) ?? []) : [],
+        ),
+      ];
       const carId = carIdPorDelivery.get(d.deliveryId);
 
       if (!carId) {
@@ -235,13 +281,14 @@ export class FleetDispatchLockService {
       }
     }
 
-    return { porTarea, sinVehiculo };
+    return vacio;
   }
 
-  /** Las tareas abiertas (no `done` ni `cancelled`) de esas deliveries y/o esos autos, en una sola consulta. */
+  /** Las tareas abiertas (no `done` ni `cancelled`) de esas deliveries, autos y/o legajos, en una sola consulta. */
   private async tareasAbiertasDe(
     deliveryIds: string[],
     carIds: string[],
+    employeeIds: string[],
     distributorId?: string | null,
   ): Promise<MaintenanceTask[]> {
     const filtroDeDistribuidora = distributorId ? { distributorId } : {};
@@ -260,18 +307,27 @@ export class FleetDispatchLockService {
         ...filtroDeDistribuidora,
       });
     }
+    if (employeeIds.length > 0) {
+      condiciones.push({
+        employeeId: In(employeeIds),
+        status: Not(In(ESTADOS_CERRADOS)),
+        ...filtroDeDistribuidora,
+      });
+    }
     if (condiciones.length === 0) return [];
 
     return this.tasks.find({ where: condiciones, relations: ['plan'] });
   }
 
-  /** Agrupa tareas por `delivery_id` y por `car_id` (una tarea sólo tiene uno de los dos, nunca los dos). */
+  /** Agrupa tareas por `delivery_id`, `car_id` y `employee_id` (una tarea sólo tiene uno de los tres). */
   private agruparPorSujeto(tareas: MaintenanceTask[]): {
     porDelivery: Map<string, MaintenanceTask[]>;
     porCar: Map<string, MaintenanceTask[]>;
+    porEmployee: Map<string, MaintenanceTask[]>;
   } {
     const porDelivery = new Map<string, MaintenanceTask[]>();
     const porCar = new Map<string, MaintenanceTask[]>();
+    const porEmployee = new Map<string, MaintenanceTask[]>();
 
     for (const task of tareas) {
       if (task.deliveryId) {
@@ -284,9 +340,14 @@ export class FleetDispatchLockService {
         lista.push(task);
         porCar.set(task.carId, lista);
       }
+      if (task.employeeId) {
+        const lista = porEmployee.get(task.employeeId) ?? [];
+        lista.push(task);
+        porEmployee.set(task.employeeId, lista);
+      }
     }
 
-    return { porDelivery, porCar };
+    return { porDelivery, porCar, porEmployee };
   }
 
   /** De esas tareas, las que efectivamente inhabilitan (bloqueante + vencida). */

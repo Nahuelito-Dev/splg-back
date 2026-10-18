@@ -13,11 +13,22 @@ import {
   ExpirationStatus,
 } from './domain/expiration-status';
 import { errorMessage } from '../common/errors/error-message';
+import { escaparHtml } from '../common/utils/html.util';
 import {
   minutosDelDiaArgentino,
   ZONA_ARGENTINA,
 } from '../common/utils/dias-argentina';
 import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
+import { EmployeeService } from '../employee/employee.service';
+import { EmployeeDocumentsService } from './employee-documents.service';
+import { EmployeeConPuesto } from '../employee/employee.mapper';
+import { MaintenancePlan } from './entities/maintenance-plan.entity';
+
+/** Un chofer activo al que le falta cargar documentación bloqueante (CU-188). */
+interface FaltanteDeChofer {
+  empleado: EmployeeConPuesto;
+  planes: MaintenancePlan[];
+}
 
 const ESTADOS_CERRADOS = [
   MaintenanceTaskStatus.DONE,
@@ -25,12 +36,17 @@ const ESTADOS_CERRADOS = [
 ];
 
 /**
- * CU-142: aviso automático de vencimientos. Una vez por día, junta las
- * tareas abiertas que entraron en "por vencer" o "vencido" y todavía no se
- * avisaron (`alertedAt IS NULL`), les manda un mail a los admins de cada
+ * CU-142 y CU-188: aviso automático de vencimientos de la flota y del
+ * personal. Una vez por día, junta las tareas abiertas (de un vehículo, un
+ * chofer o un empleado) que entraron en "por vencer" o "vencido" y todavía no
+ * se avisaron (`alertedAt IS NULL`), les manda un mail a los admins de cada
  * distribuidora con `EmailSenderPort` (reusando el mecanismo de envío que ya
  * existe, sin agregar otro), y marca `alertedAt` — una sola vez por tarea, no
  * se re-notifica todos los días.
+ *
+ * El mismo correo lista los documentos bloqueantes que les faltan a los
+ * choferes activos: esos NO se marcan como avisados, se repiten cada día hasta
+ * que se carguen.
  *
  * El tic es de una hora y cada distribuidora recibe el aviso a la hora que
  * configuró (CU-173, `fleetAlertHour`; por omisión las 8).
@@ -49,17 +65,24 @@ export class FleetAlertsCron {
     private readonly adminService: AdminService,
     private readonly emailSender: EmailSenderPort,
     private readonly frecuencias: ScheduledTasksSettingsService,
+    private readonly employees: EmployeeService,
+    private readonly documents: EmployeeDocumentsService,
   ) {}
 
   @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
   async avisarVencimientosPendientes(): Promise<void> {
     const candidatas = await this.tareasSinAvisar();
-    if (candidatas.length === 0) return;
-
     const porDistribuidora = this.agruparPorDistribuidora(candidatas);
+    const conChoferes = await this.employees.distribuidorasConChoferesActivos();
+    const distribuidoras = new Set([
+      ...porDistribuidora.keys(),
+      ...conChoferes,
+    ]);
+    if (distribuidoras.size === 0) return;
+
     const horaActual = Math.floor(minutosDelDiaArgentino() / 60);
 
-    for (const [distributorId, tareas] of porDistribuidora) {
+    for (const distributorId of distribuidoras) {
       if (
         !(await this.frecuencias.esLaHoraDelAvisoDeFlota(
           distributorId,
@@ -68,7 +91,10 @@ export class FleetAlertsCron {
       ) {
         continue;
       }
-      await this.avisarDistribuidora(distributorId, tareas);
+      await this.avisarDistribuidora(
+        distributorId,
+        porDistribuidora.get(distributorId) ?? [],
+      );
     }
   }
 
@@ -79,6 +105,7 @@ export class FleetAlertsCron {
       .leftJoinAndSelect('task.car', 'car')
       .leftJoinAndSelect('task.delivery', 'delivery')
       .leftJoinAndSelect('delivery.user', 'deliveryUser')
+      .leftJoinAndSelect('task.employee', 'employee')
       .where('task.status NOT IN (:...cerrados)', {
         cerrados: ESTADOS_CERRADOS,
       })
@@ -118,29 +145,35 @@ export class FleetAlertsCron {
     tareas: MaintenanceTask[],
   ): Promise<void> {
     try {
+      const faltantes: FaltanteDeChofer[] =
+        await this.documents.faltantesBloqueantesDeChoferes(distributorId);
+      if (tareas.length === 0 && faltantes.length === 0) return;
+
       const admins = await this.adminService.findAll(distributorId);
       const destinatarios = admins
         .map((a) => a.user?.email)
         .filter((email): email is string => Boolean(email));
 
       if (destinatarios.length > 0) {
-        const html = this.armarHtml(tareas);
+        const html = this.armarHtml(tareas, faltantes);
         await Promise.all(
           destinatarios.map((to) =>
             this.emailSender.send({
               to,
-              subject: `Vencimientos de flota: ${tareas.length} pendiente(s)`,
+              subject: this.asunto(tareas, faltantes),
               html,
             }),
           ),
         );
       }
 
-      const ahora = new Date();
-      await this.tasks.update(
-        tareas.map((t) => t.taskId),
-        { alertedAt: ahora },
-      );
+      if (tareas.length > 0) {
+        const ahora = new Date();
+        await this.tasks.update(
+          tareas.map((t) => t.taskId),
+          { alertedAt: ahora },
+        );
+      }
     } catch (error) {
       // No se marca alertedAt: se reintenta la próxima corrida.
       this.logger.error(
@@ -149,16 +182,49 @@ export class FleetAlertsCron {
     }
   }
 
-  private armarHtml(tareas: MaintenanceTask[]): string {
+  private asunto(
+    tareas: MaintenanceTask[],
+    faltantes: FaltanteDeChofer[],
+  ): string {
+    const partes: string[] = [];
+    if (tareas.length > 0) partes.push(`${tareas.length} pendiente(s)`);
+    if (faltantes.length > 0) {
+      partes.push(`${faltantes.length} chofer(es) con documentos sin cargar`);
+    }
+    return `Vencimientos de flota y personal: ${partes.join(', ')}`;
+  }
+
+  private armarHtml(
+    tareas: MaintenanceTask[],
+    faltantes: FaltanteDeChofer[],
+  ): string {
     const filas = tareas
       .map((t) => {
-        const sujeto = t.car
-          ? `Vehículo ${t.car.carPatent ?? t.carId}`
-          : `Chofer ${t.delivery?.user?.fullName ?? t.deliveryId}`;
         const fecha = t.dueAt ? t.dueAt.toLocaleDateString('es-AR') : '-';
-        return `<li>${t.plan.name} — ${sujeto} — vence ${fecha}</li>`;
+        return `<li>${escaparHtml(t.plan.name)} — ${escaparHtml(this.sujeto(t))} — vence ${fecha}</li>`;
       })
       .join('');
-    return `<p>Estos vencimientos de flota necesitan atención:</p><ul>${filas}</ul>`;
+    const vencimientos =
+      tareas.length > 0
+        ? `<p>Estos vencimientos necesitan atención:</p><ul>${filas}</ul>`
+        : '';
+    const sinCargar = faltantes
+      .map(
+        ({ empleado, planes }) =>
+          `<li>${escaparHtml(`${empleado.firstName} ${empleado.lastName}`)} — falta: ${escaparHtml(planes.map((p) => p.name).join(', '))}</li>`,
+      )
+      .join('');
+    const faltan =
+      faltantes.length > 0
+        ? `<p>Estos choferes no tienen cargada documentación que bloquea el despacho:</p><ul>${sinCargar}</ul>`
+        : '';
+    return `${vencimientos}${faltan}`;
+  }
+
+  private sujeto(t: MaintenanceTask): string {
+    if (t.car) return `Vehículo ${t.car.carPatent ?? t.carId}`;
+    if (t.employee)
+      return `Empleado ${t.employee.firstName} ${t.employee.lastName}`;
+    return `Chofer ${t.delivery?.user?.fullName ?? t.deliveryId}`;
   }
 }

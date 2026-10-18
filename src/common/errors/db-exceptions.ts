@@ -17,6 +17,7 @@ const CODIGOS = {
   NO_NULO: '23502',
   SINTAXIS_INVALIDA: '22P02',
   VALOR_FUERA_DE_RANGO: '22003',
+  EXCLUSION_VIOLADA: '23P01',
   DEADLOCK: '40P01',
   FALLA_DE_SERIALIZACION: '40001',
   LOCK_TIMEOUT: '55P03',
@@ -67,6 +68,15 @@ export function traducirErrorDeBase(
       );
       throw new ConflictException(
         `Ya existe un registro con esos datos${donde}`,
+      );
+
+    case CODIGOS.EXCLUSION_VIOLADA:
+      // Una regla de exclusión de la base (p. ej. dos licencias del mismo
+      // empleado que se pisan) frenó la escritura que el servicio no alcanzó
+      // a detectar: dos operaciones la dispararon a la vez.
+      logger.warn(`Exclusión violada${donde}: ${e.detail ?? e.message}`);
+      throw new ConflictException(
+        `El registro choca con otro que ya existe${donde}`,
       );
 
     case CODIGOS.CLAVE_FORANEA:

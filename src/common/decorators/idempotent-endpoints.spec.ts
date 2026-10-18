@@ -7,6 +7,8 @@ import { UserAddressController } from '../../user-address/user-address.controlle
 import { CylinderController } from '../../cylinder/cylinder.controller';
 import { EmployeeController } from '../../employee/employee.controller';
 import { OrderController } from '../../order/order.controller';
+import { LeaveController } from '../../leave/leave.controller';
+import { AttendanceController } from '../../attendance/attendance.controller';
 
 type Clase = { name: string; prototype: object };
 
@@ -19,6 +21,8 @@ const IDEMPOTENTES: Array<[Clase, string[]]> = [
   [UserAddressController, ['create']],
   [CylinderController, ['assign']],
   [EmployeeController, ['terminateEmployee', 'reinstate']],
+  [LeaveController, ['create']],
+  [AttendanceController, ['register', 'checkIn', 'checkOut']],
   [
     OrderController,
     [

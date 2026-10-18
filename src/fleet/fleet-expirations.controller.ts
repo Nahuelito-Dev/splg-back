@@ -15,15 +15,16 @@ export class FleetExpirationsController {
 
   @Get()
   @ApiOperation({
-    summary: 'CU-139: vencimientos de la flota en una pantalla',
+    summary:
+      'CU-139 y CU-187: vencimientos de la flota y del personal en una pantalla',
     description:
-      'Lo vencido y lo que vence dentro de `withinDays`, agrupado por vehículo y por chofer, con si están inhabilitados.',
+      'Lo vencido y lo que vence dentro de `withinDays`, agrupado por vehículo, por chofer (histórico) y por empleado, con si están inhabilitados. `subject` y `category` acotan qué trae.',
   })
   @ApiOkResponse({ type: FleetExpirationsResponseDto })
   async find(
     @Query() query: FleetExpirationsQueryDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<FleetExpirationsResponseDto> {
-    return this.expirations.find(distributorId, query.withinDays);
+    return this.expirations.find(distributorId, query);
   }
 }

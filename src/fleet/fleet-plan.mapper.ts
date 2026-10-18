@@ -14,6 +14,8 @@ export class FleetPlanMapper {
     dto.leadTimeDays = p.leadTimeDays;
     dto.criticality = p.criticality;
     dto.carType = p.carType;
+    dto.documentKind = p.documentKind;
+    dto.appliesToCategories = p.appliesToCategories;
     dto.isActive = p.isActive;
     return dto;
   }

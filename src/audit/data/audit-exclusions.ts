@@ -54,8 +54,9 @@ export const PROPIEDADES_EXCLUIDAS: Readonly<
   // se anulan al vencer el plazo de reclamo; la auditoría es inmutable, así que
   // ni el documento ni el nombre ni la relación pueden entrar.
   Order: ['receiverName', 'receiverDocument', 'receiverRelationship'],
-  // Marca interna del cron de avisos de vencimientos.
-  MaintenanceTask: ['alertedAt'],
+  // `alertedAt`: marca interna del cron de avisos de vencimientos. `details`:
+  // datos personales de la documentación del personal (psicofísico, ART).
+  MaintenanceTask: ['alertedAt', 'details'],
 };
 
 /** Campos que se guardan como `[oculto]`: credenciales y claves de acceso. */

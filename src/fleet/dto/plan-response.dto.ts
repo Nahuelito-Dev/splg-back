@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { JobPositionCategory } from '../../employee/entities/job-position.entity';
 import {
   MaintenanceCriticality,
+  MaintenanceDocumentKind,
   MaintenanceSubject,
   MaintenanceTrigger,
 } from '../entities/maintenance-plan.entity';
@@ -18,5 +20,19 @@ export class FleetPlanResponseDto {
   @ApiProperty({ enum: MaintenanceCriticality })
   criticality!: MaintenanceCriticality;
   @ApiProperty({ type: String, nullable: true }) carType!: string | null;
+  @ApiProperty({
+    enum: MaintenanceDocumentKind,
+    nullable: true,
+    description:
+      'Qué formulario muestra el panel y qué forma de `details` valida el back',
+  })
+  documentKind!: MaintenanceDocumentKind | null;
+  @ApiProperty({
+    enum: JobPositionCategory,
+    isArray: true,
+    nullable: true,
+    description: 'Categorías de puesto a las que aplica (null = todas)',
+  })
+  appliesToCategories!: JobPositionCategory[] | null;
   @ApiProperty() isActive!: boolean;
 }

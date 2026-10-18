@@ -3,7 +3,9 @@ import type { CambiosAuditados } from './entities/audit-log.entity';
 /**
  * Claves que nunca se guardan en la auditoría (CU-153: "las credenciales nunca
  * se guardan"). Se comparan sin distinguir mayúsculas y en cualquier nivel del
- * cuerpo. `code` es el código secreto de entrega del QR.
+ * cuerpo. `code` es el código secreto de entrega del QR; `details` es el
+ * detalle de la documentación del personal (resultado del psicofísico, póliza
+ * de la ART, certificados): datos personales (Ley 25.326).
  */
 const SENSIBLES = new Set([
   'password',
@@ -23,6 +25,8 @@ const SENSIBLES = new Set([
   'receiverdocument',
   'receivername',
   'receiverrelationship',
+  // Detalle de la documentación del personal (psicofísico, ART).
+  'details',
 ]);
 
 const LARGO_MAXIMO = 500;

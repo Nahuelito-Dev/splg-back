@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -11,8 +13,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { JobPositionCategory } from '../../employee/entities/job-position.entity';
 import {
   MaintenanceCriticality,
+  MaintenanceDocumentKind,
   MaintenanceSubject,
   MaintenanceTrigger,
 } from '../entities/maintenance-plan.entity';
@@ -26,7 +30,8 @@ export class CreateFleetPlanDto {
 
   @ApiProperty({
     enum: MaintenanceSubject,
-    description: 'A qué aplica: al vehículo o al chofer',
+    description:
+      'A qué aplica: al vehículo, al chofer (histórico: la licencia) o al empleado (personal)',
   })
   @IsEnum(MaintenanceSubject)
   subject!: MaintenanceSubject;
@@ -82,6 +87,27 @@ export class CreateFleetPlanDto {
   @IsString()
   @MaxLength(50)
   carType?: string;
+
+  @ApiPropertyOptional({
+    enum: MaintenanceDocumentKind,
+    description:
+      'Tipo de documento: define el detalle que se pide al cargarlo. Sin él, la tarea no lleva detalle.',
+  })
+  @IsOptional()
+  @IsEnum(MaintenanceDocumentKind)
+  documentKind?: MaintenanceDocumentKind;
+
+  @ApiPropertyOptional({
+    enum: JobPositionCategory,
+    isArray: true,
+    description:
+      'Categorías de puesto a las que aplica un plan de personal (sin indicar = todas)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(JobPositionCategory, { each: true })
+  appliesToCategories?: JobPositionCategory[];
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()

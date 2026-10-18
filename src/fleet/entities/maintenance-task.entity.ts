@@ -11,6 +11,7 @@ import { MaintenancePlan } from './maintenance-plan.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
+import { Employee } from '../../employee/entities/employee.entity';
 import { MaintenanceTaskAttachment } from './maintenance-task-attachment.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
@@ -26,7 +27,7 @@ export enum MaintenanceTaskStatus {
 /**
  * Tarea de mantenimiento
  * Cada vencimiento concreto de un plan: una póliza, una VTV, un service.
- * Casos: CU-136 a CU-142 y CU-105 (M1)
+ * Casos: CU-136 a CU-142, CU-183 a CU-185 y CU-105 (M1)
  */
 @Entity('maintenance_task')
 export class MaintenanceTask {
@@ -61,6 +62,14 @@ export class MaintenanceTask {
 
   @Column({ name: 'delivery_id', type: 'uuid', nullable: true })
   deliveryId!: string | null;
+
+  @Index('IDX_maintenance_task_employee')
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'employee_id' })
+  employee?: Employee;
+
+  @Column({ name: 'employee_id', type: 'uuid', nullable: true })
+  employeeId!: string | null;
 
   @Column({
     name: 'status',
@@ -119,6 +128,14 @@ export class MaintenanceTask {
 
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes!: string | null;
+
+  /**
+   * Datos propios del tipo de documento (número de certificado, aseguradora,
+   * fecha del examen...). La forma la fija `plan.documentKind`
+   * (`domain/document-details.ts`).
+   */
+  @Column({ name: 'details', type: 'jsonb', nullable: true })
+  details!: Record<string, string> | null;
 
   @OneToMany(() => MaintenanceTaskAttachment, (a) => a.task)
   attachments?: MaintenanceTaskAttachment[];

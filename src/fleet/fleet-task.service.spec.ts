@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { FleetTaskService } from './fleet-task.service';
 import {
@@ -7,6 +11,7 @@ import {
 } from './entities/maintenance-task.entity';
 import {
   MaintenanceCriticality,
+  MaintenanceDocumentKind,
   MaintenancePlan,
   MaintenanceSubject,
   MaintenanceTrigger,
@@ -14,6 +19,8 @@ import {
 import { CarService } from '../car/car.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { FleetDispatchLockService } from './fleet-dispatch-lock.service';
+import { EmployeeService } from '../employee/employee.service';
+import { JobPositionCategory } from '../employee/entities/job-position.entity';
 
 describe('FleetTaskService', () => {
   let service: FleetTaskService;
@@ -28,6 +35,7 @@ describe('FleetTaskService', () => {
   let carService: { findOne: jest.Mock };
   let deliveryService: { findOne: jest.Mock };
   let fleetLock: { choferesInhabilitados: jest.Mock };
+  let employees: { findActivo: jest.Mock };
 
   const planVehiculo = {
     planId: 'plan-vtv',
@@ -64,11 +72,14 @@ describe('FleetTaskService', () => {
       choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
     };
 
+    employees = { findActivo: jest.fn() };
+
     service = new FleetTaskService(
       tasks as unknown as Repository<MaintenanceTask>,
       plans as unknown as Repository<MaintenancePlan>,
       carService as unknown as CarService,
       deliveryService as unknown as DeliveryService,
+      employees as unknown as EmployeeService,
       fleetLock as unknown as FleetDispatchLockService,
     );
   });
@@ -150,6 +161,195 @@ describe('FleetTaskService', () => {
         service.create({ planId: 'plan-vtv', carId: 'c1' }, 'd1'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    describe('documentación del personal (CU-183 a CU-185)', () => {
+      const planCurso = {
+        ...planVehiculo,
+        planId: 'plan-curso',
+        name: 'Curso de transporte de mercancías peligrosas (GLP)',
+        subject: MaintenanceSubject.EMPLOYEE,
+        documentKind: MaintenanceDocumentKind.HAZMAT_DRIVER_COURSE,
+        appliesToCategories: [JobPositionCategory.DRIVER],
+        leadTimeDays: 60,
+      } as unknown as MaintenancePlan;
+      const planArt = {
+        ...planCurso,
+        planId: 'plan-art',
+        name: 'Alta en ART',
+        documentKind: MaintenanceDocumentKind.ART_COVERAGE,
+        appliesToCategories: null,
+        criticality: MaintenanceCriticality.NON_BLOCKING,
+      } as unknown as MaintenancePlan;
+      const chofer = {
+        employeeId: 'e1',
+        position: { category: JobPositionCategory.DRIVER },
+      };
+      const deposito = {
+        employeeId: 'e2',
+        position: { category: JobPositionCategory.WAREHOUSE },
+      };
+      const detalleCurso = { certificateNumber: '123/26', issuer: 'CNRT' };
+
+      it('registra el curso del chofer con su vencimiento y su detalle', async () => {
+        plans.findOne.mockResolvedValue(planCurso);
+        employees.findActivo.mockResolvedValue(chofer);
+
+        const task = await service.create(
+          {
+            planId: 'plan-curso',
+            employeeId: 'e1',
+            dueAt: '2027-05-10T15:00:00.000Z',
+            details: detalleCurso,
+          },
+          'd1',
+        );
+
+        expect(employees.findActivo).toHaveBeenCalledWith('e1', 'd1');
+        expect(task).toMatchObject({
+          employeeId: 'e1',
+          carId: null,
+          deliveryId: null,
+          details: detalleCurso,
+          dueAt: new Date('2027-05-10T00:00:00.000Z'),
+        });
+      });
+
+      it('la ART aplica a cualquier categoría', async () => {
+        plans.findOne.mockResolvedValue(planArt);
+        employees.findActivo.mockResolvedValue(deposito);
+
+        const task = await service.create(
+          {
+            planId: 'plan-art',
+            employeeId: 'e2',
+            dueAt: '2027-05-10T00:00:00.000Z',
+            details: { insurer: 'Galeno', policyNumber: '99' },
+          },
+          'd1',
+        );
+
+        expect(task.employeeId).toBe('e2');
+      });
+
+      it('un plan que no aplica a la categoría del puesto se rechaza (400)', async () => {
+        plans.findOne.mockResolvedValue(planCurso);
+        employees.findActivo.mockResolvedValue(deposito);
+
+        await expect(
+          service.create(
+            {
+              planId: 'plan-curso',
+              employeeId: 'e2',
+              dueAt: '2027-05-10T00:00:00.000Z',
+              details: detalleCurso,
+            },
+            'd1',
+          ),
+        ).rejects.toThrow(/no aplica a la categoría/);
+        expect(tasks.save).not.toHaveBeenCalled();
+      });
+
+      it('un detalle con otra forma se rechaza nombrando el campo (400)', async () => {
+        plans.findOne.mockResolvedValue(planCurso);
+        employees.findActivo.mockResolvedValue(chofer);
+
+        await expect(
+          service.create(
+            {
+              planId: 'plan-curso',
+              employeeId: 'e1',
+              dueAt: '2027-05-10T00:00:00.000Z',
+              details: { certificateNumber: '123/26' },
+            },
+            'd1',
+          ),
+        ).rejects.toThrow(/detalle\.issuer/);
+        expect(tasks.save).not.toHaveBeenCalled();
+      });
+
+      it('sin vencimiento no se registra (400)', async () => {
+        plans.findOne.mockResolvedValue(planCurso);
+        employees.findActivo.mockResolvedValue(chofer);
+
+        await expect(
+          service.create(
+            { planId: 'plan-curso', employeeId: 'e1', details: detalleCurso },
+            'd1',
+          ),
+        ).rejects.toThrow(/dueAt/);
+      });
+
+      it('un plan inactivo se rechaza (400)', async () => {
+        plans.findOne.mockResolvedValue({ ...planCurso, isActive: false });
+        employees.findActivo.mockResolvedValue(chofer);
+
+        await expect(
+          service.create(
+            {
+              planId: 'plan-curso',
+              employeeId: 'e1',
+              dueAt: '2027-05-10T00:00:00.000Z',
+              details: detalleCurso,
+            },
+            'd1',
+          ),
+        ).rejects.toThrow(/inactivo/);
+      });
+
+      it('un legajo de otra distribuidora (404) o egresado (409) viene de EmployeeService', async () => {
+        plans.findOne.mockResolvedValue(planCurso);
+        const cuerpo = {
+          planId: 'plan-curso',
+          employeeId: 'e1',
+          dueAt: '2027-05-10T00:00:00.000Z',
+          details: detalleCurso,
+        };
+
+        employees.findActivo.mockRejectedValue(new NotFoundException());
+        await expect(service.create(cuerpo, 'd1')).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        employees.findActivo.mockRejectedValue(new ConflictException());
+        await expect(service.create(cuerpo, 'd1')).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+      });
+
+      it('un plan de personal sin employeeId, o con carId, es 400', async () => {
+        plans.findOne.mockResolvedValue(planCurso);
+        await expect(
+          service.create({ planId: 'plan-curso' }, 'd1'),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          service.create(
+            { planId: 'plan-curso', employeeId: 'e1', carId: 'c1' },
+            'd1',
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('un plan de vehículo con employeeId es 400, y un detalle donde no corresponde también', async () => {
+        plans.findOne.mockResolvedValue(planVehiculo);
+        await expect(
+          service.create(
+            { planId: 'plan-vtv', carId: 'c1', employeeId: 'e1' },
+            'd1',
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        carService.findOne.mockResolvedValue({ carId: 'c1' });
+        plans.findOne.mockResolvedValue({
+          ...planVehiculo,
+          documentKind: MaintenanceDocumentKind.VTV,
+        });
+        await expect(
+          service.create(
+            { planId: 'plan-vtv', carId: 'c1', details: { x: 'y' } },
+            'd1',
+          ),
+        ).rejects.toThrow(/no lleva detalle/);
+      });
+    });
   });
 
   describe('findAll', () => {
@@ -218,6 +418,51 @@ describe('FleetTaskService', () => {
       expect(qb.andWhere).toHaveBeenCalledWith('task.status = :status', {
         status: MaintenanceTaskStatus.SCHEDULED,
       });
+    });
+  });
+
+  describe('update: el detalle del documento', () => {
+    const planCurso = {
+      ...planVehiculo,
+      subject: MaintenanceSubject.EMPLOYEE,
+      documentKind: MaintenanceDocumentKind.HAZMAT_DRIVER_COURSE,
+    } as unknown as MaintenancePlan;
+    const abierta = () =>
+      ({
+        taskId: 't1',
+        distributorId: 'd1',
+        status: MaintenanceTaskStatus.SCHEDULED,
+        plan: planCurso,
+        details: { certificateNumber: '1', issuer: 'CNRT' },
+      }) as unknown as MaintenanceTask;
+
+    it('corrige el detalle validado contra el tipo de documento del plan', async () => {
+      tasks.findOne.mockResolvedValue(abierta());
+
+      const res = await service.update(
+        't1',
+        { details: { certificateNumber: '2', issuer: 'CNRT' } },
+        'd1',
+      );
+
+      expect(res.details).toEqual({ certificateNumber: '2', issuer: 'CNRT' });
+    });
+
+    it('un detalle con otra forma es 400 y no se guarda', async () => {
+      tasks.findOne.mockResolvedValue(abierta());
+
+      await expect(
+        service.update('t1', { details: { certificateNumber: '2' } }, 'd1'),
+      ).rejects.toThrow(/detalle\.issuer/);
+      expect(tasks.save).not.toHaveBeenCalled();
+    });
+
+    it('sin details en el cuerpo, el detalle no se toca', async () => {
+      tasks.findOne.mockResolvedValue(abierta());
+
+      const res = await service.update('t1', { notes: 'x' }, 'd1');
+
+      expect(res.details).toEqual({ certificateNumber: '1', issuer: 'CNRT' });
     });
   });
 
