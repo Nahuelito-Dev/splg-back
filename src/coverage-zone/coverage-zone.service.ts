@@ -116,6 +116,15 @@ export class CoverageZoneService {
     }
   }
 
+  /** Una zona que va a quedar activa no puede tener la fecha de fin vencida. */
+  private validarNoVencida(hasta: Date | null, activa: boolean): void {
+    if (activa && hasta && hasta.getTime() <= Date.now()) {
+      throw new BadRequestException(
+        'validUntil ya pasó: una zona vencida no puede quedar activa',
+      );
+    }
+  }
+
   async create(
     dto: CreateCoverageZoneDto,
     distributorId: string,
@@ -131,6 +140,7 @@ export class CoverageZoneService {
     const validFrom = this.parseFechaVigencia(dto.validFrom);
     const validUntil = this.parseFechaVigencia(dto.validUntil);
     this.validarVigencia(validFrom, validUntil);
+    this.validarNoVencida(validUntil, dto.isActive ?? true);
 
     const zone = this.repo.create({
       name: dto.name,
@@ -216,6 +226,14 @@ export class CoverageZoneService {
         ? this.parseFechaVigencia(dto.validUntil)
         : actual.validUntil;
     this.validarVigencia(validFrom, validUntil);
+    // Sólo se exige si el cambio activa la zona o toca su fecha de fin: renombrar
+    // una zona vencida que sigue activa (el barrido todavía no pasó) no se bloquea.
+    if (
+      (dto.isActive === true && !actual.isActive) ||
+      dto.validUntil !== undefined
+    ) {
+      this.validarNoVencida(validUntil, dto.isActive ?? actual.isActive);
+    }
 
     const cambios: DeepPartial<CoverageZone> = sinIndefinidos({
       name: dto.name,
@@ -252,9 +270,12 @@ export class CoverageZoneService {
    * ¿La dirección (lat/lng) cae dentro de alguna zona ACTIVA y VIGENTE de la
    * distribuidora? Entre zonas superpuestas gana la de mayor `priority` y, a
    * igual prioridad, la de MENOR área (la más específica: p. ej. un barrio
-   * chico dentro del área general de la ciudad). Si la distribuidora NO tiene
-   * zonas definidas, se considera cubierta con recargo 0 (no bloquea a
-   * empresas que aún no cargaron zonas).
+   * chico dentro del área general de la ciudad). Si la distribuidora NUNCA
+   * definió zonas (cuenta cualquier zona no borrada, activa o no, vigente o
+   * no), se considera cubierta con recargo 0 (no bloquea a empresas que aún no
+   * cargaron zonas). Si tiene zonas pero ninguna activa y vigente, no cubre
+   * nada; una zona con `valid_until` pasado no cuenta aunque el barrido
+   * (CU-151) todavía no la haya apagado.
    *
    * `subtotalItems`, si se manda, hace que la respuesta traiga `amount`: el
    * recargo YA calculado sobre ese subtotal (para que el cliente lo vea antes
@@ -266,9 +287,9 @@ export class CoverageZoneService {
     lng: number,
     subtotalItems?: number,
   ): Promise<CoverageResult> {
-    const total = await this.repo.count({
-      where: { distributorId, isActive: true },
-    });
+    // "Nunca definió zonas": cuenta cualquier zona no borrada, esté activa o no
+    // y sea vigente o no. Con zonas pero ninguna activa y vigente, no cubre nada.
+    const total = await this.repo.count({ where: { distributorId } });
     if (total === 0) {
       return { covered: true, surcharge: 0, zone: null };
     }

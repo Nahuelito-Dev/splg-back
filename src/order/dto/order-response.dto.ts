@@ -205,6 +205,22 @@ export class DriverDeOrderDto {
   location!: DriverLocationDto | null;
 }
 
+/**
+ * Quién recibe el pedido (CU-128). Datos de un tercero: sólo los ven el cliente
+ * dueño, el chofer asignado y el administrador de la distribuidora, y se
+ * anulan al vencer el plazo de reclamo.
+ */
+export class ReceiverDeOrderDto {
+  @ApiProperty({ type: String, nullable: true, example: 'María Gómez' })
+  name!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '30123456' })
+  document!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'vecina' })
+  relationship!: string | null;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ name: 'order_id', format: 'uuid' })
   @Expose({ name: 'order_id' })
@@ -410,6 +426,15 @@ export class OrderResponseDto {
   @Expose({ name: 'customer' })
   @Type(() => CustomerDeOrderDto)
   customer!: CustomerDeOrderDto | null;
+
+  /**
+   * Quién va a recibir el pedido (CU-128). `null` si el cliente no lo indicó, si
+   * ya venció el plazo de reclamo, o si quien consulta es un chofer al que el
+   * pedido todavía no le está asignado.
+   */
+  @ApiProperty({ type: ReceiverDeOrderDto, nullable: true })
+  @Type(() => ReceiverDeOrderDto)
+  receiver!: ReceiverDeOrderDto | null;
 
   /** Motivo de cancelación, si el pedido se canceló. */
   @ApiProperty({ name: 'cancellation_reason', type: String, nullable: true })

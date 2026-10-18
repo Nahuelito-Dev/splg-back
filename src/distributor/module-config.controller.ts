@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBody,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -17,6 +20,9 @@ import {
   ScheduledTasksConfigDto,
   ScheduledTasksConfigResponseDto,
 } from './dto/scheduled-tasks-config.dto';
+import { ProcessConfigResponseDto } from './dto/process-config.dto';
+import { PROCESOS_AUTOMATICOS } from './process-config';
+import { ProcessConfigService } from './process-config.service';
 import { DispatchSettingsService } from './dispatch-settings.service';
 import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.service';
 
@@ -35,6 +41,7 @@ export class ModuleConfigController {
   constructor(
     private readonly dispatch: DispatchSettingsService,
     private readonly tasks: ScheduledTasksSettingsService,
+    private readonly processes: ProcessConfigService,
   ) {}
 
   @Get('dispatch')
@@ -95,5 +102,77 @@ export class ModuleConfigController {
     @CurrentUser('user_id') actorUserId: string,
   ): Promise<ScheduledTasksConfigResponseDto> {
     return this.tasks.guardar(distributorId, dto, actorUserId);
+  }
+
+  // Las rutas genéricas van DESPUÉS de las fijas (dispatch, scheduled_tasks): Nest
+  // resuelve en orden de declaración.
+  @Get('processes')
+  @ApiOperation({
+    summary:
+      'Los procesos automáticos configurables con sus parámetros vigentes',
+    description:
+      'Los cinco procesos de CU-172 (planificador de flota, recompra, agrupación por recorrido, recuperación de envases y despacho express), cada uno con su esquema (rango y valor por omisión de cada parámetro) y los valores vigentes. El despacho y las tareas programadas tienen su propia ruta.',
+  })
+  @ApiOkResponse({ type: [ProcessConfigResponseDto] })
+  @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
+  getProcesses(
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<ProcessConfigResponseDto[]> {
+    return this.processes.todos(distributorId);
+  }
+
+  @Get(':process')
+  @ApiOperation({
+    summary: 'Parámetros vigentes de un proceso automático',
+    description:
+      'Los parámetros de la distribuidora o, si no configuró ninguno, los de omisión (`isDefault: true`).',
+  })
+  @ApiParam({ name: 'process', enum: PROCESOS_AUTOMATICOS })
+  @ApiOkResponse({ type: ProcessConfigResponseDto })
+  @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
+  @ApiNotFoundResponse({
+    description: 'El proceso no es uno de los cinco configurables',
+  })
+  getProcess(
+    @Param('process') process: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<ProcessConfigResponseDto> {
+    return this.processes.vigentes(
+      distributorId,
+      this.processes.procesoConfigurable(process),
+    );
+  }
+
+  @Put(':process')
+  @ApiOperation({
+    summary: 'Cambiar los parámetros de un proceso automático',
+    description:
+      'Reemplaza la configuración: se guarda sólo lo que viene y lo demás toma su valor por omisión (`{}` restablece los valores por omisión, igual que en el despacho y las tareas programadas). Cada proceso valida con su propio esquema (`GET /module-config/processes`): un parámetro desconocido, de otro tipo o fuera de rango responde 400 con el campo. Los valores los leen los módulos M2 a M5 y la compra express cuando se construyan: hoy se guardan y se validan, pero ningún proceso los consume todavía. Cuando lo hagan, rigen desde la siguiente ejecución; las que están en curso no se interrumpen.',
+  })
+  @ApiParam({ name: 'process', enum: PROCESOS_AUTOMATICOS })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      additionalProperties: { type: 'number' },
+      example: { anticipationDays: 5, invitationTtlHours: 48 },
+    },
+  })
+  @ApiOkResponse({ type: ProcessConfigResponseDto })
+  @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
+  @ApiNotFoundResponse({
+    description: 'El proceso no es uno de los cinco configurables',
+  })
+  putProcess(
+    @Param('process') process: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') actorUserId: string,
+  ): Promise<ProcessConfigResponseDto> {
+    return this.processes.guardar(
+      distributorId,
+      this.processes.procesoConfigurable(process),
+      body,
+      actorUserId,
+    );
   }
 }

@@ -32,6 +32,10 @@ import {
 } from '@nestjs/swagger';
 import { OrderService } from './order.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
+import { ChangeOrderAddressUseCase } from './application/change-order-address.use-case';
+import { SetOrderReceiverUseCase } from './application/set-order-receiver.use-case';
+import { ChangeOrderAddressDto } from './dto/change-order-address.dto';
+import { SetOrderReceiverDto } from './dto/set-order-receiver.dto';
 import { QuoteOrderUseCase } from './application/quote-order.use-case';
 import { QuoteOrderDto, QuoteResponseDto } from './dto/quote-order.dto';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
@@ -103,6 +107,8 @@ export class OrderController {
     private readonly driverPhoto: OrderDriverPhotoService,
     // D5: el chofer sin la carga del día abierta no ve el pool si se exige.
     private readonly truckLoadGate: TruckLoadGatePort,
+    private readonly changeAddressUseCase: ChangeOrderAddressUseCase,
+    private readonly setReceiverUseCase: SetOrderReceiverUseCase,
   ) {}
 
   @Post()
@@ -347,7 +353,12 @@ export class OrderController {
     );
     return {
       ...result,
-      orders: result.orders.map((order) => OrderMapper.toDto(order)),
+      // El pool es de pedidos sin chofer: quién recibe todavía no es de nadie.
+      orders: result.orders.map((order) => {
+        const dto = OrderMapper.toDto(order);
+        dto.receiver = null;
+        return dto;
+      }),
       openLoadRequired: false,
       message: null,
     };
@@ -896,6 +907,78 @@ export class OrderController {
       { context: 'OrderService.update' },
     );
     return OrderMapper.toDto(order);
+  }
+
+  @Patch(':id/address')
+  @Auth(RoleType.CUSTOMER)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Cambiar la dirección de entrega de un pedido (cliente)',
+    description:
+      'CU-127. Sólo el CLIENTE DUEÑO (uno ajeno es 404), con el pedido pendiente o aceptado. ' +
+      'La dirección nueva tiene que ser otra de las suyas y caer dentro de una zona de cobertura de la distribuidora del pedido. ' +
+      'El recargo de la zona nueva se compara con el del pedido: en pago en línea (MercadoPago o transferencia) el importe ya está definido, ' +
+      'así que si cambia responde 409 y el cliente debe cancelar y pedir de nuevo; en efectivo se recalcula el total. ' +
+      'Actualiza el punto de entrega y deja el cambio asentado (dirección anterior, autor y motivo) en el historial de estados. ' +
+      'Avisa al chofer asignado (`order:address-changed`) y al panel; si el pedido está pendiente, vence las ofertas vivas y vuelve a ofrecerlo. ' +
+      'Idempotente vía `Idempotency-Key`.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'La dirección nueva es la actual, o queda fuera de la zona de cobertura («La dirección está fuera de la zona de cobertura de la distribuidora»)',
+  })
+  @ApiConflictResponse({
+    description:
+      'El pedido ya salió o fue entregado, no está pendiente/aceptado, o es de pago en línea y el recargo de la zona nueva es distinto',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Pedido ajeno o inexistente, o dirección que no es del cliente',
+  })
+  async changeAddress(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChangeOrderAddressDto,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
+  ) {
+    const order = await withTransactionRetry(
+      () =>
+        this.changeAddressUseCase.execute(id, dto, user.user_id, distributorId),
+      { context: 'OrderService.changeAddress' },
+    );
+    return OrderMapper.toDto(order);
+  }
+
+  @Patch(':id/receiver')
+  @Auth(RoleType.CUSTOMER)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Indicar quién recibe el pedido (cliente)',
+    description:
+      'CU-128. Sólo el CLIENTE DUEÑO (uno ajeno es 404), mientras el pedido no esté entregado ni cancelado (409). ' +
+      'Guarda nombre, documento y relación de quien recibe; la respuesta del pedido los expone como `receiver` sólo al cliente dueño, al chofer asignado y al administrador de la distribuidora. ' +
+      'Son datos de un tercero: se anulan solos al vencer el plazo de reclamo (30 días desde la entrega o cancelación; con un reclamo abierto, hasta que se cierre) y ningún dato de quien recibe entra en la auditoría. ' +
+      'Idempotente vía `Idempotency-Key`.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos (p. ej.: formato de documento)',
+  })
+  @ApiConflictResponse({
+    description: 'El pedido ya fue entregado o está cancelado',
+  })
+  @ApiNotFoundResponse({ description: 'Pedido ajeno o inexistente' })
+  async setReceiver(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetOrderReceiverDto,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
+  ) {
+    await this.setReceiverUseCase.execute(id, dto, user.user_id, distributorId);
+    return this.orderService.getOne(id, distributorId, user.user_id);
   }
 
   @Delete(':id')

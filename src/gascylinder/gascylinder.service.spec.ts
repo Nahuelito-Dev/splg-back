@@ -314,4 +314,68 @@ describe('GasCylinderService', () => {
       expect(p.stock).toBe(2);
     });
   });
+
+  describe('productos dados de baja y su reactivación (CU-268, CU-269)', () => {
+    it('lista sólo los inactivos de la distribuidora, también al buscar por texto', async () => {
+      await service.findInactive({ limit: 5, offset: 10 }, 'd1');
+      expect(productos.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { isActive: false, distributorId: 'd1' },
+          take: 5,
+          skip: 10,
+        }),
+      );
+
+      await service.findInactive({ term: ' 10kg ' }, 'd1');
+      const [{ where }] = productos.findAndCount.mock.calls[1] as [
+        { where: Array<Record<string, unknown>> },
+      ];
+      expect(where).toHaveLength(2);
+      for (const condicion of where) {
+        expect(condicion).toMatchObject({
+          isActive: false,
+          distributorId: 'd1',
+        });
+      }
+      expect(where[0].type).toEqual(ILike('%10kg%'));
+    });
+
+    it('reactivar guarda sólo isActive (por save, para que quede en la auditoría) sin tocar stock', async () => {
+      productos.findOne
+        .mockResolvedValueOnce({
+          ...producto(7),
+          isActive: false,
+          reservationDeficit: 2,
+        })
+        .mockResolvedValueOnce(producto(7));
+
+      const reactivado = await service.reactivate('g1', 'd1');
+
+      const [guardado] = productos.save.mock.calls[0] as [Partial<GasCylinder>];
+      expect(guardado.isActive).toBe(true);
+      expect(guardado.stock).toBeUndefined();
+      expect(guardado.reservationDeficit).toBeUndefined();
+      expect(reactivado.stock).toBe(7);
+    });
+
+    it('reactivar uno ya activo responde igual y no escribe', async () => {
+      productos.findOne.mockResolvedValue(producto(3));
+      const r = await service.reactivate('g1', 'd1');
+      expect(r.isActive).toBe(true);
+      expect(productos.save).not.toHaveBeenCalled();
+    });
+
+    it('un producto inexistente o de otra distribuidora es 404 y no escribe', async () => {
+      productos.findOne.mockResolvedValue(null);
+      await expect(service.reactivate('g1', 'd2')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(productos.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { gasCylinderId: 'g1', distributorId: 'd2' },
+        }),
+      );
+      expect(productos.save).not.toHaveBeenCalled();
+    });
+  });
 });

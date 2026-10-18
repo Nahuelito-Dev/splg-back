@@ -8,6 +8,7 @@ import {
   OrderItemResponseDto,
   OrderResponseDto,
   ProductoDelRenglonDto,
+  ReceiverDeOrderDto,
   VehicleDeOrderDto,
   ZoneSurchargeDto,
 } from './dto/order-response.dto';
@@ -68,6 +69,22 @@ function vehiculoDe(order: Order): VehicleDeOrderDto | null {
   return dto;
 }
 
+/** Quién recibe, o `null` si no se indicó (o ya se anuló por plazo vencido). */
+function receptorDe(order: Order): ReceiverDeOrderDto | null {
+  if (
+    !order.receiverName &&
+    !order.receiverDocument &&
+    !order.receiverRelationship
+  ) {
+    return null;
+  }
+  const dto = new ReceiverDeOrderDto();
+  dto.name = order.receiverName ?? null;
+  dto.document = order.receiverDocument ?? null;
+  dto.relationship = order.receiverRelationship ?? null;
+  return dto;
+}
+
 export class OrderMapper {
   static toDto(order: Order): OrderResponseDto {
     const dto = new OrderResponseDto();
@@ -97,6 +114,7 @@ export class OrderMapper {
     dto.zoneSurcharge = recargoDeZonaDe(order);
     dto.subtotalItems = Number(order.subtotalItems ?? 0);
     dto.vehicle = vehiculoDe(order);
+    dto.receiver = receptorDe(order);
     // El chofer sólo se agrega en la lectura individual (ver `OrderService.getOne`).
     dto.driver = null;
     dto.cancelledBy = null;

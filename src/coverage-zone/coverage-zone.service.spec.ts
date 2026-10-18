@@ -108,6 +108,34 @@ describe('CoverageZoneService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('una zona activa con validUntil ya vencido se rechaza (400)', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Vieja',
+            polygon: poligono,
+            validUntil: '2020-01-01T00:00:00Z',
+          },
+          'd1',
+        ),
+      ).rejects.toThrow('validUntil ya pasó');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('una zona creada inactiva puede tener la fecha de fin pasada', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Vieja',
+            polygon: poligono,
+            validUntil: '2020-01-01T00:00:00Z',
+            isActive: false,
+          },
+          'd1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
     it('validUntil antes o igual a validFrom se rechaza', async () => {
       await expect(
         service.create(
@@ -172,6 +200,44 @@ describe('CoverageZoneService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    describe('zona vencida', () => {
+      const vencida = () => ({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        isActive: false,
+        surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+        surchargeValue: 10,
+        validFrom: null,
+        validUntil: new Date('2020-01-01T00:00:00Z'),
+      });
+
+      it('reactivar una zona con la fecha de fin pasada se rechaza (400)', async () => {
+        repo.findOne.mockResolvedValue(vencida());
+        await expect(
+          service.update('z1', { isActive: true }, 'd1'),
+        ).rejects.toThrow('validUntil ya pasó');
+        expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      it('reactivarla junto con una fecha de fin futura se acepta', async () => {
+        repo.findOne.mockResolvedValue(vencida());
+        await expect(
+          service.update(
+            'z1',
+            { isActive: true, validUntil: '2099-01-01T00:00:00Z' },
+            'd1',
+          ),
+        ).resolves.toBeDefined();
+      });
+
+      it('renombrar una zona activa que venció (el barrido aún no pasó) no se bloquea', async () => {
+        repo.findOne.mockResolvedValue({ ...vencida(), isActive: true });
+        await expect(
+          service.update('z1', { name: 'Nuevo' }, 'd1'),
+        ).resolves.toBeDefined();
+      });
+    });
+
     it('validFrom: null quita la vigencia (NO la convierte en 1970-01-01)', async () => {
       repo.findOne.mockResolvedValue({
         coverageZoneId: 'z1',
@@ -208,6 +274,25 @@ describe('CoverageZoneService', () => {
         zone: null,
       });
       expect(repo.query).not.toHaveBeenCalled();
+    });
+
+    it('"nunca definió zonas" cuenta cualquier zona no borrada, activa o no (el conteo no filtra por isActive)', async () => {
+      repo.count.mockResolvedValue(1);
+      repo.query.mockResolvedValue([]);
+      await service.checkCoverage('d1', -27, -55);
+      expect(repo.count).toHaveBeenCalledWith({
+        where: { distributorId: 'd1' },
+      });
+    });
+
+    it('con zonas pero ninguna activa y vigente (todas apagadas o vencidas) no cubre nada', async () => {
+      repo.count.mockResolvedValue(3);
+      repo.query.mockResolvedValue([]);
+      await expect(
+        service.checkCoverage('d1', -27, -55),
+      ).resolves.toMatchObject({ covered: false });
+      const [sql] = repo.query.mock.calls[0] as [string];
+      expect(sql).toContain('valid_until > now()');
     });
 
     it('fuera de toda zona activa y vigente, no está cubierto', async () => {

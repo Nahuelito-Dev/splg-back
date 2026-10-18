@@ -15,8 +15,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod } from '../entities/order.entity';
+import { SetOrderReceiverDto } from './set-order-receiver.dto';
 
 export class OrderItemDto {
   @ApiProperty({ description: 'ID de la garrafa' })
@@ -128,4 +129,14 @@ export class CreateOrderDto {
   @IsNumber()
   @Min(0)
   depositAmount?: number;
+
+  @ApiPropertyOptional({
+    type: SetOrderReceiverDto,
+    description:
+      'Quién va a recibir el pedido (CU-128): mismas reglas que `PATCH /orders/:id/receiver`.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SetOrderReceiverDto)
+  receiver?: SetOrderReceiverDto;
 }

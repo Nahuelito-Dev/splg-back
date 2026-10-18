@@ -364,6 +364,11 @@ export class OrderService {
       choferUserId,
     );
     const dto = OrderMapper.toDto(order);
+    // Quién recibe es un dato de un tercero: un chofer lo ve sólo cuando el
+    // pedido es suyo, no mientras lo mira como oferta o desde el pool.
+    if (choferUserId && order.delivery?.userId !== choferUserId) {
+      dto.receiver = null;
+    }
     if (order.status === OrderStatus.CANCELLED) {
       dto.cancelledBy = await this.quienCancelo(order.orderId);
     }

@@ -30,6 +30,8 @@ const IDEMPOTENTES: Array<[Clase, string[]]> = [
       'resolveUnpaid',
       'confirmDeposit',
       'assignDelivery',
+      'changeAddress',
+      'setReceiver',
     ],
   ],
 ];

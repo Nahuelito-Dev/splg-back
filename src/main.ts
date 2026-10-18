@@ -14,6 +14,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 
 import morgan from 'morgan';
+import { cuerpoParaLog } from './common/utils/cuerpo-para-log';
 import type { Request, Response } from 'express';
 
 async function bootstrap() {
@@ -106,31 +107,7 @@ async function bootstrap() {
     return req.requestId ?? (typeof header === 'string' ? header : '-');
   });
 
-  morgan.token<Request, Response>('body', (req) => {
-    try {
-      if (!req.body) return '{}';
-
-      const body = { ...(req.body as Record<string, unknown>) };
-
-      const sensitiveFields = [
-        'password',
-        'passwordConfirmation',
-        'token',
-        'access_token',
-        'creditCard',
-      ];
-
-      sensitiveFields.forEach((field) => {
-        if (body[field]) {
-          body[field] = '******';
-        }
-      });
-
-      return JSON.stringify(body);
-    } catch {
-      return '{}';
-    }
-  });
+  morgan.token<Request, Response>('body', (req) => cuerpoParaLog(req.body));
 
   morgan.token('date', () => {
     return new Date().toLocaleString('es-AR', {

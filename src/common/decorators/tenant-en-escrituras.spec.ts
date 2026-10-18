@@ -53,6 +53,8 @@ const ESCRITURAS: Array<[Clase, string[]]> = [
       'cancel',
       'notifyArrival',
       'confirmDeposit',
+      'changeAddress',
+      'setReceiver',
     ],
   ],
   [

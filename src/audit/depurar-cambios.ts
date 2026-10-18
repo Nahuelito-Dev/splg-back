@@ -18,6 +18,11 @@ const SENSIBLES = new Set([
   'code',
   'deliverycode',
   'secret',
+  // Datos de quien recibe un pedido (CU-128): de un tercero y en un registro
+  // inmutable, que no puede acompañar la anulación por plazo vencido.
+  'receiverdocument',
+  'receivername',
+  'receiverrelationship',
 ]);
 
 const LARGO_MAXIMO = 500;

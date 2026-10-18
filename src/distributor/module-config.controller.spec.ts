@@ -1,11 +1,18 @@
 import { ModuleConfigController } from './module-config.controller';
 import { DispatchSettingsService } from './dispatch-settings.service';
 import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.service';
+import { ProcessConfigService } from './process-config.service';
 
 describe('ModuleConfigController', () => {
   let controller: ModuleConfigController;
   let dispatch: { vigentes: jest.Mock; guardar: jest.Mock };
   let tasks: { vigentes: jest.Mock; guardar: jest.Mock };
+  let processes: {
+    vigentes: jest.Mock;
+    guardar: jest.Mock;
+    todos: jest.Mock;
+    procesoConfigurable: jest.Mock;
+  };
 
   beforeEach(() => {
     dispatch = {
@@ -16,9 +23,16 @@ describe('ModuleConfigController', () => {
       vigentes: jest.fn().mockResolvedValue({ fleetAlertHour: 8 }),
       guardar: jest.fn().mockResolvedValue({ fleetAlertHour: 20 }),
     };
+    processes = {
+      vigentes: jest.fn().mockResolvedValue({ process: 'repurchase' }),
+      guardar: jest.fn().mockResolvedValue({ process: 'repurchase' }),
+      todos: jest.fn().mockResolvedValue([{ process: 'repurchase' }]),
+      procesoConfigurable: jest.fn((p: string) => p),
+    };
     controller = new ModuleConfigController(
       dispatch as unknown as DispatchSettingsService,
       tasks as unknown as ScheduledTasksSettingsService,
+      processes as unknown as ProcessConfigService,
     );
   });
 
@@ -50,5 +64,24 @@ describe('ModuleConfigController', () => {
       fleetAlertHour: 20,
     });
     expect(tasks.guardar).toHaveBeenCalledWith('d1', cuerpo, 'u1');
+  });
+
+  it('procesos automáticos: lista, lee y guarda con el usuario que lo pide', async () => {
+    expect(await controller.getProcesses('d1')).toEqual([
+      { process: 'repurchase' },
+    ]);
+    expect(processes.todos).toHaveBeenCalledWith('d1');
+
+    await controller.getProcess('repurchase', 'd1');
+    expect(processes.vigentes).toHaveBeenCalledWith('d1', 'repurchase');
+
+    const cuerpo = { anticipationDays: 5 };
+    await controller.putProcess('repurchase', cuerpo, 'd1', 'u1');
+    expect(processes.guardar).toHaveBeenCalledWith(
+      'd1',
+      'repurchase',
+      cuerpo,
+      'u1',
+    );
   });
 });

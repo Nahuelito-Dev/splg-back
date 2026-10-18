@@ -306,6 +306,60 @@ export class GasCylinderService {
     };
   }
 
+  /**
+   * Productos dados de baja de la distribuidora (CU-269): el catálogo (`findAll`)
+   * sólo incluye los activos, y de acá parte la reactivación.
+   */
+  async findInactive(
+    paginationDto: PaginationDto,
+    distributorId: string,
+  ): Promise<{
+    gasCylinders: GasCylinder[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    const { limit = 10, offset = 0 } = paginationDto;
+    const base: FindOptionsWhere<GasCylinder> = {
+      isActive: false,
+      distributorId,
+    };
+    const term = paginationDto.term?.trim();
+    const where = term
+      ? [
+          { ...base, type: ILike(`%${term}%`) },
+          { ...base, description: ILike(`%${term}%`) },
+        ]
+      : base;
+
+    const [gasCylinders, total] = await this.gasCylinderRepository.findAndCount(
+      {
+        where,
+        relations: CON_PROMOCIONES,
+        take: limit,
+        skip: offset,
+        order: { type: 'ASC' },
+      },
+    );
+    return { gasCylinders, total, limit, offset };
+  }
+
+  /**
+   * Devuelve al catálogo un producto dado de baja (CU-268). No invierte el
+   * estado: siempre lo deja activo, así que reactivar uno activo no cambia
+   * nada. Sólo toca `isActive`: el stock y las promociones quedan intactos. Un
+   * producto inexistente o de otra distribuidora es 404 sin distinguir los dos.
+   */
+  async reactivate(id: string, distributorId: string): Promise<GasCylinder> {
+    const gasCylinder = await this.findOne(id, distributorId);
+    if (gasCylinder.isActive) return gasCylinder;
+    // `save` y no `update`: así el subscriber deja el cambio en la auditoría de datos.
+    gasCylinder.isActive = true;
+    this.sinEscribirElVendible(gasCylinder);
+    await this.gasCylinderRepository.save(gasCylinder);
+    return this.findOne(id, distributorId);
+  }
+
   async getAvailableCylinders(
     distributor?: string,
   ): Promise<{ products: GasCylinder[]; paymentMethods: MedioDePagoDto[] }> {

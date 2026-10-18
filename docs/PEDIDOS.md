@@ -209,6 +209,61 @@ siempre). Es el **checkout del carrito persistente** (`docs/CARRITO-Y-CONSUMO.md
 - **Contrato para la app:** el checkout del carrito es `fromCart: true`; la app **no borra ítems**
   del carrito al confirmar. La compra exprés (sin carrito) sigue mandando `items`.
 
+## Cambiar la dirección de entrega — `PATCH /orders/:id/address` (CU-127)
+
+Sólo el **cliente dueño** (un pedido ajeno es **404**; admin, super admin y chofer: **403**). Idempotente
+(`Idempotency-Key`). Cuerpo: `{ addressId, reason? }` (`reason` hasta 500 caracteres). Responde el pedido completo
+(`OrderResponseDto`).
+
+- **Cuándo:** pedido `pending` o `accepted`. `on_the_way` o `delivered`: **409** `El pedido ya salió o fue entregado: no se
+  puede cambiar la dirección`. `cancelled` o `reserved`: **409** con el estado actual.
+- **Dirección:** tiene que ser otra de las del cliente (de otro cliente o inexistente: **404** `Dirección no encontrada`;
+  la misma que ya tiene: **400**) y caer dentro de una zona de cobertura de la distribuidora del pedido (misma consulta del alta;
+  si no: **400** `La dirección está fuera de la zona de cobertura de la distribuidora`).
+- **Recargo y total:** se calcula el recargo de la zona nueva sobre `subtotalItems` y se compara con el del pedido.
+  - Pedido de **pago en línea** (`paymentType = online`: MercadoPago o transferencia): el importe ya está definido, así que si el
+    recargo cambia responde **409** `El recargo de la zona nueva es distinto del original y el pedido es de pago en línea:
+cancelalo y hacelo de nuevo con la dirección que querés`. Si el recargo es el mismo, cambia la dirección y conserva el total.
+  - Pedido en **efectivo**: recalcula `zoneSurchargeAmount` y `totalAmount`. Con seña paga, el total no puede quedar por
+    debajo de la seña (**409**).
+- **Qué se guarda (una sola transacción, con lock sobre el pedido y re-chequeo del estado adentro):** `addressId`, `deliveryPoint`
+  (el punto contra el que se mide la llegada del chofer), el snapshot de la zona (`coverage_zone_id`, `zone_name`,
+  `zone_surcharge_*`), una fila en `order_address_change` (dirección anterior, nueva, quién y el motivo) y una anotación en el
+  historial de estados (`Dirección de entrega cambiada por el cliente (<motivo>). Total: 2200 → 2500`).
+- **Carrera:** corre bajo el lock Redis `dispatch:offer:<id>` (el del despacho y la edición). Si el pedido sale en camino en
+  paralelo, gana uno solo: o el cambio entra antes, o responde 409 sin escribir.
+- **Avisos:** al chofer asignado (leído después del lock, en una consulta aparte), por su **id de usuario** (no el de su perfil), `order:address-changed`
+  (`{ orderId, distributorId, fromAddressId, toAddressId, totalAmount, status, message }`); a los admins de la distribuidora,
+  `order:address-changed` con el mismo payload. Si el pedido está `pending`, las ofertas vivas pasan a `superseded`, se avisa a esos
+  choferes (`order:cancelled`) y el pedido se vuelve a ofrecer con el punto nuevo.
+- **Auditoría:** el pedido y `order_address_change` pasan por `save`; el request queda en el log HTTP.
+
+## Quién recibe el pedido — `PATCH /orders/:id/receiver` (CU-128)
+
+Sólo el **cliente dueño** (ajeno: **404**; admin, super admin y chofer: **403**). Idempotente. Cuerpo, todo obligatorio:
+`receiverName` (hasta 120), `receiverDocument` (hasta 20; se normaliza sin puntos, guiones ni espacios y en mayúsculas; DNI,
+CUIT/CUIL o pasaporte: 6 a 15 letras o dígitos con al menos un dígito, si no **400**) y `receiverRelationship` (hasta 40).
+Reemplaza lo anterior. Responde el pedido completo.
+
+- **Cuándo:** mientras el pedido no esté `delivered` (**409** `El pedido ya fue entregado: no se puede indicar quién lo recibe`)
+  ni `cancelled` (**409**). Lock sobre el pedido y estado re-chequeado adentro.
+- **Dónde se ve:** la respuesta del pedido trae `receiver: { name, document, relationship } | null`. Lo ven el **cliente dueño**,
+  el **chofer asignado** y el **administrador** de la distribuidora. Un chofer que mira el pedido desde el pool
+  (`GET /orders/available`) o como oferta recibe `receiver: null`.
+- **Desde el alta:** `POST /orders` acepta `receiver: { receiverName, receiverDocument, receiverRelationship }` (opcional) con las
+  mismas validaciones y la misma visibilidad.
+- **Datos de un tercero:** se conservan sólo hasta que vence el plazo de reclamo y después se anulan. Un pedido con un **reclamo
+  abierto** (`pending` o `in_process`) conserva los datos hasta que el reclamo se cierre.
+  `ReceiverRetentionCron` corre todos los días a las 03:40 (hora de Argentina), con cerrojo distribuido
+  (`cron:order-receiver-retention`), y deja en `NULL` los tres campos de los pedidos `delivered` o `cancelled` cuya fecha de
+  entrega (`deliveredAt`, o `updatedAt` si se canceló) tenga más de `PLAZO_DE_RECLAMO_DIAS` (30) días. Es mantenimiento
+  del sistema, no una tarea configurable.
+- **Nada de esto entra en la auditoría** (es inmutable y la anulación tiene que ser real): `receiverName`, `receiverDocument` y
+  `receiverRelationship` están en `PROPIEDADES_EXCLUIDAS.Order` (auditoría de datos), sus claves en `SENSIBLES` de `depurarCambios`
+  (bitácora HTTP: `[depurado]`) y en la lista de `cuerpoParaLog` (log de morgan: `******`, también anidados en `receiver`).
+  `ReceiverRetentionCron` registra la anulación en la auditoría de datos (`receiver: [datos de quien recibe] → [anulados por plazo
+  de reclamo vencido]`) sin los valores.
+
 ## Cotización — `POST /orders/quote`
 
 Mismo cuerpo que `POST /orders`; sólo `paymentMethod` es obligatorio, más `items` (salvo con `fromCart: true`, ver «Crear desde el carrito»). Con `addressId`

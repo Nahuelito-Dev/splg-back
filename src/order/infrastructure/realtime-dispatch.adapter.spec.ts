@@ -39,3 +39,19 @@ describe('RealtimeDispatchAdapter.lastDriverLocation', () => {
     await expect(adapter.lastDriverLocation('u1', 'o1')).resolves.toBeNull();
   });
 });
+
+describe('RealtimeDispatchAdapter.notifyDriverOrderAddressChanged', () => {
+  it('delega el aviso en el gateway de choferes con el id de usuario', () => {
+    const notifyOrderAddressChanged = jest.fn();
+    const adapter = new RealtimeDispatchAdapter(
+      {} as never,
+      { notifyOrderAddressChanged } as never,
+      {} as never,
+      {} as never,
+    );
+    adapter.notifyDriverOrderAddressChanged('u1', { orderId: 'o1' });
+    expect(notifyOrderAddressChanged).toHaveBeenCalledWith('u1', {
+      orderId: 'o1',
+    });
+  });
+});
