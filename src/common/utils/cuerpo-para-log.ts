@@ -1,7 +1,8 @@
 /**
  * Campos que nunca van al log de requests (morgan), en cualquier nivel del
  * cuerpo y sin distinguir mayúsculas. Incluye los datos de un tercero que se
- * cargan al indicar quién recibe un pedido (CU-128).
+ * cargan al indicar quién recibe un pedido (CU-128) y el detalle de la
+ * documentación del personal.
  */
 const ENMASCARADOS = new Set([
   'password',
@@ -12,6 +13,8 @@ const ENMASCARADOS = new Set([
   'receivername',
   'receiverdocument',
   'receiverrelationship',
+  // Detalle de la documentación del personal (psicofísico, ART).
+  'details',
 ]);
 
 const MASCARA = '******';

@@ -31,6 +31,12 @@ describe('depurarCambios (CU-153: las credenciales nunca se guardan)', () => {
     });
   });
 
+  it('no guarda el detalle de la documentación del personal (psicofísico, ART)', () => {
+    expect(
+      depurarCambios({ planId: 'p1', details: { policyNumber: '99-1234' } }),
+    ).toEqual({ planId: 'p1', details: '[depurado]' });
+  });
+
   it('no distingue mayúsculas en el nombre de la clave', () => {
     expect(depurarCambios({ NewPassword: 'x' })).toEqual({
       NewPassword: '[depurado]',

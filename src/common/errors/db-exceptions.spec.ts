@@ -34,6 +34,16 @@ describe('traducirErrorDeBase', () => {
     },
   );
 
+  it('23P01 (exclusión violada) es 409', () => {
+    expect(() =>
+      traducirErrorDeBase(
+        { code: '23P01', detail: 'se pisan', message: 'exclusion' },
+        logger,
+        'licencias',
+      ),
+    ).toThrow(ConflictException);
+  });
+
   it('23505 (unicidad violada) es 409', () => {
     expect(() =>
       traducirErrorDeBase(

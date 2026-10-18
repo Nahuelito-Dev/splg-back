@@ -13,6 +13,9 @@ import {
 } from './entities/maintenance-plan.entity';
 import { VehicleAssignmentService } from '../car/vehicle-assignment.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { EmployeeService } from '../employee/employee.service';
+import { EmployeeStatus } from '../employee/entities/employee.entity';
+import { LeaveService } from '../leave/leave.service';
 
 /**
  * Un `FindOptionsWhere` real de TypeORM (arreglo de condiciones OR, cada una
@@ -70,6 +73,8 @@ describe('FleetDispatchLockService', () => {
   let tasks: { find: jest.Mock };
   let vehicleAssignments: { findVehiculosEnUsoPorDeliveryIds: jest.Mock };
   let deliveryService: { findDeliveryIdsByUserIds: jest.Mock };
+  let employees: { findByUserIds: jest.Mock };
+  let leaves: { empleadosDeLicenciaEn: jest.Mock };
 
   const planVehiculo = {
     planId: 'plan-vtv',
@@ -130,10 +135,17 @@ describe('FleetDispatchLockService', () => {
       findDeliveryIdsByUserIds: jest.fn().mockResolvedValue([]),
     };
 
+    employees = { findByUserIds: jest.fn().mockResolvedValue([]) };
+    leaves = {
+      empleadosDeLicenciaEn: jest.fn().mockResolvedValue(new Set<string>()),
+    };
+
     service = new FleetDispatchLockService(
       tasks as unknown as Repository<MaintenanceTask>,
       vehicleAssignments as unknown as VehicleAssignmentService,
       deliveryService as unknown as DeliveryService,
+      employees as unknown as EmployeeService,
+      leaves as unknown as LeaveService,
     );
   });
 
@@ -274,6 +286,8 @@ describe('FleetDispatchLockService', () => {
         repoFake as unknown as Repository<MaintenanceTask>,
         vehicleAssignments as unknown as VehicleAssignmentService,
         deliveryService as unknown as DeliveryService,
+        employees as unknown as EmployeeService,
+        leaves as unknown as LeaveService,
       );
 
       const inhabilitados = await service.choferesInhabilitados(
@@ -309,6 +323,8 @@ describe('FleetDispatchLockService', () => {
         repoFake as unknown as Repository<MaintenanceTask>,
         vehicleAssignments as unknown as VehicleAssignmentService,
         deliveryService as unknown as DeliveryService,
+        employees as unknown as EmployeeService,
+        leaves as unknown as LeaveService,
       );
 
       const inhabilitados = await service.choferesInhabilitados(
@@ -435,6 +451,162 @@ describe('FleetDispatchLockService', () => {
     it('null si el user_id no resuelve a ningún chofer', async () => {
       const vehiculo = await service.vehiculoEnUsoDelChofer('ghost', 'd1');
       expect(vehiculo).toBeNull();
+    });
+  });
+
+  describe('habilitación laboral (CU-246)', () => {
+    const planCurso: MaintenancePlan = {
+      ...planVehiculo,
+      planId: 'plan-curso',
+      name: 'Examen psicofísico',
+      subject: MaintenanceSubject.EMPLOYEE,
+    };
+    const tareaDelLegajoVencida = {
+      taskId: 't-psico',
+      carId: null,
+      deliveryId: null,
+      employeeId: 'e1',
+      distributorId: 'd1',
+      status: MaintenanceTaskStatus.SCHEDULED,
+      dueAt: new Date('2020-03-01T00:00:00.000Z'),
+      plan: planCurso,
+    } as unknown as MaintenanceTask;
+
+    const legajo = (over: Record<string, unknown> = {}) => ({
+      employeeId: 'e1',
+      userId: 'user-1',
+      status: EmployeeStatus.ACTIVE,
+      ...over,
+    });
+
+    function chofer(userId = 'user-1', deliveryId = 'dl1') {
+      deliveryService.findDeliveryIdsByUserIds.mockResolvedValue([
+        { userId, deliveryId },
+      ]);
+      vehicleAssignments.findVehiculosEnUsoPorDeliveryIds.mockResolvedValue([
+        vehiculoEnUso(deliveryId),
+      ]);
+    }
+
+    it('un chofer sin legajo conserva el comportamiento anterior (habilitado)', async () => {
+      chofer();
+
+      const inhabilitados = await service.choferesInhabilitados(
+        ['user-1'],
+        'd1',
+      );
+
+      expect(inhabilitados.size).toBe(0);
+      expect(leaves.empleadosDeLicenciaEn).toHaveBeenCalledWith(
+        [],
+        expect.any(String),
+      );
+    });
+
+    it('un chofer con el psicofísico de su legajo vencido queda inhabilitado, y el motivo lo dice', async () => {
+      chofer();
+      employees.findByUserIds.mockResolvedValue([legajo()]);
+      const repo = crearRepoFake([tareaDelLegajoVencida]);
+      Object.assign(tasks, repo);
+
+      expect(
+        (await service.choferesInhabilitados(['user-1'], 'd1')).has('user-1'),
+      ).toBe(true);
+      await expect(
+        service.motivosDeInhabilitacion('user-1', 'd1'),
+      ).resolves.toEqual(['Examen psicofísico: venció el 01/03/2020']);
+    });
+
+    it('lo bloqueante vencido de OTRO legajo no inhabilita a este chofer', async () => {
+      chofer();
+      employees.findByUserIds.mockResolvedValue([legajo()]);
+      Object.assign(
+        tasks,
+        crearRepoFake([
+          { ...tareaDelLegajoVencida, employeeId: 'otro' } as MaintenanceTask,
+        ]),
+      );
+
+      expect((await service.choferesInhabilitados(['user-1'], 'd1')).size).toBe(
+        0,
+      );
+    });
+
+    it('una tarea del legajo no bloqueante (la ART) vencida no inhabilita', async () => {
+      chofer();
+      employees.findByUserIds.mockResolvedValue([legajo()]);
+      Object.assign(
+        tasks,
+        crearRepoFake([
+          {
+            ...tareaDelLegajoVencida,
+            plan: {
+              ...planCurso,
+              criticality: MaintenanceCriticality.NON_BLOCKING,
+            },
+          } as MaintenanceTask,
+        ]),
+      );
+
+      expect((await service.choferesInhabilitados(['user-1'], 'd1')).size).toBe(
+        0,
+      );
+    });
+
+    it('un legajo egresado inhabilita al chofer', async () => {
+      chofer();
+      employees.findByUserIds.mockResolvedValue([
+        legajo({ status: EmployeeStatus.TERMINATED }),
+      ]);
+
+      expect(
+        (await service.choferesInhabilitados(['user-1'], 'd1')).has('user-1'),
+      ).toBe(true);
+      await expect(
+        service.motivosDeInhabilitacion('user-1', 'd1'),
+      ).resolves.toEqual(['su legajo está egresado']);
+    });
+
+    it('una licencia aprobada que cubre hoy inhabilita al chofer', async () => {
+      chofer();
+      employees.findByUserIds.mockResolvedValue([legajo()]);
+      leaves.empleadosDeLicenciaEn.mockResolvedValue(new Set(['e1']));
+
+      await expect(
+        service.motivosDeInhabilitacion('user-1', 'd1'),
+      ).resolves.toEqual([
+        'tiene una licencia aprobada que cubre el día de hoy',
+      ]);
+      await expect(
+        service.assertChoferHabilitado('user-1', 'd1'),
+      ).rejects.toThrow(
+        'No se puede asignar: tiene una licencia aprobada que cubre el día de hoy.',
+      );
+    });
+
+    it('pregunta por las licencias de todos los legajos en una sola consulta', async () => {
+      deliveryService.findDeliveryIdsByUserIds.mockResolvedValue([
+        { userId: 'user-1', deliveryId: 'dl1' },
+        { userId: 'user-2', deliveryId: 'dl2' },
+      ]);
+      vehicleAssignments.findVehiculosEnUsoPorDeliveryIds.mockResolvedValue([
+        vehiculoEnUso('dl1', 'c1'),
+        vehiculoEnUso('dl2', 'c2'),
+      ]);
+      employees.findByUserIds.mockResolvedValue([
+        legajo(),
+        legajo({ employeeId: 'e2', userId: 'user-2' }),
+      ]);
+      leaves.empleadosDeLicenciaEn.mockResolvedValue(new Set(['e2']));
+
+      const inhabilitados = await service.choferesInhabilitados(
+        ['user-1', 'user-2'],
+        'd1',
+      );
+
+      expect([...inhabilitados]).toEqual(['user-2']);
+      expect(leaves.empleadosDeLicenciaEn).toHaveBeenCalledTimes(1);
+      expect(employees.findByUserIds).toHaveBeenCalledTimes(1);
     });
   });
 });

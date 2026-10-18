@@ -12,7 +12,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Gate completo (lo que tiene que quedar verde) | `npm run verify` — tipos, lint (con reglas de Jest), unit tests con piso de cobertura por módulo y build (ver `CONVENCIONES.md` §11) |
 | Levantar en desarrollo | `../splg-dev.sh` (infra + back :3000 + panel :3001) o `npm run start:dev` |
 | Unit tests | `npm test` (Jest, `src/**/*.spec.ts`) |
-| Integración (necesita Docker: testcontainers levanta y borra sus propios contenedores) | `npm run test:integration` |
+| Integración con testcontainers (no se corre en el flujo de trabajo: la prueba es contra la API sobre `splg_db` y `splg-redis`) | `npm run test:integration` |
 | Migraciones | `npm run migration:generate -- src/migrations/<Nombre>` · `npm run migration:run` |
 | Seeds | `npm run seed` (roles, distribuidora, usuarios con Firebase) · `npm run seed:demo` |
 | Archivos (Amazon S3; los e2e usan un MinIO efímero con testcontainers) | `docs/S3.md` |
@@ -22,6 +22,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Carrito persistente y consumo declarado (C-12 y C-13) | `docs/CARRITO-Y-CONSUMO.md` |
 | Parámetros de los procesos automáticos (CU-172) y zonas de cobertura vencidas (CU-151) | `docs/PROCESOS-AUTOMATICOS.md` |
 | Productos dados de baja y reactivación (CU-268, CU-269) | `docs/CATALOGO.md` |
+| Personal: documentación, asistencia, licencias, tablero y habilitación laboral (C-08) | `docs/PERSONAL.md` |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
 
 ## Convenciones

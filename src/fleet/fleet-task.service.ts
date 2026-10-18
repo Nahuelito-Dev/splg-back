@@ -13,7 +13,9 @@ import {
 import {
   MaintenancePlan,
   MaintenanceSubject,
+  MaintenanceTrigger,
 } from './entities/maintenance-plan.entity';
+import { JobPositionCategory } from '../employee/entities/job-position.entity';
 import { CreateFleetTaskDto } from './dto/create-task.dto';
 import { UpdateFleetTaskDto } from './dto/update-task.dto';
 import { CloseFleetTaskDto } from './dto/close-task.dto';
@@ -21,6 +23,8 @@ import { CancelFleetTaskDto } from './dto/cancel-task.dto';
 import { QueryFleetTaskDto } from './dto/query-task.dto';
 import { CarService } from '../car/car.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { EmployeeService } from '../employee/employee.service';
+import { EmployeeConPuesto } from '../employee/employee.mapper';
 import { FleetDispatchLockService } from './fleet-dispatch-lock.service';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
@@ -31,6 +35,7 @@ import {
   tareasQueInhabilitan,
 } from './domain/fleet-lock.util';
 import { calcularEstadoDeVencimiento } from './domain/expiration-status';
+import { validarDetalle } from './domain/document-details';
 
 const ESTADOS_CERRADOS = [
   MaintenanceTaskStatus.DONE,
@@ -39,8 +44,9 @@ const ESTADOS_CERRADOS = [
 
 /**
  * Tareas de flota: cada vencimiento/servicio concreto de un plan (CU-136 a
- * CU-141). Una tarea apunta a un vehículo o a un chofer, según el `subject`
- * de su plan; nunca a los dos ni a ninguno.
+ * CU-141) y la documentación del personal (CU-183 a CU-185). Una tarea apunta a
+ * un vehículo, a un chofer o a un empleado, según el `subject` de su plan;
+ * nunca a dos ni a ninguno.
  */
 @Injectable()
 export class FleetTaskService {
@@ -53,6 +59,7 @@ export class FleetTaskService {
     private readonly plans: Repository<MaintenancePlan>,
     private readonly carService: CarService,
     private readonly deliveryService: DeliveryService,
+    private readonly employees: EmployeeService,
     // Gate único de bloqueo de flota (CU-136 a CU-138): lo usa `listByDelivery`
     // para que la ficha del chofer muestre el MISMO `isLocked` que aplica el
     // despacho (incluye el vehículo que maneja, no sólo su propia licencia).
@@ -64,13 +71,15 @@ export class FleetTaskService {
     distributorId: string,
   ): Promise<MaintenanceTask> {
     const plan = await this.findPlanOrThrow(dto.planId, distributorId);
-    await this.assertSujetoCoherente(plan, dto, distributorId);
+    const empleado = await this.assertSujetoCoherente(plan, dto, distributorId);
+    this.assertDatosDelDocumento(plan, dto, empleado);
 
     const task = this.tasks.create({
       planId: plan.planId,
       distributorId,
       carId: dto.carId ?? null,
       deliveryId: dto.deliveryId ?? null,
+      employeeId: empleado?.employeeId ?? null,
       status: MaintenanceTaskStatus.SCHEDULED,
       // Fecha de calendario: si el ISO trae hora (datepicker con hora local,
       // etc.), se normaliza a medianoche UTC para no correr el vencimiento a
@@ -86,6 +95,7 @@ export class FleetTaskService {
       category: dto.category ?? null,
       alertedAt: null,
       notes: dto.notes ?? null,
+      details: this.detalleValidado(plan, dto),
     });
 
     try {
@@ -111,6 +121,11 @@ export class FleetTaskService {
     if (query.deliveryId) {
       qb.andWhere('task.delivery_id = :deliveryId', {
         deliveryId: query.deliveryId,
+      });
+    }
+    if (query.employeeId) {
+      qb.andWhere('task.employee_id = :employeeId', {
+        employeeId: query.employeeId,
       });
     }
     if (query.planId)
@@ -171,6 +186,10 @@ export class FleetTaskService {
         scheduledAt: dto.scheduledAt
           ? new Date(dto.scheduledAt)
           : dto.scheduledAt,
+        details:
+          dto.details === undefined
+            ? undefined
+            : this.detalleValidado(task.plan, dto),
       }),
     );
 
@@ -354,30 +373,99 @@ export class FleetTaskService {
     return plan;
   }
 
-  /** El vehículo/chofer que llega tiene que coincidir con `plan.subject` y ser de la misma distribuidora. */
+  /**
+   * El vehículo/chofer/empleado que llega tiene que coincidir con
+   * `plan.subject` y ser de la misma distribuidora. Para un plan de personal
+   * devuelve el legajo (activo y al que el plan le aplica).
+   */
   private async assertSujetoCoherente(
     plan: MaintenancePlan,
     dto: CreateFleetTaskDto,
     distributorId: string,
-  ): Promise<void> {
+  ): Promise<EmployeeConPuesto | null> {
     if (plan.subject === MaintenanceSubject.VEHICLE) {
-      if (!dto.carId || dto.deliveryId) {
+      if (!dto.carId || dto.deliveryId || dto.employeeId) {
         throw new BadRequestException(
-          'Un plan de vehículo necesita carId (y no deliveryId)',
+          'Un plan de vehículo necesita carId (y no deliveryId ni employeeId)',
         );
       }
       await this.carService.findOne(dto.carId, distributorId); // 404 si no existe/no es de esta distribuidora
-      return;
+      return null;
     }
 
-    if (!dto.deliveryId || dto.carId) {
+    if (plan.subject === MaintenanceSubject.EMPLOYEE) {
+      if (!dto.employeeId || dto.carId || dto.deliveryId) {
+        throw new BadRequestException(
+          'Un plan de personal necesita employeeId (y no carId ni deliveryId)',
+        );
+      }
+      // 404 si no existe/no es de esta distribuidora; 409 si está egresado
+      const empleado = await this.employees.findActivo(
+        dto.employeeId,
+        distributorId,
+      );
+      if (!plan.isActive) {
+        throw new BadRequestException(`El plan «${plan.name}» está inactivo`);
+      }
+      if (!aplicaALaCategoria(plan, empleado.position.category)) {
+        throw new BadRequestException(
+          `El plan «${plan.name}» no aplica a la categoría del puesto del empleado (${empleado.position.category})`,
+        );
+      }
+      return empleado;
+    }
+
+    if (!dto.deliveryId || dto.carId || dto.employeeId) {
       throw new BadRequestException(
-        'Un plan de chofer necesita deliveryId (y no carId)',
+        'Un plan de chofer necesita deliveryId (y no carId ni employeeId)',
       );
     }
     const delivery = await this.deliveryService.findOne(dto.deliveryId);
     if (delivery.distributorId !== distributorId) {
       throw new NotFoundException(`Chofer ${dto.deliveryId} no encontrado`);
     }
+    return null;
   }
+
+  /** Un plan de personal por fecha fija necesita el vencimiento: es lo que se registra. */
+  private assertDatosDelDocumento(
+    plan: MaintenancePlan,
+    dto: CreateFleetTaskDto,
+    empleado: EmployeeConPuesto | null,
+  ): void {
+    if (empleado && plan.trigger === MaintenanceTrigger.BY_FIXED_DATE) {
+      if (!dto.dueAt) {
+        throw new BadRequestException(
+          'dueAt: el vencimiento del documento es obligatorio',
+        );
+      }
+    }
+  }
+
+  /** El detalle según el tipo de documento del plan, o 400 nombrando el campo. */
+  private detalleValidado(
+    plan: MaintenancePlan,
+    dto: Pick<CreateFleetTaskDto, 'details'>,
+  ): Record<string, string> | null {
+    const resultado = validarDetalle(plan.documentKind, dto.details);
+    if (!resultado.ok) {
+      throw new BadRequestException(resultado.motivo);
+    }
+    return resultado.detalle;
+  }
+}
+
+/** `appliesToCategories` vacío o `null` = aplica a todas las categorías. */
+export function aplicaALaCategoria(
+  plan: Pick<MaintenancePlan, 'appliesToCategories' | 'subject'>,
+  categoria: JobPositionCategory,
+): boolean {
+  const categorias = plan.appliesToCategories;
+  if (categorias === null || categorias.length === 0) {
+    // Un plan de chofer sin categorías es el histórico de la licencia: aplica a los choferes.
+    return plan.subject !== MaintenanceSubject.DRIVER
+      ? true
+      : categoria === JobPositionCategory.DRIVER;
+  }
+  return categorias.includes(categoria);
 }

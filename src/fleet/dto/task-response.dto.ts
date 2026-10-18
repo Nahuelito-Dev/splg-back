@@ -14,6 +14,8 @@ export class FleetTaskResponseDto {
   carId!: string | null;
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   deliveryId!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  employeeId!: string | null;
   @ApiProperty({ enum: MaintenanceTaskStatus }) status!: MaintenanceTaskStatus;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   dueAt!: Date | null;
@@ -29,6 +31,14 @@ export class FleetTaskResponseDto {
   referenceNumber!: string | null;
   @ApiProperty({ type: String, nullable: true }) category!: string | null;
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    nullable: true,
+    description:
+      'Datos propios del tipo de documento (según `plan.documentKind`)',
+  })
+  details!: Record<string, string> | null;
 
   @ApiProperty({
     enum: ExpirationStatus,

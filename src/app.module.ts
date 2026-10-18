@@ -41,6 +41,9 @@ import { AuditModule } from './audit/audit.module';
 import { DocumentSequenceModule } from './document-sequence/document-sequence.module';
 import { AttachmentModule } from './attachment/attachment.module';
 import { EmployeeModule } from './employee/employee.module';
+import { AttendanceModule } from './attendance/attendance.module';
+import { LeaveModule } from './leave/leave.module';
+import { PersonnelModule } from './personnel/personnel.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { TruckLoadModule } from './truck-load/truck-load.module';
 import { StockModule } from './stock/stock.module';
@@ -214,6 +217,9 @@ import { FirebaseModule } from './firebase/firebase.module';
     DocumentSequenceModule,
     AttachmentModule,
     EmployeeModule,
+    AttendanceModule,
+    LeaveModule,
+    PersonnelModule,
     StockModule,
     PurchaseModule,
     TruckLoadModule,

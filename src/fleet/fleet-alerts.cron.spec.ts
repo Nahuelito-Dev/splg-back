@@ -3,6 +3,8 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
 import { MaintenanceTask } from './entities/maintenance-task.entity';
 import { AdminService } from '../admin/admin.service';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
+import { EmployeeService } from '../employee/employee.service';
+import { EmployeeDocumentsService } from './employee-documents.service';
 
 describe('FleetAlertsCron', () => {
   let cron: FleetAlertsCron;
@@ -11,6 +13,8 @@ describe('FleetAlertsCron', () => {
   let adminService: { findAll: jest.Mock };
   let emailSender: { send: jest.Mock };
   let esLaHora: jest.Mock;
+  let employees: { distribuidorasConChoferesActivos: jest.Mock };
+  let documents: { faltantesBloqueantesDeChoferes: jest.Mock };
 
   const tareaPorVencer = (over: Partial<MaintenanceTask> = {}) =>
     ({
@@ -39,6 +43,12 @@ describe('FleetAlertsCron', () => {
     emailSender = { send: jest.fn().mockResolvedValue(undefined) };
 
     esLaHora = jest.fn().mockResolvedValue(true);
+    employees = {
+      distribuidorasConChoferesActivos: jest.fn().mockResolvedValue([]),
+    };
+    documents = {
+      faltantesBloqueantesDeChoferes: jest.fn().mockResolvedValue([]),
+    };
     cron = new FleetAlertsCron(
       tasks as unknown as Repository<MaintenanceTask>,
       adminService as unknown as AdminService,
@@ -46,6 +56,8 @@ describe('FleetAlertsCron', () => {
       {
         esLaHoraDelAvisoDeFlota: esLaHora,
       } as unknown as import('../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
+      employees as unknown as EmployeeService,
+      documents as unknown as EmployeeDocumentsService,
     );
   });
 
@@ -138,5 +150,105 @@ describe('FleetAlertsCron', () => {
     expect(adminService.findAll).not.toHaveBeenCalledWith('d1');
     expect(adminService.findAll).toHaveBeenCalledWith('d2');
     expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  describe('personal (CU-188)', () => {
+    const tareaDeEmpleado = (over: Partial<MaintenanceTask> = {}) =>
+      tareaPorVencer({
+        taskId: 'te1',
+        car: null,
+        carId: null,
+        employee: { firstName: 'Ana', lastName: 'Pérez' },
+        plan: { name: 'Examen psicofísico', leadTimeDays: 30 },
+        ...over,
+      } as unknown as Partial<MaintenanceTask>);
+
+    const faltante = {
+      empleado: { firstName: 'Beto', lastName: 'Gómez' },
+      planes: [{ name: 'Curso de transporte de mercancías peligrosas (GLP)' }],
+    };
+
+    const admin = [{ user: { email: 'admin@demo.splg.app' } }];
+
+    it('nombra al empleado en el correo y marca la tarea como avisada', async () => {
+      getMany.mockResolvedValue([tareaDeEmpleado()]);
+      adminService.findAll.mockResolvedValue(admin);
+
+      await cron.avisarVencimientosPendientes();
+
+      const [[envio]] = emailSender.send.mock.calls as [[{ html: string }]];
+      expect(envio.html).toContain('Empleado Ana Pérez');
+      expect(envio.html).toContain('Examen psicofísico');
+      expect(update).toHaveBeenCalledWith(['te1'], {
+        alertedAt: expect.any(Date) as unknown,
+      });
+    });
+
+    it('los documentos faltantes entran en el correo y NO se marcan: no hay tarea que marcar', async () => {
+      getMany.mockResolvedValue([]);
+      employees.distribuidorasConChoferesActivos.mockResolvedValue(['d1']);
+      documents.faltantesBloqueantesDeChoferes.mockResolvedValue([faltante]);
+      adminService.findAll.mockResolvedValue(admin);
+
+      await cron.avisarVencimientosPendientes();
+
+      const [[envio]] = emailSender.send.mock.calls as [
+        [{ html: string; subject: string }],
+      ];
+      expect(envio.html).toContain('Beto Gómez');
+      expect(envio.html).toContain('Curso de transporte');
+      expect(envio.subject).toContain('1 chofer(es) con documentos sin cargar');
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('vencimientos y faltantes van en un único correo por administrador', async () => {
+      getMany.mockResolvedValue([tareaDeEmpleado()]);
+      employees.distribuidorasConChoferesActivos.mockResolvedValue(['d1']);
+      documents.faltantesBloqueantesDeChoferes.mockResolvedValue([faltante]);
+      adminService.findAll.mockResolvedValue(admin);
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(emailSender.send).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+
+    it('si falla el envío no marca las tareas y el faltante se repetirá mañana', async () => {
+      getMany.mockResolvedValue([tareaDeEmpleado()]);
+      documents.faltantesBloqueantesDeChoferes.mockResolvedValue([faltante]);
+      employees.distribuidorasConChoferesActivos.mockResolvedValue(['d1']);
+      adminService.findAll.mockResolvedValue(admin);
+      emailSender.send.mockRejectedValue(new Error('smtp caído'));
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('sin nada que avisar ni faltantes en una distribuidora con choferes, no manda nada', async () => {
+      getMany.mockResolvedValue([]);
+      employees.distribuidorasConChoferesActivos.mockResolvedValue(['d1']);
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(adminService.findAll).not.toHaveBeenCalled();
+      expect(emailSender.send).not.toHaveBeenCalled();
+    });
+
+    it('sólo calcula los faltantes de las distribuidoras a las que les toca la hora', async () => {
+      getMany.mockResolvedValue([]);
+      employees.distribuidorasConChoferesActivos.mockResolvedValue([
+        'd1',
+        'd2',
+      ]);
+      esLaHora.mockImplementation((id: string) => Promise.resolve(id === 'd2'));
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(documents.faltantesBloqueantesDeChoferes).toHaveBeenCalledTimes(1);
+      expect(documents.faltantesBloqueantesDeChoferes).toHaveBeenCalledWith(
+        'd2',
+      );
+    });
   });
 });

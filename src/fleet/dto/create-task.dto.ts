@@ -9,12 +9,13 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { Allow } from 'class-validator';
 
 /**
  * Crea una tarea (un vencimiento/servicio concreto) contra un plan. La tarea
- * apunta a UN vehículo (`carId`) o a UN chofer (`deliveryId`), según
- * `plan.subject`: el servicio valida que venga el correcto y que pertenezca a
- * la misma distribuidora.
+ * apunta a UN vehículo (`carId`), a UN chofer (`deliveryId`) o a UN empleado
+ * (`employeeId`), según `plan.subject`: el servicio valida que venga el
+ * correcto y que pertenezca a la misma distribuidora.
  */
 export class CreateFleetTaskDto {
   @ApiProperty({ format: 'uuid' })
@@ -36,6 +37,15 @@ export class CreateFleetTaskDto {
   @IsOptional()
   @IsUUID()
   deliveryId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Obligatorio si el plan es de personal (subject: employee): curso de mercancías peligrosas, psicofísico, ART (CU-183 a CU-185)',
+  })
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -89,6 +99,17 @@ export class CreateFleetTaskDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { certificateNumber: '123/26', issuer: 'CNRT' },
+    description:
+      'Datos propios del tipo de documento (`plan.documentKind`): curso de mercancías peligrosas {certificateNumber, issuer}, psicofísico {examDate}, ART {insurer, policyNumber}. Los demás tipos no llevan detalle.',
+  })
+  @IsOptional()
+  @Allow()
+  details?: Record<string, string>;
 
   @ApiPropertyOptional({
     type: String,

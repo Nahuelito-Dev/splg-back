@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   Employee,
   EmployeeDocumentType,
@@ -14,7 +14,10 @@ import {
   EmployeeTerminationReason,
   EmploymentType,
 } from './entities/employee.entity';
-import { JobPositionCategory } from './entities/job-position.entity';
+import {
+  JobPosition,
+  JobPositionCategory,
+} from './entities/job-position.entity';
 import {
   CreateEmployeeDto,
   UpdateEmployeeDto,
@@ -466,6 +469,138 @@ export class EmployeeService {
       throw new NotFoundException(`Empleado ${id} no encontrado`);
     }
     return conPuesto(empleado);
+  }
+
+  /**
+   * El legajo activo, para operaciones que lo exigen (documentación, jornadas,
+   * licencias): 404 si no existe o es de otra distribuidora, 409 si está
+   * egresado. Con `manager` toma además el lock de la fila, así dos operaciones
+   * sobre el mismo legajo se serializan.
+   */
+  async findActivo(
+    id: string,
+    distributorId: string,
+    manager?: EntityManager,
+  ): Promise<EmployeeConPuesto> {
+    const empleado = manager
+      ? conPuesto(await this.bloquearConPuesto(manager, id, distributorId))
+      : await this.findOne(id, distributorId);
+    if (empleado.status !== EmployeeStatus.ACTIVE) {
+      throw new ConflictException(
+        `El empleado ${empleado.firstName} ${empleado.lastName} está egresado`,
+      );
+    }
+    return empleado;
+  }
+
+  /** Los legajos vigentes de esas cuentas, con su puesto (el gate del despacho los lee en lote). */
+  async findByUserIds(
+    userIds: string[],
+    distributorId?: string | null,
+  ): Promise<EmployeeConPuesto[]> {
+    if (userIds.length === 0) return [];
+    const legajos = await this.employees.find({
+      where: {
+        userId: In(userIds),
+        ...(distributorId ? { distributorId } : {}),
+      },
+      relations: { position: true },
+    });
+    return legajos.map(conPuesto);
+  }
+
+  /** El legajo vigente de una cuenta, o `null` si no está vinculada a ninguno. */
+  async findByUserId(userId: string): Promise<EmployeeConPuesto | null> {
+    const [legajo] = await this.findByUserIds([userId]);
+    return legajo ?? null;
+  }
+
+  /** Los legajos activos de una distribuidora, opcionalmente de una categoría de puesto. */
+  async findActivos(
+    distributorId: string,
+    category?: JobPositionCategory,
+  ): Promise<EmployeeConPuesto[]> {
+    const legajos = await this.employees.find({
+      where: {
+        distributorId,
+        status: EmployeeStatus.ACTIVE,
+        ...(category ? { position: { category } } : {}),
+      },
+      relations: { position: true },
+      order: { lastName: 'ASC', firstName: 'ASC', employeeId: 'ASC' },
+    });
+    return legajos.map(conPuesto);
+  }
+
+  /** Cuántos empleados activos hay por puesto (CU-194). Sólo los puestos con gente. */
+  async contarActivosPorPuesto(distributorId: string): Promise<
+    Array<{
+      positionId: string;
+      name: string;
+      category: JobPositionCategory;
+      count: number;
+    }>
+  > {
+    const filas = await this.employees
+      .createQueryBuilder('e')
+      .innerJoin('e.position', 'p')
+      .select('p.positionId', 'positionId')
+      .addSelect('p.name', 'name')
+      .addSelect('p.category', 'category')
+      .addSelect('COUNT(*)', 'count')
+      .where('e.distributorId = :distributorId', { distributorId })
+      .andWhere('e.status = :status', { status: EmployeeStatus.ACTIVE })
+      .groupBy('p.positionId')
+      .addGroupBy('p.name')
+      .addGroupBy('p.category')
+      .orderBy('p.name', 'ASC')
+      .getRawMany<{
+        positionId: string;
+        name: string;
+        category: JobPositionCategory;
+        count: string;
+      }>();
+    return filas.map((f) => ({ ...f, count: Number(f.count) }));
+  }
+
+  /** Las distribuidoras que tienen al menos un chofer activo (aviso diario de documentación, CU-188). */
+  async distribuidorasConChoferesActivos(): Promise<string[]> {
+    const filas = await this.employees
+      .createQueryBuilder('e')
+      .innerJoin('e.position', 'p')
+      .select('DISTINCT e.distributorId', 'distributorId')
+      .where('e.status = :status', { status: EmployeeStatus.ACTIVE })
+      .andWhere('p.category = :category', {
+        category: JobPositionCategory.DRIVER,
+      })
+      .getRawMany<{ distributorId: string }>();
+    return filas.map((f) => f.distributorId);
+  }
+
+  /** Lo mínimo de varios legajos (nombre y puesto) por id, para armar listados de otros módulos. */
+  async findByIds(
+    ids: string[],
+    distributorId: string,
+  ): Promise<EmployeeConPuesto[]> {
+    if (ids.length === 0) return [];
+    const legajos = await this.employees.find({
+      where: { employeeId: In(ids), distributorId },
+      relations: { position: true },
+    });
+    return legajos.map(conPuesto);
+  }
+
+  private async bloquearConPuesto(
+    manager: EntityManager,
+    id: string,
+    distributorId: string,
+  ): Promise<Employee & { position: JobPosition }> {
+    const bloqueado = await this.bloquear(manager, id, distributorId);
+    const completo = await manager.getRepository(Employee).findOneOrFail({
+      where: { employeeId: bloqueado.employeeId },
+      relations: { position: true },
+    });
+    return completo as Employee & { position: JobPosition };
   }
 
   /** Toma el lock de la fila del legajo (404 si no es de la distribuidora). */

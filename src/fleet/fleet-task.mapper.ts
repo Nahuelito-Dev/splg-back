@@ -33,6 +33,7 @@ export class FleetTaskMapper {
     dto.distributorId = task.distributorId;
     dto.carId = task.carId;
     dto.deliveryId = task.deliveryId;
+    dto.employeeId = task.employeeId;
     dto.status = task.status;
     dto.dueAt = task.dueAt;
     dto.dueKm = task.dueKm;
@@ -44,6 +45,7 @@ export class FleetTaskMapper {
     dto.referenceNumber = task.referenceNumber;
     dto.category = task.category;
     dto.notes = task.notes;
+    dto.details = task.details;
 
     const abierta = !ESTADOS_CERRADOS.has(task.status);
     dto.expirationStatus = abierta

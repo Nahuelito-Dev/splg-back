@@ -6,6 +6,8 @@ import { DeliveryController } from '../../delivery/delivery.controller';
 import { IncidentController } from '../../incident/incident.controller';
 import { UnpaidCashController } from '../../incident/unpaid-cash.controller';
 import { OrderController } from '../../order/order.controller';
+import { LeaveController } from '../../leave/leave.controller';
+import { AttendanceController } from '../../attendance/attendance.controller';
 
 interface ArgCustom {
   index: number;
@@ -62,6 +64,8 @@ const ESCRITURAS: Array<[Clase, string[]]> = [
     ['create', 'update', 'resolve', 'uploadPhoto', 'removePhoto'],
   ],
   [UnpaidCashController, ['report', 'registerUnpaid']],
+  [LeaveController, ['create', 'update', 'approve', 'reject', 'cancel']],
+  [AttendanceController, ['register', 'correct']],
   [
     ClaimsController,
     [

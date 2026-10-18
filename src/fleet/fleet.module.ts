@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MaintenancePlan } from './entities/maintenance-plan.entity';
 import { MaintenanceTask } from './entities/maintenance-task.entity';
@@ -10,6 +10,11 @@ import { DeliveryModule } from '../delivery/delivery.module';
 import { AdminModule } from '../admin/admin.module';
 import { EmailModule } from '../email/email.module';
 import { S3Module } from '../s3/s3.module';
+import { EmployeeModule } from '../employee/employee.module';
+import { EmployeeRulesRegistry } from '../employee/employee-rules.registry';
+import { LeaveModule } from '../leave/leave.module';
+import { EmployeeDocumentsController } from './employee-documents.controller';
+import { EmployeeDocumentsService } from './employee-documents.service';
 import { FleetPlanController } from './fleet-plan.controller';
 import { FleetTaskController } from './fleet-task.controller';
 import { FleetExpirationsController } from './fleet-expirations.controller';
@@ -26,7 +31,9 @@ import { FleetPlanSeedListener } from './fleet-plan-seed.listener';
 import { FleetAlertsCron } from './fleet-alerts.cron';
 
 /**
- * Flota: planes de mantenimiento/habilitación y sus tareas (CU-136 a CU-142).
+ * Flota: planes de mantenimiento/habilitación y sus tareas (CU-136 a CU-142),
+ * y la documentación del personal que cuelga de ellos (CU-183 a CU-185, CU-187,
+ * CU-188, CU-246).
  * `maintenance_window_proposal` es del módulo inteligente M1 (no
  * implementado todavía: sólo la entidad, sin servicio ni controller).
  */
@@ -44,6 +51,8 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     AdminModule, // a quién avisar (FleetAlertsCron)
     EmailModule, // cómo avisar (FleetAlertsCron, vía EmailSenderPort)
     S3Module, // dónde viven los adjuntos
+    EmployeeModule, // el dueño de la documentación del personal (CU-183 a CU-185)
+    LeaveModule, // licencias aprobadas: inhabilitan al chofer (CU-246)
   ],
   controllers: [
     FleetPlanController,
@@ -53,6 +62,7 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     DeliveryDocumentsController,
     DeliveryVehicleController,
     CarAssignmentsController,
+    EmployeeDocumentsController,
   ],
   providers: [
     FleetPlanService,
@@ -62,10 +72,28 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     FleetExpirationsService,
     FleetPlanSeedListener,
     FleetAlertsCron,
+    EmployeeDocumentsService,
   ],
   // FleetTaskService: fachadas de sólo lectura de la flota (`/cars/:id/documents`,
   // `/fleet/*`). FleetDispatchLockService: el gate único de bloqueo que usa
   // `OrderModule` en los tres caminos de asignación (CU-136 a CU-138).
-  exports: [FleetTaskService, FleetDispatchLockService],
+  exports: [
+    FleetTaskService,
+    FleetDispatchLockService,
+    EmployeeDocumentsService, // el tablero de personal cuenta los documentos por estado
+  ],
 })
-export class FleetModule {}
+export class FleetModule implements OnModuleInit {
+  constructor(private readonly rules: EmployeeRulesRegistry) {}
+
+  /** Un legajo con documentación cargada no es un alta errónea: corresponde el egreso. */
+  onModuleInit(): void {
+    this.rules.alDarDeBaja(async (manager, empleado) =>
+      (await manager
+        .getRepository(MaintenanceTask)
+        .exists({ where: { employeeId: empleado.employeeId } }))
+        ? ['tiene documentación cargada']
+        : [],
+    );
+  }
+}

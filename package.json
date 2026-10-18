@@ -161,6 +161,12 @@
         "functions": 54,
         "lines": 57
       },
+      "./src/attendance/": {
+        "statements": 85,
+        "branches": 77,
+        "functions": 70,
+        "lines": 85
+      },
       "./src/audit/": {
         "statements": 35,
         "branches": 30,
@@ -287,6 +293,12 @@
         "functions": 52,
         "lines": 74
       },
+      "./src/leave/": {
+        "statements": 86,
+        "branches": 76,
+        "functions": 69,
+        "lines": 86
+      },
       "./src/notifications/": {
         "statements": 33,
         "branches": 34,
@@ -304,6 +316,12 @@
         "branches": 67,
         "functions": 68,
         "lines": 74
+      },
+      "./src/personnel/": {
+        "statements": 65,
+        "branches": 53,
+        "functions": 60,
+        "lines": 68
       },
       "./src/purchase/": {
         "statements": 76,

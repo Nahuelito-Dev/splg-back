@@ -46,6 +46,8 @@ export class FleetPlanService {
       leadTimeDays: dto.leadTimeDays,
       criticality: dto.criticality,
       carType: dto.carType ?? null,
+      documentKind: dto.documentKind ?? null,
+      appliesToCategories: dto.appliesToCategories ?? null,
       isActive: dto.isActive ?? true,
       distributorId,
     });
@@ -102,6 +104,8 @@ export class FleetPlanService {
         leadTimeDays: dto.leadTimeDays,
         criticality: dto.criticality,
         carType: dto.carType,
+        documentKind: dto.documentKind,
+        appliesToCategories: dto.appliesToCategories,
         isActive: dto.isActive,
       }),
     );
