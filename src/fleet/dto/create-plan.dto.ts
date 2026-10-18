@@ -90,12 +90,13 @@ export class CreateFleetPlanDto {
 
   @ApiPropertyOptional({
     enum: MaintenanceDocumentKind,
+    nullable: true,
     description:
-      'Qué documento es: define el detalle que se pide al cargarlo y si el sistema lo reconoce (`insurance`: el costo del vehículo prorratea su prima; `vtv`; `hazmat_vehicle_permit`, CU-197). Sin él, la tarea no lleva detalle.',
+      'Qué documento es: define el detalle que se pide al cargarlo y si el sistema lo reconoce (`insurance`: el costo del vehículo prorratea su prima; `vtv`; `hazmat_vehicle_permit`, CU-197). Sin él, la tarea no lleva detalle; `null` en la edición se lo quita.',
   })
   @IsOptional()
   @IsEnum(MaintenanceDocumentKind)
-  documentKind?: MaintenanceDocumentKind;
+  documentKind?: MaintenanceDocumentKind | null;
 
   @ApiPropertyOptional({
     enum: JobPositionCategory,
