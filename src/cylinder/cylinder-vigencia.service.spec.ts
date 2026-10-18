@@ -25,6 +25,26 @@ describe('CylinderVigenciaService', () => {
   let lockQb: Record<string, jest.Mock>;
   let listQb: Record<string, jest.Mock>;
 
+  // Reloj fijo al mediodía de Argentina: los días restantes son días de
+  // calendario, así que "ahora + 10,5 días" sólo da 11 si el día no se corta.
+  const AHORA = new Date('2026-10-15T15:00:00.000Z');
+  beforeAll(() =>
+    jest.useFakeTimers({
+      now: AHORA,
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'clearImmediate',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'queueMicrotask',
+      ],
+    }),
+  );
+  afterAll(() => jest.useRealTimers());
+
   const enDias = (n: number) => new Date(Date.now() + n * DIA);
   const dia = (n: number) => diaArgentino(enDias(n));
 
