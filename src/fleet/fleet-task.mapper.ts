@@ -35,6 +35,7 @@ export class FleetTaskMapper {
     dto.deliveryId = task.deliveryId;
     dto.employeeId = task.employeeId;
     dto.status = task.status;
+    dto.validFrom = task.validFrom;
     dto.dueAt = task.dueAt;
     dto.dueKm = task.dueKm;
     dto.scheduledAt = task.scheduledAt;

@@ -35,6 +35,7 @@ import { IncidentModule } from './incident/incident.module';
 import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
 import { CylinderModule } from './cylinder/cylinder.module';
 import { FleetModule } from './fleet/fleet.module';
+import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
 import { CartModule } from './cart/cart.module';
 import { RepurchaseModule } from './repurchase/repurchase.module';
 import { AuditModule } from './audit/audit.module';
@@ -211,6 +212,7 @@ import { FirebaseModule } from './firebase/firebase.module';
     CoverageZoneModule,
     CylinderModule,
     FleetModule,
+    FleetExpenseModule,
     CartModule,
     RepurchaseModule,
     AuditModule,

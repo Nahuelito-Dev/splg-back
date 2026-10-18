@@ -14,7 +14,7 @@ import {
   Repository,
 } from 'typeorm';
 import { VehicleAssignment } from './entities/vehicle-assignment.entity';
-import { Car } from './entities/car.entity';
+import { Car, FleetStatus } from './entities/car.entity';
 import { DeliveryService } from '../delivery/delivery.service';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
@@ -112,6 +112,13 @@ export class VehicleAssignmentService {
               .getOne();
             if (!car) {
               throw new NotFoundException(`Vehículo ${carId} no encontrado`);
+            }
+            // Un vehículo fuera de servicio (siniestro) no se asigna: vuelve
+            // a la flota con `POST /cars/:id/reactivate` (CU-247).
+            if (car.fleetStatus === FleetStatus.GROUNDED) {
+              throw new ConflictException(
+                'El vehículo está fuera de servicio: reactivalo antes de asignarlo',
+              );
             }
 
             const abiertaDelChofer = await repo.findOne({
@@ -261,6 +268,7 @@ export class VehicleAssignmentService {
   private async assertSinViajeEnCurso(
     deliveryId: string,
     manager: EntityManager,
+    accion = 'No se puede modificar el vehículo de un chofer con un pedido en curso (aceptado o en camino)',
   ): Promise<void> {
     const filas = await manager.query<{ existe: boolean }[]>(
       `SELECT EXISTS (
@@ -270,9 +278,7 @@ export class VehicleAssignmentService {
       [deliveryId, ESTADOS_DE_VIAJE_EN_CURSO],
     );
     if (filas[0]?.existe) {
-      throw new ConflictException(
-        'No se puede modificar el vehículo de un chofer con un pedido en curso (aceptado o en camino)',
-      );
+      throw new ConflictException(accion);
     }
   }
 
@@ -340,6 +346,63 @@ export class VehicleAssignmentService {
     this.logger.log(
       `Vehículo ${abierta.carId} liberado por baja del chofer ${deliveryId}`,
     );
+  }
+
+  /**
+   * Cierra la asignación abierta del vehículo, si la tiene (siniestro que lo
+   * deja inutilizable, CU-201). Si su chofer tiene un pedido en curso o una
+   * carga de camión abierta responde 409 y no cierra nada: hay que resolver
+   * eso primero. Corre en la transacción del que la llama. Devuelve el chofer
+   * que lo tenía, o `null`.
+   */
+  async liberarDelVehiculo(
+    carId: string,
+    manager: EntityManager,
+    opciones: { motivo: string; actorUserId?: string },
+  ): Promise<string | null> {
+    const repo = manager.getRepository(VehicleAssignment);
+    const abierta = await repo.findOne({
+      where: { carId, releasedAt: IsNull() },
+    });
+    if (!abierta) return null;
+    await this.assertSinViajeEnCurso(
+      abierta.deliveryId,
+      manager,
+      'No se puede dejar el vehículo fuera de servicio: su chofer tiene un pedido en curso (aceptado o en camino); completalo o reasignalo antes',
+    );
+    await this.assertSinCargaAbierta(
+      manager,
+      [abierta.deliveryId],
+      carId,
+      'No se puede dejar el vehículo fuera de servicio',
+    );
+    abierta.releasedAt = new Date();
+    abierta.note = abierta.note
+      ? `${abierta.note}\n\n${opciones.motivo}`
+      : opciones.motivo;
+    if (opciones.actorUserId) abierta.releasedByUserId = opciones.actorUserId;
+    await repo.save(abierta);
+    return abierta.deliveryId;
+  }
+
+  /**
+   * El chofer que tenía el vehículo en uso en el instante `en` (la asignación
+   * abierta o ya cerrada que lo cubre), o `null` si nadie lo tenía.
+   */
+  async choferDelVehiculoEn(
+    carId: string,
+    distributorId: string,
+    en: Date,
+  ): Promise<string | null> {
+    const fila = await this.assignments
+      .createQueryBuilder('a')
+      .where('a.car_id = :carId', { carId })
+      .andWhere('a.distributor_id = :distributorId', { distributorId })
+      .andWhere('a.assigned_at <= :en', { en })
+      .andWhere('(a.released_at IS NULL OR a.released_at > :en)', { en })
+      .orderBy('a.assigned_at', 'DESC')
+      .getOne();
+    return fila?.deliveryId ?? null;
   }
 
   /** Vehículo en uso del chofer (con `car` cargado), o `null` si no tiene. */

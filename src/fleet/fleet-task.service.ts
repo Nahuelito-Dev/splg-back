@@ -11,6 +11,7 @@ import {
   MaintenanceTaskStatus,
 } from './entities/maintenance-task.entity';
 import {
+  MaintenanceDocumentKind,
   MaintenancePlan,
   MaintenanceSubject,
   MaintenanceTrigger,
@@ -36,6 +37,12 @@ import {
 } from './domain/fleet-lock.util';
 import { calcularEstadoDeVencimiento } from './domain/expiration-status';
 import { validarDetalle } from './domain/document-details';
+
+/** Fecha de calendario del cuerpo: `undefined` no se toca, `null` borra, un ISO se normaliza. */
+function fechaDeCalendario(valor: string | null | undefined) {
+  if (valor === null) return null;
+  return valor ? normalizarFechaCalendario(new Date(valor)) : undefined;
+}
 
 const ESTADOS_CERRADOS = [
   MaintenanceTaskStatus.DONE,
@@ -74,6 +81,14 @@ export class FleetTaskService {
     const empleado = await this.assertSujetoCoherente(plan, dto, distributorId);
     this.assertDatosDelDocumento(plan, dto, empleado);
 
+    const dueAt = dto.dueAt
+      ? normalizarFechaCalendario(new Date(dto.dueAt))
+      : null;
+    const validFrom = dto.validFrom
+      ? normalizarFechaCalendario(new Date(dto.validFrom))
+      : null;
+    this.assertVigenciaCoherente(plan, validFrom, dueAt);
+
     const task = this.tasks.create({
       planId: plan.planId,
       distributorId,
@@ -84,12 +99,13 @@ export class FleetTaskService {
       // Fecha de calendario: si el ISO trae hora (datepicker con hora local,
       // etc.), se normaliza a medianoche UTC para no correr el vencimiento a
       // otro día (revisión de vehículo en uso).
-      dueAt: dto.dueAt ? normalizarFechaCalendario(new Date(dto.dueAt)) : null,
+      dueAt,
+      validFrom,
       dueKm: dto.dueKm ?? null,
       scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
       performedAt: null,
       odometerKm: null,
-      cost: null,
+      cost: dto.cost ?? null,
       provider: dto.provider ?? null,
       referenceNumber: dto.referenceNumber ?? null,
       category: dto.category ?? null,
@@ -172,12 +188,20 @@ export class FleetTaskService {
     const task = await this.findOne(id, distributorId);
     this.assertAbierta(task);
 
+    const dueAt = fechaDeCalendario(dto.dueAt);
+    const validFrom = fechaDeCalendario(dto.validFrom);
+    this.assertVigenciaCoherente(
+      task.plan,
+      validFrom === undefined ? task.validFrom : validFrom,
+      dueAt === undefined ? task.dueAt : dueAt,
+    );
+
     Object.assign(
       task,
       sinIndefinidos({
-        dueAt: dto.dueAt
-          ? normalizarFechaCalendario(new Date(dto.dueAt))
-          : dto.dueAt,
+        dueAt,
+        validFrom,
+        cost: dto.cost,
         dueKm: dto.dueKm,
         provider: dto.provider,
         referenceNumber: dto.referenceNumber,
@@ -216,7 +240,19 @@ export class FleetTaskService {
     task.notes = dto.notes ?? task.notes;
     task.status = MaintenanceTaskStatus.DONE;
 
-    return this.tasks.save(task);
+    // El kilometraje del vehículo se sube con el del cierre, por el mismo
+    // punto que usan las cargas de combustible: ninguno pisa al otro.
+    return this.tasks.manager.transaction(async (manager) => {
+      const guardada = await manager.getRepository(MaintenanceTask).save(task);
+      if (guardada.carId && dto.odometerKm !== undefined) {
+        await this.carService.actualizarOdometro(
+          manager,
+          guardada.carId,
+          dto.odometerKm,
+        );
+      }
+      return guardada;
+    });
   }
 
   async cancel(
@@ -350,6 +386,31 @@ export class FleetTaskService {
         ),
       })),
     );
+  }
+
+  /**
+   * La vigencia de un documento: el inicio no puede ser posterior al
+   * vencimiento, y la habilitación de mercancías peligrosas (CU-197) no se
+   * registra sin vencimiento: es lo que la hace bloqueante.
+   */
+  private assertVigenciaCoherente(
+    plan: MaintenancePlan,
+    validFrom: Date | null | undefined,
+    dueAt: Date | null | undefined,
+  ): void {
+    if (
+      plan.documentKind === MaintenanceDocumentKind.HAZMAT_VEHICLE_PERMIT &&
+      !dueAt
+    ) {
+      throw new BadRequestException(
+        'dueAt: la habilitación necesita la fecha de vencimiento',
+      );
+    }
+    if (validFrom && dueAt && validFrom.getTime() > dueAt.getTime()) {
+      throw new BadRequestException(
+        'validFrom: el inicio de la vigencia no puede ser posterior al vencimiento',
+      );
+    }
   }
 
   private assertAbierta(task: MaintenanceTask): void {

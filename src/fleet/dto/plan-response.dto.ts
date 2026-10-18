@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { JobPositionCategory } from '../../employee/entities/job-position.entity';
 import {
-  MaintenanceCriticality,
   MaintenanceDocumentKind,
+  MaintenanceCriticality,
   MaintenanceSubject,
   MaintenanceTrigger,
 } from '../entities/maintenance-plan.entity';

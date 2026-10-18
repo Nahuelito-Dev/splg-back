@@ -20,6 +20,14 @@ export enum FleetStatus {
   GROUNDED = 'grounded',
 }
 
+/** Combustible del vehículo (CU-195): el de las cargas si no se indica otro. */
+export enum FuelType {
+  DIESEL = 'diesel',
+  GASOLINE = 'gasoline',
+  CNG = 'cng',
+  LPG = 'lpg',
+}
+
 @Entity('car')
 export class Car {
   @PrimaryGeneratedColumn('uuid', { name: 'car_id' })
@@ -150,6 +158,26 @@ export class Car {
     default: FleetStatus.ACTIVE,
   })
   fleetStatus!: FleetStatus;
+
+  @Column({
+    name: 'fuel_type',
+    type: 'enum',
+    enum: FuelType,
+    enumName: 'fuel_type_enum',
+    nullable: true,
+  })
+  fuelType!: FuelType | null;
+
+  /** Capacidad del tanque en litros: tope de cada carga de combustible (+5 %). */
+  @Column({
+    name: 'tank_capacity_liters',
+    type: 'decimal',
+    precision: 6,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  tankCapacityLiters!: number | null;
 
   @Column({ name: 'in_service_since', type: 'timestamptz', nullable: true })
   inServiceSince!: Date | null;

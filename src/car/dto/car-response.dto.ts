@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { FleetStatus, FuelType } from '../entities/car.entity';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
 
 export class CarResponseDto {
@@ -16,6 +17,21 @@ export class CarResponseDto {
   @ApiProperty({ type: String, nullable: true }) car_model!: string | null;
   @ApiProperty({ type: Number, nullable: true }) car_year!: number | null;
   @ApiProperty({ type: String, nullable: true }) car_color!: string | null;
+  @ApiProperty({ enum: FuelType, nullable: true }) fuel_type!: FuelType | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Litros' })
+  tank_capacity_liters!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Kilometraje vigente: el mayor entre las cargas de combustible y los cierres de mantenimiento',
+  })
+  odometer_km!: number | null;
+  @ApiProperty({
+    enum: FleetStatus,
+    description: '`grounded` es fuera de servicio (se vuelve con CU-247)',
+  })
+  fleet_status!: FleetStatus;
   @ApiProperty({
     type: String,
     nullable: true,
