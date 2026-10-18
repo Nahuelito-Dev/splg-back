@@ -70,12 +70,17 @@ export async function choferesConPedidosSinRendir(
  * Los de un día anterior cuya rendición sigue abierta son de ESA rendición; si
  * esa ya se presentó, lo entregado después cae en la del día siguiente.
  *
+ * Con `bloquear` (al presentar la rendición) toma los pedidos `FOR UPDATE`: un
+ * cobro del administrador concurrente espera, y al soltarse la condición se
+ * reevalúa (`payment_resolved_by`), así el pedido que ya cobró él no se rinde.
+ *
  * Es un modelo de lectura sobre `order`: lo que el chofer efectivamente cobra
  * es el total menos la seña ya paga (la misma regla que la rendición del camión).
  */
 export async function pedidosSinRendir(
   manager: EntityManager,
   args: { distributorId: string; deliveryId: string; businessDate: string },
+  opciones: { bloquear?: boolean } = {},
 ): Promise<PedidoSinRendir[]> {
   const rango = rangoDelDiaArgentino(args.businessDate);
   if (!rango) return [];
@@ -92,7 +97,7 @@ export async function pedidosSinRendir(
      FROM "order" o
      WHERE o."distributor_id" = $1 AND o."delivery_id" = $2
        AND ${condicionSinRendir('$3', '$4')}
-     ORDER BY o."deliveredAt", o."order_id"`,
+     ORDER BY o."deliveredAt", o."order_id"${opciones.bloquear ? '\n     FOR UPDATE OF o' : ''}`,
     [args.distributorId, args.deliveryId, rango.hasta, args.businessDate],
   );
   return filas.map((f) => ({

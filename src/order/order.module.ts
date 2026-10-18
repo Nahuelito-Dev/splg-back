@@ -44,6 +44,7 @@ import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { ReservationService } from './application/reservation.service';
 import { PagoNotificadoListener } from './application/pago-notificado.listener';
+import { CashModule } from '../cash/cash.module';
 import { CylinderModule } from '../cylinder/cylinder.module';
 import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
@@ -97,6 +98,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CustomerAccountModule, // venta a cuenta corriente: control de crédito (CustomerAccountPort)
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
     StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
+    CashModule, // el cobro del admin entra a una caja por el libro (CashLedgerService)
     TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
   ],
   // ExpressOrderController va primero: `GET /orders/delivery-options` no puede caer en `GET /orders/:id`.

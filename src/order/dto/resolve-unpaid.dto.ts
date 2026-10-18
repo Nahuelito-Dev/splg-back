@@ -1,7 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsOptional, IsUUID } from 'class-validator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { OrderResponseDto } from './order-response.dto';
+import { CASH_BOX_ID_DESCRIPCION } from './payment-admin.dto';
 import type { ResolucionDeImpago } from '../application/cash-collection.use-case';
 
 export const RESOLUCIONES_DE_IMPAGO: ResolucionDeImpago[] = [
@@ -26,6 +27,14 @@ export class ResolveUnpaidDto {
   })
   @TextoNoVacio()
   note!: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: `${CASH_BOX_ID_DESCRIPCION} Sólo aplica con \`resolution: paid\`; con \`written_off\` no se usa.`,
+  })
+  @IsOptional()
+  @IsUUID()
+  cashBoxId?: string;
 }
 
 /** Respuesta de `PATCH /orders/:id/payment/resolve-unpaid`: el pedido y si ya estaba resuelto. */

@@ -168,7 +168,25 @@ La app del chofer todavía no consume nada de esto. Lo que le toca, ya disponibl
   a cargo del chofer ya van al libro nuevo (`settlement_shortage`).
 - Las multas imputadas y la carga de combustible no generan egreso de caja todavía (M-B no tiene esos módulos
   en esta rama); las categorías de sistema `fuel`, `traffic_fine` y `purchase` ya están sembradas.
-- El cobro que el administrador registra o resuelve sobre un pedido en efectivo (`register-cash`, `resolve-unpaid`) todavía no entra a ninguna caja: esos endpoints de pedidos no reciben la caja de destino. Hoy sólo se lo excluye de la rendición del chofer.
 - Un chofer puede registrar un cobro en cualquier cuenta de su distribuidora (no se limita a los clientes que atiende); lo que no ve es el saldo de la cuenta.
 - Los gastos que el chofer paga con la cobranza reducen lo que entrega pero no generan egreso en la caja.
 - Los adjuntos (`attachment`) de movimientos y rendiciones no están conectados.
+
+## Cobro del administrador sobre un pedido en efectivo
+
+`PATCH /orders/:id/payment/register-cash` y `PATCH /orders/:id/payment/resolve-unpaid` (con `resolution: paid`)
+reciben `cashBoxId` y asientan el efectivo en la **misma transacción** que marca el pedido pagado, por
+`CashLedgerService.registrar`: entrada por el **saldo a cobrar** (total menos la seña ya paga, la misma
+`saldoACobrar` de la rendición del chofer; si da 0 no se asienta), `method: cash`, categoría de sistema
+`order_payment` "Cobro de pedido", `referenceType: order_payment`, `referenceId` = el pedido. Regla:
+
+- Sólo entran a cajas de **efectivo** (`kind = cash`). La caja elegida de otro tipo es 400.
+- La distribuidora tiene alguna caja de efectivo activa: `cashBoxId` es **obligatorio** (400 si falta; se chequea antes de tocar el pedido).
+- No tiene ninguna: se cobra sin movimiento. Carrera conocida: si otro administrador crea la primera caja de efectivo entre el chequeo y el asiento, el cobro queda sin movimiento; se corrige con un ingreso manual.
+- Caja de otra distribuidora o inexistente: 404. Caja que exige sesión sin sesión abierta, o desactivada: 409 y el pedido no cambia.
+- Repetir la operación sobre un pedido ya cobrado es un no-op: no asienta otra entrada. `written_off` no es un cobro y no toca ninguna caja.
+- **Un pedido que la rendición del chofer ya tomó** (`driver_settlement_order`) no se cobra ni se marca impago desde el administrador: 409 «El chofer ya rindió este pedido» (si no, el dinero entraría dos veces). La carrera contraria la cubre `presentar` de la rendición, que bloquea (`FOR UPDATE`) los pedidos que toma y reevalúa `payment_resolved_by`.
+- Un movimiento `order_payment` no se anula a mano. Si la caja fue la equivocada se corrige con una transferencia entre cajas (CU-310); el importe no se corrige desde caja: se registra un ajuste o egreso manual con motivo.
+
+Migración `1792500000000-CobroDePedidoACaja`: suma `order_payment` a los enums de categoría de sistema y de origen
+del movimiento (la categoría se siembra al usarse en las distribuidoras existentes).

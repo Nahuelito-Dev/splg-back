@@ -289,6 +289,38 @@ export class RefundsService {
     });
   }
 
+  /**
+   * Las devoluciones de un pedido vistas por su cliente. El cliente es uno solo
+   * para todas las distribuidoras: no se filtra por tenant, se exige que el
+   * pedido sea suyo. Un pedido ajeno es 404, igual que uno inexistente.
+   */
+  async listarDelCliente(
+    orderId: string,
+    customerUserId: string,
+  ): Promise<PaymentRefund[]> {
+    const pedido = await this.orderLookup.findForRefund(orderId);
+    if (!pedido || pedido.customerId !== customerUserId) {
+      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    }
+    const filas = await this.refunds.find({
+      where: { orderId },
+      order: { createdAt: 'ASC' },
+    });
+    // Si el pedido se canceló después de pasar al reparto común, la devolución
+    // total ya incluye el recargo: el del recargo, mientras no se acredite, sería
+    // una segunda promesa por el mismo dinero.
+    return filas.filter(
+      (r) =>
+        !(
+          r.kind === RefundKind.EXPRESS_SURCHARGE &&
+          r.status !== RefundStatus.SUCCEEDED &&
+          filas.some(
+            (o) => o.kind === RefundKind.FULL && o.paymentId === r.paymentId,
+          )
+        ),
+    );
+  }
+
   /** Listado de la distribuidora, el más nuevo primero; `status` filtra (p. ej. `failed`). */
   async listar(
     distributorId: string,

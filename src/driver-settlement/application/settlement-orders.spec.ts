@@ -69,5 +69,27 @@ describe('settlement-orders', () => {
       });
       expect(consultas[0].sql).toContain('o."payment_resolved_by" IS NULL');
     });
+
+    it('con bloquear, toma los pedidos FOR UPDATE para que un cobro del admin concurrente no se cuele', async () => {
+      await pedidosSinRendir(
+        manager,
+        {
+          distributorId: 'dist-1',
+          deliveryId: 'chofer-1',
+          businessDate: '2026-10-17',
+        },
+        { bloquear: true },
+      );
+      expect(consultas[0].sql).toMatch(/FOR UPDATE OF o\s*$/);
+    });
+
+    it('sin bloquear (lecturas) no bloquea nada', async () => {
+      await pedidosSinRendir(manager, {
+        distributorId: 'dist-1',
+        deliveryId: 'chofer-1',
+        businessDate: '2026-10-17',
+      });
+      expect(consultas[0].sql).not.toContain('FOR UPDATE');
+    });
   });
 });
