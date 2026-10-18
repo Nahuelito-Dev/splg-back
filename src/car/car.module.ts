@@ -28,6 +28,6 @@ import { S3Module } from '../s3/s3.module';
   // VehicleAssignmentService: lo usa `fleet` (gate de despacho por vehículo
   // en uso, y las fachadas HTTP de `/delivery/:id/vehicle*` y
   // `/car/:id/assignments`, que viven ahí igual que las de documentos).
-  exports: [CarService, VehicleAssignmentService],
+  exports: [CarService, VehicleAssignmentService, CarPhotoService],
 })
 export class CarModule {}

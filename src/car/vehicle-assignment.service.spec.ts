@@ -2,7 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { VehicleAssignmentService } from './vehicle-assignment.service';
 import { VehicleAssignment } from './entities/vehicle-assignment.entity';
-import { Car } from './entities/car.entity';
+import { Car, FleetStatus } from './entities/car.entity';
 import { DeliveryService } from '../delivery/delivery.service';
 
 /**
@@ -129,6 +129,20 @@ describe('VehicleAssignmentService', () => {
       .mockResolvedValueOnce(delAuto);
 
   describe('ponerEnUso', () => {
+    it('un vehículo fuera de servicio no se asigna: se reactiva primero (409)', async () => {
+      choferDelTenant();
+      carsTx.getOne.mockResolvedValue({
+        carId: 'c1',
+        distributorId: 'd1',
+        fleetStatus: FleetStatus.GROUNDED,
+      });
+
+      await expect(
+        service.ponerEnUso('dl1', 'c1', null, 'd1', 'admin-1'),
+      ).rejects.toThrow('fuera de servicio');
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
     it('cierra la abierta anterior del chofer y la del vehículo, y abre la nueva', async () => {
       choferDelTenant();
       autoDelTenant();
@@ -578,6 +592,118 @@ describe('VehicleAssignmentService', () => {
           model: 'Wave',
         },
       ]);
+    });
+  });
+
+  describe('liberarDelVehiculo (siniestro que lo deja inutilizable)', () => {
+    it('cierra la asignación abierta y devuelve el chofer', async () => {
+      const abierta = {
+        assignmentId: 'a1',
+        deliveryId: 'dl1',
+        releasedAt: null,
+        note: null,
+      } as VehicleAssignment;
+      txRepo.findOne.mockResolvedValue(abierta);
+
+      const chofer = await service.liberarDelVehiculo(
+        'c1',
+        manager as unknown as EntityManager,
+        { motivo: 'Fuera de servicio', actorUserId: 'admin-1' },
+      );
+
+      expect(chofer).toBe('dl1');
+      expect(txRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          releasedAt: expect.any(Date) as Date,
+          releasedByUserId: 'admin-1',
+          note: 'Fuera de servicio',
+        }),
+      );
+    });
+
+    it('con un pedido en curso es 409 y no cierra nada', async () => {
+      txRepo.findOne.mockResolvedValue({
+        deliveryId: 'dl1',
+        releasedAt: null,
+      } as VehicleAssignment);
+      manager.query.mockResolvedValueOnce([{ existe: true }]);
+      await expect(
+        service.liberarDelVehiculo('c1', manager as unknown as EntityManager, {
+          motivo: 'x',
+        }),
+      ).rejects.toThrow(/fuera de servicio.*pedido en curso/);
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('con una carga de camión abierta es 409 y no cierra nada', async () => {
+      txRepo.findOne.mockResolvedValue({
+        deliveryId: 'dl1',
+        releasedAt: null,
+      } as VehicleAssignment);
+      manager.query
+        .mockResolvedValueOnce([{ existe: false }])
+        .mockResolvedValueOnce([{ number: 7 }]);
+      await expect(
+        service.liberarDelVehiculo('c1', manager as unknown as EntityManager, {
+          motivo: 'x',
+        }),
+      ).rejects.toThrow(/carga de camión abierta/);
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('si nadie lo tenía en uso no hace nada', async () => {
+      txRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.liberarDelVehiculo('c1', manager as unknown as EntityManager, {
+          motivo: 'x',
+        }),
+      ).resolves.toBeNull();
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('choferDelVehiculoEn', () => {
+    it('busca la asignación que cubre el instante, en la distribuidora', async () => {
+      const where = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      assignments.find = jest.fn();
+      (
+        assignments as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn(() => ({
+        where,
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ deliveryId: 'dl1' }),
+      }));
+      const en = new Date('2026-10-10T12:00:00.000Z');
+
+      await expect(service.choferDelVehiculoEn('c1', 'd1', en)).resolves.toBe(
+        'dl1',
+      );
+      expect(andWhere).toHaveBeenCalledWith(
+        'a.distributor_id = :distributorId',
+        {
+          distributorId: 'd1',
+        },
+      );
+      expect(andWhere).toHaveBeenCalledWith(
+        '(a.released_at IS NULL OR a.released_at > :en)',
+        { en },
+      );
+    });
+
+    it('si nadie lo tenía, null', async () => {
+      (
+        assignments as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn(() => ({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }));
+      await expect(
+        service.choferDelVehiculoEn('c1', 'd1', new Date()),
+      ).resolves.toBeNull();
     });
   });
 });

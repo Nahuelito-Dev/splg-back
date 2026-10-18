@@ -3,9 +3,9 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { CarService } from './car.service';
-import { Car } from './entities/car.entity';
+import { Car, FleetStatus } from './entities/car.entity';
 import { DeliveryService } from '../delivery/delivery.service';
 import { VehicleAssignmentService } from './vehicle-assignment.service';
 
@@ -323,5 +323,107 @@ describe('CarService', () => {
     await expect(service.findOne('c9', 'd1')).rejects.toThrow(
       'Vehículo c9 no encontrado',
     );
+  });
+
+  describe('kilometraje (punto único de escritura)', () => {
+    let set: jest.Mock;
+    let where: jest.Mock;
+    let manager: { createQueryBuilder: jest.Mock };
+
+    beforeEach(() => {
+      set = jest.fn().mockReturnThis();
+      where = jest.fn().mockReturnThis();
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set,
+        where,
+        setParameter: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue(undefined),
+      };
+      manager = { createQueryBuilder: jest.fn(() => qb) };
+    });
+
+    it('actualizarOdometro sólo sube: usa el mayor entre el vigente y el nuevo', async () => {
+      await service.actualizarOdometro(
+        manager as unknown as EntityManager,
+        'c1',
+        1500,
+      );
+      const [[valores]] = set.mock.calls as Array<
+        [{ odometerKm: () => string }]
+      >;
+      const { odometerKm } = valores;
+      expect(odometerKm()).toContain('GREATEST(COALESCE("odometer_km", 0)');
+    });
+
+    it('bajarOdometro sin carga vigente que lo reemplace no toca nada', async () => {
+      await service.bajarOdometro(
+        manager as unknown as EntityManager,
+        'c1',
+        1500,
+        null,
+      );
+      expect(manager.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('bajarOdometro sólo baja si el vigente es el de la carga que deja de valer', async () => {
+      await service.bajarOdometro(
+        manager as unknown as EntityManager,
+        'c1',
+        1500,
+        1000,
+      );
+      expect(set).toHaveBeenCalledWith({ odometerKm: 1000 });
+      expect(where).toHaveBeenCalledWith(
+        'car_id = :carId AND odometer_km = :km',
+        { carId: 'c1', km: 1500 },
+      );
+    });
+  });
+
+  describe('cambiarEstadoDeFlota', () => {
+    const conAuto = (auto: Partial<Car> | null) => {
+      bloqueo.getOne.mockResolvedValue(auto);
+      return txManager as unknown as EntityManager;
+    };
+
+    it('bloquea la fila y cambia el estado', async () => {
+      const manager = conAuto({
+        carId: 'c1',
+        fleetStatus: FleetStatus.GROUNDED,
+      });
+      const car = await service.cambiarEstadoDeFlota(
+        manager,
+        'c1',
+        'd1',
+        FleetStatus.ACTIVE,
+        FleetStatus.GROUNDED,
+      );
+      expect(car.fleetStatus).toBe(FleetStatus.ACTIVE);
+      expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('un vehículo de otra distribuidora es 404', async () => {
+      const manager = conAuto(null);
+      await expect(
+        service.cambiarEstadoDeFlota(manager, 'c1', 'd1', FleetStatus.ACTIVE),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('si ya no está en el estado esperado es 409 (carrera con otra request)', async () => {
+      const manager = conAuto({
+        carId: 'c1',
+        fleetStatus: FleetStatus.ACTIVE,
+      });
+      await expect(
+        service.cambiarEstadoDeFlota(
+          manager,
+          'c1',
+          'd1',
+          FleetStatus.ACTIVE,
+          FleetStatus.GROUNDED,
+        ),
+      ).rejects.toThrow('El vehículo no está fuera de servicio');
+    });
   });
 });

@@ -7,8 +7,9 @@ import {
 import { JobPositionCategory } from '../../employee/entities/job-position.entity';
 
 /**
- * Los 7 planes con los que arranca cualquier distribuidora nueva (CU-136 a
- * CU-138 + service, y la documentación del personal de CU-183 a CU-185). Cada distribuidora puede después crear los suyos propios
+ * Los 8 planes con los que arranca cualquier distribuidora nueva (CU-136 a
+ * CU-138 + service, CU-197 y la documentación del personal de CU-183 a
+ * CU-185). Cada distribuidora puede después crear los suyos propios
  * o desactivar éstos; esto es sólo el punto de partida.
  *
  * MISMOS valores que las migraciones `SembrarPlanesBaseDeFlota` y
@@ -28,6 +29,9 @@ export interface BasePlanDefinition {
   /** `null` = aplica a todas las categorías de puesto. */
   appliesToCategories: JobPositionCategory[] | null;
 }
+
+export const HABILITACION_MERCANCIAS_PELIGROSAS =
+  'Habilitación para transporte de mercancías peligrosas';
 
 export const BASE_PLAN_DEFINITIONS: readonly BasePlanDefinition[] = [
   {
@@ -105,6 +109,17 @@ export const BASE_PLAN_DEFINITIONS: readonly BasePlanDefinition[] = [
     intervalKm: null,
     intervalMonths: null,
     documentKind: MaintenanceDocumentKind.ART_COVERAGE,
+    appliesToCategories: null,
+  },
+  {
+    name: HABILITACION_MERCANCIAS_PELIGROSAS,
+    subject: MaintenanceSubject.VEHICLE,
+    trigger: MaintenanceTrigger.BY_FIXED_DATE,
+    leadTimeDays: 30,
+    criticality: MaintenanceCriticality.BLOCKING,
+    intervalKm: null,
+    intervalMonths: null,
+    documentKind: MaintenanceDocumentKind.HAZMAT_VEHICLE_PERMIT,
     appliesToCategories: null,
   },
 ] as const;

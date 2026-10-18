@@ -18,6 +18,8 @@ export class FleetTaskResponseDto {
   employeeId!: string | null;
   @ApiProperty({ enum: MaintenanceTaskStatus }) status!: MaintenanceTaskStatus;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  validFrom!: Date | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
   dueAt!: Date | null;
   @ApiProperty({ type: Number, nullable: true }) dueKm!: number | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })

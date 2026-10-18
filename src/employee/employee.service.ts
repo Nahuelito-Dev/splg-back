@@ -619,6 +619,14 @@ export class EmployeeService {
     return empleado;
   }
 
+  /** El legajo vigente de esa cuenta en la distribuidora, o `null` si no tiene. */
+  async findByUserIdEnDistribuidora(
+    userId: string,
+    distributorId: string,
+  ): Promise<Employee | null> {
+    return this.employees.findOne({ where: { userId, distributorId } });
+  }
+
   async deliveryIdDe(empleado: Employee): Promise<string | null> {
     if (!empleado.userId) return null;
     const [perfil] = await this.deliveries.findDeliveryIdsByUserIds(

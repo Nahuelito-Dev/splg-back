@@ -1,12 +1,18 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, Repository, FindOptionsWhere } from 'typeorm';
-import { Car } from './entities/car.entity';
+import {
+  DeepPartial,
+  EntityManager,
+  Repository,
+  FindOptionsWhere,
+} from 'typeorm';
+import { Car, FleetStatus } from './entities/car.entity';
 import { CreateCarDto } from './dto/create-car.dto';
 import { UpdateCarDto } from './dto/update-car.dto';
 import { DeliveryService } from '../delivery/delivery.service';
@@ -34,6 +40,8 @@ function columnasDelAuto(dto: UpdateCarDto): DeepPartial<Car> {
     carModel: dto.car_model,
     carYear: dto.car_year,
     carColor: dto.car_color,
+    fuelType: dto.fuel_type,
+    tankCapacityLiters: dto.tank_capacity_liters,
   });
 }
 
@@ -240,6 +248,99 @@ export class CarService {
       message: 'Car deleted successfully',
       carId: id,
     };
+  }
+
+  /**
+   * Único punto que escribe el kilometraje del vehículo: lo comparten las
+   * cargas de combustible y el cierre de las tareas de mantenimiento, y cada
+   * uno sólo lo sube (`GREATEST`), así uno no pisa al otro aunque lleguen a la
+   * vez. Lo baja `bajarOdometro`, y sólo cuando el valor lo puso una carga que
+   * se anula o se corrige.
+   */
+  async actualizarOdometro(
+    manager: EntityManager,
+    carId: string,
+    km: number,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .update(Car)
+      .set({ odometerKm: () => 'GREATEST(COALESCE("odometer_km", 0), :km)' })
+      .where('car_id = :carId', { carId })
+      .setParameter('km', km)
+      .execute();
+  }
+
+  /**
+   * Si el kilometraje vigente del vehículo es el de la carga que deja de
+   * valer (`kmQueDejaDeValer`), lo lleva al de la carga vigente que quede
+   * (`kmVigenteRestante`). Si el vehículo ya tenía un valor mayor puesto por
+   * otro lado (un cierre de mantenimiento), no lo toca.
+   */
+  async bajarOdometro(
+    manager: EntityManager,
+    carId: string,
+    kmQueDejaDeValer: number,
+    kmVigenteRestante: number | null,
+  ): Promise<void> {
+    if (kmVigenteRestante === null) return;
+    await manager
+      .createQueryBuilder()
+      .update(Car)
+      .set({ odometerKm: kmVigenteRestante })
+      .where('car_id = :carId AND odometer_km = :km', {
+        carId,
+        km: kmQueDejaDeValer,
+      })
+      .execute();
+  }
+
+  /**
+   * Toma el lock de la fila del vehículo (el mismo de `remove` y
+   * `ponerEnUso`; es el primero en el orden de locks) y responde 404 si no es
+   * de la distribuidora. Serializa lo que mira y escribe el kilometraje.
+   */
+  async bloquear(
+    manager: EntityManager,
+    carId: string,
+    distributorId: string,
+  ): Promise<Car> {
+    const car = await manager
+      .getRepository(Car)
+      .createQueryBuilder('car')
+      .setLock('pessimistic_write')
+      .where('car.carId = :carId', { carId })
+      .andWhere('car.distributorId = :distributorId', { distributorId })
+      .getOne();
+    if (!car) {
+      throw new NotFoundException(`Vehículo ${carId} no encontrado`);
+    }
+    return car;
+  }
+
+  /**
+   * Cambia el estado de flota con la fila del vehículo bloqueada (el mismo
+   * lock que `remove` y `ponerEnUso`). `desde` es el estado que tiene que
+   * tener: si otra request lo cambió antes, 409. 404 si no es de la
+   * distribuidora. Con `desde` omitido no se exige estado previo.
+   */
+  async cambiarEstadoDeFlota(
+    manager: EntityManager,
+    carId: string,
+    distributorId: string,
+    hacia: FleetStatus,
+    desde?: FleetStatus,
+  ): Promise<Car> {
+    const car = await this.bloquear(manager, carId, distributorId);
+    if (desde !== undefined && car.fleetStatus !== desde) {
+      throw new ConflictException(
+        desde === FleetStatus.GROUNDED
+          ? 'El vehículo no está fuera de servicio'
+          : 'El vehículo cambió de estado: volvé a intentar',
+      );
+    }
+    car.fleetStatus = hacia;
+    return manager.getRepository(Car).save(car);
   }
 
   async findByPatent(

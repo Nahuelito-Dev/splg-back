@@ -2,6 +2,7 @@ import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import {
   IsDateString,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -56,6 +57,28 @@ export class CreateFleetTaskDto {
   @IsOptional()
   @IsDateString()
   dueAt?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    example: '2026-01-01T00:00:00.000Z',
+    description:
+      'Inicio de la vigencia (póliza, habilitación). No puede ser posterior al vencimiento',
+  })
+  @IsOptional()
+  @IsDateString()
+  validFrom?: string;
+
+  @ApiPropertyOptional({
+    example: 185000,
+    description:
+      'Importe de la tarea (la prima de la póliza, el costo del service). Entra en el costo del vehículo',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  cost?: number;
 
   @ApiPropertyOptional({
     description: 'Km al que corresponde el próximo service',

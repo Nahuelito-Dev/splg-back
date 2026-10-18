@@ -15,6 +15,10 @@ export class CarMapper {
     dto.car_model = c.carModel;
     dto.car_year = c.carYear;
     dto.car_color = c.carColor;
+    dto.fuel_type = c.fuelType;
+    dto.tank_capacity_liters = c.tankCapacityLiters;
+    dto.odometer_km = c.odometerKm;
+    dto.fleet_status = c.fleetStatus;
     dto.photoUrl = c.photoSignedUrl ?? null;
     dto.createdAt = c.createdAt;
     dto.updatedAt = c.updatedAt;

@@ -29,6 +29,9 @@ import { FleetAttachmentService } from './fleet-attachment.service';
 import { FleetExpirationsService } from './fleet-expirations.service';
 import { FleetPlanSeedListener } from './fleet-plan-seed.listener';
 import { FleetAlertsCron } from './fleet-alerts.cron';
+import { FleetCostSourceService } from './fleet-cost-source.service';
+import { FleetVehicleStatusService } from './fleet-vehicle-status.service';
+import { CarReactivationController } from './car-reactivation.controller';
 
 /**
  * Flota: planes de mantenimiento/habilitación y sus tareas (CU-136 a CU-142),
@@ -63,6 +66,7 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     DeliveryVehicleController,
     CarAssignmentsController,
     EmployeeDocumentsController,
+    CarReactivationController,
   ],
   providers: [
     FleetPlanService,
@@ -73,6 +77,8 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     FleetPlanSeedListener,
     FleetAlertsCron,
     EmployeeDocumentsService,
+    FleetCostSourceService,
+    FleetVehicleStatusService,
   ],
   // FleetTaskService: fachadas de sólo lectura de la flota (`/cars/:id/documents`,
   // `/fleet/*`). FleetDispatchLockService: el gate único de bloqueo que usa
@@ -81,6 +87,7 @@ import { FleetAlertsCron } from './fleet-alerts.cron';
     FleetTaskService,
     FleetDispatchLockService,
     EmployeeDocumentsService, // el tablero de personal cuenta los documentos por estado
+    FleetCostSourceService,
   ],
 })
 export class FleetModule implements OnModuleInit {

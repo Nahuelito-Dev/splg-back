@@ -269,6 +269,12 @@
         "functions": 56,
         "lines": 57
       },
+      "./src/fleet-expense/": {
+        "statements": 86,
+        "branches": 71,
+        "functions": 64,
+        "lines": 86
+      },
       "./src/gascylinder/": {
         "statements": 74,
         "branches": 67,

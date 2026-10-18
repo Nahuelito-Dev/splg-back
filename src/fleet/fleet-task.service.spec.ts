@@ -30,9 +30,10 @@ describe('FleetTaskService', () => {
     findOne: jest.Mock;
     find: jest.Mock;
     createQueryBuilder: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
   let plans: { findOne: jest.Mock };
-  let carService: { findOne: jest.Mock };
+  let carService: { findOne: jest.Mock; actualizarOdometro: jest.Mock };
   let deliveryService: { findOne: jest.Mock };
   let fleetLock: { choferesInhabilitados: jest.Mock };
   let employees: { findActivo: jest.Mock };
@@ -64,9 +65,14 @@ describe('FleetTaskService', () => {
       findOne: jest.fn(),
       find: jest.fn(),
       createQueryBuilder: jest.fn(),
-    };
+      manager: {
+        transaction: jest.fn((cb: (m: unknown) => unknown) =>
+          cb({ getRepository: () => tasks }),
+        ),
+      },
+    } as unknown as typeof tasks;
     plans = { findOne: jest.fn() };
-    carService = { findOne: jest.fn() };
+    carService = { findOne: jest.fn(), actualizarOdometro: jest.fn() };
     deliveryService = { findOne: jest.fn() };
     fleetLock = {
       choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
@@ -114,6 +120,50 @@ describe('FleetTaskService', () => {
       );
 
       expect(task.dueAt).toEqual(new Date('2026-12-01T00:00:00.000Z'));
+    });
+
+    it('guarda el inicio de la vigencia y el importe, normalizados a fecha de calendario', async () => {
+      plans.findOne.mockResolvedValue(planVehiculo);
+      carService.findOne.mockResolvedValue({ carId: 'c1' });
+      const task = await service.create(
+        {
+          planId: 'plan-vtv',
+          carId: 'c1',
+          validFrom: '2026-01-01T15:00:00.000Z',
+          dueAt: '2026-12-31T03:00:00.000Z',
+          cost: 185000,
+        },
+        'd1',
+      );
+      expect(task.validFrom).toEqual(new Date('2026-01-01T00:00:00.000Z'));
+      expect(task.cost).toBe(185000);
+    });
+
+    it('el inicio de la vigencia posterior al vencimiento es 400', async () => {
+      plans.findOne.mockResolvedValue(planVehiculo);
+      carService.findOne.mockResolvedValue({ carId: 'c1' });
+      await expect(
+        service.create(
+          {
+            planId: 'plan-vtv',
+            carId: 'c1',
+            validFrom: '2027-01-01T00:00:00.000Z',
+            dueAt: '2026-12-31T00:00:00.000Z',
+          },
+          'd1',
+        ),
+      ).rejects.toThrow(/validFrom/);
+    });
+
+    it('la habilitación de mercancías peligrosas sin vencimiento es 400 (CU-197)', async () => {
+      plans.findOne.mockResolvedValue({
+        ...planVehiculo,
+        documentKind: MaintenanceDocumentKind.HAZMAT_VEHICLE_PERMIT,
+      });
+      carService.findOne.mockResolvedValue({ carId: 'c1' });
+      await expect(
+        service.create({ planId: 'plan-vtv', carId: 'c1' }, 'd1'),
+      ).rejects.toThrow(/dueAt/);
     });
 
     it('un plan de vehículo sin carId es 400', async () => {
@@ -484,6 +534,30 @@ describe('FleetTaskService', () => {
       );
       expect(cerrada.status).toBe(MaintenanceTaskStatus.DONE);
       expect(cerrada.odometerKm).toBe(50000);
+    });
+
+    it('cerrar una tarea de un vehículo sube su kilometraje por el punto único', async () => {
+      tasks.findOne.mockResolvedValue({ ...abierta(), carId: 'c1' });
+      await service.close(
+        't1',
+        { performedAt: '2026-09-26T00:00:00.000Z', odometerKm: 50000 },
+        'd1',
+      );
+      expect(carService.actualizarOdometro).toHaveBeenCalledWith(
+        expect.anything(),
+        'c1',
+        50000,
+      );
+    });
+
+    it('cerrar sin kilometraje no toca el del vehículo', async () => {
+      tasks.findOne.mockResolvedValue({ ...abierta(), carId: 'c1' });
+      await service.close(
+        't1',
+        { performedAt: '2026-09-26T00:00:00.000Z' },
+        'd1',
+      );
+      expect(carService.actualizarOdometro).not.toHaveBeenCalled();
     });
 
     it('no se puede cerrar una tarea ya cerrada', async () => {

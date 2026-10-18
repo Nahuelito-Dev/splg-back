@@ -42,6 +42,11 @@ export enum MaintenanceCriticality {
 }
 
 /**
+ * Qué documento es, para los planes que el sistema necesita reconocer (el
+ * costo del vehículo prorratea el seguro; CU-197 es la habilitación de
+ * mercancías peligrosas). `null` en los planes que cada distribuidora arma.
+ */
+/**
  * Plan de mantenimiento
  * La regla: qué se controla, cada cuánto, con qué anticipación y si inhabilita.
  * Casos: CU-136 a CU-142, CU-183 a CU-185 y CU-105 (M1)

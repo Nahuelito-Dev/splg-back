@@ -4,12 +4,17 @@ import {
   IsOptional,
   IsString,
   IsInt,
+  IsEnum,
+  IsNumber,
   Matches,
+  Max,
+  Min,
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { normalizarPatente } from '../patente.util';
 import { ApiProperty } from '@nestjs/swagger';
+import { FuelType } from '../entities/car.entity';
 
 export class CreateCarDto {
   @ApiProperty({ description: 'User ID' })
@@ -68,4 +73,29 @@ export class CreateCarDto {
   @IsOptional()
   @IsString()
   car_color?: string;
+
+  @ApiProperty({
+    enum: FuelType,
+    required: false,
+    nullable: true,
+    description:
+      'Combustible del vehículo; es el de las cargas que no indican otro. `null` (al editar) lo borra.',
+  })
+  @IsOptional()
+  @IsEnum(FuelType)
+  fuel_type?: FuelType | null;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: Number,
+    example: 60,
+    description:
+      'Capacidad del tanque en litros: una carga no puede superarla en más de un 5 %. `null` (al editar) la borra.',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(9999)
+  tank_capacity_liters?: number | null;
 }

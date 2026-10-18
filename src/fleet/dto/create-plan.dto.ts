@@ -15,8 +15,8 @@ import {
 import { Type } from 'class-transformer';
 import { JobPositionCategory } from '../../employee/entities/job-position.entity';
 import {
-  MaintenanceCriticality,
   MaintenanceDocumentKind,
+  MaintenanceCriticality,
   MaintenanceSubject,
   MaintenanceTrigger,
 } from '../entities/maintenance-plan.entity';
@@ -91,7 +91,7 @@ export class CreateFleetPlanDto {
   @ApiPropertyOptional({
     enum: MaintenanceDocumentKind,
     description:
-      'Tipo de documento: define el detalle que se pide al cargarlo. Sin él, la tarea no lleva detalle.',
+      'Qué documento es: define el detalle que se pide al cargarlo y si el sistema lo reconoce (`insurance`: el costo del vehículo prorratea su prima; `vtv`; `hazmat_vehicle_permit`, CU-197). Sin él, la tarea no lleva detalle.',
   })
   @IsOptional()
   @IsEnum(MaintenanceDocumentKind)

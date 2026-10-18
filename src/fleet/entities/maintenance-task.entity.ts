@@ -81,6 +81,14 @@ export class MaintenanceTask {
   })
   status!: MaintenanceTaskStatus;
 
+  /**
+   * Inicio de la vigencia del documento (póliza, habilitación). Fecha de
+   * calendario, normalizada como `dueAt`. Sin ella, el costo del vehículo
+   * prorratea la póliza con un año hacia atrás desde el vencimiento.
+   */
+  @Column({ name: 'valid_from', type: 'timestamptz', nullable: true })
+  validFrom!: Date | null;
+
   @Column({ name: 'due_at', type: 'timestamptz', nullable: true })
   dueAt!: Date | null;
 
