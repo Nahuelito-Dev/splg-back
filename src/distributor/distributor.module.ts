@@ -26,10 +26,12 @@ import { S3Module } from '../s3/s3.module';
     TypeOrmModule.forFeature([Distributor, ModuleConfig]),
     S3Module, // logo
   ],
+  // ExpressConfigController antes que ModuleConfigController: su ruta fija
+  // `/module-config/express_dispatch` tiene que ganarle a `/module-config/:process`.
   controllers: [
     DistributorController,
-    ModuleConfigController,
     ExpressConfigController,
+    ModuleConfigController,
   ],
   providers: [
     DistributorService,
