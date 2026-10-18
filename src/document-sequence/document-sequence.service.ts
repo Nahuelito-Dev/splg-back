@@ -8,6 +8,7 @@ export enum DocType {
   INTERNAL_DELIVERY_NOTE = 'internal_delivery_note',
   TRUCK_LOAD = 'truck_load',
   DRIVER_SETTLEMENT = 'driver_settlement',
+  DRIVER_LIQUIDATION = 'driver_liquidation',
   STOCK_ADJUSTMENT = 'stock_adjustment',
   EMPLOYEE_FILE = 'employee_file',
 }

@@ -2,6 +2,7 @@ import {
   ArgumentsHost,
   BadRequestException,
   Catch,
+  ConflictException,
   HttpException,
   HttpStatus,
   Logger,
@@ -11,6 +12,7 @@ import {
 import { BaseExceptionFilter } from '@nestjs/core';
 import {
   BadRequestDomainError,
+  ConflictDomainError,
   NotFoundDomainError,
 } from '../errors/domain.error';
 import {
@@ -87,7 +89,8 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
   }
 
   /**
-   * Convierte un error de DOMINIO (`BadRequestDomainError`/`NotFoundDomainError`)
+   * Convierte un error de DOMINIO (`BadRequestDomainError`/`NotFoundDomainError`/
+   * `ConflictDomainError`)
    * a la `HttpException` equivalente, con el MISMO mensaje. Cualquier otra
    * excepción (incluidas las `HttpException` que el código sigue lanzando
    * directo) pasa sin tocar.
@@ -98,6 +101,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
     if (exception instanceof BadRequestDomainError) {
       return new BadRequestException(exception.message);
+    }
+    if (exception instanceof ConflictDomainError) {
+      return new ConflictException(exception.message);
     }
     // lock_timeout / statement_timeout de Postgres: la base está ocupada, no
     // rota. 503 con mensaje claro en vez de un 500 genérico.

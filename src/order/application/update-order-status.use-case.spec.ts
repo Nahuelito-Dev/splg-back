@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
+import { EVENTO_PEDIDO_ENTREGADO } from '../domain/events/pedido-entregado.event';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import { ReservationNotActivableError } from '../domain/errors/reservation-not-activable.error';
@@ -33,6 +34,7 @@ describe('UpdateOrderStatusUseCase', () => {
     assertElegibleParaAsignacion: jest.Mock;
   };
   let offers: { withdrawOtherActiveOffers: jest.Mock };
+  let eventos: { emitAsync: jest.Mock };
   let dispatch: {
     notifyDriverOrderCancelled: jest.Mock;
     notifyCustomer: jest.Mock;
@@ -201,6 +203,7 @@ describe('UpdateOrderStatusUseCase', () => {
       }),
     };
 
+    eventos = { emitAsync: jest.fn().mockResolvedValue([]) };
     useCase = new UpdateOrderStatusUseCase(
       dataSource as unknown as import('typeorm').DataSource,
       deliveries as unknown as import('../../delivery/delivery.service').DeliveryService,
@@ -216,6 +219,7 @@ describe('UpdateOrderStatusUseCase', () => {
       fotos as unknown as import('../../s3/entity-photo.service').EntityPhotoService,
       truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
       offers as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
+      eventos as unknown as import('@nestjs/event-emitter').EventEmitter2,
     );
   });
 
@@ -946,6 +950,49 @@ describe('UpdateOrderStatusUseCase', () => {
         useCase.execute('ord-1', OrderStatus.DELIVERED),
       ).rejects.toThrow();
       expect(stockDelivery.onOrderDelivered).not.toHaveBeenCalled();
+    });
+
+    it('publica "pedido entregado" después de confirmar la entrega, con lo que necesitan cuenta corriente y comisiones', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          status: OrderStatus.ON_THE_WAY,
+          paymentMethod: PaymentMethod.ACCOUNT,
+          totalAmount: 2500,
+        }),
+      );
+
+      await useCase.execute('ord-1', OrderStatus.DELIVERED);
+
+      expect(eventos.emitAsync).toHaveBeenCalledTimes(1);
+      expect(eventos.emitAsync).toHaveBeenCalledWith(
+        EVENTO_PEDIDO_ENTREGADO,
+        expect.objectContaining({
+          orderId: 'ord-1',
+          paymentMethod: PaymentMethod.ACCOUNT,
+          totalAmount: 2500,
+          deliveredAt: HORA_DE_LA_BASE,
+        }),
+      );
+      expect(
+        queryRunner.commitTransaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(eventos.emitAsync.mock.invocationCallOrder[0]);
+    });
+
+    it('si un oyente del evento falla, la entrega se confirma igual', async () => {
+      eventos.emitAsync.mockRejectedValue(new Error('oyente caído'));
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ON_THE_WAY }),
+      );
+      const result = await useCase.execute('ord-1', OrderStatus.DELIVERED);
+      expect(result.status).toBe(OrderStatus.DELIVERED);
+    });
+
+    it('otros estados no publican el evento', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED }),
+      );
+      await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
+      expect(eventos.emitAsync).not.toHaveBeenCalled();
     });
 
     it('NO marca pagado si el método es MERCADOPAGO (lo resuelve el webhook)', async () => {

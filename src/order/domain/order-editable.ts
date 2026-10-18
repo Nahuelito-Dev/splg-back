@@ -20,7 +20,7 @@ export const MENSAJE_NO_PASAR_A_MERCADOPAGO =
 
 /** Por qué un pedido no se edita; `null` si se puede editar. */
 export type NoEditable = {
-  motivo: 'ESTADO' | 'PAGO_ONLINE' | 'EXPRESS';
+  motivo: 'ESTADO' | 'PAGO_ONLINE' | 'EXPRESS' | 'CUENTA_CORRIENTE';
   mensaje: string;
 };
 
@@ -41,6 +41,13 @@ export function motivoNoEditable(order: PedidoParaEditar): NoEditable | null {
     return {
       motivo: 'ESTADO',
       mensaje: `Sólo se edita un pedido pendiente sin chofer asignado (estado actual: ${order.status})`,
+    };
+  }
+  if (order.paymentMethod === PaymentMethod.ACCOUNT) {
+    return {
+      motivo: 'CUENTA_CORRIENTE',
+      mensaje:
+        'El pedido es a cuenta corriente: no se edita (su crédito ya se verificó). Cancelalo y creá uno nuevo',
     };
   }
   if (
