@@ -5,10 +5,12 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MAXIMO_ODOMETRO_KM } from '../../common/constants/odometro';
 
 /** CU-141: registrar que un mantenimiento/habilitación se hizo. */
 export class CloseFleetTaskDto {
@@ -26,6 +28,7 @@ export class CloseFleetTaskDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAXIMO_ODOMETRO_KM)
   odometerKm?: number;
 
   @ApiPropertyOptional({ example: 45000.5 })

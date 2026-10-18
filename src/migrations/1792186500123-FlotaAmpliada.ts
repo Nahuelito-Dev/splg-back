@@ -179,6 +179,14 @@ export class FlotaAmpliada1792186500123 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    const conTareas = (await queryRunner.query(
+      `SELECT count(*) AS n FROM "maintenance_task" t JOIN "maintenance_plan" p ON p."plan_id" = t."plan_id" WHERE p."document_kind"::text = 'hazmat_vehicle_permit'`,
+    )) as Array<{ n: string }>;
+    if (Number(conTareas[0].n) > 0) {
+      throw new Error(
+        'No se puede revertir: hay habilitaciones de mercancías peligrosas cargadas (tareas del plan hazmat_vehicle_permit); cancelalas y borralas antes',
+      );
+    }
     await queryRunner.query(
       `DELETE FROM "maintenance_plan" WHERE "document_kind" = 'hazmat_vehicle_permit'`,
     );

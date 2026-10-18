@@ -15,10 +15,12 @@ import {
   IsOptional,
   IsPositive,
   IsUUID,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
 import { FuelType } from '../../car/entities/car.entity';
+import { MAXIMO_ODOMETRO_KM } from '../../common/constants/odometro';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import {
@@ -79,6 +81,7 @@ export class CreateFuelLoadDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAXIMO_ODOMETRO_KM)
   odometerKm!: number;
 
   @ApiPropertyOptional({

@@ -7,9 +7,11 @@ import {
   IsOptional,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import { MAXIMO_ODOMETRO_KM } from '../../common/constants/odometro';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { TireEventType } from '../entities/tire-event.entity';
@@ -56,6 +58,7 @@ export class CreateTireEventDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAXIMO_ODOMETRO_KM)
   odometerKm!: number;
 
   @ApiPropertyOptional({

@@ -13,7 +13,10 @@ import {
   VehicleAccident,
   VehicleAccidentStatus,
 } from './entities/vehicle-accident.entity';
-import { EVENTO_SINIESTRO_CON_DERRAME } from './events/fleet-expense.events';
+import {
+  EVENTO_SINIESTRO_CON_ASIGNACION_PENDIENTE,
+  EVENTO_SINIESTRO_CON_DERRAME,
+} from './events/fleet-expense.events';
 import { VehicleAccidentService } from './vehicle-accident.service';
 
 describe('VehicleAccidentService', () => {
@@ -69,7 +72,11 @@ describe('VehicleAccidentService', () => {
       cambiarEstadoDeFlota: jest.fn().mockResolvedValue(undefined),
     };
     assignments = {
-      liberarDelVehiculo: jest.fn().mockResolvedValue('dl1'),
+      liberarDelVehiculo: jest.fn().mockResolvedValue({
+        deliveryId: 'dl1',
+        liberada: true,
+        motivoSiSeMantiene: null,
+      }),
     };
     driver = {
       vehiculoEnUso: jest.fn().mockResolvedValue('c1'),
@@ -125,6 +132,54 @@ describe('VehicleAccidentService', () => {
       await service.registrar({ ...dto, vehicleUnusable: true }, 'd1', 'u1');
       expect(cars.cambiarEstadoDeFlota).not.toHaveBeenCalled();
       expect(assignments.liberarDelVehiculo).toHaveBeenCalled();
+    });
+
+    it('inutilizable sin pedido en curso: se libera y el resultado no marca asignación mantenida', async () => {
+      const r = await service.registrar(
+        { ...dto, vehicleUnusable: true },
+        'd1',
+        'u1',
+      );
+      expect(r).toMatchObject({
+        assignmentKept: false,
+        assignmentKeptReason: null,
+      });
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('inutilizable con pedido en curso o carga abierta: el siniestro SE REGISTRA, el vehículo sale de servicio, la asignación se mantiene y se avisa a los administradores', async () => {
+      assignments.liberarDelVehiculo.mockResolvedValue({
+        deliveryId: 'dl1',
+        liberada: false,
+        motivoSiSeMantiene: 'su chofer tiene un pedido en curso',
+      });
+      const r = await service.registrar(
+        { ...dto, vehicleUnusable: true, hazmatRelease: true },
+        'd1',
+        'u1',
+      );
+      expect(guardados).toHaveLength(1);
+      expect(cars.cambiarEstadoDeFlota).toHaveBeenCalledWith(
+        expect.anything(),
+        'c1',
+        'd1',
+        FleetStatus.GROUNDED,
+      );
+      expect(r).toMatchObject({
+        assignmentKept: true,
+        assignmentKeptReason: 'su chofer tiene un pedido en curso',
+      });
+      // el aviso del derrame sale igual, y además el de la asignación pendiente
+      expect(eventos.emit).toHaveBeenCalledWith(
+        EVENTO_SINIESTRO_CON_DERRAME,
+        expect.anything(),
+      );
+      expect(eventos.emit).toHaveBeenCalledWith(
+        EVENTO_SINIESTRO_CON_ASIGNACION_PENDIENTE,
+        expect.objectContaining({
+          motivo: 'su chofer tiene un pedido en curso',
+        }),
+      );
     });
 
     it('el derrame de gas publica el evento de aviso inmediato', async () => {
@@ -200,6 +255,28 @@ describe('VehicleAccidentService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
+    it('pasar hazmatRelease de false a true emite el aviso de derrame', async () => {
+      await service.modificar('s1', { hazmatRelease: true }, 'd1');
+      expect(eventos.emit).toHaveBeenCalledWith(
+        EVENTO_SINIESTRO_CON_DERRAME,
+        expect.objectContaining({ distributorId: 'd1' }),
+      );
+    });
+
+    it('si ya estaba en true, repetirlo no vuelve a avisar', async () => {
+      repo.findOne.mockResolvedValue(guardado({ hazmatRelease: true }));
+      await service.modificar('s1', { hazmatRelease: true }, 'd1');
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('un derrame ya informado no se puede retirar (400)', async () => {
+      repo.findOne.mockResolvedValue(guardado({ hazmatRelease: true }));
+      await expect(
+        service.modificar('s1', { hazmatRelease: false }, 'd1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
     it('un siniestro cerrado no se modifica', async () => {
       repo.findOne.mockResolvedValue(
         guardado({ status: VehicleAccidentStatus.CLOSED }),
@@ -232,6 +309,17 @@ describe('VehicleAccidentService', () => {
       });
       expect(guardados[0].closedAt).toBeInstanceOf(Date);
       expect(cars.cambiarEstadoDeFlota).not.toHaveBeenCalled();
+    });
+
+    it('un reintegro mayor que la reparación es 400 y no cierra', async () => {
+      await expect(
+        service.cerrar(
+          's1',
+          { ...importes, insurerReimbursement: 400000 },
+          'd1',
+        ),
+      ).rejects.toThrow(/insurerReimbursement/);
+      expect(repo.save).not.toHaveBeenCalled();
     });
 
     it('cerrado dos veces es 409 «El siniestro ya está cerrado»', async () => {

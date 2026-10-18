@@ -7,6 +7,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, Repository } from 'typeorm';
 import { CarService } from '../car/car.service';
 import { FuelType } from '../car/entities/car.entity';
+import { FleetCostSourceService } from '../fleet/fleet-cost-source.service';
 import { DriverContextService } from './driver-context.service';
 import { FuelLoad, FuelPaymentMethod } from './entities/fuel-load.entity';
 import { EVENTO_CARGA_ANOMALA } from './events/fleet-expense.events';
@@ -35,6 +36,7 @@ describe('FuelLoadService', () => {
     vehiculoEnUso: jest.Mock;
   };
   let eventos: { emit: jest.Mock };
+  let fleet: { kmMaximoDeTareasHechas: jest.Mock };
   let guardadas: FuelLoad[];
 
   const dto = {
@@ -92,12 +94,14 @@ describe('FuelLoadService', () => {
       vehiculoEnUso: jest.fn().mockResolvedValue('c1'),
     };
     eventos = { emit: jest.fn() };
+    fleet = { kmMaximoDeTareasHechas: jest.fn().mockResolvedValue(null) };
     service = new FuelLoadService(
       repo as unknown as Repository<FuelLoad>,
       dataSource as unknown as DataSource,
       cars as unknown as CarService,
       driver as unknown as DriverContextService,
       eventos as unknown as EventEmitter2,
+      fleet as unknown as FleetCostSourceService,
     );
     // lo que `registrar` lee al final
     jest.spyOn(service, 'findOne').mockResolvedValue({} as FuelLoad);
@@ -343,6 +347,44 @@ describe('FuelLoadService', () => {
         1000,
       );
       expect(res.message).toContain('anulada');
+    });
+
+    it('al anular, el kilometraje restante es el mayor entre las cargas vigentes y las tareas hechas', async () => {
+      repo.findOne.mockResolvedValue(vigente());
+      anterior.getRawOne.mockResolvedValue({ max: 1000 });
+      fleet.kmMaximoDeTareasHechas.mockResolvedValue(1300);
+      await service.anular('f1', 'd1');
+      expect(cars.bajarOdometro).toHaveBeenCalledWith(
+        expect.anything(),
+        'c1',
+        1500,
+        1300,
+      );
+    });
+
+    it('sin cargas vigentes, el kilometraje restante sale de las tareas hechas', async () => {
+      repo.findOne.mockResolvedValue(vigente());
+      anterior.getRawOne.mockResolvedValue({ max: null });
+      fleet.kmMaximoDeTareasHechas.mockResolvedValue(900);
+      await service.anular('f1', 'd1');
+      expect(cars.bajarOdometro).toHaveBeenCalledWith(
+        expect.anything(),
+        'c1',
+        1500,
+        900,
+      );
+    });
+
+    it('sin cargas ni tareas con kilometraje, el vehículo conserva el que tenía', async () => {
+      repo.findOne.mockResolvedValue(vigente());
+      anterior.getRawOne.mockResolvedValue({ max: null });
+      await service.anular('f1', 'd1');
+      expect(cars.bajarOdometro).toHaveBeenCalledWith(
+        expect.anything(),
+        'c1',
+        1500,
+        null,
+      );
     });
 
     it('anular una ya anulada es 409', async () => {

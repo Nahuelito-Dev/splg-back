@@ -29,7 +29,10 @@ La respuesta de `/car` suma `fuel_type`, `tank_capacity_liters`, `odometer_km` y
 `GREATEST` entre el vigente y el nuevo): lo comparten las cargas de combustible y el cierre de las
 tareas de mantenimiento (`PATCH /fleet/tasks/:id/close` con `odometerKm`), y ninguno pisa al otro.
 Sólo baja (`bajarOdometro`) cuando el valor vigente lo había puesto la carga que se anula o se
-corrige hacia abajo, y vuelve a la carga vigente de mayor kilometraje que quede.
+corrige hacia abajo, y vuelve al **mayor kilometraje entre las cargas vigentes y las tareas de
+mantenimiento hechas con `odometerKm`** (las dos fuentes que lo escriben). Si no queda ninguna de
+las dos, el vehículo conserva el kilometraje que tenía. El kilometraje de una carga, de un cierre
+de tarea y de un movimiento de neumático no pasa de 2.000.000 km (**400**).
 
 ## Combustible (CU-195, CU-320, CU-321, CU-322, CU-196)
 
@@ -108,8 +111,12 @@ Ciclo: `pending` → `appealed` → `paid` o `voided`; pagada y anulada no vuelv
 
 **Aviso de vencimiento (CU-326).** Todos los días a las 8 (hora argentina) `FineDueAlertsCron` junta
 las multas `pending` con `dueDate` en 7 días o menos (o vencidas) y sin `alertedAt`, manda un correo
-a los administradores de cada distribuidora y marca `alertedAt`. Si el envío falla no marca: se
-reintenta al día siguiente. Cambiar `dueDate` limpia la marca. Una `appealed` no se avisa.
+a los administradores de cada distribuidora y marca `alertedAt`. El envío es **por destinatario**
+(`allSettled`): uno que falla no frena a los demás y se registra; si salió al menos uno se marca, y
+si no salió ninguno no se marca y se reintenta al día siguiente. El texto cargado por personas
+(acta, jurisdicción, patente) se escapa en el correo. Cambiar `dueDate` limpia la marca. Una
+`appealed` no se avisa a propósito: el CUE habla de multas «pendientes» y una apelada está en
+discusión; si la apelación se rechaza, se corrige la fecha de vencimiento y vuelve a entrar.
 
 ## Siniestros (CU-201, CU-202, CU-327, CU-328)
 
@@ -123,15 +130,20 @@ reintenta al día siguiente. Cambiar `dueDate` limpia la marca. Una `appealed` n
 | `PATCH /fleet/accidents/:id/close`             | `repairCost`, `insurerReimbursement`, `deductibleAmount` ≥ 0 → `closed` |
 
 - `location` es `"latitud,longitud"` (punto PostGIS); inválido, **400**. `occurredAt` no puede ser futuro.
-- `vehicleUnusable: true`: en la misma transacción el vehículo pasa a `grounded` y se cierra la
-  asignación abierta de su chofer. Si ese chofer tiene un pedido en curso o una carga de camión
-  abierta, el alta responde **409** («No se puede dejar el vehículo fuera de servicio…») y no
-  registra nada: se resuelve eso primero. El chofer queda sin vehículo y el despacho lo excluye.
-- `hazmatRelease: true`: aviso inmediato por correo a los administradores.
+- `vehicleUnusable: true`: el siniestro **se registra siempre** y el vehículo pasa a `grounded` (no se
+  puede volver a poner en uso ni asignar; el despacho no le ofrece pedidos a su chofer). En la misma
+  transacción, tomando el lock de la fila del chofer, se cierra la asignación abierta **salvo que el
+  chofer tenga un pedido en curso o una carga de camión abierta**: entonces la asignación se mantiene,
+  la respuesta del alta trae `assignmentKept: true` y `assignmentKeptReason` (sólo en el alta) y se
+  avisa por correo a los administradores para que resuelvan el pedido o la carga y liberen el vehículo.
+  Sin pedido en curso ni carga abierta, se libera y `assignmentKept` es `false`.
+- `hazmatRelease: true`: aviso inmediato por correo a los administradores, siempre. Al modificar,
+  pasar `hazmatRelease` de `false` a `true` emite el mismo aviso; un derrame ya informado no se puede
+  retirar (**400**).
 - Ciclo: `reported` → `under_review` → `repairing`, de a un paso (**409** si saltea o retrocede). El
   cierre es sólo `PATCH …/close`. Un siniestro cerrado no se modifica ni se vuelve a cerrar
   (**409** «El siniestro ya está cerrado»). `vehicleUnusable`, `carId` y el conductor no se editan.
-- Cerrar **no** reactiva el vehículo. `netCost` = reparación − reintegro.
+- Cerrar **no** reactiva el vehículo. El reintegro del seguro no puede superar la reparación (**400**). `netCost` = reparación − reintegro (calculado con `decimal.js`).
 - Adjuntos (fotos, denuncia): `/attachments/vehicle_accident/:id`. El chofer accede a los que reportó él.
 
 ## Reactivar un vehículo (CU-247)
@@ -153,12 +165,12 @@ chofer (**409**) hasta reactivarlo.
 datos propios (se calculan en cada consulta):
 
 1. `maintenance`: tareas `done` con `cost` y `performedAt` en el rango, sin los seguros.
-2. `insurance`: prima de cada póliza (plan `insurance`, no cancelada) × días de su vigencia
+2. `insurance`: prima de cada póliza **vigente o pagada** (plan `insurance`; no cuentan las canceladas ni las previstas, que son renovaciones pendientes con un importe estimado) × días de su vigencia
    `[validFrom, dueAt]` que caen en el rango / días de la vigencia. Sin `validFrom`, un año hacia
    atrás desde `dueAt` y `insuranceEstimated: true`.
 3. `fuel`: cargas vigentes del rango.
 4. `fines`: multas `paid` con `paidAt` en el rango y **sin imputar** al chofer (`paidAmount`).
-5. `accidents`: siniestros `closed` con `closedAt` en el rango (reparación − reintegro).
+5. `accidents`: siniestros `closed` con `closedAt` en el rango (reparación − reintegro). El costo de la reparación se carga **en el siniestro**; no hay que cargarlo además como tarea de mantenimiento con costo, porque se contaría dos veces.
 
 `km`: suma del registro de uso diario (`vehicle_usage_log`) y, si no hay, la diferencia de
 kilometraje entre las cargas del rango (`kmSource`: `usage_log`, `odometer` o `none`).
@@ -195,8 +207,12 @@ rotación, **400**; `odometerKm` menor que el del montaje, **400**. `position` e
 Tablas `fuel_load`, `traffic_fine`, `vehicle_accident`, `tire` y `tire_event`; `car.fuel_type` y
 `car.tank_capacity_liters`; `maintenance_task.valid_from`; `maintenance_plan.document_kind` y su
 backfill por nombre; el plan de la habilitación para las distribuidoras que ya existen. El enum
-`fuel_type_enum` lo comparten `car` y `fuel_load`. `down` deshace todo (y borra los planes de
-habilitación; si ya tienen tareas, el `RESTRICT` frena el borrado).
+`fuel_type_enum` lo comparten `car` y `fuel_load`. `down` deshace todo y borra los planes de
+habilitación; si ya tienen tareas **frena con un mensaje claro** («hay habilitaciones de mercancías
+peligrosas cargadas…») en vez de fallar por la clave foránea. `document_kind` lo comparte la
+documentación del personal (`1792080000000`): si ese `down` corre con la flota aplicada (en una base
+donde la flota corrió antes), deja la columna, achica el tipo a los tres valores de flota y frena con
+un mensaje claro si algún plan tiene un tipo del personal; si la flota no está, la borra con su tipo.
 
 ## Decisiones y límites
 

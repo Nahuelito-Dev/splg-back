@@ -1,13 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AdminService } from '../admin/admin.service';
+import { escaparHtml } from '../common/utils/html.util';
 import { errorMessage } from '../common/errors/error-message';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
 import { CarService } from '../car/car.service';
 import {
   CargaDeCombustibleAnomalaEvent,
   EVENTO_CARGA_ANOMALA,
+  EVENTO_SINIESTRO_CON_ASIGNACION_PENDIENTE,
   EVENTO_SINIESTRO_CON_DERRAME,
+  SiniestroConAsignacionPendienteEvent,
   SiniestroConDerrameEvent,
 } from './events/fleet-expense.events';
 
@@ -32,7 +35,7 @@ export class FleetExpenseNotifierListener {
     await this.avisar(
       evento.distributorId,
       `Consumo de combustible anómalo: ${patente}`,
-      `<p>La última carga de combustible del vehículo ${patente} tiene un consumo que se aparta más de un 25 % del habitual. Revisala en el panel de flota (carga ${evento.fuelLoadId}).</p>`,
+      `<p>La última carga de combustible del vehículo ${escaparHtml(patente)} tiene un consumo que se aparta más de un 25 % del habitual. Revisala en el panel de flota (carga ${escaparHtml(evento.fuelLoadId)}).</p>`,
     );
   }
 
@@ -42,7 +45,19 @@ export class FleetExpenseNotifierListener {
     await this.avisar(
       evento.distributorId,
       `URGENTE: derrame de gas en un siniestro (${patente})`,
-      `<p>Se registró un siniestro con fuga o derrame de gas del vehículo ${patente} (siniestro ${evento.accidentId}). Es un incidente de seguridad: revisalo ahora en el panel de flota.</p>`,
+      `<p>Se registró un siniestro con fuga o derrame de gas del vehículo ${escaparHtml(patente)} (siniestro ${escaparHtml(evento.accidentId)}). Es un incidente de seguridad: revisalo ahora en el panel de flota.</p>`,
+    );
+  }
+
+  @OnEvent(EVENTO_SINIESTRO_CON_ASIGNACION_PENDIENTE)
+  async asignacionPendiente(
+    evento: SiniestroConAsignacionPendienteEvent,
+  ): Promise<void> {
+    const patente = await this.patente(evento.carId, evento.distributorId);
+    await this.avisar(
+      evento.distributorId,
+      `Vehículo fuera de servicio con el chofer en entrega (${patente})`,
+      `<p>El vehículo ${escaparHtml(patente)} quedó fuera de servicio por un siniestro (${escaparHtml(evento.accidentId)}), pero sigue asignado a su chofer: ${escaparHtml(evento.motivo)}.</p>`,
     );
   }
 

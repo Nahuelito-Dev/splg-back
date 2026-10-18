@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdminService } from '../admin/admin.service';
+import { escaparHtml } from '../common/utils/html.util';
 import { errorMessage } from '../common/errors/error-message';
 import { diaArgentino, ZONA_ARGENTINA } from '../common/utils/dias-argentina';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
@@ -15,8 +16,13 @@ export const DIAS_DE_ANTICIPACION_DE_MULTAS = 7;
  * CU-326: cada día a las 8 (hora argentina) avisa por correo a los
  * administradores de cada distribuidora las multas pendientes que vencen en
  * siete días o menos, o ya vencieron, y marca cada una como avisada para no
- * repetir. Si el envío falla no marca nada: se reintenta en la corrida
- * siguiente. Misma mecánica que el aviso de vencimientos de flota (CU-142).
+ * repetir. Misma mecánica que el aviso de vencimientos de flota (CU-142).
+ *
+ * Sólo se avisan las `pending`: el CUE habla de «multas pendientes», y una
+ * apelada está en discusión (si la apelación se rechaza, se corrige la fecha y
+ * vuelve a entrar). El envío es por destinatario: si al menos uno salió se
+ * marca (los fallidos se registran); si no salió ninguno, se reintenta en la
+ * corrida siguiente.
  */
 @Injectable()
 export class FineDueAlertsCron {
@@ -66,7 +72,8 @@ export class FineDueAlertsCron {
         .filter((email): email is string => Boolean(email));
       if (destinatarios.length > 0) {
         const html = this.armarHtml(multas);
-        await Promise.all(
+        // Un destinatario que falla no frena a los demás.
+        const envios = await Promise.allSettled(
           destinatarios.map((to) =>
             this.emailSender.send({
               to,
@@ -75,6 +82,18 @@ export class FineDueAlertsCron {
             }),
           ),
         );
+        const fallidos = envios.flatMap((envio, i) =>
+          envio.status === 'rejected'
+            ? [`${destinatarios[i]}: ${errorMessage(envio.reason)}`]
+            : [],
+        );
+        if (fallidos.length > 0) {
+          this.logger.error(
+            `No se pudo avisar las multas por vencer de la distribuidora ${distributorId} a: ${fallidos.join('; ')}`,
+          );
+        }
+        // Si no salió ninguno, no se marca: se reintenta en la corrida siguiente.
+        if (fallidos.length === destinatarios.length) return;
       }
       // Sin admins con correo no hay a quién avisar una segunda vez: se marca igual.
       await this.fines.update(
@@ -95,7 +114,8 @@ export class FineDueAlertsCron {
         const vence = m.dueDate ?? '-';
         const estado =
           m.dueDate && m.dueDate < hoy ? 'VENCIDA' : `vence ${vence}`;
-        return `<li>Vehículo ${m.car?.carPatent ?? m.carId} — acta ${m.actNumber} (${m.jurisdiction}) — $${m.amount} — ${estado}</li>`;
+        const patente = escaparHtml(m.car?.carPatent ?? m.carId);
+        return `<li>Vehículo ${patente} — acta ${escaparHtml(m.actNumber)} (${escaparHtml(m.jurisdiction)}) — $${escaparHtml(String(m.amount))} — ${escaparHtml(estado)}</li>`;
       })
       .join('');
     return `<p>Estas multas de tránsito necesitan atención:</p><ul>${filas}</ul>`;

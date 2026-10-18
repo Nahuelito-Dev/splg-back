@@ -201,6 +201,50 @@ export class DocumentacionAsistenciaYLicenciasDelPersonal1792080000000
     await queryRunner.query(`DROP TYPE "public"."plan_document_kind_enum_old"`);
   }
 
+  /**
+   * Deshace `document_kind`. Si la flota ampliada (FlotaAmpliada1792186500123)
+   * está aplicada, la columna es de las dos migraciones —en una base donde la
+   * flota corrió antes que esta, se revierte esta primero—: se deja y el tipo
+   * vuelve a los tres valores de flota. Antes se limpia lo que esta migración
+   * completó en los planes base; si queda algún plan con un tipo del personal,
+   * se frena con un mensaje claro en vez de perderlo.
+   */
+  private async bajarTipoDeDocumento(queryRunner: QueryRunner): Promise<void> {
+    const flota = (await queryRunner.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'car' AND column_name = 'fuel_type'`,
+    )) as unknown[];
+    if (flota.length === 0) {
+      await queryRunner.query(
+        `ALTER TABLE "maintenance_plan" DROP COLUMN "document_kind"`,
+      );
+      await queryRunner.query(`DROP TYPE "public"."plan_document_kind_enum"`);
+      return;
+    }
+    await queryRunner.query(`
+      UPDATE "maintenance_plan" SET "document_kind" = NULL
+      WHERE ("name" = 'Licencia de conducir' AND "document_kind"::text = 'driver_license')
+         OR ("name" = 'Service / cambio de aceite' AND "document_kind"::text = 'service')
+    `);
+    const otros = (await queryRunner.query(
+      `SELECT count(*) AS n FROM "maintenance_plan" WHERE "document_kind"::text NOT IN ('insurance', 'vtv', 'hazmat_vehicle_permit')`,
+    )) as Array<{ n: string }>;
+    if (Number(otros[0].n) > 0) {
+      throw new Error(
+        'No se puede revertir: hay planes de flota con un tipo de documento del personal (maintenance_plan.document_kind); cambialos o desactivalos antes',
+      );
+    }
+    await queryRunner.query(
+      `ALTER TYPE "public"."plan_document_kind_enum" RENAME TO "plan_document_kind_enum_old"`,
+    );
+    await queryRunner.query(
+      `CREATE TYPE "public"."plan_document_kind_enum" AS ENUM('insurance', 'vtv', 'hazmat_vehicle_permit')`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "maintenance_plan" ALTER COLUMN "document_kind" TYPE "public"."plan_document_kind_enum" USING "document_kind"::"text"::"public"."plan_document_kind_enum"`,
+    );
+    await queryRunner.query(`DROP TYPE "public"."plan_document_kind_enum_old"`);
+  }
+
   public async down(queryRunner: QueryRunner): Promise<void> {
     const filas: unknown = await queryRunner.query(
       `SELECT count(*) AS n FROM "maintenance_task" WHERE "employee_id" IS NOT NULL`,
@@ -248,10 +292,7 @@ export class DocumentacionAsistenciaYLicenciasDelPersonal1792080000000
     await queryRunner.query(
       `ALTER TABLE "maintenance_plan" DROP COLUMN "applies_to_categories"`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "maintenance_plan" DROP COLUMN "document_kind"`,
-    );
-    await queryRunner.query(`DROP TYPE "public"."plan_document_kind_enum"`);
+    await this.bajarTipoDeDocumento(queryRunner);
     await queryRunner.query(
       `ALTER TYPE "public"."maintenance_subject_enum" RENAME TO "maintenance_subject_enum_old"`,
     );

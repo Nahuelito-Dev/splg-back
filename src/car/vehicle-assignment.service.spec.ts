@@ -590,28 +590,52 @@ describe('VehicleAssignmentService', () => {
           patent: 'AB123CD',
           brand: 'Honda',
           model: 'Wave',
+          fleetStatus: null,
         },
       ]);
     });
   });
 
   describe('liberarDelVehiculo (siniestro que lo deja inutilizable)', () => {
-    it('cierra la asignación abierta y devuelve el chofer', async () => {
-      const abierta = {
+    const abierta = () =>
+      ({
         assignmentId: 'a1',
         deliveryId: 'dl1',
         releasedAt: null,
         note: null,
-      } as VehicleAssignment;
-      txRepo.findOne.mockResolvedValue(abierta);
-
-      const chofer = await service.liberarDelVehiculo(
+      }) as VehicleAssignment;
+    const opciones = { motivo: 'Fuera de servicio', actorUserId: 'admin-1' };
+    const liberar = () =>
+      service.liberarDelVehiculo(
         'c1',
         manager as unknown as EntityManager,
-        { motivo: 'Fuera de servicio', actorUserId: 'admin-1' },
+        opciones,
+      );
+    /** Responde por el SQL: el lock del chofer, el pedido en curso y la carga de camión. */
+    const consultas = (opts: { pedido?: boolean; carga?: number }) =>
+      manager.query.mockImplementation((sql: string, params?: unknown[]) =>
+        Promise.resolve(
+          sql.includes('"truck_load"')
+            ? opts.carga === undefined
+              ? []
+              : [{ number: opts.carga }]
+            : sql.includes('EXISTS')
+              ? [{ existe: Boolean(opts.pedido) }]
+              : choferesVigentes(params),
+        ),
       );
 
-      expect(chofer).toBe('dl1');
+    it('cierra la asignación abierta y devuelve el chofer', async () => {
+      txRepo.findOne.mockResolvedValue(abierta());
+      consultas({});
+
+      const resultado = await liberar();
+
+      expect(resultado).toEqual({
+        deliveryId: 'dl1',
+        liberada: true,
+        motivoSiSeMantiene: null,
+      });
       expect(txRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           releasedAt: expect.any(Date) as Date,
@@ -621,43 +645,58 @@ describe('VehicleAssignmentService', () => {
       );
     });
 
-    it('con un pedido en curso es 409 y no cierra nada', async () => {
-      txRepo.findOne.mockResolvedValue({
+    it('toma el lock de la fila del chofer ANTES de mirar el viaje en curso', async () => {
+      txRepo.findOne.mockResolvedValue(abierta());
+      consultas({});
+      await liberar();
+      const sqls = sqlsDelManager();
+      const lock = sqls.findIndex((q) => q.includes('FOR NO KEY UPDATE'));
+      const viaje = sqls.findIndex((q) => q.includes('EXISTS'));
+      expect(lock).toBeGreaterThanOrEqual(0);
+      expect(lock).toBeLessThan(viaje);
+    });
+
+    it('con un pedido en curso NO cierra la asignación y devuelve el motivo', async () => {
+      txRepo.findOne.mockResolvedValue(abierta());
+      consultas({ pedido: true });
+      const resultado = await liberar();
+      expect(resultado).toMatchObject({
         deliveryId: 'dl1',
-        releasedAt: null,
-      } as VehicleAssignment);
-      manager.query.mockResolvedValueOnce([{ existe: true }]);
-      await expect(
-        service.liberarDelVehiculo('c1', manager as unknown as EntityManager, {
-          motivo: 'x',
-        }),
-      ).rejects.toThrow(/fuera de servicio.*pedido en curso/);
+        liberada: false,
+        motivoSiSeMantiene: expect.stringContaining(
+          'pedido en curso',
+        ) as string,
+      });
       expect(txRepo.save).not.toHaveBeenCalled();
     });
 
-    it('con una carga de camión abierta es 409 y no cierra nada', async () => {
-      txRepo.findOne.mockResolvedValue({
-        deliveryId: 'dl1',
-        releasedAt: null,
-      } as VehicleAssignment);
-      manager.query
-        .mockResolvedValueOnce([{ existe: false }])
-        .mockResolvedValueOnce([{ number: 7 }]);
-      await expect(
-        service.liberarDelVehiculo('c1', manager as unknown as EntityManager, {
-          motivo: 'x',
-        }),
-      ).rejects.toThrow(/carga de camión abierta/);
+    it('con una carga de camión abierta NO cierra la asignación y devuelve el motivo', async () => {
+      txRepo.findOne.mockResolvedValue(abierta());
+      consultas({ carga: 7 });
+      const resultado = await liberar();
+      expect(resultado).toMatchObject({
+        liberada: false,
+        motivoSiSeMantiene: expect.stringContaining('carga N° 7') as string,
+      });
       expect(txRepo.save).not.toHaveBeenCalled();
     });
 
     it('si nadie lo tenía en uso no hace nada', async () => {
       txRepo.findOne.mockResolvedValue(null);
-      await expect(
-        service.liberarDelVehiculo('c1', manager as unknown as EntityManager, {
-          motivo: 'x',
-        }),
-      ).resolves.toBeNull();
+      await expect(liberar()).resolves.toEqual({
+        deliveryId: null,
+        liberada: false,
+        motivoSiSeMantiene: null,
+      });
+      expect(txRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('si otra operación la cerró mientras esperaba el lock, no hace nada', async () => {
+      txRepo.findOne
+        .mockResolvedValueOnce(abierta())
+        .mockResolvedValueOnce(null);
+      consultas({});
+      await expect(liberar()).resolves.toMatchObject({ liberada: false });
       expect(txRepo.save).not.toHaveBeenCalled();
     });
   });

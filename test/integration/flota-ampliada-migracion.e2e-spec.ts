@@ -48,14 +48,35 @@ describe('Migración FlotaAmpliada (e2e)', () => {
       [distributorId],
     );
 
+  /**
+   * Deshace desde la última hasta FlotaAmpliada inclusive. En una base nueva
+   * corren, por timestamp: personal (1792080000000), flota (1792186500123) y las
+   * que vengan después; `undoLastMigration` deshace de a una, de la última.
+   */
+  const deshacerHastaFlota = async () => {
+    for (;;) {
+      const aplicadas = await ds.query<Array<{ name: string }>>(
+        `SELECT name FROM migrations WHERE name LIKE 'FlotaAmpliada%'`,
+      );
+      if (aplicadas.length === 0) return;
+      await ds.undoLastMigration();
+    }
+  };
+
   it('deshacer y volver a aplicar deja las distribuidoras existentes con sus planes reconocidos y la habilitación', async () => {
     await ds.runMigrations();
-    // Se vuelve al estado anterior a la flota ampliada.
-    await ds.undoLastMigration();
+    // Se vuelve al estado anterior a la flota ampliada. La documentación del
+    // personal (que corre antes) sigue aplicada y es dueña de `document_kind`:
+    // la columna se queda.
+    await deshacerHastaFlota();
     const columnas = await ds.query<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'maintenance_plan' AND column_name = 'document_kind'`,
     );
-    expect(columnas).toEqual([]);
+    expect(columnas).toHaveLength(1);
+    const tablas = await ds.query<Array<{ t: string | null }>>(
+      `SELECT to_regclass('public.fuel_load') AS t`,
+    );
+    expect(tablas[0].t).toBeNull();
 
     // Una distribuidora de antes, con los 4 planes base de entonces.
     const [{ distributor_id: distributorId }] = await ds.query<
@@ -108,14 +129,35 @@ describe('Migración FlotaAmpliada (e2e)', () => {
     >(
       `INSERT INTO distributor (name, slug) VALUES ('Otra', 'otra') RETURNING distributor_id`,
     );
-    await ds.undoLastMigration();
+    await deshacerHastaFlota();
     await ds.runMigrations();
-    await ds.undoLastMigration();
+    await deshacerHastaFlota();
     await ds.runMigrations();
     const filas = await ds.query<Array<{ n: string }>>(
       `SELECT count(*) AS n FROM maintenance_plan WHERE distributor_id = $1 AND document_kind = 'hazmat_vehicle_permit'`,
       [distributorId],
     );
     expect(Number(filas[0].n)).toBe(1);
+  }, 240000);
+
+  it('deshacer la flota con habilitaciones cargadas frena con un mensaje claro, sin fallar por la clave foránea', async () => {
+    const [{ distributor_id: distributorId }] = await ds.query<
+      Array<{ distributor_id: string }>
+    >(
+      `INSERT INTO distributor (name, slug) VALUES ('Con tareas', 'con-tareas') RETURNING distributor_id`,
+    );
+    await ds.query(
+      `INSERT INTO maintenance_plan (distributor_id, name, subject, "trigger", lead_time_days, criticality, is_active, document_kind)
+       VALUES ($1, 'Habilitación', 'vehicle', 'by_fixed_date', 30, 'blocking', true, 'hazmat_vehicle_permit')`,
+      [distributorId],
+    );
+    await ds.query(
+      `INSERT INTO maintenance_task (plan_id, distributor_id, status)
+       SELECT plan_id, distributor_id, 'scheduled' FROM maintenance_plan WHERE distributor_id = $1`,
+      [distributorId],
+    );
+    await expect(deshacerHastaFlota()).rejects.toThrow(
+      /habilitaciones de mercancías peligrosas cargadas/,
+    );
   }, 240000);
 });

@@ -38,6 +38,15 @@ const ESTADOS_DE_VIAJE_EN_CURSO = [
   OrderStatus.ON_THE_WAY,
 ];
 
+/** Qué pasó con la asignación al dejar un vehículo fuera de servicio. */
+export interface ResultadoDeLiberacion {
+  /** El chofer que tenía el vehículo, o `null` si nadie. */
+  deliveryId: string | null;
+  liberada: boolean;
+  /** Por qué se mantiene la asignación (pedido en curso, carga abierta), si se mantiene. */
+  motivoSiSeMantiene: string | null;
+}
+
 /**
  * Qué vehículo usa cada chofer, con historial (decisión de nahue del 30/09,
  * resuelve el punto 5 de la revisión de bloqueo de flota: hoy un chofer con
@@ -266,11 +275,10 @@ export class VehicleAssignmentService {
    * CONVENCIONES §4 que `common/tenancy/pertenencia.ts`: `car` no puede
    * depender de `OrderModule` (ciclo: order → fleet → car → order).
    */
-  private async assertSinViajeEnCurso(
+  private async hayViajeEnCurso(
     deliveryId: string,
     manager: EntityManager,
-    accion = 'No se puede modificar el vehículo de un chofer con un pedido en curso (aceptado o en camino)',
-  ): Promise<void> {
+  ): Promise<boolean> {
     const filas = await manager.query<{ existe: boolean }[]>(
       `SELECT EXISTS (
          SELECT 1 FROM "order"
@@ -278,25 +286,25 @@ export class VehicleAssignmentService {
        ) AS existe`,
       [deliveryId, ESTADOS_DE_VIAJE_EN_CURSO],
     );
-    if (filas[0]?.existe) {
+    return Boolean(filas[0]?.existe);
+  }
+
+  private async assertSinViajeEnCurso(
+    deliveryId: string,
+    manager: EntityManager,
+    accion = 'No se puede modificar el vehículo de un chofer con un pedido en curso (aceptado o en camino)',
+  ): Promise<void> {
+    if (await this.hayViajeEnCurso(deliveryId, manager)) {
       throw new ConflictException(accion);
     }
   }
 
-  /**
-   * 409 si alguno de los choferes, o el camión, tiene abierta una carga de
-   * camión (`loading`, `on_route` o `returned`): cambiar el vehículo en medio de
-   * la jornada dejaría el stock cargado en un camión que el chofer ya no usa. Se
-   * cierra o cancela la carga antes. Lee `truck_load` de sólo lectura, la misma
-   * excepción que `assertSinViajeEnCurso` (`car` no puede depender de
-   * `truck-load`, que depende de `car`).
-   */
-  private async assertSinCargaAbierta(
+  /** El número de la primera carga de camión abierta de esos choferes o de ese camión, o `null`. */
+  private async cargaAbiertaDe(
     manager: EntityManager,
     deliveryIds: string[],
     carId: string | null,
-    accion = 'No se puede cambiar el vehículo',
-  ): Promise<void> {
+  ): Promise<number | null> {
     const filas = await manager.query<Array<{ number: number }>>(
       `SELECT "number" FROM "truck_load"
        WHERE ("delivery_id" = ANY($1::uuid[]) OR "car_id" = $2::uuid)
@@ -304,9 +312,19 @@ export class VehicleAssignmentService {
        LIMIT 1`,
       [deliveryIds, carId],
     );
-    if (filas.length > 0) {
+    return filas[0]?.number ?? null;
+  }
+
+  private async assertSinCargaAbierta(
+    manager: EntityManager,
+    deliveryIds: string[],
+    carId: string | null,
+    accion = 'No se puede cambiar el vehículo',
+  ): Promise<void> {
+    const numero = await this.cargaAbiertaDe(manager, deliveryIds, carId);
+    if (numero !== null) {
       throw new ConflictException(
-        `${accion} mientras haya una carga de camión abierta (carga N° ${filas[0].number}): cerrala o cancelala antes`,
+        `${accion} mientras haya una carga de camión abierta (carga N° ${numero}): cerrala o cancelala antes`,
       );
     }
   }
@@ -351,39 +369,64 @@ export class VehicleAssignmentService {
 
   /**
    * Cierra la asignación abierta del vehículo, si la tiene (siniestro que lo
-   * deja inutilizable, CU-201). Si su chofer tiene un pedido en curso o una
-   * carga de camión abierta responde 409 y no cierra nada: hay que resolver
-   * eso primero. Corre en la transacción del que la llama. Devuelve el chofer
-   * que lo tenía, o `null`.
+   * deja inutilizable, CU-201). Toma el lock de la fila del chofer, el mismo
+   * que `ponerEnUso` y la aceptación de un pedido, antes de mirar si tiene un
+   * pedido en curso o una carga de camión abierta. Si los tiene NO cierra la
+   * asignación (el chofer está en plena entrega o con stock cargado): devuelve
+   * `liberada: false` y el motivo para que el caller avise a los
+   * administradores. Corre en la transacción del que la llama.
    */
   async liberarDelVehiculo(
     carId: string,
     manager: EntityManager,
     opciones: { motivo: string; actorUserId?: string },
-  ): Promise<string | null> {
+  ): Promise<ResultadoDeLiberacion> {
     const repo = manager.getRepository(VehicleAssignment);
+    const previa = await repo.findOne({
+      where: { carId, releasedAt: IsNull() },
+    });
+    if (!previa) {
+      return { deliveryId: null, liberada: false, motivoSiSeMantiene: null };
+    }
+    await bloquearChoferes(manager, [previa.deliveryId]);
+    // Con el chofer bloqueado se vuelve a leer: otra operación pudo cerrarla.
     const abierta = await repo.findOne({
       where: { carId, releasedAt: IsNull() },
     });
-    if (!abierta) return null;
-    await this.assertSinViajeEnCurso(
-      abierta.deliveryId,
-      manager,
-      'No se puede dejar el vehículo fuera de servicio: su chofer tiene un pedido en curso (aceptado o en camino); completalo o reasignalo antes',
-    );
-    await this.assertSinCargaAbierta(
+    if (!abierta) {
+      return { deliveryId: null, liberada: false, motivoSiSeMantiene: null };
+    }
+    if (await this.hayViajeEnCurso(abierta.deliveryId, manager)) {
+      return {
+        deliveryId: abierta.deliveryId,
+        liberada: false,
+        motivoSiSeMantiene:
+          'su chofer tiene un pedido en curso (aceptado o en camino): completalo o reasignalo y después liberá el vehículo',
+      };
+    }
+    const carga = await this.cargaAbiertaDe(
       manager,
       [abierta.deliveryId],
       carId,
-      'No se puede dejar el vehículo fuera de servicio',
     );
+    if (carga !== null) {
+      return {
+        deliveryId: abierta.deliveryId,
+        liberada: false,
+        motivoSiSeMantiene: `hay una carga de camión abierta (carga N° ${carga}): cerrala o cancelala y después liberá el vehículo`,
+      };
+    }
     abierta.releasedAt = new Date();
     abierta.note = abierta.note
       ? `${abierta.note}\n\n${opciones.motivo}`
       : opciones.motivo;
     if (opciones.actorUserId) abierta.releasedByUserId = opciones.actorUserId;
     await repo.save(abierta);
-    return abierta.deliveryId;
+    return {
+      deliveryId: abierta.deliveryId,
+      liberada: true,
+      motivoSiSeMantiene: null,
+    };
   }
 
   /**
@@ -515,6 +558,7 @@ export class VehicleAssignmentService {
       patent: string | null;
       brand: string | null;
       model: string | null;
+      fleetStatus: FleetStatus | null;
     }>
   > {
     if (deliveryIds.length === 0) return [];
@@ -532,6 +576,7 @@ export class VehicleAssignmentService {
       patent: f.car?.carPatent ?? null,
       brand: f.car?.carBrand ?? null,
       model: f.car?.carModel ?? null,
+      fleetStatus: f.car?.fleetStatus ?? null,
     }));
   }
 

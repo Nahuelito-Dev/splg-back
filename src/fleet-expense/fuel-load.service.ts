@@ -35,6 +35,7 @@ import {
   totalizarTramos,
 } from './domain/fuel-consumption';
 import { rangoDeFiltros } from './domain/rango';
+import { FleetCostSourceService } from '../fleet/fleet-cost-source.service';
 import { DriverContextService } from './driver-context.service';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { FuelLoad } from './entities/fuel-load.entity';
@@ -73,6 +74,7 @@ export class FuelLoadService {
     private readonly cars: CarService,
     private readonly driver: DriverContextService,
     private readonly eventos: EventEmitter2,
+    private readonly fleet: FleetCostSourceService,
   ) {}
 
   /** CU-195, camino del administrador. */
@@ -292,6 +294,7 @@ export class FuelLoadService {
             carga.carId,
             kmAnterior,
             carga.odometerKm,
+            distributorId,
           );
           carga.anomaly = await this.evaluarAnomalia(
             manager,
@@ -325,6 +328,7 @@ export class FuelLoadService {
         const restante = await this.kilometrajeMaximoVigente(
           manager,
           carga.carId,
+          distributorId,
         );
         await this.cars.bajarOdometro(
           manager,
@@ -538,9 +542,16 @@ export class FuelLoadService {
     );
   }
 
+  /**
+   * El kilometraje que le queda al vehículo cuando una carga deja de valer: el
+   * mayor entre las cargas vigentes y las tareas de mantenimiento hechas con
+   * kilometraje (las dos fuentes que lo escriben). `null` si no queda ninguna:
+   * el vehículo conserva el que tenía.
+   */
   private async kilometrajeMaximoVigente(
     manager: EntityManager,
     carId: string,
+    distributorId: string,
   ): Promise<number | null> {
     const fila = await manager
       .getRepository(FuelLoad)
@@ -548,7 +559,14 @@ export class FuelLoadService {
       .select('MAX(f.odometer_km)', 'max')
       .where('f.car_id = :carId', { carId })
       .getRawOne<{ max: number | null }>();
-    return fila?.max ?? null;
+    const deTareas = await this.fleet.kmMaximoDeTareasHechas(
+      distributorId,
+      carId,
+    );
+    const candidatos = [fila?.max ?? null, deTareas].filter(
+      (km): km is number => km !== null,
+    );
+    return candidatos.length === 0 ? null : Math.max(...candidatos);
   }
 
   /** Sube el kilometraje del vehículo, o lo baja si el viejo valor era el que había fijado esta carga. */
@@ -557,11 +575,16 @@ export class FuelLoadService {
     carId: string,
     kmAnterior: number,
     kmNuevo: number,
+    distributorId: string,
   ): Promise<void> {
     if (kmNuevo > kmAnterior) {
       await this.cars.actualizarOdometro(manager, carId, kmNuevo);
     } else if (kmNuevo < kmAnterior) {
-      const restante = await this.kilometrajeMaximoVigente(manager, carId);
+      const restante = await this.kilometrajeMaximoVigente(
+        manager,
+        carId,
+        distributorId,
+      );
       await this.cars.bajarOdometro(manager, carId, kmAnterior, restante);
     }
   }

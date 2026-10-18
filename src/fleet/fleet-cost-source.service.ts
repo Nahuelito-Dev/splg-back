@@ -74,7 +74,28 @@ export class FleetCostSourceService {
     }));
   }
 
-  /** Pólizas con prima cuya vigencia termina en o después de `desde` (las canceladas no cuentan). */
+  /** El mayor kilometraje con que se cerró una tarea hecha del vehículo, o `null` si ninguna lo tiene. */
+  async kmMaximoDeTareasHechas(
+    distributorId: string,
+    carId: string,
+  ): Promise<number | null> {
+    const fila = await this.tasks
+      .createQueryBuilder('task')
+      .select('MAX(task.odometer_km)', 'max')
+      .where('task.distributor_id = :distributorId AND task.car_id = :carId', {
+        distributorId,
+        carId,
+      })
+      .andWhere('task.status = :hecha', { hecha: MaintenanceTaskStatus.DONE })
+      .getRawOne<{ max: number | null }>();
+    return fila?.max ?? null;
+  }
+
+  /**
+   * Pólizas con prima cuya vigencia termina en o después de `desde`. Sólo las
+   * vigentes o pagadas: una póliza prevista (renovación pendiente, con un
+   * importe estimado) y las canceladas no cuentan.
+   */
   async seguros(
     distributorId: string,
     carIds: string[],
@@ -87,8 +108,11 @@ export class FleetCostSourceService {
       .select(['task.carId', 'task.validFrom', 'task.dueAt', 'task.cost'])
       .where('task.distributor_id = :distributorId', { distributorId })
       .andWhere('task.car_id IN (:...carIds)', { carIds })
-      .andWhere('task.status <> :cancelada', {
-        cancelada: MaintenanceTaskStatus.CANCELLED,
+      .andWhere('task.status NOT IN (:...fueraDelCosto)', {
+        fueraDelCosto: [
+          MaintenanceTaskStatus.CANCELLED,
+          MaintenanceTaskStatus.FORECAST,
+        ],
       })
       .andWhere('task.cost IS NOT NULL AND task.due_at IS NOT NULL')
       .andWhere('task.due_at >= :desde', { desde })

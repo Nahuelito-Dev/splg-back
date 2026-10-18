@@ -71,7 +71,7 @@ describe('FleetCostSourceService', () => {
     );
   });
 
-  it('seguros: las pólizas no canceladas con prima cuya vigencia termina en el rango o después', async () => {
+  it('seguros: las pólizas vigentes o pagadas con prima cuya vigencia termina en el rango o después', async () => {
     const dueAt = new Date('2026-12-31T00:00:00.000Z');
     qbTareas.getMany.mockResolvedValue([
       { carId: 'c1', validFrom: null, dueAt, cost: 365000 },
@@ -84,9 +84,10 @@ describe('FleetCostSourceService', () => {
       'plan.document_kind = :seguro',
       { seguro: MaintenanceDocumentKind.INSURANCE },
     );
+    // las canceladas y las previstas (renovación pendiente con importe estimado) no cuentan
     expect(qbTareas.andWhere).toHaveBeenCalledWith(
-      'task.status <> :cancelada',
-      expect.anything(),
+      'task.status NOT IN (:...fueraDelCosto)',
+      { fueraDelCosto: ['cancelled', 'forecast'] },
     );
   });
 
@@ -99,5 +100,20 @@ describe('FleetCostSourceService', () => {
       'u.distributor_id = :distributorId',
       { distributorId: 'd1' },
     );
+  });
+
+  it('kmMaximoDeTareasHechas: el mayor kilometraje de cierre del vehículo, o null', async () => {
+    qbTareas.getRawOne = jest.fn().mockResolvedValue({ max: 1300 });
+    await expect(service.kmMaximoDeTareasHechas('d1', 'c1')).resolves.toBe(
+      1300,
+    );
+    qbTareas.getRawOne.mockResolvedValue({ max: null });
+    await expect(
+      service.kmMaximoDeTareasHechas('d1', 'c1'),
+    ).resolves.toBeNull();
+    qbTareas.getRawOne.mockResolvedValue(undefined);
+    await expect(
+      service.kmMaximoDeTareasHechas('d1', 'c1'),
+    ).resolves.toBeNull();
   });
 });
