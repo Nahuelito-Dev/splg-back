@@ -40,6 +40,8 @@ export class CashCategoryController {
   constructor(private readonly categorias: CashCategoryService) {}
 
   @Get()
+  // El chofer las lee para declarar los gastos de su rendición (CU-232).
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Listar las categorías de ingresos y gastos' })
   @ApiOkResponse({ type: CashCategoryPageDto })
   async findAll(

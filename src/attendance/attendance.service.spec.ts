@@ -494,6 +494,31 @@ describe('AttendanceService', () => {
     });
   });
 
+  describe('jornadaAbierta (app del chofer)', () => {
+    beforeEach(() => {
+      (repoServicio as unknown as { findOne: jest.Mock }).findOne = jest.fn();
+    });
+
+    it('devuelve la abierta con su legajo, aunque sea de un día anterior', async () => {
+      const abierta = jornada({ workDate: sumarDias(diaArgentino(), -1) });
+      (
+        repoServicio as unknown as { findOne: jest.Mock }
+      ).findOne.mockResolvedValue(abierta);
+      const res = await service.jornadaAbierta('u1');
+      expect(res?.attendanceId).toBe('a1');
+      expect(res?.employee.employeeId).toBe('e1');
+    });
+
+    it('sin jornada abierta o sin legajo vinculado devuelve null', async () => {
+      (
+        repoServicio as unknown as { findOne: jest.Mock }
+      ).findOne.mockResolvedValue(null);
+      await expect(service.jornadaAbierta('u1')).resolves.toBeNull();
+      employees.findByUserId.mockResolvedValue(null);
+      await expect(service.jornadaAbierta('u1')).resolves.toBeNull();
+    });
+  });
+
   describe('lecturas auxiliares', () => {
     it('abiertasAnteriores trae todas las abiertas de días anteriores, no sólo ayer', async () => {
       const { qb, condiciones } = crearQb({ getMany: [jornada()] });
