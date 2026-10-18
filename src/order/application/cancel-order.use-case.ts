@@ -176,7 +176,9 @@ export class CancelOrderUseCase {
         .onOrderClosed(order.orderId)
         .catch(() => undefined);
       this.notify(order, previousDriverUserId, role);
-      await this.reintegrarPago(order.orderId);
+      // La cancelación no espera a la pasarela: la devolución sale aparte, con
+      // su error registrado, y si falla la retoma el administrador.
+      void this.reintegrarPago(order.orderId);
     }
 
     return order;

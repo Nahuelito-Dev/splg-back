@@ -1,6 +1,6 @@
 # Procesos automáticos: parámetros por distribuidora y zonas vencidas
 
-CU-172 (parámetros de los cinco procesos automáticos) y CU-151 (zonas de cobertura vencidas). Todo está también en
+CU-172 (parámetros de los cuatro procesos automáticos) y CU-151 (zonas de cobertura vencidas). Todo está también en
 Swagger (`/docs`, tag "Configuración · Parámetros por distribuidora").
 
 ## Parámetros de un proceso automático (CU-172)
@@ -11,15 +11,16 @@ opera sobre su distribuidora y el super admin elige con `X-Distributor` (sin él
 
 | Ruta | Qué hace |
 |---|---|
-| `GET /module-config/processes` | Los cinco procesos con su esquema (`fields`: clave, tipo, rango, unidad, valor por omisión) y sus valores vigentes. |
+| `GET /module-config/processes` | Los cuatro procesos con su esquema (`fields`: clave, tipo, rango, unidad, valor por omisión) y sus valores vigentes. |
 | `GET /module-config/:process` | Un proceso. |
 | `PUT /module-config/:process` | Guarda parámetros. Cuerpo: `{ <parámetro>: <número> }`. |
 
-`:process` es uno de `fleet_planner`, `repurchase`, `route_batching`, `cylinder_recovery`, `express_dispatch`. Cualquier otro
-(incluidos `stock_control`, y `dispatch` / `scheduled_tasks`, que tienen sus propias rutas fijas) responde **404**. Las rutas
-fijas `dispatch` y `scheduled_tasks` siguen resolviéndose primero.
+`:process` es uno de `fleet_planner`, `repurchase`, `route_batching`, `cylinder_recovery`. Cualquier otro
+(incluidos `stock_control`, y `dispatch`, `scheduled_tasks` y `express_dispatch`, que tienen sus propias rutas fijas) responde **404**.
+Las rutas fijas `dispatch`, `scheduled_tasks` y `express_dispatch` se resuelven primero. Los parámetros de la compra express
+(recargo, radio, horario, tiempos) son de `/module-config/express_dispatch` y están en `docs/EXPRESS-REINTEGROS.md`.
 
-`PUT` **reemplaza**: se guarda sólo lo que viene, lo que falta se lee con su valor por omisión y `{}` restablece todo (la misma convención que el despacho, CU-171, y el panel). Los valores los leen los módulos M2 a M5 y la compra express cuando se construyan: hoy sólo se guardan y validan.
+`PUT` **reemplaza**: se guarda sólo lo que viene, lo que falta se lee con su valor por omisión y `{}` restablece todo (la misma convención que el despacho, CU-171, y el panel). Los valores los leen los módulos M2 a M5 cuando se construyan: hoy sólo se guardan y validan.
 Se valida con el esquema del proceso (`src/distributor/process-config.ts`); un campo desconocido, de otro tipo, decimal en un entero,
 fuera de rango o una regla cruzada incumplida responde **400** con el campo
 (`anticipationDays: tiene que ser un entero entre 1 y 30`, `property invento should not exist`).
@@ -49,14 +50,8 @@ Respuesta de `GET` y `PUT`: `process`, `title`, `description`, `fields[]`, `para
 | | `escalationStepDays` | entero 1–90 | 7 |
 | | `escalationAmountThreshold` | número 0–100 000 000 | 50 000 |
 | | `pickupOfferTtlHours` | entero 1–720 | 72 |
-| `express_dispatch` (CU-147 a CU-149) | `maxRadiusKm` | número 0,5–50 | 5 |
-| | `surchargeAmount` | número 0–1 000 000 | 1 500 |
-| | `serviceStartHour` | entero 0–23 | 8 |
-| | `serviceEndHour` | entero 1–24, **posterior a `serviceStartHour`** (cuenta lo no enviado con su valor por omisión) | 20 |
-| | `estimatedMinutes` | entero 10–180 | 60 |
-| | `offerTtlSeconds` | entero 10–300 | 20 |
 
-Los esquemas son la **primera definición** de los parámetros de esos cuatro módulos y de la compra express (el diseño sólo
+Los esquemas son la **primera definición** de los parámetros de esos cuatro módulos (el diseño sólo
 nombra qué se parametriza, no los rangos): el módulo que los consuma los lee con
 `ProcessConfigService.obtener(distributorId, proceso)` (valores efectivos, con los de omisión donde falte o sea inválido lo guardado)
 y puede ampliar su esquema en `process-config.ts`. Los procesos todavía no los consumen: las ejecuciones en curso no se interrumpen

@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { Order, OrderStatus, PaymentType } from '../entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  OrderStatus,
+  PaymentType,
+} from '../entities/order.entity';
 import {
   DispatchOffer,
   DispatchOfferStatus,
@@ -28,6 +33,8 @@ export const MENSAJE_PEDIDO_YA_SALIO =
   'El pedido ya salió o fue entregado: no se puede cambiar la dirección';
 export const MENSAJE_RECARGO_DISTINTO =
   'El recargo de la zona nueva es distinto del original y el pedido es de pago en línea: cancelalo y hacelo de nuevo con la dirección que querés';
+export const MENSAJE_EXPRESS_NO_CAMBIA =
+  'Un pedido express no cambia de dirección: la cobertura, el horario y la moto se evaluaron con la dirección original. Cancelalo y creá uno nuevo';
 export const MENSAJE_MISMA_DIRECCION =
   'La dirección nueva es la misma que la actual';
 
@@ -133,6 +140,13 @@ export class ChangeOrderAddressUseCase {
         );
       }
 
+      // Mismo criterio que `motivoNoEditable`: el express se evaluó para esa
+      // dirección. Se rechaza antes de mirar la dirección nueva.
+      const esExpress = order.deliveryMode === OrderDeliveryMode.EXPRESS;
+      if (esExpress) {
+        throw new ConflictException(MENSAJE_EXPRESS_NO_CAMBIA);
+      }
+
       const address = await this.addresses.buscarDelUsuario(
         dto.addressId,
         order.customerId,
@@ -148,6 +162,8 @@ export class ChangeOrderAddressUseCase {
         order.subtotalItems,
         zona,
         order.paymentMethod,
+        // Defensivo: mientras siga express el recargo se conserva en el total.
+        esExpress ? order.expressSurchargeAmount : 0,
       );
 
       const cambiaElRecargo =

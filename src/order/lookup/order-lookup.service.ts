@@ -29,6 +29,7 @@ export interface OrderRefundRef {
   distributorId: string;
   status: OrderStatus;
   expressSurchargeAmount: number;
+  expressDegradedAt: Date | null;
 }
 
 /**
@@ -84,6 +85,7 @@ export class OrderLookupService {
         distributorId: true,
         status: true,
         expressSurchargeAmount: true,
+        expressDegradedAt: true,
       },
     });
     return order
@@ -93,6 +95,7 @@ export class OrderLookupService {
           distributorId: order.distributorId,
           status: order.status,
           expressSurchargeAmount: order.expressSurchargeAmount,
+          expressDegradedAt: order.expressDegradedAt,
         }
       : null;
   }

@@ -381,7 +381,10 @@ export class DispatchOrchestratorService {
     for (const offer of expired) {
       if (
         distribuidoras &&
-        !(offer.distributorId && distribuidoras.has(offer.distributorId))
+        !(offer.distributorId && distribuidoras.has(offer.distributorId)) &&
+        // El express no espera al intervalo de la distribuidora: su ventana es
+        // de segundos y la promesa de la hora se rompe si se demora el siguiente.
+        !(await this.esExpress(offer.orderId))
       ) {
         continue;
       }
@@ -460,6 +463,11 @@ export class DispatchOrchestratorService {
   async releaseOffer(orderId: string, driverId: string): Promise<void> {
     await this.offers.recordDriverHeldOrder(orderId, driverId);
     await this.onOrderClosed(orderId);
+  }
+
+  private async esExpress(orderId: string): Promise<boolean> {
+    const order = await this.orders.findById(orderId);
+    return order?.deliveryMode === OrderDeliveryMode.EXPRESS;
   }
 
   /** Solo se re-ofrece un pedido pendiente y sin chofer asignado. */

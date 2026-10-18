@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { OrderService } from './order.service';
 import { RedisService } from '../redis/redis.service';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { RefundsService } from '../payments/application/refunds.service';
 import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
 
 /**
@@ -11,7 +12,11 @@ import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-se
  *   1. vence las ofertas que pasaron su ventana y las re-ofrece al
  *      siguiente chofer más cercano (DispatchOrchestrator.handleExpiredOffers);
  *   2. arranca pedidos pendientes que quedaron sin oferta activa (ej: al crearse
- *      no había choferes cerca) con DispatchOrchestrator.ensureOffered.
+ *      no había choferes cerca) con DispatchOrchestrator.ensureOffered;
+ *   3. retoma las devoluciones `pending` viejas (RefundsService.retomarPendientes).
+ *
+ * Las ofertas vencidas de un pedido express se procesan en CADA tic, sin esperar
+ * el intervalo de la distribuidora.
  *
  * El tic de 15s es fijo; la frecuencia de cada distribuidora (CU-173,
  * `dispatchRetrySeconds`) es múltiplo de él y en cada tic se atiende sólo a las
@@ -32,6 +37,7 @@ export class DispatchService {
     private readonly redisService: RedisService,
     private readonly orchestrator: DispatchOrchestratorService,
     private readonly frecuencias: ScheduledTasksSettingsService,
+    private readonly refunds: RefundsService,
   ) {}
 
   @Cron('*/15 * * * * *') // cada 15 segundos
@@ -63,6 +69,16 @@ export class DispatchService {
           .liberarMarca('dispatchRetrySeconds', id)
           .catch(() => undefined);
       }
+    }
+
+    // Devoluciones que quedaron a medias (se cayó el proceso entre registrarlas y
+    // hablar con la pasarela): se retoman con el lock de este mismo tic.
+    try {
+      await this.refunds.retomarPendientes();
+    } catch (err) {
+      this.logger.error(
+        `retomar devoluciones falló: ${(err as Error)?.message}`,
+      );
     } finally {
       await lock.release().catch(() => undefined);
     }
