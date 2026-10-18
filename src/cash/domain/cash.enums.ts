@@ -38,6 +38,7 @@ export enum CashReferenceType {
   DRIVER_LIQUIDATION = 'driver_liquidation',
   BOX_TRANSFER = 'box_transfer',
   REVERSAL = 'reversal',
+  ORDER_PAYMENT = 'order_payment',
 }
 
 /** Sentido de una categoría: los ingresos y los gastos no se mezclan. */
@@ -62,6 +63,7 @@ export enum CashSystemCode {
   PURCHASE = 'purchase',
   FUEL = 'fuel',
   TRAFFIC_FINE = 'traffic_fine',
+  ORDER_PAYMENT = 'order_payment',
 }
 
 /** Las categorías de sistema con su nombre y su sentido, tal como se siembran. */
@@ -119,6 +121,11 @@ export const CATEGORIAS_DE_SISTEMA: ReadonlyArray<{
     code: CashSystemCode.TRAFFIC_FINE,
     name: 'Multa de tránsito',
     direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.ORDER_PAYMENT,
+    name: 'Cobro de pedido',
+    direction: CategoryDirection.INCOME,
   },
 ];
 

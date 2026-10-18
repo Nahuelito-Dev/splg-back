@@ -152,6 +152,12 @@ Endpoints (admin o super admin con `X-Distributor`; el cliente recibe 403):
 | `GET /orders/:id/refunds`             | Las del pedido. 404 si no existe o es de otra distribuidora                                                                                                                                                                                                                    |
 | `POST /orders/:id/refunds/retry`      | Reintenta las fallidas y pide la del pedido cancelado que nunca se pidió. Idempotente (`Idempotency-Key`). **409** si el pedido no está cancelado ni tiene pendiente la devolución del recargo express. Una devolución que sigue fallando queda `failed` (la respuesta es 200) |
 
+El cliente dueño del pedido ve las suyas con `GET /orders/:id/refunds/mine` (rol `customer`, sin
+`X-Distributor`: el cliente es uno solo para todas): `[{ kind, amount, status, requestedAt, completedAt }]`, de la más
+vieja a la más nueva, vacío si no hubo ninguna. Si el pedido se canceló después de pasar al reparto común, el recargo express no acreditado se omite: la devolución total del mismo pago ya lo incluye. `status`: `pending` (en trámite), `succeeded` (acreditada, con
+`completedAt`), `failed` (la pasarela la rechazó; todavía no se acreditó y la distribuidora la revisa). No expone ids de pasarela, intentos ni el texto del
+error. Un pedido ajeno o inexistente es 404.
+
 Avisos en tiempo real: `order:payment-refunded` `{ orderId, refundId, kind, amount, at }` al cliente
 (socket y push) y al panel; `order:refund-failed` `{ …, reason }` al panel.
 

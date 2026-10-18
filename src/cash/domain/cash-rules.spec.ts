@@ -117,6 +117,8 @@ describe('reglas de la caja', () => {
       [CashReferenceType.PURCHASE_RECEIPT, /documento/],
       [CashReferenceType.FUEL_LOAD, /documento/],
       [CashReferenceType.TRAFFIC_FINE, /documento/],
+      [CashReferenceType.ORDER_PAYMENT, /transferencia entre cajas \(CU-310\)/],
+      [CashReferenceType.ORDER_PAYMENT, /ajuste o egreso manual con motivo/],
       [CashReferenceType.REVERSAL, /anulación/],
     ])(
       '%s no se anula desde movimientos y dice por dónde se corrige',

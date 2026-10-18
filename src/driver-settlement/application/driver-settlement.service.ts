@@ -191,11 +191,15 @@ export class DriverSettlementService {
               distributorId,
               gastos.map((g) => g.categoryId),
             );
-            const pedidos = await pedidosSinRendir(manager, {
-              distributorId,
-              deliveryId: s.deliveryId,
-              businessDate: s.businessDate,
-            });
+            const pedidos = await pedidosSinRendir(
+              manager,
+              {
+                distributorId,
+                deliveryId: s.deliveryId,
+                businessDate: s.businessDate,
+              },
+              { bloquear: true },
+            );
             for (const p of pedidos) {
               await manager.insert(DriverSettlementOrder, {
                 settlementId: id,

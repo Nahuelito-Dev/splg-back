@@ -43,7 +43,7 @@ import {
   ResolveUnpaidDto,
   ResolveUnpaidResponseDto,
 } from './dto/resolve-unpaid.dto';
-import { ConfirmTransferDto, MotivoDeCobroDto } from './dto/payment-admin.dto';
+import { ConfirmTransferDto, RegisterCashDto } from './dto/payment-admin.dto';
 import { ReservationService } from './application/reservation.service';
 import {
   cancelledByDe,
@@ -706,7 +706,7 @@ export class OrderController {
       'Cierra un pedido con `paymentStatus: unpaid`: `resolution: paid` (el cliente pagó después) o ' +
       '`resolution: written_off` (se da por perdido). Exige `note` con el motivo; quedan registrados ' +
       'quién y cuándo (`paymentResolvedBy`, `paymentResolvedAt`, `paymentResolutionNote`) y la auditoría; ' +
-      '`paymentConfirmedAt/By` se llenan sólo con `paid` (una pérdida no es un cobro). En la misma transacción ' +
+      '`paymentConfirmedAt/By` se llenan sólo con `paid` (una pérdida no es un cobro). Con `paid`, `cashBoxId` es la caja de efectivo donde entra lo cobrado (obligatoria si la distribuidora tiene alguna) y se asienta en la misma transacción. En la misma transacción ' +
       'cierra la incidencia `unpaid_collection` del pedido (`resolved`, con la misma nota). Repetir la resolución ' +
       '(mismo admin u otro) es idempotente: no toca la nota ni la incidencia y responde 200 con ' +
       '`alreadyResolved: true`; si cambió algo, `false`.',
@@ -732,6 +732,7 @@ export class OrderController {
         dto.resolution,
         dto.note,
         distributorId,
+        dto.cashBoxId,
       );
     const order = await this.pedidoTrasElCobro(id, distributorId, guardado);
     return Object.assign(order, { alreadyResolved: !changed });
@@ -743,7 +744,7 @@ export class OrderController {
   @ApiOperation({
     summary: 'El admin registra el cobro en efectivo de un pedido entregado',
     description:
-      'Para el efectivo que el chofer no confirmó (no lo hizo, ya no está). Sólo pedidos `delivered` en efectivo con el pago `pending`: pasa a `paid` y registra `paymentConfirmedBy` (el admin), `paymentResolvedBy/At` y el motivo en `paymentResolutionNote`. `reason` es obligatorio (10 a 500 caracteres) y queda en el historial de estados y en la auditoría. Repetirlo sobre un pedido ya `paid` devuelve el pedido tal cual. Si el pago ya se informó como impago responde 409 (se resuelve con `resolve-unpaid`). `X-Distributor` es obligatorio para el super admin.',
+      'Para el efectivo que el chofer no confirmó (no lo hizo, ya no está). Sólo pedidos `delivered` en efectivo con el pago `pending`: pasa a `paid` y registra `paymentConfirmedBy` (el admin), `paymentResolvedBy/At` y el motivo en `paymentResolutionNote`. `reason` es obligatorio (10 a 500 caracteres) y queda en el historial de estados y en la auditoría. `cashBoxId` es la caja donde entra el efectivo: obligatoria si la distribuidora tiene alguna caja activa; asienta en la misma transacción una entrada de caja de efectivo por el saldo a cobrar (total menos la seña paga; categoría de sistema `order_payment`, referencia al pedido). Si la rendición del chofer ya tomó el pedido, 409. Repetirlo sobre un pedido ya `paid` devuelve el pedido tal cual y no asienta otra vez. Si el pago ya se informó como impago responde 409 (se resuelve con `resolve-unpaid`). `X-Distributor` es obligatorio para el super admin.',
   })
   @ApiOkResponse({ type: OrderResponseDto })
   @ApiBadRequestResponse({
@@ -754,7 +755,7 @@ export class OrderController {
   async registerCash(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: MotivoDeCobroDto,
+    @Body() dto: RegisterCashDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
@@ -763,6 +764,7 @@ export class OrderController {
       user.user_id,
       dto.reason,
       distributorId,
+      dto.cashBoxId,
     );
     return this.pedidoTrasElCobro(id, distributorId, order);
   }

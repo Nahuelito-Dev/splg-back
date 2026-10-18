@@ -85,6 +85,8 @@ export function motivoDeNoAnulable(tipo: CashReferenceType): string | null {
     case CashReferenceType.FUEL_LOAD:
     case CashReferenceType.TRAFFIC_FINE:
       return 'Lo generó otro documento (compra, combustible o multa): se corrige desde ese documento';
+    case CashReferenceType.ORDER_PAYMENT:
+      return 'Es el cobro en efectivo de un pedido. Si la caja fue la equivocada, se corrige con una transferencia entre cajas (CU-310); el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
     case CashReferenceType.REVERSAL:
       return 'Es una anulación: no se anula. Si estuvo mal, registrá un movimiento nuevo';
   }

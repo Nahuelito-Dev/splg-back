@@ -6,6 +6,14 @@ import {
 } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 import { CashCollectionUseCase } from './cash-collection.use-case';
+import type { CashCategoryService } from '../../cash/application/cash-category.service';
+import type { CashLedgerService } from '../../cash/application/cash-ledger.service';
+import {
+  CashDirection,
+  CashMethod,
+  CashReferenceType,
+  CashSystemCode,
+} from '../../cash/domain/cash.enums';
 import {
   Order,
   OrderStatus,
@@ -26,10 +34,16 @@ describe('CashCollectionUseCase', () => {
   let andWhere: jest.Mock;
   let findOne: jest.Mock;
   let insert: jest.Mock;
+  let query: jest.Mock;
+  let exists: jest.Mock;
+  let registrar: jest.Mock;
+  let deSistema: jest.Mock;
 
   const pedido = (over: Partial<Order> = {}): Order =>
     ({
       orderId: 'ord-1',
+      distributorId: 'd1',
+      totalAmount: 4500,
       status: OrderStatus.DELIVERED,
       paymentMethod: PaymentMethod.CASH,
       paymentStatus: PaymentStatus.PENDING,
@@ -48,6 +62,15 @@ describe('CashCollectionUseCase', () => {
     andWhere = jest.fn();
     findOne = jest.fn().mockResolvedValue(null);
     insert = jest.fn().mockResolvedValue(undefined);
+    exists = jest.fn().mockResolvedValue(false);
+    // El conteo de cajas de efectivo y la lectura del tipo de la caja elegida.
+    query = jest.fn((sql: string) =>
+      Promise.resolve(
+        sql.includes('count(*)') ? [{ n: '0' }] : [{ kind: 'cash' }],
+      ),
+    );
+    registrar = jest.fn().mockResolvedValue({ movementId: 'mov-1' });
+    deSistema = jest.fn().mockResolvedValue({ categoryId: 'cat-1' });
     dentro = jest.fn().mockResolvedValue('extra');
     save = jest.fn((o: Order) => Promise.resolve(o));
     getOne = jest.fn();
@@ -66,13 +89,19 @@ describe('CashCollectionUseCase', () => {
       update,
       insert,
       findOne,
+      query,
+      exists,
     };
     const dataSource = {
       transaction: jest.fn((fn: (m: unknown) => Promise<unknown>) =>
         fn(manager),
       ),
     } as unknown as DataSource;
-    uc = new CashCollectionUseCase(dataSource);
+    uc = new CashCollectionUseCase(
+      dataSource,
+      { registrar } as unknown as CashLedgerService,
+      { deSistema } as unknown as CashCategoryService,
+    );
   });
 
   describe('confirmReceived', () => {
@@ -595,6 +624,190 @@ describe('CashCollectionUseCase', () => {
       await expect(
         uc.confirmTransfer('ord-1', ADMIN, true, 'motivo largo'),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('cobro del admin a caja', () => {
+    const CAJA = 'caja-1';
+
+    it('register-cash asienta la entrada en la caja por el total del pedido, con la referencia al pedido', async () => {
+      con(pedido());
+      const r = await uc.registerCashByAdmin(
+        'ord-1',
+        ADMIN,
+        'El chofer ya no trabaja',
+        'd1',
+        CAJA,
+      );
+      expect(r.changed).toBe(true);
+      expect(deSistema).toHaveBeenCalledWith(
+        expect.anything(),
+        'd1',
+        CashSystemCode.ORDER_PAYMENT,
+      );
+      expect(registrar).toHaveBeenCalledTimes(1);
+      expect(registrar).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          distributorId: 'd1',
+          cashBoxId: CAJA,
+          direction: CashDirection.IN,
+          categoryId: 'cat-1',
+          method: CashMethod.CASH,
+          referenceType: CashReferenceType.ORDER_PAYMENT,
+          referenceId: 'ord-1',
+          userId: ADMIN,
+        }),
+      );
+      const [, entrada] = registrar.mock.calls[0] as [
+        unknown,
+        { amount: { toString(): string } },
+      ];
+      expect(entrada.amount.toString()).toBe('4500');
+    });
+
+    it('register-cash sin caja con la distribuidora teniendo cajas: 400 y no toca nada', async () => {
+      query.mockResolvedValue([{ n: '2' }]);
+      con(pedido());
+      await expect(
+        uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(save).not.toHaveBeenCalled();
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('register-cash sin caja y sin cajas en la distribuidora: cobra sin movimiento', async () => {
+      con(pedido());
+      const r = await uc.registerCashByAdmin(
+        'ord-1',
+        ADMIN,
+        'motivo largo',
+        'd1',
+      );
+      expect(r.order.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('repetir register-cash no asienta otra entrada', async () => {
+      con(pedido({ paymentStatus: PaymentStatus.PAID }));
+      const r = await uc.registerCashByAdmin(
+        'ord-1',
+        ADMIN,
+        'motivo largo',
+        'd1',
+        CAJA,
+      );
+      expect(r.changed).toBe(false);
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('si el libro rechaza el movimiento (caja sin sesión), la operación falla con ese error', async () => {
+      registrar.mockRejectedValue(new ConflictException('sin sesión'));
+      con(pedido());
+      await expect(
+        uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1', CAJA),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('register-cash: un pedido que la rendición del chofer ya tomó es 409 y no asienta nada', async () => {
+      exists.mockResolvedValue(true);
+      con(pedido());
+      await expect(
+        uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1', CAJA),
+      ).rejects.toThrow(ConflictException);
+      expect(save).not.toHaveBeenCalled();
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('register-unpaid: un pedido ya rendido por el chofer también es 409', async () => {
+      exists.mockResolvedValue(true);
+      con(pedido());
+      await expect(
+        uc.registerUnpaidByAdmin('ord-1', ADMIN, 'motivo largo', dentro, 'd1'),
+      ).rejects.toThrow(ConflictException);
+      expect(save).not.toHaveBeenCalled();
+      expect(dentro).not.toHaveBeenCalled();
+    });
+
+    it('asienta el saldo a cobrar: el total menos la seña paga', async () => {
+      con(
+        pedido({ totalAmount: 15800, depositPaid: true, depositAmount: 5000 }),
+      );
+      await uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1', CAJA);
+      const [, entrada] = registrar.mock.calls[0] as [
+        unknown,
+        { amount: { toString(): string } },
+      ];
+      expect(entrada.amount.toString()).toBe('10800');
+    });
+
+    it('si el saldo a cobrar es 0 (la seña cubrió todo) cobra sin asentar', async () => {
+      con(
+        pedido({ totalAmount: 5000, depositPaid: true, depositAmount: 5000 }),
+      );
+      const r = await uc.registerCashByAdmin(
+        'ord-1',
+        ADMIN,
+        'motivo largo',
+        'd1',
+        CAJA,
+      );
+      expect(r.order.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('la obligatoriedad cuenta sólo cajas de efectivo activas', async () => {
+      con(pedido());
+      await uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1');
+      const [sql] = query.mock.calls[0] as [string];
+      expect(sql).toContain(`"kind" = 'cash'`);
+    });
+
+    it('una caja que no es de efectivo se rechaza con 400 antes de tocar el pedido', async () => {
+      query.mockResolvedValue([{ kind: 'bank' }]);
+      con(pedido());
+      await expect(
+        uc.registerCashByAdmin('ord-1', ADMIN, 'motivo largo', 'd1', CAJA),
+      ).rejects.toThrow(BadRequestException);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('resolve-unpaid paid asienta la entrada en la caja', async () => {
+      con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
+      await uc.resolveUnpaid('ord-1', ADMIN, 'paid', 'transfirió', 'd1', CAJA);
+      expect(registrar).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          cashBoxId: CAJA,
+          direction: CashDirection.IN,
+          referenceType: CashReferenceType.ORDER_PAYMENT,
+          referenceId: 'ord-1',
+        }),
+      );
+    });
+
+    it('resolve-unpaid paid sin caja con la distribuidora teniendo cajas: 400', async () => {
+      query.mockResolvedValue([{ n: '1' }]);
+      con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
+      await expect(
+        uc.resolveUnpaid('ord-1', ADMIN, 'paid', 'transfirió', 'd1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('resolve-unpaid written_off no pide caja ni asienta nada', async () => {
+      query.mockResolvedValue([{ n: '3' }]);
+      con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
+      const r = await uc.resolveUnpaid(
+        'ord-1',
+        ADMIN,
+        'written_off',
+        'no hay',
+        'd1',
+        CAJA,
+      );
+      expect(r.order.paymentStatus).toBe(PaymentStatus.WRITTEN_OFF);
+      expect(registrar).not.toHaveBeenCalled();
     });
   });
 });

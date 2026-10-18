@@ -8,6 +8,7 @@ import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
 import { PaymentsService } from './application/payments.service';
 import { RefundsService } from './application/refunds.service';
 import { RefundsController } from './presentation/refunds.controller';
+import { MyRefundsController } from './presentation/my-refunds.controller';
 import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook.controller';
 
 /**
@@ -24,7 +25,11 @@ import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook
     OrderLookupModule,
   ],
   // El webhook valida la firma y publica PagoNotificadoEvent; order lo escucha.
-  controllers: [MercadoPagoWebhookController, RefundsController],
+  controllers: [
+    MercadoPagoWebhookController,
+    RefundsController,
+    MyRefundsController,
+  ],
   providers: [
     PaymentsService,
     RefundsService,

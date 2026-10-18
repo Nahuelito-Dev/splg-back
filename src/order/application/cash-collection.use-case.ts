@@ -5,13 +5,27 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { DataSource, EntityManager } from 'typeorm';
+
+import { CashCategoryService } from '../../cash/application/cash-category.service';
+import { CashLedgerService } from '../../cash/application/cash-ledger.service';
+import { saldoACobrar } from '../../truck-load/domain/truck-load-rules';
+import {
+  CashBoxKind,
+  CashDirection,
+  CashMethod,
+  CashReferenceType,
+  CashSystemCode,
+} from '../../cash/domain/cash.enums';
 
 import {
   Incident,
   IncidentStatus,
   IncidentType,
 } from '../../incident/entities/incident.entity';
+import { CajaNoEncontradaError } from '../../cash/domain/errors/cash.errors';
+import { DriverSettlementOrder } from '../../driver-settlement/entities/driver-settlement-order.entity';
 import { OrderStatusHistory } from '../entities/order-status-history.entity';
 import {
   Order,
@@ -48,7 +62,11 @@ export interface ResultadoDeCobro<T = undefined> {
  */
 @Injectable()
 export class CashCollectionUseCase {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cashLedger: CashLedgerService,
+    private readonly categorias: CashCategoryService,
+  ) {}
 
   /** El chofer asignado confirma que cobró el efectivo. */
   async confirmReceived(
@@ -110,13 +128,15 @@ export class CashCollectionUseCase {
    * Un administrador registra que cobró el efectivo de un pedido entregado cuyo
    * chofer no lo confirmó (o ya no está). Exige un motivo; queda en el pedido
    * (`paymentResolution*`), en el historial de estados y en la auditoría.
-   * Repetirlo es un no-op.
+   * El efectivo entra a la caja indicada en la misma transacción
+   * (`asentarEnCaja`). Repetirlo es un no-op: no asienta otra vez.
    */
   async registerCashByAdmin(
     orderId: string,
     adminUserId: string,
     reason: string,
     distributorId?: string | null,
+    cashBoxId?: string | null,
   ): Promise<ResultadoDeCobro> {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
@@ -129,6 +149,8 @@ export class CashCollectionUseCase {
           'El pago de este pedido ya se informó como impago: se resuelve con resolve-unpaid',
         );
       }
+      await this.exigirSinRendir(manager, order);
+      await this.exigirCaja(manager, order, cashBoxId);
       const ahora = new Date();
       order.paymentStatus = PaymentStatus.PAID;
       order.paymentConfirmedAt = ahora;
@@ -137,6 +159,7 @@ export class CashCollectionUseCase {
       order.paymentResolvedBy = adminUserId;
       order.paymentResolutionNote = reason;
       await manager.save(order);
+      await this.asentarEnCaja(manager, order, adminUserId, cashBoxId);
       await this.asentarEnElHistorial(
         manager,
         order,
@@ -163,6 +186,7 @@ export class CashCollectionUseCase {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
       this.exigirEntregadoEnEfectivo(order);
+      await this.exigirSinRendir(manager, order);
       const changed = await this.pasarAImpago(manager, order, {
         adminUserId,
         reason,
@@ -301,8 +325,9 @@ export class CashCollectionUseCase {
    * transacción y con el pedido bloqueado cierra la incidencia abierta de cobro
    * impago con la misma nota. Si el pedido ya estaba en el destino (reintento o
    * segundo admin) no toca nada: `changed: false`.
-   * Un cobro (`paid`) llena `paymentConfirmed*`; una pérdida no es un cobro y
-   * sólo llena `paymentResolved*`.
+   * Un cobro (`paid`) llena `paymentConfirmed*` y entra a la caja indicada en
+   * la misma transacción; una pérdida no es un cobro: sólo llena
+   * `paymentResolved*` y no toca ninguna caja.
    */
   async resolveUnpaid(
     orderId: string,
@@ -310,6 +335,7 @@ export class CashCollectionUseCase {
     resolution: ResolucionDeImpago,
     note: string,
     distributorId?: string | null,
+    cashBoxId?: string | null,
   ): Promise<ResultadoDeCobro> {
     return this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
@@ -329,6 +355,9 @@ export class CashCollectionUseCase {
         throw new ConflictException(
           'Sólo se resuelve un pedido cuyo pago está informado como impago',
         );
+      }
+      if (destino === PaymentStatus.PAID) {
+        await this.exigirCaja(manager, order, cashBoxId);
       }
       order.paymentStatus = destino;
       const ahora = new Date();
@@ -352,11 +381,113 @@ export class CashCollectionUseCase {
           resolvedAt: ahora,
         },
       );
-      return {
-        order: await manager.save(order),
-        changed: true,
-        extra: undefined as never,
-      };
+      const guardado = await manager.save(order);
+      if (destino === PaymentStatus.PAID) {
+        await this.asentarEnCaja(manager, order, adminUserId, cashBoxId);
+      }
+      return { order: guardado, changed: true, extra: undefined as never };
+    });
+  }
+
+  /**
+   * El efectivo de un pedido que la rendición del chofer ya tomó es del chofer:
+   * si el administrador lo cobrara o lo marcara impago también, el dinero
+   * entraría dos veces (caja y rendición). Con el pedido bloqueado; la carrera
+   * contraria la cubre `presentar` de la rendición, que bloquea los pedidos que
+   * toma y reevalúa `payment_resolved_by`.
+   */
+  private async exigirSinRendir(
+    manager: EntityManager,
+    order: Order,
+  ): Promise<void> {
+    const rendido = await manager.exists(DriverSettlementOrder, {
+      where: { orderId: order.orderId },
+    });
+    if (rendido) {
+      throw new ConflictException('El chofer ya rindió este pedido');
+    }
+  }
+
+  /**
+   * Regla de la caja: sólo entran a una caja de EFECTIVO. Si la distribuidora
+   * tiene alguna caja de efectivo activa, el cobro que registra el
+   * administrador TIENE que indicar a cuál entra (400); si no tiene ninguna, se
+   * cobra sin movimiento. Una caja elegida que no es de efectivo es 400, una de
+   * otra distribuidora o inexistente, 404. Se chequea antes de tocar el pedido.
+   *
+   * Carrera conocida: si otro administrador crea la primera caja de efectivo
+   * entre este chequeo y el asiento, el cobro queda sin movimiento (no se
+   * bloquea el alta de cajas por esto); se corrige con un ingreso manual.
+   */
+  private async exigirCaja(
+    manager: EntityManager,
+    order: Order,
+    cashBoxId?: string | null,
+  ): Promise<void> {
+    if (cashBoxId) {
+      const filas: Array<{ kind: CashBoxKind }> = await manager.query(
+        `SELECT "kind" FROM "cash_box"
+         WHERE "cash_box_id" = $1 AND "distributor_id" = $2 AND "deletedAt" IS NULL`,
+        [cashBoxId, order.distributorId],
+      );
+      if (!filas[0]) throw new CajaNoEncontradaError(cashBoxId);
+      if (filas[0].kind !== CashBoxKind.CASH) {
+        throw new BadRequestException(
+          'El efectivo cobrado entra a una caja de efectivo: elegí otra caja',
+        );
+      }
+      return;
+    }
+    const filas: Array<{ n: string }> = await manager.query(
+      `SELECT count(*) AS n FROM "cash_box"
+       WHERE "distributor_id" = $1 AND "is_active" = true AND "kind" = 'cash' AND "deletedAt" IS NULL`,
+      [order.distributorId],
+    );
+    if (Number(filas[0]?.n ?? 0) > 0) {
+      throw new BadRequestException(
+        'Indicá la caja donde entra el efectivo cobrado (cashBoxId)',
+      );
+    }
+  }
+
+  /**
+   * Entrada de caja por el saldo a cobrar del pedido (total menos la seña ya
+   * paga, la misma regla que la rendición del chofer), con su categoría de sistema
+   * `order_payment` y el pedido como referencia, por el libro (único punto por
+   * el que entra el dinero). Sin `cashBoxId` (distribuidora sin cajas) o con un
+   * saldo a cobrar de cero no asienta nada. El pedido ya está bloqueado: el
+   * orden de locks es pedido → caja.
+   */
+  private async asentarEnCaja(
+    manager: EntityManager,
+    order: Order,
+    adminUserId: string,
+    cashBoxId?: string | null,
+  ): Promise<void> {
+    if (!cashBoxId) return;
+    const importe = new Decimal(
+      saldoACobrar(
+        Number(order.totalAmount),
+        order.depositPaid ? Number(order.depositAmount) : 0,
+      ),
+    );
+    if (importe.lte(0)) return;
+    const categoria = await this.categorias.deSistema(
+      manager,
+      order.distributorId,
+      CashSystemCode.ORDER_PAYMENT,
+    );
+    await this.cashLedger.registrar(manager, {
+      distributorId: order.distributorId,
+      cashBoxId,
+      direction: CashDirection.IN,
+      amount: importe,
+      categoryId: categoria.categoryId,
+      method: CashMethod.CASH,
+      description: `Cobro en efectivo del pedido ${order.orderId}`,
+      referenceType: CashReferenceType.ORDER_PAYMENT,
+      referenceId: order.orderId,
+      userId: adminUserId,
     });
   }
 

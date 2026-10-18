@@ -837,6 +837,55 @@ describe('RefundsService (CU-168)', () => {
       );
     });
 
+    it('listarDelCliente: el dueño ve las del pedido, sin acotar por distribuidora', async () => {
+      pagos.push(pago());
+      await service.reintegrarPorCancelacion('ord-1');
+      const filas = await service.listarDelCliente('ord-1', 'cus-1');
+      expect(filas).toHaveLength(1);
+      expect(orderLookup.findForRefund).toHaveBeenLastCalledWith('ord-1');
+    });
+
+    it('listarDelCliente: omite el recargo express no acreditado si hay una devolución total del mismo pago', async () => {
+      solicitudes.push(
+        {
+          refundId: 'a',
+          orderId: 'ord-1',
+          paymentId: 'pay-1',
+          kind: RefundKind.EXPRESS_SURCHARGE,
+          status: RefundStatus.FAILED,
+        },
+        {
+          refundId: 'b',
+          orderId: 'ord-1',
+          paymentId: 'pay-1',
+          kind: RefundKind.FULL,
+          status: RefundStatus.PENDING,
+        },
+        {
+          refundId: 'c',
+          orderId: 'ord-1',
+          paymentId: 'pay-2',
+          kind: RefundKind.EXPRESS_SURCHARGE,
+          status: RefundStatus.SUCCEEDED,
+        },
+      );
+      const filas = await service.listarDelCliente('ord-1', 'cus-1');
+      expect(filas.map((f) => f.refundId)).toEqual(['b', 'c']);
+    });
+
+    it('listarDelCliente: el pedido de otro cliente es 404', async () => {
+      await expect(
+        service.listarDelCliente('ord-1', 'otro-cliente'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('listarDelCliente: un pedido inexistente es 404', async () => {
+      orderLookup.findForRefund.mockResolvedValue(null);
+      await expect(service.listarDelCliente('ord-1', 'cus-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
     it('listarDelPedido devuelve las del pedido', async () => {
       pagos.push(pago());
       await service.reintegrarPorCancelacion('ord-1');
