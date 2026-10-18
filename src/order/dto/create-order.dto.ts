@@ -11,6 +11,7 @@ import {
   IsBoolean,
   IsDateString,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -41,7 +42,15 @@ export class CreateOrderDto {
   @IsUUID()
   addressId!: string;
 
-  @ApiProperty({ description: 'Ítems del pedido', type: [OrderItemDto] })
+  @ApiProperty({
+    description:
+      'Ítems del pedido. Obligatorio salvo con `fromCart: true`, que los toma del carrito (con ambos, 400)',
+    type: [OrderItemDto],
+    required: false,
+  })
+  @ValidateIf(
+    (o: CreateOrderDto) => o.fromCart !== true || o.items !== undefined,
+  )
   @IsArray()
   @ArrayUnique((item: OrderItemDto) => item.gasCylinderId, {
     message:
@@ -49,7 +58,16 @@ export class CreateOrderDto {
   })
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items!: OrderItemDto[];
+  items?: OrderItemDto[];
+
+  @ApiProperty({
+    description:
+      'Checkout del carrito (CU-126): los ítems salen del carrito del cliente en la distribuidora del header `X-Distributor`, se cobra el precio vigente del catálogo y el carrito se vacía en la misma transacción que el pedido. Sin `items` en el cuerpo. Sólo el cliente; carrito vacío o con productos dados de baja es 400.',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  fromCart?: boolean;
 
   @ApiProperty({
     description: 'Método de pago',

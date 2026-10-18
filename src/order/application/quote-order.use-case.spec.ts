@@ -40,6 +40,7 @@ describe('QuoteOrderUseCase', () => {
   };
   let casoDeUso: QuoteOrderUseCase;
   let manager: { findOne: jest.Mock; find: jest.Mock };
+  let cart: { itemsParaPedido: jest.Mock };
 
   const garrafa = (over: Partial<GasCylinder>): GasCylinder =>
     ({
@@ -53,6 +54,11 @@ describe('QuoteOrderUseCase', () => {
 
   beforeEach(() => {
     zona = null;
+    cart = {
+      itemsParaPedido: jest
+        .fn()
+        .mockResolvedValue([{ gasCylinderId: G10, quantity: 2 }]),
+    };
     manager = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
     const catalogo: Record<string, GasCylinder> = {
       [G10]: garrafa({ price: 10000 }),
@@ -93,6 +99,7 @@ describe('QuoteOrderUseCase', () => {
       distributors as never,
       timeSlots as never,
       { manager } as never,
+      cart as never,
     );
   });
 
@@ -117,6 +124,39 @@ describe('QuoteOrderUseCase', () => {
       deposit: 0,
       total: 60500,
       balance: 60500,
+    });
+  });
+
+  describe('fromCart', () => {
+    it('cotiza los ítems del carrito del cliente, sin bloquearlo', async () => {
+      const r = await casoDeUso.execute(
+        { fromCart: true, paymentMethod: PaymentMethod.CASH },
+        DIST,
+        CLIENTE,
+      );
+
+      expect(cart.itemsParaPedido).toHaveBeenCalledWith(
+        manager,
+        CLIENTE.userId,
+        DIST,
+        false,
+      );
+      expect(r.items).toHaveLength(1);
+      expect(r.total).toBe(20000);
+    });
+
+    it.each([
+      ['con items a la vez', { items, fromCart: true }],
+      ['con orderId', { fromCart: true, orderId: 'o-1' }],
+      ['sin items ni fromCart', {}],
+    ])('es 400 %s', async (_caso, extra) => {
+      await expect(
+        casoDeUso.execute(
+          { paymentMethod: PaymentMethod.CASH, ...extra },
+          DIST,
+          CLIENTE,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

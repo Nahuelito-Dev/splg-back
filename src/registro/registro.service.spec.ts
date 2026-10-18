@@ -10,6 +10,7 @@ import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminService } from '../admin/admin.service';
 import { EmployeeService } from '../employee/employee.service';
+import { ConsumptionService } from '../repurchase/consumption.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { EVENTO_USUARIO_REGISTRADO } from './events/usuario-registrado.event';
@@ -44,6 +45,7 @@ describe('RegistroService', () => {
   let distributors: { assertActive: jest.Mock };
   let employees: { crearParaUsuario: jest.Mock; vincularUsuario: jest.Mock };
   let eventos: { emit: jest.Mock };
+  let consumption: { calcularDeclaracion: jest.Mock };
   let service: RegistroService;
 
   beforeEach(() => {
@@ -67,6 +69,7 @@ describe('RegistroService', () => {
     distributors = { assertActive: jest.fn() };
     employees = { crearParaUsuario: jest.fn(), vincularUsuario: jest.fn() };
     eventos = { emit: jest.fn() };
+    consumption = { calcularDeclaracion: jest.fn() };
     const dataSource = {
       transaction: (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
     };
@@ -81,6 +84,7 @@ describe('RegistroService', () => {
       distributors as unknown as DistributorService,
       employees as unknown as EmployeeService,
       eventos as unknown as EventEmitter2,
+      consumption as unknown as ConsumptionService,
     );
   });
 
@@ -289,6 +293,72 @@ describe('RegistroService', () => {
         expect.anything(),
       );
       expect(eventos.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('consumo declarado (CU-143)', () => {
+    const declaracion = {
+      cylinderTypeId: 'g1',
+      quantityPerMonth: 2,
+    };
+    const calculado = {
+      declaredCylinderTypeId: 'g1',
+      avgMonthlyConsumptionKg: 20,
+      nextRepurchaseEstimateAt: new Date('2026-11-15T00:00:00.000Z'),
+    };
+
+    it('un cliente que lo declara lo guarda en su ficha, en la misma transacción', async () => {
+      consumption.calcularDeclaracion.mockResolvedValue(calculado);
+
+      await service.registrar(alta({ consumption: declaracion }), {
+        tipo: 'anonimo',
+      });
+
+      expect(consumption.calcularDeclaracion).toHaveBeenCalledWith(declaracion);
+      expect(customers.crearPerfil).toHaveBeenCalledWith(
+        manager,
+        'u1',
+        expect.objectContaining({ consumo: calculado }),
+      );
+    });
+
+    it('si no lo declara, el registro sigue y el dato queda vacío', async () => {
+      await service.registrar(alta(), { tipo: 'anonimo' });
+
+      expect(consumption.calcularDeclaracion).not.toHaveBeenCalled();
+      expect(customers.crearPerfil).toHaveBeenCalledWith(
+        manager,
+        'u1',
+        expect.objectContaining({ consumo: undefined }),
+      );
+    });
+
+    it('un consumo inválido corta el alta antes de crear la cuenta en Firebase', async () => {
+      consumption.calcularDeclaracion.mockRejectedValue(
+        new BadRequestException('fuera de rango'),
+      );
+
+      await expect(
+        service.registrar(alta({ consumption: declaracion }), {
+          tipo: 'anonimo',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(firebase.createUserSafe).not.toHaveBeenCalled();
+      expect(users.crearEnTransaccion).not.toHaveBeenCalled();
+    });
+
+    it('el consumo sólo vale para clientes: en un chofer se ignora', async () => {
+      await service.registrar(
+        alta({
+          rol: RoleType.DELIVERY,
+          distributorId: 'd1',
+          consumption: declaracion,
+        }),
+        { tipo: 'sistema' },
+      );
+
+      expect(consumption.calcularDeclaracion).not.toHaveBeenCalled();
     });
   });
 });

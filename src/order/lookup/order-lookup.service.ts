@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import {
@@ -277,5 +278,34 @@ export class OrderLookupService {
           status: In([OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY]),
         },
       });
+  }
+
+  /**
+   * La última compra entregada del cliente, de cualquier distribuidora (el
+   * cliente es uno solo para todas): cuándo se entregó y cuántos kilos de gas
+   * llevaba. `null` si nunca recibió un pedido. Para estimar la recompra.
+   */
+  async ultimaCompraEntregada(
+    customerId: string,
+  ): Promise<{ deliveredAt: Date; kg: number } | null> {
+    const manager = this.orderRepository.manager;
+    const pedido = await manager.getRepository(Order).findOne({
+      where: { customerId, status: OrderStatus.DELIVERED },
+      order: { deliveredAt: { direction: 'DESC', nulls: 'LAST' } },
+      select: { orderId: true, deliveredAt: true },
+    });
+    if (!pedido?.deliveredAt) return null;
+    const renglones = await manager.getRepository(OrderItem).find({
+      where: { orderId: pedido.orderId },
+      relations: { gasCylinder: true },
+    });
+    const kg = renglones
+      .reduce(
+        (suma, r) =>
+          suma.plus(new Decimal(r.gasCylinder.weight).times(r.quantity)),
+        new Decimal(0),
+      )
+      .toNumber();
+    return { deliveredAt: pedido.deliveredAt, kg };
   }
 }

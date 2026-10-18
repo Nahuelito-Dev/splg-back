@@ -12,6 +12,7 @@ import {
   MinLength,
   IsLatLong,
 } from 'class-validator';
+import { DeclareConsumptionDto } from '../../repurchase/dto/declare-consumption.dto';
 import { LegajoDeChoferDto } from './legajo-de-chofer.dto';
 import { ROLES_REGISTRABLES } from '../politica-de-registro';
 import type { RolRegistrable } from '../politica-de-registro';
@@ -56,6 +57,16 @@ export class RegistrarClienteDto {
   @IsOptional()
   @IsString()
   notification_token?: string;
+
+  @ApiPropertyOptional({
+    type: DeclareConsumptionDto,
+    description:
+      'Cliente: consumo promedio mensual (CU-143). Si se omite, el registro sigue igual y el dato queda vacío',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DeclareConsumptionDto)
+  consumption?: DeclareConsumptionDto;
 }
 
 /**

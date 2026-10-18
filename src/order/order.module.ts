@@ -43,6 +43,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { StockModule } from '../stock/stock.module';
 import { TruckLoadModule } from '../truck-load/truck-load.module';
+import { CartModule } from '../cart/cart.module';
 import { S3Module } from '../s3/s3.module';
 import { NotificationPort } from './domain/ports/notification.port';
 import { OrderStatusHistorySubscriber } from './infrastructure/order-status-history.subscriber';
@@ -66,6 +67,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
       RouteBatchStop,
       RouteBatchOffer,
     ]),
+    CartModule, // checkout del carrito: ítems y vaciado en la transacción del pedido (CU-126)
     S3Module, // foto firmada del chofer en el tracking
     GasCylinderModule, // catálogo: reserva y devolución de stock
     DeliveryModule, // choferes: pertenencia, asignación y disponibles

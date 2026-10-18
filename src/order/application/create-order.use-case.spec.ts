@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import Decimal from 'decimal.js';
 import { conRespuestaVigilada } from '../../common/interceptors/respuesta-incompleta';
@@ -38,6 +39,7 @@ describe('CreateOrderUseCase', () => {
   let realtime: { notifyAdmins: jest.Mock };
   let paymentsService: { createCheckout: jest.Mock };
   let coverageZoneService: { checkCoverage: jest.Mock };
+  let cart: { itemsParaPedido: jest.Mock; vaciarEnTransaccion: jest.Mock };
 
   const baseDto: CreateOrderDto = {
     customerId: 'cust-1',
@@ -62,6 +64,12 @@ describe('CreateOrderUseCase', () => {
       },
     };
     dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
+    cart = {
+      itemsParaPedido: jest
+        .fn()
+        .mockResolvedValue([{ gasCylinderId: 'gc-1', quantity: 2 }]),
+      vaciarEnTransaccion: jest.fn().mockResolvedValue(undefined),
+    };
 
     customers = {
       buscarComprador: jest.fn().mockResolvedValue({
@@ -168,6 +176,7 @@ describe('CreateOrderUseCase', () => {
       timeSlotService as unknown as import('../../time-slot/time-slot.service').TimeSlotService,
       coverageZoneService as unknown as import('../../coverage-zone/coverage-zone.service').CoverageZoneService,
       coverageZonePricing,
+      cart as unknown as import('../../cart/cart.service').CartService,
     );
   });
 
@@ -187,6 +196,72 @@ describe('CreateOrderUseCase', () => {
         expect.any(Object),
         expect.any(String),
       );
+    });
+  });
+
+  describe('checkout del carrito (fromCart, CU-126)', () => {
+    const sinItems: CreateOrderDto = { ...baseDto, items: undefined };
+
+    it('toma los ítems del carrito, cobra el precio del servidor y vacía el carrito en la misma transacción', async () => {
+      await useCase.execute({ ...sinItems, fromCart: true }, 'dist-default');
+
+      expect(cart.itemsParaPedido).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'cust-1',
+        'dist-default',
+        true,
+      );
+      expect(stock.reservarStock).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'gc-1',
+        2,
+      );
+      expect(cart.vaciarEnTransaccion).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'cust-1',
+        'dist-default',
+      );
+      // El vaciado ocurre antes del commit.
+      expect(cart.vaciarEnTransaccion.mock.invocationCallOrder[0]).toBeLessThan(
+        queryRunner.commitTransaction.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('si el pedido falla, el carrito no se vacía', async () => {
+      stock.reservarStock.mockRejectedValue(
+        new BadRequestException('sin stock'),
+      );
+
+      await expect(
+        useCase.execute({ ...sinItems, fromCart: true }, 'dist-default'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(cart.vaciarEnTransaccion).not.toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('carrito vacío o con productos caídos corta con el 400 del carrito', async () => {
+      cart.itemsParaPedido.mockRejectedValue(
+        new BadRequestException('Tu carrito está vacío'),
+      );
+      await expect(
+        useCase.execute({ ...sinItems, fromCart: true }, 'dist-default'),
+      ).rejects.toThrow('Tu carrito está vacío');
+      expect(cart.vaciarEnTransaccion).not.toHaveBeenCalled();
+    });
+
+    it('con items y fromCart a la vez es 400 sin abrir la transacción', async () => {
+      await expect(
+        useCase.execute({ ...baseDto, fromCart: true }, 'dist-default'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    });
+
+    it('sin fromCart no toca el carrito', async () => {
+      await useCase.execute(baseDto, 'dist-default');
+
+      expect(cart.itemsParaPedido).not.toHaveBeenCalled();
+      expect(cart.vaciarEnTransaccion).not.toHaveBeenCalled();
     });
   });
 

@@ -187,9 +187,31 @@ puede modificar`. No se puede pasar un pedido a MercadoPago al editarlo (400).
 - **Auditoría:** el pedido y sus renglones pasan por `save`/`remove`: el subscriber de
   auditoría los registra, y el request entero queda en el log de auditoría HTTP.
 
+## Crear desde el carrito — `fromCart: true` (CU-126)
+
+`POST /orders` y `POST /orders/quote` aceptan `fromCart: true` (opcional; sin él todo funciona como
+siempre). Es el **checkout del carrito persistente** (`docs/CARRITO-Y-CONSUMO.md`):
+
+- Los ítems salen del carrito del cliente en la distribuidora de `X-Distributor`. El cuerpo **no
+  lleva `items`**: con ambos, 400. `fromCart` y `orderId` (cotización de edición) tampoco se
+  combinan (400).
+- Se cobra el **precio vigente del catálogo** (más promociones, zona y recargos de pago, como
+  cualquier pedido), no el guardado en el carrito.
+- El carrito se vacía **dentro de la transacción del pedido** (con su fila bloqueada): si el pedido
+  falla (sin stock, fuera de cobertura, etc.) el carrito queda intacto. La cotización no bloquea ni
+  toca el carrito.
+- Carrito vacío (o inexistente en esa distribuidora): **400** `Tu carrito está vacío`. Con
+  productos dados de baja: **400** que nombra cuáles; hay que quitarlos para continuar.
+- Sólo el cliente (rol `customer`); el personal que carga un pedido a nombre de un cliente manda
+  `items` (403 con `fromCart`).
+- Idempotencia: un reintento con la misma `Idempotency-Key` devuelve la respuesta guardada sin
+  ejecutar nada: no duplica el pedido ni vacía de nuevo el carrito.
+- **Contrato para la app:** el checkout del carrito es `fromCart: true`; la app **no borra ítems**
+  del carrito al confirmar. La compra exprés (sin carrito) sigue mandando `items`.
+
 ## Cotización — `POST /orders/quote`
 
-Mismo cuerpo que `POST /orders`; sólo `items` y `paymentMethod` son obligatorios. Con `addressId`
+Mismo cuerpo que `POST /orders`; sólo `paymentMethod` es obligatorio, más `items` (salvo con `fromCart: true`, ver «Crear desde el carrito»). Con `addressId`
 (el admin además manda `customerId`) incluye el recargo de la zona. Respuesta `200`.
 
 **Cotización de edición:** con `orderId` en el cuerpo cotiza cómo quedaría ese pedido al editarlo
