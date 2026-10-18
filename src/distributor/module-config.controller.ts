@@ -111,7 +111,7 @@ export class ModuleConfigController {
     summary:
       'Los procesos automáticos configurables con sus parámetros vigentes',
     description:
-      'Los cinco procesos de CU-172 (planificador de flota, recompra, agrupación por recorrido, recuperación de envases y despacho express), cada uno con su esquema (rango y valor por omisión de cada parámetro) y los valores vigentes. El despacho y las tareas programadas tienen su propia ruta.',
+      'Los procesos de CU-172 (planificador de flota, recompra, agrupación por recorrido y recuperación de envases), cada uno con su esquema (rango y valor por omisión de cada parámetro) y los valores vigentes. El despacho, las tareas programadas y el despacho express tienen su propia ruta.',
   })
   @ApiOkResponse({ type: [ProcessConfigResponseDto] })
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
@@ -147,7 +147,7 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Cambiar los parámetros de un proceso automático',
     description:
-      'Reemplaza la configuración: se guarda sólo lo que viene y lo demás toma su valor por omisión (`{}` restablece los valores por omisión, igual que en el despacho y las tareas programadas). Cada proceso valida con su propio esquema (`GET /module-config/processes`): un parámetro desconocido, de otro tipo o fuera de rango responde 400 con el campo. Los valores los leen los módulos M2 a M5 y la compra express cuando se construyan: hoy se guardan y se validan, pero ningún proceso los consume todavía. Cuando lo hagan, rigen desde la siguiente ejecución; las que están en curso no se interrumpen.',
+      'Reemplaza la configuración: se guarda sólo lo que viene y lo demás toma su valor por omisión (`{}` restablece los valores por omisión, igual que en el despacho y las tareas programadas). Cada proceso valida con su propio esquema (`GET /module-config/processes`): un parámetro desconocido, de otro tipo o fuera de rango responde 400 con el campo. Los valores los leen los módulos M2 a M5 cuando se construyan: hoy se guardan y se validan, pero ningún proceso los consume todavía. Cuando lo hagan, rigen desde la siguiente ejecución; las que están en curso no se interrumpen.',
   })
   @ApiParam({ name: 'process', enum: PROCESOS_AUTOMATICOS })
   @ApiBody({

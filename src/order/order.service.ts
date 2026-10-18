@@ -21,7 +21,12 @@ import {
   soloVentaCobrada,
   ventaCobradaWhere,
 } from '../common/utils/venta-cobrada';
-import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  OrderStatus,
+  PaymentMethod,
+} from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { DriverDeOrderDto, OrderResponseDto } from './dto/order-response.dto';
@@ -572,12 +577,23 @@ export class OrderService {
     return this.orders.findDistributorsWithAvailable();
   }
 
+  /**
+   * Pedidos pendientes sin chofer. Los express (CU-149) no están en el pool del
+   * chofer: se ofrecen de a uno a las motos; sólo el despacho los pide
+   * (`incluirExpress`) para no dejarlos sin oferta.
+   */
   async findAvailableOrders(
     paginationDto: PaginationDto,
     distributorId?: string | null,
+    incluirExpress = false,
   ) {
     const { limit = 10, offset = 0 } = paginationDto;
-    return this.orders.findAvailable(limit, offset, distributorId);
+    return this.orders.findAvailable(
+      limit,
+      offset,
+      distributorId,
+      incluirExpress,
+    );
   }
 
   async findByCustomer(
@@ -772,6 +788,13 @@ export class OrderService {
         delivery.userId,
         locked.distributorId,
       );
+      // Un pedido express (CU-149) sólo lo lleva un chofer con una moto en uso.
+      if (locked.deliveryMode === OrderDeliveryMode.EXPRESS) {
+        await this.fleetGate.assertEnMoto(
+          delivery.userId,
+          locked.distributorId,
+        );
+      }
       // Snapshot del vehículo en uso (decisión de nahue del 30/09): a esta
       // altura el chofer ya pasó el gate, así que si tiene vehículo, no viene
       // inhabilitado.

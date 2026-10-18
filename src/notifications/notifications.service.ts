@@ -277,6 +277,31 @@ export class NotificationsService {
   }
 
   /**
+   * Push genérico al cliente sobre su pedido (p. ej. el pedido express pasó al
+   * reparto común, o se devolvió un pago). No-op si no registró token. Nunca
+   * lanza: el hecho que se avisa ya ocurrió.
+   */
+  async sendOrderNoticePush(
+    customerUserId: string,
+    orderId: string,
+    aviso: { title: string; body: string; event: string },
+  ): Promise<void> {
+    try {
+      const { token } =
+        await this.customersService.findNotificationToken(customerUserId);
+      if (!token) return;
+      await this.fcm.sendToToken(token, {
+        notification: { title: aviso.title, body: aviso.body },
+        data: { event: aviso.event, orderId },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar el push ${aviso.event} al cliente ${customerUserId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
    * Guarda el token FCM del dispositivo. El mismo endpoint lo usan la app
    * cliente y la app chofer: se intenta primero como cliente y, si no lo es,
    * como chofer. Así el push le puede llegar a cualquiera de los dos lados.

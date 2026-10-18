@@ -1,4 +1,5 @@
 import {
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -13,6 +14,15 @@ const pedido = {
 };
 
 describe('motivoNoEditable', () => {
+  it('un pedido express no se edita: EXPRESS', () => {
+    const express = { ...pedido, deliveryMode: OrderDeliveryMode.EXPRESS };
+    expect(motivoNoEditable(express)?.motivo).toBe('EXPRESS');
+    expect(esEditable(express)).toBe(false);
+    expect(
+      esEditable({ ...pedido, deliveryMode: OrderDeliveryMode.STANDARD }),
+    ).toBe(true);
+  });
+
   it('pendiente, sin chofer y sin pago en curso: editable', () => {
     expect(motivoNoEditable(pedido)).toBeNull();
     expect(esEditable(pedido)).toBe(true);

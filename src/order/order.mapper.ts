@@ -140,6 +140,9 @@ export class OrderMapper {
     dto.paymentResolvedBy = order.paymentResolvedBy ?? null;
     dto.paymentResolutionNote = order.paymentResolutionNote ?? null;
     dto.editable = esEditable(order);
+    dto.deliveryMode = order.deliveryMode;
+    dto.expressSurchargeAmount = Number(order.expressSurchargeAmount ?? 0);
+    dto.expressDegradedAt = order.expressDegradedAt ?? null;
 
     // Address Mapping
     if (order.address) {

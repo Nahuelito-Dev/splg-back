@@ -10,6 +10,7 @@ import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-tran
 import { ReservationNotActivableError } from '../domain/errors/reservation-not-activable.error';
 import {
   Order,
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -78,6 +79,7 @@ describe('UpdateOrderStatusUseCase', () => {
   };
   let fleetGate: {
     assertChoferHabilitado: jest.Mock;
+    assertEnMoto: jest.Mock;
     vehiculoEnUsoDelChofer: jest.Mock;
   };
 
@@ -190,6 +192,7 @@ describe('UpdateOrderStatusUseCase', () => {
     };
     fleetGate = {
       assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
+      assertEnMoto: jest.fn().mockResolvedValue(undefined),
       vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue({
         carId: 'car-1',
         patent: 'AB123CD',
@@ -807,6 +810,71 @@ describe('UpdateOrderStatusUseCase', () => {
         ),
       ).rejects.toThrow(/Licencia de conducir: venció el 01\/01\/2020/);
       expect(orders.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CU-149: pedido express', () => {
+    const chofer = {
+      deliveryId: 'drv-1',
+      distributorId: 'dist-1',
+      userId: 'user-drv-1',
+      isEnabled: true,
+      validated: true,
+      user: {},
+    };
+
+    it('aceptarlo exige una moto en uso: si no la tiene, 400 y no se asigna', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryMode: OrderDeliveryMode.EXPRESS }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(chofer);
+      fleetGate.assertEnMoto.mockRejectedValue(
+        new BadRequestException('sólo moto'),
+      );
+
+      await expect(
+        useCase.execute(
+          'ord-1',
+          OrderStatus.ACCEPTED,
+          'user-drv-1',
+          RoleType.DELIVERY,
+        ),
+      ).rejects.toThrow('sólo moto');
+      expect(fleetGate.assertEnMoto).toHaveBeenCalledWith(
+        'user-drv-1',
+        'dist-1',
+      );
+      expect(orders.save).not.toHaveBeenCalled();
+    });
+
+    it('un chofer en moto lo acepta', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryMode: OrderDeliveryMode.EXPRESS }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(chofer);
+
+      const r = await useCase.execute(
+        'ord-1',
+        OrderStatus.ACCEPTED,
+        'user-drv-1',
+        RoleType.DELIVERY,
+      );
+
+      expect(r.status).toBe(OrderStatus.ACCEPTED);
+    });
+
+    it('un pedido común no exige moto', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(chofer);
+
+      await useCase.execute(
+        'ord-1',
+        OrderStatus.ACCEPTED,
+        'user-drv-1',
+        RoleType.DELIVERY,
+      );
+
+      expect(fleetGate.assertEnMoto).not.toHaveBeenCalled();
     });
   });
 

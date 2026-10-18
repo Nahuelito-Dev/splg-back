@@ -107,6 +107,35 @@ export class FleetDispatchLockService {
   }
 
   /**
+   * Despacho express (CU-149): de esos choferes (`user_id`), cuáles tienen EN
+   * USO una moto. La habilitación (licencia, documentos del vehículo) la sigue
+   * decidiendo `choferesInhabilitados`.
+   */
+  choferesEnMoto(
+    driverUserIds: string[],
+    distributorId?: string | null,
+  ): Promise<Set<string>> {
+    return this.vehicleAssignments.choferesEnMoto(driverUserIds, distributorId);
+  }
+
+  /**
+   * Un pedido express sólo lo lleva un chofer en moto (CU-149): 400 si el
+   * vehículo que el chofer tiene en uso no es una moto. Lo llaman los dos
+   * caminos que le dan un pedido a un chofer (aceptar y asignar a mano).
+   */
+  async assertEnMoto(
+    driverUserId: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const enMoto = await this.choferesEnMoto([driverUserId], distributorId);
+    if (!enMoto.has(driverUserId)) {
+      throw new BadRequestException(
+        'Un pedido express sólo lo puede llevar un chofer con una moto en uso',
+      );
+    }
+  }
+
+  /**
    * Qué está vencido en el chofer, en castellano y con fecha (o que no
    * tiene vehículo asignado). Vacío si el chofer está en condiciones. Lo
    * usa `assertChoferHabilitado` (abajo) para armar el 400; expuesto

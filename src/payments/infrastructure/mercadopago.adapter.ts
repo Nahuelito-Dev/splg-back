@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
+import {
+  MercadoPagoConfig,
+  Preference,
+  Payment,
+  PaymentRefund,
+} from 'mercadopago';
 import { WebhookSignatureValidator } from 'mercadopago';
 
 import {
@@ -8,6 +13,8 @@ import {
   CreateCheckoutResult,
   GatewayPayment,
   PaymentGatewayPort,
+  RefundPaymentInput,
+  RefundPaymentResult,
   VerifyWebhookSignatureInput,
 } from '../domain/ports/payment-gateway.port';
 import { errorMessage } from '../../common/errors/error-message';
@@ -76,7 +83,21 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
       id: String(payment.id),
       status: payment.status || 'unknown',
       externalReference: payment.external_reference || null,
+      amount: payment.transaction_amount ?? null,
+      refundedAmount: payment.transaction_amount_refunded ?? null,
     };
+  }
+
+  async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentResult> {
+    const refund = await new PaymentRefund(this.client).create({
+      payment_id: input.gatewayPaymentId,
+      body: { amount: input.amount },
+      requestOptions: { idempotencyKey: input.idempotencyKey },
+    });
+    if (refund.id === undefined || refund.id === null) {
+      throw new Error('MercadoPago no devolvió el id de la devolución');
+    }
+    return { refundId: String(refund.id) };
   }
 
   verifyWebhookSignature(input: VerifyWebhookSignatureInput): boolean {

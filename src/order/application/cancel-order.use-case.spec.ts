@@ -51,6 +51,7 @@ describe('CancelOrderUseCase', () => {
     releaseOffer: jest.Mock;
     onOrderClosed: jest.Mock;
   };
+  let refunds: { reintegrarPorCancelacion: jest.Mock };
   let releaseOrder: ReleaseOrderUseCase;
   let lockedOrder: Order;
 
@@ -112,12 +113,17 @@ describe('CancelOrderUseCase', () => {
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
     );
 
+    refunds = {
+      reintegrarPorCancelacion: jest.fn().mockResolvedValue([]),
+    };
+
     useCase = new CancelOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
       stock as unknown as import('../../gascylinder/gascylinder.service').GasCylinderService,
       dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
       releaseOrder,
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
+      refunds as unknown as import('../../payments/application/refunds.service').RefundsService,
     );
   });
 
@@ -192,6 +198,45 @@ describe('CancelOrderUseCase', () => {
         expect.anything(),
         'dist-1',
       );
+    });
+  });
+
+  describe('CU-168: devolución del pago al cancelar', () => {
+    it('customer y admin piden la devolución del pedido DESPUÉS del commit', async () => {
+      await useCase.execute('ord-1', 'cust-1', 'customer');
+      expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
+      expect(
+        refunds.reintegrarPorCancelacion.mock.invocationCallOrder[0],
+      ).toBeGreaterThan(
+        queryRunner.commitTransaction.mock.invocationCallOrder[0],
+      );
+
+      refunds.reintegrarPorCancelacion.mockClear();
+      lockedOrder = makeOrder();
+      queryBuilder.getOne.mockResolvedValue(lockedOrder);
+      await useCase.execute('ord-1', 'admin-1', 'admin');
+      expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
+    });
+
+    it('si la pasarela falla la cancelación igual se confirma', async () => {
+      refunds.reintegrarPorCancelacion.mockRejectedValue(new Error('MP caído'));
+      const result = await useCase.execute('ord-1', 'cust-1', 'customer');
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    });
+
+    it('el chofer que libera el pedido NO dispara ninguna devolución', async () => {
+      await useCase.execute('ord-1', 'user-drv-1', 'driver');
+      expect(refunds.reintegrarPorCancelacion).not.toHaveBeenCalled();
+    });
+
+    it('una cancelación rechazada no pide devolución', async () => {
+      lockedOrder = makeOrder({ status: OrderStatus.CANCELLED });
+      queryBuilder.getOne.mockResolvedValue(lockedOrder);
+      await expect(useCase.execute('ord-1', 'u1', 'admin')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(refunds.reintegrarPorCancelacion).not.toHaveBeenCalled();
     });
   });
 

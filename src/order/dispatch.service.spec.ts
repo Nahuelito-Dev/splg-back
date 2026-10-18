@@ -124,6 +124,8 @@ describe('DispatchService', () => {
       expect(orderService.findAvailableOrders).toHaveBeenCalledWith(
         { limit: 50, offset: 0 },
         'd2',
+        // El cron sí incluye los express: el pool del chofer no, el despacho sí.
+        true,
       );
     });
 

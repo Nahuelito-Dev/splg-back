@@ -22,6 +22,15 @@ export interface OrderPaymentState {
   paymentStatus: PaymentStatus;
 }
 
+/** El pedido visto desde `payments` para devolver un pago (CU-168). */
+export interface OrderRefundRef {
+  orderId: string;
+  customerId: string;
+  distributorId: string;
+  status: OrderStatus;
+  expressSurchargeAmount: number;
+}
+
 /**
  * Puerto de lectura de la tabla `order` para `cylinder`, `time-slot` y
  * `delivery`.
@@ -54,6 +63,37 @@ export class OrderLookupService {
     });
     return order
       ? { orderId: order.orderId, customerId: order.customerId }
+      : null;
+  }
+
+  /**
+   * Lo que `payments` necesita para devolver un pago: dentro de la distribuidora
+   * (lo ajeno es null, como si no existiera) o, sin distribuidora, por id.
+   */
+  async findForRefund(
+    orderId: string,
+    distributorId?: string | null,
+  ): Promise<OrderRefundRef | null> {
+    const where: FindOptionsWhere<Order> = { orderId };
+    if (distributorId) where.distributorId = distributorId;
+    const order = await this.orderRepository.findOne({
+      where,
+      select: {
+        orderId: true,
+        customerId: true,
+        distributorId: true,
+        status: true,
+        expressSurchargeAmount: true,
+      },
+    });
+    return order
+      ? {
+          orderId: order.orderId,
+          customerId: order.customerId,
+          distributorId: order.distributorId,
+          status: order.status,
+          expressSurchargeAmount: order.expressSurchargeAmount,
+        }
       : null;
   }
 

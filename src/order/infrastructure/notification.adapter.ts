@@ -37,4 +37,12 @@ export class NotificationAdapter extends NotificationPort {
       esSena,
     );
   }
+
+  sendOrderNoticePush(
+    customerId: string,
+    orderId: string,
+    aviso: { title: string; body: string; event: string },
+  ) {
+    return this.notifications.sendOrderNoticePush(customerId, orderId, aviso);
+  }
 }

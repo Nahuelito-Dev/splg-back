@@ -93,8 +93,9 @@ distribuidora: `GET /reports/collections` lo informa en `pendingRefund` (pedidos
 pago `paid`, por el día en que se cancelaron: la última transición a `cancelled` del historial; un
 pedido cancelado antes de que existiera el historial cae a la fecha de última modificación; la consulta usa
 el índice parcial `IDX_order_status_history_cancelacion`, migración `1792000000000`) y el pedido sigue con `paymentStatus: paid`.
-**El sistema no gestiona el reintegro**: lo hace la distribuidora por fuera y el panel debe
-mostrarlo como "reintegro pendiente".
+**El sistema no gestiona el reintegro de una transferencia**: lo hace la distribuidora por fuera y
+el panel debe mostrarlo como "reintegro pendiente". Los pagos por una pasarela (MercadoPago) sí se
+devuelven solos al cancelar: ver `docs/EXPRESS-REINTEGROS.md`.
 
 Una transferencia sin confirmar **no suma a las ventas**: `GET /reports/collections` ahora trae
 `pendingTransfer` y `notReceivedTransfer` junto a `pendingCash`, `unpaid` y `writtenOff`.

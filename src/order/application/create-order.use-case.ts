@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
   HttpException,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import Decimal from 'decimal.js';
 
 import {
   Order,
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -40,6 +42,7 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { PaymentCheckoutItem } from '../../payments/domain/ports/payment-gateway.port';
 import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { ExpressAvailabilityService } from './express-availability.service';
 import { DistributorService } from '../../distributor/distributor.service';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
 import { errorCode, errorMessage } from '../../common/errors/error-message';
@@ -95,6 +98,7 @@ export class CreateOrderUseCase {
     private readonly coverageZoneService: CoverageZoneService,
     private readonly coverageZonePricing: CoverageZonePricingService,
     private readonly cart: CartService,
+    private readonly expressAvailability: ExpressAvailabilityService,
   ) {}
 
   /**
@@ -131,6 +135,9 @@ export class CreateOrderUseCase {
       );
     }
 
+    const esExpress = createOrderDto.deliveryMode === OrderDeliveryMode.EXPRESS;
+    if (esExpress) this.assertExpressCompatible(createOrderDto);
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -165,6 +172,13 @@ export class CreateOrderUseCase {
 
       // Zona de cobertura: ver `resolverZona` (rechaza ANTES de reservar stock).
       const coverageZone = await this.resolverZona(distributorId, address);
+
+      // Modalidad express (CU-148/CU-147): se vuelve a evaluar acá, antes de
+      // reservar stock, porque entre la consulta de opciones y el alta el
+      // último chofer en moto pudo ocuparse.
+      const expressSurcharge = esExpress
+        ? await this.recargoExpress(distributorId, address)
+        : 0;
 
       // Agendamiento: validar cupo de la franja DENTRO de la transacción y con
       // lock pesimista sobre la franja, para que reservas concurrentes no
@@ -205,6 +219,7 @@ export class CreateOrderUseCase {
         subtotalItems,
         coverageZone,
         createOrderDto.paymentMethod,
+        expressSurcharge,
       );
 
       const paymentType =
@@ -247,6 +262,10 @@ export class CreateOrderUseCase {
         zoneSurchargeValue: coverageZone?.value ?? null,
         zoneSurchargeAmount: zoneSurchargeAmount.toNumber(),
         subtotalItems: subtotalItems.toNumber(),
+        deliveryMode: esExpress
+          ? OrderDeliveryMode.EXPRESS
+          : OrderDeliveryMode.STANDARD,
+        expressSurchargeAmount: expressSurcharge,
       });
 
       const savedOrder = await queryRunner.manager.save(order);
@@ -269,7 +288,9 @@ export class CreateOrderUseCase {
         isReservation,
         depositAmount,
         customer,
-        checkoutItems,
+        expressSurcharge > 0
+          ? [...checkoutItems, itemDeRecargoExpress(expressSurcharge)]
+          : checkoutItems,
       );
     } catch (error) {
       if (queryRunner.isTransactionActive) {
@@ -515,22 +536,69 @@ export class CreateOrderUseCase {
    * Total del pedido a partir del subtotal de ítems (YA con promociones):
    * recargo de zona (fijo, o porcentual sobre el subtotal) y DESPUÉS recargo
    * por método de pago (+10% online), que se aplica sobre el total con el
-   * recargo de zona ya sumado.
+   * recargo de zona ya sumado. El recargo express (CU-147) se suma al final y
+   * no lleva el recargo por método de pago: así lo que se devuelve si el pedido
+   * pierde el express es exactamente lo que se cobró de más.
    */
   calcularTotales(
     subtotalItems: Decimal.Value,
     coverageZone: ZonaParaRecargo | null,
     paymentMethod: PaymentMethod,
+    expressSurcharge: Decimal.Value = 0,
   ): { totalAmount: Decimal; zoneSurchargeAmount: Decimal } {
     const zoneSurchargeAmount = this.coverageZonePricing.zoneSurcharge(
       subtotalItems,
       coverageZone,
     );
-    const totalAmount = this.pricing.applyPaymentSurcharge(
-      zoneSurchargeAmount.plus(subtotalItems),
-      paymentMethod,
-    );
+    const totalAmount = this.pricing
+      .applyPaymentSurcharge(
+        zoneSurchargeAmount.plus(subtotalItems),
+        paymentMethod,
+      )
+      .plus(expressSurcharge);
     return { totalAmount, zoneSurchargeAmount };
+  }
+
+  /**
+   * El express no se combina con lo agendado: sale ya, a una moto. 400 si el
+   * pedido pide reserva, franja o fecha.
+   */
+  assertExpressCompatible(dto: {
+    isReservation?: boolean;
+    timeSlotId?: string;
+    scheduledDate?: string;
+  }): void {
+    if (dto.isReservation || dto.timeSlotId || dto.scheduledDate) {
+      throw new BadRequestException(
+        'Un pedido express no se agenda: no se combina con reserva, franja horaria ni fecha agendada',
+      );
+    }
+  }
+
+  /**
+   * Recargo express de la distribuidora si la modalidad está disponible para esa
+   * dirección; si no, 409 con el motivo (`reason`), para que la app ofrezca el
+   * flujo con franja horaria.
+   */
+  async recargoExpress(
+    distributorId: string | null | undefined,
+    address: { location?: Point | null },
+  ): Promise<number> {
+    const disponibilidad = distributorId
+      ? await this.expressAvailability.evaluar(distributorId, address)
+      : null;
+    if (!disponibilidad || !disponibilidad.available) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        code: 'EXPRESS_NOT_AVAILABLE',
+        reason: disponibilidad?.reason ?? 'disabled',
+        message:
+          disponibilidad?.message ??
+          'La distribuidora no ofrece la modalidad express',
+      });
+    }
+    return disponibilidad.settings.surchargeAmount;
   }
 
   private async sendConfirmation(
@@ -615,4 +683,14 @@ export class CreateOrderUseCase {
       return undefined;
     }
   }
+}
+
+/** Renglón del checkout con el recargo express, para que la pasarela lo cobre. */
+function itemDeRecargoExpress(monto: number): PaymentCheckoutItem {
+  return {
+    id: 'express-surcharge',
+    title: 'Recargo express',
+    quantity: 1,
+    unitPrice: monto,
+  };
 }

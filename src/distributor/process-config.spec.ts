@@ -10,13 +10,16 @@ import {
 import { ConfigurableProcess } from './entities/module-config.entity';
 
 const REPURCHASE = ESQUEMAS[ConfigurableProcess.REPURCHASE];
-const EXPRESS = ESQUEMAS[ConfigurableProcess.EXPRESS_DISPATCH];
+/** Un proceso con un campo decimal (`number`), para probar que acepta decimales. */
+const CON_DECIMAL = Object.values(ESQUEMAS).find((e) =>
+  e.fields.some((c) => c.type === 'number'),
+)!;
+const CAMPO_DECIMAL = CON_DECIMAL.fields.find((c) => c.type === 'number')!;
 
 describe('process-config', () => {
-  it('son cinco procesos y el despacho, las tareas y el control de stock no están', () => {
+  it('son cuatro procesos; el despacho, las tareas, el express y el control de stock no están', () => {
     expect([...PROCESOS_AUTOMATICOS].sort()).toEqual([
       'cylinder_recovery',
-      'express_dispatch',
       'fleet_planner',
       'repurchase',
       'route_batching',
@@ -24,6 +27,8 @@ describe('process-config', () => {
     expect(esProcesoAutomatico('dispatch')).toBe(false);
     expect(esProcesoAutomatico('scheduled_tasks')).toBe(false);
     expect(esProcesoAutomatico('stock_control')).toBe(false);
+    // El express tiene su propia ruta y servicio (ExpressSettingsService).
+    expect(esProcesoAutomatico('express_dispatch')).toBe(false);
   });
 
   it.each(PROCESOS_AUTOMATICOS)(
@@ -75,29 +80,16 @@ describe('process-config', () => {
     });
 
     it('acepta decimales donde el campo es numérico', () => {
-      expect(validarParametros(EXPRESS, { maxRadiusKm: 2.5 })).toEqual([]);
+      const valor = (CAMPO_DECIMAL.min + CAMPO_DECIMAL.max) / 2 + 0.05;
+      expect(
+        validarParametros(CON_DECIMAL, { [CAMPO_DECIMAL.key]: valor }),
+      ).toEqual([]);
     });
 
     it('rechaza un cuerpo que no es un objeto', () => {
       expect(validarParametros(REPURCHASE, null)).toHaveLength(1);
       expect(validarParametros(REPURCHASE, [1, 2])).toHaveLength(1);
       expect(validarParametros(REPURCHASE, 'x')).toHaveLength(1);
-    });
-
-    it('express: el fin del horario tiene que ser posterior al inicio, contando lo no enviado', () => {
-      expect(
-        validarParametros(EXPRESS, {
-          serviceStartHour: 10,
-          serviceEndHour: 10,
-        }),
-      ).toEqual(['serviceEndHour: tiene que ser posterior a serviceStartHour']);
-      // Sólo el inicio: queda contra el fin por omisión (20).
-      expect(validarParametros(EXPRESS, { serviceStartHour: 21 })).toHaveLength(
-        1,
-      );
-      expect(
-        validarParametros(EXPRESS, { serviceStartHour: 9, serviceEndHour: 18 }),
-      ).toEqual([]);
     });
   });
 
@@ -118,15 +110,6 @@ describe('process-config', () => {
       expect(
         valoresDesde(REPURCHASE, { anticipationDays: 999 }).anticipationDays,
       ).toBe(3);
-    });
-
-    it('un horario guardado incoherente vuelve a los de omisión', () => {
-      const v = valoresDesde(EXPRESS, {
-        serviceStartHour: 22,
-        serviceEndHour: 21,
-      });
-      expect(v.serviceStartHour).toBe(8);
-      expect(v.serviceEndHour).toBe(20);
     });
   });
 

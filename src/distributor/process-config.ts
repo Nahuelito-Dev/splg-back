@@ -32,13 +32,16 @@ export interface EsquemaDeProceso {
   cruzada?: (valores: Record<string, number>) => string | null;
 }
 
-/** Los cinco procesos que edita CU-172. */
+/**
+ * Los procesos que edita CU-172 por esta vía genérica. El despacho express
+ * tiene su propia ruta y su propio servicio (`/module-config/express_dispatch`,
+ * `ExpressSettingsService`), que es el que lee la compra express.
+ */
 export const PROCESOS_AUTOMATICOS = [
   ConfigurableProcess.FLEET_PLANNER,
   ConfigurableProcess.REPURCHASE,
   ConfigurableProcess.ROUTE_BATCHING,
   ConfigurableProcess.CYLINDER_RECOVERY,
-  ConfigurableProcess.EXPRESS_DISPATCH,
 ] as const;
 
 export type ProcesoAutomatico = (typeof PROCESOS_AUTOMATICOS)[number];
@@ -277,72 +280,6 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         'Vigencia de la oferta de retiro',
       ),
     ],
-  },
-  [ConfigurableProcess.EXPRESS_DISPATCH]: {
-    process: ConfigurableProcess.EXPRESS_DISPATCH,
-    title: 'Despacho express',
-    description:
-      'Compra express en moto: radio, recargo, horario de servicio y vigencia de la oferta (CU-147 a CU-149).',
-    fields: [
-      campo(
-        'maxRadiusKm',
-        'number',
-        0.5,
-        50,
-        5,
-        'km',
-        'Radio máximo desde el chofer en moto más cercano',
-      ),
-      campo(
-        'surchargeAmount',
-        'number',
-        0,
-        1_000_000,
-        1500,
-        '$',
-        'Recargo express, en la moneda del pedido',
-      ),
-      campo(
-        'serviceStartHour',
-        'integer',
-        0,
-        23,
-        8,
-        'h',
-        'Hora desde la que se ofrece la express (hora de Argentina)',
-      ),
-      campo(
-        'serviceEndHour',
-        'integer',
-        1,
-        24,
-        20,
-        'h',
-        'Hora hasta la que se ofrece la express (hora de Argentina)',
-      ),
-      campo(
-        'estimatedMinutes',
-        'integer',
-        10,
-        180,
-        60,
-        'min',
-        'Tiempo estimado de entrega que se promete',
-      ),
-      campo(
-        'offerTtlSeconds',
-        'integer',
-        10,
-        300,
-        20,
-        's',
-        'Ventana de aceptación de la oferta express',
-      ),
-    ],
-    cruzada: (v) =>
-      v.serviceEndHour > v.serviceStartHour
-        ? null
-        : 'serviceEndHour: tiene que ser posterior a serviceStartHour',
   },
 };
 

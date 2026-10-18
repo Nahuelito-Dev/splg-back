@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -14,6 +15,8 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { ReleaseOrderUseCase } from './release-order.use-case';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { RoleType } from '../../common/constants/role-type.enum';
+import { RefundsService } from '../../payments/application/refunds.service';
+import { errorMessage } from '../../common/errors/error-message';
 
 /** Quién dispara la cancelación (define la política de estado y stock). */
 export type CancelActor = 'customer' | 'driver' | 'admin' | 'superadmin';
@@ -62,12 +65,15 @@ export function mapRoleToCancelActor(role?: RoleType): CancelActor {
  */
 @Injectable()
 export class CancelOrderUseCase {
+  private readonly logger = new Logger(CancelOrderUseCase.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly stock: GasCylinderService,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly releaseOrder: ReleaseOrderUseCase,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    private readonly refunds: RefundsService,
   ) {}
 
   async execute(
@@ -170,9 +176,26 @@ export class CancelOrderUseCase {
         .onOrderClosed(order.orderId)
         .catch(() => undefined);
       this.notify(order, previousDriverUserId, role);
+      await this.reintegrarPago(order.orderId);
     }
 
     return order;
+  }
+
+  /**
+   * CU-168 (extiende CU-008 y CU-010): si el pedido tenía un pago aprobado por
+   * una pasarela, se pide la devolución. Corre después del commit y no puede
+   * deshacer ni demorar la cancelación: si la pasarela falla, queda registrado
+   * para que el administrador lo reintente.
+   */
+  private async reintegrarPago(orderId: string): Promise<void> {
+    try {
+      await this.refunds.reintegrarPorCancelacion(orderId);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo pedir la devolución del pedido cancelado ${orderId}: ${errorMessage(error)}`,
+      );
+    }
   }
 
   /**

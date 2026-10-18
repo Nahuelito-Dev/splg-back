@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrderService } from './order.service';
-import { Order, OrderStatus } from './entities/order.entity';
+import { Order, OrderDeliveryMode, OrderStatus } from './entities/order.entity';
 import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
 import type { Repository, DataSource } from 'typeorm';
 import type { DeliveryService } from '../delivery/delivery.service';
@@ -68,6 +68,7 @@ describe('OrderService · asignación manual', () => {
   let truckGate: { assertPuedeAsignar: jest.Mock };
   let fleetGate: {
     assertChoferHabilitado: jest.Mock;
+    assertEnMoto: jest.Mock;
     vehiculoEnUsoDelChofer: jest.Mock;
   };
   let service: OrderService;
@@ -160,6 +161,7 @@ describe('OrderService · asignación manual', () => {
     };
     fleetGate = {
       assertChoferHabilitado: jest.fn().mockResolvedValue(undefined),
+      assertEnMoto: jest.fn().mockResolvedValue(undefined),
       vehiculoEnUsoDelChofer: jest.fn().mockResolvedValue({
         carId: 'car-1',
         patent: 'AB123CD',
@@ -478,6 +480,27 @@ describe('OrderService · asignación manual', () => {
     );
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+  });
+
+  it('CU-149: un pedido express sólo se asigna a un chofer con una moto en uso (400) y no se asigna', async () => {
+    queryBuilder.getOne.mockResolvedValueOnce(
+      makeLockedOrder({ deliveryMode: OrderDeliveryMode.EXPRESS }),
+    );
+    fleetGate.assertEnMoto.mockRejectedValue(
+      new BadRequestException('sólo moto'),
+    );
+
+    await expect(service.assignDelivery(PEDIDO, CHOFER)).rejects.toThrow(
+      'sólo moto',
+    );
+    expect(fleetGate.assertEnMoto).toHaveBeenCalledWith(CHOFER_USER_ID, 'dist');
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+  });
+
+  it('CU-149: un pedido común no exige moto', async () => {
+    await service.assignDelivery(PEDIDO, CHOFER);
+
+    expect(fleetGate.assertEnMoto).not.toHaveBeenCalled();
   });
 
   it('D5: si la distribuidora exige carga y el chofer no la tiene, no se asigna (400) y se hace rollback', async () => {

@@ -38,6 +38,7 @@ describe('ConfirmPaymentUseCase', () => {
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
   let dispatch: { notifyCustomer: jest.Mock };
   let notifications: { sendPaymentApprovedPush: jest.Mock };
+  let refunds: { reintegrarPorCancelacion: jest.Mock };
 
   const fullOrder = {
     orderId: 'ord-1',
@@ -80,6 +81,7 @@ describe('ConfirmPaymentUseCase', () => {
     };
 
     dispatch = { notifyCustomer: jest.fn() };
+    refunds = { reintegrarPorCancelacion: jest.fn().mockResolvedValue([]) };
     notifications = {
       sendPaymentApprovedPush: jest.fn().mockResolvedValue(undefined),
     };
@@ -91,6 +93,7 @@ describe('ConfirmPaymentUseCase', () => {
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
       dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
       notifications as unknown as import('../domain/ports/notification.port').NotificationPort,
+      refunds as unknown as import('../../payments/application/refunds.service').RefundsService,
     );
   });
 
@@ -202,6 +205,44 @@ describe('ConfirmPaymentUseCase', () => {
       ).resolves.toBeUndefined();
       expect(queryRunner.manager.save).toHaveBeenCalled();
       expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('CU-168: pago aprobado que llega con el pedido ya cerrado', () => {
+    const aprobado = {
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
+    };
+
+    it('sobre un pedido CANCELADO pide devolver ese pago y no despacha', async () => {
+      lockedOrder.status = OrderStatus.CANCELLED;
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+      expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
+      expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    });
+
+    it('sobre un pedido ya ENTREGADO no devuelve nada', async () => {
+      lockedOrder.status = OrderStatus.DELIVERED;
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+      expect(refunds.reintegrarPorCancelacion).not.toHaveBeenCalled();
+    });
+
+    it('si la devolución falla el webhook igual termina bien', async () => {
+      lockedOrder.status = OrderStatus.CANCELLED;
+      refunds.reintegrarPorCancelacion.mockRejectedValue(new Error('MP caído'));
+      paymentsService.confirmFromGateway.mockResolvedValue(aprobado);
+
+      await expect(
+        useCase.execute({ type: 'payment', dataId: 'pay-1' }),
+      ).resolves.toBeUndefined();
     });
   });
 

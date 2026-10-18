@@ -16,7 +16,11 @@ import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { UserAddressService } from '../../user-address/user-address.service';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { QuoteOrderDto, QuoteResponseDto } from '../dto/quote-order.dto';
-import { Order, PaymentMethod } from '../entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  PaymentMethod,
+} from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import type { ZonaParaRecargo } from '../../coverage-zone/coverage-zone-pricing.service';
 import {
@@ -139,7 +143,23 @@ export class QuoteOrderUseCase {
       }
     }
 
+    const esExpress = dto.deliveryMode === OrderDeliveryMode.EXPRESS;
+    if (esExpress) {
+      if (edicion) {
+        throw new BadRequestException(
+          'La modalidad express se elige al crear el pedido: no se cambia al editarlo',
+        );
+      }
+      if (!dto.addressId) {
+        throw new BadRequestException(
+          'Indicá addressId para cotizar la modalidad express',
+        );
+      }
+      this.createOrder.assertExpressCompatible(dto);
+    }
+
     let zona: ZonaCotizada | null = null;
+    let expressSurcharge = 0;
     if (
       edicion &&
       (!dto.addressId || dto.addressId === edicion.order.addressId)
@@ -159,6 +179,12 @@ export class QuoteOrderUseCase {
         throw new NotFoundException('Dirección no encontrada');
       }
       zona = await this.createOrder.resolverZona(distributorId, address);
+      if (esExpress) {
+        expressSurcharge = await this.createOrder.recargoExpress(
+          distributorId,
+          address,
+        );
+      }
     }
 
     // Checkout del carrito: se cotizan los ítems del carrito del cliente, sin bloquearlo.
@@ -197,7 +223,12 @@ export class QuoteOrderUseCase {
     }
 
     const { totalAmount, zoneSurchargeAmount } =
-      this.createOrder.calcularTotales(subtotal, zona, dto.paymentMethod);
+      this.createOrder.calcularTotales(
+        subtotal,
+        zona,
+        dto.paymentMethod,
+        expressSurcharge,
+      );
     // La base guarda los montos con 2 decimales: la cotización devuelve lo
     // mismo que quedará en el pedido.
     const total = totalAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
@@ -229,8 +260,13 @@ export class QuoteOrderUseCase {
     res.paymentSurcharge = total
       .minus(subtotal)
       .minus(zoneSurchargeAmount)
+      .minus(expressSurcharge)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
       .toNumber();
+    res.deliveryMode = esExpress
+      ? OrderDeliveryMode.EXPRESS
+      : OrderDeliveryMode.STANDARD;
+    res.expressSurcharge = expressSurcharge;
     res.deposit = deposit.toNumber();
     res.total = total.toNumber();
     res.balance = total.minus(deposit).toNumber();

@@ -1,5 +1,6 @@
 import {
   Order,
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -19,18 +20,20 @@ export const MENSAJE_NO_PASAR_A_MERCADOPAGO =
 
 /** Por qué un pedido no se edita; `null` si se puede editar. */
 export type NoEditable = {
-  motivo: 'ESTADO' | 'PAGO_ONLINE';
+  motivo: 'ESTADO' | 'PAGO_ONLINE' | 'EXPRESS';
   mensaje: string;
 };
 
 type PedidoParaEditar = Pick<
   Order,
   'status' | 'deliveryId' | 'paymentMethod' | 'paymentStatus'
->;
+> &
+  Partial<Pick<Order, 'deliveryMode'>>;
 
 /**
- * Regla única de "¿se puede editar este pedido?": pendiente, sin chofer y sin
- * pago online en curso o cobrado. La usan `UpdateOrderUseCase` (para rechazar
+ * Regla única de "¿se puede editar este pedido?": pendiente, sin chofer, sin
+ * pago online en curso o cobrado y que no sea express (sale a una moto de
+ * inmediato: cambiarle los renglones rompería el recargo y la promesa). La usan `UpdateOrderUseCase` (para rechazar
  * con 409) y el DTO de salida (`editable`).
  */
 export function motivoNoEditable(order: PedidoParaEditar): NoEditable | null {
@@ -48,6 +51,13 @@ export function motivoNoEditable(order: PedidoParaEditar): NoEditable | null {
       motivo: 'PAGO_ONLINE',
       mensaje:
         'El pedido tiene un pago online en curso o ya cobrado: no se edita',
+    };
+  }
+  if (order.deliveryMode === OrderDeliveryMode.EXPRESS) {
+    return {
+      motivo: 'EXPRESS',
+      mensaje:
+        'Un pedido express no se edita: cancelalo y creá uno nuevo si querés cambiarlo',
     };
   }
   return null;

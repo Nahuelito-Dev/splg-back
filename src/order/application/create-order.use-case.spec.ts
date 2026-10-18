@@ -1,10 +1,14 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import Decimal from 'decimal.js';
 import { conRespuestaVigilada } from '../../common/interceptors/respuesta-incompleta';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { CreateOrderDto } from '../dto/create-order.dto';
-import { OrderStatus, PaymentMethod } from '../entities/order.entity';
+import {
+  OrderDeliveryMode,
+  OrderStatus,
+  PaymentMethod,
+} from '../entities/order.entity';
 import { CoverageZonePricingService } from '../../coverage-zone/coverage-zone-pricing.service';
 import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
 
@@ -40,6 +44,7 @@ describe('CreateOrderUseCase', () => {
   let paymentsService: { createCheckout: jest.Mock };
   let coverageZoneService: { checkCoverage: jest.Mock };
   let cart: { itemsParaPedido: jest.Mock; vaciarEnTransaccion: jest.Mock };
+  let expressAvailability: { evaluar: jest.Mock };
 
   const baseDto: CreateOrderDto = {
     customerId: 'cust-1',
@@ -154,6 +159,15 @@ describe('CreateOrderUseCase', () => {
         .mockResolvedValue({ covered: true, surcharge: 0, zone: null }),
     };
     const coverageZonePricing = new CoverageZonePricingService();
+    // Express disponible, con recargo de 1500, salvo que el test diga otra cosa.
+    expressAvailability = {
+      evaluar: jest.fn().mockResolvedValue({
+        available: true,
+        reason: null,
+        message: null,
+        settings: { surchargeAmount: 1500 },
+      }),
+    };
 
     useCase = new CreateOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
@@ -177,6 +191,7 @@ describe('CreateOrderUseCase', () => {
       coverageZoneService as unknown as import('../../coverage-zone/coverage-zone.service').CoverageZoneService,
       coverageZonePricing,
       cart as unknown as import('../../cart/cart.service').CartService,
+      expressAvailability as unknown as import('./express-availability.service').ExpressAvailabilityService,
     );
   });
 
@@ -399,6 +414,117 @@ describe('CreateOrderUseCase', () => {
       expect(result.order.orderId).toBe('ord-1');
       expect(result.paymentUrl).toBeUndefined();
       expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('modalidad express (CU-147, CU-148)', () => {
+    const express: CreateOrderDto = {
+      ...baseDto,
+      deliveryMode: OrderDeliveryMode.EXPRESS,
+    };
+
+    function ordenCreada(): Record<string, unknown> {
+      const llamadas = orderRepository.create.mock.calls as unknown as Record<
+        string,
+        unknown
+      >[][];
+      return llamadas[0][0];
+    }
+
+    it('guarda la modalidad y el recargo, y lo suma al final del total', async () => {
+      await useCase.execute(express);
+
+      const orden = ordenCreada();
+      expect(orden.deliveryMode).toBe(OrderDeliveryMode.EXPRESS);
+      expect(orden.expressSurchargeAmount).toBe(1500);
+      expect(orden.subtotalItems).toBe(2000);
+      expect(orden.totalAmount).toBe(3500);
+      expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
+    });
+
+    it('un pedido común no evalúa el express ni lleva recargo', async () => {
+      await useCase.execute({ ...baseDto });
+
+      expect(expressAvailability.evaluar).not.toHaveBeenCalled();
+      const orden = ordenCreada();
+      expect(orden.deliveryMode).toBe(OrderDeliveryMode.STANDARD);
+      expect(orden.expressSurchargeAmount).toBe(0);
+      expect(orden.totalAmount).toBe(2000);
+    });
+
+    it('el recargo express no lleva el recargo por medio de pago', async () => {
+      pricing.applyPaymentSurcharge.mockImplementation((monto: Decimal) =>
+        monto.times(1.1),
+      );
+
+      await useCase.execute({
+        ...express,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+      });
+
+      // 2000 × 1.1 + 1500 (y no (2000 + 1500) × 1.1)
+      expect(ordenCreada().totalAmount).toBe(3700);
+    });
+
+    it('con MercadoPago el checkout cobra el recargo como un renglón más', async () => {
+      await useCase.execute({
+        ...express,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+      });
+
+      expect(paymentsService.createCheckout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [
+            expect.objectContaining({ id: 'gc-1' }),
+            {
+              id: 'express-surcharge',
+              title: 'Recargo express',
+              quantity: 1,
+              unitPrice: 1500,
+            },
+          ],
+        }),
+      );
+      expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'disabled',
+      'out_of_coverage',
+      'out_of_hours',
+      'no_motorcycle_driver',
+    ])(
+      'si no está disponible (%s) responde 409 con el motivo y no reserva stock',
+      async (reason) => {
+        expressAvailability.evaluar.mockResolvedValue({
+          available: false,
+          reason,
+          message: 'no',
+          settings: { surchargeAmount: 1500 },
+        });
+
+        const error = await useCase.execute(express).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(ConflictException);
+        expect((error as ConflictException).getResponse()).toMatchObject({
+          code: 'EXPRESS_NOT_AVAILABLE',
+          reason,
+        });
+        expect(stock.reservarStock).not.toHaveBeenCalled();
+        expect(queryRunner.manager.save).not.toHaveBeenCalled();
+        expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      { isReservation: true, scheduledDate: '2026-12-01' },
+      { timeSlotId: '3f1c3c1e-0f0f-4f0f-8f0f-0f0f0f0f0f0f' },
+      { scheduledDate: '2026-12-01' },
+    ])('no se combina con lo agendado (%o): 400', async (agenda) => {
+      await expect(useCase.execute({ ...express, ...agenda })).rejects.toThrow(
+        /no se agenda/,
+      );
+      expect(expressAvailability.evaluar).not.toHaveBeenCalled();
+      expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
     });
   });
 

@@ -7,7 +7,7 @@ import {
   PickType,
 } from '@nestjs/swagger';
 import { CreateOrderDto } from './create-order.dto';
-import { PaymentMethod } from '../entities/order.entity';
+import { OrderDeliveryMode, PaymentMethod } from '../entities/order.entity';
 
 const CAMPOS_OBLIGATORIOS = ['paymentMethod'] as const;
 
@@ -91,6 +91,20 @@ export class QuoteResponseDto {
       'Recargo por medio de pago: +10% sobre subtotal + recargo de zona en `mercadopago` y `transfer`; 0 en `cash`',
   })
   paymentSurcharge!: number;
+
+  @ApiProperty({
+    enum: OrderDeliveryMode,
+    example: OrderDeliveryMode.STANDARD,
+    description: 'Modalidad cotizada (CU-148)',
+  })
+  deliveryMode!: OrderDeliveryMode;
+
+  @ApiProperty({
+    example: 0,
+    description:
+      'Recargo express (0 si la modalidad es `standard`). Se suma al final del total, sin el recargo por medio de pago',
+  })
+  expressSurcharge!: number;
 
   @ApiProperty({
     example: 0,

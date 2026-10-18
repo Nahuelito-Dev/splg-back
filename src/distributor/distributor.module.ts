@@ -6,6 +6,8 @@ import { Distributor } from './entities/distributor.entity';
 import { ModuleConfig } from './entities/module-config.entity';
 import { DistributorLogoService } from './distributor-logo.service';
 import { ModuleConfigService } from './module-config.service';
+import { ExpressConfigController } from './express-config.controller';
+import { ExpressSettingsService } from './express-settings.service';
 import { ModuleConfigController } from './module-config.controller';
 import { ProcessConfigService } from './process-config.service';
 import { DispatchSettingsService } from './dispatch-settings.service';
@@ -24,7 +26,11 @@ import { S3Module } from '../s3/s3.module';
     TypeOrmModule.forFeature([Distributor, ModuleConfig]),
     S3Module, // logo
   ],
-  controllers: [DistributorController, ModuleConfigController],
+  controllers: [
+    DistributorController,
+    ModuleConfigController,
+    ExpressConfigController,
+  ],
   providers: [
     DistributorService,
     DistributorLogoService,
@@ -32,6 +38,7 @@ import { S3Module } from '../s3/s3.module';
     DispatchSettingsService,
     ScheduledTasksSettingsService,
     ProcessConfigService,
+    ExpressSettingsService,
   ],
   exports: [
     DistributorService,
@@ -39,6 +46,7 @@ import { S3Module } from '../s3/s3.module';
     DispatchSettingsService,
     ScheduledTasksSettingsService,
     ProcessConfigService,
+    ExpressSettingsService,
   ],
 })
 export class DistributorModule {}

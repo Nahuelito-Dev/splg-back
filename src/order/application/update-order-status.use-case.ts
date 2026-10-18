@@ -8,7 +8,11 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 
-import { Order, OrderStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  OrderStatus,
+} from '../entities/order.entity';
 import { User } from '../../users/entities/user.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
@@ -526,6 +530,13 @@ export class UpdateOrderStatusUseCase {
           delivery.userId,
           order.distributorId,
         );
+        // Un pedido express (CU-149) sólo lo lleva un chofer con una moto en uso.
+        if (order.deliveryMode === OrderDeliveryMode.EXPRESS) {
+          await this.fleetGate.assertEnMoto(
+            delivery.userId,
+            order.distributorId,
+          );
+        }
         // D5: si la distribuidora exige carga de camión abierta, el chofer sin
         // ella no acepta (repetir una aceptación que ya era suya no se vuelve a
         // controlar).

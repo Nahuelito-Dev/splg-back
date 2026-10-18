@@ -71,7 +71,10 @@ function cumpleCondicion(esperado: unknown, valorReal: unknown): boolean {
 describe('FleetDispatchLockService', () => {
   let service: FleetDispatchLockService;
   let tasks: { find: jest.Mock };
-  let vehicleAssignments: { findVehiculosEnUsoPorDeliveryIds: jest.Mock };
+  let vehicleAssignments: {
+    findVehiculosEnUsoPorDeliveryIds: jest.Mock;
+    choferesEnMoto: jest.Mock;
+  };
   let deliveryService: { findDeliveryIdsByUserIds: jest.Mock };
   let employees: { findByUserIds: jest.Mock };
   let leaves: { empleadosDeLicenciaEn: jest.Mock };
@@ -130,6 +133,7 @@ describe('FleetDispatchLockService', () => {
     tasks = { find: jest.fn().mockResolvedValue([]) };
     vehicleAssignments = {
       findVehiculosEnUsoPorDeliveryIds: jest.fn().mockResolvedValue([]),
+      choferesEnMoto: jest.fn().mockResolvedValue(new Set<string>()),
     };
     deliveryService = {
       findDeliveryIdsByUserIds: jest.fn().mockResolvedValue([]),
@@ -607,6 +611,32 @@ describe('FleetDispatchLockService', () => {
       expect([...inhabilitados]).toEqual(['user-2']);
       expect(leaves.empleadosDeLicenciaEn).toHaveBeenCalledTimes(1);
       expect(employees.findByUserIds).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('despacho express (CU-149): moto en uso', () => {
+    it('choferesEnMoto delega en las asignaciones de vehículo', async () => {
+      vehicleAssignments.choferesEnMoto.mockResolvedValue(new Set(['u1']));
+
+      const motos = await service.choferesEnMoto(['u1', 'u2'], 'd1');
+
+      expect([...motos]).toEqual(['u1']);
+      expect(vehicleAssignments.choferesEnMoto).toHaveBeenCalledWith(
+        ['u1', 'u2'],
+        'd1',
+      );
+    });
+
+    it('assertEnMoto deja pasar al chofer con una moto en uso', async () => {
+      vehicleAssignments.choferesEnMoto.mockResolvedValue(new Set(['u1']));
+
+      await expect(service.assertEnMoto('u1', 'd1')).resolves.toBeUndefined();
+    });
+
+    it('assertEnMoto rechaza (400) al que no tiene una moto en uso', async () => {
+      await expect(service.assertEnMoto('u1', 'd1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

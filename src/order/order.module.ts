@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ExpressOrderController } from './express-order.controller';
 import { OrderController } from './order.controller';
 import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
@@ -33,6 +34,11 @@ import { ReleaseOrderUseCase } from './application/release-order.use-case';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
 import { ConfirmDeliveryUseCase } from './application/confirm-delivery.use-case';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
+import { ExpressAvailabilityService } from './application/express-availability.service';
+import { ExpressDegradeService } from './application/express-degrade.service';
+import { DeliveryOptionsUseCase } from './application/delivery-options.use-case';
+import { ExpressPurchaseUseCase } from './application/express-purchase.use-case';
+import { ReintegroListener } from './application/reintegro.listener';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.typeorm.repository';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
@@ -42,6 +48,7 @@ import { CylinderModule } from '../cylinder/cylinder.module';
 import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
 import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
+import { OrderLookupModule } from './lookup/order-lookup.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { StockModule } from '../stock/stock.module';
@@ -82,12 +89,14 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     TimeSlotModule, // agendamiento: valida cupo de franja al crear pedido
     CylinderModule, // ciclo del envase físico: al entregar, avanza los envases
     CoverageZoneModule, // valida cobertura de la dirección + recargo por zona
+    OrderLookupModule, // lecturas del pedido (ReintegroListener)
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
     StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
     TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
   ],
-  controllers: [OrderController],
+  // ExpressOrderController va primero: `GET /orders/delivery-options` no puede caer en `GET /orders/:id`.
+  controllers: [ExpressOrderController, OrderController],
   providers: [
     // Confirma el pedido cuando payments publica un pago notificado.
     PagoNotificadoListener,
@@ -109,6 +118,12 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     // Historial de estados: una fila por transición, en la misma transacción.
     OrderStatusHistorySubscriber,
     DispatchOrchestratorService,
+    ExpressAvailabilityService,
+    ExpressDegradeService,
+    DeliveryOptionsUseCase,
+    ExpressPurchaseUseCase,
+    // Avisa al cliente y al panel cuando `payments` resuelve una devolución (CU-168).
+    ReintegroListener,
     ConfirmPaymentUseCase,
     ReservationService,
     // Puerto de tiempo real → adapter concreto (Redis GEO + Socket.io gateways).

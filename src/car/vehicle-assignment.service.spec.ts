@@ -706,4 +706,60 @@ describe('VehicleAssignmentService', () => {
       ).resolves.toBeNull();
     });
   });
+
+  describe('choferesEnMoto (CU-149)', () => {
+    /** El query builder encadenable que arma el service; devuelve las filas crudas. */
+    function consulta(
+      filas: Array<{ userId: string; typeCar: string | null }>,
+    ) {
+      const qb: Record<string, jest.Mock> = {};
+      for (const m of [
+        'innerJoin',
+        'select',
+        'addSelect',
+        'where',
+        'andWhere',
+      ]) {
+        qb[m] = jest.fn().mockReturnValue(qb);
+      }
+      qb.getRawMany = jest.fn().mockResolvedValue(filas);
+      (
+        assignments as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      return qb;
+    }
+
+    it('sin choferes no consulta', async () => {
+      const qb = consulta([]);
+      expect((await service.choferesEnMoto([], 'd1')).size).toBe(0);
+      expect(qb.getRawMany).not.toHaveBeenCalled();
+    });
+
+    it('devuelve sólo los que tienen una moto en uso (el auto no cuenta)', async () => {
+      consulta([
+        { userId: 'u-moto', typeCar: 'Moto' },
+        { userId: 'u-auto', typeCar: 'Auto' },
+        { userId: 'u-sin-tipo', typeCar: null },
+      ]);
+
+      const motos = await service.choferesEnMoto(
+        ['u-moto', 'u-auto', 'u-sin-tipo', 'u-sin-vehiculo'],
+        'd1',
+      );
+
+      expect([...motos]).toEqual(['u-moto']);
+    });
+
+    it('acota a la asignación abierta y a la distribuidora', async () => {
+      const qb = consulta([]);
+
+      await service.choferesEnMoto(['u1'], 'd1');
+
+      expect(qb.where).toHaveBeenCalledWith('va.releasedAt IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'va.distributorId = :distributorId',
+        { distributorId: 'd1' },
+      );
+    });
+  });
 });

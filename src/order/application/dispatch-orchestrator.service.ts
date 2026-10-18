@@ -1,6 +1,12 @@
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { Injectable, Logger } from '@nestjs/common';
-import { Order, OrderStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -11,6 +17,8 @@ import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.servic
 import { RedisService } from '../../redis/redis.service';
 import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 import { DispatchSettingsService } from '../../distributor/dispatch-settings.service';
+import { ExpressSettingsService } from '../../distributor/express-settings.service';
+import { ExpressDegradeService } from './express-degrade.service';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
 export type MotivoSinChoferes =
@@ -92,6 +100,9 @@ export class DispatchOrchestratorService {
     private readonly truckLoadGate: TruckLoadGatePort,
     // CU-171: pasos de radio y ventana de la oferta, por distribuidora.
     private readonly settings: DispatchSettingsService,
+    // CU-149: parámetros del despacho express y pase al reparto común.
+    private readonly expressSettings: ExpressSettingsService,
+    private readonly expressDegrade: ExpressDegradeService,
   ) {}
 
   /**
@@ -115,9 +126,19 @@ export class DispatchOrchestratorService {
   private async offerLocked(order: Order): Promise<string | null> {
     // Estado fresco DENTRO del lock: entre que el caller leyó el pedido y acá
     // pudo aceptarse, asignarse o cancelarse.
-    const fresco = await this.orders.findByIdFull(order.orderId);
+    let fresco = await this.orders.findByIdFull(order.orderId);
     if (!fresco || !this.isReofferable(fresco)) return null;
     if (await this.offers.hasActiveOffer(order.orderId)) return null;
+
+    // Pedido express (CU-149): política propia. Ofrece a una moto o lo pasa al
+    // reparto común; en ese caso sigue acá abajo con la política normal.
+    if (fresco.deliveryMode === OrderDeliveryMode.EXPRESS) {
+      const express = await this.offerExpress(fresco);
+      if (express.ofrecidoA) return express.ofrecidoA;
+      if (!express.degradado) return null;
+      fresco = await this.orders.findByIdFull(order.orderId);
+      if (!fresco || !this.isReofferable(fresco)) return null;
+    }
 
     const destino = coordenadasDePunto(fresco.deliveryPoint);
     // Sin punto de entrega no hay contra qué medir la cercanía: se avisa al
@@ -206,6 +227,103 @@ export class DispatchOrchestratorService {
       `Pedido ${order.orderId} ofrecido a chofer ${candidate} (vence ${expiresAt.toISOString()})`,
     );
     return candidate;
+  }
+
+  /**
+   * Despacho express (CU-149): se ofrece de a uno a los choferes en moto
+   * habilitados dentro del radio express, del más cercano al más lejano, con una
+   * ventana más corta. A diferencia del despacho normal NO amplía el radio ni
+   * re-ofrece a quien ya lo vio: cuando se agota la lista, el pedido pasa al
+   * reparto común. Un express por pagar online no se despacha hasta que el pago
+   * se apruebe (igual que el normal).
+   */
+  private async offerExpress(
+    fresco: Order,
+  ): Promise<{ ofrecidoA: string | null; degradado: boolean }> {
+    if (
+      fresco.paymentMethod === PaymentMethod.MERCADOPAGO &&
+      fresco.paymentStatus !== PaymentStatus.PAID
+    ) {
+      return { ofrecidoA: null, degradado: false };
+    }
+
+    const { maxRadiusKm, offerTtlSeconds } = await this.expressSettings.obtener(
+      fresco.distributorId,
+    );
+    const destino = coordenadasDePunto(fresco.deliveryPoint);
+    const cercanos = destino
+      ? await this.choferesEnMotoCerca(
+          destino.lat,
+          destino.lng,
+          fresco.distributorId,
+          maxRadiusKm,
+        )
+      : [];
+
+    const { blocked, reofferable } = await this.offers.findDriverOfferState(
+      fresco.orderId,
+      new Date(),
+      DispatchOrchestratorService.REOFFER_COOLDOWN_MS,
+      DispatchOrchestratorService.MAX_REOFERTAS_POR_CHOFER,
+    );
+    const yaContactados = new Set([...blocked, ...reofferable]);
+    const candidate = cercanos.find((id) => !yaContactados.has(id));
+
+    if (!candidate) {
+      this.logger.log(
+        `Pedido express ${fresco.orderId} sin motos disponibles: pasa al reparto común`,
+      );
+      const pase = await this.expressDegrade.pasarAlRepartoComun(
+        fresco.orderId,
+      );
+      return { ofrecidoA: null, degradado: pase !== null };
+    }
+
+    const expiresAt = new Date(Date.now() + offerTtlSeconds * 1000);
+    await this.offers.create(
+      fresco.orderId,
+      candidate,
+      expiresAt,
+      fresco.distributorId,
+    );
+    await this.redis.del(this.claveSinChoferes(fresco.orderId));
+
+    this.dispatch.notifyDriverNewOrder(candidate, {
+      event: 'NEW_ORDER',
+      orderId: fresco.orderId,
+      deliveryMode: OrderDeliveryMode.EXPRESS,
+      totalAmount: fresco.totalAmount,
+      paymentMethod: fresco.paymentMethod,
+      expiresAt: expiresAt.toISOString(),
+      items: fresco.items,
+    });
+    void this.notifications.sendOfferPushToDriver(candidate, fresco.orderId);
+
+    this.logger.log(
+      `Pedido express ${fresco.orderId} ofrecido a la moto ${candidate} (vence ${expiresAt.toISOString()})`,
+    );
+    return { ofrecidoA: candidate, degradado: false };
+  }
+
+  /**
+   * Choferes en moto, habilitados (licencia, vehículo, carga de camión) y dentro
+   * de `radiusKm` de la coordenada, del más cercano al más lejano. Lo usa el
+   * despacho express y la evaluación de disponibilidad (CU-148).
+   */
+  async choferesEnMotoCerca(
+    lat: number,
+    lng: number,
+    distributorId: string | null | undefined,
+    radiusKm: number,
+  ): Promise<string[]> {
+    const drivers = await this.dispatch.findNearbyDrivers(lat, lng, radiusKm);
+    const elegibles = await this.filterEligible(drivers, distributorId, {
+      evaluados: new Set(),
+      inhabilitados: new Set(),
+    });
+    if (elegibles.length === 0) return [];
+    const motos = await this.fleet.choferesEnMoto(elegibles, distributorId);
+    return elegibles.filter((id) => motos.has(id));
   }
 
   private claveSinChoferes(orderId: string): string {
