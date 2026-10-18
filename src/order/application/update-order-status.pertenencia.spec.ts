@@ -151,6 +151,9 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
       } as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
+      {
+        emitAsync: jest.fn().mockResolvedValue([]),
+      } as unknown as import('@nestjs/event-emitter').EventEmitter2,
     );
     return { order, queryRunner, queryBuilder };
   };

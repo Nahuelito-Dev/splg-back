@@ -3,15 +3,15 @@
 Hay dos registros, con propósitos distintos. Los dos son de sólo escritura (un
 trigger de la base rechaza `UPDATE` y `DELETE`).
 
-| | Bitácora de operaciones (`audit_log`) | Auditoría de datos (`audit`, `audit_detail`) |
-|---|---|---|
-| Caso de uso | CU-152 / CU-153 | Modelo de la cátedra |
-| Qué registra | Cada request HTTP de escritura, exitoso o rechazado | Cada registro de una entidad de negocio que se dio de alta, se modificó, se dio de baja o se reactivó |
-| Granularidad | Una fila por request, con el cuerpo en `changes` | Una `audit` por registro afectado y un `audit_detail` por campo que cambió, con valor anterior y nuevo |
-| Quién la escribe | `AuditInterceptor` (global) | `DataAuditSubscriber` (global, TypeORM), en la misma transacción del cambio |
-| Consulta | `GET /audit` | `GET /audit/entries`, `GET /audit/entries/:id`, `GET /audit/action-types` |
-| Ve los rechazos | Sí (`result = failure`) | No: sólo hay auditoría si el cambio se confirmó |
-| Fuera de un request | No (depende del request) | Sí, con usuario null (crons, seeds, webhooks sin usuario) |
+|                     | Bitácora de operaciones (`audit_log`)               | Auditoría de datos (`audit`, `audit_detail`)                                                           |
+| ------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Caso de uso         | CU-152 / CU-153                                     | Modelo de la cátedra                                                                                   |
+| Qué registra        | Cada request HTTP de escritura, exitoso o rechazado | Cada registro de una entidad de negocio que se dio de alta, se modificó, se dio de baja o se reactivó  |
+| Granularidad        | Una fila por request, con el cuerpo en `changes`    | Una `audit` por registro afectado y un `audit_detail` por campo que cambió, con valor anterior y nuevo |
+| Quién la escribe    | `AuditInterceptor` (global)                         | `DataAuditSubscriber` (global, TypeORM), en la misma transacción del cambio                            |
+| Consulta            | `GET /audit`                                        | `GET /audit/entries`, `GET /audit/entries/:id`, `GET /audit/action-types`                              |
+| Ve los rechazos     | Sí (`result = failure`)                             | No: sólo hay auditoría si el cambio se confirmó                                                        |
+| Fuera de un request | No (depende del request)                            | Sí, con usuario null (crons, seeds, webhooks sin usuario)                                              |
 
 ## Auditoría de datos
 

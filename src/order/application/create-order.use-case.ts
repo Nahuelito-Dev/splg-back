@@ -28,6 +28,7 @@ import { CustomersService } from '../../customer/customer.service';
 import { UserAddressService } from '../../user-address/user-address.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { NotificationPort } from '../domain/ports/notification.port';
+import { CustomerAccountPort } from '../domain/ports/customer-account.port';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
 import {
@@ -49,6 +50,13 @@ import { errorCode, errorMessage } from '../../common/errors/error-message';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { DomainError } from '../../common/errors/domain.error';
 import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
+
+/** Tipo de pago del pedido según el medio elegido. */
+export function paymentTypeDe(method: PaymentMethod): PaymentType {
+  if (method === PaymentMethod.CASH) return PaymentType.CASH;
+  if (method === PaymentMethod.ACCOUNT) return PaymentType.ACCOUNT;
+  return PaymentType.ONLINE;
+}
 
 /** Resultado de crear un pedido: la entidad y, si es pago online, la URL de checkout. */
 export interface CreateOrderResult {
@@ -99,6 +107,8 @@ export class CreateOrderUseCase {
     private readonly coverageZonePricing: CoverageZonePricingService,
     private readonly cart: CartService,
     private readonly expressAvailability: ExpressAvailabilityService,
+    // Venta a cuenta corriente: el crédito se verifica en esta misma transacción.
+    private readonly customerAccount: CustomerAccountPort,
   ) {}
 
   /**
@@ -125,6 +135,14 @@ export class CreateOrderUseCase {
     if (createOrderDto.fromCart && !distributorId) {
       throw new BadRequestException(
         'Falta la distribuidora: enviá el header X-Distributor para comprar desde el carrito',
+      );
+    }
+    if (
+      createOrderDto.paymentMethod === PaymentMethod.ACCOUNT &&
+      createOrderDto.isReservation
+    ) {
+      throw new BadRequestException(
+        'Una reserva no se puede pagar con cuenta corriente',
       );
     }
 
@@ -222,10 +240,23 @@ export class CreateOrderUseCase {
         expressSurcharge,
       );
 
-      const paymentType =
-        createOrderDto.paymentMethod === PaymentMethod.CASH
-          ? PaymentType.CASH
-          : PaymentType.ONLINE;
+      // Venta a cuenta: bloquea la cuenta del cliente y valida el crédito con el
+      // total ya calculado. Va después de reservar el stock (orden de locks).
+      if (createOrderDto.paymentMethod === PaymentMethod.ACCOUNT) {
+        if (!distributorId) {
+          throw new BadRequestException(
+            'La venta a cuenta corriente necesita la distribuidora',
+          );
+        }
+        await this.customerAccount.assertCredito(
+          queryRunner.manager,
+          distributorId,
+          createOrderDto.customerId,
+          totalAmount,
+        );
+      }
+
+      const paymentType = paymentTypeDe(createOrderDto.paymentMethod);
 
       // Pre-reserva: nace RESERVED (no se despacha) con su seña; el resto nace
       // PENDING como siempre.

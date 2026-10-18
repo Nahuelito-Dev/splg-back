@@ -6,12 +6,12 @@ haga falta y deja siempre el mismo resultado.
 
 Piezas (todo en `scripts/`):
 
-| Comando | Qué hace |
-|---|---|
+| Comando                | Qué hace                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------- |
 | `npm run cuentas:demo` | Cuentas: borra de Firebase las de prueba y pone nombre real a las de login. **Dry-run por defecto.** |
-| `npm run seed` | Roles, distribuidoras y cuentas con login (idempotente; no cambia nada si ya existen). |
-| `npm run seed:demo` | **Purga** todo lo de la distribuidora y siembra la demo de Posadas. |
-| `npm run fotos:demo` | Fotos de ejemplo en S3 para personas y legajos (el resto las sube `seed:demo`). |
+| `npm run seed`         | Roles, distribuidoras y cuentas con login (idempotente; no cambia nada si ya existen).               |
+| `npm run seed:demo`    | **Purga** todo lo de la distribuidora y siembra la demo de Posadas.                                  |
+| `npm run fotos:demo`   | Fotos de ejemplo en S3 para personas y legajos (el resto las sube `seed:demo`).                      |
 
 ## Orden exacto de comandos sobre `splg_db`
 
@@ -156,36 +156,36 @@ como adjunto privado (`attachments/<distribuidora>/purchase_receipt/...`).
 
 Distribuidora Demo, Posadas (Misiones). Cantidades de una corrida real del seed:
 
-| Módulo | Cantidad | Ejemplos |
-|---|---|---|
-| Catálogo | 5 garrafas | 5, 10, 15, 25 y 45 kg ($8.500 a $61.500), con promociones |
-| Zonas / franjas | 3 / 4 | Centro, Villa Cabello, Itaembé Miní · Mañana, Mediodía, Tarde, Noche |
-| Clientes | 30 (+ direcciones geocodificadas 41) | Lucía Benítez (con login), Joaquín Martínez, Delfina Paredes; correos tipo `joaquin.martinez4@gmail.com`; unos pocos bloqueados, ninguno con pedidos abiertos |
-| Choferes + vehículos | 5 (+1 vehículo dado de baja) | Ramón Villalba (con login, Toyota Hilux AF218KT), Cristian Maidana (Ford Ranger AE774PM), Sergio Insaurralde (Renault Kangoo AD391RS), Diego Ferreyra (Iveco Daily AB650LN), Walter Zaracho (Fiat Fiorino AG102VC) |
-| Personal | 15 legajos, 6 puestos | 6 choferes (uno dado de baja por renuncia), 3 ayudantes, 2 administrativas, 2 de depósito, 1 vendedora, 1 gerente |
-| Pedidos | 340 en 60 días | entregados ~296, cancelados ~35, y de hoy: 2 aceptados, 1 en camino, 3 pendientes, 3 reservas |
-| Medios de pago | efectivo, Mercado Pago, transferencia | efectivo cobrado por el chofer, cobros impagos resueltos por el admin (cobrado después o dado de baja), MP aprobado/rechazado, transferencias confirmadas y una por confirmar |
-| Reclamos / incidencias | ~24 / ~15 | "Garrafa con pérdida de gas", "Faltó una garrafa del pedido" |
-| Calificaciones | ~275 | de clientes a choferes y de choferes a clientes |
-| Envases con trazabilidad | 210 envases, ~500 movimientos | serie SPLG-00001... |
-| Depósitos | 2 | Depósito central, Galpón Norte, con mínimos de stock |
-| Stock | libro completo | conteo inicial, 296 entregas, 2 transferencias, 4 ajustes (fuga, hallazgo, rotura, corrección) |
-| Proveedores | 4 | Gas del Litoral S.A., Fraccionadora Misionera S.R.L., Válvulas y Reguladores Posadas S.R.L., Transportes Alto Paraná S.A. |
-| Compras | 7 órdenes, 4 recepciones | recibida, **cerrada con faltante**, parcial, enviada, borrador y cancelada |
-| Cargas del camión | 4 | 2 rendidas, 1 rendida **con diferencia** (2 garrafas rotas), 1 **abierta del día** (Ramón Villalba) |
-| Flota | 4 planes, 23 tareas, 80 días de uso | service, VTV (una vencida), frenos, carnet profesional |
-| Auditoría | altas y un cambio de precio con valor anterior, más dos rechazos | visibles en el panel (CU-152/153) |
+| Módulo                   | Cantidad                                                         | Ejemplos                                                                                                                                                                                                           |
+| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Catálogo                 | 5 garrafas                                                       | 5, 10, 15, 25 y 45 kg ($8.500 a $61.500), con promociones                                                                                                                                                          |
+| Zonas / franjas          | 3 / 4                                                            | Centro, Villa Cabello, Itaembé Miní · Mañana, Mediodía, Tarde, Noche                                                                                                                                               |
+| Clientes                 | 30 (+ direcciones geocodificadas 41)                             | Lucía Benítez (con login), Joaquín Martínez, Delfina Paredes; correos tipo `joaquin.martinez4@gmail.com`; unos pocos bloqueados, ninguno con pedidos abiertos                                                      |
+| Choferes + vehículos     | 5 (+1 vehículo dado de baja)                                     | Ramón Villalba (con login, Toyota Hilux AF218KT), Cristian Maidana (Ford Ranger AE774PM), Sergio Insaurralde (Renault Kangoo AD391RS), Diego Ferreyra (Iveco Daily AB650LN), Walter Zaracho (Fiat Fiorino AG102VC) |
+| Personal                 | 15 legajos, 6 puestos                                            | 6 choferes (uno dado de baja por renuncia), 3 ayudantes, 2 administrativas, 2 de depósito, 1 vendedora, 1 gerente                                                                                                  |
+| Pedidos                  | 340 en 60 días                                                   | entregados ~296, cancelados ~35, y de hoy: 2 aceptados, 1 en camino, 3 pendientes, 3 reservas                                                                                                                      |
+| Medios de pago           | efectivo, Mercado Pago, transferencia                            | efectivo cobrado por el chofer, cobros impagos resueltos por el admin (cobrado después o dado de baja), MP aprobado/rechazado, transferencias confirmadas y una por confirmar                                      |
+| Reclamos / incidencias   | ~24 / ~15                                                        | "Garrafa con pérdida de gas", "Faltó una garrafa del pedido"                                                                                                                                                       |
+| Calificaciones           | ~275                                                             | de clientes a choferes y de choferes a clientes                                                                                                                                                                    |
+| Envases con trazabilidad | 210 envases, ~500 movimientos                                    | serie SPLG-00001...                                                                                                                                                                                                |
+| Depósitos                | 2                                                                | Depósito central, Galpón Norte, con mínimos de stock                                                                                                                                                               |
+| Stock                    | libro completo                                                   | conteo inicial, 296 entregas, 2 transferencias, 4 ajustes (fuga, hallazgo, rotura, corrección)                                                                                                                     |
+| Proveedores              | 4                                                                | Gas del Litoral S.A., Fraccionadora Misionera S.R.L., Válvulas y Reguladores Posadas S.R.L., Transportes Alto Paraná S.A.                                                                                          |
+| Compras                  | 7 órdenes, 4 recepciones                                         | recibida, **cerrada con faltante**, parcial, enviada, borrador y cancelada                                                                                                                                         |
+| Cargas del camión        | 4                                                                | 2 rendidas, 1 rendida **con diferencia** (2 garrafas rotas), 1 **abierta del día** (Ramón Villalba)                                                                                                                |
+| Flota                    | 4 planes, 23 tareas, 80 días de uso                              | service, VTV (una vencida), frenos, carnet profesional                                                                                                                                                             |
+| Auditoría                | altas y un cambio de precio con valor anterior, más dos rechazos | visibles en el panel (CU-152/153)                                                                                                                                                                                  |
 
 **Cuentas con login** (se conservan; el nombre es el de la base y el de Firebase):
 
-| Correo | Nombre |
-|---|---|
-| superadmin@splg.com | Nahuel Wagner |
-| admin@splg.com | Marcela Duarte |
-| cliente@splg.com | Lucía Benítez |
-| chofer@splg.com | Ramón Villalba |
-| admin@gasandino.com | Gustavo Paredes (sin perfil: la 2da distribuidora se quita) |
-| chofer@gasandino.com | Héctor Acosta (sin perfil) |
+| Correo               | Nombre                                                      |
+| -------------------- | ----------------------------------------------------------- |
+| superadmin@splg.com  | Nahuel Wagner                                               |
+| admin@splg.com       | Marcela Duarte                                              |
+| cliente@splg.com     | Lucía Benítez                                               |
+| chofer@splg.com      | Ramón Villalba                                              |
+| admin@gasandino.com  | Gustavo Paredes (sin perfil: la 2da distribuidora se quita) |
+| chofer@gasandino.com | Héctor Acosta (sin perfil)                                  |
 
 Contraseña de todas: la de siempre (`Test1234`, la fija `npm run seed`).
 
@@ -241,11 +241,11 @@ visible…" y "segunda corrida"; cambiar el filtro de prefijo de S3 por `true` h
 
 ## Variables del seed
 
-| Variable | Por defecto | Para qué |
-|---|---|---|
-| `SEED_DISTRIBUTOR` | `demo` | slug de la distribuidora |
-| `SEED_CUSTOMERS` | 30 | clientes (contando el que tiene login) |
-| `SEED_DRIVERS` | 5 | choferes con vehículo y legajo (máximo 5) |
-| `SEED_ORDERS` | 340 | pedidos repartidos en 60 días |
-| `SEED_SINGLE_TENANT` | `true` | quita las otras distribuidoras |
-| `SEED_S3` / `SEED_PURGE_S3` | — | subir fotos / borrar las de la demo anterior |
+| Variable                    | Por defecto | Para qué                                     |
+| --------------------------- | ----------- | -------------------------------------------- |
+| `SEED_DISTRIBUTOR`          | `demo`      | slug de la distribuidora                     |
+| `SEED_CUSTOMERS`            | 30          | clientes (contando el que tiene login)       |
+| `SEED_DRIVERS`              | 5           | choferes con vehículo y legajo (máximo 5)    |
+| `SEED_ORDERS`               | 340         | pedidos repartidos en 60 días                |
+| `SEED_SINGLE_TENANT`        | `true`      | quita las otras distribuidoras               |
+| `SEED_S3` / `SEED_PURGE_S3` | —           | subir fotos / borrar las de la demo anterior |

@@ -74,7 +74,7 @@ import {
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { errorMessage } from '../common/errors/error-message';
-import { Order, OrderStatus } from './entities/order.entity';
+import { Order, OrderStatus, PaymentMethod } from './entities/order.entity';
 import { Auth } from '../common/decorators/auth.decorator';
 import type { Response } from 'express';
 import { DownloadQueryDto } from '../s3/dto/download-link.dto';
@@ -144,6 +144,17 @@ export class OrderController {
       );
     }
     this.exigirClienteParaCarrito(createOrderDto.fromCart, user);
+    // La venta a cuenta corriente la carga el administrador desde el panel: ni el
+    // cliente ni el chofer eligen cuánto crédito usan.
+    if (
+      createOrderDto.paymentMethod === PaymentMethod.ACCOUNT &&
+      user.role !== RoleType.ADMIN &&
+      user.role !== RoleType.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'La venta a cuenta corriente sólo la registra un administrador',
+      );
+    }
     // Retry ante deadlock / serialization_failure de PostgreSQL.
     // Ocurre cuando dos transacciones concurrentes intentan adquirir
     // pessimistic locks sobre las mismas garrafas en orden distinto.

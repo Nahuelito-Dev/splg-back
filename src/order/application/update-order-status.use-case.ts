@@ -6,6 +6,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 
 import {
@@ -25,6 +26,10 @@ import { CylinderLifecyclePort } from '../domain/ports/cylinder-lifecycle.port';
 import { StockDeliveryPort } from '../domain/ports/stock-delivery.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
+import {
+  EVENTO_PEDIDO_ENTREGADO,
+  PedidoEntregadoEvent,
+} from '../domain/events/pedido-entregado.event';
 import { ahoraDeLaBase } from '../../common/utils/ahora-de-la-base';
 import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -108,6 +113,8 @@ export class UpdateOrderStatusUseCase {
     private readonly truckLoadGate: TruckLoadGatePort,
     // Ofertas de despacho: tomar un pedido del pool retira las de los demás choferes.
     private readonly offers: DispatchOfferRepositoryPort,
+    // Avisa "pedido entregado" a quien le interese (cuenta corriente, comisiones).
+    private readonly eventos: EventEmitter2,
   ) {}
 
   async execute(
@@ -247,6 +254,8 @@ export class UpdateOrderStatusUseCase {
       });
     }
 
+    if (status === OrderStatus.DELIVERED) await this.publicarEntrega(order);
+
     await this.emitStatusEvent(order, status, deliveryUser);
     // Panel admin en vivo: los valores del enum (accepted/on_the_way/delivered)
     // coinciden con los eventos que escucha la campana del panel. Sólo a los
@@ -277,6 +286,34 @@ export class UpdateOrderStatusUseCase {
     await this.notifyCustomer(order);
 
     return order;
+  }
+
+  /**
+   * Avisa que el pedido se entregó (ya confirmado en la base). Quien escucha
+   * asienta el cargo a cuenta corriente y la comisión del chofer; si un oyente
+   * falla o el proceso se cae acá, el barrido nocturno recupera el asiento
+   * (ambos son idempotentes por pedido). Nunca rompe la entrega.
+   */
+  private async publicarEntrega(order: Order): Promise<void> {
+    if (!order.deliveredAt) return;
+    try {
+      await this.eventos.emitAsync(
+        EVENTO_PEDIDO_ENTREGADO,
+        new PedidoEntregadoEvent(
+          order.orderId,
+          order.distributorId,
+          order.deliveryId,
+          order.customerId,
+          order.paymentMethod,
+          order.totalAmount,
+          order.deliveredAt,
+        ),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Falló un oyente de la entrega del pedido ${order.orderId}: ${errorMessage(error)}`,
+      );
+    }
   }
 
   /** El motivo de una entrega manual del admin (400 si falta o es muy corto); `null` si no aplica. */

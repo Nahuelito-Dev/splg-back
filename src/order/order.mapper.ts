@@ -220,6 +220,8 @@ export class OrderMapper {
         return 'cash';
       case PaymentType.ONLINE:
         return 'online';
+      case PaymentType.ACCOUNT:
+        return 'account';
       default:
         return 'cash'; // Fallback
     }

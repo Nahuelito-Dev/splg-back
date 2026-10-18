@@ -9,7 +9,7 @@ import {
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { DataSource } from 'typeorm';
 
-import { Order, PaymentMethod, PaymentType } from '../entities/order.entity';
+import { Order, PaymentMethod } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import {
   DispatchOffer,
@@ -17,7 +17,7 @@ import {
 } from '../entities/dispatch-offer.entity';
 import { OrderAddressChange } from '../entities/order-address-change.entity';
 import { UpdateOrderDto } from '../dto/update-order.dto';
-import { CreateOrderUseCase } from './create-order.use-case';
+import { CreateOrderUseCase, paymentTypeDe } from './create-order.use-case';
 import { UserAddressService } from '../../user-address/user-address.service';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
@@ -280,10 +280,7 @@ export class UpdateOrderUseCase {
         order.totalAmount = totalAmount.toNumber();
       }
       order.paymentMethod = paymentMethod;
-      order.paymentType =
-        paymentMethod === PaymentMethod.CASH
-          ? PaymentType.CASH
-          : PaymentType.ONLINE;
+      order.paymentType = paymentTypeDe(paymentMethod);
       if (cambiaNotas) order.notes = dto.notes ?? null;
 
       // Una oferta de despacho viva quedó con datos viejos: se vence en la
@@ -445,6 +442,11 @@ export class UpdateOrderUseCase {
     }
     if (dto.paymentMethod === PaymentMethod.MERCADOPAGO) {
       throw new BadRequestException(MENSAJE_NO_PASAR_A_MERCADOPAGO);
+    }
+    if (dto.paymentMethod === PaymentMethod.ACCOUNT) {
+      throw new BadRequestException(
+        'La venta a cuenta corriente se elige al crear el pedido desde el panel',
+      );
     }
   }
 

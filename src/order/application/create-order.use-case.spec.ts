@@ -45,6 +45,7 @@ describe('CreateOrderUseCase', () => {
   let coverageZoneService: { checkCoverage: jest.Mock };
   let cart: { itemsParaPedido: jest.Mock; vaciarEnTransaccion: jest.Mock };
   let expressAvailability: { evaluar: jest.Mock };
+  let customerAccount: { assertCredito: jest.Mock };
 
   const baseDto: CreateOrderDto = {
     customerId: 'cust-1',
@@ -169,6 +170,8 @@ describe('CreateOrderUseCase', () => {
       }),
     };
 
+    customerAccount = { assertCredito: jest.fn().mockResolvedValue(undefined) };
+
     useCase = new CreateOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
       customers as unknown as import('../../customer/customer.service').CustomersService,
@@ -192,6 +195,7 @@ describe('CreateOrderUseCase', () => {
       coverageZonePricing,
       cart as unknown as import('../../cart/cart.service').CartService,
       expressAvailability as unknown as import('./express-availability.service').ExpressAvailabilityService,
+      customerAccount as unknown as import('../domain/ports/customer-account.port').CustomerAccountPort,
     );
   });
 
@@ -277,6 +281,53 @@ describe('CreateOrderUseCase', () => {
 
       expect(cart.itemsParaPedido).not.toHaveBeenCalled();
       expect(cart.vaciarEnTransaccion).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ACCOUNT (cuenta corriente)', () => {
+    it('verifica el crédito con el total y dentro de la transacción del pedido', async () => {
+      const result = await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.ACCOUNT,
+      });
+
+      expect(customerAccount.assertCredito).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'dist-default',
+        'cust-1',
+        expect.any(Decimal),
+      );
+      expect(result.order.orderId).toBe('ord-1');
+      expect(paymentsService.createCheckout).not.toHaveBeenCalled();
+      expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
+    });
+
+    it('si el crédito no alcanza, no crea el pedido', async () => {
+      customerAccount.assertCredito.mockRejectedValue(
+        new ConflictException('supera el crédito disponible'),
+      );
+      await expect(
+        useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.ACCOUNT }),
+      ).rejects.toThrow(ConflictException);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('una reserva no se paga con cuenta corriente', async () => {
+      await expect(
+        useCase.execute({
+          ...baseDto,
+          paymentMethod: PaymentMethod.ACCOUNT,
+          isReservation: true,
+          scheduledDate: '2030-01-01',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(customerAccount.assertCredito).not.toHaveBeenCalled();
+    });
+
+    it('con otro medio de pago no toca la cuenta', async () => {
+      await useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH });
+      expect(customerAccount.assertCredito).not.toHaveBeenCalled();
     });
   });
 

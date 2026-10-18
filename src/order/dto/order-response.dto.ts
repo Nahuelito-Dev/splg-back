@@ -259,8 +259,9 @@ export class OrderResponseDto {
 
   @ApiProperty({
     name: 'payment_method',
-    enum: ['cash', 'online'],
-    description: 'Tipo de pago: efectivo u online (MercadoPago)',
+    enum: ['cash', 'online', 'account'],
+    description:
+      'Tipo de pago: efectivo, online (MercadoPago, transferencia) o cuenta corriente (`account`: no se cobra en la entrega)',
   })
   @Expose({ name: 'payment_method' })
   paymentMethod!: string; // mapped value (online/cash)

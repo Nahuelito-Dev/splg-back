@@ -47,6 +47,11 @@ import { LeaveModule } from './leave/leave.module';
 import { PersonnelModule } from './personnel/personnel.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { TruckLoadModule } from './truck-load/truck-load.module';
+import { CashModule } from './cash/cash.module';
+import { CommissionModule } from './commission/commission.module';
+import { CustomerAccountModule } from './customer-account/customer-account.module';
+import { DriverSettlementModule } from './driver-settlement/driver-settlement.module';
+import { FinanceModule } from './finance/finance.module';
 import { StockModule } from './stock/stock.module';
 
 // Importa el interceptor de timeout
@@ -225,6 +230,11 @@ import { FirebaseModule } from './firebase/firebase.module';
     StockModule,
     PurchaseModule,
     TruckLoadModule,
+    CashModule,
+    CommissionModule,
+    DriverSettlementModule,
+    CustomerAccountModule,
+    FinanceModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

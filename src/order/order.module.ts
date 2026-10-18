@@ -50,6 +50,9 @@ import { CylinderLifecyclePort } from './domain/ports/cylinder-lifecycle.port';
 import { CylinderLifecycleAdapter } from './infrastructure/cylinder-lifecycle.adapter';
 import { OrderLookupModule } from './lookup/order-lookup.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { CustomerAccountModule } from '../customer-account/customer-account.module';
+import { CustomerAccountPort } from './domain/ports/customer-account.port';
+import { CustomerAccountAdapter } from './infrastructure/customer-account.adapter';
 import { FleetModule } from '../fleet/fleet.module';
 import { StockModule } from '../stock/stock.module';
 import { TruckLoadModule } from '../truck-load/truck-load.module';
@@ -91,6 +94,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CoverageZoneModule, // valida cobertura de la dirección + recargo por zona
     OrderLookupModule, // lecturas del pedido (ReintegroListener)
     PaymentsModule, // pasarela de pago (MercadoPago) + ledger, módulo propio
+    CustomerAccountModule, // venta a cuenta corriente: control de crédito (CustomerAccountPort)
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
     StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
     TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
@@ -138,6 +142,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     },
     // Puerto del ciclo del envase → adapter que delega en CylinderService.
     { provide: CylinderLifecyclePort, useClass: CylinderLifecycleAdapter },
+    { provide: CustomerAccountPort, useClass: CustomerAccountAdapter },
     // Puerto de la calificación del chofer → lectura directa de `rating`.
     { provide: DriverRatingPort, useClass: DriverRatingTypeormAdapter },
     // Puerto de notificación al cliente → adapter que delega en NotificationsService.

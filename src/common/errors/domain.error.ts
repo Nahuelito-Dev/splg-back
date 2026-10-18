@@ -7,9 +7,10 @@
  * mapea al status HTTP correspondiente, así la respuesta al cliente NO cambia
  * (P2-9 de `docs/ARQUITECTURA-REVIEW.md`).
  *
- * Dos categorías, según cómo se deben mapear:
+ * Tres categorías, según cómo se deben mapear:
  *  - `BadRequestDomainError` → 400 (transición/input/estado inválido)
  *  - `NotFoundDomainError`   → 404 (recurso de dominio inexistente)
+ *  - `ConflictDomainError`   → 409 (el estado actual no admite la operación)
  *
  * Los módulos (order, cylinder, ...) declaran sus errores concretos extendiendo
  * una de estas dos (ver `order/domain/errors/` y `cylinder/domain/errors/`).
@@ -26,3 +27,6 @@ export abstract class BadRequestDomainError extends DomainError {}
 
 /** Mapeada a 404 Not Found por el GlobalExceptionFilter. */
 export abstract class NotFoundDomainError extends DomainError {}
+
+/** Mapeada a 409 Conflict por el GlobalExceptionFilter (el estado no admite la operación). */
+export abstract class ConflictDomainError extends DomainError {}

@@ -191,6 +191,12 @@
         "functions": 85,
         "lines": 92
       },
+      "./src/cash/": {
+        "statements": 53,
+        "branches": 52,
+        "functions": 14,
+        "lines": 54
+      },
       "./src/claims/": {
         "statements": 87,
         "branches": 77,
@@ -203,6 +209,12 @@
         "functions": 0,
         "lines": 0
       },
+      "./src/commission/": {
+        "statements": 51,
+        "branches": 48,
+        "functions": 11,
+        "lines": 53
+      },
       "./src/common/": {
         "statements": 77,
         "branches": 60,
@@ -214,6 +226,12 @@
         "branches": 51,
         "functions": 53,
         "lines": 56
+      },
+      "./src/customer-account/": {
+        "statements": 49,
+        "branches": 44,
+        "functions": 20,
+        "lines": 49
       },
       "./src/customer/": {
         "statements": 64,
@@ -245,6 +263,12 @@
         "functions": 66,
         "lines": 56
       },
+      "./src/driver-settlement/": {
+        "statements": 45,
+        "branches": 42,
+        "functions": 8,
+        "lines": 46
+      },
       "./src/email/": {
         "statements": 46,
         "branches": 31,
@@ -256,6 +280,12 @@
         "branches": 37,
         "functions": 42,
         "lines": 43
+      },
+      "./src/finance/": {
+        "statements": 48,
+        "branches": 45,
+        "functions": 0,
+        "lines": 48
       },
       "./src/firebase/": {
         "statements": 34,

@@ -46,11 +46,14 @@ export enum PaymentMethod {
   CASH = 'cash',
   MERCADOPAGO = 'mercadopago',
   TRANSFER = 'transfer',
+  /** Venta a cuenta corriente: sólo la carga el administrador desde el panel. */
+  ACCOUNT = 'account',
 }
 
 export enum PaymentType {
   CASH = 'cash',
   ONLINE = 'online',
+  ACCOUNT = 'account',
 }
 
 export enum PaymentStatus {
