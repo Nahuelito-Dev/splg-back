@@ -29,3 +29,20 @@ export enum LedgerPaymentStatus {
   CANCELLED = 'cancelled',
   REFUNDED = 'refunded',
 }
+
+/** Qué parte de un pago se devuelve (CU-168). */
+export enum RefundKind {
+  /** Todo lo que falta devolver del pago: el pedido se canceló. */
+  FULL = 'full',
+  /** Sólo el recargo express: el pedido pasó al reparto común. */
+  EXPRESS_SURCHARGE = 'express_surcharge',
+}
+
+/** Estado de una solicitud de devolución a la pasarela. */
+export enum RefundStatus {
+  /** Registrada, todavía sin respuesta de la pasarela. */
+  PENDING = 'pending',
+  SUCCEEDED = 'succeeded',
+  /** La pasarela la rechazó o no respondió: el administrador puede reintentarla. */
+  FAILED = 'failed',
+}

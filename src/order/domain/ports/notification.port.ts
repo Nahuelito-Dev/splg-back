@@ -48,4 +48,14 @@ export abstract class NotificationPort {
     orderId: string,
     esSena?: boolean,
   ): Promise<void>;
+
+  /**
+   * Push genérico sobre un pedido (pasó al reparto común, se devolvió un pago).
+   * Best-effort: nunca lanza.
+   */
+  abstract sendOrderNoticePush(
+    customerId: string,
+    orderId: string,
+    aviso: { title: string; body: string; event: string },
+  ): Promise<void>;
 }

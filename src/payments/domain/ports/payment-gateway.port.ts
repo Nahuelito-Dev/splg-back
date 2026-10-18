@@ -34,6 +34,27 @@ export interface GatewayPayment {
   id: string;
   status: string;
   externalReference: string | null;
+  /** Lo que la pasarela efectivamente cobró (null si no lo informa). */
+  amount?: number | null;
+  /** Lo que la pasarela ya devolvió de ese pago (null si no lo informa). */
+  refundedAmount?: number | null;
+}
+
+export interface RefundPaymentInput {
+  /** Id del pago en la pasarela. */
+  gatewayPaymentId: string;
+  /** Importe a devolver (parcial o lo que falte del total). */
+  amount: number;
+  /**
+   * Clave de idempotencia de la solicitud: la misma clave nunca devuelve el
+   * dinero dos veces, aunque se repita la llamada.
+   */
+  idempotencyKey: string;
+}
+
+export interface RefundPaymentResult {
+  /** Id de la devolución en la pasarela. */
+  refundId: string;
 }
 
 /** Datos crudos (headers + query) necesarios para validar la firma del webhook. */
@@ -51,6 +72,15 @@ export abstract class PaymentGatewayPort {
 
   /** Consulta un pago por id (lo llama el webhook para confirmar el estado real). */
   abstract getPayment(paymentId: string): Promise<GatewayPayment>;
+
+  /**
+   * Pide a la pasarela que devuelva `amount` de un pago aprobado. Lanza si la
+   * pasarela la rechaza o no responde: el caller registra el error y deja el
+   * reintento al administrador.
+   */
+  abstract refundPayment(
+    input: RefundPaymentInput,
+  ): Promise<RefundPaymentResult>;
 
   /**
    * Valida la firma `x-signature` de una notificación de webhook. Devuelve

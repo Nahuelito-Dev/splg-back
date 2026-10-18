@@ -1,7 +1,11 @@
 import { Expose, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage-zone.entity';
-import { PaymentMethod, PaymentStatus } from '../entities/order.entity';
+import {
+  OrderDeliveryMode,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 
 /*
  * El contrato de pedidos que consumen las apps y el panel. Los nombres de la
@@ -327,6 +331,30 @@ export class OrderResponseDto {
       'Regla del pedido, no del rol: está pendiente, sin chofer y sin pago online en curso o cobrado. No dice si quien lo consulta puede editarlo: `PATCH /orders/:id` es de administradores (un cliente o un chofer recibe 403 aunque sea `true`).',
   })
   editable!: boolean;
+
+  @ApiProperty({
+    enum: OrderDeliveryMode,
+    example: OrderDeliveryMode.STANDARD,
+    description:
+      'Modalidad de entrega vigente. Un pedido express que ninguna moto aceptó pasa a `standard` (ver `expressDegradedAt`).',
+  })
+  deliveryMode!: OrderDeliveryMode;
+
+  @ApiProperty({
+    example: 0,
+    description:
+      'Recargo express que se cobró al pedir (0 si nunca fue express). Se conserva aunque el pedido pase al reparto común: en ese caso el `total_amount` ya no lo incluye.',
+  })
+  expressSurchargeAmount!: number;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo ninguna moto aceptó y el pedido pasó al reparto común sin el recargo (null si no pasó)',
+  })
+  expressDegradedAt!: Date | null;
 
   @ApiProperty({
     name: 'delivery_address',

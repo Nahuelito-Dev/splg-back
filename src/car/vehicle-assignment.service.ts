@@ -15,6 +15,7 @@ import {
 } from 'typeorm';
 import { VehicleAssignment } from './entities/vehicle-assignment.entity';
 import { Car, FleetStatus } from './entities/car.entity';
+import { esMoto } from './vehicle-type.util';
 import { DeliveryService } from '../delivery/delivery.service';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
@@ -532,5 +533,30 @@ export class VehicleAssignmentService {
       brand: f.car?.carBrand ?? null,
       model: f.car?.carModel ?? null,
     }));
+  }
+
+  /**
+   * De esos choferes (`user_id`), cuáles tienen EN USO una moto (CU-149). Una
+   * sola consulta en lote; el chofer sin vehículo en uso no está. Acotada a la
+   * distribuidora si se pasa.
+   */
+  async choferesEnMoto(
+    driverUserIds: string[],
+    distributorId?: string | null,
+  ): Promise<Set<string>> {
+    if (driverUserIds.length === 0) return new Set();
+    const filas = await this.assignments
+      .createQueryBuilder('va')
+      .innerJoin('va.car', 'car')
+      .innerJoin('va.delivery', 'delivery')
+      .select('delivery.userId', 'userId')
+      .addSelect('car.typeCar', 'typeCar')
+      .where('va.releasedAt IS NULL')
+      .andWhere('delivery.userId IN (:...ids)', { ids: driverUserIds })
+      .andWhere(distributorId ? 'va.distributorId = :distributorId' : '1=1', {
+        distributorId,
+      })
+      .getRawMany<{ userId: string; typeCar: string | null }>();
+    return new Set(filas.filter((f) => esMoto(f.typeCar)).map((f) => f.userId));
   }
 }

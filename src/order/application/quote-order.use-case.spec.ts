@@ -9,6 +9,7 @@ import { CoverageZoneSurchargeType } from '../../coverage-zone/entities/coverage
 import type { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import { InsufficientStockError } from '../../gascylinder/domain/errors/insufficient-stock.error';
 import {
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -38,6 +39,7 @@ describe('QuoteOrderUseCase', () => {
     assertSlotUsableTx: jest.Mock;
     assertSlotAvailable: jest.Mock;
   };
+  let expressAvailability: { evaluar: jest.Mock };
   let casoDeUso: QuoteOrderUseCase;
   let manager: { findOne: jest.Mock; find: jest.Mock };
   let cart: { itemsParaPedido: jest.Mock };
@@ -83,7 +85,16 @@ describe('QuoteOrderUseCase', () => {
       getDefault: jest.fn().mockResolvedValue({ distributorId: DIST }),
     };
     // El caso de uso del alta de verdad: la cotización reusa sus reglas.
+    expressAvailability = {
+      evaluar: jest.fn().mockResolvedValue({
+        available: true,
+        reason: null,
+        message: null,
+        settings: { surchargeAmount: 1500 },
+      }),
+    };
     const alta = Object.assign(Object.create(CreateOrderUseCase.prototype), {
+      expressAvailability,
       pricing: new OrderPricingService(),
       coverageZonePricing: new CoverageZonePricingService(),
       orderItemRepository: { create: (x: unknown) => x },
@@ -538,6 +549,154 @@ describe('QuoteOrderUseCase', () => {
       await expect(cotizar()).rejects.toThrow(
         'El total no puede quedar por debajo de la seña ya pagada',
       );
+    });
+  });
+
+  describe('modalidad express (CU-148)', () => {
+    const unaGarrafa = [{ gasCylinderId: G10, quantity: 1, unitPrice: 0 }];
+
+    it('suma el recargo express al final y lo informa aparte', async () => {
+      const r = await casoDeUso.execute(
+        {
+          items: unaGarrafa,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+          addressId: 'dir-1',
+          deliveryMode: OrderDeliveryMode.EXPRESS,
+        },
+        DIST,
+        CLIENTE,
+      );
+
+      expect(r.deliveryMode).toBe(OrderDeliveryMode.EXPRESS);
+      expect(r.expressSurcharge).toBe(1500);
+      // 10000 + 10% por MercadoPago + 1500 sin el 10%
+      expect(r.paymentSurcharge).toBe(1000);
+      expect(r.total).toBe(12500);
+    });
+
+    it('la cotización común no lleva recargo ni evalúa el express', async () => {
+      const r = await casoDeUso.execute(
+        { items: unaGarrafa, paymentMethod: PaymentMethod.CASH },
+        DIST,
+        CLIENTE,
+      );
+
+      expect(r.deliveryMode).toBe(OrderDeliveryMode.STANDARD);
+      expect(r.expressSurcharge).toBe(0);
+      expect(r.total).toBe(10000);
+      expect(expressAvailability.evaluar).not.toHaveBeenCalled();
+    });
+
+    it('si no está disponible responde 409 con el motivo', async () => {
+      expressAvailability.evaluar.mockResolvedValue({
+        available: false,
+        reason: 'out_of_hours',
+        message: 'Fuera del horario de servicio express',
+        settings: { surchargeAmount: 1500 },
+      });
+
+      const error = await casoDeUso
+        .execute(
+          {
+            items: unaGarrafa,
+            paymentMethod: PaymentMethod.CASH,
+            addressId: 'dir-1',
+            deliveryMode: OrderDeliveryMode.EXPRESS,
+          },
+          DIST,
+          CLIENTE,
+        )
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        reason: 'out_of_hours',
+      });
+    });
+
+    it('exige la dirección para evaluar el express', async () => {
+      await expect(
+        casoDeUso.execute(
+          {
+            items: unaGarrafa,
+            paymentMethod: PaymentMethod.CASH,
+            deliveryMode: OrderDeliveryMode.EXPRESS,
+          },
+          DIST,
+          CLIENTE,
+        ),
+      ).rejects.toThrow(/addressId/);
+    });
+
+    it('no se combina con una reserva', async () => {
+      await expect(
+        casoDeUso.execute(
+          {
+            items: unaGarrafa,
+            paymentMethod: PaymentMethod.CASH,
+            addressId: 'dir-1',
+            deliveryMode: OrderDeliveryMode.EXPRESS,
+            isReservation: true,
+            scheduledDate: '2099-01-01',
+          },
+          DIST,
+          CLIENTE,
+        ),
+      ).rejects.toThrow(/no se agenda/);
+    });
+
+    it('no se elige al editar un pedido', async () => {
+      manager.findOne.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: CLIENTE.userId,
+        distributorId: DIST,
+        status: OrderStatus.PENDING,
+        deliveryId: null,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PENDING,
+        deliveryMode: OrderDeliveryMode.STANDARD,
+        depositAmount: 0,
+        depositPaid: false,
+        addressId: 'dir-1',
+        zoneSurchargeAmount: 0,
+      });
+
+      await expect(
+        casoDeUso.execute(
+          {
+            orderId: 'ord-1',
+            items: unaGarrafa,
+            paymentMethod: PaymentMethod.CASH,
+            deliveryMode: OrderDeliveryMode.EXPRESS,
+          },
+          DIST,
+          CLIENTE,
+        ),
+      ).rejects.toThrow(/al editarlo/);
+    });
+
+    it('cotizar la edición de un pedido express responde 409 (no se edita)', async () => {
+      manager.findOne.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: CLIENTE.userId,
+        distributorId: DIST,
+        status: OrderStatus.PENDING,
+        deliveryId: null,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PENDING,
+        deliveryMode: OrderDeliveryMode.EXPRESS,
+      });
+
+      await expect(
+        casoDeUso.execute(
+          {
+            orderId: 'ord-1',
+            items: unaGarrafa,
+            paymentMethod: PaymentMethod.CASH,
+          },
+          DIST,
+          CLIENTE,
+        ),
+      ).rejects.toThrow(/express no se edita/);
     });
   });
 });

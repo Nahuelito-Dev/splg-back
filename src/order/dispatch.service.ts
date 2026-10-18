@@ -81,6 +81,7 @@ export class DispatchService {
       const { orders } = await this.orderService.findAvailableOrders(
         { limit: 50, offset: 0 },
         distributorId,
+        true,
       );
       for (const order of orders) {
         if (new Date(order.createdAt) > staleBefore) continue;

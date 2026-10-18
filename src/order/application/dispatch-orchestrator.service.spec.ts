@@ -1,5 +1,11 @@
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
-import { Order, OrderStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 import {
   DispatchOffer,
   DispatchOfferStatus,
@@ -25,7 +31,9 @@ describe('DispatchOrchestratorService', () => {
   let orders: { findByIdFull: jest.Mock };
   let settings: { obtener: jest.Mock };
   let deliveries: { choferesElegibles: jest.Mock };
-  let fleet: { choferesInhabilitados: jest.Mock };
+  let fleet: { choferesInhabilitados: jest.Mock; choferesEnMoto: jest.Mock };
+  let expressSettings: { obtener: jest.Mock };
+  let expressDegrade: { pasarAlRepartoComun: jest.Mock };
   let truckGate: { choferesQuePuedenRecibir: jest.Mock };
   let offers: {
     create: jest.Mock;
@@ -92,6 +100,17 @@ describe('DispatchOrchestratorService', () => {
     };
     fleet = {
       choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
+      // Por defecto todos los candidatos van en moto.
+      choferesEnMoto: jest.fn((ids: string[]) => Promise.resolve(new Set(ids))),
+    };
+    expressSettings = {
+      obtener: jest.fn().mockResolvedValue({
+        maxRadiusKm: 5,
+        offerTtlSeconds: 20,
+      }),
+    };
+    expressDegrade = {
+      pasarAlRepartoComun: jest.fn().mockResolvedValue({ orderId: 'ord-1' }),
     };
     truckGate = {
       // Por defecto todos los candidatos pueden trabajar.
@@ -112,6 +131,8 @@ describe('DispatchOrchestratorService', () => {
       redis as unknown as import('../../redis/redis.service').RedisService,
       truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
       settings as unknown as import('../../distributor/dispatch-settings.service').DispatchSettingsService,
+      expressSettings as unknown as import('../../distributor/express-settings.service').ExpressSettingsService,
+      expressDegrade as unknown as import('./express-degrade.service').ExpressDegradeService,
     );
   });
 
@@ -148,6 +169,161 @@ describe('DispatchOrchestratorService', () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
 
       expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+    });
+  });
+
+  describe('despacho express (CU-149)', () => {
+    const express = (over: Partial<Order> = {}) =>
+      makeOrder({
+        distributorId: 'dist-1',
+        deliveryMode: OrderDeliveryMode.EXPRESS,
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PENDING,
+        ...over,
+      });
+
+    beforeEach(() => {
+      orders.findByIdFull.mockResolvedValue(express());
+    });
+
+    it('ofrece al chofer en moto más cercano, con la ventana y el radio express', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['moto-1', 'moto-2']);
+
+      const before = Date.now();
+      const result = await orchestrator.offerToNextDriver(express());
+
+      expect(result).toBe('moto-1');
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledTimes(1);
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        5,
+      );
+      const expiresAt = (
+        offers.create.mock.calls[0] as [string, string, Date]
+      )[2];
+      expect(expiresAt.getTime() - before).toBeLessThanOrEqual(21_000);
+      expect(expiresAt.getTime() - before).toBeGreaterThanOrEqual(19_000);
+      expect(dispatch.notifyDriverNewOrder).toHaveBeenCalledWith(
+        'moto-1',
+        expect.objectContaining({ deliveryMode: OrderDeliveryMode.EXPRESS }),
+      );
+      expect(expressDegrade.pasarAlRepartoComun).not.toHaveBeenCalled();
+    });
+
+    it('saltea al que no va en moto', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['auto', 'moto']);
+      fleet.choferesEnMoto.mockResolvedValue(new Set(['moto']));
+
+      expect(await orchestrator.offerToNextDriver(express())).toBe('moto');
+    });
+
+    it('NO amplía el radio: sólo consulta el radio express', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue([]);
+      expressDegrade.pasarAlRepartoComun.mockResolvedValue(null);
+
+      await orchestrator.offerToNextDriver(express());
+
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledTimes(1);
+    });
+
+    it('no re-ofrece a quien ya la vio (ni aunque su oferta haya vencido): pasa al reparto común', async () => {
+      dispatch.findNearbyDrivers
+        .mockResolvedValueOnce(['moto-1'])
+        .mockResolvedValue([]);
+      offers.findDriverOfferState.mockResolvedValue(estado([], ['moto-1']));
+      // Tras el pase el pedido ya es común y no hay nadie más cerca.
+      orders.findByIdFull
+        .mockResolvedValueOnce(express())
+        .mockResolvedValueOnce(makeOrder({ distributorId: 'dist-1' }));
+
+      await orchestrator.offerToNextDriver(express());
+
+      expect(expressDegrade.pasarAlRepartoComun).toHaveBeenCalledWith('ord-1');
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('sin motos cerca el pedido pasa al reparto común y sigue con el despacho normal', async () => {
+      orders.findByIdFull
+        .mockResolvedValueOnce(express())
+        .mockResolvedValueOnce(
+          makeOrder({
+            distributorId: 'dist-1',
+            deliveryMode: OrderDeliveryMode.STANDARD,
+          }),
+        );
+      // Primera consulta (express): sin motos. Segunda (normal): hay un auto.
+      dispatch.findNearbyDrivers
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(['auto']);
+
+      const result = await orchestrator.offerToNextDriver(express());
+
+      expect(expressDegrade.pasarAlRepartoComun).toHaveBeenCalledWith('ord-1');
+      expect(result).toBe('auto');
+    });
+
+    it('si el pase no corresponde (otro lo aceptó o canceló) no ofrece nada', async () => {
+      expressDegrade.pasarAlRepartoComun.mockResolvedValue(null);
+      dispatch.findNearbyDrivers.mockResolvedValue([]);
+
+      expect(await orchestrator.offerToNextDriver(express())).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('un express por MercadoPago sin pagar no se despacha ni se degrada', async () => {
+      const sinPagar = express({
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PENDING,
+      });
+      orders.findByIdFull.mockResolvedValue(sinPagar);
+
+      expect(await orchestrator.offerToNextDriver(sinPagar)).toBeNull();
+      expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
+      expect(expressDegrade.pasarAlRepartoComun).not.toHaveBeenCalled();
+    });
+
+    it('un express por MercadoPago ya pagado sí se despacha', async () => {
+      const pagado = express({
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PAID,
+      });
+      orders.findByIdFull.mockResolvedValue(pagado);
+      dispatch.findNearbyDrivers.mockResolvedValue(['moto-1']);
+
+      expect(await orchestrator.offerToNextDriver(pagado)).toBe('moto-1');
+    });
+
+    it('el vencimiento de la oferta express ofrece a la siguiente moto', async () => {
+      orders.findByIdFull.mockResolvedValue(express());
+      offers.findExpired.mockResolvedValue([
+        {
+          offerId: 'of-1',
+          orderId: 'ord-1',
+          driverId: 'moto-1',
+          distributorId: 'dist-1',
+        },
+      ]);
+      dispatch.findNearbyDrivers.mockResolvedValue(['moto-1', 'moto-2']);
+      offers.findDriverOfferState.mockResolvedValue(estado(['moto-1']));
+
+      await orchestrator.handleExpiredOffers();
+
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'moto-2',
+        expect.any(Date),
+        'dist-1',
+      );
+    });
+
+    it('choferesEnMotoCerca respeta la habilitación de flota', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['bloqueada', 'libre']);
+      fleet.choferesInhabilitados.mockResolvedValue(new Set(['bloqueada']));
+
+      expect(
+        await orchestrator.choferesEnMotoCerca(-26.8, -65.2, 'dist-1', 5),
+      ).toEqual(['libre']);
     });
   });
 

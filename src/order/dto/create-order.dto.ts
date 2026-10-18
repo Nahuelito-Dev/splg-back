@@ -16,7 +16,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentMethod } from '../entities/order.entity';
+import { OrderDeliveryMode, PaymentMethod } from '../entities/order.entity';
 import { SetOrderReceiverDto } from './set-order-receiver.dto';
 
 export class OrderItemDto {
@@ -139,4 +139,20 @@ export class CreateOrderDto {
   @ValidateNested()
   @Type(() => SetOrderReceiverDto)
   receiver?: SetOrderReceiverDto;
+
+  @ApiProperty({
+    description:
+      'Modalidad de entrega (CU-148). `standard` (por omisión) es el reparto común; ' +
+      '`express` sale a un chofer en moto con el recargo express de la distribuidora. ' +
+      'Se vuelve a evaluar al crear el pedido: si no hay cobertura, horario o una moto ' +
+      'disponible responde 409 con `reason`. No se combina con reserva, franja ni fecha agendada.',
+    enum: OrderDeliveryMode,
+    required: false,
+    example: OrderDeliveryMode.STANDARD,
+  })
+  @IsOptional()
+  @IsEnum(OrderDeliveryMode, {
+    message: `deliveryMode debe ser uno de: ${Object.values(OrderDeliveryMode).join(', ')}`,
+  })
+  deliveryMode?: OrderDeliveryMode;
 }

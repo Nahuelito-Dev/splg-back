@@ -7,6 +7,7 @@ import {
 } from '../../common/utils/dias-argentina';
 import {
   Order,
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -167,10 +168,17 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     limit: number,
     offset: number,
     distributorId?: string | null,
+    incluirExpress = false,
   ): Promise<PaginatedOrders> {
     const [orders, total] = await this.orderRepository.findAndCount({
       where: this.scoped(
-        { status: OrderStatus.PENDING, deliveryId: IsNull() },
+        {
+          status: OrderStatus.PENDING,
+          deliveryId: IsNull(),
+          ...(incluirExpress
+            ? {}
+            : { deliveryMode: OrderDeliveryMode.STANDARD }),
+        },
         distributorId,
       ),
       take: limit,

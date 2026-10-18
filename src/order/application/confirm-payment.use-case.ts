@@ -5,6 +5,7 @@ import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 import { isTerminal } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { PaymentsService } from '../../payments/application/payments.service';
+import { RefundsService } from '../../payments/application/refunds.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -48,6 +49,7 @@ export class ConfirmPaymentUseCase {
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly notificationService: NotificationPort,
+    private readonly refunds: RefundsService,
   ) {}
 
   async execute(input: ConfirmPaymentInput): Promise<void> {
@@ -105,6 +107,7 @@ export class ConfirmPaymentUseCase {
 
     let alreadyConfirmed = false;
     let senaPagada = false;
+    let pagoSobreCancelado = false;
     try {
       const locked = await queryRunner.manager
         .createQueryBuilder(Order, 'order')
@@ -126,6 +129,7 @@ export class ConfirmPaymentUseCase {
         // cliente antes del webhook) NO debe re-despachar ni marcar PAID — el
         // stock ya pudo haberse restituido. No-op idempotente.
         alreadyConfirmed = true;
+        pagoSobreCancelado = locked.status === OrderStatus.CANCELLED;
         await queryRunner.commitTransaction();
         this.logger.warn(
           `Pago ${paymentId} de un pedido ${locked.status} (${locked.orderId}): ignorado (sin despacho)`,
@@ -166,6 +170,18 @@ export class ConfirmPaymentUseCase {
     if (senaPagada) {
       this.notificarPagoAprobado(order.customerId, order.orderId, true);
       return;
+    }
+
+    if (pagoSobreCancelado) {
+      // El pago llegó después de la cancelación: la plata quedó cobrada de un
+      // pedido que ya no existe, se devuelve (CU-168).
+      await this.refunds
+        .reintegrarPorCancelacion(order.orderId)
+        .catch((error: unknown) =>
+          this.logger.error(
+            `No se pudo pedir la devolución del pago tardío del pedido ${order.orderId}: ${errorMessage(error)}`,
+          ),
+        );
     }
 
     if (alreadyConfirmed) {

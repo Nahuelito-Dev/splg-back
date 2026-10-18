@@ -335,6 +335,25 @@ export class Order {
   deliveryMode!: OrderDeliveryMode;
 
   /**
+   * Recargo express que se cobró al pedir (CU-147). Queda guardado aunque el
+   * pedido pase al reparto común (`express_degraded_at`), para poder explicar el
+   * total y saber cuánto reintegrar; el `total_amount` ya no lo incluye en ese caso.
+   */
+  @Column({
+    name: 'express_surcharge_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  expressSurchargeAmount!: number;
+
+  /** Cuándo ningún chofer en moto aceptó y el pedido pasó al reparto común (CU-149). */
+  @Column({ name: 'express_degraded_at', type: 'timestamptz', nullable: true })
+  expressDegradedAt!: Date | null;
+
+  /**
    * Snapshot de la zona de cobertura al momento de pedir (delivery/coverage-
    * zone.service). `coverage_zone_id` es sólo trazabilidad: si la zona se
    * edita o se borra después, este pedido NO cambia — el total ya cobrado se

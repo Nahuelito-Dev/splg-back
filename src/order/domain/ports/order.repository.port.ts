@@ -57,6 +57,8 @@ export abstract class OrderRepositoryPort {
     limit: number,
     offset: number,
     distributorId?: string | null,
+    /** Los pedidos express no están en el pool del chofer salvo que se pidan. */
+    incluirExpress?: boolean,
   ): Promise<PaginatedOrders>;
 
   abstract findByCustomer(
