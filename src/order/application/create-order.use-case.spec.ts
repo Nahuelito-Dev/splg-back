@@ -105,14 +105,14 @@ describe('CreateOrderUseCase', () => {
     stock = {
       leerBloqueada: jest.fn().mockResolvedValue({
         gasCylinderId: 'gc-1',
-        type: '10kg',
+        type: 'Garrafa 10kg',
         price: 1000,
         promotions: null,
         distributorId: 'dist-default',
       }),
       reservarStock: jest.fn().mockResolvedValue({
         gasCylinderId: 'gc-1',
-        type: '10kg',
+        type: 'Garrafa 10kg',
         price: 1000,
         promotions: null,
         // Debe pertenecer a la distribuidora del pedido (default en estos tests).
