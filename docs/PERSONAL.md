@@ -126,6 +126,7 @@ marca `alertedAt`; si no hay administradores con correo, se marca igual.
 | GET | `/attendance?date&from&to&employeeId&open&page&limit` | admin | CU-314. `{ data, total, presentToday, staleOpen }` |
 | POST | `/attendance/mine/check-in` | chofer | CU-190. Idempotente: 201 al abrir, 200 si ya tenía una abierta de hoy desde la app |
 | POST | `/attendance/mine/check-out` | chofer | CU-315. 200; 409 si la abierta es de un día anterior |
+| GET | `/attendance/mine/current` | chofer | La jornada abierta (también la de un día anterior sin cerrar). 200, o 204 si no tiene ninguna o su cuenta no está vinculada a un legajo |
 
 Reglas: una sola jornada abierta por empleado (índice único parcial
 `UQ_employee_attendance_abierta` + lock del legajo); la carga del panel sólo

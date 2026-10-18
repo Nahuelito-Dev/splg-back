@@ -16,6 +16,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -114,6 +115,30 @@ export class AttendanceController {
     return AttendanceMapper.toDto(
       await this.attendance.correct(id, dto, distributorId),
     );
+  }
+
+  @Get('attendance/mine/current')
+  @Auth(RoleType.DELIVERY)
+  @ApiOperation({
+    summary: 'La jornada abierta del chofer (CU-190, CU-315)',
+    description:
+      'La app la consulta al abrir para saber si ya marcó el inicio. Si la abierta es de un día anterior, finalizarla desde la app responde 409: se corrige desde el panel.',
+  })
+  @ApiOkResponse({ type: AttendanceResponseDto })
+  @ApiNoContentResponse({
+    description:
+      'No tiene una jornada abierta, o su cuenta no está vinculada a un legajo',
+  })
+  async current(
+    @CurrentUser('user_id') userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AttendanceResponseDto | undefined> {
+    const jornada = await this.attendance.jornadaAbierta(userId);
+    if (!jornada) {
+      res.status(HttpStatus.NO_CONTENT);
+      return undefined;
+    }
+    return AttendanceMapper.toDto(jornada);
   }
 
   @Post('attendance/mine/check-in')

@@ -325,6 +325,21 @@ export class AttendanceService {
   }
 
   /** Las jornadas de días anteriores a `dia` que siguen abiertas (aviso de las 7). */
+  /**
+   * La jornada abierta del chofer, para que la app sepa al abrir si ya marcó el
+   * inicio (de hoy o de un día anterior sin cerrar). `null` si no tiene ninguna
+   * o si su cuenta no está vinculada a un legajo.
+   */
+  async jornadaAbierta(userId: string): Promise<JornadaConLegajo | null> {
+    const empleado = await this.employees.findByUserId(userId);
+    if (!empleado) return null;
+    const abierta = await this.attendance.findOne({
+      where: { employeeId: empleado.employeeId, checkOutAt: IsNull() },
+      order: { checkInAt: 'DESC' },
+    });
+    return abierta ? Object.assign(abierta, { employee: empleado }) : null;
+  }
+
   async abiertasAnteriores(dia: string): Promise<EmployeeAttendance[]> {
     return this.attendance
       .createQueryBuilder('a')
