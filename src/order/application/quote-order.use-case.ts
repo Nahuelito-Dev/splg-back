@@ -11,6 +11,7 @@ import { DataSource } from 'typeorm';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
 import { DistributorService } from '../../distributor/distributor.service';
 import { InsufficientStockError } from '../../gascylinder/domain/errors/insufficient-stock.error';
+import { CartService } from '../../cart/cart.service';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { UserAddressService } from '../../user-address/user-address.service';
 import { CreateOrderUseCase } from './create-order.use-case';
@@ -43,7 +44,25 @@ export class QuoteOrderUseCase {
     private readonly distributors: DistributorService,
     private readonly timeSlots: TimeSlotService,
     private readonly dataSource: DataSource,
+    private readonly cart: CartService,
   ) {}
+
+  private itemsDelCarrito(
+    customerId: string | undefined,
+    distributorId: string | null,
+  ) {
+    if (!customerId || !distributorId) {
+      throw new BadRequestException(
+        'Indicá la distribuidora (X-Distributor) para cotizar el carrito',
+      );
+    }
+    return this.cart.itemsParaPedido(
+      this.dataSource.manager,
+      customerId,
+      distributorId,
+      false,
+    );
+  }
 
   /**
    * @param actor quien cotiza: un cliente cotiza para sí mismo; un admin, para
@@ -54,6 +73,20 @@ export class QuoteOrderUseCase {
     distributorId: string | null,
     actor: { userId: string; role: RoleType },
   ): Promise<QuoteResponseDto> {
+    if (dto.fromCart && dto.items !== undefined) {
+      throw new BadRequestException(
+        'Con fromCart los ítems salen del carrito: no mandes items',
+      );
+    }
+    if (dto.fromCart && dto.orderId) {
+      throw new BadRequestException(
+        'fromCart no se combina con orderId: la edición de un pedido no usa el carrito',
+      );
+    }
+    if (!dto.fromCart && dto.items === undefined) {
+      throw new BadRequestException('items es obligatorio (o usá fromCart)');
+    }
+
     // Cotización de edición: el pedido manda (distribuidora, cliente, zona,
     // franja y fecha); se rechaza lo que el PATCH rechazaría.
     const edicion = dto.orderId
@@ -128,10 +161,15 @@ export class QuoteOrderUseCase {
       zona = await this.createOrder.resolverZona(distributorId, address);
     }
 
+    // Checkout del carrito: se cotizan los ítems del carrito del cliente, sin bloquearlo.
+    const aCotizar = dto.fromCart
+      ? await this.itemsDelCarrito(customerId, distributorId)
+      : (dto.items ?? []);
+
     // Mismo orden que el alta: los renglones se valorizan de a uno.
     let subtotal = new Decimal(0);
     const items: QuoteResponseDto['items'] = [];
-    for (const item of dto.items) {
+    for (const item of aCotizar) {
       const producto = await this.stock.leerParaCotizar(item.gasCylinderId);
       // Primero la distribuidora y después el stock, como el alta: con el id de
       // un producto ajeno no se distingue "sin stock" de "no pertenece".

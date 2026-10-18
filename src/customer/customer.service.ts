@@ -22,6 +22,14 @@ import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 export interface PerfilDeClienteNuevo {
   lat_lang?: string;
   notification_token?: string;
+  consumo?: ConsumoDeclarado;
+}
+
+/** El consumo promedio declarado por el cliente y la recompra que se estima de él. */
+export interface ConsumoDeclarado {
+  declaredCylinderTypeId: string;
+  avgMonthlyConsumptionKg: number;
+  nextRepurchaseEstimateAt: Date;
 }
 
 @Injectable()
@@ -48,8 +56,31 @@ export class CustomersService {
         userId,
         notificationToken: datos.notification_token ?? null,
         location: datos.lat_lang ? puntoDesdeLatLng(datos.lat_lang) : null,
+        ...datos.consumo,
       }),
     );
+  }
+
+  /**
+   * Guarda el consumo declarado y la estimación de recompra en la ficha del
+   * cliente (CU-144). El cálculo y la validación del rango los hace el módulo
+   * de recompra: acá sólo se persiste.
+   */
+  async guardarConsumo(
+    userId: string,
+    consumo: ConsumoDeclarado,
+  ): Promise<Customer> {
+    // Sin la relación cargada: con `declaredCylinderType` presente, TypeORM
+    // guardaría la garrafa vieja y pisaría el id nuevo.
+    const customer = await this.customerRepository.findOne({
+      where: { userId },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Customer for user ID: ${userId} not found`);
+    }
+    Object.assign(customer, consumo);
+    await this.customerRepository.save(customer);
+    return this.findOneByUserId(userId);
   }
 
   /**
@@ -97,6 +128,10 @@ export class CustomersService {
       .leftJoinAndSelect('customer.user', 'user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('user.addresses', 'addresses')
+      .leftJoinAndSelect(
+        'customer.declaredCylinderType',
+        'declaredCylinderType',
+      )
       .orderBy('customer.createdAt', 'DESC')
       .take(limit)
       .skip(offset);
@@ -186,7 +221,12 @@ export class CustomersService {
   ): Promise<Customer> {
     const customer = await this.customerRepository.findOne({
       where: { customerId: id },
-      relations: ['user', 'user.role', 'user.addresses'],
+      relations: [
+        'user',
+        'user.role',
+        'user.addresses',
+        'declaredCylinderType',
+      ],
     });
 
     if (!customer) {
@@ -204,7 +244,12 @@ export class CustomersService {
     this.assertOwnership(userId, requesterUserId);
     const customer = await this.customerRepository.findOne({
       where: { userId },
-      relations: ['user', 'user.role', 'user.addresses'],
+      relations: [
+        'user',
+        'user.role',
+        'user.addresses',
+        'declaredCylinderType',
+      ],
     });
 
     if (!customer) {
@@ -220,6 +265,10 @@ export class CustomersService {
       .leftJoinAndSelect('customer.user', 'user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('user.addresses', 'addresses')
+      .leftJoinAndSelect(
+        'customer.declaredCylinderType',
+        'declaredCylinderType',
+      )
       .where('user.email = :email', { email })
       .getOne();
 

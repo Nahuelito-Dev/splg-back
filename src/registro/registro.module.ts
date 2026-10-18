@@ -9,6 +9,7 @@ import { CustomersModule } from '../customer/customer.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { AdminModule } from '../admin/admin.module';
 import { EmployeeModule } from '../employee/employee.module';
+import { RepurchaseModule } from '../repurchase/repurchase.module';
 import { DistributorModule } from '../distributor/distributor.module';
 
 /**
@@ -24,6 +25,7 @@ import { DistributorModule } from '../distributor/distributor.module';
     AdminModule,
     DistributorModule,
     EmployeeModule,
+    RepurchaseModule, // CU-143: consumo declarado al registrarse
   ],
   controllers: [RegistroController, EmployeeAccountController],
   providers: [RegistroService, GrantEmployeeAccountUseCase],

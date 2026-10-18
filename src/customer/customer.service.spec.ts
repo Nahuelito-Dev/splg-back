@@ -1,5 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { CustomersService } from './customer.service';
 import { Customer } from './entities/customer.entity';
 import { CustomerStatusFilter } from './dto/query-customers.dto';
@@ -126,6 +126,48 @@ describe('CustomersService', () => {
         { distributorId: 'd1' },
       );
       expect(qb.andWhere).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('consumo declarado', () => {
+    const consumo = {
+      declaredCylinderTypeId: 'g10',
+      avgMonthlyConsumptionKg: 20,
+      nextRepurchaseEstimateAt: new Date('2026-10-16T00:00:00.000Z'),
+    };
+
+    it('guardarConsumo persiste los tres campos sin arrastrar la garrafa vieja', async () => {
+      customers.findOne.mockResolvedValue(cliente());
+
+      await service.guardarConsumo('u1', consumo);
+
+      expect(customers.findOne).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(customers.save).toHaveBeenCalledWith(
+        expect.objectContaining(consumo),
+      );
+    });
+
+    it('guardarConsumo de un usuario sin ficha es 404', async () => {
+      customers.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.guardarConsumo('u9', consumo),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(customers.save).not.toHaveBeenCalled();
+    });
+
+    it('el perfil nuevo nace con el consumo declarado en el registro', async () => {
+      const manager = {
+        getRepository: () => customers,
+      } as unknown as EntityManager;
+
+      await service.crearPerfil(manager, 'u1', { consumo });
+
+      expect(customers.create).toHaveBeenCalledWith(
+        expect.objectContaining(consumo),
+      );
     });
   });
 });

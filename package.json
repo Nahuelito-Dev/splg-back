@@ -180,10 +180,10 @@
         "lines": 63
       },
       "./src/cart/": {
-        "statements": 0,
-        "branches": 0,
-        "functions": 0,
-        "lines": 0
+        "statements": 92,
+        "branches": 81,
+        "functions": 85,
+        "lines": 92
       },
       "./src/claims/": {
         "statements": 87,
@@ -210,10 +210,10 @@
         "lines": 56
       },
       "./src/customer/": {
-        "statements": 60,
-        "branches": 46,
-        "functions": 45,
-        "lines": 61
+        "statements": 64,
+        "branches": 50,
+        "functions": 50,
+        "lines": 65
       },
       "./src/cylinder/": {
         "statements": 56,
@@ -325,9 +325,15 @@
       },
       "./src/registro/": {
         "statements": 62,
-        "branches": 52,
-        "functions": 50,
+        "branches": 54,
+        "functions": 52,
         "lines": 64
+      },
+      "./src/repurchase/": {
+        "statements": 91,
+        "branches": 84,
+        "functions": 100,
+        "lines": 92
       },
       "./src/reports/": {
         "statements": 86,

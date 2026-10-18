@@ -115,6 +115,10 @@ export class UsersService {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('user.customer', 'customer')
+      .leftJoinAndSelect(
+        'customer.declaredCylinderType',
+        'declaredCylinderType',
+      )
       .leftJoinAndSelect('user.delivery', 'delivery')
       .take(limit)
       .skip(offset);
@@ -168,7 +172,14 @@ export class UsersService {
   async findOne(id: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { userId: id },
-      relations: ['role', 'customer', 'delivery', 'cars', 'addresses'],
+      relations: [
+        'role',
+        'customer',
+        'customer.declaredCylinderType',
+        'delivery',
+        'cars',
+        'addresses',
+      ],
     });
 
     if (!user) {
@@ -199,6 +210,7 @@ export class UsersService {
       relations: [
         'role',
         'customer',
+        'customer.declaredCylinderType',
         'delivery',
         'cars',
         'addresses',
@@ -216,7 +228,13 @@ export class UsersService {
   findOneByPhone(phoneNumber: string): Promise<User | null> {
     return this.userRepository.findOne({
       where: { phoneNumber },
-      relations: ['role', 'customer', 'delivery', 'addresses'],
+      relations: [
+        'role',
+        'customer',
+        'customer.declaredCylinderType',
+        'delivery',
+        'addresses',
+      ],
     });
   }
 
@@ -593,7 +611,13 @@ export class UsersService {
   async findOneByFirebaseUid(firebaseUid: string): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { firebaseUid },
-      relations: ['role', 'customer', 'delivery', 'cars'],
+      relations: [
+        'role',
+        'customer',
+        'customer.declaredCylinderType',
+        'delivery',
+        'cars',
+      ],
     });
 
     if (!user) {

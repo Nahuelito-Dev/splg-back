@@ -11,6 +11,10 @@ export class CustomerMapper {
     dto.lat_lang = latLngDesdePunto(customer.location);
     dto.createdAt = customer.createdAt;
     dto.deletedAt = customer.deletedAt;
+    dto.avgMonthlyConsumptionKg = customer.avgMonthlyConsumptionKg;
+    dto.declaredCylinderTypeId = customer.declaredCylinderTypeId;
+    dto.declaredCylinderType = customer.declaredCylinderType?.type ?? null;
+    dto.nextRepurchaseEstimateAt = customer.nextRepurchaseEstimateAt;
     if (customer.user) dto.user = UserMapper.toDto(customer.user);
     return dto;
   }

@@ -14,6 +14,8 @@ import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminService } from '../admin/admin.service';
 import { EmployeeService } from '../employee/employee.service';
+import { ConsumptionService } from '../repurchase/consumption.service';
+import type { ConsumoDeclarado } from '../customer/customer.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
@@ -60,6 +62,7 @@ export class RegistroService {
     private readonly distributors: DistributorService,
     private readonly employees: EmployeeService,
     private readonly eventos: EventEmitter2,
+    private readonly consumption: ConsumptionService,
   ) {}
 
   async registrar(
@@ -93,6 +96,13 @@ export class RegistroService {
       );
     }
 
+    // CU-143: se valida antes de crear la cuenta en Firebase, para no
+    // crearla y borrarla si el consumo declarado es inválido.
+    const consumo =
+      alta.rol === RoleType.CUSTOMER && datos.consumption
+        ? await this.consumption.calcularDeclaracion(datos.consumption)
+        : undefined;
+
     const email = normalizarEmail(datos.email);
     await this.users.assertDisponible(email, datos.phone_number);
 
@@ -113,7 +123,7 @@ export class RegistroService {
           firebaseUid: cuenta.uid,
           roleId: rol.roleId,
         });
-        await this.crearPerfil(manager, user.userId, alta, datos);
+        await this.crearPerfil(manager, user.userId, alta, datos, consumo);
         return user.userId;
       });
     } catch (error) {
@@ -134,12 +144,14 @@ export class RegistroService {
     userId: string,
     alta: AltaAutorizada,
     datos: RegistrarUsuarioDto,
+    consumo?: ConsumoDeclarado,
   ): Promise<void> {
     switch (alta.rol) {
       case RoleType.CUSTOMER:
         return this.customers.crearPerfil(manager, userId, {
           lat_lang: datos.lat_lang,
           notification_token: datos.notification_token,
+          consumo,
         });
       case RoleType.DELIVERY: {
         const distributorId = this.distribuidoraDe(alta);

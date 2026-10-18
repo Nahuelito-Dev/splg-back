@@ -19,6 +19,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Pedidos, cobros, cotización, historial y rutas | `docs/PEDIDOS.md` |
 | Parámetros del despacho y frecuencia de tareas programadas (M1) | `docs/PARAMETROS-DESPACHO.md` |
 | Vigencia de envases, revisiones y bloqueo del despacho (C-11) | `docs/VIGENCIA-ENVASES.md` |
+| Carrito persistente y consumo declarado (C-12 y C-13) | `docs/CARRITO-Y-CONSUMO.md` |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
 
 ## Convenciones

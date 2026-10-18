@@ -9,11 +9,11 @@ import {
 import { CreateOrderDto } from './create-order.dto';
 import { PaymentMethod } from '../entities/order.entity';
 
-const CAMPOS_OBLIGATORIOS = ['items', 'paymentMethod'] as const;
+const CAMPOS_OBLIGATORIOS = ['paymentMethod'] as const;
 
 /**
- * Body de `POST /orders/quote`: el mismo que `POST /orders`. Sólo `items` y
- * `paymentMethod` son obligatorios; con `addressId` (y `customerId` si lo
+ * Body de `POST /orders/quote`: el mismo que `POST /orders`. Sólo `paymentMethod`
+ * es obligatorio (`items`, salvo con `fromCart`); con `addressId` (y `customerId` si lo
  * pide un admin) se calcula el recargo de la zona de esa dirección.
  */
 export class QuoteOrderDto extends IntersectionType(

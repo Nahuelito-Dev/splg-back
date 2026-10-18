@@ -33,6 +33,7 @@ import {
   ZonaParaRecargo,
 } from '../../coverage-zone/coverage-zone-pricing.service';
 import type { CoverageZoneResumenDto } from '../../coverage-zone/dto/coverage-zone-response.dto';
+import { CartService } from '../../cart/cart.service';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -93,6 +94,7 @@ export class CreateOrderUseCase {
     private readonly timeSlotService: TimeSlotService,
     private readonly coverageZoneService: CoverageZoneService,
     private readonly coverageZonePricing: CoverageZonePricingService,
+    private readonly cart: CartService,
   ) {}
 
   /**
@@ -109,6 +111,17 @@ export class CreateOrderUseCase {
     if (!distributorId) {
       const def = await this.distributorService.getDefault();
       distributorId = def?.distributorId ?? null;
+    }
+
+    if (createOrderDto.fromCart && createOrderDto.items !== undefined) {
+      throw new BadRequestException(
+        'Con fromCart los ítems salen del carrito: no mandes items',
+      );
+    }
+    if (createOrderDto.fromCart && !distributorId) {
+      throw new BadRequestException(
+        'Falta la distribuidora: enviá el header X-Distributor para comprar desde el carrito',
+      );
     }
 
     // Pre-reserva: requiere fecha agendada (se reserva PARA un día futuro).
@@ -172,13 +185,20 @@ export class CreateOrderUseCase {
         );
       }
 
+      // Checkout del carrito: los ítems son los del carrito del cliente, que
+      // queda bloqueado hasta el commit (CU-126).
+      const items = createOrderDto.fromCart
+        ? await this.cart.itemsParaPedido(
+            queryRunner.manager,
+            createOrderDto.customerId,
+            distributorId as string,
+            true,
+          )
+        : (createOrderDto.items ?? []);
+
       // Reserva de stock con lock + precios de servidor (ver `reservarRenglones`).
       const { orderItems, checkoutItems, subtotalItems } =
-        await this.reservarRenglones(
-          queryRunner.manager,
-          createOrderDto.items,
-          distributorId,
-        );
+        await this.reservarRenglones(queryRunner.manager, items, distributorId);
 
       // Recargos de zona y de método de pago (ver `calcularTotales`).
       const { totalAmount, zoneSurchargeAmount } = this.calcularTotales(
@@ -226,6 +246,14 @@ export class CreateOrderUseCase {
       });
 
       const savedOrder = await queryRunner.manager.save(order);
+      // El carrito se vacía en la misma transacción: si el pedido falla, queda intacto.
+      if (createOrderDto.fromCart) {
+        await this.cart.vaciarEnTransaccion(
+          queryRunner.manager,
+          createOrderDto.customerId,
+          distributorId as string,
+        );
+      }
       await queryRunner.commitTransaction();
 
       // Desde acá el pedido YA está confirmado: nada de lo que sigue puede

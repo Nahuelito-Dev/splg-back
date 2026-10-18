@@ -137,6 +137,7 @@ export class OrderController {
         'No autorizado a crear pedidos para otro cliente',
       );
     }
+    this.exigirClienteParaCarrito(createOrderDto.fromCart, user);
     // Retry ante deadlock / serialization_failure de PostgreSQL.
     // Ocurre cuando dos transacciones concurrentes intentan adquirir
     // pessimistic locks sobre las mismas garrafas en orden distinto.
@@ -149,6 +150,18 @@ export class OrderController {
     // Solo presente para paymentMethod MERCADOPAGO (checkout de Checkout Pro).
     dto.paymentUrl = paymentUrl;
     return dto;
+  }
+
+  /** El carrito es del cliente: el personal que carga un pedido a su nombre manda los `items`. */
+  private exigirClienteParaCarrito(
+    fromCart: boolean | undefined,
+    user: AuthenticatedUser,
+  ): void {
+    if (fromCart && user.role !== RoleType.CUSTOMER) {
+      throw new ForbiddenException(
+        'fromCart es del cliente: el personal manda los items',
+      );
+    }
   }
 
   @Post('quote')
@@ -176,6 +189,7 @@ export class OrderController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ): Promise<QuoteResponseDto> {
+    this.exigirClienteParaCarrito(dto.fromCart, user);
     return this.quoteOrder.execute(dto, distributorId, {
       userId: user.user_id,
       role: user.role,
