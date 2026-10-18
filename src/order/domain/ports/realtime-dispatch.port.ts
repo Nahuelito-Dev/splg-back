@@ -44,6 +44,16 @@ export abstract class RealtimeDispatchPort {
   /** Aviso de cancelación a un chofer (WebSocket). */
   abstract notifyDriverOrderCancelled(driverId: string, payload: unknown): void;
 
+  /**
+   * Aviso al chofer asignado de que el cliente cambió la dirección de entrega
+   * (WebSocket, evento `order:address-changed`). `driverUserId` es el id de
+   * usuario del chofer, no el de su perfil de reparto.
+   */
+  abstract notifyDriverOrderAddressChanged(
+    driverUserId: string,
+    payload: unknown,
+  ): void;
+
   /** Evento arbitrario al cliente (WebSocket): estado de su pedido, etc. */
   abstract notifyCustomer(
     customerId: string,

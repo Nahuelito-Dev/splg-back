@@ -246,3 +246,42 @@ describe('OrderMapper · medio de pago, estado de pago y editable', () => {
     expect(OrderMapper.toDto(base(over)).editable).toBe(false);
   });
 });
+
+describe('OrderMapper · quién recibe (CU-128)', () => {
+  const base = (over: Partial<Order> = {}): Order =>
+    ({
+      orderId: 'o1',
+      distributorId: 'd1',
+      totalAmount: 100,
+      createdAt: new Date('2026-09-01T12:00:00Z'),
+      status: OrderStatus.PENDING,
+      paymentType: PaymentType.CASH,
+      paymentMethod: PaymentMethod.CASH,
+      paymentStatus: PaymentStatus.PENDING,
+      depositAmount: 0,
+      items: [],
+      receiverName: null,
+      receiverDocument: null,
+      receiverRelationship: null,
+      ...over,
+    }) as unknown as Order;
+
+  it('sin datos de quien recibe, receiver es null', () => {
+    expect(OrderMapper.toDto(base()).receiver).toBeNull();
+  });
+
+  it('con datos los expone completos', () => {
+    const dto = OrderMapper.toDto(
+      base({
+        receiverName: 'María Gómez',
+        receiverDocument: '30123456',
+        receiverRelationship: 'vecina',
+      }),
+    );
+    expect(dto.receiver).toEqual({
+      name: 'María Gómez',
+      document: '30123456',
+      relationship: 'vecina',
+    });
+  });
+});

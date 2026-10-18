@@ -50,6 +50,10 @@ export const PROPIEDADES_EXCLUIDAS: Readonly<
   // Posición del chofer: se actualiza varias veces por minuto en ruta
   // (1468 de los 1727 asientos de audit_log eran `PATCH /delivery/:id/location`).
   Delivery: ['location', 'actualLocation'],
+  // Datos de quien recibe el pedido (CU-128): datos personales de un tercero que
+  // se anulan al vencer el plazo de reclamo; la auditoría es inmutable, así que
+  // ni el documento ni el nombre ni la relación pueden entrar.
+  Order: ['receiverName', 'receiverDocument', 'receiverRelationship'],
   // Marca interna del cron de avisos de vencimientos.
   MaintenanceTask: ['alertedAt'],
 };

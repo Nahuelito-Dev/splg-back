@@ -43,6 +43,7 @@ import {
   GasCylinderResponseDto,
 } from './dto/gascylinder-response.dto';
 import { GasCylinderMapper } from './gascylinder.mapper';
+import { PaginationDto } from '../common/dtos/pagination.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
@@ -105,6 +106,33 @@ export class GasCylinderController {
     const pagina = await this.gasCylinderService.findAll(
       query,
       distributorId ?? query.distributor,
+    );
+    return {
+      ...pagina,
+      gasCylinders: await this.toDtos(pagina.gasCylinders),
+    };
+  }
+
+  // Antes de `:id`, que si no tomaría "inactive" como un uuid.
+  @Get('inactive')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Productos dados de baja de la distribuidora',
+    description:
+      'CU-269. El catálogo (`GET /gascylinder`) sólo muestra los activos; éste lista los dados de baja de la distribuidora del administrador (la del header `X-Distributor` para el super admin), con la misma paginación y búsqueda (`term`).',
+  })
+  @ApiOkResponse({ type: CatalogoDto })
+  @ApiBadRequestResponse({
+    description:
+      'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")',
+  })
+  async findInactive(
+    @Query() query: PaginationDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<CatalogoDto> {
+    const pagina = await this.gasCylinderService.findInactive(
+      query,
+      distributorId,
     );
     return {
       ...pagina,
@@ -190,6 +218,31 @@ export class GasCylinderController {
         updateGasCylinderDto,
         distributorId,
       ),
+    );
+  }
+
+  @Patch(':id/reactivate')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Reactivar un producto dado de baja',
+    description:
+      'CU-268. Devuelve el producto al catálogo con su stock y sus promociones intactos. No invierte el estado: siempre lo deja activo, así que reactivar uno que ya estaba activo responde igual, con el producto sin cambios. Es una operación propia: enviar `isActive` en `PATCH /gascylinder/{id}` se rechaza.',
+  })
+  @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
+  @ApiOkResponse({ type: GasCylinderResponseDto })
+  @ApiNotFoundResponse({
+    description: 'No existe o es de otra distribuidora (no se distingue)',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")',
+  })
+  async reactivate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<GasCylinderResponseDto> {
+    return this.toDto(
+      await this.gasCylinderService.reactivate(id, distributorId),
     );
   }
 

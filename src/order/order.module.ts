@@ -25,6 +25,9 @@ import { QuoteOrderUseCase } from './application/quote-order.use-case';
 import { UpdateOrderStatusUseCase } from './application/update-order-status.use-case';
 import { OrderDriverPhotoService } from './application/order-driver-photo.service';
 import { UpdateOrderUseCase } from './application/update-order.use-case';
+import { ChangeOrderAddressUseCase } from './application/change-order-address.use-case';
+import { SetOrderReceiverUseCase } from './application/set-order-receiver.use-case';
+import { ReceiverRetentionCron } from './application/receiver-retention.cron';
 import { CancelOrderUseCase } from './application/cancel-order.use-case';
 import { ReleaseOrderUseCase } from './application/release-order.use-case';
 import { CashCollectionUseCase } from './application/cash-collection.use-case';
@@ -94,6 +97,9 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     CreateOrderUseCase,
     QuoteOrderUseCase,
     UpdateOrderUseCase,
+    ChangeOrderAddressUseCase,
+    SetOrderReceiverUseCase,
+    ReceiverRetentionCron,
     UpdateOrderStatusUseCase,
     OrderDriverPhotoService,
     CancelOrderUseCase,

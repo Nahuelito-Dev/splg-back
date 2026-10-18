@@ -174,6 +174,13 @@ export class DriversGateway
     this.logger.log(`🚫 Avisando cancelación a chofer ${driverId}`);
     this.server.to(`driver_${driverId}`).emit('order:cancelled', payload);
   }
+
+  notifyOrderAddressChanged(driverId: string, payload: unknown): void {
+    this.logger.log(
+      `📍 Avisando cambio de dirección del pedido ${idDelPedido(payload)} a chofer ${driverId}`,
+    );
+    this.server.to(`driver_${driverId}`).emit('order:address-changed', payload);
+  }
 }
 
 function idDelPedido(payload: unknown): string {

@@ -63,6 +63,33 @@ describe('OrderService.getOne · chofer', () => {
     await expect(leer()).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  describe('quién recibe (CU-128)', () => {
+    const receptor = {
+      receiverName: 'María Gómez',
+      receiverDocument: '30123456',
+      receiverRelationship: 'vecina',
+    };
+
+    it('el chofer asignado lo ve', async () => {
+      armar(
+        pedido({
+          deliveryId: DELIVERY_PROPIO,
+          status: OrderStatus.ACCEPTED,
+          delivery: { userId: USER_CHOFER } as Order['delivery'],
+          ...receptor,
+        }),
+      );
+      await expect(leer()).resolves.toMatchObject({
+        receiver: { name: 'María Gómez', document: '30123456' },
+      });
+    });
+
+    it('un chofer que mira el pedido desde el pool o como oferta no lo ve', async () => {
+      armar(pedido({ ...receptor }));
+      await expect(leer()).resolves.toMatchObject({ receiver: null });
+    });
+  });
+
   it('lee el pedido que tiene en oferta vigente', async () => {
     armar(pedido({ deliveryId: null, status: OrderStatus.RESERVED }));
     hasActiveOffer.mockResolvedValue(true);

@@ -223,6 +223,10 @@ export class CreateOrderUseCase {
         customerId: createOrderDto.customerId,
         distributorId: distributorId ?? undefined,
         addressId: createOrderDto.addressId,
+        receiverName: createOrderDto.receiver?.receiverName ?? null,
+        receiverDocument: createOrderDto.receiver?.receiverDocument ?? null,
+        receiverRelationship:
+          createOrderDto.receiver?.receiverRelationship ?? null,
         status: isReservation ? OrderStatus.RESERVED : OrderStatus.PENDING,
         paymentMethod: createOrderDto.paymentMethod,
         paymentType,

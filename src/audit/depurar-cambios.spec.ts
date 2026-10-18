@@ -17,6 +17,20 @@ describe('depurarCambios (CU-153: las credenciales nunca se guardan)', () => {
     });
   });
 
+  it('nunca guarda los datos de quien recibe un pedido (CU-128)', () => {
+    expect(
+      depurarCambios({
+        receiverName: 'María Gómez',
+        receiverDocument: '30123456',
+        receiverRelationship: 'vecina',
+      }),
+    ).toEqual({
+      receiverName: '[depurado]',
+      receiverDocument: '[depurado]',
+      receiverRelationship: '[depurado]',
+    });
+  });
+
   it('no distingue mayúsculas en el nombre de la clave', () => {
     expect(depurarCambios({ NewPassword: 'x' })).toEqual({
       NewPassword: '[depurado]',
