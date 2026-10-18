@@ -34,9 +34,19 @@ import {
   VehicleAccidentStatus,
 } from './entities/vehicle-accident.entity';
 import {
+  EVENTO_SINIESTRO_CON_ASIGNACION_PENDIENTE,
   EVENTO_SINIESTRO_CON_DERRAME,
+  SiniestroConAsignacionPendienteEvent,
   SiniestroConDerrameEvent,
 } from './events/fleet-expense.events';
+
+/** Un siniestro recién registrado y qué pasó con la asignación de su vehículo. */
+export interface SiniestroRegistrado {
+  siniestro: VehicleAccident;
+  /** El vehículo quedó fuera de servicio pero su chofer lo sigue teniendo asignado. */
+  assignmentKept: boolean;
+  assignmentKeptReason: string | null;
+}
 
 const TOLERANCIA_DE_RELOJ_MS = 5 * 60 * 1000;
 
@@ -64,7 +74,7 @@ export class VehicleAccidentService {
     dto: CreateVehicleAccidentDto,
     distributorId: string,
     userId: string,
-  ): Promise<VehicleAccident> {
+  ): Promise<SiniestroRegistrado> {
     const { carId, employeeId: legajoIndicado, ...datos } = dto;
     await this.cars.findOne(carId, distributorId); // 404 «Vehículo … no encontrado»
     const occurredAt = this.instante(datos.occurredAt);
@@ -96,7 +106,7 @@ export class VehicleAccidentService {
     dto: CreateMyVehicleAccidentDto,
     distributorId: string,
     userId: string,
-  ): Promise<VehicleAccident> {
+  ): Promise<SiniestroRegistrado> {
     const carId = await this.driver.vehiculoEnUso(userId, distributorId);
     const employeeId = await this.driver.legajoDe(userId, distributorId);
     return this.guardar(
@@ -126,9 +136,10 @@ export class VehicleAccidentService {
     employeeId: string | null,
     distributorId: string,
     userId: string,
-  ): Promise<VehicleAccident> {
+  ): Promise<SiniestroRegistrado> {
     const punto = datos.location ? puntoDesdeLatLng(datos.location) : null;
     let guardado: VehicleAccident;
+    let mantenida: string | null = null;
     try {
       guardado = await this.dataSource.transaction(async (manager) => {
         const car = await this.cars.bloquear(manager, carId, distributorId);
@@ -163,11 +174,19 @@ export class VehicleAccidentService {
               FleetStatus.GROUNDED,
             );
           }
-          await this.assignments.liberarDelVehiculo(carId, manager, {
-            motivo:
-              'Liberado automáticamente: el vehículo quedó fuera de servicio por un siniestro.',
-            actorUserId: userId,
-          });
+          // El vehículo sale de servicio siempre. Si su chofer está en plena
+          // entrega (pedido en curso o carga de camión abierta) la asignación
+          // se mantiene y se avisa a los administradores para que lo resuelvan.
+          const liberacion = await this.assignments.liberarDelVehiculo(
+            carId,
+            manager,
+            {
+              motivo:
+                'Liberado automáticamente: el vehículo quedó fuera de servicio por un siniestro.',
+              actorUserId: userId,
+            },
+          );
+          mantenida = liberacion.motivoSiSeMantiene;
         }
         return siniestro;
       });
@@ -181,7 +200,22 @@ export class VehicleAccidentService {
         new SiniestroConDerrameEvent(distributorId, guardado.accidentId, carId),
       );
     }
-    return this.findOne(guardado.accidentId, distributorId);
+    if (mantenida !== null) {
+      this.eventos.emit(
+        EVENTO_SINIESTRO_CON_ASIGNACION_PENDIENTE,
+        new SiniestroConAsignacionPendienteEvent(
+          distributorId,
+          guardado.accidentId,
+          carId,
+          mantenida,
+        ),
+      );
+    }
+    return {
+      siniestro: await this.findOne(guardado.accidentId, distributorId),
+      assignmentKept: mantenida !== null,
+      assignmentKeptReason: mantenida,
+    };
   }
 
   /** CU-327: corrige los datos y avanza el ciclo, de denunciado a en revisión y a en reparación. */
@@ -196,8 +230,16 @@ export class VehicleAccidentService {
         : dto.location === null
           ? null
           : puntoDesdeLatLng(dto.location);
-    return this.mutar(id, distributorId, (siniestro) => {
+    let nuevoDerrame = false;
+    const actualizado = await this.mutar(id, distributorId, (siniestro) => {
       this.assertAbierto(siniestro, 'El siniestro está cerrado');
+      // El derrame de gas se informa una vez y no se retira: es un incidente de seguridad.
+      if (dto.hazmatRelease === false && siniestro.hazmatRelease) {
+        throw new BadRequestException(
+          'hazmatRelease: un derrame de gas ya informado no se puede retirar',
+        );
+      }
+      nuevoDerrame = dto.hazmatRelease === true && !siniestro.hazmatRelease;
       if (dto.status !== undefined) {
         if (!transicionDeSiniestroValida(siniestro.status, dto.status)) {
           throw new ConflictException(
@@ -223,6 +265,17 @@ export class VehicleAccidentService {
         }),
       );
     });
+    if (nuevoDerrame) {
+      this.eventos.emit(
+        EVENTO_SINIESTRO_CON_DERRAME,
+        new SiniestroConDerrameEvent(
+          distributorId,
+          actualizado.accidentId,
+          actualizado.carId,
+        ),
+      );
+    }
+    return actualizado;
   }
 
   /** CU-202: asienta los importes y la fecha de cierre. No reactiva el vehículo. */
@@ -233,6 +286,11 @@ export class VehicleAccidentService {
   ): Promise<VehicleAccident> {
     return this.mutar(id, distributorId, (siniestro) => {
       this.assertAbierto(siniestro, 'El siniestro ya está cerrado');
+      if (dto.insurerReimbursement > dto.repairCost) {
+        throw new BadRequestException(
+          'insurerReimbursement: el reintegro del seguro no puede superar el costo de la reparación',
+        );
+      }
       siniestro.status = VehicleAccidentStatus.CLOSED;
       siniestro.repairCost = dto.repairCost;
       siniestro.insurerReimbursement = dto.insurerReimbursement;

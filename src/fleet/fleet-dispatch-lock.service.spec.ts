@@ -365,6 +365,24 @@ describe('FleetDispatchLockService', () => {
       expect(motivos).toEqual(['no tiene un vehículo asignado']);
     });
 
+    it('un vehículo fuera de servicio que el chofer conserva (siniestro con entrega en curso) lo deja sin ofertas', async () => {
+      deliveryService.findDeliveryIdsByUserIds.mockResolvedValue([
+        { userId: 'user-0', deliveryId: 'dl0' },
+      ]);
+      vehicleAssignments.findVehiculosEnUsoPorDeliveryIds.mockResolvedValue([
+        { ...vehiculoEnUso('dl0'), fleetStatus: 'grounded' },
+      ]);
+
+      const motivos = await service.motivosDeInhabilitacion('user-0', 'd1');
+      const inhabilitados = await service.choferesInhabilitados(
+        ['user-0'],
+        'd1',
+      );
+
+      expect(motivos).toEqual(['su vehículo está fuera de servicio']);
+      expect(inhabilitados.has('user-0')).toBe(true);
+    });
+
     it('un chofer en condiciones (con vehículo y sin tareas vencidas) no tiene motivos', async () => {
       deliveryService.findDeliveryIdsByUserIds.mockResolvedValue([
         { userId: 'user-7', deliveryId: 'dl7' },

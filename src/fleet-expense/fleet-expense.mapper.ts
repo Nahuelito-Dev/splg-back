@@ -1,8 +1,12 @@
+import Decimal from 'decimal.js';
 import { latLngDesdePunto } from '../common/geo/punto';
 import { Employee } from '../employee/entities/employee.entity';
 import { FuelLoadResponseDto } from './dto/fuel-load.dto';
 import { TrafficFineResponseDto } from './dto/traffic-fine.dto';
-import { VehicleAccidentResponseDto } from './dto/vehicle-accident.dto';
+import {
+  VehicleAccidentCreatedDto,
+  VehicleAccidentResponseDto,
+} from './dto/vehicle-accident.dto';
 import { TireEventResponseDto, TireResponseDto } from './dto/tire.dto';
 import { FuelLoad } from './entities/fuel-load.entity';
 import { TrafficFine } from './entities/traffic-fine.entity';
@@ -91,10 +95,24 @@ export class FleetExpenseMapper {
     dto.netCost =
       a.repairCost === null
         ? null
-        : Math.round((a.repairCost - (a.insurerReimbursement ?? 0)) * 100) /
-          100;
+        : new Decimal(a.repairCost)
+            .minus(a.insurerReimbursement ?? 0)
+            .toDecimalPlaces(2)
+            .toNumber();
     dto.closedAt = a.closedAt;
     dto.createdAt = a.createdAt;
+    return dto;
+  }
+
+  static siniestroRegistrado(r: {
+    siniestro: VehicleAccident;
+    assignmentKept: boolean;
+    assignmentKeptReason: string | null;
+  }): VehicleAccidentCreatedDto {
+    const dto = new VehicleAccidentCreatedDto();
+    Object.assign(dto, FleetExpenseMapper.vehicleAccident(r.siniestro));
+    dto.assignmentKept = r.assignmentKept;
+    dto.assignmentKeptReason = r.assignmentKeptReason;
     return dto;
   }
 

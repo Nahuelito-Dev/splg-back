@@ -29,6 +29,7 @@ import {
   CreateVehicleAccidentDto,
   QueryVehicleAccidentDto,
   UpdateVehicleAccidentDto,
+  VehicleAccidentCreatedDto,
   VehicleAccidentPageDto,
   VehicleAccidentResponseDto,
 } from './dto/vehicle-accident.dto';
@@ -47,9 +48,9 @@ export class VehicleAccidentController {
   @ApiOperation({
     summary: 'Registrar un siniestro (administrador)',
     description:
-      'Nace denunciado. Con `vehicleUnusable` el vehículo pasa a fuera de servicio y se libera a su chofer; con `hazmatRelease` se avisa de inmediato a los administradores.',
+      'Nace denunciado y se registra siempre. Con `vehicleUnusable` el vehículo pasa a fuera de servicio y se libera a su chofer; si el chofer tiene un pedido en curso o una carga de camión abierta la asignación se mantiene (`assignmentKept: true` y el motivo) y se avisa a los administradores. Con `hazmatRelease` se avisa de inmediato a los administradores.',
   })
-  @ApiCreatedResponse({ type: VehicleAccidentResponseDto })
+  @ApiCreatedResponse({ type: VehicleAccidentCreatedDto })
   @ApiBadRequestResponse({
     description: 'Falta la fecha o la descripción, o el punto no es válido',
   })
@@ -58,8 +59,8 @@ export class VehicleAccidentController {
     @Body() dto: CreateVehicleAccidentDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') userId: string,
-  ): Promise<VehicleAccidentResponseDto> {
-    return FleetExpenseMapper.vehicleAccident(
+  ): Promise<VehicleAccidentCreatedDto> {
+    return FleetExpenseMapper.siniestroRegistrado(
       await this.accidents.registrar(dto, distributorId, userId),
     );
   }
@@ -71,7 +72,7 @@ export class VehicleAccidentController {
     summary: 'Registrar un siniestro (chofer)',
     description: 'Siempre del vehículo que el chofer tiene en uso.',
   })
-  @ApiCreatedResponse({ type: VehicleAccidentResponseDto })
+  @ApiCreatedResponse({ type: VehicleAccidentCreatedDto })
   @ApiBadRequestResponse({
     description: 'Falta la fecha o la descripción, o el punto no es válido',
   })
@@ -80,8 +81,8 @@ export class VehicleAccidentController {
     @Body() dto: CreateMyVehicleAccidentDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') userId: string,
-  ): Promise<VehicleAccidentResponseDto> {
-    return FleetExpenseMapper.vehicleAccident(
+  ): Promise<VehicleAccidentCreatedDto> {
+    return FleetExpenseMapper.siniestroRegistrado(
       await this.accidents.registrarPropio(dto, distributorId, userId),
     );
   }

@@ -99,4 +99,39 @@ describe('FineDueAlertsCron (CU-326)', () => {
     expect(emailSender.send).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledTimes(1);
   });
+
+  it('un destinatario que falla no frena a los demás: si salió al menos uno se marcan las multas', async () => {
+    getMany.mockResolvedValue([multa()]);
+    adminService.findAll.mockResolvedValue([
+      { user: { email: 'a@splg.app' } },
+      { user: { email: 'b@splg.app' } },
+    ]);
+    emailSender.send.mockImplementation(({ to }: { to: string }) =>
+      to === 'a@splg.app'
+        ? Promise.reject(new Error('buzón lleno'))
+        : Promise.resolve(),
+    );
+
+    await cron.avisarMultasPorVencer();
+
+    expect(emailSender.send).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledWith(['m1'], {
+      alertedAt: expect.any(Date) as Date,
+    });
+  });
+
+  it('el texto cargado por una persona se escapa en el correo', async () => {
+    getMany.mockResolvedValue([
+      multa({
+        actNumber: '<script>alert(1)</script>',
+        jurisdiction: 'Posadas & "Oberá"',
+      }),
+    ]);
+    await cron.avisarMultasPorVencer();
+    const [[envio]] = emailSender.send.mock.calls as Array<[{ html: string }]>;
+    const { html } = envio;
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('Posadas &amp; &quot;Oberá&quot;');
+  });
 });

@@ -5,6 +5,7 @@ import {
   MaintenanceTask,
   MaintenanceTaskStatus,
 } from './entities/maintenance-task.entity';
+import { FleetStatus } from '../car/entities/car.entity';
 import { VehicleAssignmentService } from '../car/vehicle-assignment.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { EmployeeService } from '../employee/employee.service';
@@ -25,6 +26,7 @@ const ESTADOS_CERRADOS = [
 
 /** Sin fecha ni chofer: el motivo "no tiene un vehículo asignado" no viene de ninguna tarea. */
 const MOTIVO_SIN_VEHICULO = 'no tiene un vehículo asignado';
+const MOTIVO_VEHICULO_FUERA_DE_SERVICIO = 'su vehículo está fuera de servicio';
 
 /** CU-246: motivos laborales que no vienen de ninguna tarea. */
 export const MOTIVO_LEGAJO_EGRESADO = 'su legajo está egresado';
@@ -247,6 +249,13 @@ export class FleetDispatchLockService {
     const carIdPorDelivery = new Map(
       vehiculos.map((v) => [v.deliveryId, v.carId]),
     );
+    // Un siniestro que lo dejó fuera de servicio con el chofer en plena entrega
+    // mantiene la asignación (CU-201): no recibe pedidos nuevos hasta resolverlo.
+    const fueraDeServicio = new Set(
+      vehiculos
+        .filter((v) => v.fleetStatus === FleetStatus.GROUNDED)
+        .map((v) => v.deliveryId),
+    );
 
     const legajos = await this.employees.findByUserIds(
       deliveries.map((d) => d.userId),
@@ -272,6 +281,9 @@ export class FleetDispatchLockService {
     for (const d of deliveries) {
       const legajo = legajoPorCuenta.get(d.userId);
       const motivosLaborales: string[] = [];
+      if (fueraDeServicio.has(d.deliveryId)) {
+        motivosLaborales.push(MOTIVO_VEHICULO_FUERA_DE_SERVICIO);
+      }
       if (legajo) {
         if (legajo.status !== EmployeeStatus.ACTIVE) {
           motivosLaborales.push(MOTIVO_LEGAJO_EGRESADO);
@@ -279,9 +291,9 @@ export class FleetDispatchLockService {
         if (deLicencia.has(legajo.employeeId)) {
           motivosLaborales.push(MOTIVO_DE_LICENCIA);
         }
-        if (motivosLaborales.length > 0)
-          laborales.set(d.userId, motivosLaborales);
       }
+      if (motivosLaborales.length > 0)
+        laborales.set(d.userId, motivosLaborales);
 
       const inhabilitantesLicencia = [
         ...this.filtrarInhabilitantes(porDelivery.get(d.deliveryId) ?? []),

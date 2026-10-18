@@ -232,6 +232,22 @@ export class VehicleAccidentResponseDto {
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
 }
 
+/** La respuesta del alta: el siniestro más lo que pasó con la asignación del vehículo. */
+export class VehicleAccidentCreatedDto extends VehicleAccidentResponseDto {
+  @ApiPropertyOptional({
+    description:
+      'Sólo en el alta: el vehículo quedó fuera de servicio pero su chofer lo sigue teniendo asignado (tiene un pedido en curso o una carga de camión abierta)',
+  })
+  assignmentKept?: boolean;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Sólo en el alta: por qué se mantuvo la asignación',
+  })
+  assignmentKeptReason?: string | null;
+}
+
 export class VehicleAccidentPageDto {
   @ApiProperty({ type: VehicleAccidentResponseDto, isArray: true })
   data!: VehicleAccidentResponseDto[];
