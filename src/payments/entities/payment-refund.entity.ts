@@ -93,6 +93,20 @@ export class PaymentRefund {
   @Column({ type: 'int', default: 0 })
   attempts!: number;
 
+  /**
+   * Lo que la pasarela ya había devuelto del pago antes del último intento:
+   * permite saber, después de un corte o un timeout, si ese intento se aplicó.
+   */
+  @Column({
+    name: 'refunded_baseline',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  refundedBaseline!: number | null;
+
   /** Cuándo la pasarela confirmó la devolución. */
   @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })
   refundedAt!: Date | null;

@@ -347,9 +347,12 @@ export class OrderController {
       };
     }
     // Pool de pedidos disponibles ACOTADO a la distribuidora del chofer.
+    // Los pedidos express no están en el pool del chofer (se ofrecen de a uno a
+    // las motos), pero el panel y el staff sí los ven.
     const result = await this.orderService.findAvailableOrders(
       paginationDto,
       distributorId,
+      user.role !== RoleType.DELIVERY,
     );
     return {
       ...result,

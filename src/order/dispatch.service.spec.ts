@@ -19,6 +19,7 @@ describe('DispatchService', () => {
     distribuidorasConOfertasVencidas: jest.Mock;
   };
   let lock: { release: jest.Mock };
+  let refunds: { retomarPendientes: jest.Mock };
   let frecuencias: {
     distribuidorasQueCorren: jest.Mock;
     liberarMarca: jest.Mock;
@@ -42,6 +43,7 @@ describe('DispatchService', () => {
       ensureOffered: jest.fn().mockResolvedValue(undefined),
       distribuidorasConOfertasVencidas: jest.fn().mockResolvedValue([]),
     };
+    refunds = { retomarPendientes: jest.fn().mockResolvedValue(0) };
     frecuencias = {
       distribuidorasQueCorren: jest.fn((_t: string, ids: string[]) =>
         Promise.resolve(new Set(ids)),
@@ -53,6 +55,7 @@ describe('DispatchService', () => {
       redis as unknown as import('../redis/redis.service').RedisService,
       orchestrator as unknown as import('./application/dispatch-orchestrator.service').DispatchOrchestratorService,
       frecuencias as unknown as import('../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
+      refunds as unknown as import('../payments/application/refunds.service').RefundsService,
     );
   });
 
@@ -61,6 +64,13 @@ describe('DispatchService', () => {
     await service.tick();
     expect(orchestrator.handleExpiredOffers).not.toHaveBeenCalled();
     expect(orderService.findAvailableOrders).not.toHaveBeenCalled();
+  });
+
+  it('retoma las devoluciones pendientes viejas con el lock del tic, y un fallo ahí no impide soltarlo', async () => {
+    refunds.retomarPendientes.mockRejectedValue(new Error('boom'));
+    await service.tick();
+    expect(refunds.retomarPendientes).toHaveBeenCalledTimes(1);
+    expect(lock.release).toHaveBeenCalled();
   });
 
   it('vence ofertas y libera el lock', async () => {

@@ -218,6 +218,17 @@ describe('CancelOrderUseCase', () => {
       expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
     });
 
+    it('la cancelación NO espera a la pasarela: responde aunque la devolución siga en curso', async () => {
+      refunds.reintegrarPorCancelacion.mockReturnValue(
+        new Promise(() => undefined),
+      );
+
+      const result = await useCase.execute('ord-1', 'cust-1', 'customer');
+
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
+    });
+
     it('si la pasarela falla la cancelación igual se confirma', async () => {
       refunds.reintegrarPorCancelacion.mockRejectedValue(new Error('MP caído'));
       const result = await useCase.execute('ord-1', 'cust-1', 'customer');

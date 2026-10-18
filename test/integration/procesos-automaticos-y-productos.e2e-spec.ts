@@ -1,6 +1,6 @@
 /**
  * C-07 contra la API con Postgres y Redis reales:
- *  - CU-172: parámetros de los cinco procesos automáticos (`/module-config/:proceso`).
+ *  - CU-172: parámetros de los cuatro procesos automáticos (`/module-config/:proceso`).
  *  - CU-151: el barrido que desactiva las zonas de cobertura vencidas.
  *  - CU-268 y CU-269: productos dados de baja (listado y reactivación).
  */
@@ -34,12 +34,11 @@ import { User } from '../../src/users/entities/user.entity';
 
 type Headers = Record<string, string>;
 
-const CINCO = [
+const CUATRO = [
   'fleet_planner',
   'repurchase',
   'route_batching',
   'cylinder_recovery',
-  'express_dispatch',
 ];
 
 describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e)', () => {
@@ -136,7 +135,7 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
     };
   }
   describe('CU-172 · parámetros de un proceso automático', () => {
-    it('lista los cinco procesos con su esquema y los valores por omisión', async () => {
+    it('lista los cuatro procesos con su esquema y los valores por omisión', async () => {
       const e = await escenario();
       const res = await http()
         .get('/module-config/processes')
@@ -149,7 +148,7 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
         params: Record<string, number>;
         updatedAt: string | null;
       }>;
-      expect(lista.map((p) => p.process).sort()).toEqual([...CINCO].sort());
+      expect(lista.map((p) => p.process).sort()).toEqual([...CUATRO].sort());
       for (const p of lista) {
         expect(p.isDefault).toBe(true);
         expect(p.updatedAt).toBeNull();
@@ -201,9 +200,9 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
         .send({ offerTtlSeconds: 90 })
         .expect(200);
       await http()
-        .put('/module-config/express_dispatch')
+        .put('/module-config/cylinder_recovery')
         .set(e.adminA.headers)
-        .send({ maxRadiusKm: 8 })
+        .send({ toleranceDays: 40 })
         .expect(200);
       const despacho = await http()
         .get('/module-config/dispatch')
@@ -252,12 +251,6 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
         'cylinder_recovery',
         { anticipationDays: 3 },
         'anticipationDays',
-      ],
-      [
-        'fin de horario no posterior al inicio',
-        'express_dispatch',
-        { serviceStartHour: 20, serviceEndHour: 10 },
-        'serviceEndHour',
       ],
     ])(
       'rechaza un parámetro inválido (%s) con 400 y el campo, sin guardar',

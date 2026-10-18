@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { FindOperator, Repository } from 'typeorm';
+import { EntityManager, FindOperator, Repository } from 'typeorm';
 import { RefundsService } from './refunds.service';
 import { Payment } from '../entities/payment.entity';
 import { PaymentRefund } from '../entities/payment-refund.entity';
@@ -29,6 +29,7 @@ function cumple(valor: unknown, condicion: unknown): boolean {
     const interno: unknown = op.value;
     if (op.type === 'not') return valor !== interno;
     if (op.type === 'in') return (interno as unknown[]).includes(valor);
+    if (op.type === 'lessThan') return (valor as Date) < (interno as Date);
     throw new Error(`operador no soportado en el doble: ${op.type}`);
   }
   return valor === condicion;
@@ -45,8 +46,8 @@ function filtrar(filas: Fila[], where: Fila | undefined): Fila[] {
 function repoEnMemoria(filas: Fila[], idCampo: string, extra: Fila = {}) {
   return {
     filas,
-    find: jest.fn(({ where }: { where?: Fila } = {}) =>
-      Promise.resolve(filtrar(filas, where)),
+    find: jest.fn(({ where, take }: { where?: Fila; take?: number } = {}) =>
+      Promise.resolve(filtrar(filas, where).slice(0, take)),
     ),
     findOne: jest.fn(({ where }: { where?: Fila } = {}) =>
       Promise.resolve(filtrar(filas, where)[0] ?? null),
@@ -82,7 +83,9 @@ describe('RefundsService (CU-168)', () => {
   let pagos: Fila[];
   let solicitudes: Fila[];
   let pagosRepo: ReturnType<typeof repoEnMemoria>;
-  let refundsRepo: ReturnType<typeof repoEnMemoria>;
+  let refundsRepo: ReturnType<typeof repoEnMemoria> & {
+    createQueryBuilder: jest.Mock;
+  };
   let gateway: {
     getPayment: jest.Mock;
     refundPayment: jest.Mock;
@@ -118,6 +121,7 @@ describe('RefundsService (CU-168)', () => {
         let valores: Fila = {};
         const qb = {
           insert: () => qb,
+          into: () => qb,
           values: (v: Fila) => {
             valores = v;
             return qb;
@@ -133,6 +137,7 @@ describe('RefundsService (CU-168)', () => {
               solicitudes.push({
                 refundId: `ref-${seq}`,
                 gatewayRefundId: null,
+                refundedBaseline: null,
                 errorMessage: null,
                 attempts: 0,
                 refundedAt: null,
@@ -146,7 +151,7 @@ describe('RefundsService (CU-168)', () => {
         };
         return qb;
       }),
-    });
+    }) as typeof refundsRepo;
     gateway = {
       getPayment: jest.fn().mockResolvedValue({
         id: 'mp-1',
@@ -412,7 +417,7 @@ describe('RefundsService (CU-168)', () => {
   });
 
   describe('reintentar', () => {
-    it('reintenta la devolución fallida con la MISMA clave de idempotencia', async () => {
+    it('reintenta la devolución fallida: la clave del intento nuevo sólo cambia porque la pasarela confirmó que el anterior no se aplicó', async () => {
       pagos.push(pago());
       gateway.refundPayment.mockRejectedValueOnce(new Error('caída'));
       const [fallida] = await service.reintegrarPorCancelacion('ord-1');
@@ -426,7 +431,41 @@ describe('RefundsService (CU-168)', () => {
       const claves = gateway.refundPayment.mock.calls.map(
         (c: [{ idempotencyKey: string }]) => c[0].idempotencyKey,
       );
-      expect(new Set(claves).size).toBe(1);
+      expect(claves).toEqual([r.refundId, `${r.refundId}:1`]);
+    });
+
+    it('si la pasarela no responde al reintento no se puede confirmar que el intento anterior no se aplicó: misma clave', async () => {
+      pagos.push(pago());
+      gateway.refundPayment.mockRejectedValueOnce(new Error('caída'));
+      const [fallida] = await service.reintegrarPorCancelacion('ord-1');
+      gateway.getPayment.mockRejectedValue(new Error('sin red'));
+
+      await service.reintentar('ord-1', 'dist-1', 'adm-1');
+
+      const claves = gateway.refundPayment.mock.calls.map(
+        (c: [{ idempotencyKey: string }]) => c[0].idempotencyKey,
+      );
+      expect(claves).toEqual([fallida.refundId, fallida.refundId]);
+    });
+
+    it('si el intento fallido se había aplicado igual (lo devuelto subió), el reintento lo da por reintegrado sin pedir nada', async () => {
+      pagos.push(pago());
+      gateway.refundPayment.mockRejectedValueOnce(new Error('timeout'));
+      // Lectura previa al intento, y posterior al timeout: sin cambio (parece fallido).
+      await service.reintegrarPorCancelacion('ord-1');
+      gateway.refundPayment.mockClear();
+      gateway.getPayment.mockResolvedValue({
+        id: 'mp-1',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 3000,
+        refundedAmount: 3000 - 0, // la pasarela terminó aplicándolo
+      });
+
+      const [r] = await service.reintentar('ord-1', 'dist-1', 'adm-1');
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+      expect(gateway.refundPayment).not.toHaveBeenCalled();
     });
 
     it('crea la devolución de un pedido cancelado que nunca la pidió', async () => {
@@ -497,6 +536,296 @@ describe('RefundsService (CU-168)', () => {
 
       expect(gateway.refundPayment).not.toHaveBeenCalled();
       expect(r).toHaveLength(1);
+    });
+  });
+
+  describe('timeout de una devolución PARCIAL (el pago no pasa a refunded)', () => {
+    const estado = (refundedAmount: number) => ({
+      id: 'mp-1',
+      status: 'approved',
+      externalReference: 'ord-1',
+      amount: 4500,
+      refundedAmount,
+    });
+
+    it('si tras el timeout lo devuelto subió al menos el monto, es éxito aunque el estado siga approved', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      gateway.getPayment
+        .mockResolvedValueOnce(estado(0))
+        .mockResolvedValueOnce(estado(1500));
+      gateway.refundPayment.mockRejectedValue(new Error('timeout'));
+
+      const [r] = await service.reintegrarRecargoExpress('ord-1', 1500);
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+      expect(eventos.emit).not.toHaveBeenCalledWith(
+        EVENTO_REINTEGRO_FALLIDO,
+        expect.anything(),
+      );
+    });
+
+    it('si no subió, es fallo (y queda anotado desde dónde se partió)', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      gateway.getPayment
+        .mockResolvedValueOnce(estado(200))
+        .mockResolvedValueOnce(estado(200));
+      gateway.refundPayment.mockRejectedValue(new Error('timeout'));
+
+      const [r] = await service.reintegrarRecargoExpress('ord-1', 1500);
+
+      expect(r.status).toBe(RefundStatus.FAILED);
+      expect(r.refundedBaseline).toBe(200);
+    });
+
+    it('si subió menos que el monto no alcanza', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      gateway.getPayment
+        .mockResolvedValueOnce(estado(0))
+        .mockResolvedValueOnce(estado(300));
+      gateway.refundPayment.mockRejectedValue(new Error('timeout'));
+
+      const [r] = await service.reintegrarRecargoExpress('ord-1', 1500);
+
+      expect(r.status).toBe(RefundStatus.FAILED);
+    });
+
+    it('si la segunda lectura falla no se puede afirmar éxito: queda fallido para reintentar', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      gateway.getPayment
+        .mockResolvedValueOnce(estado(0))
+        .mockRejectedValueOnce(new Error('sin red'));
+      gateway.refundPayment.mockRejectedValue(new Error('timeout'));
+
+      const [r] = await service.reintegrarRecargoExpress('ord-1', 1500);
+
+      expect(r.status).toBe(RefundStatus.FAILED);
+    });
+  });
+
+  describe('carrera de reintegro doble', () => {
+    it('dos cancelaciones simultáneas dejan UNA solicitud, UNA clave de idempotencia y UN aviso', async () => {
+      pagos.push(pago());
+
+      await Promise.all([
+        service.reintegrarPorCancelacion('ord-1'),
+        service.reintegrarPorCancelacion('ord-1'),
+      ]);
+
+      expect(solicitudes).toHaveLength(1);
+      const claves = new Set(
+        gateway.refundPayment.mock.calls.map(
+          (c: [{ idempotencyKey: string }]) => c[0].idempotencyKey,
+        ),
+      );
+      expect(claves.size).toBe(1);
+      const avisos = eventos.emit.mock.calls.filter(
+        (c: [string]) => c[0] === EVENTO_PAGO_REINTEGRADO,
+      );
+      expect(avisos).toHaveLength(1);
+    });
+
+    it('el cierre es un UPDATE condicional a "no reintegrado": la segunda vez no afecta filas', async () => {
+      pagos.push(pago());
+      const [r] = await service.reintegrarPorCancelacion('ord-1');
+      eventos.emit.mockClear();
+
+      await service.reintentar('ord-1', 'dist-1', 'adm-1');
+
+      const condiciones = refundsRepo.update.mock.calls.map(
+        (c: [Fila, Fila]) => c[0],
+      );
+      expect(
+        condiciones.some(
+          (c: Fila) =>
+            c.refundId === r.refundId && c.status instanceof FindOperator,
+        ),
+      ).toBe(true);
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('un fallo que llega cuando otro proceso ya reintegró no se avisa', async () => {
+      pagos.push(pago());
+      const [r] = await service.reintegrarPorCancelacion('ord-1');
+      eventos.emit.mockClear();
+      // El cierre de otro proceso: ya está succeeded, el UPDATE de fallo no afecta filas.
+      const registrarFallo = (
+        service as unknown as {
+          registrarFallo: (
+            s: PaymentRefund,
+            m: string,
+            a: string | null,
+          ) => Promise<PaymentRefund>;
+        }
+      ).registrarFallo.bind(service);
+
+      await registrarFallo(r, 'rechazo tardío', null);
+
+      expect(eventos.emit).not.toHaveBeenCalled();
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+    });
+  });
+
+  describe('outbox y pendientes viejas', () => {
+    const manager = () => ({
+      find: jest.fn(() => Promise.resolve(filtrar(pagos, undefined))),
+      createQueryBuilder: refundsRepo.createQueryBuilder,
+    });
+
+    it('registrarRecargoExpress deja la solicitud pendiente con el manager de la transacción, sin hablar con la pasarela', async () => {
+      pagos.push(pago({ amount: 4500 }));
+
+      const hay = await service.registrarRecargoExpress(
+        manager() as unknown as EntityManager,
+        'ord-1',
+        1500,
+      );
+
+      expect(hay).toBe(true);
+      expect(solicitudes).toHaveLength(1);
+      expect(solicitudes[0]).toMatchObject({
+        kind: RefundKind.EXPRESS_SURCHARGE,
+        amount: 1500,
+        status: RefundStatus.PENDING,
+      });
+      expect(gateway.refundPayment).not.toHaveBeenCalled();
+    });
+
+    it('sin pago de pasarela (efectivo) no registra nada', async () => {
+      const hay = await service.registrarRecargoExpress(
+        manager() as unknown as EntityManager,
+        'ord-1',
+        1500,
+      );
+      expect(hay).toBe(false);
+      expect(solicitudes).toHaveLength(0);
+    });
+
+    it('retomarPendientes ejecuta sólo las pendientes más viejas que el umbral', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      const vieja = new Date(Date.now() - 10 * 60 * 1000);
+      solicitudes.push(
+        {
+          refundId: 'vieja',
+          paymentId: 'pay-1',
+          orderId: 'ord-1',
+          kind: RefundKind.EXPRESS_SURCHARGE,
+          amount: 1500,
+          status: RefundStatus.PENDING,
+          attempts: 0,
+          refundedBaseline: null,
+          updatedAt: vieja,
+        },
+        {
+          refundId: 'reciente',
+          paymentId: 'pay-1',
+          orderId: 'ord-1',
+          kind: RefundKind.FULL,
+          amount: 100,
+          status: RefundStatus.PENDING,
+          attempts: 0,
+          refundedBaseline: null,
+          updatedAt: new Date(),
+        },
+      );
+
+      const n = await service.retomarPendientes();
+
+      expect(n).toBe(1);
+      expect(solicitudes.find((x) => x.refundId === 'vieja')?.status).toBe(
+        RefundStatus.SUCCEEDED,
+      );
+      expect(solicitudes.find((x) => x.refundId === 'reciente')?.status).toBe(
+        RefundStatus.PENDING,
+      );
+      expect(gateway.refundPayment).toHaveBeenCalledTimes(1);
+      expect(gateway.refundPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'vieja' }),
+      );
+    });
+
+    it('un error al retomar una no frena las demás', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      const vieja = new Date(Date.now() - 10 * 60 * 1000);
+      solicitudes.push({
+        refundId: 'sin-pago',
+        paymentId: 'no-existe',
+        orderId: 'ord-1',
+        kind: RefundKind.FULL,
+        amount: 100,
+        status: RefundStatus.PENDING,
+        attempts: 0,
+        refundedBaseline: null,
+        updatedAt: vieja,
+      });
+      expect(await service.retomarPendientes()).toBe(0);
+    });
+  });
+
+  describe('recargo express sin devolver (reintento del admin)', () => {
+    const vivo = (over: Fila = {}) =>
+      orderLookup.findForRefund.mockResolvedValue({
+        orderId: 'ord-1',
+        customerId: 'cus-1',
+        distributorId: 'dist-1',
+        status: OrderStatus.PENDING,
+        expressSurchargeAmount: 1500,
+        expressDegradedAt: new Date(),
+        ...over,
+      });
+
+    it('pasó al reparto común, se cobró por la pasarela y no hay solicitud: reintentar la crea y la ejecuta', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      vivo();
+
+      const [r] = await service.reintentar('ord-1', 'dist-1', 'adm-1');
+
+      expect(r).toMatchObject({
+        kind: RefundKind.EXPRESS_SURCHARGE,
+        amount: 1500,
+        status: RefundStatus.SUCCEEDED,
+      });
+    });
+
+    it('con una solicitud pendiente también se puede reintentar', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      vivo();
+      await service.registrarRecargoExpress(
+        {
+          find: () => Promise.resolve(pagos),
+          createQueryBuilder: refundsRepo.createQueryBuilder,
+        } as unknown as EntityManager,
+        'ord-1',
+        1500,
+      );
+
+      const [r] = await service.reintentar('ord-1', 'dist-1', 'adm-1');
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+    });
+
+    it('si el recargo ya se devolvió, 409', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      vivo();
+      await service.reintegrarRecargoExpress('ord-1', 1500);
+
+      await expect(
+        service.reintentar('ord-1', 'dist-1', 'adm-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('en efectivo (sin pago de pasarela) no hay nada que devolver: 409', async () => {
+      vivo();
+      await expect(
+        service.reintentar('ord-1', 'dist-1', 'adm-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('sin haber pasado al reparto común no aplica: 409', async () => {
+      pagos.push(pago({ amount: 4500 }));
+      vivo({ expressDegradedAt: null });
+      await expect(
+        service.reintentar('ord-1', 'dist-1', 'adm-1'),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

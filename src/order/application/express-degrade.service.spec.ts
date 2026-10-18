@@ -21,7 +21,10 @@ describe('ExpressDegradeService (CU-149 pasos 7 y 8)', () => {
     manager: { createQueryBuilder: jest.Mock; save: jest.Mock };
   };
   let locked: Partial<Order> | null;
-  let refunds: { reintegrarRecargoExpress: jest.Mock };
+  let refunds: {
+    registrarRecargoExpress: jest.Mock;
+    reintegrarRecargoExpress: jest.Mock;
+  };
   let realtime: { notifyCustomer: jest.Mock; notifyAdmins: jest.Mock };
   let notifications: { sendOrderNoticePush: jest.Mock };
 
@@ -56,6 +59,8 @@ describe('ExpressDegradeService (CU-149 pasos 7 y 8)', () => {
       },
     };
     refunds = {
+      // Por omisión es un pedido en efectivo: no hay pago de pasarela que devolver.
+      registrarRecargoExpress: jest.fn().mockResolvedValue(false),
       reintegrarRecargoExpress: jest.fn().mockResolvedValue([]),
     };
     realtime = { notifyCustomer: jest.fn(), notifyAdmins: jest.fn() };
@@ -90,21 +95,57 @@ describe('ExpressDegradeService (CU-149 pasos 7 y 8)', () => {
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
   });
 
-  it('si el cliente pagó en línea pide devolver sólo el recargo, después del commit', async () => {
-    refunds.reintegrarRecargoExpress.mockResolvedValue([{ refundId: 'r1' }]);
+  it('si el cliente pagó en línea registra la solicitud DENTRO de la transacción (outbox) y la ejecuta después del commit', async () => {
+    refunds.registrarRecargoExpress.mockResolvedValue(true);
+    refunds.reintegrarRecargoExpress.mockResolvedValue([
+      { refundId: 'r1', status: 'succeeded' },
+    ]);
 
     const pase = await service.pasarAlRepartoComun('ord-1');
 
+    expect(refunds.registrarRecargoExpress).toHaveBeenCalledWith(
+      queryRunner.manager,
+      'ord-1',
+      1500,
+    );
+    expect(
+      refunds.registrarRecargoExpress.mock.invocationCallOrder[0],
+    ).toBeLessThan(queryRunner.commitTransaction.mock.invocationCallOrder[0]);
     expect(refunds.reintegrarRecargoExpress).toHaveBeenCalledWith(
       'ord-1',
       1500,
     );
-    expect(pase?.refundRequested).toBe(true);
     expect(
       refunds.reintegrarRecargoExpress.mock.invocationCallOrder[0],
     ).toBeGreaterThan(
       queryRunner.commitTransaction.mock.invocationCallOrder[0],
     );
+    expect(pase).toMatchObject({ refundRequested: true, refundFailed: false });
+  });
+
+  it('en efectivo no pide nada a la pasarela', async () => {
+    const pase = await service.pasarAlRepartoComun('ord-1');
+
+    expect(refunds.reintegrarRecargoExpress).not.toHaveBeenCalled();
+    expect(pase).toMatchObject({ refundRequested: false, refundFailed: false });
+  });
+
+  it('si la pasarela rechaza, el push NO dice "te devolvemos": avisa que está en trámite', async () => {
+    refunds.registrarRecargoExpress.mockResolvedValue(true);
+    refunds.reintegrarRecargoExpress.mockResolvedValue([
+      { refundId: 'r1', status: 'failed' },
+    ]);
+
+    const pase = await service.pasarAlRepartoComun('ord-1');
+
+    expect(pase?.refundFailed).toBe(true);
+    const [, , aviso] = notifications.sendOrderNoticePush.mock.calls[0] as [
+      string,
+      string,
+      { body: string },
+    ];
+    expect(aviso.body).toContain('en trámite');
+    expect(aviso.body).not.toContain('Te devolvemos');
   });
 
   it('avisa al cliente en ese momento (socket y push) y al panel', async () => {
@@ -132,6 +173,7 @@ describe('ExpressDegradeService (CU-149 pasos 7 y 8)', () => {
   });
 
   it('si la pasarela o el aviso fallan, el pase ya confirmado no se deshace', async () => {
+    refunds.registrarRecargoExpress.mockResolvedValue(true);
     refunds.reintegrarRecargoExpress.mockRejectedValue(new Error('MP caído'));
     realtime.notifyCustomer.mockImplementation(() => {
       throw new Error('socket caído');

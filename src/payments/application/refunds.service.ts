@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { In, Not, Repository } from 'typeorm';
+import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 
 import { Payment } from '../entities/payment.entity';
@@ -37,6 +37,12 @@ const MAX_ERROR = 500;
 
 /** Estado de un pago en la pasarela cuando ya se devolvió completo. */
 const ESTADO_DEVUELTO = 'refunded';
+
+/** Diferencia de centavos que se tolera al comparar importes de la pasarela. */
+const TOLERANCIA = 0.005;
+
+/** Una solicitud `pending` más vieja que esto quedó a medias (se cayó el proceso) y se retoma. */
+export const PENDIENTE_VIEJA_MS = 5 * 60 * 1000;
 
 export interface FiltrosDeReintegros {
   status?: RefundStatus;
@@ -103,6 +109,81 @@ export class RefundsService {
   }
 
   /**
+   * Outbox del pase al reparto común: deja registrada la solicitud de devolución
+   * del recargo (`pending`) DENTRO de la transacción del pedido, así un corte
+   * antes de hablar con la pasarela no pierde el reintegro. La ejecuta después
+   * `reintegrarRecargoExpress` (o `retomarPendientes` si el proceso se cae).
+   * Devuelve false si no hay un pago aprobado por una pasarela que lo cubra.
+   */
+  async registrarRecargoExpress(
+    manager: EntityManager,
+    orderId: string,
+    amount: number,
+  ): Promise<boolean> {
+    if (!(amount > 0)) return false;
+    const pagos = await manager.find(Payment, {
+      where: {
+        orderId,
+        status: LedgerPaymentStatus.APPROVED,
+        gateway: Not(PaymentGateway.CASH),
+      },
+      order: { createdAt: 'ASC' },
+    });
+    const pago = pagos.filter((p) => !p.isDeposit && p.amount >= amount).pop();
+    if (!pago) return false;
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(PaymentRefund)
+      .values({
+        paymentId: pago.paymentId,
+        orderId: pago.orderId,
+        distributorId: pago.distributorId,
+        kind: RefundKind.EXPRESS_SURCHARGE,
+        amount,
+        status: RefundStatus.PENDING,
+      })
+      .orIgnore()
+      .execute();
+    return true;
+  }
+
+  /**
+   * Retoma las solicitudes que quedaron `pending` hace más de `edadMs` (se cayó
+   * el proceso entre registrarlas y hablar con la pasarela). Las ejecuta con la
+   * misma clave de idempotencia: si la pasarela ya las aplicó, no devuelve de más.
+   */
+  async retomarPendientes(
+    edadMs: number = PENDIENTE_VIEJA_MS,
+    limite = 20,
+  ): Promise<number> {
+    const viejas = await this.refunds.find({
+      where: {
+        status: RefundStatus.PENDING,
+        updatedAt: LessThan(new Date(Date.now() - edadMs)),
+      },
+      order: { updatedAt: 'ASC' },
+      take: limite,
+    });
+    let retomadas = 0;
+    for (const solicitud of viejas) {
+      try {
+        const pago = await this.payments.findOne({
+          where: { paymentId: solicitud.paymentId },
+        });
+        if (!pago) continue;
+        await this.ejecutar(solicitud, pago, null);
+        retomadas += 1;
+      } catch (error) {
+        this.logger.error(
+          `No se pudo retomar la devolución ${solicitud.refundId}: ${errorMessage(error)}`,
+        );
+      }
+    }
+    return retomadas;
+  }
+
+  /**
    * El administrador reintenta lo que falló. Sólo si el pedido está cancelado o
    * tiene pendiente la devolución del recargo express; en otro caso 409. Un
    * pedido de otra distribuidora no existe (404).
@@ -123,15 +204,42 @@ export class RefundsService {
         r.status !== RefundStatus.SUCCEEDED,
     );
     const cancelado = pedido.status === OrderStatus.CANCELLED;
-    if (!cancelado && !recargoPendiente) {
+    const pagos = await this.pagosAprobados(orderId);
+    // Pasó al reparto común, se cobró el recargo por una pasarela y nunca se
+    // devolvió (ni siquiera quedó la solicitud): también se puede reintentar.
+    const recargoSinDevolver =
+      pedido.expressDegradedAt != null &&
+      pedido.expressSurchargeAmount > 0 &&
+      !existentes.some(
+        (r) =>
+          r.kind === RefundKind.EXPRESS_SURCHARGE &&
+          r.status === RefundStatus.SUCCEEDED,
+      ) &&
+      pagos.some(
+        (p) => !p.isDeposit && p.amount >= pedido.expressSurchargeAmount,
+      );
+    if (!cancelado && !recargoPendiente && !recargoSinDevolver) {
       throw new ConflictException(
-        'Sólo se puede reintentar la devolución de un pedido cancelado o con la devolución del recargo express pendiente',
+        'Sólo se puede reintentar la devolución de un pedido cancelado, o con la devolución del recargo express pendiente o sin pedir',
       );
     }
 
-    const pagos = await this.pagosAprobados(orderId);
     if (cancelado) {
       for (const pago of pagos) await this.solicitudParaCancelacion(pago);
+    }
+    if (recargoSinDevolver && !cancelado) {
+      const pago = pagos
+        .filter(
+          (p) => !p.isDeposit && p.amount >= pedido.expressSurchargeAmount,
+        )
+        .pop();
+      if (pago) {
+        await this.solicitudNueva(
+          pago,
+          RefundKind.EXPRESS_SURCHARGE,
+          pedido.expressSurchargeAmount,
+        );
+      }
     }
     const solicitudes = await this.refunds.find({
       where: { orderId },
@@ -277,41 +385,105 @@ export class RefundsService {
       );
     }
 
-    let gatewayRefundId: string | null = null;
+    const antes = await this.estadoEnPasarela(pago.gatewayPaymentId);
+    if (antes?.status === ESTADO_DEVUELTO) {
+      return this.registrarExito(solicitud, pago, null, actorUserId);
+    }
+    // Un intento anterior (fallido, o cortado a mitad) pudo haberse aplicado
+    // igual: se mira antes de pedir nada.
+    if (this.seAplico(solicitud, antes)) {
+      return this.registrarExito(solicitud, pago, null, actorUserId);
+    }
+    // Nunca se pide más de lo que la pasarela cobró y no devolvió: el importe
+    // del ledger puede incluir recargos que no pasaron por ella.
+    const monto = this.montoDevolvible(solicitud.amount, antes);
+    if (monto <= 0) {
+      return this.registrarExito(solicitud, pago, null, actorUserId);
+    }
+    const clave = this.claveDeIntento(solicitud, antes);
+    await this.refunds.update(
+      { refundId: solicitud.refundId },
+      {
+        amount: monto,
+        refundedBaseline: antes?.refundedAmount ?? solicitud.refundedBaseline,
+      },
+    );
+    solicitud.amount = monto;
+
     try {
-      const estado = await this.estadoEnPasarela(pago.gatewayPaymentId);
-      if (estado?.status !== ESTADO_DEVUELTO) {
-        // Nunca se pide más de lo que la pasarela cobró y no devolvió: el
-        // importe del ledger puede incluir recargos que no pasaron por ella.
-        const monto = this.montoDevolvible(solicitud.amount, estado);
-        if (monto > 0) {
-          if (monto !== solicitud.amount) {
-            await this.refunds.update(
-              { refundId: solicitud.refundId },
-              { amount: monto },
-            );
-            solicitud.amount = monto;
-          }
-          const respuesta = await this.gateway.refundPayment({
-            gatewayPaymentId: pago.gatewayPaymentId,
-            amount: monto,
-            idempotencyKey: solicitud.refundId,
-          });
-          gatewayRefundId = respuesta.refundId;
-        }
-      }
+      const respuesta = await this.gateway.refundPayment({
+        gatewayPaymentId: pago.gatewayPaymentId,
+        amount: monto,
+        idempotencyKey: clave,
+      });
+      return this.registrarExito(
+        solicitud,
+        pago,
+        respuesta.refundId,
+        actorUserId,
+      );
     } catch (error) {
       // La pasarela pudo haber devuelto igual (timeout con la solicitud ya
-      // aplicada): se confirma antes de darla por fallida.
+      // aplicada). En una devolución parcial el estado del pago no cambia: se
+      // decide por lo devuelto, antes contra después.
       const despues = await this.estadoEnPasarela(pago.gatewayPaymentId);
-      if (despues?.status !== ESTADO_DEVUELTO) {
-        this.logger.warn(
-          `Devolución ${solicitud.refundId} del pedido ${solicitud.orderId} rechazada: ${errorMessage(error)}`,
-        );
-        return this.registrarFallo(solicitud, errorMessage(error), actorUserId);
+      if (
+        despues?.status === ESTADO_DEVUELTO ||
+        this.subioLoDevuelto(antes, despues, monto)
+      ) {
+        return this.registrarExito(solicitud, pago, null, actorUserId);
       }
+      this.logger.warn(
+        `Devolución ${solicitud.refundId} del pedido ${solicitud.orderId} rechazada: ${errorMessage(error)}`,
+      );
+      return this.registrarFallo(solicitud, errorMessage(error), actorUserId);
     }
-    return this.registrarExito(solicitud, pago, gatewayRefundId, actorUserId);
+  }
+
+  /** ¿Lo devuelto por la pasarela subió al menos `monto` entre las dos lecturas? */
+  private subioLoDevuelto(
+    antes: GatewayPayment | null,
+    despues: GatewayPayment | null,
+    monto: number,
+  ): boolean {
+    if (antes?.refundedAmount == null || despues?.refundedAmount == null) {
+      return false;
+    }
+    return new Decimal(despues.refundedAmount)
+      .minus(antes.refundedAmount)
+      .gte(new Decimal(monto).minus(TOLERANCIA));
+  }
+
+  /** ¿Un intento anterior de esta solicitud se aplicó en la pasarela? (lo devuelto desde que arrancó). */
+  private seAplico(
+    solicitud: PaymentRefund,
+    estado: GatewayPayment | null,
+  ): boolean {
+    if (solicitud.refundedBaseline == null || estado?.refundedAmount == null) {
+      return false;
+    }
+    return new Decimal(estado.refundedAmount)
+      .minus(solicitud.refundedBaseline)
+      .gte(new Decimal(solicitud.amount).minus(TOLERANCIA));
+  }
+
+  /**
+   * Clave de idempotencia del intento. Es siempre `refund_id` (repetir la
+   * llamada nunca devuelve dos veces) salvo que ya hubo un intento fallido y la
+   * pasarela confirma que NO se aplicó: ahí se usa `refund_id:intento`, porque
+   * una clave ya usada puede devolver el rechazo guardado en vez de reintentar.
+   */
+  private claveDeIntento(
+    solicitud: PaymentRefund,
+    estado: GatewayPayment | null,
+  ): string {
+    const confirmadoSinAplicar =
+      solicitud.attempts > 0 &&
+      solicitud.refundedBaseline != null &&
+      estado?.refundedAmount != null;
+    return confirmadoSinAplicar
+      ? `${solicitud.refundId}:${solicitud.attempts}`
+      : solicitud.refundId;
   }
 
   /** El pago tal como lo ve la pasarela, o null si no responde. Nunca lanza. */
@@ -381,7 +553,7 @@ export class RefundsService {
     actorUserId: string | null,
   ): Promise<PaymentRefund> {
     const texto = motivo.slice(0, MAX_ERROR);
-    await this.refunds.update(
+    const cierre = await this.refunds.update(
       {
         refundId: solicitud.refundId,
         status: In([RefundStatus.PENDING, RefundStatus.FAILED]),
@@ -396,10 +568,14 @@ export class RefundsService {
     const actual = await this.refunds.findOneOrFail({
       where: { refundId: solicitud.refundId },
     });
-    this.eventos.emit(
-      EVENTO_REINTEGRO_FALLIDO,
-      new ReintegroFallidoEvent(this.resumen(actual), texto),
-    );
+    // Si el UPDATE condicional no afectó filas, otro proceso ya la cerró
+    // (p. ej. con éxito): no hay fallo que avisar.
+    if (cierre.affected) {
+      this.eventos.emit(
+        EVENTO_REINTEGRO_FALLIDO,
+        new ReintegroFallidoEvent(this.resumen(actual), texto),
+      );
+    }
     return actual;
   }
 

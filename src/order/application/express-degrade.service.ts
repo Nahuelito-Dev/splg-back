@@ -7,6 +7,7 @@ import {
   OrderDeliveryMode,
   OrderStatus,
 } from '../entities/order.entity';
+import { RefundStatus } from '../../payments/domain/payment.enums';
 import { RefundsService } from '../../payments/application/refunds.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { NotificationPort } from '../domain/ports/notification.port';
@@ -21,6 +22,8 @@ export interface PaseAlRepartoComun {
   total: number;
   /** Se pidió la devolución del recargo a la pasarela (el cliente había pagado en línea). */
   refundRequested: boolean;
+  /** La pasarela rechazó la devolución: queda pendiente para el reintento del administrador. */
+  refundFailed: boolean;
 }
 
 /**
@@ -55,6 +58,7 @@ export class ExpressDegradeService {
     await queryRunner.startTransaction();
 
     let pase: PaseAlRepartoComun;
+    let hayDevolucion = false;
     let order: Order;
     try {
       const locked = await queryRunner.manager
@@ -80,12 +84,20 @@ export class ExpressDegradeService {
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
         .toNumber();
       order = await queryRunner.manager.save(locked);
+      // Outbox: la solicitud de devolución del recargo se registra en la MISMA
+      // transacción; hablar con la pasarela es después y puede reintentarse.
+      hayDevolucion = await this.refunds.registrarRecargoExpress(
+        queryRunner.manager,
+        orderId,
+        recargo,
+      );
       await queryRunner.commitTransaction();
       pase = {
         orderId,
         surchargeRemoved: recargo,
         total: order.totalAmount,
         refundRequested: false,
+        refundFailed: false,
       };
     } catch (error) {
       if (queryRunner.isTransactionActive) {
@@ -96,16 +108,23 @@ export class ExpressDegradeService {
       await queryRunner.release();
     }
 
-    try {
-      const devoluciones = await this.refunds.reintegrarRecargoExpress(
-        orderId,
-        pase.surchargeRemoved,
-      );
-      pase.refundRequested = devoluciones.length > 0;
-    } catch (error) {
-      this.logger.error(
-        `No se pudo registrar la devolución del recargo express del pedido ${orderId}: ${errorMessage(error)}`,
-      );
+    pase.refundRequested = hayDevolucion;
+    if (hayDevolucion) {
+      try {
+        const devoluciones = await this.refunds.reintegrarRecargoExpress(
+          orderId,
+          pase.surchargeRemoved,
+        );
+        pase.refundFailed = devoluciones.some(
+          (d) => d.status === RefundStatus.FAILED,
+        );
+      } catch (error) {
+        // La solicitud ya está registrada: la retoma el reintento o el cron.
+        pase.refundFailed = true;
+        this.logger.error(
+          `No se pudo pedir la devolución del recargo express del pedido ${orderId}: ${errorMessage(error)}`,
+        );
+      }
     }
     this.avisar(order, pase);
     return pase;
@@ -117,6 +136,7 @@ export class ExpressDegradeService {
       surchargeRemoved: pase.surchargeRemoved,
       total: pase.total,
       refundRequested: pase.refundRequested,
+      refundFailed: pase.refundFailed,
       message:
         'No hay motos disponibles: tu pedido sale por el reparto común, sin el recargo express.',
     };
@@ -134,9 +154,11 @@ export class ExpressDegradeService {
       void this.notifications
         .sendOrderNoticePush(order.customerId, order.orderId, {
           title: 'Tu pedido sale por reparto común',
-          body: pase.refundRequested
-            ? 'No encontramos una moto disponible. Te devolvemos el recargo express.'
-            : 'No encontramos una moto disponible. No se te cobra el recargo express.',
+          body: !pase.refundRequested
+            ? 'No encontramos una moto disponible. No se te cobra el recargo express.'
+            : pase.refundFailed
+              ? 'No encontramos una moto disponible. La devolución del recargo express está en trámite.'
+              : 'No encontramos una moto disponible. Te devolvemos el recargo express.',
           event: 'EXPRESS_DEGRADED',
         })
         .catch(() => undefined);

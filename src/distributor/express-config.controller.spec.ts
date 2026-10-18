@@ -1,4 +1,6 @@
+import { DistributorModule } from './distributor.module';
 import { ExpressConfigController } from './express-config.controller';
+import { ModuleConfigController } from './module-config.controller';
 
 describe('ExpressConfigController', () => {
   let express: { vigentes: jest.Mock; guardar: jest.Mock };
@@ -24,5 +26,18 @@ describe('ExpressConfigController', () => {
       { enabled: true },
       'adm-1',
     );
+  });
+
+  it('el módulo registra ExpressConfigController ANTES que ModuleConfigController: su ruta fija gana a `:process`', () => {
+    const controladores = Reflect.getMetadata(
+      'controllers',
+      DistributorModule,
+    ) as unknown[];
+
+    const express = controladores.indexOf(ExpressConfigController);
+    const generico = controladores.indexOf(ModuleConfigController);
+    expect(express).toBeGreaterThanOrEqual(0);
+    expect(generico).toBeGreaterThanOrEqual(0);
+    expect(express).toBeLessThan(generico);
   });
 });

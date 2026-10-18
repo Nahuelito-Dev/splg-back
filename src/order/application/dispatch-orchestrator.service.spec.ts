@@ -28,7 +28,7 @@ describe('DispatchOrchestratorService', () => {
     setIfAbsent: jest.Mock;
     del: jest.Mock;
   };
-  let orders: { findByIdFull: jest.Mock };
+  let orders: { findByIdFull: jest.Mock; findById: jest.Mock };
   let settings: { obtener: jest.Mock };
   let deliveries: { choferesElegibles: jest.Mock };
   let fleet: { choferesInhabilitados: jest.Mock; choferesEnMoto: jest.Mock };
@@ -77,7 +77,10 @@ describe('DispatchOrchestratorService', () => {
       setIfAbsent: jest.fn().mockResolvedValue(true),
       del: jest.fn().mockResolvedValue(undefined),
     };
-    orders = { findByIdFull: jest.fn().mockResolvedValue(makeOrder()) };
+    orders = {
+      findByIdFull: jest.fn().mockResolvedValue(makeOrder()),
+      findById: jest.fn().mockResolvedValue(makeOrder()),
+    };
     settings = {
       obtener: jest.fn().mockResolvedValue({
         radiusStepsKm: [5, 10, 15, 20],
@@ -309,6 +312,45 @@ describe('DispatchOrchestratorService', () => {
 
       await orchestrator.handleExpiredOffers();
 
+      expect(offers.create).toHaveBeenCalledWith(
+        'ord-1',
+        'moto-2',
+        expect.any(Date),
+        'dist-1',
+      );
+    });
+
+    it('las ofertas vencidas de un express se procesan aunque a su distribuidora no le toque el intervalo', async () => {
+      orders.findById.mockResolvedValue(express());
+      orders.findByIdFull.mockResolvedValue(express());
+      offers.findExpired.mockResolvedValue([
+        {
+          offerId: 'of-1',
+          orderId: 'ord-1',
+          driverId: 'moto-1',
+          distributorId: 'dist-1',
+        },
+        {
+          offerId: 'of-2',
+          orderId: 'ord-2',
+          driverId: 'x',
+          distributorId: 'dist-1',
+        },
+      ]);
+      orders.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === 'ord-1' ? express() : makeOrder()),
+      );
+      dispatch.findNearbyDrivers.mockResolvedValue(['moto-1', 'moto-2']);
+      offers.findDriverOfferState.mockResolvedValue(estado(['moto-1']));
+
+      // A dist-1 no le toca ahora (conjunto vacío).
+      await orchestrator.handleExpiredOffers(new Set());
+
+      expect(offers.updateStatus).toHaveBeenCalledTimes(1);
+      expect(offers.updateStatus).toHaveBeenCalledWith(
+        'of-1',
+        DispatchOfferStatus.EXPIRED,
+      );
       expect(offers.create).toHaveBeenCalledWith(
         'ord-1',
         'moto-2',

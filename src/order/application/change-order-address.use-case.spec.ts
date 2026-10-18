@@ -7,6 +7,7 @@ import Decimal from 'decimal.js';
 import { DataSource } from 'typeorm';
 import {
   ChangeOrderAddressUseCase,
+  MENSAJE_EXPRESS_NO_CAMBIA,
   MENSAJE_MISMA_DIRECCION,
   MENSAJE_PEDIDO_YA_SALIO,
   MENSAJE_RECARGO_DISTINTO,
@@ -18,6 +19,7 @@ import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import {
   Order,
+  OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
   PaymentType,
@@ -147,6 +149,37 @@ describe('ChangeOrderAddressUseCase', () => {
       'c1',
       distributorId,
     );
+
+  describe('pedido express (CU-149)', () => {
+    it('no cambia de dirección: 409 claro y no escribe nada', async () => {
+      locked = makeOrder({
+        deliveryMode: OrderDeliveryMode.EXPRESS,
+        expressSurchargeAmount: 1500,
+      });
+
+      await expect(cambiar()).rejects.toThrow(MENSAJE_EXPRESS_NO_CAMBIA);
+      await expect(cambiar()).rejects.toBeInstanceOf(ConflictException);
+      expect(addresses.buscarDelUsuario).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(orquestador.offerToNextDriver).not.toHaveBeenCalled();
+    });
+
+    it('el pedido que ya pasó al reparto común sí cambia, sin arrastrar el recargo descontado', async () => {
+      locked = makeOrder({
+        deliveryMode: OrderDeliveryMode.STANDARD,
+        expressSurchargeAmount: 1500,
+      });
+
+      await cambiar();
+
+      expect(create.calcularTotales).toHaveBeenCalledWith(
+        1000,
+        null,
+        PaymentMethod.CASH,
+        0,
+      );
+    });
+  });
 
   it('pendiente: guarda la dirección y el punto, asienta el cambio y vuelve a ofrecer', async () => {
     await cambiar();
