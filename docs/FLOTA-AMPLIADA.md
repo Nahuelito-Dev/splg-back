@@ -43,7 +43,8 @@ de tarea y de un movimiento de neumático no pasa de 2.000.000 km (**400**).
 | `GET /fleet/fuel-loads?carId&employeeId&from&to&anomaly` | Vigentes, con `total`, `totalLiters` y `totalAmount` de lo filtrado |
 | `GET /fleet/fuel-loads/:id`                    | Una carga, también la anulada (`voidedAt`)                     |
 | `PATCH /fleet/fuel-loads/:id`                  | Modifica y revalida                                            |
-| `DELETE /fleet/fuel-loads/:id`                 | Anula (baja lógica)                                            |
+| `DELETE /fleet/fuel-loads/:id`                 | Anula (baja lógica); si salió de una caja asienta el contraasiento |
+| `PATCH /fleet/fuel-loads/:id/cash-payment`     | Asienta en una caja la carga `cash_box` que registró el chofer (`cashBoxId`) |
 | `GET /cars/:carId/fuel-efficiency?from&to`     | Tramos, totales y cargas anómalas                              |
 
 Reglas al registrar y al modificar:
@@ -92,7 +93,7 @@ Cambios compartidos de `fleet`: las tareas ganan `validFrom` y se pueden crear y
 | `GET /fleet/fines?carId&employeeId&status&from&to` | Lista (por fecha de la infracción), con `total`       |
 | `GET /fleet/fines/:id`                           | Una multa                                               |
 | `PATCH /fleet/fines/:id`                         | Modifica; `appeal: true` la pasa a `appealed`           |
-| `PATCH /fleet/fines/:id/pay`                     | `paidAt` (no futura) y `paidAmount` > 0 → `paid`        |
+| `PATCH /fleet/fines/:id/pay`                     | `paidAt` (no futura) y `paidAmount` > 0 → `paid`; con `paidInCash` y `cashBoxId` sale de una caja |
 | `PATCH /fleet/fines/:id/charge-to-employee`      | Imputa al chofer (`chargedToEmployee`)                  |
 | `PATCH /fleet/fines/:id/void`                    | `reason` obligatorio → `voided`                         |
 
@@ -219,6 +220,30 @@ un mensaje claro si algún plan tiene un tipo del personal; si la flota no está
 - El kilometraje de una carga se compara con la carga anterior **por fecha**; no se revalida contra
   las posteriores (cargar con fecha pasada puede dejar una posterior con kilometraje menor).
 - Las multas de un chofer dado de baja con egreso (sin cuenta) no deducen responsable.
-- `payment_method` de la carga y la referencia al movimiento de caja: la carga guarda el medio de
-  pago; el vínculo con caja se completa cuando exista el módulo de caja.
+- **Pagos en efectivo desde una caja** (`cash_movement_id` en `traffic_fine` y `fuel_load`, sin clave foránea;
+  categorías de sistema `traffic_fine` y `fuel`, orígenes `traffic_fine` y `fuel_load`):
+  - **Multa** (`PATCH /fleet/fines/:id/pay`): con `paidInCash: true` el `paidAmount` sale de la caja `cashBoxId` en la
+    misma transacción. Obligatoria si hay cajas de efectivo activas (400), de efectivo (400), de la distribuidora (404),
+    con sesión abierta si la exige y saldo (409: la multa queda sin pagar). `cashBoxId` sin `paidInCash`, 400. Una multa
+    pagada no se paga de nuevo (409, sin segundo asiento) ni se anula: el asiento se corrige con un movimiento manual.
+  - **Carga del administrador** (`POST /fleet/fuel-loads` con `paymentMethod: cash_box`): el `totalAmount` sale de
+    `cashBoxId` con las mismas reglas. `cashBoxId` con otro medio de pago, 400. Una carga ya asentada no cambia de
+    importe ni de medio (409: se anula y se registra de nuevo); anularla (`DELETE`) asienta el contraasiento. Con
+    `driver_cash`, `card` o `fuel_account` no se toca ninguna caja.
+  - **Carga del chofer** (`POST /fleet/fuel-loads/mine`): el chofer no elige caja (no manda `cashBoxId`). Con
+    `driver_cash` pagó con su efectivo: no hay asiento y lo declara como gasto en su rendición. Con `cash_box` la carga
+    queda **pendiente de asentar** (`cashMovementId: null`) hasta que un administrador indica la caja con
+    `PATCH /fleet/fuel-loads/:id/cash-payment` (409 si ya salió de una caja o está anulada, 400 si no es `cash_box`);
+    la rendición del chofer no la toma, porque no la pagó él.
+    **Riesgo de doble descuento:** el gasto que el chofer declara en su rendición no está ligado a la carga. Una carga
+    `cash_box` hay que resolverla por UNA sola vía: o el administrador la asienta en una caja, o el chofer la rinde como
+    gasto; nunca las dos (la caja saldría dos veces). Por eso una carga del chofer no cambia entre `driver_cash` y
+    `cash_box` al modificarla (**409**: se anula y se registra de nuevo).
+  - **Cargas `cash_box` anteriores a la migración** (`cash_payment_legacy = true`): se resolvieron fuera del libro, no se
+    asientan (**409** en `cash-payment`) y el panel no ofrece «Asentar en caja»; si hace falta, un egreso manual con motivo.
+    `registered_by_driver` marca las que registró el chofer.
+  - Concurrencia: la carga se lee con `FOR UPDATE` y `cashMovementId` se relee con el lock tomado; dos `cash-payment`
+    simultáneos dan un 200 y un 409 con un solo movimiento. Orden de locks: carga → vehículo → caja.
+    - Migración `1792600000000-EgresosDeEfectivoACaja`: agrega `cash_movement_id` a `traffic_fine` y `fuel_load`, y
+    `registered_by_driver` y `cash_payment_legacy` a `fuel_load`.
 - La imputación de una multa es una marca (`chargedToEmployee`) hasta que exista el libro de comisiones.

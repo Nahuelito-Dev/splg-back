@@ -7,6 +7,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, Repository } from 'typeorm';
 import { CarService } from '../car/car.service';
 import { FuelType } from '../car/entities/car.entity';
+import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
+import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { FleetCostSourceService } from '../fleet/fleet-cost-source.service';
 import { DriverContextService } from './driver-context.service';
 import { FuelLoad, FuelPaymentMethod } from './entities/fuel-load.entity';
@@ -37,6 +39,11 @@ describe('FuelLoadService', () => {
   };
   let eventos: { emit: jest.Mock };
   let fleet: { kmMaximoDeTareasHechas: jest.Mock };
+  let pagos: {
+    cajaDelPago: jest.Mock;
+    egresar: jest.Mock;
+    revertir: jest.Mock;
+  };
   let guardadas: FuelLoad[];
 
   const dto = {
@@ -95,6 +102,11 @@ describe('FuelLoadService', () => {
     };
     eventos = { emit: jest.fn() };
     fleet = { kmMaximoDeTareasHechas: jest.fn().mockResolvedValue(null) };
+    pagos = {
+      cajaDelPago: jest.fn().mockResolvedValue('caja1'),
+      egresar: jest.fn().mockResolvedValue({ movementId: 'mov1' }),
+      revertir: jest.fn().mockResolvedValue({}),
+    };
     service = new FuelLoadService(
       repo as unknown as Repository<FuelLoad>,
       dataSource as unknown as DataSource,
@@ -102,9 +114,233 @@ describe('FuelLoadService', () => {
       driver as unknown as DriverContextService,
       eventos as unknown as EventEmitter2,
       fleet as unknown as FleetCostSourceService,
+      pagos as unknown as CashDocumentPaymentService,
     );
     // lo que `registrar` lee al final
     jest.spyOn(service, 'findOne').mockResolvedValue({} as FuelLoad);
+  });
+
+  describe('pago desde una caja', () => {
+    const deCaja = { ...dto, paymentMethod: FuelPaymentMethod.CASH_BOX };
+    const vigente = (over: Partial<FuelLoad> = {}) =>
+      ({
+        fuelLoadId: 'f1',
+        carId: 'c1',
+        distributorId: 'd1',
+        loadedAt: new Date('2026-10-01T12:00:00.000Z'),
+        liters: 40,
+        unitPrice: 1000,
+        totalAmount: 40000,
+        odometerKm: 1500,
+        isFullTank: true,
+        paymentMethod: FuelPaymentMethod.CARD,
+        cashMovementId: null,
+        cashPaymentLegacy: false,
+        registeredByDriver: false,
+        deletedAt: null,
+        ...over,
+      }) as FuelLoad;
+
+    it('el administrador con cash_box: egreso de la caja elegida por el importe, categoría fuel y la carga como origen', async () => {
+      await service.registrar({ ...deCaja, cashBoxId: 'caja1' }, 'd1', 'u1');
+      expect(pagos.cajaDelPago).toHaveBeenCalledWith(
+        expect.anything(),
+        'd1',
+        'caja1',
+      );
+      expect(pagos.egresar).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          cashBoxId: 'caja1',
+          amount: 40000,
+          systemCode: CashSystemCode.FUEL,
+          referenceType: CashReferenceType.FUEL_LOAD,
+          referenceId: 'f1',
+          userId: 'u1',
+        }),
+      );
+      expect(guardadas[guardadas.length - 1]).toMatchObject({
+        cashMovementId: 'mov1',
+      });
+    });
+
+    it('con una caja inválida el error sale antes de egresar', async () => {
+      pagos.cajaDelPago.mockRejectedValue(new BadRequestException('caja'));
+      await expect(service.registrar(deCaja, 'd1', 'u1')).rejects.toThrow(
+        'caja',
+      );
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('sin cajas de efectivo en la distribuidora no asienta nada', async () => {
+      pagos.cajaDelPago.mockResolvedValue(null);
+      await service.registrar(deCaja, 'd1', 'u1');
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      FuelPaymentMethod.CARD,
+      FuelPaymentMethod.DRIVER_CASH,
+      FuelPaymentMethod.FUEL_ACCOUNT,
+    ])('con %s no toca ninguna caja', async (paymentMethod) => {
+      await service.registrar({ ...dto, paymentMethod }, 'd1', 'u1');
+      expect(pagos.cajaDelPago).not.toHaveBeenCalled();
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('una caja con un medio que no es cash_box es 400', async () => {
+      await expect(
+        service.registrar({ ...dto, cashBoxId: 'caja1' }, 'd1', 'u1'),
+      ).rejects.toThrow(/cashBoxId/);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('la carga del chofer con cash_box queda pendiente: no elige caja ni asienta', async () => {
+      await service.registrarPropia(deCaja, 'd1', 'u9');
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('el administrador asienta después la carga pendiente del chofer', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({
+          paymentMethod: FuelPaymentMethod.CASH_BOX,
+          totalAmount: 40000,
+          cashMovementId: null,
+        }),
+      );
+      await service.pagarDesdeCaja('f1', 'caja1', 'd1', 'u1');
+      expect(pagos.egresar).toHaveBeenCalledTimes(1);
+    });
+
+    it('la carga se lee con lock de escritura y se bloquea el vehículo antes de tocar la caja (carga, auto, caja)', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({ paymentMethod: FuelPaymentMethod.CASH_BOX }),
+      );
+      await service.pagarDesdeCaja('f1', 'caja1', 'd1', 'u1');
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+      const lockCarga = repo.findOne.mock.invocationCallOrder[0];
+      const lockAuto = cars.bloquear.mock.invocationCallOrder[0];
+      const caja = pagos.cajaDelPago.mock.invocationCallOrder[0];
+      expect(lockCarga).toBeLessThan(lockAuto);
+      expect(lockAuto).toBeLessThan(caja);
+    });
+
+    it('anular y modificar también leen la carga con lock de escritura', async () => {
+      repo.findOne.mockResolvedValue(vigente());
+      await service.anular('f1', 'd1', 'u1');
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+    });
+
+    it('una carga cash_box anterior a la migración no se asienta (409)', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({
+          paymentMethod: FuelPaymentMethod.CASH_BOX,
+          cashPaymentLegacy: true,
+        }),
+      );
+      await expect(
+        service.pagarDesdeCaja('f1', 'caja1', 'd1', 'u1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [FuelPaymentMethod.DRIVER_CASH, FuelPaymentMethod.CASH_BOX],
+      [FuelPaymentMethod.CASH_BOX, FuelPaymentMethod.DRIVER_CASH],
+    ])(
+      'una carga del chofer no pasa de %s a %s (409)',
+      async (actual, nuevo) => {
+        repo.findOne.mockResolvedValue(
+          vigente({ paymentMethod: actual, registeredByDriver: true }),
+        );
+        await expect(
+          service.modificar('f1', { paymentMethod: nuevo }, 'd1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+      },
+    );
+
+    it('una carga del chofer sí cambia a tarjeta', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({
+          paymentMethod: FuelPaymentMethod.DRIVER_CASH,
+          registeredByDriver: true,
+        }),
+      );
+      await service.modificar(
+        'f1',
+        { paymentMethod: FuelPaymentMethod.CARD },
+        'd1',
+      );
+      expect(repo.save).toHaveBeenCalled();
+    });
+
+    it('la carga que registra el chofer queda marcada', async () => {
+      await service.registrarPropia(dto, 'd1', 'u9');
+      expect(guardadas[0]).toMatchObject({ registeredByDriver: true });
+    });
+
+    it('asentar dos veces la misma carga es 409 y no repite el egreso', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({
+          paymentMethod: FuelPaymentMethod.CASH_BOX,
+          cashMovementId: 'mov1',
+        }),
+      );
+      await expect(
+        service.pagarDesdeCaja('f1', 'caja1', 'd1', 'u1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    it('sólo se asienta una carga cash_box', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({ paymentMethod: FuelPaymentMethod.CARD }),
+      );
+      await expect(
+        service.pagarDesdeCaja('f1', 'caja1', 'd1', 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('anular una carga que salió de una caja asienta el contraasiento', async () => {
+      repo.findOne.mockResolvedValue(vigente({ cashMovementId: 'mov1' }));
+      await service.anular('f1', 'd1', 'u1');
+      expect(pagos.revertir).toHaveBeenCalledWith(
+        expect.anything(),
+        'mov1',
+        'd1',
+        expect.any(String),
+        'u1',
+      );
+    });
+
+    it('anular una carga sin caja no asienta nada', async () => {
+      repo.findOne.mockResolvedValue(vigente());
+      await service.anular('f1', 'd1', 'u1');
+      expect(pagos.revertir).not.toHaveBeenCalled();
+    });
+
+    it('cambiar el importe o el medio de una carga ya asentada es 409', async () => {
+      repo.findOne.mockResolvedValue(
+        vigente({
+          paymentMethod: FuelPaymentMethod.CASH_BOX,
+          cashMovementId: 'mov1',
+          liters: 40,
+          unitPrice: 1000,
+          totalAmount: 40000,
+        }),
+      );
+      await expect(
+        service.modificar(
+          'f1',
+          { paymentMethod: FuelPaymentMethod.CARD },
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
   });
 
   describe('registrar', () => {
@@ -338,7 +574,7 @@ describe('FuelLoadService', () => {
     it('anular es una baja lógica y recalcula el kilometraje con la carga vigente que queda', async () => {
       repo.findOne.mockResolvedValue(vigente());
       anterior.getRawOne.mockResolvedValue({ max: 1000 });
-      const res = await service.anular('f1', 'd1');
+      const res = await service.anular('f1', 'd1', 'u1');
       expect(repo.softRemove).toHaveBeenCalled();
       expect(cars.bajarOdometro).toHaveBeenCalledWith(
         expect.anything(),
@@ -353,7 +589,7 @@ describe('FuelLoadService', () => {
       repo.findOne.mockResolvedValue(vigente());
       anterior.getRawOne.mockResolvedValue({ max: 1000 });
       fleet.kmMaximoDeTareasHechas.mockResolvedValue(1300);
-      await service.anular('f1', 'd1');
+      await service.anular('f1', 'd1', 'u1');
       expect(cars.bajarOdometro).toHaveBeenCalledWith(
         expect.anything(),
         'c1',
@@ -366,7 +602,7 @@ describe('FuelLoadService', () => {
       repo.findOne.mockResolvedValue(vigente());
       anterior.getRawOne.mockResolvedValue({ max: null });
       fleet.kmMaximoDeTareasHechas.mockResolvedValue(900);
-      await service.anular('f1', 'd1');
+      await service.anular('f1', 'd1', 'u1');
       expect(cars.bajarOdometro).toHaveBeenCalledWith(
         expect.anything(),
         'c1',
@@ -378,7 +614,7 @@ describe('FuelLoadService', () => {
     it('sin cargas ni tareas con kilometraje, el vehículo conserva el que tenía', async () => {
       repo.findOne.mockResolvedValue(vigente());
       anterior.getRawOne.mockResolvedValue({ max: null });
-      await service.anular('f1', 'd1');
+      await service.anular('f1', 'd1', 'u1');
       expect(cars.bajarOdometro).toHaveBeenCalledWith(
         expect.anything(),
         'c1',
@@ -389,7 +625,7 @@ describe('FuelLoadService', () => {
 
     it('anular una ya anulada es 409', async () => {
       repo.findOne.mockResolvedValue(vigente({ deletedAt: new Date() }));
-      await expect(service.anular('f1', 'd1')).rejects.toBeInstanceOf(
+      await expect(service.anular('f1', 'd1', 'u1')).rejects.toBeInstanceOf(
         ConflictException,
       );
       expect(repo.softRemove).not.toHaveBeenCalled();

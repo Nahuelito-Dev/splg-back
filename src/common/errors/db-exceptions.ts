@@ -6,6 +6,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { DomainError } from './domain.error';
 
 /**
  * Códigos de error de Postgres que sabemos traducir.
@@ -47,6 +48,10 @@ export function traducirErrorDeBase(
 ): never {
   // Una excepción HTTP ya es una decisión tomada: no se la pisa.
   if (error instanceof HttpException) {
+    throw error;
+  }
+  // Un error de dominio (p. ej. una caja inexistente) lo traduce el filtro global.
+  if (error instanceof DomainError) {
     throw error;
   }
 

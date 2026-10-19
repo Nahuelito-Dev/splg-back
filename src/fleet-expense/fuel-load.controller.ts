@@ -30,6 +30,7 @@ import {
   CreateMyFuelLoadDto,
   FuelLoadPageDto,
   FuelLoadResponseDto,
+  PayFuelLoadFromCashBoxDto,
   QueryFuelLoadDto,
   UpdateFuelLoadDto,
 } from './dto/fuel-load.dto';
@@ -160,7 +161,38 @@ export class FuelLoadController {
   anular(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<MessageResponseDto> {
-    return this.loads.anular(id, distributorId);
+    return this.loads.anular(id, distributorId, userId);
+  }
+
+  @Patch(':id/cash-payment')
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Asentar en una caja una carga pagada de la caja',
+    description:
+      'Para la carga que registró el chofer con `paymentMethod: cash_box` (él no elige la caja): el importe sale de la caja de efectivo indicada en la misma transacción. Una carga ya asentada responde 409 y no se asienta dos veces.',
+  })
+  @ApiParam({ name: 'id', description: 'Carga UUID' })
+  @ApiOkResponse({ type: FuelLoadResponseDto })
+  @ApiBadRequestResponse({
+    description: 'La carga no es de la caja, o la caja no es de efectivo',
+  })
+  @ApiNotFoundResponse({
+    description: 'La carga o la caja no existen o son de otra distribuidora',
+  })
+  @ApiConflictResponse({
+    description:
+      'La carga está anulada o ya salió de una caja; la caja no tiene sesión abierta o saldo',
+  })
+  async payFromCashBox(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PayFuelLoadFromCashBoxDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
+  ): Promise<FuelLoadResponseDto> {
+    return FleetExpenseMapper.fuelLoad(
+      await this.loads.pagarDesdeCaja(id, dto.cashBoxId, distributorId, userId),
+    );
   }
 }

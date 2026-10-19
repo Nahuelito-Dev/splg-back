@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CashModule } from '../cash/cash.module';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
@@ -37,6 +38,7 @@ import { SupplierController } from './presentation/supplier.controller';
     GasCylinderModule, // costo promedio
     DocumentSequenceModule, // número de la orden y del remito
     AttachmentModule, // dueño `purchase_receipt` de los adjuntos
+    CashModule, // el pago en efectivo sale de una caja por el libro
   ],
   controllers: [
     SupplierController,

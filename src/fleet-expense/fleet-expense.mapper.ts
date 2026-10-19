@@ -37,6 +37,9 @@ export class FleetExpenseMapper {
     dto.station = f.station;
     dto.paymentMethod = f.paymentMethod;
     dto.receiptNumber = f.receiptNumber;
+    dto.cashMovementId = f.cashMovementId;
+    dto.registeredByDriver = f.registeredByDriver;
+    dto.cashPaymentLegacy = f.cashPaymentLegacy;
     dto.anomaly = f.anomaly;
     dto.notes = f.notes;
     dto.odometerCorrectionNote = f.odometerCorrectionNote;
@@ -63,6 +66,7 @@ export class FleetExpenseMapper {
     dto.status = m.status;
     dto.paidAt = m.paidAt;
     dto.paidAmount = m.paidAmount;
+    dto.cashMovementId = m.cashMovementId;
     dto.chargedToEmployee = m.chargedToEmployee;
     dto.voidReason = m.voidReason;
     dto.voidedAt = m.voidedAt;

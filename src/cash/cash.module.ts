@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CashBoxService } from './application/cash-box.service';
 import { CashCategoryService } from './application/cash-category.service';
+import { CashDocumentPaymentService } from './application/cash-document-payment.service';
 import { CashLedgerService } from './application/cash-ledger.service';
 import { CashMovementService } from './application/cash-movement.service';
 import { CashSeedListener } from './application/cash-seed.listener';
@@ -37,6 +38,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
   ],
   providers: [
     CashLedgerService,
+    CashDocumentPaymentService,
     CashBoxService,
     CashSessionService,
     CashMovementService,
@@ -45,6 +47,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
   ],
   exports: [
     CashLedgerService,
+    CashDocumentPaymentService,
     CashCategoryService,
     CashBoxService,
     CashMovementService,

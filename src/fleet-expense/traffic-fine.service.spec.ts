@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
+import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
+import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { CarService } from '../car/car.service';
 import { diaArgentino } from '../common/utils/dias-argentina';
 import { DriverContextService } from './driver-context.service';
@@ -19,6 +21,7 @@ describe('TrafficFineService', () => {
     createQueryBuilder: jest.Mock;
   };
   let cars: { findOne: jest.Mock };
+  let pagos: { cajaDelPago: jest.Mock; egresar: jest.Mock };
   let driver: {
     legajoDelVehiculoEn: jest.Mock;
     assertLegajoDeLaDistribuidora: jest.Mock;
@@ -68,11 +71,16 @@ describe('TrafficFineService', () => {
       legajoDelVehiculoEn: jest.fn().mockResolvedValue('e1'),
       assertLegajoDeLaDistribuidora: jest.fn().mockResolvedValue(undefined),
     };
+    pagos = {
+      cajaDelPago: jest.fn().mockResolvedValue('caja1'),
+      egresar: jest.fn().mockResolvedValue({ movementId: 'mov1' }),
+    };
     service = new TrafficFineService(
       repo as unknown as Repository<TrafficFine>,
       dataSource as unknown as DataSource,
       cars as unknown as CarService,
       driver as unknown as DriverContextService,
+      pagos as unknown as CashDocumentPaymentService,
     );
   });
 
@@ -141,16 +149,89 @@ describe('TrafficFineService', () => {
         'm1',
         { paidAt: diaArgentino(), paidAmount: 59500 },
         'd1',
+        'u1',
       );
       expect(guardadas[0]).toMatchObject({
         status: TrafficFineStatus.PAID,
         paidAmount: 59500,
       });
+      expect(pagos.egresar).not.toHaveBeenCalled();
+    });
+
+    describe('pago en efectivo', () => {
+      const pago = {
+        paidAt: diaArgentino(),
+        paidAmount: 59500,
+        paidInCash: true,
+        cashBoxId: 'caja1',
+      };
+
+      it('sale de la caja elegida por lo efectivamente pagado, con la multa como origen', async () => {
+        repo.findOne.mockResolvedValue(base());
+        await service.pagar('m1', pago, 'd1', 'u1');
+        expect(pagos.cajaDelPago).toHaveBeenCalledWith(
+          expect.anything(),
+          'd1',
+          'caja1',
+        );
+        expect(pagos.egresar).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            cashBoxId: 'caja1',
+            amount: 59500,
+            systemCode: CashSystemCode.TRAFFIC_FINE,
+            referenceType: CashReferenceType.TRAFFIC_FINE,
+            referenceId: 'm1',
+            userId: 'u1',
+          }),
+        );
+        expect(guardadas[0]).toMatchObject({
+          status: TrafficFineStatus.PAID,
+          cashMovementId: 'mov1',
+        });
+      });
+
+      it('una caja inválida corta antes de guardar la multa como pagada', async () => {
+        repo.findOne.mockResolvedValue(base());
+        pagos.cajaDelPago.mockRejectedValue(new BadRequestException('caja'));
+        await expect(service.pagar('m1', pago, 'd1', 'u1')).rejects.toThrow(
+          'caja',
+        );
+        expect(guardadas).toHaveLength(0);
+      });
+
+      it('sin cajas de efectivo se paga sin movimiento', async () => {
+        repo.findOne.mockResolvedValue(base());
+        pagos.cajaDelPago.mockResolvedValue(null);
+        await service.pagar('m1', pago, 'd1', 'u1');
+        expect(pagos.egresar).not.toHaveBeenCalled();
+      });
+
+      it('pagarla otra vez es 409 y no repite el egreso', async () => {
+        repo.findOne.mockResolvedValue(
+          base({ status: TrafficFineStatus.PAID }),
+        );
+        await expect(
+          service.pagar('m1', pago, 'd1', 'u1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(pagos.egresar).not.toHaveBeenCalled();
+      });
+
+      it('cashBoxId sin paidInCash es 400', async () => {
+        await expect(
+          service.pagar('m1', { ...pago, paidInCash: false }, 'd1', 'u1'),
+        ).rejects.toThrow(/cashBoxId/);
+      });
     });
 
     it('pagar con fecha futura es 400 y no toca la base', async () => {
       await expect(
-        service.pagar('m1', { paidAt: '2999-01-01', paidAmount: 1 }, 'd1'),
+        service.pagar(
+          'm1',
+          { paidAt: '2999-01-01', paidAmount: 1 },
+          'd1',
+          'u1',
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.findOne).not.toHaveBeenCalled();
     });
@@ -160,7 +241,12 @@ describe('TrafficFineService', () => {
       async (status) => {
         repo.findOne.mockResolvedValue(base({ status }));
         await expect(
-          service.pagar('m1', { paidAt: diaArgentino(), paidAmount: 1 }, 'd1'),
+          service.pagar(
+            'm1',
+            { paidAt: diaArgentino(), paidAmount: 1 },
+            'd1',
+            'u1',
+          ),
         ).rejects.toThrow('La multa no admite el pago');
       },
     );

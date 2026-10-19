@@ -124,6 +124,22 @@ export class FuelLoad {
   })
   receiptNumber!: string | null;
 
+  /**
+   * Salida de la caja con que se pagó la carga (`cash_box`). `null` en la que
+   * pagó el chofer con su efectivo y en la que cargó el chofer y el
+   * administrador todavía no asentó en una caja.
+   */
+  @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
+  cashMovementId!: string | null;
+
+  /** La registró el chofer desde su app: no elige caja y su medio de pago no se cambia entre efectivo propio y caja. */
+  @Column({ name: 'registered_by_driver', type: 'boolean', default: false })
+  registeredByDriver!: boolean;
+
+  /** Carga `cash_box` anterior al asiento de caja: se resolvió fuera del libro y no se ofrece para asentar. */
+  @Column({ name: 'cash_payment_legacy', type: 'boolean', default: false })
+  cashPaymentLegacy!: boolean;
+
   /** El consumo del tramo se apartó más de un 25 % del habitual. */
   @Column({ name: 'anomaly', type: 'boolean', default: false })
   anomaly!: boolean;

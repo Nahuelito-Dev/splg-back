@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsISO8601,
   IsInt,
@@ -147,6 +148,23 @@ export class UpdatePaymentStatusDto {
   @ApiProperty({ enum: PaymentStatus, example: PaymentStatus.PAID })
   @IsEnum(PaymentStatus)
   paymentStatus!: PaymentStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Con `paymentStatus: paid`: se pagó en efectivo de una caja de la distribuidora (por omisión, no). Con cajas de efectivo activas exige `cashBoxId`',
+  })
+  @IsOptional()
+  @IsBoolean()
+  paidInCash?: boolean;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Caja de efectivo de la que sale el pago; sólo con `paidInCash`',
+  })
+  @IsOptional()
+  @IsUUID()
+  cashBoxId?: string;
 }
 
 export class QueryPurchaseReceiptDto extends PickType(PaginationDto, [
@@ -242,7 +260,7 @@ export class PurchaseReceiptResponseDto extends PurchaseReceiptSummaryDto {
     nullable: true,
     type: String,
     description:
-      'Movimiento de caja del pago; lo completa el módulo de caja (todavía no existe)',
+      'Salida de caja del pago en efectivo; `null` si no se pagó en efectivo. Al marcar la recepción como impaga se asienta el contraasiento y vuelve a `null`',
   })
   cashMovementId!: string | null;
   @ApiProperty() createdAt!: Date;

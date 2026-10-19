@@ -119,6 +119,10 @@ export class TrafficFine {
   })
   paidAmount!: number | null;
 
+  /** Salida de la caja con que se pagó en efectivo; `null` si no se pagó en efectivo o no hay cajas. */
+  @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
+  cashMovementId!: string | null;
+
   /** Imputada al chofer (CU-200): la asume el empleado y no cuenta como costo del vehículo. */
   @Column({ name: 'charged_to_employee', type: 'boolean', default: false })
   chargedToEmployee!: boolean;

@@ -158,21 +158,37 @@ export class PurchaseReceiptController {
   @ApiOperation({
     summary: 'Marcar la recepción como pagada o impaga',
     description:
-      'Sólo la marca: el movimiento de caja (`cashMovementId`) lo completará el módulo de caja.',
+      'Marca el pago. Con `paid` + `paidInCash` el total sale de la caja de efectivo `cashBoxId` en la misma transacción ' +
+      '(`cashMovementId` guarda la salida; con cajas de efectivo activas `cashBoxId` es obligatorio). Marcarla `unpaid` ' +
+      'asienta el contraasiento. Repetir el estado actual no asienta otra vez.',
   })
   @ApiParam({ name: 'id', description: 'Recepción UUID' })
   @ApiOkResponse({ type: PurchaseReceiptResponseDto })
-  @ApiBadRequestResponse({ description: 'La recepción está anulada' })
-  @ApiNotFoundResponse({ description: NO_ENCONTRADA })
+  @ApiBadRequestResponse({
+    description:
+      'La recepción está anulada, falta la caja de efectivo o la caja no es de efectivo',
+  })
+  @ApiNotFoundResponse({
+    description: `${NO_ENCONTRADA} (también la caja)`,
+  })
+  @ApiConflictResponse({
+    description: 'La caja no tiene una sesión abierta o no alcanza el saldo',
+  })
   async paymentStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePaymentStatusDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') actorUserId: string,
   ): Promise<PurchaseReceiptResponseDto> {
     await this.receipts.cambiarEstadoDePago(
       id,
-      dto.paymentStatus,
+      {
+        paymentStatus: dto.paymentStatus,
+        paidInCash: dto.paidInCash,
+        cashBoxId: dto.cashBoxId,
+      },
       distributorId,
+      actorUserId,
     );
     return this.queries.recepcion(id, distributorId);
   }

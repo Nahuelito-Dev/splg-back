@@ -21,6 +21,7 @@ import {
 import { RoleType } from '../common/constants/role-type.enum';
 import { Auth } from '../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 import {
   ChargeTrafficFineDto,
@@ -117,23 +118,32 @@ export class TrafficFineController {
   }
 
   @Patch(':id/pay')
-  @ApiOperation({ summary: 'Registrar el pago de una multa' })
+  @ApiOperation({
+    summary: 'Registrar el pago de una multa',
+    description:
+      'Con `paidInCash` el importe pagado sale de la caja de efectivo `cashBoxId` en la misma transacción (con cajas de efectivo activas es obligatoria). Una multa pagada no se anula ni se paga de nuevo: el asiento no se repite.',
+  })
   @ApiParam({ name: 'id', description: 'Multa UUID' })
   @ApiOkResponse({ type: TrafficFineResponseDto })
   @ApiBadRequestResponse({
-    description: 'Fecha de pago futura o importe inválido',
+    description:
+      'Fecha de pago futura, importe inválido, falta la caja de efectivo o la caja no es de efectivo',
   })
-  @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiNotFoundResponse({
+    description: 'La multa o la caja no existen o son de otra distribuidora',
+  })
   @ApiConflictResponse({
-    description: 'La multa no admite el pago (ya pagada o anulada)',
+    description:
+      'La multa no admite el pago (ya pagada o anulada), o la caja no tiene sesión abierta o saldo',
   })
   async pay(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: PayTrafficFineDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<TrafficFineResponseDto> {
     return FleetExpenseMapper.trafficFine(
-      await this.fines.pagar(id, dto, distributorId),
+      await this.fines.pagar(id, dto, distributorId, userId),
     );
   }
 

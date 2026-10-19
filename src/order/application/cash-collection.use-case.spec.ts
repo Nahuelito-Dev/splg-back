@@ -188,6 +188,16 @@ describe('CashCollectionUseCase', () => {
       expect(save).toHaveBeenCalledTimes(1);
     });
 
+    it('si la rendición del chofer ya tomó el pedido, no lo informa impago (409)', async () => {
+      con(pedido());
+      exists.mockResolvedValue(true);
+      await expect(uc.markUnpaid('ord-1', CHOFER, dentro)).rejects.toThrow(
+        'El chofer ya rindió este pedido',
+      );
+      expect(save).not.toHaveBeenCalled();
+      expect(dentro).not.toHaveBeenCalled();
+    });
+
     it('es idempotente: ya UNPAID no guarda, pero igual corre el trabajo de la transacción', async () => {
       con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
       const r = await uc.markUnpaid('ord-1', CHOFER, dentro);
@@ -262,6 +272,16 @@ describe('CashCollectionUseCase', () => {
       expect(r.order.paymentConfirmedAt).toBeInstanceOf(Date);
       expect(r.order.paymentResolvedBy).toBe(ADMIN);
       expect(r.order.paymentResolvedAt).toBeInstanceOf(Date);
+    });
+
+    it('paid sobre un pedido que la rendición ya tomó es 409 y no cobra ni asienta', async () => {
+      con(pedido({ paymentStatus: PaymentStatus.UNPAID }));
+      exists.mockResolvedValue(true);
+      await expect(
+        uc.resolveUnpaid('ord-1', ADMIN, 'paid', 'transfirió'),
+      ).rejects.toThrow('El chofer ya rindió este pedido');
+      expect(save).not.toHaveBeenCalled();
+      expect(registrar).not.toHaveBeenCalled();
     });
 
     it('cierra la incidencia abierta de cobro impago con la misma nota, en la misma transacción', async () => {

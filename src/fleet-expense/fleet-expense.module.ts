@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { CarModule } from '../car/car.module';
+import { CashModule } from '../cash/cash.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { EmailModule } from '../email/email.module';
 import { EmployeeModule } from '../employee/employee.module';
@@ -53,6 +54,7 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     AdminModule, // a quién avisar
     EmailModule, // cómo avisar
     AttachmentModule, // dueños de adjuntos: comprobante, acta, fotos
+    CashModule, // el pago en efectivo de combustible y multas sale de una caja
   ],
   controllers: [
     FuelLoadController,

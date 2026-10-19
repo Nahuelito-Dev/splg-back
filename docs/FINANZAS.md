@@ -185,8 +185,37 @@ reciben `cashBoxId` y asientan el efectivo en la **misma transacción** que marc
 - No tiene ninguna: se cobra sin movimiento. Carrera conocida: si otro administrador crea la primera caja de efectivo entre el chequeo y el asiento, el cobro queda sin movimiento; se corrige con un ingreso manual.
 - Caja de otra distribuidora o inexistente: 404. Caja que exige sesión sin sesión abierta, o desactivada: 409 y el pedido no cambia.
 - Repetir la operación sobre un pedido ya cobrado es un no-op: no asienta otra entrada. `written_off` no es un cobro y no toca ninguna caja.
-- **Un pedido que la rendición del chofer ya tomó** (`driver_settlement_order`) no se cobra ni se marca impago desde el administrador: 409 «El chofer ya rindió este pedido» (si no, el dinero entraría dos veces). La carrera contraria la cubre `presentar` de la rendición, que bloquea (`FOR UPDATE`) los pedidos que toma y reevalúa `payment_resolved_by`.
+- **Un pedido que la rendición del chofer ya tomó** (`driver_settlement_order`) no se cobra ni se marca impago desde el administrador, ni se resuelve como cobrado (`resolve-unpaid` con `paid`), ni el chofer lo informa impago (`unpaid`): 409 «El chofer ya rindió este pedido» (si no, el dinero entraría dos veces). La carrera contraria la cubre `presentar` de la rendición, que bloquea (`FOR UPDATE`) los pedidos que toma y reevalúa `payment_resolved_by`.
 - Un movimiento `order_payment` no se anula a mano. Si la caja fue la equivocada se corrige con una transferencia entre cajas (CU-310); el importe no se corrige desde caja: se registra un ajuste o egreso manual con motivo.
 
 Migración `1792500000000-CobroDePedidoACaja`: suma `order_payment` a los enums de categoría de sistema y de origen
 del movimiento (la categoría se siembra al usarse en las distribuidoras existentes).
+
+## Pagos en efectivo de la distribuidora (compras, multas y combustible)
+
+El efectivo que la distribuidora paga por un documento sale de una caja de efectivo por el libro (`CashLedgerService`, vía
+`CashDocumentPaymentService`), en la **misma transacción** del documento. Usa las categorías de sistema `purchase`,
+`traffic_fine` y `fuel` y los orígenes `purchase_receipt`, `traffic_fine` y `fuel_load`, con el documento como referencia.
+
+| Documento | Endpoint | Entrada | Anulación |
+| --- | --- | --- | --- |
+| Recepción de compra | `PATCH /purchase-receipts/:id/payment-status` | `paymentStatus: paid`, `paidInCash`, `cashBoxId` | Marcarla `unpaid` asienta el contraasiento |
+| Multa (CU-199) | `PATCH /fleet/fines/:id/pay` | `paidInCash`, `cashBoxId` | Una pagada no se anula: movimiento manual |
+| Combustible (CU-195, CU-320) | `POST /fleet/fuel-loads` (`cash_box`); la del chofer, `PATCH /fleet/fuel-loads/:id/cash-payment` | `cashBoxId` | `DELETE /fleet/fuel-loads/:id` asienta el contraasiento |
+
+Reglas comunes: con cajas de efectivo activas `cashBoxId` es obligatorio cuando el pago es en efectivo (400); sin ninguna,
+se paga sin movimiento. Sólo cajas `kind = cash` (400 si no), de la distribuidora (404), con sesión abierta si la exige y
+saldo suficiente (409, y el documento no cambia: rollback). `cashBoxId` sin pago en efectivo, 400. Repetir la operación no
+asienta dos veces. Un movimiento de estos orígenes no se anula con `POST /cash-movements/:id/reverse` (400 con el mensaje
+de cómo se corrige desde el documento). Orden de locks: documento → caja.
+
+Combustible del chofer: `driver_cash` es el efectivo del propio chofer (sin asiento; lo rinde como gasto en su rendición);
+`cash_box` queda pendiente de asentar hasta que un administrador elige la caja. Detalle en `FLOTA-AMPLIADA.md`.
+
+**Riesgo de doble salida:** el gasto que el chofer declara en su rendición no está ligado a la carga. Una carga `cash_box`
+se resuelve por una sola vía: el administrador la asienta en una caja **o** el chofer la rinde como gasto, no ambas. Por eso
+una carga del chofer no cambia entre `driver_cash` y `cash_box` (409). Las `cash_box` anteriores a la migración
+(`cash_payment_legacy`) no se asientan (409): se corrigen, si hace falta, con un egreso manual con motivo.
+
+Migración `1792600000000-EgresosDeEfectivoACaja`: `cash_movement_id` en `traffic_fine` y `fuel_load`, más
+`registered_by_driver` y `cash_payment_legacy` en `fuel_load`.

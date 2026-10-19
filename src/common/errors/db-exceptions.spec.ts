@@ -6,6 +6,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { traducirErrorDeBase } from './db-exceptions';
+import { NotFoundDomainError } from './domain.error';
+
+class RecursoInexistenteError extends NotFoundDomainError {
+  constructor() {
+    super('no existe');
+  }
+}
 
 /**
  * Códigos de Postgres que traduce el helper compartido. 23505 y 40P01 son
@@ -33,6 +40,18 @@ describe('traducirErrorDeBase', () => {
       ).toThrow('El sistema está ocupado, reintentá en unos segundos');
     },
   );
+
+  it('un error de dominio pasa sin traducir (lo mapea el filtro global)', () => {
+    const original = new RecursoInexistenteError();
+    let capturado: unknown;
+    try {
+      traducirErrorDeBase(original, logger, 'cajas');
+    } catch (e) {
+      capturado = e;
+    }
+    expect(capturado).toBe(original);
+    expect(error).not.toHaveBeenCalled();
+  });
 
   it('23P01 (exclusión violada) es 409', () => {
     expect(() =>
