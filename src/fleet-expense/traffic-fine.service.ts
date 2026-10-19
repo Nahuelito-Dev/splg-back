@@ -12,6 +12,8 @@ import {
   Repository,
   SelectQueryBuilder,
 } from 'typeorm';
+import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
+import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { CarService } from '../car/car.service';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import {
@@ -50,6 +52,7 @@ export class TrafficFineService {
     private readonly dataSource: DataSource,
     private readonly cars: CarService,
     private readonly driver: DriverContextService,
+    private readonly pagos: CashDocumentPaymentService,
   ) {}
 
   /** CU-198: nace pendiente; el responsable se deduce de quién tenía el vehículo en uso en la infracción. */
@@ -163,15 +166,39 @@ export class TrafficFineService {
     id: string,
     dto: PayTrafficFineDto,
     distributorId: string,
+    userId: string,
   ): Promise<TrafficFine> {
     if (dto.paidAt > diaArgentino()) {
       throw new BadRequestException('paidAt: no puede ser posterior a hoy');
     }
-    return this.mutar(id, distributorId, (_manager, multa) => {
+    if (dto.cashBoxId && !dto.paidInCash) {
+      throw new BadRequestException(
+        'cashBoxId: sólo se indica cuando el pago es en efectivo (paidInCash)',
+      );
+    }
+    return this.mutar(id, distributorId, async (manager, multa) => {
       this.assertAbierta(multa, 'La multa no admite el pago');
       multa.status = TrafficFineStatus.PAID;
       multa.paidAt = inicioDelDiaArgentino(dto.paidAt);
       multa.paidAmount = dto.paidAmount;
+      if (!dto.paidInCash) return;
+      const cajaId = await this.pagos.cajaDelPago(
+        manager,
+        distributorId,
+        dto.cashBoxId,
+      );
+      if (!cajaId) return;
+      const movimiento = await this.pagos.egresar(manager, {
+        distributorId,
+        cashBoxId: cajaId,
+        amount: dto.paidAmount,
+        systemCode: CashSystemCode.TRAFFIC_FINE,
+        referenceType: CashReferenceType.TRAFFIC_FINE,
+        referenceId: multa.fineId,
+        description: `Pago en efectivo de la multa ${multa.actNumber} (${multa.jurisdiction})`,
+        userId,
+      });
+      multa.cashMovementId = movimiento.movementId;
     });
   }
 

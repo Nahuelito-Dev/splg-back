@@ -109,6 +109,15 @@ export class CreateFuelLoadDto {
   paymentMethod!: FuelPaymentMethod;
 
   @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Sólo con `paymentMethod: cash_box` (el administrador): caja de efectivo de la que sale el pago. Con cajas de efectivo activas es obligatoria; la carga del chofer no la manda y queda pendiente de asentar',
+  })
+  @IsOptional()
+  @IsUUID()
+  cashBoxId?: string;
+
+  @ApiPropertyOptional({
     type: String,
     example: '0001-00012345',
     nullable: true,
@@ -148,14 +157,24 @@ export class CreateFuelLoadDto {
 /** La carga del chofer: siempre de su vehículo en uso y sin corrección de kilometraje. */
 export class CreateMyFuelLoadDto extends OmitType(CreateFuelLoadDto, [
   'carId',
+  'cashBoxId',
   'odometerCorrection',
   'odometerCorrectionNote',
 ] as const) {}
 
 /** El vehículo no se cambia: si la carga era de otro, se anula y se registra de nuevo. */
 export class UpdateFuelLoadDto extends PartialType(
-  OmitType(CreateFuelLoadDto, ['carId'] as const),
+  OmitType(CreateFuelLoadDto, ['carId', 'cashBoxId'] as const),
 ) {}
+
+export class PayFuelLoadFromCashBoxDto {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Caja de efectivo de la que sale el pago de la carga',
+  })
+  @IsUUID()
+  cashBoxId!: string;
+}
 
 export class QueryFuelLoadDto extends PickType(PaginationDto, [
   'limit',
@@ -214,6 +233,21 @@ export class FuelLoadResponseDto {
   @ApiProperty({ type: String, nullable: true }) station!: string | null;
   @ApiProperty({ enum: FuelPaymentMethod }) paymentMethod!: FuelPaymentMethod;
   @ApiProperty({ type: String, nullable: true }) receiptNumber!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'Salida de caja del pago (`cash_box`); `null` mientras está pendiente de asentar o si pagó el chofer',
+  })
+  cashMovementId!: string | null;
+  @ApiProperty({ description: 'La registró el chofer desde su app' })
+  registeredByDriver!: boolean;
+  @ApiProperty({
+    description:
+      'Carga `cash_box` anterior al asiento de caja: no se puede asentar',
+  })
+  cashPaymentLegacy!: boolean;
   @ApiProperty({
     description: 'El consumo del tramo se apartó más de un 25 % del habitual',
   })

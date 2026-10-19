@@ -112,6 +112,23 @@ export class PayTrafficFineDto {
   @FechaCalendario('2026-10-20')
   paidAt!: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Se pagó en efectivo de una caja de la distribuidora (por omisión, no). Con cajas de efectivo activas exige `cashBoxId`',
+  })
+  @IsOptional()
+  @IsBoolean()
+  paidInCash?: boolean;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Caja de efectivo de la que sale el pago; sólo con `paidInCash`',
+  })
+  @IsOptional()
+  @IsUUID()
+  cashBoxId?: string;
+
   @ApiProperty({
     example: 59500,
     description: 'Lo efectivamente pagado (suele ser el del pago voluntario)',
@@ -180,6 +197,13 @@ export class TrafficFineResponseDto {
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   paidAt!: Date | null;
   @ApiProperty({ type: Number, nullable: true }) paidAmount!: number | null;
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Salida de caja del pago en efectivo',
+  })
+  cashMovementId!: string | null;
   @ApiProperty({
     description: 'La asume el chofer: no cuenta como costo del vehículo',
   })

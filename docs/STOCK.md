@@ -205,8 +205,15 @@ confirmadas** con la misma fórmula de la recepción y se fija el resultado:
    sale del reloj de la base. El texto de `stock_movement.notes` (varchar 300) se arma con el motivo y se corta con `…` si
    no entra; el motivo completo queda entero en `purchase_receipt.void_reason`.
 
-**Pago:** `payment_status` (`unpaid`/`paid`) es sólo una marca (`PATCH /purchase-receipts/:id/payment-status`).
-`cash_movement_id` queda en `null` hasta que exista el módulo de caja (M-D), sin clave foránea.
+**Pago:** `PATCH /purchase-receipts/:id/payment-status` con `paymentStatus` `unpaid`/`paid`. Pagada **en efectivo**
+(`paidInCash: true`) el total sale de una caja de efectivo en la misma transacción: `cashBoxId` es obligatorio si la
+distribuidora tiene alguna caja de efectivo activa (400), tiene que ser de efectivo (400), de la distribuidora (404) y con
+sesión abierta si la exige (409; la recepción no cambia). El asiento usa la categoría de sistema `purchase`, el origen
+`purchase_receipt` y la recepción como referencia; `cash_movement_id` guarda la salida (sin clave foránea). Marcarla
+`unpaid` asienta el contraasiento y deja `cash_movement_id` en `null`; repetir el estado actual es un no-op (no asienta
+dos veces). Pagada sin `paidInCash` es sólo la marca. Una recepción que ya figura pagada sin salida de caja y recibe `paidInCash` responde 409 (se marca impaga y se vuelve a pagar). Sin cajas de efectivo activas, el pago en efectivo es sólo la marca.
+Una recepción pagada no se anula: se marca impaga (devuelve el efectivo a la caja) y después se anula. El movimiento de
+caja no se anula a mano (`POST /cash-movements/:id/reverse` responde 400 y dice cómo corregirlo). Ver `FINANZAS.md`.
 
 **Orden de locks de compras** (se suma al de arriba, empezando antes):
 `purchase_order` -> `purchase_receipt` -> `gas_cylinder` (los toma el ledger) -> `warehouse` -> `stock_balance` ->
@@ -374,5 +381,5 @@ es 404; los `POST`/`PATCH` que mueven stock aceptan `Idempotency-Key`):
 
 ## Pendiente
 
-La caja de las compras y de la rendición (M-D) completará `cash_movement_id` y podrá cargar la diferencia de una
-rendición al chofer. Ver la entrega de la tanda.
+La diferencia de una rendición a cargo del chofer se descuenta por el libro de comisiones (`FINANZAS.md`). El pago
+en efectivo de una recepción ya sale de una caja (arriba).

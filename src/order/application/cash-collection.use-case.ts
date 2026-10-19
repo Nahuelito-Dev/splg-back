@@ -119,6 +119,9 @@ export class CashCollectionUseCase {
         driverUserId,
         distributorId,
       );
+      if (order.paymentStatus !== PaymentStatus.UNPAID) {
+        await this.exigirSinRendir(manager, order);
+      }
       const changed = await this.pasarAImpago(manager, order);
       return { order, changed, extra: await dentro(manager, order) };
     });
@@ -357,6 +360,7 @@ export class CashCollectionUseCase {
         );
       }
       if (destino === PaymentStatus.PAID) {
+        await this.exigirSinRendir(manager, order);
         await this.exigirCaja(manager, order, cashBoxId);
       }
       order.paymentStatus = destino;
@@ -392,7 +396,8 @@ export class CashCollectionUseCase {
   /**
    * El efectivo de un pedido que la rendición del chofer ya tomó es del chofer:
    * si el administrador lo cobrara o lo marcara impago también, el dinero
-   * entraría dos veces (caja y rendición). Con el pedido bloqueado; la carrera
+   * entraría dos veces (caja y rendición); y el chofer que ya rindió un pedido
+   * tampoco lo informa impago. Con el pedido bloqueado; la carrera
    * contraria la cubre `presentar` de la rendición, que bloquea los pedidos que
    * toma y reevalúa `payment_resolved_by`.
    */

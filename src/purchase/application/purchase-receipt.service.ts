@@ -1,6 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import Decimal from 'decimal.js';
+import { DataSource, EntityManager } from 'typeorm';
+import { CashDocumentPaymentService } from '../../cash/application/cash-document-payment.service';
+import {
+  CashReferenceType,
+  CashSystemCode,
+} from '../../cash/domain/cash.enums';
 import {
   CompraInvalidaError,
   RecepcionNoEncontradaError,
@@ -8,20 +14,36 @@ import {
 import { PaymentStatus, PurchaseReceiptStatus } from '../domain/purchase.enums';
 import { PurchaseReceipt } from '../entities/purchase-receipt.entity';
 
+export interface PagoDeRecepcion {
+  paymentStatus: PaymentStatus;
+  /** Se pagó en efectivo de una caja de la distribuidora. */
+  paidInCash?: boolean;
+  cashBoxId?: string;
+}
+
 /** Cambios del remito que no mueven stock. */
 @Injectable()
 export class PurchaseReceiptService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly pagos: CashDocumentPaymentService,
+  ) {}
 
   /**
-   * Marca el remito como pagado o impago. La caja (M-D) todavía no existe:
-   * `cash_movement_id` queda en `null` y el pago es sólo la marca.
+   * Marca el remito como pagado o impago. Pagado en efectivo, el total sale de
+   * la caja indicada en la MISMA transacción (categoría de sistema `purchase`,
+   * origen `purchase_receipt`) y `cash_movement_id` guarda la salida. Marcarlo
+   * impago asienta el contraasiento y lo deja en `null`. Repetir el estado
+   * actual es un no-op: no asienta dos veces. Sin cajas de efectivo activas el
+   * pago es sólo la marca.
    */
   async cambiarEstadoDePago(
     id: string,
-    paymentStatus: PaymentStatus,
+    pago: PagoDeRecepcion,
     distributorId: string,
+    actorUserId: string,
   ): Promise<string> {
+    this.validarPedido(pago);
     await this.dataSource.transaction(async (manager) => {
       const recepcion = await manager
         .getRepository(PurchaseReceipt)
@@ -38,9 +60,80 @@ export class PurchaseReceiptService {
           `La recepción N° ${recepcion.number} está anulada: no se le cambia el estado de pago`,
         );
       }
-      recepcion.paymentStatus = paymentStatus;
+      if (
+        pago.paymentStatus === PaymentStatus.PAID &&
+        recepcion.paymentStatus === PaymentStatus.PAID &&
+        pago.paidInCash &&
+        !recepcion.cashMovementId
+      ) {
+        throw new ConflictException(
+          `La recepción N° ${recepcion.number} ya figura como pagada sin salida de caja: marcala impaga y volvé a pagarla en efectivo`,
+        );
+      }
+      if (recepcion.paymentStatus === pago.paymentStatus) return;
+
+      if (pago.paymentStatus === PaymentStatus.PAID) {
+        recepcion.cashMovementId = await this.egresoEnEfectivo(
+          manager,
+          recepcion,
+          pago,
+          distributorId,
+          actorUserId,
+        );
+      } else if (recepcion.cashMovementId) {
+        await this.pagos.revertir(
+          manager,
+          recepcion.cashMovementId,
+          distributorId,
+          `Pago de la recepción N° ${recepcion.number} dejado sin efecto`,
+          actorUserId,
+        );
+        recepcion.cashMovementId = null;
+      }
+      recepcion.paymentStatus = pago.paymentStatus;
       await manager.save(recepcion);
     });
     return id;
+  }
+
+  private validarPedido(pago: PagoDeRecepcion): void {
+    if (pago.paymentStatus !== PaymentStatus.PAID && pago.paidInCash) {
+      throw new CompraInvalidaError(
+        'paidInCash: sólo se indica al marcar la recepción como pagada',
+      );
+    }
+    if (pago.cashBoxId && !pago.paidInCash) {
+      throw new CompraInvalidaError(
+        'cashBoxId: sólo se indica cuando el pago es en efectivo (paidInCash)',
+      );
+    }
+  }
+
+  private async egresoEnEfectivo(
+    manager: EntityManager,
+    recepcion: PurchaseReceipt,
+    pago: PagoDeRecepcion,
+    distributorId: string,
+    actorUserId: string,
+  ): Promise<string | null> {
+    if (!pago.paidInCash) return null;
+    const cajaId = await this.pagos.cajaDelPago(
+      manager,
+      distributorId,
+      pago.cashBoxId,
+    );
+    const total = new Decimal(recepcion.totalAmount);
+    if (!cajaId || total.lte(0)) return null;
+    const movimiento = await this.pagos.egresar(manager, {
+      distributorId,
+      cashBoxId: cajaId,
+      amount: total,
+      systemCode: CashSystemCode.PURCHASE,
+      referenceType: CashReferenceType.PURCHASE_RECEIPT,
+      referenceId: recepcion.receiptId,
+      description: `Pago en efectivo de la recepción de compra N° ${recepcion.number}`,
+      userId: actorUserId,
+    });
+    return movimiento.movementId;
   }
 }
