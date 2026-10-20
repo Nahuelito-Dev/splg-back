@@ -153,6 +153,9 @@ La app del chofer todavía no consume nada de esto. Lo que le toca, ya disponibl
   `POST /driver-settlements/:id/submit` con `{ declaredCash, expenses: [{ categoryId, amount, description? }], notes? }`.
   Las categorías de gasto se piden a un administrador (el chofer no lista `/cash-categories`: la app debería
   recibir una lista fija, o se habilita una lectura para `DELIVERY`).
+  Cada entrega de `orders` trae `customerName` y `deliveryAddress` (la dirección formateada, o calle, piso,
+  depto y ciudad; `null` si falta) para reconocerla en la rendición. No incluye teléfono, coordenadas ni
+  indicaciones.
 - **Cobrar cuenta corriente en la calle:** `POST /customer-accounts/:id/payments` con `{ amount, method: 'cash' }`
   (sin `cashBoxId`). Requiere la rendición del día abierta.
 - **Mis comisiones:** `GET /commissions/mine?from&to` → `{ data, total, totalAmount, pendingAmount, liquidatedAmount }`.

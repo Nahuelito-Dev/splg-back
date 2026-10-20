@@ -158,8 +158,60 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
       status: OrderStatus.PENDING,
     });
 
-    expect(qb.orderBy).toHaveBeenCalledWith('order.createdAt', 'DESC');
+    expect(qb.orderBy).toHaveBeenCalledWith(
+      'order.createdAt',
+      'DESC',
+      'NULLS LAST',
+    );
     expect(qb.addOrderBy).toHaveBeenCalledWith('order.orderId', 'DESC');
+  });
+
+  it('deliveredFrom/deliveredTo filtran por deliveredAt con `deliveredTo` inclusivo', async () => {
+    await repo.findAllPaginated(10, 0, 'dist-1', {
+      deliveredFrom: '2026-09-01',
+      deliveredTo: '2026-09-02',
+    });
+
+    expect(orderRepo.findAndCount).not.toHaveBeenCalled();
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'order.deliveredAt >= :deliveredFrom',
+      { deliveredFrom: new Date('2026-09-01T00:00:00') },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'order.deliveredAt < :deliveredTo',
+      { deliveredTo: new Date('2026-09-03T00:00:00') },
+    );
+  });
+
+  it('sort y order ordenan por el campo pedido, los sin entregar al final', async () => {
+    qb.getCount.mockResolvedValue(1);
+    await repo.findAllPaginated(10, 0, null, {
+      sort: 'deliveredAt',
+      order: 'asc',
+    });
+
+    expect(qb.orderBy).toHaveBeenCalledWith(
+      'order.deliveredAt',
+      'ASC',
+      'NULLS LAST',
+    );
+    expect(qb.addOrderBy).toHaveBeenCalledWith('order.orderId', 'ASC');
+  });
+
+  it('la página conserva el orden que resolvió el filtro', async () => {
+    qb.getCount.mockResolvedValue(2);
+    qb.getRawAndEntities.mockResolvedValue({
+      raw: [],
+      entities: [{ orderId: 'b' } as Order, { orderId: 'a' } as Order],
+    });
+    orderRepo.find.mockResolvedValue([
+      { orderId: 'a' } as Order,
+      { orderId: 'b' } as Order,
+    ]);
+
+    const r = await repo.findAllPaginated(10, 0, null, { order: 'asc' });
+
+    expect(r.orders.map((o) => o.orderId)).toEqual(['b', 'a']);
   });
 
   it('sin resultados no llama a buscar el detalle completo', async () => {

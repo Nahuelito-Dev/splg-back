@@ -39,3 +39,32 @@ describe('QueryOrdersDto — paymentStatus', () => {
     expect(errors).toHaveLength(1);
   });
 });
+
+describe('QueryOrdersDto — fecha de entrega y orden', () => {
+  it('acepta deliveredFrom/deliveredTo, sort y order', async () => {
+    const { dto, errors } = await parse({
+      deliveredFrom: '2026-09-01',
+      deliveredTo: '2026-09-02',
+      sort: 'deliveredAt',
+      order: 'asc',
+    });
+    expect(errors).toHaveLength(0);
+    expect(dto.sort).toBe('deliveredAt');
+    expect(dto.order).toBe('asc');
+  });
+
+  it('todo es opcional: sin parámetros no hay errores', async () => {
+    const { errors } = await parse({});
+    expect(errors).toHaveLength(0);
+  });
+
+  it.each([
+    ['deliveredFrom', '01/09/2026'],
+    ['deliveredTo', '2026-13-40'],
+    ['sort', 'total'],
+    ['order', 'up'],
+  ])('rechaza %s=%s', async (campo, valor) => {
+    const { errors } = await parse({ [campo]: valor });
+    expect(errors).toHaveLength(1);
+  });
+});

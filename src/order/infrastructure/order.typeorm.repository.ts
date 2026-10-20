@@ -77,7 +77,11 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       !filters?.status &&
       !filters?.paymentStatus &&
       !filters?.from &&
-      !filters?.to
+      !filters?.to &&
+      !filters?.deliveredFrom &&
+      !filters?.deliveredTo &&
+      !filters?.sort &&
+      !filters?.order
     ) {
       const [orders, total] = await this.orderRepository.findAndCount({
         where: this.scoped({}, distributorId),
@@ -121,6 +125,22 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     if (hasta) {
       filtro.andWhere('order.createdAt < :to', { to: hasta.hasta });
     }
+    const entregadoDesde = filters.deliveredFrom
+      ? inicioDelDiaArgentino(filters.deliveredFrom)
+      : null;
+    if (entregadoDesde) {
+      filtro.andWhere('order.deliveredAt >= :deliveredFrom', {
+        deliveredFrom: entregadoDesde,
+      });
+    }
+    const entregadoHasta = filters.deliveredTo
+      ? rangoDelDiaArgentino(filters.deliveredTo)
+      : null;
+    if (entregadoHasta) {
+      filtro.andWhere('order.deliveredAt < :deliveredTo', {
+        deliveredTo: entregadoHasta.hasta,
+      });
+    }
     const termino = filters.term?.trim();
     if (termino) {
       filtro.andWhere(
@@ -134,10 +154,12 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     const total = await filtro.getCount();
     if (total === 0) return { orders: [], total, limit, offset };
 
+    const campo = filters.sort ?? 'createdAt';
+    const sentido = filters.order === 'asc' ? 'ASC' : 'DESC';
     const { entities: pagina } = await filtro
       .clone()
-      .orderBy('order.createdAt', 'DESC')
-      .addOrderBy('order.orderId', 'DESC')
+      .orderBy(`order.${campo}`, sentido, 'NULLS LAST')
+      .addOrderBy('order.orderId', sentido)
       .take(limit)
       .skip(offset)
       .getRawAndEntities();
@@ -150,8 +172,12 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       where: { orderId: In(ids) },
       withDeleted: true,
       relations: FULL_RELATIONS,
-      order: { createdAt: 'DESC', orderId: 'DESC' },
     });
+    // `find` no conserva el orden de los ids: se reordena como lo resolvió la página.
+    const posicion = new Map(ids.map((id, i) => [id, i]));
+    orders.sort(
+      (a, b) => (posicion.get(a.orderId) ?? 0) - (posicion.get(b.orderId) ?? 0),
+    );
     return { orders, total, limit, offset };
   }
 
