@@ -218,10 +218,19 @@ export class OrderService {
       paymentStatus,
       from,
       to,
+      deliveredFrom,
+      deliveredTo,
+      sort,
+      order,
     } = queryDto;
     // Mismo criterio que /reports: un rango invertido es un error, no un listado vacío.
     if (from && to && from > to) {
       throw new BadRequestException('from no puede ser posterior a to');
+    }
+    if (deliveredFrom && deliveredTo && deliveredFrom > deliveredTo) {
+      throw new BadRequestException(
+        'deliveredFrom no puede ser posterior a deliveredTo',
+      );
     }
     return this.orders.findAllPaginated(limit, offset, distributorId, {
       term,
@@ -229,6 +238,10 @@ export class OrderService {
       paymentStatus,
       from,
       to,
+      deliveredFrom,
+      deliveredTo,
+      sort,
+      order,
     });
   }
 

@@ -19,6 +19,12 @@ export interface OrderListFilters {
   paymentStatus?: PaymentStatus;
   from?: string;
   to?: string;
+  /** Entregados entre estos días (hora argentina, `deliveredTo` inclusivo). */
+  deliveredFrom?: string;
+  deliveredTo?: string;
+  /** Orden del listado; sin él, los más nuevos primero. */
+  sort?: 'createdAt' | 'deliveredAt';
+  order?: 'asc' | 'desc';
 }
 
 /**

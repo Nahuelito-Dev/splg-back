@@ -16,6 +16,7 @@ import {
   QueryDriverSettlementDto,
 } from '../dto/driver-settlement.dto';
 import { DriverSettlement } from '../entities/driver-settlement.entity';
+import { clientesDeEntrega } from './settlement-clientes';
 import { pedidosSinRendir, sumaACobrar } from './settlement-orders';
 
 /** Lecturas de las rendiciones: listado, ficha y tablero (CU-232, 233). */
@@ -208,8 +209,15 @@ export class DriverSettlementQueryService {
     dto.cashFromOrders = aCentavos(vivo.cashFromOrders);
     dto.cashFromCollections = aCentavos(vivo.cashFromCollections);
     dto.truckLoadStatus = truckLoadStatus;
+    const clientes = await clientesDeEntrega(
+      m,
+      s.distributorId,
+      vivo.pedidos.map((p) => p.orderId),
+    );
     dto.orders = vivo.pedidos.map((p) => ({
       orderId: p.orderId,
+      customerName: clientes.get(p.orderId)?.customerName ?? null,
+      deliveryAddress: clientes.get(p.orderId)?.deliveryAddress ?? null,
       totalAmount: p.totalAmount,
       amountToCollect: p.amountToCollect,
       paymentStatus: p.paymentStatus,

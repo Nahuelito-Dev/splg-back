@@ -115,6 +115,21 @@ export class QueryMySettlementDto {
 
 export class SettlementOrderDto {
   @ApiProperty() orderId!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Ana Gómez',
+    description: 'Nombre del cliente que recibió el pedido',
+  })
+  customerName!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Av. Mitre 1200, piso 3 depto B, Posadas',
+    description:
+      'Dirección de entrega (sin coordenadas, teléfono ni indicaciones)',
+  })
+  deliveryAddress!: string | null;
   @ApiProperty({ example: 12000 }) totalAmount!: number;
   @ApiProperty({
     example: 12000,

@@ -105,6 +105,18 @@ La incidencia de cobro impago **se cierra sólo con `resolve-unpaid`**: por
 `unpaid`. El cierre y la edición de una incidencia son un `UPDATE` condicional a `open`: si
 otro la cerró en paralelo, 409 y no se pisa su resolución.
 
+## Listado del panel — `GET /orders`
+
+Además de `term`, `status`, `paymentStatus`, `from`/`to` (fecha de **creación**) y la paginación:
+
+- `deliveredFrom` / `deliveredTo` (`YYYY-MM-DD`, día en hora argentina, `deliveredTo` inclusivo): filtran por
+  `deliveredAt`, así que dejan afuera lo que no se entregó. Un rango invertido es 400.
+- `sort` (`createdAt` por defecto | `deliveredAt`) y `order` (`desc` por defecto | `asc`). Con `deliveredAt`
+  los pedidos sin entregar quedan al final en cualquiera de los dos sentidos. El id desempata, así que la
+  paginación es estable.
+
+Sin ninguno de los parámetros nuevos el listado es el de siempre (más nuevos primero).
+
 ## Historial de estados
 
 `order_status_history` registra **toda** transición del pedido (incluido el alta,
