@@ -140,6 +140,7 @@ function armar(
   return {
     useCase,
     ledger,
+    locations,
     orders,
     products,
     suppliers,
@@ -290,6 +291,74 @@ describe('ReceivePurchaseUseCase', () => {
       .dataSource;
     expect(guardado).toBeDefined();
     expect(ledger.aplicar).toHaveBeenCalledTimes(1);
+  });
+
+  it('con orden: un depósito distinto al de la orden se rechaza (400) y no mueve nada', async () => {
+    const { useCase, ledger, locations } = armar({
+      orden: { status: E.SENT },
+      items: [
+        { gasCylinderId: G1, quantity: 10, receivedQuantity: 0, unitCost: 900 },
+      ],
+    });
+    await expect(
+      useCase.execute(
+        dto({
+          purchaseOrderId: OC,
+          warehouseId: 'a0000000-0000-4000-8000-0000000000ff',
+          items: [{ gasCylinderId: G1, quantityFull: 4 }],
+        }),
+        DIST,
+        USER,
+      ),
+    ).rejects.toThrow(/se recibe en su depósito de destino/);
+    expect(locations.ubicacionDeDeposito).not.toHaveBeenCalled();
+    expect(ledger.aplicar).not.toHaveBeenCalled();
+  });
+
+  it('con orden: el depósito de la orden indicado explícitamente pasa y es el que se usa', async () => {
+    const { useCase, locations } = armar({
+      orden: { status: E.SENT },
+      items: [
+        { gasCylinderId: G1, quantity: 10, receivedQuantity: 0, unitCost: 900 },
+      ],
+    });
+    await useCase.execute(
+      dto({
+        purchaseOrderId: OC,
+        warehouseId: WH,
+        items: [{ gasCylinderId: G1, quantityFull: 4 }],
+      }),
+      DIST,
+      USER,
+    );
+    expect(locations.ubicacionDeDeposito).toHaveBeenCalledWith(
+      expect.anything(),
+      DIST,
+      WH,
+    );
+  });
+
+  it('con orden: el depósito de la orden en mayúsculas se acepta (comparación normalizada)', async () => {
+    const { useCase, locations } = armar({
+      orden: { status: E.SENT },
+      items: [
+        { gasCylinderId: G1, quantity: 10, receivedQuantity: 0, unitCost: 900 },
+      ],
+    });
+    await useCase.execute(
+      dto({
+        purchaseOrderId: OC,
+        warehouseId: WH.toUpperCase(),
+        items: [{ gasCylinderId: G1, quantityFull: 4 }],
+      }),
+      DIST,
+      USER,
+    );
+    expect(locations.ubicacionDeDeposito).toHaveBeenCalledWith(
+      expect.anything(),
+      DIST,
+      WH,
+    );
   });
 
   it('recibir lo que falta cierra la orden', async () => {

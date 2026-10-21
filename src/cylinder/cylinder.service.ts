@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -23,8 +24,14 @@ import {
   DespachoBloqueadoEvent,
   EVENTO_DESPACHO_BLOQUEADO,
 } from './events/despacho-bloqueado.event';
-import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import {
+  OrderDespachoRef,
+  OrderLookupService,
+} from '../order/lookup/order-lookup.service';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
+import { DeliveryService } from '../delivery/delivery.service';
+import { OrderStatus } from '../order/entities/order.entity';
+import { RoleType } from '../common/constants/role-type.enum';
 import { errorCode } from '../common/errors/error-message';
 
 /** Filtros del listado de envases. */
@@ -41,6 +48,22 @@ export interface FiltrosDeEnvases {
   offset?: number;
 }
 
+/** Pedidos a los que todavía se les pueden cargar envases en el camión. */
+const PEDIDO_DESPACHABLE: ReadonlySet<OrderStatus> = new Set([
+  OrderStatus.PENDING,
+  OrderStatus.ACCEPTED,
+  OrderStatus.ON_THE_WAY,
+]);
+
+const ESTADO_DEL_PEDIDO: Readonly<Record<OrderStatus, string>> = {
+  [OrderStatus.RESERVED]: 'reservado a futuro',
+  [OrderStatus.PENDING]: 'pendiente',
+  [OrderStatus.ACCEPTED]: 'aceptado',
+  [OrderStatus.ON_THE_WAY]: 'en camino',
+  [OrderStatus.DELIVERED]: 'entregado',
+  [OrderStatus.CANCELLED]: 'cancelado',
+};
+
 /** Lo que el panel muestra de cada envase: de qué producto es y quién lo tiene. */
 const CON_PRODUCTO_Y_CLIENTE = ['gasCylinder', 'currentCustomer'];
 
@@ -54,6 +77,7 @@ export class CylinderService {
     private readonly orders: OrderLookupService,
     private readonly gasCylinders: GasCylinderService,
     private readonly eventos: EventEmitter2,
+    private readonly deliveries: DeliveryService,
   ) {}
 
   /**
@@ -230,12 +254,21 @@ export class CylinderService {
    * `current_customer_id`:
    *  - WITH_CUSTOMER: se toma el `customer_id` del pedido (si viene orderId).
    *  - EMPTY_RETURNED / IN_DEPOT: se limpia (el envase ya no está con nadie).
+   * y sobre `current_order_id`:
+   *  - DISPATCHED / WITH_CUSTOMER: queda el pedido de la transición.
+   *  - IN_DEPOT / RETIRED: se limpia (el envase vuelve a estar libre).
+   *  - EMPTY_RETURNED: conserva el pedido con el que salió.
+   *
+   * Con `orderId` el pedido tiene que ser de la distribuidora y, si actúa un
+   * chofer, suyo (404). Despachar exige además un pedido despachable (409), el
+   * mismo control que `assignToOrder`.
    */
   async transition(
     id: string,
     dto: TransitionCylinderDto,
     distributorId: string,
     actorUserId?: string,
+    role?: RoleType,
   ): Promise<Cylinder> {
     if (dto.toState === CylinderState.RETIRED) {
       throw new BadRequestException(
@@ -243,21 +276,74 @@ export class CylinderService {
       );
     }
 
-    let customerId: string | null = null;
-    if (dto.orderId) {
-      // El pedido tiene que ser de la misma distribuidora que el envase (H-90).
-      const order = await this.orders.findRef(dto.orderId, distributorId);
-      if (!order) throw new NotFoundException('Pedido no encontrado');
-      if (dto.toState === CylinderState.WITH_CUSTOMER) {
-        customerId = order.customerId;
-      }
+    if (dto.toState === CylinderState.WITH_CUSTOMER && !dto.orderId) {
+      throw new BadRequestException(
+        'Entregar el envase al cliente (with_customer) requiere indicar el pedido (orderId)',
+      );
     }
 
-    // Con el envase bloqueado: una transición y una baja simultáneas se
-    // serializan y la segunda valida contra el estado que dejó la primera.
+    const propio =
+      role === RoleType.DELIVERY && actorUserId
+        ? await this.deliveries.buscarPorIdOUsuario(actorUserId)
+        : null;
+
+    // Orden de locks igual al de la confirmación de la entrega: primero el/los
+    // pedidos (FOR SHARE, en orden de id) y después el envase. Con el pedido
+    // bloqueado una entrega o reasignación concurrente espera y la validación
+    // de estado y dueño vale hasta el commit.
     try {
       await this.cylinderRepository.manager.transaction(async (manager) => {
+        const visto = await manager.getRepository(Cylinder).findOne({
+          where: { cylinderId: id, distributorId },
+          select: { cylinderId: true, currentOrderId: true },
+        });
+        if (!visto) throw new NotFoundException('Envase no encontrado');
+
+        const ids = [
+          ...new Set(
+            [dto.orderId, visto.currentOrderId].filter((v): v is string => !!v),
+          ),
+        ].sort();
+        const pedidos = new Map<string, OrderDespachoRef>();
+        for (const orderId of ids) {
+          // El pedido tiene que ser de la misma distribuidora que el envase (H-90).
+          const pedido = await this.orders.findParaDespacho(
+            orderId,
+            distributorId,
+            manager,
+          );
+          if (pedido) pedidos.set(orderId, pedido);
+        }
         const cylinder = await this.bloquear(manager, id, distributorId);
+        if (cylinder.currentOrderId !== visto.currentOrderId) {
+          throw new ConflictException(
+            'El envase cambió de pedido mientras se procesaba: reintentá',
+          );
+        }
+
+        const pedido = dto.orderId ? pedidos.get(dto.orderId) : undefined;
+        if (dto.orderId && !pedido) {
+          throw new NotFoundException('Pedido no encontrado');
+        }
+        if (role === RoleType.DELIVERY) {
+          this.asegurarEnvaseDelChofer(
+            cylinder,
+            dto.orderId,
+            pedidos,
+            propio?.deliveryId ?? null,
+          );
+        }
+        if (pedido) {
+          // Un chofer sólo mueve envases en el contexto de sus propios pedidos.
+          this.asegurarPedidoDelChoferYa(
+            pedido,
+            propio?.deliveryId ?? null,
+            role,
+          );
+          if (dto.toState === CylinderState.DISPATCHED) {
+            this.asegurarPedidoDespachable(pedido);
+          }
+        }
         await this.recordTransition(
           cylinder,
           dto.toState,
@@ -265,7 +351,10 @@ export class CylinderService {
             orderId: dto.orderId,
             actorUserId,
             note: dto.note,
-            customerId,
+            customerId:
+              dto.toState === CylinderState.WITH_CUSTOMER
+                ? (pedido?.customerId ?? null)
+                : null,
           },
           manager,
         );
@@ -368,25 +457,45 @@ export class CylinderService {
    * revisión vencida rechaza la asignación completa (409 con la lista de
    * seriales, CU-135); uno sin vencimiento cargado pasa y queda anotado. Si
    * algún envase no está FILLED, la transición es inválida y lanza 400.
+   *
+   * El pedido tiene que admitir la carga (pendiente, aceptado o en camino): uno
+   * entregado, cancelado o reservado a futuro es 409. Un chofer sólo carga a
+   * pedidos que tiene asignados; uno ajeno o sin chofer no existe para él (404),
+   * el mismo criterio que el resto de las operaciones del chofer sobre pedidos.
    */
   async assignToOrder(
     orderId: string,
     serials: string[],
     distributorId: string,
     actorUserId?: string,
+    role?: RoleType,
   ): Promise<Cylinder[]> {
-    // Sólo un pedido de la misma distribuidora (H-90).
-    const order = await this.orders.findRef(orderId, distributorId);
-    if (!order) {
-      throw new NotFoundException('Pedido no encontrado');
-    }
     if (new Set(serials).size !== serials.length) {
       throw new BadRequestException('Hay seriales repetidos');
     }
+    const propio =
+      role === RoleType.DELIVERY && actorUserId
+        ? await this.deliveries.buscarPorIdOUsuario(actorUserId)
+        : null;
 
     try {
       return await this.cylinderRepository.manager.transaction(
         async (manager) => {
+          // Primero el pedido, bloqueado (mismo orden que la confirmación de la
+          // entrega: pedido y después envases), y sólo uno de la misma
+          // distribuidora (H-90).
+          const order = await this.orders.findParaDespacho(
+            orderId,
+            distributorId,
+            manager,
+          );
+          if (!order) throw new NotFoundException('Pedido no encontrado');
+          this.asegurarPedidoDelChoferYa(
+            order,
+            propio?.deliveryId ?? null,
+            role,
+          );
+          this.asegurarPedidoDespachable(order);
           const cylinders = await this.bloquearPorSerial(
             manager,
             serials,
@@ -405,7 +514,6 @@ export class CylinderService {
 
           const assigned: Cylinder[] = [];
           for (const cylinder of cylinders) {
-            cylinder.currentOrderId = orderId;
             const sinFecha = cylinder.expiresAt === null;
             assigned.push(
               await this.recordTransition(
@@ -428,6 +536,57 @@ export class CylinderService {
     } catch (error) {
       this.avisarSiHayVencidos(error, distributorId, orderId);
       throw error;
+    }
+  }
+
+  /** Un chofer sólo opera sobre pedidos asignados a él: el ajeno no existe para él (404). */
+  private asegurarPedidoDelChoferYa(
+    order: OrderDespachoRef,
+    deliveryId: string | null,
+    role?: RoleType,
+  ): void {
+    if (role !== RoleType.DELIVERY) return;
+    if (!deliveryId || order.deliveryId !== deliveryId) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
+  }
+
+  /**
+   * Reglas del chofer sobre un envase, con el envase y los pedidos bloqueados:
+   *  - si el envase ya está atado a un pedido, ese pedido tiene que ser suyo
+   *    (si no, el envase no existe para él: 404) y un `orderId` distinto es 409;
+   *  - un envase sin pedido sólo se mueve en el contexto de un pedido suyo
+   *    (`orderId`); las tareas de depósito son del admin (403).
+   */
+  private asegurarEnvaseDelChofer(
+    cylinder: Cylinder,
+    orderId: string | undefined,
+    pedidos: Map<string, OrderDespachoRef>,
+    deliveryId: string | null,
+  ): void {
+    if (cylinder.currentOrderId) {
+      const actual = pedidos.get(cylinder.currentOrderId);
+      if (!deliveryId || !actual || actual.deliveryId !== deliveryId) {
+        throw new NotFoundException('Envase no encontrado');
+      }
+      if (orderId && orderId !== cylinder.currentOrderId) {
+        throw new ConflictException(
+          'El envase está asignado a otro pedido: no coincide con el pedido indicado',
+        );
+      }
+    } else if (!orderId) {
+      throw new ForbiddenException(
+        'Un chofer mueve envases sólo en el contexto de uno de sus pedidos (orderId)',
+      );
+    }
+  }
+
+  /** Sólo se cargan envases a pedidos pendientes, aceptados o en camino (409). */
+  private asegurarPedidoDespachable(order: OrderDespachoRef): void {
+    if (!PEDIDO_DESPACHABLE.has(order.status)) {
+      throw new ConflictException(
+        `El pedido está ${ESTADO_DEL_PEDIDO[order.status]}: no se le pueden asignar envases`,
+      );
     }
   }
 
@@ -481,16 +640,27 @@ export class CylinderService {
     distributorId?: string | null,
     manager?: EntityManager,
   ): Promise<number> {
-    const repo = manager
-      ? manager.getRepository(Cylinder)
-      : this.cylinderRepository;
-    const cylinders = await repo.find({
-      where: {
-        currentOrderId: orderId,
-        state: CylinderState.DISPATCHED,
-        ...(distributorId ? { distributorId } : {}),
-      },
-    });
+    if (!manager) {
+      return this.cylinderRepository.manager.transaction((m) =>
+        this.onOrderDelivered(orderId, distributorId, m),
+      );
+    }
+    // Se relee con el envase bloqueado: entre la lectura y el guardado alguien
+    // pudo devolverlo al depósito o despacharlo a otro pedido, y guardar la
+    // entidad vieja lo pisaría.
+    const consulta = manager
+      .createQueryBuilder(Cylinder, 'cylinder')
+      .setLock('pessimistic_write')
+      .where('cylinder.currentOrderId = :orderId', { orderId })
+      .andWhere('cylinder.state = :state', { state: CylinderState.DISPATCHED });
+    if (distributorId) {
+      consulta.andWhere('cylinder.distributorId = :distributorId', {
+        distributorId,
+      });
+    }
+    const cylinders = await consulta
+      .orderBy('cylinder.serial', 'ASC')
+      .getMany();
     if (cylinders.length === 0) return 0;
 
     const order = await this.orders.findRef(orderId, distributorId);
@@ -553,7 +723,16 @@ export class CylinderService {
       cylinder.currentCustomerId = null;
     }
 
-    if (toState === CylinderState.RETIRED) cylinder.currentOrderId = null;
+    if (toState === CylinderState.DISPATCHED) {
+      cylinder.currentOrderId = ctx.orderId ?? null;
+    } else if (toState === CylinderState.WITH_CUSTOMER) {
+      cylinder.currentOrderId = ctx.orderId ?? cylinder.currentOrderId;
+    } else if (
+      toState === CylinderState.IN_DEPOT ||
+      toState === CylinderState.RETIRED
+    ) {
+      cylinder.currentOrderId = null;
+    }
 
     cylinder.state = toState;
     const saved = await cylinders.save(cylinder);

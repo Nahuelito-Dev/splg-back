@@ -86,7 +86,7 @@ export class CreatePurchaseReceiptDto {
   @ApiPropertyOptional({
     format: 'uuid',
     description:
-      'Depósito destino. Con orden: el de la orden; sin orden: el predeterminado',
+      'Depósito destino. Con orden: el de la orden (si se indica otro, 400); sin orden: el indicado o el predeterminado',
   })
   @IsOptional()
   @IsUUID()

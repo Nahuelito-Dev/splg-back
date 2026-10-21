@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ArrayNotEmpty, IsArray, IsString, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { enMinusculas } from './en-minusculas';
 
 /**
  * Asigna envases físicos (por serial) a un pedido y los despacha. Se envía
@@ -9,6 +11,7 @@ import { ArrayNotEmpty, IsArray, IsString, IsUUID } from 'class-validator';
 export class AssignCylindersDto {
   /** Pedido al que se asignan los envases. */
   @ApiProperty({ format: 'uuid' })
+  @Transform(enMinusculas)
   @IsUUID()
   orderId!: string;
 

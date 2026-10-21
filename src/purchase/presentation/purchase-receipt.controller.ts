@@ -66,7 +66,7 @@ export class PurchaseReceiptController {
   @ApiCreatedResponse({ type: PurchaseReceiptResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Sin `Idempotency-Key`, orden no recibible, la recepción se pasa de lo pendiente, fecha anterior al conteo inicial del depósito, no alcanzan las vacías o faltan datos',
+      'Sin `Idempotency-Key`, orden no recibible, `warehouseId` distinto al depósito de la orden, la recepción se pasa de lo pendiente, fecha anterior al conteo inicial del depósito, no alcanzan las vacías o faltan datos',
   })
   @ApiNotFoundResponse({
     description: 'Orden, proveedor, depósito o garrafa inexistente',

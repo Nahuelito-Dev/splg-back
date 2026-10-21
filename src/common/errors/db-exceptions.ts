@@ -17,6 +17,10 @@ const CODIGOS = {
   CLAVE_FORANEA: '23503',
   NO_NULO: '23502',
   SINTAXIS_INVALIDA: '22P02',
+  // Texto que la base no puede guardar: bytes inválidos en UTF-8 (el NUL
+  // `\u0000` entre ellos) o escape Unicode no soportado (NUL en jsonb).
+  TEXTO_INVALIDO: '22021',
+  ESCAPE_UNICODE_NO_SOPORTADO: '22P05',
   VALOR_FUERA_DE_RANGO: '22003',
   EXCLUSION_VIOLADA: '23P01',
   DEADLOCK: '40P01',
@@ -105,6 +109,11 @@ export function traducirErrorDeBase(
         `Alguno de los valores enviados tiene un formato inválido${donde}`,
       );
 
+    case CODIGOS.TEXTO_INVALIDO:
+    case CODIGOS.ESCAPE_UNICODE_NO_SOPORTADO:
+      logger.warn(`Texto con caracteres no válidos${donde}: ${e.message}`);
+      throw new BadRequestException(MENSAJE_TEXTO_INVALIDO);
+
     case CODIGOS.VALOR_FUERA_DE_RANGO:
       logger.warn(`Valor numérico fuera de rango${donde}: ${e.message}`);
       throw new BadRequestException(
@@ -138,6 +147,9 @@ export function traducirErrorDeBase(
   }
 }
 
+export const MENSAJE_TEXTO_INVALIDO =
+  'Alguno de los textos enviados tiene caracteres no válidos (por ejemplo el carácter nulo)';
+
 export const MENSAJE_SISTEMA_OCUPADO =
   'El sistema está ocupado, reintentá en unos segundos';
 
@@ -160,6 +172,19 @@ function ocupado(
 export function esTimeoutDeBase(error: unknown): boolean {
   const code = codigoSqlDelError(error);
   return code === CODIGOS.LOCK_TIMEOUT || code === CODIGOS.STATEMENT_TIMEOUT;
+}
+
+/**
+ * `true` si la base rechazó un texto por tener caracteres que no puede guardar
+ * (típicamente el NUL `\u0000`, que `class-validator` deja pasar): es un dato
+ * inválido del cliente, no una falla del servidor.
+ */
+export function esTextoInvalidoDeBase(error: unknown): boolean {
+  const code = codigoSqlDelError(error);
+  return (
+    code === CODIGOS.TEXTO_INVALIDO ||
+    code === CODIGOS.ESCAPE_UNICODE_NO_SOPORTADO
+  );
 }
 
 /** SQLSTATE del error, esté en el error o en el `driverError` de TypeORM. */

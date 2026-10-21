@@ -17,10 +17,13 @@ import {
   ApiParam,
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiExtraModels,
+  ApiForbiddenResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { CylinderService } from './cylinder.service';
 import { CylinderVigenciaService } from './cylinder-vigencia.service';
@@ -29,7 +32,10 @@ import {
   CylinderVigenciaResponseDto,
   ExpiringCylindersResponseDto,
 } from './dto/cylinder-vigencia-response.dto';
-import { CylinderExpiredResponseDto } from './cylinder-vencido.exception';
+import {
+  CylinderExpiredResponseDto,
+  PedidoNoDespachableResponseDto,
+} from './cylinder-vencido.exception';
 import { RegisterInspectionDto } from './dto/register-inspection.dto';
 import { QueryExpiringCylindersDto } from './dto/query-expiring-cylinders.dto';
 import {
@@ -51,6 +57,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 
 @ApiTags('Cylinders')
 @ApiBearerAuth()
+@ApiExtraModels(CylinderExpiredResponseDto, PedidoNoDespachableResponseDto)
 @Controller('cylinders')
 export class CylinderController {
   constructor(
@@ -90,14 +97,25 @@ export class CylinderController {
       'Algún envase no está FILLED (no se puede despachar) o hay seriales repetidos',
   })
   @ApiConflictResponse({
-    type: CylinderExpiredResponseDto,
+    schema: {
+      anyOf: [
+        { $ref: getSchemaPath(CylinderExpiredResponseDto) },
+        { $ref: getSchemaPath(PedidoNoDespachableResponseDto) },
+      ],
+    },
     description:
       'Algún envase tiene la revisión vencida: se rechaza la asignación ' +
       'completa y no se asigna ninguno. El cuerpo trae `code: ' +
       'CYLINDER_EXPIRED` y `serials` con los vencidos. Los envases sin ' +
-      'vencimiento cargado pasan.',
+      'vencimiento cargado pasan. También 409 si el pedido no admite la ' +
+      'carga: sólo se asigna a pedidos pendientes, aceptados o en camino ' +
+      '(no entregados, cancelados ni reservados a futuro).',
   })
-  @ApiNotFoundResponse({ description: 'Pedido o envase no encontrado' })
+  @ApiNotFoundResponse({
+    description:
+      'Pedido o envase no encontrado. Un chofer que no es el asignado al pedido ' +
+      'recibe el mismo 404: el pedido ajeno no existe para él',
+  })
   async assign(
     @Body() dto: AssignCylindersDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -108,6 +126,7 @@ export class CylinderController {
       dto.serials,
       distributorId,
       user.user_id,
+      user.role,
     );
     return cylinders.map((c) => CylinderMapper.toDto(c));
   }
@@ -345,14 +364,36 @@ export class CylinderController {
   })
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
   @ApiOkResponse({ type: CylinderResponseDto })
-  @ApiBadRequestResponse({ description: 'Transición inválida' })
+  @ApiBadRequestResponse({
+    description:
+      'Transición inválida, o `with_customer` sin `orderId` (el pedido da el titular), o texto con caracteres no válidos en `note`',
+  })
   @ApiConflictResponse({
-    type: CylinderExpiredResponseDto,
+    schema: {
+      anyOf: [
+        { $ref: getSchemaPath(CylinderExpiredResponseDto) },
+        { $ref: getSchemaPath(PedidoNoDespachableResponseDto) },
+      ],
+    },
     description:
       'Despachar (`dispatched`) un envase con la revisión vencida: el mismo ' +
-      '409 `CYLINDER_EXPIRED` que la asignación a un pedido.',
+      '409 `CYLINDER_EXPIRED` que la asignación a un pedido. También 409 si ' +
+      'se despacha con un `orderId` de un pedido que no admite la carga ' +
+      '(entregado, cancelado o reservado a futuro). Un chofer que indica un ' +
+      '`orderId` distinto del pedido al que ya está atado el envase también ' +
+      'recibe 409.',
   })
-  @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  @ApiForbiddenResponse({
+    description:
+      'Un chofer sin `orderId` sobre un envase que no está atado a ningún ' +
+      'pedido: las tareas de depósito son del administrador',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Envase o pedido no encontrado. Un chofer que indica el `orderId` de un ' +
+      'pedido que no tiene asignado, o mueve un envase atado a un pedido de ' +
+      'otro chofer, recibe el mismo 404',
+  })
   async transition(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionCylinderDto,
@@ -365,6 +406,7 @@ export class CylinderController {
         dto,
         distributorId,
         user.user_id,
+        user.role,
       ),
     );
   }

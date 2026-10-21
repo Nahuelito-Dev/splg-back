@@ -67,6 +67,28 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
     },
   );
 
+  it.each(['22021', '22P05'])(
+    'un texto que la base no puede guardar (%s, p. ej. NUL) responde 400 en castellano',
+    (code) => {
+      filter.catch(
+        Object.assign(new Error('invalid byte sequence for encoding "UTF8"'), {
+          driverError: { code },
+        }),
+        host,
+      );
+
+      expect(applicationRef.reply).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          statusCode: 400,
+          message:
+            'Alguno de los textos enviados tiene caracteres no válidos (por ejemplo el carácter nulo)',
+        }),
+        400,
+      );
+    },
+  );
+
   it('mapea InvalidOrderTransitionError a 400 con el mismo mensaje', () => {
     const error = new InvalidOrderTransitionError(
       OrderStatus.PENDING,

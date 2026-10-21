@@ -14,6 +14,16 @@ export class CylinderExpiredResponseDto {
   serials!: string[];
 }
 
+/** Cuerpo del 409 cuando el pedido no admite que se le carguen envases. */
+export class PedidoNoDespachableResponseDto {
+  @ApiProperty({ example: 409 }) statusCode!: number;
+  @ApiProperty({ example: 'Conflict' }) error!: string;
+  @ApiProperty({
+    example: 'El pedido está entregado: no se le pueden asignar envases',
+  })
+  message!: string;
+}
+
 /**
  * CU-135. La asignación se rechaza completa porque algún envase tiene la
  * revisión vencida. Responde 409 con la lista de seriales para que quien asigna

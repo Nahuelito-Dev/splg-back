@@ -103,12 +103,13 @@ export class ReceivePurchaseUseCase {
         quantityEmptyOut: i.quantityEmptyOut ?? 0,
       })),
     );
-    const defaultWarehouseId =
-      dto.warehouseId ??
-      (dto.purchaseOrderId
-        ? undefined
-        : (await this.warehouses.asegurarPredeterminado(distributorId))
-            .warehouse.warehouseId);
+    // Con orden el depósito lo fija la orden (se valida en `recibir`, con la
+    // orden bloqueada); sin orden, el indicado o el predeterminado.
+    const defaultWarehouseId = dto.purchaseOrderId
+      ? undefined
+      : (dto.warehouseId ??
+        (await this.warehouses.asegurarPredeterminado(distributorId)).warehouse
+          .warehouseId);
 
     try {
       return await this.recibir(
@@ -143,6 +144,16 @@ export class ReceivePurchaseUseCase {
           const supplierId = this.proveedorDe(dto, orden?.orden ?? null);
           const warehouseId =
             defaultWarehouseId ?? orden?.orden.destinationWarehouseId;
+          if (
+            orden &&
+            dto.warehouseId &&
+            dto.warehouseId.toLowerCase() !==
+              orden.orden.destinationWarehouseId.toLowerCase()
+          ) {
+            throw new CompraInvalidaError(
+              `La orden de compra N° ${orden.orden.number} se recibe en su depósito de destino: el depósito indicado no coincide. Omití warehouseId o usá el de la orden`,
+            );
+          }
           if (!warehouseId) {
             throw new CompraInvalidaError('Indicá el depósito donde se recibe');
           }

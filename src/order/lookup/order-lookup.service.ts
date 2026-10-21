@@ -16,6 +16,12 @@ export interface OrderRef {
   customerId: string;
 }
 
+/** El pedido visto desde `cylinder` para cargarle envases: estado y chofer. */
+export interface OrderDespachoRef extends OrderRef {
+  status: OrderStatus;
+  deliveryId: string | null;
+}
+
 /** Estado de un pedido visto desde `payments`: si todavía se puede cobrar. */
 export interface OrderPaymentState {
   status: OrderStatus;
@@ -64,6 +70,40 @@ export class OrderLookupService {
     });
     return order
       ? { orderId: order.orderId, customerId: order.customerId }
+      : null;
+  }
+
+  /**
+   * Lo que `cylinder` necesita para cargarle envases a un pedido: estado y
+   * chofer asignado. Dentro de la distribuidora (lo ajeno es null). Con
+   * `manager` lee dentro de esa transacción y deja la fila bloqueada
+   * (`FOR SHARE`): una entrega, cancelación o reasignación concurrente
+   * (`FOR UPDATE`) espera a que termine la carga, así lo validado sigue
+   * valiendo hasta el commit.
+   */
+  async findParaDespacho(
+    orderId: string,
+    distributorId: string,
+    manager?: EntityManager,
+  ): Promise<OrderDespachoRef | null> {
+    const repo = manager ? manager.getRepository(Order) : this.orderRepository;
+    const order = await repo.findOne({
+      where: { orderId, distributorId },
+      select: {
+        orderId: true,
+        customerId: true,
+        status: true,
+        deliveryId: true,
+      },
+      ...(manager ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
+    return order
+      ? {
+          orderId: order.orderId,
+          customerId: order.customerId,
+          status: order.status,
+          deliveryId: order.deliveryId,
+        }
       : null;
   }
 

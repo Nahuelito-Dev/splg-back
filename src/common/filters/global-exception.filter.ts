@@ -17,6 +17,8 @@ import {
 } from '../errors/domain.error';
 import {
   MENSAJE_SISTEMA_OCUPADO,
+  MENSAJE_TEXTO_INVALIDO,
+  esTextoInvalidoDeBase,
   esTimeoutDeBase,
 } from '../errors/db-exceptions';
 import type { Request } from 'express';
@@ -112,6 +114,17 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         `Timeout de base de datos: ${exception instanceof Error ? exception.message : 'sin mensaje'}`,
       );
       return new ServiceUnavailableException(MENSAJE_SISTEMA_OCUPADO);
+    }
+    // Un texto que la base no puede guardar (NUL, bytes inválidos): dato
+    // inválido del cliente, 400 en vez de un 500 sin explicación.
+    if (
+      !(exception instanceof HttpException) &&
+      esTextoInvalidoDeBase(exception)
+    ) {
+      this.logger.warn(
+        `Texto con caracteres no válidos: ${exception instanceof Error ? exception.message : 'sin mensaje'}`,
+      );
+      return new BadRequestException(MENSAJE_TEXTO_INVALIDO);
     }
     return exception;
   }
