@@ -26,6 +26,7 @@ import {
   OrderDeliveryMode,
   OrderStatus,
   PaymentMethod,
+  PaymentStatus,
 } from './entities/order.entity';
 import { transitionOrder } from './domain/order-status.machine';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -389,6 +390,18 @@ export class OrderService {
     }
     if (order.status === OrderStatus.CANCELLED) {
       dto.cancelledBy = await this.quienCancelo(order.orderId);
+    } else if (
+      order.paymentMethod === PaymentMethod.MERCADOPAGO &&
+      order.paymentStatus === PaymentStatus.PENDING &&
+      !order.depositPaid &&
+      !choferUserId
+    ) {
+      // El enlace de pago se genera al crear el pedido (o la seña de una
+      // reserva) y se guarda en el registro de cobros: la lectura lo devuelve
+      // mientras siga pendiente, para recuperarlo si se perdió la respuesta del alta.
+      dto.paymentUrl =
+        (await this.createOrderUseCase.enlaceDeCobroPendiente(order.orderId)) ??
+        undefined;
     }
     if (incluirChofer) dto.driver = await this.datosDelChofer(order);
     return dto;

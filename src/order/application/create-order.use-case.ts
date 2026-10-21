@@ -1,4 +1,5 @@
 import { bloquearCuentaParaPedido } from '../../common/locks/cuenta-lock';
+import { assertSenaNoSuperaTotal } from '../domain/deposit-cap';
 import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
 import {
   Injectable,
@@ -256,6 +257,10 @@ export class CreateOrderUseCase {
         );
       }
 
+      if (createOrderDto.isReservation) {
+        assertSenaNoSuperaTotal(createOrderDto.depositAmount ?? 0, totalAmount);
+      }
+
       const paymentType = paymentTypeDe(createOrderDto.paymentMethod);
 
       // Pre-reserva: nace RESERVED (no se despacha) con su seña; el resto nace
@@ -424,6 +429,18 @@ export class CreateOrderUseCase {
       );
     }
     return { order: await this.releerOUsar(savedOrder), paymentUrl };
+  }
+
+  /**
+   * El enlace de pago de MercadoPago vigente del pedido (el checkout del pedido
+   * o, en una reserva, el de la seña), o `null` si no hay uno pendiente. Lo usa
+   * la lectura del pedido para volver a mostrarlo después del alta.
+   */
+  async enlaceDeCobroPendiente(orderId: string): Promise<string | null> {
+    const enlaces = await this.paymentsService.findPendingCheckoutUrls([
+      orderId,
+    ]);
+    return enlaces.get(orderId) ?? null;
   }
 
   /** El pedido completo; si la relectura falla, el recién guardado. */

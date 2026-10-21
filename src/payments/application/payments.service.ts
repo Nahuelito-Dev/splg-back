@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 
 import { Payment } from '../entities/payment.entity';
 import {
@@ -112,6 +112,32 @@ export class PaymentsService {
     await this.paymentRepository.save(ledgerPayment);
 
     return checkout;
+  }
+
+  /**
+   * El enlace de pago vigente de cada pedido: el del ÚLTIMO intento de cobro
+   * (por fecha), y sólo si ese intento sigue pendiente y tiene URL (cubre el
+   * checkout del pedido y el de la seña de una reserva). Un intento posterior
+   * rechazado, cancelado o sin URL reemplaza al anterior: el enlace viejo no se
+   * vuelve a publicar. Sin pedido en el mapa = no hay enlace vigente.
+   */
+  async findPendingCheckoutUrls(
+    orderIds: string[],
+  ): Promise<Map<string, string>> {
+    const urls = new Map<string, string>();
+    if (orderIds.length === 0) return urls;
+    const pagos = await this.paymentRepository.find({
+      where: { orderId: In(orderIds) },
+      order: { createdAt: 'ASC' },
+    });
+    const ultimo = new Map<string, Payment>();
+    for (const pago of pagos) ultimo.set(pago.orderId, pago);
+    for (const [orderId, pago] of ultimo) {
+      if (pago.status === LedgerPaymentStatus.PENDING && pago.paymentUrl) {
+        urls.set(orderId, pago.paymentUrl);
+      }
+    }
+    return urls;
   }
 
   /** 404 si el pedido no existe; 409 si ya no se puede cobrar. */

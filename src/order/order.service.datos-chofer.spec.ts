@@ -1,5 +1,10 @@
 import { OrderService } from './order.service';
-import { Order, OrderStatus } from './entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from './entities/order.entity';
 
 /** El bloque `driver` del pedido: sólo con el pedido activo y a quien corresponde. */
 describe('OrderService.getOne · datos del chofer', () => {
@@ -209,5 +214,61 @@ describe('OrderService.getOne · datos del chofer', () => {
         delete process.env.DRIVER_LOCATION_MAX_AGE_MIN;
       }
     });
+  });
+});
+
+/** El enlace de pago de MercadoPago se recupera al leer el pedido. */
+describe('OrderService.getOne · enlace de pago', () => {
+  const DIST = 'dddddddd-0000-4000-8000-00000000000a';
+  const enlaceDeCobroPendiente = jest.fn();
+  const armar = (over: Partial<Order>) => {
+    enlaceDeCobroPendiente.mockReset();
+    enlaceDeCobroPendiente.mockResolvedValue('https://mp.test/checkout/1');
+    const service = Object.assign(Object.create(OrderService.prototype), {
+      createOrderUseCase: { enlaceDeCobroPendiente },
+      deliveries: {
+        buscarPorIdOUsuario: jest
+          .fn()
+          .mockResolvedValue({ deliveryId: 'del-1' }),
+      },
+    }) as OrderService;
+    jest.spyOn(service, 'findOne').mockResolvedValue({
+      orderId: 'o1',
+      customerId: 'cli-1',
+      distributorId: DIST,
+      status: OrderStatus.PENDING,
+      paymentMethod: PaymentMethod.MERCADOPAGO,
+      paymentStatus: PaymentStatus.PENDING,
+      deliveryId: 'del-1',
+      items: [],
+      ...over,
+    } as unknown as Order);
+    return service;
+  };
+
+  it('un pedido de MercadoPago sin pagar trae payment_url', async () => {
+    const dto = await armar({}).getOne('o1', DIST, 'cli-1');
+    expect(dto.paymentUrl).toBe('https://mp.test/checkout/1');
+  });
+
+  it('efectivo, pagado, con la seña ya confirmada, cancelado o visto por un chofer: sin enlace ni consulta', async () => {
+    for (const [over, chofer] of [
+      [{ paymentMethod: PaymentMethod.CASH }, undefined],
+      [{ paymentStatus: PaymentStatus.PAID }, undefined],
+      [{ depositPaid: true }, undefined],
+      [{ status: OrderStatus.CANCELLED }, undefined],
+      [{}, 'chofer-1'],
+    ] as const) {
+      const service = armar(over);
+      jest
+        .spyOn(
+          service as unknown as { quienCancelo: () => Promise<string> },
+          'quienCancelo',
+        )
+        .mockResolvedValue('customer');
+      const dto = await service.getOne('o1', DIST, 'cli-1', chofer);
+      expect(dto.paymentUrl).toBeUndefined();
+      expect(enlaceDeCobroPendiente).not.toHaveBeenCalled();
+    }
   });
 });

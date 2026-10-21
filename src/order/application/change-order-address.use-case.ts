@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { totalBajoLaSenaPagada } from '../domain/deposit-cap';
 import { DataSource } from 'typeorm';
 import {
   Order,
@@ -175,7 +176,10 @@ export class ChangeOrderAddressUseCase {
 
       const totalAnterior = order.totalAmount;
       if (!pagoEnLinea) {
-        if (order.depositPaid && totalAmount.lt(order.depositAmount)) {
+        if (
+          order.depositPaid &&
+          totalBajoLaSenaPagada(totalAmount, order.depositAmount)
+        ) {
           throw new ConflictException(MENSAJE_SENA_PAGADA);
         }
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();

@@ -384,7 +384,13 @@ export class OrderController {
     summary: 'Listar las reservas (pedidos RESERVED) con estado de seña',
   })
   @ApiOkResponse({ type: ReservaResponseDto, isArray: true })
-  async findReservations(@CurrentDistributor() distributorId: string | null) {
+  @ApiBadRequestResponse({
+    description:
+      'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")',
+  })
+  async findReservations(
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
+  ) {
     return this.reservationService.findReservations(distributorId);
   }
 
@@ -461,6 +467,10 @@ export class OrderController {
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: OrderResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiBadRequestResponse({
+    description:
+      'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")',
+  })
   @ApiResponse({
     status: 410,
     description:
@@ -470,9 +480,11 @@ export class OrderController {
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @CurrentDistributor() distributorId: string | null,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
   ) {
-    // Un CUSTOMER solo lee SUS pedidos (ownership); staff scopea por tenant.
+    // Un CUSTOMER solo lee SUS pedidos (ownership); staff scopea por tenant
+    // (el super admin sin `X-Distributor` recibe 400: no lee pedidos ni enlaces
+    // de pago de cualquier distribuidora).
     const customerScope =
       user.role === RoleType.CUSTOMER ? user.user_id : undefined;
     const choferScope =
@@ -1104,15 +1116,17 @@ export class OrderController {
   @Idempotent()
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
-    summary: 'Confirmar la seña de una reserva cobrada en efectivo',
+    summary:
+      'Confirmar la seña de una reserva cobrada en efectivo o por transferencia',
     description:
-      'Marca deposit_paid=true. Habilita la activación AUTOMÁTICA de la reserva ' +
-      '(el cron la despacha el día agendado). La seña por MercadoPago se confirma ' +
-      'sola vía webhook.',
+      'Marca deposit_paid=true para una seña recibida en efectivo o por transferencia. Habilita la ' +
+      'activación AUTOMÁTICA de la reserva (el cron la despacha el día agendado). La seña por ' +
+      'MercadoPago se confirma sola vía webhook: confirmarla a mano es 400.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID (reserva)' })
   @ApiBadRequestResponse({
-    description: 'El pedido no es una reserva pendiente',
+    description:
+      'El pedido no es una reserva pendiente, o la seña es de MercadoPago (la confirma la pasarela)',
   })
   @ApiNotFoundResponse({ description: 'Reserva no encontrada' })
   @ApiOkResponse({ type: OrderResponseDto, description: 'Seña confirmada' })

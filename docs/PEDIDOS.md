@@ -442,3 +442,23 @@ topes del back acotan a un usuario o a una distribuidora; la cuota de Google es 
 ```
 
 `encodedPolyline` es el formato de Google (precisión 5); `points` es la misma ruta decodificada.
+
+## Tope de la seña de una reserva
+
+`POST /orders` con `isReservation: true` (y `POST /orders/quote` con el mismo cuerpo) rechaza con **400**
+`La seña ($X) no puede superar el total del pedido ($Y)` cuando `depositAmount` es mayor al total calculado en el
+servidor (ítems con promociones, recargo de zona y de medio de pago, redondeado a 2 decimales). Una seña igual al
+total se acepta. Una reserva no se edita (sólo se edita un pedido `pending`): para cambiarla se cancela y se crea otra,
+así que el tope corre sólo en el alta y su cotización. Con la seña ya paga, el total de un pedido editable no puede
+quedar por debajo de ella (409); esa comparación usa el mismo total redondeado a 2 decimales que la cotización.
+
+`GET /orders/reservations` agrega `timeSlot` (`name`, `startTime`, `endTime` en HH:MM, o `null` si la reserva es sólo
+por día) y `paymentUrl` (ver abajo).
+
+## Enlace de pago de MercadoPago
+
+El enlace de Checkout Pro se guarda en el registro de cobros al crear el pedido (o la seña de una reserva). Además de la
+respuesta del alta, `GET /orders/:id` devuelve `payment_url` mientras el cobro siga pendiente (pedido de MercadoPago no
+cancelado ni pagado; no se le devuelve al chofer), y `GET /orders/reservations` devuelve `paymentUrl` de la seña mientras
+esté pendiente (`null` en efectivo o transferencia, con la seña paga o si la pasarela no lo generó). Una seña en efectivo
+o por transferencia la confirma el admin con `PATCH /orders/:id/confirm-deposit`, sea cual sea el medio.

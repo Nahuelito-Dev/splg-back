@@ -5,6 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  assertSenaNoSuperaTotal,
+  totalBajoLaSenaPagada,
+} from '../domain/deposit-cap';
 import Decimal from 'decimal.js';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { DataSource } from 'typeorm';
@@ -239,9 +243,14 @@ export class QuoteOrderUseCase {
           ? (dto.depositAmount ?? 0)
           : 0,
     );
-    if (edicion?.order.depositPaid && total.lt(edicion.order.depositAmount)) {
+    if (
+      edicion?.order.depositPaid &&
+      totalBajoLaSenaPagada(total, edicion.order.depositAmount)
+    ) {
       throw new ConflictException(MENSAJE_SENA_PAGADA);
     }
+    // Las reservas no se editan (`motivoNoEditable`): el tope sólo corre en el alta.
+    if (!edicion && dto.isReservation) assertSenaNoSuperaTotal(deposit, total);
 
     const res = new QuoteResponseDto();
     res.items = items;

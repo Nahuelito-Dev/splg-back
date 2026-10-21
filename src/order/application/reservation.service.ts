@@ -24,6 +24,7 @@ import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { errorMessage } from '../../common/errors/error-message';
+import { PaymentsService } from '../../payments/application/payments.service';
 import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
 import type { TareaConIntervalo } from '../../distributor/scheduled-tasks-settings';
 
@@ -70,6 +71,7 @@ export class ReservationService {
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly frecuencias: ScheduledTasksSettingsService,
     config: ConfigService,
+    private readonly payments: PaymentsService,
   ) {
     // Validadas y con su valor por defecto en joi.validation.ts.
     this.depositTtlHours = config.getOrThrow<number>(
@@ -139,10 +141,20 @@ export class ReservationService {
       // Historial: el chofer, el cliente o la dirección dados de baja siguen
       // apareciendo en lo que ya pasó (H-74).
       withDeleted: true,
-      relations: ['customer', 'items', 'items.gasCylinder'],
+      relations: ['customer', 'items', 'items.gasCylinder', 'timeSlot'],
       order: { scheduledDate: 'ASC', createdAt: 'DESC' },
     });
 
+    // La seña por MercadoPago se paga con un enlace: se vuelve a ofrecer acá
+    // mientras la seña esté pendiente.
+    const enlaces = await this.payments.findPendingCheckoutUrls(
+      orders
+        .filter(
+          (o) =>
+            !o.depositPaid && o.paymentMethod === PaymentMethod.MERCADOPAGO,
+        )
+        .map((o) => o.orderId),
+    );
     return orders.map((order) => {
       const depositAmount = Number(order.depositAmount ?? 0);
       const total = Number(order.totalAmount);
@@ -156,6 +168,14 @@ export class ReservationService {
         depositAmount,
         depositPaid: !!order.depositPaid,
         remainingBalance: total - (order.depositPaid ? depositAmount : 0),
+        paymentUrl: enlaces.get(order.orderId) ?? null,
+        timeSlot: order.timeSlot
+          ? {
+              name: order.timeSlot.name,
+              startTime: order.timeSlot.startTime.slice(0, 5),
+              endTime: order.timeSlot.endTime.slice(0, 5),
+            }
+          : null,
         createdAt: order.createdAt,
         items: (order.items ?? []).map((item) => ({
           quantity: item.quantity,
@@ -165,7 +185,7 @@ export class ReservationService {
     });
   }
 
-  /** Admin confirma la seña cobrada en efectivo. Habilita la activación automática. */
+  /** Admin confirma la seña recibida en efectivo o por transferencia. Habilita la activación automática. */
   async confirmDeposit(
     orderId: string,
     distributorId?: string | null,
@@ -179,6 +199,14 @@ export class ReservationService {
     if (!order) throw new NotFoundException('Reserva no encontrada');
     if (order.status !== OrderStatus.RESERVED) {
       throw new BadRequestException('El pedido no es una reserva pendiente');
+    }
+    // CU-072/CU-074: la seña por MercadoPago la marca cobrada el aviso de la
+    // pasarela (webhook); a mano sólo se confirma la que se recibe en efectivo
+    // o por transferencia.
+    if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
+      throw new BadRequestException(
+        'La seña por MercadoPago se confirma sola cuando la pasarela avisa el pago: no se confirma a mano',
+      );
     }
     order.depositPaid = true;
     return this.orderRepository.save(order);

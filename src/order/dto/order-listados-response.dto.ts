@@ -33,6 +33,13 @@ export class RenglonDeReservaDto {
   type!: string | null;
 }
 
+/** La franja horaria elegida para la entrega de una reserva. */
+export class FranjaDeReservaDto {
+  @ApiProperty({ example: 'Mañana' }) name!: string;
+  @ApiProperty({ example: '08:00', description: 'HH:MM' }) startTime!: string;
+  @ApiProperty({ example: '12:00', description: 'HH:MM' }) endTime!: string;
+}
+
 /** Una reserva pendiente de `GET /orders/reservations`. */
 export class ReservaResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -47,6 +54,20 @@ export class ReservaResponseDto {
   @ApiProperty() depositPaid!: boolean;
   @ApiProperty({ example: 17600, description: 'Total menos la seña cobrada' })
   remainingBalance!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Enlace de pago de MercadoPago de la seña mientras esté pendiente; `null` si la seña es en efectivo o por transferencia, ya está paga o no se generó',
+  })
+  paymentUrl!: string | null;
+  @ApiProperty({
+    type: FranjaDeReservaDto,
+    nullable: true,
+    description:
+      'Franja de entrega elegida; `null` si la reserva es sólo por día',
+  })
+  timeSlot!: FranjaDeReservaDto | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: RenglonDeReservaDto, isArray: true })
   items!: RenglonDeReservaDto[];

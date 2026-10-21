@@ -1,7 +1,7 @@
 import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PaymentsService } from './payments.service';
 import { Payment } from '../entities/payment.entity';
 import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
@@ -22,6 +22,7 @@ describe('PaymentsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
+    find: jest.Mock;
   };
   let orderLookup: { findPaymentState: jest.Mock };
   let paymentGateway: {
@@ -35,6 +36,7 @@ describe('PaymentsService', () => {
       create: jest.fn((data: Partial<Payment>) => ({ ...data })),
       save: jest.fn((entity: Payment) => Promise.resolve(entity)),
       findOne: jest.fn(),
+      find: jest.fn(),
     };
     paymentGateway = {
       createCheckout: jest.fn(),
@@ -95,6 +97,47 @@ describe('PaymentsService', () => {
       await expect(service.createCheckout(input)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  describe('findPendingCheckoutUrls', () => {
+    const pago = (orderId: string, status: string, paymentUrl: string | null) =>
+      ({ orderId, status, paymentUrl }) as unknown as Payment;
+
+    it('sin ids no consulta', async () => {
+      expect((await service.findPendingCheckoutUrls([])).size).toBe(0);
+      expect(paymentRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('pide todos los intentos de los pedidos, del más viejo al más nuevo, sin filtrar por estado', async () => {
+      paymentRepository.find.mockResolvedValue([]);
+      await service.findPendingCheckoutUrls(['o1', 'o2']);
+      expect(paymentRepository.find).toHaveBeenCalledWith({
+        where: { orderId: In(['o1', 'o2']) },
+        order: { createdAt: 'ASC' },
+      });
+    });
+
+    it('publica la URL del último intento si sigue pendiente', async () => {
+      paymentRepository.find.mockResolvedValue([
+        pago('o1', 'rejected', 'https://mp.test/viejo'),
+        pago('o1', 'pending', 'https://mp.test/nuevo'),
+      ]);
+      const urls = await service.findPendingCheckoutUrls(['o1']);
+      expect(urls.get('o1')).toBe('https://mp.test/nuevo');
+    });
+
+    it('un intento posterior rechazado, cancelado, pagado o sin URL reemplaza al pendiente: no se publica el viejo', async () => {
+      paymentRepository.find.mockResolvedValue([
+        pago('o1', 'pending', 'https://mp.test/viejo-1'),
+        pago('o1', 'rejected', 'https://mp.test/rechazado'),
+        pago('o2', 'pending', 'https://mp.test/viejo-2'),
+        pago('o2', 'pending', null),
+        pago('o3', 'pending', 'https://mp.test/viejo-3'),
+        pago('o3', 'approved', 'https://mp.test/pagado'),
+      ]);
+      const urls = await service.findPendingCheckoutUrls(['o1', 'o2', 'o3']);
+      expect(urls.size).toBe(0);
     });
   });
 
