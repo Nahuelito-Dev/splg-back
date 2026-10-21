@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, Repository } from 'typeorm';
+import { DeepPartial, EntityManager, Repository } from 'typeorm';
 import {
   CoverageZone,
   CoverageZoneSurchargeType,
@@ -142,24 +143,97 @@ export class CoverageZoneService {
     this.validarVigencia(validFrom, validUntil);
     this.validarNoVencida(validUntil, dto.isActive ?? true);
 
-    const zone = this.repo.create({
-      name: dto.name,
-      distributorId,
-      area,
-      surchargeType,
-      surchargeValue,
-      label: dto.label ?? null,
-      color: dto.color ?? null,
-      priority: dto.priority ?? 0,
-      validFrom,
-      validUntil,
-      isActive: dto.isActive ?? true,
+    const activa = dto.isActive ?? true;
+    return this.repo.manager.transaction(async (manager) => {
+      await this.bloquearZonasDe(manager, distributorId);
+      // Sin prioridad en el alta: la zona queda por encima de las que ya hay.
+      const priority =
+        dto.priority ?? (await this.siguientePrioridad(manager, distributorId));
+      if (activa) {
+        await this.asegurarNombreYPrioridadLibres(manager, distributorId, {
+          id: null,
+          name: dto.name,
+          priority,
+        });
+      }
+      const zone = manager.create(CoverageZone, {
+        name: dto.name,
+        distributorId,
+        area,
+        surchargeType,
+        surchargeValue,
+        label: dto.label ?? null,
+        color: dto.color ?? null,
+        priority,
+        validFrom,
+        validUntil,
+        isActive: activa,
+      });
+      try {
+        return await manager.save(zone);
+      } catch (error) {
+        return this.handleDBExceptions(error);
+      }
     });
+  }
 
-    try {
-      return await this.repo.save(zone);
-    } catch (error) {
-      return this.handleDBExceptions(error);
+  /**
+   * Serializa las altas y cambios de zonas de una distribuidora: el control de
+   * nombre y prioridad lee y después escribe, y dos al mismo tiempo no se verían.
+   */
+  private async bloquearZonasDe(
+    manager: EntityManager,
+    distributorId: string,
+  ): Promise<void> {
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `coverage_zone:${distributorId}`,
+    ]);
+  }
+
+  private async siguientePrioridad(
+    manager: EntityManager,
+    distributorId: string,
+  ): Promise<number> {
+    const { max } = (await manager
+      .createQueryBuilder(CoverageZone, 'z')
+      .select('MAX(z.priority)', 'max')
+      .where('z.distributorId = :distributorId', { distributorId })
+      .getRawOne<{ max: string | null }>()) ?? { max: null };
+    return max === null ? 0 : Number(max) + 1;
+  }
+
+  /**
+   * Entre las zonas activas de una distribuidora el nombre (sin distinguir
+   * mayúsculas) y la prioridad no se repiten (409). La base lo garantiza igual
+   * (`UQ_coverage_zone_nombre_activa`, `UQ_coverage_zone_prioridad_activa`);
+   * esto devuelve el motivo.
+   */
+  private async asegurarNombreYPrioridadLibres(
+    manager: EntityManager,
+    distributorId: string,
+    zona: { id: string | null; name: string; priority: number },
+  ): Promise<void> {
+    const otras = (
+      await manager.find(CoverageZone, {
+        where: { distributorId, isActive: true },
+      })
+    ).filter((otra) => otra.coverageZoneId !== zona.id);
+    const mismoNombre = otras.find(
+      (otra) =>
+        otra.name.trim().toLowerCase() === zona.name.trim().toLowerCase(),
+    );
+    if (mismoNombre) {
+      throw new ConflictException(
+        `Ya existe una zona activa con el nombre «${mismoNombre.name}»`,
+      );
+    }
+    const mismaPrioridad = otras.find(
+      (otra) => otra.priority === zona.priority,
+    );
+    if (mismaPrioridad) {
+      throw new ConflictException(
+        `La zona «${mismaPrioridad.name}» ya tiene la prioridad ${zona.priority}: cada zona activa tiene una prioridad distinta`,
+      );
     }
   }
 
@@ -248,17 +322,26 @@ export class CoverageZoneService {
       isActive: dto.isActive,
     });
 
-    const zone = await this.repo.preload({
-      coverageZoneId: id,
-      ...cambios,
+    return this.repo.manager.transaction(async (manager) => {
+      await this.bloquearZonasDe(manager, distributorId);
+      const zone = await manager.getRepository(CoverageZone).preload({
+        coverageZoneId: id,
+        ...cambios,
+      });
+      if (!zone) throw new NotFoundException(`Zona ${id} no encontrada`);
+      if (zone.isActive) {
+        await this.asegurarNombreYPrioridadLibres(manager, distributorId, {
+          id,
+          name: zone.name,
+          priority: zone.priority,
+        });
+      }
+      try {
+        return await manager.save(zone);
+      } catch (error) {
+        return this.handleDBExceptions(error);
+      }
     });
-    if (!zone) throw new NotFoundException(`Zona ${id} no encontrada`);
-
-    try {
-      return await this.repo.save(zone);
-    } catch (error) {
-      return this.handleDBExceptions(error);
-    }
   }
 
   async remove(id: string, distributorId: string): Promise<void> {

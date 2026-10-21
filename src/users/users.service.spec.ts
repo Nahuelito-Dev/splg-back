@@ -357,6 +357,29 @@ describe('UsersService', () => {
     expect(firebase.updateUser).not.toHaveBeenCalled();
   });
 
+  describe('update: teléfono único', () => {
+    it('un teléfono que ya tiene otro usuario (aunque esté dado de baja) es 409 y no guarda', async () => {
+      users.findOne.mockResolvedValue({ userId: 'otro' });
+      await expect(
+        service.update('u1', { phone_number: '+5493764000001' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(users.findOne).toHaveBeenCalledWith({
+        where: { phoneNumber: '+5493764000001' },
+        withDeleted: true,
+      });
+      expect(users.preload).not.toHaveBeenCalled();
+    });
+
+    it('el propio teléfono no choca consigo mismo', async () => {
+      users.findOne.mockResolvedValue({ userId: 'u1' });
+      users.preload.mockResolvedValue(undefined);
+      await expect(
+        service.update('u1', { phone_number: '+5493764000001' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(users.preload).toHaveBeenCalled();
+    });
+  });
+
   describe('removeOwnAccount', () => {
     const cliente = (over: object = {}) => ({
       userId: 'u1',

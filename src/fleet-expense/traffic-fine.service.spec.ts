@@ -35,6 +35,7 @@ describe('TrafficFineService', () => {
       distributorId: 'd1',
       carId: 'c1',
       employeeId: 'e1',
+      occurredAt: new Date('2026-10-10T12:00:00.000Z'),
       jurisdiction: 'Posadas',
       actNumber: 'A-1',
       amount: 85000,
@@ -125,6 +126,61 @@ describe('TrafficFineService', () => {
         new ConflictException('La multa ya está registrada'),
       );
       expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    describe('fechas', () => {
+      it('la infracción no puede ser futura (400) y no se guarda', async () => {
+        const manana = new Date(Date.now() + 86_400_000).toISOString();
+        await expect(
+          service.registrar({ ...dto, occurredAt: manana }, 'd1'),
+        ).rejects.toThrow('la infracción no puede ser futura');
+        expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      it('el vencimiento no puede ser anterior al día de la infracción (400)', async () => {
+        await expect(
+          service.registrar({ ...dto, dueDate: '2026-10-09' }, 'd1'),
+        ).rejects.toThrow('el vencimiento no puede ser anterior');
+        expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      it('un vencimiento el mismo día de la infracción pasa', async () => {
+        repo.findOne.mockResolvedValue(base());
+        await expect(
+          service.registrar({ ...dto, dueDate: '2026-10-10' }, 'd1'),
+        ).resolves.toBeDefined();
+      });
+
+      it('modificar: el vencimiento nuevo se compara con la infracción guardada', async () => {
+        repo.findOne.mockResolvedValue(base());
+        await expect(
+          service.modificar('m1', { dueDate: '2026-10-01' }, 'd1'),
+        ).rejects.toThrow('el vencimiento no puede ser anterior');
+      });
+
+      it('modificar: mover la infracción después del vencimiento guardado es 400', async () => {
+        repo.findOne.mockResolvedValue(base({ dueDate: '2026-10-12' }));
+        await expect(
+          service.modificar(
+            'm1',
+            { occurredAt: '2026-10-15T12:00:00.000Z' },
+            'd1',
+          ),
+        ).rejects.toThrow('el vencimiento no puede ser anterior');
+      });
+
+      it('pagar: no se paga antes de la infracción (400)', async () => {
+        repo.findOne.mockResolvedValue(base());
+        await expect(
+          service.pagar(
+            'm1',
+            { paidAt: '2026-10-09', paidAmount: 59500 },
+            'd1',
+            'u1',
+          ),
+        ).rejects.toThrow('paidAt: no puede ser anterior');
+        expect(guardadas).toHaveLength(0);
+      });
     });
 
     it('el pago voluntario no puede superar el importe', async () => {

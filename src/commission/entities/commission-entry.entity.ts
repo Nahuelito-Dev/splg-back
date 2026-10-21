@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Check,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -34,6 +35,11 @@ export interface ReglaAplicada {
  * agregar; lo único que cambia es `liquidation_id` al liquidarse, y un
  * disparador de la base rechaza cualquier otro `UPDATE` y todo `DELETE`.
  */
+@Check('CHK_commission_entry_importe', `"amount" <> 0`)
+@Check(
+  'CHK_commission_entry_signo',
+  `("type" <> 'delivery_commission' OR "amount" > 0) AND ("type" <> 'settlement_shortage' OR "amount" < 0)`,
+)
 @Entity('commission_entry')
 @Index('IDX_commission_entry_empleado', ['employeeId', 'occurredAt'])
 @Index('IDX_commission_entry_liquidacion', ['liquidationId'])

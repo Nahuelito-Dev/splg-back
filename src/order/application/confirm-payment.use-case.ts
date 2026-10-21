@@ -73,6 +73,15 @@ export class ConfirmPaymentUseCase {
     }
 
     if (payment.status === 'approved') {
+      if (payment.montoDistinto) {
+        // La pasarela aprobó un importe distinto del esperado (el ledger ya
+        // quedó marcado): el pedido no se da por pagado ni se despacha hasta
+        // que alguien lo revise.
+        this.logger.error(
+          `Pago ${payment.gatewayPaymentId} del pedido ${order.orderId} aprobado por ${payment.montoDistinto.cobrado} (esperado ${payment.montoDistinto.esperado}): pedido sin despachar, requiere revisión`,
+        );
+        return;
+      }
       await this.handleApproved(order, payment.gatewayPaymentId);
       return;
     }

@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsEnum,
+  ArrayNotEmpty,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -53,6 +54,7 @@ export class CreateOrderDto {
     (o: CreateOrderDto) => o.fromCart !== true || o.items !== undefined,
   )
   @IsArray()
+  @ArrayNotEmpty({ message: 'El pedido necesita al menos un renglón' })
   @ArrayUnique((item: OrderItemDto) => item.gasCylinderId, {
     message:
       'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',

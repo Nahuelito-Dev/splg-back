@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, LessThan, Repository } from 'typeorm';
+import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
 import { Order } from '../entities/order.entity';
 import {
   DispatchOfferRepositoryPort,
@@ -97,6 +97,17 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     orderId: string,
     driverId: string,
   ): Promise<void> {
+    // Un pedido tiene un solo chofer que lo sostiene (`UQ_order_dispatch_offer_
+    // aceptada`): si otro lo tenía y el pedido pasó a éste, esa constancia se
+    // cierra como rechazada (el chofer anterior lo soltó y no se le reofrece).
+    await this.repo.update(
+      {
+        orderId,
+        status: DispatchOfferStatus.ACCEPTED,
+        driverId: Not(driverId),
+      },
+      { status: DispatchOfferStatus.REJECTED },
+    );
     const cerradas = await this.closeActiveOffer(
       orderId,
       driverId,
@@ -117,7 +128,9 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
         orderId,
         driverId,
         distributorId: order.distributorId ?? undefined,
-        expiresAt: new Date(),
+        // La constancia no vence: el margen sólo evita que el reloj de la
+        // aplicación quede por detrás del de la base (`expiresAt > offeredAt`).
+        expiresAt: new Date(Date.now() + 1000),
         status: DispatchOfferStatus.ACCEPTED,
       }),
     );
@@ -136,8 +149,14 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
   async updateStatus(
     offerId: string,
     status: DispatchOfferStatus,
-  ): Promise<void> {
-    await this.repo.update({ offerId }, { status });
+  ): Promise<boolean> {
+    // Sólo desde OFFERED: una oferta ya aceptada, rechazada o reemplazada no se
+    // pisa (p. ej. el cron de vencimiento contra un chofer que acaba de aceptar).
+    const result = await this.repo.update(
+      { offerId, status: DispatchOfferStatus.OFFERED },
+      { status },
+    );
+    return (result.affected ?? 0) > 0;
   }
 
   async closeActiveOffer(

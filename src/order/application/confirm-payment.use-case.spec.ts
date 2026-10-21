@@ -318,6 +318,36 @@ describe('ConfirmPaymentUseCase', () => {
     expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
   });
 
+  it('approved por un monto distinto del esperado: no lo da por pagado, no despacha ni avisa', async () => {
+    paymentsService.confirmFromGateway.mockResolvedValue({
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
+      montoDistinto: { esperado: 15000, cobrado: 1500 },
+    });
+
+    await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+  });
+
+  it('también la seña de una reserva aprobada por un monto distinto queda sin acreditar', async () => {
+    paymentsService.confirmFromGateway.mockResolvedValue({
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: true,
+      montoDistinto: { esperado: 5000, cobrado: 500 },
+    });
+
+    await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+  });
+
   it('rejected: no despacha ni marca como pagado', async () => {
     paymentsService.confirmFromGateway.mockResolvedValue({
       externalReference: 'ord-1',

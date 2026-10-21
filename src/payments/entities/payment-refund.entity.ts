@@ -8,6 +8,8 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
+  Check,
+  ForeignKey,
 } from 'typeorm';
 import { RefundKind, RefundStatus } from '../domain/payment.enums';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -22,6 +24,12 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
  * pasarela, así reintentar no devuelve el dinero dos veces. El monto se fija al
  * crearla.
  */
+@Check('CHK_payment_refund_importe', `"amount" > 0`)
+@Check('CHK_payment_refund_intentos', `"attempts" >= 0`)
+@Check(
+  'CHK_payment_refund_exito_fecha',
+  `"status" <> 'succeeded' OR "refunded_at" IS NOT NULL`,
+)
 @Entity('payment_refund')
 @Unique('UQ_payment_refund_payment_kind', ['paymentId', 'kind'])
 export class PaymentRefund {
@@ -112,6 +120,10 @@ export class PaymentRefund {
   refundedAt!: Date | null;
 
   /** Quién pidió el último reintento manual (null: lo hizo el sistema). */
+  @ForeignKey('user', {
+    name: 'FK_payment_refund_requested_by',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'requested_by_user_id', type: 'uuid', nullable: true })
   requestedByUserId!: string | null;
 

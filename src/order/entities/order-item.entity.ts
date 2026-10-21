@@ -5,11 +5,18 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Check,
+  Index,
 } from 'typeorm';
 import { Order } from './order.entity';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
+@Check('CHK_order_item_cantidad', `"quantity" > 0`)
+@Check('CHK_order_item_importes', `"unitPrice" >= 0 AND "subtotal" >= 0`)
+@Index('UQ_order_item_pedido_producto', ['orderId', 'gasCylinderId'], {
+  unique: true,
+})
 @Entity('order_item')
 export class OrderItem {
   @PrimaryGeneratedColumn('uuid', { name: 'order_item_id' })

@@ -31,6 +31,7 @@ import { CashCollectionUseCase } from '../../src/order/application/cash-collecti
 import { ReportsService } from '../../src/reports/reports.service';
 import { OrderService } from '../../src/order/order.service';
 import { AdminGateway } from '../../src/gateways/admin.gateway';
+import { fechasDeEntrega } from './setup/pedido-valido';
 
 describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
   let env: TestEnv;
@@ -109,8 +110,7 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
       totalAmount: 1000,
       subtotalItems: 1000,
       deliveryId: delivery.deliveryId,
-      acceptedAt: new Date(),
-      deliveredAt: new Date(),
+      ...fechasDeEntrega(),
     } as Partial<Order>)) as Order;
     return { order, chofer, distributor };
   }

@@ -5,7 +5,10 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { traducirErrorDeBase } from './db-exceptions';
+import {
+  traducirErrorDeBase,
+  traducirRestriccionConocida,
+} from './db-exceptions';
 import { NotFoundDomainError } from './domain.error';
 
 class RecursoInexistenteError extends NotFoundDomainError {
@@ -104,6 +107,120 @@ describe('traducirErrorDeBase', () => {
     const registrado = JSON.stringify(warn.mock.calls);
     expect(registrado).toContain('UQ_employee_document_vigente');
     expect(registrado).not.toContain('30123456');
+  });
+
+  describe('restricciones de la base con mensaje propio', () => {
+    it('23514 (CHECK violado) conocido es 400 con el motivo en castellano', () => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          {
+            code: '23514',
+            constraint: 'CHK_order_cancelado_motivo',
+            message: 'x',
+          },
+          logger,
+          'pedidos',
+        );
+      expect(llamar).toThrow(BadRequestException);
+      expect(llamar).toThrow(
+        'Para cancelar un pedido hay que indicar el motivo',
+      );
+    });
+
+    it('23514 de una restricción que no conocemos es 400 genérico, no 500', () => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          { code: '23514', constraint: 'CHK_futura', message: 'x' },
+          logger,
+          'pedidos',
+        );
+      expect(llamar).toThrow(BadRequestException);
+      expect(llamar).toThrow('no cumple las reglas del sistema');
+    });
+
+    it('23505 de un índice conocido es 409 con su motivo', () => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          {
+            code: '23505',
+            constraint: 'UQ_coverage_zone_prioridad_activa',
+            message: 'x',
+          },
+          logger,
+          'zonas',
+        );
+      expect(llamar).toThrow(ConflictException);
+      expect(llamar).toThrow('cada zona tiene una prioridad distinta');
+    });
+
+    it('23P01 de una exclusión conocida es 409 con su motivo', () => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          { code: '23P01', constraint: 'EXC_time_slot_solapada', message: 'x' },
+          logger,
+          'franjas',
+        );
+      expect(llamar).toThrow(ConflictException);
+      expect(llamar).toThrow('se solapa con otra franja activa');
+    });
+
+    it('23503 sigue siendo 409 (referencia inexistente o en uso)', () => {
+      expect(() =>
+        traducirErrorDeBase(
+          {
+            code: '23503',
+            constraint: 'FK_5d1f609371a285123294fddcf3a',
+            message: 'x',
+          },
+          logger,
+        ),
+      ).toThrow(ConflictException);
+    });
+
+    describe('traducirRestriccionConocida (red de seguridad del filtro global)', () => {
+      it('traduce un CHECK conocido a 400', () => {
+        const e = traducirRestriccionConocida({
+          code: '23514',
+          constraint: 'CHK_car_patente',
+        });
+        expect(e).toBeInstanceOf(BadRequestException);
+        expect(e?.message).toContain('patente');
+      });
+
+      it('traduce un único y una exclusión conocidos a 409', () => {
+        expect(
+          traducirRestriccionConocida({
+            code: '23505',
+            constraint: 'UQ_user_address_principal',
+          }),
+        ).toBeInstanceOf(ConflictException);
+        expect(
+          traducirRestriccionConocida({
+            code: '23P01',
+            constraint: 'EXC_employee_attendance_solapada',
+          }),
+        ).toBeInstanceOf(ConflictException);
+      });
+
+      it('lo que no es nuestro (restricción desconocida, otro código, HTTP) pasa de largo', () => {
+        expect(
+          traducirRestriccionConocida({
+            code: '23514',
+            constraint: 'CHK_otra',
+          }),
+        ).toBeNull();
+        expect(
+          traducirRestriccionConocida({
+            code: '23502',
+            constraint: 'CHK_car_patente',
+          }),
+        ).toBeNull();
+        expect(
+          traducirRestriccionConocida(new ConflictException('x')),
+        ).toBeNull();
+        expect(traducirRestriccionConocida('algo')).toBeNull();
+      });
+    });
   });
 
   it('40P01 (deadlock) es 409, no 500', () => {

@@ -129,18 +129,18 @@ describe('CancelOrderUseCase', () => {
 
   it('lanza NotFound si el pedido no existe', async () => {
     queryBuilder.getOne.mockResolvedValue(null);
-    await expect(useCase.execute('nope', 'u1', 'admin')).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(
+      useCase.execute('nope', 'u1', 'admin', 'Motivo de prueba'),
+    ).rejects.toThrow(NotFoundException);
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
   });
 
   it('un pedido finalizado no se puede cancelar de nuevo', async () => {
     lockedOrder = makeOrder({ status: OrderStatus.CANCELLED });
     queryBuilder.getOne.mockResolvedValue(lockedOrder);
-    await expect(useCase.execute('ord-1', 'u1', 'admin')).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      useCase.execute('ord-1', 'u1', 'admin', 'Motivo de prueba'),
+    ).rejects.toThrow(BadRequestException);
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
@@ -150,7 +150,7 @@ describe('CancelOrderUseCase', () => {
       lockedOrder = makeOrder({ customerId: 'otro' });
       queryBuilder.getOne.mockResolvedValue(lockedOrder);
       await expect(
-        useCase.execute('ord-1', 'cust-1', 'customer'),
+        useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba'),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -201,9 +201,41 @@ describe('CancelOrderUseCase', () => {
     });
   });
 
+  describe('motivo de la cancelación', () => {
+    it.each(['customer', 'admin'] as const)(
+      '%s sin motivo es 400 y no toca el pedido',
+      async (rol) => {
+        await expect(useCase.execute('ord-1', 'cust-1', rol)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(
+          useCase.execute('ord-1', 'cust-1', rol, '   '),
+        ).rejects.toThrow('indicar el motivo');
+        expect(lockedOrder.status).not.toBe(OrderStatus.CANCELLED);
+        expect(queryRunner.startTransaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('el motivo se guarda recortado en el pedido', async () => {
+      const result = await useCase.execute(
+        'ord-1',
+        'cust-1',
+        'customer',
+        '  No estaba en casa  ',
+      );
+      expect(result.cancellationReason).toBe('No estaba en casa');
+    });
+
+    it('el chofer, que sólo libera el pedido, no necesita motivo', async () => {
+      await expect(
+        useCase.execute('ord-1', 'user-drv-1', 'driver'),
+      ).resolves.toBeDefined();
+    });
+  });
+
   describe('CU-168: devolución del pago al cancelar', () => {
     it('customer y admin piden la devolución del pedido DESPUÉS del commit', async () => {
-      await useCase.execute('ord-1', 'cust-1', 'customer');
+      await useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba');
       expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
       expect(
         refunds.reintegrarPorCancelacion.mock.invocationCallOrder[0],
@@ -214,7 +246,7 @@ describe('CancelOrderUseCase', () => {
       refunds.reintegrarPorCancelacion.mockClear();
       lockedOrder = makeOrder();
       queryBuilder.getOne.mockResolvedValue(lockedOrder);
-      await useCase.execute('ord-1', 'admin-1', 'admin');
+      await useCase.execute('ord-1', 'admin-1', 'admin', 'Motivo de prueba');
       expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
     });
 
@@ -223,7 +255,12 @@ describe('CancelOrderUseCase', () => {
         new Promise(() => undefined),
       );
 
-      const result = await useCase.execute('ord-1', 'cust-1', 'customer');
+      const result = await useCase.execute(
+        'ord-1',
+        'cust-1',
+        'customer',
+        'Motivo de prueba',
+      );
 
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
@@ -231,7 +268,12 @@ describe('CancelOrderUseCase', () => {
 
     it('si la pasarela falla la cancelación igual se confirma', async () => {
       refunds.reintegrarPorCancelacion.mockRejectedValue(new Error('MP caído'));
-      const result = await useCase.execute('ord-1', 'cust-1', 'customer');
+      const result = await useCase.execute(
+        'ord-1',
+        'cust-1',
+        'customer',
+        'Motivo de prueba',
+      );
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(queryRunner.commitTransaction).toHaveBeenCalled();
     });
@@ -244,21 +286,26 @@ describe('CancelOrderUseCase', () => {
     it('una cancelación rechazada no pide devolución', async () => {
       lockedOrder = makeOrder({ status: OrderStatus.CANCELLED });
       queryBuilder.getOne.mockResolvedValue(lockedOrder);
-      await expect(useCase.execute('ord-1', 'u1', 'admin')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        useCase.execute('ord-1', 'u1', 'admin', 'Motivo de prueba'),
+      ).rejects.toThrow(BadRequestException);
       expect(refunds.reintegrarPorCancelacion).not.toHaveBeenCalled();
     });
   });
 
   describe('customer/admin: cancela con devolución de stock', () => {
     it('al cancelar de verdad limpia la marca de sin choferes del despacho', async () => {
-      await useCase.execute('ord-1', 'cust-1', 'customer');
+      await useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba');
       expect(dispatchOrchestrator.onOrderClosed).toHaveBeenCalledWith('ord-1');
     });
 
     it('customer cancela y se devuelve el stock', async () => {
-      const result = await useCase.execute('ord-1', 'cust-1', 'customer');
+      const result = await useCase.execute(
+        'ord-1',
+        'cust-1',
+        'customer',
+        'Motivo de prueba',
+      );
 
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(stock.restituirStock).toHaveBeenCalledTimes(1);
@@ -274,7 +321,7 @@ describe('CancelOrderUseCase', () => {
       lockedOrder = makeOrder({ status: OrderStatus.ON_THE_WAY });
       queryBuilder.getOne.mockResolvedValue(lockedOrder);
       await expect(
-        useCase.execute('ord-1', 'cust-1', 'customer'),
+        useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba'),
       ).rejects.toThrow(BadRequestException);
       expect(stock.restituirStock).not.toHaveBeenCalled();
     });
@@ -319,7 +366,7 @@ describe('CancelOrderUseCase', () => {
 
     it('punto 3 (segunda revisión): cancelar un ACCEPTED (sin tracking activo todavía) también corta el tracking — inofensivo, sólo limpia Redis', async () => {
       // `lockedOrder` por defecto ya es ACCEPTED con chofer (ver makeOrder).
-      await useCase.execute('ord-1', 'admin-1', 'admin');
+      await useCase.execute('ord-1', 'admin-1', 'admin', 'Motivo de prueba');
 
       expect(dispatch.stopTracking).toHaveBeenCalledWith('user-drv-1');
     });
@@ -328,7 +375,7 @@ describe('CancelOrderUseCase', () => {
       lockedOrder = makeOrder({ delivery: null, deliveryId: null });
       queryBuilder.getOne.mockResolvedValue(lockedOrder);
 
-      await useCase.execute('ord-1', 'cust-1', 'customer');
+      await useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba');
 
       expect(dispatch.stopTracking).not.toHaveBeenCalled();
     });
@@ -343,12 +390,17 @@ describe('CancelOrderUseCase', () => {
         .mockResolvedValueOnce(makeOrder()) // 1ra cancelación: pedido vivo
         .mockResolvedValueOnce(makeOrder({ status: OrderStatus.CANCELLED })); // 2da: ya cancelado
 
-      const primera = await useCase.execute('ord-1', 'cust-1', 'customer');
+      const primera = await useCase.execute(
+        'ord-1',
+        'cust-1',
+        'customer',
+        'Motivo de prueba',
+      );
       expect(primera.status).toBe(OrderStatus.CANCELLED);
       expect(stock.restituirStock).toHaveBeenCalledTimes(1);
 
       await expect(
-        useCase.execute('ord-1', 'cust-1', 'customer'),
+        useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba'),
       ).rejects.toThrow(BadRequestException);
       // Sigue en 1: la segunda no volvió a devolver stock.
       expect(stock.restituirStock).toHaveBeenCalledTimes(1);

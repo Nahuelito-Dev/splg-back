@@ -12,6 +12,7 @@ import {
   FindOptionsWhere,
   EntityManager,
   ILike,
+  Raw,
 } from 'typeorm';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { GasCylinderPromotion } from './entities/gascylinder-promotion.entity';
@@ -89,8 +90,14 @@ export class GasCylinderService {
   ): Promise<GasCylinder> {
     // Unicidad de `type` es POR distribuidora: dos tenants pueden tener ambos
     // una "Garrafa 10kg".
+    // Sin distinguir mayúsculas ni espacios de los bordes (igual que la base).
     const existing = await this.gasCylinderRepository.findOne({
-      where: { type: createGasCylinderDto.type, distributorId },
+      where: {
+        distributorId,
+        type: Raw((alias) => `lower(btrim(${alias})) = lower(btrim(:type))`, {
+          type: createGasCylinderDto.type,
+        }),
+      },
     });
 
     if (existing) {

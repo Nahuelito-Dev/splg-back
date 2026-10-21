@@ -856,6 +856,7 @@ describe('Personal: puestos y legajos (e2e)', () => {
         subtotalItems: 1000,
         deliveryId: delivery.deliveryId,
         acceptedAt: new Date(),
+        onTheWayAt: new Date(),
       } as Partial<Order>);
 
       await http()

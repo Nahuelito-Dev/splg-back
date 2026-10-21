@@ -462,3 +462,14 @@ respuesta del alta, `GET /orders/:id` devuelve `payment_url` mientras el cobro s
 cancelado ni pagado; no se le devuelve al chofer), y `GET /orders/reservations` devuelve `paymentUrl` de la seña mientras
 esté pendiente (`null` en efectivo o transferencia, con la seña paga o si la pasarela no lo generó). Una seña en efectivo
 o por transferencia la confirma el admin con `PATCH /orders/:id/confirm-deposit`, sea cual sea el medio.
+
+## Recargo online guardado, motivo de cancelación y fecha agendada (tanda V1)
+
+- El recargo del medio de pago se guarda en `order.payment_surcharge_amount` (redondeado a 2 decimales) y el
+  total es exactamente ítems + zona + recargo online + express (el express no cuenta si el pedido pasó al
+  reparto común). Lo completan el alta, la edición y el cambio de dirección; la base lo controla con
+  `CHK_order_total_formula`. Detalle de la tanda: `docs/VALIDACIONES-BASE.md`.
+- Cancelar (`PATCH /orders/:id/cancel`, `PATCH /orders/:id/status` con `cancelled`) exige `reason` (400 si falta o
+  está en blanco) para cliente y administrador; el chofer, que libera el pedido, no lo manda.
+- `scheduledDate` no puede ser una fecha pasada (día argentino), con o sin `timeSlotId`, en el alta y en la edición.
+- `items: []` en el alta es 400.

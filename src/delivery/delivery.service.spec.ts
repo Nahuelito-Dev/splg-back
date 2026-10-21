@@ -214,3 +214,81 @@ describe('DeliveryService.remove', () => {
     expect(redis.removeDriver).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * El saldo del chofer lo mueven varios ajustes: se lee, suma y guarda con la
+ * fila bloqueada (nada se pierde), en decimal y a 2 decimales.
+ */
+describe('DeliveryService.updateBalance', () => {
+  let service: DeliveryService;
+  let qb: { setLock: jest.Mock; where: jest.Mock; getOne: jest.Mock };
+  let manager: { createQueryBuilder: jest.Mock; save: jest.Mock };
+  let deliveryRepo: {
+    findOne: jest.Mock;
+    manager: { transaction: jest.Mock };
+  };
+  let guardado: Partial<Delivery> | undefined;
+
+  const conSaldo = (balance: number) => {
+    qb.getOne.mockResolvedValue({ deliveryId: 'dl-1', balance });
+    deliveryRepo.findOne.mockImplementation(() =>
+      Promise.resolve({ deliveryId: 'dl-1', balance: guardado?.balance }),
+    );
+  };
+
+  beforeEach(() => {
+    guardado = undefined;
+    qb = {
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(),
+    };
+    manager = {
+      createQueryBuilder: jest.fn(() => qb),
+      save: jest.fn((d: Partial<Delivery>) => {
+        guardado = d;
+        return Promise.resolve(d);
+      }),
+    };
+    deliveryRepo = {
+      findOne: jest.fn(),
+      manager: {
+        transaction: jest.fn((fn: (m: unknown) => unknown) => fn(manager)),
+      },
+    };
+    service = new DeliveryService(
+      deliveryRepo as unknown as Repository<Delivery>,
+      {} as unknown as RedisService,
+      {} as unknown as UsersService,
+    );
+  });
+
+  it('suma al saldo con la fila bloqueada (pessimistic_write) dentro de una transacción', async () => {
+    conSaldo(1000);
+    const r = await service.updateBalance('dl-1', 250.5);
+    expect(deliveryRepo.manager.transaction).toHaveBeenCalledTimes(1);
+    expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+    expect(guardado?.balance).toBe(1250.5);
+    expect(r.balance).toBe(1250.5);
+  });
+
+  it('en decimal: 0,1 + 0,2 es 0,3 (y no 0,30000000000000004)', async () => {
+    conSaldo(0.1);
+    await service.updateBalance('dl-1', 0.2);
+    expect(guardado?.balance).toBe(0.3);
+  });
+
+  it('un débito puede dejar el saldo negativo (el chofer debe)', async () => {
+    conSaldo(100);
+    await service.updateBalance('dl-1', -350.25);
+    expect(guardado?.balance).toBe(-250.25);
+  });
+
+  it('un chofer inexistente es 404 y no guarda nada', async () => {
+    qb.getOne.mockResolvedValue(null);
+    await expect(service.updateBalance('nope', 10)).rejects.toThrow(
+      'no encontrado',
+    );
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+});

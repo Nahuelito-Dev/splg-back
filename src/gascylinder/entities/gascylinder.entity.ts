@@ -9,11 +9,18 @@ import {
   Index,
   OneToMany,
   Unique,
+  Check,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { GasCylinderPromotion } from './gascylinder-promotion.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
+@Check(
+  'CHK_gas_cylinder_valores',
+  `"price" > 0 AND "weight" > 0 AND "stock" >= 0 AND "reservation_deficit" >= 0 AND ("average_unit_cost" IS NULL OR "average_unit_cost" >= 0)`,
+)
+@Check('CHK_gas_cylinder_tipo', `btrim("type") <> ''`)
+@Index('UQ_gas_cylinder_tipo_normalizado', { synchronize: false })
 @Entity('gas_cylinder')
 // El tipo es la clave natural del producto dentro de una distribuidora.
 @Unique('UQ_gas_cylinder_distribuidora_tipo', ['distributorId', 'type'])

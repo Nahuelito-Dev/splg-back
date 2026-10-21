@@ -55,7 +55,8 @@ export class UpdateOrderStatusDto {
     description:
       'Motivo de la entrega manual. Obligatorio (mínimo 10 caracteres) cuando un ' +
       'admin/super_admin pasa el pedido a `delivered`; queda en el historial de ' +
-      'estados y en la auditoría. Se ignora en los demás estados.',
+      'estados y en la auditoría. Con `cancelled` es el motivo de la cancelación ' +
+      '(obligatorio). Se ignora en los demás estados.',
     required: false,
     minLength: MOTIVO_ENTREGA_MANUAL_MIN,
     maxLength: MOTIVO_ENTREGA_MANUAL_MAX,
@@ -64,7 +65,10 @@ export class UpdateOrderStatusDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  @ValidateIf((o: UpdateOrderStatusDto) => o.status === OrderStatus.DELIVERED)
+  @ValidateIf(
+    (o: UpdateOrderStatusDto) =>
+      o.status === OrderStatus.DELIVERED || o.status === OrderStatus.CANCELLED,
+  )
   @IsOptional()
   @IsString()
   @MaxLength(MOTIVO_ENTREGA_MANUAL_MAX)

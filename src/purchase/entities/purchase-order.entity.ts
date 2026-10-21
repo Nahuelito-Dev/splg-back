@@ -8,6 +8,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -22,6 +23,19 @@ import { Supplier } from './supplier.entity';
  * (`document_sequence`). Sólo se edita en borrador; el estado lo mueve el
  * dominio (`purchase-rules`) y la recepción de mercadería.
  */
+@Check(
+  'CHK_purchase_order_cancelada',
+  `"status" <> 'cancelled' OR "cancel_reason" IS NOT NULL`,
+)
+@Check(
+  'CHK_purchase_order_cerrada_corta',
+  `"status" <> 'closed_short' OR "close_reason" IS NOT NULL`,
+)
+@Check(
+  'CHK_purchase_order_emitida',
+  `"status" IN ('draft', 'cancelled') OR "issued_at" IS NOT NULL`,
+)
+@Check('CHK_purchase_order_total', `"total_amount" >= 0`)
 @Entity('purchase_order')
 @Index('UQ_purchase_order_numero', ['distributorId', 'number'], {
   unique: true,

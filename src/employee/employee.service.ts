@@ -28,7 +28,10 @@ import { JobPositionService } from './job-position.service';
 import { EmployeeRulesRegistry } from './employee-rules.registry';
 import { EmployeeConPuesto } from './employee.mapper';
 import { partirNombreCompleto } from './domain/nombre';
-import { validarReingreso } from './domain/employee-state';
+import {
+  nacimientoAnteriorAlIngreso,
+  validarReingreso,
+} from './domain/employee-state';
 import { rolDeAcceso } from './domain/access-role';
 import {
   DocType,
@@ -87,6 +90,18 @@ const CAMPOS_OBLIGATORIOS = [
   'employmentType',
 ] as const;
 
+/** La persona nació antes de ingresar a la empresa (400). */
+function asegurarNacimientoAnteriorAlIngreso(
+  nacimiento: string | null | undefined,
+  ingreso: string,
+): void {
+  if (!nacimientoAnteriorAlIngreso(nacimiento, ingreso)) {
+    throw new BadRequestException(
+      'La fecha de nacimiento tiene que ser anterior a la de ingreso',
+    );
+  }
+}
+
 @Injectable()
 export class EmployeeService {
   private readonly logger = new Logger(EmployeeService.name);
@@ -117,6 +132,7 @@ export class EmployeeService {
               dto.positionId,
               distributorId,
             );
+            asegurarNacimientoAnteriorAlIngreso(dto.birthDate, dto.hireDate);
             await this.assertUnicos(manager, distributorId, dto);
             const fileNumber =
               dto.fileNumber ??
@@ -356,6 +372,10 @@ export class EmployeeService {
                 'La fecha de ingreso no puede ser posterior a la de egreso',
               );
             }
+            asegurarNacimientoAnteriorAlIngreso(
+              dto.birthDate === undefined ? empleado.birthDate : dto.birthDate,
+              dto.hireDate ?? empleado.hireDate,
+            );
             await this.assertUnicos(manager, distributorId, dto, id);
             Object.assign(empleado, sinIndefinidos(dto));
             await manager.getRepository(Employee).save(empleado);

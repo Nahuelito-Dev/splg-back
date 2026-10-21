@@ -67,7 +67,12 @@ export class CarController {
   @Post()
   @ApiOperation({ summary: 'Create a new car' })
   @ApiCreatedResponse({ type: CarResponseDto })
-  @ApiBadRequestResponse({ description: 'La patente ya está registrada' })
+  @ApiBadRequestResponse({
+    description: 'Patente con formato inválido (AAA123 o AA123AA)',
+  })
+  @ApiConflictResponse({
+    description: 'La patente ya está registrada en la distribuidora',
+  })
   @ApiNotFoundResponse({ description: 'El usuario no existe' })
   async create(
     @Body() createCarDto: CreateCarDto,
@@ -179,10 +184,12 @@ export class CarController {
   @ApiParam({ name: 'id', description: 'Car UUID' })
   @ApiOkResponse({ type: CarResponseDto })
   @ApiNotFoundResponse({ description: 'Car not found' })
-  @ApiBadRequestResponse({ description: 'La patente ya está registrada' })
+  @ApiBadRequestResponse({
+    description: 'Patente con formato inválido (AAA123 o AA123AA)',
+  })
   @ApiConflictResponse({
     description:
-      'El vehículo está en uso por un chofer: no se le cambia la patente ni el tipo',
+      'La patente ya está registrada en la distribuidora, o el vehículo está en uso por un chofer: no se le cambia la patente ni el tipo',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

@@ -9,6 +9,10 @@ import { In, IsNull, Repository } from 'typeorm';
 
 import { Payment } from '../entities/payment.entity';
 import {
+  montoCoincide,
+  puedeTransicionarElPago,
+} from '../domain/payment-status.machine';
+import {
   PaymentGateway,
   PaymentIntegration,
   LedgerPaymentStatus,
@@ -23,6 +27,7 @@ import {
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
 import { errorMessage } from '../../common/errors/error-message';
+import { codigoSqlDelError } from '../../common/errors/db-exceptions';
 
 /** Input para crear un checkout: agnóstico de la pasarela concreta. */
 export interface CreatePaymentCheckoutInput {
@@ -55,6 +60,11 @@ export interface ConfirmFromGatewayResult {
   status: string;
   /** Derivado del ledger: si el `Payment` matcheado es una seña. */
   isDeposit: boolean;
+  /**
+   * Presente cuando la pasarela aprobó un importe distinto del esperado: el
+   * caller no tiene que dar el pedido por pagado ni despacharlo.
+   */
+  montoDistinto?: { esperado: number; cobrado: number };
 }
 
 /**
@@ -194,13 +204,16 @@ export class PaymentsService {
       return null;
     }
 
-    const isDeposit = await this.updateLedger(gatewayPayment);
+    const { isDeposit, estadoAtrasado, montoDistinto } =
+      await this.updateLedger(gatewayPayment);
 
     return {
       externalReference: gatewayPayment.externalReference,
       gatewayPaymentId: gatewayPayment.id,
-      status: gatewayPayment.status,
+      // Una notificación atrasada no cambia lo que ya sabemos del pago.
+      status: estadoAtrasado ?? gatewayPayment.status,
       isDeposit,
+      ...(montoDistinto && { montoDistinto }),
     };
   }
 
@@ -217,39 +230,120 @@ export class PaymentsService {
    * `gateway_payment_id`). Devuelve `is_deposit` del registro matcheado (o
    * `false` si no se encontró ninguno, para no romper al caller).
    */
-  private async updateLedger(gatewayPayment: GatewayPayment): Promise<boolean> {
-    let ledgerPayment = await this.paymentRepository.findOne({
-      where: { gatewayPaymentId: gatewayPayment.id },
-    });
-
-    if (!ledgerPayment) {
-      ledgerPayment = await this.paymentRepository.findOne({
-        where: {
-          externalReference: gatewayPayment.externalReference ?? undefined,
-          gatewayPaymentId: IsNull(),
-        },
-        order: { createdAt: 'DESC' },
-      });
+  private async updateLedger(
+    gatewayPayment: GatewayPayment,
+    reintento = false,
+  ): Promise<{
+    isDeposit: boolean;
+    /** Estado vigente del ledger cuando la notificación llegó atrasada. */
+    estadoAtrasado?: LedgerPaymentStatus;
+    montoDistinto?: { esperado: number; cobrado: number };
+  }> {
+    // Leer, validar y escribir con la fila del pago bloqueada: dos notificaciones
+    // intercaladas se aplican una detrás de la otra y la segunda ya ve el estado
+    // que dejó la primera (no hay carrera que deje `pending` después de `approved`).
+    try {
+      return await this.actualizarLedgerEnTransaccion(gatewayPayment);
+    } catch (error) {
+      // Otra notificación del mismo pago ya se llevó ese id de pasarela
+      // (índice único): no es un error, el pago ya está procesado. Se vuelve a
+      // resolver y se aplica sobre el intento que corresponde.
+      if (!reintento && codigoSqlDelError(error) === '23505') {
+        this.logger.warn(
+          `Pago ${gatewayPayment.id}: otra notificación lo procesó al mismo tiempo, se reintenta`,
+        );
+        return this.updateLedger(gatewayPayment, true);
+      }
+      throw error;
     }
+  }
 
-    if (!ledgerPayment) {
-      // No debería ocurrir (todo checkout pasa por createCheckout), pero un
-      // pago sin ledger asociado no debe romper la confirmación del pedido.
-      this.logger.warn(
-        `Pago ${gatewayPayment.id} sin Payment de ledger asociado (pedido ${gatewayPayment.externalReference})`,
+  private async actualizarLedgerEnTransaccion(
+    gatewayPayment: GatewayPayment,
+  ): Promise<{
+    isDeposit: boolean;
+    estadoAtrasado?: LedgerPaymentStatus;
+    montoDistinto?: { esperado: number; cobrado: number };
+  }> {
+    return this.paymentRepository.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(Payment);
+      const bloqueado = { mode: 'pessimistic_write' } as const;
+      const porPasarela = () =>
+        repo.findOne({
+          where: { gatewayPaymentId: gatewayPayment.id },
+          lock: bloqueado,
+        });
+
+      let ledgerPayment = await porPasarela();
+      if (!ledgerPayment) {
+        const candidato = await repo.findOne({
+          where: {
+            externalReference: gatewayPayment.externalReference ?? undefined,
+            gatewayPaymentId: IsNull(),
+          },
+          order: { createdAt: 'DESC' },
+          lock: bloqueado,
+        });
+        // Con el candidato bloqueado se vuelve a resolver la identidad: si otra
+        // notificación del mismo pago ya tomó OTRO intento (con dos intentos sin
+        // id de pasarela, cada una pudo elegir uno distinto), ese es el pago.
+        ledgerPayment = (await porPasarela()) ?? candidato;
+      }
+
+      if (!ledgerPayment) {
+        // No debería ocurrir (todo checkout pasa por createCheckout), pero un
+        // pago sin ledger asociado no debe romper la confirmación del pedido.
+        this.logger.warn(
+          `Pago ${gatewayPayment.id} sin Payment de ledger asociado (pedido ${gatewayPayment.externalReference})`,
+        );
+        return { isDeposit: false };
+      }
+
+      const nuevoEstado = this.toLedgerStatus(gatewayPayment.status);
+      const permitido = puedeTransicionarElPago(
+        ledgerPayment.status,
+        nuevoEstado,
       );
-      return false;
-    }
+      if (!permitido) {
+        this.logger.warn(
+          `Pago ${gatewayPayment.id}: la notificación (${gatewayPayment.status}) llegó después de ${ledgerPayment.status} y no se aplica`,
+        );
+      }
 
-    ledgerPayment.gatewayPaymentId = gatewayPayment.id;
-    ledgerPayment.status = this.toLedgerStatus(gatewayPayment.status);
-    ledgerPayment.metadata = {
-      ...(ledgerPayment.metadata ?? {}),
-      gatewayStatus: gatewayPayment.status,
-    };
-    await this.paymentRepository.save(ledgerPayment);
+      // Lo que la pasarela cobró tiene que ser lo que se pidió cobrar.
+      const esperado = Number(ledgerPayment.amount);
+      const cobrado = gatewayPayment.amount ?? null;
+      const montoNuevo =
+        permitido &&
+        nuevoEstado === LedgerPaymentStatus.APPROVED &&
+        cobrado !== null &&
+        !montoCoincide(esperado, cobrado)
+          ? { esperado, cobrado }
+          : undefined;
+      if (montoNuevo) {
+        this.logger.error(
+          `ALERTA: el pago ${gatewayPayment.id} del pedido ${ledgerPayment.orderId} se aprobó por ${cobrado} y se esperaba ${esperado}: no se da por pagado ni se despacha`,
+        );
+      }
+      // La alerta es persistente: una vez marcado, cualquier notificación
+      // posterior del pago (incluso un `pending` atrasado) la sigue informando.
+      const montoDistinto = montoNuevo ?? montoDistintoGuardado(ledgerPayment);
 
-    return ledgerPayment.isDeposit;
+      ledgerPayment.gatewayPaymentId = gatewayPayment.id;
+      if (permitido) ledgerPayment.status = nuevoEstado;
+      ledgerPayment.metadata = {
+        ...(ledgerPayment.metadata ?? {}),
+        gatewayStatus: gatewayPayment.status,
+        ...(montoDistinto && { montoDistinto }),
+      };
+      await repo.save(ledgerPayment);
+
+      return {
+        isDeposit: ledgerPayment.isDeposit,
+        ...(!permitido && { estadoAtrasado: ledgerPayment.status }),
+        ...(montoDistinto && { montoDistinto }),
+      };
+    });
   }
 
   private toLedgerStatus(gatewayStatus: string): LedgerPaymentStatus {
@@ -267,4 +361,16 @@ export class PaymentsService {
         return LedgerPaymentStatus.PENDING;
     }
   }
+}
+
+/** La alerta de monto distinto que quedó guardada en el pago, si la hay. */
+function montoDistintoGuardado(
+  pago: Payment,
+): { esperado: number; cobrado: number } | undefined {
+  const guardado: unknown = pago.metadata?.montoDistinto;
+  if (typeof guardado !== 'object' || guardado === null) return undefined;
+  const { esperado, cobrado } = guardado as Record<string, unknown>;
+  return typeof esperado === 'number' && typeof cobrado === 'number'
+    ? { esperado, cobrado }
+    : undefined;
 }

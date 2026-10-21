@@ -8,6 +8,7 @@ import {
   Check,
   CreateDateColumn,
   UpdateDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
@@ -27,6 +28,22 @@ export enum TrafficFineStatus {
  * Se conserva siempre: anularla es un estado, con su motivo. El acta es única
  * por distribuidora y jurisdicción.
  */
+@Check(
+  'CHK_traffic_fine_pago_voluntario',
+  `"voluntary_payment_amount" IS NULL OR ("voluntary_payment_amount" > 0 AND "voluntary_payment_amount" <= "amount")`,
+)
+@Check(
+  'CHK_traffic_fine_importe_pagado',
+  `"paid_amount" IS NULL OR "paid_amount" > 0`,
+)
+@Check(
+  'CHK_traffic_fine_pagada_datos',
+  `"status" <> 'paid' OR ("paid_at" IS NOT NULL AND "paid_amount" IS NOT NULL)`,
+)
+@Check(
+  'CHK_traffic_fine_anulada_fecha',
+  `"status" <> 'voided' OR "voided_at" IS NOT NULL`,
+)
 @Entity('traffic_fine')
 @Index('UQ_traffic_fine_act', ['distributorId', 'jurisdiction', 'actNumber'], {
   unique: true,
@@ -120,6 +137,10 @@ export class TrafficFine {
   paidAmount!: number | null;
 
   /** Salida de la caja con que se pagó en efectivo; `null` si no se pagó en efectivo o no hay cajas. */
+  @ForeignKey('cash_movement', {
+    name: 'FK_traffic_fine_cash_movement',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
   cashMovementId!: string | null;
 

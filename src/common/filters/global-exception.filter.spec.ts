@@ -89,6 +89,44 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
     },
   );
 
+  it.each([
+    ['23514', 'CHK_order_cancelado_motivo', 400, 'indicar el motivo'],
+    ['23505', 'UQ_time_slot_nombre_activa', 409, 'franja con ese nombre'],
+    ['23P01', 'EXC_time_slot_solapada', 409, 'se solapa con otra franja'],
+  ])(
+    'una regla de la base (%s %s) que ningún servicio tradujo sale como %i con su motivo',
+    (code, constraint, status, parte) => {
+      filter.catch(
+        Object.assign(new Error('violates constraint'), { code, constraint }),
+        host,
+      );
+
+      expect(applicationRef.reply).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          statusCode: status,
+          message: expect.stringContaining(parte) as string,
+        }),
+        status,
+      );
+    },
+  );
+
+  it('una violación de una restricción que no conocemos sigue siendo 500', () => {
+    filter.catch(
+      Object.assign(new Error('violates'), {
+        code: '23514',
+        constraint: 'CHK_desconocida',
+      }),
+      host,
+    );
+    expect(applicationRef.reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ statusCode: 500 }),
+      500,
+    );
+  });
+
   it('mapea InvalidOrderTransitionError a 400 con el mismo mensaje', () => {
     const error = new InvalidOrderTransitionError(
       OrderStatus.PENDING,

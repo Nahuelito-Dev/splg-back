@@ -94,7 +94,7 @@ describe('DispatchOrchestratorService', () => {
         .mockResolvedValue({ blocked: [], reofferable: [] }),
       hasActiveOffer: jest.fn().mockResolvedValue(false),
       findExpired: jest.fn().mockResolvedValue([]),
-      updateStatus: jest.fn().mockResolvedValue(undefined),
+      updateStatus: jest.fn().mockResolvedValue(true),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
       recordDriverHeldOrder: jest.fn().mockResolvedValue(undefined),
     };
@@ -811,6 +811,22 @@ describe('DispatchOrchestratorService', () => {
         'off-1',
         DispatchOfferStatus.EXPIRED,
       );
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('si la oferta ya no estaba OFFERED (la aceptaron entre la lectura y el cierre) no la vence ni re-ofrece el pedido', async () => {
+      offers.findExpired.mockResolvedValue([expiredOffer()]);
+      offers.updateStatus.mockResolvedValue(false);
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      dispatch.findNearbyDrivers.mockResolvedValue(['d2']);
+
+      await orchestrator.handleExpiredOffers();
+
+      expect(offers.updateStatus).toHaveBeenCalledWith(
+        'off-1',
+        DispatchOfferStatus.EXPIRED,
+      );
+      expect(orders.findByIdFull).not.toHaveBeenCalled();
       expect(offers.create).not.toHaveBeenCalled();
     });
 

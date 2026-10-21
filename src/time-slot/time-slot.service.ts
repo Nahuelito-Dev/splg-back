@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import {
   diaArgentino,
   minutosDelDiaArgentino,
@@ -43,10 +45,27 @@ function franjaTerminada(
 
 const MENSAJE_FRANJA_TERMINADA = 'La franja ya terminó, elegí otra';
 
+const MENSAJE_HORARIO = 'La hora de inicio tiene que ser anterior a la de fin';
+
+/** Dos franjas se pisan si comparten algún minuto (el borde compartido no cuenta). */
+export function seSolapanFranjas(
+  a: Pick<TimeSlot, 'startTime' | 'endTime'>,
+  b: Pick<TimeSlot, 'startTime' | 'endTime'>,
+): boolean {
+  return (
+    aMinutos(a.startTime) < aMinutos(b.endTime) &&
+    aMinutos(b.startTime) < aMinutos(a.endTime)
+  );
+}
+
+const sinHoraSegundos = (hora: string): string => hora.slice(0, 5);
+
 export type SlotAvailability = SlotAvailabilityDto;
 
 @Injectable()
 export class TimeSlotService {
+  private readonly logger = new Logger(TimeSlotService.name);
+
   constructor(
     @InjectRepository(TimeSlot)
     private readonly timeSlotRepository: Repository<TimeSlot>,
@@ -71,11 +90,78 @@ export class TimeSlotService {
     createTimeSlotDto: CreateTimeSlotDto,
     distributorId: string,
   ): Promise<TimeSlot> {
-    const timeSlot = this.timeSlotRepository.create({
-      ...createTimeSlotDto,
-      distributorId,
+    if (
+      aMinutos(createTimeSlotDto.startTime) >=
+      aMinutos(createTimeSlotDto.endTime)
+    ) {
+      throw new BadRequestException(MENSAJE_HORARIO);
+    }
+    return this.timeSlotRepository.manager.transaction(async (manager) => {
+      await this.bloquearFranjasDe(manager, distributorId);
+      await this.asegurarSinChoques(manager, distributorId, {
+        timeSlotId: null,
+        name: createTimeSlotDto.name,
+        startTime: createTimeSlotDto.startTime,
+        endTime: createTimeSlotDto.endTime,
+      });
+      const timeSlot = manager.create(TimeSlot, {
+        ...createTimeSlotDto,
+        distributorId,
+      });
+      try {
+        return await manager.save(timeSlot);
+      } catch (error) {
+        return traducirErrorDeBase(error, this.logger, 'franjas horarias');
+      }
     });
-    return await this.timeSlotRepository.save(timeSlot);
+  }
+
+  /**
+   * Serializa las altas y cambios de franjas de una distribuidora: el control de
+   * choques lee y después escribe, y dos al mismo tiempo no se verían.
+   */
+  private async bloquearFranjasDe(
+    manager: EntityManager,
+    distributorId: string,
+  ): Promise<void> {
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `time_slot:${distributorId}`,
+    ]);
+  }
+
+  /**
+   * Una franja activa no puede repetir el nombre de otra activa ni pisar su
+   * horario (409). La base lo garantiza igual (`UQ_time_slot_nombre_activa`,
+   * `EXC_time_slot_solapada`); esto devuelve el motivo.
+   */
+  private async asegurarSinChoques(
+    manager: EntityManager,
+    distributorId: string,
+    franja: {
+      timeSlotId: string | null;
+      name: string;
+      startTime: string;
+      endTime: string;
+    },
+  ): Promise<void> {
+    const otras = (
+      await manager.find(TimeSlot, { where: { distributorId, isActive: true } })
+    ).filter((otra) => otra.timeSlotId !== franja.timeSlotId);
+    const mismoNombre = otras.find(
+      (otra) =>
+        otra.name.trim().toLowerCase() === franja.name.trim().toLowerCase(),
+    );
+    if (mismoNombre) {
+      throw new ConflictException(
+        `Ya existe una franja activa con el nombre «${mismoNombre.name}»`,
+      );
+    }
+    const choque = otras.find((otra) => seSolapanFranjas(otra, franja));
+    if (choque) {
+      throw new ConflictException(
+        `La franja se solapa con «${choque.name}» (${sinHoraSegundos(choque.startTime)} a ${sinHoraSegundos(choque.endTime)}): ajustá el horario o desactivá esa franja`,
+      );
+    }
   }
 
   /**
@@ -140,9 +226,18 @@ export class TimeSlotService {
       const startTime = dto.startTime ?? timeSlot.startTime;
       const endTime = dto.endTime ?? timeSlot.endTime;
       if (aMinutos(startTime) >= aMinutos(endTime)) {
-        throw new BadRequestException(
-          'La hora de inicio tiene que ser anterior a la de fin',
-        );
+        throw new BadRequestException(MENSAJE_HORARIO);
+      }
+      const name = dto.name ?? timeSlot.name;
+      const quedaActiva = dto.isActive ?? timeSlot.isActive;
+      if (quedaActiva) {
+        await this.bloquearFranjasDe(manager, distributorId);
+        await this.asegurarSinChoques(manager, distributorId, {
+          timeSlotId: id,
+          name,
+          startTime,
+          endTime,
+        });
       }
       if (dto.capacity !== undefined && dto.capacity < timeSlot.capacity) {
         const hoy = diaArgentino();
@@ -160,7 +255,11 @@ export class TimeSlotService {
         ...(dto.capacity !== undefined && { capacity: dto.capacity }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       });
-      return manager.save(timeSlot);
+      try {
+        return await manager.save(timeSlot);
+      } catch (error) {
+        return traducirErrorDeBase(error, this.logger, 'franjas horarias');
+      }
     });
   }
 

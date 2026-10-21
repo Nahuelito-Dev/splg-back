@@ -213,6 +213,16 @@ export class UpdateOrderUseCase {
           order.distributorId,
         );
       }
+      // Una fecha nueva nunca puede ser pasada, con o sin franja.
+      if (
+        dto.scheduledDate &&
+        dto.scheduledDate !== order.scheduledDate &&
+        dto.scheduledDate < diaArgentino()
+      ) {
+        throw new BadRequestException(
+          'scheduledDate no puede ser una fecha pasada',
+        );
+      }
       if (cambiaAgenda && timeSlotId && scheduledDate) {
         const hoy = diaArgentino();
         if (dto.scheduledDate === undefined && scheduledDate < hoy) {
@@ -271,7 +281,7 @@ export class UpdateOrderUseCase {
       // El total sólo se recalcula si cambian renglones, dirección/zona o
       // medio de pago: editar notas o franja no lo toca.
       if (cambiaItems || cambiaDireccion || cambiaPago) {
-        const { totalAmount, zoneSurchargeAmount } =
+        const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
           this.create.calcularTotales(subtotalItems, zone, paymentMethod);
         if (
           order.depositPaid &&
@@ -281,6 +291,7 @@ export class UpdateOrderUseCase {
         }
         order.subtotalItems = subtotalItems;
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();
+        order.paymentSurchargeAmount = paymentSurchargeAmount.toNumber();
         order.totalAmount = totalAmount.toNumber();
       }
       order.paymentMethod = paymentMethod;

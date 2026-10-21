@@ -313,6 +313,48 @@ describe('CreateOrderUseCase', () => {
       expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     });
 
+    it.each([
+      ['una reserva', { isReservation: true, depositAmount: 100 }],
+      ['un pedido agendado', {}],
+    ])('%s con fecha pasada y sin franja es 400', async (_n, extra) => {
+      await expect(
+        useCase.execute({
+          ...baseDto,
+          ...extra,
+          scheduledDate: '2020-01-01',
+        }),
+      ).rejects.toThrow('scheduledDate no puede ser una fecha pasada');
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('una reserva por MercadoPago o transferencia guarda el recargo online aparte y el total cierra', async () => {
+      pricing.applyPaymentSurcharge.mockImplementation((monto: Decimal) =>
+        monto.times(1.1),
+      );
+      for (const medio of [PaymentMethod.MERCADOPAGO, PaymentMethod.TRANSFER]) {
+        orderRepository.create.mockClear();
+        await useCase.execute({
+          ...baseDto,
+          paymentMethod: medio,
+          isReservation: true,
+          depositAmount: 100,
+          scheduledDate: '2099-01-01',
+        });
+        const llamadas = orderRepository.create.mock.calls as unknown as Record<
+          string,
+          number
+        >[][];
+        const orden = llamadas[0][0];
+        expect(orden.paymentSurchargeAmount).toBe(200);
+        expect(orden.totalAmount).toBe(
+          orden.subtotalItems +
+            orden.zoneSurchargeAmount +
+            orden.paymentSurchargeAmount +
+            orden.expressSurchargeAmount,
+        );
+      }
+    });
+
     it('una reserva no se paga con cuenta corriente', async () => {
       await expect(
         useCase.execute({
@@ -552,6 +594,48 @@ describe('CreateOrderUseCase', () => {
 
       // 2000 × 1.1 + 1500 (y no (2000 + 1500) × 1.1)
       expect(ordenCreada().totalAmount).toBe(3700);
+    });
+
+    it('guarda el recargo por medio de pago aparte y el total es la suma exacta de sus partes', async () => {
+      pricing.applyPaymentSurcharge.mockImplementation((monto: Decimal) =>
+        monto.times(1.1),
+      );
+
+      await useCase.execute({
+        ...express,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+      });
+
+      const orden = ordenCreada();
+      expect(orden.paymentSurchargeAmount).toBe(200);
+      expect(orden.totalAmount).toBe(
+        Number(orden.subtotalItems) +
+          Number(orden.zoneSurchargeAmount) +
+          Number(orden.paymentSurchargeAmount) +
+          Number(orden.expressSurchargeAmount),
+      );
+    });
+
+    it('un pedido en efectivo no lleva recargo por medio de pago', async () => {
+      await useCase.execute({ ...baseDto });
+
+      expect(ordenCreada().paymentSurchargeAmount).toBe(0);
+    });
+
+    it('el recargo por medio de pago se redondea a 2 decimales y el total sigue cerrando', () => {
+      pricing.applyPaymentSurcharge.mockImplementation((monto: Decimal) =>
+        monto.times(1.1),
+      );
+
+      const { totalAmount, paymentSurchargeAmount } = useCase.calcularTotales(
+        new Decimal('1000.05'),
+        null,
+        PaymentMethod.MERCADOPAGO,
+      );
+
+      // 1000,05 × 1,1 = 1100,055 → 1100,06
+      expect(paymentSurchargeAmount.toString()).toBe('100.01');
+      expect(totalAmount.toString()).toBe('1100.06');
     });
 
     it('con MercadoPago el checkout cobra el recargo como un renglón más', async () => {

@@ -149,6 +149,43 @@ describe('UserAddressService', () => {
       );
     });
 
+    /**
+     * La base no admite dos principales a la vez (`UQ_user_address_principal`):
+     * al pasar la principal a otra, la vieja se guarda desmarcada ANTES de
+     * marcar la nueva.
+     */
+    it('desmarca la vieja ANTES de marcar la nueva (nunca dos principales a la vez)', async () => {
+      const guardados: Array<[string, boolean]> = [];
+      repo.save.mockImplementation((d: UserAddress) => {
+        guardados.push([d.addressId, d.isDefault]);
+        return Promise.resolve(d);
+      });
+      repo.findOne.mockResolvedValue(direccion({ isDefault: true }));
+      repo.find.mockResolvedValue([direccion({ addressId: 'a2' })]);
+
+      await service.update('a1', { isDefault: false }, null);
+
+      expect(guardados[0]).toEqual(['a1', false]);
+      expect(guardados[1]).toEqual(['a2', true]);
+    });
+
+    it('al borrar la principal, también la suelta antes de promover a la otra', async () => {
+      const guardados: Array<[string, boolean]> = [];
+      repo.save.mockImplementation((d: UserAddress) => {
+        guardados.push([d.addressId, d.isDefault]);
+        return Promise.resolve(d);
+      });
+      repo.findOne.mockResolvedValue(direccion({ isDefault: true }));
+      repo.find.mockResolvedValue([direccion({ addressId: 'a2' })]);
+
+      await service.remove('a1', 'u1');
+
+      expect(guardados).toEqual([
+        ['a1', false],
+        ['a2', true],
+      ]);
+    });
+
     it('si es la única, sigue siendo la principal', async () => {
       repo.findOne.mockResolvedValue(direccion({ isDefault: true }));
       repo.find.mockResolvedValue([]);

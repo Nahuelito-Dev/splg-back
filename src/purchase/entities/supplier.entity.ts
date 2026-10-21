@@ -8,6 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { SupplierKind } from '../domain/purchase.enums';
@@ -16,6 +17,7 @@ import { SupplierKind } from '../domain/purchase.enums';
  * Proveedor de una distribuidora (planta fraccionadora u otro). Baja lógica; el
  * CUIT es único entre los proveedores vigentes de la distribuidora.
  */
+@Check('CHK_supplier_cuit', `es_cuit_valido("cuit")`)
 @Entity('supplier')
 @Index('UQ_supplier_cuit_vigente', ['distributorId', 'cuit'], {
   unique: true,

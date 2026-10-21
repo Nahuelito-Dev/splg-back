@@ -223,7 +223,11 @@ export class UserAddressService {
     } else if (updateUserAddressDto.isDefault === false && previa.isDefault) {
       // Desmarcar la principal no puede dejar al usuario sin ninguna: pasa a
       // serlo la más reciente de las otras. Si es la única, lo sigue siendo.
-      const promovida = await this.promoverOtraPrincipal(address.userId, id);
+      const promovida = await this.promoverOtraPrincipal(
+        address.userId,
+        id,
+        address,
+      );
       if (!promovida) address.isDefault = true;
     }
 
@@ -237,7 +241,7 @@ export class UserAddressService {
     const address = await this.findOne(id, requesterUserId);
 
     if (address.isDefault) {
-      await this.promoverOtraPrincipal(address.userId, id);
+      await this.promoverOtraPrincipal(address.userId, id, address);
     }
 
     await this.userAddressRepository.softRemove(address);
@@ -261,11 +265,14 @@ export class UserAddressService {
 
   /**
    * La dirección más reciente del usuario, salvo `exceptId`, pasa a ser la
-   * principal. Devuelve false si no hay otra.
+   * principal. Devuelve false si no hay otra. `soltar` es la principal actual:
+   * se desmarca ANTES de promover a la otra, porque la base no admite dos
+   * principales a la vez (`UQ_user_address_principal`).
    */
   private async promoverOtraPrincipal(
     userId: string,
     exceptId: string,
+    soltar?: UserAddress,
   ): Promise<boolean> {
     const [otra] = await this.userAddressRepository.find({
       where: { userId, addressId: Not(exceptId) },
@@ -273,6 +280,10 @@ export class UserAddressService {
       take: 1,
     });
     if (!otra) return false;
+    if (soltar) {
+      soltar.isDefault = false;
+      await this.userAddressRepository.save(soltar);
+    }
     otra.isDefault = true;
     await this.userAddressRepository.save(otra);
     return true;

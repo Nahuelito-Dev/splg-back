@@ -24,6 +24,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Productos dados de baja y reactivación (CU-268, CU-269) | `docs/CATALOGO.md` |
 | Personal: documentación, asistencia, licencias, tablero y habilitación laboral (C-08) | `docs/PERSONAL.md` |
 | Compra express, despacho a motos y reintegro de pagos (C-17) | `docs/EXPRESS-REINTEGROS.md` |
+| Reglas en la base (CHECK, únicos, exclusiones, FK) y su verificación | `docs/VALIDACIONES-BASE.md` |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
 
 ## Convenciones

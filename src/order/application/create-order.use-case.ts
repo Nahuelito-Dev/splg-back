@@ -1,5 +1,6 @@
 import { bloquearCuentaParaPedido } from '../../common/locks/cuenta-lock';
 import { assertSenaNoSuperaTotal } from '../domain/deposit-cap';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
 import {
   Injectable,
@@ -154,6 +155,17 @@ export class CreateOrderUseCase {
       );
     }
 
+    // La fecha agendada (reserva o pedido con franja) no puede ser pasada
+    // (día argentino), también sin franja.
+    if (
+      createOrderDto.scheduledDate &&
+      createOrderDto.scheduledDate < diaArgentino()
+    ) {
+      throw new BadRequestException(
+        'scheduledDate no puede ser una fecha pasada',
+      );
+    }
+
     const esExpress = createOrderDto.deliveryMode === OrderDeliveryMode.EXPRESS;
     if (esExpress) this.assertExpressCompatible(createOrderDto);
 
@@ -228,18 +240,22 @@ export class CreateOrderUseCase {
             true,
           )
         : (createOrderDto.items ?? []);
+      if (items.length === 0) {
+        throw new BadRequestException('El pedido necesita al menos un renglón');
+      }
 
       // Reserva de stock con lock + precios de servidor (ver `reservarRenglones`).
       const { orderItems, checkoutItems, subtotalItems } =
         await this.reservarRenglones(queryRunner.manager, items, distributorId);
 
       // Recargos de zona y de método de pago (ver `calcularTotales`).
-      const { totalAmount, zoneSurchargeAmount } = this.calcularTotales(
-        subtotalItems,
-        coverageZone,
-        createOrderDto.paymentMethod,
-        expressSurcharge,
-      );
+      const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
+        this.calcularTotales(
+          subtotalItems,
+          coverageZone,
+          createOrderDto.paymentMethod,
+          expressSurcharge,
+        );
 
       // Venta a cuenta: bloquea la cuenta del cliente y valida el crédito con el
       // total ya calculado. Va después de reservar el stock (orden de locks).
@@ -297,6 +313,7 @@ export class CreateOrderUseCase {
         zoneSurchargeType: coverageZone?.type ?? null,
         zoneSurchargeValue: coverageZone?.value ?? null,
         zoneSurchargeAmount: zoneSurchargeAmount.toNumber(),
+        paymentSurchargeAmount: paymentSurchargeAmount.toNumber(),
         subtotalItems: subtotalItems.toNumber(),
         deliveryMode: esExpress
           ? OrderDeliveryMode.EXPRESS
@@ -593,18 +610,24 @@ export class CreateOrderUseCase {
     coverageZone: ZonaParaRecargo | null,
     paymentMethod: PaymentMethod,
     expressSurcharge: Decimal.Value = 0,
-  ): { totalAmount: Decimal; zoneSurchargeAmount: Decimal } {
+  ): {
+    totalAmount: Decimal;
+    zoneSurchargeAmount: Decimal;
+    paymentSurchargeAmount: Decimal;
+  } {
     const zoneSurchargeAmount = this.coverageZonePricing.zoneSurcharge(
       subtotalItems,
       coverageZone,
     );
-    const totalAmount = this.pricing
-      .applyPaymentSurcharge(
-        zoneSurchargeAmount.plus(subtotalItems),
-        paymentMethod,
-      )
-      .plus(expressSurcharge);
-    return { totalAmount, zoneSurchargeAmount };
+    const base = zoneSurchargeAmount.plus(subtotalItems);
+    // El recargo se guarda aparte y redondeado a 2 decimales, igual que el
+    // resto de los montos: el total es exactamente la suma de sus partes.
+    const conRecargo = this.pricing
+      .applyPaymentSurcharge(base, paymentMethod)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const paymentSurchargeAmount = conRecargo.minus(base);
+    const totalAmount = conRecargo.plus(expressSurcharge);
+    return { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount };
   }
 
   /**

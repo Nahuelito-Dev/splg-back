@@ -388,10 +388,13 @@ export class DispatchOrchestratorService {
       ) {
         continue;
       }
-      await this.offers.updateStatus(
+      const vencida = await this.offers.updateStatus(
         offer.offerId,
         DispatchOfferStatus.EXPIRED,
       );
+      // La aceptó o la cerró otro camino entre la lectura y este cierre: no se
+      // vence ni se vuelve a ofrecer el pedido.
+      if (!vencida) continue;
 
       // Recargar el pedido: pudo haber sido aceptado/cancelado por otra vía.
       const order = await this.orders.findByIdFull(offer.orderId);

@@ -85,6 +85,7 @@ describe('ChangeOrderAddressUseCase', () => {
     create.calcularTotales.mockImplementation((sub: number) => ({
       totalAmount: new Decimal(sub).plus(monto),
       zoneSurchargeAmount: new Decimal(monto),
+      paymentSurchargeAmount: new Decimal(0),
     }));
 
   beforeEach(() => {
@@ -110,6 +111,7 @@ describe('ChangeOrderAddressUseCase', () => {
       calcularTotales: jest.fn((sub: number) => ({
         totalAmount: new Decimal(sub),
         zoneSurchargeAmount: new Decimal(0),
+        paymentSurchargeAmount: new Decimal(0),
       })),
     };
     addresses = {
@@ -319,6 +321,7 @@ describe('ChangeOrderAddressUseCase', () => {
       create.calcularTotales.mockReturnValue({
         totalAmount: new Decimal(800),
         zoneSurchargeAmount: new Decimal(0),
+        paymentSurchargeAmount: new Decimal(0),
       });
       await expect(cambiar()).rejects.toBeInstanceOf(ConflictException);
       expect(manager.save).not.toHaveBeenCalled();

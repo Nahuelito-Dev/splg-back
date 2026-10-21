@@ -15,6 +15,20 @@ const mensajes = async (clase: new () => object, cuerpo: object) =>
     Object.values(e.constraints ?? {}),
   );
 
+describe('items vacíos', () => {
+  it('el alta rechaza items: [] (un pedido sin renglones)', async () => {
+    expect(await mensajes(CreateOrderDto, { ...base, items: [] })).toContain(
+      'El pedido necesita al menos un renglón',
+    );
+  });
+
+  it('el checkout del carrito no manda items y sigue siendo válido', async () => {
+    expect(await mensajes(CreateOrderDto, { ...base, fromCart: true })).toEqual(
+      [],
+    );
+  });
+});
+
 describe('items repetidos', () => {
   const repetidos = [
     { gasCylinderId: G, quantity: 1, unitPrice: 1 },

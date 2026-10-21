@@ -47,6 +47,7 @@ import { S3CleanupService } from '../../src/s3/s3-cleanup.service';
 import { StorageOrphan } from '../../src/s3/entities/storage-orphan.entity';
 import { ReintentosDeHuerfanosDeStorage1791070100000 } from '../../src/migrations/1791070100000-ReintentosDeHuerfanosDeStorage';
 import { FotoDeReclamoYHuerfanosDeStorage1791070000000 } from '../../src/migrations/1791070000000-FotoDeReclamoYHuerfanosDeStorage';
+import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
 
 const PDF = Buffer.from('%PDF-1.4 contenido de prueba en S3');
 const PNG = PNG_REAL;
@@ -431,6 +432,10 @@ describe('S3 contra MinIO (e2e)', () => {
         paymentMethod: PaymentMethod.CASH,
         subtotalItems: 1000,
         totalAmount: 1000,
+        deliveryId: (
+          await sembrarChoferDeFixture(dataSource, distributor.distributorId)
+        ).deliveryId,
+        ...fechasDeEntrega(),
       } as Partial<Order>)) as Order;
       const reclamo = (await dataSource.getRepository(Claim).save({
         distributorId: distributor.distributorId,

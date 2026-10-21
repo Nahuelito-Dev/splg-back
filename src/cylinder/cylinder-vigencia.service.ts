@@ -117,6 +117,15 @@ export class CylinderVigenciaService {
         );
       }
 
+      if (
+        cylinder.manufacturedAt &&
+        inspectedAt.getTime() < cylinder.manufacturedAt.getTime()
+      ) {
+        throw new BadRequestException(
+          'La revisión no puede ser anterior a la fabricación del envase',
+        );
+      }
+
       await manager.save(
         manager.create(CylinderInspection, {
           cylinderId,

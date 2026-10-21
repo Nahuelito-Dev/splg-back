@@ -130,6 +130,26 @@ describe('CylinderService', () => {
       );
     });
 
+    it('guarda el serial en su forma canónica (sin espacios en los bordes y en mayúsculas)', async () => {
+      await service.create(
+        { serial: '  sn-abc 1 ' } as CreateCylinderDto,
+        DIST,
+      );
+      expect(cylinderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ serial: 'SN-ABC 1' }),
+      );
+    });
+
+    it.each(['', '   '])(
+      'un serial %j es 400 y no guarda nada',
+      async (serial) => {
+        await expect(
+          service.create({ serial } as CreateCylinderDto, DIST),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(cylinderRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
     it('traduce el serial duplicado (23505) a 409', async () => {
       cylinderRepo.save.mockRejectedValueOnce({ code: '23505' });
       await expect(
@@ -1098,6 +1118,34 @@ describe('CylinderService', () => {
         }),
       );
       expect(movementRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('al editar también se normaliza el serial, y uno en blanco es 400', async () => {
+      cylinderRepo.findOne.mockResolvedValue(makeCylinder());
+      await service.update('cyl-1', { serial: ' sn-nuevo ' }, DIST);
+      expect(cylinderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ serial: 'SN-NUEVO' }),
+      );
+
+      cylinderRepo.save.mockClear();
+      await expect(
+        service.update('cyl-1', { serial: '  ' }, DIST),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('la fabricación no puede ser posterior al vencimiento del envase (400)', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ expiresAt: new Date('2026-01-01T00:00:00Z') }),
+      );
+      await expect(
+        service.update(
+          'cyl-1',
+          { manufacturedAt: new Date('2026-06-01T00:00:00Z') },
+          DIST,
+        ),
+      ).rejects.toThrow('fabricación no puede ser posterior al vencimiento');
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
     });
 
     it('serial duplicado => 409', async () => {

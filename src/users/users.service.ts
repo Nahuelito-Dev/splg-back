@@ -240,6 +240,16 @@ export class UsersService {
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const { password } = updateUserDto;
+    // El teléfono es único (también entre las cuentas dadas de baja).
+    if (updateUserDto.phone_number !== undefined) {
+      const otro = await this.userRepository.findOne({
+        where: { phoneNumber: updateUserDto.phone_number },
+        withDeleted: true,
+      });
+      if (otro && otro.userId !== id) {
+        throw new ConflictException('Ya existe un usuario con ese teléfono');
+      }
+    }
     // Campo por campo: el cuerpo va en snake_case y la entidad en camelCase.
     const user = await this.userRepository.preload({
       userId: id,

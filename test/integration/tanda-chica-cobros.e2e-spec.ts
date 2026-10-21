@@ -26,6 +26,7 @@ import { UnpaidCashService } from '../../src/incident/unpaid-cash.service';
 import { ReportsService } from '../../src/reports/reports.service';
 import { OrderService } from '../../src/order/order.service';
 import { AdminGateway } from '../../src/gateways/admin.gateway';
+import { fechasSegunEstado } from './setup/pedido-valido';
 
 describe('Cobros y lecturas de pedidos (e2e, Postgres real)', () => {
   let env: TestEnv;
@@ -101,6 +102,7 @@ describe('Cobros y lecturas de pedidos (e2e, Postgres real)', () => {
         totalAmount: 1000,
         subtotalItems: 1000,
         deliveryId: delivery.deliveryId,
+        ...fechasSegunEstado(parcial.status ?? OrderStatus.DELIVERED),
         ...parcial,
       } as Partial<Order>)) as Order;
 

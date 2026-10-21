@@ -7,9 +7,18 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  Check,
+  Exclusion,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 
+@Check('CHK_time_slot_horario', `"startTime" < "endTime"`)
+@Check('CHK_time_slot_capacidad', `"capacity" > 0`)
+@Index('UQ_time_slot_nombre_activa', { synchronize: false })
+@Exclusion(
+  'EXC_time_slot_solapada',
+  `USING gist ("distributor_id" WITH =, tsrange(timestamp '2000-01-01' + "startTime", timestamp '2000-01-01' + "endTime") WITH &&) WHERE ("isActive" AND "startTime" IS NOT NULL AND "endTime" IS NOT NULL)`,
+)
 @Entity('time_slot')
 export class TimeSlot {
   @PrimaryGeneratedColumn('uuid', { name: 'time_slot_id' })

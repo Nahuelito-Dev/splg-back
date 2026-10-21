@@ -49,6 +49,7 @@ import { EmployeeService } from '../../src/employee/employee.service';
 import { RoleType } from '../../src/common/constants/role-type.enum';
 import { JPG_REAL, PNG_REAL } from './setup/imagenes';
 import { StorageOrphan } from '../../src/s3/entities/storage-orphan.entity';
+import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
 
 const PNG = PNG_REAL;
 const JPG = JPG_REAL;
@@ -330,6 +331,9 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       paymentMethod: PaymentMethod.CASH,
       subtotalItems: 1000,
       totalAmount: 1000,
+      deliveryId: (await sembrarChoferDeFixture(dataSource, distributorId))
+        .deliveryId,
+      ...fechasDeEntrega(),
     } as Partial<Order>)) as Order;
   }
 

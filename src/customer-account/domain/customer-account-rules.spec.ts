@@ -1,8 +1,14 @@
 import Decimal from 'decimal.js';
-import { AgingBucket, CustomerEntryType } from './customer-account.enums';
+import {
+  AgingBucket,
+  CustomerAccountStatus as Estado,
+  CustomerEntryType,
+} from './customer-account.enums';
+import { CuentaConflictoError } from './errors/customer-account.errors';
 import {
   creditoDisponible,
   diasEntre,
+  exigirTransicionDeCuenta,
   imputarFifo,
   rangoDeAntiguedad,
   saldoDespuesDelAsiento,
@@ -113,5 +119,30 @@ describe('reglas de la cuenta corriente', () => {
       const total = r.reduce((s, i) => s.plus(i.amount), new Decimal(0));
       expect(total.toString()).toBe('90.01');
     });
+  });
+});
+
+describe('máquina de estados de la cuenta corriente', () => {
+  it.each([
+    [Estado.ACTIVE, Estado.BLOCKED],
+    [Estado.BLOCKED, Estado.ACTIVE],
+    [Estado.ACTIVE, Estado.CLOSED],
+    [Estado.BLOCKED, Estado.CLOSED],
+    [Estado.CLOSED, Estado.ACTIVE],
+  ])('%s → %s está permitido', (desde, hacia) => {
+    expect(() => exigirTransicionDeCuenta(desde, hacia)).not.toThrow();
+  });
+
+  it('una cuenta cerrada no pasa directo a bloqueada: hay que reabrirla (409)', () => {
+    expect(() =>
+      exigirTransicionDeCuenta(Estado.CLOSED, Estado.BLOCKED),
+    ).toThrow(CuentaConflictoError);
+    expect(() =>
+      exigirTransicionDeCuenta(Estado.CLOSED, Estado.BLOCKED),
+    ).toThrow(/reabrila primero/);
+  });
+
+  it.each(Object.values(Estado))('repetir %s es un no-op', (estado) => {
+    expect(() => exigirTransicionDeCuenta(estado, estado)).not.toThrow();
   });
 });

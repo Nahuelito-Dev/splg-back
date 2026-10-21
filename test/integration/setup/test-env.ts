@@ -27,6 +27,14 @@ import {
 } from '@testcontainers/postgresql';
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
 import {
+  CREAR_FUNCION_ESTADO_DEL_PAGO,
+  CREAR_TRIGGER_ESTADO_DEL_PAGO,
+} from '../../../src/migrations/sql/estado-del-pago';
+import {
+  CREAR_ES_CUIL_VALIDO,
+  CREAR_ES_CUIT_VALIDO,
+} from '../../../src/migrations/sql/funciones-cuit';
+import {
   AUDIT_ACTION_TYPE_NAMES,
   AuditActionType,
 } from '../../../src/audit/entities/audit-action-type.entity';
@@ -90,6 +98,19 @@ export async function createTestApp(
     .withDatabase('splg_test')
     .withUsername('test')
     .withPassword('test')
+    // El esquema sale de las entidades (DB_SYNC): los CHECK de CUIT/CUIL usan
+    // funciones que sólo crea una migración, y las exclusiones piden btree_gist.
+    // Un script de inicio las deja listas antes de que la app sincronice.
+    .withCopyContentToContainer([
+      {
+        content: [
+          'CREATE EXTENSION IF NOT EXISTS btree_gist;',
+          `${CREAR_ES_CUIT_VALIDO};`,
+          `${CREAR_ES_CUIL_VALIDO};`,
+        ].join('\n'),
+        target: '/docker-entrypoint-initdb.d/00-funciones-de-la-base.sql',
+      },
+    ])
     .start();
   const redisContainer = await new RedisContainer('redis:7-alpine').start();
 
@@ -158,6 +179,7 @@ export async function createTestApp(
     );
   try {
     asegurarBaseDescartable(app.get(DataSource), pgContainer);
+    await instalarTriggersDeLaBase(app.get(DataSource));
     await app.init();
     await sembrarCatalogoDeAuditoria(app.get(DataSource));
     // Escucha en loopback con puerto propio: si no, supertest hace un
@@ -207,6 +229,16 @@ function asegurarBaseDescartable(
       `La app de test no está conectada al contenedor efímero (${String(opciones.host)}:${String(opciones.port)} en vez de ${contenedor.getHost()}:${contenedor.getPort()})`,
     );
   }
+}
+
+/**
+ * El esquema sincronizado desde las entidades no trae los triggers que crean las
+ * migraciones: se instalan acá, desde las mismas definiciones (tanda V1: el
+ * estado de un pago no retrocede).
+ */
+async function instalarTriggersDeLaBase(dataSource: DataSource) {
+  await dataSource.query(CREAR_FUNCION_ESTADO_DEL_PAGO);
+  await dataSource.query(CREAR_TRIGGER_ESTADO_DEL_PAGO);
 }
 
 /**

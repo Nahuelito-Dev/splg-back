@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 import { Order } from './order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -37,6 +38,9 @@ export enum DispatchOfferStatus {
  * pasar al siguiente sin re-ofrecer a los ya contactados, y (3) auditar el
  * proceso para disputas/analytics. Reemplaza el broadcast a todos sin estado.
  */
+@Check('CHK_order_dispatch_offer_vencimiento', `"expiresAt" > "offeredAt"`)
+@Index('UQ_order_dispatch_offer_viva', { synchronize: false })
+@Index('UQ_order_dispatch_offer_aceptada', { synchronize: false })
 @Entity('order_dispatch_offer')
 // Composites para las queries del despacho:
 //  - hasActiveOffer/closeActiveOffer (por pedido + estado)

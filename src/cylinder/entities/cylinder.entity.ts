@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -37,6 +38,17 @@ export enum CylinderState {
  * POR distribuidora, no global (dos empresas pueden tener garrafas con el
  * mismo número de serie de fábrica).
  */
+@Check('CHK_cylinder_garantia', `"deposit" >= 0`)
+@Check(
+  'CHK_cylinder_cliente_segun_estado',
+  `("state" = 'with_customer') = ("current_customer_id" IS NOT NULL)`,
+)
+@Check(
+  'CHK_cylinder_vencimiento',
+  `"expires_at" IS NULL OR "manufactured_at" IS NULL OR "expires_at" >= "manufactured_at"`,
+)
+@Check('CHK_cylinder_serial', `btrim("serial") <> ''`)
+@Index('UQ_cylinder_serial_normalizado', { synchronize: false })
 @Entity('cylinder')
 @Unique(['distributorId', 'serial'])
 export class Cylinder {

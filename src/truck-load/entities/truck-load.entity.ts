@@ -8,6 +8,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { Car } from '../../car/entities/car.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -25,6 +26,22 @@ import { TruckLoadItem } from './truck-load-item.entity';
  * dos únicos parciales. El stock se mueve por el libro (`reference_id` =
  * `load_id` en `stock_movement`); acá sólo se guarda el documento.
  */
+@Check(
+  'CHK_truck_load_salida',
+  `"status" IN ('loading', 'cancelled') OR "departed_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_truck_load_regreso',
+  `"status" NOT IN ('returned', 'closed', 'closed_with_difference') OR "returned_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_truck_load_cierre',
+  `"status" NOT IN ('closed', 'closed_with_difference', 'cancelled') OR "closed_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_truck_load_cancelada',
+  `"status" <> 'cancelled' OR "cancel_reason" IS NOT NULL`,
+)
 @Entity('truck_load')
 @Index('UQ_truck_load_numero', ['distributorId', 'number'], { unique: true })
 @Index('UQ_truck_load_camion_abierta', ['carId'], {

@@ -9,10 +9,16 @@ import {
   DeleteDateColumn,
   Index,
   Point,
+  Check,
 } from 'typeorm';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { User } from '../../users/entities/user.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 
+@Check(
+  'CHK_delivery_calificacion',
+  `"calification" IS NULL OR "calification" BETWEEN 0 AND 5`,
+)
 @Entity('delivery')
 export class Delivery {
   @PrimaryGeneratedColumn('uuid', { name: 'delivery_id' })
@@ -31,7 +37,7 @@ export class Delivery {
   })
   distributorId!: string;
 
-  @OneToOne(() => User, (user) => user.delivery, { onDelete: 'CASCADE' })
+  @OneToOne(() => User, (user) => user.delivery, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
@@ -112,7 +118,13 @@ export class Delivery {
   })
   notificationToken?: string;
 
-  @Column({ type: 'double precision', default: 0 })
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
   balance!: number;
 
   @CreateDateColumn({ type: 'timestamptz', nullable: true })

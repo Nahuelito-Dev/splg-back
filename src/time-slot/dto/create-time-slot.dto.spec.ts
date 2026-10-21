@@ -1,50 +1,54 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { CreateTimeSlotDto } from './create-time-slot.dto';
+import { UpdateTimeSlotDto } from './update-time-slot.dto';
 
-/** Lo único que necesitamos leer del schema generado; el tipo completo
- * (`SchemaObject`) no forma parte del barrel público de `@nestjs/swagger`. */
-interface EsquemaConRequired {
-  required?: string[];
-}
+const invalidas = async <T extends object>(
+  clase: new () => T,
+  cuerpo: object,
+): Promise<string[]> =>
+  (await validate(plainToInstance(clase, cuerpo))).map((e) => e.property);
 
-/** Controlador descartable: lo único que importa es que declare el DTO como
- * body, para que `SwaggerModule` lo registre en el documento generado. */
-@Controller('time-slot')
-class ControladorDePrueba {
-  @Post()
-  crear(@Body() dto: CreateTimeSlotDto): CreateTimeSlotDto {
-    return dto;
-  }
-}
+const valida = { name: 'Mañana', startTime: '09:00', endTime: '13:00' };
 
-/**
- * `capacity` tiene `@IsOptional()` y la columna tiene `default: 50` en la
- * base: no tendría que salir como obligatorio en el OpenAPI. Antes de la
- * corrección, usar `@ApiProperty()` (en vez de `@ApiPropertyOptional()`, o
- * `required: false`) lo marcaba `required` igual, contradiciendo el propio
- * `@IsOptional()` del DTO.
- */
-describe('CreateTimeSlotDto — Swagger no exige lo que el DTO marca opcional', () => {
-  it('`capacity` no figura en el `required` del schema generado', async () => {
-    const moduleRef = await Test.createTestingModule({
-      controllers: [ControladorDePrueba],
-    }).compile();
-    const app = moduleRef.createNestApplication();
-    await app.init();
+describe('CreateTimeSlotDto', () => {
+  it('una franja válida pasa, con o sin capacidad', async () => {
+    expect(await invalidas(CreateTimeSlotDto, valida)).toEqual([]);
+    expect(
+      await invalidas(CreateTimeSlotDto, { ...valida, capacity: 50 }),
+    ).toEqual([]);
+  });
 
-    const document = SwaggerModule.createDocument(
-      app,
-      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+  it.each([0, -3, 10001, 2.5])('capacity %p es 400', async (capacity) => {
+    expect(
+      await invalidas(CreateTimeSlotDto, { ...valida, capacity }),
+    ).toContain('capacity');
+  });
+
+  it.each([1, 10000])('capacity %p pasa', async (capacity) => {
+    expect(await invalidas(CreateTimeSlotDto, { ...valida, capacity })).toEqual(
+      [],
     );
-    const schema = document.components?.schemas?.[
-      'CreateTimeSlotDto'
-    ] as EsquemaConRequired;
+  });
 
-    expect(schema).toBeDefined();
-    expect(schema.required ?? []).not.toContain('capacity');
+  it.each(['', '   '])('el nombre %j es 400', async (name) => {
+    expect(await invalidas(CreateTimeSlotDto, { ...valida, name })).toContain(
+      'name',
+    );
+  });
 
-    await app.close();
+  it('el nombre no pasa de 50 caracteres y se recorta', async () => {
+    expect(
+      await invalidas(CreateTimeSlotDto, { ...valida, name: 'a'.repeat(51) }),
+    ).toContain('name');
+    expect(
+      plainToInstance(CreateTimeSlotDto, { ...valida, name: ' Noche ' }).name,
+    ).toBe('Noche');
+  });
+
+  it('al editar también rige el mínimo de capacidad', async () => {
+    expect(await invalidas(UpdateTimeSlotDto, { capacity: 0 })).toContain(
+      'capacity',
+    );
   });
 });

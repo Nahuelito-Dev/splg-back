@@ -18,6 +18,7 @@ import {
   ApiTags,
   ApiBadRequestResponse,
   ApiUnauthorizedResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { TimeSlotMapper } from './time-slot.mapper';
 import {
@@ -48,7 +49,11 @@ export class TimeSlotController {
   @ApiCreatedResponse({ type: TimeSlotResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: name should not be empty; startTime must be in HH:MM format)',
+      'Datos inválidos (p. ej.: name should not be empty; startTime must be in HH:MM format), inicio >= fin o capacidad fuera de 1-10000',
+  })
+  @ApiConflictResponse({
+    description:
+      'La franja se solapa con otra franja activa de la distribuidora, o ya hay una activa con ese nombre',
   })
   async create(
     @Body() createTimeSlotDto: CreateTimeSlotDto,
@@ -128,6 +133,10 @@ export class TimeSlotController {
   })
   @ApiNotFoundResponse({
     description: 'La franja no existe o es de otra distribuidora',
+  })
+  @ApiConflictResponse({
+    description:
+      'El nuevo horario se solapa con otra franja activa, el nombre ya lo tiene otra activa, o la capacidad queda por debajo de lo agendado',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

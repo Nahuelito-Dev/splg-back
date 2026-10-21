@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -25,13 +26,17 @@ export enum RaterRole {
  * pedido desde el mismo rol. Tenant-scoped (distributor_id denormalizado del
  * pedido) para que los promedios/queries del panel sean por distribuidora.
  */
+@Check(
+  'CHK_rating_valores',
+  `"stars" BETWEEN 1 AND 5 AND "from_user_id" <> "to_user_id" AND (NOT "hidden" OR "hidden_at" IS NOT NULL)`,
+)
 @Entity('rating')
 @Unique('UQ_rating_order_role', ['orderId', 'fromRole'])
 export class Rating {
   @PrimaryGeneratedColumn('uuid', { name: 'rating_id' })
   ratingId!: string;
 
-  @ManyToOne(() => Order, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 

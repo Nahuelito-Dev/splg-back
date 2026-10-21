@@ -125,6 +125,10 @@ export class OrderController {
     description: 'Otro request con la misma Idempotency-Key está en curso',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos inválidos: items vacío, scheduledDate pasada (día argentino) o reserva sin fecha',
+  })
   async create(
     @Body() createOrderDto: CreateOrderDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -505,7 +509,7 @@ export class OrderController {
     summary: 'Update order status',
     description:
       'Idempotente vía header `Idempotency-Key`. Evita doble aceptación/entrega por reintento de red. Solo chofer/admin.\n\n' +
-      '- `status: cancelled` tiene EXACTAMENTE el mismo efecto que `PATCH /:id/cancel` (mismo código, mismo stock, mismos ' +
+      '- `status: cancelled` (cliente y admin: `reason` obligatorio, 400 si falta o está en blanco) tiene EXACTAMENTE el mismo efecto que `PATCH /:id/cancel` (mismo código, mismo stock, mismos ' +
       'avisos): cancela con devolución de stock si lo pide un admin, o LIBERA el pedido a `pending` (sin devolver stock, ' +
       'sin motivo de cancelación) si lo pide el chofer — no cancela de verdad.\n' +
       '- `status: pending` sobre un pedido ACCEPTED/ON_THE_WAY libera al chofer asignado (mismo camino que el punto ' +
@@ -910,7 +914,8 @@ export class OrderController {
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: OrderResponseDto })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos, sin stock, o dirección fuera de cobertura',
+    description:
+      'Datos inválidos, sin stock, dirección fuera de cobertura, scheduledDate pasada (día argentino) o items vacío',
   })
   @ApiConflictResponse({
     description:
@@ -1039,6 +1044,8 @@ export class OrderController {
       id,
       user.user_id,
       'admin',
+      // Este endpoint no recibe cuerpo, y la cancelación exige motivo.
+      'Cancelación forzada por el administrador',
     );
     return this.pedidoCancelado(order, 'admin');
   }
@@ -1058,7 +1065,7 @@ export class OrderController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: reason must be shorter than or equal to 500 characters)',
+      'Falta el motivo (`reason`: obligatorio para cliente y administrador, no para el chofer que libera el pedido), motivo en blanco, o datos inválidos (p. ej.: reason must be shorter than or equal to 500 characters)',
   })
   @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
   @ApiOkResponse({

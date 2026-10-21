@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ArrayNotEmpty, IsArray, IsString, IsUUID } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { enMinusculas } from './en-minusculas';
+import { SerialesDeEnvase } from './serial-de-envase';
 
 /**
  * Asigna envases físicos (por serial) a un pedido y los despacha. Se envía
@@ -19,6 +20,6 @@ export class AssignCylindersDto {
   @ApiProperty({ type: String, isArray: true, example: ['SN-000123'] })
   @IsArray()
   @ArrayNotEmpty()
-  @IsString({ each: true })
+  @SerialesDeEnvase()
   serials!: string[];
 }

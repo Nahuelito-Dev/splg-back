@@ -12,7 +12,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { normalizarPatente } from '../patente.util';
+import { PATENTE_ARGENTINA, normalizarPatente } from '../patente.util';
 import { ApiProperty } from '@nestjs/swagger';
 import { FuelType } from '../entities/car.entity';
 
@@ -37,20 +37,23 @@ export class CreateCarDto {
 
   @ApiProperty({
     description:
-      'Patente. Se guarda en mayúsculas, sin espacios ni guiones, y tiene que ' +
-      'quedar con al menos 4 letras o números. `null` (al editar) la borra.',
+      'Patente argentina: `AAA123` (formato anterior) o `AA123AA` (Mercosur). Se ' +
+      'guarda en mayúsculas, sin espacios ni guiones (se aceptan al enviarla). ' +
+      'Única entre los vehículos vigentes de la distribuidora. `null` (al editar) la borra.',
     required: false,
     nullable: true,
     type: String,
+    example: 'AB123CD',
+    pattern: '^([A-Z]{3}[0-9]{3}|[A-Z]{2}[0-9]{3}[A-Z]{2})$',
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? normalizarPatente(value) : value,
   )
   @IsString()
-  @Matches(/^[A-Z0-9]{4,20}$/, {
+  @Matches(PATENTE_ARGENTINA, {
     message:
-      'car_patent debe tener entre 4 y 20 letras o números (sin contar espacios ni guiones)',
+      'car_patent debe ser una patente argentina: AAA123 (formato anterior) o AA123AA (Mercosur), sin espacios ni guiones',
   })
   car_patent?: string | null;
 

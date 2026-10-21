@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Check,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -16,6 +17,22 @@ import { CashBox } from './cash-box.entity';
  * Apertura y cierre (arqueo) de una caja. A lo sumo una abierta por caja: el
  * único parcial lo garantiza aunque dos aperturas lleguen a la vez.
  */
+@Check(
+  'CHK_cash_session_montos',
+  `"opening_amount" >= 0 AND ("counted_amount" IS NULL OR "counted_amount" >= 0)`,
+)
+@Check(
+  'CHK_cash_session_cierre_fecha',
+  `("status" = 'closed') = ("closed_at" IS NOT NULL)`,
+)
+@Check(
+  'CHK_cash_session_cierre_completo',
+  `"status" <> 'closed' OR ("closed_by_user_id" IS NOT NULL AND "counted_amount" IS NOT NULL AND "expected_amount" IS NOT NULL AND "difference" = "counted_amount" - "expected_amount")`,
+)
+@Check(
+  'CHK_cash_session_periodo',
+  `"closed_at" IS NULL OR "closed_at" >= "opened_at"`,
+)
 @Entity('cash_session')
 @Index('UQ_cash_session_abierta', ['cashBoxId'], {
   unique: true,

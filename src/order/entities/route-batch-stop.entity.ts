@@ -5,6 +5,8 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
+  Check,
+  Index,
 } from 'typeorm';
 import { RouteBatch } from './route-batch.entity';
 import { Order } from './order.entity';
@@ -14,6 +16,10 @@ import { Order } from './order.entity';
  * Cada pedido del lote, en su orden de entrega.
  * Casos: CU-107 (M3)
  */
+@Check('CHK_route_batch_stop_secuencia', `"sequence" >= 1`)
+@Index('UQ_route_batch_stop_secuencia', ['batchId', 'sequence'], {
+  unique: true,
+})
 @Entity('route_batch_stop')
 @Unique('UQ_route_batch_stop_batch_order', ['batchId', 'orderId'])
 export class RouteBatchStop {

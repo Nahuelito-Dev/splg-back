@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { DomainError } from './domain.error';
+import { mensajeDeRestriccion } from './restricciones-de-base';
 
 /**
  * Códigos de error de Postgres que sabemos traducir.
@@ -16,6 +17,7 @@ const CODIGOS = {
   UNICO_VIOLADO: '23505',
   CLAVE_FORANEA: '23503',
   NO_NULO: '23502',
+  CHECK_VIOLADO: '23514',
   SINTAXIS_INVALIDA: '22P02',
   // Texto que la base no puede guardar: bytes inválidos en UTF-8 (el NUL
   // `\u0000` entre ellos) o escape Unicode no soportado (NUL en jsonb).
@@ -76,7 +78,8 @@ export function traducirErrorDeBase(
         }`,
       );
       throw new ConflictException(
-        `Ya existe un registro con esos datos${donde}`,
+        mensajeDeRestriccion(e.constraint) ??
+          `Ya existe un registro con esos datos${donde}`,
       );
 
     case CODIGOS.EXCLUSION_VIOLADA:
@@ -85,7 +88,19 @@ export function traducirErrorDeBase(
       // a detectar: dos operaciones la dispararon a la vez.
       logger.warn(`Exclusión violada${donde}: ${e.detail ?? e.message}`);
       throw new ConflictException(
-        `El registro choca con otro que ya existe${donde}`,
+        mensajeDeRestriccion(e.constraint) ??
+          `El registro choca con otro que ya existe${donde}`,
+      );
+
+    case CODIGOS.CHECK_VIOLADO:
+      // Una regla de la base (monto, estado con su fecha, formato) frenó la
+      // escritura: el dato es inválido, no el servidor.
+      logger.warn(
+        `Regla de la base violada${donde}: ${e.constraint ?? e.message}`,
+      );
+      throw new BadRequestException(
+        mensajeDeRestriccion(e.constraint) ??
+          `Alguno de los datos no cumple las reglas del sistema${donde}`,
       );
 
     case CODIGOS.CLAVE_FORANEA:
@@ -163,6 +178,31 @@ function ocupado(
     `Timeout de base de datos${donde} (${code ?? 'sin código'}): ${message}`,
   );
   return new ServiceUnavailableException(MENSAJE_SISTEMA_OCUPADO);
+}
+
+/**
+ * Traduce, sin lanzar, un error de base de una restricción que conocemos
+ * (CHECK, único, exclusión). Lo usa el filtro global como red de seguridad para
+ * los caminos que no pasan por `traducirErrorDeBase`. `null` si no es de las
+ * nuestras.
+ */
+export function traducirRestriccionConocida(
+  error: unknown,
+): HttpException | null {
+  if (error instanceof HttpException || error instanceof DomainError) {
+    return null;
+  }
+  const e = datosDelError(error);
+  const mensaje = mensajeDeRestriccion(e.constraint);
+  if (!mensaje) return null;
+  if (e.code === CODIGOS.CHECK_VIOLADO) return new BadRequestException(mensaje);
+  if (
+    e.code === CODIGOS.UNICO_VIOLADO ||
+    e.code === CODIGOS.EXCLUSION_VIOLADA
+  ) {
+    return new ConflictException(mensaje);
+  }
+  return null;
 }
 
 /**

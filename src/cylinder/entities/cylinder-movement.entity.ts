@@ -6,6 +6,7 @@ import {
   Index,
   ManyToOne,
   JoinColumn,
+  Check,
 } from 'typeorm';
 import { Cylinder, CylinderState } from './cylinder.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -18,6 +19,10 @@ import { User } from '../../users/entities/user.entity';
  * y por qué (note). Es append-only: no se edita ni se borra, solo se lee para
  * reconstruir la trazabilidad del envase.
  */
+@Check(
+  'CHK_cylinder_movement_cambio',
+  `"from_state" IS NULL OR "from_state"::text <> "to_state"::text OR "note" IS NOT NULL`,
+)
 @Entity('cylinder_movement')
 export class CylinderMovement {
   @PrimaryGeneratedColumn('uuid', { name: 'movement_id' })

@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  Check,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { User } from '../../users/entities/user.entity';
@@ -20,6 +21,7 @@ import { StockLocation } from './stock-location.entity';
  * correlativo por distribuidora (`document_sequence`). No se edita: un error
  * se corrige con otro ajuste.
  */
+@Check('CHK_stock_adjustment_notas', `btrim("notes") <> ''`)
 @Entity('stock_adjustment')
 @Index('UQ_stock_adjustment_numero', ['distributorId', 'number'], {
   unique: true,

@@ -157,6 +157,47 @@ describe('CylinderVigenciaService', () => {
       ).resolves.toBeDefined();
     });
 
+    it('un rechazo anterior a la fabricación del envase es 400 y no guarda nada', async () => {
+      lockQb.getOne.mockResolvedValue(
+        makeCylinder({ manufacturedAt: enDias(-1) }),
+      );
+      await expect(
+        service.registerInspection(
+          'cyl-1',
+          dto({
+            inspectedAt: dia(-10),
+            result: CylinderInspectionResult.REJECTED,
+            nextDueAt: undefined,
+          }),
+          DIST,
+        ),
+      ).rejects.toThrow('anterior a la fabricación');
+      expect(saved).toHaveLength(0);
+    });
+
+    it('una revisión APROBADA anterior a la fabricación es 400 aunque el próximo vencimiento sea posterior', async () => {
+      lockQb.getOne.mockResolvedValue(
+        makeCylinder({ manufacturedAt: enDias(-5) }),
+      );
+      await expect(
+        service.registerInspection(
+          'cyl-1',
+          dto({ inspectedAt: dia(-10), nextDueAt: dia(365) }),
+          DIST,
+        ),
+      ).rejects.toThrow('anterior a la fabricación');
+      expect(saved).toHaveLength(0);
+    });
+
+    it('un vencimiento posterior a la fabricación pasa', async () => {
+      lockQb.getOne.mockResolvedValue(
+        makeCylinder({ manufacturedAt: enDias(-400) }),
+      );
+      await expect(
+        service.registerInspection('cyl-1', dto(), DIST),
+      ).resolves.toBeDefined();
+    });
+
     it('rechaza una fecha de revisión futura', async () => {
       await expect(
         service.registerInspection('cyl-1', dto({ inspectedAt: dia(2) }), DIST),

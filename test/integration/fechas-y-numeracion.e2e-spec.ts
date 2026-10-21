@@ -23,6 +23,7 @@ import {
   DocType,
   DocumentSequenceService,
 } from '../../src/document-sequence/document-sequence.service';
+import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
 
 describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
   let env: TestEnv;
@@ -68,6 +69,9 @@ describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
           paymentMethod: PaymentMethod.CASH,
           subtotalItems: 1000,
           totalAmount: 1000,
+          deliveryId: (await sembrarChoferDeFixture(dataSource, distributorId))
+            .deliveryId,
+          ...fechasDeEntrega(),
         } as Partial<Order>)) as Order;
         const reclamo = (await dataSource.getRepository(Claim).save({
           distributorId,
@@ -137,6 +141,9 @@ describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
           paymentMethod: PaymentMethod.CASH,
           subtotalItems: 1000,
           totalAmount: 1000,
+          deliveryId: (await sembrarChoferDeFixture(dataSource, distributorId))
+            .deliveryId,
+          ...fechasDeEntrega(),
         } as Partial<Order>)) as Order;
         await migracion.down(qr);
         // Escrito en UTC: leído como hora argentina quedaría 3 h en el futuro

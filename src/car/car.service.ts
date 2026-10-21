@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -21,6 +20,9 @@ import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { CarBorradoResponseDto } from './dto/car-response.dto';
 import { normalizarPatente } from './patente.util';
+
+const MENSAJE_PATENTE_REPETIDA =
+  'La patente del vehículo ya está registrada en la distribuidora';
 
 /**
  * El cuerpo de la API va en snake_case y la entidad en camelCase: se mapea
@@ -65,13 +67,14 @@ export class CarService {
 
     if (typeof createCarDto.car_patent === 'string') {
       const existingCar = await this.carRepository.findOne({
-        where: { carPatent: normalizarPatente(createCarDto.car_patent) },
+        where: {
+          carPatent: normalizarPatente(createCarDto.car_patent),
+          distributorId,
+        },
       });
 
       if (existingCar) {
-        throw new BadRequestException(
-          'La patente del vehículo ya está registrada',
-        );
+        throw new ConflictException(MENSAJE_PATENTE_REPETIDA);
       }
     }
 
@@ -80,7 +83,11 @@ export class CarService {
       distributorId,
     });
 
-    return await this.carRepository.save(car);
+    try {
+      return await this.carRepository.save(car);
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'vehículos');
+    }
   }
 
   async findAll(distributorId?: string): Promise<Car[]> {
@@ -150,13 +157,11 @@ export class CarService {
         : undefined;
     if (patenteNueva !== undefined && patenteNueva !== actual.carPatent) {
       const existingCar = await this.carRepository.findOne({
-        where: { carPatent: patenteNueva },
+        where: { carPatent: patenteNueva, distributorId },
       });
 
       if (existingCar && existingCar.carId !== id) {
-        throw new BadRequestException(
-          'La patente del vehículo ya está registrada',
-        );
+        throw new ConflictException(MENSAJE_PATENTE_REPETIDA);
       }
     }
 

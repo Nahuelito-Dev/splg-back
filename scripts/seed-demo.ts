@@ -1434,12 +1434,16 @@ async function sembrarPedidos(
       subtotal += linea;
       return { producto: p, cantidad, unitario: p.price, subtotal: linea };
     });
-    const total = subtotal + dir.recargo;
-
     const metodo =
       forzado?.medio ??
       (estado === 'reserved' ? 'mercadopago' : alguno([...MEDIOS]));
     const tipoPago = metodo === 'cash' ? 'cash' : 'online';
+    // Igual que el back: el pago online lleva +10 % sobre ítems + zona, guardado
+    // aparte (`payment_surcharge_amount`), y el total es la suma exacta de las partes.
+    const baseConZona = subtotal + dir.recargo;
+    const recargoOnline =
+      tipoPago === 'online' ? Math.round(baseConZona * 0.1 * 100) / 100 : 0;
+    const total = Math.round((baseConZona + recargoOnline) * 100) / 100;
     const reciente = dia <= 2;
 
     // Estado de cobro según cómo terminó el pedido.
@@ -1533,14 +1537,14 @@ async function sembrarPedidos(
           "deliveryPoint", "acceptedAt", "onTheWayAt",
           "deliveredAt", "createdAt", "updatedAt", "cancellationReason", "deliveryCode",
           subtotal_items, coverage_zone_id, zone_name, zone_surcharge_type,
-          zone_surcharge_value, zone_surcharge_amount,
+          zone_surcharge_value, zone_surcharge_amount, payment_surcharge_amount,
           vehicle_car_id, vehicle_patent, vehicle_brand, vehicle_model,
           payment_confirmed_at, payment_confirmed_by, payment_resolved_at, payment_resolved_by,
           payment_resolution_note)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
                ST_SetSRID(ST_MakePoint($17::float8, $16::float8), 4326),
                $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'fixed',$28,$28,
-               $29,$30,$31,$32,$33,$34,$35,$36,$37)
+               $29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
        RETURNING order_id`,
       [
         distId,
@@ -1577,6 +1581,7 @@ async function sembrarPedidos(
         dir.zonaId,
         dir.zona,
         dir.recargo,
+        recargoOnline,
         aceptado ? chofer!.carId : null,
         aceptado ? chofer!.patente : null,
         aceptado ? chofer!.marca : null,
@@ -2002,6 +2007,9 @@ async function sembrarEnvases(
       else if (dado < 0.68) estado = 'dispatched';
       else if (dado < 0.9) estado = 'with_customer';
       else estado = 'empty_returned';
+      // «Con cliente» exige un cliente (`CHK_cylinder_cliente_segun_estado`): sin
+      // pedidos entregados a quién atarlo, el envase queda en el depósito.
+      if (estado === 'with_customer' && !entregados.length) estado = 'in_depot';
 
       // El envase que está en la calle se ata a un pedido entregado real, para
       // que la ficha del envase cuente una historia que se pueda seguir.

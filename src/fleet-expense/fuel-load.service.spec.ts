@@ -425,6 +425,57 @@ describe('FuelLoadService', () => {
       expect(guardadas[0].odometerCorrectionNote).toBe('Cambio de tablero');
     });
 
+    describe('contra todas las cargas del vehículo (la anterior y la siguiente)', () => {
+      /** La primera lectura es la carga anterior; la segunda, la posterior. */
+      const vecinas = (previa: number | null, posterior: number | null) =>
+        anterior.getOne
+          .mockResolvedValueOnce(
+            previa === null ? null : { odometerKm: previa },
+          )
+          .mockResolvedValueOnce(
+            posterior === null ? null : { odometerKm: posterior },
+          );
+
+      it('un kilometraje mayor que el de una carga posterior es 400', async () => {
+        vecinas(800, 900);
+        await expect(service.registrar(dto, 'd1', 'u1')).rejects.toThrow(
+          'mayor que el de una carga posterior',
+        );
+        expect(guardadas).toHaveLength(0);
+      });
+
+      it('entre la anterior y la posterior pasa', async () => {
+        vecinas(800, 1200);
+        await expect(service.registrar(dto, 'd1', 'u1')).resolves.toBeDefined();
+      });
+
+      it('igual al de la posterior pasa (mismo tablero)', async () => {
+        vecinas(800, 1000);
+        await expect(service.registrar(dto, 'd1', 'u1')).resolves.toBeDefined();
+      });
+
+      it('con corrección y nota el administrador lo fuerza; sin nota no', async () => {
+        vecinas(800, 900);
+        await expect(
+          service.registrar({ ...dto, odometerCorrection: true }, 'd1', 'u1'),
+        ).rejects.toThrow(/odometerCorrectionNote/);
+
+        vecinas(800, 900);
+        await service.registrar(
+          {
+            ...dto,
+            odometerCorrection: true,
+            odometerCorrectionNote: 'Se cargó con la fecha equivocada',
+          },
+          'd1',
+          'u1',
+        );
+        expect(guardadas[0].odometerCorrectionNote).toBe(
+          'Se cargó con la fecha equivocada',
+        );
+      });
+    });
+
     it('una carga futura es 400', async () => {
       await expect(
         service.registrar(

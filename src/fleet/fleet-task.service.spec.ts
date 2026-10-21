@@ -32,7 +32,7 @@ describe('FleetTaskService', () => {
     createQueryBuilder: jest.Mock;
     manager: { transaction: jest.Mock };
   };
-  let plans: { findOne: jest.Mock };
+  let plans: { findOne: jest.Mock; findOneOrFail: jest.Mock };
   let carService: { findOne: jest.Mock; actualizarOdometro: jest.Mock };
   let deliveryService: { findOne: jest.Mock };
   let fleetLock: { choferesInhabilitados: jest.Mock };
@@ -67,11 +67,14 @@ describe('FleetTaskService', () => {
       createQueryBuilder: jest.fn(),
       manager: {
         transaction: jest.fn((cb: (m: unknown) => unknown) =>
-          cb({ getRepository: () => tasks }),
+          cb({
+            getRepository: (entidad: unknown) =>
+              entidad === MaintenancePlan ? plans : tasks,
+          }),
         ),
       },
     } as unknown as typeof tasks;
-    plans = { findOne: jest.fn() };
+    plans = { findOne: jest.fn(), findOneOrFail: jest.fn() };
     carService = { findOne: jest.fn(), actualizarOdometro: jest.fn() };
     deliveryService = { findOne: jest.fn() };
     fleetLock = {
@@ -486,8 +489,22 @@ describe('FleetTaskService', () => {
         details: { certificateNumber: '1', issuer: 'CNRT' },
       }) as unknown as MaintenanceTask;
 
+    /** La tarea que hay en la base: la ve el SELECT ... FOR UPDATE y la relectura final. */
+    const enLaBase = (tarea: MaintenanceTask) => {
+      const qb = {
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(tarea),
+      };
+      tasks.createQueryBuilder.mockReturnValue(qb);
+      tasks.findOne.mockResolvedValue(tarea);
+      plans.findOneOrFail.mockResolvedValue(planCurso);
+      return qb;
+    };
+
     it('corrige el detalle validado contra el tipo de documento del plan', async () => {
-      tasks.findOne.mockResolvedValue(abierta());
+      enLaBase(abierta());
 
       const res = await service.update(
         't1',
@@ -499,7 +516,7 @@ describe('FleetTaskService', () => {
     });
 
     it('un detalle con otra forma es 400 y no se guarda', async () => {
-      tasks.findOne.mockResolvedValue(abierta());
+      enLaBase(abierta());
 
       await expect(
         service.update('t1', { details: { certificateNumber: '2' } }, 'd1'),
@@ -508,12 +525,30 @@ describe('FleetTaskService', () => {
     });
 
     it('sin details en el cuerpo, el detalle no se toca', async () => {
-      tasks.findOne.mockResolvedValue(abierta());
+      enLaBase(abierta());
 
       const res = await service.update('t1', { notes: 'x' }, 'd1');
 
       expect(res.details).toEqual({ certificateNumber: '1', issuer: 'CNRT' });
     });
+
+    it('edita con la fila bloqueada, dentro de una transacción', async () => {
+      const qb = enLaBase(abierta());
+      await service.update('t1', { notes: 'x' }, 'd1');
+      expect(tasks.manager.transaction).toHaveBeenCalled();
+      expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it.each([MaintenanceTaskStatus.DONE, MaintenanceTaskStatus.CANCELLED])(
+      'una tarea que ya quedó %s (la cerró otro mientras tanto) es 409 y no se reabre',
+      async (status) => {
+        enLaBase({ ...abierta(), status });
+        await expect(
+          service.update('t1', { notes: 'x' }, 'd1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(tasks.save).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('close/cancel', () => {
@@ -525,8 +560,27 @@ describe('FleetTaskService', () => {
         notes: null,
       }) as MaintenanceTask;
 
+    let bloqueo: {
+      setLock: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      getOne: jest.Mock;
+    };
+
+    /** La tarea que hay en la base: la ve el SELECT ... FOR UPDATE y la relectura final. */
+    const enLaBase = (tarea: MaintenanceTask | null) => {
+      bloqueo = {
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(tarea),
+      };
+      tasks.createQueryBuilder.mockReturnValue(bloqueo);
+      tasks.findOne.mockResolvedValue(tarea);
+    };
+
     it('cerrar registra lo hecho y pasa a DONE', async () => {
-      tasks.findOne.mockResolvedValue(abierta());
+      enLaBase(abierta());
       const cerrada = await service.close(
         't1',
         { performedAt: '2026-09-26T00:00:00.000Z', odometerKm: 50000 },
@@ -536,8 +590,41 @@ describe('FleetTaskService', () => {
       expect(cerrada.odometerKm).toBe(50000);
     });
 
+    it('cerrar lee la tarea con la fila bloqueada, dentro de la transacción', async () => {
+      enLaBase(abierta());
+      await service.close(
+        't1',
+        { performedAt: '2026-09-26T00:00:00.000Z' },
+        'd1',
+      );
+      expect(tasks.manager.transaction).toHaveBeenCalled();
+      expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('cancelar también bloquea la fila: un cierre y una cancelación no se pisan', async () => {
+      enLaBase(abierta());
+      await service.cancel('t1', { notes: 'ya no aplica' }, 'd1');
+      expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
+    });
+
+    it('cerrar una tarea inexistente (o de otra distribuidora) es 404', async () => {
+      enLaBase(null);
+      await expect(
+        service.close('t1', { performedAt: '2026-09-26T00:00:00.000Z' }, 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('cuándo se hizo no puede ser una fecha futura (400) y no toca nada', async () => {
+      enLaBase(abierta());
+      const manana = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+      await expect(
+        service.close('t1', { performedAt: manana }, 'd1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(tasks.manager.transaction).not.toHaveBeenCalled();
+    });
+
     it('cerrar una tarea de un vehículo sube su kilometraje por el punto único', async () => {
-      tasks.findOne.mockResolvedValue({ ...abierta(), carId: 'c1' });
+      enLaBase({ ...abierta(), carId: 'c1' });
       await service.close(
         't1',
         { performedAt: '2026-09-26T00:00:00.000Z', odometerKm: 50000 },
@@ -551,7 +638,7 @@ describe('FleetTaskService', () => {
     });
 
     it('cerrar sin kilometraje no toca el del vehículo', async () => {
-      tasks.findOne.mockResolvedValue({ ...abierta(), carId: 'c1' });
+      enLaBase({ ...abierta(), carId: 'c1' });
       await service.close(
         't1',
         { performedAt: '2026-09-26T00:00:00.000Z' },
@@ -561,7 +648,7 @@ describe('FleetTaskService', () => {
     });
 
     it('no se puede cerrar una tarea ya cerrada', async () => {
-      tasks.findOne.mockResolvedValue({
+      enLaBase({
         ...abierta(),
         status: MaintenanceTaskStatus.DONE,
       });
@@ -571,7 +658,7 @@ describe('FleetTaskService', () => {
     });
 
     it('cancelar agrega el motivo a las notas', async () => {
-      tasks.findOne.mockResolvedValue(abierta());
+      enLaBase(abierta());
       const cancelada = await service.cancel(
         't1',
         { notes: 'ya no aplica' },

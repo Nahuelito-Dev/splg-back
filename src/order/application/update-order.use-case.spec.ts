@@ -129,6 +129,7 @@ describe('UpdateOrderUseCase', () => {
       calcularTotales: jest.fn((sub: number | Decimal) => ({
         totalAmount: new Decimal(sub),
         zoneSurchargeAmount: new Decimal(0),
+        paymentSurchargeAmount: new Decimal(0),
       })),
     };
     addresses = { buscarDelUsuario: jest.fn() };
@@ -312,6 +313,13 @@ describe('UpdateOrderUseCase', () => {
     );
   });
 
+  it('una fecha nueva pasada es 400 aunque no haya franja', async () => {
+    await expect(
+      useCase.execute('o1', { scheduledDate: '2020-01-01' }, 'u1', 'd1'),
+    ).rejects.toThrow('scheduledDate no puede ser una fecha pasada');
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+  });
+
   it('cambiar sólo la franja de una fecha ya pasada pide fecha nueva (400)', async () => {
     locked = makeOrder({ timeSlotId: 's1', scheduledDate: '2020-01-01' });
     await expect(
@@ -463,6 +471,19 @@ describe('UpdateOrderUseCase', () => {
       );
     });
 
+    it('guarda el recargo por medio de pago que calcula el servidor, junto con el total', async () => {
+      create.calcularTotales.mockReturnValue({
+        totalAmount: new Decimal(3300),
+        zoneSurchargeAmount: new Decimal(0),
+        paymentSurchargeAmount: new Decimal(300),
+      });
+      await comoCliente({
+        items: [{ gasCylinderId: 'g2', quantity: 3 }],
+      } as Parameters<UpdateOrderUseCase['execute']>[1]);
+      expect(locked?.totalAmount).toBe(3300);
+      expect(locked?.paymentSurchargeAmount).toBe(300);
+    });
+
     it('el admin no deja anotación de cliente en el historial', async () => {
       await useCase.execute('o1', { notes: 'x' }, 'u1', 'd1');
       expect(queryRunner.manager.insert).not.toHaveBeenCalled();
@@ -515,6 +536,7 @@ describe('UpdateOrderUseCase', () => {
       create.calcularTotales.mockReturnValueOnce({
         totalAmount: new Decimal('100.089'),
         zoneSurchargeAmount: new Decimal(0),
+        paymentSurchargeAmount: new Decimal(0),
       });
       await expect(
         useCase.execute(
@@ -528,6 +550,7 @@ describe('UpdateOrderUseCase', () => {
       create.calcularTotales.mockReturnValueOnce({
         totalAmount: new Decimal('100.089'),
         zoneSurchargeAmount: new Decimal(0),
+        paymentSurchargeAmount: new Decimal(0),
       });
       await expect(
         useCase.execute(

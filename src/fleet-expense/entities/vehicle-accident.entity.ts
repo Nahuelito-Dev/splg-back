@@ -7,6 +7,7 @@ import {
   Index,
   CreateDateColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import type { Point } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -27,6 +28,14 @@ export enum VehicleAccidentStatus {
  * Siniestro de un vehículo (CU-201, CU-202, CU-327, CU-328). No es la
  * incidencia de un pedido (CU-060): es un hecho del vehículo, con su costo.
  */
+@Check(
+  'CHK_vehicle_accident_montos',
+  `coalesce("repair_cost", 0) >= 0 AND coalesce("insurer_reimbursement", 0) >= 0 AND coalesce("deductible_amount", 0) >= 0 AND ("insurer_reimbursement" IS NULL OR "repair_cost" IS NULL OR "insurer_reimbursement" <= "repair_cost")`,
+)
+@Check(
+  'CHK_vehicle_accident_cerrado_fecha',
+  `"status" <> 'closed' OR "closed_at" IS NOT NULL`,
+)
 @Entity('vehicle_accident')
 @Index('IDX_vehicle_accident_car', ['carId', 'occurredAt'])
 @Index('IDX_vehicle_accident_status', ['distributorId', 'status'])

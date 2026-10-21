@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Check,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Order } from '../../order/entities/order.entity';
@@ -14,6 +15,7 @@ import { DriverSettlement } from './driver-settlement.entity';
  * Pedido en efectivo que entró a una rendición. `order_id` es único: un pedido
  * se rinde una sola vez, aunque dos rendiciones lo vean pendiente.
  */
+@Check('CHK_driver_settlement_order_importe', `"amount" >= 0`)
 @Entity('driver_settlement_order')
 @Index('UQ_driver_settlement_order_pedido', ['orderId'], { unique: true })
 export class DriverSettlementOrder {

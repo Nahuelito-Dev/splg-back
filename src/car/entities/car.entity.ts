@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
   Index,
   DeleteDateColumn,
+  Check,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -28,6 +29,11 @@ export enum FuelType {
   LPG = 'lpg',
 }
 
+@Check(
+  'CHK_car_patente',
+  `"car_patent" IS NULL OR "car_patent" ~ '^([A-Z]{3}[0-9]{3}|[A-Z]{2}[0-9]{3}[A-Z]{2})$'`,
+)
+@Index('UQ_car_patente_distribuidora_vigente', { synchronize: false })
 @Entity('car')
 export class Car {
   @PrimaryGeneratedColumn('uuid', { name: 'car_id' })
@@ -46,7 +52,7 @@ export class Car {
   })
   distributorId!: string;
 
-  @ManyToOne(() => User, (user) => user.cars, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.cars, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
@@ -71,12 +77,9 @@ export class Car {
   })
   carCapacity!: number | null; // Capacidad en kg
 
-  // Única entre los vehículos vigentes: dar de baja uno no bloquea volver a
-  // registrar la misma patente.
-  @Index('UQ_car_patente_vigente', ['car_patent'], {
-    unique: true,
-    where: '"deletedAt" IS NULL',
-  })
+  // Única por distribuidora entre los vehículos vigentes (`UQ_car_patente_
+  // distribuidora_vigente`): dar de baja uno no bloquea volver a registrar la
+  // misma patente.
   @Column({
     name: 'car_patent',
     type: 'varchar',

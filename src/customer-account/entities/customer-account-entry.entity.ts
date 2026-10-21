@@ -22,6 +22,10 @@ import { CustomerAccount } from './customer-account.entity';
  * rechaza todo `UPDATE` y `DELETE`; un error se corrige con una nota de crédito
  * o de débito. El importe es siempre positivo y el signo lo da el tipo.
  */
+@Check(
+  'CHK_customer_account_entry_vencimiento',
+  `"due_date" IS NULL OR "due_date" >= ("occurred_at" AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`,
+)
 @Entity('customer_account_entry')
 @Check('CHK_customer_account_entry_importe', '"amount" > 0')
 @Index('IDX_customer_account_entry_cuenta_fecha', ['accountId', 'occurredAt'])
