@@ -25,7 +25,7 @@ export class OrderStatusHistory {
   @PrimaryGeneratedColumn('uuid', { name: 'history_id' })
   historyId!: string;
 
-  @ManyToOne(() => Order, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 

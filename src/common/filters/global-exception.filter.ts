@@ -20,6 +20,7 @@ import {
   MENSAJE_TEXTO_INVALIDO,
   esTextoInvalidoDeBase,
   esTimeoutDeBase,
+  traducirRestriccionConocida,
 } from '../errors/db-exceptions';
 import type { Request } from 'express';
 
@@ -125,6 +126,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         `Texto con caracteres no válidos: ${exception instanceof Error ? exception.message : 'sin mensaje'}`,
       );
       return new BadRequestException(MENSAJE_TEXTO_INVALIDO);
+    }
+    // Una regla de la base (CHECK, único, exclusión) que ningún servicio
+    // alcanzó a traducir: 400/409 con el motivo en castellano.
+    const restriccion = traducirRestriccionConocida(exception);
+    if (restriccion) {
+      this.logger.warn(`Regla de la base violada: ${restriccion.message}`);
+      return restriccion;
     }
     return exception;
   }

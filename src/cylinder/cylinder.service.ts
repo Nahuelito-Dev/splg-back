@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { normalizarSerial } from './dto/serial-de-envase';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Brackets, EntityManager, Repository } from 'typeorm';
@@ -67,6 +68,15 @@ const ESTADO_DEL_PEDIDO: Readonly<Record<OrderStatus, string>> = {
 /** Lo que el panel muestra de cada envase: de qué producto es y quién lo tiene. */
 const CON_PRODUCTO_Y_CLIENTE = ['gasCylinder', 'currentCustomer'];
 
+/** Serial en su forma canónica (recortado, en mayúsculas); vacío no es válido. */
+function serialNormalizado(serial: string): string {
+  const normalizado = normalizarSerial(serial);
+  if (normalizado === '') {
+    throw new BadRequestException('El serial no puede estar vacío');
+  }
+  return normalizado;
+}
+
 @Injectable()
 export class CylinderService {
   constructor(
@@ -95,7 +105,7 @@ export class CylinderService {
     }
     const cylinder = this.cylinderRepository.create({
       distributorId,
-      serial: dto.serial,
+      serial: serialNormalizado(dto.serial),
       gasCylinderId: dto.gasCylinderId ?? null,
       deposit: dto.deposit ?? 0,
       state: CylinderState.IN_DEPOT,
@@ -402,8 +412,19 @@ export class CylinderService {
             'El envase está dado de baja y no se edita',
           );
         }
+        if (
+          dto.manufacturedAt !== undefined &&
+          cylinder.expiresAt &&
+          dto.manufacturedAt.getTime() > cylinder.expiresAt.getTime()
+        ) {
+          throw new BadRequestException(
+            'La fecha de fabricación no puede ser posterior al vencimiento del envase',
+          );
+        }
         Object.assign(cylinder, {
-          ...(dto.serial !== undefined && { serial: dto.serial }),
+          ...(dto.serial !== undefined && {
+            serial: serialNormalizado(dto.serial),
+          }),
           ...(dto.gasCylinderId !== undefined && {
             gasCylinderId: dto.gasCylinderId,
           }),

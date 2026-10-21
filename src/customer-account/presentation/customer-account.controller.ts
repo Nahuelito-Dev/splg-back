@@ -130,7 +130,7 @@ export class CustomerAccountController {
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
     description:
-      'Se cierra con saldo distinto de cero o con pedidos a cuenta sin entregar',
+      'Se cierra con saldo distinto de cero o con pedidos a cuenta sin entregar, o la transición de estado no está permitida (una cuenta cerrada sólo se reabre pasándola a active)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

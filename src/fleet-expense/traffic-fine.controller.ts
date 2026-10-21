@@ -52,7 +52,8 @@ export class TrafficFineController {
   })
   @ApiCreatedResponse({ type: TrafficFineResponseDto })
   @ApiBadRequestResponse({
-    description: 'Dato obligatorio faltante o importe inválido',
+    description:
+      'Dato obligatorio faltante, importe inválido, infracción futura, vencimiento anterior a la infracción o pago voluntario mayor al importe',
   })
   @ApiNotFoundResponse({ description: 'Vehículo o empleado no encontrado' })
   @ApiConflictResponse({
@@ -101,7 +102,10 @@ export class TrafficFineController {
   })
   @ApiParam({ name: 'id', description: 'Multa UUID' })
   @ApiOkResponse({ type: TrafficFineResponseDto })
-  @ApiBadRequestResponse({ description: 'Dato inválido' })
+  @ApiBadRequestResponse({
+    description:
+      'Dato inválido, infracción futura o vencimiento anterior a la infracción',
+  })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
     description:
@@ -127,7 +131,7 @@ export class TrafficFineController {
   @ApiOkResponse({ type: TrafficFineResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Fecha de pago futura, importe inválido, falta la caja de efectivo o la caja no es de efectivo',
+      'Fecha de pago futura o anterior a la infracción, importe inválido, falta la caja de efectivo o la caja no es de efectivo',
   })
   @ApiNotFoundResponse({
     description: 'La multa o la caja no existen o son de otra distribuidora',

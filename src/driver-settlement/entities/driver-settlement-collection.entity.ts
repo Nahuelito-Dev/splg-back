@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Check,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { CustomerAccountEntry } from '../../customer-account/entities/customer-account-entry.entity';
@@ -16,6 +17,7 @@ import { DriverSettlement } from './driver-settlement.entity';
  * movimiento de caja: suma al efectivo esperado de su rendición abierta y entra
  * a la caja al aprobarla (una sola puerta para el dinero de la calle).
  */
+@Check('CHK_driver_settlement_collection_importe', `"amount" > 0`)
 @Entity('driver_settlement_collection')
 @Index('UQ_driver_settlement_collection_asiento', ['entryId'], { unique: true })
 export class DriverSettlementCollection {

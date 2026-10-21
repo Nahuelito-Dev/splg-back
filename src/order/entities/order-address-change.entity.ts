@@ -20,7 +20,7 @@ export class OrderAddressChange {
   @PrimaryGeneratedColumn('uuid', { name: 'change_id' })
   changeId!: string;
 
-  @ManyToOne(() => Order, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 

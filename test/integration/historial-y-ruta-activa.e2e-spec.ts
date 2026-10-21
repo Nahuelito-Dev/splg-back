@@ -28,6 +28,7 @@ import {
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
+import { fechasSegunEstado } from './setup/pedido-valido';
 
 type Headers = Record<string, string>;
 
@@ -121,6 +122,10 @@ describe('Historial de estados y pedido activo del chofer (HTTP e2e)', () => {
       latitude: '-34.6037',
       longitude: '-58.3816',
     } as Partial<UserAddress>);
+    const conChofer = (estado?: OrderStatus) =>
+      estado === OrderStatus.ACCEPTED ||
+      estado === OrderStatus.ON_THE_WAY ||
+      estado === OrderStatus.DELIVERED;
     const pedido = (parcial: Partial<Order>) =>
       ds.getRepository(Order).save({
         customerId: cli.user.userId,
@@ -131,6 +136,8 @@ describe('Historial de estados y pedido activo del chofer (HTTP e2e)', () => {
         paymentStatus: PaymentStatus.PENDING,
         totalAmount: 1000,
         subtotalItems: 1000,
+        ...fechasSegunEstado(parcial.status ?? OrderStatus.PENDING),
+        ...(conChofer(parcial.status) && { deliveryId: delivery.deliveryId }),
         ...parcial,
       } as Partial<Order>) as Promise<Order>;
     return {

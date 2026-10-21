@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -43,12 +44,13 @@ export enum IncidentStatus {
   unique: true,
   where: `"type" = 'unpaid_collection' AND "status" IN ('open', 'resolved')`,
 })
+@Check('CHK_incident_descripcion', `btrim("description") <> ''`)
 @Entity('incident')
 export class Incident {
   @PrimaryGeneratedColumn('uuid', { name: 'incident_id' })
   incidentId!: string;
 
-  @ManyToOne(() => Order, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 

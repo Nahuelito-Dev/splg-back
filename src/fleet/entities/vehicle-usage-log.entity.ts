@@ -6,6 +6,7 @@ import {
   JoinColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 import { Car } from '../../car/entities/car.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -16,6 +17,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
  * Kilómetros, pedidos y horas en ruta por vehículo y día. Sólo se agrega.
  * Casos: CU-136 a CU-142 y CU-105 (M1)
  */
+@Check(
+  'CHK_vehicle_usage_log_valores',
+  `"km" >= 0 AND "orders" >= 0 AND "route_hours" >= 0`,
+)
 @Entity('vehicle_usage_log')
 @Unique('UQ_vehicle_usage_log_car_day', ['carId', 'day'])
 export class VehicleUsageLog {

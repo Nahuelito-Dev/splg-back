@@ -24,6 +24,7 @@ import {
 } from '../../src/cylinder/entities/cylinder.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { RoleType } from '../../src/common/constants/role-type.enum';
+import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
 
 describe('Filtros del panel (e2e)', () => {
   let env: TestEnv;
@@ -84,6 +85,9 @@ describe('Filtros del panel (e2e)', () => {
         paymentMethod: PaymentMethod.CASH,
         totalAmount: 1000,
         subtotalItems: 1000,
+        deliveryId: (await sembrarChoferDeFixture(dataSource, distributorId))
+          .deliveryId,
+        ...fechasDeEntrega(),
       } as Partial<Order>);
     }
     return { user, pedido };

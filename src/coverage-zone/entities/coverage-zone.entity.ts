@@ -40,6 +40,12 @@ export enum CoverageZoneSurchargeType {
  * general de la ciudad), gana la de mayor `priority`; a igual prioridad, la de
  * MENOR área (la más específica).
  */
+@Check(
+  'CHK_coverage_zone_vigencia',
+  `"valid_until" IS NULL OR "valid_from" IS NULL OR "valid_until" > "valid_from"`,
+)
+@Index('UQ_coverage_zone_nombre_activa', { synchronize: false })
+@Index('UQ_coverage_zone_prioridad_activa', { synchronize: false })
 @Entity('coverage_zone')
 @Check(
   'CHK_coverage_zone_surcharge',

@@ -8,6 +8,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { CashBox } from '../../cash/entities/cash-box.entity';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
@@ -31,6 +32,22 @@ import { DriverSettlementOrder } from './driver-settlement-order.entity';
  * camión ese día, queda atada a ella. Al aprobarla, el efectivo entra a una caja
  * por el libro.
  */
+@Check(
+  'CHK_driver_settlement_montos',
+  `"expected_cash" >= 0 AND "driver_expenses" >= 0 AND ("declared_cash" IS NULL OR "declared_cash" >= 0)`,
+)
+@Check(
+  'CHK_driver_settlement_presentada',
+  `"status" = 'open' OR ("submitted_at" IS NOT NULL AND "declared_cash" IS NOT NULL)`,
+)
+@Check(
+  'CHK_driver_settlement_aprobada',
+  `("status" = 'approved') = ("approved_at" IS NOT NULL)`,
+)
+@Check(
+  'CHK_driver_settlement_diferencia',
+  `"difference" IS NULL OR "difference" = "declared_cash" + "driver_expenses" - "expected_cash"`,
+)
 @Entity('driver_settlement')
 @Index('UQ_driver_settlement_numero', ['distributorId', 'number'], {
   unique: true,

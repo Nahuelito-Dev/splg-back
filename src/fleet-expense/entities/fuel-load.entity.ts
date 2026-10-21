@@ -9,6 +9,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car, FuelType } from '../../car/entities/car.entity';
@@ -29,6 +30,8 @@ export enum FuelPaymentMethod {
  * precio y kilometraje, y de ahí salen el consumo por tramo y el costo.
  * `deletedAt` es la anulación (CU-321): la fila se conserva y deja de contar.
  */
+@Check('CHK_fuel_load_precio', `"unit_price" > 0`)
+@Check('CHK_fuel_load_odometro', `"odometer_km" >= 0`)
 @Entity('fuel_load')
 @Index('IDX_fuel_load_car_loaded_at', ['carId', 'loadedAt'])
 @Index('IDX_fuel_load_distributor_loaded_at', ['distributorId', 'loadedAt'])
@@ -129,6 +132,10 @@ export class FuelLoad {
    * pagó el chofer con su efectivo y en la que cargó el chofer y el
    * administrador todavía no asentó en una caja.
    */
+  @ForeignKey('cash_movement', {
+    name: 'FK_fuel_load_cash_movement',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
   cashMovementId!: string | null;
 

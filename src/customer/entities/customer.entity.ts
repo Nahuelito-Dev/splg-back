@@ -9,17 +9,22 @@ import {
   Index,
   Point,
   ManyToOne,
+  Check,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 
+@Check(
+  'CHK_customer_consumo',
+  `"avg_monthly_consumption_kg" IS NULL OR "avg_monthly_consumption_kg" > 0`,
+)
 @Entity('customer')
 export class Customer {
   @PrimaryGeneratedColumn('uuid', { name: 'customer_id' })
   customerId!: string;
 
-  @OneToOne(() => User, (user) => user.customer, { onDelete: 'CASCADE' })
+  @OneToOne(() => User, (user) => user.customer, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 

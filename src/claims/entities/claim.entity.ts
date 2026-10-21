@@ -6,6 +6,7 @@ import {
   CreateDateColumn,
   JoinColumn,
   Index,
+  Check,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -18,6 +19,10 @@ export enum ClaimStatus {
   REJECTED = 'rejected',
 }
 
+@Check(
+  'CHK_claims_textos',
+  `btrim("reason") <> '' AND btrim("description") <> ''`,
+)
 @Entity('claims')
 export class Claim {
   @PrimaryGeneratedColumn('uuid', { name: 'claim_id' })

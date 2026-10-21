@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -20,6 +21,23 @@ import { LiquidationStatus } from '../domain/commission.enums';
  * se aprueba (se congela) y se paga con un egreso de caja. Una pagada no se
  * anula desde acá porque el pago ya sacó dinero de una caja.
  */
+@Check('CHK_driver_liquidation_periodo', `"period_from" <= "period_to"`)
+@Check(
+  'CHK_driver_liquidation_montos',
+  `"gross" >= 0 AND "deductions" >= 0 AND "net" = "gross" - "deductions"`,
+)
+@Check(
+  'CHK_driver_liquidation_aprobada',
+  `"status" NOT IN ('approved', 'paid') OR "approved_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_driver_liquidation_pagada',
+  `("status" = 'paid') = ("paid_at" IS NOT NULL)`,
+)
+@Check(
+  'CHK_driver_liquidation_anulada',
+  `("status" = 'voided') = ("voided_at" IS NOT NULL)`,
+)
 @Entity('driver_liquidation')
 @Index('UQ_driver_liquidation_numero', ['distributorId', 'number'], {
   unique: true,

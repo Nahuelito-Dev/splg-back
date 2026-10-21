@@ -23,6 +23,7 @@ describe('PaymentsService', () => {
     save: jest.Mock;
     findOne: jest.Mock;
     find: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
   let orderLookup: { findPaymentState: jest.Mock };
   let paymentGateway: {
@@ -37,6 +38,11 @@ describe('PaymentsService', () => {
       save: jest.fn((entity: Payment) => Promise.resolve(entity)),
       findOne: jest.fn(),
       find: jest.fn(),
+      manager: {
+        transaction: jest.fn((trabajo: (m: unknown) => unknown) =>
+          trabajo({ getRepository: () => paymentRepository }),
+        ),
+      },
     };
     paymentGateway = {
       createCheckout: jest.fn(),
@@ -356,6 +362,331 @@ describe('PaymentsService', () => {
         gatewayPaymentId: 'pay-1',
         status: 'approved',
         isDeposit: true,
+      });
+    });
+
+    describe('atomicidad: leer, validar y escribir con la fila bloqueada', () => {
+      it('corre en una transacción y lee el pago con FOR UPDATE', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+        });
+        paymentRepository.findOne.mockResolvedValueOnce({
+          paymentId: 'l1',
+          orderId: 'ord-1',
+          gatewayPaymentId: 'pay-1',
+          amount: 10,
+          status: LedgerPaymentStatus.PENDING,
+          metadata: null,
+        });
+
+        await service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+
+        expect(paymentRepository.manager.transaction).toHaveBeenCalledTimes(1);
+        expect(paymentRepository.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+        );
+      });
+
+      it('con dos intentos sin id de pasarela, si otra notificación ya tomó el otro, usa ése y no choca con el índice único', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+          amount: 10,
+        });
+        const intentoAnterior = {
+          paymentId: 'viejo',
+          orderId: 'ord-1',
+          gatewayPaymentId: null,
+          amount: 10,
+          isDeposit: false,
+          status: LedgerPaymentStatus.PENDING,
+          metadata: null,
+        };
+        const yaTomado = {
+          ...intentoAnterior,
+          paymentId: 'nuevo',
+          gatewayPaymentId: 'pay-1',
+          status: LedgerPaymentStatus.APPROVED,
+        };
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null) // por id de pasarela
+          .mockResolvedValueOnce(intentoAnterior) // candidato (IS NULL) tras esperar el lock
+          .mockResolvedValueOnce(yaTomado); // se resuelve de nuevo por id de pasarela
+
+        await service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+
+        const guardado = (
+          paymentRepository.save.mock.calls as Array<[{ paymentId: string }]>
+        )[0][0];
+        expect(guardado.paymentId).toBe('nuevo');
+        expect(intentoAnterior.gatewayPaymentId).toBeNull();
+      });
+
+      it('un 23505 por el id de pasarela no es un error: se reintenta sobre el intento que ya lo tiene', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+        });
+        const intento = {
+          paymentId: 'a',
+          orderId: 'ord-1',
+          gatewayPaymentId: null,
+          amount: 10,
+          isDeposit: false,
+          status: LedgerPaymentStatus.PENDING,
+          metadata: null,
+        };
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(intento)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({
+            ...intento,
+            gatewayPaymentId: 'pay-1',
+            status: LedgerPaymentStatus.APPROVED,
+          });
+        paymentRepository.save.mockRejectedValueOnce({ code: '23505' });
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(result?.status).toBe('approved');
+        expect(paymentRepository.manager.transaction).toHaveBeenCalledTimes(2);
+      });
+
+      it('si otra notificación del mismo pago se llevó el registro pendiente mientras esperaba el lock, relee por el id de la pasarela', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'pending',
+          externalReference: 'ord-1',
+        });
+        const yaAprobado = {
+          paymentId: 'l1',
+          orderId: 'ord-1',
+          gatewayPaymentId: 'pay-1',
+          amount: 10,
+          isDeposit: false,
+          status: LedgerPaymentStatus.APPROVED,
+          metadata: null,
+        };
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null) // por id de pasarela
+          .mockResolvedValueOnce(null) // pendiente sin id: ya se lo llevó la otra
+          .mockResolvedValueOnce(yaAprobado); // relectura por id de pasarela
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(paymentRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({ status: LedgerPaymentStatus.APPROVED }),
+        );
+        expect(result?.status).toBe('approved');
+      });
+    });
+
+    describe('el estado del pago no retrocede', () => {
+      const ledgerAprobado = () => ({
+        paymentId: 'ledger-1',
+        orderId: 'ord-1',
+        externalReference: 'ord-1',
+        gatewayPaymentId: 'pay-1',
+        amount: 15000,
+        isDeposit: false,
+        status: LedgerPaymentStatus.APPROVED,
+        metadata: { gatewayStatus: 'approved' },
+      });
+
+      it.each(['pending', 'rejected', 'cancelled'])(
+        'una notificación atrasada (%s) no pisa un pago aprobado, y se informa como aprobado',
+        async (estado) => {
+          paymentGateway.getPayment.mockResolvedValue({
+            id: 'pay-1',
+            status: estado,
+            externalReference: 'ord-1',
+          });
+          paymentRepository.findOne.mockResolvedValueOnce(ledgerAprobado());
+
+          const result = await service.confirmFromGateway({
+            type: 'payment',
+            dataId: 'pay-1',
+          });
+
+          expect(paymentRepository.save).toHaveBeenCalledWith(
+            expect.objectContaining({ status: LedgerPaymentStatus.APPROVED }),
+          );
+          expect(result?.status).toBe('approved');
+        },
+      );
+
+      it('un pago aprobado sí puede pasar a devuelto', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'refunded',
+          externalReference: 'ord-1',
+        });
+        paymentRepository.findOne.mockResolvedValueOnce(ledgerAprobado());
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(paymentRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({ status: LedgerPaymentStatus.REFUNDED }),
+        );
+        expect(result?.status).toBe('refunded');
+      });
+    });
+
+    it('la alerta de monto distinto es persistente: un pending atrasado posterior la sigue informando', async () => {
+      const ledger = {
+        paymentId: 'l1',
+        orderId: 'ord-1',
+        externalReference: 'ord-1',
+        gatewayPaymentId: null as string | null,
+        amount: 15000,
+        isDeposit: false,
+        status: LedgerPaymentStatus.PENDING,
+        metadata: null as Record<string, unknown> | null,
+      };
+      paymentRepository.save.mockImplementation((p: typeof ledger) =>
+        Promise.resolve(p),
+      );
+      // 1) aprobación por un monto distinto
+      paymentGateway.getPayment.mockResolvedValueOnce({
+        id: 'pay-1',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 1500,
+      });
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(ledger);
+      await service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+
+      // 2) un pending atrasado del mismo pago: el ledger sigue aprobado y marcado
+      paymentGateway.getPayment.mockResolvedValueOnce({
+        id: 'pay-1',
+        status: 'pending',
+        externalReference: 'ord-1',
+        amount: 15000,
+      });
+      paymentRepository.findOne.mockResolvedValueOnce(ledger);
+      const result = await service.confirmFromGateway({
+        type: 'payment',
+        dataId: 'pay-1',
+      });
+
+      expect(result?.status).toBe('approved');
+      expect(result?.montoDistinto).toEqual({ esperado: 15000, cobrado: 1500 });
+      expect(ledger.status).toBe(LedgerPaymentStatus.APPROVED);
+    });
+
+    describe('el monto aprobado por la pasarela contra el esperado', () => {
+      const pendiente = (amount: number) => ({
+        paymentId: 'ledger-1',
+        orderId: 'ord-1',
+        externalReference: 'ord-1',
+        gatewayPaymentId: null,
+        amount,
+        isDeposit: false,
+        status: LedgerPaymentStatus.PENDING,
+        metadata: null,
+      });
+
+      it('si coincide, no hay alerta', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+          amount: 15000,
+        });
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(pendiente(15000));
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(result?.montoDistinto).toBeUndefined();
+      });
+
+      it('si difiere, lo informa para que no se despache y deja el registro en el ledger', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+          amount: 1500,
+        });
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(pendiente(15000));
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(result?.montoDistinto).toEqual({
+          esperado: 15000,
+          cobrado: 1500,
+        });
+        expect(paymentRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            status: LedgerPaymentStatus.APPROVED,
+            metadata: expect.objectContaining({
+              montoDistinto: { esperado: 15000, cobrado: 1500 },
+            }) as object,
+          }),
+        );
+      });
+
+      it('si la pasarela no informa el monto, no se puede comparar y sigue como antes', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+          amount: null,
+        });
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(pendiente(15000));
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(result?.montoDistinto).toBeUndefined();
+      });
+
+      it('un pago rechazado no se compara', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'rejected',
+          externalReference: 'ord-1',
+          amount: 1,
+        });
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(pendiente(15000));
+
+        const result = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+        });
+
+        expect(result?.montoDistinto).toBeUndefined();
       });
     });
 

@@ -159,13 +159,14 @@ export class ChangeOrderAddressUseCase {
 
       // Fuera de cobertura: 400 antes de tocar nada.
       const zona = await this.create.resolverZona(order.distributorId, address);
-      const { totalAmount, zoneSurchargeAmount } = this.create.calcularTotales(
-        order.subtotalItems,
-        zona,
-        order.paymentMethod,
-        // Defensivo: mientras siga express el recargo se conserva en el total.
-        esExpress ? order.expressSurchargeAmount : 0,
-      );
+      const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
+        this.create.calcularTotales(
+          order.subtotalItems,
+          zona,
+          order.paymentMethod,
+          // Defensivo: mientras siga express el recargo se conserva en el total.
+          esExpress ? order.expressSurchargeAmount : 0,
+        );
 
       const cambiaElRecargo =
         zoneSurchargeAmount.toNumber() !== Number(order.zoneSurchargeAmount);
@@ -183,6 +184,7 @@ export class ChangeOrderAddressUseCase {
           throw new ConflictException(MENSAJE_SENA_PAGADA);
         }
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();
+        order.paymentSurchargeAmount = paymentSurchargeAmount.toNumber();
         order.totalAmount = totalAmount.toNumber();
       }
 

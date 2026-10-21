@@ -154,6 +154,7 @@ export class UpdateOrderStatusUseCase {
         id,
         actorUserId,
         mapRoleToCancelActor(role),
+        reason,
       );
     }
 

@@ -1,5 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { EntityManager, Repository } from 'typeorm';
 import { CoverageZoneService } from './coverage-zone.service';
 import { UpdateCoverageZoneDto } from './dto/update-coverage-zone.dto';
 import { CoverageZonePricingService } from './coverage-zone-pricing.service';
@@ -27,7 +31,21 @@ describe('CoverageZoneService', () => {
     findOne: jest.Mock;
     preload: jest.Mock;
     softRemove: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
+  /** El manager de la transacción en la que corren el alta y la edición. */
+  let manager: {
+    query: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    createQueryBuilder: jest.Mock;
+    getRepository: jest.Mock;
+  };
+  /** Zonas activas que ya tiene la distribuidora. */
+  let existentes: Array<Partial<CoverageZone>>;
+  /** Prioridad máxima de las zonas de la distribuidora (null si no hay). */
+  let prioridadMaxima: string | null;
 
   const pricing = new CoverageZonePricingService();
 
@@ -42,7 +60,31 @@ describe('CoverageZoneService', () => {
       findOne: jest.fn(),
       preload: jest.fn((z: Partial<CoverageZone>) => z),
       softRemove: jest.fn((z: CoverageZone) => Promise.resolve(z)),
+      manager: { transaction: jest.fn() },
     };
+    existentes = [];
+    prioridadMaxima = null;
+    manager = {
+      query: jest.fn().mockResolvedValue(undefined),
+      find: jest.fn(() => Promise.resolve(existentes)),
+      create: jest.fn((_entidad: unknown, z: Partial<CoverageZone>) => z),
+      save: jest.fn((z: CoverageZone) => Promise.resolve(z)),
+      createQueryBuilder: jest.fn(() => {
+        const qb = {
+          select: jest.fn(),
+          where: jest.fn(),
+          getRawOne: jest.fn(() => Promise.resolve({ max: prioridadMaxima })),
+        };
+        qb.select.mockReturnValue(qb);
+        qb.where.mockReturnValue(qb);
+        return qb;
+      }),
+      getRepository: jest.fn(() => ({ preload: repo.preload })),
+    };
+    repo.manager.transaction.mockImplementation(
+      (trabajo: (m: EntityManager) => Promise<unknown>) =>
+        trabajo(manager as unknown as EntityManager),
+    );
     service = new CoverageZoneService(
       repo as unknown as Repository<CoverageZone>,
       pricing,
@@ -63,6 +105,61 @@ describe('CoverageZoneService', () => {
       );
       expect(z.area.coordinates[0]).toHaveLength(4);
       expect(z.area.coordinates[0][3]).toEqual([-55.9, -27.3]);
+    });
+
+    it('sin prioridad, la zona nueva queda por encima de las que ya hay', async () => {
+      prioridadMaxima = '4';
+      const z = await service.create(
+        { name: 'Norte', polygon: poligono },
+        'd1',
+      );
+      expect(z.priority).toBe(5);
+    });
+
+    it('sin prioridad y sin zonas, arranca en 0', async () => {
+      const z = await service.create(
+        { name: 'Norte', polygon: poligono },
+        'd1',
+      );
+      expect(z.priority).toBe(0);
+    });
+
+    it('serializa las altas de la distribuidora con un lock', async () => {
+      await service.create({ name: 'Norte', polygon: poligono }, 'd1');
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        ['coverage_zone:d1'],
+      );
+    });
+
+    it('el nombre de otra zona activa (sin distinguir mayúsculas) es 409', async () => {
+      existentes = [{ coverageZoneId: 'z9', name: 'Centro', priority: 3 }];
+      const error = await service
+        .create({ name: ' centro ', polygon: poligono, priority: 7 }, 'd1')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as Error).message).toContain('«Centro»');
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('la prioridad de otra zona activa es 409', async () => {
+      existentes = [{ coverageZoneId: 'z9', name: 'Centro', priority: 3 }];
+      const error = await service
+        .create({ name: 'Norte', polygon: poligono, priority: 3 }, 'd1')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as Error).message).toContain('prioridad 3');
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('una zona creada inactiva no compite por nombre ni prioridad', async () => {
+      existentes = [{ coverageZoneId: 'z9', name: 'Centro', priority: 3 }];
+      await expect(
+        service.create(
+          { name: 'Centro', polygon: poligono, priority: 3, isActive: false },
+          'd1',
+        ),
+      ).resolves.toBeDefined();
     });
 
     it('rechaza un vértice que no es [lng, lat] numérico', async () => {
@@ -119,7 +216,7 @@ describe('CoverageZoneService', () => {
           'd1',
         ),
       ).rejects.toThrow('validUntil ya pasó');
-      expect(repo.save).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
     });
 
     it('una zona creada inactiva puede tener la fecha de fin pasada', async () => {
@@ -190,7 +287,7 @@ describe('CoverageZoneService', () => {
       await expect(service.update('z1', conNull, 'd1')).rejects.toBeInstanceOf(
         BadRequestException,
       );
-      expect(repo.save).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
     });
 
     it('de otra distribuidora, no se encuentra (404)', async () => {
@@ -216,7 +313,7 @@ describe('CoverageZoneService', () => {
         await expect(
           service.update('z1', { isActive: true }, 'd1'),
         ).rejects.toThrow('validUntil ya pasó');
-        expect(repo.save).not.toHaveBeenCalled();
+        expect(manager.save).not.toHaveBeenCalled();
       });
 
       it('reactivarla junto con una fecha de fin futura se acepta', async () => {
@@ -234,6 +331,75 @@ describe('CoverageZoneService', () => {
         repo.findOne.mockResolvedValue({ ...vencida(), isActive: true });
         await expect(
           service.update('z1', { name: 'Nuevo' }, 'd1'),
+        ).resolves.toBeDefined();
+      });
+    });
+
+    describe('nombre y prioridad entre zonas activas', () => {
+      const activa = () => ({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        name: 'Centro',
+        priority: 1,
+        isActive: true,
+        surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+        surchargeValue: 10,
+        validFrom: null,
+        validUntil: null,
+      });
+
+      let guardada: Partial<CoverageZone>;
+      /** La zona que hay en la base: la ve `findOne` y `preload` le pone los cambios encima. */
+      const enLaBase = (zona: Partial<CoverageZone>) => {
+        guardada = zona;
+        repo.findOne.mockResolvedValue(zona);
+        repo.preload.mockImplementation((cambios: Partial<CoverageZone>) => ({
+          ...guardada,
+          ...cambios,
+        }));
+      };
+
+      it('tomar la prioridad de otra zona activa es 409', async () => {
+        enLaBase(activa());
+        existentes = [
+          { coverageZoneId: 'z1', name: 'Centro', priority: 1 },
+          { coverageZoneId: 'z2', name: 'Norte', priority: 2 },
+        ];
+        await expect(
+          service.update('z1', { priority: 2 }, 'd1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(manager.save).not.toHaveBeenCalled();
+      });
+
+      it('conservar la propia prioridad y nombre no choca consigo misma', async () => {
+        enLaBase(activa());
+        existentes = [{ coverageZoneId: 'z1', name: 'Centro', priority: 1 }];
+        await expect(
+          service.update('z1', { color: '#112233' }, 'd1'),
+        ).resolves.toBeDefined();
+      });
+
+      it('el nombre de otra zona activa es 409', async () => {
+        enLaBase(activa());
+        existentes = [{ coverageZoneId: 'z2', name: 'Norte', priority: 2 }];
+        await expect(
+          service.update('z1', { name: 'NORTE' }, 'd1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+      });
+
+      it('reactivar una zona con la prioridad ocupada es 409', async () => {
+        enLaBase({ ...activa(), isActive: false });
+        existentes = [{ coverageZoneId: 'z2', name: 'Norte', priority: 1 }];
+        await expect(
+          service.update('z1', { isActive: true }, 'd1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+      });
+
+      it('desactivar una zona no controla nombre ni prioridad', async () => {
+        enLaBase(activa());
+        existentes = [{ coverageZoneId: 'z2', name: 'Norte', priority: 1 }];
+        await expect(
+          service.update('z1', { isActive: false }, 'd1'),
         ).resolves.toBeDefined();
       });
     });

@@ -5,6 +5,8 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  Check,
+  Exclusion,
 } from 'typeorm';
 import { Car } from './car.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -23,6 +25,18 @@ import { User } from '../../users/entities/user.entity';
  * vehículo no puede estar en uso por dos choferes a la vez, ni un chofer
  * puede tener dos vehículos en uso a la vez.
  */
+@Check(
+  'CHK_vehicle_assignment_periodo',
+  `"released_at" IS NULL OR "released_at" >= "assigned_at"`,
+)
+@Exclusion(
+  'EXC_vehicle_assignment_vehiculo_solapada',
+  `USING gist ("car_id" WITH =, tstzrange("assigned_at", COALESCE("released_at", 'infinity'::timestamptz)) WITH &&)`,
+)
+@Exclusion(
+  'EXC_vehicle_assignment_chofer_solapada',
+  `USING gist ("delivery_id" WITH =, tstzrange("assigned_at", COALESCE("released_at", 'infinity'::timestamptz)) WITH &&)`,
+)
 @Entity('vehicle_assignment')
 @Index('UQ_vehicle_assignment_car_abierta', ['carId'], {
   unique: true,

@@ -33,7 +33,7 @@ export class Admin {
 
   @ManyToOne(() => User, (user) => user.admins, {
     nullable: false,
-    onDelete: 'CASCADE',
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'user_id' })
   user!: User;

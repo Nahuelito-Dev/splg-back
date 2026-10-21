@@ -43,6 +43,7 @@ import {
 } from '../../scripts/lib/cuentas-demo';
 import { keyEsDeLaDemo } from '../../scripts/lib/storage-demo';
 import { BUCKET_DE_PRUEBA, startMinio, TestMinio } from './setup/minio';
+import { sembrarChoferDeFixture } from './setup/pedido-valido';
 
 const IMAGEN_POSTGIS =
   process.env.TEST_POSTGIS_IMAGE ?? 'postgis/postgis:14-3.4';
@@ -876,10 +877,12 @@ describe('seed:demo en contenedores (e2e)', () => {
        VALUES ($1, 'Calle 9', 'Posadas', '3300', ST_SetSRID(ST_MakePoint(-55.9, -27.4), 4326), 'Calle 9, Posadas', true) RETURNING address_id`,
       [u],
     );
+    const chofer1000 = await sembrarChoferDeFixture(ds, distId);
     await ds.query(
-      `INSERT INTO "order" (distributor_id, customer_id, address_id, status, "paymentMethod", "totalAmount", subtotal_items)
-       VALUES ($1, $2, $3, 'delivered', 'cash', 1000, 1000)`,
-      [distId, u, dir],
+      `INSERT INTO "order" (distributor_id, customer_id, address_id, status, "paymentMethod", "totalAmount", subtotal_items,
+                            delivery_id, "acceptedAt", "onTheWayAt", "deliveredAt")
+       VALUES ($1, $2, $3, 'delivered', 'cash', 1000, 1000, $4, now(), now(), now())`,
+      [distId, u, dir, chofer1000.deliveryId],
     );
     await correr('scripts/seed-demo.ts');
     const [r] = await consultar<{ usuario: string; admin: string }>(
@@ -1098,10 +1101,12 @@ describe('seed:demo en contenedores (e2e)', () => {
        VALUES ($1, 'Garrafa 10kg Aparte', 10, 15000, 5, 'Garrafa de otra distribuidora', true)`,
       [otra],
     );
+    const chofer15000 = await sembrarChoferDeFixture(ds, otra);
     await ds.query(
-      `INSERT INTO "order" (distributor_id, customer_id, address_id, status, "paymentMethod", "totalAmount", subtotal_items)
-       VALUES ($1, $2, $3, 'delivered', 'cash', 15000, 15000)`,
-      [otra, laura, dir],
+      `INSERT INTO "order" (distributor_id, customer_id, address_id, status, "paymentMethod", "totalAmount", subtotal_items,
+                            delivery_id, "acceptedAt", "onTheWayAt", "deliveredAt")
+       VALUES ($1, $2, $3, 'delivered', 'cash', 15000, 15000, $4, now(), now(), now())`,
+      [otra, laura, dir, chofer15000.deliveryId],
     );
     await ds.query(
       `INSERT INTO audit (action_type_id, user_id, distributor_id, entity, record_id) VALUES (1, NULL, NULL, 'User', $1), (1, NULL, $2, 'Car', 'x')`,

@@ -63,6 +63,9 @@ export function mapRoleToCancelActor(role?: RoleType): CancelActor {
  * (`CANCELLED`) y corta con 400 antes de tocar nada. Los avisos de tiempo
  * real son best-effort y corren DESPUÉS del commit.
  */
+export const MENSAJE_MOTIVO_OBLIGATORIO =
+  'Para cancelar el pedido hay que indicar el motivo';
+
 @Injectable()
 export class CancelOrderUseCase {
   private readonly logger = new Logger(CancelOrderUseCase.name);
@@ -82,6 +85,13 @@ export class CancelOrderUseCase {
     role: CancelActor,
     reason?: string,
   ): Promise<Order> {
+    // El chofer no cancela: devuelve el pedido al pool. Quien sí cancela
+    // (cliente, administrador) tiene que dejar el motivo.
+    const motivo = reason?.trim() ?? '';
+    if (role !== 'driver' && motivo === '') {
+      throw new BadRequestException(MENSAJE_MOTIVO_OBLIGATORIO);
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -156,7 +166,7 @@ export class CancelOrderUseCase {
           );
         }
         transitionOrder(locked, OrderStatus.CANCELLED);
-        locked.cancellationReason = reason || `Cancelado por ${role}`;
+        locked.cancellationReason = motivo;
         await this.stock.restituirStock(queryRunner.manager, locked.items);
       }
 

@@ -1242,12 +1242,14 @@ describe('UpdateOrderStatusUseCase', () => {
         undefined,
         RoleType.ADMIN,
         'admin-1',
+        'El cliente pidió cancelar por teléfono',
       );
 
       expect(cancelOrderUseCase.execute).toHaveBeenCalledWith(
         'ord-1',
         'admin-1',
         'admin',
+        'El cliente pidió cancelar por teléfono',
       );
       expect(result).toBe(cancelado);
       // No duplica la política: no busca el pedido ni emite side-effects acá,
@@ -1270,6 +1272,7 @@ describe('UpdateOrderStatusUseCase', () => {
         'ord-1',
         'user-drv-1',
         'driver',
+        undefined,
       );
     });
 

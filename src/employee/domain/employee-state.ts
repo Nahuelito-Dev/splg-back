@@ -33,3 +33,14 @@ export function validarReingreso(
   }
   return null;
 }
+
+/**
+ * La fecha de nacimiento (si se conoce) es anterior a la de ingreso. Fechas
+ * `YYYY-MM-DD`, que se comparan como texto.
+ */
+export function nacimientoAnteriorAlIngreso(
+  nacimiento: string | null | undefined,
+  ingreso: string,
+): boolean {
+  return !nacimiento || nacimiento < ingreso;
+}

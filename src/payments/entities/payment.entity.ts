@@ -7,6 +7,7 @@ import {
   Index,
   ManyToOne,
   JoinColumn,
+  Check,
 } from 'typeorm';
 import {
   PaymentGateway,
@@ -28,6 +29,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
  * caído), pero como máximo uno queda con `gateway_payment_id` set por cada
  * pago real aprobado en la pasarela (índice único parcial).
  */
+@Check('CHK_payment_importe', `"amount" > 0`)
 @Entity('payment')
 export class Payment {
   @PrimaryGeneratedColumn('uuid', { name: 'payment_id' })

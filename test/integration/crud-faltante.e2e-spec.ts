@@ -40,6 +40,10 @@ import {
 } from '../../src/incident/entities/incident.entity';
 import { Rating, RaterRole } from '../../src/rating/entities/rating.entity';
 import { RoleType } from '../../src/common/constants/role-type.enum';
+import {
+  fechasSegunEstado,
+  sembrarChoferDeFixture,
+} from './setup/pedido-valido';
 
 interface Quien {
   user: User;
@@ -164,6 +168,13 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
       paymentMethod: PaymentMethod.CASH,
       totalAmount: 1000,
       subtotalItems: 1000,
+      ...(status !== OrderStatus.PENDING &&
+        status !== OrderStatus.RESERVED &&
+        status !== OrderStatus.CANCELLED && {
+          deliveryId: (await sembrarChoferDeFixture(ds, distributorId))
+            .deliveryId,
+        }),
+      ...fechasSegunEstado(status),
     } as Partial<Order>);
   }
 

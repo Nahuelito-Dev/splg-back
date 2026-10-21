@@ -24,6 +24,7 @@ import { Role } from '../../../src/role/entities/role.entity';
 import { UserAddress } from '../../../src/user-address/entities/user-address.entity';
 import { User } from '../../../src/users/entities/user.entity';
 import { TestEnv, telefonoDePrueba } from './test-env';
+import { fechasDeEntrega, sembrarChoferDeFixture } from './pedido-valido';
 
 export type Headers = Record<string, string>;
 
@@ -197,8 +198,10 @@ export class Finanzas {
       subtotalItems: total,
       depositAmount: datos.sena ?? 0,
       depositPaid: datos.sena !== undefined,
-      deliveryId: datos.chofer?.deliveryId ?? null,
-      deliveredAt: datos.entregadoEn ?? new Date(),
+      deliveryId:
+        datos.chofer?.deliveryId ??
+        (await sembrarChoferDeFixture(this.ds, e.distributorId)).deliveryId,
+      ...fechasDeEntrega(datos.entregadoEn ?? new Date()),
     } as Partial<Order>)) as Order;
     await this.ds.getRepository(OrderItem).save({
       orderId: o.orderId,

@@ -1,5 +1,10 @@
 import Decimal from 'decimal.js';
-import { AgingBucket, CustomerEntryType } from './customer-account.enums';
+import {
+  AgingBucket,
+  CustomerAccountStatus,
+  CustomerEntryType,
+} from './customer-account.enums';
+import { CuentaConflictoError } from './errors/customer-account.errors';
 
 /** `+1` si el asiento suma a la deuda del cliente, `-1` si la baja. */
 export function signoDelAsiento(tipo: CustomerEntryType): 1 | -1 {
@@ -99,4 +104,41 @@ export function imputarFifo(
     }
   }
   return resultado;
+}
+
+/**
+ * Máquina de estados de la cuenta corriente:
+ *  - ACTIVE  ↔ BLOCKED (bloquear impide vender a cuenta; desbloquear la habilita);
+ *  - ACTIVE | BLOCKED → CLOSED (cerrar exige saldo cero y sin pedidos abiertos);
+ *  - CLOSED → ACTIVE (reabrir). Una cuenta cerrada no pasa directo a bloqueada.
+ */
+export const TRANSICIONES_DE_CUENTA: Readonly<
+  Record<CustomerAccountStatus, readonly CustomerAccountStatus[]>
+> = {
+  [CustomerAccountStatus.ACTIVE]: [
+    CustomerAccountStatus.BLOCKED,
+    CustomerAccountStatus.CLOSED,
+  ],
+  [CustomerAccountStatus.BLOCKED]: [
+    CustomerAccountStatus.ACTIVE,
+    CustomerAccountStatus.CLOSED,
+  ],
+  [CustomerAccountStatus.CLOSED]: [CustomerAccountStatus.ACTIVE],
+};
+
+/** 409 si la cuenta no puede pasar de `desde` a `hacia`. Repetir el estado es un no-op. */
+export function exigirTransicionDeCuenta(
+  desde: CustomerAccountStatus,
+  hacia: CustomerAccountStatus,
+): void {
+  if (desde === hacia) return;
+  if (!TRANSICIONES_DE_CUENTA[desde].includes(hacia)) {
+    throw new CuentaConflictoError(
+      `Una cuenta ${desde === CustomerAccountStatus.CLOSED ? 'cerrada' : desde} no puede pasar a ${hacia}: ${
+        desde === CustomerAccountStatus.CLOSED
+          ? 'reabrila primero (estado active)'
+          : 'transición no permitida'
+      }`,
+    );
+  }
 }

@@ -42,6 +42,9 @@ const ACTA_REPETIDA = 'La multa ya está registrada';
  * atrás. Toda transición toma el lock de la fila, así dos pagos simultáneos
  * no se pisan.
  */
+/** Margen para el reloj del cliente al registrar fechas «de hoy» (5 minutos). */
+const MARGEN_FECHA_FUTURA_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class TrafficFineService {
   private readonly logger = new Logger(TrafficFineService.name);
@@ -70,6 +73,7 @@ export class TrafficFineService {
     );
 
     const occurredAt = new Date(dto.occurredAt);
+    this.assertFechas(occurredAt, dto.dueDate ?? null);
     let employeeId = dto.employeeId ?? null;
     if (employeeId) {
       await this.driver.assertLegajoDeLaDistribuidora(
@@ -135,6 +139,10 @@ export class TrafficFineService {
           ? multa.voluntaryPaymentAmount
           : dto.voluntaryPaymentAmount;
       this.assertImportes(amount, voluntario);
+      this.assertFechas(
+        dto.occurredAt ? new Date(dto.occurredAt) : multa.occurredAt,
+        dto.dueDate === undefined ? multa.dueDate : dto.dueDate,
+      );
 
       if (dto.appeal === true) {
         if (multa.status === TrafficFineStatus.APPEALED) {
@@ -178,6 +186,11 @@ export class TrafficFineService {
     }
     return this.mutar(id, distributorId, async (manager, multa) => {
       this.assertAbierta(multa, 'La multa no admite el pago');
+      if (dto.paidAt < diaArgentino(multa.occurredAt)) {
+        throw new BadRequestException(
+          'paidAt: no puede ser anterior a la fecha de la infracción',
+        );
+      }
       multa.status = TrafficFineStatus.PAID;
       multa.paidAt = inicioDelDiaArgentino(dto.paidAt);
       multa.paidAmount = dto.paidAmount;
@@ -316,6 +329,23 @@ export class TrafficFineService {
   private assertAbierta(multa: TrafficFine, mensaje: string): void {
     if (!multaAbierta(multa.status)) {
       throw new ConflictException(mensaje);
+    }
+  }
+
+  /**
+   * La infracción no puede ser futura y el vencimiento no puede ser anterior al
+   * día en que ocurrió (día argentino).
+   */
+  private assertFechas(occurredAt: Date, dueDate: string | null): void {
+    if (occurredAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
+      throw new BadRequestException(
+        'occurredAt: la infracción no puede ser futura',
+      );
+    }
+    if (dueDate !== null && dueDate < diaArgentino(occurredAt)) {
+      throw new BadRequestException(
+        'dueDate: el vencimiento no puede ser anterior a la fecha de la infracción',
+      );
     }
   }
 

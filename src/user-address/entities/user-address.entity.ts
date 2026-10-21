@@ -20,12 +20,13 @@ export enum PrecisionDeGeocodificacion {
   UNRESOLVED = 'unresolved',
 }
 
+@Index('UQ_user_address_principal', { synchronize: false })
 @Entity('user_address')
 export class UserAddress {
   @PrimaryGeneratedColumn('uuid', { name: 'address_id' })
   addressId!: string;
 
-  @ManyToOne(() => User, (user) => user.addresses, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.addresses, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 

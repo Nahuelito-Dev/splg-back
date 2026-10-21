@@ -8,6 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Exclusion,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -21,6 +22,14 @@ import { CommissionBasis } from '../domain/commission.enums';
  * producto > general. Dos reglas activas del mismo alcance no se solapan en el
  * tiempo (lo valida el servicio bajo un lock por distribuidora).
  */
+@Check(
+  'CHK_commission_rule_porcentaje',
+  `"basis" <> 'percent_of_total' OR "value" <= 100`,
+)
+@Exclusion(
+  'EXC_commission_rule_solapada',
+  `USING gist ("distributor_id" WITH =, COALESCE("employee_id", '00000000-0000-0000-0000-000000000000'::uuid) WITH =, COALESCE("gas_cylinder_id", '00000000-0000-0000-0000-000000000000'::uuid) WITH =, daterange("valid_from", "valid_to", '[]') WITH &&) WHERE ("is_active")`,
+)
 @Entity('commission_rule')
 @Check('CHK_commission_rule_valor', '"value" >= 0')
 @Check(

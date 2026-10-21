@@ -9,6 +9,8 @@ import {
   UpdateDateColumn,
   OneToMany,
   Index,
+  Check,
+  ForeignKey,
 } from 'typeorm';
 import type { Point } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
@@ -66,6 +68,38 @@ export enum PaymentStatus {
   WRITTEN_OFF = 'written_off',
 }
 
+@Check(
+  'CHK_order_montos',
+  `"totalAmount" >= 0 AND "subtotal_items" >= 0 AND "zone_surcharge_amount" >= 0 AND "express_surcharge_amount" >= 0 AND "payment_surcharge_amount" >= 0 AND "deposit_amount" >= 0`,
+)
+@Check(
+  'CHK_order_total_formula',
+  `"totalAmount" = "subtotal_items" + "zone_surcharge_amount" + "payment_surcharge_amount" + CASE WHEN "express_degraded_at" IS NULL THEN "express_surcharge_amount" ELSE 0 END`,
+)
+@Check(
+  'CHK_order_pago_coherente',
+  `("paymentMethod" = 'cash') = ("paymentType" = 'cash') AND ("paymentMethod" = 'account') = ("paymentType" = 'account')`,
+)
+@Check(
+  'CHK_order_aceptado_fecha',
+  `"status" NOT IN ('accepted', 'on_the_way', 'delivered') OR "acceptedAt" IS NOT NULL`,
+)
+@Check(
+  'CHK_order_en_camino_fecha',
+  `"status" NOT IN ('on_the_way', 'delivered') OR "onTheWayAt" IS NOT NULL`,
+)
+@Check(
+  'CHK_order_entregado_fecha',
+  `("status" = 'delivered') = ("deliveredAt" IS NOT NULL)`,
+)
+@Check(
+  'CHK_order_chofer_asignado',
+  `"status" NOT IN ('accepted', 'on_the_way', 'delivered') OR "delivery_id" IS NOT NULL`,
+)
+@Check(
+  'CHK_order_cancelado_motivo',
+  `"status" <> 'cancelled' OR btrim(coalesce("cancellationReason", '')) <> ''`,
+)
 @Entity('order')
 // Índices compuestos para las queries calientes:
 //  - dispatch: PENDING AND delivery_id IS NULL (query central, corre por pedido + cron)
@@ -209,6 +243,10 @@ export class Order {
   paymentConfirmedAt!: Date | null;
 
   /** Usuario que confirmó el cobro (el chofer, o el admin que resolvió el impago). */
+  @ForeignKey('user', {
+    name: 'FK_order_payment_confirmed_by',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'payment_confirmed_by', type: 'uuid', nullable: true })
   paymentConfirmedBy!: string | null;
 
@@ -218,6 +256,10 @@ export class Order {
   paymentResolvedAt!: Date | null;
 
   /** Admin que resolvió el impago. */
+  @ForeignKey('user', {
+    name: 'FK_order_payment_resolved_by',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'payment_resolved_by', type: 'uuid', nullable: true })
   paymentResolvedBy!: string | null;
 
@@ -403,6 +445,22 @@ export class Order {
   })
   zoneSurchargeAmount!: number;
 
+  /**
+   * Recargo por medio de pago online (+10 % de MercadoPago o transferencia),
+   * calculado sobre el subtotal de los ítems más el recargo de zona. 0 si se
+   * paga en efectivo o a cuenta. Con el resto de los recargos explica el total
+   * (`CHK_order_total_formula`).
+   */
+  @Column({
+    name: 'payment_surcharge_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  paymentSurchargeAmount!: number;
+
   /** Subtotal de los ítems (ya con promociones), antes de cualquier recargo. */
   @Column({
     name: 'subtotal_items',
@@ -423,6 +481,10 @@ export class Order {
    * con qué vehículo se entregó de verdad. `null` en pedidos sin chofer
    * asignado todavía, o de antes de esta funcionalidad.
    */
+  @ForeignKey('car', {
+    name: 'FK_order_vehicle_car',
+    onDelete: 'SET NULL',
+  })
   @Column({ name: 'vehicle_car_id', type: 'uuid', nullable: true })
   vehicleCarId!: string | null;
 

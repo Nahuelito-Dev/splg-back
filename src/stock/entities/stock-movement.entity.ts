@@ -27,6 +27,10 @@ import { StockLocation } from './stock-location.entity';
  * `from` nulo = las garrafas entran desde afuera (planta, cliente, hallazgo);
  * `to` nulo = salen (cliente, planta, merma).
  */
+@Check(
+  'CHK_stock_movement_origen_destino_distintos',
+  `NOT ("from_location_id" = "to_location_id" AND "from_condition" = "to_condition")`,
+)
 @Entity('stock_movement')
 @Index('IDX_stock_movement_fecha', ['distributorId', 'occurredAt'])
 @Index('IDX_stock_movement_alta', ['distributorId', 'createdAt'])

@@ -234,3 +234,81 @@ describe('DispatchOfferTypeormRepository.withdrawOtherActiveOffers', () => {
     expect(manager_.update).not.toHaveBeenCalled();
   });
 });
+
+describe('DispatchOfferTypeormRepository: cierres de ofertas', () => {
+  const repoCon = (orm: object) =>
+    new DispatchOfferTypeormRepository(
+      orm as unknown as Repository<DispatchOffer>,
+    );
+
+  describe('updateStatus', () => {
+    it('sólo cambia una oferta que sigue OFFERED', async () => {
+      const orm = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+      const ok = await repoCon(orm).updateStatus(
+        'of-1',
+        DispatchOfferStatus.EXPIRED,
+      );
+      expect(ok).toBe(true);
+      expect(orm.update).toHaveBeenCalledWith(
+        { offerId: 'of-1', status: DispatchOfferStatus.OFFERED },
+        { status: DispatchOfferStatus.EXPIRED },
+      );
+    });
+
+    it('si ya estaba aceptada (o cerrada) no la toca y avisa con false', async () => {
+      const orm = { update: jest.fn().mockResolvedValue({ affected: 0 }) };
+      expect(
+        await repoCon(orm).updateStatus('of-1', DispatchOfferStatus.EXPIRED),
+      ).toBe(false);
+    });
+  });
+
+  describe('recordDriverHeldOrder', () => {
+    it('el pedido tiene un solo chofer que lo sostiene: la constancia de otro se cierra antes de aceptar la nueva', async () => {
+      const llamadas: Array<[object, object]> = [];
+      const orm = {
+        update: jest.fn((criterio: object, cambios: object) => {
+          llamadas.push([criterio, cambios]);
+          return Promise.resolve({ affected: 1 });
+        }),
+        count: jest.fn(),
+      };
+      await repoCon(orm).recordDriverHeldOrder('ord-1', 'chofer-b');
+
+      // 1ro: lo que tenía otro chofer; 2do: la oferta viva del que lo toma.
+      expect(llamadas[0][1]).toEqual({ status: DispatchOfferStatus.REJECTED });
+      expect(llamadas[0][0]).toMatchObject({
+        orderId: 'ord-1',
+        status: DispatchOfferStatus.ACCEPTED,
+      });
+      expect(llamadas[1][0]).toEqual({
+        orderId: 'ord-1',
+        driverId: 'chofer-b',
+        status: DispatchOfferStatus.OFFERED,
+      });
+      expect(llamadas[1][1]).toEqual({ status: DispatchOfferStatus.ACCEPTED });
+    });
+
+    it('la constancia nueva vence después de ofrecerse (expiresAt > offeredAt)', async () => {
+      const guardadas: Array<{ expiresAt: Date }> = [];
+      const orm = {
+        update: jest.fn().mockResolvedValue({ affected: 0 }),
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn((x: { expiresAt: Date }) => x),
+        save: jest.fn((x: { expiresAt: Date }) => {
+          guardadas.push(x);
+          return Promise.resolve(x);
+        }),
+        manager: {
+          findOne: jest
+            .fn()
+            .mockResolvedValue({ orderId: 'ord-1', distributorId: 'd1' }),
+        },
+      };
+      const antes = Date.now();
+      await repoCon(orm).recordDriverHeldOrder('ord-1', 'chofer-a');
+      expect(guardadas).toHaveLength(1);
+      expect(guardadas[0].expiresAt.getTime()).toBeGreaterThan(antes);
+    });
+  });
+});

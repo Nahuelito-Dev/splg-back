@@ -48,6 +48,7 @@ import {
   MaintenanceTaskStatus,
 } from '../../src/fleet/entities/maintenance-task.entity';
 import { NormalizarPatentes1790900000000 } from '../../src/migrations/1790900000000-NormalizarPatentes';
+import { fechasSegunEstado } from './setup/pedido-valido';
 
 describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', () => {
   let env: TestEnv;
@@ -146,7 +147,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
       totalAmount: 1000,
       subtotalItems: 1000,
       deliveryId,
-      acceptedAt: new Date(),
+      ...fechasSegunEstado(status),
     } as Partial<Order>)) as Order;
     return { pedido, cliente };
   }

@@ -7,6 +7,7 @@ import {
   Index,
   CreateDateColumn,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
@@ -22,6 +23,14 @@ export enum TireStatus {
  * Neumático (CU-205). No se edita: su estado, vehículo y posición cambian con
  * los movimientos (`TireEvent`, CU-206), que son su historial.
  */
+@Check(
+  'CHK_tire_valores',
+  `"cost" >= 0 AND "km_traveled" >= 0 AND "retread_count" >= 0`,
+)
+@Check(
+  'CHK_tire_montaje',
+  `("status" = 'mounted') = ("car_id" IS NOT NULL AND "position" IS NOT NULL)`,
+)
 @Entity('tire')
 @Index('UQ_tire_serial', ['distributorId', 'serialNumber'], { unique: true })
 @Index('UQ_tire_posicion_ocupada', ['carId', 'position'], {

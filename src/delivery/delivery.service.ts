@@ -9,6 +9,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Decimal from 'decimal.js';
 import { In, Repository, EntityManager } from 'typeorm';
 import { Delivery } from './entities/delivery.entity';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
@@ -535,11 +536,27 @@ export class DeliveryService {
     return delivery;
   }
 
+  /**
+   * Suma `amount` al saldo del chofer. Con la fila bloqueada: dos ajustes al
+   * mismo tiempo se aplican uno detrás del otro y ninguno se pierde.
+   */
   async updateBalance(id: string, amount: number): Promise<Delivery> {
-    const delivery = await this.findOne(id);
-    delivery.balance = (delivery.balance || 0) + amount;
-    await this.deliveryRepository.save(delivery);
-    return delivery;
+    await this.deliveryRepository.manager.transaction(async (manager) => {
+      const delivery = await manager
+        .createQueryBuilder(Delivery, 'delivery')
+        .setLock('pessimistic_write')
+        .where('delivery.deliveryId = :id', { id })
+        .getOne();
+      if (!delivery) {
+        throw new NotFoundException(`Chofer ${id} no encontrado`);
+      }
+      delivery.balance = new Decimal(delivery.balance || 0)
+        .plus(amount)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+        .toNumber();
+      await manager.save(delivery);
+    });
+    return this.findOne(id);
   }
 
   /**

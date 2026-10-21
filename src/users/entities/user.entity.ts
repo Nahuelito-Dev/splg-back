@@ -9,6 +9,7 @@ import {
   DeleteDateColumn,
   Index,
   JoinColumn,
+  Check,
 } from 'typeorm';
 import { Role } from '../../role/entities/role.entity';
 import { Customer } from '../../customer/entities/customer.entity';
@@ -17,10 +18,19 @@ import { Car } from '../../car/entities/car.entity';
 import { Admin } from '../../admin/entities/admin.entity';
 import { UserAddress } from '../../user-address/entities/user-address.entity';
 
-// Índice funcional `lower(email)` (migración `IndiceEmailEnMinusculas`): las
-// búsquedas por correo comparan `LOWER(email)`. TypeORM no modela expresiones:
-// `synchronize: false` evita que `migration:generate` lo quiera borrar.
-@Index('IDX_user_email_lower', { synchronize: false })
+// Índice único funcional `lower(email)`: el correo no se repite sin importar las
+// mayúsculas, y las búsquedas por correo comparan `LOWER(email)`. TypeORM no
+// modela expresiones: `synchronize: false` evita que `migration:generate` lo
+// quiera borrar.
+@Index('UQ_user_email_minusculas', { synchronize: false })
+@Check(
+  'CHK_user_telefono',
+  `"phone_number" IS NULL OR "phone_number" ~ '^[+][1-9][0-9]{7,14}$'`,
+)
+@Check(
+  'CHK_user_email',
+  `"email" IS NULL OR "email" ~* '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$'`,
+)
 @Entity('user')
 export class User {
   @PrimaryGeneratedColumn('uuid', { name: 'user_id' })

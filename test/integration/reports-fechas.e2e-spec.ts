@@ -21,6 +21,10 @@ import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { Granularidad } from '../../src/reports/dto/report-range-query.dto';
+import {
+  fechasSegunEstado,
+  sembrarChoferDeFixture,
+} from './setup/pedido-valido';
 
 describe('Reportes y estadísticas en hora argentina (e2e)', () => {
   let env: TestEnv;
@@ -75,7 +79,13 @@ describe('Reportes y estadísticas en hora argentina (e2e)', () => {
         // Las ventas cuentan lo cobrado: el efectivo entregado ya confirmado.
         paymentStatus: PaymentStatus.PAID,
         subtotalItems: 1000,
-        totalAmount: 1100, // 1000 de renglón + 100 de recargo
+        zoneSurchargeAmount: 100,
+        totalAmount: 1100, // 1000 de renglón + 100 de recargo de zona
+        ...fechasSegunEstado(estado),
+        ...(estado === OrderStatus.DELIVERED && {
+          deliveryId: (await sembrarChoferDeFixture(dataSource, distributorId))
+            .deliveryId,
+        }),
         deliveredAt: entregado ? new Date(entregado) : null,
         createdAt: new Date(creado),
       } as Partial<Order>)) as Order;

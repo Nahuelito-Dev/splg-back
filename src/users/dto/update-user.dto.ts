@@ -1,5 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Matches,
+  MinLength,
+} from 'class-validator';
 
 /**
  * Lo que se puede cambiar de un usuario por `PATCH /users/:id`. El correo no:
@@ -17,6 +23,9 @@ export class UpdateUserDto {
   @ApiPropertyOptional({ example: '+5493764000000' })
   @IsOptional()
   @IsString()
+  @Matches(/^\+[1-9]\d{7,14}$/, {
+    message: 'phone_number tiene que estar en formato E.164 (+549...)',
+  })
   phone_number?: string;
 
   @ApiPropertyOptional({ description: 'Sólo administradores' })

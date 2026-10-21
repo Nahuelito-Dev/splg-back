@@ -22,6 +22,7 @@ import {
   ApiOkResponse,
   ApiTags,
   ApiBadRequestResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { CoverageZoneService } from './coverage-zone.service';
 import { CoverageZoneMapper } from './coverage-zone.mapper';
@@ -59,6 +60,10 @@ export class CoverageZoneController {
     description:
       `${DATOS_INVALIDOS}, o un polígono que se autointersecta (400 con el ` +
       'motivo que da PostGIS)',
+  })
+  @ApiConflictResponse({
+    description:
+      'Ya hay una zona activa con ese nombre (sin distinguir mayúsculas) o con esa prioridad; sin prioridad en el alta se asigna la siguiente',
   })
   async create(
     @Body() dto: CreateCoverageZoneDto,
@@ -151,6 +156,10 @@ export class CoverageZoneController {
   })
   @ApiBadRequestResponse({
     description: `${DATOS_INVALIDOS}, o validUntil anterior o igual a validFrom`,
+  })
+  @ApiConflictResponse({
+    description:
+      'El nombre o la prioridad ya los tiene otra zona activa de la distribuidora',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

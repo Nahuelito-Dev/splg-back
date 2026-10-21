@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   Unique,
+  Check,
 } from 'typeorm';
 import { Cart } from './cart.entity';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
@@ -15,6 +16,8 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
  * Cada producto cargado en el carrito, con su cantidad.
  * Casos: CU-122 a CU-126
  */
+@Check('CHK_cart_item_cantidad', `"quantity" BETWEEN 1 AND 999`)
+@Check('CHK_cart_item_precio', `"unit_price" >= 0`)
 @Entity('cart_item')
 @Unique('UQ_cart_item_cart_gascylinder', ['cartId', 'gasCylinderId'])
 export class CartItem {

@@ -7,6 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DistributorStatus } from '../entities/distributor.entity';
 
@@ -33,10 +34,17 @@ export class CreateDistributorDto {
   @MaxLength(160)
   legal_name?: string;
 
-  @ApiPropertyOptional({ example: '30-12345678-9', maxLength: 20 })
+  @ApiPropertyOptional({
+    example: '30-12345678-9',
+    description:
+      'CUIT: se acepta con guiones o espacios y se guarda sólo con los 11 dígitos',
+  })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.replace(/[\s-]/g, '') : value,
+  )
   @IsString()
-  @MaxLength(20)
+  @Matches(/^\d{11}$/, { message: 'tax_id tiene que tener 11 dígitos (CUIT)' })
   tax_id?: string;
 
   @ApiPropertyOptional({ example: 'contacto@demo.splg.app' })

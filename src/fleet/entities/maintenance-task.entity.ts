@@ -6,6 +6,7 @@ import {
   OneToMany,
   JoinColumn,
   Index,
+  Check,
 } from 'typeorm';
 import { MaintenancePlan } from './maintenance-plan.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -29,6 +30,18 @@ export enum MaintenanceTaskStatus {
  * Cada vencimiento concreto de un plan: una póliza, una VTV, un service.
  * Casos: CU-136 a CU-142, CU-183 a CU-185 y CU-105 (M1)
  */
+@Check(
+  'CHK_maintenance_task_valores',
+  `coalesce("cost", 0) >= 0 AND coalesce("due_km", 0) >= 0 AND coalesce("odometer_km", 0) >= 0`,
+)
+@Check(
+  'CHK_maintenance_task_un_sujeto',
+  `num_nonnulls("car_id", "delivery_id", "employee_id") = 1`,
+)
+@Check(
+  'CHK_maintenance_task_hecha_fecha',
+  `"status" <> 'done' OR "performed_at" IS NOT NULL`,
+)
 @Entity('maintenance_task')
 export class MaintenanceTask {
   @PrimaryGeneratedColumn('uuid', { name: 'task_id' })

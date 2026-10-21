@@ -24,6 +24,15 @@ import {
  * plazo son de cada relación comercial y la cuenta vive acá y no en `customer`.
  * `balance` positivo es lo que el cliente debe; lo mueve el libro de asientos.
  */
+@Check('CHK_customer_account_plazo_maximo', `"payment_terms_days" <= 365`)
+@Check(
+  'CHK_customer_account_cerrada_sin_saldo',
+  `"status" <> 'closed' OR "balance" = 0`,
+)
+@Check(
+  'CHK_customer_account_cuit',
+  `"tax_id" IS NULL OR es_cuit_valido("tax_id")`,
+)
 @Entity('customer_account')
 @Index(
   'UQ_customer_account_cliente_vigente',

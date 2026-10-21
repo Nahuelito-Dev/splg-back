@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 
 export enum DistributorStatus {
@@ -22,6 +23,8 @@ export enum DistributorStatus {
  * El `super_admin` (operador de la plataforma) es cross-tenant; el `admin` de
  * una distribuidora sólo ve/opera lo suyo.
  */
+@Check('CHK_distributor_cuit', `"tax_id" IS NULL OR "tax_id" ~ '^[0-9]{11}$'`)
+@Check('CHK_distributor_slug', `"slug" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)
 @Entity('distributor')
 export class Distributor {
   @PrimaryGeneratedColumn('uuid', { name: 'distributor_id' })

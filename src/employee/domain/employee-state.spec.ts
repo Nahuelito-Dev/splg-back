@@ -1,4 +1,8 @@
-import { validarEgreso, validarReingreso } from './employee-state';
+import {
+  nacimientoAnteriorAlIngreso,
+  validarEgreso,
+  validarReingreso,
+} from './employee-state';
 import { EmployeeStatus } from '../entities/employee.entity';
 
 const activo = {
@@ -45,5 +49,21 @@ describe('transiciones del legajo', () => {
         'FECHA_ANTERIOR_AL_EGRESO',
       );
     });
+  });
+});
+
+describe('nacimientoAnteriorAlIngreso', () => {
+  it('nació antes de ingresar: válido', () => {
+    expect(nacimientoAnteriorAlIngreso('1990-05-17', '2026-03-01')).toBe(true);
+  });
+
+  it('nació el mismo día del ingreso o después: inválido', () => {
+    expect(nacimientoAnteriorAlIngreso('2026-03-01', '2026-03-01')).toBe(false);
+    expect(nacimientoAnteriorAlIngreso('2030-01-01', '2026-03-01')).toBe(false);
+  });
+
+  it('sin fecha de nacimiento no hay nada que controlar', () => {
+    expect(nacimientoAnteriorAlIngreso(null, '2026-03-01')).toBe(true);
+    expect(nacimientoAnteriorAlIngreso(undefined, '2026-03-01')).toBe(true);
   });
 });

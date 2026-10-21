@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  Check,
 } from 'typeorm';
 import { Cylinder } from './cylinder.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -20,6 +21,14 @@ export enum CylinderInspectionResult {
  * Una fila por revisión técnica del envase.
  * Casos: CU-132 a CU-135
  */
+@Check(
+  'CHK_cylinder_inspection_vencimiento',
+  `"next_due_at" IS NULL OR "next_due_at" > "inspected_at"`,
+)
+@Check(
+  'CHK_cylinder_inspection_proxima',
+  `"result" = 'rejected' OR "next_due_at" IS NOT NULL`,
+)
 @Entity('cylinder_inspection')
 export class CylinderInspection {
   @PrimaryGeneratedColumn('uuid', { name: 'inspection_id' })

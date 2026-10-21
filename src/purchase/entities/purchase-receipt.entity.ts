@@ -8,6 +8,8 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Check,
+  ForeignKey,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -28,6 +30,15 @@ import { Supplier } from './supplier.entity';
  * confirmarse mueve el stock por el libro (`batch_id`); al anularse, un
  * contraasiento (`void_batch_id`).
  */
+@Check('CHK_purchase_receipt_total', `"total_amount" >= 0`)
+@Check(
+  'CHK_purchase_receipt_anulada_fecha',
+  `("status" = 'voided') = ("voided_at" IS NOT NULL)`,
+)
+@Check(
+  'CHK_purchase_receipt_anulacion_datos',
+  `"status" <> 'voided' OR ("void_reason" IS NOT NULL AND "voided_by_user_id" IS NOT NULL)`,
+)
 @Entity('purchase_receipt')
 @Index('UQ_purchase_receipt_numero', ['distributorId', 'number'], {
   unique: true,
@@ -123,6 +134,10 @@ export class PurchaseReceipt {
   paymentStatus!: PaymentStatus;
 
   /** Lo completa la caja (M-D); sin clave foránea hasta que exista la tabla. */
+  @ForeignKey('cash_movement', {
+    name: 'FK_purchase_receipt_cash_movement',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
   cashMovementId!: string | null;
 
@@ -139,6 +154,10 @@ export class PurchaseReceipt {
   @Column({ name: 'voided_at', type: 'timestamptz', nullable: true })
   voidedAt!: Date | null;
 
+  @ForeignKey('user', {
+    name: 'FK_purchase_receipt_voided_by',
+    onDelete: 'RESTRICT',
+  })
   @Column({ name: 'voided_by_user_id', type: 'uuid', nullable: true })
   voidedByUserId!: string | null;
 

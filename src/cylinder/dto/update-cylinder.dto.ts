@@ -1,14 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsDate,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  Min,
-  MinLength,
-} from 'class-validator';
+import { IsDate, IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
+import { SerialDeEnvase } from './serial-de-envase';
 import { Type } from 'class-transformer';
 
 /**
@@ -19,9 +11,7 @@ import { Type } from 'class-transformer';
 export class UpdateCylinderDto {
   @ApiPropertyOptional({ example: 'SN-000123' })
   @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
+  @SerialDeEnvase()
   serial?: string;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Producto del catálogo' })

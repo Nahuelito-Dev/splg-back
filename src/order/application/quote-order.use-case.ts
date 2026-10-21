@@ -226,7 +226,7 @@ export class QuoteOrderUseCase {
       });
     }
 
-    const { totalAmount, zoneSurchargeAmount } =
+    const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
       this.createOrder.calcularTotales(
         subtotal,
         zona,
@@ -266,12 +266,7 @@ export class QuoteOrderUseCase {
       : null;
     res.zoneSurcharge = zoneSurchargeAmount.toNumber();
     res.paymentMethod = dto.paymentMethod;
-    res.paymentSurcharge = total
-      .minus(subtotal)
-      .minus(zoneSurchargeAmount)
-      .minus(expressSurcharge)
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-      .toNumber();
+    res.paymentSurcharge = paymentSurchargeAmount.toNumber();
     res.deliveryMode = esExpress
       ? OrderDeliveryMode.EXPRESS
       : OrderDeliveryMode.STANDARD;

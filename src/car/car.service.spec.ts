@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
 import { CarService } from './car.service';
 import { Car, FleetStatus } from './entities/car.entity';
@@ -112,13 +108,13 @@ describe('CarService', () => {
       .mockResolvedValueOnce({ carId: 'c2', carPatent: 'BB222BB' });
     await expect(
       service.update('c1', { car_patent: 'BB222BB' }, 'd1'),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('la patente no se repite', async () => {
     cars.findOne.mockResolvedValue({ carId: 'otro' });
     await expect(service.create(dto, 'd1')).rejects.toBeInstanceOf(
-      BadRequestException,
+      ConflictException,
     );
   });
 
@@ -270,9 +266,10 @@ describe('CarService', () => {
       cars.findOne.mockResolvedValue({ carId: 'otro' });
       await expect(
         service.create({ user_id: 'u1', car_patent: 'ab-123 cd' }, 'd1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(ConflictException);
+      // El duplicado se busca dentro de la distribuidora (no en todo el sistema).
       expect(cars.findOne).toHaveBeenCalledWith({
-        where: { carPatent: 'AB123CD' },
+        where: { carPatent: 'AB123CD', distributorId: 'd1' },
       });
     });
 
@@ -304,7 +301,7 @@ describe('CarService', () => {
         .mockResolvedValueOnce({ carId: 'c2', carPatent: '' });
       await expect(
         service.update('c1', { car_patent: '' }, 'd1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('findByPatent busca con la patente normalizada', async () => {

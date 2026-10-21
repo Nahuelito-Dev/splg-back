@@ -44,11 +44,13 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  PaymentType,
 } from '../../src/order/entities/order.entity';
 import { Rating, RaterRole } from '../../src/rating/entities/rating.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
+import { fechasSegunEstado } from './setup/pedido-valido';
 
 type Headers = Record<string, string>;
 
@@ -224,6 +226,13 @@ describe('Blindaje (e2e)', () => {
       paymentStatus: PaymentStatus.PENDING,
       totalAmount: 1000,
       subtotalItems: 1000,
+      ...fechasSegunEstado(parcial.status ?? OrderStatus.PENDING),
+      ...(parcial.status !== undefined &&
+        [
+          OrderStatus.ACCEPTED,
+          OrderStatus.ON_THE_WAY,
+          OrderStatus.DELIVERED,
+        ].includes(parcial.status) && { deliveryId: e.del1.deliveryId }),
       ...parcial,
     } as Partial<Order>) as Promise<Order>;
   }
@@ -713,7 +722,9 @@ describe('Blindaje (e2e)', () => {
         deliveryId: e.del1.deliveryId,
         deliveredAt: new Date(),
         paymentMethod: PaymentMethod.TRANSFER,
+        paymentType: PaymentType.ONLINE,
         totalAmount: 1100,
+        paymentSurchargeAmount: 100,
       });
     }
     const hoy = () => new Date().toISOString().slice(0, 10);

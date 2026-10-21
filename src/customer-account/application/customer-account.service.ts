@@ -7,7 +7,10 @@ import { aCentavos, dec } from '../../common/utils/dinero';
 import { Customer } from '../../customer/entities/customer.entity';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { CustomerAccountStatus } from '../domain/customer-account.enums';
-import { creditoDisponible } from '../domain/customer-account-rules';
+import {
+  creditoDisponible,
+  exigirTransicionDeCuenta,
+} from '../domain/customer-account-rules';
 import {
   ClienteNoEncontradoError,
   CuentaConflictoError,
@@ -87,6 +90,9 @@ export class CustomerAccountService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!cuenta) throw new CuentaNoEncontradaError(id);
+      if (dto.status !== undefined) {
+        exigirTransicionDeCuenta(cuenta.status, dto.status);
+      }
       if (
         dto.status === CustomerAccountStatus.CLOSED &&
         cuenta.status !== CustomerAccountStatus.CLOSED

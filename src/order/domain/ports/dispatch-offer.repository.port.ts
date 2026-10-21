@@ -66,11 +66,15 @@ export abstract class DispatchOfferRepositoryPort {
   /** Ofertas OFFERED cuyo `expiresAt` ya pasó (para el cron de timeout). */
   abstract findExpired(now: Date): Promise<DispatchOffer[]>;
 
-  /** Marca una oferta con un nuevo estado (ACCEPTED/REJECTED/EXPIRED). */
+  /**
+   * Cierra una oferta que sigue OFFERED con un nuevo estado (ACCEPTED/REJECTED/
+   * EXPIRED/SUPERSEDED). Devuelve `false` si la oferta ya no estaba OFFERED (otro
+   * camino la cerró antes): en ese caso no se toca, para no pisar una aceptada.
+   */
   abstract updateStatus(
     offerId: string,
     status: DispatchOffer['status'],
-  ): Promise<void>;
+  ): Promise<boolean>;
 
   /**
    * Cierra la oferta OFFERED activa de un pedido con el estado dado. Devuelve

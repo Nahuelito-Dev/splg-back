@@ -27,6 +27,7 @@ import {
   ApiPayloadTooLargeResponse,
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { FleetTaskService } from './fleet-task.service';
 import { FleetAttachmentService } from './fleet-attachment.service';
@@ -121,6 +122,10 @@ export class FleetTaskController {
   @ApiOkResponse({ type: FleetTaskResponseDto })
   @ApiNotFoundResponse({ description: 'Tarea no encontrada' })
   @ApiBadRequestResponse({ description: 'La tarea ya está hecha o cancelada' })
+  @ApiConflictResponse({
+    description:
+      'La tarea ya está hecha o cancelada (la cerró otra operación mientras se editaba)',
+  })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateFleetTaskDto,

@@ -284,6 +284,8 @@ export class ReservationService {
       await queryRunner.startTransaction();
       try {
         transitionOrder(order, OrderStatus.CANCELLED);
+        order.cancellationReason =
+          'Reserva vencida: la seña no se pagó a tiempo';
         await queryRunner.manager.save(order);
         await this.stock.restituirStock(
           queryRunner.manager,

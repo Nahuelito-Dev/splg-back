@@ -624,8 +624,10 @@ export class FuelLoadService {
   }
 
   /**
-   * El kilometraje no puede ser menor que el de la última carga vigente
-   * anterior a esta (por fecha). Sólo el administrador lo fuerza, con una nota.
+   * El kilometraje tiene que quedar en orden con TODAS las cargas vigentes del
+   * vehículo: no puede ser menor que el de la última carga anterior (por fecha)
+   * ni mayor que el de la primera posterior. Sólo el administrador lo fuerza,
+   * con una nota.
    */
   private async assertKilometraje(
     manager: EntityManager,
@@ -636,23 +638,32 @@ export class FuelLoadService {
     correccion: boolean,
     nota: string | null,
   ): Promise<void> {
-    const qb = manager
-      .getRepository(FuelLoad)
-      .createQueryBuilder('f')
-      .where('f.car_id = :carId AND f.loaded_at <= :loadedAt', {
-        carId,
-        loadedAt,
-      });
-    if (excluirId) qb.andWhere('f.fuel_load_id <> :excluirId', { excluirId });
-    const anterior = await qb
-      .orderBy('f.loaded_at', 'DESC')
-      .addOrderBy('f.odometer_km', 'DESC')
-      .getOne();
+    const vecina = (comparador: '<=' | '>', orden: 'DESC' | 'ASC') => {
+      const qb = manager
+        .getRepository(FuelLoad)
+        .createQueryBuilder('f')
+        .where(`f.car_id = :carId AND f.loaded_at ${comparador} :loadedAt`, {
+          carId,
+          loadedAt,
+        });
+      if (excluirId) qb.andWhere('f.fuel_load_id <> :excluirId', { excluirId });
+      return qb
+        .orderBy('f.loaded_at', orden)
+        .addOrderBy('f.odometer_km', orden)
+        .getOne();
+    };
+    const anterior = await vecina('<=', 'DESC');
+    const siguiente = await vecina('>', 'ASC');
 
-    if (!anterior || odometerKm >= anterior.odometerKm) return;
+    const menorQueLaAnterior = !!anterior && odometerKm < anterior.odometerKm;
+    const mayorQueLaSiguiente =
+      !!siguiente && odometerKm > siguiente.odometerKm;
+    if (!menorQueLaAnterior && !mayorQueLaSiguiente) return;
     if (!correccion) {
       throw new BadRequestException(
-        'odometerKm: El kilometraje es menor que el de la última carga',
+        menorQueLaAnterior
+          ? 'odometerKm: El kilometraje es menor que el de la última carga'
+          : 'odometerKm: El kilometraje es mayor que el de una carga posterior: corregí la fecha o el kilometraje',
       );
     }
     if (!nota) {

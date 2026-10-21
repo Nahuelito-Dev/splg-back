@@ -19,6 +19,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
  * producto, las que ya no están en la lista se dan de baja (`deletedAt`), no se
  * borran: queda la auditoría.
  */
+@Check(
+  'CHK_promocion_descuento',
+  `"discount_percentage" > 0 AND "discount_percentage" <= 99`,
+)
 @Entity('gas_cylinder_promotion')
 // Única sólo entre las vigentes: una promoción dada de baja no impide cargar
 // otra para la misma cantidad.
@@ -27,10 +31,6 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
   where: '"deletedAt" IS NULL',
 })
 @Check('CHK_promocion_cantidad', '"quantity" >= 2')
-@Check(
-  'CHK_promocion_descuento',
-  '"discount_percentage" > 0 AND "discount_percentage" <= 100',
-)
 export class GasCylinderPromotion {
   @PrimaryGeneratedColumn('uuid', { name: 'promotion_id' })
   promotionId!: string;

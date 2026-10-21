@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   MaintenanceTask,
   MaintenanceTaskStatus,
@@ -43,6 +44,9 @@ function fechaDeCalendario(valor: string | null | undefined) {
   if (valor === null) return null;
   return valor ? normalizarFechaCalendario(new Date(valor)) : undefined;
 }
+
+/** Margen para el reloj del cliente al registrar «cuándo se hizo» (5 minutos). */
+const MARGEN_FECHA_FUTURA_MS = 5 * 60 * 1000;
 
 const ESTADOS_CERRADOS = [
   MaintenanceTaskStatus.DONE,
@@ -185,43 +189,74 @@ export class FleetTaskService {
     dto: UpdateFleetTaskDto,
     distributorId: string,
   ): Promise<MaintenanceTask> {
-    const task = await this.findOne(id, distributorId);
-    this.assertAbierta(task);
-
     const dueAt = fechaDeCalendario(dto.dueAt);
     const validFrom = fechaDeCalendario(dto.validFrom);
-    this.assertVigenciaCoherente(
-      task.plan,
-      validFrom === undefined ? task.validFrom : validFrom,
-      dueAt === undefined ? task.dueAt : dueAt,
-    );
 
-    Object.assign(
-      task,
-      sinIndefinidos({
-        dueAt,
-        validFrom,
-        cost: dto.cost,
-        dueKm: dto.dueKm,
-        provider: dto.provider,
-        referenceNumber: dto.referenceNumber,
-        category: dto.category,
-        notes: dto.notes,
-        scheduledAt: dto.scheduledAt
-          ? new Date(dto.scheduledAt)
-          : dto.scheduledAt,
-        details:
-          dto.details === undefined
-            ? undefined
-            : this.detalleValidado(task.plan, dto),
-      }),
-    );
-
+    // Con la fila bloqueada (como `close` y `cancel`): una edición concurrente no
+    // reabre ni pisa una tarea que ya se cerró.
     try {
-      return await this.tasks.save(task);
+      await this.tasks.manager.transaction(async (manager) => {
+        const task = await this.bloquear(manager, id, distributorId);
+        this.assertAbierta(task, true);
+        task.plan = await manager
+          .getRepository(MaintenancePlan)
+          .findOneOrFail({ where: { planId: task.planId } });
+
+        this.assertVigenciaCoherente(
+          task.plan,
+          validFrom === undefined ? task.validFrom : validFrom,
+          dueAt === undefined ? task.dueAt : dueAt,
+        );
+
+        Object.assign(
+          task,
+          sinIndefinidos({
+            dueAt,
+            validFrom,
+            cost: dto.cost,
+            dueKm: dto.dueKm,
+            provider: dto.provider,
+            referenceNumber: dto.referenceNumber,
+            category: dto.category,
+            notes: dto.notes,
+            scheduledAt: dto.scheduledAt
+              ? new Date(dto.scheduledAt)
+              : dto.scheduledAt,
+            details:
+              dto.details === undefined
+                ? undefined
+                : this.detalleValidado(task.plan, dto),
+          }),
+        );
+        await manager.getRepository(MaintenanceTask).save(task);
+      });
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
+    return this.findOne(id, distributorId);
+  }
+
+  /**
+   * La tarea de la distribuidora con la fila bloqueada, dentro de la
+   * transacción de quien llama: cerrar y cancelar se serializan, así que una
+   * tarea no se cierra dos veces ni un cierre pisa a una cancelación.
+   */
+  private async bloquear(
+    manager: EntityManager,
+    id: string,
+    distributorId: string,
+  ): Promise<MaintenanceTask> {
+    const task = await manager
+      .getRepository(MaintenanceTask)
+      .createQueryBuilder('task')
+      .setLock('pessimistic_write')
+      .where('task.taskId = :id', { id })
+      .andWhere('task.distributorId = :distributorId', { distributorId })
+      .getOne();
+    if (!task) {
+      throw new NotFoundException(`Tarea ${id} no encontrada`);
+    }
+    return task;
   }
 
   /** CU-141: registrar que el mantenimiento/habilitación se hizo. */
@@ -230,29 +265,42 @@ export class FleetTaskService {
     dto: CloseFleetTaskDto,
     distributorId: string,
   ): Promise<MaintenanceTask> {
-    const task = await this.findOne(id, distributorId);
-    this.assertAbierta(task);
-
-    task.performedAt = new Date(dto.performedAt);
-    task.odometerKm = dto.odometerKm ?? task.odometerKm;
-    task.cost = dto.cost ?? task.cost;
-    task.provider = dto.provider ?? task.provider;
-    task.notes = dto.notes ?? task.notes;
-    task.status = MaintenanceTaskStatus.DONE;
+    const performedAt = new Date(dto.performedAt);
+    if (performedAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
+      throw new BadRequestException(
+        'performedAt no puede ser una fecha futura: registrá cuándo se hizo',
+      );
+    }
 
     // El kilometraje del vehículo se sube con el del cierre, por el mismo
     // punto que usan las cargas de combustible: ninguno pisa al otro.
-    return this.tasks.manager.transaction(async (manager) => {
-      const guardada = await manager.getRepository(MaintenanceTask).save(task);
-      if (guardada.carId && dto.odometerKm !== undefined) {
-        await this.carService.actualizarOdometro(
-          manager,
-          guardada.carId,
-          dto.odometerKm,
-        );
-      }
-      return guardada;
-    });
+    try {
+      await this.tasks.manager.transaction(async (manager) => {
+        const task = await this.bloquear(manager, id, distributorId);
+        this.assertAbierta(task);
+
+        task.performedAt = performedAt;
+        task.odometerKm = dto.odometerKm ?? task.odometerKm;
+        task.cost = dto.cost ?? task.cost;
+        task.provider = dto.provider ?? task.provider;
+        task.notes = dto.notes ?? task.notes;
+        task.status = MaintenanceTaskStatus.DONE;
+
+        const guardada = await manager
+          .getRepository(MaintenanceTask)
+          .save(task);
+        if (guardada.carId && dto.odometerKm !== undefined) {
+          await this.carService.actualizarOdometro(
+            manager,
+            guardada.carId,
+            dto.odometerKm,
+          );
+        }
+      });
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'tareas de flota');
+    }
+    return this.findOne(id, distributorId);
   }
 
   async cancel(
@@ -260,17 +308,19 @@ export class FleetTaskService {
     dto: CancelFleetTaskDto,
     distributorId: string,
   ): Promise<MaintenanceTask> {
-    const task = await this.findOne(id, distributorId);
-    this.assertAbierta(task);
+    await this.tasks.manager.transaction(async (manager) => {
+      const task = await this.bloquear(manager, id, distributorId);
+      this.assertAbierta(task);
 
-    task.status = MaintenanceTaskStatus.CANCELLED;
-    if (dto.notes) {
-      task.notes = task.notes
-        ? `${task.notes}\n\nCancelada: ${dto.notes}`
-        : `Cancelada: ${dto.notes}`;
-    }
-
-    return this.tasks.save(task);
+      task.status = MaintenanceTaskStatus.CANCELLED;
+      if (dto.notes) {
+        task.notes = task.notes
+          ? `${task.notes}\n\nCancelada: ${dto.notes}`
+          : `Cancelada: ${dto.notes}`;
+      }
+      await manager.getRepository(MaintenanceTask).save(task);
+    });
+    return this.findOne(id, distributorId);
   }
 
   /** CU-136/137: documentación de un vehículo, y si está inhabilitado. */
@@ -413,11 +463,13 @@ export class FleetTaskService {
     }
   }
 
-  private assertAbierta(task: MaintenanceTask): void {
+  /** `comoConflicto`: la edición concurrente de una tarea ya cerrada es 409 (cerrar/cancelar siguen en 400). */
+  private assertAbierta(task: MaintenanceTask, comoConflicto = false): void {
     if (ESTADOS_CERRADOS.includes(task.status)) {
-      throw new BadRequestException(
-        `La tarea ya está ${task.status === MaintenanceTaskStatus.DONE ? 'hecha' : 'cancelada'}`,
-      );
+      const mensaje = `La tarea ya está ${task.status === MaintenanceTaskStatus.DONE ? 'hecha' : 'cancelada'}`;
+      throw comoConflicto
+        ? new ConflictException(mensaje)
+        : new BadRequestException(mensaje);
     }
   }
 

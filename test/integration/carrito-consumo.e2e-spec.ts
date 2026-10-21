@@ -30,6 +30,7 @@ import {
 import { Role } from '../../src/role/entities/role.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { User } from '../../src/users/entities/user.entity';
+import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
 
 type Headers = Record<string, string>;
 interface CarritoJson {
@@ -626,7 +627,9 @@ describe('Carrito y consumo declarado (HTTP e2e)', () => {
         paymentMethod: PaymentMethod.CASH,
         totalAmount: 2000,
         subtotalItems: 2000,
-        deliveredAt: entregado,
+        deliveryId: (await sembrarChoferDeFixture(ds, e.distA.distributorId))
+          .deliveryId,
+        ...fechasDeEntrega(entregado),
       } as Partial<Order>);
       await ds.getRepository(OrderItem).save({
         orderId: pedido.orderId,

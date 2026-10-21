@@ -8,6 +8,7 @@ import {
   Check,
   CreateDateColumn,
   UpdateDateColumn,
+  Exclusion,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Employee } from '../../employee/entities/employee.entity';
@@ -28,6 +29,10 @@ export enum AttendanceSource {
  */
 // `source` usa el nombre de enum por defecto (`employee_attendance_source_enum`):
 // ver la nota de `employee.entity.ts`.
+@Exclusion(
+  'EXC_employee_attendance_solapada',
+  `USING gist ("employee_id" WITH =, tstzrange("check_in_at", COALESCE("check_out_at", 'infinity'::timestamptz)) WITH &&)`,
+)
 @Entity('employee_attendance')
 @Index('UQ_employee_attendance_abierta', ['employeeId'], {
   unique: true,

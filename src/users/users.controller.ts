@@ -347,10 +347,12 @@ export class UsersController {
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
-    description: 'Teléfono en uso, o sin cuenta de acceso',
+    description:
+      'Teléfono en uso por otro usuario (aunque esté dado de baja), o sin cuenta de acceso',
   })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: property email should not exist)',
+    description:
+      'Datos inválidos (p. ej.: property email should not exist; phone_number fuera del formato E.164 +549...)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(

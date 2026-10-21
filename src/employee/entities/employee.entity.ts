@@ -53,6 +53,16 @@ export enum EmployeeStatus {
 // (`<tabla>_<columna>_enum`): NO se declara `enumName`. Con un `enumName`
 // explícito igual al de por defecto, el esquema de la base (que no lo guarda
 // aparte) no coincide con la entidad y `schema:log` quiere recrear el tipo.
+@Check(
+  'CHK_employee_nacimiento',
+  `"birth_date" IS NULL OR "birth_date" < "hire_date"`,
+)
+@Check('CHK_employee_cuil', `"cuil" IS NULL OR es_cuil_valido("cuil")`)
+@Check(
+  'CHK_employee_email',
+  `"personal_email" IS NULL OR "personal_email" ~* '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$'`,
+)
+@Check('CHK_employee_cbu', `"bank_cbu" IS NULL OR "bank_cbu" ~ '^[0-9]{22}$'`)
 @Entity('employee')
 @Index('UQ_employee_user_vigente', ['userId'], {
   unique: true,
