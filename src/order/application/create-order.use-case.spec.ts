@@ -395,6 +395,31 @@ describe('CreateOrderUseCase', () => {
         expect(result.order.orderId).toBe('ord-1');
       });
 
+      it.each([[undefined], [0]])(
+        'una reserva con MercadoPago y seña %s es 400 y no guarda nada',
+        async (depositAmount) => {
+          const intento = useCase.execute({
+            ...reserva(0),
+            paymentMethod: PaymentMethod.MERCADOPAGO,
+            depositAmount,
+          });
+          await expect(intento).rejects.toThrow(BadRequestException);
+          await expect(intento).rejects.toThrow(
+            'Una reserva con MercadoPago necesita una seña mayor a cero',
+          );
+          expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+          expect(paymentsService.createCheckout).not.toHaveBeenCalled();
+        },
+      );
+
+      it('una reserva en efectivo con seña 0 u omitida se acepta', async () => {
+        const result = await useCase.execute({
+          ...reserva(0),
+          paymentMethod: PaymentMethod.CASH,
+        });
+        expect(result.order.orderId).toBe('ord-1');
+      });
+
       it('sin el indicador de reserva la seña no se mira', async () => {
         const result = await useCase.execute({
           ...baseDto,

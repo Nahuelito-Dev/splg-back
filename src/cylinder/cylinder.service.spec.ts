@@ -80,6 +80,7 @@ describe('CylinderService', () => {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       getOne: jest.fn(() => cylinderRepo.findOne({})),
       getMany: jest.fn(),
     };
@@ -644,6 +645,25 @@ describe('CylinderService', () => {
       expect(eventos.emit).not.toHaveBeenCalled();
     });
 
+    it('encuentra un envase cuyo serial quedó guardado sin normalizar, y busca por la forma canónica', async () => {
+      orderRepo.findParaDespacho.mockResolvedValue(PEDIDO);
+      lockQb.getMany.mockResolvedValue([filled(' sn-001 ')]);
+
+      const result = await service.assignToOrder(
+        'ord-1',
+        [' sn-001'],
+        DIST,
+        'chofer-1',
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].state).toBe(CylinderState.DISPATCHED);
+      expect(lockQb.where).toHaveBeenCalledWith(
+        expect.stringContaining('upper(btrim(cylinder.serial)) IN'),
+        { serials: [' sn-001'] },
+      );
+    });
+
     it('lanza 404 si el pedido no existe', async () => {
       orderRepo.findParaDespacho.mockResolvedValue(null);
       await expect(
@@ -968,6 +988,7 @@ describe('CylinderService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([
           makeCylinder({
             cylinderId: 'cyl-1',
@@ -1036,10 +1057,10 @@ describe('CylinderService', () => {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
         offset: jest.fn().mockReturnThis(),
-        addOrderBy: jest.fn().mockReturnThis(),
         getCount: jest.fn().mockResolvedValue(7),
         getRawAndEntities: jest.fn().mockResolvedValue({ entities, raw }),
       };

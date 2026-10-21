@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { PaymentMethod } from '../entities/order.entity';
 
 const aPesos = (monto: Decimal.Value): string =>
   new Decimal(monto).toDecimalPlaces(2).toFixed(2);
@@ -31,6 +32,25 @@ export function assertSenaNoSuperaTotal(
   if (new Decimal(deposit).gt(totalRedondeado)) {
     throw new BadRequestException(
       `La seña ($${aPesos(deposit)}) no puede superar el total del pedido ($${aPesos(totalRedondeado)})`,
+    );
+  }
+}
+
+/**
+ * Una reserva que se paga con MercadoPago se activa cuando la pasarela aprueba
+ * la seña, y no se confirma a mano: sin seña no hay checkout ni forma de
+ * activarla, y expiraría. Exige una seña mayor a cero (400).
+ */
+export function assertSenaConMercadoPago(
+  paymentMethod: PaymentMethod,
+  deposit: Decimal.Value | null | undefined,
+): void {
+  if (
+    paymentMethod === PaymentMethod.MERCADOPAGO &&
+    !totalDeBase(deposit ?? 0).gt(0)
+  ) {
+    throw new BadRequestException(
+      'Una reserva con MercadoPago necesita una seña mayor a cero: la seña se cobra online y activa la reserva',
     );
   }
 }

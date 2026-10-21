@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  assertSenaConMercadoPago,
   assertSenaNoSuperaTotal,
   totalBajoLaSenaPagada,
 } from '../domain/deposit-cap';
@@ -250,7 +251,10 @@ export class QuoteOrderUseCase {
       throw new ConflictException(MENSAJE_SENA_PAGADA);
     }
     // Las reservas no se editan (`motivoNoEditable`): el tope sólo corre en el alta.
-    if (!edicion && dto.isReservation) assertSenaNoSuperaTotal(deposit, total);
+    if (!edicion && dto.isReservation) {
+      assertSenaConMercadoPago(dto.paymentMethod, deposit);
+      assertSenaNoSuperaTotal(deposit, total);
+    }
 
     const res = new QuoteResponseDto();
     res.items = items;

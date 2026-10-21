@@ -124,11 +124,11 @@ export class CreateOrderDto {
 
   @ApiProperty({
     description:
-      'Monto de la seña de la reserva (obligatorio si isReservation). No puede superar el total del pedido (con recargos): 400 «La seña ($X) no puede superar el total del pedido ($Y)».',
+      'Monto de la seña de la reserva. Con MercadoPago es obligatorio y mayor a cero (se cobra online y activa la reserva): 400 si falta o es 0. Con otros medios, omitirlo equivale a 0. No puede superar el total del pedido (con recargos): 400 «La seña ($X) no puede superar el total del pedido ($Y)».',
     required: false,
   })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   depositAmount?: number;
 

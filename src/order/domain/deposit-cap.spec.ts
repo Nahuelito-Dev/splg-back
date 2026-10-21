@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { assertSenaNoSuperaTotal, totalBajoLaSenaPagada } from './deposit-cap';
+import {
+  assertSenaConMercadoPago,
+  assertSenaNoSuperaTotal,
+  totalBajoLaSenaPagada,
+} from './deposit-cap';
+import { PaymentMethod } from '../entities/order.entity';
 
 describe('assertSenaNoSuperaTotal', () => {
   it('rechaza una seña mayor al total, con los dos montos', () => {
@@ -28,5 +33,32 @@ describe('totalBajoLaSenaPagada', () => {
     expect(totalBajoLaSenaPagada('100.089', 100.09)).toBe(false);
     expect(totalBajoLaSenaPagada('100.089', 100.1)).toBe(true);
     expect(totalBajoLaSenaPagada('100.085', 100.09)).toBe(false);
+  });
+});
+
+describe('assertSenaConMercadoPago', () => {
+  it.each([[undefined], [null], [0], [0.001], [0.004]])(
+    'con MercadoPago una seña %s es 400',
+    (sena) => {
+      expect(() =>
+        assertSenaConMercadoPago(PaymentMethod.MERCADOPAGO, sena),
+      ).toThrow(BadRequestException);
+    },
+  );
+
+  it('con MercadoPago acepta una seña mayor a cero', () => {
+    expect(() =>
+      assertSenaConMercadoPago(PaymentMethod.MERCADOPAGO, 0.01),
+    ).not.toThrow();
+  });
+
+  it('con otros medios no exige seña', () => {
+    for (const medio of [
+      PaymentMethod.CASH,
+      PaymentMethod.TRANSFER,
+      PaymentMethod.ACCOUNT,
+    ]) {
+      expect(() => assertSenaConMercadoPago(medio, 0)).not.toThrow();
+    }
   });
 });

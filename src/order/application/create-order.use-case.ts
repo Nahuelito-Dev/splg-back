@@ -1,5 +1,9 @@
 import { bloquearCuentaParaPedido } from '../../common/locks/cuenta-lock';
-import { assertSenaNoSuperaTotal } from '../domain/deposit-cap';
+import {
+  assertSenaConMercadoPago,
+  assertSenaNoSuperaTotal,
+} from '../domain/deposit-cap';
+import { renglonesDelCheckout } from '../domain/checkout-items';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
 import {
@@ -152,6 +156,13 @@ export class CreateOrderUseCase {
     if (createOrderDto.isReservation && !createOrderDto.scheduledDate) {
       throw new BadRequestException(
         'Una reserva requiere scheduledDate (fecha de entrega agendada)',
+      );
+    }
+
+    if (createOrderDto.isReservation) {
+      assertSenaConMercadoPago(
+        createOrderDto.paymentMethod,
+        createOrderDto.depositAmount,
       );
     }
 
@@ -341,9 +352,11 @@ export class CreateOrderUseCase {
         isReservation,
         depositAmount,
         customer,
-        expressSurcharge > 0
-          ? [...checkoutItems, itemDeRecargoExpress(expressSurcharge)]
-          : checkoutItems,
+        renglonesDelCheckout(checkoutItems, {
+          zona: zoneSurchargeAmount,
+          online: paymentSurchargeAmount,
+          express: expressSurcharge,
+        }),
       );
     } catch (error) {
       if (queryRunner.isTransactionActive) {
@@ -754,14 +767,4 @@ export class CreateOrderUseCase {
       return undefined;
     }
   }
-}
-
-/** Renglón del checkout con el recargo express, para que la pasarela lo cobre. */
-function itemDeRecargoExpress(monto: number): PaymentCheckoutItem {
-  return {
-    id: 'express-surcharge',
-    title: 'Recargo express',
-    quantity: 1,
-    unitPrice: monto,
-  };
 }
