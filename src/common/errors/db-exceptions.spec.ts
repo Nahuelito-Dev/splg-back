@@ -20,6 +20,20 @@ class RecursoInexistenteError extends NotFoundDomainError {
  * choque de unicidad o un deadlock tienen que dar un 409 claro, no un 500.
  */
 describe('traducirErrorDeBase', () => {
+  it.each(['22021', '22P05'])(
+    'un texto que la base no puede guardar (%s) sale como 400 en castellano',
+    (code) => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          { code, message: 'invalid byte sequence' },
+          logger,
+          'envase',
+        );
+      expect(llamar).toThrow(BadRequestException);
+      expect(llamar).toThrow(/caracteres no válidos/);
+    },
+  );
+
   const warn = jest.fn();
   const error = jest.fn();
   // Referencias directas a los `jest.fn()`, no a `logger.warn`/`logger.error`:

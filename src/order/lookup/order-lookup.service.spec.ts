@@ -96,3 +96,44 @@ describe('OrderLookupService.ultimaCompraEntregada', () => {
     );
   });
 });
+
+describe('OrderLookupService.findParaDespacho', () => {
+  const fila = {
+    orderId: 'o1',
+    customerId: 'c1',
+    status: OrderStatus.ACCEPTED,
+    deliveryId: 'd1',
+  };
+
+  it('dentro de una transacción bloquea el pedido para que no cambie hasta el commit', async () => {
+    const tx = { findOne: jest.fn().mockResolvedValue(fila) };
+    const manager = { getRepository: jest.fn().mockReturnValue(tx) };
+    const repo = { findOne: jest.fn() };
+    const service = new OrderLookupService(
+      repo as unknown as Repository<Order>,
+    );
+
+    await expect(
+      service.findParaDespacho(
+        'o1',
+        'dist',
+        manager as unknown as EntityManager,
+      ),
+    ).resolves.toEqual(fila);
+    expect(tx.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ lock: { mode: 'pessimistic_read' } }),
+    );
+    expect(repo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('fuera de una transacción no bloquea', async () => {
+    const repo = { findOne: jest.fn().mockResolvedValue(null) };
+    const service = new OrderLookupService(
+      repo as unknown as Repository<Order>,
+    );
+
+    await expect(service.findParaDespacho('o1', 'dist')).resolves.toBeNull();
+    const [opciones] = repo.findOne.mock.calls[0] as [Record<string, unknown>];
+    expect(opciones).not.toHaveProperty('lock');
+  });
+});

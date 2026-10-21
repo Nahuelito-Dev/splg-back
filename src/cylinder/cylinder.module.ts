@@ -7,6 +7,7 @@ import { GatewaysModule } from '../gateways/gateways.module';
 import { CylinderController } from './cylinder.controller';
 import { Cylinder } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
+import { DeliveryModule } from '../delivery/delivery.module';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { CylinderInspection } from './entities/cylinder-inspection.entity';
@@ -25,6 +26,7 @@ import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.enti
       CylinderRecoveryNotice,
     ]),
     OrderLookupModule,
+    DeliveryModule, // el chofer sólo carga envases a sus pedidos
     GatewaysModule, // el aviso al panel cuando se bloquea un despacho
     GasCylinderModule, // el producto del envase tiene que existir y ser del tenant
   ],
