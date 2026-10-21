@@ -122,7 +122,7 @@ export class CreateOrderDto {
 
   @ApiProperty({
     description:
-      'Monto de la seña de la reserva (obligatorio si isReservation).',
+      'Monto de la seña de la reserva (obligatorio si isReservation). No puede superar el total del pedido (con recargos): 400 «La seña ($X) no puede superar el total del pedido ($Y)».',
     required: false,
   })
   @IsOptional()

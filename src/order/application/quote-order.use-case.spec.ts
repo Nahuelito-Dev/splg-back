@@ -226,6 +226,28 @@ describe('QuoteOrderUseCase', () => {
     expect(r).toMatchObject({ deposit: 3000, total: 10000, balance: 7000 });
   });
 
+  it('una seña mayor al total se rechaza con 400; igual al total, se cotiza', async () => {
+    const cotizarCon = (depositAmount: number) =>
+      casoDeUso.execute(
+        {
+          items: [{ gasCylinderId: G10, quantity: 1, unitPrice: 0 }],
+          paymentMethod: PaymentMethod.CASH,
+          isReservation: true,
+          scheduledDate: '2026-12-01',
+          depositAmount,
+        },
+        DIST,
+        CLIENTE,
+      );
+    await expect(cotizarCon(10000.01)).rejects.toThrow(
+      'La seña ($10000.01) no puede superar el total del pedido ($10000.00)',
+    );
+    await expect(cotizarCon(10000)).resolves.toMatchObject({
+      deposit: 10000,
+      balance: 0,
+    });
+  });
+
   it('no escribe nada: sólo lee el catálogo', async () => {
     await casoDeUso.execute(
       { items, paymentMethod: PaymentMethod.CASH },

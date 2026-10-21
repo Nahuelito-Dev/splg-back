@@ -99,6 +99,9 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
           throw new Error('Unknown config key');
         }),
       } as unknown as import('@nestjs/config').ConfigService,
+      {
+        findPendingCheckoutUrls: jest.fn().mockResolvedValue(new Map()),
+      } as unknown as import('../../payments/application/payments.service').PaymentsService,
     );
   });
 

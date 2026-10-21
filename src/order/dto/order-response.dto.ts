@@ -424,10 +424,16 @@ export class OrderResponseDto {
 
   /**
    * URL de Checkout Pro (MercadoPago) a la que redirigir al cliente para
-   * pagar. Solo presente cuando el pedido se creó con paymentMethod
-   * MERCADOPAGO y la preferencia se pudo generar.
+   * pagar. Solo presente cuando el pedido es de paymentMethod MERCADOPAGO y
+   * la preferencia se pudo generar: en la respuesta del alta y, mientras el
+   * cobro siga pendiente, en `GET /orders/:id` (no para el chofer). En una
+   * reserva es el enlace de la seña.
    */
-  @ApiPropertyOptional({ name: 'payment_url' })
+  @ApiPropertyOptional({
+    name: 'payment_url',
+    description:
+      'Enlace de pago de MercadoPago pendiente: en el alta y en `GET /orders/:id` mientras el cobro siga pendiente (no se devuelve al chofer). En una reserva es el de la seña.',
+  })
   @Expose({ name: 'payment_url' })
   paymentUrl?: string;
 

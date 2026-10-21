@@ -510,6 +510,35 @@ describe('UpdateOrderUseCase', () => {
       expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     });
 
+    it('el borde de la seña paga se compara con el total redondeado a 2 decimales, como la cotización', async () => {
+      locked = makeOrder({ depositPaid: true, depositAmount: 100.09 });
+      create.calcularTotales.mockReturnValueOnce({
+        totalAmount: new Decimal('100.089'),
+        zoneSurchargeAmount: new Decimal(0),
+      });
+      await expect(
+        useCase.execute(
+          'o1',
+          { items: [{ gasCylinderId: 'g2', quantity: 1 }] },
+          'u1',
+          'd1',
+        ),
+      ).resolves.toBeDefined();
+      locked = makeOrder({ depositPaid: true, depositAmount: 100.1 });
+      create.calcularTotales.mockReturnValueOnce({
+        totalAmount: new Decimal('100.089'),
+        zoneSurchargeAmount: new Decimal(0),
+      });
+      await expect(
+        useCase.execute(
+          'o1',
+          { items: [{ gasCylinderId: 'g2', quantity: 1 }] },
+          'u1',
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
     it('un PATCH sin cambios (vacío o con los mismos valores) no escribe, no anota ni avisa', async () => {
       locked = makeOrder({ notes: 'igual' });
       for (const dto of [

@@ -325,6 +325,43 @@ describe('CreateOrderUseCase', () => {
       expect(customerAccount.assertCredito).not.toHaveBeenCalled();
     });
 
+    describe('tope de la seña (reserva)', () => {
+      const reserva = (depositAmount: number): CreateOrderDto => ({
+        ...baseDto,
+        isReservation: true,
+        scheduledDate: '2030-01-01',
+        depositAmount,
+      });
+
+      it('una seña mayor al total se rechaza con 400 y no guarda nada', async () => {
+        const intento = useCase.execute(reserva(2000.01));
+        await expect(intento).rejects.toThrow(BadRequestException);
+        await expect(intento).rejects.toThrow(
+          'La seña ($2000.01) no puede superar el total del pedido ($2000.00)',
+        );
+        expect(queryRunner.manager.save).not.toHaveBeenCalled();
+        expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+      });
+
+      it('una seña igual al total se acepta', async () => {
+        const result = await useCase.execute(reserva(2000));
+        expect(result.order.orderId).toBe('ord-1');
+      });
+
+      it('una seña menor al total se acepta', async () => {
+        const result = await useCase.execute(reserva(500));
+        expect(result.order.orderId).toBe('ord-1');
+      });
+
+      it('sin el indicador de reserva la seña no se mira', async () => {
+        const result = await useCase.execute({
+          ...baseDto,
+          depositAmount: 999999,
+        });
+        expect(result.order.orderId).toBe('ord-1');
+      });
+    });
+
     it('con otro medio de pago no toca la cuenta', async () => {
       await useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH });
       expect(customerAccount.assertCredito).not.toHaveBeenCalled();

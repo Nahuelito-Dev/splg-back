@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { totalBajoLaSenaPagada } from '../domain/deposit-cap';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { DataSource } from 'typeorm';
 
@@ -272,7 +273,10 @@ export class UpdateOrderUseCase {
       if (cambiaItems || cambiaDireccion || cambiaPago) {
         const { totalAmount, zoneSurchargeAmount } =
           this.create.calcularTotales(subtotalItems, zone, paymentMethod);
-        if (order.depositPaid && totalAmount.lt(order.depositAmount)) {
+        if (
+          order.depositPaid &&
+          totalBajoLaSenaPagada(totalAmount, order.depositAmount)
+        ) {
           throw new ConflictException(MENSAJE_SENA_PAGADA);
         }
         order.subtotalItems = subtotalItems;
