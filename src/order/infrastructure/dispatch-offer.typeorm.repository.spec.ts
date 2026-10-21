@@ -46,6 +46,24 @@ describe('DispatchOfferTypeormRepository.findDriverOfferState', () => {
     });
   });
 
+  it('el chofer que sostuvo y liberó el pedido (historial A rechazada, B aceptada) no se reofrece', async () => {
+    const repo = repoCon([
+      {
+        driverId: 'A',
+        status: DispatchOfferStatus.REJECTED,
+        expiresAt: hace(COOLDOWN + 1000),
+      },
+      {
+        driverId: 'B',
+        status: DispatchOfferStatus.ACCEPTED,
+        expiresAt: hace(1000),
+      },
+    ]);
+    const estado = await repo.findDriverOfferState('o', now, COOLDOWN, MAX);
+    expect(estado.blocked).toEqual(expect.arrayContaining(['A', 'B']));
+    expect(estado.reofferable).toEqual([]);
+  });
+
   it('una oferta retirada por edición del pedido no cuenta: ni bloquea, ni vencida, ni contactado', async () => {
     const repo = repoCon([
       {

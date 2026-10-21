@@ -13,6 +13,7 @@ import {
 } from './entities/cylinder-inspection.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { RegisterInspectionDto } from './dto/register-inspection.dto';
+import { normalizarSerial } from './dto/serial-de-envase';
 import {
   diaArgentino,
   diaDeTexto,
@@ -188,7 +189,10 @@ export class CylinderVigenciaService {
     distributorId?: string | null,
   ): Promise<VigenciaDeEnvase> {
     const cylinder = await this.cylinders.findOne({
-      where: { serial, ...(distributorId ? { distributorId } : {}) },
+      where: {
+        serial: normalizarSerial(serial),
+        ...(distributorId ? { distributorId } : {}),
+      },
       relations: ['gasCylinder'],
     });
     if (!cylinder) throw new NotFoundException('Envase no encontrado');

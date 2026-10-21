@@ -71,7 +71,7 @@ const CON_PRODUCTO_Y_CLIENTE = ['gasCylinder', 'currentCustomer'];
 /** Serial en su forma canónica (recortado, en mayúsculas); vacío no es válido. */
 function serialNormalizado(serial: string): string {
   const normalizado = normalizarSerial(serial);
-  if (normalizado === '') {
+  if (normalizado.trim() === '') {
     throw new BadRequestException('El serial no puede estar vacío');
   }
   return normalizado;
@@ -250,7 +250,7 @@ export class CylinderService {
   /** Busca un envase por su serial, scopeado por tenant. */
   async findBySerial(serial: string, distributorId: string): Promise<Cylinder> {
     const cylinder = await this.cylinderRepository.findOne({
-      where: { serial, distributorId },
+      where: { serial: normalizarSerial(serial), distributorId },
     });
     if (!cylinder) {
       throw new NotFoundException('Envase no encontrado');
@@ -633,20 +633,30 @@ export class CylinderService {
     serials: string[],
     distributorId: string,
   ): Promise<Cylinder[]> {
+    // La búsqueda compara la forma canónica en SQL (`upper(btrim(serial))`, la
+    // del índice `UQ_cylinder_serial_normalizado`): un envase guardado como
+    // `sn-1 ` se encuentra con `SN-1` aunque la fila no se haya normalizado.
+    const canonicos = serials.map(normalizarSerial);
     // Orden fijo por serial: dos asignaciones cruzadas no se bloquean entre sí.
     const encontrados = await manager
       .createQueryBuilder(Cylinder, 'cylinder')
       .setLock('pessimistic_write')
-      .where('cylinder.serial IN (:...serials)', { serials })
+      .where(
+        'upper(btrim(cylinder.serial)) IN (SELECT upper(btrim(s)) FROM unnest(CAST(:serials AS text[])) AS s)',
+        { serials: serials },
+      )
       .andWhere('cylinder.distributorId = :distributorId', { distributorId })
-      .orderBy('cylinder.serial', 'ASC')
+      .orderBy('upper(btrim(cylinder.serial))', 'ASC')
+      .addOrderBy('cylinder.cylinderId', 'ASC')
       .getMany();
     if (encontrados.length !== serials.length) {
       throw new NotFoundException('Envase no encontrado');
     }
-    const porSerial = new Map(encontrados.map((c) => [c.serial, c]));
+    const porSerial = new Map(
+      encontrados.map((c) => [normalizarSerial(c.serial), c]),
+    );
     // Seriales únicos y todos encontrados: cada uno está en el mapa.
-    return serials.map((serial) => porSerial.get(serial) as Cylinder);
+    return canonicos.map((serial) => porSerial.get(serial) as Cylinder);
   }
 
   /**

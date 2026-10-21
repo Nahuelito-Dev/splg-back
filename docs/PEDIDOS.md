@@ -83,7 +83,7 @@ en `order_status_history` como una fila de mismo estado de origen y destino con 
 
 | Endpoint                                                            | Qué hace                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PATCH /orders/:id/payment/register-cash` `{ reason, cashBoxId? }`   | Efectivo entregado con pago `pending` → `paid`. `paymentConfirmedBy` es el admin; el motivo queda en `paymentResolutionNote`. `cashBoxId`: caja donde entra el efectivo (obligatoria si la distribuidora tiene cajas activas; ver `FINANZAS.md`). 409 si ya es impago.                                                                                                                                                                                                                                                                                 |
+| `PATCH /orders/:id/payment/register-cash` `{ reason, cashBoxId? }`  | Efectivo entregado con pago `pending` → `paid`. `paymentConfirmedBy` es el admin; el motivo queda en `paymentResolutionNote`. `cashBoxId`: caja donde entra el efectivo (obligatoria si la distribuidora tiene cajas activas; ver `FINANZAS.md`). 409 si ya es impago.                                                                                                                                                             |
 | `PATCH /orders/:id/payment/register-unpaid` `{ reason }`            | Lo mismo que el aviso del chofer: pago `unpaid` + **una** incidencia `unpaid_collection` (reportada por el admin). Responde como `PATCH .../unpaid`. El motivo queda también en el pedido (`paymentResolutionNote`, con `paymentResolvedBy/At`), igual que en `register-cash`; `resolve-unpaid` lo reemplaza cuando el impago se cierra (el motivo original sigue en el historial). Si el pago ya estaba `unpaid` no se toca nada. |
 | `PATCH /orders/:id/payment/confirm-transfer` `{ received, reason }` | Pedido `transfer`, no cancelado. `received: true` → `paid` (recién ahí cuenta como venta), desde `pending` **o desde `failed`** (la transferencia llegó después de marcarla no recibida: se corrige con motivo). `received: false` → `failed`, sólo desde `pending` y **sólo sobre un pedido entregado** (409 si no lo está: marcarla antes no frenaría nada). Repetir lo mismo: no-op; `paid` → `failed`: 409.                    |
 
@@ -229,7 +229,7 @@ Sólo el **cliente dueño** (un pedido ajeno es **404**; admin, super admin y ch
 (`OrderResponseDto`).
 
 - **Cuándo:** pedido `pending` o `accepted`. `on_the_way` o `delivered`: **409** `El pedido ya salió o fue entregado: no se
-  puede cambiar la dirección`. `cancelled` o `reserved`: **409** con el estado actual.
+puede cambiar la dirección`. `cancelled` o `reserved`: **409** con el estado actual.
 - **Dirección:** tiene que ser otra de las del cliente (de otro cliente o inexistente: **404** `Dirección no encontrada`;
   la misma que ya tiene: **400**) y caer dentro de una zona de cobertura de la distribuidora del pedido (misma consulta del alta;
   si no: **400** `La dirección está fuera de la zona de cobertura de la distribuidora`).
@@ -275,7 +275,7 @@ Reemplaza lo anterior. Responde el pedido completo.
   `receiverRelationship` están en `PROPIEDADES_EXCLUIDAS.Order` (auditoría de datos), sus claves en `SENSIBLES` de `depurarCambios`
   (bitácora HTTP: `[depurado]`) y en la lista de `cuerpoParaLog` (log de morgan: `******`, también anidados en `receiver`).
   `ReceiverRetentionCron` registra la anulación en la auditoría de datos (`receiver: [datos de quien recibe] → [anulados por plazo
-  de reclamo vencido]`) sin los valores.
+de reclamo vencido]`) sin los valores.
 
 ## Cotización — `POST /orders/quote`
 
@@ -452,6 +452,10 @@ total se acepta. Una reserva no se edita (sólo se edita un pedido `pending`): p
 así que el tope corre sólo en el alta y su cotización. Con la seña ya paga, el total de un pedido editable no puede
 quedar por debajo de ella (409); esa comparación usa el mismo total redondeado a 2 decimales que la cotización.
 
+Una reserva con **MercadoPago** exige `depositAmount` mayor a cero (**400** `Una reserva con MercadoPago necesita una
+seña mayor a cero...`, también en la cotización): la seña se cobra online y su aprobación es lo que activa la reserva,
+que no se confirma a mano. Con otros medios, omitirla equivale a 0. `depositAmount` admite como máximo 2 decimales (400 si trae más) y la regla de «mayor a cero» mira el importe redondeado a centavos.
+
 `GET /orders/reservations` agrega `timeSlot` (`name`, `startTime`, `endTime` en HH:MM, o `null` si la reserva es sólo
 por día) y `paymentUrl` (ver abajo).
 
@@ -462,6 +466,11 @@ respuesta del alta, `GET /orders/:id` devuelve `payment_url` mientras el cobro s
 cancelado ni pagado; no se le devuelve al chofer), y `GET /orders/reservations` devuelve `paymentUrl` de la seña mientras
 esté pendiente (`null` en efectivo o transferencia, con la seña paga o si la pasarela no lo generó). Una seña en efectivo
 o por transferencia la confirma el admin con `PATCH /orders/:id/confirm-deposit`, sea cual sea el medio.
+
+El checkout de MercadoPago cobra exactamente lo que queda en el registro de cobros: los renglones de los productos
+(precio con promoción) más un renglón por cada recargo del total (`Recargo de zona`, `Recargo por pago online`, `Recargo
+express`; los que valen 0 no se mandan). En una reserva el checkout es un único renglón `Seña de reserva` por la seña.
+Si la pasarela aprobara otro importe, el webhook no da el pedido por pagado ni lo despacha.
 
 ## Recargo online guardado, motivo de cancelación y fecha agendada (tanda V1)
 

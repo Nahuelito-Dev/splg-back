@@ -247,7 +247,7 @@ const CHECKS: ReadonlyArray<readonly [string, string, string]> = [
   [
     'cylinder_movement',
     'CHK_cylinder_movement_cambio',
-    `"from_state" IS NULL OR "from_state"::text <> "to_state"::text`,
+    `"from_state" IS NULL OR "from_state"::text <> "to_state"::text OR "note" IS NOT NULL`,
   ],
   [
     'cylinder_inspection',

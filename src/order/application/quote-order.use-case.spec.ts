@@ -226,6 +226,28 @@ describe('QuoteOrderUseCase', () => {
     expect(r).toMatchObject({ deposit: 3000, total: 10000, balance: 7000 });
   });
 
+  it.each([[undefined], [0]])(
+    'una reserva con MercadoPago y seña %s se rechaza con 400; con seña mayor a cero se cotiza',
+    async (depositAmount) => {
+      const cotizarCon = (sena?: number) =>
+        casoDeUso.execute(
+          {
+            items: [{ gasCylinderId: G10, quantity: 1, unitPrice: 0 }],
+            paymentMethod: PaymentMethod.MERCADOPAGO,
+            isReservation: true,
+            scheduledDate: '2026-12-01',
+            depositAmount: sena,
+          },
+          DIST,
+          CLIENTE,
+        );
+      await expect(cotizarCon(depositAmount)).rejects.toThrow(
+        'Una reserva con MercadoPago necesita una seña mayor a cero',
+      );
+      await expect(cotizarCon(100)).resolves.toMatchObject({ deposit: 100 });
+    },
+  );
+
   it('una seña mayor al total se rechaza con 400; igual al total, se cotiza', async () => {
     const cotizarCon = (depositAmount: number) =>
       casoDeUso.execute(

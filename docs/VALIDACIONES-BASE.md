@@ -17,15 +17,20 @@ Verificación de la base: `scripts/verificar-constraints.sql` (transacción con 
 |---|---|
 | `NormalizarCuitDeDistribuidora` | `distributor.tax_id` queda sólo con dígitos. |
 | `RecargoPorMedioDePagoEnPedido` | Columna `order.payment_surcharge_amount` (numeric(10,2) NOT NULL DEFAULT 0) y carga de los pedidos existentes (total menos ítems, zona y express). |
-| `DatosDeLasValidacionesDeLaBase` | Cancelados sin motivo → «Sin motivo registrado»; prioridad de zonas activas renumerada sin repetidos (conserva quién gana); patentes en mayúsculas sin espacios. |
-| `ChecksDeLaBase` | ~90 CHECK (NOT VALID + VALIDATE), funciones `es_cuit_valido` / `es_cuil_valido`, promoción máxima 99 %. |
+| `DatosDeLasValidacionesDeLaBase` | Cancelados sin motivo → «Sin motivo registrado»; prioridad de zonas activas renumerada sin repetidos (conserva quién gana); patentes en mayúsculas sin espacios; ofertas de despacho: de varias `accepted` del mismo pedido sólo queda la más reciente (las anteriores pasan a `rejected`, como lo escribe hoy el back al liberar, así ese chofer no se reofrece) y un `expiresAt` igual o anterior a `offeredAt` pasa a un segundo después. |
+| `ChecksDeLaBase` | ~90 CHECK (NOT VALID + VALIDATE; `CHK_cylinder_movement_cambio` ya nace en su forma final, que admite mismo estado con nota), funciones `es_cuit_valido` / `es_cuil_valido`, promoción máxima 99 %. |
 | `UnicidadesDeLaBase` | Únicos: `lower(email)`, patente por distribuidora, dirección principal, oferta viva/aceptada, renglón por garrafa, franja y zona por nombre (activas), prioridad de zona (activas), serial y tipo normalizados, orden de parada. |
 | `ClavesForaneasFaltantes` | 8 FK que faltaban (`order.payment_confirmed_by`, `payment_resolved_by`, `vehicle_car_id`, `payment_refund.requested_by_user_id`, `purchase_receipt.voided_by_user_id` y `cash_movement_id`, `fuel_load.cash_movement_id`, `traffic_fine.cash_movement_id`). |
 | `SaldoDelChoferNumerico` | `delivery.balance` pasa a numeric(12,2). |
 | `ExclusionesDeLaBase` | `btree_gist` y EXCLUDE: franjas, jornadas, asignación de vehículo (por vehículo y por chofer), reglas de comisión. |
 | `BorradoRestrictivoDeUsuariosYPedidos` | `user` → customer/delivery/car/user_address/admin y `order` → rating/incident/historial/cambios de dirección pasan a RESTRICT. |
-| `EstadoDelPagoYMovimientoDeEnvase` | `CHK_cylinder_movement_cambio` admite un movimiento sin cambio de estado si trae nota (la anotación de una revisión rechazada de un envase que está afuera); trigger `TRG_payment_estado_no_retrocede` (un pago aprobado sólo pasa a devuelto; rechazado, cancelado y devuelto no cambian). |
+| `EstadoDelPagoYMovimientoDeEnvase` | `CHK_cylinder_movement_cambio` (ya creado así por `ChecksDeLaBase`; acá se vuelve a dejar idempotente) admite un movimiento sin cambio de estado si trae nota (la anotación de una revisión rechazada de un envase que está afuera); trigger `TRG_payment_estado_no_retrocede` (un pago aprobado sólo pasa a devuelto; rechazado, cancelado y devuelto no cambian). |
 | `FormulaDelTotalDelPedido` | `CHK_order_total_formula`: total = ítems + zona + recargo online + express (el express no cuenta si el pedido pasó al reparto común). Va última porque exige que todo el back que crea o edita pedidos complete `payment_surcharge_amount`. |
+| `NormalizarSerialesDeEnvase` | `cylinder.serial` existente en su forma canónica (`upper(btrim(serial))`: sin espacios en los bordes y en mayúsculas; JS y la base recortan sólo espacios U+0020, no tabulaciones); si otro envase de la distribuidora ya tuviera esa forma, no lo toca y lo avisa en el log (el índice único usa la misma expresión, así que no debería pasar; si pasara, se resuelve a mano: `SELECT * FROM cylinder WHERE upper(btrim(serial)) = '<SERIAL>'` y se da de baja o corrige uno). |
+
+**Instalación desde cero:** el `data-source` corre cada migración en su propia transacción (`migrationsTransactionMode: 'each'`); con una sola transacción para todas, la base rechaza usar un valor de enum agregado en la misma corrida (`account` en `order_paymentmethod_enum`, usado por `ChecksDeLaBase`).
+
+**Orden de las migraciones y bases ya migradas:** TypeORM no deja intercalar una migración nueva antes de otra ya ejecutada, por eso los arreglos de datos y del CHECK de movimientos se hicieron dentro de `DatosDeLasValidacionesDeLaBase` y `ChecksDeLaBase`. En una base donde ya corrieron (como `splg_db`) esos cambios no se reaplican, y no hace falta: el esquema final es idéntico (verificado comparando el volcado de esquema de `splg_db` con el de una base vacía migrada de punta a punta) y las filas que corregirían eran 0 en `splg_db`.
 
 ## Reglas del back que cambian
 
@@ -35,7 +40,7 @@ Verificación de la base: `scripts/verificar-constraints.sql` (transacción con 
 - **Franjas**: inicio < fin, capacidad 1–10000, nombre único y sin solaparse entre activas (409).
 - **Zonas**: nombre y prioridad únicos entre activas (409); sin prioridad en el alta, queda la siguiente.
 - **Catálogo**: tipo sin blancos y único sin distinguir mayúsculas/espacios; precio hasta 10.000.000 y peso hasta 1000 kg, 2 decimales; promoción 0,01–99 %.
-- **Envases**: serial no vacío, recortado y en mayúsculas (alta, edición y asignación); fabricación ≤ vencimiento; una revisión no puede ser anterior a la fabricación.
+- **Envases**: serial no vacío, recortado y en mayúsculas (alta, edición y asignación; la asignación y las lecturas por serial buscan por esa forma canónica); fabricación ≤ vencimiento; una revisión no puede ser anterior a la fabricación.
 - **Cuentas corrientes**: máquina de estados `active ↔ blocked`, `active|blocked → closed`, `closed → active` (cerrada no pasa a bloqueada).
 - **Flota**: patente argentina `AAA123` o `AA123AA` (409 si ya existe en la distribuidora); odómetro de combustible contra la carga anterior **y la siguiente**; multas: infracción no futura, vencimiento ≥ infracción, pago ≥ infracción; cerrar/cancelar una tarea bloquea la fila y la fecha de cierre no es futura; el saldo del chofer se ajusta con la fila bloqueada y en decimal.
 - **Personas**: teléfono E.164 también al editar y único; nacimiento anterior al ingreso; CUIT de la distribuidora con 11 dígitos (acepta guiones y los quita).

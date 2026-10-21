@@ -60,3 +60,29 @@ describe('items repetidos', () => {
     ).toEqual([]);
   });
 });
+
+describe('depositAmount', () => {
+  const reserva = {
+    ...base,
+    fromCart: true,
+    isReservation: true,
+    scheduledDate: '2030-01-01',
+  };
+
+  it.each([
+    ['el alta', CreateOrderDto],
+    ['la cotización', QuoteOrderDto],
+  ])('%s rechaza una seña con más de 2 decimales', async (_n, clase) => {
+    expect(
+      await mensajes(clase, { ...reserva, depositAmount: 0.001 }),
+    ).toContain(
+      'depositAmount must be a number conforming to the specified constraints',
+    );
+  });
+
+  it('acepta una seña de 2 decimales', async () => {
+    expect(
+      await mensajes(CreateOrderDto, { ...reserva, depositAmount: 100.25 }),
+    ).toEqual([]);
+  });
+});

@@ -79,3 +79,10 @@ describe('serial del envase', () => {
     });
   });
 });
+
+describe('normalizarSerial', () => {
+  it('recorta sólo espacios y pasa a mayúsculas, igual que upper(btrim()) de la base', () => {
+    expect(normalizarSerial('  sn-1 ')).toBe('SN-1');
+    expect(normalizarSerial('\tsn-1\t')).toBe('\tSN-1\t');
+  });
+});

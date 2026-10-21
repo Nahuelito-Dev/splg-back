@@ -24,4 +24,7 @@ export default new DataSource({
   entities: ['src/**/*.entity{.ts,.js}'],
   migrations: ['src/migrations/*{.ts,.js}'],
   synchronize: false,
+  // Cada migración en su propia transacción: un valor nuevo de un enum no se puede usar
+  // en la misma transacción que lo agrega, y una instalación desde cero lo necesita.
+  migrationsTransactionMode: 'each',
 });
