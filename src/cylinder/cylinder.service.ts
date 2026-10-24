@@ -68,6 +68,9 @@ const ESTADO_DEL_PEDIDO: Readonly<Record<OrderStatus, string>> = {
 /** Lo que el panel muestra de cada envase: de qué producto es y quién lo tiene. */
 const CON_PRODUCTO_Y_CLIENTE = ['gasCylinder', 'currentCustomer'];
 
+/** Tolerancia entre el reloj del cliente y el del servidor al validar fechas "no futuras". */
+const MARGEN_FECHA_FUTURA_MS = 5 * 60 * 1000;
+
 /** Serial en su forma canónica (recortado, en mayúsculas); vacío no es válido. */
 function serialNormalizado(serial: string): string {
   const normalizado = normalizarSerial(serial);
@@ -410,6 +413,14 @@ export class CylinderService {
         if (cylinder.state === CylinderState.RETIRED) {
           throw new ConflictException(
             'El envase está dado de baja y no se edita',
+          );
+        }
+        if (
+          dto.manufacturedAt !== undefined &&
+          dto.manufacturedAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS
+        ) {
+          throw new BadRequestException(
+            'manufacturedAt: la fecha de fabricación no puede ser futura',
           );
         }
         if (

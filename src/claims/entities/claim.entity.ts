@@ -7,6 +7,7 @@ import {
   JoinColumn,
   Index,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -22,6 +23,16 @@ export enum ClaimStatus {
 @Check(
   'CHK_claims_textos',
   `btrim("reason") <> '' AND btrim("description") <> ''`,
+)
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  { name: 'FK_claims_order_distribuidora', onDelete: 'NO ACTION' },
+)
+@Check(
+  'CHK_claims_largo_de_textos',
+  `char_length("reason") <= 120 AND char_length("description") <= 1000 AND ("resolutionNote" IS NULL OR char_length("resolutionNote") <= 1000)`,
 )
 @Entity('claims')
 export class Claim {

@@ -16,6 +16,7 @@ import { Car, FuelType } from '../../car/entities/car.entity';
 import { Employee } from '../../employee/entities/employee.entity';
 import { User } from '../../users/entities/user.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+import { CashMovement } from '../../cash/entities/cash-movement.entity';
 
 export enum FuelPaymentMethod {
   CASH_BOX = 'cash_box',
@@ -32,6 +33,15 @@ export enum FuelPaymentMethod {
  */
 @Check('CHK_fuel_load_precio', `"unit_price" > 0`)
 @Check('CHK_fuel_load_odometro', `"odometer_km" >= 0`)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_fuel_load_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('fuel_load')
 @Index('IDX_fuel_load_car_loaded_at', ['carId', 'loadedAt'])
 @Index('IDX_fuel_load_distributor_loaded_at', ['distributorId', 'loadedAt'])

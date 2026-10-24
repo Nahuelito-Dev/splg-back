@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -39,6 +40,39 @@ export interface ReglaAplicada {
 @Check(
   'CHK_commission_entry_signo',
   `("type" <> 'delivery_commission' OR "amount" > 0) AND ("type" <> 'settlement_shortage' OR "amount" < 0)`,
+)
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  { name: 'FK_commission_entry_order_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => Employee,
+  ['employee_id', 'distributor_id'],
+  ['employee_id', 'distributor_id'],
+  {
+    name: 'FK_commission_entry_employee_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Delivery,
+  ['delivery_id', 'distributor_id'],
+  ['delivery_id', 'distributor_id'],
+  {
+    name: 'FK_commission_entry_delivery_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => DriverLiquidation,
+  ['liquidation_id', 'distributor_id'],
+  ['liquidation_id', 'distributor_id'],
+  {
+    name: 'FK_commission_entry_liquidation_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('commission_entry')
 @Index('IDX_commission_entry_empleado', ['employeeId', 'occurredAt'])

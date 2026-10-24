@@ -9,6 +9,7 @@ import {
   Index,
   Check,
   Exclusion,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 
@@ -19,6 +20,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
   'EXC_time_slot_solapada',
   `USING gist ("distributor_id" WITH =, tsrange(timestamp '2000-01-01' + "startTime", timestamp '2000-01-01' + "endTime") WITH &&) WHERE ("isActive" AND "startTime" IS NOT NULL AND "endTime" IS NOT NULL)`,
 )
+@Unique('UQ_time_slot_id_distribuidora', ['timeSlotId', 'distributorId'])
 @Entity('time_slot')
 export class TimeSlot {
   @PrimaryGeneratedColumn('uuid', { name: 'time_slot_id' })

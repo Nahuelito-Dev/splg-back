@@ -12,6 +12,7 @@ import { conIdempotencia } from './setup/con-idempotencia';
 import { entregarComoAdmin } from './setup/entrega-admin';
 import { Finanzas, Headers, cuerpo } from './setup/finanzas';
 import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import { forzarEstado } from './setup/bypass';
 
 const mockReintentos = { n: 0 };
 jest.mock('../../src/common/utils/with-transaction-retry', () => {
@@ -138,7 +139,8 @@ describe('Comisiones (e2e)', () => {
     cantidad = 1,
   ) {
     const o = await f.pedidoEntregado(e, { chofer, cliente, cantidad });
-    await ds.query(
+    await forzarEstado(
+      ds,
       `UPDATE "order" SET status = 'on_the_way', "deliveredAt" = NULL WHERE order_id = $1`,
       [o.orderId],
     );

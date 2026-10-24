@@ -5,6 +5,7 @@ import {
 } from '../../stock/domain/stock.enums';
 import { CargaInvalidaError } from './errors/truck-load.errors';
 import { TruckLoadStatus } from './truck-load.enums';
+import { derivarTransiciones } from '../../common/domain/derivar-transiciones';
 
 /**
  * Lo que el chofer cobra al entregar: el total menos la seña ya paga (la misma
@@ -32,6 +33,30 @@ const DESDE: Record<AccionDeCarga, readonly TruckLoadStatus[]> = {
   cerrar: [TruckLoadStatus.RETURNED],
   cancelar: [TruckLoadStatus.LOADING],
 };
+
+/** Estados a los que lleva cada acción que cambia el estado de la carga. */
+const HACIA: Partial<Record<AccionDeCarga, readonly TruckLoadStatus[]>> = {
+  salir: [TruckLoadStatus.ON_ROUTE],
+  declarar: [TruckLoadStatus.RETURNED],
+  cerrar: [TruckLoadStatus.CLOSED, TruckLoadStatus.CLOSED_WITH_DIFFERENCE],
+  cancelar: [TruckLoadStatus.CANCELLED],
+};
+
+/**
+ * Transiciones válidas del estado de la carga, derivadas de `DESDE` y `HACIA`
+ * (las mismas tablas que aplica `puedeHacer`; la base las repite en el trigger
+ * `TRG_truck_load_transicion_de_estado` y un spec compara las dos): en carga →
+ * en ruta o cancelada; en ruta → devuelta; devuelta → cerrada (con o sin
+ * diferencia). Declarar de nuevo una carga ya devuelta no cambia el estado.
+ */
+export const TRANSICIONES_DE_CARGA: Readonly<
+  Record<TruckLoadStatus, readonly TruckLoadStatus[]>
+> = derivarTransiciones(Object.values(TruckLoadStatus), (desde) =>
+  (Object.keys(HACIA) as AccionDeCarga[])
+    .filter((accion) => DESDE[accion].includes(desde))
+    .flatMap((accion) => HACIA[accion] ?? [])
+    .filter((hacia) => hacia !== desde),
+);
 
 export function puedeHacer(
   accion: AccionDeCarga,

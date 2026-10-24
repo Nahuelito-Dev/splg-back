@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
   Index,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Order } from './order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -41,6 +42,15 @@ export enum DispatchOfferStatus {
 @Check('CHK_order_dispatch_offer_vencimiento', `"expiresAt" > "offeredAt"`)
 @Index('UQ_order_dispatch_offer_viva', { synchronize: false })
 @Index('UQ_order_dispatch_offer_aceptada', { synchronize: false })
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  {
+    name: 'FK_order_dispatch_offer_order_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('order_dispatch_offer')
 // Composites para las queries del despacho:
 //  - hasActiveOffer/closeActiveOffer (por pedido + estado)

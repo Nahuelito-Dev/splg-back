@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { CashBox } from '../../cash/entities/cash-box.entity';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
@@ -47,6 +48,42 @@ import { DriverSettlementOrder } from './driver-settlement-order.entity';
 @Check(
   'CHK_driver_settlement_diferencia',
   `"difference" IS NULL OR "difference" = "declared_cash" + "driver_expenses" - "expected_cash"`,
+)
+@ForeignKey(
+  () => CashBox,
+  ['destination_cash_box_id', 'distributor_id'],
+  ['cash_box_id', 'distributor_id'],
+  {
+    name: 'FK_driver_settlement_destination_cash_box_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_driver_settlement_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Delivery,
+  ['delivery_id', 'distributor_id'],
+  ['delivery_id', 'distributor_id'],
+  {
+    name: 'FK_driver_settlement_delivery_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => TruckLoad,
+  ['truck_load_id', 'distributor_id'],
+  ['load_id', 'distributor_id'],
+  {
+    name: 'FK_driver_settlement_truck_load_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('driver_settlement')
 @Index('UQ_driver_settlement_numero', ['distributorId', 'number'], {

@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Check,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { WarehouseKind } from '../domain/stock.enums';
@@ -19,6 +20,7 @@ import { WarehouseKind } from '../domain/stock.enums';
  * "vigentes": un depósito dado de baja no bloquea reutilizar su código.
  */
 @Check('CHK_warehouse_codigo', `"code" ~ '^[A-Z0-9_-]{1,12}$'`)
+@Unique('UQ_warehouse_id_distribuidora', ['warehouseId', 'distributorId'])
 @Entity('warehouse')
 @Index('UQ_warehouse_code_vigente', ['distributorId', 'code'], {
   unique: true,

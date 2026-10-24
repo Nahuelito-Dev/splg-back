@@ -9,6 +9,7 @@ import {
   Index,
   DeleteDateColumn,
   Check,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -46,6 +47,10 @@ export enum CoverageZoneSurchargeType {
 )
 @Index('UQ_coverage_zone_nombre_activa', { synchronize: false })
 @Index('UQ_coverage_zone_prioridad_activa', { synchronize: false })
+@Unique('UQ_coverage_zone_id_distribuidora', [
+  'coverageZoneId',
+  'distributorId',
+])
 @Entity('coverage_zone')
 @Check(
   'CHK_coverage_zone_surcharge',

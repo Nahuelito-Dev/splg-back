@@ -564,16 +564,32 @@ describe('FleetTaskService', () => {
       setLock: jest.Mock;
       where: jest.Mock;
       andWhere: jest.Mock;
+      orderBy: jest.Mock;
+      addOrderBy: jest.Mock;
       getOne: jest.Mock;
     };
 
     /** La tarea que hay en la base: la ve el SELECT ... FOR UPDATE y la relectura final. */
-    const enLaBase = (tarea: MaintenanceTask | null) => {
+    const enLaBase = (
+      tarea: MaintenanceTask | null,
+      vecinas: {
+        anterior?: Partial<MaintenanceTask>;
+        siguiente?: Partial<MaintenanceTask>;
+      } = {},
+    ) => {
+      // 1.ª lectura: la tarea con la fila bloqueada; después, la hecha justo
+      // antes y la hecha justo después del mismo vehículo (control del odómetro).
       bloqueo = {
         setLock: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(tarea),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getOne: jest
+          .fn()
+          .mockResolvedValueOnce(tarea)
+          .mockResolvedValueOnce(vecinas.anterior ?? null)
+          .mockResolvedValueOnce(vecinas.siguiente ?? null),
       };
       tasks.createQueryBuilder.mockReturnValue(bloqueo);
       tasks.findOne.mockResolvedValue(tarea);
@@ -635,6 +651,58 @@ describe('FleetTaskService', () => {
         'c1',
         50000,
       );
+    });
+
+    it('el kilometraje del cierre no puede ser menor que el de la tarea anterior del vehículo (400)', async () => {
+      enLaBase(
+        { ...abierta(), carId: 'c1' },
+        { anterior: { odometerKm: 60000 } },
+      );
+      await expect(
+        service.close(
+          't1',
+          { performedAt: '2026-09-26T00:00:00.000Z', odometerKm: 50000 },
+          'd1',
+        ),
+      ).rejects.toThrow(/menor que el de la tarea anterior.*60000/);
+      expect(carService.actualizarOdometro).not.toHaveBeenCalled();
+    });
+
+    it('ni mayor que el de una tarea posterior (400)', async () => {
+      enLaBase(
+        { ...abierta(), carId: 'c1' },
+        { siguiente: { odometerKm: 40000 } },
+      );
+      await expect(
+        service.close(
+          't1',
+          { performedAt: '2026-09-26T00:00:00.000Z', odometerKm: 50000 },
+          'd1',
+        ),
+      ).rejects.toThrow(/mayor que el de una tarea posterior.*40000/);
+    });
+
+    it('un kilometraje que encaja entre la anterior y la siguiente se acepta', async () => {
+      enLaBase(
+        { ...abierta(), carId: 'c1' },
+        { anterior: { odometerKm: 40000 }, siguiente: { odometerKm: 60000 } },
+      );
+      const cerrada = await service.close(
+        't1',
+        { performedAt: '2026-09-26T00:00:00.000Z', odometerKm: 50000 },
+        'd1',
+      );
+      expect(cerrada.status).toBe(MaintenanceTaskStatus.DONE);
+    });
+
+    it('cerrar sin kilometraje también valida el que la tarea ya traía guardado (400)', async () => {
+      enLaBase(
+        { ...abierta(), carId: 'c1', odometerKm: 50000 },
+        { anterior: { odometerKm: 60000 } },
+      );
+      await expect(
+        service.close('t1', { performedAt: '2026-09-26T00:00:00.000Z' }, 'd1'),
+      ).rejects.toThrow(/menor que el de la tarea anterior.*60000/);
     });
 
     it('cerrar sin kilometraje no toca el del vehículo', async () => {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
+import { ESTADO_ABIERTO } from '../domain/dispatch-offer-status.machine';
 import { Order } from '../entities/order.entity';
 import {
   DispatchOfferRepositoryPort,
@@ -32,7 +33,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
       driverId,
       distributorId: distributorId ?? undefined,
       expiresAt,
-      status: DispatchOfferStatus.OFFERED,
+      status: ESTADO_ABIERTO,
     });
     return this.repo.save(offer);
   }
@@ -79,7 +80,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     const count = await this.repo.count({
       where: {
         orderId,
-        status: DispatchOfferStatus.OFFERED,
+        status: ESTADO_ABIERTO,
         ...(driverId ? { driverId } : {}),
       },
     });
@@ -139,7 +140,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
   findExpired(now: Date): Promise<DispatchOffer[]> {
     return this.repo.find({
       where: {
-        status: DispatchOfferStatus.OFFERED,
+        status: ESTADO_ABIERTO,
         expiresAt: LessThan(now),
       },
       relations: ['order'],
@@ -153,7 +154,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     // Sólo desde OFFERED: una oferta ya aceptada, rechazada o reemplazada no se
     // pisa (p. ej. el cron de vencimiento contra un chofer que acaba de aceptar).
     const result = await this.repo.update(
-      { offerId, status: DispatchOfferStatus.OFFERED },
+      { offerId, status: ESTADO_ABIERTO },
       { status },
     );
     return (result.affected ?? 0) > 0;
@@ -168,7 +169,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
       {
         orderId,
         driverId,
-        status: DispatchOfferStatus.OFFERED,
+        status: ESTADO_ABIERTO,
       },
       { status },
     );
@@ -182,7 +183,7 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     status: DispatchOfferStatus,
   ): Promise<string[]> {
     const abiertas = await manager.find(DispatchOffer, {
-      where: { orderId, status: DispatchOfferStatus.OFFERED },
+      where: { orderId, status: ESTADO_ABIERTO },
       select: { offerId: true, driverId: true },
     });
     const aRetirar = abiertas.filter((o) => o.driverId !== exceptDriverId);

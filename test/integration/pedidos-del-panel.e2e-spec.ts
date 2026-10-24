@@ -31,6 +31,7 @@ import {
 } from '../../src/payments/domain/payment.enums';
 import { UsersService } from '../../src/users/users.service';
 import { FirebaseAuthPort } from '../../src/firebase/ports/firebase-auth.port';
+import { forzarEstado } from './setup/bypass';
 
 interface Quien {
   user: User;
@@ -433,7 +434,8 @@ describe('Pedidos del panel (e2e)', () => {
       const { a, b, adminA, adminB, cliente } = await escenario();
       const p = await producto(a.distributorId);
       const id = await pedidoPorApi(a.slug, cliente, p);
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'on_the_way' WHERE order_id = $1`,
         [id],
       );
@@ -507,7 +509,8 @@ describe('Pedidos del panel (e2e)', () => {
       const p = await producto(a.distributorId);
       const delAdmin = await pedidoPorApi(a.slug, cliente, p);
       const delCliente = await pedidoPorApi(a.slug, cliente, p);
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'on_the_way', "deliveryCode" = 'QRCODE1234' WHERE order_id = ANY($1)`,
         [[delAdmin, delCliente]],
       );

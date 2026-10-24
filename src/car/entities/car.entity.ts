@@ -10,6 +10,7 @@ import {
   Index,
   DeleteDateColumn,
   Check,
+  Unique,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -34,6 +35,7 @@ export enum FuelType {
   `"car_patent" IS NULL OR "car_patent" ~ '^([A-Z]{3}[0-9]{3}|[A-Z]{2}[0-9]{3}[A-Z]{2})$'`,
 )
 @Index('UQ_car_patente_distribuidora_vigente', { synchronize: false })
+@Unique('UQ_car_id_distribuidora', ['carId', 'distributorId'])
 @Entity('car')
 export class Car {
   @PrimaryGeneratedColumn('uuid', { name: 'car_id' })

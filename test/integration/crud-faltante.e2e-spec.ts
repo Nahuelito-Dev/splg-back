@@ -44,6 +44,7 @@ import {
   fechasSegunEstado,
   sembrarChoferDeFixture,
 } from './setup/pedido-valido';
+import { conBypassManager } from './setup/bypass';
 
 interface Quien {
   user: User;
@@ -492,7 +493,9 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
         OrderStatus.DELIVERED,
         OrderStatus.CANCELLED,
       ]) {
-        await ds.getRepository(Order).update({ orderId: id }, { status });
+        await conBypassManager(ds, ['transiciones'], (m) =>
+          m.getRepository(Order).update({ orderId: id }, { status }),
+        );
         await patch(adminA, `/orders/${id}`, {
           notes: 'x',
           items: [{ gasCylinderId: p1.gasCylinderId, quantity: 1 }],

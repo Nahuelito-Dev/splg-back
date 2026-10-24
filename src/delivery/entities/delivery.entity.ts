@@ -10,6 +10,7 @@ import {
   Index,
   Point,
   Check,
+  Unique,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { User } from '../../users/entities/user.entity';
@@ -19,6 +20,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
   'CHK_delivery_calificacion',
   `"calification" IS NULL OR "calification" BETWEEN 0 AND 5`,
 )
+@Unique('UQ_delivery_id_distribuidora', ['deliveryId', 'distributorId'])
 @Entity('delivery')
 export class Delivery {
   @PrimaryGeneratedColumn('uuid', { name: 'delivery_id' })

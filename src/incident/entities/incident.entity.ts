@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
   Index,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -45,6 +46,16 @@ export enum IncidentStatus {
   where: `"type" = 'unpaid_collection' AND "status" IN ('open', 'resolved')`,
 })
 @Check('CHK_incident_descripcion', `btrim("description") <> ''`)
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  { name: 'FK_incident_order_distribuidora', onDelete: 'NO ACTION' },
+)
+@Check(
+  'CHK_incident_largo_de_textos',
+  `char_length("description") <= 1000 AND ("resolution_note" IS NULL OR char_length("resolution_note") <= 1000)`,
+)
 @Entity('incident')
 export class Incident {
   @PrimaryGeneratedColumn('uuid', { name: 'incident_id' })

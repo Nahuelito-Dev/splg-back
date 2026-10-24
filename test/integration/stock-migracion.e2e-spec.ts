@@ -12,6 +12,7 @@ import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { conBypass } from './setup/bypass';
 
 describe('Migración StockFisico (e2e)', () => {
   let pg: StartedPostgreSqlContainer;
@@ -248,7 +249,9 @@ describe('Migración StockFisico (e2e)', () => {
           [movement_id],
         );
       await expect(
-        ds.query(
+        conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO stock_movement (distributor_id, gas_cylinder_id, batch_id, quantity, from_location_id, from_condition, reason, reference_type)
            VALUES ($1, $2, $3, 1, $4, 'full', 'shrinkage', 'stock_adjustment')`,
           [distributor_id, gas_cylinder_id, randomUUID(), to_location_id],
@@ -304,7 +307,9 @@ describe('Migración StockFisico (e2e)', () => {
         );
       const orderId = randomUUID();
       const insertar = () =>
-        ds.query(
+        conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO stock_movement (distributor_id, gas_cylinder_id, batch_id, quantity, from_location_id, from_condition, reason, reference_type, reference_id)
            VALUES ($1, $2, $3, 1, $4, 'full', 'delivery', 'order', $5)`,
           [

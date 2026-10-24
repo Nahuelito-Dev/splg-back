@@ -305,7 +305,7 @@ SELECT pg_temp.falla_con('time_slot · horario que pisa a otra franja activa',
   $s$ INSERT INTO time_slot (distributor_id, name, "startTime", "endTime", capacity) SELECT distributor_id, name || ' bis', "startTime", "endTime", 1 FROM time_slot WHERE "isActive" LIMIT 1 $s$,
   'EXC_time_slot_solapada');
 SELECT pg_temp.funciona('time_slot · franja que empieza justo donde termina otra',
-  $s$ INSERT INTO time_slot (distributor_id, name, "startTime", "endTime", capacity) SELECT distributor_id, name || ' pegada', "endTime", '23:59', 1 FROM time_slot WHERE "isActive" AND "endTime" < '23:00' ORDER BY "endTime" DESC LIMIT 1 $s$);
+  $s$ INSERT INTO time_slot (distributor_id, name, "startTime", "endTime", capacity) SELECT distributor_id, name || ' pegada', "endTime", '23:59', 1 FROM time_slot WHERE "isActive" AND "endTime" < '23:59' ORDER BY "endTime" DESC LIMIT 1 $s$);
 SELECT pg_temp.funciona('time_slot · una franja inactiva no choca con las activas',
   $s$ INSERT INTO time_slot (distributor_id, name, "startTime", "endTime", capacity, "isActive") SELECT distributor_id, name, "startTime", "endTime", 1, false FROM time_slot WHERE "isActive" LIMIT 1 $s$);
 
@@ -444,6 +444,337 @@ SELECT pg_temp.funciona('payment · un pago aprobado puede pasar a devuelto',
 SELECT pg_temp.funciona('payment · un pago pendiente puede pasar a aprobado',
   $s$ INSERT INTO payment (order_id, gateway, integration, amount, status) SELECT order_id, gateway, integration, 1, 'pending' FROM payment LIMIT 1;
       UPDATE payment SET status = 'approved' WHERE payment_id = (SELECT payment_id FROM payment WHERE amount = 1 AND status = 'pending' LIMIT 1) $s$);
+
+-- ---------------------------------------------------------------------------
+-- 4c. V2: transiciones de estado (triggers)
+-- ---------------------------------------------------------------------------
+
+-- Una transición sobre una copia temporal de la tabla con el trigger REAL puesto: sirve
+-- aunque la tabla real esté vacía. `p_esperada` NULL = tiene que pasar.
+CREATE FUNCTION pg_temp.transicion(p_tabla text, p_columna text, p_desde text, p_hacia text, p_esperada text) RETURNS void LANGUAGE plpgsql AS $f$
+DECLARE v_caso text := format('%s · %s → %s', p_tabla, p_desde, p_hacia);
+        v_fila jsonb; v_nombre text; v_estado text; v_msg text; v_tt text := 'tt_' || p_tabla;
+BEGIN
+  IF to_regclass('pg_temp.' || v_tt) IS NULL THEN
+    EXECUTE format('CREATE TEMP TABLE %I (LIKE public.%I INCLUDING DEFAULTS)', v_tt, p_tabla);
+    EXECUTE format('CREATE TRIGGER trg BEFORE UPDATE OF %I ON %I FOR EACH ROW EXECUTE FUNCTION public.%I()',
+                   p_columna, v_tt, 'transicion_de_estado_' || p_tabla);
+  END IF;
+  EXECUTE format('DELETE FROM %I', v_tt);
+  v_fila := pg_temp.fila_base(p_tabla, jsonb_build_object(p_columna, p_desde));
+  EXECUTE format('INSERT INTO %I (%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I, %L::jsonb)',
+                 v_tt,
+                 (SELECT string_agg(quote_ident(k), ', ') FROM jsonb_object_keys(v_fila) AS k),
+                 (SELECT string_agg(quote_ident(k), ', ') FROM jsonb_object_keys(v_fila) AS k),
+                 p_tabla, v_fila::text);
+  BEGIN
+    EXECUTE format('UPDATE %I SET %I = %L', v_tt, p_columna, p_hacia);
+    IF p_esperada IS NULL THEN
+      INSERT INTO resultado (caso, ok, detalle) VALUES ('acepta · ' || v_caso, true, 'ok');
+    ELSE
+      INSERT INTO resultado (caso, ok, detalle) VALUES (v_caso, false, 'la base ACEPTÓ la transición inválida');
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_nombre = CONSTRAINT_NAME, v_estado = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+    IF p_esperada IS NOT NULL AND v_nombre = p_esperada THEN
+      INSERT INTO resultado (caso, ok, detalle) VALUES (v_caso, true, v_estado);
+    ELSE
+      INSERT INTO resultado (caso, ok, detalle) VALUES (v_caso, false, format('falló con %s (%s): %s', coalesce(v_nombre, '?'), v_estado, v_msg));
+    END IF;
+  END;
+END $f$;
+
+-- Pedido
+SELECT pg_temp.transicion('order', 'status', 'delivered', 'pending', 'CHK_order_transicion_de_estado');
+SELECT pg_temp.transicion('order', 'status', 'cancelled', 'pending', 'CHK_order_transicion_de_estado');
+SELECT pg_temp.transicion('order', 'status', 'pending', 'on_the_way', 'CHK_order_transicion_de_estado');
+SELECT pg_temp.transicion('order', 'status', 'pending', 'delivered', 'CHK_order_transicion_de_estado');
+SELECT pg_temp.transicion('order', 'status', 'pending', 'accepted', NULL);
+SELECT pg_temp.transicion('order', 'status', 'accepted', 'pending', NULL);
+SELECT pg_temp.transicion('order', 'status', 'on_the_way', 'delivered', NULL);
+SELECT pg_temp.transicion('order', 'status', 'pending', 'pending', NULL);
+-- Envase
+SELECT pg_temp.transicion('cylinder', 'state', 'in_depot', 'with_customer', 'CHK_cylinder_transicion_de_estado');
+SELECT pg_temp.transicion('cylinder', 'state', 'retired', 'in_depot', 'CHK_cylinder_transicion_de_estado');
+SELECT pg_temp.transicion('cylinder', 'state', 'with_customer', 'filled', 'CHK_cylinder_transicion_de_estado');
+SELECT pg_temp.transicion('cylinder', 'state', 'in_depot', 'filled', NULL);
+SELECT pg_temp.transicion('cylinder', 'state', 'with_customer', 'empty_returned', NULL);
+-- Rendición
+SELECT pg_temp.transicion('driver_settlement', 'status', 'open', 'approved', 'CHK_driver_settlement_transicion_de_estado');
+SELECT pg_temp.transicion('driver_settlement', 'status', 'approved', 'open', 'CHK_driver_settlement_transicion_de_estado');
+SELECT pg_temp.transicion('driver_settlement', 'status', 'open', 'submitted', NULL);
+SELECT pg_temp.transicion('driver_settlement', 'status', 'submitted', 'open', NULL);
+-- Liquidación
+SELECT pg_temp.transicion('driver_liquidation', 'status', 'draft', 'paid', 'CHK_driver_liquidation_transicion_de_estado');
+SELECT pg_temp.transicion('driver_liquidation', 'status', 'voided', 'draft', 'CHK_driver_liquidation_transicion_de_estado');
+SELECT pg_temp.transicion('driver_liquidation', 'status', 'paid', 'voided', 'CHK_driver_liquidation_transicion_de_estado');
+SELECT pg_temp.transicion('driver_liquidation', 'status', 'draft', 'approved', NULL);
+SELECT pg_temp.transicion('driver_liquidation', 'status', 'paid', 'approved', NULL);
+-- Orden de compra
+SELECT pg_temp.transicion('purchase_order', 'status', 'draft', 'received', 'CHK_purchase_order_transicion_de_estado');
+SELECT pg_temp.transicion('purchase_order', 'status', 'cancelled', 'draft', 'CHK_purchase_order_transicion_de_estado');
+SELECT pg_temp.transicion('purchase_order', 'status', 'closed_short', 'sent', 'CHK_purchase_order_transicion_de_estado');
+SELECT pg_temp.transicion('purchase_order', 'status', 'draft', 'sent', NULL);
+SELECT pg_temp.transicion('purchase_order', 'status', 'partially_received', 'partially_received', NULL);
+SELECT pg_temp.transicion('purchase_order', 'status', 'received', 'sent', NULL);
+-- Carga del camión
+SELECT pg_temp.transicion('truck_load', 'status', 'loading', 'returned', 'CHK_truck_load_transicion_de_estado');
+SELECT pg_temp.transicion('truck_load', 'status', 'closed', 'loading', 'CHK_truck_load_transicion_de_estado');
+SELECT pg_temp.transicion('truck_load', 'status', 'on_route', 'cancelled', 'CHK_truck_load_transicion_de_estado');
+SELECT pg_temp.transicion('truck_load', 'status', 'loading', 'on_route', NULL);
+SELECT pg_temp.transicion('truck_load', 'status', 'returned', 'closed_with_difference', NULL);
+-- Reclamo
+SELECT pg_temp.transicion('claims', 'status', 'pending', 'pending', NULL);
+SELECT pg_temp.transicion('claims', 'status', 'resolved', 'pending', 'CHK_claims_transicion_de_estado');
+SELECT pg_temp.transicion('claims', 'status', 'resolved', 'rejected', 'CHK_claims_transicion_de_estado');
+SELECT pg_temp.transicion('claims', 'status', 'pending', 'in_process', NULL);
+SELECT pg_temp.transicion('claims', 'status', 'resolved', 'in_process', NULL);
+-- Cuenta corriente
+SELECT pg_temp.transicion('customer_account', 'status', 'closed', 'blocked', 'CHK_customer_account_transicion_de_estado');
+SELECT pg_temp.transicion('customer_account', 'status', 'active', 'blocked', NULL);
+SELECT pg_temp.transicion('customer_account', 'status', 'closed', 'active', NULL);
+-- Oferta de despacho
+SELECT pg_temp.transicion('order_dispatch_offer', 'status', 'rejected', 'accepted', 'CHK_order_dispatch_offer_transicion_de_estado');
+SELECT pg_temp.transicion('order_dispatch_offer', 'status', 'expired', 'offered', 'CHK_order_dispatch_offer_transicion_de_estado');
+SELECT pg_temp.transicion('order_dispatch_offer', 'status', 'offered', 'accepted', NULL);
+SELECT pg_temp.transicion('order_dispatch_offer', 'status', 'accepted', 'rejected', NULL);
+
+-- Sobre las tablas reales
+SELECT pg_temp.falla_con('order · un pedido entregado real no vuelve a pendiente',
+  $s$ UPDATE "order" SET status = 'pending' WHERE order_id = (SELECT order_id FROM "order" WHERE status = 'delivered' ORDER BY order_id LIMIT 1) $s$,
+  'CHK_order_transicion_de_estado');
+SELECT pg_temp.falla_con('cylinder · un envase real en depósito no pasa directo a con cliente',
+  $s$ UPDATE cylinder SET state = 'with_customer' WHERE cylinder_id = (SELECT cylinder_id FROM cylinder WHERE state = 'in_depot' ORDER BY cylinder_id LIMIT 1) $s$,
+  'CHK_cylinder_transicion_de_estado');
+SELECT pg_temp.falla_con('order_dispatch_offer · una oferta real vencida no se acepta',
+  $s$ UPDATE order_dispatch_offer SET status = 'accepted' WHERE offer_id = (SELECT offer_id FROM order_dispatch_offer WHERE status = 'expired' ORDER BY offer_id LIMIT 1) $s$,
+  'CHK_order_dispatch_offer_transicion_de_estado');
+SELECT pg_temp.funciona('order · repetir el estado de un pedido real no es una transición',
+  $s$ UPDATE "order" SET status = status WHERE order_id = (SELECT order_id FROM "order" ORDER BY order_id LIMIT 1) $s$);
+-- Bypass explícito (sólo seeds y fixtures): dentro de la transacción, y se apaga a continuación.
+SELECT pg_temp.funciona('bypass · splg.bypass_transiciones permite el salto, sólo mientras está encendido',
+  $s$ SELECT set_config('splg.bypass_transiciones', 'on', true);
+      UPDATE cylinder SET state = 'with_customer', current_customer_id = (SELECT user_id FROM customer LIMIT 1)
+       WHERE cylinder_id = (SELECT cylinder_id FROM cylinder WHERE state = 'in_depot' ORDER BY cylinder_id LIMIT 1);
+      SELECT set_config('splg.bypass_transiciones', 'off', true) $s$);
+
+-- ---------------------------------------------------------------------------
+-- 4d. V2: saldo contra el libro (constraint triggers diferidos)
+-- Dentro del script el rollback final no dispara los diferidos: se los pasa a inmediatos
+-- para que cada sentencia se verifique al terminar; los casos válidos los difieren a mano.
+-- ---------------------------------------------------------------------------
+SET CONSTRAINTS ALL IMMEDIATE;
+
+-- Clona una fila existente con cambios (la clave primaria nueva); falla si no hay fila que clonar.
+CREATE FUNCTION pg_temp.clonar(p_tabla text, p_pk text, p_filtro text, p_cambios jsonb) RETURNS void LANGUAGE plpgsql AS $f$
+DECLARE v_n int;
+BEGIN
+  EXECUTE format('INSERT INTO public.%I SELECT (jsonb_populate_record(NULL::public.%I, to_jsonb(r) || %L::jsonb)).* FROM public.%I r WHERE %s ORDER BY 1 LIMIT 1',
+                 p_tabla, p_tabla, (p_cambios || jsonb_build_object(p_pk, gen_random_uuid()))::text, p_tabla, p_filtro);
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n = 0 THEN RAISE EXCEPTION 'no hay fila de % para clonar (%)', p_tabla, p_filtro; END IF;
+END $f$;
+
+-- Caja (el movimiento base se fija antes: el clon tiene un id al azar y cambiaría el orden)
+CREATE TEMP TABLE base_caja ON COMMIT DROP AS
+  SELECT movement_id, cash_box_id FROM cash_movement WHERE direction = 'in' ORDER BY movement_id LIMIT 1;
+SELECT pg_temp.falla_con('cash_box · un movimiento de entrada sin tocar el saldo no cierra',
+  $s$ SELECT pg_temp.clonar('cash_movement', 'movement_id', $w$ movement_id = (SELECT movement_id FROM base_caja) $w$, '{"amount": 10, "reverses_movement_id": null}'::jsonb) $s$,
+  'CHK_cash_box_saldo_contra_libro');
+SELECT pg_temp.falla_con('cash_box · un saldo que no es la suma de los movimientos no cierra',
+  $s$ UPDATE cash_box SET balance = balance + 1 WHERE cash_box_id = (SELECT cash_box_id FROM cash_movement ORDER BY movement_id LIMIT 1) $s$,
+  'CHK_cash_box_saldo_contra_libro');
+SELECT pg_temp.funciona('cash_box · movimiento y saldo juntos (diferidos) cierran',
+  $s$ SET CONSTRAINTS ALL DEFERRED;
+      SELECT pg_temp.clonar('cash_movement', 'movement_id', $w$ movement_id = (SELECT movement_id FROM base_caja) $w$, '{"amount": 10, "reverses_movement_id": null}'::jsonb);
+      UPDATE cash_box SET balance = balance + 10
+       WHERE cash_box_id = (SELECT cash_box_id FROM base_caja);
+      SET CONSTRAINTS ALL IMMEDIATE $s$);
+
+-- Stock
+CREATE TEMP TABLE base_stock ON COMMIT DROP AS
+  SELECT movement_id, to_location_id, gas_cylinder_id, to_condition FROM stock_movement
+   WHERE from_location_id IS NULL AND to_location_id IS NOT NULL ORDER BY movement_id LIMIT 1;
+SELECT pg_temp.falla_con('stock_balance · un ingreso sin tocar la existencia no cierra',
+  $s$ SELECT pg_temp.clonar('stock_movement', 'movement_id', 'movement_id = (SELECT movement_id FROM base_stock)', '{"quantity": 3, "reversed_movement_id": null, "reference_id": null}'::jsonb) $s$,
+  'CHK_stock_balance_saldo_contra_libro');
+SELECT pg_temp.falla_con('stock_balance · una existencia que no es la suma de los movimientos no cierra',
+  $s$ UPDATE stock_balance SET quantity = quantity + 1 WHERE balance_id = (SELECT balance_id FROM stock_balance ORDER BY balance_id LIMIT 1) $s$,
+  'CHK_stock_balance_saldo_contra_libro');
+SELECT pg_temp.funciona('stock_balance · movimiento y existencia juntos (diferidos) cierran',
+  $s$ SET CONSTRAINTS ALL DEFERRED;
+      SELECT pg_temp.clonar('stock_movement', 'movement_id', 'movement_id = (SELECT movement_id FROM base_stock)', '{"quantity": 3, "reversed_movement_id": null, "reference_id": null}'::jsonb);
+      UPDATE stock_balance b SET quantity = b.quantity + 3
+        FROM base_stock m
+       WHERE b.location_id = m.to_location_id AND b.gas_cylinder_id = m.gas_cylinder_id AND b.condition = m.to_condition;
+      SET CONSTRAINTS ALL IMMEDIATE $s$);
+
+-- Cuenta corriente (la base viene sin cuentas: se arma una dentro de la transacción)
+INSERT INTO customer_account (distributor_id, customer_user_id, business_name, tax_condition)
+  SELECT d.distributor_id, c.user_id, 'Prueba V2', 'final_consumer'
+    FROM distributor d CROSS JOIN customer c
+   WHERE EXISTS (SELECT 1 FROM "order" o WHERE o.distributor_id = d.distributor_id) ORDER BY d.distributor_id, c.user_id LIMIT 1;
+CREATE TEMP TABLE cuenta_v2 ON COMMIT DROP AS SELECT account_id, distributor_id FROM customer_account WHERE business_name = 'Prueba V2';
+
+SELECT pg_temp.falla_con('customer_account · un cargo sin tocar el saldo no cierra',
+  $s$ INSERT INTO customer_account_entry (distributor_id, account_id, type, amount) SELECT distributor_id, account_id, 'sale_charge', 100 FROM cuenta_v2 $s$,
+  'CHK_customer_account_saldo_contra_libro');
+SELECT pg_temp.funciona('customer_account · cargo y saldo juntos (diferidos) cierran',
+  $s$ SET CONSTRAINTS ALL DEFERRED;
+      INSERT INTO customer_account_entry (distributor_id, account_id, type, amount) SELECT distributor_id, account_id, 'sale_charge', 100 FROM cuenta_v2;
+      UPDATE customer_account SET balance = 100 WHERE account_id = (SELECT account_id FROM cuenta_v2);
+      SET CONSTRAINTS ALL IMMEDIATE $s$);
+SELECT pg_temp.falla_con('customer_account · un saldo que no es la suma de los asientos no cierra',
+  $s$ UPDATE customer_account SET balance = 5 WHERE account_id = (SELECT account_id FROM cuenta_v2) $s$,
+  'CHK_customer_account_saldo_contra_libro');
+SELECT pg_temp.falla_con('customer_account · un cobro mayor que la deuda es rechazado',
+  $s$ INSERT INTO customer_account_entry (distributor_id, account_id, type, amount) SELECT distributor_id, account_id, 'payment', 150 FROM cuenta_v2 $s$,
+  'CHK_customer_account_entry_cobro_mayor_a_la_deuda');
+SELECT pg_temp.funciona('customer_account · un cobro de hasta la deuda pasa (con su saldo)',
+  $s$ SET CONSTRAINTS ALL DEFERRED;
+      INSERT INTO customer_account_entry (distributor_id, account_id, type, amount) SELECT distributor_id, account_id, 'payment', 40 FROM cuenta_v2;
+      UPDATE customer_account SET balance = 60 WHERE account_id = (SELECT account_id FROM cuenta_v2);
+      SET CONSTRAINTS ALL IMMEDIATE $s$);
+SELECT pg_temp.falla_con('customer_account · lo imputado a un asiento no puede superar su importe',
+  $s$ INSERT INTO customer_account_allocation (account_id, debit_entry_id, credit_entry_id, amount)
+      SELECT a.account_id,
+             (SELECT entry_id FROM customer_account_entry WHERE account_id = a.account_id AND type = 'sale_charge'),
+             (SELECT entry_id FROM customer_account_entry WHERE account_id = a.account_id AND type = 'payment'), 41
+        FROM cuenta_v2 a $s$,
+  'CHK_customer_account_allocation_tope');
+SELECT pg_temp.funciona('customer_account · una imputación dentro del importe pasa',
+  $s$ INSERT INTO customer_account_allocation (account_id, debit_entry_id, credit_entry_id, amount)
+      SELECT a.account_id,
+             (SELECT entry_id FROM customer_account_entry WHERE account_id = a.account_id AND type = 'sale_charge'),
+             (SELECT entry_id FROM customer_account_entry WHERE account_id = a.account_id AND type = 'payment'), 40
+        FROM cuenta_v2 a $s$);
+SELECT pg_temp.funciona('bypass · splg.bypass_saldos permite un saldo a mano, sólo mientras está encendido',
+  $s$ SELECT set_config('splg.bypass_saldos', 'on', true);
+      UPDATE customer_account SET balance = 7 WHERE account_id = (SELECT account_id FROM cuenta_v2);
+      SELECT set_config('splg.bypass_saldos', 'off', true);
+      UPDATE customer_account SET balance = 60 WHERE account_id = (SELECT account_id FROM cuenta_v2) $s$);
+
+-- ---------------------------------------------------------------------------
+-- 4e. V2: tenant cruzado (claves foráneas compuestas)
+-- ---------------------------------------------------------------------------
+SELECT pg_temp.afirma('tenant · las claves compuestas por distribuidora están todas y validadas (55)',
+  (SELECT count(*) FROM pg_constraint WHERE contype = 'f' AND conname LIKE 'FK\_%\_distribuidora' AND convalidated) = 55);
+SELECT pg_temp.afirma('tenant · cada padre tiene su único (id, distributor_id) (20)',
+  (SELECT count(*) FROM pg_constraint WHERE contype = 'u' AND conname LIKE 'UQ\_%\_id\_distribuidora') = 20);
+
+-- Una referencia a una fila de otra distribuidora es rechazada por la clave compuesta
+CREATE FUNCTION pg_temp.falla_en_tenant(p_caso text, p_sql text, p_esperada text) RETURNS void
+  LANGUAGE sql AS $f$ SELECT pg_temp.falla_con(p_caso, p_sql, p_esperada) $f$;
+SELECT pg_temp.falla_con('tenant · un movimiento de caja no apunta a la caja de otra distribuidora',
+  $s$ SELECT pg_temp.clonar('cash_movement', 'movement_id', 'movement_id = (SELECT movement_id FROM base_caja)',
+        jsonb_build_object('cash_box_id', (SELECT b.cash_box_id FROM cash_box b WHERE b.distributor_id <> (SELECT distributor_id FROM cash_movement WHERE movement_id = (SELECT movement_id FROM base_caja)) LIMIT 1), 'session_id', null, 'reverses_movement_id', null)) $s$,
+  'FK_cash_movement_cash_box_distribuidora');
+SELECT pg_temp.falla_con('tenant · un movimiento de stock no apunta a la ubicación de otra distribuidora',
+  $s$ SELECT pg_temp.clonar('stock_movement', 'movement_id', 'movement_id = (SELECT movement_id FROM base_stock)',
+        jsonb_build_object('reference_id', null, 'to_location_id', (SELECT l.location_id FROM stock_location l WHERE l.distributor_id <> (SELECT distributor_id FROM stock_movement WHERE movement_id = (SELECT movement_id FROM base_stock)) LIMIT 1), 'reversed_movement_id', null)) $s$,
+  'FK_stock_movement_to_location_distribuidora');
+SELECT pg_temp.falla_con('tenant · un pedido no apunta a la zona de otra distribuidora',
+  $s$ UPDATE "order" o SET coverage_zone_id = (SELECT z.coverage_zone_id FROM coverage_zone z WHERE z.distributor_id <> o.distributor_id LIMIT 1)
+       WHERE order_id = (SELECT x.order_id FROM "order" x WHERE EXISTS (SELECT 1 FROM coverage_zone z WHERE z.distributor_id <> x.distributor_id) ORDER BY x.order_id LIMIT 1) $s$,
+  'FK_order_coverage_zone_distribuidora');
+SELECT pg_temp.falla_con('tenant · un pedido no apunta al chofer de otra distribuidora',
+  $s$ UPDATE "order" SET delivery_id = (SELECT d.delivery_id FROM delivery d WHERE d.distributor_id <> "order".distributor_id LIMIT 1)
+       WHERE order_id = (SELECT order_id FROM "order" WHERE delivery_id IS NOT NULL ORDER BY order_id LIMIT 1) $s$,
+  'FK_order_delivery_distribuidora');
+SELECT pg_temp.falla_con('tenant · un movimiento de caja de otra distribuidora no entra con la caja de la primera',
+  $s$ SELECT pg_temp.clonar('cash_movement', 'movement_id', 'movement_id = (SELECT movement_id FROM base_caja)',
+        jsonb_build_object('distributor_id', (SELECT d.distributor_id FROM distributor d WHERE d.distributor_id <> (SELECT distributor_id FROM cash_movement WHERE movement_id = (SELECT movement_id FROM base_caja)) LIMIT 1), 'session_id', null, 'reverses_movement_id', null)) $s$,
+  'FK_cash_movement_cash_box_distribuidora');
+SELECT pg_temp.funciona('tenant · la misma distribuidora sigue pasando (movimiento de caja de la caja propia)',
+  $s$ SET CONSTRAINTS ALL DEFERRED;
+      SELECT pg_temp.clonar('cash_movement', 'movement_id', $w$ movement_id = (SELECT movement_id FROM base_caja) $w$, '{"amount": 0.01, "reverses_movement_id": null}'::jsonb);
+      UPDATE cash_box SET balance = balance + 0.01
+       WHERE cash_box_id = (SELECT cash_box_id FROM base_caja);
+      SET CONSTRAINTS ALL IMMEDIATE $s$);
+
+-- ---------------------------------------------------------------------------
+-- 4f. V2: períodos de liquidación del mismo chofer
+-- ---------------------------------------------------------------------------
+CREATE TEMP TABLE chofer_v2 ON COMMIT DROP AS
+  SELECT e.employee_id, e.distributor_id, (SELECT user_id FROM "user" ORDER BY user_id LIMIT 1) AS usuario FROM employee e ORDER BY e.employee_id LIMIT 1;
+INSERT INTO driver_liquidation (distributor_id, number, employee_id, period_from, period_to, gross, deductions, net, created_by_user_id)
+  SELECT distributor_id, 90001, employee_id, '2026-01-01', '2026-01-10', 1, 0, 1, usuario FROM chofer_v2;
+SELECT pg_temp.falla_con('driver_liquidation · un período que se pisa con otro del chofer es rechazado',
+  $s$ INSERT INTO driver_liquidation (distributor_id, number, employee_id, period_from, period_to, gross, deductions, net, created_by_user_id)
+      SELECT distributor_id, 90002, employee_id, '2026-01-05', '2026-01-15', 1, 0, 1, usuario FROM chofer_v2 $s$,
+  'EXC_driver_liquidation_periodo_solapado');
+SELECT pg_temp.falla_con('driver_liquidation · el borde cuenta: terminar el día en que el otro termina también se pisa',
+  $s$ INSERT INTO driver_liquidation (distributor_id, number, employee_id, period_from, period_to, gross, deductions, net, created_by_user_id)
+      SELECT distributor_id, 90002, employee_id, '2026-01-10', '2026-01-20', 1, 0, 1, usuario FROM chofer_v2 $s$,
+  'EXC_driver_liquidation_periodo_solapado');
+SELECT pg_temp.funciona('driver_liquidation · el período siguiente pasa',
+  $s$ INSERT INTO driver_liquidation (distributor_id, number, employee_id, period_from, period_to, gross, deductions, net, created_by_user_id)
+      SELECT distributor_id, 90003, employee_id, '2026-01-11', '2026-01-20', 1, 0, 1, usuario FROM chofer_v2 $s$);
+SELECT pg_temp.funciona('driver_liquidation · una liquidación anulada no cuenta para la exclusión',
+  $s$ INSERT INTO driver_liquidation (distributor_id, number, employee_id, period_from, period_to, gross, deductions, net, status, voided_at, created_by_user_id)
+      SELECT distributor_id, 90004, employee_id, '2026-01-05', '2026-01-15', 1, 0, 1, 'voided', now(), usuario FROM chofer_v2 $s$);
+
+-- ---------------------------------------------------------------------------
+-- 4g. V2: reglas que el back ya tenía y la base ahora también exige
+-- ---------------------------------------------------------------------------
+SELECT pg_temp.rechaza('claims', 'CHK_claims_largo_de_textos', '{}'::jsonb, jsonb_build_object('reason', repeat('a', 121)));
+SELECT pg_temp.rechaza('claims', 'CHK_claims_largo_de_textos', '{}'::jsonb, jsonb_build_object('description', repeat('a', 1001)));
+SELECT pg_temp.rechaza('claims', 'CHK_claims_largo_de_textos', '{}'::jsonb, jsonb_build_object('resolutionNote', repeat('a', 1001)));
+SELECT pg_temp.acepta('claims', 'los máximos exactos (120, 1000, 1000)', '{}'::jsonb, jsonb_build_object('reason', repeat('a', 120), 'description', repeat('a', 1000), 'resolutionNote', repeat('a', 1000)));
+SELECT pg_temp.rechaza('incident', 'CHK_incident_largo_de_textos', '{}'::jsonb, jsonb_build_object('description', repeat('a', 1001)));
+SELECT pg_temp.rechaza('incident', 'CHK_incident_largo_de_textos', '{}'::jsonb, jsonb_build_object('resolution_note', repeat('a', 1001)));
+SELECT pg_temp.acepta('incident', 'los máximos exactos (1000, 1000)', '{}'::jsonb, jsonb_build_object('description', repeat('a', 1000), 'resolution_note', repeat('a', 1000)));
+SELECT pg_temp.rechaza('rating', 'CHK_rating_largo_de_textos', '{"stars": 5}'::jsonb, jsonb_build_object('comment', repeat('a', 501)));
+SELECT pg_temp.rechaza('rating', 'CHK_rating_largo_de_textos', '{"stars": 5}'::jsonb, jsonb_build_object('hidden_reason', repeat('a', 501)));
+SELECT pg_temp.rechaza('order', 'CHK_order_nota_de_impago_largo', '{}'::jsonb, jsonb_build_object('payment_resolution_note', repeat('a', 501)));
+SELECT pg_temp.rechaza('order', 'CHK_order_nota_de_impago_largo', '{}'::jsonb, '{"payment_resolution_note": "corta"}'::jsonb);
+SELECT pg_temp.acepta('order', 'nota de impago de 10 y de 500 caracteres', '{}'::jsonb, jsonb_build_object('payment_resolution_note', repeat('a', 500)));
+SELECT pg_temp.rechaza('traffic_fine', 'CHK_traffic_fine_pago_contra_importe', '{"amount": 100}'::jsonb, '{"paid_amount": 100.01}'::jsonb);
+SELECT pg_temp.acepta('traffic_fine', 'pago igual al importe', '{"amount": 100}'::jsonb, '{"paid_amount": 100}'::jsonb);
+SELECT pg_temp.rechaza('purchase_order', 'CHK_purchase_order_fecha_esperada', '{"total_amount": 0}'::jsonb, '{"expected_date": "2000-01-01"}'::jsonb);
+SELECT pg_temp.acepta('purchase_order', 'fecha esperada de mañana', '{"total_amount": 0}'::jsonb, jsonb_build_object('expected_date', (current_date + 1)::text));
+
+SELECT pg_temp.falla_con('cylinder · la fabricación de un envase no puede ser futura',
+  $s$ SELECT pg_temp.clonar('cylinder', 'cylinder_id', 'true', '{"manufactured_at": "2099-01-01T00:00:00Z", "expires_at": null, "serial": "PRUEBA-V2-FUT"}'::jsonb) $s$,
+  'CHK_cylinder_fabricacion_futura');
+SELECT pg_temp.funciona('cylinder · la fabricación de ayer pasa',
+  $s$ SELECT pg_temp.clonar('cylinder', 'cylinder_id', 'true', jsonb_build_object('manufactured_at', now() - interval '1 day', 'expires_at', null, 'serial', 'PRUEBA-V2-OK')) $s$);
+SELECT pg_temp.falla_con('driver_settlement · no se abre la rendición de un día futuro',
+  $s$ SELECT pg_temp.clonar('driver_settlement', 'settlement_id', 'true', '{"business_date": "2099-01-01"}'::jsonb) $s$,
+  'CHK_driver_settlement_fecha_futura');
+
+-- Odómetros (la única carga de la base está dada de baja: se arma una viva a partir de ella)
+SELECT pg_temp.clonar('fuel_load', 'fuel_load_id', 'true', '{"deletedAt": null, "loaded_at": "2098-01-01T00:00:00Z", "odometer_correction_note": null}'::jsonb);
+SELECT pg_temp.falla_con('fuel_load · un kilometraje menor que el de la carga anterior es rechazado',
+  $s$ SELECT pg_temp.clonar('fuel_load', 'fuel_load_id', 'true', '{"odometer_km": 1, "loaded_at": "2099-01-01T00:00:00Z", "deletedAt": null, "odometer_correction_note": null}'::jsonb) $s$,
+  'CHK_fuel_load_odometro_monotono');
+SELECT pg_temp.funciona('fuel_load · con nota de corrección el salto atrás se acepta',
+  $s$ SELECT pg_temp.clonar('fuel_load', 'fuel_load_id', 'true', '{"odometer_km": 1, "loaded_at": "2099-01-01T00:00:00Z", "deletedAt": null, "odometer_correction_note": "Se corrigió el tablero"}'::jsonb) $s$);
+SELECT pg_temp.funciona('fuel_load · un kilometraje mayor pasa',
+  $s$ SELECT pg_temp.clonar('fuel_load', 'fuel_load_id', '"deletedAt" IS NULL AND odometer_km < 1000000', '{"odometer_km": 999999, "loaded_at": "2099-06-01T00:00:00Z", "deletedAt": null, "odometer_correction_note": null}'::jsonb) $s$);
+SELECT pg_temp.falla_con('maintenance_task · un cierre con kilometraje menor que la tarea anterior es rechazado',
+  $s$ SELECT pg_temp.clonar('maintenance_task', 'task_id', $w$ status = 'done' AND odometer_km IS NOT NULL AND car_id IS NOT NULL AND performed_at IS NOT NULL $w$,
+        '{"odometer_km": 1, "performed_at": "2099-01-01T00:00:00Z"}'::jsonb) $s$,
+  'CHK_maintenance_task_odometro_monotono');
+SELECT pg_temp.funciona('maintenance_task · un cierre con kilometraje mayor pasa',
+  $s$ SELECT pg_temp.clonar('maintenance_task', 'task_id', $w$ status = 'done' AND odometer_km IS NOT NULL AND car_id IS NOT NULL AND performed_at IS NOT NULL $w$,
+        '{"odometer_km": 9999999, "performed_at": "2099-02-01T00:00:00Z"}'::jsonb) $s$);
+
+INSERT INTO tire (distributor_id, serial_number, brand, size, cost, car_id)
+  SELECT distributor_id, 'PRUEBA-V2-1', 'Prueba', '205/55', 1, car_id FROM car ORDER BY car_id LIMIT 1;
+CREATE TEMP TABLE neumatico_v2 ON COMMIT DROP AS SELECT t.tire_id, t.distributor_id, t.car_id, (SELECT user_id FROM "user" ORDER BY user_id LIMIT 1) AS usuario FROM tire t WHERE serial_number = 'PRUEBA-V2-1';
+INSERT INTO tire_event (tire_id, distributor_id, type, car_id, odometer_km, created_by_user_id)
+  SELECT tire_id, distributor_id, 'mount', car_id, 1000, usuario FROM neumatico_v2;
+SELECT pg_temp.falla_con('tire_event · un movimiento con kilometraje menor que el último del neumático en el vehículo es rechazado',
+  $s$ INSERT INTO tire_event (tire_id, distributor_id, type, car_id, odometer_km, created_by_user_id) SELECT tire_id, distributor_id, 'rotate', car_id, 500, usuario FROM neumatico_v2 $s$,
+  'CHK_tire_event_odometro_monotono');
+SELECT pg_temp.funciona('tire_event · un kilometraje mayor pasa',
+  $s$ INSERT INTO tire_event (tire_id, distributor_id, type, car_id, odometer_km, created_by_user_id) SELECT tire_id, distributor_id, 'rotate', car_id, 2000, usuario FROM neumatico_v2 $s$);
+SELECT pg_temp.funciona('tire_event · en otro vehículo la cuenta empieza de nuevo',
+  $s$ INSERT INTO tire_event (tire_id, distributor_id, type, car_id, odometer_km, created_by_user_id)
+      SELECT n.tire_id, n.distributor_id, 'mount', (SELECT car_id FROM car WHERE car_id <> n.car_id AND distributor_id = n.distributor_id ORDER BY car_id LIMIT 1), 10, n.usuario FROM neumatico_v2 n $s$);
+
+SET CONSTRAINTS ALL DEFERRED;
 
 -- ---------------------------------------------------------------------------
 -- 5. Esquema

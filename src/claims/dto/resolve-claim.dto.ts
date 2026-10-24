@@ -1,4 +1,5 @@
-import { IsIn } from 'class-validator';
+import { IsIn, MaxLength } from 'class-validator';
+import { LARGO_DESCRIPCION } from '../../common/constants/largos-de-texto';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { ApiProperty } from '@nestjs/swagger';
 import { ClaimStatus } from '../entities/claim.entity';
@@ -12,8 +13,12 @@ const ESTADOS_FINALES = [ClaimStatus.RESOLVED, ClaimStatus.REJECTED];
  * vacío. Reemplaza el tipo inline sin validación.
  */
 export class ResolveClaimDto {
-  @ApiProperty({ description: 'Texto de resolución del reclamo' })
+  @ApiProperty({
+    description: 'Texto de resolución del reclamo',
+    maxLength: LARGO_DESCRIPCION,
+  })
   @TextoNoVacio()
+  @MaxLength(LARGO_DESCRIPCION)
   resolution!: string;
 
   @ApiProperty({

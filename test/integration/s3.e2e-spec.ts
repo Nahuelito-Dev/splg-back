@@ -48,6 +48,7 @@ import { StorageOrphan } from '../../src/s3/entities/storage-orphan.entity';
 import { ReintentosDeHuerfanosDeStorage1791070100000 } from '../../src/migrations/1791070100000-ReintentosDeHuerfanosDeStorage';
 import { FotoDeReclamoYHuerfanosDeStorage1791070000000 } from '../../src/migrations/1791070000000-FotoDeReclamoYHuerfanosDeStorage';
 import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
+import { conBypassManager } from './setup/bypass';
 
 const PDF = Buffer.from('%PDF-1.4 contenido de prueba en S3');
 const PNG = PNG_REAL;
@@ -652,9 +653,14 @@ describe('S3 contra MinIO (e2e)', () => {
       // Cerrado: 409 y el objeto queda.
       await subir(headers, reclamo.claimId, PNG, 'image/png').expect(201);
       const k3 = (await key())!;
-      await dataSource
-        .getRepository(Claim)
-        .update({ claimId: reclamo.claimId }, { status: ClaimStatus.RESOLVED });
+      await conBypassManager(dataSource, ['transiciones'], (m) =>
+        m
+          .getRepository(Claim)
+          .update(
+            { claimId: reclamo.claimId },
+            { status: ClaimStatus.RESOLVED },
+          ),
+      );
       await request(env.app.getHttpServer())
         .delete(ruta)
         .set(headers)

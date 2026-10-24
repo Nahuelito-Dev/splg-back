@@ -9,6 +9,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Unique,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -19,6 +20,7 @@ import { CashBoxKind } from '../domain/cash.enums';
  * `balance` es el saldo que el libro (`cash_movement`) le da: solo lo mueve
  * `CashLedgerService`. Una caja de efectivo no puede quedar en negativo.
  */
+@Unique('UQ_cash_box_id_distribuidora', ['cashBoxId', 'distributorId'])
 @Entity('cash_box')
 @Index('UQ_cash_box_nombre_vigente', ['distributorId', 'name'], {
   unique: true,

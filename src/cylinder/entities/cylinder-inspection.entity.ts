@@ -6,6 +6,7 @@ import {
   JoinColumn,
   Index,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Cylinder } from './cylinder.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -28,6 +29,15 @@ export enum CylinderInspectionResult {
 @Check(
   'CHK_cylinder_inspection_proxima',
   `"result" = 'rejected' OR "next_due_at" IS NOT NULL`,
+)
+@ForeignKey(
+  () => Cylinder,
+  ['cylinder_id', 'distributor_id'],
+  ['cylinder_id', 'distributor_id'],
+  {
+    name: 'FK_cylinder_inspection_cylinder_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('cylinder_inspection')
 export class CylinderInspection {

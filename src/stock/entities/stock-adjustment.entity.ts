@@ -8,6 +8,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { User } from '../../users/entities/user.entity';
@@ -22,6 +23,15 @@ import { StockLocation } from './stock-location.entity';
  * se corrige con otro ajuste.
  */
 @Check('CHK_stock_adjustment_notas', `btrim("notes") <> ''`)
+@ForeignKey(
+  () => StockLocation,
+  ['location_id', 'distributor_id'],
+  ['location_id', 'distributor_id'],
+  {
+    name: 'FK_stock_adjustment_location_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('stock_adjustment')
 @Index('UQ_stock_adjustment_numero', ['distributorId', 'number'], {
   unique: true,

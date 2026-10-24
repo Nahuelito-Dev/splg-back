@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Decimal from 'decimal.js';
 import {
   DataSource,
   EntityManager,
@@ -186,6 +187,11 @@ export class TrafficFineService {
     }
     return this.mutar(id, distributorId, async (manager, multa) => {
       this.assertAbierta(multa, 'La multa no admite el pago');
+      if (new Decimal(dto.paidAmount).gt(multa.amount)) {
+        throw new BadRequestException(
+          'paidAmount: no puede superar el importe de la multa',
+        );
+      }
       if (dto.paidAt < diaArgentino(multa.occurredAt)) {
         throw new BadRequestException(
           'paidAt: no puede ser anterior a la fecha de la infracción',

@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { CashSystemCode, CategoryDirection } from '../domain/cash.enums';
@@ -17,6 +18,7 @@ import { CashSystemCode, CategoryDirection } from '../domain/cash.enums';
  * se desactivan. El nombre es único entre las activas del mismo sentido (el servicio lo
  * compara sin distinguir mayúsculas y también contra las de sistema).
  */
+@Unique('UQ_cash_category_id_distribuidora', ['categoryId', 'distributorId'])
 @Entity('cash_category')
 @Index('UQ_cash_category_sistema', ['distributorId', 'systemCode'], {
   unique: true,

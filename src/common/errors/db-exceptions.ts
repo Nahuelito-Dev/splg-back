@@ -7,7 +7,10 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { DomainError } from './domain.error';
-import { mensajeDeRestriccion } from './restricciones-de-base';
+import {
+  esConflictoDeEstado,
+  mensajeDeRestriccion,
+} from './restricciones-de-base';
 
 /**
  * Códigos de error de Postgres que sabemos traducir.
@@ -98,6 +101,14 @@ export function traducirErrorDeBase(
       logger.warn(
         `Regla de la base violada${donde}: ${e.constraint ?? e.message}`,
       );
+      // Una transición de estado inválida o un saldo que no cierra con el
+      // libro no es un dato mal cargado: choca con el estado actual (409).
+      if (esConflictoDeEstado(e.constraint)) {
+        throw new ConflictException(
+          mensajeDeRestriccion(e.constraint) ??
+            `La operación choca con el estado actual${donde}`,
+        );
+      }
       throw new BadRequestException(
         mensajeDeRestriccion(e.constraint) ??
           `Alguno de los datos no cumple las reglas del sistema${donde}`,
@@ -108,8 +119,9 @@ export function traducirErrorDeBase(
       // uno que todavía está en uso.
       logger.warn(`Clave foránea violada${donde}: ${e.detail ?? e.message}`);
       throw new ConflictException(
-        `El registro referenciado no existe, o está siendo usado por otros ` +
-          `registros y no se puede borrar${donde}`,
+        mensajeDeRestriccion(e.constraint) ??
+          `El registro referenciado no existe, o está siendo usado por otros ` +
+            `registros y no se puede borrar${donde}`,
       );
 
     case CODIGOS.NO_NULO:
@@ -195,7 +207,12 @@ export function traducirRestriccionConocida(
   const e = datosDelError(error);
   const mensaje = mensajeDeRestriccion(e.constraint);
   if (!mensaje) return null;
-  if (e.code === CODIGOS.CHECK_VIOLADO) return new BadRequestException(mensaje);
+  if (e.code === CODIGOS.CHECK_VIOLADO) {
+    return esConflictoDeEstado(e.constraint)
+      ? new ConflictException(mensaje)
+      : new BadRequestException(mensaje);
+  }
+  if (e.code === CODIGOS.CLAVE_FORANEA) return new ConflictException(mensaje);
   if (
     e.code === CODIGOS.UNICO_VIOLADO ||
     e.code === CODIGOS.EXCLUSION_VIOLADA

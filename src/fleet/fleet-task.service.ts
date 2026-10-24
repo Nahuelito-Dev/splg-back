@@ -278,6 +278,17 @@ export class FleetTaskService {
       await this.tasks.manager.transaction(async (manager) => {
         const task = await this.bloquear(manager, id, distributorId);
         this.assertAbierta(task);
+        // Cuenta también el kilometraje que la tarea ya traía guardado: la base
+        // lo valida al pasar a «hecha» venga o no en el cierre.
+        const kilometraje = dto.odometerKm ?? task.odometerKm;
+        if (task.carId && kilometraje !== null && kilometraje !== undefined) {
+          await this.assertOdometroMonotono(
+            manager,
+            task.carId,
+            performedAt,
+            kilometraje,
+          );
+        }
 
         task.performedAt = performedAt;
         task.odometerKm = dto.odometerKm ?? task.odometerKm;
@@ -301,6 +312,42 @@ export class FleetTaskService {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
     return this.findOne(id, distributorId);
+  }
+
+  /**
+   * El kilometraje de un cierre tiene que encajar entre el de la tarea hecha
+   * justo antes y el de la hecha justo después en el mismo vehículo. La base lo
+   * exige con CHK_maintenance_task_odometro_monotono.
+   */
+  private async assertOdometroMonotono(
+    manager: EntityManager,
+    carId: string,
+    performedAt: Date,
+    odometerKm: number,
+  ): Promise<void> {
+    const vecina = (comparador: '<=' | '>', orden: 'DESC' | 'ASC') =>
+      manager
+        .getRepository(MaintenanceTask)
+        .createQueryBuilder('t')
+        .where(
+          `t.car_id = :carId AND t.status = :hecha AND t.odometer_km IS NOT NULL AND t.performed_at ${comparador} :performedAt`,
+          { carId, hecha: MaintenanceTaskStatus.DONE, performedAt },
+        )
+        .orderBy('t.performed_at', orden)
+        .addOrderBy('t.odometer_km', orden)
+        .getOne();
+    const anterior = await vecina('<=', 'DESC');
+    const siguiente = await vecina('>', 'ASC');
+    if (anterior?.odometerKm != null && odometerKm < anterior.odometerKm) {
+      throw new BadRequestException(
+        `odometerKm: es menor que el de la tarea anterior del vehículo (${anterior.odometerKm} km)`,
+      );
+    }
+    if (siguiente?.odometerKm != null && odometerKm > siguiente.odometerKm) {
+      throw new BadRequestException(
+        `odometerKm: es mayor que el de una tarea posterior del vehículo (${siguiente.odometerKm} km): corregí la fecha o el kilometraje`,
+      );
+    }
   }
 
   async cancel(

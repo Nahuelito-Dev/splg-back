@@ -9,6 +9,8 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Check,
+  ForeignKey,
+  Unique,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -36,6 +38,32 @@ import { Supplier } from './supplier.entity';
   `"status" IN ('draft', 'cancelled') OR "issued_at" IS NOT NULL`,
 )
 @Check('CHK_purchase_order_total', `"total_amount" >= 0`)
+@ForeignKey(
+  () => Supplier,
+  ['supplier_id', 'distributor_id'],
+  ['supplier_id', 'distributor_id'],
+  {
+    name: 'FK_purchase_order_supplier_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Warehouse,
+  ['destination_warehouse_id', 'distributor_id'],
+  ['warehouse_id', 'distributor_id'],
+  {
+    name: 'FK_purchase_order_destination_warehouse_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@Unique('UQ_purchase_order_id_distribuidora', [
+  'purchaseOrderId',
+  'distributorId',
+])
+@Check(
+  'CHK_purchase_order_fecha_esperada',
+  `"expected_date" IS NULL OR "expected_date" >= ("createdAt" AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`,
+)
 @Entity('purchase_order')
 @Index('UQ_purchase_order_numero', ['distributorId', 'number'], {
   unique: true,

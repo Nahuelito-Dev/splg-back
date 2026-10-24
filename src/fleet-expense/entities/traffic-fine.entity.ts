@@ -14,6 +14,7 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
 import { Employee } from '../../employee/entities/employee.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+import { CashMovement } from '../../cash/entities/cash-movement.entity';
 
 /** Ciclo de la multa: pendiente, apelada, pagada o anulada. Pagada y anulada no vuelven atrás. */
 export enum TrafficFineStatus {
@@ -44,6 +45,15 @@ export enum TrafficFineStatus {
   'CHK_traffic_fine_anulada_fecha',
   `"status" <> 'voided' OR "voided_at" IS NOT NULL`,
 )
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_traffic_fine_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('traffic_fine')
 @Index('UQ_traffic_fine_act', ['distributorId', 'jurisdiction', 'actNumber'], {
   unique: true,
@@ -51,6 +61,10 @@ export enum TrafficFineStatus {
 @Index('IDX_traffic_fine_car', ['carId', 'occurredAt'])
 @Index('IDX_traffic_fine_status_due', ['distributorId', 'status', 'dueDate'])
 @Check('CHK_traffic_fine_amount', '"amount" > 0')
+@Check(
+  'CHK_traffic_fine_pago_contra_importe',
+  '"paid_amount" IS NULL OR "paid_amount" <= "amount"',
+)
 export class TrafficFine {
   @PrimaryGeneratedColumn('uuid', { name: 'fine_id' })
   fineId!: string;

@@ -6,6 +6,8 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   Check,
+  ForeignKey,
+  Unique,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -33,6 +35,13 @@ import { CashBox } from './cash-box.entity';
   'CHK_cash_session_periodo',
   `"closed_at" IS NULL OR "closed_at" >= "opened_at"`,
 )
+@ForeignKey(
+  () => CashBox,
+  ['cash_box_id', 'distributor_id'],
+  ['cash_box_id', 'distributor_id'],
+  { name: 'FK_cash_session_cash_box_distribuidora', onDelete: 'NO ACTION' },
+)
+@Unique('UQ_cash_session_id_distribuidora', ['sessionId', 'distributorId'])
 @Entity('cash_session')
 @Index('UQ_cash_session_abierta', ['cashBoxId'], {
   unique: true,

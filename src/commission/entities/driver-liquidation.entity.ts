@@ -8,6 +8,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Check,
+  ForeignKey,
+  Unique,
+  Exclusion,
 } from 'typeorm';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -38,6 +41,32 @@ import { LiquidationStatus } from '../domain/commission.enums';
   'CHK_driver_liquidation_anulada',
   `("status" = 'voided') = ("voided_at" IS NOT NULL)`,
 )
+@Exclusion(
+  'EXC_driver_liquidation_periodo_solapado',
+  `USING gist ("employee_id" WITH =, daterange("period_from", "period_to", '[]') WITH &&) WHERE ("status" <> 'voided')`,
+)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_driver_liquidation_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Employee,
+  ['employee_id', 'distributor_id'],
+  ['employee_id', 'distributor_id'],
+  {
+    name: 'FK_driver_liquidation_employee_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@Unique('UQ_driver_liquidation_id_distribuidora', [
+  'liquidationId',
+  'distributorId',
+])
 @Entity('driver_liquidation')
 @Index('UQ_driver_liquidation_numero', ['distributorId', 'number'], {
   unique: true,

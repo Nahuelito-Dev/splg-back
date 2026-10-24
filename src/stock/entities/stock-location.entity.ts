@@ -7,6 +7,8 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  ForeignKey,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
@@ -19,6 +21,22 @@ import { Warehouse } from './warehouse.entity';
  * columnas en cada tabla. Se crea junto con el depósito y, para un vehículo,
  * la primera vez que recibe stock.
  */
+@ForeignKey(
+  () => Warehouse,
+  ['warehouse_id', 'distributor_id'],
+  ['warehouse_id', 'distributor_id'],
+  {
+    name: 'FK_stock_location_warehouse_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Car,
+  ['car_id', 'distributor_id'],
+  ['car_id', 'distributor_id'],
+  { name: 'FK_stock_location_car_distribuidora', onDelete: 'NO ACTION' },
+)
+@Unique('UQ_stock_location_id_distribuidora', ['locationId', 'distributorId'])
 @Entity('stock_location')
 @Index('UQ_stock_location_warehouse', ['warehouseId'], { unique: true })
 @Index('UQ_stock_location_car', ['carId'], { unique: true })

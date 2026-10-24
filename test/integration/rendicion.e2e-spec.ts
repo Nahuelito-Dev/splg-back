@@ -21,6 +21,7 @@ import { WarehouseService } from '../../src/stock/application/warehouse.service'
 import { conIdempotencia } from './setup/con-idempotencia';
 import { Finanzas, Headers, cuerpo } from './setup/finanzas';
 import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import { forzarEstado } from './setup/bypass';
 
 const mockReintentos = { n: 0 };
 jest.mock('../../src/common/utils/with-transaction-retry', () => {
@@ -717,7 +718,8 @@ describe('Rendición del chofer (e2e)', () => {
       await aprobar(e.headers, r.settlementId, { cashBoxId: cajaId }).expect(
         409,
       );
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE truck_load SET status = 'closed' WHERE load_id = $1`,
         [cargaId],
       );

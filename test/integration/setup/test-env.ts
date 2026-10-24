@@ -30,6 +30,9 @@ import {
   CREAR_FUNCION_ESTADO_DEL_PAGO,
   CREAR_TRIGGER_ESTADO_DEL_PAGO,
 } from '../../../src/migrations/sql/estado-del-pago';
+import { sentenciasDeReglasDeDatos } from '../../../src/migrations/sql/reglas-de-datos';
+import { sentenciasDeSaldos } from '../../../src/migrations/sql/saldo-contra-libro';
+import { sentenciasDeTransiciones } from '../../../src/migrations/sql/transiciones-de-estado';
 import {
   CREAR_ES_CUIL_VALIDO,
   CREAR_ES_CUIT_VALIDO,
@@ -234,11 +237,20 @@ function asegurarBaseDescartable(
 /**
  * El esquema sincronizado desde las entidades no trae los triggers que crean las
  * migraciones: se instalan acá, desde las mismas definiciones (tanda V1: el
- * estado de un pago no retrocede).
+ * estado de un pago no retrocede; tanda V2: transiciones de estado, saldos contra
+ * el libro y reglas de datos). Los fixtures que necesiten escribir un estado o un
+ * saldo directo lo hacen con `conBypass` (`setup/bypass.ts`).
  */
 async function instalarTriggersDeLaBase(dataSource: DataSource) {
   await dataSource.query(CREAR_FUNCION_ESTADO_DEL_PAGO);
   await dataSource.query(CREAR_TRIGGER_ESTADO_DEL_PAGO);
+  for (const sql of [
+    ...sentenciasDeTransiciones(),
+    ...sentenciasDeSaldos(),
+    ...sentenciasDeReglasDeDatos(),
+  ]) {
+    await dataSource.query(sql);
+  }
 }
 
 /**

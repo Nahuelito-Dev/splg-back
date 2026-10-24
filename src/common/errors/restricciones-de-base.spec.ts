@@ -1,6 +1,11 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  MAQUINAS_DE_ESTADO,
+  nombreDeLaRestriccionDeTransicion,
+} from '../../migrations/sql/transiciones-de-estado';
+import {
+  esConflictoDeEstado,
   MENSAJES_DE_RESTRICCIONES,
   mensajeDeRestriccion,
 } from './restricciones-de-base';
@@ -13,10 +18,23 @@ const DE_LA_TANDA = (archivo: string): boolean =>
 /** Nombres anteriores que sólo reaparecen al deshacer una migración. */
 const REEMPLAZADAS = new Set(['UQ_car_patente_vigente']);
 
+const SQL_DE_LAS_MIGRACIONES = join(MIGRACIONES, 'sql');
+const esCodigo = (archivo: string): boolean =>
+  archivo.endsWith('.ts') && !archivo.endsWith('.spec.ts');
+
 const nombresCreados = (): string[] => {
   const nombres = new Set<string>();
-  for (const archivo of readdirSync(MIGRACIONES).filter(DE_LA_TANDA)) {
-    const texto = readFileSync(join(MIGRACIONES, archivo), 'utf8');
+  // Las migraciones y el SQL que comparten con el arranque de las pruebas.
+  const archivos = [
+    ...readdirSync(MIGRACIONES)
+      .filter(DE_LA_TANDA)
+      .map((a) => join(MIGRACIONES, a)),
+    ...readdirSync(SQL_DE_LAS_MIGRACIONES)
+      .filter(esCodigo)
+      .map((a) => join(SQL_DE_LAS_MIGRACIONES, a)),
+  ];
+  for (const archivo of archivos) {
+    const texto = readFileSync(archivo, 'utf8');
     for (const m of texto.matchAll(/\b(?:CHK|UQ|EXC)_[A-Za-z0-9_]+/g)) {
       nombres.add(m[0]);
     }
@@ -36,6 +54,23 @@ describe('mensajes de las restricciones de la base', () => {
     expect(creadas.length).toBeGreaterThan(50);
     const sinMensaje = creadas.filter((n) => !(n in MENSAJES_DE_RESTRICCIONES));
     expect(sinMensaje).toEqual([]);
+  });
+
+  it('cada trigger de transición de estado tiene su mensaje', () => {
+    for (const m of MAQUINAS_DE_ESTADO) {
+      expect(MENSAJES_DE_RESTRICCIONES).toHaveProperty(
+        nombreDeLaRestriccionDeTransicion(m.tabla),
+      );
+    }
+  });
+
+  it('transiciones y saldos contra el libro son conflictos de estado (409)', () => {
+    expect(esConflictoDeEstado('CHK_order_transicion_de_estado')).toBe(true);
+    expect(esConflictoDeEstado('CHK_stock_balance_saldo_contra_libro')).toBe(
+      true,
+    );
+    expect(esConflictoDeEstado('CHK_car_patente')).toBe(false);
+    expect(esConflictoDeEstado(undefined)).toBe(false);
   });
 
   it('los mensajes no son vacíos', () => {

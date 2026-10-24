@@ -45,6 +45,7 @@ import {
 } from '../../src/stock/domain/stock.enums';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { User } from '../../src/users/entities/user.entity';
+import { forzarEstado } from './setup/bypass';
 
 type Headers = Record<string, string>;
 
@@ -1265,7 +1266,8 @@ describe('Carga y rendición del camión (e2e)', () => {
       await stockInicial(e, 50);
       const pendiente = async () => {
         const o = await pedido(e, c, 1);
-        await ds.query(
+        await forzarEstado(
+          ds,
           `UPDATE "order" SET status = 'pending', delivery_id = NULL, vehicle_car_id = NULL WHERE order_id = $1`,
           [o.orderId],
         );
@@ -1443,7 +1445,8 @@ describe('Carga y rendición del camión (e2e)', () => {
       await stockInicial(e, 50, 10);
       const pendiente = async () => {
         const o = await pedido(e, c, 1);
-        await ds.query(
+        await forzarEstado(
+          ds,
           `UPDATE "order" SET status = 'pending', delivery_id = NULL, vehicle_car_id = NULL WHERE order_id = $1`,
           [o.orderId],
         );
@@ -1477,7 +1480,8 @@ describe('Carga y rendición del camión (e2e)', () => {
         OrderStatus.ACCEPTED,
       );
       // (se lo da por entregado para poder volver)
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'delivered' WHERE delivery_id = $1`,
         [c.deliveryId],
       );

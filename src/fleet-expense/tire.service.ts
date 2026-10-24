@@ -136,6 +136,7 @@ export class TireService {
           throw new ConflictException(MOVIMIENTO_INVALIDO);
         }
 
+        await this.assertOdometroMonotono(manager, neumatico, dto);
         const asiento = await this.aplicar(
           manager,
           neumatico,
@@ -226,6 +227,36 @@ export class TireService {
         this.soltar(t);
         return asiento;
       }
+    }
+  }
+
+  /**
+   * El kilometraje de un movimiento no puede ser menor que el último que tiene
+   * ese neumático en el mismo vehículo (cada vehículo tiene su odómetro; al
+   * pasar a otro, la cuenta empieza de nuevo). La base lo exige con
+   * CHK_tire_event_odometro_monotono.
+   */
+  private async assertOdometroMonotono(
+    manager: EntityManager,
+    t: Tire,
+    dto: CreateTireEventDto,
+  ): Promise<void> {
+    const carId = dto.type === TireEventType.MOUNT ? dto.carId : t.carId;
+    if (!carId) return;
+    const fila = await manager
+      .getRepository(TireEvent)
+      .createQueryBuilder('e')
+      .select('MAX(e.odometer_km)', 'max')
+      .where('e.tire_id = :tireId AND e.car_id = :carId', {
+        tireId: t.tireId,
+        carId,
+      })
+      .getRawOne<{ max: number | null }>();
+    const ultimo = fila?.max ?? null;
+    if (ultimo !== null && dto.odometerKm < Number(ultimo)) {
+      throw new BadRequestException(
+        `odometerKm: es menor que el último registrado de este neumático en el vehículo (${ultimo} km)`,
+      );
     }
   }
 

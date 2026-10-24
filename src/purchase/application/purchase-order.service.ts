@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import {
   DocType,
@@ -21,6 +22,7 @@ import { PurchaseOrderStatus } from '../domain/purchase.enums';
 import {
   totalDe,
   validarEditable,
+  validarFechaEsperada,
   validarTransicion,
 } from '../domain/purchase-rules';
 import {
@@ -73,6 +75,7 @@ export class PurchaseOrderService {
     distributorId: string,
     actorUserId: string,
   ): Promise<string> {
+    validarFechaEsperada(dto.expectedDate, diaArgentino());
     const warehouseId =
       dto.destinationWarehouseId ??
       (await this.warehouses.asegurarPredeterminado(distributorId)).warehouse
@@ -164,8 +167,14 @@ export class PurchaseOrderService {
             );
             orden.destinationWarehouseId = dto.destinationWarehouseId;
           }
-          if (dto.expectedDate !== undefined)
+          if (dto.expectedDate !== undefined) {
+            // Sólo se valida si la fecha cambia: una orden vieja se puede editar
+            // (notas, renglones) sin tocar la fecha que ya tenía.
+            if (dto.expectedDate !== orden.expectedDate) {
+              validarFechaEsperada(dto.expectedDate, diaArgentino());
+            }
             orden.expectedDate = dto.expectedDate;
+          }
           if (dto.notes !== undefined) orden.notes = dto.notes;
           if (dto.items !== undefined) {
             await this.bloquearGarrafas(manager, distributorId, dto.items);

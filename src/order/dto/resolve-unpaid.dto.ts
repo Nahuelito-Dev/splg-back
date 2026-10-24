@@ -1,5 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import {
+  LARGO_MINIMO_NOTA_DE_IMPAGO,
+  LARGO_NOTA,
+} from '../../common/constants/largos-de-texto';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { OrderResponseDto } from './order-response.dto';
 import { CASH_BOX_ID_DESCRIPCION } from './payment-admin.dto';
@@ -24,8 +34,12 @@ export class ResolveUnpaidDto {
   @ApiProperty({
     example: 'El cliente transfirió el lunes',
     description: 'Motivo de la resolución (queda en el pedido y en auditoría)',
+    minLength: LARGO_MINIMO_NOTA_DE_IMPAGO,
+    maxLength: LARGO_NOTA,
   })
   @TextoNoVacio()
+  @MinLength(LARGO_MINIMO_NOTA_DE_IMPAGO)
+  @MaxLength(LARGO_NOTA)
   note!: string;
 
   @ApiPropertyOptional({

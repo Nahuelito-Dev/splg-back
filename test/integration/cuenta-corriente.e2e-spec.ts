@@ -18,6 +18,7 @@ import { conIdempotencia } from './setup/con-idempotencia';
 import { entregarComoAdmin } from './setup/entrega-admin';
 import { Finanzas, Headers, cuerpo } from './setup/finanzas';
 import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import { forzarEstado } from './setup/bypass';
 
 const mockReintentos = { n: 0 };
 jest.mock('../../src/common/utils/with-transaction-retry', () => {
@@ -211,7 +212,8 @@ describe('Cuentas corrientes (e2e)', () => {
     const p = cuerpo<Pedido>(
       await venderACuenta(e, cliente, cantidad).expect(201),
     );
-    await ds.query(
+    await forzarEstado(
+      ds,
       `UPDATE "order" SET status = 'on_the_way', delivery_id = $2, "acceptedAt" = now(), "onTheWayAt" = now()
        WHERE order_id = $1`,
       [p.order_id, chofer.deliveryId],
@@ -409,7 +411,8 @@ describe('Cuentas corrientes (e2e)', () => {
       expect(
         (await cuentaDe(e.headers, cuenta.accountId)).availableCredit,
       ).toBe(2000);
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
         [p.order_id],
       );
@@ -689,7 +692,8 @@ describe('Cuentas corrientes (e2e)', () => {
         method: 'cash',
         cashBoxId: cajaId,
       }).expect(404);
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE customer_account SET status = 'closed' WHERE account_id = $1`,
         [cuenta.accountId],
       );
@@ -992,21 +996,25 @@ describe('Cuentas corrientes (e2e)', () => {
       monto: number,
     ) {
       const ocurrio = new Date(Date.now() - dias * 86_400_000);
-      await ds.query(
-        `INSERT INTO customer_account_entry (distributor_id, account_id, type, amount, due_date, occurred_at, description)
-         VALUES ($1, $2, 'sale_charge', $3, $4, $5, 'Cargo de prueba')`,
-        [
-          distributorId,
-          cuentaId,
-          monto,
-          diaArgentino(new Date(ocurrio.getTime() + 30 * 86_400_000)),
-          ocurrio,
-        ],
-      );
-      await ds.query(
-        `UPDATE customer_account SET balance = balance + $2 WHERE account_id = $1`,
-        [cuentaId, monto],
-      );
+      // El cargo y el saldo van en la misma transacción: la base verifica al
+      // commit que el saldo sea la suma de los asientos.
+      await ds.transaction(async (m) => {
+        await m.query(
+          `INSERT INTO customer_account_entry (distributor_id, account_id, type, amount, due_date, occurred_at, description)
+           VALUES ($1, $2, 'sale_charge', $3, $4, $5, 'Cargo de prueba')`,
+          [
+            distributorId,
+            cuentaId,
+            monto,
+            diaArgentino(new Date(ocurrio.getTime() + 30 * 86_400_000)),
+            ocurrio,
+          ],
+        );
+        await m.query(
+          `UPDATE customer_account SET balance = balance + $2 WHERE account_id = $1`,
+          [cuentaId, monto],
+        );
+      });
     }
 
     it('reparte la deuda por antigüedad del comprobante, por cuenta y en total', async () => {
