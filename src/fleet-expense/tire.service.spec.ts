@@ -17,7 +17,13 @@ describe('TireService', () => {
     findOne: jest.Mock;
     exists: jest.Mock;
   };
-  let events: { create: jest.Mock; save: jest.Mock };
+  let events: {
+    create: jest.Mock;
+    save: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
+  /** Mayor kilometraje que ya tiene el neumático en el vehículo (`null`: ninguno). */
+  let ultimoKm: number | null;
   let cars: { findOne: jest.Mock; bloquear: jest.Mock };
 
   const neumatico = (over: Partial<Tire> = {}): Tire =>
@@ -40,9 +46,15 @@ describe('TireService', () => {
       findOne: jest.fn(),
       exists: jest.fn().mockResolvedValue(false),
     };
+    ultimoKm = null;
     events = {
       create: jest.fn((e: Partial<TireEvent>) => e),
       save: jest.fn((e: TireEvent) => Promise.resolve(e)),
+      createQueryBuilder: jest.fn(() => ({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn(() => Promise.resolve({ max: ultimoKm })),
+      })),
     };
     const manager = {
       getRepository: (entidad: unknown) => (entidad === Tire ? tires : events),
@@ -195,6 +207,44 @@ describe('TireService', () => {
       await expect(
         mover({ type: TireEventType.UNMOUNT, odometerKm: 900 }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('un movimiento con un kilometraje menor que el último del neumático en ese vehículo es 400', async () => {
+      dar(
+        neumatico({
+          status: TireStatus.MOUNTED,
+          carId: 'c1',
+          position: 'DI',
+          mountedOdometerKm: 1000,
+        }),
+      );
+      ultimoKm = 5000;
+      await expect(
+        mover({ type: TireEventType.ROTATE, odometerKm: 4000, position: 'TD' }),
+      ).rejects.toThrow(/menor que el último registrado.*5000 km/);
+      expect(events.save).not.toHaveBeenCalled();
+    });
+
+    it('al montarlo en un vehículo se compara con lo que ya tuvo en ESE vehículo', async () => {
+      dar(neumatico());
+      ultimoKm = 8000;
+      await expect(
+        mover({
+          type: TireEventType.MOUNT,
+          odometerKm: 7000,
+          carId: 'c1',
+          position: 'DI',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      ultimoKm = null;
+      await expect(
+        mover({
+          type: TireEventType.MOUNT,
+          odometerKm: 7000,
+          carId: 'c1',
+          position: 'DI',
+        }),
+      ).resolves.toBeDefined();
     });
 
     it('rotar cambia la posición y reinicia el montaje sumando lo recorrido', async () => {

@@ -173,7 +173,10 @@ import { FirebaseModule } from './firebase/firebase.module';
           // DB_SYNC=true, pero nunca en prod (aunque se setee).
           synchronize: !isProd && configService.get('DB_SYNC') === 'true',
           autoLoadEntities: true,
-          migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
+          // Sólo la carpeta raíz: `migrations/sql/` guarda las sentencias que
+          // comparten las migraciones y las pruebas, y exporta funciones que
+          // TypeORM tomaría por migraciones.
+          migrations: [__dirname + '/migrations/*{.ts,.js}'],
           cli: {
             migrationsDir: __dirname + '/migrations/',
           },

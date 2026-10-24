@@ -51,6 +51,7 @@ import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { fechasSegunEstado } from './setup/pedido-valido';
+import { forzarEstado } from './setup/bypass';
 
 type Headers = Record<string, string>;
 
@@ -1119,7 +1120,8 @@ describe('Blindaje (e2e)', () => {
         .expect(200);
       const porSistema = await creadoPorApi(e);
       // El cron de vencimiento cancela sin usuario en el request.
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
         [porSistema],
       );
@@ -1186,7 +1188,8 @@ describe('Blindaje (e2e)', () => {
       expect(new Date(loc.at).getTime()).toBeGreaterThanOrEqual(antes - 1000);
 
       // Cerrado: no se expone nada del chofer.
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'delivered' WHERE order_id = $1`,
         [p.orderId],
       );
@@ -1246,7 +1249,8 @@ describe('Blindaje (e2e)', () => {
       await qr.query(`SELECT 1 FROM truck_load WHERE load_id = $1 FOR UPDATE`, [
         loadId,
       ]);
-      await qr.query(
+      await forzarEstado(
+        qr,
         `UPDATE truck_load SET status = 'returned' WHERE load_id = $1`,
         [loadId],
       );
@@ -1330,11 +1334,13 @@ describe('Blindaje (e2e)', () => {
           true,
         );
         // Deja el escenario limpio para la vuelta siguiente.
-        await ds.query(
+        await forzarEstado(
+          ds,
           `UPDATE truck_load SET status = 'cancelled' WHERE load_id = $1`,
           [carga.loadId],
         );
-        await ds.query(
+        await forzarEstado(
+          ds,
           `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
           [p.orderId],
         );

@@ -14,6 +14,7 @@ import { diaArgentino } from '../../src/common/utils/dias-argentina';
 import { conIdempotencia } from './setup/con-idempotencia';
 import { Finanzas, cuerpo } from './setup/finanzas';
 import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import { conBypass } from './setup/bypass';
 
 interface Tablero {
   date: string;
@@ -253,7 +254,9 @@ describe('Tablero financiero (e2e)', () => {
       const [central] = cuerpo<Pagina<Caja>>(
         await http().get('/cash-boxes').set(e.headers).expect(200),
       ).data;
-      await ds.query(
+      await conBypass(
+        ds,
+        ['saldos'],
         `UPDATE cash_box SET balance = 999 WHERE cash_box_id = $1`,
         [central.cashBoxId],
       );

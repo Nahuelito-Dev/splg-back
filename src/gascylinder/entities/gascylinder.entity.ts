@@ -21,6 +21,7 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 )
 @Check('CHK_gas_cylinder_tipo', `btrim("type") <> ''`)
 @Index('UQ_gas_cylinder_tipo_normalizado', { synchronize: false })
+@Unique('UQ_gas_cylinder_id_distribuidora', ['gasCylinderId', 'distributorId'])
 @Entity('gas_cylinder')
 // El tipo es la clave natural del producto dentro de una distribuidora.
 @Unique('UQ_gas_cylinder_distribuidora_tipo', ['distributorId', 'type'])

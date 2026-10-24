@@ -10,7 +10,7 @@ import { PurchaseOrderStatus as E } from './purchase.enums';
  * Máquina de estados de la orden de compra. Las vueltas atrás (recibida o
  * parcial hacia parcial o enviada) sólo las produce anular una recepción.
  */
-const TRANSICIONES: Record<E, readonly E[]> = {
+export const TRANSICIONES: Record<E, readonly E[]> = {
   [E.DRAFT]: [E.SENT, E.CANCELLED],
   [E.SENT]: [E.PARTIALLY_RECEIVED, E.RECEIVED, E.CANCELLED],
   [E.PARTIALLY_RECEIVED]: [
@@ -27,6 +27,22 @@ const TRANSICIONES: Record<E, readonly E[]> = {
 export function validarTransicion(desde: E, hacia: E): void {
   if (!TRANSICIONES[desde].includes(hacia)) {
     throw new TransicionDeOrdenInvalidaError(desde, hacia);
+  }
+}
+
+/**
+ * La entrega esperada de una orden no puede ser anterior a hoy (día argentino
+ * `YYYY-MM-DD`). La base exige lo mismo contra el día de alta de la orden
+ * (`CHK_purchase_order_fecha_esperada`).
+ */
+export function validarFechaEsperada(
+  fecha: string | null | undefined,
+  hoy: string,
+): void {
+  if (fecha && fecha < hoy) {
+    throw new CompraInvalidaError(
+      'expectedDate: la fecha esperada de entrega no puede ser anterior a hoy',
+    );
   }
 }
 

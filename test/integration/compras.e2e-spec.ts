@@ -30,6 +30,7 @@ import {
 } from '../../src/order/entities/order.entity';
 import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { entregarComoAdmin } from './setup/entrega-admin';
+import { conBypass } from './setup/bypass';
 
 type Headers = Record<string, string>;
 
@@ -1186,7 +1187,9 @@ describe('Compras (e2e)', () => {
         const g = await seedGarrafa(e.distributorId);
         const p = await proveedor(e);
         // 25 llenas sin costo en el depósito; después R1 a 100, R2 a 300 y R3 a 100 (10 cada una)
-        await ds.query(
+        await conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO "stock_balance" ("distributor_id","location_id","gas_cylinder_id","condition","quantity")
            VALUES ($1, $2, $3, 'full', 25)`,
           [e.distributorId, e.locationId, g.gasCylinderId],

@@ -9,6 +9,8 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Check,
+  ForeignKey,
+  Unique,
 } from 'typeorm';
 import { Car } from '../../car/entities/car.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -42,6 +44,37 @@ import { TruckLoadItem } from './truck-load-item.entity';
   'CHK_truck_load_cancelada',
   `"status" <> 'cancelled' OR "cancel_reason" IS NOT NULL`,
 )
+@ForeignKey(
+  () => StockLocation,
+  ['origin_location_id', 'distributor_id'],
+  ['location_id', 'distributor_id'],
+  {
+    name: 'FK_truck_load_origin_location_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Car,
+  ['car_id', 'distributor_id'],
+  ['car_id', 'distributor_id'],
+  { name: 'FK_truck_load_car_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => Delivery,
+  ['delivery_id', 'distributor_id'],
+  ['delivery_id', 'distributor_id'],
+  { name: 'FK_truck_load_delivery_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => Employee,
+  ['helper_employee_id', 'distributor_id'],
+  ['employee_id', 'distributor_id'],
+  {
+    name: 'FK_truck_load_helper_employee_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@Unique('UQ_truck_load_id_distribuidora', ['loadId', 'distributorId'])
 @Entity('truck_load')
 @Index('UQ_truck_load_numero', ['distributorId', 'number'], { unique: true })
 @Index('UQ_truck_load_camion_abierta', ['carId'], {

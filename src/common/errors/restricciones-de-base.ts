@@ -218,12 +218,84 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_claims_textos:
     'El motivo y la descripción del reclamo no pueden estar vacíos',
   CHK_incident_descripcion: 'La descripción del incidente no puede estar vacía',
+  EXC_driver_liquidation_periodo_solapado:
+    'El período se superpone con otra liquidación del mismo chofer que no está anulada',
+  CHK_customer_account_allocation_tope:
+    'Lo imputado a un asiento de la cuenta corriente no puede superar su importe',
+  // Largo de los textos, importes y fechas (tanda V2)
+  CHK_claims_largo_de_textos:
+    'El motivo del reclamo admite hasta 120 caracteres; la descripción y la resolución, hasta 1000',
+  CHK_incident_largo_de_textos:
+    'La descripción y la resolución de la incidencia admiten hasta 1000 caracteres',
+  CHK_rating_largo_de_textos:
+    'El comentario y el motivo de moderación de una calificación admiten hasta 500 caracteres',
+  CHK_order_nota_de_impago_largo:
+    'La nota de resolución del impago admite entre 10 y 500 caracteres',
+  CHK_traffic_fine_pago_contra_importe:
+    'Lo pagado de una multa no puede superar su importe',
+  CHK_purchase_order_fecha_esperada:
+    'La fecha esperada de entrega no puede ser anterior al día en que se creó la orden',
+  CHK_customer_account_entry_cobro_mayor_a_la_deuda:
+    'El cobro supera la deuda de la cuenta corriente: registrá una nota de crédito por la diferencia',
+  CHK_cylinder_fabricacion_futura:
+    'La fecha de fabricación del envase no puede ser futura',
+  CHK_driver_settlement_fecha_futura:
+    'No se puede abrir la rendición de un día futuro',
+  CHK_fuel_load_odometro_monotono:
+    'El kilometraje de la carga no encaja entre el de la carga anterior y el de la siguiente; si es una corrección, indicá la nota',
+  CHK_maintenance_task_odometro_monotono:
+    'El kilometraje de la tarea no encaja entre el de la tarea anterior y el de la siguiente del vehículo',
+  CHK_tire_event_odometro_monotono:
+    'El kilometraje del movimiento es menor que el último del neumático en ese vehículo',
+  // Transiciones de estado (triggers de la base)
+  CHK_order_transicion_de_estado:
+    'El pedido no puede pasar a ese estado desde el estado en que está',
+  CHK_cylinder_transicion_de_estado:
+    'El envase no puede pasar a ese estado desde el estado en que está',
+  CHK_driver_settlement_transicion_de_estado:
+    'La rendición no puede pasar a ese estado desde el estado en que está',
+  CHK_driver_liquidation_transicion_de_estado:
+    'La liquidación no puede pasar a ese estado desde el estado en que está',
+  CHK_purchase_order_transicion_de_estado:
+    'La orden de compra no puede pasar a ese estado desde el estado en que está',
+  CHK_truck_load_transicion_de_estado:
+    'La carga del camión no puede pasar a ese estado desde el estado en que está',
+  CHK_claims_transicion_de_estado:
+    'El reclamo no puede pasar a ese estado desde el estado en que está',
+  CHK_customer_account_transicion_de_estado:
+    'La cuenta corriente no puede pasar a ese estado desde el estado en que está',
+  CHK_order_dispatch_offer_transicion_de_estado:
+    'La oferta de despacho no puede pasar a ese estado desde el estado en que está',
+  // Saldos contra el libro (constraint triggers diferidos)
+  CHK_cash_box_saldo_contra_libro:
+    'El saldo de la caja no coincide con la suma de sus movimientos: la operación se deshizo',
+  CHK_stock_balance_saldo_contra_libro:
+    'La existencia no coincide con la suma de los movimientos de stock: la operación se deshizo',
+  CHK_customer_account_saldo_contra_libro:
+    'El saldo de la cuenta corriente no coincide con la suma de sus asientos: la operación se deshizo',
 };
+
+/** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */
+const FK_DE_DISTRIBUIDORA = /^FK_[a-z0-9_]+_distribuidora$/;
+
+/**
+ * Violaciones que no son un dato mal cargado sino un choque con el estado actual
+ * (transición inválida, saldo que no cierra con el libro): 409 y no 400.
+ */
+const CONFLICTO_DE_ESTADO =
+  /_(transicion_de_estado|saldo_contra_libro|cobro_mayor_a_la_deuda)$/;
+
+export function esConflictoDeEstado(restriccion: string | undefined): boolean {
+  return restriccion !== undefined && CONFLICTO_DE_ESTADO.test(restriccion);
+}
 
 /** Mensaje de una restricción conocida, o `undefined` si no la conocemos. */
 export function mensajeDeRestriccion(
   restriccion: string | undefined,
 ): string | undefined {
   if (!restriccion) return undefined;
+  if (FK_DE_DISTRIBUIDORA.test(restriccion)) {
+    return 'El registro elegido pertenece a otra distribuidora';
+  }
   return MENSAJES_DE_RESTRICCIONES[restriccion];
 }

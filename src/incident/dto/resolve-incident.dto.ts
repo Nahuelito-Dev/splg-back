@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional } from 'class-validator';
+import { IsIn, IsOptional, MaxLength } from 'class-validator';
+import { LARGO_DESCRIPCION } from '../../common/constants/largos-de-texto';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { IncidentStatus } from '../entities/incident.entity';
 
@@ -10,8 +11,10 @@ export class ResolveIncidentDto {
   @ApiProperty({
     example: 'Se reprogramó la entrega',
     description: 'Nota de resolución o motivo del descarte (obligatoria)',
+    maxLength: LARGO_DESCRIPCION,
   })
   @TextoNoVacio()
+  @MaxLength(LARGO_DESCRIPCION)
   resolutionNote!: string;
 
   @ApiPropertyOptional({

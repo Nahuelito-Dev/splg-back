@@ -164,6 +164,48 @@ describe('traducirErrorDeBase', () => {
       expect(llamar).toThrow('se solapa con otra franja activa');
     });
 
+    it('23514 de una transición de estado inválida es 409 (choca con el estado actual), no 400', () => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          {
+            code: '23514',
+            constraint: 'CHK_order_transicion_de_estado',
+            message: 'x',
+          },
+          logger,
+          'pedidos',
+        );
+      expect(llamar).toThrow(ConflictException);
+      expect(llamar).toThrow('El pedido no puede pasar a ese estado');
+    });
+
+    it('23514 de un saldo que no cierra con el libro es 409', () => {
+      expect(() =>
+        traducirErrorDeBase(
+          {
+            code: '23514',
+            constraint: 'CHK_cash_box_saldo_contra_libro',
+            message: 'x',
+          },
+          logger,
+        ),
+      ).toThrow(ConflictException);
+    });
+
+    it('23503 de una clave compuesta con la distribuidora es 409 con su motivo', () => {
+      const llamar = () =>
+        traducirErrorDeBase(
+          {
+            code: '23503',
+            constraint: 'FK_order_delivery_id_distribuidora',
+            message: 'x',
+          },
+          logger,
+        );
+      expect(llamar).toThrow(ConflictException);
+      expect(llamar).toThrow('pertenece a otra distribuidora');
+    });
+
     it('23503 sigue siendo 409 (referencia inexistente o en uso)', () => {
       expect(() =>
         traducirErrorDeBase(
@@ -198,6 +240,15 @@ describe('traducirErrorDeBase', () => {
           traducirRestriccionConocida({
             code: '23P01',
             constraint: 'EXC_employee_attendance_solapada',
+          }),
+        ).toBeInstanceOf(ConflictException);
+      });
+
+      it('una transición inválida es 409 en la red de seguridad del filtro', () => {
+        expect(
+          traducirRestriccionConocida({
+            code: '23514',
+            constraint: 'CHK_truck_load_transicion_de_estado',
           }),
         ).toBeInstanceOf(ConflictException);
       });

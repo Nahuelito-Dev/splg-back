@@ -9,6 +9,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { User } from '../../users/entities/user.entity';
@@ -63,6 +64,7 @@ export enum EmployeeStatus {
   `"personal_email" IS NULL OR "personal_email" ~* '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$'`,
 )
 @Check('CHK_employee_cbu', `"bank_cbu" IS NULL OR "bank_cbu" ~ '^[0-9]{22}$'`)
+@Unique('UQ_employee_id_distribuidora', ['employeeId', 'distributorId'])
 @Entity('employee')
 @Index('UQ_employee_user_vigente', ['userId'], {
   unique: true,

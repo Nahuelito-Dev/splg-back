@@ -9,6 +9,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Unique,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -33,6 +34,7 @@ import {
   'CHK_customer_account_cuit',
   `"tax_id" IS NULL OR es_cuit_valido("tax_id")`,
 )
+@Unique('UQ_customer_account_id_distribuidora', ['accountId', 'distributorId'])
 @Entity('customer_account')
 @Index(
   'UQ_customer_account_cliente_vigente',

@@ -8,6 +8,7 @@ import {
   Index,
   Unique,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -29,6 +30,16 @@ export enum RaterRole {
 @Check(
   'CHK_rating_valores',
   `"stars" BETWEEN 1 AND 5 AND "from_user_id" <> "to_user_id" AND (NOT "hidden" OR "hidden_at" IS NOT NULL)`,
+)
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  { name: 'FK_rating_order_distribuidora', onDelete: 'NO ACTION' },
+)
+@Check(
+  'CHK_rating_largo_de_textos',
+  `("comment" IS NULL OR char_length("comment") <= 500) AND ("hidden_reason" IS NULL OR char_length("hidden_reason") <= 500)`,
 )
 @Entity('rating')
 @Unique('UQ_rating_order_role', ['orderId', 'fromRole'])

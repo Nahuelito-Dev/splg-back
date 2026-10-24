@@ -7,6 +7,7 @@ import {
   RendicionEnOtroEstadoError,
   RendicionInvalidaError,
 } from './errors/driver-settlement.errors';
+import { derivarTransiciones } from '../../common/domain/derivar-transiciones';
 
 export type AccionDeRendicion = 'submit' | 'approve' | 'reopen';
 
@@ -15,6 +16,26 @@ const DESDE: Record<AccionDeRendicion, DriverSettlementStatus> = {
   approve: DriverSettlementStatus.SUBMITTED,
   reopen: DriverSettlementStatus.SUBMITTED,
 };
+
+/** Estado al que lleva cada acción. */
+const HACIA: Record<AccionDeRendicion, DriverSettlementStatus> = {
+  submit: DriverSettlementStatus.SUBMITTED,
+  approve: DriverSettlementStatus.APPROVED,
+  reopen: DriverSettlementStatus.OPEN,
+};
+
+/**
+ * Transiciones válidas del estado de la rendición, derivadas de `DESDE` y `HACIA`
+ * (las mismas tablas que aplica `exigirEstado`; la base las repite en el trigger
+ * `TRG_driver_settlement_transicion_de_estado` y un spec compara las dos).
+ */
+export const TRANSICIONES_DE_RENDICION: Readonly<
+  Record<DriverSettlementStatus, readonly DriverSettlementStatus[]>
+> = derivarTransiciones(Object.values(DriverSettlementStatus), (desde) =>
+  (Object.keys(DESDE) as AccionDeRendicion[])
+    .filter((accion) => DESDE[accion] === desde)
+    .map((accion) => HACIA[accion]),
+);
 
 const TEXTO: Record<DriverSettlementStatus, string> = {
   [DriverSettlementStatus.OPEN]: 'abierta',

@@ -7,6 +7,8 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  ForeignKey,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
@@ -31,12 +33,57 @@ import { StockLocation } from './stock-location.entity';
   'CHK_stock_movement_origen_destino_distintos',
   `NOT ("from_location_id" = "to_location_id" AND "from_condition" = "to_condition")`,
 )
+@ForeignKey(
+  () => GasCylinder,
+  ['gas_cylinder_id', 'distributor_id'],
+  ['gas_cylinder_id', 'distributor_id'],
+  {
+    name: 'FK_stock_movement_gas_cylinder_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => StockLocation,
+  ['from_location_id', 'distributor_id'],
+  ['location_id', 'distributor_id'],
+  {
+    name: 'FK_stock_movement_from_location_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => StockLocation,
+  ['to_location_id', 'distributor_id'],
+  ['location_id', 'distributor_id'],
+  {
+    name: 'FK_stock_movement_to_location_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => StockMovement,
+  ['reversed_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_stock_movement_reversed_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@Unique('UQ_stock_movement_id_distribuidora', ['movementId', 'distributorId'])
 @Entity('stock_movement')
 @Index('IDX_stock_movement_fecha', ['distributorId', 'occurredAt'])
 @Index('IDX_stock_movement_alta', ['distributorId', 'createdAt'])
 @Index('IDX_stock_movement_garrafa_fecha', ['gasCylinderId', 'occurredAt'])
-@Index('IDX_stock_movement_origen', ['fromLocationId'])
-@Index('IDX_stock_movement_destino', ['toLocationId'])
+@Index('IDX_stock_movement_origen', [
+  'fromLocationId',
+  'gasCylinderId',
+  'fromCondition',
+])
+@Index('IDX_stock_movement_destino', [
+  'toLocationId',
+  'gasCylinderId',
+  'toCondition',
+])
 @Index('IDX_stock_movement_referencia', ['referenceType', 'referenceId'])
 @Index('IDX_stock_movement_lote', ['batchId'])
 // Idempotencia de la entrega: un pedido deja a lo sumo un movimiento por

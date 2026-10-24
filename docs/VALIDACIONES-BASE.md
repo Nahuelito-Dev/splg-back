@@ -1,4 +1,4 @@
-# Validaciones en la base (tanda V1)
+# Validaciones en la base (tandas V1 y V2)
 
 Regla del proyecto: toda regla de negocio se valida en el front, en el back y en la
 base. Esta tanda lleva a la base las reglas de datos (CHECK, únicos, exclusiones,
@@ -63,3 +63,42 @@ El esquema de las suites sale de las entidades (`DB_SYNC`), así que el arranque
 ## Pago: atomicidad y alerta de monto
 
 `PaymentsService.updateLedger` lee, valida y escribe dentro de una transacción con el pago bloqueado (`FOR UPDATE`); el trigger de la base es la segunda barrera. La marca `metadata.montoDistinto` es persistente: cualquier notificación posterior del mismo pago (aun un `pending` atrasado) la sigue informando y `ConfirmPaymentUseCase` no despacha.
+
+## Tanda V2: transiciones, saldos contra el libro, tenant y reglas del back
+
+Cinco migraciones más (van después de `NormalizarSerialesDeEnvase`, en este orden):
+
+| Migración | Qué hace |
+|---|---|
+| `TransicionesDeEstado` | Un trigger `BEFORE UPDATE OF <estado>` por máquina de estado: pedido, envase, rendición, liquidación, orden de compra, carga del camión, reclamo, cuenta corriente y oferta de despacho. Una transición que no está en la tabla falla con SQLSTATE 23514 y la restricción `CHK_<tabla>_transicion_de_estado` (409 en castellano). Repetir el mismo estado pasa. La tabla de pares válidos sale de `src/migrations/sql/transiciones-de-estado.ts`, copia congelada de las constantes del dominio; `transiciones-de-estado.spec.ts` falla si una máquina del dominio cambia sin actualizar la copia (y su migración). |
+| `SaldosContraLibro` | CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED (se verifica al commit, por fila tocada, desde el saldo y desde el movimiento): `cash_box.balance` = Σ `cash_movement`, `customer_account.balance` = Σ asientos (cargo y nota de débito suman; cobro y nota de crédito restan), `stock_balance.quantity` = Σ entradas − Σ salidas de `stock_movement` por (ubicación, garrafa, condición). Falla con `CHK_cash_box_saldo_contra_libro`, `CHK_customer_account_saldo_contra_libro` o `CHK_stock_balance_saldo_contra_libro` y deshace toda la operación (409). También `CHK_customer_account_allocation_tope`: lo imputado a un asiento no pasa de su importe. Antes de crearlos verifica que hoy todo cierra; si no, aborta con el diagnóstico. Los índices de destino/origen de `stock_movement` pasan a (ubicación, garrafa, condición). El saldo del chofer (`delivery.balance`) no tiene libro (se ajusta a mano con `PATCH /delivery/:id/balance`): no se controla. |
+| `TenantCruzado` | 55 FK compuestas `(id, distributor_id)` `FK_<hijo>_<columna>_distribuidora` (pedido ↔ chofer/zona/franja/vehículo, movimientos de caja ↔ caja/sesión/categoría, movimientos y existencias de stock ↔ ubicación/garrafa, cuenta corriente, rendiciones, liquidaciones, comisiones, cargas del camión, compras, envases, etc.) más 20 únicos `UQ_<padre>_id_distribuidora`. Se agregan a la FK simple, que conserva su `ON DELETE`. Antes de crearlas cuenta las filas que hoy las violarían y, si hay alguna, aborta con la lista. Quedan fuera `payment` y `payment_refund` (MercadoPago). `tenant-cruzado.spec.ts` verifica que las entidades declaran las mismas claves. |
+| `ExclusionDeLiquidaciones` | `EXC_driver_liquidation_periodo_solapado`: los períodos de un mismo chofer no se pisan (días cerrados; las anuladas no cuentan). |
+| `ReglasDelBackEnLaBase` | CHECK de largo (`CHK_claims_largo_de_textos`, `CHK_incident_largo_de_textos`, `CHK_rating_largo_de_textos`, `CHK_order_nota_de_impago_largo`), `CHK_traffic_fine_pago_contra_importe`, `CHK_purchase_order_fecha_esperada`; y triggers: cobro de cuenta corriente no mayor que la deuda (`..._cobro_mayor_a_la_deuda`, 409), fabricación de envase no futura, rendición no abierta para un día futuro, odómetros monótonos (carga de combustible, cierre de tarea de mantenimiento y movimiento de neumático). |
+
+Bypass explícito, sólo para seeds y fixtures de integración (el back nunca lo usa): `SET LOCAL splg.bypass_transiciones = on`, `splg.bypass_saldos = on` o `splg.bypass_reglas = on` dentro de la transacción. Los helpers de las pruebas están en `test/integration/setup/bypass.ts`. El seed demo escribe el stock por el servicio del libro (movimiento y existencia en la misma transacción) y no toca la caja, así que no usa bypass.
+
+### Contrato que cambia
+
+- Largos máximos (400 si se pasan; el mismo valor en el DTO y en el CHECK): motivo del reclamo 120; descripción y resolución de reclamo (alta, resolución, reapertura) y de incidencia (alta, edición, resolución) 1000; nota de resolución del impago 500, y ahora también **mínimo 10** (`PATCH /orders/:id/payment/resolve-unpaid`, campo `note`). Constantes en `src/common/constants/largos-de-texto.ts`.
+- `POST /customer-accounts/:id/payments`: un cobro mayor que la deuda responde 409 («registrá una nota de crédito por la diferencia»).
+- `PATCH /fleet/fines/:id/pay`: `paidAmount` no puede superar el importe de la multa (400).
+- Orden de compra: `expectedDate` no puede ser anterior a hoy (400); al editar sólo se valida si la fecha cambia.
+- Envases: `manufacturedAt` no puede ser futuro (400, margen de 5 minutos por el reloj del cliente).
+- Rendición: `businessDate` no puede ser un día futuro (día argentino, 400).
+- Odómetros: carga de combustible (salvo corrección con nota), cierre de tarea de mantenimiento y evento de neumático no pueden ir hacia atrás respecto del anterior (ni pasarse del siguiente) del mismo vehículo (400).
+- Liquidaciones: un período que se pisa con otro no anulado del mismo chofer responde 409.
+- Cualquier transición de estado inválida que llegue a la base responde 409 con el mensaje de `restricciones-de-base.ts`; una referencia a una fila de otra distribuidora, 409 «El registro elegido pertenece a otra distribuidora».
+- Alinear el panel (`npm run api:types` y los esquemas zod): máximos de los textos de reclamo, incidencia, resolución y nota de impago, mínimo 10 de la nota de impago, `paidAmount` ≤ importe de la multa, `expectedDate` ≥ hoy, `manufacturedAt` no futuro, tope del cobro de cuenta corriente, fecha de rendición, odómetros.
+
+### Costo medido
+
+`pgbench` sobre una copia de `splg_db`, un cliente, una transacción = un asiento más el ajuste del saldo, 1500 corridas: con el libro de la copia, caja 0,77 → 1,01 ms y stock 0,78 → 1,05 ms; con 50 000 asientos en la misma caja o existencia, caja 0,89 → 1,51 ms y stock 0,76 → 1,26 ms. El control suma el libro de la fila tocada una vez por commit: crece con el largo del libro de esa caja/existencia, no con el de la tabla.
+
+### Aplicar en `splg_db`
+
+    docker exec splg-bd pg_dump -U postgres -Fc splg_db > splg_db-pre-v2.dump
+    npm run migration:run      # con el back que trae este código; apagar antes el que corre con código viejo
+    docker exec -i splg-bd psql -U postgres -d splg_db -v ON_ERROR_STOP=1 < scripts/verificar-constraints.sql
+
+Deshacer: `npm run migration:revert` cinco veces (las migraciones nuevas son reversibles).

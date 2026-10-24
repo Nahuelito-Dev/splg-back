@@ -8,6 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
@@ -18,6 +19,24 @@ import { Warehouse } from './warehouse.entity';
  * los administradores cuando queda por debajo; `alertedAt` evita repetir el
  * aviso hasta que el depósito se recupera.
  */
+@ForeignKey(
+  () => Warehouse,
+  ['warehouse_id', 'distributor_id'],
+  ['warehouse_id', 'distributor_id'],
+  {
+    name: 'FK_stock_threshold_warehouse_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => GasCylinder,
+  ['gas_cylinder_id', 'distributor_id'],
+  ['gas_cylinder_id', 'distributor_id'],
+  {
+    name: 'FK_stock_threshold_gas_cylinder_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('stock_threshold')
 @Index(
   'UQ_stock_threshold_deposito_garrafa',

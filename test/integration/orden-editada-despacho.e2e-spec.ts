@@ -29,6 +29,7 @@ import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { OfertaDeDespachoReemplazada1791100500000 } from '../../src/migrations/1791100500000-OfertaDeDespachoReemplazada';
 import { RealtimeDispatchPort } from '../../src/order/domain/ports/realtime-dispatch.port';
+import { forzarEstado } from './setup/bypass';
 
 const LAT = -34.6037;
 const LNG = -58.3816;
@@ -200,7 +201,8 @@ describe('Despacho: editar un pedido con oferta viva (e2e, Postgres + Redis real
       )) as { s: string }[];
       expect(fila.s).toBe('expired');
       await migracion.up(qr);
-      await qr.query(
+      await forzarEstado(
+        qr,
         `UPDATE order_dispatch_offer SET status = 'superseded' WHERE order_id = $1`,
         [order.orderId],
       );

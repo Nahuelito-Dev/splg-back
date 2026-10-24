@@ -3,7 +3,13 @@
 \set DRV '''a29dc060-6efc-4fe3-9f21-8bef5643eb26'''
 \set DLV '''de19bd70-c58d-4823-a409-c077cd7be352'''
 \set CLI '''6addc762-49c9-4262-8e82-aca374604acf'''
+\set DLVB '''bbbb0000-0000-4000-8000-000000000011'''
+\set DRVB '''bbbb0000-0000-4000-8000-000000000010'''
 BEGIN;
+-- Chofer PROPIO de B: la clave (delivery_id, distributor_id) del pedido impide colgarle el chofer de A.
+-- Se clona el usuario y el perfil del chofer de A (sin Firebase: no hace login).
+INSERT INTO "user" SELECT (jsonb_populate_record(NULL::"user", to_jsonb(u) || jsonb_build_object('user_id', :DRVB::uuid, 'email', 'aislamiento-b-chofer@example.invalid', 'firebase_uid', NULL, 'phone_number', '+549000000010', 'deletedAt', NULL))).* FROM "user" u WHERE u.user_id = :DRV ON CONFLICT DO NOTHING;
+INSERT INTO delivery SELECT (jsonb_populate_record(NULL::delivery, to_jsonb(d) || jsonb_build_object('delivery_id', :DLVB::uuid, 'user_id', :DRVB::uuid, 'distributor_id', :B::uuid, 'deletedAt', NULL))).* FROM delivery d WHERE d.delivery_id = :DLV ON CONFLICT DO NOTHING;
 INSERT INTO user_address (address_id, user_id, street, city, location, "isDefault", "createdAt", "updatedAt")
   VALUES ('bbbb0000-0000-4000-8000-00000000000f',:CLI,'Calle B 123','Posadas',ST_SetSRID(ST_MakePoint(-55.90,-27.37),4326),false,now(),now()) ON CONFLICT DO NOTHING;
 INSERT INTO time_slot VALUES ('bbbb0000-0000-4000-8000-000000000001',:B,'Franja B','08:00','12:00',10,true,now(),now()) ON CONFLICT DO NOTHING;
@@ -11,7 +17,7 @@ INSERT INTO coverage_zone SELECT 'bbbb0000-0000-4000-8000-000000000002',:B,'Zona
 INSERT INTO gas_cylinder VALUES ('bbbb0000-0000-4000-8000-000000000003',:B,'B-10kg',10,9999,50,'garrafa B',true,now(),now()) ON CONFLICT DO NOTHING;
 INSERT INTO car VALUES ('bbbb0000-0000-4000-8000-000000000004',:B,:DRV,'camioneta',20,'BBB999','Ford','Ranger',2020,'rojo',now(),now()) ON CONFLICT DO NOTHING;
 INSERT INTO "order" (order_id,distributor_id,customer_id,time_slot_id,scheduled_date,deposit_amount,deposit_paid,delivery_id,address_id,status,"paymentMethod","paymentType","paymentStatus","totalAmount","subtotal_items","createdAt","updatedAt","deliveredAt","deliveryCode")
-  SELECT 'bbbb0000-0000-4000-8000-000000000005',:B,:CLI,'bbbb0000-0000-4000-8000-000000000001',current_date,0,false,:DLV,address_id,'delivered','cash','cash','paid',9999,9999,now(),now(),now(),'1234' FROM user_address WHERE address_id='bbbb0000-0000-4000-8000-00000000000f' ON CONFLICT DO NOTHING;
+  SELECT 'bbbb0000-0000-4000-8000-000000000005',:B,:CLI,'bbbb0000-0000-4000-8000-000000000001',current_date,0,false,:DLVB,address_id,'delivered','cash','cash','paid',9999,9999,now(),now(),now(),'1234' FROM user_address WHERE address_id='bbbb0000-0000-4000-8000-00000000000f' ON CONFLICT DO NOTHING;
 INSERT INTO "order" (order_id,distributor_id,customer_id,time_slot_id,scheduled_date,deposit_amount,deposit_paid,delivery_id,address_id,status,"paymentMethod","paymentType","paymentStatus","totalAmount","subtotal_items","createdAt","updatedAt","deliveryCode")
   SELECT 'bbbb0000-0000-4000-8000-000000000006',:B,:CLI,'bbbb0000-0000-4000-8000-000000000001',current_date,0,false,null,address_id,'pending','cash','cash','pending',9999,9999,now(),now(),'4321' FROM user_address WHERE address_id='bbbb0000-0000-4000-8000-00000000000f' ON CONFLICT DO NOTHING;
 INSERT INTO order_item VALUES ('bbbb0000-0000-4000-8000-000000000007','bbbb0000-0000-4000-8000-000000000005','bbbb0000-0000-4000-8000-000000000003',1,9999,9999) ON CONFLICT DO NOTHING;

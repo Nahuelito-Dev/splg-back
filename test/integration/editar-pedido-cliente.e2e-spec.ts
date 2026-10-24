@@ -33,6 +33,7 @@ import { diaArgentino } from '../../src/common/utils/dias-argentina';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
+import { forzarEstado } from './setup/bypass';
 
 type Headers = Record<string, string>;
 
@@ -356,7 +357,8 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
   it('con chofer asignado responde 409 con el mensaje del repartidor y no toca stock', async () => {
     const e = await escenario();
     const id = await crearPedido(e, 2);
-    await ds.query(
+    await forzarEstado(
+      ds,
       `UPDATE "order" SET status = 'accepted', delivery_id = $1 WHERE order_id = $2`,
       [e.del.deliveryId, id],
     );
@@ -398,7 +400,8 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
       await qr.query(`SELECT 1 FROM "order" WHERE order_id = $1 FOR UPDATE`, [
         id,
       ]);
-      await qr.query(
+      await forzarEstado(
+        qr,
         `UPDATE "order" SET status = 'accepted', delivery_id = $1 WHERE order_id = $2`,
         [e.del.deliveryId, id],
       );
@@ -469,7 +472,8 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
         };
         expect([editoPrimero, aceptoPrimero]).toContainEqual(resultado);
         expect(aceptacion.status).toBe(200);
-        await ds.query(
+        await forzarEstado(
+          ds,
           `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
           [id],
         );
@@ -649,7 +653,8 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
     it('un pedido no editable es 409 con el mismo mensaje que el PATCH', async () => {
       const e = await escenario();
       const id = await crearPedido(e, 2);
-      await ds.query(
+      await forzarEstado(
+        ds,
         `UPDATE "order" SET status = 'accepted', delivery_id = $2 WHERE order_id = $1`,
         [id, e.del.deliveryId],
       );

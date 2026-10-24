@@ -7,6 +7,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  ForeignKey,
 } from 'typeorm';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -25,6 +26,42 @@ import { CustomerAccount } from './customer-account.entity';
 @Check(
   'CHK_customer_account_entry_vencimiento',
   `"due_date" IS NULL OR "due_date" >= ("occurred_at" AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`,
+)
+@ForeignKey(
+  () => CustomerAccount,
+  ['account_id', 'distributor_id'],
+  ['account_id', 'distributor_id'],
+  {
+    name: 'FK_customer_account_entry_account_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_customer_account_entry_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  {
+    name: 'FK_customer_account_entry_order_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Delivery,
+  ['collected_by_delivery_id', 'distributor_id'],
+  ['delivery_id', 'distributor_id'],
+  {
+    name: 'FK_customer_account_entry_collected_by_delivery_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('customer_account_entry')
 @Check('CHK_customer_account_entry_importe', '"amount" > 0')

@@ -23,6 +23,7 @@ import {
 import { PurchaseOrder } from './purchase-order.entity';
 import { PurchaseReceiptItem } from './purchase-receipt-item.entity';
 import { Supplier } from './supplier.entity';
+import { CashMovement } from '../../cash/entities/cash-movement.entity';
 
 /**
  * Remito de ingreso: la mercadería que llegó del proveedor, con o sin orden de
@@ -38,6 +39,42 @@ import { Supplier } from './supplier.entity';
 @Check(
   'CHK_purchase_receipt_anulacion_datos',
   `"status" <> 'voided' OR ("void_reason" IS NOT NULL AND "voided_by_user_id" IS NOT NULL)`,
+)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_purchase_receipt_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => PurchaseOrder,
+  ['purchase_order_id', 'distributor_id'],
+  ['purchase_order_id', 'distributor_id'],
+  {
+    name: 'FK_purchase_receipt_purchase_order_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Supplier,
+  ['supplier_id', 'distributor_id'],
+  ['supplier_id', 'distributor_id'],
+  {
+    name: 'FK_purchase_receipt_supplier_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Warehouse,
+  ['warehouse_id', 'distributor_id'],
+  ['warehouse_id', 'distributor_id'],
+  {
+    name: 'FK_purchase_receipt_warehouse_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('purchase_receipt')
 @Index('UQ_purchase_receipt_numero', ['distributorId', 'number'], {

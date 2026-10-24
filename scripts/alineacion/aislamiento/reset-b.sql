@@ -17,4 +17,6 @@ UPDATE customer SET "deletedAt"=NULL WHERE user_id='6addc762-49c9-4262-8e82-aca3
 UPDATE "user" SET "deletedAt"=NULL, blocked=false WHERE user_id IN ('6addc762-49c9-4262-8e82-aca374604acf','a29dc060-6efc-4fe3-9f21-8bef5643eb26');
 UPDATE delivery SET "deletedAt"=NULL, validated=true, "isActive"=true WHERE delivery_id='de19bd70-c58d-4823-a409-c077cd7be352';
 DELETE FROM user_address WHERE address_id::text LIKE 'bbbb0000%';
+DELETE FROM delivery WHERE delivery_id::text LIKE 'bbbb0000%';
+DELETE FROM "user" WHERE user_id::text LIKE 'bbbb0000%';
 COMMIT;

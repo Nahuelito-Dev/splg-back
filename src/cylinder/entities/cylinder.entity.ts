@@ -9,6 +9,7 @@ import {
   Index,
   Unique,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -49,6 +50,19 @@ export enum CylinderState {
 )
 @Check('CHK_cylinder_serial', `btrim("serial") <> ''`)
 @Index('UQ_cylinder_serial_normalizado', { synchronize: false })
+@ForeignKey(
+  () => GasCylinder,
+  ['gas_cylinder_id', 'distributor_id'],
+  ['gas_cylinder_id', 'distributor_id'],
+  { name: 'FK_cylinder_gas_cylinder_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => Order,
+  ['current_order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  { name: 'FK_cylinder_current_order_distribuidora', onDelete: 'NO ACTION' },
+)
+@Unique('UQ_cylinder_id_distribuidora', ['cylinderId', 'distributorId'])
 @Entity('cylinder')
 @Unique(['distributorId', 'serial'])
 export class Cylinder {

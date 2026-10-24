@@ -49,6 +49,7 @@ import {
 } from '../../src/fleet/entities/maintenance-task.entity';
 import { NormalizarPatentes1790900000000 } from '../../src/migrations/1790900000000-NormalizarPatentes';
 import { fechasSegunEstado } from './setup/pedido-valido';
+import { forzarEstado } from './setup/bypass';
 
 describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', () => {
   let env: TestEnv;
@@ -833,7 +834,8 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
       const { resultado } = await conOperacionEnCurso(
         delivery.deliveryId,
         async (qr) => {
-          await qr.query(
+          await forzarEstado(
+            qr,
             `UPDATE "order" SET status = 'accepted', delivery_id = $1 WHERE order_id = $2`,
             [delivery.deliveryId, pedido.orderId],
           );

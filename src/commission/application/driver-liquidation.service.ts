@@ -73,6 +73,25 @@ export class DriverLiquidationService {
             where: { employeeId: dto.employeeId, distributorId },
           });
           if (!empleado) throw new EmpleadoNoEncontradoError(dto.employeeId);
+          // Los períodos de un chofer no se pisan (salvo los de liquidaciones
+          // anuladas): la base lo exige con EXC_driver_liquidation_periodo_solapado.
+          const solapada = await manager
+            .createQueryBuilder(DriverLiquidation, 'l')
+            .where('l.employeeId = :employeeId', { employeeId: dto.employeeId })
+            .andWhere('l.distributorId = :distributorId', { distributorId })
+            .andWhere('l.status <> :anulada', {
+              anulada: LiquidationStatus.VOIDED,
+            })
+            .andWhere('l.periodFrom <= :hasta AND l.periodTo >= :desde', {
+              desde: dto.periodFrom,
+              hasta: dto.periodTo,
+            })
+            .getOne();
+          if (solapada) {
+            throw new ComisionConflictoError(
+              `El período se superpone con la liquidación N° ${solapada.number} del chofer (${solapada.periodFrom} al ${solapada.periodTo}): anulala o elegí otro período`,
+            );
+          }
           // Los asientos van primero y bloqueados: dos liquidaciones del mismo
           // chofer no pueden tomar el mismo.
           const asientos = await manager

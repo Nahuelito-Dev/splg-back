@@ -11,6 +11,7 @@ import {
   Index,
   Check,
   ForeignKey,
+  Unique,
 } from 'typeorm';
 import type { Point } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
@@ -24,6 +25,7 @@ import {
   CoverageZone,
   CoverageZoneSurchargeType,
 } from '../../coverage-zone/entities/coverage-zone.entity';
+import { Car } from '../../car/entities/car.entity';
 
 export enum OrderStatus {
   /**
@@ -99,6 +101,35 @@ export enum PaymentStatus {
 @Check(
   'CHK_order_cancelado_motivo',
   `"status" <> 'cancelled' OR btrim(coalesce("cancellationReason", '')) <> ''`,
+)
+@ForeignKey(
+  () => Delivery,
+  ['delivery_id', 'distributor_id'],
+  ['delivery_id', 'distributor_id'],
+  { name: 'FK_order_delivery_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => CoverageZone,
+  ['coverage_zone_id', 'distributor_id'],
+  ['coverage_zone_id', 'distributor_id'],
+  { name: 'FK_order_coverage_zone_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => TimeSlot,
+  ['time_slot_id', 'distributor_id'],
+  ['time_slot_id', 'distributor_id'],
+  { name: 'FK_order_time_slot_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => Car,
+  ['vehicle_car_id', 'distributor_id'],
+  ['car_id', 'distributor_id'],
+  { name: 'FK_order_vehicle_car_distribuidora', onDelete: 'NO ACTION' },
+)
+@Unique('UQ_order_id_distribuidora', ['orderId', 'distributorId'])
+@Check(
+  'CHK_order_nota_de_impago_largo',
+  `"payment_resolution_note" IS NULL OR (char_length("payment_resolution_note") <= 500 AND char_length(btrim("payment_resolution_note")) >= 10)`,
 )
 @Entity('order')
 // Índices compuestos para las queries calientes:

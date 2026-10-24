@@ -173,6 +173,13 @@ export class CustomerLedgerService {
           if (cuenta.status === CustomerAccountStatus.CLOSED) {
             throw new CuentaConflictoError('La cuenta está cerrada');
           }
+          // Un cobro no puede ser mayor que la deuda: la base lo exige con
+          // CHK_customer_account_entry_cobro_mayor_a_la_deuda.
+          if (dec(dto.amount).gt(dec(cuenta.balance))) {
+            throw new CuentaConflictoError(
+              `El cobro ($${aCentavos(dec(dto.amount))}) supera la deuda de la cuenta ($${aCentavos(dec(cuenta.balance))}). Si el cliente pagó de más, registrá una nota de crédito por la diferencia`,
+            );
+          }
           const asiento = await this.asentar(manager, cuenta, {
             type: CustomerEntryType.PAYMENT,
             amount: dto.amount,

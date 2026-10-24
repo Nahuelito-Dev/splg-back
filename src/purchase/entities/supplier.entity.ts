@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   Check,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { SupplierKind } from '../domain/purchase.enums';
@@ -18,6 +19,7 @@ import { SupplierKind } from '../domain/purchase.enums';
  * CUIT es único entre los proveedores vigentes de la distribuidora.
  */
 @Check('CHK_supplier_cuit', `es_cuit_valido("cuit")`)
+@Unique('UQ_supplier_id_distribuidora', ['supplierId', 'distributorId'])
 @Entity('supplier')
 @Index('UQ_supplier_cuit_vigente', ['distributorId', 'cuit'], {
   unique: true,

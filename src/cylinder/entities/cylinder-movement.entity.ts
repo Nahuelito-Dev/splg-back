@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   Check,
+  ForeignKey,
 } from 'typeorm';
 import { Cylinder, CylinderState } from './cylinder.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -22,6 +23,24 @@ import { User } from '../../users/entities/user.entity';
 @Check(
   'CHK_cylinder_movement_cambio',
   `"from_state" IS NULL OR "from_state"::text <> "to_state"::text OR "note" IS NOT NULL`,
+)
+@ForeignKey(
+  () => Cylinder,
+  ['cylinder_id', 'distributor_id'],
+  ['cylinder_id', 'distributor_id'],
+  {
+    name: 'FK_cylinder_movement_cylinder_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  {
+    name: 'FK_cylinder_movement_order_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('cylinder_movement')
 export class CylinderMovement {

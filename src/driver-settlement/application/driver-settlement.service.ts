@@ -86,6 +86,13 @@ export class DriverSettlementService {
     businessDate: string,
     estricto: boolean,
   ): Promise<DriverSettlement> {
+    // No se abre la rendición de un día que todavía no llegó (día argentino);
+    // la base lo exige con CHK_driver_settlement_fecha_futura.
+    if (businessDate > diaArgentino()) {
+      throw new RendicionInvalidaError(
+        'businessDate: no se puede abrir la rendición de un día futuro',
+      );
+    }
     return withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {

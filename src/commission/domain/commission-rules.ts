@@ -4,6 +4,7 @@ import {
   ComisionConflictoError,
   ComisionInvalidaError,
 } from './errors/commission.errors';
+import { derivarTransiciones } from '../../common/domain/derivar-transiciones';
 
 /** Lo que importa de una regla para elegirla y calcular con ella. */
 export interface ReglaDeComision {
@@ -163,6 +164,29 @@ const ESTADOS_PERMITIDOS: Record<AccionDeLiquidacion, LiquidationStatus[]> = {
   unpay: [LiquidationStatus.PAID],
   void: [LiquidationStatus.DRAFT, LiquidationStatus.APPROVED],
 };
+
+/** Estado al que lleva cada acción. */
+const HACIA: Record<AccionDeLiquidacion, LiquidationStatus> = {
+  approve: LiquidationStatus.APPROVED,
+  pay: LiquidationStatus.PAID,
+  unpay: LiquidationStatus.APPROVED,
+  void: LiquidationStatus.VOIDED,
+};
+
+/**
+ * Transiciones válidas del estado de la liquidación, derivadas de las mismas
+ * tablas que aplica `exigirEstadoDeLiquidacion` (la base las repite en el trigger
+ * `TRG_driver_liquidation_transicion_de_estado`; un spec compara las dos): borrador
+ * → aprobada → pagada, pagada → aprobada (se anula el pago) y anulada desde
+ * borrador o aprobada.
+ */
+export const TRANSICIONES_DE_LIQUIDACION: Readonly<
+  Record<LiquidationStatus, readonly LiquidationStatus[]>
+> = derivarTransiciones(Object.values(LiquidationStatus), (desde) =>
+  (Object.keys(ESTADOS_PERMITIDOS) as AccionDeLiquidacion[])
+    .filter((accion) => ESTADOS_PERMITIDOS[accion].includes(desde))
+    .map((accion) => HACIA[accion]),
+);
 
 const VERBO: Record<AccionDeLiquidacion, string> = {
   approve: 'se aprueba',

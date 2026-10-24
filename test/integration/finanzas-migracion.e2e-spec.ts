@@ -12,6 +12,7 @@ import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { conBypass } from './setup/bypass';
 
 describe('Migración CajaYRendicion (e2e)', () => {
   let pg: StartedPostgreSqlContainer;
@@ -176,14 +177,18 @@ describe('Migración CajaYRendicion (e2e)', () => {
     let comisionId: string;
 
     beforeAll(async () => {
-      [{ movement_id: movimientoId }] = await ds.query<
+      [{ movement_id: movimientoId }] = await conBypass<
         Array<{ movement_id: string }>
       >(
+        ds,
+        ['saldos'],
         `INSERT INTO cash_movement (distributor_id, cash_box_id, direction, amount, category_id, description, created_by_user_id)
          VALUES ($1, $2, 'in', 100, $3, 'Alta', $4) RETURNING movement_id`,
         [distA, cajaId, categoriaId, userId],
       );
-      [{ entry_id: asientoId }] = await ds.query<Array<{ entry_id: string }>>(
+      [{ entry_id: asientoId }] = await conBypass<Array<{ entry_id: string }>>(
+        ds,
+        ['saldos'],
         `INSERT INTO customer_account_entry (distributor_id, account_id, type, amount, description)
          VALUES ($1, $2, 'debit_note', 50, 'Cargo') RETURNING entry_id`,
         [distA, cuentaId],
@@ -255,7 +260,9 @@ describe('Migración CajaYRendicion (e2e)', () => {
 
     it('un asiento nuevo sí entra', async () => {
       await expect(
-        ds.query(
+        conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO cash_movement (distributor_id, cash_box_id, direction, amount, category_id, description, created_by_user_id)
            VALUES ($1, $2, 'out', 1, $3, 'Otro', $4)`,
           [distA, cajaId, categoriaId, userId],
@@ -272,7 +279,9 @@ describe('Migración CajaYRendicion (e2e)', () => {
         ]),
       ).rejects.toMatchObject({ code: '23514' });
       await expect(
-        ds.query(
+        conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO cash_box (distributor_id, name, kind, balance) VALUES ($1, 'Banco', 'bank', -500)`,
           [distA],
         ),
@@ -281,7 +290,9 @@ describe('Migración CajaYRendicion (e2e)', () => {
 
     it('un movimiento tiene importe positivo', async () => {
       await expect(
-        ds.query(
+        conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO cash_movement (distributor_id, cash_box_id, direction, amount, category_id, description, created_by_user_id)
            VALUES ($1, $2, 'in', 0, $3, 'Cero', $4)`,
           [distA, cajaId, categoriaId, userId],
@@ -307,7 +318,9 @@ describe('Migración CajaYRendicion (e2e)', () => {
         `SELECT movement_id FROM cash_movement WHERE description = 'Alta'`,
       );
       const anular = () =>
-        ds.query(
+        conBypass(
+          ds,
+          ['saldos'],
           `INSERT INTO cash_movement (distributor_id, cash_box_id, direction, amount, category_id, description, created_by_user_id, reverses_movement_id)
            VALUES ($1, $2, 'out', 100, $3, 'Anula', $4, $5)`,
           [distA, cajaId, categoriaId, userId, movement_id],

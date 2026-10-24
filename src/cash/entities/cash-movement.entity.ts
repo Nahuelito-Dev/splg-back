@@ -7,6 +7,8 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  ForeignKey,
+  Unique,
 } from 'typeorm';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Distributor } from '../../distributor/entities/distributor.entity';
@@ -25,6 +27,34 @@ import { CashSession } from './cash-session.entity';
  * rechaza todo `UPDATE` y `DELETE`, y una corrección es otro movimiento
  * (`reversesMovementId`). El saldo de la caja es `Σ entradas − Σ salidas`.
  */
+@ForeignKey(
+  () => CashBox,
+  ['cash_box_id', 'distributor_id'],
+  ['cash_box_id', 'distributor_id'],
+  { name: 'FK_cash_movement_cash_box_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => CashSession,
+  ['session_id', 'distributor_id'],
+  ['session_id', 'distributor_id'],
+  { name: 'FK_cash_movement_session_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => CashCategory,
+  ['category_id', 'distributor_id'],
+  ['category_id', 'distributor_id'],
+  { name: 'FK_cash_movement_category_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => CashMovement,
+  ['reverses_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_cash_movement_reverses_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@Unique('UQ_cash_movement_id_distribuidora', ['movementId', 'distributorId'])
 @Entity('cash_movement')
 @Check('CHK_cash_movement_importe', '"amount" > 0')
 @Index('IDX_cash_movement_caja_fecha', ['cashBoxId', 'occurredAt'])

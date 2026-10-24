@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsUUID } from 'class-validator';
+import { IsEnum, IsUUID, MaxLength } from 'class-validator';
+import { LARGO_DESCRIPCION } from '../../common/constants/largos-de-texto';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { IncidentType } from '../entities/incident.entity';
 
@@ -13,7 +14,11 @@ export class CreateIncidentDto {
   @IsEnum(IncidentType)
   type!: IncidentType;
 
-  @ApiProperty({ example: 'El cliente no estaba en el domicilio' })
+  @ApiProperty({
+    example: 'El cliente no estaba en el domicilio',
+    maxLength: LARGO_DESCRIPCION,
+  })
   @TextoNoVacio()
+  @MaxLength(LARGO_DESCRIPCION)
   description!: string;
 }

@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
@@ -19,6 +20,21 @@ import { StockLocation } from './stock-location.entity';
  * `StockLedgerService` en la misma transacción que inserta el movimiento.
  * Nunca negativo, ni siquiera en un camión.
  */
+@ForeignKey(
+  () => StockLocation,
+  ['location_id', 'distributor_id'],
+  ['location_id', 'distributor_id'],
+  { name: 'FK_stock_balance_location_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => GasCylinder,
+  ['gas_cylinder_id', 'distributor_id'],
+  ['gas_cylinder_id', 'distributor_id'],
+  {
+    name: 'FK_stock_balance_gas_cylinder_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('stock_balance')
 @Index(
   'UQ_stock_balance_ubicacion_garrafa_condicion',

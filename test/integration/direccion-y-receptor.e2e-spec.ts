@@ -35,6 +35,7 @@ import { RealtimeDispatchPort } from '../../src/order/domain/ports/realtime-disp
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
+import { conBypassManager } from './setup/bypass';
 
 type Headers = Record<string, string>;
 
@@ -568,9 +569,11 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       await aceptar(id, e);
       const [cambio] = await Promise.all([
         direccionDe(e, id, { addressId: e.a3.addressId }),
-        ds
-          .getRepository(Order)
-          .update({ orderId: id }, { status: OrderStatus.ON_THE_WAY }),
+        conBypassManager(ds, ['transiciones'], (m) =>
+          m
+            .getRepository(Order)
+            .update({ orderId: id }, { status: OrderStatus.ON_THE_WAY }),
+        ),
       ]);
       const p = await pedidoDe(id);
       expect([200, 409]).toContain(cambio.status);
@@ -856,9 +859,9 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       ): Promise<string> => {
         const id = await crearPedido(e);
         await receptorDe(id, receptor, e.cliente).expect(200);
-        await ds
-          .getRepository(Order)
-          .update({ orderId: id }, { status: estado });
+        await conBypassManager(ds, ['transiciones'], (m) =>
+          m.getRepository(Order).update({ orderId: id }, { status: estado }),
+        );
         if (entregadoHace !== undefined) {
           await ds.query(
             `UPDATE "order" SET "deliveredAt" = now() - make_interval(days => $2),
@@ -898,9 +901,11 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       const e = await escenario();
       const id = await crearPedido(e);
       await receptorDe(id, receptor, e.cliente).expect(200);
-      await ds
-        .getRepository(Order)
-        .update({ orderId: id }, { status: OrderStatus.DELIVERED });
+      await conBypassManager(ds, ['transiciones'], (m) =>
+        m
+          .getRepository(Order)
+          .update({ orderId: id }, { status: OrderStatus.DELIVERED }),
+      );
       await ds.query(
         `UPDATE "order" SET "deliveredAt" = now() - interval '40 days' WHERE order_id = $1`,
         [id],
@@ -918,9 +923,14 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       expect(await cron.barrer()).toBe(0);
       expect((await pedidoDe(id)).receiverName).toBe('María Gómez');
 
-      await ds
-        .getRepository(Claim)
-        .update({ claimId: reclamo.claimId }, { status: ClaimStatus.RESOLVED });
+      await conBypassManager(ds, ['transiciones'], (m) =>
+        m
+          .getRepository(Claim)
+          .update(
+            { claimId: reclamo.claimId },
+            { status: ClaimStatus.RESOLVED },
+          ),
+      );
       expect(await cron.barrer()).toBe(1);
       expect((await pedidoDe(id)).receiverName).toBeNull();
 
