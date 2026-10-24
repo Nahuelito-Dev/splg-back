@@ -15,18 +15,24 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Integración con testcontainers (no se corre en el flujo de trabajo: la prueba es contra la API sobre `splg_db` y `splg-redis`) | `npm run test:integration` |
 | Migraciones | `npm run migration:generate -- src/migrations/<Nombre>` · `npm run migration:run` |
 | Seeds | `npm run seed` (roles, distribuidora, usuarios con Firebase) · `npm run seed:demo` |
-| Archivos (Amazon S3; los e2e usan un MinIO efímero con testcontainers) | `docs/S3.md` |
-| Pedidos, cobros, cotización, historial y rutas | `docs/PEDIDOS.md` |
-| Parámetros del despacho y frecuencia de tareas programadas (M1) | `docs/PARAMETROS-DESPACHO.md` |
-| Vigencia de envases, revisiones y bloqueo del despacho (C-11) | `docs/VIGENCIA-ENVASES.md` |
-| Carrito persistente y consumo declarado (C-12 y C-13) | `docs/CARRITO-Y-CONSUMO.md` |
-| Parámetros de los procesos automáticos (CU-172) y zonas de cobertura vencidas (CU-151) | `docs/PROCESOS-AUTOMATICOS.md` |
-| Productos dados de baja y reactivación (CU-268, CU-269) | `docs/CATALOGO.md` |
-| Personal: documentación, asistencia, licencias, tablero y habilitación laboral (C-08) | `docs/PERSONAL.md` |
-| Compra express, despacho a motos y reintegro de pagos (C-17) | `docs/EXPRESS-REINTEGROS.md` |
-| Reglas en la base (CHECK, únicos, exclusiones, FK) y su verificación | `docs/VALIDACIONES-BASE.md` |
+| Archivos (Amazon S3; los e2e usan un MinIO efímero con testcontainers) | `splg-docs/sistema/back/S3.md` |
+| Pedidos, cobros, cotización, historial y rutas | `splg-docs/sistema/back/PEDIDOS.md` |
+| Parámetros del despacho y frecuencia de tareas programadas (M1) | `splg-docs/sistema/back/PARAMETROS-DESPACHO.md` |
+| Vigencia de envases, revisiones y bloqueo del despacho (C-11) | `splg-docs/sistema/back/VIGENCIA-ENVASES.md` |
+| Carrito persistente y consumo declarado (C-12 y C-13) | `splg-docs/sistema/back/CARRITO-Y-CONSUMO.md` |
+| Parámetros de los procesos automáticos (CU-172) y zonas de cobertura vencidas (CU-151) | `splg-docs/sistema/back/PROCESOS-AUTOMATICOS.md` |
+| Productos dados de baja y reactivación (CU-268, CU-269) | `splg-docs/sistema/back/CATALOGO.md` |
+| Personal: documentación, asistencia, licencias, tablero y habilitación laboral (C-08) | `splg-docs/sistema/back/PERSONAL.md` |
+| Compra express, despacho a motos y reintegro de pagos (C-17) | `splg-docs/sistema/back/EXPRESS-REINTEGROS.md` |
+| Reglas en la base (CHECK, únicos, exclusiones, FK) y su verificación | `splg-docs/sistema/back/VALIDACIONES-BASE.md` |
 | Versiones de la API | Rutas en `/api/v1/...` (y `/api/...` sin número, por compatibilidad). La v1 quedó congelada el 24/10/2026: un endpoint nuevo o con contrato cambiado va con `@Version('2')` en `/api/v2/...`; los arreglos sin cambio de contrato siguen en v1. Swagger lista sólo la forma versionada. |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
+
+## Documentación
+
+La documentación técnica del back (pedidos, stock, finanzas, validaciones, S3, demo, Postman…)
+vive en `splg-docs/sistema/back/`, no en este repo. Un cambio de contrato o de regla se documenta
+ahí en la misma tanda (rama en `splg-docs`).
 
 ## Convenciones
 

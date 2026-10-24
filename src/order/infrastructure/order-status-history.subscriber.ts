@@ -28,7 +28,7 @@ import { Order, OrderStatus } from '../entities/order.entity';
  * Los pedidos anteriores a esta versión no tienen historial de sus
  * transiciones pasadas: no se inventó un backfill. Sólo hay filas desde la
  * migración que lo habilita (ver la sección «Historial de estados» de
- * docs/PEDIDOS.md).
+ * splg-docs/sistema/back/PEDIDOS.md).
  */
 @Injectable()
 export class OrderStatusHistorySubscriber

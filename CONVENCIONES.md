@@ -199,7 +199,7 @@ un puerto que justifique otra cosa.
 - Toda relación tiene su clave foránea declarada, salvo que haya una razón
   escrita al lado.
 - Coordenadas y áreas en tipos de PostGIS, no en `varchar`.
-- **Auditoría de datos** (`docs/AUDITORIA.md`): un subscriber global registra
+- **Auditoría de datos** (`splg-docs/sistema/back/AUDITORIA.md`): un subscriber global registra
   todo lo que pasa por `save`, `softRemove` y `recover`. `update()`,
   `softDelete()`, `delete()` y los query builders **no** pasan por él: para una
   entidad de negocio se usa `save`/`softRemove` con la entidad cargada, o se
