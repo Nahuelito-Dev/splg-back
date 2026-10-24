@@ -2,7 +2,8 @@ import { Controller, Get, INestApplication, Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Server } from 'http';
 import request from 'supertest';
-import { montarDocumentacion } from './documentacion';
+import { montarDocumentacion, soloRutasVersionadas } from './documentacion';
+import type { OpenAPIObject } from '@nestjs/swagger';
 
 const RUTAS_DE_DOCUMENTACION = ['/docs', '/docs-json', '/docs-yaml'];
 
@@ -92,5 +93,28 @@ describe('montarDocumentacion', () => {
         await request(servidor()).get('/docs-yaml').expect(200);
       },
     );
+  });
+});
+
+describe('soloRutasVersionadas', () => {
+  const documento = (rutas: string[]): OpenAPIObject => ({
+    openapi: '3.0.0',
+    info: { title: 'x', version: '1' },
+    paths: Object.fromEntries(rutas.map((r) => [r, {}])),
+  });
+
+  it('descarta la ruta neutra cuando existe su gemela /api/v1', () => {
+    const salida = soloRutasVersionadas(
+      documento(['/api/users', '/api/v1/users', '/api/v2/users']),
+    );
+    expect(Object.keys(salida.paths)).toEqual([
+      '/api/v1/users',
+      '/api/v2/users',
+    ]);
+  });
+
+  it('conserva la neutra que no tiene versión equivalente', () => {
+    const salida = soloRutasVersionadas(documento(['/api/health']));
+    expect(Object.keys(salida.paths)).toEqual(['/api/health']);
   });
 });

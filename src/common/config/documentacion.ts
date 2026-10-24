@@ -1,5 +1,5 @@
 import { INestApplication, Logger } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import basicAuth from 'express-basic-auth';
 
 /**
@@ -12,6 +12,23 @@ export const RUTAS_DE_DOCUMENTACION = [
   '/docs-json',
   '/docs-yaml',
 ] as const;
+
+/**
+ * Cada ruta sin versión explícita responde en `/api/...` y en `/api/v1/...`
+ * (ver `main.ts`), y Swagger las lista dos veces. La documentación muestra
+ * sólo la forma versionada: se descarta la neutra cuando existe su gemela.
+ */
+export function soloRutasVersionadas(documento: OpenAPIObject): OpenAPIObject {
+  const versionada = /^\/api\/v\d+\//;
+  const paths = Object.fromEntries(
+    Object.entries(documento.paths).filter(
+      ([ruta]) =>
+        versionada.test(ruta) ||
+        !(ruta.replace(/^\/api\//, '/api/v1/') in documento.paths),
+    ),
+  );
+  return { ...documento, paths };
+}
 
 /** Sólo se leen `SWAGGER_USER`, `SWAGGER_PASSWORD` y `NODE_ENV`. */
 type EntornoDeDocumentacion = Readonly<Record<string, string | undefined>>;
@@ -59,7 +76,9 @@ export function montarDocumentacion(
     .addBearerAuth()
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  const document = soloRutasVersionadas(
+    SwaggerModule.createDocument(app, config),
+  );
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
