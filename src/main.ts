@@ -37,14 +37,14 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  // Versionado por URI. La version por defecto es NEUTRAL: todas las rutas que
-  // existen hoy siguen respondiendo en /api/... tal cual, sin cambiar nada para
-  // el panel ni para las apps publicadas. Cuando haya que cambiar el contrato
-  // de un endpoint sin romper a quien ya lo consume, se marca el nuevo con
-  // @Version('2') y los dos conviven: /api/auth/login y /api/v2/auth/login.
+  // Versionado por URI. Todo lo que no declara versión es la v1 y responde en
+  // /api/v1/... y también en /api/... (NEUTRAL), para no romper a quien todavía
+  // llama sin número. La v1 quedó congelada el 24/10/2026: un endpoint nuevo o
+  // con contrato cambiado se marca con @Version('2') y los dos conviven
+  // (/api/v1/auth/login y /api/v2/auth/login).
   app.enableVersioning({
     type: VersioningType.URI,
-    defaultVersion: VERSION_NEUTRAL,
+    defaultVersion: [VERSION_NEUTRAL, '1'],
   });
 
   // Autenticación (AuthGuard) y autorización (RolesGuard) se registran como
