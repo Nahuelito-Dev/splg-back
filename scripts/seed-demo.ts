@@ -18,7 +18,7 @@
  * una transacción, ver `lib/purga-demo.ts`) y lo vuelve a generar igual, porque
  * el azar sale de una semilla fija. Los usuarios con login sobreviven y toman su
  * nombre real. Antes de correrlo contra una base con datos que importen, hacé el
- * backup (ver docs/DEMO.md).
+ * backup (ver splg-docs/sistema/back/DEMO.md).
  *
  * Se configura por variables de entorno:
  *
