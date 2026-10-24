@@ -77,7 +77,12 @@ export function montarDocumentacion(
     .build();
 
   const document = soloRutasVersionadas(
-    SwaggerModule.createDocument(app, config),
+    SwaggerModule.createDocument(app, config, {
+      // Sin la versión en el identificador: el panel genera sus tipos con
+      // `Controlador_metodo` y la v1 no tiene que cambiarle los nombres.
+      operationIdFactory: (controlador: string, metodo: string) =>
+        `${controlador}_${metodo.replace(/\[[^\]]*\]$/, '')}`,
+    }),
   );
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
