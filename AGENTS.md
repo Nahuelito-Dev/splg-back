@@ -36,7 +36,7 @@ ahí en la misma tanda (rama en `splg-docs`).
 
 ## Convenciones
 
-**`CONVENCIONES.md` manda**: TypeScript estricto sin `any`, nombres, las dos plantillas de
+**`CONVENCIONES.md` manda** (está en `splg-docs/sistema/back/CONVENCIONES.md`): TypeScript estricto sin `any`, nombres, las dos plantillas de
 módulo (soporte vs núcleo), DTOs de salida, errores, tests. Leelo antes de crear un módulo.
 
 Lo que más se rompe:

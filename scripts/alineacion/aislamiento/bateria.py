@@ -3,7 +3,7 @@
 Cada actor de la distribuidora A (admin, chofer, cliente, y el super admin
 "viendo como" A) contra cada recurso de la distribuidora B. Lo ajeno responde
 404 (o 403 donde la regla es de rol); en los listados, 200 sin ningún id de B.
-Uso: run.sh <salida>. Ver LEEME.md.
+Uso: run.sh <salida>. Ver splg-docs/sistema/back/scripts/AISLAMIENTO.md.
 """
 import json, sys, time, urllib.request, os, uuid
 API = os.environ.get('SPLG_API', 'http://localhost:3100/api')
