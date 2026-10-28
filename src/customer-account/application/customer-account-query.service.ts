@@ -114,7 +114,7 @@ export class CustomerAccountQueryService {
     const filas: FilaDeCuenta[] = await this.dataSource.query(
       `SELECT ${COLUMNAS_DE_CUENTA} FROM "customer_account" a
        JOIN "user" u ON u."user_id" = a."customer_user_id"
-       WHERE ${donde} ORDER BY a."business_name" ASC
+       WHERE ${donde} ORDER BY a."business_name" ASC, a."account_id" ASC
        LIMIT ${limit} OFFSET ${((query.page ?? 1) - 1) * limit}`,
       params,
     );

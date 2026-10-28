@@ -41,6 +41,10 @@ import { DriverLiquidationController } from './presentation/driver-liquidation.c
     DriverLiquidationService,
     CommissionListener,
   ],
-  exports: [CommissionLedgerService, CommissionQueryService],
+  exports: [
+    CommissionLedgerService,
+    CommissionQueryService,
+    DriverLiquidationService,
+  ],
 })
 export class CommissionModule {}

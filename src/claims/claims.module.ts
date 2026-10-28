@@ -16,5 +16,6 @@ import { S3Module } from '../s3/s3.module';
   ],
   controllers: [ClaimsController],
   providers: [ClaimsService],
+  exports: [ClaimsService],
 })
 export class ClaimsModule {}

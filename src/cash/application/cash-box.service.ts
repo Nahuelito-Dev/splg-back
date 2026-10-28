@@ -49,6 +49,7 @@ export class CashBoxService {
     if (term) qb.andWhere('c.name ILIKE :term', { term: `%${term}%` });
     const [cajas, total] = await qb
       .orderBy('c.name', 'ASC')
+      .addOrderBy('c.cashBoxId', 'ASC')
       .skip(((query.page ?? 1) - 1) * limit)
       .take(limit)
       .getManyAndCount();

@@ -30,7 +30,7 @@ describe('AuditService', () => {
     expect(repo.findAndCount).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { distributorId: 'd1', result: AuditResult.FAILURE },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', auditId: 'ASC' },
       }),
     );
   });

@@ -84,6 +84,8 @@ export const JoiValidationSchema = Joi.object({
     .min(1)
     .max(604800)
     .optional(),
+  // Tope de filas por exporte (GET /api/v2/exports/:recurso). Si se pasa, 400.
+  EXPORT_MAX_ROWS: Joi.number().integer().min(1).max(500000).default(50000),
   //GOOGLE_MAPS_API_KEY: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_API_KEY: Joi.string().required(),
   // MERCADO_PAGO_MARKETPLACE_CLIENT_ID: Joi.string().required(),

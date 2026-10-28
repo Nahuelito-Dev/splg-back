@@ -68,6 +68,7 @@
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",
     "decimal.js": "^10.6.0",
+    "exceljs": "^4.4.0",
     "express-basic-auth": "^1.2.1",
     "firebase": "^12.4.0",
     "firebase-admin": "^13.5.0",
@@ -280,6 +281,12 @@
         "branches": 37,
         "functions": 42,
         "lines": 43
+      },
+      "./src/exports/": {
+        "statements": 64,
+        "branches": 74,
+        "functions": 44,
+        "lines": 65
       },
       "./src/finance/": {
         "statements": 48,
