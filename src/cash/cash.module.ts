@@ -55,6 +55,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashCategoryService,
     CashBoxService,
     CashMovementService,
+    CashSessionService,
   ],
 })
 export class CashModule {}

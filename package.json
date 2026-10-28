@@ -76,6 +76,7 @@
     "joi": "^18.0.1",
     "mercadopago": "^3.2.0",
     "morgan": "^1.10.1",
+    "pdfkit": "^0.20.2",
     "pg": "^8.16.3",
     "redlock": "^5.0.0-beta.2",
     "reflect-metadata": "^0.2.2",
@@ -101,6 +102,7 @@
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.10.7",
+    "@types/pdfkit": "^0.17.7",
     "@types/supertest": "^6.0.2",
     "autocannon": "^8.0.0",
     "eslint": "^9.18.0",
@@ -359,6 +361,12 @@
         "branches": 67,
         "functions": 68,
         "lines": 74
+      },
+      "./src/pdf/": {
+        "statements": 94,
+        "branches": 75,
+        "functions": 95,
+        "lines": 94
       },
       "./src/personnel/": {
         "statements": 65,

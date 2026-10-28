@@ -166,6 +166,8 @@ export class ConfirmPaymentUseCase {
       } else {
         locked.paymentStatus = PaymentStatus.PAID;
         locked.gatewayPaymentId = paymentId;
+        // Lo que el remito y el recibo muestran como «Cobrado el».
+        locked.paymentConfirmedAt = new Date();
         await queryRunner.manager.save(locked);
         await queryRunner.commitTransaction();
       }

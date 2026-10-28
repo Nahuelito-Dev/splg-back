@@ -11,5 +11,6 @@ import { OrderItem } from '../order/entities/order-item.entity';
   imports: [TypeOrmModule.forFeature([Order, OrderItem])],
   controllers: [ReportsController],
   providers: [ReportsService],
+  exports: [ReportsService],
 })
 export class ReportsModule {}
