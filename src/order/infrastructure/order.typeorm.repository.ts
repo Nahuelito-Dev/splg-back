@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import {
   inicioDelDiaArgentino,
   rangoDelDiaArgentino,
@@ -196,17 +196,19 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     distributorId?: string | null,
     incluirExpress = false,
   ): Promise<PaginatedOrders> {
+    const base = {
+      status: OrderStatus.PENDING,
+      deliveryId: IsNull(),
+      ...(incluirExpress ? {} : { deliveryMode: OrderDeliveryMode.STANDARD }),
+    };
+    // Sin los de Mercado Pago que esperan el pago (`esperaPagoOnline`): no
+    // es Mercado Pago, o ya está pago, o es una reserva con la seña paga.
     const [orders, total] = await this.orderRepository.findAndCount({
-      where: this.scoped(
-        {
-          status: OrderStatus.PENDING,
-          deliveryId: IsNull(),
-          ...(incluirExpress
-            ? {}
-            : { deliveryMode: OrderDeliveryMode.STANDARD }),
-        },
-        distributorId,
-      ),
+      where: [
+        { ...base, paymentMethod: Not(PaymentMethod.MERCADOPAGO) },
+        { ...base, paymentStatus: PaymentStatus.PAID },
+        { ...base, depositPaid: true },
+      ].map((w) => this.scoped(w, distributorId)),
       take: limit,
       skip: offset,
       withDeleted: true,

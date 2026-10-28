@@ -1,6 +1,11 @@
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { OrderTypeormRepository } from './order.typeorm.repository';
-import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 
 /**
  * `findAllPaginated` con filtros (`term`/`status`/`from`/`to`) arma el WHERE a
@@ -260,6 +265,27 @@ describe('OrderTypeormRepository · orden estable al paginar', () => {
     const { repo, ordenUsado } = armar();
     await repo.findByCustomer('c-1', 20, 0, 'dist-1');
     desempata(ordenUsado(), 'DESC');
+  });
+
+  it('F9: findAvailable deja afuera los de Mercado Pago que esperan el pago (y respeta el tenant)', async () => {
+    const orderRepo = {
+      findAndCount: jest
+        .fn<Promise<[Order[], number]>, [{ where: unknown }]>()
+        .mockResolvedValue([[], 0]),
+    };
+    const repo = new OrderTypeormRepository(
+      orderRepo as unknown as Repository<Order>,
+    );
+    await repo.findAvailable(20, 0, 'dist-1');
+    const where = orderRepo.findAndCount.mock.calls[0][0].where as Record<
+      string,
+      unknown
+    >[];
+    expect(where).toHaveLength(3);
+    for (const w of where) expect(w.distributorId).toBe('dist-1');
+    expect(where[0].paymentMethod).toEqual(Not(PaymentMethod.MERCADOPAGO));
+    expect(where[1].paymentStatus).toBe(PaymentStatus.PAID);
+    expect(where[2].depositPaid).toBe(true);
   });
 
   it('findAvailable desempata por id', async () => {

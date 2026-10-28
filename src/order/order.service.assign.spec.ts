@@ -1,6 +1,16 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrderService } from './order.service';
-import { Order, OrderDeliveryMode, OrderStatus } from './entities/order.entity';
+import {
+  Order,
+  OrderDeliveryMode,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from './entities/order.entity';
 import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
 import type { Repository, DataSource } from 'typeorm';
 import type { DeliveryService } from '../delivery/delivery.service';
@@ -495,6 +505,61 @@ describe('OrderService · asignación manual', () => {
     );
     expect(fleetGate.assertEnMoto).toHaveBeenCalledWith(CHOFER_USER_ID, 'dist');
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
+  });
+
+  it.each(['pending', 'failed'])(
+    'F9: un pedido de Mercado Pago con el pago %s no se asigna a mano (409) y se hace rollback',
+    async (paymentStatus) => {
+      queryBuilder.getOne.mockResolvedValueOnce(
+        makeLockedOrder({
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+          paymentStatus: paymentStatus as PaymentStatus,
+        }),
+      );
+
+      await expect(
+        service.assignDelivery(PEDIDO, CHOFER),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(fleetGate.assertChoferHabilitado).not.toHaveBeenCalled();
+    },
+  );
+
+  it('F9: una reserva de Mercado Pago con la seña paga se asigna (el saldo se cobra al entregar)', async () => {
+    queryBuilder.getOne.mockResolvedValueOnce(
+      makeLockedOrder({
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PENDING,
+        depositPaid: true,
+      }),
+    );
+    await service.assignDelivery(PEDIDO, CHOFER);
+    expect(queryRunner.manager.save).toHaveBeenCalled();
+  });
+
+  it('F9: un pedido de Mercado Pago cerrado no da el 409 del pago: da la transición inválida', async () => {
+    queryBuilder.getOne.mockResolvedValueOnce(
+      makeLockedOrder({
+        status: OrderStatus.CANCELLED,
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PENDING,
+      }),
+    );
+    await expect(
+      service.assignDelivery(PEDIDO, CHOFER),
+    ).rejects.not.toBeInstanceOf(ConflictException);
+  });
+
+  it('F9: un pedido de Mercado Pago ya pagado se asigna como cualquiera', async () => {
+    queryBuilder.getOne.mockResolvedValueOnce(
+      makeLockedOrder({
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PAID,
+      }),
+    );
+    await service.assignDelivery(PEDIDO, CHOFER);
+    expect(queryRunner.manager.save).toHaveBeenCalled();
   });
 
   it('CU-149: un pedido común no exige moto', async () => {

@@ -1,3 +1,4 @@
+import { esperaPagoOnline } from '../domain/espera-pago-online';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { Injectable, Logger } from '@nestjs/common';
 import {
@@ -128,6 +129,9 @@ export class DispatchOrchestratorService {
     // pudo aceptarse, asignarse o cancelarse.
     let fresco = await this.orders.findByIdFull(order.orderId);
     if (!fresco || !this.isReofferable(fresco)) return null;
+    // Mercado Pago sin pagar no se ofrece (ni común ni express): se despacha
+    // cuando el webhook aprueba el pago.
+    if (esperaPagoOnline(fresco)) return null;
     if (await this.offers.hasActiveOffer(order.orderId)) return null;
 
     // Pedido express (CU-149): política propia. Ofrece a una moto o lo pasa al
