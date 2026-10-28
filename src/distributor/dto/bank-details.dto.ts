@@ -24,6 +24,7 @@ const vacioANull = ({ value }: { value: unknown }): unknown =>
  */
 export class BankDetailsDto {
   @ApiPropertyOptional({
+    type: String,
     description: 'CBU: 22 dígitos con los dígitos verificadores válidos',
     example: '0170099220000067797370',
     nullable: true,
@@ -35,6 +36,7 @@ export class BankDetailsDto {
   cbu?: string | null;
 
   @ApiPropertyOptional({
+    type: String,
     description:
       'Alias: 6 a 20 caracteres entre letras, números, punto y guion',
     example: 'garrafas.splg',
@@ -50,6 +52,7 @@ export class BankDetailsDto {
   alias?: string | null;
 
   @ApiPropertyOptional({
+    type: String,
     description: 'Titular de la cuenta',
     example: 'Distribuidora Demo S.A.',
     nullable: true,
