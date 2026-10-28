@@ -45,6 +45,7 @@ export class TerminateEmployeeUseCase {
     distributorId: string,
     actorUserId: string,
   ): Promise<{ empleado: EmployeeConPuesto; deliveryId: string | null }> {
+    let usuarioBloqueado: string | null = null;
     const userIdDelChofer = await withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
@@ -110,6 +111,7 @@ export class TerminateEmployeeUseCase {
 
           if (empleado.userId) {
             await this.users.bloquearEnTransaccion(manager, empleado.userId);
+            usuarioBloqueado = empleado.userId;
           }
           if (chofer) {
             await this.deliveries.deshabilitarEnTransaccion(
@@ -131,6 +133,9 @@ export class TerminateEmployeeUseCase {
       { context: 'egreso de empleado' },
     );
 
+    if (usuarioBloqueado) {
+      this.users.avisarAccesoRevocado(usuarioBloqueado, 'bloqueo');
+    }
     // Con el egreso confirmado sale del radar de despacho (Redis no es transaccional).
     if (userIdDelChofer) {
       await this.deliveries.quitarDelRadar(userIdDelChofer);

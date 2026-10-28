@@ -7,22 +7,19 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Server } from 'socket.io';
+import type { Namespace } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SocketIdentityService } from './socket-identity.service';
-import type { SocketDeSplg } from './socket-data';
+import { salaDeUsuario, type SocketDeSplg } from './socket-data';
 
 @WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
   namespace: 'customers',
 })
 export class CustomersGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
-  server!: Server;
+  server!: Namespace;
   private readonly logger = new Logger('CustomersGateway');
 
   constructor(private readonly identidades: SocketIdentityService) {}
@@ -36,6 +33,7 @@ export class CustomersGateway
       return;
     }
 
+    await client.join(salaDeUsuario(identidad.userId));
     this.logger.log(`👤 Cliente conectado: ${identidad.email} (${client.id})`);
   }
 

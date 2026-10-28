@@ -27,6 +27,15 @@ export type SocketDeSplg = Socket<
   DatosDeSocket
 >;
 
+/**
+ * Sala personal de cada conexión, en los tres namespaces: por acá se le cortan
+ * todas las conexiones a un usuario bloqueado o dado de baja, también las que
+ * atiende otra instancia del back (adapter de Redis).
+ */
+export function salaDeUsuario(userId: string): string {
+  return `usuario:${userId}`;
+}
+
 /** El token del handshake: en `auth.token` o en la cabecera Authorization. */
 export function tokenDelHandshake(client: SocketDeSplg): string | null {
   const auth: unknown = client.handshake.auth;

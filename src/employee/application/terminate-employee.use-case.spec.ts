@@ -25,7 +25,10 @@ describe('TerminateEmployeeUseCase', () => {
     bloquear: jest.Mock;
     findOneDetallado: jest.Mock;
   };
-  let users: { bloquearEnTransaccion: jest.Mock };
+  let users: {
+    bloquearEnTransaccion: jest.Mock;
+    avisarAccesoRevocado: jest.Mock;
+  };
   let deliveries: {
     findByUserIdEnTransaccion: jest.Mock;
     deshabilitarEnTransaccion: jest.Mock;
@@ -66,7 +69,10 @@ describe('TerminateEmployeeUseCase', () => {
         .fn()
         .mockResolvedValue({ empleado: {}, deliveryId: 'dl1' }),
     };
-    users = { bloquearEnTransaccion: jest.fn() };
+    users = {
+      bloquearEnTransaccion: jest.fn(),
+      avisarAccesoRevocado: jest.fn(),
+    };
     deliveries = {
       findByUserIdEnTransaccion: jest
         .fn()
@@ -109,6 +115,7 @@ describe('TerminateEmployeeUseCase', () => {
       actorUserId: 'admin1',
     });
     expect(deliveries.quitarDelRadar).toHaveBeenCalledWith('u1');
+    expect(users.avisarAccesoRevocado).toHaveBeenCalledWith('u1', 'bloqueo');
   });
 
   it('sin cuenta: sólo cambia el legajo', async () => {
@@ -119,6 +126,7 @@ describe('TerminateEmployeeUseCase', () => {
 
     expect(guardado).toHaveLength(1);
     expect(users.bloquearEnTransaccion).not.toHaveBeenCalled();
+    expect(users.avisarAccesoRevocado).not.toHaveBeenCalled();
     expect(deliveries.findByUserIdEnTransaccion).not.toHaveBeenCalled();
     expect(vehicles.liberarSiTieneUno).not.toHaveBeenCalled();
     expect(deliveries.quitarDelRadar).not.toHaveBeenCalled();
@@ -147,6 +155,7 @@ describe('TerminateEmployeeUseCase', () => {
     ).rejects.toBeInstanceOf(ConflictException);
     expect(guardado).toHaveLength(0);
     expect(users.bloquearEnTransaccion).not.toHaveBeenCalled();
+    expect(users.avisarAccesoRevocado).not.toHaveBeenCalled();
   });
 
   it('una fecha anterior al ingreso es 400', async () => {

@@ -32,7 +32,7 @@ describe('AdminGateway', () => {
     server = { to: jest.fn(() => ({ emit })) };
 
     gateway = new AdminGateway(identidades as unknown as SocketIdentityService);
-    gateway.server = server as unknown as import('socket.io').Server;
+    gateway.server = server as unknown as import('socket.io').Namespace;
   });
 
   describe('handleConnection', () => {

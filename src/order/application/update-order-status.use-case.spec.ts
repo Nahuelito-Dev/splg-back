@@ -1289,8 +1289,8 @@ describe('UpdateOrderStatusUseCase', () => {
     });
   });
 
-  describe('H-54: el panel recibe order:on-the-way (y el alias viejo)', () => {
-    it('emite order:on_the_way (compat) y order:on-the-way (unificado) con el mismo payload', async () => {
+  describe('H-54: el panel recibe order:on-the-way, sin el alias viejo', () => {
+    it('emite order:on-the-way y no order:on_the_way', async () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
       );
@@ -1303,18 +1303,18 @@ describe('UpdateOrderStatusUseCase', () => {
       await useCase.execute('ord-1', OrderStatus.ON_THE_WAY);
 
       expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
-        'order:on_the_way',
-        expect.objectContaining({ orderId: 'ord-1' }),
-        'dist-1',
-      );
-      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
         'order:on-the-way',
         expect.objectContaining({ orderId: 'ord-1' }),
         'dist-1',
       );
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalledWith(
+        'order:on_the_way',
+        expect.anything(),
+        expect.anything(),
+      );
     });
 
-    it('otros estados sólo emiten el nombre del enum, sin el alias con guión', async () => {
+    it('aceptado emite order:accepted y nada más', async () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({ status: OrderStatus.PENDING }),
       );

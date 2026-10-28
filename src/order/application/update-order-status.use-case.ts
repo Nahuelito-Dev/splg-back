@@ -77,6 +77,15 @@ const STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
 };
 
 /**
+ * Eventos del ciclo de vida que recibe el panel. Mismos nombres que los del
+ * cliente; `pending` es el pedido liberado que vuelve a buscar chofer.
+ */
+const ADMIN_STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
+  ...STATUS_EVENT,
+  [OrderStatus.PENDING]: 'order:pending',
+};
+
+/**
  * Caso de uso: avanzar el estado de un pedido (chofer/admin).
  *
  * Valida la transición contra la máquina de estados de dominio, aplica los
@@ -258,29 +267,19 @@ export class UpdateOrderStatusUseCase {
     if (status === OrderStatus.DELIVERED) await this.publicarEntrega(order);
 
     await this.emitStatusEvent(order, status, deliveryUser);
-    // Panel admin en vivo: los valores del enum (accepted/on_the_way/delivered)
-    // coinciden con los eventos que escucha la campana del panel. Sólo a los
-    // admins DE ESA distribuidora (+ super admin, que ven todas).
-    const adminPayload = {
-      orderId: order.orderId,
-      distributorId: order.distributorId,
-      status: order.status,
-      totalAmount: order.totalAmount,
-    };
-    this.dispatch.notifyAdmins(
-      `order:${status}`,
-      adminPayload,
-      order.distributorId,
-    );
-    // H-54: el namespace del cliente emite `order:on-the-way` (con guión)
-    // para este estado; el panel usaba el valor crudo del enum,
-    // `order:on_the_way` (guión bajo), medido contra sockets reales el
-    // 26/09. Unificamos en el nombre con guión y dejamos el de arriba como
-    // ALIAS de compatibilidad para paneles que todavía no migraron.
-    if (status === OrderStatus.ON_THE_WAY) {
+    // Panel admin en vivo, sólo a los admins DE ESA distribuidora (+ super
+    // admin, que ven todas). El nombre sale de una tabla, no del enum: un
+    // estado nuevo no crea un evento sin decidirlo.
+    const adminEvent = ADMIN_STATUS_EVENT[status];
+    if (adminEvent) {
       this.dispatch.notifyAdmins(
-        'order:on-the-way',
-        adminPayload,
+        adminEvent,
+        {
+          orderId: order.orderId,
+          distributorId: order.distributorId,
+          status: order.status,
+          totalAmount: order.totalAmount,
+        },
         order.distributorId,
       );
     }

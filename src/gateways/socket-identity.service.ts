@@ -18,6 +18,12 @@ export interface IdentidadDeSocket {
    * también en tiempo real).
    */
   distributorId: string | null;
+  /**
+   * Cuándo vence el token del handshake (ms desde epoch). Vencido, la conexión
+   * se corta (`SocketSesionesService`) y el cliente vuelve con uno nuevo: así
+   * la identidad se vuelve a resolver contra la base al menos una vez por hora.
+   */
+  expiraEn: number | null;
 }
 
 /**
@@ -54,9 +60,11 @@ export class SocketIdentityService {
     }
 
     let email: string;
+    let exp: number | undefined;
     try {
       const decoded = await this.authService.decodeToken(token);
       email = decoded.email;
+      exp = decoded.exp;
     } catch (error) {
       this.logger.warn(`Token de socket inválido: ${errorMessage(error)}`);
       return null;
@@ -87,6 +95,7 @@ export class SocketIdentityService {
       // Un usuario sin rol no puede operar: el gateway lo rechaza por rol.
       role,
       distributorId: this.resolverDistribuidora(user, role),
+      expiraEn: exp ? exp * 1000 : null,
     };
 
     client.data.identidad = identidad;

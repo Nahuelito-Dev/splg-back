@@ -24,6 +24,8 @@ export interface TokenDecodificado {
   email: string;
   user: string;
   sub: string;
+  /** Vencimiento del token, en segundos desde epoch (`exp` de Firebase). */
+  exp?: number;
 }
 
 /** Lo que responde el login cuando el email o la contraseña no sirven. */
@@ -173,6 +175,7 @@ export class AuthService {
         email: decoded.email ?? '',
         user: typeof userId === 'string' ? userId : decoded.uid,
         sub: decoded.sub,
+        exp: decoded.exp,
       };
     } catch (error) {
       const code = errorCode(error);

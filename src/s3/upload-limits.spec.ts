@@ -73,7 +73,7 @@ describe('tope de tamaño de las subidas', () => {
         controllers: [PruebaController],
       }).compile();
       app = m.createNestApplication();
-      await app.listen(0); // una sola vez: sin esto supertest abre un servidor por pedido y falla al azar con carga
+      await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
     });
     afterAll(() => app.close());
     const http = () => request(app.getHttpServer() as Server);

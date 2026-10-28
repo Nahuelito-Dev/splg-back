@@ -80,7 +80,7 @@ describe('PdfController (API v2)', () => {
       );
       // Escucha una sola vez: sin esto supertest abre y cierra un servidor por
       // pedido y, con la suite en paralelo, a veces corta con «socket hang up».
-      await app.listen(0);
+      await app.listen(0, '127.0.0.1');
     });
 
     beforeEach(() => {
