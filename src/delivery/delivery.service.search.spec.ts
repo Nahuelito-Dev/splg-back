@@ -15,6 +15,7 @@ describe('DeliveryService · búsqueda de choferes', () => {
   interface QbFake {
     leftJoinAndSelect: jest.Mock;
     andWhere: jest.Mock;
+    orderBy: jest.Mock;
     take: jest.Mock;
     skip: jest.Mock;
     getManyAndCount: jest.Mock;
@@ -32,6 +33,7 @@ describe('DeliveryService · búsqueda de choferes', () => {
     qb = {
       leftJoinAndSelect: jest.fn(() => qb),
       andWhere: jest.fn(() => qb),
+      orderBy: jest.fn(() => qb),
       take: jest.fn(() => qb),
       skip: jest.fn(() => qb),
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
@@ -54,6 +56,7 @@ describe('DeliveryService · búsqueda de choferes', () => {
     expect(deliveryRepo.findAndCount).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ distributorId: 'dist-1' }) as unknown,
+        order: { deliveryId: 'ASC' },
       }),
     );
     expect(deliveryRepo.createQueryBuilder).not.toHaveBeenCalled();
@@ -62,6 +65,7 @@ describe('DeliveryService · búsqueda de choferes', () => {
   it('con term busca por nombre/email/teléfono y por patente (EXISTS, sin join a car)', async () => {
     await service.findAll({ limit: 10, offset: 0, term: 'ana' }, null);
 
+    expect(qb.orderBy).toHaveBeenCalledWith('delivery.deliveryId', 'ASC');
     expect(qb.andWhere).toHaveBeenCalledWith(
       expect.stringContaining('user.fullName ILIKE :term'),
       { term: '%ana%' },

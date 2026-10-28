@@ -168,7 +168,7 @@ export class GasCylinderService {
         relations: CON_PROMOCIONES,
         take: limit,
         skip: offset,
-        order: { type: 'ASC' },
+        order: { type: 'ASC', gasCylinderId: 'ASC' },
       },
     );
 

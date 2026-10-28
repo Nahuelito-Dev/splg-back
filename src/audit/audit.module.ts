@@ -32,6 +32,6 @@ import { DataAuditController } from './data/data-audit.controller';
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditContextInterceptor },
   ],
-  exports: [AuditService],
+  exports: [AuditService, DataAuditService],
 })
 export class AuditModule {}

@@ -353,6 +353,7 @@ export class CashMovementService {
     const [movimientos, total] = await qb
       .orderBy('m.occurredAt', 'DESC')
       .addOrderBy('m.createdAt', 'DESC')
+      .addOrderBy('m.movementId', 'ASC')
       .skip(((query.page ?? 1) - 1) * limit)
       .take(limit)
       .getManyAndCount();

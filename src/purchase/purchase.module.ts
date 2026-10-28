@@ -54,5 +54,6 @@ import { SupplierController } from './presentation/supplier.controller';
     PurchaseQueryService,
     PurchaseReceiptAttachmentOwnerResolver,
   ],
+  exports: [PurchaseQueryService, SupplierService],
 })
 export class PurchaseModule {}

@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { NEVER, lastValueFrom, of, throwError, TimeoutError } from 'rxjs';
+import { SinTimeout } from '../decorators/sin-timeout.decorator';
 import { MENSAJE_TIMEOUT, TimeoutInterceptor } from './timeout.interceptors';
 
 describe('TimeoutInterceptor', () => {
@@ -43,5 +44,22 @@ describe('TimeoutInterceptor', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('un endpoint marcado con @SinTimeout no tiene tope de tiempo', () => {
+    class Descarga {
+      @SinTimeout()
+      bajar(this: void) {
+        return undefined;
+      }
+    }
+    const handler = { handle: () => NEVER };
+    const contexto = {
+      getHandler: () => Descarga.prototype.bajar,
+    } as unknown as ExecutionContext;
+
+    const salida = interceptor.intercept(contexto, handler);
+
+    expect(salida).toBe(NEVER);
   });
 });

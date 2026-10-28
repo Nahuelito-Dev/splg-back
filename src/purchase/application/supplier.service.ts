@@ -81,6 +81,7 @@ export class SupplierService {
     }
     const [data, total] = await qb
       .orderBy('s.businessName', 'ASC')
+      .addOrderBy('s.supplierId', 'ASC')
       .skip(((query.page ?? 1) - 1) * limit)
       .take(limit)
       .getManyAndCount();

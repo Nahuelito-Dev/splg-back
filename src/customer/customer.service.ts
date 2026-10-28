@@ -300,6 +300,7 @@ export class CustomersService {
         'declaredCylinderType',
       )
       .orderBy('customer.createdAt', 'DESC')
+      .addOrderBy('customer.customerId', 'ASC')
       .take(limit)
       .skip(offset);
 

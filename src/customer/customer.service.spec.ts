@@ -95,6 +95,7 @@ describe('CustomersService', () => {
       const qb = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -105,6 +106,13 @@ describe('CustomersService', () => {
       ).createQueryBuilder = jest.fn().mockReturnValue(qb);
       return qb;
     };
+
+    it('desempata por el id para que la paginación no repita ni pierda filas', async () => {
+      const qb = armarQb();
+      await service.findAll({});
+      expect(qb.orderBy).toHaveBeenCalledWith('customer.createdAt', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('customer.customerId', 'ASC');
+    });
 
     it('sin status no filtra por cuenta bloqueada', async () => {
       const qb = armarQb();

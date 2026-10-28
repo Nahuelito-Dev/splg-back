@@ -69,6 +69,7 @@ import { ReportsModule } from './reports/reports.module';
 import { RoutesModule } from './routes/routes.module';
 import { HealthModule } from './health/health.module';
 import { FirebaseModule } from './firebase/firebase.module';
+import { ExportsModule } from './exports/exports.module';
 
 @Module({
   imports: [
@@ -238,6 +239,7 @@ import { FirebaseModule } from './firebase/firebase.module';
     DriverSettlementModule,
     CustomerAccountModule,
     FinanceModule,
+    ExportsModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

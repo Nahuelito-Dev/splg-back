@@ -371,6 +371,7 @@ export class DeliveryService {
         take: limit,
         skip: offset,
         relations: ['user', 'user.role'],
+        order: { deliveryId: 'ASC' },
       });
     }
 
@@ -380,6 +381,7 @@ export class DeliveryService {
       .createQueryBuilder('delivery')
       .leftJoinAndSelect('delivery.user', 'user')
       .leftJoinAndSelect('user.role', 'role')
+      .orderBy('delivery.deliveryId', 'ASC')
       .take(limit)
       .skip(offset);
 

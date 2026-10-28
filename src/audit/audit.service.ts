@@ -66,7 +66,7 @@ export class AuditService {
     }
     const [items, total] = await this.auditRepository.findAndCount({
       where,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', auditId: 'ASC' },
       take: filtros.limit,
       skip: filtros.offset,
     });

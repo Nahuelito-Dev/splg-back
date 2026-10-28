@@ -76,5 +76,12 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     TrafficFineAttachmentOwnerResolver,
     VehicleAccidentAttachmentOwnerResolver,
   ],
+  exports: [
+    FuelLoadService,
+    TrafficFineService,
+    VehicleAccidentService,
+    TireService,
+    FleetCostService,
+  ],
 })
 export class FleetExpenseModule {}
