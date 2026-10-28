@@ -136,6 +136,10 @@ export class SupplierService {
     if (dto.paymentTermsDays !== undefined) {
       proveedor.paymentTermsDays = dto.paymentTermsDays;
     }
+    // La foto la cambia sólo `SupplierPhotoService` (con lock): sin la clave,
+    // `save` no la escribe y una subida simultánea no queda pisada por la
+    // clave vieja que se leyó acá.
+    Reflect.deleteProperty(proveedor, 'photoKey');
     try {
       return await this.suppliers.save(proveedor);
     } catch (error) {

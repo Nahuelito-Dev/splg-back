@@ -65,6 +65,18 @@ describe('SupplierService', () => {
     );
   });
 
+  it('editar los datos no reescribe la foto (no pisa una subida en curso)', async () => {
+    const { service, repo } = armar({
+      supplierId: S1,
+      businessName: 'Gas SA',
+      photoKey: 'suppliers/d/s1/vieja',
+    } as Parameters<typeof armar>[0]);
+    await service.update(S1, { businessName: 'Gas del Sur SA' }, DIST);
+    const guardado = repo.save.mock.calls[0][0] as Record<string, unknown>;
+    expect(guardado.businessName).toBe('Gas del Sur SA');
+    expect('photoKey' in guardado).toBe(false);
+  });
+
   it('un proveedor de otra distribuidora es 404', async () => {
     const { service } = armar(null);
     await expect(service.findOne(S1, DIST)).rejects.toThrow(

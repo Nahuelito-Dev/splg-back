@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import type { Response } from 'express';
 import { DownloadMode } from './dto/download-link.dto';
-import { responderFoto } from './photo-http';
+import { aFotoVigente, responderFoto } from './photo-http';
 
 function respuesta() {
   return { json: jest.fn(), redirect: jest.fn() };
@@ -48,5 +48,22 @@ describe('responderFoto', () => {
     expect(() =>
       responderFoto(res as unknown as Response, undefined, { kind: 'none' }),
     ).toThrow(NotFoundException);
+  });
+});
+
+describe('aFotoVigente', () => {
+  it('con foto: URL firmada y vencimiento, sin requiresAuth', () => {
+    const signed = { url: 'https://s3/f', expiresAt: new Date('2030-01-01') };
+    expect(aFotoVigente({ kind: 'stored', signed })).toEqual({
+      url: signed.url,
+      expiresAt: signed.expiresAt,
+    });
+  });
+
+  it('sin foto: url y expiresAt null', () => {
+    expect(aFotoVigente({ kind: 'none' })).toEqual({
+      url: null,
+      expiresAt: null,
+    });
   });
 });

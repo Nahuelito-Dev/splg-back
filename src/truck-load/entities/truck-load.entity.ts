@@ -183,6 +183,10 @@ export class TruckLoad {
   @OneToMany(() => TruckLoadItem, (i) => i.load)
   items?: TruckLoadItem[];
 
+  /** Key de la foto principal en el bucket (`truck-loads/{distribuidora}/{id}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
