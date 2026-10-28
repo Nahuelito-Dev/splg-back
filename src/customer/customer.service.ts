@@ -138,6 +138,8 @@ export class CustomersService {
         { distributorId },
       )
       .orderBy('customer.createdAt', 'DESC')
+      // Desempate: con la misma fecha la paginación no repite ni saltea filas.
+      .addOrderBy('customer.customerId', 'ASC')
       .take(limit)
       .skip(offset);
     if (term) {

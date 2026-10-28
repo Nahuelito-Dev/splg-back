@@ -368,6 +368,7 @@ describe('CustomersService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
@@ -377,6 +378,9 @@ describe('CustomersService', () => {
       ).createQueryBuilder = jest.fn().mockReturnValue(qb);
 
       await service.findRemoved({ term: 'ana' }, 'd1');
+
+      // Orden estable: la fecha y, con la misma fecha, el id.
+      expect(qb.addOrderBy).toHaveBeenCalledWith('customer.customerId', 'ASC');
 
       expect(qb.where).toHaveBeenCalledWith(
         expect.stringContaining('removed_at IS NOT NULL'),
