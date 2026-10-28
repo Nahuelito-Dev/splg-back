@@ -18,6 +18,7 @@ import { ResolveIncidentDto } from './dto/resolve-incident.dto';
 import { PaymentStatus } from '../order/entities/order.entity';
 import { OrderService } from '../order/order.service';
 import { AdminGateway } from '../gateways/admin.gateway';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { avisarIncidenciaAAdmins } from './aviso-de-incidencia';
 
 @Injectable()
@@ -29,6 +30,7 @@ export class IncidentService {
     private readonly incidentRepository: Repository<Incident>,
     private readonly orderService: OrderService,
     private readonly adminGateway: AdminGateway,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -73,7 +75,12 @@ export class IncidentService {
     });
 
     const guardada = await this.incidentRepository.save(incident);
-    avisarIncidenciaAAdmins(this.adminGateway, guardada, this.logger);
+    avisarIncidenciaAAdmins(
+      this.adminGateway,
+      guardada,
+      this.logger,
+      this.events,
+    );
     return guardada;
   }
 

@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVENTO_NOTIFICAR_ADMIN } from '../common/events/notificar-admin.event';
 import { IncidentService } from './incident.service';
 import {
   Incident,
@@ -21,6 +23,7 @@ import { AdminGateway } from '../gateways/admin.gateway';
 describe('IncidentService', () => {
   let service: IncidentService;
   let admins: { notifyAdmins: jest.Mock };
+  let events: { emit: jest.Mock };
   let incidents: {
     create: jest.Mock;
     save: jest.Mock;
@@ -48,10 +51,43 @@ describe('IncidentService', () => {
       assertDeLaDistribuidora: jest.fn(),
     };
     admins = { notifyAdmins: jest.fn() };
+    events = { emit: jest.fn() };
     service = new IncidentService(
       incidents as unknown as Repository<Incident>,
       orders as unknown as OrderService,
       admins as unknown as AdminGateway,
+      events as unknown as EventEmitter2,
+    );
+  });
+
+  it('pide el aviso de la bandeja con la incidencia como clave y destino', async () => {
+    orders.findById.mockResolvedValue({
+      orderId: 'ord-abcdef',
+      distributorId: 'd1',
+    });
+    incidents.save.mockImplementationOnce((i: Incident) =>
+      Promise.resolve({ ...i, incidentId: 'inc-1' }),
+    );
+    await service.create(
+      {
+        orderId: 'ord-abcdef',
+        type: IncidentType.DAMAGED,
+        description: 'Rota',
+      },
+      'chofer-1',
+      null,
+      false,
+    );
+    expect(events.emit).toHaveBeenCalledWith(
+      EVENTO_NOTIFICAR_ADMIN,
+      expect.objectContaining({
+        distributorId: 'd1',
+        kind: 'incident_created',
+        body: 'Pedido #ABCDEF: Producto dañado',
+        dedupeKey: 'incident:inc-1',
+        link: { entity: 'incident', id: 'inc-1' },
+        email: false,
+      }),
     );
   });
 
@@ -295,6 +331,7 @@ describe('IncidentService', () => {
         incidentsFalso as unknown as Repository<Incident>,
         ordersFalso as unknown as OrderService,
         admins as unknown as AdminGateway,
+        events as unknown as EventEmitter2,
       );
 
       // Nace de un pedido de "distribuidora-a".

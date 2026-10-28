@@ -10,6 +10,7 @@ import { ReportUnpaidCashDto } from './dto/report-unpaid-cash.dto';
 import { CashCollectionUseCase } from '../order/application/cash-collection.use-case';
 import { OrderService } from '../order/order.service';
 import { AdminGateway } from '../gateways/admin.gateway';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { avisarIncidenciaAAdmins } from './aviso-de-incidencia';
 import type { Order } from '../order/entities/order.entity';
 
@@ -29,6 +30,7 @@ export class UnpaidCashService {
     private readonly orders: OrderService,
     private readonly cashCollection: CashCollectionUseCase,
     private readonly adminGateway: AdminGateway,
+    private readonly events: EventEmitter2,
   ) {}
 
   async report(
@@ -119,6 +121,11 @@ export class UnpaidCashService {
   }
 
   private avisarAAdmins(incident: Incident): void {
-    avisarIncidenciaAAdmins(this.adminGateway, incident, this.logger);
+    avisarIncidenciaAAdmins(
+      this.adminGateway,
+      incident,
+      this.logger,
+      this.events,
+    );
   }
 }

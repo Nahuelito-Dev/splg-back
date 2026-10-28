@@ -12,13 +12,20 @@ export class EnlacesDeLaApp {
   readonly inicio: string;
   /** Donde Firebase resuelve los links de reseteo y de verificación. */
   readonly accionDeCuenta: string;
+  private readonly base: string;
 
   constructor(config: ConfigService) {
     const base = (
       config.get<string>('APP_URL') ??
       `https://${config.getOrThrow<string>('FIREBASE_PROJECT_ID')}.firebaseapp.com`
     ).replace(/\/+$/, '');
+    this.base = base;
     this.inicio = `${base}/`;
     this.accionDeCuenta = `${base}/__/auth/action`;
+  }
+
+  /** Una pantalla del panel de administración (`/orders/<id>`). */
+  panel(ruta: string): string {
+    return `${this.base}/${ruta.replace(/^\/+/, '')}`;
   }
 }

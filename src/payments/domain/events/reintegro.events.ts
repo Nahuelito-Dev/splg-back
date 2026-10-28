@@ -12,6 +12,8 @@ export interface ReintegroResuelto {
   distributorId: string | null;
   kind: RefundKind;
   amount: number;
+  /** Intentos hechos: distingue un fallo nuevo de un reintento del mismo. */
+  attempts: number;
 }
 
 /** La pasarela confirmó la devolución (o ya estaba devuelta). */

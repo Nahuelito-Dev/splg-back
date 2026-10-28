@@ -20,12 +20,25 @@ import { TruckLoadGatePort } from '../domain/ports/truck-load-gate.port';
 import { DispatchSettingsService } from '../../distributor/dispatch-settings.service';
 import { ExpressSettingsService } from '../../distributor/express-settings.service';
 import { ExpressDegradeService } from './express-degrade.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../../common/events/aviso-al-admin';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
 export type MotivoSinChoferes =
   | 'no_drivers_in_range'
   | 'all_drivers_exhausted'
   | 'no_delivery_point';
+
+const MOTIVO_SIN_CHOFERES: Readonly<Record<MotivoSinChoferes, string>> = {
+  no_drivers_in_range: 'no hay choferes disponibles cerca para ofrecérselo.',
+  all_drivers_exhausted:
+    'los choferes cercanos ya lo rechazaron o no respondieron.',
+  no_delivery_point: 'no tiene un punto de entrega con ubicación.',
+};
 
 /**
  * Cache del bloqueo de flota DENTRO de un mismo intento de oferta
@@ -104,6 +117,8 @@ export class DispatchOrchestratorService {
     // CU-149: parámetros del despacho express y pase al reparto común.
     private readonly expressSettings: ExpressSettingsService,
     private readonly expressDegrade: ExpressDegradeService,
+    // Bandeja de avisos de los admins (no sabe cómo se entrega).
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -358,6 +373,16 @@ export class DispatchOrchestratorService {
       },
       order.distributorId,
     );
+    if (order.distributorId) {
+      pedirAvisoAlAdmin(this.events, this.logger, {
+        distributorId: order.distributorId,
+        kind: 'order_no_drivers',
+        title: 'Pedido sin choferes',
+        body: `Pedido #${idCortoDePedido(order.orderId)}: ${MOTIVO_SIN_CHOFERES[reason]}`,
+        link: { entity: 'order', id: order.orderId },
+        dedupeKey: `no-drivers:${order.orderId}:${diaArgentino()}`,
+      });
+    }
     this.logger.warn(`Pedido ${order.orderId} sin choferes (${reason})`);
   }
 

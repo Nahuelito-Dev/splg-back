@@ -5,6 +5,8 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVENTO_NOTIFICAR_ADMIN } from '../../common/events/notificar-admin.event';
 import { AttachmentService } from '../../attachment/attachment.service';
 import {
   Attachment,
@@ -60,6 +62,7 @@ describe('OrderTransferReceiptService', () => {
   };
   let bank: { obtener: jest.Mock };
   let dispatch: { notifyAdmins: jest.Mock };
+  let events: { emit: jest.Mock };
   let manager: {
     createQueryBuilder: jest.Mock;
     count: jest.Mock;
@@ -93,6 +96,7 @@ describe('OrderTransferReceiptService', () => {
     };
     bank = { obtener: jest.fn() };
     dispatch = { notifyAdmins: jest.fn() };
+    events = { emit: jest.fn() };
     manager = {
       createQueryBuilder: jest.fn(() => ({
         setLock: jest.fn().mockReturnThis(),
@@ -107,6 +111,7 @@ describe('OrderTransferReceiptService', () => {
       attachments as unknown as AttachmentService,
       bank as unknown as DistributorBankService,
       dispatch as unknown as RealtimeDispatchPort,
+      events as unknown as EventEmitter2,
     );
   });
 
@@ -142,6 +147,21 @@ describe('OrderTransferReceiptService', () => {
         'd1',
       );
       expect(res.attachmentId).toBe('a1');
+    });
+
+    it('pide el aviso de la bandeja con el adjunto como clave y el pedido como destino', async () => {
+      await service.subir('o1', 'cli1', archivo());
+
+      expect(events.emit).toHaveBeenCalledWith(
+        EVENTO_NOTIFICAR_ADMIN,
+        expect.objectContaining({
+          distributorId: 'd1',
+          kind: 'transfer_receipt_uploaded',
+          dedupeKey: 'transfer-receipt:a1',
+          link: { entity: 'order', id: 'o1' },
+          email: false,
+        }),
+      );
     });
 
     it('el evento tiene el nombre que escucha el panel', () => {

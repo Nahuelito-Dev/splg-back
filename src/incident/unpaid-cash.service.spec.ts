@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { EVENTO_NOTIFICAR_ADMIN } from '../common/events/notificar-admin.event';
 import { UnpaidCashService } from './unpaid-cash.service';
 import {
   Incident,
@@ -14,6 +15,7 @@ describe('UnpaidCashService', () => {
   let orders: { assertDeLaDistribuidora: jest.Mock };
   let cash: { markUnpaid: jest.Mock; registerUnpaidByAdmin: jest.Mock };
   let gateway: { notifyAdmins: jest.Mock };
+  let events: { emit: jest.Mock };
 
   const order = {
     orderId: 'ord-1',
@@ -53,10 +55,24 @@ describe('UnpaidCashService', () => {
       ) => ({ order, changed: true, extra: await dentro(manager, order) }),
     );
     gateway = { notifyAdmins: jest.fn() };
+    events = { emit: jest.fn() };
     svc = new UnpaidCashService(
       orders as never,
       cash as never,
       gateway as never,
+      events as never,
+    );
+  });
+
+  it('pide el aviso de la bandeja de la incidencia de cobro impago', async () => {
+    await svc.report('ord-1', { note: 'no pagó' }, 'u-1', 'dist-1');
+    expect(events.emit).toHaveBeenCalledWith(
+      EVENTO_NOTIFICAR_ADMIN,
+      expect.objectContaining({
+        kind: 'incident_created',
+        dedupeKey: 'incident:inc-1',
+        body: 'Pedido #ORD-1: Cobro en efectivo impago',
+      }),
     );
   });
 

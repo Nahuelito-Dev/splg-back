@@ -10,6 +10,11 @@ import { OrderLookupService } from '../lookup/order-lookup.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { errorMessage } from '../../common/errors/error-message';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../../common/events/aviso-al-admin';
 
 /**
  * CU-168 pasos 6 y excepción del 4: cuando `payments` resuelve una devolución,
@@ -25,6 +30,7 @@ export class ReintegroListener {
     private readonly orders: OrderLookupService,
     private readonly realtime: RealtimeDispatchPort,
     private readonly notifications: NotificationPort,
+    private readonly events: EventEmitter2,
   ) {}
 
   @OnEvent(EVENTO_PAGO_REINTEGRADO)
@@ -85,6 +91,17 @@ export class ReintegroListener {
       this.logger.warn(
         `No se pudo avisar la devolución fallida ${r.refundId}: ${errorMessage(error)}`,
       );
+    }
+    if (r.distributorId) {
+      pedirAvisoAlAdmin(this.events, this.logger, {
+        distributorId: r.distributorId,
+        kind: 'refund_failed',
+        title: 'Devolución fallida',
+        body: `Pedido #${idCortoDePedido(r.orderId)}: no se pudo devolver $${r.amount}. ${evento.motivo}`,
+        link: { entity: 'order', id: r.orderId },
+        // Con el intento: si el reintento vuelve a fallar, es un aviso nuevo.
+        dedupeKey: `refund-failed:${r.refundId}:${r.attempts}`,
+      });
     }
   }
 }

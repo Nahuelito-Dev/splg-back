@@ -281,6 +281,13 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'La existencia no coincide con la suma de los movimientos de stock: la operación se deshizo',
   CHK_customer_account_saldo_contra_libro:
     'El saldo de la cuenta corriente no coincide con la suma de sus asientos: la operación se deshizo',
+
+  // Bandeja de avisos del administrador
+  UQ_admin_notification_dedupe: 'Ese aviso ya está en la bandeja',
+  CHK_admin_notification_texto:
+    'El aviso necesita tipo, título y clave que no estén vacíos',
+  CHK_admin_notification_destino:
+    'El destino del aviso lleva entidad e id, o ninguno de los dos',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

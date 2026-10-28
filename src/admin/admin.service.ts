@@ -122,6 +122,27 @@ export class AdminService {
     });
   }
 
+  /**
+   * Correos de los administradores en actividad de una distribuidora: perfil de
+   * admin de ella, usuario no bloqueado ni dado de baja y con correo cargado.
+   * El super admin no entra: no es de ninguna distribuidora.
+   */
+  async emailsDeAdminsActivos(distributorId: string): Promise<string[]> {
+    const admins = await this.adminRepository
+      .createQueryBuilder('a')
+      .innerJoinAndSelect('a.user', 'u')
+      .innerJoin('u.role', 'r')
+      .where('a.distributorId = :distributorId', { distributorId })
+      .andWhere('u.blocked = false')
+      .andWhere('u.deletedAt IS NULL')
+      .andWhere('u.email IS NOT NULL')
+      .andWhere('r.type = :tipo', { tipo: RoleType.ADMIN })
+      .getMany();
+    return [
+      ...new Set(admins.flatMap((a) => (a.user.email ? [a.user.email] : []))),
+    ];
+  }
+
   async findOne(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
       where: { adminId: id },

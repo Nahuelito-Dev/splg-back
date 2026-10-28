@@ -28,6 +28,11 @@ import {
 } from '../common/utils/attachment-rules';
 import { limpiarMetadatosDeImagen } from '../s3/limpiar-imagen';
 import { AdminGateway } from '../gateways/admin.gateway';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../common/events/aviso-al-admin';
 
 /** Evento del panel con cada reclamo nuevo de un cliente. */
 export const EVENTO_RECLAMO_CREADO = 'claim:created';
@@ -53,6 +58,7 @@ export class ClaimsService {
     private readonly storage: S3Service,
     private readonly cleanup: S3CleanupService,
     private readonly adminGateway: AdminGateway,
+    private readonly events: EventEmitter2,
   ) {}
 
   async create(
@@ -106,6 +112,14 @@ export class ClaimsService {
         `No se pudo avisar a los admins del reclamo ${claim.claimId}: ${errorMessage(error)}`,
       );
     }
+    pedirAvisoAlAdmin(this.events, this.logger, {
+      distributorId: claim.distributorId,
+      kind: 'claim_created',
+      title: 'Nuevo reclamo',
+      body: `Pedido #${idCortoDePedido(claim.orderId)}: ${claim.reason}`,
+      link: { entity: 'claim', id: claim.claimId },
+      dedupeKey: `claim:${claim.claimId}`,
+    });
   }
 
   async findAll(distributorId?: string | null): Promise<Claim[]> {

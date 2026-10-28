@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { AttachmentMapper } from '../../attachment/attachment.mapper';
@@ -18,6 +19,10 @@ import {
 } from '../../attachment/entities/attachment.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../../common/events/aviso-al-admin';
 import { esMimeTypePermitido } from '../../common/utils/attachment-rules';
 import { BankDetailsResponseDto } from '../../distributor/dto/bank-details.dto';
 import { DistributorBankService } from '../../distributor/distributor-bank.service';
@@ -53,6 +58,7 @@ export class OrderTransferReceiptService {
     private readonly attachments: AttachmentService,
     private readonly bank: DistributorBankService,
     private readonly dispatch: RealtimeDispatchPort,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -266,5 +272,13 @@ export class OrderTransferReceiptService {
         `No se pudo emitir ${EVENTO_COMPROBANTE_SUBIDO} del pedido ${order.orderId}: ${errorMessage(error)}`,
       );
     }
+    pedirAvisoAlAdmin(this.events, this.logger, {
+      distributorId: order.distributorId,
+      kind: 'transfer_receipt_uploaded',
+      title: 'Comprobante de transferencia',
+      body: `Pedido #${idCortoDePedido(order.orderId)}: el cliente subió un comprobante de pago.`,
+      link: { entity: 'order', id: order.orderId },
+      dedupeKey: `transfer-receipt:${attachmentId}`,
+    });
   }
 }
