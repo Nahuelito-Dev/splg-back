@@ -4,11 +4,11 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Server } from 'socket.io';
+import type { Namespace } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { RoleType } from '../common/constants/role-type.enum';
 import { SocketIdentityService } from './socket-identity.service';
-import { SocketDeSplg } from './socket-data';
+import { SocketDeSplg, salaDeUsuario } from './socket-data';
 
 /**
  * Canal de tiempo real del PANEL ADMIN. A diferencia de customers/drivers (salas
@@ -32,12 +32,11 @@ import { SocketDeSplg } from './socket-data';
  * al conectar, sigue siendo `io(url + '/admin', { auth: { token } })`.
  */
 @WebSocketGateway({
-  cors: { origin: '*' },
   namespace: 'admin',
 })
 export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server!: Server;
+  server!: Namespace;
   private readonly logger = new Logger('AdminGateway');
 
   /** Sala de los super admin: ven TODO, sin importar la distribuidora. */
@@ -86,6 +85,7 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await client.join(AdminGateway.SALA_SUPER_ADMIN);
     }
 
+    await client.join(salaDeUsuario(identidad.userId));
     this.logger.log(`🛠️ Admin conectado: ${identidad.email} (${client.id})`);
     client.emit('server:ack', { message: 'Conectado al panel en vivo' });
   }

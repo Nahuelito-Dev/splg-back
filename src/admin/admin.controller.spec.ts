@@ -42,7 +42,7 @@ describe('AdminController · GET /admin', () => {
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
-    await app.listen(0); // una sola vez: sin esto supertest abre un servidor por pedido y falla al azar con carga
+    await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 
   afterEach(async () => {
@@ -155,7 +155,7 @@ describe('AdminController · PATCH y DELETE /admin/:id', () => {
         transform: true,
       }),
     );
-    await app.listen(0); // una sola vez: sin esto supertest abre un servidor por pedido y falla al azar con carga
+    await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 
   afterEach(async () => {

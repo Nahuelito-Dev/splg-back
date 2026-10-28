@@ -3,6 +3,7 @@ import { DriversGateway } from './drivers.gateway';
 import { CustomersGateway } from './customers.gateway';
 import { AdminGateway } from './admin.gateway';
 import { SocketIdentityService } from './socket-identity.service';
+import { SocketSesionesService } from './socket-sesiones.service';
 import { RedisModule } from '../redis/redis.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
@@ -14,6 +15,7 @@ import { UsersModule } from '../users/users.module';
     DriversGateway,
     CustomersGateway,
     AdminGateway,
+    SocketSesionesService,
   ],
   exports: [DriversGateway, CustomersGateway, AdminGateway],
 })

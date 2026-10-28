@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -16,13 +17,18 @@ import { UpdateIncidentDto } from './dto/update-incident.dto';
 import { ResolveIncidentDto } from './dto/resolve-incident.dto';
 import { PaymentStatus } from '../order/entities/order.entity';
 import { OrderService } from '../order/order.service';
+import { AdminGateway } from '../gateways/admin.gateway';
+import { avisarIncidenciaAAdmins } from './aviso-de-incidencia';
 
 @Injectable()
 export class IncidentService {
+  private readonly logger = new Logger(IncidentService.name);
+
   constructor(
     @InjectRepository(Incident)
     private readonly incidentRepository: Repository<Incident>,
     private readonly orderService: OrderService,
+    private readonly adminGateway: AdminGateway,
   ) {}
 
   /**
@@ -66,7 +72,9 @@ export class IncidentService {
       status: IncidentStatus.OPEN,
     });
 
-    return this.incidentRepository.save(incident);
+    const guardada = await this.incidentRepository.save(incident);
+    avisarIncidenciaAAdmins(this.adminGateway, guardada, this.logger);
+    return guardada;
   }
 
   /** Lista todas las incidencias, scopeadas por tenant si se pasa distributorId. */

@@ -10,7 +10,7 @@ import { ReportUnpaidCashDto } from './dto/report-unpaid-cash.dto';
 import { CashCollectionUseCase } from '../order/application/cash-collection.use-case';
 import { OrderService } from '../order/order.service';
 import { AdminGateway } from '../gateways/admin.gateway';
-import { errorMessage } from '../common/errors/error-message';
+import { avisarIncidenciaAAdmins } from './aviso-de-incidencia';
 import type { Order } from '../order/entities/order.entity';
 
 const DESCRIPCION_POR_DEFECTO = 'El cliente no pagó el efectivo en la entrega';
@@ -118,25 +118,7 @@ export class UnpaidCashService {
     return { incident, creada: true };
   }
 
-  /** Best-effort: la incidencia ya está guardada. */
   private avisarAAdmins(incident: Incident): void {
-    try {
-      this.adminGateway.notifyAdmins(
-        'incident:created',
-        {
-          incidentId: incident.incidentId,
-          orderId: incident.orderId,
-          distributorId: incident.distributorId,
-          type: incident.type,
-          description: incident.description,
-          createdAt: incident.createdAt,
-        },
-        incident.distributorId,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `No se pudo avisar a los admins de la incidencia ${incident.incidentId}: ${errorMessage(error)}`,
-      );
-    }
+    avisarIncidenciaAAdmins(this.adminGateway, incident, this.logger);
   }
 }

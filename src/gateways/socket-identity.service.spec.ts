@@ -48,6 +48,20 @@ describe('SocketIdentityService', () => {
     ).resolves.toBeNull();
   });
 
+  it('guarda cuándo vence el token, en milisegundos', async () => {
+    auth.decodeToken.mockResolvedValue({
+      email: 'ana@splg.com',
+      exp: 1_800_000,
+    });
+    users.findOneWithRoleByEmail.mockResolvedValue({
+      userId: 'u1',
+      blocked: false,
+      role: { type: 'customer' },
+    });
+    const identidad = await service.identificar(socket({ token: 't' }));
+    expect(identidad?.expiraEn).toBe(1_800_000_000);
+  });
+
   it('un usuario bloqueado no entra', async () => {
     auth.decodeToken.mockResolvedValue({ email: 'ana@splg.com' });
     users.findOneWithRoleByEmail.mockResolvedValue({
@@ -75,6 +89,7 @@ describe('SocketIdentityService', () => {
       email: 'ana@splg.com',
       role: 'customer',
       distributorId: null,
+      expiraEn: null,
     });
     expect(s.data.identidad).toEqual(identidad);
   });
@@ -127,6 +142,7 @@ describe('SocketIdentityService', () => {
       email: 'a',
       role: 'customer' as never,
       distributorId: null,
+      expiraEn: null,
     };
     await service.obtener(s);
     expect(auth.decodeToken).not.toHaveBeenCalled();

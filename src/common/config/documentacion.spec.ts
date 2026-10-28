@@ -37,7 +37,7 @@ describe('montarDocumentacion', () => {
     beforeEach(async () => {
       app = await crearApp();
       montarDocumentacion(app, { SWAGGER_USER: 'doc', SWAGGER_PASSWORD: 'x' });
-      await app.listen(0); // una sola vez: sin esto supertest abre un servidor por pedido y falla al azar con carga
+      await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
     });
 
     it.each(RUTAS_DE_DOCUMENTACION)(
@@ -77,7 +77,7 @@ describe('montarDocumentacion', () => {
       async (entorno) => {
         app = await crearApp();
         expect(montarDocumentacion(app, { NODE_ENV: entorno })).toBe(false);
-        await app.listen(0); // una sola vez: sin esto supertest abre un servidor por pedido y falla al azar con carga
+        await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
         for (const ruta of RUTAS_DE_DOCUMENTACION) {
           await request(servidor()).get(ruta).expect(404);
         }
@@ -89,7 +89,7 @@ describe('montarDocumentacion', () => {
       async (entorno) => {
         app = await crearApp();
         expect(montarDocumentacion(app, { NODE_ENV: entorno })).toBe(true);
-        await app.listen(0); // una sola vez: sin esto supertest abre un servidor por pedido y falla al azar con carga
+        await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
         await request(servidor()).get('/docs-yaml').expect(200);
       },
     );

@@ -12,6 +12,7 @@ import {
   IncidentType,
 } from './entities/incident.entity';
 import { OrderService } from '../order/order.service';
+import { AdminGateway } from '../gateways/admin.gateway';
 
 /**
  * La incidencia la reporta quien dice el token, hereda la distribuidora del
@@ -19,6 +20,7 @@ import { OrderService } from '../order/order.service';
  */
 describe('IncidentService', () => {
   let service: IncidentService;
+  let admins: { notifyAdmins: jest.Mock };
   let incidents: {
     create: jest.Mock;
     save: jest.Mock;
@@ -45,9 +47,11 @@ describe('IncidentService', () => {
       assertPedidoPropioDelChofer: jest.fn(),
       assertDeLaDistribuidora: jest.fn(),
     };
+    admins = { notifyAdmins: jest.fn() };
     service = new IncidentService(
       incidents as unknown as Repository<Incident>,
       orders as unknown as OrderService,
+      admins as unknown as AdminGateway,
     );
   });
 
@@ -64,6 +68,40 @@ describe('IncidentService', () => {
       reportedBy: 'chofer-1',
       status: IncidentStatus.OPEN,
     });
+  });
+
+  it('avisa a los admins de la distribuidora del pedido', async () => {
+    orders.findById.mockResolvedValue({ orderId: 'o1', distributorId: 'd1' });
+    await service.create(
+      { orderId: 'o1', type: IncidentType.NO_SHOW, description: 'No estaba' },
+      'chofer-1',
+      null,
+      false,
+    );
+    expect(admins.notifyAdmins).toHaveBeenCalledWith(
+      'incident:created',
+      expect.objectContaining({
+        orderId: 'o1',
+        distributorId: 'd1',
+        type: IncidentType.NO_SHOW,
+      }),
+      'd1',
+    );
+  });
+
+  it('si el aviso falla, la incidencia igual queda registrada', async () => {
+    orders.findById.mockResolvedValue({ orderId: 'o1', distributorId: 'd1' });
+    admins.notifyAdmins.mockImplementation(() => {
+      throw new Error('socket caído');
+    });
+    await expect(
+      service.create(
+        { orderId: 'o1', type: IncidentType.NO_SHOW, description: 'x' },
+        'chofer-1',
+        null,
+        false,
+      ),
+    ).resolves.toMatchObject({ distributorId: 'd1' });
   });
 
   describe('tipo cobro impago (sólo por /payment/unpaid)', () => {
@@ -256,6 +294,7 @@ describe('IncidentService', () => {
       const servicioLocal = new IncidentService(
         incidentsFalso as unknown as Repository<Incident>,
         ordersFalso as unknown as OrderService,
+        admins as unknown as AdminGateway,
       );
 
       // Nace de un pedido de "distribuidora-a".

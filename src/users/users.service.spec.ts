@@ -20,7 +20,7 @@ describe('UsersService', () => {
     preload: jest.Mock;
   };
   let firebase: { deleteUserSafe: jest.Mock; updateUser: jest.Mock };
-  let eventos: { emitAsync: jest.Mock };
+  let eventos: { emitAsync: jest.Mock; emit: jest.Mock };
   let orderLookup: {
     countActiveByDelivery: jest.Mock;
     countActiveByCustomer: jest.Mock;
@@ -38,7 +38,7 @@ describe('UsersService', () => {
       preload: jest.fn(),
     };
     firebase = { deleteUserSafe: jest.fn(), updateUser: jest.fn() };
-    eventos = { emitAsync: jest.fn().mockResolvedValue([]) };
+    eventos = { emitAsync: jest.fn().mockResolvedValue([]), emit: jest.fn() };
     redis = { removeDriver: jest.fn().mockResolvedValue(undefined) };
     orderLookup = {
       countActiveByDelivery: jest.fn().mockResolvedValue(0),
@@ -101,6 +101,15 @@ describe('UsersService', () => {
       });
       expect(manager.softRemove).toHaveBeenCalledWith(user);
       expect(users.delete).not.toHaveBeenCalled();
+    });
+
+    it('con la baja hecha corta sus conexiones de tiempo real', async () => {
+      users.findOne.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb' });
+      await service.remove('u1');
+      expect(eventos.emit).toHaveBeenCalledWith(
+        'usuario.acceso-revocado',
+        expect.objectContaining({ userId: 'u1', motivo: 'baja' }),
+      );
     });
 
     describe('no dejar sin administrador', () => {
@@ -570,6 +579,20 @@ describe('UsersService', () => {
         ConflictException,
       );
       expect(m.save).not.toHaveBeenCalled();
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('bloquear corta sus conexiones; desbloquear no', async () => {
+      users.findOne.mockResolvedValue(admin);
+      conManager(1);
+      await service.toggleBlockUser('u1', true);
+      expect(eventos.emit).toHaveBeenCalledWith(
+        'usuario.acceso-revocado',
+        expect.objectContaining({ userId: 'u1', motivo: 'bloqueo' }),
+      );
+      eventos.emit.mockClear();
+      await service.toggleBlockUser('u1', false);
+      expect(eventos.emit).not.toHaveBeenCalled();
     });
 
     it('con otro activo bloquea, y desbloquear no pasa por la regla', async () => {

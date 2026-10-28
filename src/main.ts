@@ -11,6 +11,7 @@ import { montarDocumentacion } from './common/config/documentacion';
 
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { origenesPermitidos } from './common/config/cors-origins';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 
 import morgan from 'morgan';
@@ -74,10 +75,7 @@ async function bootstrap() {
 
   // CORS restringido a una allowlist desde env (CORS_ORIGINS, separada por comas).
   // Sin allowlist configurada: sin orígenes cross-site (política segura por defecto).
-  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const corsOrigins = origenesPermitidos();
 
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : false,

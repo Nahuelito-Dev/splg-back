@@ -11,6 +11,7 @@ import { Claim, ClaimStatus } from './entities/claim.entity';
 import { OrderService } from '../order/order.service';
 import { S3Service } from '../s3/s3.service';
 import { S3CleanupService } from '../s3/s3-cleanup.service';
+import { AdminGateway } from '../gateways/admin.gateway';
 import { RoleType } from '../common/constants/role-type.enum';
 import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
 
@@ -21,6 +22,7 @@ import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
  */
 describe('ClaimsService', () => {
   let service: ClaimsService;
+  let admins: { notifyAdmins: jest.Mock };
   let claims: {
     create: jest.Mock;
     save: jest.Mock;
@@ -86,11 +88,13 @@ describe('ClaimsService', () => {
       confirmUpload: jest.fn().mockResolvedValue(undefined),
       scheduleRemoval: jest.fn().mockResolvedValue(undefined),
     };
+    admins = { notifyAdmins: jest.fn() };
     service = new ClaimsService(
       claims as unknown as Repository<Claim>,
       orders as unknown as OrderService,
       storage as unknown as S3Service,
       cleanup as unknown as S3CleanupService,
+      admins as unknown as AdminGateway,
     );
   });
 
@@ -101,6 +105,34 @@ describe('ClaimsService', () => {
     });
     const claim = await service.create(dto);
     expect(claim.distributorId).toBe('d1');
+  });
+
+  it('avisa del reclamo nuevo a los admins de esa distribuidora', async () => {
+    orders.findOne.mockResolvedValue({ customerId: 'u1', distributorId: 'd1' });
+    await service.create(dto);
+    expect(admins.notifyAdmins).toHaveBeenCalledWith(
+      'claim:created',
+      expect.objectContaining({ distributorId: 'd1', reason: dto.reason }),
+      'd1',
+    );
+  });
+
+  it('si el aviso falla, el reclamo igual se guarda', async () => {
+    orders.findOne.mockResolvedValue({ customerId: 'u1', distributorId: 'd1' });
+    admins.notifyAdmins.mockImplementation(() => {
+      throw new Error('socket caído');
+    });
+    await expect(service.create(dto)).resolves.toMatchObject({
+      distributorId: 'd1',
+    });
+  });
+
+  it('un reclamo rechazado no avisa', async () => {
+    orders.findOne.mockResolvedValue({ customerId: 'otro' });
+    await expect(service.create(dto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(admins.notifyAdmins).not.toHaveBeenCalled();
   });
 
   it('no se puede reclamar un pedido ajeno', async () => {

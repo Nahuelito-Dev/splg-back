@@ -7,7 +7,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Server } from 'socket.io';
+import type { Namespace } from 'socket.io';
 import { RedisService } from '../redis/redis.service';
 import { Logger } from '@nestjs/common';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -15,19 +15,16 @@ import { SocketIdentityService } from './socket-identity.service';
 import { CustomersGateway } from './customers.gateway';
 import { AdminGateway } from './admin.gateway';
 import { errorMessage } from '../common/errors/error-message';
-import type { SocketDeSplg } from './socket-data';
+import { salaDeUsuario, type SocketDeSplg } from './socket-data';
 
 @WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
   namespace: 'drivers',
 })
 export class DriversGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
-  server!: Server;
+  server!: Namespace;
   private readonly logger = new Logger('DriversGateway');
 
   constructor(
@@ -60,6 +57,7 @@ export class DriversGateway
       return;
     }
 
+    await client.join(salaDeUsuario(identidad.userId));
     this.logger.log(`🔌 Chofer conectado: ${identidad.email} (${client.id})`);
   }
 

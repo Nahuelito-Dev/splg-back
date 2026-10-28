@@ -27,6 +27,10 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
 } from '../common/utils/attachment-rules';
 import { limpiarMetadatosDeImagen } from '../s3/limpiar-imagen';
+import { AdminGateway } from '../gateways/admin.gateway';
+
+/** Evento del panel con cada reclamo nuevo de un cliente. */
+export const EVENTO_RECLAMO_CREADO = 'claim:created';
 
 /** Quién pide la foto: el cliente dueño del reclamo o un admin de la distribuidora. */
 export interface ClaimActor {
@@ -48,6 +52,7 @@ export class ClaimsService {
     private readonly orderService: OrderService,
     private readonly storage: S3Service,
     private readonly cleanup: S3CleanupService,
+    private readonly adminGateway: AdminGateway,
   ) {}
 
   async create(
@@ -77,7 +82,30 @@ export class ClaimsService {
       description: createClaimDto.description,
     });
 
-    return await this.claimRepo.save(claim);
+    const guardado = await this.claimRepo.save(claim);
+    this.avisarAAdmins(guardado);
+    return guardado;
+  }
+
+  /** Best-effort: el reclamo ya está guardado. */
+  private avisarAAdmins(claim: Claim): void {
+    try {
+      this.adminGateway.notifyAdmins(
+        EVENTO_RECLAMO_CREADO,
+        {
+          claimId: claim.claimId,
+          orderId: claim.orderId,
+          distributorId: claim.distributorId,
+          reason: claim.reason,
+          createdAt: claim.createdAt,
+        },
+        claim.distributorId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo avisar a los admins del reclamo ${claim.claimId}: ${errorMessage(error)}`,
+      );
+    }
   }
 
   async findAll(distributorId?: string | null): Promise<Claim[]> {

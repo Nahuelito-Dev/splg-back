@@ -38,6 +38,11 @@ import { emailIgualA, normalizarEmail } from '../common/utils/email.util';
 import { bloquearChoferes } from '../common/locks/chofer-lock';
 import { OrderLookupService } from '../order/lookup/order-lookup.service';
 import { RedisService } from '../redis/redis.service';
+import {
+  AccesoRevocadoEvent,
+  EVENTO_ACCESO_REVOCADO,
+  type MotivoAccesoRevocado,
+} from '../common/events/acceso-revocado.event';
 
 /** Intentos para deshabilitar la cuenta de Firebase tras una baja, y la espera entre uno y otro. */
 const INTENTOS_DESHABILITAR_CUENTA = 3;
@@ -297,6 +302,9 @@ export class UsersService {
       await queryRunner.manager.save(user);
       await queryRunner.commitTransaction();
       await queryRunner.release();
+      if (updateUserDto.blocked === true) {
+        this.avisarAccesoRevocado(user.userId, 'bloqueo');
+      }
 
       return user;
     } catch (error) {
@@ -443,6 +451,8 @@ export class UsersService {
         }),
       { context: 'baja de usuario' },
     );
+
+    this.avisarAccesoRevocado(user.userId, 'baja');
 
     // Recién con la baja confirmada sale del radar de despacho. Si Redis
     // falla la baja ya está hecha: se registra, no se revierte.
@@ -672,6 +682,18 @@ export class UsersService {
   }
 
   /**
+   * Corta en el momento las conexiones de tiempo real del usuario. Se llama
+   * con el bloqueo o la baja ya confirmados: si la transacción se revirtiera,
+   * el usuario quedaría desconectado sin motivo.
+   */
+  avisarAccesoRevocado(userId: string, motivo: MotivoAccesoRevocado): void {
+    this.eventos.emit(
+      EVENTO_ACCESO_REVOCADO,
+      new AccesoRevocadoEvent(userId, motivo),
+    );
+  }
+
+  /**
    * Bloquear o desbloquear. Bloquear a un administrador pasa por la misma
    * regla que su baja: no se bloquea al último administrador activo de la
    * distribuidora ni al último super administrador (409).
@@ -696,6 +718,7 @@ export class UsersService {
       await manager.save(actual);
     });
     user.blocked = shouldBlock;
+    if (shouldBlock) this.avisarAccesoRevocado(user.userId, 'bloqueo');
 
     return {
       id: user.userId,
