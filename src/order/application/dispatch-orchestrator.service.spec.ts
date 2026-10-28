@@ -1,4 +1,5 @@
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { EVENTO_NOTIFICAR_ADMIN } from '../../common/events/notificar-admin.event';
 import {
   Order,
   OrderDeliveryMode,
@@ -34,6 +35,7 @@ describe('DispatchOrchestratorService', () => {
   let fleet: { choferesInhabilitados: jest.Mock; choferesEnMoto: jest.Mock };
   let expressSettings: { obtener: jest.Mock };
   let expressDegrade: { pasarAlRepartoComun: jest.Mock };
+  let events: { emit: jest.Mock };
   let truckGate: { choferesQuePuedenRecibir: jest.Mock };
   let offers: {
     create: jest.Mock;
@@ -112,6 +114,7 @@ describe('DispatchOrchestratorService', () => {
         offerTtlSeconds: 20,
       }),
     };
+    events = { emit: jest.fn() };
     expressDegrade = {
       pasarAlRepartoComun: jest.fn().mockResolvedValue({ orderId: 'ord-1' }),
     };
@@ -136,6 +139,7 @@ describe('DispatchOrchestratorService', () => {
       settings as unknown as import('../../distributor/dispatch-settings.service').DispatchSettingsService,
       expressSettings as unknown as import('../../distributor/express-settings.service').ExpressSettingsService,
       expressDegrade as unknown as import('./express-degrade.service').ExpressDegradeService,
+      events as unknown as import('@nestjs/event-emitter').EventEmitter2,
     );
   });
 
@@ -646,6 +650,34 @@ describe('DispatchOrchestratorService', () => {
         }),
         'dist-1',
       );
+    });
+
+    it('pide el aviso de la bandeja con el pedido y el día como clave, una vez por agotamiento', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-28T15:00:00Z'));
+      try {
+        await orchestrator.offerToNextDriver(
+          makeOrder({ distributorId: 'dist-1' }),
+        );
+        expect(events.emit).toHaveBeenCalledWith(
+          EVENTO_NOTIFICAR_ADMIN,
+          expect.objectContaining({
+            distributorId: 'dist-1',
+            kind: 'order_no_drivers',
+            dedupeKey: 'no-drivers:ord-1:2026-10-28',
+            link: { entity: 'order', id: 'ord-1' },
+            email: false,
+          }),
+        );
+
+        events.emit.mockClear();
+        redis.setIfAbsent.mockResolvedValue(false);
+        await orchestrator.offerToNextDriver(
+          makeOrder({ distributorId: 'dist-1' }),
+        );
+        expect(events.emit).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('sin choferes en el radar el motivo es no_drivers_in_range', async () => {

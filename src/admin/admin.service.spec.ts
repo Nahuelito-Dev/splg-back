@@ -61,6 +61,50 @@ describe('AdminService', () => {
     await expect(service.existeSuperAdmin()).resolves.toBe(false);
   });
 
+  describe('emailsDeAdminsActivos', () => {
+    it('acota a la distribuidora y deja afuera bloqueados, dados de baja, sin correo y otros roles', async () => {
+      const q: Record<string, jest.Mock> = {};
+      for (const m of [
+        'innerJoinAndSelect',
+        'innerJoin',
+        'where',
+        'andWhere',
+      ]) {
+        q[m] = jest.fn(() => q);
+      }
+      q.getMany = jest
+        .fn()
+        .mockResolvedValue([
+          { user: { email: 'a@x.com' } },
+          { user: { email: 'a@x.com' } },
+          { user: { email: 'b@x.com' } },
+          { user: {} },
+        ]);
+      admins.createQueryBuilder.mockReturnValue(q);
+
+      const emails = await service.emailsDeAdminsActivos('d1');
+
+      expect(emails).toEqual(['a@x.com', 'b@x.com']);
+      expect(q.where).toHaveBeenCalledWith('a.distributorId = :distributorId', {
+        distributorId: 'd1',
+      });
+      const condiciones = (q.andWhere.mock.calls as string[][]).map(
+        (c) => c[0],
+      );
+      expect(condiciones).toEqual(
+        expect.arrayContaining([
+          'u.blocked = false',
+          'u.deletedAt IS NULL',
+          'u.email IS NOT NULL',
+          'r.type = :tipo',
+        ]),
+      );
+      expect(q.andWhere).toHaveBeenCalledWith('r.type = :tipo', {
+        tipo: RoleType.ADMIN,
+      });
+    });
+  });
+
   it('lista sólo los admins de la distribuidora pedida', async () => {
     admins.find.mockResolvedValue([]);
     await service.findAll('dist-1');

@@ -1,3 +1,4 @@
+import { EVENTO_NOTIFICAR_ADMIN } from '../../common/events/notificar-admin.event';
 import { ReintegroListener } from './reintegro.listener';
 import {
   PagoReintegradoEvent,
@@ -9,6 +10,7 @@ describe('ReintegroListener (CU-168)', () => {
   let orders: { findForRefund: jest.Mock };
   let realtime: { notifyCustomer: jest.Mock; notifyAdmins: jest.Mock };
   let notifications: { sendOrderNoticePush: jest.Mock };
+  let events: { emit: jest.Mock };
   let listener: ReintegroListener;
 
   const reintegro = {
@@ -18,6 +20,7 @@ describe('ReintegroListener (CU-168)', () => {
     distributorId: 'dist-1',
     kind: RefundKind.FULL,
     amount: 3000,
+    attempts: 1,
   };
 
   beforeEach(() => {
@@ -28,10 +31,12 @@ describe('ReintegroListener (CU-168)', () => {
     notifications = {
       sendOrderNoticePush: jest.fn().mockResolvedValue(undefined),
     };
+    events = { emit: jest.fn() };
     listener = new ReintegroListener(
       orders as never,
       realtime as never,
       notifications as never,
+      events as never,
     );
   });
 
@@ -82,6 +87,39 @@ describe('ReintegroListener (CU-168)', () => {
       'dist-1',
     );
     expect(realtime.notifyCustomer).not.toHaveBeenCalled();
+  });
+
+  it('una devolución fallida pide el aviso de la bandeja con el reintegro como clave', () => {
+    listener.onFallido(new ReintegroFallidoEvent(reintegro, 'saldo'));
+
+    expect(events.emit).toHaveBeenCalledWith(
+      EVENTO_NOTIFICAR_ADMIN,
+      expect.objectContaining({
+        distributorId: 'dist-1',
+        kind: 'refund_failed',
+        dedupeKey: 'refund-failed:ref-1:1',
+        link: { entity: 'order', id: 'ord-1234567890' },
+        email: false,
+      }),
+    );
+  });
+
+  it('si el reintento vuelve a fallar, el aviso es nuevo (otra dedupeKey)', () => {
+    listener.onFallido(
+      new ReintegroFallidoEvent({ ...reintegro, attempts: 2 }, 'rechazado'),
+    );
+    expect(events.emit).toHaveBeenLastCalledWith(
+      EVENTO_NOTIFICAR_ADMIN,
+      expect.objectContaining({ dedupeKey: 'refund-failed:ref-1:2' }),
+    );
+  });
+
+  it('un reintegro sin distribuidora no pide aviso a la bandeja', () => {
+    listener.onFallido(
+      new ReintegroFallidoEvent({ ...reintegro, distributorId: null }, 'x'),
+    );
+
+    expect(events.emit).not.toHaveBeenCalled();
   });
 
   it('si el aviso del fallo falla no propaga el error', () => {

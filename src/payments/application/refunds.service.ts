@@ -619,6 +619,7 @@ export class RefundsService {
       distributorId: r.distributorId,
       kind: r.kind,
       amount: r.amount,
+      attempts: r.attempts,
     };
   }
 }

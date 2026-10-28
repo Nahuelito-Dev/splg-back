@@ -6,6 +6,8 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVENTO_NOTIFICAR_ADMIN } from '../common/events/notificar-admin.event';
 import { ClaimsService } from './claims.service';
 import { Claim, ClaimStatus } from './entities/claim.entity';
 import { OrderService } from '../order/order.service';
@@ -23,6 +25,7 @@ import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
 describe('ClaimsService', () => {
   let service: ClaimsService;
   let admins: { notifyAdmins: jest.Mock };
+  let events: { emit: jest.Mock };
   let claims: {
     create: jest.Mock;
     save: jest.Mock;
@@ -89,12 +92,14 @@ describe('ClaimsService', () => {
       scheduleRemoval: jest.fn().mockResolvedValue(undefined),
     };
     admins = { notifyAdmins: jest.fn() };
+    events = { emit: jest.fn() };
     service = new ClaimsService(
       claims as unknown as Repository<Claim>,
       orders as unknown as OrderService,
       storage as unknown as S3Service,
       cleanup as unknown as S3CleanupService,
       admins as unknown as AdminGateway,
+      events as unknown as EventEmitter2,
     );
   });
 
@@ -115,6 +120,34 @@ describe('ClaimsService', () => {
       expect.objectContaining({ distributorId: 'd1', reason: dto.reason }),
       'd1',
     );
+  });
+
+  it('pide el aviso de la bandeja con el reclamo como clave y destino', async () => {
+    orders.findOne.mockResolvedValue({ customerId: 'u1', distributorId: 'd1' });
+    claims.save.mockImplementationOnce((c: Claim) =>
+      Promise.resolve({ ...c, claimId: 'c-1' }),
+    );
+    await service.create(dto);
+    expect(events.emit).toHaveBeenCalledWith(
+      EVENTO_NOTIFICAR_ADMIN,
+      expect.objectContaining({
+        distributorId: 'd1',
+        kind: 'claim_created',
+        title: 'Nuevo reclamo',
+        body: 'Pedido #O1: Fuga',
+        dedupeKey: 'claim:c-1',
+        link: { entity: 'claim', id: 'c-1' },
+        email: false,
+      }),
+    );
+  });
+
+  it('un reclamo rechazado no pide aviso a la bandeja', async () => {
+    orders.findOne.mockResolvedValue({ customerId: 'otro' });
+    await expect(service.create(dto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(events.emit).not.toHaveBeenCalled();
   });
 
   it('si el aviso falla, el reclamo igual se guarda', async () => {

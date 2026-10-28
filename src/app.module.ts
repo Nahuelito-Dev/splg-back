@@ -65,6 +65,7 @@ import { JoiValidationSchema } from './common/config/joi.validation';
 import { RedisModule } from './redis/redis.module';
 import { ImportModule } from './import/import.module';
 import { ClaimsModule } from './claims/claims.module';
+import { AdminNotificationsModule } from './admin-notifications/admin-notifications.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { PdfModule } from './pdf/pdf.module';
 import { ReportsModule } from './reports/reports.module';
@@ -215,6 +216,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     UserAddressModule,
     RedisModule,
     ClaimsModule,
+    AdminNotificationsModule,
     TimeSlotModule,
     ReportsModule,
     PdfModule,
