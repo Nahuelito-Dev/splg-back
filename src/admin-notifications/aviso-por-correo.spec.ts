@@ -12,6 +12,15 @@ function aviso(parcial: Partial<AdminNotification>): AdminNotification {
 }
 
 describe('aviso por correo', () => {
+  it('F11: lleva a la tarea de flota y al legajo', () => {
+    expect(
+      rutaDelPanelDelAviso(aviso({ linkEntity: 'fleet-task', linkId: 't1' })),
+    ).toBe('fleet/tasks/t1');
+    expect(
+      rutaDelPanelDelAviso(aviso({ linkEntity: 'employee', linkId: 'e1' })),
+    ).toBe('employees/details/e1?tab=documents');
+  });
+
   it('lleva al pedido, al reclamo y a la incidencia; una entidad desconocida, a la portada', () => {
     expect(
       rutaDelPanelDelAviso(aviso({ linkEntity: 'order', linkId: 'o 1' })),
