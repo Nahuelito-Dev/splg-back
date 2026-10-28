@@ -458,6 +458,9 @@
         "functions": 39,
         "lines": 73
       }
-    }
+    },
+    "setupFiles": [
+      "<rootDir>/../test/jest-sin-keep-alive.ts"
+    ]
   }
 }
