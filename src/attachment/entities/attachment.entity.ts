@@ -23,6 +23,8 @@ export enum AttachmentOwnerType {
   CASH_MOVEMENT = 'cash_movement',
   CUSTOMER_ACCOUNT_ENTRY = 'customer_account_entry',
   ORDER = 'order',
+  INSURANCE_POLICY = 'insurance_policy',
+  INSURANCE_INSTALLMENT = 'insurance_installment',
 }
 
 /**

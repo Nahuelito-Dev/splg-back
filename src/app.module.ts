@@ -36,6 +36,7 @@ import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
 import { CylinderModule } from './cylinder/cylinder.module';
 import { FleetModule } from './fleet/fleet.module';
 import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
+import { InsuranceModule } from './insurance/insurance.module';
 import { CartModule } from './cart/cart.module';
 import { RepurchaseModule } from './repurchase/repurchase.module';
 import { AuditModule } from './audit/audit.module';
@@ -229,6 +230,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     CylinderModule,
     FleetModule,
     FleetExpenseModule,
+    InsuranceModule,
     CartModule,
     RepurchaseModule,
     AuditModule,

@@ -21,6 +21,14 @@ describe('aviso por correo', () => {
     ).toBe('employees/details/e1?tab=documents');
   });
 
+  it('F14: el aviso del seguro lleva a la pestaña de seguro del vehículo', () => {
+    expect(
+      rutaDelPanelDelAviso(
+        aviso({ linkEntity: 'car-insurance', linkId: 'c 1' }),
+      ),
+    ).toBe('cars/details/c%201?tab=insurance');
+  });
+
   it('lleva al pedido, al reclamo y a la incidencia; una entidad desconocida, a la portada', () => {
     expect(
       rutaDelPanelDelAviso(aviso({ linkEntity: 'order', linkId: 'o 1' })),

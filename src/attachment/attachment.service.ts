@@ -43,6 +43,21 @@ export const OWNER_TYPES_DEL_CHOFER: readonly AttachmentOwnerType[] = [
   AttachmentOwnerType.DRIVER_SETTLEMENT,
 ];
 
+/**
+ * Dueños cuyos adjuntos entran y salen sólo por el endpoint de su módulo (con sus
+ * reglas: tipo de archivo, estado del dueño, escaneo): el endpoint genérico
+ * `/attachments` no los sube ni los da de baja.
+ */
+export const OWNER_TYPES_SOLO_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
+  [AttachmentOwnerType.INSURANCE_INSTALLMENT];
+
+/** Mensaje de 400 del endpoint genérico para esos dueños. */
+export function mensajeSoloPorSuEndpoint(
+  ownerType: AttachmentOwnerType,
+): string {
+  return `Los adjuntos de "${ownerType}" no se suben ni se dan de baja por /attachments: usá el endpoint de su módulo (POST /insurance-installments/:id/receipt)`;
+}
+
 /** Trabajo extra que corre en la MISMA transacción que guarda el adjunto. */
 export interface AttachmentUploadHooks {
   dentro?: (manager: EntityManager, attachment: Attachment) => Promise<void>;
@@ -144,6 +159,23 @@ export class AttachmentService {
     }
   }
 
+  /**
+   * El adjunto `attachmentId` si es de ese dueño y de esa distribuidora (y no
+   * está dado de baja); `null` si no. Va con el `manager` de quien lo usa para
+   * validarlo dentro de su transacción.
+   */
+  findDelDueno(
+    manager: EntityManager,
+    attachmentId: string,
+    ownerType: AttachmentOwnerType,
+    ownerId: string,
+    distributorId: string,
+  ): Promise<Attachment | null> {
+    return manager.findOne(Attachment, {
+      where: { attachmentId, ownerType, ownerId, distributorId },
+    });
+  }
+
   async list(
     ownerType: AttachmentOwnerType,
     ownerId: string,
@@ -208,6 +240,11 @@ export class AttachmentService {
       distributorId,
       actor,
     );
+    if (OWNER_TYPES_SOLO_POR_SU_ENDPOINT.includes(attachment.ownerType)) {
+      throw new BadRequestException(
+        mensajeSoloPorSuEndpoint(attachment.ownerType),
+      );
+    }
     // El chofer sólo borra lo que subió él, aunque el dueño sea suyo.
     if (
       actor.role === RoleType.DELIVERY &&

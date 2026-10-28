@@ -30,6 +30,7 @@ import { FleetExpirationsService } from './fleet-expirations.service';
 import { FleetPlanSeedListener } from './fleet-plan-seed.listener';
 import { FleetAlertsCron } from './fleet-alerts.cron';
 import { FleetCostSourceService } from './fleet-cost-source.service';
+import { FleetInsuranceSyncService } from './fleet-insurance-sync.service';
 import { FleetVehicleStatusService } from './fleet-vehicle-status.service';
 import { CarReactivationController } from './car-reactivation.controller';
 
@@ -79,6 +80,7 @@ import { CarReactivationController } from './car-reactivation.controller';
     EmployeeDocumentsService,
     FleetCostSourceService,
     FleetVehicleStatusService,
+    FleetInsuranceSyncService,
   ],
   // FleetTaskService: fachadas de sólo lectura de la flota (`/cars/:id/documents`,
   // `/fleet/*`). FleetDispatchLockService: el gate único de bloqueo que usa
@@ -88,6 +90,7 @@ import { CarReactivationController } from './car-reactivation.controller';
     FleetDispatchLockService,
     EmployeeDocumentsService, // el tablero de personal cuenta los documentos por estado
     FleetCostSourceService,
+    FleetInsuranceSyncService, // el alta de una póliza deja el seguro del vehículo con su vencimiento
   ],
 })
 export class FleetModule implements OnModuleInit {

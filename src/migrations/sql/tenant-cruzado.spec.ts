@@ -4,9 +4,11 @@ import { getMetadataArgsStorage } from 'typeorm';
 import {
   CLAVE_DEL_PADRE,
   CLAVES_CRUZADAS,
+  CLAVES_CRUZADAS_POSTERIORES,
   nombreDeLaClave,
   nombreDelUnicoDelPadre,
   PADRES,
+  PADRES_POSTERIORES,
   sqlDeClave,
   sqlDeUnicoDelPadre,
   sqlDeViolaciones,
@@ -47,13 +49,15 @@ describe('Tenant cruzado: la base y las entidades dicen lo mismo', () => {
           referenciadas: f.referencedColumnNames,
         };
       });
-    const esperadas = CLAVES_CRUZADAS.map(([hijo, columna, padre]) => ({
-      nombre: nombreDeLaClave(hijo, columna),
-      hijo,
-      columnas: [columna, 'distributor_id'],
-      padre,
-      referenciadas: [CLAVE_DEL_PADRE[padre], 'distributor_id'],
-    }));
+    const esperadas = [...CLAVES_CRUZADAS, ...CLAVES_CRUZADAS_POSTERIORES].map(
+      ([hijo, columna, padre]) => ({
+        nombre: nombreDeLaClave(hijo, columna),
+        hijo,
+        columnas: [columna, 'distributor_id'],
+        padre,
+        referenciadas: [CLAVE_DEL_PADRE[padre], 'distributor_id'],
+      }),
+    );
     const orden = (
       a: { nombre?: string | undefined },
       b: { nombre?: string | undefined },
@@ -63,7 +67,7 @@ describe('Tenant cruzado: la base y las entidades dicen lo mismo', () => {
 
   it('cada padre declara su único (id, distributor_id)', () => {
     const uniques = storage().uniques.map((u) => u.name);
-    for (const padre of PADRES) {
+    for (const padre of [...PADRES, ...PADRES_POSTERIORES]) {
       expect(uniques).toContain(nombreDelUnicoDelPadre(padre));
     }
   });

@@ -89,6 +89,8 @@ export function motivoDeNoAnulable(tipo: CashReferenceType): string | null {
       return 'Es el pago en efectivo de una multa: una multa pagada no se anula ni se edita; el desvío se corrige con un movimiento manual que lo explique';
     case CashReferenceType.ORDER_PAYMENT:
       return 'Es el cobro en efectivo de un pedido. Si la caja fue la equivocada, se corrige con una transferencia entre cajas (CU-310); el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
+    case CashReferenceType.INSURANCE_INSTALLMENT:
+      return 'Es el pago de una cuota de seguro: una cuota paga no se reabre; el desvío se corrige con un movimiento manual que lo explique';
     case CashReferenceType.REVERSAL:
       return 'Es una anulación: no se anula. Si estuvo mal, registrá un movimiento nuevo';
   }

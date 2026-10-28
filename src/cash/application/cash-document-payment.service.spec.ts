@@ -1,7 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import {
+  CashBoxKind,
   CashDirection,
+  CashMethod,
   CashReferenceType,
   CashSystemCode,
 } from '../domain/cash.enums';
@@ -61,6 +63,33 @@ describe('CashDocumentPaymentService', () => {
       );
     });
 
+    it('con las tres clases admitidas aceptan efectivo, banco y billetera', async () => {
+      const todas = [CashBoxKind.CASH, CashBoxKind.BANK, CashBoxKind.WALLET];
+      for (const kind of todas) {
+        manager.query.mockResolvedValue([{ kind }]);
+        await expect(service.cajaDelPago(m(), 'd1', 'c1', todas)).resolves.toBe(
+          'c1',
+        );
+      }
+    });
+
+    it('una clase fuera de las admitidas es 400 con el mensaje de las tres clases', async () => {
+      manager.query.mockResolvedValue([{ kind: 'wallet' }]);
+      await expect(
+        service.cajaDelPago(m(), 'd1', 'c1', [
+          CashBoxKind.CASH,
+          CashBoxKind.BANK,
+        ]),
+      ).rejects.toThrow(/efectivo, de banco o de billetera/);
+    });
+
+    it('la caja inexistente sigue siendo 404 con las tres clases', async () => {
+      manager.query.mockResolvedValue([]);
+      await expect(
+        service.cajaDelPago(m(), 'd1', 'c1', [CashBoxKind.BANK]),
+      ).rejects.toBeInstanceOf(CajaNoEncontradaError);
+    });
+
     it('sin caja y con cajas de efectivo activas es 400', async () => {
       manager.query.mockResolvedValue([{ n: '2' }]);
       await expect(service.cajaDelPago(m(), 'd1')).rejects.toThrow(/cashBoxId/);
@@ -97,6 +126,49 @@ describe('CashDocumentPaymentService', () => {
         referenceType: CashReferenceType.PURCHASE_RECEIPT,
         referenceId: 'r1',
       }),
+    );
+  });
+
+  describe('medioDeLaCaja', () => {
+    it.each([
+      ['cash', CashMethod.CASH],
+      ['bank', CashMethod.TRANSFER],
+      ['wallet', CashMethod.MERCADOPAGO],
+    ])('una caja %s paga con %s', async (kind, medio) => {
+      manager.query.mockResolvedValue([{ kind }]);
+      await expect(service.medioDeLaCaja(m(), 'd1', 'c1')).resolves.toBe(medio);
+    });
+
+    it('una caja de otra distribuidora es 404', async () => {
+      manager.query.mockResolvedValue([]);
+      await expect(
+        service.medioDeLaCaja(m(), 'd2', 'c1'),
+      ).rejects.toBeInstanceOf(CajaNoEncontradaError);
+    });
+  });
+
+  it('egresar usa el medio indicado, y efectivo si no se indica', async () => {
+    const egreso = {
+      distributorId: 'd1',
+      cashBoxId: 'c1',
+      amount: 100,
+      systemCode: CashSystemCode.INSURANCE,
+      referenceType: CashReferenceType.INSURANCE_INSTALLMENT,
+      referenceId: 'q1',
+      description: 'Seguro',
+      userId: 'u1',
+    };
+    await service.egresar(m(), { ...egreso, method: CashMethod.TRANSFER });
+    await service.egresar(m(), egreso);
+    expect(ledger.registrar).toHaveBeenNthCalledWith(
+      1,
+      manager,
+      expect.objectContaining({ method: CashMethod.TRANSFER }),
+    );
+    expect(ledger.registrar).toHaveBeenNthCalledWith(
+      2,
+      manager,
+      expect.objectContaining({ method: CashMethod.CASH }),
     );
   });
 
