@@ -1,9 +1,14 @@
+import {
+  esperaPagoOnline,
+  MENSAJE_MP_SIN_PAGAR,
+} from '../domain/espera-pago-online';
 import { OrderItem } from '../entities/order-item.entity';
 import {
   Injectable,
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -531,6 +536,10 @@ export class UpdateOrderStatusUseCase {
   ): Promise<EfectosDelEstado> {
     switch (status) {
       case OrderStatus.ACCEPTED: {
+        // Ni el chofer ni el admin toman un pedido que espera el pago online.
+        if (esperaPagoOnline(order)) {
+          throw new ConflictException(MENSAJE_MP_SIN_PAGAR);
+        }
         if (!deliveryId || deliveryId.trim() === '') {
           throw new BadRequestException(
             'Se requiere un repartidor para aceptar el pedido',

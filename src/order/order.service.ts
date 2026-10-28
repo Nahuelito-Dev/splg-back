@@ -1,3 +1,7 @@
+import {
+  esperaPagoOnline,
+  MENSAJE_MP_SIN_PAGAR,
+} from './domain/espera-pago-online';
 import { OrderItem } from './entities/order-item.entity';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import {
@@ -793,6 +797,16 @@ export class OrderService {
         ofertasRetiradas = [];
         await queryRunner.commitTransaction();
         return await this.releerAsignado(order);
+      }
+      // Un pedido de Mercado Pago no sale hasta que se apruebe el pago (salvo
+      // la reserva con seña paga). Sólo en los estados que se asignan: uno
+      // cerrado sigue respondiendo la transición inválida.
+      if (
+        (locked.status === OrderStatus.PENDING ||
+          locked.status === OrderStatus.ACCEPTED) &&
+        esperaPagoOnline(locked)
+      ) {
+        throw new ConflictException(MENSAJE_MP_SIN_PAGAR);
       }
       this.deliveries.assertElegibleParaAsignacion(delivery);
       // Con el chofer bloqueado (el mismo lock que `ponerEnUso`, la baja y la

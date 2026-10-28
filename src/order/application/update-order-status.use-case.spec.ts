@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -295,6 +296,22 @@ describe('UpdateOrderStatusUseCase', () => {
         'drv-1',
       );
       expect(result.acceptedAt).toEqual(HORA_DE_LA_BASE);
+    });
+
+    it('F9: el chofer no acepta un pedido de Mercado Pago sin pagar (409) y no se guarda nada', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+          paymentStatus: PaymentStatus.PENDING,
+          depositPaid: false,
+        }),
+      );
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
 
     it('relee los renglones DESPUÉS del lock: guarda los vigentes y no los que trajo el JOIN', async () => {

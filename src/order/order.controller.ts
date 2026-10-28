@@ -536,6 +536,10 @@ export class OrderController {
       '`delivered` (la entrega se confirma con el QR del cliente)',
   })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiConflictResponse({
+    description:
+      'Aceptar (`accepted`) un pedido de Mercado Pago cuyo pago todavía no está aprobado (salvo una reserva con la seña paga)',
+  })
   @ApiBadRequestResponse({
     description:
       'Transición de pedido inválida: cancelled → accepted · status debe ser uno de: reserved, pending, accepted, ' +
@@ -834,6 +838,10 @@ export class OrderController {
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
   @ApiOkResponse({ type: OrderResponseDto, description: 'Chofer asignado' })
   @ApiResponse({ status: 404, description: 'Order or delivery not found' })
+  @ApiConflictResponse({
+    description:
+      'El pedido se paga con Mercado Pago y el pago todavía no está aprobado',
+  })
   @ApiBadRequestResponse({
     description:
       'El repartidor está deshabilitado, no está validado, o tiene un ' +

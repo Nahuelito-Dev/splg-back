@@ -370,6 +370,31 @@ describe('DispatchOrchestratorService', () => {
   });
 
   describe('offerToNextDriver', () => {
+    it('F9: un pedido común de Mercado Pago sin pagar no se ofrece (se despacha al aprobarse el pago)', async () => {
+      const sinPagar = makeOrder({
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PENDING,
+        depositPaid: false,
+      });
+      orders.findByIdFull.mockResolvedValue(sinPagar);
+
+      expect(await orchestrator.offerToNextDriver(sinPagar)).toBeNull();
+      expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('F9: una reserva de Mercado Pago con la seña paga sí se ofrece', async () => {
+      const conSena = makeOrder({
+        paymentMethod: PaymentMethod.MERCADOPAGO,
+        paymentStatus: PaymentStatus.PENDING,
+        depositPaid: true,
+      });
+      orders.findByIdFull.mockResolvedValue(conSena);
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+
+      expect(await orchestrator.offerToNextDriver(conSena)).toBe('near');
+    });
+
     it('ofrece al chofer MÁS CERCANO (primero de la lista ASC) y crea la oferta con TTL 30s', async () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['near', 'far']);
 
