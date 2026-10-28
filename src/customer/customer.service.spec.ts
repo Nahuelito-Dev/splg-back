@@ -1,7 +1,12 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { EntityManager, Repository } from 'typeorm';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Brackets, EntityManager, Repository } from 'typeorm';
 import { CustomersService } from './customer.service';
 import { Customer } from './entities/customer.entity';
+import { CustomerDistributor } from './entities/customer-distributor.entity';
 import { CustomerStatusFilter } from './dto/query-customers.dto';
 
 /**
@@ -168,6 +173,223 @@ describe('CustomersService', () => {
       expect(customers.create).toHaveBeenCalledWith(
         expect.objectContaining(consumo),
       );
+    });
+  });
+  describe('pertenencia a una distribuidora', () => {
+    it('vincula al cliente con quien lo dio de alta; el duplicado reactiva sin repetir', async () => {
+      const execute = jest.fn();
+      const orUpdate = jest.fn().mockReturnValue({ execute });
+      const values = jest.fn().mockReturnValue({ orUpdate });
+      const into = jest.fn().mockReturnValue({ values });
+      const manager = {
+        createQueryBuilder: () => ({ insert: () => ({ into }) }),
+      } as unknown as EntityManager;
+
+      await service.vincularConDistribuidora(manager, 'u1', 'd1', 'admin-1');
+
+      expect(into).toHaveBeenCalledWith(CustomerDistributor);
+      expect(values).toHaveBeenCalledWith({
+        userId: 'u1',
+        distributorId: 'd1',
+        createdByUserId: 'admin-1',
+      });
+      expect(orUpdate).toHaveBeenCalledWith(
+        ['removed_at', 'removed_by_user_id'],
+        ['user_id', 'distributor_id'],
+      );
+      expect(execute).toHaveBeenCalled();
+    });
+
+    it('reactivarVinculo sólo toca vínculos dados de baja', async () => {
+      const execute = jest.fn();
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute,
+      };
+      const manager = {
+        createQueryBuilder: () => qb,
+      } as unknown as EntityManager;
+
+      await service.reactivarVinculo(manager, 'u1', 'd1');
+
+      expect(qb.set).toHaveBeenCalledWith({
+        removedAt: null,
+        removedByUserId: null,
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('removed_at IS NOT NULL');
+      expect(execute).toHaveBeenCalled();
+    });
+
+    it('un cliente que no es de la distribuidora es 404; uno que sí, pasa', async () => {
+      const getExists = jest
+        .fn()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getExists,
+      };
+      (
+        customers as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await expect(
+        service.assertDeLaDistribuidora({ customer_id: 'c1' }, 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.assertDeLaDistribuidora({ user_id: 'u1' }, 'd1'),
+      ).resolves.toBeUndefined();
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('customer_distributor'),
+        { distributorId: 'd1' },
+      );
+    });
+  });
+
+  describe('baja del cliente en la distribuidora', () => {
+    let query: jest.Mock;
+    let execute: jest.Mock;
+    let values: jest.Mock;
+
+    beforeEach(() => {
+      query = jest.fn();
+      execute = jest.fn();
+      values = jest.fn().mockReturnValue({
+        orUpdate: jest.fn().mockReturnValue({ execute }),
+      });
+      const manager = {
+        query,
+        createQueryBuilder: () => ({
+          insert: () => ({ into: () => ({ values }) }),
+        }),
+      };
+      Object.assign(customers, {
+        manager: {
+          transaction: (fn: (m: unknown) => Promise<void>) => fn(manager),
+        },
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getExists: jest.fn().mockResolvedValue(true),
+        }),
+      });
+      customers.findOne.mockResolvedValue(cliente());
+    });
+
+    it('sin pedidos en curso registra la baja con quien la hizo', async () => {
+      query
+        .mockResolvedValueOnce([{ deleted: false }])
+        .mockResolvedValueOnce([]);
+
+      await service.darDeBajaEnDistribuidora('c1', 'd1', 'admin-1');
+
+      const fila = (values.mock.calls[0] as [Record<string, unknown>])[0];
+      expect(fila).toMatchObject({
+        userId: 'u1',
+        distributorId: 'd1',
+        removedByUserId: 'admin-1',
+      });
+      expect(execute).toHaveBeenCalled();
+    });
+
+    it('con pedidos en curso es 409 y no registra nada', async () => {
+      query
+        .mockResolvedValueOnce([{ deleted: false }])
+        .mockResolvedValueOnce([{ '?column?': 1 }]);
+
+      await expect(
+        service.darDeBajaEnDistribuidora('c1', 'd1', 'admin-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(execute).not.toHaveBeenCalled();
+      const params = (query.mock.calls[1] as [string, unknown[]])[1];
+      expect(params[2]).toEqual([
+        'reserved',
+        'pending',
+        'accepted',
+        'on_the_way',
+      ]);
+    });
+
+    it('si el cliente no es de la distribuidora es 404', async () => {
+      (
+        customers as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getExists: jest.fn().mockResolvedValue(false),
+      });
+
+      await expect(
+        service.darDeBajaEnDistribuidora('c1', 'd1', 'admin-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('reactivar sin un vínculo dado de baja en esa distribuidora es 404', async () => {
+      const execute = jest.fn().mockResolvedValue({ affected: 0 });
+      const qb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute,
+      };
+      Object.assign(customers, {
+        manager: { createQueryBuilder: () => qb },
+      });
+      await expect(
+        service.reactivarEnDistribuidora('c1', 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      execute.mockResolvedValue({ affected: 1 });
+      await service.reactivarEnDistribuidora('c1', 'd1');
+      expect(qb.set).toHaveBeenCalledWith({
+        removedAt: null,
+        removedByUserId: null,
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('removed_at IS NOT NULL');
+    });
+
+    it('el listado de removidos filtra por la distribuidora y busca sin correo', async () => {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      (
+        customers as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.findRemoved({ term: 'ana' }, 'd1');
+
+      expect(qb.where).toHaveBeenCalledWith(
+        expect.stringContaining('removed_at IS NOT NULL'),
+        { distributorId: 'd1' },
+      );
+      const condiciones: string[] = [];
+      const fake = {
+        where: (c: string) => {
+          condiciones.push(c);
+          return fake;
+        },
+        orWhere: (c: string) => {
+          condiciones.push(c);
+          return fake;
+        },
+      };
+      const brackets = (qb.andWhere.mock.calls[0] as [Brackets])[0];
+      brackets.whereFactory(fake as never);
+      expect(condiciones.join(' ')).toContain('fullName');
+      expect(condiciones.join(' ')).toContain('phoneNumber');
+      expect(condiciones.join(' ')).not.toContain('email');
     });
   });
 });

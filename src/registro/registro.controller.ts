@@ -16,6 +16,7 @@ import {
 } from './dto/registrar-usuario.dto';
 import { Public } from '../common/decorators/isPublic.decorator';
 import { Auth } from '../common/decorators/auth.decorator';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -99,11 +100,13 @@ export class RegistroController {
   async registrar(
     @Body() dto: RegistrarUsuarioDto,
     @CurrentUser() usuario: AuthenticatedUser,
+    @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto> {
-    const user = await this.registro.registrar(dto, {
-      tipo: 'usuario',
-      usuario,
-    });
+    const user = await this.registro.registrar(
+      dto,
+      { tipo: 'usuario', usuario },
+      distributorId,
+    );
     return UserMapper.toDto(user);
   }
 }

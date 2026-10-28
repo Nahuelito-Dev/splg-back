@@ -398,7 +398,7 @@ export class UsersController {
   /**
    * Un administrador con distribuidora en contexto (admin de empresa, o super
    * admin con "ver como") sólo ve usuarios de ella: sus choferes, sus admins
-   * y los clientes que le compraron. Si no, 404: no se revela que existe
+   * y los clientes que le compraron o que ella dio de alta. Si no, 404: no se revela que existe
    * (H-66).
    */
   /**

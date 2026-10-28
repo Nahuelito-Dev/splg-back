@@ -7,12 +7,14 @@ import {
   Patch,
   Param,
   Delete,
+  Post,
   Query,
   Res,
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
   ForbiddenException,
+  Version,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -24,6 +26,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
+  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
 import { UpdateCustomerLocationDto } from './dto/update-customer-location.dto';
@@ -70,6 +73,31 @@ export class CustomersController {
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<CustomerResponseDto[]> {
     const [customers, total] = await this.customersService.findAll(
+      paginationDto,
+      distributorId,
+    );
+    informarTotal(res, total);
+    await this.userPhoto.firmar(
+      customers.flatMap((c) => (c.user ? [c.user] : [])),
+    );
+    return customers.map((c) => CustomerMapper.toDto(c));
+  }
+
+  @Get('removed')
+  @Version('2')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary:
+      'Clientes que la distribuidora dio de baja (búsqueda por nombre o teléfono)',
+  })
+  @ApiOkResponse({ type: CustomerResponseDto, isArray: true })
+  @ApiTotal()
+  async findRemoved(
+    @Query() paginationDto: QueryCustomersDto,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string,
+  ): Promise<CustomerResponseDto[]> {
+    const [customers, total] = await this.customersService.findRemoved(
       paginationDto,
       distributorId,
     );
@@ -196,6 +224,51 @@ export class CustomersController {
       );
     }
     return this.customersService.remove(id);
+  }
+
+  @Delete(':id/distributor')
+  @Version('2')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary:
+      'Dar de baja al cliente en la distribuidora (no toca su cuenta ni sus pedidos)',
+  })
+  @ApiParam({ name: 'id', description: 'Customer UUID' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiNotFoundResponse({
+    description: 'El cliente no es de esa distribuidora',
+  })
+  @ApiConflictResponse({ description: 'Tiene pedidos en curso' })
+  @HttpCode(HttpStatus.OK)
+  async removeFromDistributor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string,
+  ): Promise<MessageResponseDto> {
+    return this.customersService.darDeBajaEnDistribuidora(
+      id,
+      distributorId,
+      user.user_id,
+    );
+  }
+
+  @Post(':id/distributor')
+  @Version('2')
+  @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Reactivar al cliente dado de baja en la distribuidora',
+  })
+  @ApiParam({ name: 'id', description: 'Customer UUID' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiNotFoundResponse({
+    description: 'No hay un cliente dado de baja con esa distribuidora',
+  })
+  @HttpCode(HttpStatus.OK)
+  async restoreInDistributor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string,
+  ): Promise<MessageResponseDto> {
+    return this.customersService.reactivarEnDistribuidora(id, distributorId);
   }
 
   /**

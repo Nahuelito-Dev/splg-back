@@ -31,7 +31,7 @@ describe('CreateOrderUseCase', () => {
     isTransactionActive: boolean;
     manager: { save: jest.Mock; query: jest.Mock };
   };
-  let customers: { buscarComprador: jest.Mock };
+  let customers: { buscarComprador: jest.Mock; reactivarVinculo: jest.Mock };
   let addresses: { buscarDelUsuario: jest.Mock };
   let orderItemRepository: { create: jest.Mock };
   let orderRepository: { create: jest.Mock };
@@ -81,6 +81,7 @@ describe('CreateOrderUseCase', () => {
       buscarComprador: jest.fn().mockResolvedValue({
         email: 'cliente@test.com',
       }),
+      reactivarVinculo: jest.fn().mockResolvedValue(undefined),
     };
     addresses = {
       buscarDelUsuario: jest.fn().mockResolvedValue({
@@ -464,6 +465,20 @@ describe('CreateOrderUseCase', () => {
         paymentMethod: PaymentMethod.CASH,
       });
       expect(result.order.orderId).toBeDefined();
+    });
+  });
+
+  describe('vínculo del cliente con la distribuidora', () => {
+    it('un pedido nuevo reactiva el vínculo dado de baja, en la transacción del pedido', async () => {
+      await useCase.execute(
+        { ...baseDto, paymentMethod: PaymentMethod.CASH },
+        'dist-default',
+      );
+      expect(customers.reactivarVinculo).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'cust-1',
+        'dist-default',
+      );
     });
   });
 

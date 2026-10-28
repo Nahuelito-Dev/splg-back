@@ -68,10 +68,20 @@ export class RegistroService {
   async registrar(
     datos: RegistrarUsuarioDto,
     solicitante: Solicitante,
+    distribuidoraEnContexto: string | null = null,
   ): Promise<User> {
     const alta = autorizarAlta(solicitante, datos.rol, datos.distributorId);
     if (alta.distributorId) {
       await this.distributors.assertActive(alta.distributorId);
+    }
+    const vinculo = this.distribuidoraDelCliente(
+      alta,
+      solicitante,
+      datos,
+      distribuidoraEnContexto,
+    );
+    if (vinculo && vinculo !== alta.distributorId) {
+      await this.distributors.assertActive(vinculo);
     }
 
     const rol = await this.roles.findByType(alta.rol);
@@ -124,6 +134,14 @@ export class RegistroService {
           roleId: rol.roleId,
         });
         await this.crearPerfil(manager, user.userId, alta, datos, consumo);
+        if (vinculo && solicitante.tipo === 'usuario') {
+          await this.customers.vincularConDistribuidora(
+            manager,
+            user.userId,
+            vinculo,
+            solicitante.usuario.user_id,
+          );
+        }
         return user.userId;
       });
     } catch (error) {
@@ -136,6 +154,26 @@ export class RegistroService {
       new UsuarioRegistradoEvent(userId, email, datos.full_name, alta.rol),
     );
     return this.users.findOne(userId);
+  }
+
+  /**
+   * La distribuidora que queda dueña de un cliente dado de alta desde el
+   * panel: la del admin que lo crea; para un super admin, la que indique
+   * (cuerpo) o la del contexto (`X-Distributor`). Sin ninguna, el cliente
+   * queda sólo en la plataforma. Un alta pública o del sistema no vincula.
+   */
+  private distribuidoraDelCliente(
+    alta: AltaAutorizada,
+    solicitante: Solicitante,
+    datos: RegistrarUsuarioDto,
+    contexto: string | null,
+  ): string | null {
+    if (alta.rol !== RoleType.CUSTOMER || solicitante.tipo !== 'usuario') {
+      return null;
+    }
+    const { usuario } = solicitante;
+    if (usuario.role === RoleType.ADMIN) return usuario.distributor_id ?? null;
+    return datos.distributorId ?? contexto ?? usuario.distributor_id ?? null;
   }
 
   /** El perfil que corresponde al rol, por el servicio dueño de su tabla. */

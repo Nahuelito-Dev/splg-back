@@ -333,6 +333,12 @@ export class CreateOrderUseCase {
       });
 
       const savedOrder = await queryRunner.manager.save(order);
+      // Si la distribuidora lo había dado de baja, comprar de nuevo lo reactiva.
+      await this.customers.reactivarVinculo(
+        queryRunner.manager,
+        createOrderDto.customerId,
+        distributorId as string,
+      );
       // El carrito se vacía en la misma transacción: si el pedido falla, queda intacto.
       if (createOrderDto.fromCart) {
         await this.cart.vaciarEnTransaccion(
