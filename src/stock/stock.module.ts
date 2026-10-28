@@ -104,6 +104,7 @@ import { WarehouseController } from './presentation/warehouse.controller';
     StockLocationService,
     StockOnHandService,
     StockQueryService,
+    StockAdjustmentUseCase, // la importación masiva de stock
   ],
 })
 export class StockModule {}

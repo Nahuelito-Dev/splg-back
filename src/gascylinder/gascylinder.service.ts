@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -88,54 +89,134 @@ export class GasCylinderService {
     createGasCylinderDto: CreateGasCylinderDto,
     distributorId: string,
   ): Promise<GasCylinder> {
-    // Unicidad de `type` es POR distribuidora: dos tenants pueden tener ambos
-    // una "Garrafa 10kg".
-    // Sin distinguir mayúsculas ni espacios de los bordes (igual que la base).
-    const existing = await this.gasCylinderRepository.findOne({
-      where: {
-        distributorId,
-        type: Raw((alias) => `lower(btrim(${alias})) = lower(btrim(:type))`, {
-          type: createGasCylinderDto.type,
-        }),
-      },
-    });
-
-    if (existing) {
-      throw new BadRequestException(
-        'Ya existe una garrafa con este tipo en tu distribuidora',
-      );
-    }
-
+    await this.asegurarTipoLibre(
+      this.gasCylinderRepository,
+      createGasCylinderDto.type,
+      distributorId,
+    );
     assertPromocionesSinRepetir(createGasCylinderDto.promotions);
     const gasCylinder = this.gasCylinderRepository.create({
       ...createGasCylinderDto,
       distributorId,
     });
     try {
-      return await this.gasCylinderRepository.manager.transaction(
-        async (manager) => {
-          const guardado = await manager.save(gasCylinder);
-          // El stock inicial es vendible: el módulo de stock lo registra como
-          // físico del depósito predeterminado EN ESTA transacción (con el
-          // `manager`), para que las dos cifras no se desalineen nunca. Si el
-          // listener falla, el producto tampoco se crea.
-          if (guardado.stock > 0) {
-            await this.eventos.emitAsync(
-              EVENTO_GARRAFA_CREADA,
-              new GarrafaCreadaEvent(
-                guardado.gasCylinderId,
-                distributorId,
-                guardado.stock,
-                manager,
-              ),
-            );
-          }
-          return guardado;
-        },
+      return await this.gasCylinderRepository.manager.transaction((manager) =>
+        this.guardarNueva(manager, gasCylinder, distributorId),
       );
     } catch (error) {
       return this.handleDBExceptions(error);
     }
+  }
+
+  /**
+   * Las mismas reglas que `create`, dentro de la transacción de quien llama
+   * (la importación masiva alta muchos productos en una sola: todo o nada). Los
+   * errores de base no se traducen acá: los traduce quien abrió la transacción.
+   */
+  async crearEn(
+    manager: EntityManager,
+    dto: CreateGasCylinderDto,
+    distributorId: string,
+  ): Promise<GasCylinder> {
+    await this.asegurarTipoLibre(
+      manager.getRepository(GasCylinder),
+      dto.type,
+      distributorId,
+    );
+    assertPromocionesSinRepetir(dto.promotions);
+    const gasCylinder = manager.getRepository(GasCylinder).create({
+      ...dto,
+      distributorId,
+    });
+    return this.guardarNueva(manager, gasCylinder, distributorId);
+  }
+
+  /**
+   * Cambia el precio de un producto de la distribuidora bajo el lock de su
+   * fila, dentro de la transacción de quien llama. Va por `save` con la
+   * entidad cargada, así queda en la auditoría de datos con el valor anterior.
+   * 404 si no existe o es de otra distribuidora. Devuelve `false` si el precio
+   * ya era ese (no escribe nada).
+   */
+  async cambiarPrecioEn(
+    manager: EntityManager,
+    id: string,
+    price: number,
+    distributorId: string,
+  ): Promise<boolean> {
+    const gasCylinder = await this.bloquear(manager, id);
+    if (!gasCylinder || gasCylinder.distributorId !== distributorId) {
+      throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
+    }
+    // La vista previa ya rechaza las dadas de baja; esto cubre la que se dio de baja
+    // entre la vista previa y la confirmación.
+    if (!gasCylinder.isActive) {
+      throw new ConflictException(
+        `La garrafa ${gasCylinder.type} está dada de baja: reactivala antes de cambiar su precio`,
+      );
+    }
+    if (gasCylinder.price === price) return false;
+    gasCylinder.price = price;
+    this.sinEscribirElVendible(gasCylinder);
+    await manager.save(gasCylinder);
+    return true;
+  }
+
+  /** Todo el catálogo de la distribuidora (activo o no), para cruzar por tipo. */
+  tiposDelCatalogo(distributorId: string): Promise<GasCylinder[]> {
+    return this.gasCylinderRepository.find({
+      where: { distributorId },
+      order: { type: 'ASC' },
+    });
+  }
+
+  /**
+   * Unicidad de `type` POR distribuidora: dos tenants pueden tener ambos una
+   * "Garrafa 10kg". Sin distinguir mayúsculas ni espacios de los bordes
+   * (igual que la base).
+   */
+  private async asegurarTipoLibre(
+    repo: Repository<GasCylinder>,
+    type: string,
+    distributorId: string,
+  ): Promise<void> {
+    const existing = await repo.findOne({
+      where: {
+        distributorId,
+        type: Raw((alias) => `lower(btrim(${alias})) = lower(btrim(:type))`, {
+          type,
+        }),
+      },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'Ya existe una garrafa con este tipo en tu distribuidora',
+      );
+    }
+  }
+
+  private async guardarNueva(
+    manager: EntityManager,
+    gasCylinder: GasCylinder,
+    distributorId: string,
+  ): Promise<GasCylinder> {
+    const guardado = await manager.save(gasCylinder);
+    // El stock inicial es vendible: el módulo de stock lo registra como
+    // físico del depósito predeterminado EN ESTA transacción (con el
+    // `manager`), para que las dos cifras no se desalineen nunca. Si el
+    // listener falla, el producto tampoco se crea.
+    if (guardado.stock > 0) {
+      await this.eventos.emitAsync(
+        EVENTO_GARRAFA_CREADA,
+        new GarrafaCreadaEvent(
+          guardado.gasCylinderId,
+          distributorId,
+          guardado.stock,
+          manager,
+        ),
+      );
+    }
+    return guardado;
   }
 
   async findAll(

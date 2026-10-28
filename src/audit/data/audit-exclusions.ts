@@ -33,6 +33,10 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   'stock_adjustment_item',
   // Firma del último aviso de conciliación: estado operativo del cron.
   'stock_reconciliation_alert',
+  // Vista previa de una importación masiva: hasta 5.000 filas en jsonb que
+  // vencen a las 24 h. Lo que vale es lo que se aplica al confirmar, y eso sale
+  // por los servicios de cada recurso (que sí se auditan).
+  'import_job',
   // Estado transitorio de compra: cada alta y baja de renglón es ruido; lo
   // que vale es el pedido que sale de ahí.
   'cart',
