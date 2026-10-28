@@ -279,6 +279,7 @@ describe('ConfirmPaymentUseCase', () => {
       expect.objectContaining({
         paymentStatus: PaymentStatus.PAID,
         gatewayPaymentId: 'pay-1',
+        paymentConfirmedAt: expect.any(Date) as Date,
       }),
     );
     expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);

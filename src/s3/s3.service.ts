@@ -3,7 +3,7 @@ import {
   Disposicion,
   disposicionSegura,
 } from './content-disposition';
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
@@ -63,6 +63,18 @@ export class S3Service {
         ServerSideEncryption: 'AES256',
       }),
     );
+  }
+
+  /** Contenido de un objeto del bucket (sólo para archivos chicos que el back arma: logos, sellos). */
+  async get(key: string): Promise<Buffer> {
+    const { Body } = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    if (!Body)
+      throw new InternalServerErrorException(
+        `El objeto ${key} no tiene contenido`,
+      );
+    return Buffer.from(await Body.transformToByteArray());
   }
 
   async remove(key: string): Promise<void> {

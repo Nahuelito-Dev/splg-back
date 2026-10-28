@@ -66,6 +66,30 @@ describe('S3Service', () => {
     send.mockRestore();
   });
 
+  it('lee el contenido de un objeto del bucket', async () => {
+    send.mockResolvedValueOnce({
+      Body: {
+        transformToByteArray: () => Promise.resolve(Buffer.from('logo')),
+      },
+    } as never);
+
+    const contenido = await service.get('distributors/d1/logo/a.png');
+
+    const command = send.mock.calls[0][0] as GetObjectCommand;
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input).toMatchObject({
+      Bucket: 'splg-fleet-docs',
+      Key: 'distributors/d1/logo/a.png',
+    });
+    expect(contenido.toString()).toBe('logo');
+  });
+
+  it('falla si el objeto vuelve sin contenido', async () => {
+    await expect(service.get('vacio')).rejects.toThrow(
+      /sin contenido|no tiene contenido/,
+    );
+  });
+
   it('sube el objeto al bucket configurado con su content-type', async () => {
     await service.put({
       key: 'fleet/doc.pdf',
