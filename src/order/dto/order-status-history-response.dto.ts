@@ -49,7 +49,7 @@ export class OrderStatusHistoryEntryDto {
 
   @ApiProperty({
     description:
-      '`true` si es una anotación y no un cambio de estado (origen = destino): los cobros manuales del admin (`register-cash`, `register-unpaid`, `confirm-transfer`). Mostrarla como nota.',
+      '`true` si es una anotación y no un cambio de estado (origen = destino): los cobros manuales del admin (`register-cash`, `register-unpaid`, `confirm-transfer`) y la reasignación de un pedido aceptado a otro chofer (`accepted → accepted`, motivo «Reasignación de chofer»). Mostrarla como nota.',
   })
   isNote!: boolean;
 

@@ -19,6 +19,8 @@ import { Order, OrderStatus } from '../entities/order.entity';
  * que ningún caso de uso presente o futuro puede olvidarse. El alta registra
  * `null → estado inicial`.
  *
+ *  - Reasignación: mismo estado pero otro `delivery_id` también asienta una
+ *    fila (`accepted → accepted`, motivo «Reasignación de chofer»).
  *  - Quién: el usuario del request en curso (contexto de auditoría). Sin
  *    request (crons, webhooks, listeners) queda en null: lo hizo el sistema.
  *  - Motivo: `order.transitionReason` si el caso de uso lo puso (entrega
@@ -52,7 +54,21 @@ export class OrderStatusHistorySubscriber
     const order = event.entity as Order | undefined;
     const anterior = event.databaseEntity as Order | undefined;
     if (!order || !anterior || !order.status) return;
-    if (order.status === anterior.status) return;
+    if (order.status === anterior.status) {
+      // Reasignar un pedido aceptado de un chofer a otro no cambia el estado
+      // pero es un hecho del historial (CU-012 / CU-169): accepted → accepted.
+      if (
+        order.deliveryId &&
+        anterior.deliveryId &&
+        order.deliveryId !== anterior.deliveryId
+      ) {
+        // Sin nombres: el historial también lo leen el cliente y el chofer,
+        // y a ellos la API no les muestra quién es cada chofer.
+        order.transitionReason ??= 'Reasignación de chofer';
+        await this.asentar(event, order, anterior.status, order.status);
+      }
+      return;
+    }
     await this.asentar(event, order, anterior.status, order.status);
   }
 
