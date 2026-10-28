@@ -89,6 +89,8 @@ export const ENTIDADES_DE_LA_DISTRIBUIDORA_DEL_REQUEST: ReadonlySet<string> =
     'GasCylinderPromotion',
     'CylinderRecoveryNotice',
     'MaintenanceWindowProposal',
+    // La lectura de un aviso de la bandeja (F10): es del admin que la hizo.
+    'AdminNotificationRead',
   ]);
 
 /**
