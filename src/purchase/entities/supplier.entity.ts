@@ -37,6 +37,10 @@ export class Supplier {
   @Column({ name: 'distributor_id', type: 'uuid' })
   distributorId!: string;
 
+  /** Key de la foto principal en el bucket (`suppliers/{distribuidora}/{id}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
   @Column({ name: 'business_name', type: 'varchar', length: 120 })
   businessName!: string;
 

@@ -5,6 +5,9 @@ import { CylinderVigenciaService } from './cylinder-vigencia.service';
 import { DespachoBloqueadoListener } from './events/despacho-bloqueado.listener';
 import { GatewaysModule } from '../gateways/gateways.module';
 import { CylinderController } from './cylinder.controller';
+import { CylinderPhotoController } from './cylinder-photo.controller';
+import { CylinderPhotoService } from './cylinder-photo.service';
+import { S3Module } from '../s3/s3.module';
 import { Cylinder } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { DeliveryModule } from '../delivery/delivery.module';
@@ -29,10 +32,12 @@ import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.enti
     DeliveryModule, // el chofer sólo carga envases a sus pedidos
     GatewaysModule, // el aviso al panel cuando se bloquea un despacho
     GasCylinderModule, // el producto del envase tiene que existir y ser del tenant
+    S3Module, // foto del envase
   ],
-  controllers: [CylinderController],
+  controllers: [CylinderController, CylinderPhotoController],
   providers: [
     CylinderService,
+    CylinderPhotoService,
     CylinderVigenciaService,
     DespachoBloqueadoListener,
   ],

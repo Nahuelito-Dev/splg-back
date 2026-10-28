@@ -25,3 +25,22 @@ export class PhotoLinkResponseDto {
   })
   requiresAuth!: boolean;
 }
+
+/** Respuesta de `PUT` y `DELETE .../photo` (API v2): el enlace vigente tras el cambio. */
+export class PhotoCurrentResponseDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'URL firmada de S3 de la foto vigente (se abre sin token); `null` si no tiene foto.',
+  })
+  url!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Cuándo vence la URL; `null` si no tiene foto.',
+  })
+  expiresAt!: Date | null;
+}

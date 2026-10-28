@@ -6,6 +6,7 @@ import { DocumentSequenceModule } from '../document-sequence/document-sequence.m
 import { EmployeeModule } from '../employee/employee.module';
 import { TruckLoadGatePort } from '../order/domain/ports/truck-load-gate.port';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
+import { S3Module } from '../s3/s3.module';
 import { StockModule } from '../stock/stock.module';
 import { CancelTruckLoadUseCase } from './application/cancel-truck-load.use-case';
 import { CloseTruckLoadUseCase } from './application/close-truck-load.use-case';
@@ -16,11 +17,13 @@ import { ReturnTruckLoadUseCase } from './application/return-truck-load.use-case
 import { StockControlSettingsService } from './application/stock-control-settings.service';
 import { TruckLoadAccessService } from './application/truck-load-access.service';
 import { TruckLoadGateService } from './application/truck-load-gate.service';
+import { TruckLoadPhotoService } from './application/truck-load-photo.service';
 import { TruckLoadQueryService } from './application/truck-load-query.service';
 import { UpdateTruckLoadItemsUseCase } from './application/update-truck-load-items.use-case';
 import { TruckLoadItem } from './entities/truck-load-item.entity';
 import { TruckLoad } from './entities/truck-load.entity';
 import { TruckLoadController } from './presentation/truck-load.controller';
+import { TruckLoadPhotoController } from './presentation/truck-load-photo.controller';
 
 /**
  * Carga y rendición del camión (M-C, parte 3). Toda salida y entrada de
@@ -37,12 +40,14 @@ import { TruckLoadController } from './presentation/truck-load.controller';
     EmployeeModule, // el ayudante (legajo)
     DocumentSequenceModule, // número de la carga
     OrderLookupModule, // pedidos entregados y su cobro
+    S3Module, // foto de la carga
   ],
-  controllers: [TruckLoadController],
+  controllers: [TruckLoadController, TruckLoadPhotoController],
   providers: [
     StockControlSettingsService,
     TruckLoadAccessService,
     TruckLoadQueryService,
+    TruckLoadPhotoService,
     OpenTruckLoadUseCase,
     UpdateTruckLoadItemsUseCase,
     DepartTruckLoadUseCase,

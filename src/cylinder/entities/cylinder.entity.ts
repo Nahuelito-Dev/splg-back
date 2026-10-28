@@ -145,6 +145,10 @@ export class Cylinder {
   })
   deposit!: number;
 
+  /** Key de la foto principal en el bucket (`cylinders/{distribuidora}/{id}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

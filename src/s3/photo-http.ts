@@ -17,7 +17,10 @@ import {
 import type { Response } from 'express';
 import { DownloadMode } from './dto/download-link.dto';
 import { aEnlaceDeDescarga } from './download-link';
-import { PhotoLinkResponseDto } from './dto/photo-link.dto';
+import {
+  PhotoCurrentResponseDto,
+  PhotoLinkResponseDto,
+} from './dto/photo-link.dto';
 import { EnlaceDeFoto } from './entity-photo.service';
 import { archivoConTope, MAX_FOTO_BYTES } from './upload-limits';
 
@@ -102,4 +105,12 @@ export function responderFoto(
   }
   if (enlace.kind === 'none') throw new NotFoundException('No tiene foto');
   res.redirect(HttpStatus.FOUND, enlace.signed.url);
+}
+
+/** La foto vigente tras un `PUT` o `DELETE` (API v2): `{ url, expiresAt }`, con `null` si no hay. */
+export function aFotoVigente(enlace: EnlaceDeFoto): PhotoCurrentResponseDto {
+  const dto = new PhotoCurrentResponseDto();
+  dto.url = enlace.kind === 'stored' ? enlace.signed.url : null;
+  dto.expiresAt = enlace.kind === 'stored' ? enlace.signed.expiresAt : null;
+  return dto;
 }
