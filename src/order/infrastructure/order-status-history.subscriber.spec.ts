@@ -75,6 +75,51 @@ describe('OrderStatusHistorySubscriber', () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
+  it('reasignar el pedido aceptado a otro chofer asienta accepted → accepted', async () => {
+    await conActor('admin-1', () =>
+      subscriber.afterUpdate({
+        entity: pedido({ status: OrderStatus.ACCEPTED, deliveryId: 'B' }),
+        databaseEntity: pedido({
+          status: OrderStatus.ACCEPTED,
+          deliveryId: 'A',
+        }),
+        manager: manager(),
+      } as unknown as UpdateEvent<Order>),
+    );
+    expect(insert).toHaveBeenCalledWith(OrderStatusHistory, {
+      orderId: 'o1',
+      fromStatus: OrderStatus.ACCEPTED,
+      toStatus: OrderStatus.ACCEPTED,
+      changedByUserId: 'admin-1',
+      reason: 'Reasignación de chofer',
+    });
+  });
+
+  it('si el caso de uso puso un motivo, usa ese', async () => {
+    await subscriber.afterUpdate({
+      entity: pedido({
+        status: OrderStatus.ACCEPTED,
+        deliveryId: 'B',
+        transitionReason: 'Pedido del cliente',
+      }),
+      databaseEntity: pedido({ status: OrderStatus.ACCEPTED, deliveryId: 'A' }),
+      manager: manager(),
+    } as unknown as UpdateEvent<Order>);
+    expect(insert).toHaveBeenCalledWith(
+      OrderStatusHistory,
+      expect.objectContaining({ reason: 'Pedido del cliente' }),
+    );
+  });
+
+  it('mismo estado y mismo chofer no asienta nada', async () => {
+    await subscriber.afterUpdate({
+      entity: pedido({ status: OrderStatus.ACCEPTED, deliveryId: 'A' }),
+      databaseEntity: pedido({ status: OrderStatus.ACCEPTED, deliveryId: 'A' }),
+      manager: manager(),
+    } as unknown as UpdateEvent<Order>);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   it('una actualización parcial sin estado no asienta nada', async () => {
     await subscriber.afterUpdate({
       entity: { orderId: 'o1' } as Order,

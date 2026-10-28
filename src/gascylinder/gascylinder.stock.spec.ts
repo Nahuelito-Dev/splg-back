@@ -26,6 +26,7 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       type: `Garrafa ${id}`,
       stock,
       reservationDeficit: 0,
+      isActive: true,
     }) as GasCylinder;
 
   beforeEach(() => {
@@ -78,6 +79,16 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       await expect(
         service.reservarStock(manager, 'x', 1),
       ).rejects.toBeInstanceOf(GasCylinderNotFoundError);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('una garrafa desactivada es GasCylinderNotFoundError y no descuenta', async () => {
+      const g = { ...producto('a', 10), isActive: false } as GasCylinder;
+      lecturas.push(g);
+      await expect(
+        service.reservarStock(manager, 'a', 1),
+      ).rejects.toBeInstanceOf(GasCylinderNotFoundError);
+      expect(g.stock).toBe(10);
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -151,6 +162,30 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       );
       expect(g.reservationDeficit).toBe(2);
       expect(g.stock).toBe(0);
+    });
+
+    it('sumar unidades de una garrafa dada de baja da 404 y no toca el stock', async () => {
+      const g = { ...conDeficit(10, 0), isActive: false } as GasCylinder;
+      lecturas.push(g);
+      await expect(
+        service.reajustarReserva(
+          manager,
+          [{ gasCylinderId: 'a', quantity: 1 }],
+          [{ gasCylinderId: 'a', quantity: 3 }],
+        ),
+      ).rejects.toBeInstanceOf(GasCylinderNotFoundError);
+      expect(g.stock).toBe(10);
+    });
+
+    it('devolver unidades de una garrafa dada de baja sí se permite', async () => {
+      const g = { ...conDeficit(10, 0), isActive: false } as GasCylinder;
+      lecturas.push(g);
+      await service.reajustarReserva(
+        manager,
+        [{ gasCylinderId: 'a', quantity: 3 }],
+        [{ gasCylinderId: 'a', quantity: 1 }],
+      );
+      expect(g.stock).toBe(12);
     });
 
     it('pedir más reserva sólo el aumento', async () => {

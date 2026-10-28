@@ -404,7 +404,8 @@ export class GasCylinderService {
     quantity: number,
   ): Promise<GasCylinder> {
     const gasCylinder = await this.bloquear(manager, gasCylinderId);
-    if (!gasCylinder) {
+    // Una garrafa dada de baja no se vende: es como si no existiera (404).
+    if (!gasCylinder || !gasCylinder.isActive) {
       throw new GasCylinderNotFoundError(gasCylinderId);
     }
     if (gasCylinder.stock < quantity) {
@@ -488,6 +489,11 @@ export class GasCylinderService {
         // Un producto que ya no existe se ignora al devolver (como `restituirStock`).
         if (delta > 0) throw new GasCylinderNotFoundError(id);
         continue;
+      }
+      // Sumar unidades de una garrafa dada de baja es venderla (404, como el
+      // alta); devolver las que el pedido ya tenía sí se permite.
+      if (delta > 0 && !gasCylinder.isActive) {
+        throw new GasCylinderNotFoundError(id);
       }
       if (delta > 0) {
         if (gasCylinder.stock < delta) {
