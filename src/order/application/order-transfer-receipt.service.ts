@@ -253,6 +253,8 @@ export class OrderTransferReceiptService {
         EVENTO_COMPROBANTE_SUBIDO,
         {
           orderId: order.orderId,
+          // El superadmin recibe los avisos de todas las empresas y filtra por la que está mirando.
+          distributorId: order.distributorId,
           customerId: order.customerId,
           attachmentId,
           uploadedAt: new Date(),

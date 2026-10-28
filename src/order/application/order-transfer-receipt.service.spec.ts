@@ -135,6 +135,7 @@ describe('OrderTransferReceiptService', () => {
         EVENTO_COMPROBANTE_SUBIDO,
         expect.objectContaining({
           orderId: 'o1',
+          distributorId: 'd1',
           customerId: 'cli1',
           attachmentId: 'a1',
         }),
