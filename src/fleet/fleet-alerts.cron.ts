@@ -1,3 +1,5 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { pedirAvisoAlAdmin } from '../common/events/aviso-al-admin';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
@@ -67,6 +69,7 @@ export class FleetAlertsCron {
     private readonly frecuencias: ScheduledTasksSettingsService,
     private readonly employees: EmployeeService,
     private readonly documents: EmployeeDocumentsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
@@ -98,6 +101,11 @@ export class FleetAlertsCron {
     }
   }
 
+  /**
+   * Las tareas abiertas que están por vencer o vencidas. Las que todavía no se
+   * avisaron por mail (`alertedAt` nulo) van al correo; todas van a la bandeja
+   * (que no repite: una vez «por vencer» y otra «vencido»).
+   */
   private async tareasSinAvisar(): Promise<MaintenanceTask[]> {
     const abiertas = await this.tasks
       .createQueryBuilder('task')
@@ -110,7 +118,6 @@ export class FleetAlertsCron {
         cerrados: ESTADOS_CERRADOS,
       })
       .andWhere('task.due_at IS NOT NULL')
-      .andWhere('task.alerted_at IS NULL')
       .getMany();
 
     // El "por vencer" depende del lead_time_days de CADA plan: no es un
@@ -142,11 +149,15 @@ export class FleetAlertsCron {
 
   private async avisarDistribuidora(
     distributorId: string,
-    tareas: MaintenanceTask[],
+    vencimientos: MaintenanceTask[],
   ): Promise<void> {
     try {
       const faltantes: FaltanteDeChofer[] =
         await this.documents.faltantesBloqueantesDeChoferes(distributorId);
+      this.avisarEnLaBandeja(distributorId, vencimientos, faltantes);
+
+      // Al correo, sólo lo que todavía no se avisó por mail.
+      const tareas = vencimientos.filter((t) => t.alertedAt === null);
       if (tareas.length === 0 && faltantes.length === 0) return;
 
       const admins = await this.adminService.findAll(distributorId);
@@ -168,6 +179,10 @@ export class FleetAlertsCron {
       }
 
       if (tareas.length > 0) {
+        // `update` y no `save`: sólo escribe la marca. Con `save`, la tarea que
+        // el admin cerró o editó mientras salía el mail volvería a los valores
+        // leídos al principio. (`alertedAt` está fuera de la auditoría de datos
+        // a propósito: es una marca técnica del aviso.)
         const ahora = new Date();
         await this.tasks.update(
           tareas.map((t) => t.taskId),
@@ -179,6 +194,51 @@ export class FleetAlertsCron {
       this.logger.error(
         `No se pudo avisar los vencimientos de la distribuidora ${distributorId}: ${errorMessage(error)}`,
       );
+    }
+  }
+
+  /**
+   * Un aviso por vencimiento y por documento faltante en la bandeja del admin
+   * (F11). La bandeja no repite la misma clave: «por vencer» y «vencido» son
+   * dos avisos por fecha de vencimiento; un documento faltante, uno por mes. El correo es el resumen de
+   * arriba: acá no se pide mail para no mandarlo dos veces.
+   */
+  private avisarEnLaBandeja(
+    distributorId: string,
+    vencimientos: MaintenanceTask[],
+    faltantes: FaltanteDeChofer[],
+  ): void {
+    for (const tarea of vencimientos) {
+      const vencida =
+        calcularEstadoDeVencimiento(tarea.dueAt, tarea.plan.leadTimeDays) ===
+        ExpirationStatus.EXPIRED;
+      const fecha = tarea.dueAt
+        ? tarea.dueAt.toLocaleDateString('es-AR', { timeZone: 'UTC' })
+        : '-';
+      pedirAvisoAlAdmin(this.events, this.logger, {
+        distributorId,
+        kind: vencida ? 'fleet_document_expired' : 'fleet_document_due',
+        title: vencida
+          ? `Vencido: ${tarea.plan.name}`
+          : `Por vencer: ${tarea.plan.name}`,
+        body: `${this.sujeto(tarea)} — ${vencida ? 'venció' : 'vence'} el ${fecha}`,
+        link: { entity: 'fleet-task', id: tarea.taskId },
+        // Con la fecha: si se reprograma el vencimiento, la nueva vuelve a avisar.
+        dedupeKey: `fleet-task:${tarea.taskId}:${vencida ? 'expired' : 'due'}:${tarea.dueAt?.toISOString().slice(0, 10) ?? 'sin-fecha'}`,
+      });
+    }
+    for (const { empleado, planes } of faltantes) {
+      for (const plan of planes) {
+        pedirAvisoAlAdmin(this.events, this.logger, {
+          distributorId,
+          kind: 'employee_document_missing',
+          title: `Falta cargar: ${plan.name}`,
+          body: `${empleado.firstName} ${empleado.lastName} no tiene cargado un documento que bloquea el despacho`,
+          link: { entity: 'employee', id: empleado.employeeId },
+          // Una vez por mes mientras siga faltando (el mail lo repite a diario).
+          dedupeKey: `missing-doc:${empleado.employeeId}:${plan.planId}:${new Date().toISOString().slice(0, 7)}`,
+        });
+      }
     }
   }
 

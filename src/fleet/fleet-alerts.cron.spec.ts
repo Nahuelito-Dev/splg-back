@@ -1,4 +1,6 @@
 import { Repository } from 'typeorm';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVENTO_NOTIFICAR_ADMIN } from '../common/events/notificar-admin.event';
 import { FleetAlertsCron } from './fleet-alerts.cron';
 import { MaintenanceTask } from './entities/maintenance-task.entity';
 import { AdminService } from '../admin/admin.service';
@@ -10,6 +12,7 @@ describe('FleetAlertsCron', () => {
   let cron: FleetAlertsCron;
   let getMany: jest.Mock;
   let update: jest.Mock;
+  let events: { emit: jest.Mock };
   let adminService: { findAll: jest.Mock };
   let emailSender: { send: jest.Mock };
   let esLaHora: jest.Mock;
@@ -31,6 +34,7 @@ describe('FleetAlertsCron', () => {
   beforeEach(() => {
     getMany = jest.fn();
     update = jest.fn().mockResolvedValue(undefined);
+    events = { emit: jest.fn() };
     const qb = {
       innerJoinAndSelect: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -58,8 +62,19 @@ describe('FleetAlertsCron', () => {
       } as unknown as import('../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
       employees as unknown as EmployeeService,
       documents as unknown as EmployeeDocumentsService,
+      events as unknown as EventEmitter2,
     );
   });
+
+  /** Las tareas marcadas como avisadas: sólo esa columna, con `update`. */
+  const marcadas = (): string[] =>
+    (update.mock.calls as [string[], Record<string, unknown>][]).flatMap(
+      ([ids, cambios]) => {
+        expect(Object.keys(cambios)).toEqual(['alertedAt']);
+        expect(cambios.alertedAt).toBeInstanceOf(Date);
+        return ids;
+      },
+    );
 
   it('sin tareas por avisar, no hace nada', async () => {
     getMany.mockResolvedValue([]);
@@ -79,10 +94,7 @@ describe('FleetAlertsCron', () => {
     expect(emailSender.send).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'admin@demo.splg.app' }),
     );
-    const alertedAtMatcher: unknown = expect.any(Date);
-    expect(update).toHaveBeenCalledWith(['t1'], {
-      alertedAt: alertedAtMatcher,
-    });
+    expect(marcadas()).toEqual(['t1']);
   });
 
   it('sin admins con email, igual marca alertedAt (no hay a quién avisarle)', async () => {
@@ -93,6 +105,68 @@ describe('FleetAlertsCron', () => {
 
     expect(emailSender.send).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalled();
+  });
+
+  describe('bandeja del admin (F11)', () => {
+    const avisos = () =>
+      (events.emit.mock.calls as [string, Record<string, unknown>][])
+        .filter(([evento]) => evento === EVENTO_NOTIFICAR_ADMIN)
+        .map(([, aviso]) => aviso);
+
+    it('un vencimiento por vencer va a la bandeja con su clave y lleva a la tarea', async () => {
+      getMany.mockResolvedValue([tareaPorVencer()]);
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(avisos()).toEqual([
+        expect.objectContaining({
+          distributorId: 'd1',
+          kind: 'fleet_document_due',
+          title: 'Por vencer: VTV',
+          link: { entity: 'fleet-task', id: 't1' },
+          dedupeKey: expect.stringMatching(
+            /^fleet-task:t1:due:\d{4}-\d{2}-\d{2}$/,
+          ) as unknown,
+          email: false,
+        }),
+      ]);
+      expect(avisos()[0].body).toContain('Vehículo AB123CD');
+    });
+
+    it('una tarea ya avisada por mail que ahora venció: aviso «vencido» en la bandeja, sin mail ni otra marca', async () => {
+      getMany.mockResolvedValue([
+        tareaPorVencer({
+          alertedAt: new Date('2026-09-01T00:00:00Z'),
+          dueAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        }),
+      ]);
+      adminService.findAll.mockResolvedValue([
+        { user: { email: 'admin@demo.splg.app' } },
+      ]);
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(avisos()).toEqual([
+        expect.objectContaining({
+          kind: 'fleet_document_expired',
+          dedupeKey: expect.stringMatching(
+            /^fleet-task:t1:expired:\d{4}-\d{2}-\d{2}$/,
+          ) as unknown,
+        }),
+      ]);
+      expect(emailSender.send).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('una tarea vigente (fuera de la anticipación) no va a la bandeja', async () => {
+      getMany.mockResolvedValue([
+        tareaPorVencer({
+          dueAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        }),
+      ]);
+      await cron.avisarVencimientosPendientes();
+      expect(avisos()).toEqual([]);
+    });
   });
 
   it('si falla el envío, NO marca alertedAt (se reintenta al día siguiente)', async () => {
@@ -164,9 +238,33 @@ describe('FleetAlertsCron', () => {
       } as unknown as Partial<MaintenanceTask>);
 
     const faltante = {
-      empleado: { firstName: 'Beto', lastName: 'Gómez' },
-      planes: [{ name: 'Curso de transporte de mercancías peligrosas (GLP)' }],
+      empleado: { employeeId: 'e9', firstName: 'Beto', lastName: 'Gómez' },
+      planes: [
+        {
+          planId: 'p7',
+          name: 'Curso de transporte de mercancías peligrosas (GLP)',
+        },
+      ],
     };
+
+    it('F11: cada documento faltante va a la bandeja una vez, con enlace al legajo', async () => {
+      getMany.mockResolvedValue([]);
+      employees.distribuidorasConChoferesActivos.mockResolvedValue(['d1']);
+      documents.faltantesBloqueantesDeChoferes.mockResolvedValue([faltante]);
+
+      await cron.avisarVencimientosPendientes();
+
+      expect(events.emit).toHaveBeenCalledWith(
+        EVENTO_NOTIFICAR_ADMIN,
+        expect.objectContaining({
+          kind: 'employee_document_missing',
+          link: { entity: 'employee', id: 'e9' },
+          dedupeKey: expect.stringMatching(
+            /^missing-doc:e9:p7:\d{4}-\d{2}$/,
+          ) as unknown,
+        }),
+      );
+    });
 
     const admin = [{ user: { email: 'admin@demo.splg.app' } }];
 
@@ -179,9 +277,7 @@ describe('FleetAlertsCron', () => {
       const [[envio]] = emailSender.send.mock.calls as [[{ html: string }]];
       expect(envio.html).toContain('Empleado Ana Pérez');
       expect(envio.html).toContain('Examen psicofísico');
-      expect(update).toHaveBeenCalledWith(['te1'], {
-        alertedAt: expect.any(Date) as unknown,
-      });
+      expect(marcadas()).toEqual(['te1']);
     });
 
     it('los documentos faltantes entran en el correo y NO se marcan: no hay tarea que marcar', async () => {

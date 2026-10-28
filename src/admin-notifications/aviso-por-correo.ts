@@ -6,6 +6,8 @@ const RUTA_DEL_PANEL: Readonly<Record<string, (id: string) => string>> = {
   order: (id) => `orders/${encodeURIComponent(id)}`,
   claim: () => 'claims',
   incident: () => 'incidents',
+  'fleet-task': (id) => `fleet/tasks/${encodeURIComponent(id)}`,
+  employee: (id) => `employees/details/${encodeURIComponent(id)}?tab=documents`,
 };
 
 /** Ruta del panel (sin dominio) a la que lleva el aviso, o `null` si no apunta a nada. */
