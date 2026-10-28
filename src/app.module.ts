@@ -70,6 +70,7 @@ import { RoutesModule } from './routes/routes.module';
 import { HealthModule } from './health/health.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { ExportsModule } from './exports/exports.module';
+import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
 
 @Module({
   imports: [
@@ -193,6 +194,7 @@ import { ExportsModule } from './exports/exports.module';
     // Eventos de dominio entre módulos (CONVENCIONES 4): hoy, el pago
     // notificado que publica payments y confirma order.
     EventEmitterModule.forRoot(),
+    ReceiptReaderModule,
     // Global: un único init del Admin SDK de Firebase para todo el proceso
     // (ver firebase/firebase.module.ts). Provee FirebaseAuthPort y FcmPort.
     FirebaseModule,
