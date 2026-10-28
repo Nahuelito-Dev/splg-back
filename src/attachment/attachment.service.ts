@@ -8,7 +8,7 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
@@ -18,10 +18,12 @@ import { S3CleanupService } from '../s3/s3-cleanup.service';
 import {
   acotarNombreDeArchivo,
   decodificarNombreDeArchivo,
-  esMimeTypePermitido,
+  esDocumentoPermitido,
   extensionParaMimeType,
   firmaCoincideConMimeType,
+  esMimeTypePermitido,
   MAX_ATTACHMENT_SIZE_BYTES,
+  normalizarMimeDeCsv,
 } from '../common/utils/attachment-rules';
 import { limpiarMetadatosDeImagen } from '../s3/limpiar-imagen';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -40,6 +42,11 @@ export const OWNER_TYPES_DEL_CHOFER: readonly AttachmentOwnerType[] = [
   AttachmentOwnerType.VEHICLE_ACCIDENT,
   AttachmentOwnerType.DRIVER_SETTLEMENT,
 ];
+
+/** Trabajo extra que corre en la MISMA transacción que guarda el adjunto. */
+export interface AttachmentUploadHooks {
+  dentro?: (manager: EntityManager, attachment: Attachment) => Promise<void>;
+}
 
 /**
  * Adjuntos genéricos de los módulos de empresa. Habla con `S3Service` y
@@ -65,6 +72,7 @@ export class AttachmentService {
     file: Express.Multer.File | undefined,
     label: string | undefined,
     actor: AttachmentActor,
+    hooks: AttachmentUploadHooks = {},
   ): Promise<Attachment> {
     await this.assertAcceso(ownerType, ownerId, distributorId, actor);
 
@@ -74,7 +82,15 @@ export class AttachmentService {
     if (file.size === 0) {
       throw new BadRequestException('El archivo está vacío');
     }
-    if (!esMimeTypePermitido(file.mimetype)) {
+    const nombre = decodificarNombreDeArchivo(file.originalname);
+    const mimeType = normalizarMimeDeCsv(file.mimetype, nombre);
+    if (!esDocumentoPermitido(mimeType)) {
+      throw new UnsupportedMediaTypeException(
+        `Tipo de archivo no permitido (${file.mimetype}). Se acepta PDF, JPG, PNG, WEBP, Word (.docx), Excel (.xlsx) o CSV`,
+      );
+    }
+    // Un chofer sólo sube fotos y PDF (comprobantes de su trabajo).
+    if (actor.role === RoleType.DELIVERY && !esMimeTypePermitido(mimeType)) {
       throw new UnsupportedMediaTypeException(
         `Tipo de archivo no permitido (${file.mimetype}). Se acepta PDF, JPG, PNG o WEBP`,
       );
@@ -84,21 +100,21 @@ export class AttachmentService {
         `El archivo supera el máximo permitido (${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)} MB)`,
       );
     }
-    if (!firmaCoincideConMimeType(file.mimetype, file.buffer)) {
+    if (!firmaCoincideConMimeType(mimeType, file.buffer)) {
       throw new UnsupportedMediaTypeException(
         `El contenido del archivo no coincide con el tipo declarado (${file.mimetype})`,
       );
     }
 
-    const cuerpo = await limpiarMetadatosDeImagen(file.buffer, file.mimetype);
-    const key = `attachments/${distributorId}/${ownerType}/${ownerId}/${randomUUID()}.${extensionParaMimeType(file.mimetype)}`;
+    const cuerpo = await limpiarMetadatosDeImagen(file.buffer, mimeType);
+    const key = `attachments/${distributorId}/${ownerType}/${ownerId}/${randomUUID()}.${extensionParaMimeType(mimeType)}`;
     // Se anota la key antes de subir: si el proceso cae antes de guardar la
     // referencia, el cron borra el objeto abandonado.
     await this.cleanup.reserveUpload(key);
     await this.storage.put({
       key,
       body: cuerpo,
-      contentType: file.mimetype,
+      contentType: mimeType,
     });
 
     const attachment = this.attachments.create({
@@ -107,10 +123,8 @@ export class AttachmentService {
       ownerId,
       label: label?.trim() || null,
       storageKey: key,
-      originalName: acotarNombreDeArchivo(
-        decodificarNombreDeArchivo(file.originalname),
-      ),
-      mimeType: file.mimetype,
+      originalName: acotarNombreDeArchivo(nombre),
+      mimeType,
       sizeBytes: cuerpo.length,
       uploadedByUserId: actor.userId,
     });
@@ -118,6 +132,7 @@ export class AttachmentService {
     try {
       return await this.attachments.manager.transaction(async (manager) => {
         const saved = await manager.save(attachment);
+        await hooks.dentro?.(manager, saved);
         await this.cleanup.confirmUpload(manager, key);
         return saved;
       });

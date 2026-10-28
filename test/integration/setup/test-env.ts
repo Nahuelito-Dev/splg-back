@@ -13,7 +13,12 @@ import type { Server } from 'http';
 import { HttpAdapterHost } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  ValidationPipe,
+  VERSION_NEUTRAL,
+  VersioningType,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { generateKeyPairSync, randomInt, randomUUID } from 'crypto';
 import { FirebaseAuthPort } from '../../../src/firebase/ports/firebase-auth.port';
@@ -158,6 +163,12 @@ export async function createTestApp(
   }).compile();
 
   const app = moduleFixture.createNestApplication<TestApp>();
+  // Igual que `main.ts` (sin el prefijo `/api`): lo que no declara versión es
+  // neutral y lo marcado con `@Version('2')` responde en `/v2/...`.
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: [VERSION_NEUTRAL, '1'],
+  });
   // Igual que `main.ts`: los errores de dominio se traducen a HTTP.
   app.useGlobalFilters(
     new GlobalExceptionFilter(app.get(HttpAdapterHost).httpAdapter),

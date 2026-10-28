@@ -12,7 +12,13 @@ import { AttachmentOwnerRegistry } from './attachment-owner.registry';
 import { AttachmentOwnerResolver } from './ports/attachment-owner-resolver.port';
 import { S3Service } from '../s3/s3.service';
 import { S3CleanupService } from '../s3/s3-cleanup.service';
-import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
+import {
+  CSV_MIME_TYPE,
+  DOCX_MIME_TYPE,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  XLSX_MIME_TYPE,
+} from '../common/utils/attachment-rules';
+import { zipDePrueba } from '../common/utils/zip-de-prueba';
 import { RoleType } from '../common/constants/role-type.enum';
 import { imagenesDePrueba, tieneExif } from '../s3/imagenes-de-prueba';
 
@@ -255,6 +261,200 @@ describe('AttachmentService', () => {
       );
       expect(result.originalName).toHaveLength(255);
       expect(result.originalName.endsWith('.pdf')).toBe(true);
+    });
+
+    it.each([
+      [
+        'Word',
+        DOCX_MIME_TYPE,
+        'informe.docx',
+        zipDePrueba(['[Content_Types].xml', 'word/document.xml']),
+      ],
+      [
+        'Excel',
+        XLSX_MIME_TYPE,
+        'planilla.xlsx',
+        zipDePrueba(['[Content_Types].xml', 'xl/workbook.xml']),
+      ],
+      ['CSV', CSV_MIME_TYPE, 'lista.csv', Buffer.from('a;b\n1;2\n')],
+    ])(
+      'acepta %s y lo sube sin tocarlo',
+      async (_n, mimetype, nombre, buffer) => {
+        const result = await service.upload(
+          AttachmentOwnerType.EMPLOYEE,
+          'e1',
+          'd1',
+          archivo({
+            mimetype,
+            originalname: nombre,
+            buffer,
+            size: buffer.length,
+          }),
+          undefined,
+          ADMIN,
+        );
+        const [subido] = storage.put.mock.calls[0] as [
+          { body: Buffer; contentType: string; key: string },
+        ];
+        expect(subido.body).toBe(buffer);
+        expect(subido.contentType).toBe(mimetype);
+        expect(subido.key.endsWith(`.${nombre.split('.')[1]}`)).toBe(true);
+        expect(result.mimeType).toBe(mimetype);
+      },
+    );
+
+    it.each([
+      [DOCX_MIME_TYPE, Buffer.from('MZ-ejecutable')],
+      [
+        XLSX_MIME_TYPE,
+        zipDePrueba(['[Content_Types].xml', 'word/document.xml']),
+      ],
+      [CSV_MIME_TYPE, Buffer.from([0x61, 0x00, 0x62])],
+    ])(
+      '%s con contenido que no es del tipo declarado: 415, sin subir',
+      async (mimetype, buffer) => {
+        await expect(
+          service.upload(
+            AttachmentOwnerType.EMPLOYEE,
+            'e1',
+            'd1',
+            archivo({ mimetype, buffer, size: buffer.length }),
+            undefined,
+            ADMIN,
+          ),
+        ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+        expect(storage.put).not.toHaveBeenCalled();
+      },
+    );
+
+    it('un CSV de Excel en Windows (vnd.ms-excel, .csv, Windows-1252) se guarda como text/csv', async () => {
+      const ansi = Buffer.from('nombre;ciudad\nJosé;Córdoba\n', 'latin1');
+      const result = await service.upload(
+        AttachmentOwnerType.EMPLOYEE,
+        'e1',
+        'd1',
+        archivo({
+          mimetype: 'application/vnd.ms-excel',
+          originalname: 'clientes.csv',
+          buffer: ansi,
+          size: ansi.length,
+        }),
+        undefined,
+        ADMIN,
+      );
+      expect(result.mimeType).toBe(CSV_MIME_TYPE);
+      const [subido] = storage.put.mock.calls[0] as [
+        { contentType: string; key: string },
+      ];
+      expect(subido.contentType).toBe(CSV_MIME_TYPE);
+      expect(subido.key.endsWith('.csv')).toBe(true);
+    });
+
+    it('vnd.ms-excel sin extensión .csv sigue siendo 415', async () => {
+      await expect(
+        service.upload(
+          AttachmentOwnerType.EMPLOYEE,
+          'e1',
+          'd1',
+          archivo({
+            mimetype: 'application/vnd.ms-excel',
+            originalname: 'planilla.xls',
+          }),
+          undefined,
+          ADMIN,
+        ),
+      ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+    });
+
+    it.each([
+      [
+        'Word',
+        DOCX_MIME_TYPE,
+        'a.docx',
+        zipDePrueba(['[Content_Types].xml', 'word/document.xml']),
+      ],
+      [
+        'Excel',
+        XLSX_MIME_TYPE,
+        'a.xlsx',
+        zipDePrueba(['[Content_Types].xml', 'xl/workbook.xml']),
+      ],
+      ['CSV', CSV_MIME_TYPE, 'a.csv', Buffer.from('a;b\n')],
+    ])(
+      'el chofer no sube %s, ni a su propia carga (415): sólo PDF e imágenes',
+      async (_n, mimetype, originalname, buffer) => {
+        await expect(
+          service.upload(
+            AttachmentOwnerType.FUEL_LOAD,
+            'c1',
+            'd1',
+            archivo({ mimetype, originalname, buffer, size: buffer.length }),
+            undefined,
+            CHOFER,
+          ),
+        ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+        expect(storage.put).not.toHaveBeenCalled();
+      },
+    );
+
+    it('el chofer sí sube un PDF a su propia carga', async () => {
+      await expect(
+        service.upload(
+          AttachmentOwnerType.FUEL_LOAD,
+          'c1',
+          'd1',
+          archivo(),
+          undefined,
+          CHOFER,
+        ),
+      ).resolves.toMatchObject({ mimeType: 'application/pdf' });
+    });
+
+    it('el trabajo extra corre en la misma transacción que el guardado', async () => {
+      const orden: string[] = [];
+      attachments.save.mockImplementation((a: Attachment) => {
+        orden.push('save');
+        return Promise.resolve(a);
+      });
+      cleanup.confirmUpload.mockImplementation(() => {
+        orden.push('confirm');
+        return Promise.resolve();
+      });
+      const dentro = jest.fn(() => {
+        orden.push('dentro');
+        return Promise.resolve();
+      });
+      await service.upload(
+        AttachmentOwnerType.EMPLOYEE,
+        'e1',
+        'd1',
+        archivo(),
+        undefined,
+        ADMIN,
+        { dentro },
+      );
+      expect(dentro).toHaveBeenCalledWith(
+        expect.objectContaining({ save: attachments.save }),
+        expect.objectContaining({ ownerId: 'e1' }),
+      );
+      expect(orden).toEqual(['save', 'dentro', 'confirm']);
+    });
+
+    it('si el trabajo extra falla, no queda el archivo y el error llega tal cual', async () => {
+      const dentro = jest.fn().mockRejectedValue(new NotFoundException('x'));
+      await expect(
+        service.upload(
+          AttachmentOwnerType.EMPLOYEE,
+          'e1',
+          'd1',
+          archivo(),
+          undefined,
+          ADMIN,
+          { dentro },
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(cleanup.removeInBackground).toHaveBeenCalledTimes(1);
+      expect(cleanup.confirmUpload).not.toHaveBeenCalled();
     });
 
     it('si falla el guardado en la base, borra el archivo del storage', async () => {

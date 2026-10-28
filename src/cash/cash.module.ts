@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CashBoxService } from './application/cash-box.service';
 import { CashCategoryService } from './application/cash-category.service';
 import { CashDocumentPaymentService } from './application/cash-document-payment.service';
+import { AttachmentModule } from '../attachment/attachment.module';
+import { CashMovementAttachmentOwnerResolver } from './application/cash-movement-attachment-owner.resolver';
 import { CashLedgerService } from './application/cash-ledger.service';
 import { CashMovementService } from './application/cash-movement.service';
 import { CashSeedListener } from './application/cash-seed.listener';
@@ -29,6 +31,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
       CashCategory,
       CashMovement,
     ]),
+    AttachmentModule, // dueño `cash_movement` de los adjuntos
   ],
   controllers: [
     CashBoxController,
@@ -44,6 +47,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashMovementService,
     CashCategoryService,
     CashSeedListener,
+    CashMovementAttachmentOwnerResolver,
   ],
   exports: [
     CashLedgerService,
