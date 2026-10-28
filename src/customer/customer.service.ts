@@ -3,10 +3,13 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository, EntityManager } from 'typeorm';
 import { Customer } from './entities/customer.entity';
+import { CustomerDistributor } from './entities/customer-distributor.entity';
+import { bloquearCuentaParaBaja } from '../common/locks/cuenta-lock';
 import { puntoDesdeLatLng } from '../common/geo/punto';
 import { clienteDeLaDistribuidora } from '../common/tenancy/pertenencia';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -17,6 +20,9 @@ import {
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
+
+/** Estados de un pedido que todavía no terminó (impiden la baja del cliente). */
+const ESTADOS_EN_CURSO = ['reserved', 'pending', 'accepted', 'on_the_way'];
 
 /** Lo que el alta guarda en el perfil de un cliente nuevo. */
 export interface PerfilDeClienteNuevo {
@@ -62,6 +68,167 @@ export class CustomersService {
   }
 
   /**
+   * Registra que `distributorId` dio de alta al cliente, en la transacción del
+   * alta. Idempotente: si el vínculo ya existe no lo duplica, y si estaba dado
+   * de baja lo reactiva.
+   */
+  async vincularConDistribuidora(
+    manager: EntityManager,
+    userId: string,
+    distributorId: string,
+    creadoPorUserId: string | null,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(CustomerDistributor)
+      .values({ userId, distributorId, createdByUserId: creadoPorUserId })
+      .orUpdate(
+        ['removed_at', 'removed_by_user_id'],
+        ['user_id', 'distributor_id'],
+      )
+      .execute();
+  }
+
+  /**
+   * Un pedido nuevo del cliente con la distribuidora deshace su baja, en la
+   * transacción del pedido. Sin baja vigente no hace nada.
+   */
+  async reactivarVinculo(
+    manager: EntityManager,
+    userId: string,
+    distributorId: string,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .update(CustomerDistributor)
+      .set({ removedAt: null, removedByUserId: null })
+      .where('user_id = :userId AND distributor_id = :distributorId', {
+        userId,
+        distributorId,
+      })
+      .andWhere('removed_at IS NOT NULL')
+      .execute();
+  }
+
+  /**
+   * Los clientes que la distribuidora dio de baja (vínculo con `removed_at`),
+   * para que pueda reactivarlos. Sólo los suyos; la búsqueda es por nombre o
+   * teléfono, nunca por correo.
+   */
+  async findRemoved(
+    paginationDto: QueryCustomersDto,
+    distributorId: string,
+  ): Promise<[Customer[], number]> {
+    const { limit = 10, offset = 0, term } = paginationDto;
+    const qb = this.customerRepository
+      .createQueryBuilder('customer')
+      .leftJoinAndSelect('customer.user', 'user')
+      .leftJoinAndSelect('user.role', 'role')
+      .leftJoinAndSelect('user.addresses', 'addresses')
+      .leftJoinAndSelect(
+        'customer.declaredCylinderType',
+        'declaredCylinderType',
+      )
+      .where(
+        `EXISTS (SELECT 1 FROM customer_distributor baja
+         WHERE baja.user_id = customer.user_id
+         AND baja.distributor_id = :distributorId
+         AND baja.removed_at IS NOT NULL)`,
+        { distributorId },
+      )
+      .orderBy('customer.createdAt', 'DESC')
+      .take(limit)
+      .skip(offset);
+    if (term) {
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('user.fullName ILIKE :term').orWhere(
+            'user.phoneNumber ILIKE :term',
+          );
+        }),
+        { term: `%${term}%` },
+      );
+    }
+    return qb.getManyAndCount();
+  }
+
+  /**
+   * Deshace la baja del cliente en la distribuidora. 404 si no tiene un vínculo
+   * dado de baja con ella (incluye al cliente de otra empresa).
+   */
+  async reactivarEnDistribuidora(
+    customerId: string,
+    distributorId: string,
+  ): Promise<MessageResponseDto> {
+    const customer = await this.findOne(customerId);
+    const res = await this.customerRepository.manager
+      .createQueryBuilder()
+      .update(CustomerDistributor)
+      .set({ removedAt: null, removedByUserId: null })
+      .where('user_id = :userId AND distributor_id = :distributorId', {
+        userId: customer.userId,
+        distributorId,
+      })
+      .andWhere('removed_at IS NOT NULL')
+      .execute();
+    if (!res.affected) {
+      throw new NotFoundException(`Customer with ID: ${customerId} not found`);
+    }
+    return MessageResponseDto.of('Customer restored in distributor');
+  }
+
+  /**
+   * Baja del cliente en UNA distribuidora: lo saca de sus listados, ficha y
+   * búsquedas sin tocar la cuenta, los pedidos ni su relación con otras
+   * empresas. Si el cliente sólo le compró (sin fila de vínculo), la fila nace
+   * ya dada de baja. 409 si tiene pedidos en curso con ella.
+   */
+  async darDeBajaEnDistribuidora(
+    customerId: string,
+    distributorId: string,
+    removidoPorUserId: string,
+  ): Promise<MessageResponseDto> {
+    const customer = await this.findOne(customerId);
+    await this.assertDeLaDistribuidora(
+      { customer_id: customerId },
+      distributorId,
+    );
+    await this.customerRepository.manager.transaction(async (manager) => {
+      // Mismo lock que la baja de cuenta: un pedido que se está creando
+      // termina antes de contar los pedidos en curso.
+      await bloquearCuentaParaBaja(manager, customer.userId);
+      const enCurso: unknown[] = await manager.query(
+        `SELECT 1 FROM "order" WHERE customer_id = $1 AND distributor_id = $2
+         AND status = ANY($3) LIMIT 1`,
+        [customer.userId, distributorId, ESTADOS_EN_CURSO],
+      );
+      if (enCurso.length > 0) {
+        throw new ConflictException(
+          'El cliente tiene pedidos en curso con esta distribuidora: esperá a que terminen o cancelalos',
+        );
+      }
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(CustomerDistributor)
+        .values({
+          userId: customer.userId,
+          distributorId,
+          createdByUserId: null,
+          removedAt: new Date(),
+          removedByUserId: removidoPorUserId,
+        })
+        .orUpdate(
+          ['removed_at', 'removed_by_user_id'],
+          ['user_id', 'distributor_id'],
+        )
+        .execute();
+    });
+    return MessageResponseDto.of('Customer removed from distributor');
+  }
+
+  /**
    * Guarda el consumo declarado y la estimación de recompra en la ficha del
    * cliente (CU-144). El cálculo y la validación del rango los hace el módulo
    * de recompra: acá sólo se persiste.
@@ -87,8 +254,8 @@ export class CustomersService {
    * Lista clientes. Los clientes son GLOBALES (uno puede pedir a varias
    * distribuidoras), así que el scoping por tenant no es una columna sino una
    * relación: si viene `distributorId` (admin de empresa, o super_admin con
-   * "ver como"), devuelve solo los clientes que tienen al menos un pedido con
-   * esa distribuidora. Sin él (super_admin cross-tenant) devuelve todos.
+   * "ver como"), devuelve solo los clientes que le compraron o que ella dio de
+   * alta. Sin él (super_admin cross-tenant) devuelve todos.
    */
   /**
    * El token push del cliente. `esCliente` en false si el usuario no tiene
@@ -194,7 +361,7 @@ export class CustomersService {
 
   /**
    * Aislamiento entre distribuidoras: con una distribuidora en contexto, el
-   * cliente tiene que haberle comprado (`clienteDeLaDistribuidora`). Si no, 404,
+   * cliente tiene que ser suyo (`clienteDeLaDistribuidora`: le compró o lo dio de alta). Si no, 404,
    * como si no existiera.
    */
   async assertDeLaDistribuidora(

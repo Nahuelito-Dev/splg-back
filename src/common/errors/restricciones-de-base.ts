@@ -25,6 +25,8 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Un pedido aceptado, en camino o entregado tiene que tener chofer asignado',
   CHK_order_cancelado_motivo:
     'Para cancelar un pedido hay que indicar el motivo',
+  CHK_customer_distributor_baja:
+    'La baja del cliente en la distribuidora tiene que llevar su fecha',
   CHK_order_item_cantidad:
     'La cantidad de cada renglón tiene que ser mayor a 0',
   CHK_order_item_importes: 'Los importes de un renglón no pueden ser negativos',

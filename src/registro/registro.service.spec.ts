@@ -13,6 +13,8 @@ import { EmployeeService } from '../employee/employee.service';
 import { ConsumptionService } from '../repurchase/consumption.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
+import type { Solicitante } from './politica-de-registro';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { EVENTO_USUARIO_REGISTRADO } from './events/usuario-registrado.event';
 
 /**
@@ -39,7 +41,10 @@ describe('RegistroService', () => {
     findOne: jest.Mock;
   };
   let roles: { findByType: jest.Mock };
-  let customers: { crearPerfil: jest.Mock };
+  let customers: {
+    crearPerfil: jest.Mock;
+    vincularConDistribuidora: jest.Mock;
+  };
   let deliveries: { crearPerfil: jest.Mock };
   let admins: { crearPerfil: jest.Mock };
   let distributors: { assertActive: jest.Mock };
@@ -63,7 +68,10 @@ describe('RegistroService', () => {
         Promise.resolve({ roleId: `rol-${type}`, type }),
       ),
     };
-    customers = { crearPerfil: jest.fn() };
+    customers = {
+      crearPerfil: jest.fn(),
+      vincularConDistribuidora: jest.fn(),
+    };
     deliveries = { crearPerfil: jest.fn() };
     admins = { crearPerfil: jest.fn() };
     distributors = { assertActive: jest.fn() };
@@ -107,6 +115,85 @@ describe('RegistroService', () => {
       EVENTO_USUARIO_REGISTRADO,
       expect.objectContaining({ userId: 'u1', rol: RoleType.CUSTOMER }),
     );
+  });
+
+  describe('vínculo del cliente con la distribuidora que lo da de alta', () => {
+    const adminDe = (distributor_id: string | null): Solicitante => ({
+      tipo: 'usuario',
+      usuario: {
+        user_id: 'admin-1',
+        role: RoleType.ADMIN,
+        distributor_id,
+      } as AuthenticatedUser,
+    });
+    const superAdmin: Solicitante = {
+      tipo: 'usuario',
+      usuario: {
+        user_id: 'sa-1',
+        role: RoleType.SUPER_ADMIN,
+      } as AuthenticatedUser,
+    };
+
+    it('un admin vincula al cliente con su distribuidora, en la misma transacción', async () => {
+      await service.registrar(alta(), adminDe('d1'), 'd1');
+      expect(customers.vincularConDistribuidora).toHaveBeenCalledWith(
+        manager,
+        'u1',
+        'd1',
+        'admin-1',
+      );
+    });
+
+    it('el contexto de un admin no pisa su distribuidora', async () => {
+      await service.registrar(alta(), adminDe('d1'), 'otra');
+      expect(customers.vincularConDistribuidora).toHaveBeenCalledWith(
+        manager,
+        'u1',
+        'd1',
+        'admin-1',
+      );
+    });
+
+    it('un super admin vincula con la del cuerpo o, si no, la de X-Distributor', async () => {
+      await service.registrar(alta({ distributorId: 'd2' }), superAdmin, 'd3');
+      expect(customers.vincularConDistribuidora).toHaveBeenLastCalledWith(
+        manager,
+        'u1',
+        'd2',
+        'sa-1',
+      );
+      await service.registrar(alta(), superAdmin, 'd3');
+      expect(customers.vincularConDistribuidora).toHaveBeenLastCalledWith(
+        manager,
+        'u1',
+        'd3',
+        'sa-1',
+      );
+      expect(distributors.assertActive).toHaveBeenCalledWith('d3');
+    });
+
+    it('un super admin sin distribuidora en contexto no vincula', async () => {
+      await service.registrar(alta(), superAdmin, null);
+      expect(customers.vincularConDistribuidora).not.toHaveBeenCalled();
+    });
+
+    it('el registro público y el de otros roles no vinculan', async () => {
+      await service.registrar(alta(), { tipo: 'anonimo' });
+      await service.registrar(
+        alta({ rol: RoleType.DELIVERY }),
+        adminDe('d1'),
+        'd1',
+      );
+      expect(customers.vincularConDistribuidora).not.toHaveBeenCalled();
+    });
+
+    it('si el vínculo falla, se borra la cuenta de Firebase', async () => {
+      customers.vincularConDistribuidora.mockRejectedValue(new Error('x'));
+      await expect(
+        service.registrar(alta(), adminDe('d1'), 'd1'),
+      ).rejects.toThrow();
+      expect(firebase.deleteUserSafe).toHaveBeenCalled();
+    });
   });
 
   it('un chofer va al perfil de chofer con la distribuidora autorizada', async () => {

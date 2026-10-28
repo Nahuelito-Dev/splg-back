@@ -16,6 +16,9 @@ describe('CustomersController — actualización', () => {
     update: jest.Mock;
     findOne: jest.Mock;
     findAll: jest.Mock;
+    darDeBajaEnDistribuidora: jest.Mock;
+    reactivarEnDistribuidora: jest.Mock;
+    findRemoved: jest.Mock;
   };
 
   const usuario = (role: RoleType): AuthenticatedUser => ({
@@ -28,6 +31,9 @@ describe('CustomersController — actualización', () => {
     service = {
       findOne: jest.fn(),
       findAll: jest.fn(),
+      reactivarEnDistribuidora: jest.fn().mockResolvedValue({ message: 'ok' }),
+      findRemoved: jest.fn().mockResolvedValue([[], 0]),
+      darDeBajaEnDistribuidora: jest.fn().mockResolvedValue({ message: 'ok' }),
       update: jest
         .fn()
         .mockResolvedValue({ customer_id: 'c1', user_id: 'u1', user: null }),
@@ -100,5 +106,22 @@ describe('CustomersController — actualización', () => {
         'https://s3.test/u2',
       ]);
     });
+  });
+
+  it('la baja en la distribuidora la hace el usuario en sesión sobre la distribuidora del contexto', async () => {
+    await controller.removeFromDistributor('c1', usuario(RoleType.ADMIN), 'd1');
+    expect(service.darDeBajaEnDistribuidora).toHaveBeenCalledWith(
+      'c1',
+      'd1',
+      'u1',
+    );
+  });
+
+  it('reactivar y listar removidos usan la distribuidora del contexto', async () => {
+    await controller.restoreInDistributor('c1', 'd1');
+    expect(service.reactivarEnDistribuidora).toHaveBeenCalledWith('c1', 'd1');
+    const res = { setHeader: jest.fn(), header: jest.fn() };
+    await controller.findRemoved({}, res as never, 'd1');
+    expect(service.findRemoved).toHaveBeenCalledWith({}, 'd1');
   });
 });

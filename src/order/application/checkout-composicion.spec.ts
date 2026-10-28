@@ -157,6 +157,7 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
       dataSource as unknown as DataSource,
       {
         buscarComprador: jest.fn().mockResolvedValue({ email: 'c@test.com' }),
+        reactivarVinculo: jest.fn().mockResolvedValue(undefined),
       } as never,
       {
         buscarDelUsuario: jest.fn().mockResolvedValue({
