@@ -288,6 +288,32 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El aviso necesita tipo, título y clave que no estén vacíos',
   CHK_admin_notification_destino:
     'El destino del aviso lleva entidad e id, o ninguno de los dos',
+
+  // Seguros de los vehículos
+  CHK_insurer_cuit: 'El CUIT de la aseguradora no es válido',
+  CHK_insurer_enlaces:
+    'El enlace de pago tiene que ser https y la web, http o https',
+  CHK_insurer_nombre: 'El nombre de la aseguradora necesita al menos 2 letras',
+  UQ_insurer_nombre_vigente: 'Ya hay una aseguradora con ese nombre',
+  CHK_insurance_policy_vigencia:
+    'La póliza tiene que vencer después de que empieza',
+  CHK_insurance_policy_cancelada:
+    'Una póliza cancelada necesita la fecha y el motivo',
+  CHK_insurance_policy_textos:
+    'El número de póliza y la cobertura no pueden estar vacíos',
+  UQ_insurance_policy_numero_vigente:
+    'Ya hay una póliza con ese número para la aseguradora',
+  EXC_insurance_policy_solapada:
+    'El vehículo ya tiene una póliza vigente en esas fechas: cancelala o renová desde su vencimiento',
+  CHK_insurance_installment_importe:
+    'El importe de la cuota tiene que ser mayor a 0',
+  CHK_insurance_installment_numero:
+    'El número de cuota tiene que estar entre 1 y el total',
+  CHK_insurance_installment_gracia:
+    'La gracia no puede ser anterior al vencimiento de la cuota',
+  CHK_insurance_installment_pagada:
+    'Una cuota paga necesita la fecha, el importe, quién pagó, el egreso de caja y el comprobante',
+  UQ_insurance_installment_numero: 'La póliza ya tiene esa cuota',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

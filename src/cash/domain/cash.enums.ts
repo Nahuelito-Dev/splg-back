@@ -39,6 +39,7 @@ export enum CashReferenceType {
   BOX_TRANSFER = 'box_transfer',
   REVERSAL = 'reversal',
   ORDER_PAYMENT = 'order_payment',
+  INSURANCE_INSTALLMENT = 'insurance_installment',
 }
 
 /** Sentido de una categoría: los ingresos y los gastos no se mezclan. */
@@ -64,6 +65,7 @@ export enum CashSystemCode {
   FUEL = 'fuel',
   TRAFFIC_FINE = 'traffic_fine',
   ORDER_PAYMENT = 'order_payment',
+  INSURANCE = 'insurance',
 }
 
 /** Las categorías de sistema con su nombre y su sentido, tal como se siembran. */
@@ -126,6 +128,11 @@ export const CATEGORIAS_DE_SISTEMA: ReadonlyArray<{
     code: CashSystemCode.ORDER_PAYMENT,
     name: 'Cobro de pedido',
     direction: CategoryDirection.INCOME,
+  },
+  {
+    code: CashSystemCode.INSURANCE,
+    name: 'Seguros',
+    direction: CategoryDirection.EXPENSE,
   },
 ];
 

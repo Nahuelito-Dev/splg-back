@@ -88,6 +88,17 @@ export function sumarDias(dia: string, dias: number): string {
     .slice(0, 10);
 }
 
+/** Cuántos días hay de `desde` a `hasta` (dos `YYYY-MM-DD`; negativo si `hasta` es anterior). */
+export function diasEntre(desde: string, hasta: string): number {
+  const a = partes(desde);
+  const b = partes(hasta);
+  if (!a || !b) throw new Error(`Día inválido: ${desde} o ${hasta}`);
+  return Math.round(
+    (Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) /
+      86_400_000,
+  );
+}
+
 /** Lunes de la semana ISO a la que pertenece un `YYYY-MM-DD`. */
 export function lunesDeLaSemana(dia: string): string {
   return sumarDias(dia, -((diaDeLaSemana(dia) + 6) % 7));

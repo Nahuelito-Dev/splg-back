@@ -37,6 +37,8 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   coverage_zone: 'coverage_zone_id',
   time_slot: 'time_slot_id',
   cylinder: 'cylinder_id',
+  insurer: 'insurer_id',
+  insurance_policy: 'policy_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -97,6 +99,21 @@ export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
   ['cylinder_inspection', 'cylinder_id', 'cylinder'],
 ];
 
+/**
+ * Las claves cruzadas de las tablas que nacieron después de la migración
+ * `TenantCruzado`: cada migración de esas tablas las crea con su `CREATE TABLE`
+ * (la migración `TenantCruzado` no las toca, no existen todavía cuando corre).
+ * Siguen el mismo nombre y la misma forma, y el test las compara con las entidades.
+ */
+export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[] =
+  [
+    // Seguros de los vehículos (F14)
+    ['insurance_policy', 'car_id', 'car'],
+    ['insurance_policy', 'insurer_id', 'insurer'],
+    ['insurance_installment', 'policy_id', 'insurance_policy'],
+    ['insurance_installment', 'cash_movement_id', 'cash_movement'],
+  ];
+
 export const nombreDeLaClave = (hijo: string, columna: string): string =>
   `FK_${hijo}_${columna.replace(/_id$/, '')}_distribuidora`;
 export const nombreDelUnicoDelPadre = (padre: string): string =>
@@ -104,6 +121,11 @@ export const nombreDelUnicoDelPadre = (padre: string): string =>
 
 /** Tablas que necesitan el único `(id, distributor_id)` para ser referenciadas. */
 export const PADRES = [...new Set(CLAVES_CRUZADAS.map(([, , p]) => p))];
+
+/** Tablas de las claves posteriores que no estaban en `PADRES` y declaran su único `(id, distributor_id)` al crearse. */
+export const PADRES_POSTERIORES = [
+  ...new Set(CLAVES_CRUZADAS_POSTERIORES.map(([, , p]) => p)),
+].filter((p) => !PADRES.includes(p));
 
 /** Filas de `hijo` cuya referencia es de otra distribuidora. */
 export const sqlDeViolaciones = (

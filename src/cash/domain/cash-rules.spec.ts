@@ -117,6 +117,7 @@ describe('reglas de la caja', () => {
       [CashReferenceType.PURCHASE_RECEIPT, /payment-status/],
       [CashReferenceType.FUEL_LOAD, /anulando la carga/],
       [CashReferenceType.TRAFFIC_FINE, /multa pagada no se anula/],
+      [CashReferenceType.INSURANCE_INSTALLMENT, /cuota paga no se reabre/],
       [CashReferenceType.ORDER_PAYMENT, /transferencia entre cajas \(CU-310\)/],
       [CashReferenceType.ORDER_PAYMENT, /ajuste o egreso manual con motivo/],
       [CashReferenceType.REVERSAL, /anulación/],

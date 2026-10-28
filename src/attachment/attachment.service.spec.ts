@@ -5,7 +5,7 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AttachmentActor, AttachmentService } from './attachment.service';
 import { Attachment, AttachmentOwnerType } from './entities/attachment.entity';
 import { AttachmentOwnerRegistry } from './attachment-owner.registry';
@@ -115,6 +115,31 @@ describe('AttachmentService', () => {
       storage as unknown as S3Service,
       cleanup as unknown as S3CleanupService,
     );
+  });
+
+  describe('findDelDueno', () => {
+    it('busca el adjunto por dueño y distribuidora con el manager de quien lo pide', async () => {
+      const adjunto = { attachmentId: 'a1' };
+      const manager = { findOne: jest.fn().mockResolvedValue(adjunto) };
+
+      const r = await service.findDelDueno(
+        manager as unknown as EntityManager,
+        'a1',
+        AttachmentOwnerType.INSURANCE_INSTALLMENT,
+        'q1',
+        'd1',
+      );
+
+      expect(r).toBe(adjunto);
+      expect(manager.findOne).toHaveBeenCalledWith(Attachment, {
+        where: {
+          attachmentId: 'a1',
+          ownerType: AttachmentOwnerType.INSURANCE_INSTALLMENT,
+          ownerId: 'q1',
+          distributorId: 'd1',
+        },
+      });
+    });
   });
 
   describe('upload', () => {
@@ -587,6 +612,17 @@ describe('AttachmentService', () => {
       await service.remove('a1', 'd1', ADMIN);
       expect(attachments.softRemove).toHaveBeenCalled();
       expect(resolverEmpleado.assertOwner).not.toHaveBeenCalled();
+    });
+
+    it('el comprobante de una cuota de seguro no se da de baja por el endpoint genérico', async () => {
+      attachments.findOne.mockResolvedValue({
+        ...adjunto,
+        ownerType: AttachmentOwnerType.INSURANCE_INSTALLMENT,
+      });
+      await expect(service.remove('a1', 'd1', ADMIN)).rejects.toThrow(
+        /POST \/insurance-installments/,
+      );
+      expect(attachments.softRemove).not.toHaveBeenCalled();
     });
 
     it('pide la URL firmada con el nombre original', async () => {

@@ -7,6 +7,7 @@ import {
   primerDiaDelMesSiguiente,
   rangoDeDiasArgentinos,
   rangoDelDiaArgentino,
+  diasEntre,
   sumarDias,
   truncarEnArgentinaSql,
 } from './dias-argentina';
@@ -38,6 +39,13 @@ describe('dias-argentina', () => {
   it('un instante a las 22:00 ART del 7/7 sigue siendo 7/7 (01:00 UTC del 8/7)', () => {
     expect(diaArgentino(new Date('2026-07-08T01:00:00Z'))).toBe('2026-07-07');
     expect(diaArgentino(new Date('2026-07-08T03:00:00Z'))).toBe('2026-07-08');
+  });
+
+  it('cuenta los días entre dos fechas, con signo', () => {
+    expect(diasEntre('2026-11-22', '2026-11-27')).toBe(5);
+    expect(diasEntre('2026-12-30', '2027-01-03')).toBe(4);
+    expect(diasEntre('2026-11-27', '2026-11-22')).toBe(-5);
+    expect(diasEntre('2026-05-01', '2026-05-01')).toBe(0);
   });
 
   it('suma días, cruza meses y calcula día de semana y mes', () => {
