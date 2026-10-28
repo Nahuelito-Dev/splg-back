@@ -93,4 +93,60 @@ describe('SupplierService', () => {
       service.bloquearUsable(manager as never, S1, DIST),
     ).rejects.toThrow(/Proveedor no encontrado/);
   });
+
+  it('crearEn da de alta con el repositorio de la transacción de quien llama', async () => {
+    const { service, repo } = armar(null);
+    const repoDeLaTransaccion = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((d: unknown) => d),
+      save: jest.fn((d: unknown) => Promise.resolve(d)),
+    };
+    const manager = { getRepository: jest.fn(() => repoDeLaTransaccion) };
+
+    await service.crearEn(
+      manager as never,
+      { businessName: 'X', cuit: '30712345671', kind: SupplierKind.OTHER },
+      DIST,
+    );
+
+    expect(repoDeLaTransaccion.save).toHaveBeenCalledWith(
+      expect.objectContaining({ distributorId: DIST, cuit: '30712345671' }),
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('crearEn tampoco deja repetir el CUIT dentro de la distribuidora', async () => {
+    const { service } = armar(null);
+    const repoDeLaTransaccion = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ supplierId: S1, businessName: 'Otro S.A.' }),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+    const manager = { getRepository: jest.fn(() => repoDeLaTransaccion) };
+
+    await expect(
+      service.crearEn(
+        manager as never,
+        { businessName: 'X', cuit: '30712345671', kind: SupplierKind.OTHER },
+        DIST,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repoDeLaTransaccion.save).not.toHaveBeenCalled();
+  });
+
+  it('cuitsVigentes devuelve los CUIT de la distribuidora', async () => {
+    const { service, repo } = armar(null);
+    (repo as unknown as { find: jest.Mock }).find = jest
+      .fn()
+      .mockResolvedValue([{ cuit: '30712345671' }, { cuit: '20123456786' }]);
+
+    await expect(service.cuitsVigentes(DIST)).resolves.toEqual(
+      new Set(['30712345671', '20123456786']),
+    );
+    expect((repo as unknown as { find: jest.Mock }).find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { distributorId: DIST } }),
+    );
+  });
 });

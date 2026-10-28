@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import {
   DocType,
   DocumentSequenceService,
@@ -41,53 +41,67 @@ export class StockAdjustmentUseCase {
     validarItemsDeAjuste(dto.reason, dto.items);
     return withTransactionRetry(
       () =>
-        this.dataSource.transaction(async (manager) => {
-          const ubicacion = await this.locations.resolver(
-            manager,
-            distributorId,
-            dto.location,
-          );
-          const adjustmentId = randomUUID();
-          const { batchId } = await this.ledger.aplicar(manager, {
-            distributorId,
-            referenceType: StockReferenceType.STOCK_ADJUSTMENT,
-            referenceId: adjustmentId,
-            actorUserId,
-            movimientos: movimientosDeAjuste(
-              dto.reason,
-              ubicacion.locationId,
-              dto.items,
-            ),
-          });
-          // El número va al final: document_sequence es el último lock.
-          const number = await this.sequences.siguienteNumero(
-            manager,
-            distributorId,
-            DocType.STOCK_ADJUSTMENT,
-          );
-          await manager.getRepository(StockAdjustment).save(
-            manager.getRepository(StockAdjustment).create({
-              adjustmentId,
-              distributorId,
-              number,
-              locationId: ubicacion.locationId,
-              reason: dto.reason,
-              notes: dto.notes,
-              batchId,
-              createdByUserId: actorUserId,
-            }),
-          );
-          await manager.getRepository(StockAdjustmentItem).insert(
-            dto.items.map((item) => ({
-              adjustmentId,
-              gasCylinderId: item.gasCylinderId,
-              condition: item.condition,
-              quantityDelta: item.quantityDelta,
-            })),
-          );
-          return adjustmentId;
-        }),
+        this.dataSource.transaction((manager) =>
+          this.ejecutarEn(manager, dto, distributorId, actorUserId),
+        ),
       { context: 'ajuste de stock' },
     );
+  }
+
+  /**
+   * El mismo ajuste, dentro de la transacción de quien llama (la importación
+   * masiva de stock aplica varios en una sola: todo o nada).
+   */
+  async ejecutarEn(
+    manager: EntityManager,
+    dto: CreateAdjustmentDto,
+    distributorId: string,
+    actorUserId: string,
+  ): Promise<string> {
+    validarItemsDeAjuste(dto.reason, dto.items);
+    const ubicacion = await this.locations.resolver(
+      manager,
+      distributorId,
+      dto.location,
+    );
+    const adjustmentId = randomUUID();
+    const { batchId } = await this.ledger.aplicar(manager, {
+      distributorId,
+      referenceType: StockReferenceType.STOCK_ADJUSTMENT,
+      referenceId: adjustmentId,
+      actorUserId,
+      movimientos: movimientosDeAjuste(
+        dto.reason,
+        ubicacion.locationId,
+        dto.items,
+      ),
+    });
+    // El número va al final: document_sequence es el último lock.
+    const number = await this.sequences.siguienteNumero(
+      manager,
+      distributorId,
+      DocType.STOCK_ADJUSTMENT,
+    );
+    await manager.getRepository(StockAdjustment).save(
+      manager.getRepository(StockAdjustment).create({
+        adjustmentId,
+        distributorId,
+        number,
+        locationId: ubicacion.locationId,
+        reason: dto.reason,
+        notes: dto.notes,
+        batchId,
+        createdByUserId: actorUserId,
+      }),
+    );
+    await manager.getRepository(StockAdjustmentItem).insert(
+      dto.items.map((item) => ({
+        adjustmentId,
+        gasCylinderId: item.gasCylinderId,
+        condition: item.condition,
+        quantityDelta: item.quantityDelta,
+      })),
+    );
+    return adjustmentId;
   }
 }

@@ -187,6 +187,21 @@ describe('StockAdjustmentUseCase', () => {
     expect(a.transaction).not.toHaveBeenCalled();
   });
 
+  it('ejecutarEn corre en la transacción de quien llama, sin abrir otra', async () => {
+    const a = armar();
+    const id = await crear(a).ejecutarEn(a.manager, dto, DIST, 'u1');
+
+    expect(a.transaction).not.toHaveBeenCalled();
+    expect(a.ledger.aplicar).toHaveBeenCalledWith(
+      a.manager,
+      expect.objectContaining({ referenceId: id, distributorId: DIST }),
+    );
+    expect(a.guardados[StockAdjustment.name][0]).toMatchObject({
+      adjustmentId: id,
+      number: 7,
+    });
+  });
+
   it('si el libro falla no queda nada guardado (número ni cabecera)', async () => {
     const a = armar();
     a.ledger.aplicar.mockRejectedValueOnce(new Error('sin saldo'));

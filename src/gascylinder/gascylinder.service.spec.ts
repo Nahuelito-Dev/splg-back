@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ILike, Repository } from 'typeorm';
 import { GasCylinderService } from './gascylinder.service';
@@ -376,6 +380,120 @@ describe('GasCylinderService', () => {
         }),
       );
       expect(productos.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('para la importación masiva (dentro de la transacción de quien llama)', () => {
+    const repoDelManager = () => ({
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((d: Partial<GasCylinder>) => d),
+    });
+
+    it('crearEn aplica la unicidad del tipo con el repositorio del manager', async () => {
+      const repo = repoDelManager();
+      repo.findOne.mockResolvedValue(producto(1));
+      const manager = { getRepository: jest.fn(() => repo), save: jest.fn() };
+
+      await expect(
+        service.crearEn(
+          manager as never,
+          { type: '10kg', weight: 10, price: 100 },
+          'd1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(productos.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('crearEn guarda con el manager y publica el stock inicial en esa transacción', async () => {
+      const repo = repoDelManager();
+      const manager = {
+        getRepository: jest.fn(() => repo),
+        save: jest.fn((g: GasCylinder) =>
+          Promise.resolve({ ...g, gasCylinderId: 'nuevo' }),
+        ),
+      };
+
+      await service.crearEn(
+        manager as never,
+        { type: '5kg', weight: 5, price: 100, stock: 4 },
+        'd1',
+      );
+
+      expect(manager.save).toHaveBeenCalledWith(
+        expect.objectContaining({ type: '5kg', distributorId: 'd1' }),
+      );
+      expect(eventos.emitAsync).toHaveBeenCalledWith(
+        'garrafa.creada',
+        expect.objectContaining({ gasCylinderId: 'nuevo', stock: 4, manager }),
+      );
+      expect(productos.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('cambiarPrecioEn guarda el precio nuevo sin escribir el vendible', async () => {
+      const bloqueada = { ...producto(7), price: 100 } as GasCylinder;
+      bloqueado.getOne.mockResolvedValue(bloqueada);
+
+      const cambio = await service.cambiarPrecioEn(
+        txManager as never,
+        'g1',
+        150,
+        'd1',
+      );
+
+      expect(cambio).toBe(true);
+      const [guardado] = txManager.save.mock.calls[0] as [Partial<GasCylinder>];
+      expect(guardado.price).toBe(150);
+      expect(guardado.stock).toBeUndefined();
+      expect(guardado.reservationDeficit).toBeUndefined();
+    });
+
+    it('cambiarPrecioEn: una garrafa dada de baja después de la vista previa es 409', async () => {
+      bloqueado.getOne.mockResolvedValue({
+        ...producto(7),
+        price: 100,
+        isActive: false,
+      });
+      await expect(
+        service.cambiarPrecioEn(txManager as never, 'g1', 150, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(txManager.save).not.toHaveBeenCalled();
+    });
+
+    it('cambiarPrecioEn con el mismo precio no escribe', async () => {
+      bloqueado.getOne.mockResolvedValue({ ...producto(7), price: 100 });
+      await expect(
+        service.cambiarPrecioEn(txManager as never, 'g1', 100, 'd1'),
+      ).resolves.toBe(false);
+      expect(txManager.save).not.toHaveBeenCalled();
+    });
+
+    it('cambiarPrecioEn: un producto inexistente o de otra distribuidora es 404', async () => {
+      bloqueado.getOne.mockResolvedValue(null);
+      await expect(
+        service.cambiarPrecioEn(txManager as never, 'g1', 100, 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      bloqueado.getOne.mockResolvedValue({
+        ...producto(1),
+        distributorId: 'otra',
+      });
+      await expect(
+        service.cambiarPrecioEn(txManager as never, 'g1', 100, 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(txManager.save).not.toHaveBeenCalled();
+    });
+
+    it('tiposDelCatalogo trae todo el catálogo de la distribuidora, también lo desactivado', async () => {
+      (productos as unknown as { find: jest.Mock }).find = jest
+        .fn()
+        .mockResolvedValue([producto(1)]);
+      await service.tiposDelCatalogo('d1');
+      expect(
+        (productos as unknown as { find: jest.Mock }).find,
+      ).toHaveBeenCalledWith({
+        where: { distributorId: 'd1' },
+        order: { type: 'ASC' },
+      });
     });
   });
 });

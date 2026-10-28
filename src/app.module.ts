@@ -63,6 +63,7 @@ import { enteroPositivoDeEnv } from './common/config/entero-positivo';
 import { EnvConfiguration } from './common/config/env.config';
 import { JoiValidationSchema } from './common/config/joi.validation';
 import { RedisModule } from './redis/redis.module';
+import { ImportModule } from './import/import.module';
 import { ClaimsModule } from './claims/claims.module';
 import { TimeSlotModule } from './time-slot/time-slot.module';
 import { PdfModule } from './pdf/pdf.module';
@@ -244,6 +245,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     CustomerAccountModule,
     FinanceModule,
     ExportsModule,
+    ImportModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

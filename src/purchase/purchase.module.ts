@@ -54,6 +54,7 @@ import { SupplierController } from './presentation/supplier.controller';
     PurchaseQueryService,
     PurchaseReceiptAttachmentOwnerResolver,
   ],
+  // SupplierService: la importación masiva da de alta proveedores.
   exports: [PurchaseQueryService, SupplierService],
 })
 export class PurchaseModule {}

@@ -40,21 +40,34 @@ export class SupplierService {
     await this.asegurarCuitLibre(dto.cuit, distributorId, null);
     try {
       return await this.suppliers.save(
-        this.suppliers.create({
-          distributorId,
-          businessName: dto.businessName,
-          cuit: dto.cuit,
-          kind: dto.kind,
-          contactName: dto.contactName ?? null,
-          phone: dto.phone ?? null,
-          email: dto.email ?? null,
-          address: dto.address ?? null,
-          paymentTermsDays: dto.paymentTermsDays ?? null,
-        }),
+        this.armar(this.suppliers, dto, distributorId),
       );
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'proveedores');
     }
+  }
+
+  /**
+   * El mismo alta que `create`, dentro de la transacción de quien llama (la
+   * importación masiva da de alta muchos proveedores en una sola).
+   */
+  async crearEn(
+    manager: EntityManager,
+    dto: CreateSupplierDto,
+    distributorId: string,
+  ): Promise<Supplier> {
+    const repo = manager.getRepository(Supplier);
+    await this.asegurarCuitLibre(dto.cuit, distributorId, null, repo);
+    return repo.save(this.armar(repo, dto, distributorId));
+  }
+
+  /** Los CUIT vigentes de la distribuidora, para cruzar al validar un archivo. */
+  async cuitsVigentes(distributorId: string): Promise<Set<string>> {
+    const filas = await this.suppliers.find({
+      where: { distributorId },
+      select: { supplierId: true, cuit: true },
+    });
+    return new Set(filas.map((f) => f.cuit));
   }
 
   async findAll(
@@ -185,12 +198,31 @@ export class SupplierService {
     }
   }
 
+  private armar(
+    repo: Repository<Supplier>,
+    dto: CreateSupplierDto,
+    distributorId: string,
+  ): Supplier {
+    return repo.create({
+      distributorId,
+      businessName: dto.businessName,
+      cuit: dto.cuit,
+      kind: dto.kind,
+      contactName: dto.contactName ?? null,
+      phone: dto.phone ?? null,
+      email: dto.email ?? null,
+      address: dto.address ?? null,
+      paymentTermsDays: dto.paymentTermsDays ?? null,
+    });
+  }
+
   private async asegurarCuitLibre(
     cuit: string,
     distributorId: string,
     excluirId: string | null,
+    repo: Repository<Supplier> = this.suppliers,
   ): Promise<void> {
-    const existente = await this.suppliers.findOne({
+    const existente = await repo.findOne({
       where: { distributorId, cuit },
     });
     if (existente && existente.supplierId !== excluirId) {
