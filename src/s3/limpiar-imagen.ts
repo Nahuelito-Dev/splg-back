@@ -3,7 +3,10 @@ import {
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import sharp from 'sharp';
-import type { AllowedAttachmentMimeType } from '../common/utils/attachment-rules';
+import {
+  esImagenPermitida,
+  type AllowedDocumentMimeType,
+} from '../common/utils/attachment-rules';
 
 /**
  * Tope de megapíxeles de una imagen subida (24 MP). Una foto de celular ronda
@@ -55,7 +58,7 @@ const semaforo = new Semaforo(MAX_PROCESOS_SIMULTANEOS);
  * Re-codifica una imagen sin su metadata: ningún archivo sale del back con GPS,
  * EXIF, XMP, IPTC ni comentarios. Se aplica la orientación del EXIF a los
  * píxeles antes de descartarlo (la foto no queda de costado). El formato no
- * cambia. El PDF pasa sin tocarse.
+ * cambia. El PDF, Word, Excel y CSV pasan sin tocarse.
  *
  * - Más de {@link MAX_PIXELES} (leído del encabezado, sin decodificar): 413.
  * - Una imagen que no se puede decodificar (la firma coincidía pero el
@@ -64,9 +67,9 @@ const semaforo = new Semaforo(MAX_PROCESOS_SIMULTANEOS);
  */
 export async function limpiarMetadatosDeImagen(
   buffer: Buffer,
-  mime: AllowedAttachmentMimeType,
+  mime: AllowedDocumentMimeType,
 ): Promise<Buffer> {
-  if (mime === 'application/pdf') return buffer;
+  if (!esImagenPermitida(mime)) return buffer;
   return semaforo.correr(async () => {
     const opciones = {
       failOn: 'error',

@@ -44,6 +44,10 @@ import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { ReservationService } from './application/reservation.service';
 import { PagoNotificadoListener } from './application/pago-notificado.listener';
+import { AttachmentModule } from '../attachment/attachment.module';
+import { OrderAttachmentOwnerResolver } from './application/order-attachment-owner.resolver';
+import { OrderTransferReceiptService } from './application/order-transfer-receipt.service';
+import { OrderTransferReceiptController } from './order-transfer-receipt.controller';
 import { CashModule } from '../cash/cash.module';
 import { CylinderModule } from '../cylinder/cylinder.module';
 import { CoverageZoneModule } from '../coverage-zone/coverage-zone.module';
@@ -99,14 +103,21 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     FleetModule, // bloqueo de flota (CU-136 a CU-138): el despacho no ofrece ni asigna a un chofer inhabilitado
     StockModule, // al entregar, descuenta el físico del camión o del depósito (StockDeliveryPort)
     CashModule, // el cobro del admin entra a una caja por el libro (CashLedgerService)
+    AttachmentModule, // dueño `order` de los adjuntos: comprobante de la transferencia
     TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
   ],
   // ExpressOrderController va primero: `GET /orders/delivery-options` no puede caer en `GET /orders/:id`.
-  controllers: [ExpressOrderController, OrderController],
+  controllers: [
+    ExpressOrderController,
+    OrderController,
+    OrderTransferReceiptController,
+  ],
   providers: [
     // Confirma el pedido cuando payments publica un pago notificado.
     PagoNotificadoListener,
     OrderService,
+    OrderAttachmentOwnerResolver,
+    OrderTransferReceiptService,
     DispatchService,
     OrderPricingService,
     CreateOrderUseCase,

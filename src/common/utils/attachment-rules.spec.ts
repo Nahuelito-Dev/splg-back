@@ -1,5 +1,12 @@
+import { zipDePrueba } from './zip-de-prueba';
 import {
   decodificarNombreDeArchivo,
+  DOCX_MIME_TYPE,
+  XLSX_MIME_TYPE,
+  CSV_MIME_TYPE,
+  entradasDeZip,
+  normalizarMimeDeCsv,
+  esDocumentoPermitido,
   esMimeTypePermitido,
   acotarNombreDeArchivo,
   extensionParaMimeType,
@@ -104,5 +111,219 @@ describe('acotarNombreDeArchivo', () => {
 
   it('sin extensión recorta igual', () => {
     expect([...acotarNombreDeArchivo('b'.repeat(400))].length).toBe(255);
+  });
+});
+
+describe('adjuntos de documentos: Word, Excel y CSV', () => {
+  const DOCX = zipDePrueba([
+    '[Content_Types].xml',
+    '_rels/.rels',
+    'word/document.xml',
+  ]);
+  const XLSX = zipDePrueba([
+    '[Content_Types].xml',
+    '_rels/.rels',
+    'xl/workbook.xml',
+  ]);
+
+  it.each([DOCX_MIME_TYPE, XLSX_MIME_TYPE, CSV_MIME_TYPE, 'application/pdf'])(
+    '%s se acepta como documento',
+    (mime) => {
+      expect(esDocumentoPermitido(mime)).toBe(true);
+    },
+  );
+
+  it.each(['application/msword', 'application/vnd.ms-excel', 'text/html', ''])(
+    '%s no se acepta como documento',
+    (mime) => {
+      expect(esDocumentoPermitido(mime)).toBe(false);
+    },
+  );
+
+  it('Word, Excel y CSV no entran en la lista de flota y reclamos', () => {
+    expect(esMimeTypePermitido(DOCX_MIME_TYPE)).toBe(false);
+    expect(esMimeTypePermitido(XLSX_MIME_TYPE)).toBe(false);
+    expect(esMimeTypePermitido(CSV_MIME_TYPE)).toBe(false);
+  });
+
+  it('mapea cada documento a su extensión', () => {
+    expect(extensionParaMimeType(DOCX_MIME_TYPE)).toBe('docx');
+    expect(extensionParaMimeType(XLSX_MIME_TYPE)).toBe('xlsx');
+    expect(extensionParaMimeType(CSV_MIME_TYPE)).toBe('csv');
+  });
+
+  it('acepta un docx y un xlsx con su estructura', () => {
+    expect(firmaCoincideConMimeType(DOCX_MIME_TYPE, DOCX)).toBe(true);
+    expect(firmaCoincideConMimeType(XLSX_MIME_TYPE, XLSX)).toBe(true);
+  });
+
+  it('un docx no vale como xlsx ni al revés', () => {
+    expect(firmaCoincideConMimeType(XLSX_MIME_TYPE, DOCX)).toBe(false);
+    expect(firmaCoincideConMimeType(DOCX_MIME_TYPE, XLSX)).toBe(false);
+  });
+
+  it('rechaza un ZIP cualquiera, sin [Content_Types].xml', () => {
+    const zip = zipDePrueba(['word/document.xml', 'macros.exe']);
+    expect(firmaCoincideConMimeType(DOCX_MIME_TYPE, zip)).toBe(false);
+  });
+
+  it('rechaza un ejecutable o un HTML declarados como docx/xlsx', () => {
+    expect(
+      firmaCoincideConMimeType(DOCX_MIME_TYPE, Buffer.from('MZ\x90\x00')),
+    ).toBe(false);
+    expect(
+      firmaCoincideConMimeType(XLSX_MIME_TYPE, Buffer.from('<html></html>')),
+    ).toBe(false);
+  });
+
+  it('rechaza un ZIP truncado (sin directorio central)', () => {
+    expect(
+      firmaCoincideConMimeType(
+        DOCX_MIME_TYPE,
+        DOCX.subarray(0, DOCX.length - 30),
+      ),
+    ).toBe(false);
+  });
+
+  it('lee el directorio aunque el ZIP traiga comentario al final', () => {
+    const conComentario = zipDePrueba(
+      ['[Content_Types].xml', 'word/document.xml'],
+      'comentario del zip',
+    );
+    expect(entradasDeZip(conComentario)).toEqual([
+      '[Content_Types].xml',
+      'word/document.xml',
+    ]);
+  });
+
+  it('un CSV es texto UTF-8 sin bytes nulos', () => {
+    expect(
+      firmaCoincideConMimeType(
+        CSV_MIME_TYPE,
+        Buffer.from('nombre;edad\nAna;30\n'),
+      ),
+    ).toBe(true);
+    expect(
+      firmaCoincideConMimeType(CSV_MIME_TYPE, Buffer.from('ñandú,1\n', 'utf8')),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['con un byte nulo', Buffer.from([0x61, 0x2c, 0x00, 0x62])],
+    ['que arranca como HTML', Buffer.from('  <script>alert(1)</script>')],
+  ])('rechaza un CSV %s', (_caso, buffer) => {
+    expect(firmaCoincideConMimeType(CSV_MIME_TYPE, buffer)).toBe(false);
+  });
+});
+
+describe('docx/xlsx: macros, ejecutables y entradas fuera de lugar', () => {
+  const base = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml'];
+  const baseXlsx = ['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml'];
+
+  it.each([
+    'word/vbaProject.bin',
+    'word/embeddings/oleObject1.bin',
+    'word/activeX/activeX1.xml',
+    'word/malo.exe',
+    'word/malo.dll',
+    'word/malo.js',
+    'word/malo.vbs',
+    'word/malo.bat',
+    'word/malo.cmd',
+    'word/malo.ps1',
+    'word/malo.scr',
+    'word/malo.jar',
+    'afuera/cualquiera.xml',
+    'setup.exe',
+    '../escapa.xml',
+    '/absoluta.xml',
+  ])('un docx con la entrada "%s" se rechaza', (entrada) => {
+    expect(
+      firmaCoincideConMimeType(DOCX_MIME_TYPE, zipDePrueba([...base, entrada])),
+    ).toBe(false);
+  });
+
+  it.each(['xl/vbaProject.bin', 'xl/macrosheets/sheet1.xml', 'xl/x.vbs'])(
+    'un xlsx con la entrada "%s" se rechaza',
+    (entrada) => {
+      expect(
+        firmaCoincideConMimeType(
+          XLSX_MIME_TYPE,
+          zipDePrueba([...baseXlsx, entrada]),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it('un xlsx no puede traer la carpeta word/ ni un docx la xl/', () => {
+    expect(
+      firmaCoincideConMimeType(
+        XLSX_MIME_TYPE,
+        zipDePrueba([...baseXlsx, 'word/document.xml']),
+      ),
+    ).toBe(false);
+    expect(
+      firmaCoincideConMimeType(
+        DOCX_MIME_TYPE,
+        zipDePrueba([...base, 'xl/workbook.xml']),
+      ),
+    ).toBe(false);
+  });
+
+  it('acepta las entradas normales de Office, carpetas y el printerSettings.bin', () => {
+    expect(
+      firmaCoincideConMimeType(
+        XLSX_MIME_TYPE,
+        zipDePrueba([
+          ...baseXlsx,
+          'docProps/app.xml',
+          'customXml/item1.xml',
+          'xl/',
+          'xl/worksheets/sheet1.xml',
+          'xl/printerSettings/printerSettings1.bin',
+        ]),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('CSV de Excel en Windows', () => {
+  it('acepta Windows-1252 con acentos y eñes', () => {
+    const ansi = Buffer.from(
+      'nombre;ciudad\nJosé;Córdoba\nPeña;Añelo\n',
+      'latin1',
+    );
+    expect(ansi.includes(0xe9)).toBe(true);
+    expect(firmaCoincideConMimeType(CSV_MIME_TYPE, ansi)).toBe(true);
+  });
+
+  it('un binario con bytes de control sigue rechazado', () => {
+    expect(
+      firmaCoincideConMimeType(
+        CSV_MIME_TYPE,
+        Buffer.from([0x61, 0xe9, 0x01, 0x62]),
+      ),
+    ).toBe(false);
+  });
+
+  it('un HTML en Latin-1 sigue rechazado', () => {
+    expect(
+      firmaCoincideConMimeType(
+        CSV_MIME_TYPE,
+        Buffer.from('<html>Córdoba</html>', 'latin1'),
+      ),
+    ).toBe(false);
+  });
+
+  it('application/vnd.ms-excel con extensión .csv se trata como text/csv', () => {
+    expect(normalizarMimeDeCsv('application/vnd.ms-excel', 'lista.CSV')).toBe(
+      CSV_MIME_TYPE,
+    );
+    expect(normalizarMimeDeCsv('application/vnd.ms-excel', 'lista.xls')).toBe(
+      'application/vnd.ms-excel',
+    );
+    expect(normalizarMimeDeCsv('application/pdf', 'a.csv')).toBe(
+      'application/pdf',
+    );
   });
 });

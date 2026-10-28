@@ -213,6 +213,12 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El CUIT de la distribuidora tiene que tener 11 dígitos, sin guiones',
   CHK_distributor_slug:
     'El identificador de la distribuidora sólo admite minúsculas, números y guiones',
+  CHK_distributor_cbu:
+    'El CBU de la distribuidora tiene que tener 22 dígitos con los verificadores correctos',
+  CHK_distributor_alias:
+    'El alias de la distribuidora tiene entre 6 y 20 caracteres: letras, números, punto y guion',
+  CHK_distributor_titular:
+    'El titular de la cuenta de la distribuidora tiene que tener al menos 2 caracteres',
   CHK_warehouse_codigo:
     'El código del depósito admite hasta 12 caracteres: mayúsculas, números, guion y guion bajo',
   CHK_claims_textos:

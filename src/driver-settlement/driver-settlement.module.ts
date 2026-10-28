@@ -8,6 +8,8 @@ import { EmailModule } from '../email/email.module';
 import { RedisModule } from '../redis/redis.module';
 import { DriverSettlementCron } from './application/driver-settlement.cron';
 import { DriverSettlementQueryService } from './application/driver-settlement-query.service';
+import { AttachmentModule } from '../attachment/attachment.module';
+import { DriverSettlementAttachmentOwnerResolver } from './application/driver-settlement-attachment-owner.resolver';
 import { DriverSettlementService } from './application/driver-settlement.service';
 import { DriverSettlementCollection } from './entities/driver-settlement-collection.entity';
 import { DriverSettlementExpense } from './entities/driver-settlement-expense.entity';
@@ -30,6 +32,7 @@ import { DriverSettlementController } from './presentation/driver-settlement.con
       DriverSettlementCollection,
     ]),
     CashModule,
+    AttachmentModule, // dueño `driver_settlement` de los adjuntos
     CommissionModule,
     DocumentSequenceModule,
     AdminModule, // destinatarios del aviso de rendiciones sin cerrar
@@ -41,6 +44,7 @@ import { DriverSettlementController } from './presentation/driver-settlement.con
     DriverSettlementService,
     DriverSettlementQueryService,
     DriverSettlementCron,
+    DriverSettlementAttachmentOwnerResolver,
   ],
   exports: [DriverSettlementService, DriverSettlementQueryService],
 })

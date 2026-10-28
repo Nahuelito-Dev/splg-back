@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CashModule } from '../cash/cash.module';
 import { DriverSettlementModule } from '../driver-settlement/driver-settlement.module';
 import { CustomerAccountQueryService } from './application/customer-account-query.service';
+import { AttachmentModule } from '../attachment/attachment.module';
+import { CustomerAccountEntryAttachmentOwnerResolver } from './application/customer-account-entry-attachment-owner.resolver';
 import { CustomerAccountService } from './application/customer-account.service';
 import { CustomerChargeListener } from './application/customer-charge.listener';
 import { CustomerLedgerService } from './application/customer-ledger.service';
@@ -23,6 +25,7 @@ import { CustomerAccountController } from './presentation/customer-account.contr
       CustomerAccountEntry,
       CustomerAccountAllocation,
     ]),
+    AttachmentModule, // dueño `customer_account_entry` de los adjuntos
     CashModule, // entrada a caja del pago del administrador
     DriverSettlementModule, // el cobro del chofer en la calle entra por su rendición
   ],
@@ -32,6 +35,7 @@ import { CustomerAccountController } from './presentation/customer-account.contr
     CustomerAccountQueryService,
     CustomerLedgerService,
     CustomerChargeListener,
+    CustomerAccountEntryAttachmentOwnerResolver,
   ],
   exports: [
     CustomerAccountService,

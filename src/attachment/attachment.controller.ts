@@ -57,7 +57,8 @@ const OWNER_TYPE_PARAM = {
 
 /**
  * Adjuntos genéricos de los módulos de empresa (legajos, combustible, multas,
- * siniestros, remitos, rendiciones). El chofer sólo accede a los de sus propias
+ * siniestros, remitos, rendiciones, movimientos de caja, cuentas corrientes y
+ * pedidos). El chofer sólo accede a los de sus propias
  * cargas, siniestros y rendiciones: lo decide `AttachmentService`.
  */
 @ApiTags('Attachments')
@@ -68,7 +69,10 @@ export class AttachmentController {
 
   @Post(':ownerType/:ownerId')
   @ApiOperation({
-    summary: 'Subir un adjunto a un dueño (PDF, JPG, PNG, WEBP)',
+    summary:
+      'Subir un adjunto a un dueño (PDF, JPG, PNG, WEBP, Word .docx, Excel .xlsx, CSV)',
+    description:
+      'Admin y super admin: PDF, JPG, PNG, WEBP, Word (.docx), Excel (.xlsx) y CSV (UTF-8 o Windows-1252; también se acepta `application/vnd.ms-excel` si el archivo se llama `.csv`), hasta 10 MB. Se valida el contenido por su estructura, no sólo el tipo declarado: un docx/xlsx con macros, ejecutables u objetos incrustados se rechaza. Chofer: sólo PDF y imágenes. Word, Excel y CSV se entregan siempre como descarga. Dueños (`ownerType`): employee, fuel_load, traffic_fine, vehicle_accident, purchase_receipt, stock_adjustment, driver_settlement, cash_movement, customer_account_entry y order.',
   })
   @ApiParam(OWNER_TYPE_PARAM)
   @ApiParam({ name: 'ownerId', description: 'UUID del dueño' })
@@ -95,7 +99,8 @@ export class AttachmentController {
     description: 'Un chofer no puede adjuntar a ese tipo de dueño',
   })
   @ApiUnsupportedMediaTypeResponse({
-    description: 'Tipo de archivo no permitido (sólo PDF, JPG, PNG, WEBP)',
+    description:
+      'Tipo no permitido, contenido que no coincide con el tipo declarado, o (chofer) algo que no es PDF ni imagen',
   })
   @ApiPayloadTooLargeResponse({
     description: 'El archivo supera el máximo permitido',

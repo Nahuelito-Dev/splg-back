@@ -15,6 +15,6 @@ import { AttachmentOwnerRegistry } from './attachment-owner.registry';
   imports: [TypeOrmModule.forFeature([Attachment]), S3Module],
   controllers: [AttachmentController],
   providers: [AttachmentService, AttachmentOwnerRegistry],
-  exports: [AttachmentOwnerRegistry],
+  exports: [AttachmentOwnerRegistry, AttachmentService],
 })
 export class AttachmentModule {}

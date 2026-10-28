@@ -22,13 +22,14 @@ export enum AttachmentOwnerType {
   DRIVER_SETTLEMENT = 'driver_settlement',
   CASH_MOVEMENT = 'cash_movement',
   CUSTOMER_ACCOUNT_ENTRY = 'customer_account_entry',
+  ORDER = 'order',
 }
 
 /**
  * Adjunto genérico (legajo, combustible, multas, siniestros, remitos,
  * rendiciones...). El contenido vive en S3; acá la referencia y
  * la metadata. `ownerType` + `ownerId` apuntan al dueño sin FK, a propósito:
- * la tabla es polimórfica y no puede referenciar a la vez nueve tablas. La
+ * la tabla es polimórfica y no puede referenciar a la vez diez tablas. La
  * existencia del dueño y su distribuidora los valida el
  * `AttachmentOwnerResolver` del módulo dueño al subir y al listar.
  */
