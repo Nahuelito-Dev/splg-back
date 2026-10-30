@@ -45,7 +45,7 @@ export class ExportsController {
       'Acepta los mismos filtros que el listado de cada recurso y devuelve todas ' +
       'las filas que los cumplen, no sólo una página. Recursos: pedidos, clientes, ' +
       'choferes, vehiculos, garrafas, envases, stock-resumen, stock-movimientos, ' +
-      'cajas, movimientos-caja, cuentas-corrientes, rendiciones, liquidaciones, ' +
+      'cajas, movimientos-caja, income-statement, cuentas-corrientes, rendiciones, liquidaciones, ' +
       'combustible, multas, siniestros, neumaticos, costos-flota, reclamos, ' +
       'incidencias, ordenes-compra, recepciones, proveedores, legajos, auditoria ' +
       'y auditoria-datos. El CSV usa `;` y coma decimal, con BOM UTF-8. Un super ' +

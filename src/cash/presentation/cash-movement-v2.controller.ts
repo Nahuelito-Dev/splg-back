@@ -13,7 +13,7 @@ import { CashMovementService } from '../application/cash-movement.service';
 import { CashMapper } from '../cash.mapper';
 import {
   CashMovementV2PageDto,
-  QueryCashMovementDto,
+  QueryCashMovementV2Dto,
 } from '../dto/cash-movement.dto';
 
 /** El libro de movimientos con el pedido del que nace cada cobro de venta (API v2; el resto sigue en `/cash-movements` v1). */
@@ -35,7 +35,7 @@ export class CashMovementV2Controller {
     description: 'La caja no existe o es de otra distribuidora',
   })
   async findAll(
-    @Query() query: QueryCashMovementDto,
+    @Query() query: QueryCashMovementV2Dto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<CashMovementV2PageDto> {
     const { data, total } = await this.movimientos.consultar(

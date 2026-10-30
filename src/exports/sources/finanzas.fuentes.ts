@@ -1,9 +1,12 @@
+import { aCentavos, dec } from '../../common/utils/dinero';
 import { CashBoxService } from '../../cash/application/cash-box.service';
+import { CashIncomeStatementService } from '../../cash/application/cash-income-statement.service';
 import { CashMovementService } from '../../cash/application/cash-movement.service';
 import { CashMapper } from '../../cash/cash.mapper';
+import { QueryIncomeStatementDto } from '../../cash/dto/cash-income-statement.dto';
 import { QueryCashBoxDto } from '../../cash/dto/cash-box.dto';
 import type { CashBoxResponseDto } from '../../cash/dto/cash-box.dto';
-import { QueryCashMovementDto } from '../../cash/dto/cash-movement.dto';
+import { QueryCashMovementV2Dto } from '../../cash/dto/cash-movement.dto';
 import type { CashMovementResponseDto } from '../../cash/dto/cash-movement.dto';
 import { CommissionMapper } from '../../commission/presentation/commission.mapper';
 import { QueryDriverLiquidationDto } from '../../commission/dto/driver-liquidation.dto';
@@ -27,9 +30,19 @@ import {
 } from './columnas';
 import { fuente, porPagina } from './fuente';
 
+/** Una fila del exporte del resultado: el total, una categoría, un período o una caja. */
+export interface FilaDeResultado {
+  seccion: 'Total' | 'Categoría' | 'Período' | 'Caja';
+  concepto: string;
+  ingresos: number;
+  egresos: number;
+  movimientos: number | null;
+}
+
 export interface ServiciosDeFinanzas {
   cashBoxes: CashBoxService;
   cashMovements: CashMovementService;
+  incomeStatement: CashIncomeStatementService;
   accounts: CustomerAccountQueryService;
   settlements: DriverSettlementQueryService;
   liquidations: DriverLiquidationService;
@@ -60,11 +73,11 @@ export function fuentesDeFinanzas(s: ServiciosDeFinanzas): FuenteDeExporte[] {
       ],
     }),
 
-    fuente<QueryCashMovementDto, CashMovementResponseDto>({
+    fuente<QueryCashMovementV2Dto, CashMovementResponseDto>({
       recurso: 'movimientos-caja',
       descripcion:
         'Movimientos de caja (mismos filtros que GET /cash-movements)',
-      query: QueryCashMovementDto,
+      query: QueryCashMovementV2Dto,
       paginar: porPagina,
       leer: async (query, distribuidoraId) => {
         const r = await s.cashMovements.consultar(distribuidoraId, query);
@@ -85,6 +98,55 @@ export function fuentesDeFinanzas(s: ServiciosDeFinanzas): FuenteDeExporte[] {
         codigo('Referencia', (m) => m.referenceId, 38),
         booleano('Anulado', (m) => m.reversed),
         codigo('Anula al movimiento', (m) => m.reversesMovementId, 38),
+      ],
+    }),
+
+    fuente<QueryIncomeStatementDto, FilaDeResultado>({
+      recurso: 'income-statement',
+      descripcion:
+        'Ingresos y egresos de un período: total, por categoría, por período y por caja (mismos filtros que GET /finance/income-statement)',
+      query: QueryIncomeStatementDto,
+      leer: async (query, distribuidoraId) => {
+        const r = await s.incomeStatement.consultar(distribuidoraId, query);
+        const filas: FilaDeResultado[] = [
+          {
+            seccion: 'Total',
+            concepto: `${r.from} a ${r.to}`,
+            ingresos: r.totals.income,
+            egresos: r.totals.expense,
+            movimientos: null,
+          },
+          ...r.byCategory.map((c) => ({
+            seccion: 'Categoría' as const,
+            concepto: c.name,
+            ingresos: c.direction === 'in' ? c.amount : 0,
+            egresos: c.direction === 'out' ? c.amount : 0,
+            movimientos: c.count,
+          })),
+          ...r.byPeriod.map((p) => ({
+            seccion: 'Período' as const,
+            concepto: p.period,
+            ingresos: p.income,
+            egresos: p.expense,
+            movimientos: null,
+          })),
+          ...r.byCashBox.map((c) => ({
+            seccion: 'Caja' as const,
+            concepto: c.name,
+            ingresos: c.income,
+            egresos: c.expense,
+            movimientos: null,
+          })),
+        ];
+        return { filas, total: filas.length };
+      },
+      columnas: [
+        texto('Sección', (f) => f.seccion),
+        texto('Concepto', (f) => f.concepto, 36),
+        moneda('Ingresos', (f) => f.ingresos),
+        moneda('Egresos', (f) => f.egresos),
+        moneda('Resultado', (f) => aCentavos(dec(f.ingresos).minus(f.egresos))),
+        entero('Movimientos', (f) => f.movimientos),
       ],
     }),
 

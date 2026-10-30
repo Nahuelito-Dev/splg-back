@@ -19,6 +19,16 @@ function servicios() {
     },
     cashBoxes: { findAll: jest.fn().mockResolvedValue(vacio) },
     cashMovements: { consultar: jest.fn().mockResolvedValue(vacio) },
+    incomeStatement: {
+      consultar: jest.fn().mockResolvedValue({
+        from: '2026-10-01',
+        to: '2026-10-31',
+        totals: { income: 0, expense: 0, net: 0 },
+        byCategory: [],
+        byPeriod: [],
+        byCashBox: [],
+      }),
+    },
     accounts: { findAll: jest.fn().mockResolvedValue(vacio) },
     settlements: { findAll: jest.fn().mockResolvedValue(vacio) },
     liquidations: { findAll: jest.fn().mockResolvedValue(vacio) },
@@ -66,6 +76,12 @@ const CASOS: Array<
   ['stock-movimientos', {}, 'stock', 'movimientos'],
   ['cajas', {}, 'cashBoxes', 'findAll'],
   ['movimientos-caja', {}, 'cashMovements', 'consultar'],
+  [
+    'income-statement',
+    { from: '2026-10-01', to: '2026-10-31' },
+    'incomeStatement',
+    'consultar',
+  ],
   ['cuentas-corrientes', {}, 'accounts', 'findAll'],
   ['rendiciones', {}, 'settlements', 'findAll'],
   ['liquidaciones', {}, 'liquidations', 'findAll'],
@@ -105,7 +121,8 @@ describe('ExportSourcesRegistry', () => {
       const consulta = await fuente?.preparar(filtros, 'dist-1');
       const lote = await consulta?.leer(0, 500);
 
-      expect(lote).toEqual({ filas: [], total: 0 });
+      // El resultado siempre trae la fila de total, aunque no haya movimientos.
+      expect(lote?.total).toBe(recurso === 'income-statement' ? 1 : 0);
       const mock = (s[servicio] as unknown as Record<string, jest.Mock>)[
         metodo
       ];
@@ -114,6 +131,48 @@ describe('ExportSourcesRegistry', () => {
       expect(fuente?.encabezados.length).toBeGreaterThan(3);
     },
   );
+
+  it('income-statement baja el total, las categorías, los períodos y las cajas', async () => {
+    const { s, registry } = armar();
+    s.incomeStatement.consultar.mockResolvedValue({
+      from: '2026-10-01',
+      to: '2026-10-02',
+      totals: { income: 150, expense: 40.1, net: 109.9 },
+      byCategory: [
+        { name: 'Cobro de pedido', direction: 'in', amount: 150, count: 3 },
+        { name: 'Combustible', direction: 'out', amount: 40.1, count: 1 },
+      ],
+      byPeriod: [
+        { period: '2026-10-01', income: 150, expense: 0, net: 150 },
+        { period: '2026-10-02', income: 0, expense: 40.1, net: -40.1 },
+      ],
+      byCashBox: [{ name: 'Caja central', income: 150, expense: 40.1 }],
+    });
+
+    const consulta = await registry
+      .buscar('income-statement')
+      ?.preparar({ from: '2026-10-01', to: '2026-10-02' }, 'dist-1');
+    const lote = await consulta?.leer(0, 500);
+
+    expect(lote?.filas).toEqual([
+      ['Total', '2026-10-01 a 2026-10-02', 150, 40.1, 109.9, null],
+      ['Categoría', 'Cobro de pedido', 150, 0, 150, 3],
+      ['Categoría', 'Combustible', 0, 40.1, -40.1, 1],
+      ['Período', '2026-10-01', 150, 0, 150, null],
+      ['Período', '2026-10-02', 0, 40.1, -40.1, null],
+      ['Caja', 'Caja central', 150, 40.1, 109.9, null],
+    ]);
+  });
+
+  it('income-statement rechaza un filtro que el listado no tiene', async () => {
+    const { registry } = armar();
+
+    await expect(
+      registry
+        .buscar('income-statement')
+        ?.preparar({ from: '2026-10-01', to: '2026-10-02', otro: 'x' }, 'd'),
+    ).rejects.toThrow();
+  });
 
   it('los encabezados de cada recurso son distintos entre sí', () => {
     const { registry } = armar();

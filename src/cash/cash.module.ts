@@ -7,6 +7,7 @@ import { AttachmentModule } from '../attachment/attachment.module';
 import { CashMovementAttachmentOwnerResolver } from './application/cash-movement-attachment-owner.resolver';
 import { SalesCashService } from './application/sales-cash.service';
 import { CashLedgerService } from './application/cash-ledger.service';
+import { CashIncomeStatementService } from './application/cash-income-statement.service';
 import { CashMovementService } from './application/cash-movement.service';
 import { CashSeedListener } from './application/cash-seed.listener';
 import { CashSessionService } from './application/cash-session.service';
@@ -50,6 +51,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashBoxService,
     CashSessionService,
     CashMovementService,
+    CashIncomeStatementService,
     CashCategoryService,
     SalesCashService,
     CashSeedListener,
@@ -61,6 +63,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashCategoryService,
     CashBoxService,
     CashMovementService,
+    CashIncomeStatementService,
     CashSessionService,
     SalesCashService,
   ],
