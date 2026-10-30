@@ -27,6 +27,7 @@ export enum AttachmentOwnerType {
   INSURANCE_POLICY = 'insurance_policy',
   INSURANCE_INSTALLMENT = 'insurance_installment',
   TRAFFIC_FINE_PAYMENT = 'traffic_fine_payment',
+  MP_RECONCILIATION = 'mp_reconciliation',
 }
 
 /**

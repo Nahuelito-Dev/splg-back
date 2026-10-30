@@ -58,6 +58,10 @@ export const JoiValidationSchema = Joi.object({
   MP_SUCCESS_URL: Joi.string().optional(),
   MP_FAILURE_URL: Joi.string().optional(),
   MP_PENDING_URL: Joi.string().optional(),
+  // Reporte de liberaciones (conciliación). `fake` usa un reporte de mentira
+  // (sólo fuera de producción) y `MP_REPORTS_FAKE_CSV` es la ruta del CSV que devuelve.
+  MP_REPORTS_DRIVER: Joi.string().valid('real', 'fake', '').optional(),
+  MP_REPORTS_FAKE_CSV: Joi.string().allow('').optional(),
   // Archivos en Amazon S3 (adjuntos de flota y de empresa, foto del reclamo).
   // Bucket y región son obligatorios: sin ellos la app no arranca. Una variable
   // vacía (`AWS_S3_ENDPOINT=`) cuenta como no definida.

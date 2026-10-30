@@ -645,6 +645,34 @@
       "orderColumn": null
     },
     {
+      "table": "mp_reconciliation",
+      "entity": "MpReconciliation",
+      "pk": ["reconciliation_id"],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "entity": "MpReconciliationItem",
+      "pk": ["item_id"],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "order",
       "entity": "Order",
       "pk": ["order_id"],
@@ -5043,6 +5071,318 @@
       "secret": false,
       "kind": "text",
       "position": 4
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "reconciliation_id",
+      "property": "reconciliationId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "requested_by_user_id",
+      "property": "requestedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "from_date",
+      "property": "fromDate",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "to_date",
+      "property": "toDate",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "include_account_level",
+      "property": "includeAccountLevel",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "mp_report_id",
+      "property": "mpReportId",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "file_name",
+      "property": "fileName",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "failure_reason",
+      "property": "failureReason",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "summary",
+      "property": "summary",
+      "secret": false,
+      "kind": "json",
+      "position": 10
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "account_report_key",
+      "property": "accountReportKey",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "report_attachment_id",
+      "property": "reportAttachmentId",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "last_checked_at",
+      "property": "lastCheckedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "mp_reconciliation",
+      "column": "ready_at",
+      "property": "readyAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 14
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "item_id",
+      "property": "itemId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "reconciliation_id",
+      "property": "reconciliationId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "row_key",
+      "property": "rowKey",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "kind",
+      "property": "kind",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "account_level",
+      "property": "accountLevel",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "source_id",
+      "property": "sourceId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "payment_id",
+      "property": "paymentId",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "order_id",
+      "property": "orderId",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "occurred_at",
+      "property": "occurredAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 9
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "mp_description",
+      "property": "mpDescription",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "mp_amount",
+      "property": "mpAmount",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "ledger_amount",
+      "property": "ledgerAmount",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "difference",
+      "property": "difference",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "extra_amount",
+      "property": "extraAmount",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "direction",
+      "property": "direction",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "appliable",
+      "property": "appliable",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "needs_cash_box",
+      "property": "needsCashBox",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "note",
+      "property": "note",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 19
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "applied_at",
+      "property": "appliedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 20
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "applied_by_user_id",
+      "property": "appliedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 21
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "applied_movement_id",
+      "property": "appliedMovementId",
+      "secret": false,
+      "kind": "text",
+      "position": 22
+    },
+    {
+      "table": "mp_reconciliation_item",
+      "column": "target_cash_box_id",
+      "property": "targetCashBoxId",
+      "secret": false,
+      "kind": "text",
+      "position": 23
     },
     {
       "table": "order",
