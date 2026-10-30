@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsDate,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -53,13 +54,13 @@ export class QueryAuditEntriesDto {
   @ApiPropertyOptional({
     example: 2,
     description:
-      'idTipoAuditoria: 1 Alta, 2 Modificación, 3 Baja lógica, 4 Reactivación, 5 Baja física',
+      'idTipoAuditoria: 1 Alta, 2 Modificación, 3 Baja lógica, 4 Reactivación, 5 Baja física, 6 Ingreso, 7 Ingreso fallido, 8 Salida',
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(5)
+  @Max(8)
   actionType?: number;
 
   @ApiPropertyOptional({
@@ -194,6 +195,69 @@ export class AuditEntryDto {
 export class AuditEntriesPageDto {
   @ApiProperty({ type: AuditEntryDto, isArray: true })
   data!: AuditEntryDto[];
+
+  @ApiProperty({ description: 'Total que cumple el filtro, sin paginar' })
+  total!: number;
+}
+
+/** Quién (o qué) hizo el cambio, según la auditoría. */
+export const ORIGENES_DE_AUDITORIA = ['user', 'system', 'direct'] as const;
+export type OrigenDeAuditoria = (typeof ORIGENES_DE_AUDITORIA)[number];
+
+/** Filtros de `GET /v2/audit/entries`: los de la v1 más el origen. */
+export class QueryAuditEntriesV2Dto extends QueryAuditEntriesDto {
+  @ApiPropertyOptional({
+    enum: ORIGENES_DE_AUDITORIA,
+    description:
+      '`user`: lo hizo un usuario. `system`: sin usuario, hecho por la propia API (crons, procesos, ingresos fallidos). `direct`: sin usuario y escrito en la base por otra aplicación (SQL a mano, scripts de mantenimiento).',
+  })
+  @IsOptional()
+  @IsIn(ORIGENES_DE_AUDITORIA)
+  origin?: OrigenDeAuditoria;
+}
+
+/** Auditoria de la v2: la de la v1 más de dónde salió el asiento. */
+export class AuditEntryV2Dto extends AuditEntryDto {
+  @ApiProperty({
+    enum: ORIGENES_DE_AUDITORIA,
+    description: 'Ver el filtro `origin`',
+  })
+  origin!: OrigenDeAuditoria;
+
+  @ApiProperty({
+    example: 'db',
+    description:
+      '`db`: lo escribió el trigger de la tabla. `app`: lo asentó la API (ingresos, motivos)',
+  })
+  source!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Tabla que cambió (sólo asientos del trigger)',
+  })
+  tableName!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Rol de la base que ejecutó el cambio',
+  })
+  dbUser!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'splg-api',
+    description:
+      'application_name de la conexión: `splg-api`, `splg-script:<nombre>`, `psql`...',
+  })
+  appName!: string | null;
+}
+
+export class AuditEntriesPageV2Dto {
+  @ApiProperty({ type: AuditEntryV2Dto, isArray: true })
+  data!: AuditEntryV2Dto[];
 
   @ApiProperty({ description: 'Total que cumple el filtro, sin paginar' })
   total!: number;

@@ -1,6 +1,3 @@
-import { AuditoriaDeDatos } from '../audit/data/auditoria-de-datos';
-import { cambioDeCampo } from '../audit/data/audit-value';
-import { AuditActionTypeId } from '../audit/entities/audit-action-type.entity';
 import {
   Injectable,
   Logger,
@@ -251,31 +248,8 @@ export class DeliveryService {
     average: number,
   ): Promise<void> {
     // `update` puntual (un `save` reescribiría la posición del chofer con un
-    // valor viejo); como TypeORM no lo anuncia, se audita a mano en la misma
-    // transacción.
-    await this.deliveryRepository.manager.transaction(async (manager) => {
-      const delivery = await manager.findOne(Delivery, {
-        where: { userId },
-        withDeleted: true,
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!delivery) return;
-      await manager.update(Delivery, { userId }, { calification: average });
-      const cambio = cambioDeCampo(
-        'calification',
-        delivery.calification,
-        average,
-        true,
-      );
-      if (!cambio) return;
-      await AuditoriaDeDatos.registrar(manager, {
-        actionTypeId: AuditActionTypeId.UPDATE,
-        entity: Delivery.name,
-        recordId: delivery.deliveryId,
-        distributorId: delivery.distributorId,
-        details: [cambio],
-      });
-    });
+    // valor viejo); la auditoría la asienta el trigger de la tabla.
+    await this.deliveryRepository.update({ userId }, { calification: average });
   }
 
   async findOne(id: string): Promise<Delivery> {

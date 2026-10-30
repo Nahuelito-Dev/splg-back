@@ -18,6 +18,7 @@
 import 'dotenv/config';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import './lib/marcar-script';
 import { NestFactory } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';

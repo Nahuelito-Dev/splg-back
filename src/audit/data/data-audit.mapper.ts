@@ -5,7 +5,10 @@ import {
   AuditActionTypeDto,
   AuditDetailDto,
   AuditEntryDto,
+  AuditEntryV2Dto,
+  OrigenDeAuditoria,
 } from './data-audit.dto';
+import { APP_DE_LA_API } from './audit-origen';
 
 export class DataAuditMapper {
   static actionTypeToDto(t: AuditActionType): AuditActionTypeDto {
@@ -45,6 +48,31 @@ export class DataAuditMapper {
     dto.ip = a.ip;
     dto.dateTime = a.createdAt;
     dto.details = details.map((d) => DataAuditMapper.detailToDto(d));
+    return dto;
+  }
+
+  /**
+   * `user` si tiene usuario. Sin usuario: `direct` si lo escribió el trigger
+   * desde una aplicación que no es la API (SQL a mano, un script); el resto es
+   * `system`, incluida la auditoría anterior a esta marca.
+   */
+  static origenDe(a: Audit): OrigenDeAuditoria {
+    if (a.userId) return 'user';
+    return a.source === 'db' && a.appName !== APP_DE_LA_API
+      ? 'direct'
+      : 'system';
+  }
+
+  static toDtoV2(a: Audit, details: AuditDetail[]): AuditEntryV2Dto {
+    const dto = Object.assign(
+      new AuditEntryV2Dto(),
+      DataAuditMapper.toDto(a, details),
+    );
+    dto.origin = DataAuditMapper.origenDe(a);
+    dto.source = a.source;
+    dto.tableName = a.tableName;
+    dto.dbUser = a.dbUser;
+    dto.appName = a.appName;
     return dto;
   }
 }

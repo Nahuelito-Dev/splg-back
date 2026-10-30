@@ -145,6 +145,18 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
 
           // Configuración extra necesaria para Render
           extra: {
+            // Quién es esta conexión en `pg_stat_activity` y en la auditoría
+            // (`audit.app_name`): la API es `splg-api`; un script de
+            // mantenimiento fija `DB_APP_NAME=splg-script:<nombre>`. Una
+            // escritura sin usuario cuyo nombre es otro (psql, un cliente
+            // cualquiera) se lee como cambio directo en la base.
+            application_name:
+              configService.get<string>('DB_APP_NAME') ?? 'splg-api',
+            // Sólo los seeds de desarrollo (`DB_AUDIT_OFF=on`): sus conexiones
+            // no dejan asientos de datos (`auditoria_trigger` lo respeta).
+            ...(configService.get('DB_AUDIT_OFF') === 'on'
+              ? { options: '-c splg.audit_off=on' }
+              : {}),
             // Conexiones del pool (10 por defecto de `pg`). Cada pedido
             // concurrente retiene una dentro de su transacción mientras otra
             // consulta pide una segunda: con el pool chico, 10 pedidos

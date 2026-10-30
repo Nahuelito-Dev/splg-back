@@ -36,6 +36,7 @@ describe('Migraciones sin diff contra las entidades (e2e)', () => {
       entities: [join(raiz, '**', '*.entity.ts')],
       migrations: [join(raiz, 'migrations', '*.ts')],
       synchronize: false,
+      migrationsTransactionMode: 'each',
     });
     await dataSource.initialize();
   }, 180000);

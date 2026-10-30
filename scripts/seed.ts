@@ -11,6 +11,7 @@
  * endpoint, etc.). Un solo comando deja el sistema listo para probar con tokens
  * reales. Corre en el contexto de la app (mismos servicios que producción).
  */
+import './lib/marcar-script';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';

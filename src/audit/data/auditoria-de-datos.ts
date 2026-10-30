@@ -2,7 +2,13 @@ import { randomUUID } from 'crypto';
 import { EntityManager } from 'typeorm';
 import { AuditActionTypeId } from '../entities/audit-action-type.entity';
 import { auditContext } from './audit-context';
-import { CambioDeCampo } from './audit-value';
+
+/** Un campo que cambió, ya en texto. */
+export interface CambioDeCampo {
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+}
 
 export interface NuevaAuditoria {
   actionTypeId: AuditActionTypeId;
@@ -15,10 +21,11 @@ export interface NuevaAuditoria {
 }
 
 /**
- * Escribe una Auditoria y sus DetalleAuditoria con el `manager` recibido, o
- * sea dentro de la transacción del cambio: si ésta se deshace, la auditoría
- * también. La usa el subscriber global y, a mano, las escrituras que TypeORM
- * no anuncia (`update()`, `softDelete()` y los query builders).
+ * Escribe a mano una Auditoria y sus DetalleAuditoria con el `manager`
+ * recibido, o sea dentro de la transacción del cambio. Los cambios de datos
+ * los asientan los triggers de la base; esto queda sólo para lo que un trigger
+ * no ve: un hecho que no es una columna (el motivo de una entrega manual, la
+ * anulación de los datos de quien recibe, que no se auditan).
  *
  * Una sola sentencia (CTE) para el encabezado y todos los detalles.
  */
@@ -42,8 +49,9 @@ export class AuditoriaDeDatos {
       `WITH cabecera AS (
          INSERT INTO "audit"
            ("audit_id", "action_type_id", "user_id", "distributor_id",
-            "entity", "record_id", "ip")
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "entity", "record_id", "ip", "source", "app_name")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'app',
+                 left(current_setting('application_name'), 63))
        )
        INSERT INTO "audit_detail"
          ("audit_detail_id", "audit_id", "field", "old_value", "new_value")

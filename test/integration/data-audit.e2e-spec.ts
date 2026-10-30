@@ -140,7 +140,7 @@ describe('Auditoría de datos (e2e)', () => {
     });
     expect(porCampo.get('stock')?.newValue).toBe('5');
     expect(porCampo.get('isActive')?.newValue).toBe('true');
-    expect(porCampo.get('price')?.newValue).toBe('1000');
+    expect(porCampo.get('price')?.newValue).toBe('1000.00');
     // los campos sin valor no generan detalle
     expect(porCampo.has('deletedAt')).toBe(false);
   });
@@ -167,7 +167,7 @@ describe('Auditoría de datos (e2e)', () => {
         .map((x) => [x.field, x.oldValue, x.newValue])
         .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
     ).toEqual([
-      ['price', '1000', '1250'],
+      ['price', '1000.00', '1250.00'],
       ['stock', '5', '9'],
     ]);
   });
@@ -563,7 +563,7 @@ describe('Auditoría de datos (e2e)', () => {
     expect(g.distributorId).toBe(d.distributorId);
   });
 
-  it('la calificación del chofer se actualiza puntual (no pisa la posición) y se audita a mano', async () => {
+  it('la calificación del chofer se actualiza puntual (no pisa la posición) y la audita el trigger', async () => {
     const d = await distribuidora();
     const rol = await seedRol(RoleType.DELIVERY);
     const u = await ds.getRepository(User).save({
@@ -612,6 +612,102 @@ describe('Auditoría de datos (e2e)', () => {
     expect(
       await ds.getRepository(Audit).count({ where: { recordId: '' } }),
     ).toBe(0);
+  });
+
+  describe('actor en escrituras sin transacción (F25)', () => {
+    const enRequest = <T>(user: User, trabajo: () => Promise<T>) =>
+      auditContext.run(
+        { userId: user.userId, ip: '10.9.9.9', distributorId: null },
+        trabajo,
+      );
+
+    it('update(), query builder y SQL crudo del request llevan al usuario; sin request queda el sistema; nada se filtra por el pool', async () => {
+      const d = await distribuidora();
+      const admin = await seedAdmin(RoleType.ADMIN, d.distributorId);
+      const g = await garrafa(d.distributorId);
+      const repo = ds.getRepository(GasCylinder);
+      const modif = async () => {
+        const todas = await auditorias('GasCylinder', g.gasCylinderId);
+        return todas[todas.length - 1];
+      };
+
+      await enRequest(admin, () =>
+        repo.update({ gasCylinderId: g.gasCylinderId }, { stock: 6 }),
+      );
+      expect(await modif()).toMatchObject({
+        actionTypeId: AuditActionTypeId.UPDATE,
+        userId: admin.userId,
+        ip: '10.9.9.9',
+        source: 'db',
+      });
+
+      await enRequest(admin, () =>
+        repo
+          .createQueryBuilder()
+          .update()
+          .set({ stock: 7 })
+          .where('gas_cylinder_id = :id', { id: g.gasCylinderId })
+          .execute(),
+      );
+      expect((await modif()).userId).toBe(admin.userId);
+
+      await enRequest(admin, () =>
+        ds.query(
+          `UPDATE gas_cylinder SET stock = 8 WHERE gas_cylinder_id = $1`,
+          [g.gasCylinderId],
+        ),
+      );
+      expect((await modif()).userId).toBe(admin.userId);
+
+      // Sin request (cron, script): usuario nulo, y la conexión del pool que
+      // acaba de servir al request no arrastra su actor.
+      for (let i = 0; i < 12; i++) {
+        await ds.query(
+          `UPDATE gas_cylinder SET stock = $2 WHERE gas_cylinder_id = $1`,
+          [g.gasCylinderId, 20 + i],
+        );
+        expect((await modif()).userId).toBeNull();
+      }
+    });
+
+    it('un cambio por save() deja un solo asiento (el subscriber ya no escribe)', async () => {
+      const d = await distribuidora();
+      const g = await garrafa(d.distributorId);
+      expect(await auditorias('GasCylinder', g.gasCylinderId)).toHaveLength(1);
+      g.stock = 9;
+      await ds.getRepository(GasCylinder).save(g);
+      expect(await auditorias('GasCylinder', g.gasCylinderId)).toHaveLength(2);
+    });
+
+    it('la entrada de un cambio de tipo de chofer queda con anterior y nuevo', async () => {
+      const d = await distribuidora();
+      const admin = await seedAdmin(RoleType.ADMIN, d.distributorId);
+      const rol = await seedRol(RoleType.DELIVERY);
+      const u = await ds.getRepository(User).save({
+        email: 'tipo@test.local',
+        roleId: rol.roleId,
+      } as Partial<User>);
+      const chofer = await ds.getRepository(Delivery).save({
+        distributorId: d.distributorId,
+        userId: u.userId,
+        isAvailable: true,
+      } as Partial<Delivery>);
+      await enRequest(admin, () =>
+        ds
+          .getRepository(Delivery)
+          .update({ deliveryId: chofer.deliveryId }, { isAvailable: false }),
+      );
+      const todas = await auditorias('Delivery', chofer.deliveryId);
+      const ultima = todas[todas.length - 1];
+      expect(ultima.userId).toBe(admin.userId);
+      expect(await detalles(ultima.auditId)).toEqual([
+        expect.objectContaining({
+          field: 'isAvailable',
+          oldValue: 'true',
+          newValue: 'false',
+        }),
+      ]);
+    });
   });
 
   describe('contexto del request', () => {
@@ -785,6 +881,96 @@ describe('Auditoría de datos (e2e)', () => {
       await get(admin, '/audit/entries?limit=999').expect(400);
     });
 
+    it('v2: origin distingue usuario, sistema (la API) y directo (otra aplicación), y trae las columnas nuevas; la v1 no cambia', async () => {
+      const d = await distribuidora();
+      const admin = await seedAdmin(RoleType.ADMIN, d.distributorId);
+      const g = await garrafa(d.distributorId);
+      const repo = ds.getRepository(GasCylinder);
+      // usuario: update() dentro de un request
+      await auditContext.run(
+        { userId: admin.userId, ip: '10.1.1.1', distributorId: null },
+        () => repo.update({ gasCylinderId: g.gasCylinderId }, { stock: 11 }),
+      );
+      // sistema: sin request, por la conexión de la API
+      await repo.update({ gasCylinderId: g.gasCylinderId }, { stock: 12 });
+      // directo: otra aplicación (psql, un script) escribe en la base
+      const qr = ds.createQueryRunner();
+      try {
+        await qr.query(`SET application_name = 'psql-manual'`);
+        await qr.query(
+          `UPDATE gas_cylinder SET stock = 13 WHERE gas_cylinder_id = $1`,
+          [g.gasCylinderId],
+        );
+        await qr.query(`RESET application_name`);
+      } finally {
+        await qr.release();
+      }
+
+      type Entrada = {
+        origin: string;
+        source: string;
+        tableName: string;
+        dbUser: string;
+        appName: string;
+        userId: string | null;
+        details: Array<{ field: string; newValue: string }>;
+      };
+      const v2 = async (origin: string) => {
+        const res = await get(
+          admin,
+          `/v2/audit/entries?entity=GasCylinder&recordId=${g.gasCylinderId}&actionType=2&origin=${origin}`,
+          d.distributorId,
+        ).expect(200);
+        return (res.body as { data: Entrada[] }).data;
+      };
+      const [delUsuario] = await v2('user');
+      expect(delUsuario).toMatchObject({
+        origin: 'user',
+        source: 'db',
+        tableName: 'gas_cylinder',
+        appName: 'splg-api',
+        userId: admin.userId,
+      });
+      const [delSistema] = await v2('system');
+      expect(delSistema).toMatchObject({
+        origin: 'system',
+        appName: 'splg-api',
+        userId: null,
+      });
+      const [directo] = await v2('direct');
+      expect(directo).toMatchObject({
+        origin: 'direct',
+        appName: 'psql-manual',
+        userId: null,
+      });
+      expect(directo.details).toEqual([
+        expect.objectContaining({ field: 'stock', newValue: '13' }),
+      ]);
+
+      // v1: mismos asientos, sin los campos nuevos
+      const v1 = await get(
+        admin,
+        `/v1/audit/entries?entity=GasCylinder&recordId=${g.gasCylinderId}`,
+        d.distributorId,
+      ).expect(200);
+      const filasV1 = (v1.body as { data: Array<Record<string, unknown>> })
+        .data;
+      expect(filasV1.length).toBeGreaterThanOrEqual(4);
+      for (const f of filasV1) {
+        expect(f).not.toHaveProperty('origin');
+        expect(f).not.toHaveProperty('appName');
+      }
+      // detalle y catálogo de la v2
+      const uno = await get(
+        admin,
+        `/v2/audit/entries/${(await auditorias('GasCylinder', g.gasCylinderId))[0].auditId}`,
+        d.distributorId,
+      ).expect(200);
+      expect(uno.body).toHaveProperty('origin');
+      const tipos = await get(admin, '/v2/audit/action-types').expect(200);
+      expect((tipos.body as unknown[]).length).toBe(8);
+    });
+
     it('el catálogo de acciones y la protección por rol', async () => {
       const d = await distribuidora();
       const admin = await seedAdmin(RoleType.ADMIN, d.distributorId);
@@ -797,6 +983,9 @@ describe('Auditoría de datos (e2e)', () => {
         { id: 3, name: 'Baja lógica' },
         { id: 4, name: 'Reactivación' },
         { id: 5, name: 'Baja física' },
+        { id: 6, name: 'Ingreso' },
+        { id: 7, name: 'Ingreso fallido' },
+        { id: 8, name: 'Salida' },
       ]);
       await request(env.app.getHttpServer())
         .get('/audit/entries')

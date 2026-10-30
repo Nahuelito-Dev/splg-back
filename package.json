@@ -13,6 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "seed": "ts-node --files scripts/seed.ts",
+    "auditoria:mapa": "ts-node --files scripts/auditoria-mapa.ts",
     "seed:demo": "ts-node --files scripts/seed-demo.ts",
     "cuentas:demo": "ts-node --files scripts/cuentas-demo.ts",
     "s3:diagnostico": "ts-node --files scripts/diagnostico-bucket.ts",

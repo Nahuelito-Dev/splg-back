@@ -5,8 +5,6 @@ import { Repository } from 'typeorm';
 import { CoverageZone } from './entities/coverage-zone.entity';
 import { RedisService } from '../redis/redis.service';
 import { AdminGateway } from '../gateways/admin.gateway';
-import { AuditoriaDeDatos } from '../audit/data/auditoria-de-datos';
-import { AuditActionTypeId } from '../audit/entities/audit-action-type.entity';
 
 /** Evento a los admins cuando el barrido apaga la última zona activa de su distribuidora. */
 export const EVENTO_SIN_ZONAS_ACTIVAS = 'coverage:no-active-zones';
@@ -63,15 +61,13 @@ export class CoverageZoneExpiryCron {
   }
 
   /**
-   * Marca inactivas las vencidas, deja asentada la auditoría de cada una y
-   * avisa a los admins de las distribuidoras que se quedaron sin zonas
-   * activas. Devuelve cuántas desactivó.
+   * Marca inactivas las vencidas (la auditoría de cada una la asienta el
+   * trigger de la tabla) y avisa a los admins de las distribuidoras que se
+   * quedaron sin zonas activas. Devuelve cuántas desactivó.
    */
   async barrer(): Promise<number> {
     // El UPDATE ... RETURNING toma las filas y las marca en un solo paso: dos
-    // barridos simultáneos no pueden desactivar dos veces la misma zona. La
-    // auditoría va en la misma transacción (el UPDATE crudo no pasa por el
-    // subscriber).
+    // barridos simultáneos no pueden desactivar dos veces la misma zona.
     const { zonas, sinZonas } = await this.zones.manager.transaction(
       async (manager) => {
         const [filas]: [ZonaVencida[], number] = await manager.query(
@@ -83,17 +79,6 @@ export class CoverageZoneExpiryCron {
               AND "valid_until" <= now()
           RETURNING "coverage_zone_id", "distributor_id", "name", "valid_until"`,
         );
-        for (const z of filas) {
-          await AuditoriaDeDatos.registrar(manager, {
-            actionTypeId: AuditActionTypeId.UPDATE,
-            entity: 'CoverageZone',
-            recordId: z.coverage_zone_id,
-            distributorId: z.distributor_id,
-            details: [
-              { field: 'isActive', oldValue: 'true', newValue: 'false' },
-            ],
-          });
-        }
         const distribuidoras = [...new Set(filas.map((z) => z.distributor_id))];
         const sinZonas: string[] = [];
         for (const id of distribuidoras) {

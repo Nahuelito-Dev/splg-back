@@ -14,6 +14,12 @@
  * desactiva esos triggers dentro de SU transacción y los reactiva antes de
  * confirmar (el DDL de Postgres es transaccional: si algo falla, el rollback los
  * deja como estaban). Esto NO existe en la aplicación: sólo en los seeds.
+ *
+ * Los triggers de auditoría de datos (`TRG_auditoria`) no escriben mientras la
+ * conexión tenga `splg.audit_off = on`, que el seed fija al conectarse (opción de
+ * arranque de la conexión, no un ALTER TABLE global) y que el trigger sólo respeta
+ * si el usuario es superusuario o miembro de `splg_mantenimiento`: la purga y el sembrado no
+ * llenan la auditoría con bajas físicas y altas «de sistema» encima de la curada.
  */
 import { EntityManager } from 'typeorm';
 import { limpiarCompras } from './purchase-demo';

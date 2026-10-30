@@ -84,6 +84,7 @@ async function main(): Promise<void> {
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     entities: [StorageOrphan],
     synchronize: false,
+    extra: { application_name: 'splg-script:completar-fotos-demo' },
   });
   await ds.initialize();
   try {

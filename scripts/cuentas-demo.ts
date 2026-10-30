@@ -54,6 +54,7 @@ async function main() {
     database: process.env.DB_NAME,
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     synchronize: false,
+    extra: { application_name: 'splg-script:cuentas-demo' },
   });
   await ds.initialize();
 
