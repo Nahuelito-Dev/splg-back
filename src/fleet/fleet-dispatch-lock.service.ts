@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import {
@@ -18,6 +18,10 @@ import {
   HabilitacionRelevante,
 } from './domain/fleet-lock.util';
 import { calcularEstadoDeVencimiento } from './domain/expiration-status';
+import {
+  MaintenancePlanningCase,
+  PlanningCaseStatus,
+} from './entities/maintenance-planning-case.entity';
 
 const ESTADOS_CERRADOS = [
   MaintenanceTaskStatus.DONE,
@@ -27,6 +31,8 @@ const ESTADOS_CERRADOS = [
 /** Sin fecha ni chofer: el motivo "no tiene un vehículo asignado" no viene de ninguna tarea. */
 const MOTIVO_SIN_VEHICULO = 'no tiene un vehículo asignado';
 const MOTIVO_VEHICULO_FUERA_DE_SERVICIO = 'su vehículo está fuera de servicio';
+const MOTIVO_VEHICULO_EN_TALLER =
+  'su vehículo tiene el taller programado en este horario';
 
 /** CU-246: motivos laborales que no vienen de ninguna tarea. */
 export const MOTIVO_LEGAJO_EGRESADO = 'su legajo está egresado';
@@ -89,6 +95,10 @@ export class FleetDispatchLockService {
     private readonly deliveryService: DeliveryService,
     private readonly employees: EmployeeService,
     private readonly leaves: LeaveService,
+    // Agenda del taller (CU-105, M2): la ventana confirmada bloquea el despacho.
+    @Optional()
+    @InjectRepository(MaintenancePlanningCase)
+    private readonly cases?: Repository<MaintenancePlanningCase>,
   ) {}
 
   /**
@@ -257,6 +267,11 @@ export class FleetDispatchLockService {
         .map((v) => v.deliveryId),
     );
 
+    const enTaller = await this.carIdsEnTaller(vehiculos.map((v) => v.carId));
+    const enTallerPorDelivery = new Set(
+      vehiculos.filter((v) => enTaller.has(v.carId)).map((v) => v.deliveryId),
+    );
+
     const legajos = await this.employees.findByUserIds(
       deliveries.map((d) => d.userId),
       distributorId,
@@ -283,6 +298,9 @@ export class FleetDispatchLockService {
       const motivosLaborales: string[] = [];
       if (fueraDeServicio.has(d.deliveryId)) {
         motivosLaborales.push(MOTIVO_VEHICULO_FUERA_DE_SERVICIO);
+      }
+      if (enTallerPorDelivery.has(d.deliveryId)) {
+        motivosLaborales.push(MOTIVO_VEHICULO_EN_TALLER);
       }
       if (legajo) {
         if (legajo.status !== EmployeeStatus.ACTIVE) {
@@ -323,6 +341,30 @@ export class FleetDispatchLockService {
     }
 
     return vacio;
+  }
+
+  /**
+   * Los vehículos con una ventana de taller confirmada que está corriendo
+   * ahora (CU-105, paso 8: se bloquea la agenda del vehículo). La ventana
+   * deja de bloquear sola al terminar, o antes si la tarea se cierra o se cancela.
+   */
+  private async carIdsEnTaller(carIds: string[]): Promise<Set<string>> {
+    if (!this.cases || carIds.length === 0) return new Set();
+    const ahora = new Date();
+    const filas = await this.cases
+      .createQueryBuilder('c')
+      .innerJoin(MaintenanceTask, 't', 't.task_id = c.task_id')
+      .select('c.car_id', 'carId')
+      .where('c.status = :confirmado', {
+        confirmado: PlanningCaseStatus.CONFIRMED,
+      })
+      .andWhere('c.car_id IN (:...carIds)', { carIds })
+      .andWhere('c.chosen_start <= :ahora AND c.chosen_end > :ahora', { ahora })
+      .andWhere('t.status NOT IN (:...cerrados)', {
+        cerrados: ESTADOS_CERRADOS,
+      })
+      .getRawMany<{ carId: string }>();
+    return new Set(filas.map((f) => f.carId));
   }
 
   /** Las tareas abiertas (no `done` ni `cancelled`) de esas deliveries, autos y/o legajos, en una sola consulta. */

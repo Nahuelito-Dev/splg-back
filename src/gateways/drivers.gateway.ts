@@ -173,6 +173,20 @@ export class DriversGateway
     this.server.to(`driver_${driverId}`).emit('order:cancelled', payload);
   }
 
+  /** Evento de la planificación de flota (CU-105): propuesta nueva, cerrada o ventana confirmada. */
+  notifyMaintenance(
+    driverId: string,
+    evento:
+      | 'maintenance:proposal'
+      | 'maintenance:proposal-closed'
+      | 'maintenance:case-escalated'
+      | 'maintenance:window-confirmed',
+    payload: unknown,
+  ): void {
+    this.logger.log(`🔧 ${evento} para el chofer ${driverId}`);
+    this.server.to(`driver_${driverId}`).emit(evento, payload);
+  }
+
   notifyOrderAddressChanged(driverId: string, payload: unknown): void {
     this.logger.log(
       `📍 Avisando cambio de dirección del pedido ${idDelPedido(payload)} a chofer ${driverId}`,

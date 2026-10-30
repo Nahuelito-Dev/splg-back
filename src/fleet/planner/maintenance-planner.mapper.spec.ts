@@ -1,0 +1,193 @@
+import { MaintenancePlannerMapper } from './maintenance-planner.mapper';
+import {
+  MaintenanceCriticality,
+  MaintenanceDocumentKind,
+} from '../entities/maintenance-plan.entity';
+import {
+  PlanningCaseStatus,
+  PlanningEscalationReason,
+} from '../entities/maintenance-planning-case.entity';
+import {
+  MaintenanceWindowProposal,
+  WindowProposalStatus,
+} from '../entities/maintenance-window-proposal.entity';
+import type {
+  CasoCompleto,
+  VencimientosDeVehiculo,
+} from './maintenance-planner.service';
+
+const prop = (rank: number, status: WindowProposalStatus) =>
+  ({
+    proposalId: `p${rank}`,
+    caseId: 'c1',
+    taskId: 't1',
+    windowStart: new Date('2026-11-02T11:00:00Z'),
+    windowEnd: new Date('2026-11-02T16:00:00Z'),
+    rank,
+    status,
+    expiresAt: new Date('2026-10-31T11:00:00Z'),
+    respondedAt: null,
+    rejectionReason: null,
+    altWindowStart: null,
+    altWindowEnd: null,
+  }) as MaintenanceWindowProposal;
+
+const caso = (over: Partial<CasoCompleto> = {}): CasoCompleto =>
+  ({
+    caseId: 'c1',
+    status: PlanningCaseStatus.NEGOTIATING,
+    taskId: 't1',
+    task: {
+      plan: { name: 'VTV', criticality: MaintenanceCriticality.BLOCKING },
+    },
+    carId: 'car-1',
+    car: { carPatent: 'AB123CD' },
+    deliveryId: 'del-1',
+    delivery: { user: { fullName: 'Ana Pérez' } },
+    projectedDueAt: new Date('2026-11-05T00:00:00Z'),
+    openedAt: new Date('2026-10-30T00:00:00Z'),
+    escalationReason: null,
+    evaluatedWindows: [],
+    proposals: [],
+    ...over,
+  }) as unknown as CasoCompleto;
+
+describe('MaintenancePlannerMapper', () => {
+  it('el caso muestra la propuesta vigente y la última respuesta', () => {
+    const dto = MaintenancePlannerMapper.caso(
+      caso({
+        proposals: [
+          prop(1, WindowProposalStatus.REJECTED),
+          prop(2, WindowProposalStatus.PENDING),
+        ],
+      }),
+    );
+    expect(dto.currentProposal?.proposalId).toBe('p2');
+    expect(dto.lastProposal?.proposalId).toBe('p1');
+    expect(dto.proposalsCount).toBe(2);
+    expect(dto.driverName).toBe('Ana Pérez');
+    expect(dto.patent).toBe('AB123CD');
+  });
+
+  it('un caso escalado trae el motivo en castellano', () => {
+    const dto = MaintenancePlannerMapper.caso(
+      caso({
+        status: PlanningCaseStatus.ESCALATED,
+        escalationReason: PlanningEscalationReason.NO_DRIVER,
+        delivery: null,
+        deliveryId: null,
+      }),
+    );
+    expect(dto.escalationText).toContain('chofer');
+    expect(dto.driverName).toBeNull();
+    expect(dto.currentProposal).toBeNull();
+  });
+
+  it('el detalle suma las propuestas y el cuadro de ventanas', () => {
+    const c = caso({
+      proposals: [prop(1, WindowProposalStatus.PENDING)],
+      evaluatedWindows: [
+        {
+          start: 'a',
+          end: 'b',
+          demand: 1,
+          unitsLeft: 2,
+          urgent: false,
+          offered: true,
+          discardReason: null,
+        },
+      ],
+    });
+    const dto = MaintenancePlannerMapper.detalle(c);
+    expect(dto.proposals).toHaveLength(1);
+    expect(dto.windows).toHaveLength(1);
+  });
+
+  it('la propuesta del chofer lleva la tarea y el vehículo', () => {
+    const p = {
+      ...prop(1, WindowProposalStatus.PENDING),
+      task: {
+        carId: 'car-1',
+        plan: { name: 'Service' },
+        car: { carPatent: 'AB123CD' },
+      },
+    } as unknown as MaintenanceWindowProposal;
+    expect(MaintenancePlannerMapper.driverProposal(p)).toMatchObject({
+      taskName: 'Service',
+      carId: 'car-1',
+      patent: 'AB123CD',
+    });
+  });
+
+  it('el vehículo redondea el consumo y marca lo que no pasa por un taller', () => {
+    const v = {
+      car: {
+        carId: 'car-1',
+        carPatent: 'AB123CD',
+        typeCar: 'Camioneta',
+        odometerKm: 1000,
+      },
+      consumo: {
+        kmPorDia: 12.345,
+        source: 'own',
+        diasDeHistorial: 50,
+        muestras: [],
+      },
+      proximaVentana: null,
+      items: [
+        {
+          task: {
+            taskId: 't1',
+            dueAt: new Date('2026-11-10T00:00:00Z'),
+            dueKm: null,
+            scheduledAt: null,
+            plan: {
+              name: 'Seguro',
+              criticality: MaintenanceCriticality.BLOCKING,
+              documentKind: MaintenanceDocumentKind.INSURANCE,
+            },
+          },
+          proyeccion: {
+            fecha: new Date('2026-11-10T15:00:00Z'),
+            porKilometraje: null,
+            kmFaltantes: null,
+            enObservacion: false,
+          },
+          porVencer: false,
+          caso: null,
+        },
+      ],
+    } as unknown as VencimientosDeVehiculo;
+
+    const dto = MaintenancePlannerMapper.vehiculo(
+      v,
+      new Date('2026-10-30T15:00:00Z'),
+    );
+
+    expect(dto.kmPerDay).toBe(12.3);
+    expect(dto.items[0]).toMatchObject({
+      needsWorkshop: false,
+      daysLeft: 11,
+      caseId: null,
+    });
+  });
+
+  it('un vehículo sin consumo no inventa uno', () => {
+    const dto = MaintenancePlannerMapper.vehiculo(
+      {
+        car: { carId: 'c', carPatent: null, typeCar: null, odometerKm: null },
+        consumo: null,
+        proximaVentana: {
+          start: new Date(),
+          end: new Date(),
+          estado: PlanningCaseStatus.CONFIRMED,
+        },
+        items: [],
+      } as unknown as VencimientosDeVehiculo,
+      new Date(),
+    );
+    expect(dto.kmPerDay).toBeNull();
+    expect(dto.usageSource).toBeNull();
+    expect(dto.nextWindow?.status).toBe('confirmed');
+  });
+});

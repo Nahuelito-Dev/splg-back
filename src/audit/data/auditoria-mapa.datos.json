@@ -589,6 +589,20 @@
       "orderColumn": null
     },
     {
+      "table": "maintenance_planning_case",
+      "entity": "MaintenancePlanningCase",
+      "pk": ["case_id"],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "maintenance_task",
       "entity": "MaintenanceTask",
       "pk": ["task_id"],
@@ -621,8 +635,8 @@
       "entity": "MaintenanceWindowProposal",
       "pk": ["proposal_id"],
       "deleteColumn": null,
-      "distributorMode": "request",
-      "distributorColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
       "parentTable": null,
       "parentFkColumn": null,
       "parentPkColumn": null,
@@ -4713,6 +4727,142 @@
       "position": 12
     },
     {
+      "table": "maintenance_planning_case",
+      "column": "case_id",
+      "property": "caseId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "task_id",
+      "property": "taskId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "car_id",
+      "property": "carId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "delivery_id",
+      "property": "deliveryId",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "projected_due_at",
+      "property": "projectedDueAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "evaluated_windows",
+      "property": "evaluatedWindows",
+      "secret": false,
+      "kind": "json",
+      "position": 7
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "escalation_reason",
+      "property": "escalationReason",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "opened_at",
+      "property": "openedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 9
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "escalated_at",
+      "property": "escalatedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 10
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "chosen_start",
+      "property": "chosenStart",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "chosen_end",
+      "property": "chosenEnd",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "chosen_source",
+      "property": "chosenSource",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "resolved_at",
+      "property": "resolvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 14
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "resolved_by_user_id",
+      "property": "resolvedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "maintenance_planning_case",
+      "column": "notes",
+      "property": "notes",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
       "table": "maintenance_task",
       "column": "task_id",
       "property": "taskId",
@@ -4978,11 +5128,27 @@
     },
     {
       "table": "maintenance_window_proposal",
+      "column": "case_id",
+      "property": "caseId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "maintenance_window_proposal",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "maintenance_window_proposal",
       "column": "delivery_id",
       "property": "deliveryId",
       "secret": false,
       "kind": "text",
-      "position": 2
+      "position": 4
     },
     {
       "table": "maintenance_window_proposal",
@@ -4990,7 +5156,7 @@
       "property": "windowStart",
       "secret": false,
       "kind": "timestamp",
-      "position": 3
+      "position": 5
     },
     {
       "table": "maintenance_window_proposal",
@@ -4998,7 +5164,7 @@
       "property": "windowEnd",
       "secret": false,
       "kind": "timestamp",
-      "position": 4
+      "position": 6
     },
     {
       "table": "maintenance_window_proposal",
@@ -5006,7 +5172,7 @@
       "property": "rank",
       "secret": false,
       "kind": "text",
-      "position": 5
+      "position": 7
     },
     {
       "table": "maintenance_window_proposal",
@@ -5014,7 +5180,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 8
     },
     {
       "table": "maintenance_window_proposal",
@@ -5022,7 +5188,7 @@
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 7
+      "position": 9
     },
     {
       "table": "maintenance_window_proposal",
@@ -5030,7 +5196,31 @@
       "property": "respondedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 8
+      "position": 10
+    },
+    {
+      "table": "maintenance_window_proposal",
+      "column": "rejection_reason",
+      "property": "rejectionReason",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "maintenance_window_proposal",
+      "column": "alt_window_start",
+      "property": "altWindowStart",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "maintenance_window_proposal",
+      "column": "alt_window_end",
+      "property": "altWindowEnd",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
     },
     {
       "table": "module_config",

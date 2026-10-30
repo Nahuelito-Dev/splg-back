@@ -7,6 +7,7 @@ import {
   Index,
   Unique,
   UpdateDateColumn,
+  Check,
 } from 'typeorm';
 import { Distributor } from './distributor.entity';
 import { User } from '../../users/entities/user.entity';
@@ -32,10 +33,47 @@ export enum ConfigurableProcess {
 }
 
 /**
+ * Rangos de los parámetros del planificador de flota (CU-105): los mismos de
+ * `ESQUEMAS` en `process-config.ts`. Una clave ausente vale lo de omisión; una
+ * presente tiene que ser un número dentro del rango.
+ */
+const RANGOS_DEL_PLANIFICADOR: ReadonlyArray<[string, number, number]> = [
+  ['cronHour', 0, 23],
+  ['proposalTtlHours', 1, 168],
+  ['topNWindows', 1, 10],
+  ['minVehiclesPerZone', 0, 100],
+  ['minSampleDays', 1, 365],
+  ['decay', 0, 1],
+  ['horizonDays', 1, 180],
+  ['minLeadDays', 0, 30],
+  ['zoneLookbackDays', 1, 90],
+  ['demandWeeks', 1, 26],
+  ['workshopStartHour', 0, 23],
+  ['workshopEndHour', 1, 24],
+  ['workshopDays', 1, 127],
+  ['usageStaleDays', 1, 90],
+  ['anticipationKm', 0, 1_000_000],
+  ['driverEmail', 0, 1],
+];
+
+/** Los parámetros enteros del planificador: `decay` es el único con decimales. */
+const CHECK_PLANIFICADOR = [
+  ...RANGOS_DEL_PLANIFICADOR.map(
+    ([k, min, max]) =>
+      `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'decay' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
+  ),
+  `(COALESCE(("params" ->> 'workshopStartHour')::numeric, 8) < COALESCE(("params" ->> 'workshopEndHour')::numeric, 13))`,
+].join(' AND ');
+
+/**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
  * Casos: CU-105 a CU-108, CU-149, CU-171 y CU-173 (parametrización)
  */
+@Check(
+  'CHK_module_config_planificador',
+  `"module" <> 'fleet_planner' OR (${CHECK_PLANIFICADOR})`,
+)
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])
 export class ModuleConfig {

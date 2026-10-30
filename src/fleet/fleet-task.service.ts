@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Optional,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -44,6 +45,8 @@ import {
 } from './domain/fleet-lock.util';
 import { calcularEstadoDeVencimiento } from './domain/expiration-status';
 import { validarDetalle } from './domain/document-details';
+import { PlanningCaseCloser } from './planner/planning-case-closer.service';
+import type { MaintenanceWindowProposal } from './entities/maintenance-window-proposal.entity';
 
 /** Fecha de calendario del cuerpo: `undefined` no se toca, `null` borra, un ISO se normaliza. */
 function fechaDeCalendario(valor: string | null | undefined) {
@@ -88,6 +91,8 @@ export class FleetTaskService {
     // despacho (incluye el vehículo que maneja, no sólo su propia licencia).
     private readonly fleetLock: FleetDispatchLockService,
     private readonly pagos: CashDocumentPaymentService,
+    // El planificador de taller (CU-105): una tarea que se cierra o cancela por fuera cierra su caso.
+    @Optional() private readonly casos?: PlanningCaseCloser,
   ) {}
 
   async create(
@@ -293,10 +298,17 @@ export class FleetTaskService {
 
     // El kilometraje del vehículo se sube con el del cierre, por el mismo
     // punto que usan las cargas de combustible: ninguno pisa al otro.
+    let propuestasCerradas: MaintenanceWindowProposal[] = [];
     try {
       await this.tasks.manager.transaction(async (manager) => {
         const task = await this.bloquear(manager, id, distributorId);
         this.assertAbierta(task);
+        propuestasCerradas =
+          (await this.casos?.cerrar(
+            manager,
+            { taskId: id },
+            'La tarea se cerró por fuera del planificador',
+          )) ?? [];
         // Cuenta también el kilometraje que la tarea ya traía guardado: la base
         // lo valida al pasar a «hecha» venga o no en el cierre.
         const kilometraje = dto.odometerKm ?? task.odometerKm;
@@ -345,6 +357,7 @@ export class FleetTaskService {
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
+    await this.casos?.avisar(propuestasCerradas);
     return this.findOne(id, distributorId);
   }
 
@@ -491,9 +504,16 @@ export class FleetTaskService {
     dto: CancelFleetTaskDto,
     distributorId: string,
   ): Promise<MaintenanceTask> {
+    let propuestasCerradas: MaintenanceWindowProposal[] = [];
     await this.tasks.manager.transaction(async (manager) => {
       const task = await this.bloquear(manager, id, distributorId);
       this.assertAbierta(task);
+      propuestasCerradas =
+        (await this.casos?.cerrar(
+          manager,
+          { taskId: id },
+          'La tarea se canceló por fuera del planificador',
+        )) ?? [];
 
       task.status = MaintenanceTaskStatus.CANCELLED;
       if (dto.notes) {
@@ -503,6 +523,7 @@ export class FleetTaskService {
       }
       await manager.getRepository(MaintenanceTask).save(task);
     });
+    await this.casos?.avisar(propuestasCerradas);
     return this.findOne(id, distributorId);
   }
 

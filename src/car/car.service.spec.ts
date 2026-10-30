@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
 import { CarService } from './car.service';
 import { Car, FleetStatus } from './entities/car.entity';
+import { EVENTO_VEHICULO_DADO_DE_BAJA } from './events/vehiculo-dado-de-baja.event';
 import { DeliveryService } from '../delivery/delivery.service';
 import { VehicleAssignmentService } from './vehicle-assignment.service';
 
@@ -142,6 +143,24 @@ describe('CarService', () => {
         carId: 'c1',
       });
       expect(txManager.softRemove).toHaveBeenCalledWith({ carId: 'c1' });
+    });
+
+    it('avisa la baja con el evento, ya confirmada, para que otros módulos cierren lo suyo', async () => {
+      const emit = jest.fn();
+      Object.assign(service, { eventos: { emit } });
+      await service.remove('c1', 'd1');
+      expect(emit).toHaveBeenCalledWith(
+        EVENTO_VEHICULO_DADO_DE_BAJA,
+        expect.objectContaining({ carId: 'c1', distributorId: 'd1' }),
+      );
+    });
+
+    it('si la baja falla no emite el evento', async () => {
+      const emit = jest.fn();
+      Object.assign(service, { eventos: { emit } });
+      cars.findOne.mockResolvedValue(null);
+      await expect(service.remove('c1', 'd1')).rejects.toBeDefined();
+      expect(emit).not.toHaveBeenCalled();
     });
 
     it('verifica que está libre y lo da de baja en la MISMA transacción, con la fila bloqueada', async () => {
