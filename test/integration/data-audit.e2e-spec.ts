@@ -515,15 +515,15 @@ describe('Auditoría de datos (e2e)', () => {
   it('un teléfono con cero adelante no se confunde con el número sin cero', async () => {
     const u = await ds.getRepository(User).save({
       email: 'tel@test.local',
-      phoneNumber: '03764123456',
+      phoneNumber: '+5403764123456',
     } as Partial<User>);
-    u.phoneNumber = '3764123456';
+    u.phoneNumber = '+543764123456';
     await ds.getRepository(User).save(u);
     const todas = await auditorias('User', u.userId);
     expect(todas).toHaveLength(2);
     expect(
       (await detalles(todas[1].auditId)).find((x) => x.field === 'phoneNumber'),
-    ).toMatchObject({ oldValue: '03764123456', newValue: '3764123456' });
+    ).toMatchObject({ oldValue: '+5403764123456', newValue: '+543764123456' });
   });
 
   it('lo de la persona o global no toma la distribuidora del request; lo de la distribuidora sí', async () => {
