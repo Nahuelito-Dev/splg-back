@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MaintenancePlan } from './entities/maintenance-plan.entity';
 import { MaintenanceTask } from './entities/maintenance-task.entity';
 import { MaintenanceWindowProposal } from './entities/maintenance-window-proposal.entity';
+import { MaintenancePlanningCase } from './entities/maintenance-planning-case.entity';
 import { VehicleUsageLog } from './entities/vehicle-usage-log.entity';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
 import { CarModule } from '../car/car.module';
@@ -35,13 +36,27 @@ import { FleetCostSourceService } from './fleet-cost-source.service';
 import { FleetInsuranceSyncService } from './fleet-insurance-sync.service';
 import { FleetVehicleStatusService } from './fleet-vehicle-status.service';
 import { CarReactivationController } from './car-reactivation.controller';
+import { GatewaysModule } from '../gateways/gateways.module';
+import { MaintenanceForecastService } from './planner/maintenance-forecast.service';
+import { PlannerContextService } from './planner/planner-context.service';
+import { MaintenancePlannerService } from './planner/maintenance-planner.service';
+import { MaintenancePlannerNotifier } from './planner/maintenance-planner-notifier';
+import { MaintenancePlannerCron } from './planner/maintenance-planner.cron';
+import { VehicleUsageFeedService } from './planner/vehicle-usage-feed.service';
+import { VehicleUsageCron } from './planner/vehicle-usage.cron';
+import { PlanningCaseCloser } from './planner/planning-case-closer.service';
+import { MaintenancePlannerController } from './planner/maintenance-planner.controller';
+import { DriverMaintenanceProposalsController } from './planner/driver-maintenance-proposals.controller';
 
 /**
  * Flota: planes de mantenimiento/habilitación y sus tareas (CU-136 a CU-142),
  * y la documentación del personal que cuelga de ellos (CU-183 a CU-185, CU-187,
  * CU-188, CU-246).
- * `maintenance_window_proposal` es del módulo inteligente M1 (no
- * implementado todavía: sólo la entidad, sin servicio ni controller).
+ *
+ * Planificador de taller (CU-105, módulo inteligente M2) en `planner/`: proyecta
+ * los vencimientos con el uso real de cada vehículo, propone al chofer una
+ * ventana de taller por vez (`maintenance_window_proposal`, dentro de un
+ * `maintenance_planning_case`) y escala al administrador si no hay acuerdo.
  */
 @Module({
   imports: [
@@ -49,6 +64,7 @@ import { CarReactivationController } from './car-reactivation.controller';
       MaintenancePlan,
       MaintenanceTask,
       MaintenanceWindowProposal,
+      MaintenancePlanningCase,
       VehicleUsageLog,
       MaintenanceTaskAttachment,
     ]),
@@ -60,6 +76,7 @@ import { CarReactivationController } from './car-reactivation.controller';
     EmployeeModule, // el dueño de la documentación del personal (CU-183 a CU-185)
     LeaveModule, // licencias aprobadas: inhabilitan al chofer (CU-246)
     CashModule, // el pago de una tarea hecha sale de una caja
+    GatewaysModule, // la propuesta de ventana le llega al chofer por el socket
   ],
   controllers: [
     FleetPlanController,
@@ -72,6 +89,8 @@ import { CarReactivationController } from './car-reactivation.controller';
     CarAssignmentsController,
     EmployeeDocumentsController,
     CarReactivationController,
+    MaintenancePlannerController,
+    DriverMaintenanceProposalsController,
   ],
   providers: [
     FleetPlanService,
@@ -85,6 +104,14 @@ import { CarReactivationController } from './car-reactivation.controller';
     FleetCostSourceService,
     FleetVehicleStatusService,
     FleetInsuranceSyncService,
+    MaintenanceForecastService,
+    PlannerContextService,
+    MaintenancePlannerService,
+    MaintenancePlannerNotifier,
+    MaintenancePlannerCron,
+    VehicleUsageFeedService,
+    VehicleUsageCron,
+    PlanningCaseCloser,
   ],
   // FleetTaskService: fachadas de sólo lectura de la flota (`/cars/:id/documents`,
   // `/fleet/*`). FleetDispatchLockService: el gate único de bloqueo que usa

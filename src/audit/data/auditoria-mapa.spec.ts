@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { TABLAS_EXCLUIDAS } from './audit-exclusions';
 import { construirMapa, MapaDeAuditoria } from './auditoria-mapa';
 import mapaGuardado from './auditoria-mapa.datos.json';
-import { MAPA as mapaDeLaMigracion } from '../../migrations/1794200000002-AuditoriaDeConciliacionMp';
+import { MAPA as mapaDeLaMigracion } from '../../migrations/1794400000001-AuditoriaDelPlanificadorDeFlota';
 
 describe('mapa de la auditoría por triggers', () => {
   let dataSource: DataSource;

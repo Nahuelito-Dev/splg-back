@@ -1,10 +1,16 @@
 import {
+  Optional,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  EVENTO_VEHICULO_DADO_DE_BAJA,
+  VehiculoDadoDeBajaEvent,
+} from './events/vehiculo-dado-de-baja.event';
 import {
   DeepPartial,
   EntityManager,
@@ -57,6 +63,7 @@ export class CarService {
 
     private readonly deliveryService: DeliveryService,
     private readonly vehicleAssignments: VehicleAssignmentService,
+    @Optional() private readonly eventos?: EventEmitter2,
   ) {}
 
   async create(
@@ -249,6 +256,12 @@ export class CarService {
       return this.handleDBExceptions(error);
     }
 
+    // Lo que otros módulos tienen abierto sobre el vehículo se cierra aparte,
+    // con la baja ya confirmada: un error ahí no la deshace.
+    this.eventos?.emit(
+      EVENTO_VEHICULO_DADO_DE_BAJA,
+      new VehiculoDadoDeBajaEvent(id, distributorId),
+    );
     return {
       message: 'Car deleted successfully',
       carId: id,

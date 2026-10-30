@@ -161,6 +161,23 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El costo, los kilómetros y los recapados del neumático no pueden ser negativos',
   CHK_tire_montaje:
     'Un neumático montado necesita vehículo y posición (y uno que no está montado no los tiene)',
+  CHK_window_proposal_ventana:
+    'La ventana de taller tiene que terminar después de empezar',
+  CHK_window_proposal_respuesta:
+    'Una propuesta respondida lleva la fecha de respuesta y, si se rechaza, el motivo',
+  CHK_window_proposal_alternativa:
+    'La alternativa del chofer es una ventana completa que termina después de empezar',
+  UQ_window_proposal_caso_pendiente:
+    'El caso ya tiene una propuesta esperando respuesta del chofer',
+  UQ_window_proposal_caso_orden: 'El caso ya tiene una propuesta con ese orden',
+  CHK_planning_case_ventana:
+    'La ventana elegida tiene que ser completa y terminar después de empezar',
+  CHK_planning_case_estado:
+    'El estado del caso no coincide con sus datos (escalado, acordado o confirmado)',
+  UQ_planning_case_tarea_abierto:
+    'La tarea ya tiene un caso de planificación abierto',
+  CHK_module_config_planificador:
+    'Algún parámetro del planificador de flota está fuera de su rango',
   CHK_vehicle_usage_log_valores:
     'Los kilómetros, pedidos y horas de ruta no pueden ser negativos',
   CHK_vehicle_assignment_periodo:

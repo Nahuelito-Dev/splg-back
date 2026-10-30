@@ -630,6 +630,59 @@ describe('FleetTaskService', () => {
       expect(bloqueo.setLock).toHaveBeenCalledWith('pessimistic_write');
     });
 
+    describe('el planificador de taller (CU-105)', () => {
+      const closer = { cerrar: jest.fn(), avisar: jest.fn() };
+      const propuesta = { proposalId: 'p1', deliveryId: 'del-1' };
+
+      beforeEach(() => {
+        closer.cerrar.mockResolvedValue([propuesta]);
+        closer.avisar.mockResolvedValue(undefined);
+        Object.assign(service, { casos: closer });
+      });
+
+      it('cerrar la tarea cierra su caso abierto, dentro de la misma transacción, y avisa al chofer después', async () => {
+        enLaBase(abierta());
+        await service.close(
+          't1',
+          { performedAt: '2026-09-26T00:00:00.000Z' },
+          'd1',
+        );
+        expect(closer.cerrar).toHaveBeenCalledWith(
+          expect.anything(),
+          { taskId: 't1' },
+          expect.stringContaining('cerró'),
+        );
+        expect(closer.avisar).toHaveBeenCalledWith([propuesta]);
+        expect(closer.cerrar.mock.invocationCallOrder[0]).toBeLessThan(
+          closer.avisar.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('cancelar la tarea también cierra su caso', async () => {
+        enLaBase(abierta());
+        await service.cancel('t1', { notes: 'ya no aplica' }, 'd1');
+        expect(closer.cerrar).toHaveBeenCalledWith(
+          expect.anything(),
+          { taskId: 't1' },
+          expect.stringContaining('canceló'),
+        );
+        expect(closer.avisar).toHaveBeenCalledWith([propuesta]);
+      });
+
+      it('una tarea que no se pudo cerrar no avisa nada', async () => {
+        enLaBase(null);
+        await expect(
+          service.close(
+            't1',
+            { performedAt: '2026-09-26T00:00:00.000Z' },
+            'd1',
+          ),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(closer.cerrar).not.toHaveBeenCalled();
+        expect(closer.avisar).not.toHaveBeenCalled();
+      });
+    });
+
     it('cerrar una tarea inexistente (o de otra distribuidora) es 404', async () => {
       enLaBase(null);
       await expect(
