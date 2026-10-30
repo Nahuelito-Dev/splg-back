@@ -250,6 +250,54 @@ export class PatchPlannerSettingsDto {
   @Min(1)
   @Max(24)
   workshopEndHour?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Días en que atiende el taller: suma de 1 domingo, 2 lunes, 4 martes, 8 miércoles, 16 jueves, 32 viernes y 64 sábado',
+    minimum: 1,
+    maximum: 127,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(127)
+  workshopDays?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Días sin registros de uso a partir de los cuales los datos se consideran desactualizados',
+    minimum: 1,
+    maximum: 90,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  usageStaleDays?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Planificar también cuando faltan estos kilómetros (0 la desactiva)',
+    minimum: 0,
+    maximum: 1_000_000,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  anticipationKm?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Mandar también un correo al chofer con cada propuesta (0 no, 1 sí)',
+    minimum: 0,
+    maximum: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1)
+  driverEmail?: number;
 }
 
 export class CancelPlanningCaseDto {
