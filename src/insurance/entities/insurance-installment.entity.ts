@@ -115,7 +115,6 @@ export class InsuranceInstallment {
     name: 'status',
     type: 'enum',
     enum: InstallmentStatus,
-    enumName: 'insurance_installment_status_enum',
     default: InstallmentStatus.PENDING,
   })
   status!: InstallmentStatus;

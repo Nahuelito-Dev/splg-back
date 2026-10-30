@@ -64,7 +64,6 @@ export class PaymentRefund {
   @Column({
     type: 'enum',
     enum: RefundKind,
-    enumName: 'payment_refund_kind_enum',
   })
   kind!: RefundKind;
 
@@ -80,7 +79,6 @@ export class PaymentRefund {
   @Column({
     type: 'enum',
     enum: RefundStatus,
-    enumName: 'payment_refund_status_enum',
     default: RefundStatus.PENDING,
   })
   status!: RefundStatus;
