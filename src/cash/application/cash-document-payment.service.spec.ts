@@ -101,6 +101,62 @@ describe('CashDocumentPaymentService', () => {
     });
   });
 
+  describe('pagarDesdeUnaCaja / cobrarEnUnaCaja', () => {
+    const mov = {
+      distributorId: 'd1',
+      cashBoxId: 'c1',
+      amount: 100,
+      systemCode: CashSystemCode.TIRES,
+      referenceType: CashReferenceType.TIRE,
+      referenceId: 't1',
+      description: 'x',
+      userId: 'u1',
+    };
+
+    it.each([
+      ['cash', CashMethod.CASH],
+      ['bank', CashMethod.TRANSFER],
+      ['wallet', CashMethod.MERCADOPAGO],
+    ])(
+      'el pago desde una caja %s sale con el medio %s',
+      async (kind, medio) => {
+        manager.query.mockResolvedValue([{ kind }]);
+        await service.pagarDesdeUnaCaja(m(), mov);
+        expect(ledger.registrar).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            direction: CashDirection.OUT,
+            method: medio,
+            cashBoxId: 'c1',
+          }),
+        );
+      },
+    );
+
+    it('el cobro entra a la caja como ingreso', async () => {
+      manager.query.mockResolvedValue([{ kind: 'bank' }]);
+      await service.cobrarEnUnaCaja(m(), {
+        ...mov,
+        systemCode: CashSystemCode.INSURANCE_REIMBURSEMENT,
+      });
+      expect(ledger.registrar).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          direction: CashDirection.IN,
+          method: CashMethod.TRANSFER,
+        }),
+      );
+    });
+
+    it('una caja de otra distribuidora es 404 y no registra', async () => {
+      manager.query.mockResolvedValue([]);
+      await expect(service.pagarDesdeUnaCaja(m(), mov)).rejects.toBeInstanceOf(
+        CajaNoEncontradaError,
+      );
+      expect(ledger.registrar).not.toHaveBeenCalled();
+    });
+  });
+
   it('egresar sale de la caja con la categoría de sistema y el documento de origen', async () => {
     await service.egresar(m(), {
       distributorId: 'd1',

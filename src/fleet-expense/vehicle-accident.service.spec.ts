@@ -322,6 +322,17 @@ describe('VehicleAccidentService', () => {
       expect(repo.save).not.toHaveBeenCalled();
     });
 
+    it('no cierra con menos que un pago de la empresa o un reintegro ya registrados (409)', async () => {
+      repo.findOne.mockResolvedValue(guardado({ paymentAmount: 400000 }));
+      await expect(service.cerrar('s1', importes, 'd1')).rejects.toThrow(
+        /repairCost/,
+      );
+      repo.findOne.mockResolvedValue(guardado({ reimbursementAmount: 260000 }));
+      await expect(service.cerrar('s1', importes, 'd1')).rejects.toThrow(
+        /insurerReimbursement/,
+      );
+    });
+
     it('cerrado dos veces es 409 «El siniestro ya está cerrado»', async () => {
       repo.findOne.mockResolvedValue(
         guardado({ status: VehicleAccidentStatus.CLOSED }),

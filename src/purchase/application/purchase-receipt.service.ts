@@ -2,6 +2,9 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
 import { DataSource, EntityManager } from 'typeorm';
+import { diaArgentino } from '../../common/utils/dias-argentina';
+import { instanteValido } from '../../cash/domain/instante-del-pago';
+import { PayFromCashBoxDto } from '../../cash/dto/pay-expense.dto';
 import { CashDocumentPaymentService } from '../../cash/application/cash-document-payment.service';
 import {
   CashReferenceType,
@@ -80,6 +83,7 @@ export class PurchaseReceiptService {
           distributorId,
           actorUserId,
         );
+        recepcion.paidAt = new Date();
       } else if (recepcion.cashMovementId) {
         await this.pagos.revertir(
           manager,
@@ -90,7 +94,70 @@ export class PurchaseReceiptService {
         );
         recepcion.cashMovementId = null;
       }
+      if (pago.paymentStatus === PaymentStatus.UNPAID) recepcion.paidAt = null;
       recepcion.paymentStatus = pago.paymentStatus;
+      await manager.save(recepcion);
+    });
+    return id;
+  }
+
+  /**
+   * API v2: paga la recepción desde una caja de efectivo, banco o billetera,
+   * con la fecha del pago. Una sola vez: pagada (con o sin salida de caja) es
+   * 409; para corregirla se la marca impaga, que asienta el contraasiento.
+   */
+  async pagar(
+    id: string,
+    dto: PayFromCashBoxDto,
+    distributorId: string,
+    actorUserId: string,
+  ): Promise<string> {
+    const pagadoEn = instanteValido(dto.paidAt, 'paidAt');
+    await this.dataSource.transaction(async (manager) => {
+      const recepcion = await manager
+        .getRepository(PurchaseReceipt)
+        .createQueryBuilder('r')
+        .setLock('pessimistic_write')
+        .where('r.receiptId = :id AND r.distributorId = :distributorId', {
+          id,
+          distributorId,
+        })
+        .getOne();
+      if (!recepcion) throw new RecepcionNoEncontradaError(id);
+      if (recepcion.status === PurchaseReceiptStatus.VOIDED) {
+        throw new CompraInvalidaError(
+          `La recepción N° ${recepcion.number} está anulada: no se paga`,
+        );
+      }
+      if (recepcion.paymentStatus === PaymentStatus.PAID) {
+        throw new ConflictException(
+          `La recepción N° ${recepcion.number} ya está pagada`,
+        );
+      }
+      if (diaArgentino(pagadoEn) < diaArgentino(recepcion.receivedAt)) {
+        throw new CompraInvalidaError(
+          'paidAt: no puede ser anterior a la recepción de la compra',
+        );
+      }
+      const total = new Decimal(recepcion.totalAmount);
+      if (total.lte(0)) {
+        throw new ConflictException(
+          `La recepción N° ${recepcion.number} no tiene un importe para pagar`,
+        );
+      }
+      const movimiento = await this.pagos.pagarDesdeUnaCaja(manager, {
+        distributorId,
+        cashBoxId: dto.cashBoxId,
+        amount: total,
+        systemCode: CashSystemCode.PURCHASE,
+        referenceType: CashReferenceType.PURCHASE_RECEIPT,
+        referenceId: recepcion.receiptId,
+        description: `Pago de la recepción de compra N° ${recepcion.number}`,
+        userId: actorUserId,
+      });
+      recepcion.cashMovementId = movimiento.movementId;
+      recepcion.paidAt = pagadoEn;
+      recepcion.paymentStatus = PaymentStatus.PAID;
       await manager.save(recepcion);
     });
     return id;

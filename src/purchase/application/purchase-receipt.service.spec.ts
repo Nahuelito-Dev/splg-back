@@ -21,6 +21,7 @@ describe('PurchaseReceiptService.cambiarEstadoDePago', () => {
     cajaDelPago: jest.Mock;
     egresar: jest.Mock;
     revertir: jest.Mock;
+    pagarDesdeUnaCaja: jest.Mock;
   };
 
   const base = (over: Partial<PurchaseReceipt> = {}): PurchaseReceipt =>
@@ -41,6 +42,7 @@ describe('PurchaseReceiptService.cambiarEstadoDePago', () => {
       cajaDelPago: jest.fn().mockResolvedValue('caja1'),
       egresar: jest.fn().mockResolvedValue({ movementId: 'mov1' }),
       revertir: jest.fn().mockResolvedValue({}),
+      pagarDesdeUnaCaja: jest.fn().mockResolvedValue({ movementId: 'mov7' }),
     };
     const qb = {
       setLock: jest.fn().mockReturnThis(),
@@ -187,5 +189,120 @@ describe('PurchaseReceiptService.cambiarEstadoDePago', () => {
   it('una recepción de otra distribuidora es 404', async () => {
     recepcion = null;
     await expect(pagar()).rejects.toBeInstanceOf(RecepcionNoEncontradaError);
+  });
+});
+
+describe('PurchaseReceiptService.pagar (v2)', () => {
+  let service: PurchaseReceiptService;
+  let recepcion: PurchaseReceipt | null;
+  let guardadas: PurchaseReceipt[];
+  let pagos: { pagarDesdeUnaCaja: jest.Mock };
+
+  const base = (over: Partial<PurchaseReceipt> = {}): PurchaseReceipt =>
+    ({
+      receiptId: 'r1',
+      number: 7,
+      totalAmount: 130000,
+      status: PurchaseReceiptStatus.CONFIRMED,
+      paymentStatus: PaymentStatus.UNPAID,
+      cashMovementId: null,
+      paidAt: null,
+      receivedAt: new Date('2026-10-01T12:00:00.000Z'),
+      ...over,
+    }) as PurchaseReceipt;
+  const dto = { cashBoxId: 'caja1', paidAt: '2026-10-28T12:00:00-03:00' };
+
+  beforeEach(() => {
+    guardadas = [];
+    recepcion = base();
+    pagos = {
+      pagarDesdeUnaCaja: jest.fn().mockResolvedValue({ movementId: 'mov7' }),
+    };
+    const qb = {
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(() => Promise.resolve(recepcion)),
+    };
+    const manager = {
+      getRepository: () => ({ createQueryBuilder: () => qb }),
+      save: jest.fn((r: PurchaseReceipt) => {
+        guardadas.push({ ...r });
+        return Promise.resolve(r);
+      }),
+    };
+    service = new PurchaseReceiptService(
+      {
+        transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
+      } as unknown as DataSource,
+      pagos as unknown as CashDocumentPaymentService,
+    );
+  });
+
+  it('el total sale de la caja elegida y la recepción queda paga con su fecha', async () => {
+    await service.pagar('r1', dto, 'd1', 'u1');
+    expect(pagos.pagarDesdeUnaCaja).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        cashBoxId: 'caja1',
+        amount: new Decimal(130000),
+        systemCode: CashSystemCode.PURCHASE,
+        referenceType: CashReferenceType.PURCHASE_RECEIPT,
+      }),
+    );
+    expect(guardadas[0]).toMatchObject({
+      paymentStatus: PaymentStatus.PAID,
+      cashMovementId: 'mov7',
+      paidAt: new Date('2026-10-28T15:00:00.000Z'),
+    });
+  });
+
+  it('paidAt anterior a la recepción es 400', async () => {
+    await expect(
+      service.pagar('r1', { ...dto, paidAt: '2026-09-15' }, 'd1', 'u1'),
+    ).rejects.toThrow(/anterior a la recepción/);
+    expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+  });
+
+  it('ya pagada es 409 y no asienta', async () => {
+    recepcion = base({ paymentStatus: PaymentStatus.PAID });
+    await expect(service.pagar('r1', dto, 'd1', 'u1')).rejects.toThrow(
+      /ya está pagada/,
+    );
+    expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+  });
+
+  it('anulada es 400 y otra distribuidora 404', async () => {
+    recepcion = base({ status: PurchaseReceiptStatus.VOIDED });
+    await expect(service.pagar('r1', dto, 'd1', 'u1')).rejects.toBeInstanceOf(
+      CompraInvalidaError,
+    );
+    recepcion = null;
+    await expect(service.pagar('r1', dto, 'd2', 'u1')).rejects.toBeInstanceOf(
+      RecepcionNoEncontradaError,
+    );
+  });
+
+  it('paidAt futuro es 400', async () => {
+    const manana = new Date(Date.now() + 86400000).toISOString();
+    await expect(
+      service.pagar('r1', { ...dto, paidAt: manana }, 'd1', 'u1'),
+    ).rejects.toThrow(/paidAt/);
+  });
+
+  it('marcarla impaga (v1) borra la fecha de pago', async () => {
+    recepcion = base({
+      paymentStatus: PaymentStatus.PAID,
+      cashMovementId: 'mov7',
+      paidAt: new Date(),
+    });
+    // la reversión la hace el servicio de cajas; acá sólo se mira la marca
+    (pagos as unknown as { revertir: jest.Mock }).revertir = jest.fn();
+    await service.cambiarEstadoDePago(
+      'r1',
+      { paymentStatus: PaymentStatus.UNPAID },
+      'd1',
+      'u1',
+    );
+    expect(guardadas[0]).toMatchObject({ paidAt: null, cashMovementId: null });
   });
 });

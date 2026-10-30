@@ -218,6 +218,31 @@ export class PurchaseQueryService {
     return this.paginaDeRecepciones(where, params, query.page, query.limit);
   }
 
+  /** Cuándo y con qué salida de caja se pagó cada recepción (API v2). */
+  async pagosDeRecepciones(
+    ids: string[],
+    distributorId: string,
+  ): Promise<
+    Map<string, { paidAt: Date | null; cashMovementId: string | null }>
+  > {
+    if (ids.length === 0) return new Map();
+    const filas: Array<{
+      receipt_id: string;
+      paid_at: Date | null;
+      cash_movement_id: string | null;
+    }> = await this.dataSource.query(
+      `SELECT "receipt_id", "paid_at", "cash_movement_id" FROM "purchase_receipt"
+       WHERE "receipt_id" = ANY($1::uuid[]) AND "distributor_id" = $2`,
+      [ids, distributorId],
+    );
+    return new Map(
+      filas.map((f) => [
+        f.receipt_id,
+        { paidAt: f.paid_at, cashMovementId: f.cash_movement_id },
+      ]),
+    );
+  }
+
   async recepcion(
     id: string,
     distributorId: string,

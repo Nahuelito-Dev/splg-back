@@ -224,6 +224,12 @@ export class FleetInsuranceSyncService {
         where: { taskId: previa.taskId, distributorId: tareas.distributorId },
         lock: { mode: 'pessimistic_write' },
       });
+      if (tarea?.cashMovementId) {
+        notes.push(
+          `La tarea anterior ${previa.taskId} ya tiene un pago registrado: no se reabrió`,
+        );
+        continue;
+      }
       if (!tarea || tarea.status !== MaintenanceTaskStatus.DONE) {
         notes.push(
           `La tarea anterior ${previa.taskId} ya cambió: no se reabrió`,

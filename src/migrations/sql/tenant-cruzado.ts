@@ -115,6 +115,11 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['insurance_installment', 'cash_movement_id', 'cash_movement'],
     // Comprobante de la multa (F15)
     ['traffic_fine', 'receipt_attachment_id', 'attachment'],
+    // Gastos de la flota pagados desde una caja
+    ['maintenance_task', 'cash_movement_id', 'cash_movement'],
+    ['tire', 'cash_movement_id', 'cash_movement'],
+    ['vehicle_accident', 'payment_cash_movement_id', 'cash_movement'],
+    ['vehicle_accident', 'reimbursement_cash_movement_id', 'cash_movement'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

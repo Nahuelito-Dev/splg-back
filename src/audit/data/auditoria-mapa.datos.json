@@ -3888,11 +3888,19 @@
     },
     {
       "table": "fuel_load",
+      "column": "paid_at",
+      "property": "paidAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 15
+    },
+    {
+      "table": "fuel_load",
       "column": "registered_by_driver",
       "property": "registeredByDriver",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 16
     },
     {
       "table": "fuel_load",
@@ -3900,7 +3908,7 @@
       "property": "cashPaymentLegacy",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 17
     },
     {
       "table": "fuel_load",
@@ -3908,7 +3916,7 @@
       "property": "anomaly",
       "secret": false,
       "kind": "text",
-      "position": 17
+      "position": 18
     },
     {
       "table": "fuel_load",
@@ -3916,7 +3924,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 19
     },
     {
       "table": "fuel_load",
@@ -3924,7 +3932,7 @@
       "property": "odometerCorrectionNote",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 20
     },
     {
       "table": "fuel_load",
@@ -3932,7 +3940,7 @@
       "property": "createdByUserId",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 21
     },
     {
       "table": "fuel_load",
@@ -3940,7 +3948,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 21
+      "position": 22
     },
     {
       "table": "gas_cylinder",
@@ -4752,11 +4760,35 @@
     },
     {
       "table": "maintenance_task",
+      "column": "cash_movement_id",
+      "property": "cashMovementId",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "maintenance_task",
+      "column": "paid_at",
+      "property": "paidAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 16
+    },
+    {
+      "table": "maintenance_task",
+      "column": "paid_amount",
+      "property": "paidAmount",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "maintenance_task",
       "column": "provider",
       "property": "provider",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 18
     },
     {
       "table": "maintenance_task",
@@ -4764,7 +4796,7 @@
       "property": "referenceNumber",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 19
     },
     {
       "table": "maintenance_task",
@@ -4772,7 +4804,7 @@
       "property": "category",
       "secret": false,
       "kind": "text",
-      "position": 17
+      "position": 20
     },
     {
       "table": "maintenance_task",
@@ -4780,7 +4812,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 21
     },
     {
       "table": "maintenance_task_attachment",
@@ -5880,11 +5912,19 @@
     },
     {
       "table": "purchase_receipt",
+      "column": "paid_at",
+      "property": "paidAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "purchase_receipt",
       "column": "status",
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 14
     },
     {
       "table": "purchase_receipt",
@@ -5892,7 +5932,7 @@
       "property": "voidReason",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
     },
     {
       "table": "purchase_receipt",
@@ -5900,7 +5940,7 @@
       "property": "voidedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 15
+      "position": 16
     },
     {
       "table": "purchase_receipt",
@@ -5908,7 +5948,7 @@
       "property": "voidedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 17
     },
     {
       "table": "purchase_receipt",
@@ -5916,7 +5956,7 @@
       "property": "batchId",
       "secret": false,
       "kind": "text",
-      "position": 17
+      "position": 18
     },
     {
       "table": "purchase_receipt",
@@ -5924,7 +5964,7 @@
       "property": "voidBatchId",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 19
     },
     {
       "table": "purchase_receipt",
@@ -5932,7 +5972,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 20
     },
     {
       "table": "purchase_receipt_item",
@@ -6640,11 +6680,27 @@
     },
     {
       "table": "tire",
+      "column": "cash_movement_id",
+      "property": "cashMovementId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "tire",
+      "column": "paid_at",
+      "property": "paidAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "tire",
       "column": "status",
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 8
     },
     {
       "table": "tire",
@@ -6652,7 +6708,7 @@
       "property": "carId",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 9
     },
     {
       "table": "tire",
@@ -6660,7 +6716,7 @@
       "property": "position",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 10
     },
     {
       "table": "tire",
@@ -6668,7 +6724,7 @@
       "property": "mountedOdometerKm",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 11
     },
     {
       "table": "tire",
@@ -6676,7 +6732,7 @@
       "property": "kmTraveled",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 12
     },
     {
       "table": "tire",
@@ -6684,7 +6740,7 @@
       "property": "retreadCount",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 13
     },
     {
       "table": "tire_event",
@@ -7560,11 +7616,59 @@
     },
     {
       "table": "vehicle_accident",
+      "column": "payment_cash_movement_id",
+      "property": "paymentCashMovementId",
+      "secret": false,
+      "kind": "text",
+      "position": 19
+    },
+    {
+      "table": "vehicle_accident",
+      "column": "payment_paid_at",
+      "property": "paymentPaidAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 20
+    },
+    {
+      "table": "vehicle_accident",
+      "column": "payment_amount",
+      "property": "paymentAmount",
+      "secret": false,
+      "kind": "text",
+      "position": 21
+    },
+    {
+      "table": "vehicle_accident",
+      "column": "reimbursement_cash_movement_id",
+      "property": "reimbursementCashMovementId",
+      "secret": false,
+      "kind": "text",
+      "position": 22
+    },
+    {
+      "table": "vehicle_accident",
+      "column": "reimbursement_received_at",
+      "property": "reimbursementReceivedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 23
+    },
+    {
+      "table": "vehicle_accident",
+      "column": "reimbursement_amount",
+      "property": "reimbursementAmount",
+      "secret": false,
+      "kind": "text",
+      "position": 24
+    },
+    {
+      "table": "vehicle_accident",
       "column": "created_by_user_id",
       "property": "createdByUserId",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 25
     },
     {
       "table": "vehicle_assignment",

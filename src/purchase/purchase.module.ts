@@ -20,6 +20,7 @@ import { PurchaseReceiptItem } from './entities/purchase-receipt-item.entity';
 import { PurchaseReceipt } from './entities/purchase-receipt.entity';
 import { Supplier } from './entities/supplier.entity';
 import { PurchaseOrderController } from './presentation/purchase-order.controller';
+import { PurchaseReceiptV2Controller } from './presentation/purchase-receipt-v2.controller';
 import { PurchaseReceiptController } from './presentation/purchase-receipt.controller';
 import { SupplierController } from './presentation/supplier.controller';
 import { SupplierPhotoController } from './presentation/supplier-photo.controller';
@@ -49,6 +50,7 @@ import { SupplierPhotoController } from './presentation/supplier-photo.controlle
     SupplierPhotoController,
     PurchaseOrderController,
     PurchaseReceiptController,
+    PurchaseReceiptV2Controller,
   ],
   providers: [
     SupplierService,

@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Decimal from 'decimal.js';
 import { EntityManager, Repository } from 'typeorm';
+import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
+import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
+import { instanteValido } from '../cash/domain/instante-del-pago';
+import { diaArgentino } from '../common/utils/dias-argentina';
 import {
   MaintenanceTask,
   MaintenanceTaskStatus,
@@ -21,6 +26,7 @@ import { JobPositionCategory } from '../employee/entities/job-position.entity';
 import { CreateFleetTaskDto } from './dto/create-task.dto';
 import { UpdateFleetTaskDto } from './dto/update-task.dto';
 import { CloseFleetTaskDto } from './dto/close-task.dto';
+import { PayFleetTaskDto, PagoAlCerrar } from './dto/pay-task.dto';
 import { CancelFleetTaskDto } from './dto/cancel-task.dto';
 import { QueryFleetTaskDto } from './dto/query-task.dto';
 import { CarService } from '../car/car.service';
@@ -44,6 +50,12 @@ function fechaDeCalendario(valor: string | null | undefined) {
   if (valor === null) return null;
   return valor ? normalizarFechaCalendario(new Date(valor)) : undefined;
 }
+
+/** Las tareas del plan de seguro se pagan por las cuotas de la póliza, nunca por acá. */
+export const MOTIVO_SEGURO = 'El seguro se paga por sus cuotas';
+
+export const esDeSeguro = (plan: MaintenancePlan | undefined | null): boolean =>
+  plan?.documentKind === MaintenanceDocumentKind.INSURANCE;
 
 /** Margen para el reloj del cliente al registrar «cuándo se hizo» (5 minutos). */
 const MARGEN_FECHA_FUTURA_MS = 5 * 60 * 1000;
@@ -75,6 +87,7 @@ export class FleetTaskService {
     // para que la ficha del chofer muestre el MISMO `isLocked` que aplica el
     // despacho (incluye el vehículo que maneja, no sólo su propia licencia).
     private readonly fleetLock: FleetDispatchLockService,
+    private readonly pagos: CashDocumentPaymentService,
   ) {}
 
   async create(
@@ -264,6 +277,7 @@ export class FleetTaskService {
     id: string,
     dto: CloseFleetTaskDto,
     distributorId: string,
+    pago?: PagoAlCerrar & { userId: string },
   ): Promise<MaintenanceTask> {
     const performedAt = new Date(dto.performedAt);
     if (performedAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
@@ -271,6 +285,11 @@ export class FleetTaskService {
         'performedAt no puede ser una fecha futura: registrá cuándo se hizo',
       );
     }
+    const pagadoEn = pago
+      ? pago.paidAt
+        ? instanteValido(pago.paidAt, 'payment.paidAt')
+        : new Date()
+      : null;
 
     // El kilometraje del vehículo se sube con el del cierre, por el mismo
     // punto que usan las cargas de combustible: ninguno pisa al otro.
@@ -293,6 +312,11 @@ export class FleetTaskService {
         task.performedAt = performedAt;
         task.odometerKm = dto.odometerKm ?? task.odometerKm;
         task.cost = dto.cost ?? task.cost;
+        if (pago && !(task.cost && task.cost > 0)) {
+          throw new BadRequestException(
+            'payment: la tarea no tiene costo para pagar: indicá `cost`',
+          );
+        }
         task.provider = dto.provider ?? task.provider;
         task.notes = dto.notes ?? task.notes;
         task.status = MaintenanceTaskStatus.DONE;
@@ -307,11 +331,123 @@ export class FleetTaskService {
             dto.odometerKm,
           );
         }
+        if (pago && pagadoEn) {
+          await this.egresarPago(
+            manager,
+            guardada,
+            pago.cashBoxId,
+            pagadoEn,
+            undefined,
+            pago.userId,
+          );
+        }
       });
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
     return this.findOne(id, distributorId);
+  }
+
+  /**
+   * API v2: registra el pago de una tarea hecha desde una caja de efectivo,
+   * banco o billetera. Una sola vez por tarea (409 si ya está paga).
+   */
+  async pagar(
+    id: string,
+    dto: PayFleetTaskDto,
+    distributorId: string,
+    userId: string,
+  ): Promise<MaintenanceTask> {
+    const pagadoEn = instanteValido(dto.paidAt, 'paidAt');
+    try {
+      await this.tasks.manager.transaction(async (manager) => {
+        const task = await this.bloquear(manager, id, distributorId);
+        await this.egresarPago(
+          manager,
+          task,
+          dto.cashBoxId,
+          pagadoEn,
+          dto.amount,
+          userId,
+        );
+      });
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'tareas de flota');
+    }
+    return this.findOne(id, distributorId);
+  }
+
+  /** Con la tarea ya bloqueada: el egreso de la caja y las marcas de pago. */
+  private async egresarPago(
+    manager: EntityManager,
+    task: MaintenanceTask,
+    cashBoxId: string,
+    pagadoEn: Date,
+    importe: number | undefined,
+    userId: string,
+  ): Promise<void> {
+    if (task.status !== MaintenanceTaskStatus.DONE) {
+      throw new ConflictException(
+        'Sólo se paga una tarea hecha: cerrala primero',
+      );
+    }
+    const completa = await manager
+      .getRepository(MaintenanceTask)
+      .findOneOrFail({
+        where: { taskId: task.taskId },
+        relations: {
+          plan: true,
+          car: true,
+          employee: true,
+          delivery: { user: true },
+        },
+      });
+    if (esDeSeguro(completa.plan)) {
+      throw new ConflictException(MOTIVO_SEGURO);
+    }
+    if (task.cashMovementId) {
+      throw new ConflictException('La tarea ya está paga');
+    }
+    if (!task.cost || task.cost <= 0) {
+      throw new ConflictException('La tarea no tiene un costo para pagar');
+    }
+    const monto = new Decimal(importe ?? task.cost);
+    if (monto.lte(0)) {
+      throw new BadRequestException('amount: tiene que ser mayor que cero');
+    }
+    if (monto.gt(task.cost)) {
+      throw new BadRequestException(
+        'amount: no puede superar el costo de la tarea',
+      );
+    }
+    if (
+      task.performedAt &&
+      diaArgentino(pagadoEn) < diaArgentino(task.performedAt)
+    ) {
+      throw new BadRequestException(
+        'paidAt: no puede ser anterior a la fecha en que se hizo la tarea',
+      );
+    }
+    const quien =
+      completa.car?.carPatent ??
+      (completa.employee
+        ? `${completa.employee.lastName} ${completa.employee.firstName}`
+        : completa.delivery?.user?.fullName) ??
+      'sin vehículo ni chofer';
+    const movimiento = await this.pagos.pagarDesdeUnaCaja(manager, {
+      distributorId: task.distributorId,
+      cashBoxId,
+      amount: monto,
+      systemCode: CashSystemCode.FLEET_MAINTENANCE,
+      referenceType: CashReferenceType.MAINTENANCE_TASK,
+      referenceId: task.taskId,
+      description: `${completa.plan.name} — ${quien}`,
+      userId,
+    });
+    task.cashMovementId = movimiento.movementId;
+    task.paidAt = pagadoEn;
+    task.paidAmount = monto.toNumber();
+    await manager.getRepository(MaintenanceTask).save(task);
   }
 
   /**

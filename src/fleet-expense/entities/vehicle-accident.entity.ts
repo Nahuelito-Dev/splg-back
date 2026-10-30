@@ -8,7 +8,9 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Check,
+  ForeignKey,
 } from 'typeorm';
+import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import type { Point } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
@@ -35,6 +37,32 @@ export enum VehicleAccidentStatus {
 @Check(
   'CHK_vehicle_accident_cerrado_fecha',
   `"status" <> 'closed' OR "closed_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_vehicle_accident_pago',
+  `num_nonnulls("payment_cash_movement_id", "payment_paid_at", "payment_amount") IN (0, 3) AND coalesce("payment_amount", 1) > 0`,
+)
+@Check(
+  'CHK_vehicle_accident_reintegro',
+  `num_nonnulls("reimbursement_cash_movement_id", "reimbursement_received_at", "reimbursement_amount") IN (0, 3) AND coalesce("reimbursement_amount", 1) > 0`,
+)
+@ForeignKey(
+  () => CashMovement,
+  ['payment_cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_vehicle_accident_payment_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
+@ForeignKey(
+  () => CashMovement,
+  ['reimbursement_cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_vehicle_accident_reimbursement_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('vehicle_accident')
 @Index('IDX_vehicle_accident_car', ['carId', 'occurredAt'])
@@ -153,6 +181,56 @@ export class VehicleAccident {
 
   @Column({ name: 'closed_at', type: 'timestamptz', nullable: true })
   closedAt!: Date | null;
+
+  /** Egreso de lo que pagó la empresa (reparación o franquicia); un solo pago por siniestro. */
+  @ForeignKey('cash_movement', {
+    name: 'FK_vehicle_accident_payment_movement',
+    onDelete: 'RESTRICT',
+  })
+  @Column({ name: 'payment_cash_movement_id', type: 'uuid', nullable: true })
+  paymentCashMovementId!: string | null;
+
+  @Column({ name: 'payment_paid_at', type: 'timestamptz', nullable: true })
+  paymentPaidAt!: Date | null;
+
+  @Column({
+    name: 'payment_amount',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  paymentAmount!: number | null;
+
+  /** Ingreso del reintegro del seguro; uno solo por siniestro. */
+  @ForeignKey('cash_movement', {
+    name: 'FK_vehicle_accident_reimbursement_movement',
+    onDelete: 'RESTRICT',
+  })
+  @Column({
+    name: 'reimbursement_cash_movement_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  reimbursementCashMovementId!: string | null;
+
+  @Column({
+    name: 'reimbursement_received_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  reimbursementReceivedAt!: Date | null;
+
+  @Column({
+    name: 'reimbursement_amount',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  reimbursementAmount!: number | null;
 
   @ManyToOne(() => User, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'created_by_user_id' })

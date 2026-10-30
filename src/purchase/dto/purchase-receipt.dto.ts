@@ -266,6 +266,40 @@ export class PurchaseReceiptResponseDto extends PurchaseReceiptSummaryDto {
   @ApiProperty() createdAt!: Date;
 }
 
+/** La recepción con su estado de pago (API v2). */
+export class PurchaseReceiptV2SummaryDto extends PurchaseReceiptSummaryDto {
+  @ApiProperty({ description: 'Si la recepción figura como pagada' })
+  isPaid!: boolean;
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'Salida de caja del pago; `null` si no salió de una caja',
+  })
+  cashMovementId!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo se pagó; `null` si está impaga o figura pagada desde antes de registrar la fecha',
+  })
+  paidAt!: Date | null;
+}
+
+export class PurchaseReceiptV2ResponseDto extends PurchaseReceiptResponseDto {
+  @ApiProperty({ description: 'Si la recepción figura como pagada' })
+  isPaid!: boolean;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  paidAt!: Date | null;
+}
+
+export class PurchaseReceiptV2PageDto {
+  @ApiProperty({ type: PurchaseReceiptV2SummaryDto, isArray: true })
+  data!: PurchaseReceiptV2SummaryDto[];
+  @ApiProperty({ example: 12 }) total!: number;
+}
+
 export class PurchaseReceiptPageDto {
   @ApiProperty({ type: PurchaseReceiptSummaryDto, isArray: true })
   data!: PurchaseReceiptSummaryDto[];

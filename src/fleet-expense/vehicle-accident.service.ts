@@ -291,6 +291,22 @@ export class VehicleAccidentService {
           'insurerReimbursement: el reintegro del seguro no puede superar el costo de la reparación',
         );
       }
+      if (
+        siniestro.paymentAmount !== null &&
+        Math.max(dto.repairCost, dto.deductibleAmount) < siniestro.paymentAmount
+      ) {
+        throw new ConflictException(
+          'repairCost: ya se registró un pago de la empresa por más que el costo de la reparación y la franquicia',
+        );
+      }
+      if (
+        siniestro.reimbursementAmount !== null &&
+        dto.insurerReimbursement < siniestro.reimbursementAmount
+      ) {
+        throw new ConflictException(
+          'insurerReimbursement: ya se registró un reintegro del seguro por más que ese importe',
+        );
+      }
       siniestro.status = VehicleAccidentStatus.CLOSED;
       siniestro.repairCost = dto.repairCost;
       siniestro.insurerReimbursement = dto.insurerReimbursement;

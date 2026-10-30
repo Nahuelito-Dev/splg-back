@@ -17,6 +17,8 @@ import { EmployeeDocumentsController } from './employee-documents.controller';
 import { EmployeeDocumentsService } from './employee-documents.service';
 import { FleetPlanController } from './fleet-plan.controller';
 import { FleetTaskController } from './fleet-task.controller';
+import { FleetTaskV2Controller } from './fleet-task-v2.controller';
+import { CashModule } from '../cash/cash.module';
 import { FleetExpirationsController } from './fleet-expirations.controller';
 import { CarDocumentsController } from './car-documents.controller';
 import { DeliveryDocumentsController } from './delivery-documents.controller';
@@ -57,10 +59,12 @@ import { CarReactivationController } from './car-reactivation.controller';
     S3Module, // dónde viven los adjuntos
     EmployeeModule, // el dueño de la documentación del personal (CU-183 a CU-185)
     LeaveModule, // licencias aprobadas: inhabilitan al chofer (CU-246)
+    CashModule, // el pago de una tarea hecha sale de una caja
   ],
   controllers: [
     FleetPlanController,
     FleetTaskController,
+    FleetTaskV2Controller,
     FleetExpirationsController,
     CarDocumentsController,
     DeliveryDocumentsController,

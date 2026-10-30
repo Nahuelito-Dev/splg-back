@@ -40,6 +40,10 @@ export enum CashReferenceType {
   REVERSAL = 'reversal',
   ORDER_PAYMENT = 'order_payment',
   INSURANCE_INSTALLMENT = 'insurance_installment',
+  MAINTENANCE_TASK = 'maintenance_task',
+  TIRE = 'tire',
+  VEHICLE_ACCIDENT = 'vehicle_accident',
+  INSURANCE_REIMBURSEMENT = 'insurance_reimbursement',
 }
 
 /** Sentido de una categoría: los ingresos y los gastos no se mezclan. */
@@ -66,6 +70,10 @@ export enum CashSystemCode {
   TRAFFIC_FINE = 'traffic_fine',
   ORDER_PAYMENT = 'order_payment',
   INSURANCE = 'insurance',
+  FLEET_MAINTENANCE = 'fleet_maintenance',
+  TIRES = 'tires',
+  VEHICLE_ACCIDENT = 'vehicle_accident',
+  INSURANCE_REIMBURSEMENT = 'insurance_reimbursement',
 }
 
 /** Las categorías de sistema con su nombre y su sentido, tal como se siembran. */
@@ -133,6 +141,26 @@ export const CATEGORIAS_DE_SISTEMA: ReadonlyArray<{
     code: CashSystemCode.INSURANCE,
     name: 'Seguros',
     direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.FLEET_MAINTENANCE,
+    name: 'Mantenimiento de flota',
+    direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.TIRES,
+    name: 'Neumáticos',
+    direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.VEHICLE_ACCIDENT,
+    name: 'Siniestros',
+    direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.INSURANCE_REIMBURSEMENT,
+    name: 'Reintegros de seguros',
+    direction: CategoryDirection.INCOME,
   },
 ];
 

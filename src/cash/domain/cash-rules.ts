@@ -91,6 +91,14 @@ export function motivoDeNoAnulable(tipo: CashReferenceType): string | null {
       return 'Es el cobro en efectivo de un pedido. Si la caja fue la equivocada, se corrige con una transferencia entre cajas (CU-310); el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
     case CashReferenceType.INSURANCE_INSTALLMENT:
       return 'Es el pago de una cuota de seguro: una cuota paga no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.MAINTENANCE_TASK:
+      return 'Es el pago de un servicio de la flota: una tarea paga no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.TIRE:
+      return 'Es el pago de la compra de un neumático: un neumático pago no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.VEHICLE_ACCIDENT:
+      return 'Es lo que pagó la empresa por un siniestro: un pago registrado no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.INSURANCE_REIMBURSEMENT:
+      return 'Es el reintegro que pagó el seguro por un siniestro: un reintegro registrado no se reabre; el desvío se corrige con un movimiento manual que lo explique';
     case CashReferenceType.REVERSAL:
       return 'Es una anulación: no se anula. Si estuvo mal, registrá un movimiento nuevo';
   }
