@@ -56,6 +56,8 @@ export enum CashReferenceType {
   PAYMENT_EXTERNAL_REFUND = 'payment_external_refund',
   /** Seña de una reserva recibida en efectivo o por transferencia: la referencia es el id del pedido. */
   ORDER_DEPOSIT = 'order_deposit',
+  /** Ajuste asentado desde una conciliación con Mercado Pago: la referencia es el id de la diferencia (`mp_reconciliation_item`). */
+  MP_RECONCILIATION = 'mp_reconciliation',
 }
 
 /** Sentido de una categoría: los ingresos y los gastos no se mezclan. */
@@ -88,6 +90,8 @@ export enum CashSystemCode {
   INSURANCE_REIMBURSEMENT = 'insurance_reimbursement',
   MERCADOPAGO_FEE = 'mercadopago_fee',
   CUSTOMER_REFUND = 'customer_refund',
+  TAXES_WITHHOLDINGS = 'taxes_withholdings',
+  MERCADOPAGO_FEE_REFUND = 'mercadopago_fee_refund',
 }
 
 /** Las categorías de sistema con su nombre y su sentido, tal como se siembran. */
@@ -185,6 +189,16 @@ export const CATEGORIAS_DE_SISTEMA: ReadonlyArray<{
     code: CashSystemCode.CUSTOMER_REFUND,
     name: 'Devoluciones a clientes',
     direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.TAXES_WITHHOLDINGS,
+    name: 'Impuestos y retenciones',
+    direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.MERCADOPAGO_FEE_REFUND,
+    name: 'Reintegros de Mercado Pago',
+    direction: CategoryDirection.INCOME,
   },
 ];
 

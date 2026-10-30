@@ -40,6 +40,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   insurer: 'insurer_id',
   insurance_policy: 'policy_id',
   attachment: 'attachment_id',
+  mp_reconciliation: 'reconciliation_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -123,6 +124,8 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     // Cajas de cobro de las ventas (Mercado Pago y transferencias)
     ['cash_collection_settings', 'mercadopago_cash_box_id', 'cash_box'],
     ['cash_collection_settings', 'transfer_cash_box_id', 'cash_box'],
+    // Diferencias de la conciliación con Mercado Pago
+    ['mp_reconciliation_item', 'reconciliation_id', 'mp_reconciliation'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

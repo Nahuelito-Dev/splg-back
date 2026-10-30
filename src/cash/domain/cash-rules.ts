@@ -111,6 +111,8 @@ export function motivoDeNoAnulable(tipo: CashReferenceType): string | null {
       return 'Es la seña de una reserva: si la caja fue la equivocada, se corrige con una transferencia entre cajas; el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
     case CashReferenceType.ORDER_TRANSFER:
       return 'Es una transferencia confirmada de un pedido: si la caja fue la equivocada, se corrige con una transferencia entre cajas; el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
+    case CashReferenceType.MP_RECONCILIATION:
+      return 'Es un ajuste asentado desde una conciliación con Mercado Pago: no se anula; el desvío se corrige con un movimiento manual que lo explique';
     case CashReferenceType.REVERSAL:
       return 'Es una anulación: no se anula. Si estuvo mal, registrá un movimiento nuevo';
   }

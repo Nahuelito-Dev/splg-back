@@ -52,6 +52,7 @@ export const OWNER_TYPES_SOLO_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
   [
     AttachmentOwnerType.INSURANCE_INSTALLMENT,
     AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
+    AttachmentOwnerType.MP_RECONCILIATION,
   ];
 
 /** El endpoint de cada uno de esos dueños, para el mensaje de 400. */
@@ -61,6 +62,8 @@ const ENDPOINT_DEL_DUENO: Readonly<
   [AttachmentOwnerType.INSURANCE_INSTALLMENT]:
     'POST /insurance-installments/:id/receipt',
   [AttachmentOwnerType.TRAFFIC_FINE_PAYMENT]: 'POST /traffic-fines/:id/receipt',
+  [AttachmentOwnerType.MP_RECONCILIATION]:
+    'POST /api/v2/mercadopago/reconciliations',
 };
 
 /** Mensaje de 400 del endpoint genérico para esos dueños. */
