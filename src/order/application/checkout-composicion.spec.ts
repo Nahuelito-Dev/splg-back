@@ -1,3 +1,4 @@
+import type { SalesCashService } from '../../cash/application/sales-cash.service';
 import Decimal from 'decimal.js';
 import { DataSource, Repository } from 'typeorm';
 import { CreateOrderUseCase } from './create-order.use-case';
@@ -124,6 +125,10 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
           paymentStatus: PaymentStatus.PENDING,
         }),
       } as unknown as OrderLookupService,
+      {
+        asentarCobroDeMercadoPago: jest.fn().mockResolvedValue('sin_caja'),
+        avisarSinAsentar: jest.fn(),
+      } as unknown as SalesCashService,
     );
 
     const queryRunner = {

@@ -5,16 +5,19 @@ import { CashCategoryService } from './application/cash-category.service';
 import { CashDocumentPaymentService } from './application/cash-document-payment.service';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { CashMovementAttachmentOwnerResolver } from './application/cash-movement-attachment-owner.resolver';
+import { SalesCashService } from './application/sales-cash.service';
 import { CashLedgerService } from './application/cash-ledger.service';
 import { CashMovementService } from './application/cash-movement.service';
 import { CashSeedListener } from './application/cash-seed.listener';
 import { CashSessionService } from './application/cash-session.service';
 import { CashBox } from './entities/cash-box.entity';
+import { CashCollectionSettings } from './entities/cash-collection-settings.entity';
 import { CashCategory } from './entities/cash-category.entity';
 import { CashMovement } from './entities/cash-movement.entity';
 import { CashSession } from './entities/cash-session.entity';
 import { CashBoxController } from './presentation/cash-box.controller';
 import { CashCategoryController } from './presentation/cash-category.controller';
+import { CashMovementV2Controller } from './presentation/cash-movement-v2.controller';
 import { CashMovementController } from './presentation/cash-movement.controller';
 import { CashSessionController } from './presentation/cash-session.controller';
 
@@ -30,6 +33,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
       CashSession,
       CashCategory,
       CashMovement,
+      CashCollectionSettings,
     ]),
     AttachmentModule, // dueño `cash_movement` de los adjuntos
   ],
@@ -37,6 +41,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashBoxController,
     CashSessionController,
     CashMovementController,
+    CashMovementV2Controller,
     CashCategoryController,
   ],
   providers: [
@@ -46,6 +51,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashSessionService,
     CashMovementService,
     CashCategoryService,
+    SalesCashService,
     CashSeedListener,
     CashMovementAttachmentOwnerResolver,
   ],
@@ -56,6 +62,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
     CashBoxService,
     CashMovementService,
     CashSessionService,
+    SalesCashService,
   ],
 })
 export class CashModule {}

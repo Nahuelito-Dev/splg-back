@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -25,6 +26,12 @@ import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { errorMessage } from '../../common/errors/error-message';
 import { PaymentsService } from '../../payments/application/payments.service';
+import { CashDocumentPaymentService } from '../../cash/application/cash-document-payment.service';
+import {
+  ResultadoDelAsiento,
+  SalesCashService,
+} from '../../cash/application/sales-cash.service';
+import { CashMethod } from '../../cash/domain/cash.enums';
 import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
 import type { TareaConIntervalo } from '../../distributor/scheduled-tasks-settings';
 
@@ -72,6 +79,8 @@ export class ReservationService {
     private readonly frecuencias: ScheduledTasksSettingsService,
     config: ConfigService,
     private readonly payments: PaymentsService,
+    private readonly ventasEnCaja: SalesCashService,
+    private readonly pagoEnCaja: CashDocumentPaymentService,
   ) {
     // Validadas y con su valor por defecto en joi.validation.ts.
     this.depositTtlHours = config.getOrThrow<number>(
@@ -185,31 +194,90 @@ export class ReservationService {
     });
   }
 
-  /** Admin confirma la seña recibida en efectivo o por transferencia. Habilita la activación automática. */
+  /**
+   * Admin confirma la seña recibida en efectivo o por transferencia. Habilita la
+   * activación automática. La seña entra a una caja en la misma transacción:
+   * por transferencia, a la caja de transferencias configurada (sin caja, queda
+   * sin asentar y se avisa); en efectivo, a la caja de efectivo que elige
+   * (`cashBoxId`, obligatoria si la distribuidora tiene alguna activa). Repetir la
+   * confirmación no asienta otra vez.
+   */
   async confirmDeposit(
     orderId: string,
     distributorId?: string | null,
+    adminUserId?: string | null,
+    cashBoxId?: string | null,
   ): Promise<Order> {
-    const order = await this.orderRepository.findOne({
-      where: {
-        orderId,
-        ...(distributorId ? { distributorId } : {}),
+    let asiento: ResultadoDelAsiento | undefined;
+    const order = await this.orderRepository.manager.transaction(
+      async (manager) => {
+        const order = await manager.findOne(Order, {
+          where: {
+            orderId,
+            ...(distributorId ? { distributorId } : {}),
+          },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!order) throw new NotFoundException('Reserva no encontrada');
+        if (order.status !== OrderStatus.RESERVED) {
+          throw new BadRequestException(
+            'El pedido no es una reserva pendiente',
+          );
+        }
+        // CU-072/CU-074: la seña por MercadoPago la marca cobrada el aviso de la
+        // pasarela (webhook); a mano sólo se confirma la que se recibe en efectivo
+        // o por transferencia.
+        if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
+          throw new BadRequestException(
+            'La seña por MercadoPago se confirma sola cuando la pasarela avisa el pago: no se confirma a mano',
+          );
+        }
+        if (order.depositPaid) return order;
+        const efectivo = order.paymentMethod === PaymentMethod.CASH;
+        const cajaDeEfectivo = efectivo
+          ? await this.pagoEnCaja.cajaDelPago(
+              manager,
+              order.distributorId,
+              cashBoxId,
+            )
+          : null;
+        order.depositPaid = true;
+        order.depositPaidAt = new Date();
+        const guardada = await manager.save(order);
+        const sena = Number(order.depositAmount);
+        if (adminUserId && sena > 0) {
+          if (!efectivo) {
+            asiento = await this.ventasEnCaja.asentarSena(manager, {
+              distributorId: order.distributorId,
+              orderId: order.orderId,
+              amount: sena,
+              metodo: CashMethod.TRANSFER,
+              userId: adminUserId,
+            });
+          } else if (cajaDeEfectivo) {
+            const resultado = await this.ventasEnCaja.asentarSena(manager, {
+              distributorId: order.distributorId,
+              orderId: order.orderId,
+              amount: sena,
+              metodo: CashMethod.CASH,
+              cashBoxId: cajaDeEfectivo,
+              userId: adminUserId,
+            });
+            // El administrador eligió esa caja: si la rechaza, se lo decimos y no se confirma.
+            if (resultado === 'fallo') {
+              throw new ConflictException(
+                'La caja rechazó el ingreso de la seña: revisá que esté activa y con la sesión abierta',
+              );
+            }
+          }
+        }
+        return guardada;
       },
-    });
-    if (!order) throw new NotFoundException('Reserva no encontrada');
-    if (order.status !== OrderStatus.RESERVED) {
-      throw new BadRequestException('El pedido no es una reserva pendiente');
+    );
+    if (asiento) {
+      this.ventasEnCaja.avisarSinAsentar(order.distributorId, asiento, orderId);
     }
-    // CU-072/CU-074: la seña por MercadoPago la marca cobrada el aviso de la
-    // pasarela (webhook); a mano sólo se confirma la que se recibe en efectivo
-    // o por transferencia.
-    if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
-      throw new BadRequestException(
-        'La seña por MercadoPago se confirma sola cuando la pasarela avisa el pago: no se confirma a mano',
-      );
-    }
-    order.depositPaid = true;
-    return this.orderRepository.save(order);
+    return order;
   }
 
   /**

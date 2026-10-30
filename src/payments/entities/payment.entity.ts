@@ -121,6 +121,10 @@ export class Payment {
   })
   paymentUrl!: string | null;
 
+  /** Cuándo la pasarela lo aprobó (null mientras no se aprobó). Desde esta fecha cuenta como cobro. */
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt!: Date | null;
+
   /** true = este intento cobra la SEÑA de una reserva, no el pedido completo. */
   @Column({
     name: 'is_deposit',

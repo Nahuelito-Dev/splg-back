@@ -1148,10 +1148,12 @@ export class OrderController {
   async confirmDeposit(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const order = await this.reservationService.confirmDeposit(
       id,
       distributorId,
+      user.user_id,
     );
     return OrderMapper.toDto(order);
   }

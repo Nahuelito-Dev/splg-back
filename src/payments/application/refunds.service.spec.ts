@@ -17,6 +17,7 @@ import {
   PagoReintegradoEvent,
   ReintegroResuelto,
 } from '../domain/events/reintegro.events';
+import { SalesCashService } from '../../cash/application/sales-cash.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { OrderStatus } from '../../order/entities/order.entity';
 
@@ -92,6 +93,10 @@ describe('RefundsService (CU-168)', () => {
   };
   let orderLookup: { findForRefund: jest.Mock };
   let eventos: { emit: jest.Mock };
+  let ventasEnCaja: {
+    asentarDevolucion: jest.Mock;
+    avisarSinAsentar: jest.Mock;
+  };
   let service: RefundsService;
   let seq: number;
 
@@ -172,12 +177,27 @@ describe('RefundsService (CU-168)', () => {
       }),
     };
     eventos = { emit: jest.fn() };
+    ventasEnCaja = {
+      asentarDevolucion: jest.fn().mockResolvedValue('asentado'),
+      avisarSinAsentar: jest.fn(),
+    };
+    // La transacción del cierre trabaja sobre el mismo repositorio en memoria.
+    const manager = {
+      transaction: (trabajo: (m: unknown) => unknown) => trabajo(manager),
+      query: jest.fn().mockResolvedValue([]),
+      update: (_e: unknown, criterio: Fila, cambios: Fila) =>
+        refundsRepo.update(criterio, cambios),
+      findOneOrFail: (_e: unknown, opciones: { where?: Fila }) =>
+        refundsRepo.findOneOrFail(opciones),
+    };
+    (refundsRepo as unknown as { manager: unknown }).manager = manager;
     service = new RefundsService(
       pagosRepo as unknown as Repository<Payment>,
       refundsRepo as unknown as Repository<PaymentRefund>,
       gateway as unknown as PaymentGatewayPort,
       orderLookup as unknown as OrderLookupService,
       eventos as unknown as EventEmitter2,
+      ventasEnCaja as unknown as SalesCashService,
     );
   });
 
@@ -368,6 +388,109 @@ describe('RefundsService (CU-168)', () => {
 
       expect(r.status).toBe(RefundStatus.FAILED);
       expect(gateway.refundPayment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('egreso de la caja de Mercado Pago', () => {
+    it('la devolución exitosa saca de la caja lo devuelto, en la misma transacción del cierre', async () => {
+      pagos.push(pago());
+
+      const [r] = await service.reintegrarPorCancelacion('ord-1');
+
+      expect(ventasEnCaja.asentarDevolucion).toHaveBeenCalledTimes(1);
+      expect(ventasEnCaja.asentarDevolucion).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          distributorId: 'dist-1',
+          orderId: 'ord-1',
+          paymentId: 'pay-1',
+          refundId: r.refundId,
+          gatewayPaymentId: 'mp-1',
+          amount: 3000,
+          userId: null,
+        },
+      );
+    });
+
+    it('el administrador que reintenta queda como autor del egreso', async () => {
+      pagos.push(pago());
+      gateway.refundPayment.mockRejectedValueOnce(new Error('rechazada'));
+      await service.reintegrarPorCancelacion('ord-1');
+      gateway.refundPayment.mockResolvedValue({ refundId: 'mp-refund-2' });
+      orderLookup.findForRefund.mockResolvedValue({
+        orderId: 'ord-1',
+        distributorId: 'dist-1',
+        status: OrderStatus.CANCELLED,
+        expressSurchargeAmount: 0,
+      });
+
+      await service.reintentar('ord-1', 'dist-1', 'adm-7');
+
+      expect(ventasEnCaja.asentarDevolucion).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ userId: 'adm-7' }),
+      );
+    });
+
+    it('antes de asentar toma el lock de la fila del pago (mismo orden que settle-pending)', async () => {
+      pagos.push(pago());
+      const consultas: string[] = [];
+      const manager = (
+        refundsRepo as unknown as { manager: { query: jest.Mock } }
+      ).manager;
+      manager.query.mockImplementation((sql: string) => {
+        consultas.push(sql);
+        return Promise.resolve([]);
+      });
+
+      await service.reintegrarPorCancelacion('ord-1');
+
+      expect(consultas[0]).toMatch(
+        /FROM "payment" WHERE "payment_id" = \$1 FOR UPDATE/,
+      );
+      expect(ventasEnCaja.asentarDevolucion).toHaveBeenCalledTimes(1);
+    });
+
+    it('una devolución parcial (recargo express) saca sólo el recargo', async () => {
+      pagos.push(pago());
+
+      await service.reintegrarRecargoExpress('ord-1', 500);
+
+      expect(ventasEnCaja.asentarDevolucion).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ amount: 500 }),
+      );
+    });
+
+    it('si la pasarela rechaza, no hay egreso', async () => {
+      pagos.push(pago());
+      gateway.refundPayment.mockRejectedValue(new Error('rechazada'));
+
+      await service.reintegrarPorCancelacion('ord-1');
+
+      expect(ventasEnCaja.asentarDevolucion).not.toHaveBeenCalled();
+    });
+
+    it('repetir la devolución ya cerrada no vuelve a sacar plata de la caja', async () => {
+      pagos.push(pago());
+      await service.reintegrarPorCancelacion('ord-1');
+      await service.reintegrarPorCancelacion('ord-1');
+
+      expect(ventasEnCaja.asentarDevolucion).toHaveBeenCalledTimes(1);
+    });
+
+    it('avisa a la bandeja si la caja no pudo asentar la salida, sin frenar la devolución', async () => {
+      pagos.push(pago());
+      ventasEnCaja.asentarDevolucion.mockResolvedValue('fallo');
+
+      const [r] = await service.reintegrarPorCancelacion('ord-1');
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+      expect(ventasEnCaja.avisarSinAsentar).toHaveBeenCalledWith(
+        'dist-1',
+        'fallo',
+        'ord-1',
+      );
     });
   });
 

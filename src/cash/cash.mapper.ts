@@ -1,6 +1,9 @@
 import { CashBoxResponseDto } from './dto/cash-box.dto';
 import { CashCategoryResponseDto } from './dto/cash-category.dto';
-import { CashMovementResponseDto } from './dto/cash-movement.dto';
+import {
+  CashMovementResponseDto,
+  CashMovementV2ResponseDto,
+} from './dto/cash-movement.dto';
 import {
   CashSessionDetailDto,
   CashSessionResponseDto,
@@ -90,7 +93,11 @@ export class CashMapper {
 
   static movimiento(
     m: CashMovement,
-    extra: { cashBoxName: string; categoryName: string; reversed: boolean },
+    extra: {
+      cashBoxName: string;
+      categoryName: string;
+      reversed: boolean;
+    },
   ): CashMovementResponseDto {
     const dto = new CashMovementResponseDto();
     dto.movementId = m.movementId;
@@ -111,5 +118,24 @@ export class CashMapper {
     dto.createdByUserId = m.createdByUserId;
     dto.createdAt = m.createdAt;
     return dto;
+  }
+
+  /** El movimiento de la API v2: el de la v1 con el pedido del que nace. */
+  static movimientoV2(
+    m: CashMovement,
+    extra: {
+      cashBoxName: string;
+      categoryName: string;
+      reversed: boolean;
+      orderId?: string | null;
+    },
+  ): CashMovementV2ResponseDto {
+    return Object.assign(
+      new CashMovementV2ResponseDto(),
+      CashMapper.movimiento(m, extra),
+      {
+        orderId: extra.orderId ?? null,
+      },
+    );
   }
 }

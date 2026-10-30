@@ -8,6 +8,7 @@ import type { DataSource } from 'typeorm';
 import { CashCollectionUseCase } from './cash-collection.use-case';
 import type { CashCategoryService } from '../../cash/application/cash-category.service';
 import type { CashLedgerService } from '../../cash/application/cash-ledger.service';
+import type { SalesCashService } from '../../cash/application/sales-cash.service';
 import {
   CashDirection,
   CashMethod,
@@ -38,6 +39,8 @@ describe('CashCollectionUseCase', () => {
   let exists: jest.Mock;
   let registrar: jest.Mock;
   let deSistema: jest.Mock;
+  let asentarTransferencia: jest.Mock;
+  let avisarSinAsentar: jest.Mock;
 
   const pedido = (over: Partial<Order> = {}): Order =>
     ({
@@ -71,6 +74,8 @@ describe('CashCollectionUseCase', () => {
     );
     registrar = jest.fn().mockResolvedValue({ movementId: 'mov-1' });
     deSistema = jest.fn().mockResolvedValue({ categoryId: 'cat-1' });
+    asentarTransferencia = jest.fn().mockResolvedValue('asentado');
+    avisarSinAsentar = jest.fn();
     dentro = jest.fn().mockResolvedValue('extra');
     save = jest.fn((o: Order) => Promise.resolve(o));
     getOne = jest.fn();
@@ -101,6 +106,10 @@ describe('CashCollectionUseCase', () => {
       dataSource,
       { registrar } as unknown as CashLedgerService,
       { deSistema } as unknown as CashCategoryService,
+      {
+        asentarTransferencia,
+        avisarSinAsentar,
+      } as unknown as SalesCashService,
     );
   });
 
@@ -580,6 +589,87 @@ describe('CashCollectionUseCase', () => {
         paymentResolutionNote: 'Figura en el banco',
       });
       expect(insert).toHaveBeenCalledTimes(1);
+    });
+
+    describe('ingreso a la caja de transferencias', () => {
+      it('confirmar que llegó asienta el saldo a cobrar del pedido, con el admin como autor', async () => {
+        con(transferencia());
+        await uc.confirmTransfer(
+          'ord-1',
+          ADMIN,
+          true,
+          'Figura en el banco',
+          'd1',
+        );
+
+        expect(asentarTransferencia).toHaveBeenCalledTimes(1);
+        expect(asentarTransferencia).toHaveBeenCalledWith(expect.anything(), {
+          distributorId: 'd1',
+          orderId: 'ord-1',
+          amount: 4500,
+          userId: ADMIN,
+        });
+        expect(avisarSinAsentar).toHaveBeenCalledWith(
+          'd1',
+          'asentado',
+          'ord-1',
+        );
+      });
+
+      it('descuenta la seña ya paga de una reserva', async () => {
+        con(transferencia({ depositPaid: true, depositAmount: 1000 }));
+        await uc.confirmTransfer(
+          'ord-1',
+          ADMIN,
+          true,
+          'Figura en el banco',
+          'd1',
+        );
+
+        expect(asentarTransferencia).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ amount: 3500 }),
+        );
+      });
+
+      it('marcarla como no recibida no mueve la caja', async () => {
+        con(transferencia());
+        await uc.confirmTransfer(
+          'ord-1',
+          ADMIN,
+          false,
+          'No figura en el banco',
+        );
+
+        expect(asentarTransferencia).not.toHaveBeenCalled();
+        expect(avisarSinAsentar).not.toHaveBeenCalled();
+      });
+
+      it('repetir la confirmación no asienta otra vez', async () => {
+        con(transferencia({ paymentStatus: PaymentStatus.PAID }));
+        await uc.confirmTransfer('ord-1', ADMIN, true, 'motivo largo');
+
+        expect(asentarTransferencia).not.toHaveBeenCalled();
+      });
+
+      it('sin caja configurada la confirmación sigue y se avisa a la bandeja', async () => {
+        asentarTransferencia.mockResolvedValue('sin_caja');
+        con(transferencia());
+        const r = await uc.confirmTransfer(
+          'ord-1',
+          ADMIN,
+          true,
+          'Figura en el banco',
+          'd1',
+        );
+
+        expect(r.order.paymentStatus).toBe(PaymentStatus.PAID);
+        expect(avisarSinAsentar).toHaveBeenCalledWith(
+          'd1',
+          'sin_caja',
+          'ord-1',
+        );
+      });
     });
 
     it('received: false pasa a FAILED sin llenar paymentConfirmed*', async () => {

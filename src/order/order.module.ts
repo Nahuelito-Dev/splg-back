@@ -42,6 +42,7 @@ import { ReintegroListener } from './application/reintegro.listener';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.typeorm.repository';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
+import { ReservationV2Controller } from './reservation-v2.controller';
 import { ReservationService } from './application/reservation.service';
 import { PagoNotificadoListener } from './application/pago-notificado.listener';
 import { AttachmentModule } from '../attachment/attachment.module';
@@ -111,6 +112,7 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     ExpressOrderController,
     OrderController,
     OrderTransferReceiptController,
+    ReservationV2Controller,
   ],
   providers: [
     // Confirma el pedido cuando payments publica un pago notificado.

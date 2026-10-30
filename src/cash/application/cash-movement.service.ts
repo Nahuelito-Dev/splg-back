@@ -31,6 +31,8 @@ export interface MovimientoConNombres {
   cashBoxName: string;
   categoryName: string;
   reversed: boolean;
+  /** El pedido del que nace el movimiento, si es un cobro de venta. */
+  orderId?: string | null;
 }
 
 /** Operaciones sobre el libro de movimientos (CU-228, 229, 309, 310, 340). */
@@ -416,6 +418,7 @@ export class CashMovementService {
       [movimientos.map((x) => x.movementId)],
     );
     const anuladosSet = new Set(anulados.map((a) => a.reverses_movement_id));
+    const pedidos = await this.pedidosDeLosCobros(movimientos);
     return movimientos.map((movimiento) => ({
       movimiento,
       cashBoxName:
@@ -424,6 +427,53 @@ export class CashMovementService {
         categorias.find((c) => c.categoryId === movimiento.categoryId)?.name ??
         '',
       reversed: anuladosSet.has(movimiento.movementId),
+      orderId: pedidos.get(movimiento.movementId) ?? null,
     }));
+  }
+
+  /**
+   * El pedido de cada movimiento que nace de un cobro de venta: el efectivo y la
+   * transferencia lo llevan como referencia; el pago, su comisión y su devolución,
+   * a través del pago o de la solicitud de devolución.
+   */
+  private async pedidosDeLosCobros(
+    movimientos: CashMovement[],
+  ): Promise<Map<string, string>> {
+    const pedidos = new Map<string, string>();
+    const ids = (...tipos: CashReferenceType[]) =>
+      movimientos.filter(
+        (m) => m.referenceId && tipos.includes(m.referenceType),
+      );
+    for (const m of ids(
+      CashReferenceType.ORDER_PAYMENT,
+      CashReferenceType.ORDER_TRANSFER,
+    )) {
+      pedidos.set(m.movementId, m.referenceId as string);
+    }
+    const pagos = ids(CashReferenceType.PAYMENT, CashReferenceType.PAYMENT_FEE);
+    if (pagos.length > 0) {
+      const filas: Array<{ payment_id: string; order_id: string }> =
+        await this.dataSource.manager.query(
+          `SELECT "payment_id", "order_id" FROM "payment" WHERE "payment_id" = ANY($1::uuid[])`,
+          [pagos.map((m) => m.referenceId)],
+        );
+      for (const m of pagos) {
+        const fila = filas.find((f) => f.payment_id === m.referenceId);
+        if (fila) pedidos.set(m.movementId, fila.order_id);
+      }
+    }
+    const devoluciones = ids(CashReferenceType.PAYMENT_REFUND);
+    if (devoluciones.length > 0) {
+      const filas: Array<{ refund_id: string; order_id: string }> =
+        await this.dataSource.manager.query(
+          `SELECT "refund_id", "order_id" FROM "payment_refund" WHERE "refund_id" = ANY($1::uuid[])`,
+          [devoluciones.map((m) => m.referenceId)],
+        );
+      for (const m of devoluciones) {
+        const fila = filas.find((f) => f.refund_id === m.referenceId);
+        if (fila) pedidos.set(m.movementId, fila.order_id);
+      }
+    }
+    return pedidos;
   }
 }
