@@ -186,6 +186,22 @@ export class EntityPhotoService {
     }
   }
 
+  /**
+   * El enlace firmado con su vencimiento, sin romper nunca: sin foto o si la
+   * firma falla, es `null`. Para firmar muchas fotos en un pedido.
+   */
+  async firmadaDe(
+    key: string | null | undefined,
+  ): Promise<SignedDownload | null> {
+    if (!key) return null;
+    try {
+      return await this.storage.getSignedDownload(key);
+    } catch (error) {
+      this.logger.warn(`No se pudo firmar ${key}: ${errorMessage(error)}`);
+      return null;
+    }
+  }
+
   /** Completa `photoSignedUrl` en cada entidad (firmar es local y barato). */
   async firmar<T extends ConFotoFirmada>(
     items: T | readonly T[] | null | undefined,

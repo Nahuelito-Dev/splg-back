@@ -288,6 +288,16 @@ describe('EntityPhotoService', () => {
       expect(await servicio.urlDe('k')).toBeNull();
     });
 
+    it('firmadaDe: url y vencimiento; null sin key o si la firma falla', async () => {
+      expect(await servicio.firmadaDe('k')).toEqual({
+        url: 'https://firmada/x',
+        expiresAt: new Date('2030-01-01'),
+      });
+      expect(await servicio.firmadaDe(null)).toBeNull();
+      storage.getSignedDownload.mockRejectedValueOnce(new Error('sin red'));
+      expect(await servicio.firmadaDe('k')).toBeNull();
+    });
+
     it('firmar completa photoSignedUrl en cada elemento', async () => {
       const items: Array<{ k: string | null; photoSignedUrl?: string | null }> =
         [{ k: 'a' }, { k: null }];

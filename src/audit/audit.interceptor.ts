@@ -5,6 +5,7 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request, Response } from 'express';
 import { Observable, catchError, tap, throwError } from 'rxjs';
 import { AuditService, NuevoAsiento } from './audit.service';
@@ -15,6 +16,7 @@ import {
   NotFoundDomainError,
 } from '../common/errors/domain.error';
 import { errorMessage } from '../common/errors/error-message';
+import { SOLO_LECTURA_KEY } from './solo-lectura.decorator';
 
 const ESCRITURAS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -27,12 +29,20 @@ const ESCRITURAS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle();
     const request = context.switchToHttp().getRequest<Request>();
     if (!ESCRITURAS.has(request.method)) return next.handle();
+    const soloLectura = this.reflector.getAllAndOverride<boolean | undefined>(
+      SOLO_LECTURA_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (soloLectura) return next.handle();
     const response = context.switchToHttp().getResponse<Response>();
 
     return next.handle().pipe(
