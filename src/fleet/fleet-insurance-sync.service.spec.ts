@@ -269,6 +269,15 @@ describe('FleetInsuranceSyncService', () => {
       expect(porId.previa.status).toBe(MaintenanceTaskStatus.CANCELLED);
     });
 
+    it('una anterior que ya tiene un pago registrado no se reabre (chocaría con el CHECK) y se informa', async () => {
+      porId.previa.cashMovementId = 'mov-1';
+      const r = await service.revertir(manager, tareas);
+      expect(r.reverted).toBe(true);
+      expect(r.notes[0]).toMatch(/previa.*pago registrado/);
+      expect(porId.creada.status).toBe(MaintenanceTaskStatus.CANCELLED);
+      expect(porId.previa.status).toBe(MaintenanceTaskStatus.DONE);
+    });
+
     it('una póliza que no creó nada en la flota no revierte nada', async () => {
       const r = await service.revertir(manager, {
         ...tareas,

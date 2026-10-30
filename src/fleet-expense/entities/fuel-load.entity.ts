@@ -32,6 +32,10 @@ export enum FuelPaymentMethod {
  * `deletedAt` es la anulación (CU-321): la fila se conserva y deja de contar.
  */
 @Check('CHK_fuel_load_precio', `"unit_price" > 0`)
+@Check(
+  'CHK_fuel_load_pago',
+  `("cash_movement_id" IS NULL) = ("paid_at" IS NULL)`,
+)
 @Check('CHK_fuel_load_odometro', `"odometer_km" >= 0`)
 @ForeignKey(
   () => CashMovement,
@@ -148,6 +152,10 @@ export class FuelLoad {
   })
   @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
   cashMovementId!: string | null;
+
+  /** Cuándo se pagó la carga: el de la salida de caja (`cashMovementId`). */
+  @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
 
   /** La registró el chofer desde su app: no elige caja y su medio de pago no se cambia entre efectivo propio y caja. */
   @Column({ name: 'registered_by_driver', type: 'boolean', default: false })

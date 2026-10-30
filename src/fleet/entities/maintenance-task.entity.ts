@@ -7,7 +7,9 @@ import {
   JoinColumn,
   Index,
   Check,
+  ForeignKey,
 } from 'typeorm';
+import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { MaintenancePlan } from './maintenance-plan.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
@@ -41,6 +43,19 @@ export enum MaintenanceTaskStatus {
 @Check(
   'CHK_maintenance_task_hecha_fecha',
   `"status" <> 'done' OR "performed_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_maintenance_task_pago',
+  `num_nonnulls("cash_movement_id", "paid_at", "paid_amount") IN (0, 3) AND coalesce("paid_amount", 1) > 0 AND ("cash_movement_id" IS NULL OR "status" = 'done')`,
+)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_maintenance_task_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('maintenance_task')
 export class MaintenanceTask {
@@ -129,6 +144,27 @@ export class MaintenanceTask {
     nullable: true,
   })
   cost!: number | null;
+
+  /** Salida de la caja con que se pagó el servicio (`null` mientras esté sin pagar). */
+  @ForeignKey('cash_movement', {
+    name: 'FK_maintenance_task_cash_movement',
+    onDelete: 'RESTRICT',
+  })
+  @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
+  cashMovementId!: string | null;
+
+  @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
+
+  @Column({
+    name: 'paid_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    nullable: true,
+  })
+  paidAmount!: number | null;
 
   @Column({ name: 'provider', type: 'varchar', length: 120, nullable: true })
   provider!: string | null;

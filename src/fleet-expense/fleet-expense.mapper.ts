@@ -1,6 +1,11 @@
 import Decimal from 'decimal.js';
 import { latLngDesdePunto } from '../common/geo/punto';
 import { Employee } from '../employee/entities/employee.entity';
+import {
+  FuelLoadV2ResponseDto,
+  TireV2ResponseDto,
+  VehicleAccidentV2ResponseDto,
+} from './dto/fleet-expense-v2.dto';
 import { FuelLoadResponseDto } from './dto/fuel-load.dto';
 import { TrafficFineResponseDto } from './dto/traffic-fine.dto';
 import { TrafficFineV2ResponseDto } from './dto/traffic-fine-v2.dto';
@@ -9,7 +14,7 @@ import {
   VehicleAccidentResponseDto,
 } from './dto/vehicle-accident.dto';
 import { TireEventResponseDto, TireResponseDto } from './dto/tire.dto';
-import { FuelLoad } from './entities/fuel-load.entity';
+import { FuelLoad, FuelPaymentMethod } from './entities/fuel-load.entity';
 import { TrafficFine } from './entities/traffic-fine.entity';
 import { VehicleAccident } from './entities/vehicle-accident.entity';
 import { Tire } from './entities/tire.entity';
@@ -162,6 +167,48 @@ export class FleetExpenseMapper {
     dto.retreadCount = t.retreadCount;
     dto.createdAt = t.createdAt;
     if (events) dto.events = events.map((e) => FleetExpenseMapper.tireEvent(e));
+    return dto;
+  }
+
+  static tireV2(t: Tire, events?: TireEvent[]): TireV2ResponseDto {
+    const dto = Object.assign(
+      new TireV2ResponseDto(),
+      FleetExpenseMapper.tire(t, events),
+    );
+    dto.cashMovementId = t.cashMovementId;
+    dto.paidAt = t.paidAt;
+    dto.isPaid = t.cashMovementId !== null;
+    return dto;
+  }
+
+  static fuelLoadV2(f: FuelLoad): FuelLoadV2ResponseDto {
+    const dto = Object.assign(
+      new FuelLoadV2ResponseDto(),
+      FleetExpenseMapper.fuelLoad(f),
+    );
+    dto.paidAt = f.paidAt;
+    dto.isPaid = f.cashMovementId !== null;
+    dto.isPayable =
+      f.cashMovementId === null &&
+      f.deletedAt === null &&
+      !f.cashPaymentLegacy &&
+      f.paymentMethod !== FuelPaymentMethod.DRIVER_CASH;
+    return dto;
+  }
+
+  static vehicleAccidentV2(a: VehicleAccident): VehicleAccidentV2ResponseDto {
+    const dto = Object.assign(
+      new VehicleAccidentV2ResponseDto(),
+      FleetExpenseMapper.vehicleAccident(a),
+    );
+    dto.paymentCashMovementId = a.paymentCashMovementId;
+    dto.paymentPaidAt = a.paymentPaidAt;
+    dto.paymentAmount = a.paymentAmount;
+    dto.isPaid = a.paymentCashMovementId !== null;
+    dto.reimbursementCashMovementId = a.reimbursementCashMovementId;
+    dto.reimbursementReceivedAt = a.reimbursementReceivedAt;
+    dto.reimbursementAmount = a.reimbursementAmount;
+    dto.isReimbursed = a.reimbursementCashMovementId !== null;
     return dto;
   }
 }

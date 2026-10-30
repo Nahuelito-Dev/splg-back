@@ -17,6 +17,9 @@ import {
 import { CarService } from '../car/car.service';
 import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
 import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
+import { instanteValido } from '../cash/domain/instante-del-pago';
+import { PayFromCashBoxDto } from '../cash/dto/pay-expense.dto';
+import { diaArgentino } from '../common/utils/dias-argentina';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
@@ -306,7 +309,7 @@ export class FuelLoadService {
           }
           if (
             carga.cashMovementId &&
-            (carga.paymentMethod !== FuelPaymentMethod.CASH_BOX ||
+            (carga.paymentMethod !== medioAnterior ||
               carga.totalAmount !== importeAnterior)
           ) {
             throw new ConflictException(
@@ -469,7 +472,68 @@ export class FuelLoadService {
       userId,
     });
     carga.cashMovementId = movimiento.movementId;
+    carga.paidAt = movimiento.occurredAt ?? new Date();
     await manager.getRepository(FuelLoad).save(carga);
+  }
+
+  /**
+   * API v2: paga la carga desde una caja de efectivo, banco o billetera, con la
+   * fecha del pago. Sirve para la de tarjeta o cuenta de combustible y para la
+   * de la caja sin asentar. La que pagó el chofer con su efectivo
+   * (`driver_cash`) sale por su rendición. Una sola vez por carga.
+   */
+  async pagar(
+    id: string,
+    dto: PayFromCashBoxDto,
+    distributorId: string,
+    userId: string,
+  ): Promise<FuelLoad> {
+    const pagadoEn = instanteValido(dto.paidAt, 'paidAt');
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        const carga = await this.cargarParaEscribir(manager, id, distributorId);
+        await this.cars.bloquear(manager, carga.carId, distributorId);
+        if (carga.cashMovementId) {
+          throw new ConflictException('La carga ya salió de una caja');
+        }
+        if (carga.paymentMethod === FuelPaymentMethod.DRIVER_CASH) {
+          throw new ConflictException(
+            'La carga la pagó el chofer con su efectivo: se salda en su rendición, no desde una caja',
+          );
+        }
+        if (carga.cashPaymentLegacy) {
+          throw new ConflictException(
+            'La carga es anterior al asiento de caja y se resolvió fuera del libro: no se paga; si hace falta, registrá un egreso manual con motivo',
+          );
+        }
+        if (carga.totalAmount <= 0) {
+          throw new ConflictException(
+            'La carga no tiene un importe para pagar',
+          );
+        }
+        if (diaArgentino(pagadoEn) < diaArgentino(carga.loadedAt)) {
+          throw new BadRequestException(
+            'paidAt: no puede ser anterior a la fecha de la carga',
+          );
+        }
+        const movimiento = await this.pagos.pagarDesdeUnaCaja(manager, {
+          distributorId,
+          cashBoxId: dto.cashBoxId,
+          amount: carga.totalAmount,
+          systemCode: CashSystemCode.FUEL,
+          referenceType: CashReferenceType.FUEL_LOAD,
+          referenceId: carga.fuelLoadId,
+          description: `Combustible (${carga.liters} L${carga.station ? ` en ${carga.station}` : ''})`,
+          userId,
+        });
+        carga.cashMovementId = movimiento.movementId;
+        carga.paidAt = pagadoEn;
+        await manager.getRepository(FuelLoad).save(carga);
+      });
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'cargas de combustible');
+    }
+    return this.findOne(id, distributorId);
   }
 
   /** La carga puntual; también la anulada, con `voidedAt`. 404 si no es de la distribuidora. */

@@ -4,7 +4,11 @@ import {
 } from './entities/maintenance-task.entity';
 import { MaintenanceCriticality } from './entities/maintenance-plan.entity';
 import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
-import { FleetTaskResponseDto } from './dto/task-response.dto';
+import {
+  FleetTaskResponseDto,
+  FleetTaskV2ResponseDto,
+} from './dto/task-response.dto';
+import { esDeSeguro, MOTIVO_SEGURO } from './fleet-task.service';
 import { FleetPlanMapper } from './fleet-plan.mapper';
 import { FleetAttachmentMapper } from './fleet-attachment.mapper';
 import {
@@ -59,6 +63,29 @@ export class FleetTaskMapper {
       dto.attachments = attachments.map((a) => FleetAttachmentMapper.toDto(a));
     }
 
+    return dto;
+  }
+
+  /** La tarea con su estado de pago (API v2). */
+  static toV2Dto(
+    task: MaintenanceTask,
+    attachments?: MaintenanceTaskAttachment[],
+  ): FleetTaskV2ResponseDto {
+    const dto = Object.assign(
+      new FleetTaskV2ResponseDto(),
+      FleetTaskMapper.toDto(task, attachments),
+    );
+    dto.cashMovementId = task.cashMovementId;
+    dto.paidAt = task.paidAt;
+    dto.paidAmount = task.paidAmount;
+    dto.isPaid = task.cashMovementId !== null;
+    const seguro = esDeSeguro(task.plan);
+    dto.notPayableReason = seguro ? MOTIVO_SEGURO : null;
+    dto.payable =
+      task.status === MaintenanceTaskStatus.DONE &&
+      (task.cost ?? 0) > 0 &&
+      !dto.isPaid &&
+      !seguro;
     return dto;
   }
 }

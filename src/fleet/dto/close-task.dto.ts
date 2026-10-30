@@ -10,6 +10,8 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ValidateNested } from 'class-validator';
+import { PagoAlCerrar } from './pay-task.dto';
 import { MAXIMO_ODOMETRO_KM } from '../../common/constants/odometro';
 
 /** CU-141: registrar que un mantenimiento/habilitación se hizo. */
@@ -49,4 +51,17 @@ export class CloseFleetTaskDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+}
+
+/** Cierre v2: además, «lo pagué ahora» desde una caja. */
+export class CloseFleetTaskV2Dto extends CloseFleetTaskDto {
+  @ApiPropertyOptional({
+    type: PagoAlCerrar,
+    description:
+      'Paga la tarea en el mismo acto del cierre (necesita un costo mayor que cero)',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PagoAlCerrar)
+  payment?: PagoAlCerrar;
 }

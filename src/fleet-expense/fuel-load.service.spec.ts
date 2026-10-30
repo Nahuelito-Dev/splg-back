@@ -43,6 +43,7 @@ describe('FuelLoadService', () => {
     cajaDelPago: jest.Mock;
     egresar: jest.Mock;
     revertir: jest.Mock;
+    pagarDesdeUnaCaja: jest.Mock;
   };
   let guardadas: FuelLoad[];
 
@@ -106,6 +107,7 @@ describe('FuelLoadService', () => {
       cajaDelPago: jest.fn().mockResolvedValue('caja1'),
       egresar: jest.fn().mockResolvedValue({ movementId: 'mov1' }),
       revertir: jest.fn().mockResolvedValue({}),
+      pagarDesdeUnaCaja: jest.fn().mockResolvedValue({ movementId: 'mov9' }),
     };
     service = new FuelLoadService(
       repo as unknown as Repository<FuelLoad>,
@@ -233,6 +235,93 @@ describe('FuelLoadService', () => {
       expect(repo.findOne).toHaveBeenCalledWith(
         expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
       );
+    });
+
+    describe('pagar (v2)', () => {
+      const dtoPago = {
+        cashBoxId: 'caja1',
+        paidAt: '2026-10-28T12:00:00-03:00',
+      };
+
+      it.each([
+        FuelPaymentMethod.CARD,
+        FuelPaymentMethod.FUEL_ACCOUNT,
+        FuelPaymentMethod.CASH_BOX,
+      ])(
+        'la carga %s sale de la caja elegida con la categoría fuel',
+        async (paymentMethod) => {
+          const carga = vigente({ paymentMethod });
+          repo.findOne.mockResolvedValue(carga);
+          await service.pagar('f1', dtoPago, 'd1', 'u1');
+          expect(pagos.pagarDesdeUnaCaja).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+              cashBoxId: 'caja1',
+              amount: 40000,
+              systemCode: CashSystemCode.FUEL,
+              referenceType: CashReferenceType.FUEL_LOAD,
+            }),
+          );
+          expect(carga.cashMovementId).toBe('mov9');
+          expect(carga.paidAt).toEqual(new Date('2026-10-28T15:00:00.000Z'));
+        },
+      );
+
+      it('la que pagó el chofer con su efectivo es 409 con el motivo', async () => {
+        repo.findOne.mockResolvedValue(
+          vigente({ paymentMethod: FuelPaymentMethod.DRIVER_CASH }),
+        );
+        await expect(service.pagar('f1', dtoPago, 'd1', 'u1')).rejects.toThrow(
+          /rendición/,
+        );
+        expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+      });
+
+      it('ya pagada es 409 y no asienta dos veces', async () => {
+        repo.findOne.mockResolvedValue(vigente({ cashMovementId: 'm0' }));
+        await expect(
+          service.pagar('f1', dtoPago, 'd1', 'u1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+      });
+
+      it('anterior al asiento de caja es 409; anulada es 409; otra distribuidora 404', async () => {
+        repo.findOne.mockResolvedValue(vigente({ cashPaymentLegacy: true }));
+        await expect(
+          service.pagar('f1', dtoPago, 'd1', 'u1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        repo.findOne.mockResolvedValue(vigente({ deletedAt: new Date() }));
+        await expect(
+          service.pagar('f1', dtoPago, 'd1', 'u1'),
+        ).rejects.toBeInstanceOf(ConflictException);
+        repo.findOne.mockResolvedValue(null);
+        await expect(
+          service.pagar('f1', dtoPago, 'd2', 'u1'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+
+      it('paidAt anterior a la carga o futuro es 400', async () => {
+        repo.findOne.mockResolvedValue(vigente());
+        await expect(
+          service.pagar('f1', { ...dtoPago, paidAt: '2026-09-01' }, 'd1', 'u1'),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        const manana = new Date(Date.now() + 86400000).toISOString();
+        await expect(
+          service.pagar('f1', { ...dtoPago, paidAt: manana }, 'd1', 'u1'),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('una carga de tarjeta ya paga admite editar datos que no son importe ni medio', async () => {
+        repo.findOne.mockResolvedValue(
+          vigente({
+            paymentMethod: FuelPaymentMethod.CARD,
+            cashMovementId: 'mov9',
+          }),
+        );
+        await expect(
+          service.modificar('f1', { station: 'YPF' }, 'd1'),
+        ).resolves.toBeDefined();
+      });
     });
 
     it('una carga cash_box anterior a la migración no se asienta (409)', async () => {

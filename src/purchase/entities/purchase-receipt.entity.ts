@@ -40,6 +40,10 @@ import { CashMovement } from '../../cash/entities/cash-movement.entity';
   'CHK_purchase_receipt_anulacion_datos',
   `"status" <> 'voided' OR ("void_reason" IS NOT NULL AND "voided_by_user_id" IS NOT NULL)`,
 )
+@Check(
+  'CHK_purchase_receipt_pago',
+  `("paid_at" IS NULL OR "payment_status" = 'paid') AND ("cash_movement_id" IS NULL OR "paid_at" IS NOT NULL)`,
+)
 @ForeignKey(
   () => CashMovement,
   ['cash_movement_id', 'distributor_id'],
@@ -177,6 +181,10 @@ export class PurchaseReceipt {
   })
   @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
   cashMovementId!: string | null;
+
+  /** Cuándo se pagó; `null` en las que figuran pagadas desde antes de registrar la fecha. */
+  @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
 
   @Column({
     type: 'enum',

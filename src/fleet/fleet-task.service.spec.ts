@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
+import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
+import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { FleetTaskService } from './fleet-task.service';
 import {
   MaintenanceTask,
@@ -37,6 +39,7 @@ describe('FleetTaskService', () => {
   let deliveryService: { findOne: jest.Mock };
   let fleetLock: { choferesInhabilitados: jest.Mock };
   let employees: { findActivo: jest.Mock };
+  let pagos: { pagarDesdeUnaCaja: jest.Mock };
 
   const planVehiculo = {
     planId: 'plan-vtv',
@@ -82,6 +85,9 @@ describe('FleetTaskService', () => {
     };
 
     employees = { findActivo: jest.fn() };
+    pagos = {
+      pagarDesdeUnaCaja: jest.fn().mockResolvedValue({ movementId: 'mov-1' }),
+    };
 
     service = new FleetTaskService(
       tasks as unknown as Repository<MaintenanceTask>,
@@ -90,6 +96,7 @@ describe('FleetTaskService', () => {
       deliveryService as unknown as DeliveryService,
       employees as unknown as EmployeeService,
       fleetLock as unknown as FleetDispatchLockService,
+      pagos as unknown as CashDocumentPaymentService,
     );
   });
 
@@ -734,6 +741,244 @@ describe('FleetTaskService', () => {
       );
       expect(cancelada.status).toBe(MaintenanceTaskStatus.CANCELLED);
       expect(cancelada.notes).toContain('ya no aplica');
+    });
+  });
+
+  describe('pagos desde una caja (v2)', () => {
+    const CAJA = '5b0a9a4e-7a7e-4a62-8f64-6c1b7d1e2a10';
+    const hecha = (extra: Partial<MaintenanceTask> = {}): MaintenanceTask =>
+      ({
+        taskId: 't1',
+        distributorId: 'd1',
+        status: MaintenanceTaskStatus.DONE,
+        cost: 45000,
+        cashMovementId: null,
+        performedAt: new Date('2026-10-20T12:00:00.000Z'),
+        carId: 'c1',
+        ...extra,
+      }) as MaintenanceTask;
+
+    const enLaBase = (tarea: MaintenanceTask | null) => {
+      const qb = {
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(tarea),
+      };
+      tasks.createQueryBuilder.mockReturnValue(qb);
+      tasks.findOne.mockResolvedValue(tarea);
+      (tasks as unknown as { findOneOrFail: jest.Mock }).findOneOrFail = jest
+        .fn()
+        .mockResolvedValue({
+          ...tarea,
+          plan: { name: 'VTV' },
+          car: { carPatent: 'AB123CD' },
+        });
+    };
+
+    it('paga el costo desde la caja y deja la tarea paga', async () => {
+      const tarea = hecha();
+      enLaBase(tarea);
+      await service.pagar(
+        't1',
+        { cashBoxId: CAJA, paidAt: '2026-10-28T12:00:00-03:00' },
+        'd1',
+        'u1',
+      );
+      expect(pagos.pagarDesdeUnaCaja).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          distributorId: 'd1',
+          cashBoxId: CAJA,
+          systemCode: CashSystemCode.FLEET_MAINTENANCE,
+          referenceType: CashReferenceType.MAINTENANCE_TASK,
+          referenceId: 't1',
+          description: 'VTV — AB123CD',
+        }),
+      );
+      expect(
+        String(
+          (
+            pagos.pagarDesdeUnaCaja.mock.calls[0] as [
+              unknown,
+              { amount: unknown },
+            ]
+          )[1].amount,
+        ),
+      ).toBe('45000');
+      expect(tarea.cashMovementId).toBe('mov-1');
+      expect(tarea.paidAmount).toBe(45000);
+      expect(tarea.paidAt).toEqual(new Date('2026-10-28T15:00:00.000Z'));
+    });
+
+    it('un importe menor que el costo se paga por ese importe', async () => {
+      const tarea = hecha();
+      enLaBase(tarea);
+      await service.pagar(
+        't1',
+        { cashBoxId: CAJA, paidAt: '2026-10-28', amount: 20000 },
+        'd1',
+        'u1',
+      );
+      expect(tarea.paidAmount).toBe(20000);
+    });
+
+    it('un importe mayor que el costo es 400 y no mueve la caja', async () => {
+      enLaBase(hecha());
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-28', amount: 45000.01 },
+          'd1',
+          'u1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+    });
+
+    it('una tarea ya paga es 409 y no asienta dos veces', async () => {
+      enLaBase(hecha({ cashMovementId: 'mov-0' }));
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-28' },
+          'd1',
+          'u1',
+        ),
+      ).rejects.toThrow(/ya está paga/);
+      expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+    });
+
+    it('sólo se paga una tarea hecha (409)', async () => {
+      enLaBase(hecha({ status: MaintenanceTaskStatus.SCHEDULED }));
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-28' },
+          'd1',
+          'u1',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('una tarea sin costo no se paga (409)', async () => {
+      enLaBase(hecha({ cost: null }));
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-28' },
+          'd1',
+          'u1',
+        ),
+      ).rejects.toThrow(/no tiene un costo/);
+    });
+
+    it('otra distribuidora es 404', async () => {
+      enLaBase(null);
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-28' },
+          'd2',
+          'u1',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('una tarea del plan de seguro nunca se paga por acá: se paga por sus cuotas (409)', async () => {
+      enLaBase(hecha());
+      (tasks as unknown as { findOneOrFail: jest.Mock }).findOneOrFail = jest
+        .fn()
+        .mockResolvedValue({
+          plan: {
+            name: 'Seguro',
+            documentKind: MaintenanceDocumentKind.INSURANCE,
+          },
+        });
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-28' },
+          'd1',
+          'u1',
+        ),
+      ).rejects.toThrow('El seguro se paga por sus cuotas');
+      expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+    });
+
+    it('cerrar una tarea de seguro con `payment` es 409 y el cierre no queda', async () => {
+      const tarea = hecha({
+        status: MaintenanceTaskStatus.SCHEDULED,
+        cost: 30000,
+      });
+      enLaBase(tarea);
+      (tasks as unknown as { findOneOrFail: jest.Mock }).findOneOrFail = jest
+        .fn()
+        .mockResolvedValue({
+          plan: {
+            name: 'Seguro',
+            documentKind: MaintenanceDocumentKind.INSURANCE,
+          },
+        });
+      await expect(
+        service.close('t1', { performedAt: '2026-10-21T00:00:00.000Z' }, 'd1', {
+          cashBoxId: CAJA,
+          userId: 'u1',
+        }),
+      ).rejects.toThrow('El seguro se paga por sus cuotas');
+      expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+    });
+
+    it('paidAt anterior a cuando se hizo la tarea es 400', async () => {
+      enLaBase(hecha());
+      await expect(
+        service.pagar(
+          't1',
+          { cashBoxId: CAJA, paidAt: '2026-10-10' },
+          'd1',
+          'u1',
+        ),
+      ).rejects.toThrow(/anterior a la fecha en que se hizo/);
+      expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
+    });
+
+    it('paidAt futuro es 400 y no abre la transacción', async () => {
+      enLaBase(hecha());
+      const manana = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+      await expect(
+        service.pagar('t1', { cashBoxId: CAJA, paidAt: manana }, 'd1', 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(tasks.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('cerrar con `payment` paga en la misma transacción', async () => {
+      const tarea = hecha({
+        status: MaintenanceTaskStatus.SCHEDULED,
+        cost: null,
+      });
+      enLaBase(tarea);
+      await service.close(
+        't1',
+        { performedAt: '2026-09-26T00:00:00.000Z', cost: 30000 },
+        'd1',
+        { cashBoxId: CAJA, userId: 'u1' },
+      );
+      expect(tarea.status).toBe(MaintenanceTaskStatus.DONE);
+      expect(pagos.pagarDesdeUnaCaja).toHaveBeenCalledTimes(1);
+      expect(tarea.paidAmount).toBe(30000);
+    });
+
+    it('cerrar con `payment` y sin costo es 400', async () => {
+      enLaBase(hecha({ status: MaintenanceTaskStatus.SCHEDULED, cost: null }));
+      await expect(
+        service.close('t1', { performedAt: '2026-09-26T00:00:00.000Z' }, 'd1', {
+          cashBoxId: CAJA,
+          userId: 'u1',
+        }),
+      ).rejects.toThrow(/payment/);
+      expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
     });
   });
 

@@ -8,7 +8,9 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Check,
+  ForeignKey,
 } from 'typeorm';
+import { CashMovement } from '../../cash/entities/cash-movement.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Car } from '../../car/entities/car.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
@@ -30,6 +32,16 @@ export enum TireStatus {
 @Check(
   'CHK_tire_montaje',
   `("status" = 'mounted') = ("car_id" IS NOT NULL AND "position" IS NOT NULL)`,
+)
+@Check('CHK_tire_pago', `("cash_movement_id" IS NULL) = ("paid_at" IS NULL)`)
+@ForeignKey(
+  () => CashMovement,
+  ['cash_movement_id', 'distributor_id'],
+  ['movement_id', 'distributor_id'],
+  {
+    name: 'FK_tire_cash_movement_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @Entity('tire')
 @Index('UQ_tire_serial', ['distributorId', 'serialNumber'], { unique: true })
@@ -65,6 +77,17 @@ export class Tire {
     transformer: columnNumericTransformer,
   })
   cost!: number;
+
+  /** Salida de la caja con que se pagó la compra (`null` mientras esté sin pagar). */
+  @ForeignKey('cash_movement', {
+    name: 'FK_tire_cash_movement',
+    onDelete: 'RESTRICT',
+  })
+  @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
+  cashMovementId!: string | null;
+
+  @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
+  paidAt!: Date | null;
 
   @Column({
     name: 'status',

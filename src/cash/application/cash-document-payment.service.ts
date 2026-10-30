@@ -33,6 +33,19 @@ export interface EgresoDeDocumento {
 
 const SOLO_EFECTIVO: readonly CashBoxKind[] = [CashBoxKind.CASH];
 
+/** Las clases de caja de las que puede salir (o entrar) el dinero de un gasto de la flota o una compra. */
+export const TODAS_LAS_CAJAS: readonly CashBoxKind[] = [
+  CashBoxKind.CASH,
+  CashBoxKind.BANK,
+  CashBoxKind.WALLET,
+];
+
+export interface MovimientoDeUnaCaja
+  extends Omit<EgresoDeDocumento, 'cashBoxId' | 'method'> {
+  /** La caja elegida: efectivo, banco o billetera de la distribuidora. */
+  cashBoxId: string;
+}
+
 /**
  * El efectivo que la distribuidora paga por un documento (compra a la planta,
  * multa, combustible) sale de una caja de efectivo por el libro, en la
@@ -110,6 +123,63 @@ export class CashDocumentPaymentService {
     if (filas[0].kind === CashBoxKind.BANK) return CashMethod.TRANSFER;
     if (filas[0].kind === CashBoxKind.WALLET) return CashMethod.MERCADOPAGO;
     return CashMethod.CASH;
+  }
+
+  /**
+   * Pago de un gasto (API v2) desde la caja elegida —efectivo, banco o
+   * billetera—: la caja es obligatoria y el medio sale de su clase.
+   */
+  async pagarDesdeUnaCaja(
+    manager: EntityManager,
+    pago: MovimientoDeUnaCaja,
+  ): Promise<CashMovement> {
+    const cajaId = await this.cajaDelPago(
+      manager,
+      pago.distributorId,
+      pago.cashBoxId,
+      TODAS_LAS_CAJAS,
+    );
+    if (!cajaId) {
+      throw new BadRequestException('cashBoxId: indicá la caja del pago');
+    }
+    return this.egresar(manager, {
+      ...pago,
+      cashBoxId: cajaId,
+      method: await this.medioDeLaCaja(manager, pago.distributorId, cajaId),
+    });
+  }
+
+  /** Entrada de dinero (p. ej. el reintegro de un seguro) a la caja elegida: efectivo, banco o billetera. */
+  async cobrarEnUnaCaja(
+    manager: EntityManager,
+    cobro: MovimientoDeUnaCaja,
+  ): Promise<CashMovement> {
+    const cajaId = await this.cajaDelPago(
+      manager,
+      cobro.distributorId,
+      cobro.cashBoxId,
+      TODAS_LAS_CAJAS,
+    );
+    if (!cajaId) {
+      throw new BadRequestException('cashBoxId: indicá la caja del cobro');
+    }
+    const categoria = await this.categorias.deSistema(
+      manager,
+      cobro.distributorId,
+      cobro.systemCode,
+    );
+    return this.ledger.registrar(manager, {
+      distributorId: cobro.distributorId,
+      cashBoxId: cajaId,
+      direction: CashDirection.IN,
+      amount: cobro.amount,
+      categoryId: categoria.categoryId,
+      method: await this.medioDeLaCaja(manager, cobro.distributorId, cajaId),
+      description: cobro.description.slice(0, 255),
+      referenceType: cobro.referenceType,
+      referenceId: cobro.referenceId,
+      userId: cobro.userId,
+    });
   }
 
   /** Salida del dinero del documento; 409 si la caja no tiene sesión abierta o saldo. */

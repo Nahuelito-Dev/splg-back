@@ -65,3 +65,33 @@ export class FleetTaskResponseDto {
   @ApiPropertyOptional({ type: FleetTaskAttachmentResponseDto, isArray: true })
   attachments?: FleetTaskAttachmentResponseDto[];
 }
+
+/** La tarea con su estado de pago (API v2). */
+export class FleetTaskV2ResponseDto extends FleetTaskResponseDto {
+  @ApiProperty({ description: 'Si la tarea ya salió de una caja' })
+  isPaid!: boolean;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  cashMovementId!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  paidAt!: Date | null;
+  @ApiProperty({ type: Number, nullable: true })
+  paidAmount!: number | null;
+  @ApiProperty({
+    description:
+      'Si se puede pagar desde una caja con `POST /fleet/tasks/:id/pay`: hecha, con costo, sin pagar y que no sea de seguro',
+  })
+  payable!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Por qué no se paga por acá, cuando es por la naturaleza de la tarea (el seguro se paga por sus cuotas)',
+  })
+  notPayableReason!: string | null;
+}
+
+export class FleetTaskV2PageDto {
+  @ApiProperty({ type: FleetTaskV2ResponseDto, isArray: true })
+  data!: FleetTaskV2ResponseDto[];
+  @ApiProperty() total!: number;
+}

@@ -14,6 +14,12 @@ import { DriverContextService } from './driver-context.service';
 import { FineDueAlertsCron } from './fine-due-alerts.cron';
 import { FleetCostService } from './fleet-cost.service';
 import {
+  FuelLoadV2Controller,
+  TireV2Controller,
+  VehicleAccidentV2Controller,
+} from './fleet-expense-v2.controller';
+import { FleetExpensePaymentService } from './fleet-expense-payment.service';
+import {
   FuelLoadAttachmentOwnerResolver,
   TrafficFineAttachmentOwnerResolver,
   TrafficFinePaymentAttachmentOwnerResolver,
@@ -68,12 +74,16 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     VehicleAccidentController,
     TireController,
     CarFleetController,
+    FuelLoadV2Controller,
+    TireV2Controller,
+    VehicleAccidentV2Controller,
   ],
   providers: [
     DriverContextService,
     FuelLoadService,
     TrafficFineService,
     TrafficFinePaymentService,
+    FleetExpensePaymentService,
     VehicleAccidentService,
     TireService,
     FleetCostService,
