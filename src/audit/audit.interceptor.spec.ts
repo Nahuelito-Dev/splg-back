@@ -105,6 +105,23 @@ describe('AuditInterceptor (CU-153)', () => {
     });
   });
 
+  it.each([
+    ['/api/v1/orders/:id/status', 'orders'],
+    ['/api/v2/insurance-policies/:id/cancel', 'insurance-policies'],
+    ['/api/orders/:id/status', 'orders'],
+  ])(
+    'el recurso de %s es %s, sin el número de versión',
+    async (ruta, recurso) => {
+      await lastValueFrom(
+        interceptor.intercept(
+          contexto('PATCH', { route: { path: ruta } }),
+          handler({}),
+        ),
+      );
+      expect(asiento()).toMatchObject({ resource: recurso, path: ruta });
+    },
+  );
+
   it('registra la operación rechazada con su código y motivo, y no se come el error', async () => {
     const error = new NotFoundException('Order not found');
     await expect(
