@@ -111,11 +111,32 @@ describe('MaintenancePlannerMapper', () => {
         plan: { name: 'Service' },
         car: { carPatent: 'AB123CD' },
       },
+      planningCase: {
+        status: PlanningCaseStatus.NEGOTIATING,
+        projectedDueAt: new Date('2026-11-20T03:00:00Z'),
+      },
     } as unknown as MaintenanceWindowProposal;
     expect(MaintenancePlannerMapper.driverProposal(p)).toMatchObject({
       taskName: 'Service',
       carId: 'car-1',
       patent: 'AB123CD',
+      caseStatus: PlanningCaseStatus.NEGOTIATING,
+      urgent: false,
+    });
+  });
+
+  it('el chofer ve si el administrador ya confirmó y si su turno es urgente', () => {
+    const p = {
+      ...prop(1, WindowProposalStatus.ACCEPTED),
+      task: { carId: 'car-1', plan: { name: 'VTV' }, car: null },
+      planningCase: {
+        status: PlanningCaseStatus.CONFIRMED,
+        projectedDueAt: new Date('2026-11-01T03:00:00Z'),
+      },
+    } as unknown as MaintenanceWindowProposal;
+    expect(MaintenancePlannerMapper.driverProposal(p)).toMatchObject({
+      caseStatus: PlanningCaseStatus.CONFIRMED,
+      urgent: true,
     });
   });
 

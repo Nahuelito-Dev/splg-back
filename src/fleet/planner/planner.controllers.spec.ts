@@ -22,10 +22,17 @@ describe('controladores del planificador', () => {
     caseId: 'c1',
     taskId: 't1',
     status: 'accepted',
+    windowStart: new Date('2026-11-04T11:00:00Z'),
+    windowEnd: new Date('2026-11-04T16:00:00Z'),
+    expiresAt: new Date('2026-11-03T11:00:00Z'),
     task: {
       carId: 'car-1',
       plan: { name: 'VTV' },
       car: { carPatent: 'AB123CD' },
+    },
+    planningCase: {
+      status: PlanningCaseStatus.CONFIRMED,
+      projectedDueAt: new Date('2026-11-20T03:00:00Z'),
     },
   };
 

@@ -44,6 +44,8 @@ export class MaintenancePlannerMapper {
       taskName: p.task.plan.name,
       carId: p.task.carId as string,
       patent: p.task.car?.carPatent ?? null,
+      caseStatus: p.planningCase.status,
+      urgent: p.windowEnd.getTime() > p.planningCase.projectedDueAt.getTime(),
     };
   }
 
