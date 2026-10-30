@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { FechaCalendarioOpcional } from '../../employee/dto/fecha-calendario.decorator';
 import { Importe } from '../../common/decorators/importe.decorator';
 import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
@@ -95,6 +102,21 @@ export class QueryCashMovementDto extends PaginationDto {
   /** Día final (hora argentina), inclusive. */
   @FechaCalendarioOpcional('2026-10-31', undefined)
   to?: string;
+}
+
+const aBooleano = ({ value }: { value: unknown }): unknown =>
+  value === 'true' ? true : value === 'false' ? false : value;
+
+/** Los filtros del listado en la API v2 (la v1 quedó congelada). */
+export class QueryCashMovementV2Dto extends QueryCashMovementDto {
+  @ApiPropertyOptional({
+    description:
+      'Sólo los movimientos que cuentan como ingreso o egreso en `GET /v2/finance/income-statement`: sin transferencias entre cajas ni carga inicial',
+  })
+  @IsOptional()
+  @Transform(aBooleano)
+  @IsBoolean()
+  countsForResult?: boolean;
 }
 
 export class CashMovementResponseDto {

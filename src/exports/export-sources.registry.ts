@@ -3,6 +3,7 @@ import { AuditService } from '../audit/audit.service';
 import { DataAuditService } from '../audit/data/data-audit.service';
 import { CarService } from '../car/car.service';
 import { CashBoxService } from '../cash/application/cash-box.service';
+import { CashIncomeStatementService } from '../cash/application/cash-income-statement.service';
 import { CashMovementService } from '../cash/application/cash-movement.service';
 import { ClaimsService } from '../claims/claims.service';
 import { DriverLiquidationService } from '../commission/application/driver-liquidation.service';
@@ -51,6 +52,7 @@ export class ExportSourcesRegistry {
     stock: StockQueryService,
     cashBoxes: CashBoxService,
     cashMovements: CashMovementService,
+    incomeStatement: CashIncomeStatementService,
     accounts: CustomerAccountQueryService,
     settlements: DriverSettlementQueryService,
     liquidations: DriverLiquidationService,
@@ -80,6 +82,7 @@ export class ExportSourcesRegistry {
       ...fuentesDeFinanzas({
         cashBoxes,
         cashMovements,
+        incomeStatement,
         accounts,
         settlements,
         liquidations,

@@ -23,6 +23,7 @@ import {
 import { CashBox } from '../entities/cash-box.entity';
 import { CashCategory } from '../entities/cash-category.entity';
 import { CashMovement } from '../entities/cash-movement.entity';
+import { CUENTA_PARA_EL_RESULTADO } from './income-statement-rules';
 import { CashCategoryService } from './cash-category.service';
 import { CashLedgerService } from './cash-ledger.service';
 
@@ -310,7 +311,7 @@ export class CashMovementService {
   /** Consulta del libro (CU-340): por caja, período, sentido, categoría y origen. */
   async consultar(
     distributorId: string,
-    query: QueryCashMovementDto,
+    query: QueryCashMovementDto & { countsForResult?: boolean },
   ): Promise<{ data: MovimientoConNombres[]; total: number }> {
     const qb = this.dataSource.manager
       .createQueryBuilder(CashMovement, 'm')
@@ -330,6 +331,7 @@ export class CashMovementService {
     if (query.direction) {
       qb.andWhere('m.direction = :direction', { direction: query.direction });
     }
+    if (query.countsForResult) qb.andWhere(CUENTA_PARA_EL_RESULTADO);
     if (query.referenceType) {
       qb.andWhere('m.referenceType = :referenceType', {
         referenceType: query.referenceType,

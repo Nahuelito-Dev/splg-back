@@ -96,6 +96,7 @@ describe('endpoints de finanzas', () => {
 
   it('el tablero y las consultas también exigen distribuidora', () => {
     expect(exigeDistribuidora(FinanceController, 'dashboard')).toBe(true);
+    expect(exigeDistribuidora(FinanceController, 'incomeStatement')).toBe(true);
     expect(exigeDistribuidora(CommissionController, 'findAll')).toBe(true);
     expect(exigeDistribuidora(CommissionController, 'mine')).toBe(true);
     expect(exigeDistribuidora(CustomerAccountController, 'aging')).toBe(true);
@@ -109,6 +110,7 @@ describe('endpoints de finanzas', () => {
     expect(roles(CashMovementController, 'reverseTransfer')).toEqual(soloAdmin);
     expect(roles(CommissionRuleController, 'create')).toEqual(soloAdmin);
     expect(roles(FinanceController, 'dashboard')).toEqual(soloAdmin);
+    expect(roles(FinanceController, 'incomeStatement')).toEqual(soloAdmin);
     expect(roles(DriverSettlementController, 'approve')).toEqual(soloAdmin);
     expect(roles(CommissionController, 'mine')).toEqual([RoleType.DELIVERY]);
     expect(roles(DriverSettlementController, 'mine')).toEqual([
