@@ -462,6 +462,18 @@ describe('seed:demo en contenedores (e2e)', () => {
       const propios: Record<string, Record<string, unknown>> = {
         stock_location: { kind: 'warehouse', warehouse_id: randomUUID() },
         stock_movement: { to_location_id: randomUUID(), to_condition: 'full' },
+        // Lo que cada regla de la base exige a una fila suelta.
+        cylinder_inspection: { next_due_at: new Date() },
+        document_sequence: { doc_type: 'prueba_vieja', last_number: 1 },
+        driver_liquidation: { gross: 10, deductions: 0, net: 10 },
+        insurance_policy: {
+          valid_from: '2026-01-01',
+          valid_to: '2026-12-31',
+        },
+        maintenance_task: { car_id: randomUUID() },
+        supplier: { cuit: '20123456786' },
+        time_slot: { startTime: '08:00:00', endTime: '12:00:00' },
+        warehouse: { code: 'DEP-PRUEBA' },
       };
       if (
         await insertarSucia(qr, t, { distributor_id: distId, ...propios[t] })
@@ -1124,7 +1136,53 @@ describe('seed:demo en contenedores (e2e)', () => {
        RETURNING address_id`,
       [andino.user_id],
     );
+    // Clientes sin login y sin pedidos que sólo cuelgan de la otra distribuidora: uno por el
+    // vínculo (dado de baja ahí) y otro por su cuenta corriente.
+    const vinculado = await usuario(
+      'vinculado@correo.com.ar',
+      'Cliente Vinculado',
+      rolC,
+      null,
+      '+5493764000115',
+    );
+    const conCuenta = await usuario(
+      'concuenta@correo.com.ar',
+      'Cliente Con Cuenta',
+      rolC,
+      null,
+      '+5493764000116',
+    );
+    await ds.query(`INSERT INTO customer (user_id) VALUES ($1), ($2)`, [
+      vinculado,
+      conCuenta,
+    ]);
+    await ds.query(
+      `INSERT INTO customer_distributor (user_id, distributor_id, removed_at) VALUES ($1, $2, now())`,
+      [vinculado, otra],
+    );
+    const [{ v: condicion }] = await consultar<{ v: string }>(
+      `SELECT enumlabel AS v FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'customer_account_tax_condition_enum' ORDER BY enumsortorder LIMIT 1`,
+    );
+    await ds.query(
+      `INSERT INTO customer_account (distributor_id, customer_user_id, business_name, tax_condition)
+       VALUES ($1, $2, 'Comercio Aparte', $3)`,
+      [otra, conCuenta, condicion],
+    );
+    // El vínculo de una cuenta con login con la distribuidora demo (y su baja) se conserva.
+    const [{ user_id: clienteLogin }] = await consultar<{ user_id: string }>(
+      `SELECT user_id FROM "user" WHERE email = 'cliente@splg.com'`,
+    );
+    await ds.query(
+      `INSERT INTO customer_distributor (user_id, distributor_id, removed_at) VALUES ($1, $2, '2026-01-02T10:00:00Z')`,
+      [clienteLogin, distId],
+    );
     const antes = {
+      // dario, externo y el chofer del pedido (`sembrarChoferDeFixture`).
+      choferesOtra: await cuenta(
+        `SELECT count(*) AS n FROM delivery WHERE distributor_id = $1`,
+        [otra],
+      ),
       auditNula: await cuenta(
         `SELECT count(*) AS n FROM audit WHERE distributor_id IS NULL`,
       ),
@@ -1167,7 +1225,7 @@ describe('seed:demo en contenedores (e2e)', () => {
         `SELECT count(*) AS n FROM delivery WHERE distributor_id = $1`,
         [otra],
       ),
-    ).toBe(2);
+    ).toBe(antes.choferesOtra);
     expect(
       await cuenta(
         `SELECT count(*) AS n FROM user_address WHERE address_id = $1`,
@@ -1201,6 +1259,31 @@ describe('seed:demo en contenedores (e2e)', () => {
     expect(
       await cuenta(
         `SELECT count(*) AS n FROM "user" WHERE email = 'externo@aparte.com' AND firebase_uid = 'uid-externo' AND "deletedAt" IS NULL`,
+      ),
+    ).toBe(1);
+    // Los clientes sin login de la otra distribuidora siguen ahí, sin archivar, con su vínculo y su cuenta.
+    expect(
+      await cuenta(
+        `SELECT count(*) AS n FROM "user" WHERE "deletedAt" IS NULL AND email IN ('vinculado@correo.com.ar','concuenta@correo.com.ar')`,
+      ),
+    ).toBe(2);
+    expect(
+      await cuenta(
+        `SELECT count(*) AS n FROM customer_distributor WHERE user_id = $1 AND distributor_id = $2 AND removed_at IS NOT NULL`,
+        [vinculado, otra],
+      ),
+    ).toBe(1);
+    expect(
+      await cuenta(
+        `SELECT count(*) AS n FROM customer_account WHERE customer_user_id = $1 AND distributor_id = $2`,
+        [conCuenta, otra],
+      ),
+    ).toBe(1);
+    // El alta y la baja del cliente con login en la demo no se pierden.
+    expect(
+      await cuenta(
+        `SELECT count(*) AS n FROM customer_distributor WHERE user_id = $1 AND distributor_id = $2 AND removed_at = '2026-01-02T10:00:00Z'`,
+        [clienteLogin, distId],
       ),
     ).toBe(1);
     // Y la demo se regeneró igual.

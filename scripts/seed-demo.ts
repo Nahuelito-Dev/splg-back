@@ -607,7 +607,7 @@ async function main() {
 
   // ── 5. Zonas de cobertura ──────────────────────────────────────────────────
   const zonas = new Map<string, string>();
-  for (const b of BARRIOS) {
+  for (const [i, b] of BARRIOS.entries()) {
     const anillo = [
       [b.lngMin, b.latMin],
       [b.lngMax, b.latMin],
@@ -616,14 +616,16 @@ async function main() {
       [b.lngMin, b.latMin],
     ];
     const [zona] = await q(
-      `INSERT INTO coverage_zone (distributor_id, name, area, surcharge_type, surcharge_value, "isActive")
-       VALUES ($1,$2, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), 'fixed', $4, true)
+      `INSERT INTO coverage_zone (distributor_id, name, area, surcharge_type, surcharge_value, "isActive", priority)
+       VALUES ($1,$2, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326), 'fixed', $4, true, $5)
        RETURNING coverage_zone_id`,
       [
         distId,
         b.nombre,
         JSON.stringify({ type: 'Polygon', coordinates: [anillo] }),
         b.recargo,
+        // Una prioridad distinta por zona activa (UQ_coverage_zone_prioridad_activa).
+        i + 1,
       ],
     );
     zonas.set(b.nombre, zona.coverage_zone_id);

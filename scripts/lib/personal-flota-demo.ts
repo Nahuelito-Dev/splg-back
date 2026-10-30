@@ -554,8 +554,10 @@ export async function sembrarMantenimiento(
         plan: vtv,
         carId: f.carId,
         estado: 'done',
-        venceEnDias: 200 + i * 20,
-        hechaHaceDias: 165 - i * 20,
+        // Siempre antes que el último service (58 + 9i días): tiene menos km y el odómetro de las
+        // tareas hechas de un vehículo no puede bajar con el tiempo (odometro_de_tarea_monotono).
+        venceEnDias: 200 + i * 10,
+        hechaHaceDias: 165 - i * 10,
         odometro: f.km - 9000,
         costo: 42000,
         proveedor: 'Planta VTV Posadas',

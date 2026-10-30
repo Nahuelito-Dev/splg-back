@@ -8,8 +8,9 @@
  * `distributor_id` propio (renglones de pedido, promociones, avisos de
  * recupero...) se borra por la tabla de la que cuelga.
  *
- * Tres tablas son de sólo escritura para la aplicación (un trigger rechaza
- * UPDATE y DELETE): `stock_movement`, `audit_log` y `audit`/`audit_detail`. La
+ * Varias tablas son de sólo escritura para la aplicación (un trigger rechaza
+ * UPDATE y DELETE): `stock_movement`, `audit_log`, `audit`/`audit_detail` y los libros
+ * de caja, de cuentas corrientes y de comisiones. La
  * purga del seed sí las vacía, porque reconstruye la demo desde cero; para eso
  * desactiva esos triggers dentro de SU transacción y los reactiva antes de
  * confirmar (el DDL de Postgres es transaccional: si algo falla, el rollback los
@@ -32,6 +33,9 @@ const TRIGGERS_DE_SOLO_ESCRITURA: ReadonlyArray<
   ['audit_log', 'audit_log_inmutable'],
   ['audit', 'audit_inmutable'],
   ['audit_detail', 'audit_detail_inmutable'],
+  ['cash_movement', 'cash_movement_solo_agregar'],
+  ['customer_account_entry', 'customer_account_entry_solo_agregar'],
+  ['commission_entry', 'commission_entry_solo_agregar'],
 ];
 
 /** Tablas con `distributor_id` que se vacían, en orden (cada una ya sin hijos). */
@@ -55,6 +59,32 @@ const TABLAS_POR_DISTRIBUIDORA: readonly string[] = [
   'incident',
   'claims',
   'payment',
+];
+
+/**
+ * Tablas de gestión con `distributor_id` que se vacían antes que la caja, las cargas y
+ * los pedidos, hijas primero (los renglones sin `distributor_id` se borran aparte).
+ */
+const TABLAS_DE_GESTION: readonly string[] = [
+  'driver_settlement',
+  'commission_entry',
+  'driver_liquidation',
+  'commission_rule',
+  'customer_account_entry',
+  'customer_account',
+  'fuel_load',
+  'insurance_installment',
+  'insurance_policy',
+  'insurer',
+  'traffic_fine',
+  'tire_event',
+  'tire',
+  'vehicle_accident',
+  'employee_attendance',
+  'employee_leave',
+  'payment_refund',
+  'admin_notification',
+  'import_job',
 ];
 
 export interface ResumenDePurga {
@@ -101,6 +131,34 @@ export async function purgarDistribuidoras(
   await q(`DELETE FROM "audit" WHERE ${delAlcance}`);
   await q(`DELETE FROM "audit_log" WHERE ${delAlcance}`);
 
+  // Liquidaciones, comisiones, cuentas corrientes, multas, seguros, neumáticos y
+  // avisos: cuelgan de pedidos, cargas, caja, vehículos y legajos, así que van antes.
+  const delRendicion = `(SELECT "settlement_id" FROM "driver_settlement" WHERE "distributor_id" = ANY($1::uuid[]))`;
+  for (const tabla of [
+    'driver_settlement_collection',
+    'driver_settlement_expense',
+    'driver_settlement_order',
+  ]) {
+    await q(`DELETE FROM "${tabla}" WHERE "settlement_id" IN ${delRendicion}`);
+  }
+  await q(
+    `DELETE FROM "customer_account_allocation" WHERE "account_id" IN
+       (SELECT "account_id" FROM "customer_account" WHERE "distributor_id" = ANY($1::uuid[]))`,
+  );
+  await q(
+    `DELETE FROM "admin_notification_read" WHERE "notification_id" IN
+       (SELECT "notification_id" FROM "admin_notification" WHERE "distributor_id" = ANY($1::uuid[]))`,
+  );
+  // El vínculo cliente-distribuidora de las cuentas con login se conserva (con su alta y
+  // su baja); sólo se quitan los de las personas sin login, que la purga saca más abajo.
+  await q(
+    `DELETE FROM "customer_distributor" WHERE "distributor_id" = ANY($1::uuid[])
+       AND "user_id" IN (SELECT "user_id" FROM "user" WHERE "firebase_uid" IS NULL)`,
+  );
+  for (const tabla of TABLAS_DE_GESTION) {
+    await q(`DELETE FROM "${tabla}" WHERE "distributor_id" = ANY($1::uuid[])`);
+  }
+
   // Mantenimiento.
   await q(
     `DELETE FROM "maintenance_window_proposal" WHERE "task_id" IN
@@ -139,6 +197,16 @@ export async function purgarDistribuidoras(
   // Cargas, compras, ajustes y stock (en este orden: cuelgan unos de otros).
   await limpiarCargas(m, distributorIds);
   await limpiarCompras(m, distributorIds);
+
+  // Caja: la referencian compras, rendiciones, multas y seguros, ya borrados.
+  for (const tabla of [
+    'cash_movement',
+    'cash_session',
+    'cash_box',
+    'cash_category',
+  ]) {
+    await q(`DELETE FROM "${tabla}" WHERE "distributor_id" = ANY($1::uuid[])`);
+  }
   await q(
     `DELETE FROM "stock_adjustment_item" WHERE "adjustment_id" IN
        (SELECT "adjustment_id" FROM "stock_adjustment" WHERE "distributor_id" = ANY($1::uuid[]))`,
@@ -215,7 +283,9 @@ const VINCULOS = (alias: string) => `
   UNION ALL SELECT 1 FROM "delivery" d WHERE d."user_id" = ${alias}."user_id"
   UNION ALL SELECT 1 FROM "admin" a WHERE a."user_id" = ${alias}."user_id" 
   UNION ALL SELECT 1 FROM "employee" e WHERE e."user_id" = ${alias}."user_id"
-  UNION ALL SELECT 1 FROM "car" c WHERE c."user_id" = ${alias}."user_id"`;
+  UNION ALL SELECT 1 FROM "car" c WHERE c."user_id" = ${alias}."user_id"
+  UNION ALL SELECT 1 FROM "customer_distributor" cd WHERE cd."user_id" = ${alias}."user_id"
+  UNION ALL SELECT 1 FROM "customer_account" ca WHERE ca."customer_user_id" = ${alias}."user_id"`;
 
 /**
  * Las personas sin login que se quitan: las ligadas a las distribuidoras `ids`
@@ -246,6 +316,8 @@ export async function personasSinLoginDeAlcance(
            AND NOT EXISTS (SELECT 1 FROM "admin" a WHERE a."user_id" = u."user_id" AND (a."distributor_id" IS NULL OR NOT (a."distributor_id" = ANY($1::uuid[]))))
            AND NOT EXISTS (SELECT 1 FROM "employee" e WHERE e."user_id" = u."user_id" AND NOT (e."distributor_id" = ANY($1::uuid[])))
            AND NOT EXISTS (SELECT 1 FROM "car" c WHERE c."user_id" = u."user_id" AND NOT (c."distributor_id" = ANY($1::uuid[])))
+           AND NOT EXISTS (SELECT 1 FROM "customer_distributor" cd WHERE cd."user_id" = u."user_id" AND NOT (cd."distributor_id" = ANY($1::uuid[])))
+           AND NOT EXISTS (SELECT 1 FROM "customer_account" ca WHERE ca."customer_user_id" = u."user_id" AND NOT (ca."distributor_id" = ANY($1::uuid[])))
          )`,
     [ids, extras],
   );
@@ -314,8 +386,8 @@ export async function purgarPersonasSinLogin(
     params,
   );
   // Lo que esas personas firmaron en auditoría (FK al usuario).
-  const triggers = TRIGGERS_DE_SOLO_ESCRITURA.filter(
-    ([t]) => t !== 'stock_movement',
+  const triggers = TRIGGERS_DE_SOLO_ESCRITURA.filter(([t]) =>
+    t.startsWith('audit'),
   );
   for (const [tabla, trigger] of triggers) {
     await m.query(`ALTER TABLE "${tabla}" DISABLE TRIGGER "${trigger}"`);
