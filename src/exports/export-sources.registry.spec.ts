@@ -38,7 +38,7 @@ function servicios() {
     audit: {
       consultar: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     },
-    dataAudit: { findAll: jest.fn().mockResolvedValue(vacio) },
+    dataAudit: { findAllV2: jest.fn().mockResolvedValue(vacio) },
   };
 }
 
@@ -86,7 +86,7 @@ const CASOS: Array<
   ['proveedores', {}, 'suppliers', 'findAll'],
   ['legajos', {}, 'employees', 'findAll'],
   ['auditoria', {}, 'audit', 'consultar'],
-  ['auditoria-datos', {}, 'dataAudit', 'findAll'],
+  ['auditoria-datos', {}, 'dataAudit', 'findAllV2'],
 ];
 
 describe('ExportSourcesRegistry', () => {

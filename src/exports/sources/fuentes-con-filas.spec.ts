@@ -155,7 +155,7 @@ describe('fuentes: las columnas leen los campos del listado', () => {
   });
 
   it('auditoria-datos oculta CBU, documento, CUIL y datos de acceso', async () => {
-    const findAll = jest.fn().mockResolvedValue({
+    const findAllV2 = jest.fn().mockResolvedValue({
       total: 1,
       data: [
         {
@@ -176,11 +176,11 @@ describe('fuentes: las columnas leen los campos del listado', () => {
       ],
     });
     const f = buscar(
-      fuentesDePersonal({ dataAudit: { findAll } } as never),
+      fuentesDePersonal({ dataAudit: { findAllV2 } } as never),
       'auditoria-datos',
     );
 
-    const [cambios] = (await filasDe(f)).filas[0].slice(7);
+    const [cambios] = (await filasDe(f)).filas[0].slice(12);
 
     expect(cambios).toBe(
       [
@@ -194,7 +194,7 @@ describe('fuentes: las columnas leen los campos del listado', () => {
   });
 
   it('auditoria-datos resume los cambios campo por campo', async () => {
-    const findAll = jest.fn().mockResolvedValue({
+    const findAllV2 = jest.fn().mockResolvedValue({
       total: 1,
       data: [
         {
@@ -212,12 +212,60 @@ describe('fuentes: las columnas leen los campos del listado', () => {
       ],
     });
     const f = buscar(
-      fuentesDePersonal({ dataAudit: { findAll } } as never),
+      fuentesDePersonal({ dataAudit: { findAllV2 } } as never),
       'auditoria-datos',
     );
 
     const lote = await filasDe(f);
 
-    expect(lote.filas[0][7]).toBe('status: pending → accepted | note: ∅ → x');
+    expect(lote.filas[0][12]).toBe('status: pending → accepted | note: ∅ → x');
+  });
+  it('auditoria-datos acepta el filtro origin y exporta el origen técnico', async () => {
+    const findAllV2 = jest.fn().mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          dateTime: new Date('2026-10-30T12:00:00Z'),
+          actionType: { id: 2, name: 'Modificación' },
+          user: null,
+          entity: 'Warehouse',
+          recordId: 'w1',
+          ip: null,
+          origin: 'direct',
+          source: 'db',
+          tableName: 'warehouse',
+          dbUser: 'postgres',
+          appName: 'psql',
+          details: [{ field: 'name', oldValue: 'A', newValue: 'B' }],
+        },
+      ],
+    });
+    const f = buscar(
+      fuentesDePersonal({ dataAudit: { findAllV2 } } as never),
+      'auditoria-datos',
+    );
+
+    const lote = await filasDe(f, { origin: 'direct' });
+
+    expect(findAllV2).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: 'direct' }),
+      'd1',
+    );
+    expect(lote.filas[0].slice(7, 12)).toEqual([
+      'Directo en la base',
+      'Base de datos (trigger)',
+      'warehouse',
+      'postgres',
+      'psql',
+    ]);
+  });
+
+  it('auditoria-datos rechaza un origin desconocido', async () => {
+    const f = buscar(
+      fuentesDePersonal({ dataAudit: { findAllV2: jest.fn() } } as never),
+      'auditoria-datos',
+    );
+
+    await expect(f.preparar({ origin: 'otro' }, 'd1')).rejects.toThrow();
   });
 });
