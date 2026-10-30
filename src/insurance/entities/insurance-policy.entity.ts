@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Exclusion,
   ForeignKey,
   Index,
   JoinColumn,
@@ -50,6 +51,10 @@ import { InsuranceInstallment } from './insurance-installment.entity';
   },
 )
 @Unique('UQ_insurance_policy_id_distribuidora', ['policyId', 'distributorId'])
+@Exclusion(
+  'EXC_insurance_policy_solapada',
+  `USING gist ("car_id" WITH =, daterange("valid_from", "valid_to", '[)') WITH &&) WHERE ("cancelled_at" IS NULL)`,
+)
 @Entity('insurance_policy')
 @Index(
   'UQ_insurance_policy_numero_vigente',
