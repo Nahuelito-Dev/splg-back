@@ -5,7 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { lastValueFrom, of, throwError } from 'rxjs';
+import { Reflector } from '@nestjs/core';
 import { AuditInterceptor } from './audit.interceptor';
+import { SoloLectura } from './solo-lectura.decorator';
 import { AuditService, NuevoAsiento } from './audit.service';
 import { AuditResult } from './entities/audit-log.entity';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -14,7 +16,11 @@ describe('AuditInterceptor (CU-153)', () => {
   let registrar: jest.Mock;
   let interceptor: AuditInterceptor;
 
-  const contexto = (method: string, extra: Record<string, unknown> = {}) => {
+  const contexto = (
+    method: string,
+    extra: Record<string, unknown> = {},
+    handlerFn: () => void = () => undefined,
+  ) => {
     const request = {
       method,
       path: '/api/orders/o1/status',
@@ -29,6 +35,8 @@ describe('AuditInterceptor (CU-153)', () => {
     };
     return {
       getType: () => 'http',
+      getHandler: () => handlerFn,
+      getClass: () => class Controlador {},
       switchToHttp: () => ({
         getRequest: () => request,
         getResponse: () => ({ statusCode: 200 }),
@@ -43,9 +51,39 @@ describe('AuditInterceptor (CU-153)', () => {
 
   beforeEach(() => {
     registrar = jest.fn().mockResolvedValue(undefined);
-    interceptor = new AuditInterceptor({
-      registrar,
-    } as unknown as AuditService);
+    interceptor = new AuditInterceptor(
+      { registrar } as unknown as AuditService,
+      new Reflector(),
+    );
+  });
+
+  it('no registra un POST marcado @SoloLectura, y sí uno igual sin la marca', async () => {
+    class Controlador {
+      @SoloLectura()
+      consulta() {
+        return undefined;
+      }
+      escritura() {
+        return undefined;
+      }
+    }
+    const metodo = (nombre: string) =>
+      Object.getOwnPropertyDescriptor(Controlador.prototype, nombre)
+        ?.value as () => void;
+    await lastValueFrom(
+      interceptor.intercept(
+        contexto('POST', {}, metodo('consulta')),
+        handler({}),
+      ),
+    );
+    expect(registrar).not.toHaveBeenCalled();
+    await lastValueFrom(
+      interceptor.intercept(
+        contexto('POST', {}, metodo('escritura')),
+        handler({}),
+      ),
+    );
+    expect(registrar).toHaveBeenCalledTimes(1);
   });
 
   it('registra una escritura exitosa con quién, sobre qué y desde dónde', async () => {

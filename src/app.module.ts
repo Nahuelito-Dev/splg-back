@@ -74,6 +74,7 @@ import { RoutesModule } from './routes/routes.module';
 import { HealthModule } from './health/health.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { ExportsModule } from './exports/exports.module';
+import { PeoplePhotosModule } from './people-photos/people-photos.module';
 import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
 
 @Module({
@@ -261,6 +262,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     CustomerAccountModule,
     FinanceModule,
     ExportsModule,
+    PeoplePhotosModule,
     ImportModule,
   ],
   providers: [
