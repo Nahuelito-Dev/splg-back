@@ -8,6 +8,7 @@ const RUTA_DEL_PANEL: Readonly<Record<string, (id: string) => string>> = {
   incident: () => 'incidents',
   'fleet-task': (id) => `fleet/tasks/${encodeURIComponent(id)}`,
   employee: (id) => `employees/details/${encodeURIComponent(id)}?tab=documents`,
+  'traffic-fine': (id) => `fleet/fines?fine=${encodeURIComponent(id)}`,
   'car-insurance': (id) =>
     `cars/details/${encodeURIComponent(id)}?tab=insurance`,
 };

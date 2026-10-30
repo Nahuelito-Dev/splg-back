@@ -29,6 +29,14 @@ describe('aviso por correo', () => {
     ).toBe('cars/details/c%201?tab=insurance');
   });
 
+  it('F15: el aviso de la multa abre esa multa en el panel', () => {
+    expect(
+      rutaDelPanelDelAviso(
+        aviso({ linkEntity: 'traffic-fine', linkId: 'm 1' }),
+      ),
+    ).toBe('fleet/fines?fine=m%201');
+  });
+
   it('lleva al pedido, al reclamo y a la incidencia; una entidad desconocida, a la portada', () => {
     expect(
       rutaDelPanelDelAviso(aviso({ linkEntity: 'order', linkId: 'o 1' })),

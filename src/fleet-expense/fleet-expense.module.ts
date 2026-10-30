@@ -5,6 +5,7 @@ import { AttachmentModule } from '../attachment/attachment.module';
 import { CarModule } from '../car/car.module';
 import { CashModule } from '../cash/cash.module';
 import { DeliveryModule } from '../delivery/delivery.module';
+import { DistributorModule } from '../distributor/distributor.module';
 import { EmailModule } from '../email/email.module';
 import { EmployeeModule } from '../employee/employee.module';
 import { FleetModule } from '../fleet/fleet.module';
@@ -15,6 +16,7 @@ import { FleetCostService } from './fleet-cost.service';
 import {
   FuelLoadAttachmentOwnerResolver,
   TrafficFineAttachmentOwnerResolver,
+  TrafficFinePaymentAttachmentOwnerResolver,
   VehicleAccidentAttachmentOwnerResolver,
 } from './fleet-expense-attachment-owners';
 import { FleetExpenseNotifierListener } from './fleet-expense-notifier.listener';
@@ -27,6 +29,8 @@ import { TireController } from './tire.controller';
 import { TireService } from './tire.service';
 import { TrafficFine } from './entities/traffic-fine.entity';
 import { TrafficFineController } from './traffic-fine.controller';
+import { TrafficFinePaymentService } from './traffic-fine-payment.service';
+import { TrafficFineV2Controller } from './traffic-fine-v2.controller';
 import { TrafficFineService } from './traffic-fine.service';
 import { VehicleAccident } from './entities/vehicle-accident.entity';
 import { VehicleAccidentController } from './vehicle-accident.controller';
@@ -51,14 +55,16 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     FleetModule, // costos de mantenimiento y seguros
     EmployeeModule, // legajo del responsable
     DeliveryModule, // el chofer detrás de una cuenta
-    AdminModule, // a quién avisar
-    EmailModule, // cómo avisar
+    AdminModule, // a quién avisa el aviso de siniestros y combustible
+    EmailModule, // cómo avisa
+    DistributorModule, // a qué hora avisa cada distribuidora
     AttachmentModule, // dueños de adjuntos: comprobante, acta, fotos
     CashModule, // el pago en efectivo de combustible y multas sale de una caja
   ],
   controllers: [
     FuelLoadController,
     TrafficFineController,
+    TrafficFineV2Controller,
     VehicleAccidentController,
     TireController,
     CarFleetController,
@@ -67,6 +73,7 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     DriverContextService,
     FuelLoadService,
     TrafficFineService,
+    TrafficFinePaymentService,
     VehicleAccidentService,
     TireService,
     FleetCostService,
@@ -74,6 +81,7 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     FleetExpenseNotifierListener,
     FuelLoadAttachmentOwnerResolver,
     TrafficFineAttachmentOwnerResolver,
+    TrafficFinePaymentAttachmentOwnerResolver,
     VehicleAccidentAttachmentOwnerResolver,
   ],
   exports: [

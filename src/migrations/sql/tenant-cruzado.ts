@@ -39,6 +39,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   cylinder: 'cylinder_id',
   insurer: 'insurer_id',
   insurance_policy: 'policy_id',
+  attachment: 'attachment_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -112,6 +113,8 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['insurance_policy', 'insurer_id', 'insurer'],
     ['insurance_installment', 'policy_id', 'insurance_policy'],
     ['insurance_installment', 'cash_movement_id', 'cash_movement'],
+    // Comprobante de la multa (F15)
+    ['traffic_fine', 'receipt_attachment_id', 'attachment'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

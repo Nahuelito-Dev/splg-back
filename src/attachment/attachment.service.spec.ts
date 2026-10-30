@@ -625,6 +625,17 @@ describe('AttachmentService', () => {
       expect(attachments.softRemove).not.toHaveBeenCalled();
     });
 
+    it('el comprobante de una multa no se da de baja por el endpoint genérico', async () => {
+      attachments.findOne.mockResolvedValue({
+        ...adjunto,
+        ownerType: AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
+      });
+      await expect(service.remove('a1', 'd1', ADMIN)).rejects.toThrow(
+        /POST \/traffic-fines/,
+      );
+      expect(attachments.softRemove).not.toHaveBeenCalled();
+    });
+
     it('pide la URL firmada con el nombre original', async () => {
       attachments.findOne.mockResolvedValue(adjunto);
       storage.getSignedDownload.mockResolvedValue({

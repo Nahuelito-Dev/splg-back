@@ -7,6 +7,7 @@ import { OWNER_TYPES_DEL_CHOFER } from '../attachment/attachment.service';
 import {
   FuelLoadAttachmentOwnerResolver,
   TrafficFineAttachmentOwnerResolver,
+  TrafficFinePaymentAttachmentOwnerResolver,
   VehicleAccidentAttachmentOwnerResolver,
 } from './fleet-expense-attachment-owners';
 import { FuelLoad } from './entities/fuel-load.entity';
@@ -43,6 +44,26 @@ describe('dueños de adjuntos de la flota ampliada', () => {
     await resolver.isOwnedByUser('f1', 'u1', 'd1');
     expect(exists).toHaveBeenLastCalledWith({
       where: { fuelLoadId: 'f1', distributorId: 'd1', createdByUserId: 'u1' },
+    });
+  });
+
+  it('traffic_fine_payment: dueño propio del comprobante, 404 si la multa no es de la distribuidora', async () => {
+    const resolver = new TrafficFinePaymentAttachmentOwnerResolver(
+      repo<TrafficFine>(),
+      registry,
+    );
+    resolver.onModuleInit();
+    expect(registry.find(AttachmentOwnerType.TRAFFIC_FINE_PAYMENT)).toBe(
+      resolver,
+    );
+    exists.mockResolvedValue(false);
+    await expect(resolver.assertOwner('m1', 'd1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    exists.mockResolvedValue(true);
+    await expect(resolver.assertOwner('m1', 'd1')).resolves.toBeUndefined();
+    expect(exists).toHaveBeenLastCalledWith({
+      where: { fineId: 'm1', distributorId: 'd1' },
     });
   });
 
