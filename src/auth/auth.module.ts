@@ -4,9 +4,10 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { AdminModule } from '../admin/admin.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [ConfigModule, UsersModule, AdminModule],
+  imports: [ConfigModule, UsersModule, AdminModule, AuditModule],
   controllers: [AuthController],
   providers: [AuthService],
   exports: [AuthService],

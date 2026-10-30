@@ -344,6 +344,16 @@ const ds = new DataSource({
   database: process.env.DB_NAME,
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   synchronize: false,
+  // Mantenimiento: el seed purga y reconstruye la demo, y su auditoría la deja
+  // armada a propósito (`lib/auditoria-demo.ts`). Las conexiones del seed no
+  // dejan los asientos de los triggers (altas y bajas «de sistema» que taparían
+  // la auditoría curada); el guardia de producción ya frenó antes de llegar acá.
+  // El trigger sólo lo respeta si el usuario es superusuario o miembro del rol
+  // `splg_mantenimiento`; en local `postgres` es superusuario.
+  extra: {
+    application_name: 'splg-script:seed-demo',
+    options: '-c splg.audit_off=on',
+  },
 });
 
 const resumen: Array<[string, number]> = [];

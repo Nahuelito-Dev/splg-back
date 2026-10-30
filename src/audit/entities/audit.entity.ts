@@ -15,8 +15,9 @@ import { AuditDetail } from './audit-detail.entity';
 
 /**
  * Auditoria del modelo de la cátedra: una fila por registro de una entidad de
- * negocio que se dio de alta, se modificó, se dio de baja o se reactivó. Es de
- * sólo escritura (trigger en la base). A diferencia de `audit_log`, que es la
+ * negocio que se dio de alta, se modificó, se dio de baja o se reactivó. La escribe
+ * la base: un trigger en cada tabla de negocio (F25). Es de sólo escritura
+ * (trigger en la base). A diferencia de `audit_log`, que es la
  * bitácora de requests HTTP, éste registra el dato: qué registro y qué campos
  * cambiaron (`audit_detail`).
  */
@@ -61,6 +62,22 @@ export class Audit {
 
   @Column({ type: 'varchar', length: 45, nullable: true })
   ip!: string | null;
+
+  /** `db` si lo escribió el trigger de la tabla; `app` si lo asentó la API (ingresos). */
+  @Column({ type: 'varchar', length: 10, default: 'app' })
+  source!: string;
+
+  /** Tabla que cambió (sólo los asientos del trigger). */
+  @Column({ name: 'table_name', type: 'varchar', length: 63, nullable: true })
+  tableName!: string | null;
+
+  /** Rol de la base que ejecutó el cambio (`current_user`). */
+  @Column({ name: 'db_user', type: 'varchar', length: 63, nullable: true })
+  dbUser!: string | null;
+
+  /** `application_name` de la conexión que lo ejecutó. */
+  @Column({ name: 'app_name', type: 'varchar', length: 63, nullable: true })
+  appName!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

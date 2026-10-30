@@ -30,7 +30,7 @@ describe('CoverageZoneExpiryCron', () => {
       if (sql.includes('SELECT 1 FROM "coverage_zone"')) {
         return Promise.resolve(quedanActivas[params?.[0] ?? ''] ? [{}] : []);
       }
-      return Promise.resolve([]); // INSERT de la auditoría
+      return Promise.resolve([]);
     });
 
   beforeEach(() => {
@@ -62,15 +62,13 @@ describe('CoverageZoneExpiryCron', () => {
     expect(consulta).not.toContain('surcharge');
   });
 
-  it('deja la auditoría de cada zona desactivada, en la misma transacción', async () => {
+  it('no asienta la auditoría a mano: la escribe el trigger de la tabla', async () => {
     baseConZonas([vencida('z1', 'd1'), vencida('z2', 'd1')], { d1: true });
     expect(await cron.barrer()).toBe(2);
     const auditorias = query.mock.calls.filter(([sql]) =>
       String(sql).includes('INSERT INTO "audit"'),
     );
-    expect(auditorias).toHaveLength(2);
-    const [, parametros] = auditorias[0] as [string, string[]];
-    expect(parametros[4]).toBe('CoverageZone');
+    expect(auditorias).toHaveLength(0);
   });
 
   it('si la distribuidora conserva alguna zona activa no avisa', async () => {

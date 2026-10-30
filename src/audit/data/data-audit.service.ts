@@ -15,10 +15,30 @@ import { AuditActionType } from '../entities/audit-action-type.entity';
 import {
   AuditActionTypeDto,
   AuditEntriesPageDto,
+  AuditEntriesPageV2Dto,
   AuditEntryDto,
+  AuditEntryV2Dto,
+  OrigenDeAuditoria,
   QueryAuditEntriesDto,
+  QueryAuditEntriesV2Dto,
 } from './data-audit.dto';
+import { APP_DE_LA_API } from './audit-origen';
 import { DataAuditMapper } from './data-audit.mapper';
+
+/**
+ * El filtro `origin` como condición sobre la columna `source` (puede mirar las
+ * demás columnas de la fila). Mismo criterio que `DataAuditMapper.origenDe`.
+ */
+function condicionDeOrigen(origen: OrigenDeAuditoria) {
+  return Raw((alias) => {
+    // `alias` llega como `Audit.source`: las hermanas se nombran por propiedad.
+    const col = (c: string) => `${alias.replace(/source$/, '')}${c}`;
+    const directo = `${alias} = 'db' AND ${col('appName')} IS DISTINCT FROM '${APP_DE_LA_API}'`;
+    if (origen === 'user') return `${col('userId')} IS NOT NULL`;
+    if (origen === 'direct') return `${col('userId')} IS NULL AND ${directo}`;
+    return `${col('userId')} IS NULL AND NOT (${directo})`;
+  });
+}
 
 /** Consulta de la auditoría de datos (Auditoria, DetalleAuditoria). */
 @Injectable()
@@ -39,12 +59,50 @@ export class DataAuditService {
     filtros: QueryAuditEntriesDto,
     distributorId: string | null,
   ): Promise<AuditEntriesPageDto> {
+    const { filas, detalles, total } = await this.buscar(
+      filtros,
+      distributorId,
+    );
+    return {
+      data: filas.map((a) =>
+        DataAuditMapper.toDto(a, detalles.get(a.auditId) ?? []),
+      ),
+      total,
+    };
+  }
+
+  /** Igual que `findAll`, con `source`, `tableName`, `dbUser`, `appName` y el filtro `origin`. */
+  async findAllV2(
+    filtros: QueryAuditEntriesV2Dto,
+    distributorId: string | null,
+  ): Promise<AuditEntriesPageV2Dto> {
+    const { filas, detalles, total } = await this.buscar(
+      filtros,
+      distributorId,
+    );
+    return {
+      data: filas.map((a) =>
+        DataAuditMapper.toDtoV2(a, detalles.get(a.auditId) ?? []),
+      ),
+      total,
+    };
+  }
+
+  private async buscar(
+    filtros: QueryAuditEntriesV2Dto,
+    distributorId: string | null,
+  ): Promise<{
+    filas: Audit[];
+    detalles: Map<string, AuditDetail[]>;
+    total: number;
+  }> {
     const where: FindOptionsWhere<Audit> = {};
     if (distributorId && !filtros.orderId) where.distributorId = distributorId;
     if (filtros.entity) where.entity = filtros.entity;
     if (filtros.recordId) where.recordId = filtros.recordId;
     if (filtros.userId) where.userId = filtros.userId;
     if (filtros.actionType) where.actionTypeId = filtros.actionType;
+    if (filtros.origin) where.source = condicionDeOrigen(filtros.origin);
     if (filtros.from && filtros.to) {
       where.createdAt = Between(filtros.from, filtros.to);
     } else if (filtros.from) {
@@ -57,7 +115,7 @@ export class DataAuditService {
       : where;
     // Un arreglo vacío de condiciones en TypeORM no filtra nada: sería todo.
     if (Array.isArray(condiciones) && condiciones.length === 0) {
-      return { data: [], total: 0 };
+      return { filas: [], detalles: new Map(), total: 0 };
     }
     const [filas, total] = await this.audits.findAndCount({
       where: condiciones,
@@ -68,12 +126,7 @@ export class DataAuditService {
       skip: (filtros.page - 1) * filtros.limit,
     });
     const detalles = await this.detailsOf(filas.map((a) => a.auditId));
-    return {
-      data: filas.map((a) =>
-        DataAuditMapper.toDto(a, detalles.get(a.auditId) ?? []),
-      ),
-      total,
-    };
+    return { filas, detalles, total };
   }
 
   /**
@@ -124,6 +177,22 @@ export class DataAuditService {
     auditId: string,
     distributorId: string | null,
   ): Promise<AuditEntryDto> {
+    const { fila, detalles } = await this.buscarUna(auditId, distributorId);
+    return DataAuditMapper.toDto(fila, detalles);
+  }
+
+  async findOneV2(
+    auditId: string,
+    distributorId: string | null,
+  ): Promise<AuditEntryV2Dto> {
+    const { fila, detalles } = await this.buscarUna(auditId, distributorId);
+    return DataAuditMapper.toDtoV2(fila, detalles);
+  }
+
+  private async buscarUna(
+    auditId: string,
+    distributorId: string | null,
+  ): Promise<{ fila: Audit; detalles: AuditDetail[] }> {
     const where: FindOptionsWhere<Audit> = { auditId };
     if (distributorId) where.distributorId = distributorId;
     const fila = await this.audits.findOne({
@@ -133,7 +202,7 @@ export class DataAuditService {
     });
     if (!fila) throw new NotFoundException('Auditoría no encontrada');
     const detalles = await this.detailsOf([auditId]);
-    return DataAuditMapper.toDto(fila, detalles.get(auditId) ?? []);
+    return { fila, detalles: detalles.get(auditId) ?? [] };
   }
 
   async findActionTypes(): Promise<AuditActionTypeDto[]> {

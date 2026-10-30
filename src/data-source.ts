@@ -20,7 +20,10 @@ export default new DataSource({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   ssl: isSsl ? { rejectUnauthorized: false } : false,
-  extra: isSsl ? { ssl: { rejectUnauthorized: false } } : undefined,
+  extra: {
+    application_name: 'splg-migraciones',
+    ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  },
   entities: ['src/**/*.entity{.ts,.js}'],
   migrations: ['src/migrations/*{.ts,.js}'],
   synchronize: false,

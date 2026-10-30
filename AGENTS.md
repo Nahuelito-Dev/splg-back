@@ -47,6 +47,10 @@ Lo que más se rompe:
 - Endpoints existentes conservan las claves del JSON; los nuevos van en camelCase.
 - Cambio de contrato ⇒ Swagger completo (los campos con `default` no son obligatorios),
   y el panel se actualiza con `npm run api:types`.
+- La auditoría de datos (`audit`, `audit_detail`) la escriben triggers de la base (`TRG_auditoria`), no la
+  aplicación. Una entidad o columna nueva: `npm run auditoria:mapa -- --migracion <Nombre>`, revisar la migración
+  y correrla; el test `auditoria-mapa.spec.ts` falla si el mapa quedó viejo. El actor lo fija `ActorEnLaBase` por
+  transacción. `AuditoriaDeDatos.registrar` es sólo para hechos que no son una columna.
 - Transiciones de pedido y de envase pasan por las máquinas de estado del dominio, no por
   un `update` directo.
 

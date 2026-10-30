@@ -323,6 +323,7 @@ describe('seed:demo en contenedores (e2e)', () => {
       entities: [join(__dirname, '../../src/**/*.entity.ts')],
       migrations: [join(__dirname, '../../src/migrations/*.ts')],
       synchronize: false,
+      migrationsTransactionMode: 'each',
     });
     await ds.initialize();
     await ds.runMigrations();

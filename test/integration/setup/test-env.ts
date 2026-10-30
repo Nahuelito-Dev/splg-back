@@ -35,6 +35,12 @@ import {
   CREAR_FUNCION_ESTADO_DEL_PAGO,
   CREAR_TRIGGER_ESTADO_DEL_PAGO,
 } from '../../../src/migrations/sql/estado-del-pago';
+import {
+  CREAR_FUNCIONES_DE_AUDITORIA,
+  CREAR_ROL_DE_MANTENIMIENTO,
+  CREAR_TABLAS_DEL_MAPA,
+} from '../../../src/migrations/sql/auditoria-de-datos';
+import mapaDeAuditoria from '../../../src/audit/data/auditoria-mapa.datos.json';
 import { sentenciasDeReglasDeDatos } from '../../../src/migrations/sql/reglas-de-datos';
 import { sentenciasDeSaldos } from '../../../src/migrations/sql/saldo-contra-libro';
 import { sentenciasDeTransiciones } from '../../../src/migrations/sql/transiciones-de-estado';
@@ -262,6 +268,18 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
   ]) {
     await dataSource.query(sql);
   }
+  // Auditoría de datos (F25): el esquema sincronizado no trae el mapa ni los
+  // triggers; salen de las mismas definiciones que usa la migración.
+  for (const sql of [
+    CREAR_ROL_DE_MANTENIMIENTO,
+    ...CREAR_TABLAS_DEL_MAPA,
+    ...CREAR_FUNCIONES_DE_AUDITORIA,
+  ]) {
+    await dataSource.query(sql);
+  }
+  await dataSource.query('SELECT auditoria_aplicar_mapa($1::jsonb)', [
+    JSON.stringify(mapaDeAuditoria),
+  ]);
 }
 
 /**
@@ -292,6 +310,16 @@ export async function truncateAllTables(app: TestApp): Promise<void> {
     .filter((e) => e.tableName !== 'audit_action_type')
     .map((e) => `"${e.tableName}"`)
     .join(', ');
+  // Un esquema migrado bloquea el TRUNCATE de la auditoría; acá, en el
+  // contenedor de prueba, se deshabilita para poder vaciar todo entre tests.
+  await dataSource.query(`
+    DO $$ BEGIN
+      IF to_regclass('public.audit') IS NOT NULL
+         AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'audit_sin_truncate') THEN
+        ALTER TABLE "audit" DISABLE TRIGGER audit_sin_truncate;
+        ALTER TABLE "audit_detail" DISABLE TRIGGER audit_detail_sin_truncate;
+      END IF;
+    END $$`);
   // Tras un pedido quedan tareas en segundo plano (auditoría, notificaciones,
   // despacho) escribiendo: pueden chocar con el TRUNCATE. Se reintenta.
   for (let intento = 1; ; intento++) {

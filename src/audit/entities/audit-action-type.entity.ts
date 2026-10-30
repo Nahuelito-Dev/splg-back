@@ -7,6 +7,9 @@ export enum AuditActionTypeId {
   SOFT_DELETE = 3,
   RESTORE = 4,
   PHYSICAL_DELETE = 5,
+  LOGIN = 6,
+  LOGIN_FAILED = 7,
+  LOGOUT = 8,
 }
 
 /** Nombre de cada acción tal como se siembra en el catálogo. */
@@ -16,6 +19,9 @@ export const AUDIT_ACTION_TYPE_NAMES: Record<AuditActionTypeId, string> = {
   [AuditActionTypeId.SOFT_DELETE]: 'Baja lógica',
   [AuditActionTypeId.RESTORE]: 'Reactivación',
   [AuditActionTypeId.PHYSICAL_DELETE]: 'Baja física',
+  [AuditActionTypeId.LOGIN]: 'Ingreso',
+  [AuditActionTypeId.LOGIN_FAILED]: 'Ingreso fallido',
+  [AuditActionTypeId.LOGOUT]: 'Salida',
 };
 
 /**
