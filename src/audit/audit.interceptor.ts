@@ -111,7 +111,9 @@ function ipDe(request: Request): string | null {
 /** El primer segmento después de /api: orders, users, delivery... */
 function recursoDe(ruta: string): string {
   const segmentos = ruta.split('/').filter(Boolean);
-  const i = segmentos[0] === 'api' ? 1 : 0;
+  let i = segmentos[0] === 'api' ? 1 : 0;
+  // Con el versionado por URI la ruta es /api/v1/orders: el recurso es `orders`, no `v1`.
+  if (/^v\d+$/.test(segmentos[i] ?? '')) i += 1;
   return (segmentos[i] ?? 'raiz').slice(0, 60);
 }
 
