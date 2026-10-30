@@ -38,6 +38,12 @@ export interface GatewayPayment {
   amount?: number | null;
   /** Lo que la pasarela ya devolvió de ese pago (null si no lo informa). */
   refundedAmount?: number | null;
+  /**
+   * Lo que la pasarela retuvo de ese cobro como comisión (cargos que absorbe el
+   * comercio, retenciones incluidas). `null` si no lo informa: sin dato no se
+   * asienta comisión.
+   */
+  feeAmount?: number | null;
 }
 
 export interface RefundPaymentInput {

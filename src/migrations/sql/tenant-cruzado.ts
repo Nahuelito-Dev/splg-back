@@ -120,6 +120,9 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['tire', 'cash_movement_id', 'cash_movement'],
     ['vehicle_accident', 'payment_cash_movement_id', 'cash_movement'],
     ['vehicle_accident', 'reimbursement_cash_movement_id', 'cash_movement'],
+    // Cajas de cobro de las ventas (Mercado Pago y transferencias)
+    ['cash_collection_settings', 'mercadopago_cash_box_id', 'cash_box'],
+    ['cash_collection_settings', 'transfer_cash_box_id', 'cash_box'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

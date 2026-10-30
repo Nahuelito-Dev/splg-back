@@ -27,6 +27,10 @@ import {
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
 import { errorMessage } from '../../common/errors/error-message';
+import {
+  ResultadoDelAsiento,
+  SalesCashService,
+} from '../../cash/application/sales-cash.service';
 import { codigoSqlDelError } from '../../common/errors/db-exceptions';
 
 /** Input para crear un checkout: agnóstico de la pasarela concreta. */
@@ -84,6 +88,7 @@ export class PaymentsService {
     private readonly paymentRepository: Repository<Payment>,
     private readonly paymentGateway: PaymentGatewayPort,
     private readonly orderLookup: OrderLookupService,
+    private readonly ventasEnCaja: SalesCashService,
   ) {}
 
   /**
@@ -204,8 +209,15 @@ export class PaymentsService {
       return null;
     }
 
-    const { isDeposit, estadoAtrasado, montoDistinto } =
+    const { isDeposit, estadoAtrasado, montoDistinto, asiento } =
       await this.updateLedger(gatewayPayment);
+    if (asiento) {
+      this.ventasEnCaja.avisarSinAsentar(
+        asiento.distributorId,
+        asiento.resultado,
+        gatewayPayment.externalReference,
+      );
+    }
 
     return {
       externalReference: gatewayPayment.externalReference,
@@ -238,6 +250,8 @@ export class PaymentsService {
     /** Estado vigente del ledger cuando la notificación llegó atrasada. */
     estadoAtrasado?: LedgerPaymentStatus;
     montoDistinto?: { esperado: number; cobrado: number };
+    /** Qué pasó con el ingreso a caja de un pago recién aprobado. */
+    asiento?: { resultado: ResultadoDelAsiento; distributorId: string };
   }> {
     // Leer, validar y escribir con la fila del pago bloqueada: dos notificaciones
     // intercaladas se aplican una detrás de la otra y la segunda ya ve el estado
@@ -264,6 +278,7 @@ export class PaymentsService {
     isDeposit: boolean;
     estadoAtrasado?: LedgerPaymentStatus;
     montoDistinto?: { esperado: number; cobrado: number };
+    asiento?: { resultado: ResultadoDelAsiento; distributorId: string };
   }> {
     return this.paymentRepository.manager.transaction(async (manager) => {
       const repo = manager.getRepository(Payment);
@@ -329,19 +344,73 @@ export class PaymentsService {
       // posterior del pago (incluso un `pending` atrasado) la sigue informando.
       const montoDistinto = montoNuevo ?? montoDistintoGuardado(ledgerPayment);
 
+      const aprobadoAhora =
+        permitido &&
+        nuevoEstado === LedgerPaymentStatus.APPROVED &&
+        ledgerPayment.status !== LedgerPaymentStatus.APPROVED;
+      const devuelto = devueltoSegunLaPasarela(gatewayPayment);
+      const devueltoGuardado = Number(
+        ledgerPayment.metadata?.gatewayRefunded ?? 0,
+      );
       ledgerPayment.gatewayPaymentId = gatewayPayment.id;
       if (permitido) ledgerPayment.status = nuevoEstado;
+      if (aprobadoAhora) ledgerPayment.approvedAt = new Date();
       ledgerPayment.metadata = {
         ...(ledgerPayment.metadata ?? {}),
         gatewayStatus: gatewayPayment.status,
+        ...(aprobadoAhora && {
+          gatewayAmount: cobrado ?? esperado,
+          feeAmount: gatewayPayment.feeAmount ?? null,
+          feeStatus:
+            gatewayPayment.feeAmount == null ? 'unreported' : 'reported',
+        }),
+        ...(devuelto > devueltoGuardado && { gatewayRefunded: devuelto }),
         ...(montoDistinto && { montoDistinto }),
       };
       await repo.save(ledgerPayment);
+
+      // El dinero que la pasarela acreditó entra a la caja de Mercado Pago en la
+      // misma transacción que aprueba el pago, y lo que la pasarela devolvió por
+      // su cuenta (devolución desde su panel, contracargo) sale de ella. Un fallo
+      // del asiento no frena la confirmación: queda sin asentar.
+      const distributorId = ledgerPayment.distributorId;
+      const resultados: ResultadoDelAsiento[] = [];
+      if (distributorId && aprobadoAhora) {
+        resultados.push(
+          await this.ventasEnCaja.asentarCobroDeMercadoPago(manager, {
+            distributorId,
+            orderId: ledgerPayment.orderId,
+            paymentId: ledgerPayment.paymentId,
+            gatewayPaymentId: gatewayPayment.id,
+            amount: cobrado ?? esperado,
+            feeAmount: gatewayPayment.feeAmount,
+            feeUnreported: gatewayPayment.feeAmount == null,
+          }),
+        );
+      }
+      if (distributorId && devuelto > 0) {
+        resultados.push(
+          await this.ventasEnCaja.asentarDevolucionExterna(manager, {
+            distributorId,
+            orderId: ledgerPayment.orderId,
+            paymentId: ledgerPayment.paymentId,
+            gatewayPaymentId: gatewayPayment.id,
+            refundedTotal: devuelto,
+            contracargo: gatewayPayment.status === 'charged_back',
+          }),
+        );
+      }
+      const resultado =
+        resultados.find((r) => r === 'fallo' || r === 'sin_caja') ??
+        resultados[0];
+      const asiento =
+        distributorId && resultado ? { distributorId, resultado } : undefined;
 
       return {
         isDeposit: ledgerPayment.isDeposit,
         ...(!permitido && { estadoAtrasado: ledgerPayment.status }),
         ...(montoDistinto && { montoDistinto }),
+        ...(asiento && { asiento }),
       };
     });
   }
@@ -373,4 +442,13 @@ function montoDistintoGuardado(
   return typeof esperado === 'number' && typeof cobrado === 'number'
     ? { esperado, cobrado }
     : undefined;
+}
+
+/** Lo que la pasarela dice que devolvió de un pago: lo informado, o todo si está devuelto o con contracargo. */
+function devueltoSegunLaPasarela(pago: GatewayPayment): number {
+  const informado = pago.refundedAmount ?? 0;
+  if (pago.status === 'refunded' || pago.status === 'charged_back') {
+    return informado > 0 ? informado : (pago.amount ?? 0);
+  }
+  return informado;
 }

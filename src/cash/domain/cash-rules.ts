@@ -99,6 +99,18 @@ export function motivoDeNoAnulable(tipo: CashReferenceType): string | null {
       return 'Es lo que pagó la empresa por un siniestro: un pago registrado no se reabre; el desvío se corrige con un movimiento manual que lo explique';
     case CashReferenceType.INSURANCE_REIMBURSEMENT:
       return 'Es el reintegro que pagó el seguro por un siniestro: un reintegro registrado no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.PAYMENT:
+      return 'Es un cobro aprobado de Mercado Pago: se corrige con la devolución del pago al cliente, que asienta su egreso';
+    case CashReferenceType.PAYMENT_FEE:
+      return 'Es la comisión que retuvo Mercado Pago de un cobro: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.PAYMENT_REFUND:
+      return 'Es la devolución de un cobro de Mercado Pago al cliente: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.PAYMENT_EXTERNAL_REFUND:
+      return 'Es una devolución o contracargo que hizo Mercado Pago: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.ORDER_DEPOSIT:
+      return 'Es la seña de una reserva: si la caja fue la equivocada, se corrige con una transferencia entre cajas; el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
+    case CashReferenceType.ORDER_TRANSFER:
+      return 'Es una transferencia confirmada de un pedido: si la caja fue la equivocada, se corrige con una transferencia entre cajas; el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
     case CashReferenceType.REVERSAL:
       return 'Es una anulación: no se anula. Si estuvo mal, registrá un movimiento nuevo';
   }

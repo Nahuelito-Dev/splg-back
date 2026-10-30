@@ -274,6 +274,13 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'La cuenta corriente no puede pasar a ese estado desde el estado en que está',
   CHK_order_dispatch_offer_transicion_de_estado:
     'La oferta de despacho no puede pasar a ese estado desde el estado en que está',
+  // Cajas de cobro de las ventas
+  CHK_cash_collection_settings_mercadopago_billetera:
+    'La caja de Mercado Pago tiene que ser una billetera',
+  CHK_cash_collection_settings_transferencia_banco:
+    'La caja de transferencias tiene que ser una cuenta de banco',
+  UQ_cash_movement_cobro_de_venta:
+    'Ese cobro, comisión, devolución o transferencia ya está asentado en una caja',
   // Saldos contra el libro (constraint triggers diferidos)
   CHK_cash_box_saldo_contra_libro:
     'El saldo de la caja no coincide con la suma de sus movimientos: la operación se deshizo',

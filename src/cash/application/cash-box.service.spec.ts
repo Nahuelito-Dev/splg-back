@@ -19,11 +19,18 @@ const caja = (parcial: Partial<CashBox>): CashBox =>
 describe('CashBoxService', () => {
   let guardadas: CashBox[];
   let enBase: CashBox[];
+  let configuradas: number;
   let servicio: CashBoxService;
 
   const montar = () => {
     const manager = {
-      query: jest.fn(() => Promise.resolve([{ cash_box_id: 'caja-1' }])),
+      query: jest.fn((sql: string) =>
+        Promise.resolve(
+          sql.includes('cash_collection_settings')
+            ? [{ n: String(configuradas) }]
+            : [{ cash_box_id: 'caja-1' }],
+        ),
+      ),
       findOneByOrFail: jest.fn(() => Promise.resolve(enBase[0])),
       findOne: jest.fn(() => Promise.resolve(null)),
       save: jest.fn((c: CashBox) => {
@@ -58,6 +65,7 @@ describe('CashBoxService', () => {
   beforeEach(() => {
     guardadas = [];
     enBase = [];
+    configuradas = 0;
   });
 
   describe('desactivar (CU-264)', () => {
@@ -76,6 +84,16 @@ describe('CashBoxService', () => {
       await expect(
         servicio.update('caja-1', { isActive: false }, 'dist-1'),
       ).rejects.toThrow(/saldo/);
+    });
+
+    it('409 si es la caja de cobro de Mercado Pago o de transferencias: se cambia primero en «Cajas de cobro»', async () => {
+      enBase = [caja({ kind: CashBoxKind.WALLET, balance: 0 })];
+      configuradas = 1;
+      montar();
+      await expect(
+        servicio.update('caja-1', { isActive: false }, 'dist-1'),
+      ).rejects.toThrow(/Cajas de cobro/);
+      expect(guardadas).toHaveLength(0);
     });
 
     it('con saldo cero se desactiva', async () => {

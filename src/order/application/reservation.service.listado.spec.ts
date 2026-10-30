@@ -20,7 +20,19 @@ describe('ReservationService.findReservations', () => {
     undefined as never,
     { getOrThrow: jest.fn(() => 1) } as never,
     payments as never,
+    undefined as never,
+    undefined as never,
   );
+
+  /** La confirmación corre en una transacción del repositorio: el doble le da el pedido y guarda lo que recibe. */
+  const enTransaccion = (order: Order) => {
+    const save = jest.fn((o: Order) => Promise.resolve(o));
+    const manager = { findOne: jest.fn().mockResolvedValue(order), save };
+    (orderRepository as { manager?: unknown }).manager = {
+      transaction: (trabajo: (m: unknown) => unknown) => trabajo(manager),
+    };
+    return { save };
+  };
 
   const reserva = (extra: Partial<Order>) =>
     ({
@@ -84,10 +96,10 @@ describe('ReservationService.findReservations', () => {
   it('confirmar la seña de una reserva por transferencia la marca cobrada, para que el cron la active', async () => {
     const order = reserva({ paymentMethod: PaymentMethod.TRANSFER });
     (order as { depositPaid: boolean }).depositPaid = false;
-    orderRepository.findOne = jest.fn().mockResolvedValue(order);
-    orderRepository.save = jest.fn((o: Order) => Promise.resolve(o));
+    enTransaccion(order);
     const saved = await service.confirmDeposit('o1', 'd1');
     expect(saved.depositPaid).toBe(true);
+    expect(saved.depositPaidAt).toBeInstanceOf(Date);
   });
 
   it('una seña por MercadoPago pendiente trae su enlace de pago; efectivo y seña paga, no', async () => {
@@ -115,11 +127,10 @@ describe('ReservationService.findReservations', () => {
 
   it('la seña de MercadoPago no se confirma a mano: la marca cobrada el aviso de la pasarela', async () => {
     const order = reserva({ paymentMethod: PaymentMethod.MERCADOPAGO });
-    orderRepository.findOne = jest.fn().mockResolvedValue(order);
-    orderRepository.save = jest.fn((o: Order) => Promise.resolve(o));
+    const { save } = enTransaccion(order);
     await expect(service.confirmDeposit('o1', 'd1')).rejects.toThrow(
       /se confirma sola cuando la pasarela avisa el pago/,
     );
-    expect(orderRepository.save).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import { PaymentsService } from './payments.service';
 import { Payment } from '../entities/payment.entity';
 import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
 import { LedgerPaymentStatus } from '../domain/payment.enums';
+import { SalesCashService } from '../../cash/application/sales-cash.service';
 
 /**
  * Servicio de pagos, GATEWAY-AGNÓSTICO: habla contra `PaymentGatewayPort`
@@ -26,6 +27,11 @@ describe('PaymentsService', () => {
     manager: { transaction: jest.Mock };
   };
   let orderLookup: { findPaymentState: jest.Mock };
+  let ventasEnCaja: {
+    asentarCobroDeMercadoPago: jest.Mock;
+    asentarDevolucionExterna: jest.Mock;
+    avisarSinAsentar: jest.Mock;
+  };
   let paymentGateway: {
     createCheckout: jest.Mock;
     getPayment: jest.Mock;
@@ -57,10 +63,17 @@ describe('PaymentsService', () => {
       }),
     };
 
+    ventasEnCaja = {
+      asentarCobroDeMercadoPago: jest.fn().mockResolvedValue('asentado'),
+      asentarDevolucionExterna: jest.fn().mockResolvedValue('asentado'),
+      avisarSinAsentar: jest.fn(),
+    };
+
     service = new PaymentsService(
       paymentRepository as unknown as Repository<Payment>,
       paymentGateway as unknown as PaymentGatewayPort,
       orderLookup as unknown as OrderLookupService,
+      ventasEnCaja as unknown as SalesCashService,
     );
   });
 
@@ -712,6 +725,227 @@ describe('PaymentsService', () => {
         status: 'approved',
         isDeposit: false,
       });
+    });
+  });
+
+  describe('ingreso a la caja de Mercado Pago', () => {
+    const ledger = (over: Record<string, unknown> = {}) => ({
+      paymentId: 'ledger-1',
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      externalReference: 'ord-1',
+      gatewayPaymentId: null,
+      isDeposit: false,
+      amount: 3000,
+      status: LedgerPaymentStatus.PENDING,
+      approvedAt: null,
+      metadata: null,
+      ...over,
+    });
+    const notificar = (estado: string, extra: Record<string, unknown> = {}) => {
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'mp-1',
+        status: estado,
+        externalReference: 'ord-1',
+        amount: 3000,
+        feeAmount: 149.5,
+        ...extra,
+      });
+      return service.confirmFromGateway({ type: 'payment', dataId: 'mp-1' });
+    };
+
+    it('el pago aprobado entra a la caja en la misma transacción, con el importe cobrado y la comisión', async () => {
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(ledger());
+
+      await notificar('approved');
+
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledTimes(1);
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          distributorId: 'dist-1',
+          orderId: 'ord-1',
+          paymentId: 'ledger-1',
+          gatewayPaymentId: 'mp-1',
+          amount: 3000,
+          feeAmount: 149.5,
+          feeUnreported: false,
+        },
+      );
+      expect(paymentRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          approvedAt: expect.any(Date) as Date,
+          metadata: expect.objectContaining({
+            gatewayAmount: 3000,
+            feeAmount: 149.5,
+          }) as Record<string, unknown>,
+        }),
+      );
+    });
+
+    it('si la pasarela no informa la comisión, el cobro entra marcado y el pago guarda que falta', async () => {
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(ledger());
+
+      await notificar('approved', { feeAmount: null });
+
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ feeAmount: null, feeUnreported: true }),
+      );
+      expect(paymentRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            feeStatus: 'unreported',
+          }) as Record<string, unknown>,
+        }),
+      );
+    });
+
+    describe('devolución hecha por Mercado Pago por su cuenta', () => {
+      const aprobado = () =>
+        ledger({
+          gatewayPaymentId: 'mp-1',
+          status: LedgerPaymentStatus.APPROVED,
+          approvedAt: new Date(),
+          metadata: { gatewayStatus: 'approved', gatewayRefunded: 500 },
+        });
+
+      it('una devolución parcial que sube asienta lo devuelto en total y lo guarda', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+
+        await notificar('approved', { refundedAmount: 1200 });
+
+        expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+        expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            paymentId: 'ledger-1',
+            refundedTotal: 1200,
+            contracargo: false,
+          }),
+        );
+        expect(paymentRepository.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            metadata: expect.objectContaining({
+              gatewayRefunded: 1200,
+            }) as Record<string, unknown>,
+          }),
+        );
+      });
+
+      it('un pago devuelto por completo sin importe informado devuelve todo lo cobrado', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+
+        await notificar('refunded', { refundedAmount: null });
+
+        expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ refundedTotal: 3000, contracargo: false }),
+        );
+      });
+
+      it('un contracargo se asienta como tal', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+
+        await notificar('charged_back', { refundedAmount: null });
+
+        expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ refundedTotal: 3000, contracargo: true }),
+        );
+      });
+
+      it('sin devolución en la pasarela no se mueve la caja', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+
+        await notificar('approved', { refundedAmount: 0 });
+
+        expect(ventasEnCaja.asentarDevolucionExterna).not.toHaveBeenCalled();
+      });
+
+      it('si la caja no pudo asentarla, la confirmación sigue y se avisa', async () => {
+        ventasEnCaja.asentarDevolucionExterna.mockResolvedValue('fallo');
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+
+        await notificar('approved', { refundedAmount: 1200 });
+
+        expect(ventasEnCaja.avisarSinAsentar).toHaveBeenCalledWith(
+          'dist-1',
+          'fallo',
+          'ord-1',
+        );
+      });
+    });
+
+    it('asienta lo que la pasarela cobró de verdad, aunque difiera de lo esperado', async () => {
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(ledger());
+
+      await notificar('approved', { amount: 2500 });
+
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ amount: 2500 }),
+      );
+    });
+
+    it('un webhook repetido del pago ya aprobado no vuelve a asentar', async () => {
+      paymentRepository.findOne.mockResolvedValueOnce(
+        ledger({
+          gatewayPaymentId: 'mp-1',
+          status: LedgerPaymentStatus.APPROVED,
+          approvedAt: new Date(),
+        }),
+      );
+
+      await notificar('approved');
+
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+    });
+
+    it.each(['rejected', 'pending', 'cancelled'])(
+      'un pago %s no mueve la caja',
+      async (estado) => {
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(ledger());
+
+        await notificar(estado);
+
+        expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+      },
+    );
+
+    it('si no hay caja configurada la confirmación sigue y se avisa al administrador', async () => {
+      ventasEnCaja.asentarCobroDeMercadoPago.mockResolvedValue('sin_caja');
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(ledger());
+
+      const resultado = await notificar('approved');
+
+      expect(resultado?.status).toBe('approved');
+      expect(ventasEnCaja.avisarSinAsentar).toHaveBeenCalledWith(
+        'dist-1',
+        'sin_caja',
+        'ord-1',
+      );
+    });
+
+    it('un pago sin distribuidora en el ledger se aprueba sin asentar', async () => {
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(ledger({ distributorId: null }));
+
+      const resultado = await notificar('approved');
+
+      expect(resultado?.status).toBe('approved');
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
     });
   });
 

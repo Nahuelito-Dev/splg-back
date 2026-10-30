@@ -224,6 +224,10 @@ export class Order {
   })
   depositPaid!: boolean;
 
+  /** Cuándo el administrador confirmó la seña recibida en efectivo o por transferencia. */
+  @Column({ name: 'deposit_paid_at', type: 'timestamptz', nullable: true })
+  depositPaidAt!: Date | null;
+
   @Column({
     name: 'delivery_id',
     type: 'uuid',

@@ -121,8 +121,31 @@ export class CashMovementResponseDto {
     description: 'true si otro movimiento ya lo anuló',
   })
   reversed!: boolean;
-  @ApiProperty() createdByUserId!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Quién lo registró; null en los movimientos que se asientan solos (webhook, devolución de Mercado Pago)',
+  })
+  createdByUserId!: string | null;
   @ApiProperty() createdAt!: Date;
+}
+
+/** El movimiento en la API v2: suma el pedido del que nace (API v1 congelada). */
+export class CashMovementV2ResponseDto extends CashMovementResponseDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'El pedido al que pertenece el movimiento cuando nace de un cobro de venta (efectivo, Mercado Pago, comisión, devolución, transferencia o seña); null en los demás',
+  })
+  orderId!: string | null;
+}
+
+export class CashMovementV2PageDto {
+  @ApiProperty({ type: [CashMovementV2ResponseDto] })
+  data!: CashMovementV2ResponseDto[];
+  @ApiProperty({ example: 40 }) total!: number;
 }
 
 export class CashMovementPageDto {

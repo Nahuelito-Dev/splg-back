@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CashModule } from '../cash/cash.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { Payment } from './entities/payment.entity';
 import { PaymentRefund } from './entities/payment-refund.entity';
@@ -23,6 +24,7 @@ import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook
   imports: [
     TypeOrmModule.forFeature([Payment, PaymentRefund]),
     OrderLookupModule,
+    CashModule, // los cobros y devoluciones de Mercado Pago entran y salen de una caja
   ],
   // El webhook valida la firma y publica PagoNotificadoEvent; order lo escucha.
   controllers: [
@@ -37,6 +39,6 @@ import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook
     // un gateway nuevo = agregar un adapter + resolverlo acá (o por config).
     { provide: PaymentGatewayPort, useClass: MercadoPagoAdapter },
   ],
-  exports: [PaymentsService, RefundsService],
+  exports: [PaymentsService, RefundsService, PaymentGatewayPort],
 })
 export class PaymentsModule {}

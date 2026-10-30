@@ -34,7 +34,8 @@ export interface RegistrarMovimiento {
   referenceType?: CashReferenceType;
   referenceId?: string | null;
   reversesMovementId?: string | null;
-  userId: string;
+  /** Quién lo registra; `null` sólo en los orígenes que se asientan solos (lo exige un CHECK de la base). */
+  userId: string | null;
   /**
    * Sólo la anulación y el ajuste de apertura: no exige sesión abierta (si hay
    * una, el movimiento se le asigna) ni que la categoría sea del mismo sentido

@@ -102,6 +102,8 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
       {
         findPendingCheckoutUrls: jest.fn().mockResolvedValue(new Map()),
       } as unknown as import('../../payments/application/payments.service').PaymentsService,
+      undefined as never,
+      undefined as never,
     );
   });
 

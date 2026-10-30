@@ -85,6 +85,7 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
       externalReference: payment.external_reference || null,
       amount: payment.transaction_amount ?? null,
       refundedAmount: payment.transaction_amount_refunded ?? null,
+      feeAmount: comisionDelCobro(payment),
     };
   }
 
@@ -124,4 +125,22 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
       return false;
     }
   }
+}
+
+/** Lo que el comercio no llega a recibir de un pago: el bruto menos el neto que informa la pasarela, o los cargos que absorbe él. */
+function comisionDelCobro(payment: {
+  transaction_amount?: number;
+  transaction_details?: { net_received_amount?: number };
+  fee_details?: Array<{ amount?: number; fee_payer?: string }>;
+}): number | null {
+  const bruto = payment.transaction_amount;
+  const neto = payment.transaction_details?.net_received_amount;
+  if (bruto != null && neto != null && neto > 0) {
+    return Math.max(0, Math.round((bruto - neto) * 100) / 100);
+  }
+  const cargos = payment.fee_details?.filter((f) => f.fee_payer !== 'payer');
+  if (!cargos?.length) return null;
+  return (
+    Math.round(cargos.reduce((a, f) => a + (f.amount ?? 0), 0) * 100) / 100
+  );
 }

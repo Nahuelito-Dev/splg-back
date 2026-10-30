@@ -49,6 +49,7 @@ import { PersonnelModule } from './personnel/personnel.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { TruckLoadModule } from './truck-load/truck-load.module';
 import { CashModule } from './cash/cash.module';
+import { SalesIncomeModule } from './cash/sales-income.module';
 import { CommissionModule } from './commission/commission.module';
 import { CustomerAccountModule } from './customer-account/customer-account.module';
 import { DriverSettlementModule } from './driver-settlement/driver-settlement.module';
@@ -257,6 +258,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     PurchaseModule,
     TruckLoadModule,
     CashModule,
+    SalesIncomeModule,
     CommissionModule,
     DriverSettlementModule,
     CustomerAccountModule,

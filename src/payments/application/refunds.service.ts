@@ -31,6 +31,7 @@ import {
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { OrderStatus } from '../../order/entities/order.entity';
 import { errorMessage } from '../../common/errors/error-message';
+import { SalesCashService } from '../../cash/application/sales-cash.service';
 
 /** Largo máximo del motivo del error que se guarda (la pasarela puede devolver un volcado). */
 const MAX_ERROR = 500;
@@ -73,6 +74,7 @@ export class RefundsService {
     private readonly gateway: PaymentGatewayPort,
     private readonly orderLookup: OrderLookupService,
     private readonly eventos: EventEmitter2,
+    private readonly ventasEnCaja: SalesCashService,
   ) {}
 
   /** El pedido se canceló: devuelve lo que falte de cada pago aprobado por una pasarela. */
@@ -549,21 +551,57 @@ export class RefundsService {
     gatewayRefundId: string | null,
     actorUserId: string | null,
   ): Promise<PaymentRefund> {
-    // Sólo uno gana el cierre: es quien actualiza el pago y avisa.
-    const cierre = await this.refunds.update(
-      { refundId: solicitud.refundId, status: Not(RefundStatus.SUCCEEDED) },
-      {
-        status: RefundStatus.SUCCEEDED,
-        gatewayRefundId,
-        errorMessage: null,
-        refundedAt: new Date(),
-        requestedByUserId: actorUserId,
-        attempts: () => '"attempts" + 1',
+    // Sólo uno gana el cierre: es quien actualiza el pago, asienta la salida de
+    // la caja y avisa. La salida va en la misma transacción que el cierre, así
+    // una devolución cerrada tiene su egreso (o queda sin asentar y se avisa).
+    const { cierre, actual, asiento } = await this.refunds.manager.transaction(
+      async (manager) => {
+        // Mismo orden de locks que `settle-pending`: primero el pago, después la caja.
+        await manager.query(
+          `SELECT 1 FROM "payment" WHERE "payment_id" = $1 FOR UPDATE`,
+          [pago.paymentId],
+        );
+        const resultado = await manager.update(
+          PaymentRefund,
+          { refundId: solicitud.refundId, status: Not(RefundStatus.SUCCEEDED) },
+          {
+            status: RefundStatus.SUCCEEDED,
+            gatewayRefundId,
+            errorMessage: null,
+            refundedAt: new Date(),
+            requestedByUserId: actorUserId,
+            attempts: () => '"attempts" + 1',
+          },
+        );
+        const cerrada = await manager.findOneOrFail(PaymentRefund, {
+          where: { refundId: solicitud.refundId },
+        });
+        const distributorId = pago.distributorId;
+        const salida =
+          resultado.affected && distributorId
+            ? {
+                distributorId,
+                resultado: await this.ventasEnCaja.asentarDevolucion(manager, {
+                  distributorId,
+                  orderId: cerrada.orderId,
+                  paymentId: pago.paymentId,
+                  refundId: cerrada.refundId,
+                  gatewayPaymentId: pago.gatewayPaymentId ?? pago.paymentId,
+                  amount: cerrada.amount,
+                  userId: actorUserId,
+                }),
+              }
+            : undefined;
+        return { cierre: resultado, actual: cerrada, asiento: salida };
       },
     );
-    const actual = await this.refunds.findOneOrFail({
-      where: { refundId: solicitud.refundId },
-    });
+    if (asiento) {
+      this.ventasEnCaja.avisarSinAsentar(
+        asiento.distributorId,
+        asiento.resultado,
+        actual.orderId,
+      );
+    }
     if (!cierre.affected) return actual;
 
     if (solicitud.kind === RefundKind.FULL) {

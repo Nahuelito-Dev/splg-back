@@ -10,6 +10,10 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { CashCategoryService } from '../../cash/application/cash-category.service';
 import { CashLedgerService } from '../../cash/application/cash-ledger.service';
+import {
+  ResultadoDelAsiento,
+  SalesCashService,
+} from '../../cash/application/sales-cash.service';
 import { saldoACobrar } from '../../truck-load/domain/truck-load-rules';
 import {
   CashBoxKind,
@@ -66,6 +70,7 @@ export class CashCollectionUseCase {
     private readonly dataSource: DataSource,
     private readonly cashLedger: CashLedgerService,
     private readonly categorias: CashCategoryService,
+    private readonly ventasEnCaja: SalesCashService,
   ) {}
 
   /** El chofer asignado confirma que cobró el efectivo. */
@@ -218,6 +223,12 @@ export class CashCollectionUseCase {
    *   ENTREGADO: marcar "no recibida" antes de entregar no frenaría nada, y lo
    *   que se quiere registrar es una entrega sin cobro.
    * - Repetir la misma decisión es un no-op; `paid` → `failed` es 409.
+   *
+   * Al confirmar que llegó, el importe entra a la caja de transferencias en la
+   * misma transacción (una sola vez por pedido). Sin caja configurada, o si la
+   * caja lo rechaza, la confirmación sigue igual: el cobro queda sin asentar y
+   * se avisa a la bandeja. Como `paid` → `failed` es 409, ninguna confirmación
+   * se deshace, y no hay contraasiento que asentar.
    */
   async confirmTransfer(
     orderId: string,
@@ -226,7 +237,8 @@ export class CashCollectionUseCase {
     reason: string,
     distributorId?: string | null,
   ): Promise<ResultadoDeCobro> {
-    return this.dataSource.transaction(async (manager) => {
+    let asiento: ResultadoDelAsiento | undefined;
+    const resultado = await this.dataSource.transaction(async (manager) => {
       const order = await this.lock(manager, orderId, distributorId);
       if (order.paymentMethod !== PaymentMethod.TRANSFER) {
         throw new BadRequestException(
@@ -270,8 +282,27 @@ export class CashCollectionUseCase {
         adminUserId,
         `Transferencia ${received ? 'confirmada' : 'marcada como no recibida'} por un administrador: ${reason}`,
       );
+      if (received) {
+        asiento = await this.ventasEnCaja.asentarTransferencia(manager, {
+          distributorId: order.distributorId,
+          orderId: order.orderId,
+          amount: saldoACobrar(
+            Number(order.totalAmount),
+            order.depositPaid ? Number(order.depositAmount) : 0,
+          ),
+          userId: adminUserId,
+        });
+      }
       return { order, changed: true, extra: undefined as never };
     });
+    if (asiento) {
+      this.ventasEnCaja.avisarSinAsentar(
+        resultado.order.distributorId,
+        asiento,
+        orderId,
+      );
+    }
+    return resultado;
   }
 
   /**

@@ -44,6 +44,18 @@ export enum CashReferenceType {
   TIRE = 'tire',
   VEHICLE_ACCIDENT = 'vehicle_accident',
   INSURANCE_REIMBURSEMENT = 'insurance_reimbursement',
+  /** Cobro aprobado por Mercado Pago: la referencia es el id del `payment` del libro de pagos. */
+  PAYMENT = 'payment',
+  /** Comisión que Mercado Pago retuvo de un cobro: la referencia es el id del `payment`. */
+  PAYMENT_FEE = 'payment_fee',
+  /** Devolución de un cobro de Mercado Pago: la referencia es el id del `payment_refund`. */
+  PAYMENT_REFUND = 'payment_refund',
+  /** Transferencia confirmada por el administrador: la referencia es el id del pedido. */
+  ORDER_TRANSFER = 'order_transfer',
+  /** Devolución o contracargo que Mercado Pago hizo por su cuenta (sin solicitud nuestra): la referencia es el id del `payment`. */
+  PAYMENT_EXTERNAL_REFUND = 'payment_external_refund',
+  /** Seña de una reserva recibida en efectivo o por transferencia: la referencia es el id del pedido. */
+  ORDER_DEPOSIT = 'order_deposit',
 }
 
 /** Sentido de una categoría: los ingresos y los gastos no se mezclan. */
@@ -74,6 +86,8 @@ export enum CashSystemCode {
   TIRES = 'tires',
   VEHICLE_ACCIDENT = 'vehicle_accident',
   INSURANCE_REIMBURSEMENT = 'insurance_reimbursement',
+  MERCADOPAGO_FEE = 'mercadopago_fee',
+  CUSTOMER_REFUND = 'customer_refund',
 }
 
 /** Las categorías de sistema con su nombre y su sentido, tal como se siembran. */
@@ -161,6 +175,16 @@ export const CATEGORIAS_DE_SISTEMA: ReadonlyArray<{
     code: CashSystemCode.INSURANCE_REIMBURSEMENT,
     name: 'Reintegros de seguros',
     direction: CategoryDirection.INCOME,
+  },
+  {
+    code: CashSystemCode.MERCADOPAGO_FEE,
+    name: 'Comisiones de Mercado Pago',
+    direction: CategoryDirection.EXPENSE,
+  },
+  {
+    code: CashSystemCode.CUSTOMER_REFUND,
+    name: 'Devoluciones a clientes',
+    direction: CategoryDirection.EXPENSE,
   },
 ];
 

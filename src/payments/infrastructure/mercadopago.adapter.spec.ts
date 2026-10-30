@@ -82,7 +82,36 @@ describe('MercadoPagoAdapter (SDK simulado)', () => {
       externalReference: 'ord-1',
       amount: 3000,
       refundedAmount: 500,
+      feeAmount: null,
     });
+  });
+
+  it('getPayment informa la comisión: bruto menos neto recibido', async () => {
+    obtenerPago.mockResolvedValue({
+      id: 55,
+      status: 'approved',
+      transaction_amount: 3000,
+      transaction_details: { net_received_amount: 2850.5 },
+      fee_details: [
+        { type: 'mercadopago_fee', amount: 100, fee_payer: 'collector' },
+      ],
+    });
+
+    expect(await adapter.getPayment('55')).toMatchObject({ feeAmount: 149.5 });
+  });
+
+  it('getPayment suma los cargos del comercio cuando no hay neto, sin los del comprador', async () => {
+    obtenerPago.mockResolvedValue({
+      id: 55,
+      status: 'approved',
+      transaction_amount: 3000,
+      fee_details: [
+        { type: 'mercadopago_fee', amount: 100.25, fee_payer: 'collector' },
+        { type: 'financing_fee', amount: 40, fee_payer: 'payer' },
+      ],
+    });
+
+    expect(await adapter.getPayment('55')).toMatchObject({ feeAmount: 100.25 });
   });
 
   it('getPayment tolera que la pasarela no informe los importes', async () => {
@@ -93,6 +122,7 @@ describe('MercadoPagoAdapter (SDK simulado)', () => {
       externalReference: null,
       amount: null,
       refundedAmount: null,
+      feeAmount: null,
     });
   });
 });

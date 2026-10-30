@@ -99,6 +99,20 @@
       "orderColumn": null
     },
     {
+      "table": "cash_collection_settings",
+      "entity": "CashCollectionSettings",
+      "pk": ["distributor_id"],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "cash_movement",
       "entity": "CashMovement",
       "pk": ["movement_id"],
@@ -1517,6 +1531,38 @@
       "secret": false,
       "kind": "text",
       "position": 5
+    },
+    {
+      "table": "cash_collection_settings",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "cash_collection_settings",
+      "column": "mercadopago_cash_box_id",
+      "property": "mercadoPagoCashBoxId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "cash_collection_settings",
+      "column": "transfer_cash_box_id",
+      "property": "transferCashBoxId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "cash_collection_settings",
+      "column": "updated_by_user_id",
+      "property": "updatedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
     },
     {
       "table": "cash_movement",
@@ -5056,11 +5102,19 @@
     },
     {
       "table": "order",
+      "column": "deposit_paid_at",
+      "property": "depositPaidAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "order",
       "column": "delivery_id",
       "property": "deliveryId",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "order",
@@ -5068,7 +5122,7 @@
       "property": "addressId",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "order",
@@ -5076,7 +5130,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "order",
@@ -5084,7 +5138,7 @@
       "property": "paymentMethod",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "order",
@@ -5092,7 +5146,7 @@
       "property": "paymentType",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 12
     },
     {
       "table": "order",
@@ -5100,7 +5154,7 @@
       "property": "paymentStatus",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 13
     },
     {
       "table": "order",
@@ -5108,7 +5162,7 @@
       "property": "paymentConfirmedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 14
     },
     {
       "table": "order",
@@ -5116,7 +5170,7 @@
       "property": "paymentConfirmedBy",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
     },
     {
       "table": "order",
@@ -5124,7 +5178,7 @@
       "property": "paymentResolvedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 15
+      "position": 16
     },
     {
       "table": "order",
@@ -5132,7 +5186,7 @@
       "property": "paymentResolvedBy",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 17
     },
     {
       "table": "order",
@@ -5140,7 +5194,7 @@
       "property": "paymentResolutionNote",
       "secret": false,
       "kind": "text",
-      "position": 17
+      "position": 18
     },
     {
       "table": "order",
@@ -5148,7 +5202,7 @@
       "property": "totalAmount",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 19
     },
     {
       "table": "order",
@@ -5156,7 +5210,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 20
     },
     {
       "table": "order",
@@ -5164,7 +5218,7 @@
       "property": "deliveryInstructions",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 21
     },
     {
       "table": "order",
@@ -5172,7 +5226,7 @@
       "property": "deliveryPoint",
       "secret": false,
       "kind": "geo",
-      "position": 21
+      "position": 22
     },
     {
       "table": "order",
@@ -5180,7 +5234,7 @@
       "property": "acceptedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 22
+      "position": 23
     },
     {
       "table": "order",
@@ -5188,7 +5242,7 @@
       "property": "onTheWayAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 23
+      "position": 24
     },
     {
       "table": "order",
@@ -5196,7 +5250,7 @@
       "property": "deliveredAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 24
+      "position": 25
     },
     {
       "table": "order",
@@ -5204,7 +5258,7 @@
       "property": "cancellationReason",
       "secret": false,
       "kind": "text",
-      "position": 25
+      "position": 26
     },
     {
       "table": "order",
@@ -5212,7 +5266,7 @@
       "property": "gatewayPaymentId",
       "secret": false,
       "kind": "text",
-      "position": 26
+      "position": 27
     },
     {
       "table": "order",
@@ -5220,7 +5274,7 @@
       "property": "deliveryCode",
       "secret": true,
       "kind": "text",
-      "position": 27
+      "position": 28
     },
     {
       "table": "order",
@@ -5228,7 +5282,7 @@
       "property": "deliveryMode",
       "secret": false,
       "kind": "text",
-      "position": 28
+      "position": 29
     },
     {
       "table": "order",
@@ -5236,7 +5290,7 @@
       "property": "expressSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 29
+      "position": 30
     },
     {
       "table": "order",
@@ -5244,7 +5298,7 @@
       "property": "expressDegradedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 30
+      "position": 31
     },
     {
       "table": "order",
@@ -5252,7 +5306,7 @@
       "property": "coverageZoneId",
       "secret": false,
       "kind": "text",
-      "position": 31
+      "position": 32
     },
     {
       "table": "order",
@@ -5260,7 +5314,7 @@
       "property": "zoneName",
       "secret": false,
       "kind": "text",
-      "position": 32
+      "position": 33
     },
     {
       "table": "order",
@@ -5268,7 +5322,7 @@
       "property": "zoneSurchargeType",
       "secret": false,
       "kind": "text",
-      "position": 33
+      "position": 34
     },
     {
       "table": "order",
@@ -5276,7 +5330,7 @@
       "property": "zoneSurchargeValue",
       "secret": false,
       "kind": "text",
-      "position": 34
+      "position": 35
     },
     {
       "table": "order",
@@ -5284,7 +5338,7 @@
       "property": "zoneSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 35
+      "position": 36
     },
     {
       "table": "order",
@@ -5292,7 +5346,7 @@
       "property": "paymentSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 36
+      "position": 37
     },
     {
       "table": "order",
@@ -5300,7 +5354,7 @@
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 37
+      "position": 38
     },
     {
       "table": "order",
@@ -5308,7 +5362,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 38
+      "position": 39
     },
     {
       "table": "order",
@@ -5316,7 +5370,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 39
+      "position": 40
     },
     {
       "table": "order",
@@ -5324,7 +5378,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 40
+      "position": 41
     },
     {
       "table": "order",
@@ -5332,7 +5386,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 41
+      "position": 42
     },
     {
       "table": "order_address_change",
@@ -5528,11 +5582,19 @@
     },
     {
       "table": "payment",
+      "column": "approved_at",
+      "property": "approvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "payment",
       "column": "is_deposit",
       "property": "isDeposit",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 13
     },
     {
       "table": "payment",
@@ -5540,7 +5602,7 @@
       "property": "metadata",
       "secret": false,
       "kind": "json",
-      "position": 13
+      "position": 14
     },
     {
       "table": "payment_refund",
