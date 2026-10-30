@@ -36,6 +36,17 @@ export class DriverProposalResponseDto extends WindowProposalResponseDto {
   @ApiProperty({ format: 'uuid' }) carId!: string;
   @ApiProperty({ type: String, nullable: true, example: 'AB123CD' })
   patent!: string | null;
+  @ApiProperty({
+    enum: PlanningCaseStatus,
+    description:
+      'Estado del caso: `confirmed` = el administrador confirmó la ventana; `awaiting_confirmation` = aceptada, esperando al administrador',
+  })
+  caseStatus!: PlanningCaseStatus;
+  @ApiProperty({
+    description:
+      'La ventana termina después del vencimiento proyectado: es un turno urgente',
+  })
+  urgent!: boolean;
 }
 
 export class DriverProposalPageDto {

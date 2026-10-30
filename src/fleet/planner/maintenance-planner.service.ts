@@ -803,6 +803,7 @@ export class MaintenancePlannerService {
       .innerJoinAndSelect('p.task', 'task')
       .innerJoinAndSelect('task.plan', 'plan')
       .leftJoinAndSelect('task.car', 'car')
+      .innerJoinAndSelect('p.planningCase', 'planningCase')
       .withDeleted()
       .where('p.delivery_id = :deliveryId', {
         deliveryId: delivery.deliveryId,
@@ -853,7 +854,7 @@ export class MaintenancePlannerService {
     const delivery = await this.deliveries.findOneByUserId(userId);
     const propuesta = await this.proposals.findOne({
       where: { proposalId, deliveryId: delivery.deliveryId },
-      relations: { task: { plan: true, car: true } },
+      relations: { task: { plan: true, car: true }, planningCase: true },
       withDeleted: true,
     });
     if (!propuesta) {

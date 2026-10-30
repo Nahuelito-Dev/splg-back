@@ -18,6 +18,7 @@ import { EVENTO_NOTIFICAR_ADMIN } from '../../common/events/notificar-admin.even
 const CTX = { planName: 'VTV <b>', patent: 'AB123CD' };
 const propuesta = {
   proposalId: 'p1',
+  caseId: 'c1',
   taskId: 't1',
   windowStart: new Date('2026-11-02T11:00:00Z'),
   windowEnd: new Date('2026-11-02T16:00:00Z'),
@@ -67,7 +68,11 @@ describe('MaintenancePlannerNotifier', () => {
     expect(drivers.notifyMaintenance).toHaveBeenCalledWith(
       'u1',
       'maintenance:proposal',
-      expect.objectContaining({ proposalId: 'p1', patent: 'AB123CD' }),
+      expect.objectContaining({
+        proposalId: 'p1',
+        caseId: 'c1',
+        patent: 'AB123CD',
+      }),
     );
     expect(fcm.sendToToken).toHaveBeenCalledWith(
       'tok',

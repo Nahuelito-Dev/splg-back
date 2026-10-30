@@ -71,6 +71,7 @@ export class MaintenancePlannerNotifier {
   ): Promise<void> {
     const payload = {
       proposalId: proposal.proposalId,
+      caseId: proposal.caseId,
       taskId: proposal.taskId,
       windowStart: proposal.windowStart.toISOString(),
       windowEnd: proposal.windowEnd.toISOString(),
