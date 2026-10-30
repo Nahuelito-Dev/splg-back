@@ -25,6 +25,20 @@ describe('AttachmentController · dueños que sólo entran por su endpoint', () 
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it('no sube el comprobante de una multa por /attachments', async () => {
+    await expect(
+      controller.upload(
+        AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
+        'm1',
+        {},
+        undefined,
+        'd1',
+        user,
+      ),
+    ).rejects.toThrow(/POST \/traffic-fines\/:id\/receipt/);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it('el resto de los dueños sigue subiendo', async () => {
     upload.mockResolvedValue({
       attachmentId: 'a1',

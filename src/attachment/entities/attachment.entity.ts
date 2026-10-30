@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Index,
+  Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { User } from '../../users/entities/user.entity';
@@ -25,6 +26,7 @@ export enum AttachmentOwnerType {
   ORDER = 'order',
   INSURANCE_POLICY = 'insurance_policy',
   INSURANCE_INSTALLMENT = 'insurance_installment',
+  TRAFFIC_FINE_PAYMENT = 'traffic_fine_payment',
 }
 
 /**
@@ -35,6 +37,7 @@ export enum AttachmentOwnerType {
  * existencia del dueño y su distribuidora los valida el
  * `AttachmentOwnerResolver` del módulo dueño al subir y al listar.
  */
+@Unique('UQ_attachment_id_distribuidora', ['attachmentId', 'distributorId'])
 @Entity('attachment')
 @Index(['distributorId', 'ownerType', 'ownerId'])
 export class Attachment {

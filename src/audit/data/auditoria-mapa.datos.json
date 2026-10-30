@@ -6872,11 +6872,43 @@
     },
     {
       "table": "traffic_fine",
+      "column": "payment_url",
+      "property": "paymentUrl",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "traffic_fine",
+      "column": "payment_code",
+      "property": "paymentCode",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "traffic_fine",
+      "column": "operation_number",
+      "property": "operationNumber",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "traffic_fine",
+      "column": "receipt_attachment_id",
+      "property": "receiptAttachmentId",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "traffic_fine",
       "column": "charged_to_employee",
       "property": "chargedToEmployee",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 19
     },
     {
       "table": "traffic_fine",
@@ -6884,7 +6916,7 @@
       "property": "voidReason",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 20
     },
     {
       "table": "traffic_fine",
@@ -6892,7 +6924,7 @@
       "property": "voidedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 17
+      "position": 21
     },
     {
       "table": "traffic_fine",
@@ -6900,7 +6932,7 @@
       "property": "alertedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 18
+      "position": 22
     },
     {
       "table": "truck_load",

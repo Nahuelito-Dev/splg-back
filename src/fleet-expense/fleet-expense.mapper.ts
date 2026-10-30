@@ -3,6 +3,7 @@ import { latLngDesdePunto } from '../common/geo/punto';
 import { Employee } from '../employee/entities/employee.entity';
 import { FuelLoadResponseDto } from './dto/fuel-load.dto';
 import { TrafficFineResponseDto } from './dto/traffic-fine.dto';
+import { TrafficFineV2ResponseDto } from './dto/traffic-fine-v2.dto';
 import {
   VehicleAccidentCreatedDto,
   VehicleAccidentResponseDto,
@@ -71,6 +72,18 @@ export class FleetExpenseMapper {
     dto.voidReason = m.voidReason;
     dto.voidedAt = m.voidedAt;
     dto.createdAt = m.createdAt;
+    return dto;
+  }
+
+  static trafficFineV2(m: TrafficFine): TrafficFineV2ResponseDto {
+    const dto = Object.assign(
+      new TrafficFineV2ResponseDto(),
+      FleetExpenseMapper.trafficFine(m),
+    );
+    dto.paymentUrl = m.paymentUrl;
+    dto.paymentCode = m.paymentCode;
+    dto.operationNumber = m.operationNumber;
+    dto.receiptAttachmentId = m.receiptAttachmentId;
     return dto;
   }
 

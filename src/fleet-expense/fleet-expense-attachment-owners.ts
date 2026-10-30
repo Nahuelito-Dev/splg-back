@@ -73,6 +73,33 @@ export class TrafficFineAttachmentOwnerResolver
   }
 }
 
+/** Dueño `traffic_fine_payment` de los adjuntos (el comprobante de pago de la multa). Entra sólo por `POST /traffic-fines/:id/receipt`. */
+@Injectable()
+export class TrafficFinePaymentAttachmentOwnerResolver
+  implements AttachmentOwnerResolver, OnModuleInit
+{
+  readonly ownerType = AttachmentOwnerType.TRAFFIC_FINE_PAYMENT;
+
+  constructor(
+    @InjectRepository(TrafficFine)
+    private readonly fines: Repository<TrafficFine>,
+    private readonly registry: AttachmentOwnerRegistry,
+  ) {}
+
+  onModuleInit(): void {
+    this.registry.register(this);
+  }
+
+  async assertOwner(ownerId: string, distributorId: string): Promise<void> {
+    const existe = await this.fines.exists({
+      where: { fineId: ownerId, distributorId },
+    });
+    if (!existe) {
+      throw new NotFoundException(`Multa ${ownerId} no encontrada`);
+    }
+  }
+}
+
 /** Dueño `vehicle_accident` de los adjuntos (fotos, denuncia). El chofer accede a los que reportó él. */
 @Injectable()
 export class VehicleAccidentAttachmentOwnerResolver

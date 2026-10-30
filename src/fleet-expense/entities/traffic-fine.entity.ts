@@ -15,6 +15,7 @@ import { Car } from '../../car/entities/car.entity';
 import { Employee } from '../../employee/entities/employee.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { CashMovement } from '../../cash/entities/cash-movement.entity';
+import { Attachment } from '../../attachment/entities/attachment.entity';
 
 /** Ciclo de la multa: pendiente, apelada, pagada o anulada. Pagada y anulada no vuelven atrás. */
 export enum TrafficFineStatus {
@@ -44,6 +45,23 @@ export enum TrafficFineStatus {
 @Check(
   'CHK_traffic_fine_anulada_fecha',
   `"status" <> 'voided' OR "voided_at" IS NOT NULL`,
+)
+@Check(
+  'CHK_traffic_fine_enlace_de_pago',
+  `"payment_url" IS NULL OR ("payment_url" ~ '^https://[^[:space:]]+$' AND char_length("payment_url") <= 500)`,
+)
+@Check(
+  'CHK_traffic_fine_comprobante_de_pago',
+  `("receipt_attachment_id" IS NULL AND "operation_number" IS NULL) OR ("status" = 'paid' AND "receipt_attachment_id" IS NOT NULL AND "cash_movement_id" IS NOT NULL)`,
+)
+@ForeignKey(
+  () => Attachment,
+  ['receipt_attachment_id', 'distributor_id'],
+  ['attachment_id', 'distributor_id'],
+  {
+    name: 'FK_traffic_fine_receipt_attachment_distribuidora',
+    onDelete: 'NO ACTION',
+  },
 )
 @ForeignKey(
   () => CashMovement,
@@ -158,6 +176,31 @@ export class TrafficFine {
   @Column({ name: 'cash_movement_id', type: 'uuid', nullable: true })
   cashMovementId!: string | null;
 
+  /** Enlace de pago (https): portal del municipio o Mercado Pago. */
+  @Column({ name: 'payment_url', type: 'varchar', length: 500, nullable: true })
+  paymentUrl!: string | null;
+
+  /** Código de pago o de barras que el portal pide al pagar. */
+  @Column({ name: 'payment_code', type: 'varchar', length: 80, nullable: true })
+  paymentCode!: string | null;
+
+  /** Número de operación del comprobante; sólo en una multa pagada con comprobante. */
+  @Column({
+    name: 'operation_number',
+    type: 'varchar',
+    length: 60,
+    nullable: true,
+  })
+  operationNumber!: string | null;
+
+  /** Comprobante subido al pagar (adjunto de la multa). Las pagadas por la v1 no lo tienen. */
+  @ForeignKey('attachment', {
+    name: 'FK_traffic_fine_receipt_attachment',
+    onDelete: 'RESTRICT',
+  })
+  @Column({ name: 'receipt_attachment_id', type: 'uuid', nullable: true })
+  receiptAttachmentId!: string | null;
+
   /** Imputada al chofer (CU-200): la asume el empleado y no cuenta como costo del vehículo. */
   @Column({ name: 'charged_to_employee', type: 'boolean', default: false })
   chargedToEmployee!: boolean;
@@ -168,7 +211,7 @@ export class TrafficFine {
   @Column({ name: 'voided_at', type: 'timestamptz', nullable: true })
   voidedAt!: Date | null;
 
-  /** Cuándo se avisó el vencimiento (CU-326); `null` = sin avisar. */
+  /** Marca de las multas que el aviso por correo anterior ya avisó: la bandeja no las repite. Un vencimiento nuevo la limpia. */
   @Column({ name: 'alerted_at', type: 'timestamptz', nullable: true })
   alertedAt!: Date | null;
 

@@ -24,12 +24,14 @@ import {
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import {
   ChargeTrafficFineDto,
-  CreateTrafficFineDto,
   PayTrafficFineDto,
   QueryTrafficFineDto,
-  UpdateTrafficFineDto,
   VoidTrafficFineDto,
 } from './dto/traffic-fine.dto';
+import {
+  CreateTrafficFineV2Dto,
+  UpdateTrafficFineV2Dto,
+} from './dto/traffic-fine-v2.dto';
 import { multaAbierta } from './domain/estados';
 import { rangoDeFiltros } from './domain/rango';
 import { DriverContextService } from './driver-context.service';
@@ -61,7 +63,7 @@ export class TrafficFineService {
 
   /** CU-198: nace pendiente; el responsable se deduce de quién tenía el vehículo en uso en la infracción. */
   async registrar(
-    dto: CreateTrafficFineDto,
+    dto: CreateTrafficFineV2Dto,
     distributorId: string,
   ): Promise<TrafficFine> {
     await this.cars.findOne(dto.carId, distributorId); // 404 «Vehículo … no encontrado»
@@ -102,6 +104,8 @@ export class TrafficFineService {
           amount: dto.amount,
           voluntaryPaymentAmount: dto.voluntaryPaymentAmount ?? null,
           dueDate: dto.dueDate ?? null,
+          paymentUrl: dto.paymentUrl ?? null,
+          paymentCode: dto.paymentCode ?? null,
           status: TrafficFineStatus.PENDING,
         }),
       );
@@ -114,7 +118,7 @@ export class TrafficFineService {
   /** CU-323: corrige los datos o la pasa a apelada. */
   async modificar(
     id: string,
-    dto: UpdateTrafficFineDto,
+    dto: UpdateTrafficFineV2Dto,
     distributorId: string,
   ): Promise<TrafficFine> {
     return this.mutar(id, distributorId, async (manager, multa) => {
@@ -163,9 +167,11 @@ export class TrafficFineService {
           amount: dto.amount,
           voluntaryPaymentAmount: dto.voluntaryPaymentAmount,
           dueDate: dto.dueDate,
+          paymentUrl: dto.paymentUrl,
+          paymentCode: dto.paymentCode,
         }),
       );
-      // Una fecha de vencimiento nueva vuelve a entrar en el aviso diario.
+      // Un vencimiento nuevo vuelve a entrar en los avisos.
       if (venceOtroDia) multa.alertedAt = null;
     });
   }

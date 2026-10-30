@@ -49,13 +49,25 @@ export const OWNER_TYPES_DEL_CHOFER: readonly AttachmentOwnerType[] = [
  * `/attachments` no los sube ni los da de baja.
  */
 export const OWNER_TYPES_SOLO_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
-  [AttachmentOwnerType.INSURANCE_INSTALLMENT];
+  [
+    AttachmentOwnerType.INSURANCE_INSTALLMENT,
+    AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
+  ];
+
+/** El endpoint de cada uno de esos dueños, para el mensaje de 400. */
+const ENDPOINT_DEL_DUENO: Readonly<
+  Partial<Record<AttachmentOwnerType, string>>
+> = {
+  [AttachmentOwnerType.INSURANCE_INSTALLMENT]:
+    'POST /insurance-installments/:id/receipt',
+  [AttachmentOwnerType.TRAFFIC_FINE_PAYMENT]: 'POST /traffic-fines/:id/receipt',
+};
 
 /** Mensaje de 400 del endpoint genérico para esos dueños. */
 export function mensajeSoloPorSuEndpoint(
   ownerType: AttachmentOwnerType,
 ): string {
-  return `Los adjuntos de "${ownerType}" no se suben ni se dan de baja por /attachments: usá el endpoint de su módulo (POST /insurance-installments/:id/receipt)`;
+  return `Los adjuntos de "${ownerType}" no se suben ni se dan de baja por /attachments: usá el endpoint de su módulo (${ENDPOINT_DEL_DUENO[ownerType] ?? 'el de su módulo'})`;
 }
 
 /** Trabajo extra que corre en la MISMA transacción que guarda el adjunto. */

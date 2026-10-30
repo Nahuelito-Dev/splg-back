@@ -1,28 +1,46 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AdminService } from '../admin/admin.service';
-import { escaparHtml } from '../common/utils/html.util';
 import { errorMessage } from '../common/errors/error-message';
-import { diaArgentino, ZONA_ARGENTINA } from '../common/utils/dias-argentina';
-import { EmailSenderPort } from '../email/ports/email-sender.port';
+import { pedirAvisoAlAdmin } from '../common/events/aviso-al-admin';
+import {
+  diaArgentino,
+  minutosDelDiaArgentino,
+  sumarDias,
+  ZONA_ARGENTINA,
+} from '../common/utils/dias-argentina';
+import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
 import { TrafficFine, TrafficFineStatus } from './entities/traffic-fine.entity';
 
 /** Se avisan las multas que vencen en esta cantidad de días o menos, y las ya vencidas. */
-export const DIAS_DE_ANTICIPACION_DE_MULTAS = 7;
+export const DIAS_DE_ANTICIPACION_DE_MULTAS = 5;
+
+/** Las vencidas hace más que esto ya no se avisan: es historia, no una alerta. */
+export const DIAS_DE_VENCIDA_QUE_SE_AVISAN = 30;
+
+/** `2026-11-22` → `22/11/2026`. */
+function fechaCorta(dia: string): string {
+  const [anio, mes, d] = dia.split('-');
+  return `${d}/${mes}/${anio}`;
+}
+
+function importe(n: number): string {
+  return `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 /**
- * CU-326: cada día a las 8 (hora argentina) avisa por correo a los
- * administradores de cada distribuidora las multas pendientes que vencen en
- * siete días o menos, o ya vencieron, y marca cada una como avisada para no
- * repetir. Misma mecánica que el aviso de vencimientos de flota (CU-142).
+ * CU-326: una vez por día, a la hora del aviso de flota de cada distribuidora
+ * (el tic es de una hora), avisa por la bandeja del admin —y por mail— las
+ * multas pendientes que vencen en cinco días o menos (`traffic_fine_due`) o ya
+ * vencieron sin pagar (`traffic_fine_overdue`). La clave de cada aviso lleva la
+ * multa, el tipo y el vencimiento: la bandeja no repite el aviso, y si se corrige
+ * la fecha la multa vuelve a avisar.
  *
- * Sólo se avisan las `pending`: el CUE habla de «multas pendientes», y una
- * apelada está en discusión (si la apelación se rechaza, se corrige la fecha y
- * vuelve a entrar). El envío es por destinatario: si al menos uno salió se
- * marca (los fallidos se registran); si no salió ninguno, se reintenta en la
- * corrida siguiente.
+ * Sólo se avisan las que no tienen `alerted_at` (las que ya avisó el correo anterior no se repiten) y vencieron
+ * hace 30 días o menos. Sólo se avisan las `pending`: una apelada está en discusión (si la apelación
+ * se rechaza, se corrige la fecha y vuelve a entrar).
  */
 @Injectable()
 export class FineDueAlertsCron {
@@ -31,93 +49,68 @@ export class FineDueAlertsCron {
   constructor(
     @InjectRepository(TrafficFine)
     private readonly fines: Repository<TrafficFine>,
-    private readonly admins: AdminService,
-    private readonly emailSender: EmailSenderPort,
+    private readonly frecuencias: ScheduledTasksSettingsService,
+    private readonly events: EventEmitter2,
   ) {}
 
-  @Cron('0 8 * * *', { timeZone: ZONA_ARGENTINA })
+  @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
   async avisarMultasPorVencer(ahora: Date = new Date()): Promise<void> {
-    const limite = diaArgentino(
-      new Date(ahora.getTime() + DIAS_DE_ANTICIPACION_DE_MULTAS * 86_400_000),
-    );
+    const hoy = diaArgentino(ahora);
+    const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
     const multas = await this.fines
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.car', 'car')
       .where('m.status = :pendiente', { pendiente: TrafficFineStatus.PENDING })
-      .andWhere('m.alerted_at IS NULL AND m.due_date IS NOT NULL')
-      .andWhere('m.due_date <= :limite', { limite })
+      // Las que el aviso por correo anterior ya avisó (`alerted_at`) no se repiten por la bandeja al desplegar.
+      .andWhere('m.alerted_at IS NULL')
+      .andWhere('m.due_date >= :piso', {
+        piso: sumarDias(hoy, -DIAS_DE_VENCIDA_QUE_SE_AVISAN),
+      })
+      .andWhere('m.due_date <= :limite', {
+        limite: sumarDias(hoy, DIAS_DE_ANTICIPACION_DE_MULTAS),
+      })
       .orderBy('m.due_date', 'ASC')
       .getMany();
 
-    const porDistribuidora = new Map<string, TrafficFine[]>();
+    const habilitadas = new Map<string, boolean>();
     for (const multa of multas) {
-      const lista = porDistribuidora.get(multa.distributorId) ?? [];
-      lista.push(multa);
-      porDistribuidora.set(multa.distributorId, lista);
-    }
-    for (const [distributorId, lista] of porDistribuidora) {
-      await this.avisar(distributorId, lista, ahora);
-    }
-  }
-
-  private async avisar(
-    distributorId: string,
-    multas: TrafficFine[],
-    ahora: Date,
-  ): Promise<void> {
-    try {
-      const admins = await this.admins.findAll(distributorId);
-      const destinatarios = admins
-        .map((a) => a.user?.email)
-        .filter((email): email is string => Boolean(email));
-      if (destinatarios.length > 0) {
-        const html = this.armarHtml(multas);
-        // Un destinatario que falla no frena a los demás.
-        const envios = await Promise.allSettled(
-          destinatarios.map((to) =>
-            this.emailSender.send({
-              to,
-              subject: `Multas por vencer: ${multas.length} pendiente(s)`,
-              html,
-            }),
-          ),
-        );
-        const fallidos = envios.flatMap((envio, i) =>
-          envio.status === 'rejected'
-            ? [`${destinatarios[i]}: ${errorMessage(envio.reason)}`]
-            : [],
-        );
-        if (fallidos.length > 0) {
-          this.logger.error(
-            `No se pudo avisar las multas por vencer de la distribuidora ${distributorId} a: ${fallidos.join('; ')}`,
+      try {
+        let toca = habilitadas.get(multa.distributorId);
+        if (toca === undefined) {
+          toca = await this.frecuencias.esLaHoraDelAvisoDeFlota(
+            multa.distributorId,
+            hora,
           );
+          habilitadas.set(multa.distributorId, toca);
         }
-        // Si no salió ninguno, no se marca: se reintenta en la corrida siguiente.
-        if (fallidos.length === destinatarios.length) return;
+        if (toca) this.avisar(multa, hoy);
+      } catch (error) {
+        this.logger.error(
+          `No se pudo avisar la multa ${multa.fineId}: ${errorMessage(error)}`,
+        );
       }
-      // Sin admins con correo no hay a quién avisar una segunda vez: se marca igual.
-      await this.fines.update(
-        multas.map((m) => m.fineId),
-        { alertedAt: ahora },
-      );
-    } catch (error) {
-      this.logger.error(
-        `No se pudo avisar las multas por vencer de la distribuidora ${distributorId}: ${errorMessage(error)}`,
-      );
     }
   }
 
-  private armarHtml(multas: TrafficFine[]): string {
-    const hoy = diaArgentino();
-    const filas = multas
-      .map((m) => {
-        const vence = m.dueDate ?? '-';
-        const estado =
-          m.dueDate && m.dueDate < hoy ? 'VENCIDA' : `vence ${vence}`;
-        const patente = escaparHtml(m.car?.carPatent ?? m.carId);
-        return `<li>Vehículo ${patente} — acta ${escaparHtml(m.actNumber)} (${escaparHtml(m.jurisdiction)}) — $${escaparHtml(String(m.amount))} — ${escaparHtml(estado)}</li>`;
-      })
-      .join('');
-    return `<p>Estas multas de tránsito necesitan atención:</p><ul>${filas}</ul>`;
+  private avisar(multa: TrafficFine, hoy: string): void {
+    if (!multa.dueDate) return;
+    const vencida = multa.dueDate < hoy;
+    const patente = multa.car?.carPatent ?? multa.carId;
+    // El pago voluntario sólo vale hasta el vencimiento.
+    const voluntario =
+      !vencida && multa.voluntaryPaymentAmount !== null
+        ? ` (con pago voluntario ${importe(multa.voluntaryPaymentAmount)})`
+        : '';
+    pedirAvisoAlAdmin(this.events, this.logger, {
+      distributorId: multa.distributorId,
+      kind: vencida ? 'traffic_fine_overdue' : 'traffic_fine_due',
+      title: vencida
+        ? `Multa vencida sin pagar: ${patente}`
+        : `Multa por vencer: ${patente}`,
+      body: `Acta ${multa.actNumber} (${multa.jurisdiction}) — vehículo ${patente}, ${importe(multa.amount)}${voluntario}, ${vencida ? 'venció' : 'vence'} el ${fechaCorta(multa.dueDate)}.${multa.paymentUrl ? `\nEnlace de pago: ${multa.paymentUrl}` : ''}`,
+      link: { entity: 'traffic-fine', id: multa.fineId },
+      dedupeKey: `traffic-fine:${multa.fineId}:${vencida ? 'overdue' : 'due'}:${multa.dueDate}`,
+      email: true,
+    });
   }
 }
