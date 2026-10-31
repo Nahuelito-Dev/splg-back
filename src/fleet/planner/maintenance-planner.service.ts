@@ -337,6 +337,7 @@ export class MaintenancePlannerService {
     const ctx = {
       planName: caso.task.plan.name,
       patent: caso.car.carPatent ?? '-',
+      projectedDueAt: caso.projectedDueAt,
     };
     if (caso.status === PlanningCaseStatus.ESCALATED) {
       if (caso.escalatedAt && diaArgentino(caso.escalatedAt) === hoy)
@@ -574,6 +575,7 @@ export class MaintenancePlannerService {
       const ctxAviso = {
         planName: task.plan.name,
         patent: car.carPatent ?? '-',
+        projectedDueAt: caso.projectedDueAt,
       };
       if (propuesta && caso.deliveryId) {
         const delivery = await this.deliveries.findOne(caso.deliveryId);
@@ -785,6 +787,7 @@ export class MaintenancePlannerService {
     return {
       planName: task.plan.name,
       patent: task.car?.carPatent ?? '-',
+      projectedDueAt: caso.projectedDueAt,
     };
   }
 

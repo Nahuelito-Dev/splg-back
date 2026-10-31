@@ -122,6 +122,8 @@ describe('MaintenancePlannerMapper', () => {
       patent: 'AB123CD',
       caseStatus: PlanningCaseStatus.NEGOTIATING,
       urgent: false,
+      confirmedStart: null,
+      confirmedEnd: null,
     });
   });
 
@@ -132,11 +134,16 @@ describe('MaintenancePlannerMapper', () => {
       planningCase: {
         status: PlanningCaseStatus.CONFIRMED,
         projectedDueAt: new Date('2026-11-01T03:00:00Z'),
+        chosenStart: new Date('2026-11-04T12:00:00Z'),
+        chosenEnd: new Date('2026-11-04T14:00:00Z'),
       },
     } as unknown as MaintenanceWindowProposal;
     expect(MaintenancePlannerMapper.driverProposal(p)).toMatchObject({
       caseStatus: PlanningCaseStatus.CONFIRMED,
       urgent: true,
+      projectedDueAt: '2026-11-01T03:00:00.000Z',
+      confirmedStart: '2026-11-04T12:00:00.000Z',
+      confirmedEnd: '2026-11-04T14:00:00.000Z',
     });
   });
 

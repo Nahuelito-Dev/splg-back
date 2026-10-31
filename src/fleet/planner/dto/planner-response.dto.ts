@@ -47,6 +47,23 @@ export class DriverProposalResponseDto extends WindowProposalResponseDto {
       'La ventana termina después del vencimiento proyectado: es un turno urgente',
   })
   urgent!: boolean;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    description:
+      'Vencimiento proyectado de la tarea: la ventana alternativa tiene que terminar antes',
+  })
+  projectedDueAt!: string;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Inicio de la ventana que confirmó el administrador (puede no ser la que aceptó el chofer); null si el caso no está confirmado',
+  })
+  confirmedStart!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  confirmedEnd!: string | null;
 }
 
 export class DriverProposalPageDto {
