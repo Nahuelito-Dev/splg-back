@@ -19,6 +19,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
   'CHK_customer_consumo',
   `"avg_monthly_consumption_kg" IS NULL OR "avg_monthly_consumption_kg" > 0`,
 )
+@Check(
+  'CHK_customer_aviso_recompra',
+  `"repurchase_notice_days" IS NULL OR "repurchase_notice_days" BETWEEN 1 AND 30`,
+)
 @Entity('customer')
 export class Customer {
   @PrimaryGeneratedColumn('uuid', { name: 'customer_id' })
@@ -74,13 +78,21 @@ export class Customer {
   @JoinColumn({ name: 'declared_cylinder_type_id' })
   declaredCylinderType?: GasCylinder;
 
+  /** Días de anticipación que eligió el cliente (1 a 30); `null`: rige el valor de la distribuidora (CU-145). */
   @Column({
     name: 'repurchase_notice_days',
     type: 'integer',
     nullable: true,
-    default: 3,
   })
   repurchaseNoticeDays!: number | null;
+
+  /** El cliente pidió no recibir el aviso de recompra (CU-145). */
+  @Column({
+    name: 'repurchase_notice_enabled',
+    type: 'boolean',
+    default: true,
+  })
+  repurchaseNoticeEnabled!: boolean;
 
   @Column({
     name: 'next_repurchase_estimate_at',

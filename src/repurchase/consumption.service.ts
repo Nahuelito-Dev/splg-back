@@ -102,6 +102,33 @@ export class ConsumptionService {
     });
   }
 
+  /**
+   * Un pedido se entregó: la estimación del consumo declarado arranca de esa
+   * compra. Sin consumo declarado no hay nada que recalcular (la estimación
+   * con historial no se guarda: sale de las compras, ver
+   * `RepurchaseEstimatorService`).
+   */
+  async recalcularTrasEntrega(userId: string): Promise<void> {
+    const actual = await this.customers.findOneByUserId(userId);
+    if (
+      actual.avgMonthlyConsumptionKg === null ||
+      actual.declaredCylinderTypeId === null
+    ) {
+      return;
+    }
+    const ultima = await this.pedidos.ultimaCompraEntregada(userId);
+    if (!ultima) return;
+    await this.customers.guardarConsumo(userId, {
+      declaredCylinderTypeId: actual.declaredCylinderTypeId,
+      avgMonthlyConsumptionKg: actual.avgMonthlyConsumptionKg,
+      nextRepurchaseEstimateAt: estimarProximaRecompra(
+        ultima.deliveredAt,
+        ultima.kg,
+        actual.avgMonthlyConsumptionKg,
+      ),
+    });
+  }
+
   /** La ficha del cliente con su consumo declarado. */
   obtener(userId: string): Promise<Customer> {
     return this.customers.findOneByUserId(userId);

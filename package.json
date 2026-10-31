@@ -424,6 +424,12 @@
         "functions": 52,
         "lines": 64
       },
+      "./src/repurchase-forecast/": {
+        "statements": 99,
+        "branches": 84,
+        "functions": 100,
+        "lines": 100
+      },
       "./src/repurchase/": {
         "statements": 91,
         "branches": 84,

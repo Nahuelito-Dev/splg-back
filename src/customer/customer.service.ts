@@ -38,6 +38,29 @@ export interface ConsumoDeclarado {
   nextRepurchaseEstimateAt: Date;
 }
 
+/** Lo que el módulo de recompra necesita de un cliente de la distribuidora. */
+export interface FichaDeRecompra {
+  /** El perfil de cliente (la ficha del panel se abre con él). */
+  customerId: string;
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  phoneNumber: string | null;
+  avgMonthlyConsumptionKg: number | null;
+  declaredCylinderTypeId: string | null;
+  /** Días de anticipación que eligió; `null`: rige el de la distribuidora. */
+  noticeDays: number | null;
+  /** `false`: pidió no recibir el aviso. */
+  noticeEnabled: boolean;
+}
+
+/** Cómo el cliente quiere el aviso de recompra (CU-145). */
+export interface PreferenciaDeAviso {
+  noticeEnabled?: boolean;
+  /** `null` vuelve al valor de la distribuidora. */
+  noticeDays?: number | null;
+}
+
 @Injectable()
 export class CustomersService {
   private readonly logger = new Logger('CustomersService');
@@ -250,6 +273,61 @@ export class CustomersService {
     Object.assign(customer, consumo);
     await this.customerRepository.save(customer);
     return this.findOneByUserId(userId);
+  }
+
+  /**
+   * Los clientes de la distribuidora con lo que usa la recompra: consumo
+   * declarado y preferencia de aviso (CU-145). Sin los bloqueados ni los que la
+   * distribuidora dio de baja. Con `userIds`, sólo esos.
+   */
+  async fichasDeRecompra(
+    distributorId: string,
+    userIds?: readonly string[],
+  ): Promise<FichaDeRecompra[]> {
+    if (userIds && userIds.length === 0) return [];
+    const qb = this.customerRepository
+      .createQueryBuilder('customer')
+      .innerJoinAndSelect('customer.user', 'user')
+      .where('user.blocked = false')
+      .andWhere(clienteDeLaDistribuidora('customer.userId'), { distributorId });
+    if (userIds) qb.andWhere('customer.userId IN (:...userIds)', { userIds });
+    const clientes = await qb.getMany();
+    return clientes.map((c) => ({
+      customerId: c.customerId,
+      userId: c.userId,
+      fullName: c.user.fullName ?? null,
+      email: c.user.email ?? null,
+      phoneNumber: c.user.phoneNumber ?? null,
+      avgMonthlyConsumptionKg: c.avgMonthlyConsumptionKg,
+      declaredCylinderTypeId: c.declaredCylinderTypeId,
+      noticeDays: c.repurchaseNoticeDays,
+      noticeEnabled: c.repurchaseNoticeEnabled,
+    }));
+  }
+
+  /**
+   * CU-145. Guarda cómo quiere el cliente el aviso de recompra: activado o no,
+   * y con cuántos días de anticipación (o los de la distribuidora). Sólo cambia
+   * lo que viene.
+   */
+  async guardarAvisoDeRecompra(
+    userId: string,
+    preferencia: PreferenciaDeAviso,
+  ): Promise<Customer> {
+    const customer = await this.customerRepository.findOne({
+      where: { userId },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Customer for user ID: ${userId} not found`);
+    }
+    if (preferencia.noticeEnabled !== undefined) {
+      customer.repurchaseNoticeEnabled = preferencia.noticeEnabled;
+    }
+    if (preferencia.noticeDays !== undefined) {
+      customer.repurchaseNoticeDays = preferencia.noticeDays;
+    }
+    await this.customerRepository.save(customer);
+    return customer;
   }
 
   /**

@@ -3,6 +3,7 @@ import { CustomersModule } from '../customer/customer.module';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { ConsumptionController } from './consumption.controller';
+import { ConsumptionDeliveredListener } from './consumption-delivered.listener';
 import { ConsumptionService } from './consumption.service';
 
 /**
@@ -12,7 +13,7 @@ import { ConsumptionService } from './consumption.service';
 @Module({
   imports: [CustomersModule, GasCylinderModule, OrderLookupModule],
   controllers: [ConsumptionController],
-  providers: [ConsumptionService],
+  providers: [ConsumptionService, ConsumptionDeliveredListener],
   exports: [ConsumptionService],
 })
 export class RepurchaseModule {}

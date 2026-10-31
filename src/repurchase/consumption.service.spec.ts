@@ -217,4 +217,45 @@ describe('ConsumptionService', () => {
     await service.obtener('u1');
     expect(customers.findOneByUserId).toHaveBeenCalledWith('u1');
   });
+
+  describe('recalcularTrasEntrega', () => {
+    const declarado = {
+      declaredCylinderTypeId: 'g10',
+      avgMonthlyConsumptionKg: 30,
+    } as Customer;
+
+    it('arranca la estimación del consumo declarado desde la compra entregada', async () => {
+      customers.findOneByUserId.mockResolvedValue(declarado);
+      pedidos.ultimaCompraEntregada.mockResolvedValue({
+        deliveredAt: new Date('2026-10-01T00:00:00.000Z'),
+        kg: 10,
+      });
+
+      await service.recalcularTrasEntrega('u1');
+
+      // 10 kg a 30 kg por mes: 10 días.
+      expect(customers.guardarConsumo).toHaveBeenCalledWith('u1', {
+        declaredCylinderTypeId: 'g10',
+        avgMonthlyConsumptionKg: 30,
+        nextRepurchaseEstimateAt: new Date('2026-10-11T00:00:00.000Z'),
+      });
+    });
+
+    it('sin consumo declarado no hay nada que recalcular', async () => {
+      customers.findOneByUserId.mockResolvedValue({
+        declaredCylinderTypeId: null,
+        avgMonthlyConsumptionKg: null,
+      } as Customer);
+      await service.recalcularTrasEntrega('u1');
+      expect(pedidos.ultimaCompraEntregada).not.toHaveBeenCalled();
+      expect(customers.guardarConsumo).not.toHaveBeenCalled();
+    });
+
+    it('sin compras entregadas deja la estimación como está', async () => {
+      customers.findOneByUserId.mockResolvedValue(declarado);
+      pedidos.ultimaCompraEntregada.mockResolvedValue(null);
+      await service.recalcularTrasEntrega('u1');
+      expect(customers.guardarConsumo).not.toHaveBeenCalled();
+    });
+  });
 });

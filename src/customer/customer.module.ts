@@ -5,15 +5,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Customer } from './entities/customer.entity';
 import { UsersModule } from '../users/users.module';
 import { CustomerDistributor } from './entities/customer-distributor.entity';
-import { RepurchaseInvitation } from './entities/repurchase-invitation.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Customer,
-      RepurchaseInvitation,
-      CustomerDistributor,
-    ]),
+    TypeOrmModule.forFeature([Customer, CustomerDistributor]),
     UsersModule,
   ],
   controllers: [CustomersController],

@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, FindOptionsWhere, In, Not, Repository } from 'typeorm';
+import {
+  EntityManager,
+  FindOptionsWhere,
+  In,
+  MoreThanOrEqual,
+  Not,
+  Repository,
+} from 'typeorm';
 import {
   Order,
   OrderStatus,
@@ -36,6 +43,17 @@ export interface OrderRefundRef {
   status: OrderStatus;
   expressSurchargeAmount: number;
   expressDegradedAt: Date | null;
+}
+
+/** Una compra entregada de un cliente, con lo que llevaba: la base de la estimación de recompra. */
+export interface CompraEntregadaRef {
+  orderId: string;
+  customerId: string;
+  deliveredAt: Date;
+  addressId: string;
+  timeSlotId: string | null;
+  paymentMethod: PaymentMethod;
+  items: Array<{ gasCylinderId: string; quantity: number; weightKg: number }>;
 }
 
 /**
@@ -390,5 +408,119 @@ export class OrderLookupService {
       )
       .toNumber();
     return { deliveredAt: pedido.deliveredAt, kg };
+  }
+  /**
+   * Los pedidos entregados por la distribuidora desde `desde` (inclusive), con
+   * sus renglones y el peso de cada garrafa, del más viejo al más nuevo. Con
+   * `customerId` sólo los de ese cliente. Para estimar cuándo se le acaba el gas.
+   */
+  async comprasEntregadas(
+    distributorId: string,
+    desde: Date,
+    customerId?: string,
+  ): Promise<CompraEntregadaRef[]> {
+    const consulta = this.orderRepository.manager
+      .createQueryBuilder(OrderItem, 'item')
+      .innerJoin('item.order', 'ord')
+      .innerJoin('item.gasCylinder', 'gc')
+      .select('ord.orderId', 'orderId')
+      .addSelect('ord.customerId', 'customerId')
+      .addSelect('ord.deliveredAt', 'deliveredAt')
+      .addSelect('ord.addressId', 'addressId')
+      .addSelect('ord.timeSlotId', 'timeSlotId')
+      .addSelect('ord.paymentMethod', 'paymentMethod')
+      .addSelect('item.gasCylinderId', 'gasCylinderId')
+      .addSelect('item.quantity', 'quantity')
+      .addSelect('gc.weight', 'weight')
+      .where('ord.distributorId = :distributorId', { distributorId })
+      .andWhere('ord.status = :entregado', { entregado: OrderStatus.DELIVERED })
+      .andWhere('ord.deliveredAt >= :desde', { desde });
+    if (customerId)
+      consulta.andWhere('ord.customerId = :customerId', { customerId });
+    const filas = await consulta
+      .orderBy('ord.deliveredAt', 'ASC')
+      .addOrderBy('ord.orderId', 'ASC')
+      .getRawMany<{
+        orderId: string;
+        customerId: string;
+        deliveredAt: Date;
+        addressId: string;
+        timeSlotId: string | null;
+        paymentMethod: PaymentMethod;
+        gasCylinderId: string;
+        quantity: number;
+        weight: string;
+      }>();
+    const porPedido = new Map<string, CompraEntregadaRef>();
+    for (const f of filas) {
+      let compra = porPedido.get(f.orderId);
+      if (!compra) {
+        compra = {
+          orderId: f.orderId,
+          customerId: f.customerId,
+          deliveredAt: f.deliveredAt,
+          addressId: f.addressId,
+          timeSlotId: f.timeSlotId,
+          paymentMethod: f.paymentMethod,
+          items: [],
+        };
+        porPedido.set(f.orderId, compra);
+      }
+      compra.items.push({
+        gasCylinderId: f.gasCylinderId,
+        quantity: Number(f.quantity),
+        weightKg: Number(f.weight),
+      });
+    }
+    return [...porPedido.values()];
+  }
+
+  /**
+   * Los clientes de la distribuidora con un pedido abierto (reservado,
+   * pendiente, aceptado o en camino) o hecho desde `creadoDesde` sin cancelar:
+   * a ellos no se les ofrece reponer.
+   */
+  async clientesConPedidoVigente(
+    distributorId: string,
+    creadoDesde: Date,
+  ): Promise<Set<string>> {
+    const filas = await this.orderRepository
+      .createQueryBuilder('ord')
+      .select('DISTINCT ord.customerId', 'customerId')
+      .where('ord.distributorId = :distributorId', { distributorId })
+      .andWhere(
+        '(ord.status IN (:...abiertos) OR (ord.status != :cancelado AND ord.createdAt >= :creadoDesde))',
+        {
+          abiertos: [
+            OrderStatus.RESERVED,
+            OrderStatus.PENDING,
+            OrderStatus.ACCEPTED,
+            OrderStatus.ON_THE_WAY,
+          ],
+          cancelado: OrderStatus.CANCELLED,
+          creadoDesde,
+        },
+      )
+      .getRawMany<{ customerId: string }>();
+    return new Set(filas.map((f) => f.customerId));
+  }
+
+  /**
+   * ¿El cliente hizo algún pedido en la distribuidora desde `desde` sin
+   * cancelarlo? Para cerrar una invitación a la que se le adelantó.
+   */
+  async hayPedidoDesde(
+    distributorId: string,
+    customerId: string,
+    desde: Date,
+  ): Promise<boolean> {
+    return this.orderRepository.exists({
+      where: {
+        distributorId,
+        customerId,
+        status: Not(OrderStatus.CANCELLED),
+        createdAt: MoreThanOrEqual(desde),
+      },
+    });
   }
 }
