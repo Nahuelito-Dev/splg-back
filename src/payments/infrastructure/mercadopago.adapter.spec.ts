@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { MercadoPagoConfig } from 'mercadopago';
 import { MercadoPagoCredentialsService } from '../../distributor/mercadopago-credentials.service';
-import { MercadoPagoAdapter } from './mercadopago.adapter';
+import { fechaDeMercadoPago, MercadoPagoAdapter } from './mercadopago.adapter';
 
 const crearReintegro = jest.fn();
 const obtenerPago = jest.fn();
@@ -93,6 +93,47 @@ describe('MercadoPagoAdapter (SDK simulado)', () => {
     expect(cuerpoDeLaPreferencia().notification_url).toBe(
       'https://api.splg.test/api/webhook/mercadopago',
     );
+  });
+
+  describe('vencimiento de la preferencia', () => {
+    const crear = async (
+      expiresAt?: Date,
+    ): Promise<Record<string, unknown>> => {
+      crearPreferencia.mockResolvedValue({
+        id: 'p1',
+        init_point: 'https://mp/1',
+      });
+      await adapter.createCheckout({
+        orderId: 'o1',
+        items: [{ id: 'i', title: 't', quantity: 1, unitPrice: 10 }],
+        payerEmail: 'a@b.c',
+        expiresAt,
+      });
+      return (
+        crearPreferencia.mock.calls[0] as [{ body: Record<string, unknown> }]
+      )[0].body;
+    };
+
+    it('con vencimiento la preferencia sale con expires y expiration_date_to en hora argentina', async () => {
+      const body = await crear(new Date('2026-10-31T15:30:00.000Z'));
+      expect(body.expires).toBe(true);
+      expect(body.expiration_date_to).toBe('2026-10-31T12:30:00.000-03:00');
+      expect(body.expiration_date_from).toEqual(
+        expect.stringMatching(/-03:00$/),
+      );
+    });
+
+    it('sin vencimiento no se manda ninguna fecha', async () => {
+      const body = await crear();
+      expect(body).not.toHaveProperty('expires');
+      expect(body).not.toHaveProperty('expiration_date_to');
+    });
+
+    it('fechaDeMercadoPago cruza el día: 01:00 UTC es el día anterior a las 22:00 -03:00', () => {
+      expect(fechaDeMercadoPago(new Date('2026-11-01T01:00:00.000Z'))).toBe(
+        '2026-10-31T22:00:00.000-03:00',
+      );
+    });
   });
 
   it('con cuenta propia el checkout usa su token y marca la cuenta en la notification_url', async () => {

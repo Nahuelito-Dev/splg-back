@@ -39,6 +39,7 @@ describe('ConfirmPaymentUseCase', () => {
   let dispatch: { notifyCustomer: jest.Mock };
   let notifications: { sendPaymentApprovedPush: jest.Mock };
   let refunds: { reintegrarPorCancelacion: jest.Mock };
+  let events: { emit: jest.Mock };
 
   const fullOrder = {
     orderId: 'ord-1',
@@ -82,6 +83,7 @@ describe('ConfirmPaymentUseCase', () => {
 
     dispatch = { notifyCustomer: jest.fn() };
     refunds = { reintegrarPorCancelacion: jest.fn().mockResolvedValue([]) };
+    events = { emit: jest.fn() };
     notifications = {
       sendPaymentApprovedPush: jest.fn().mockResolvedValue(undefined),
     };
@@ -94,6 +96,7 @@ describe('ConfirmPaymentUseCase', () => {
       dispatch as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
       notifications as unknown as import('../domain/ports/notification.port').NotificationPort,
       refunds as unknown as import('../../payments/application/refunds.service').RefundsService,
+      events as unknown as import('@nestjs/event-emitter').EventEmitter2,
     );
   });
 
@@ -349,18 +352,151 @@ describe('ConfirmPaymentUseCase', () => {
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
   });
 
-  it('rejected: no despacha ni marca como pagado', async () => {
-    paymentsService.confirmFromGateway.mockResolvedValue({
+  describe('pago rechazado o cancelado en Mercado Pago', () => {
+    const rechazado = (status: string, isDeposit = false) => ({
       externalReference: 'ord-1',
       gatewayPaymentId: 'pay-1',
-      status: 'rejected',
-      isDeposit: false,
+      status,
+      isDeposit,
     });
 
-    await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+    beforeEach(() => {
+      lockedOrder.status = OrderStatus.PENDING;
+      lockedOrder.customerId = 'cus-1';
+      orders.findByIdFull.mockResolvedValue({
+        ...fullOrder,
+        customerId: 'cus-1',
+      });
+    });
 
-    expect(queryRunner.manager.save).not.toHaveBeenCalled();
-    expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+    it.each(['rejected', 'cancelled'])(
+      '%s: el pedido queda con el pago fallido, sin despachar, sin gatewayPaymentId y avisa al cliente',
+      async (status) => {
+        paymentsService.confirmFromGateway.mockResolvedValue(rechazado(status));
+
+        await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+        expect(lockedOrder.paymentStatus).toBe(PaymentStatus.FAILED);
+        expect(lockedOrder.gatewayPaymentId).toBeNull();
+        expect(lockedOrder.status).toBe(OrderStatus.PENDING);
+        expect(queryRunner.manager.save).toHaveBeenCalledTimes(1);
+        expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+        expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+          'cus-1',
+          'order:payment-rejected',
+          expect.objectContaining({
+            orderId: 'ord-1',
+            paymentStatus: PaymentStatus.FAILED,
+          }),
+        );
+      },
+    );
+
+    it('un rechazo atrasado no pisa un pedido ya pagado', async () => {
+      lockedOrder.paymentStatus = PaymentStatus.PAID;
+      paymentsService.confirmFromGateway.mockResolvedValue(
+        rechazado('rejected'),
+      );
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+      expect(lockedOrder.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+    });
+
+    it('no toca un pedido ya cancelado', async () => {
+      lockedOrder.status = OrderStatus.CANCELLED;
+      paymentsService.confirmFromGateway.mockResolvedValue(
+        rechazado('rejected'),
+      );
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('la seña rechazada de una reserva no cambia el pedido', async () => {
+      lockedOrder.status = OrderStatus.RESERVED;
+      paymentsService.confirmFromGateway.mockResolvedValue(
+        rechazado('rejected', true),
+      );
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+      expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+      expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+    });
+
+    it('después de un rechazo, un reintento aprobado lo pasa a pagado y despacha', async () => {
+      lockedOrder.paymentStatus = PaymentStatus.FAILED;
+      paymentsService.confirmFromGateway.mockResolvedValue({
+        ...rechazado('approved'),
+        gatewayPaymentId: 'pay-2',
+      });
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-2' });
+
+      expect(lockedOrder.paymentStatus).toBe(PaymentStatus.PAID);
+      expect(lockedOrder.gatewayPaymentId).toBe('pay-2');
+      expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('devolución hecha por Mercado Pago', () => {
+    const devuelto = (contracargo: boolean) => ({
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: contracargo ? 'charged_back' : 'refunded',
+      isDeposit: false,
+      devolucionExterna: { contracargo },
+    });
+
+    beforeEach(() => {
+      orders.findByIdFull.mockResolvedValue({
+        ...fullOrder,
+        distributorId: 'dist-1',
+      });
+    });
+
+    it.each([
+      [false, 'payment_refunded'],
+      [true, 'payment_chargeback'],
+    ])(
+      'avisa al administrador sin tocar el pedido (contracargo=%s)',
+      async (contracargo, kind) => {
+        paymentsService.confirmFromGateway.mockResolvedValue(
+          devuelto(contracargo),
+        );
+
+        await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+        expect(events.emit).toHaveBeenCalledWith(
+          'admin.notificar',
+          expect.objectContaining({
+            distributorId: 'dist-1',
+            kind,
+            link: { entity: 'order', id: 'ord-1' },
+          }),
+        );
+        expect(queryRunner.manager.save).not.toHaveBeenCalled();
+        expect(refunds.reintegrarPorCancelacion).not.toHaveBeenCalled();
+        expect(dispatchOrchestrator.offerToNextDriver).not.toHaveBeenCalled();
+      },
+    );
+
+    it('una devolución que el sistema ya hizo (sin devolucionExterna) no avisa', async () => {
+      paymentsService.confirmFromGateway.mockResolvedValue({
+        externalReference: 'ord-1',
+        gatewayPaymentId: 'pay-1',
+        status: 'refunded',
+        isDeposit: false,
+      });
+
+      await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+      expect(events.emit).not.toHaveBeenCalled();
+    });
   });
 
   it('pedido inexistente (external_reference huérfano): no revienta, no despacha', async () => {

@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import type { SalesCashService } from '../../cash/application/sales-cash.service';
 import Decimal from 'decimal.js';
 import { DataSource, Repository } from 'typeorm';
@@ -123,12 +124,18 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
         findPaymentState: jest.fn().mockResolvedValue({
           status: OrderStatus.PENDING,
           paymentStatus: PaymentStatus.PENDING,
+          createdAt: new Date(),
         }),
       } as unknown as OrderLookupService,
       {
         asentarCobroDeMercadoPago: jest.fn().mockResolvedValue('sin_caja'),
         avisarSinAsentar: jest.fn(),
       } as unknown as SalesCashService,
+      {
+        getOrThrow: (clave: string) =>
+          clave === 'RESERVATION_DEPOSIT_TTL_HOURS' ? 48 : 60,
+      } as unknown as ConfigService,
+      { emit: jest.fn() } as never,
     );
 
     const queryRunner = {
@@ -221,6 +228,7 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
         sendPaymentApprovedPush: jest.fn().mockResolvedValue(undefined),
       } as never,
       { reintegrarPorCancelacion: jest.fn() } as unknown as RefundsService,
+      { emit: jest.fn() } as never,
     );
   });
 
