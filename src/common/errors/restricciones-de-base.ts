@@ -193,6 +193,12 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   // Personas
   CHK_delivery_calificacion: 'La calificación va de 0 a 5',
   CHK_customer_consumo: 'El consumo mensual tiene que ser mayor a 0',
+  CHK_customer_aviso_recompra:
+    'Los días de aviso de recompra tienen que estar entre 1 y 30',
+  CHK_module_config_recompra:
+    'Algún parámetro de la recompra anticipada está fuera de su rango',
+  UQ_repurchase_invitation_abierta:
+    'El cliente ya tiene una invitación de recompra abierta',
   CHK_employee_nacimiento:
     'La fecha de nacimiento tiene que ser anterior a la de ingreso',
   CHK_employee_cuil: 'El CUIL no es válido',

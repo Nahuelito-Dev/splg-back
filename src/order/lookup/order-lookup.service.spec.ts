@@ -137,3 +137,148 @@ describe('OrderLookupService.findParaDespacho', () => {
     expect(opciones).not.toHaveProperty('lock');
   });
 });
+
+describe('OrderLookupService (recompra)', () => {
+  const DESDE = new Date('2026-10-01T00:00:00.000Z');
+
+  /** Un query builder que devuelve `filas` y deja registrada cada llamada. */
+  const armarQb = (filas: unknown[]) => {
+    const llamadas: Array<[string, unknown[]]> = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const m of [
+      'innerJoin',
+      'select',
+      'addSelect',
+      'where',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+    ]) {
+      qb[m] = jest.fn().mockImplementation((...a: unknown[]) => {
+        llamadas.push([m, a]);
+        return qb;
+      });
+    }
+    qb.getRawMany = jest.fn().mockResolvedValue(filas);
+    return { qb, llamadas };
+  };
+
+  describe('comprasEntregadas', () => {
+    const fila = (
+      orderId: string,
+      gasCylinderId: string,
+      quantity: number,
+    ) => ({
+      orderId,
+      customerId: 'u1',
+      deliveredAt: new Date('2026-10-05T12:00:00Z'),
+      addressId: 'a1',
+      timeSlotId: null,
+      paymentMethod: 'cash',
+      gasCylinderId,
+      quantity,
+      weight: '10.00',
+    });
+
+    it('agrupa los renglones por pedido, con el peso de cada garrafa', async () => {
+      const { qb } = armarQb([
+        fila('o1', 'g10', 2),
+        fila('o1', 'g45', 1),
+        fila('o2', 'g10', 1),
+      ]);
+      const service = new OrderLookupService({
+        manager: { createQueryBuilder: () => qb },
+      } as unknown as Repository<Order>);
+
+      const r = await service.comprasEntregadas('d1', DESDE);
+
+      expect(r.map((c) => c.orderId)).toEqual(['o1', 'o2']);
+      expect(r[0].items).toEqual([
+        { gasCylinderId: 'g10', quantity: 2, weightKg: 10 },
+        { gasCylinderId: 'g45', quantity: 1, weightKg: 10 },
+      ]);
+      expect(r[0]).toMatchObject({ customerId: 'u1', addressId: 'a1' });
+    });
+
+    it('acota por distribuidora, entregados y fecha; con cliente, sólo los suyos', async () => {
+      const { qb, llamadas } = armarQb([]);
+      const service = new OrderLookupService({
+        manager: { createQueryBuilder: () => qb },
+      } as unknown as Repository<Order>);
+
+      await service.comprasEntregadas('d1', DESDE, 'u1');
+
+      const condiciones = llamadas
+        .filter(([m]) => m === 'where' || m === 'andWhere')
+        .map(([, a]) => a[0]);
+      expect(condiciones).toEqual([
+        'ord.distributorId = :distributorId',
+        'ord.status = :entregado',
+        'ord.deliveredAt >= :desde',
+        'ord.customerId = :customerId',
+      ]);
+    });
+
+    it('sin cliente no filtra por cliente', async () => {
+      const { qb, llamadas } = armarQb([]);
+      const service = new OrderLookupService({
+        manager: { createQueryBuilder: () => qb },
+      } as unknown as Repository<Order>);
+      await service.comprasEntregadas('d1', DESDE);
+      expect(
+        llamadas.some(([, a]) => a[0] === 'ord.customerId = :customerId'),
+      ).toBe(false);
+    });
+  });
+
+  it('clientesConPedidoVigente: los abiertos o recientes sin cancelar de la distribuidora', async () => {
+    const { qb, llamadas } = armarQb([
+      { customerId: 'u1' },
+      { customerId: 'u2' },
+    ]);
+    const service = new OrderLookupService({
+      createQueryBuilder: () => qb,
+    } as unknown as Repository<Order>);
+
+    const r = await service.clientesConPedidoVigente('d1', DESDE);
+
+    expect([...r]).toEqual(['u1', 'u2']);
+    expect(llamadas).toContainEqual([
+      'where',
+      ['ord.distributorId = :distributorId', { distributorId: 'd1' }],
+    ]);
+    const [, [texto, params]] = llamadas.find(([m]) => m === 'andWhere') as [
+      string,
+      [string, Record<string, unknown>],
+    ];
+    expect(texto).toContain('ord.status != :cancelado');
+    expect(params).toMatchObject({
+      cancelado: OrderStatus.CANCELLED,
+      creadoDesde: DESDE,
+      abiertos: [
+        OrderStatus.RESERVED,
+        OrderStatus.PENDING,
+        OrderStatus.ACCEPTED,
+        OrderStatus.ON_THE_WAY,
+      ],
+    });
+  });
+
+  it('hayPedidoDesde: un pedido del cliente en la distribuidora, no cancelado, desde esa fecha', async () => {
+    const exists = jest.fn().mockResolvedValue(true);
+    const service = new OrderLookupService({
+      exists,
+    } as unknown as Repository<Order>);
+
+    await expect(service.hayPedidoDesde('d1', 'u1', DESDE)).resolves.toBe(true);
+
+    const { where } = (
+      exists.mock.calls as Array<[{ where: object }]>
+    )[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(where).toMatchObject({ distributorId: 'd1', customerId: 'u1' });
+    expect(where).toHaveProperty('status');
+    expect(where).toHaveProperty('createdAt');
+  });
+});

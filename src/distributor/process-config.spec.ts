@@ -197,4 +197,21 @@ describe('process-config', () => {
       }),
     ).toBe(false);
   });
+
+  describe('recompra anticipada (CU-106): interruptor y horario', () => {
+    it('viene apagada: enabled vale 0 por omisión y sólo admite 0 o 1', () => {
+      expect(valoresPorOmision(REPURCHASE).enabled).toBe(0);
+      expect(validarParametros(REPURCHASE, { enabled: 1 })).toEqual([]);
+      expect(validarParametros(REPURCHASE, { enabled: 2 })).toHaveLength(1);
+      expect(validarParametros(REPURCHASE, { enabled: 0.5 })).toHaveLength(1);
+    });
+
+    it('la hora de ejecución es diurna: de 8 a 21', () => {
+      expect(validarParametros(REPURCHASE, { runHour: 8 })).toEqual([]);
+      expect(validarParametros(REPURCHASE, { runHour: 21 })).toEqual([]);
+      expect(validarParametros(REPURCHASE, { runHour: 7 })).toHaveLength(1);
+      expect(validarParametros(REPURCHASE, { runHour: 22 })).toHaveLength(1);
+      expect(validarParametros(REPURCHASE, { runHour: 3 })).toHaveLength(1);
+    });
+  });
 });

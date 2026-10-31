@@ -183,6 +183,129 @@ describe('CustomersService', () => {
       );
     });
   });
+  describe('recompra anticipada', () => {
+    const armarQb = (clientes: Customer[]) => {
+      const qb = {
+        innerJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(clientes),
+      };
+      (
+        customers as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      return qb;
+    };
+
+    it('fichasDeRecompra: los clientes de la distribuidora, sin bloqueados, con consumo y preferencia de aviso', async () => {
+      const qb = armarQb([
+        cliente({
+          avgMonthlyConsumptionKg: 30,
+          declaredCylinderTypeId: 'g10',
+          repurchaseNoticeDays: 5,
+          repurchaseNoticeEnabled: false,
+          user: {
+            fullName: 'Lucía',
+            email: 'l@x.com',
+            phoneNumber: '+54',
+          } as Customer['user'],
+        }),
+        cliente({
+          customerId: 'c2',
+          userId: 'u2',
+          avgMonthlyConsumptionKg: null,
+          declaredCylinderTypeId: null,
+          repurchaseNoticeDays: null,
+          repurchaseNoticeEnabled: true,
+          user: {} as Customer['user'],
+        }),
+      ]);
+
+      const r = await service.fichasDeRecompra('d1', ['u1', 'u2']);
+
+      expect(r).toEqual([
+        {
+          customerId: 'c1',
+          userId: 'u1',
+          fullName: 'Lucía',
+          email: 'l@x.com',
+          phoneNumber: '+54',
+          avgMonthlyConsumptionKg: 30,
+          declaredCylinderTypeId: 'g10',
+          noticeDays: 5,
+          noticeEnabled: false,
+        },
+        {
+          customerId: 'c2',
+          userId: 'u2',
+          fullName: null,
+          email: null,
+          phoneNumber: null,
+          avgMonthlyConsumptionKg: null,
+          declaredCylinderTypeId: null,
+          noticeDays: null,
+          noticeEnabled: true,
+        },
+      ]);
+      expect(qb.where).toHaveBeenCalledWith('user.blocked = false');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('pertenencia.distributor_id = :distributorId'),
+        { distributorId: 'd1' },
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'customer.userId IN (:...userIds)',
+        { userIds: ['u1', 'u2'] },
+      );
+    });
+
+    it('fichasDeRecompra sin ids: todos los de la distribuidora', async () => {
+      const qb = armarQb([]);
+      await service.fichasDeRecompra('d1');
+      expect(qb.andWhere).toHaveBeenCalledTimes(1);
+    });
+
+    it('fichasDeRecompra con una lista vacía no consulta', async () => {
+      const qb = armarQb([]);
+      expect(await service.fichasDeRecompra('d1', [])).toEqual([]);
+      expect(qb.getMany).not.toHaveBeenCalled();
+    });
+
+    it('guardarAvisoDeRecompra cambia sólo lo que viene (CU-145)', async () => {
+      const ficha = cliente({
+        repurchaseNoticeEnabled: true,
+        repurchaseNoticeDays: 4,
+      });
+      customers.findOne.mockResolvedValue(ficha);
+
+      await service.guardarAvisoDeRecompra('u1', { noticeEnabled: false });
+      expect(customers.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          repurchaseNoticeEnabled: false,
+          repurchaseNoticeDays: 4,
+        }),
+      );
+
+      await service.guardarAvisoDeRecompra('u1', { noticeDays: null });
+      expect(customers.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          repurchaseNoticeEnabled: false,
+          repurchaseNoticeDays: null,
+        }),
+      );
+
+      await service.guardarAvisoDeRecompra('u1', { noticeDays: 10 });
+      expect(ficha.repurchaseNoticeDays).toBe(10);
+    });
+
+    it('guardarAvisoDeRecompra de un usuario sin ficha es 404', async () => {
+      customers.findOne.mockResolvedValue(null);
+      await expect(
+        service.guardarAvisoDeRecompra('u9', { noticeDays: 3 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(customers.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('pertenencia a una distribuidora', () => {
     it('vincula al cliente con quien lo dio de alta; el duplicado reactiva sin repetir', async () => {
       const execute = jest.fn();

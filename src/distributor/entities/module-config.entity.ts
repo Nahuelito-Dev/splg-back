@@ -65,6 +65,23 @@ const CHECK_PLANIFICADOR = [
   `(COALESCE(("params" ->> 'workshopStartHour')::numeric, 8) < COALESCE(("params" ->> 'workshopEndHour')::numeric, 13))`,
 ].join(' AND ');
 
+/** Rangos de los parámetros de la recompra anticipada (CU-106): todos enteros. */
+const RANGOS_DE_LA_RECOMPRA: ReadonlyArray<[string, number, number]> = [
+  ['enabled', 0, 1],
+  ['minOrders', 2, 50],
+  ['anticipationDays', 1, 30],
+  ['invitationTtlHours', 1, 168],
+  ['minIntervalDays', 1, 90],
+  ['runHour', 8, 21],
+  ['recentOrderDays', 1, 30],
+  ['staleDays', 7, 365],
+];
+
+const CHECK_RECOMPRA = RANGOS_DE_LA_RECOMPRA.map(
+  ([k, min, max]) =>
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max} AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)))`,
+).join(' AND ');
+
 /**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
@@ -73,6 +90,10 @@ const CHECK_PLANIFICADOR = [
 @Check(
   'CHK_module_config_planificador',
   `"module" <> 'fleet_planner' OR (${CHECK_PLANIFICADOR})`,
+)
+@Check(
+  'CHK_module_config_recompra',
+  `"module" <> 'repurchase' OR (${CHECK_RECOMPRA})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

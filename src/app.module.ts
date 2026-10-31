@@ -39,6 +39,7 @@ import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { CartModule } from './cart/cart.module';
 import { RepurchaseModule } from './repurchase/repurchase.module';
+import { RepurchaseForecastModule } from './repurchase-forecast/repurchase-forecast.module';
 import { AuditModule } from './audit/audit.module';
 import { DocumentSequenceModule } from './document-sequence/document-sequence.module';
 import { AttachmentModule } from './attachment/attachment.module';
@@ -248,6 +249,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     InsuranceModule,
     CartModule,
     RepurchaseModule,
+    RepurchaseForecastModule,
     AuditModule,
     DocumentSequenceModule,
     AttachmentModule,
