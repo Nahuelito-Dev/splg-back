@@ -596,10 +596,11 @@ export class DispatchOrchestratorService {
     cache: CacheDeInhabilitacion,
   ): Promise<string[]> {
     if (driverIds.length === 0) return driverIds;
-    const elegibles = await this.deliveries.choferesElegibles(
+    const habilitados = await this.deliveries.choferesElegibles(
       driverIds,
       distributorId,
     );
+    const elegibles = await this.sinPedidoEnCurso(habilitados, distributorId);
     if (elegibles.length === 0) return elegibles;
 
     const nuevos = elegibles.filter((id) => !cache.evaluados.has(id));
@@ -619,6 +620,28 @@ export class DispatchOrchestratorService {
         ? elegibles
         : elegibles.filter((id) => !cache.inhabilitados.has(id));
     return this.conCargaSiSeExige(sinBloqueo, distributorId);
+  }
+
+  /**
+   * Un chofer con un pedido aceptado o en camino está ocupado: no se le ofrece
+   * otro (la oferta se gastaría y la app la rechaza).
+   */
+  private async sinPedidoEnCurso(
+    driverIds: string[],
+    distributorId: string | null | undefined,
+  ): Promise<string[]> {
+    if (driverIds.length === 0) return driverIds;
+    const perfiles = await this.deliveries.findDeliveryIdsByUserIds(
+      driverIds,
+      distributorId,
+    );
+    const ocupados = await this.orders.findDeliveryIdsWithOrderInProgress(
+      perfiles.map((p) => p.deliveryId),
+    );
+    const userIdsOcupados = new Set(
+      perfiles.filter((p) => ocupados.has(p.deliveryId)).map((p) => p.userId),
+    );
+    return driverIds.filter((id) => !userIdsOcupados.has(id));
   }
 
   /**
