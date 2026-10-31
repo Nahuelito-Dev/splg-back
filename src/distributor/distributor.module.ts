@@ -15,6 +15,10 @@ import { ProcessConfigService } from './process-config.service';
 import { DispatchSettingsService } from './dispatch-settings.service';
 import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.service';
 import { S3Module } from '../s3/s3.module';
+import { MercadoPagoCredentials } from './entities/mercadopago-credentials.entity';
+import { CredentialsEncryptionService } from './credentials-encryption.service';
+import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
+import { MercadoPagoCredentialsController } from './mercadopago-credentials.controller';
 
 /**
  * Global: `DistributorService` es transversal (lo consumen AuthGuard y el
@@ -25,7 +29,11 @@ import { S3Module } from '../s3/s3.module';
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Distributor, ModuleConfig]),
+    TypeOrmModule.forFeature([
+      Distributor,
+      ModuleConfig,
+      MercadoPagoCredentials,
+    ]),
     S3Module, // logo
   ],
   // ExpressConfigController antes que ModuleConfigController: su ruta fija
@@ -35,6 +43,7 @@ import { S3Module } from '../s3/s3.module';
     DistributorBankController,
     ExpressConfigController,
     ModuleConfigController,
+    MercadoPagoCredentialsController,
   ],
   providers: [
     DistributorService,
@@ -45,6 +54,8 @@ import { S3Module } from '../s3/s3.module';
     ScheduledTasksSettingsService,
     ProcessConfigService,
     ExpressSettingsService,
+    CredentialsEncryptionService,
+    MercadoPagoCredentialsService,
   ],
   exports: [
     DistributorService,
@@ -54,6 +65,7 @@ import { S3Module } from '../s3/s3.module';
     ScheduledTasksSettingsService,
     ProcessConfigService,
     ExpressSettingsService,
+    MercadoPagoCredentialsService,
   ],
 })
 export class DistributorModule {}

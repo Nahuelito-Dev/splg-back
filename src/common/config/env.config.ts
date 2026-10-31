@@ -14,6 +14,7 @@ export const EnvConfiguration = () => ({
   mp_success_url: process.env.MP_SUCCESS_URL,
   mp_failure_url: process.env.MP_FAILURE_URL,
   mp_pending_url: process.env.MP_PENDING_URL,
+  credentials_encryption_key: process.env.CREDENTIALS_ENCRYPTION_KEY,
   // Archivos en Amazon S3 (flota, adjuntos, foto del reclamo). Se consumen
   // directo vía ConfigService.get('AWS_...') en S3Service (ver s3.config.ts),
   // pero se dejan acá también para consistencia con el resto de la config.

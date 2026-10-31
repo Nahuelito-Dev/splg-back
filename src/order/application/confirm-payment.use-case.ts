@@ -17,6 +17,8 @@ export interface ConfirmPaymentInput {
   dataId?: string;
   xSignature?: string;
   xRequestId?: string;
+  /** Cuenta propia de Mercado Pago de la notificación (id de la credencial). */
+  credentialId?: string;
 }
 
 /**
@@ -56,6 +58,7 @@ export class ConfirmPaymentUseCase {
     const payment = await this.paymentsService.confirmFromGateway({
       type: input.type,
       dataId: input.dataId,
+      credentialId: input.credentialId,
     });
 
     if (!payment) {

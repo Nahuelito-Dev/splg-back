@@ -419,7 +419,7 @@ export class RefundsService {
       );
     }
 
-    const antes = await this.estadoEnPasarela(pago.gatewayPaymentId);
+    const antes = await this.estadoEnPasarela(pago);
     if (antes?.status === ESTADO_DEVUELTO) {
       return this.registrarExito(solicitud, pago, null, actorUserId);
     }
@@ -449,6 +449,7 @@ export class RefundsService {
         gatewayPaymentId: pago.gatewayPaymentId,
         amount: monto,
         idempotencyKey: clave,
+        credentialId: pago.credentialId,
       });
       return this.registrarExito(
         solicitud,
@@ -460,7 +461,7 @@ export class RefundsService {
       // La pasarela pudo haber devuelto igual (timeout con la solicitud ya
       // aplicada). En una devolución parcial el estado del pago no cambia: se
       // decide por lo devuelto, antes contra después.
-      const despues = await this.estadoEnPasarela(pago.gatewayPaymentId);
+      const despues = await this.estadoEnPasarela(pago);
       if (
         despues?.status === ESTADO_DEVUELTO ||
         this.subioLoDevuelto(antes, despues, monto)
@@ -522,10 +523,13 @@ export class RefundsService {
 
   /** El pago tal como lo ve la pasarela, o null si no responde. Nunca lanza. */
   private async estadoEnPasarela(
-    gatewayPaymentId: string,
+    pago: Payment,
   ): Promise<GatewayPayment | null> {
     try {
-      return await this.gateway.getPayment(gatewayPaymentId);
+      return await this.gateway.getPayment(
+        pago.gatewayPaymentId ?? '',
+        pago.credentialId,
+      );
     } catch {
       return null;
     }

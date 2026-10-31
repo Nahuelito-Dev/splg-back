@@ -48,6 +48,8 @@ export interface CreatePaymentCheckoutInput {
 export interface ConfirmFromGatewayInput {
   type?: string;
   dataId?: string;
+  /** Cuenta de Mercado Pago de la notificación (credencial propia); `null` o ausente = la del sistema. */
+  credentialId?: string | null;
 }
 
 /**
@@ -120,9 +122,11 @@ export class PaymentsService {
       orderId: input.orderId,
       items: input.items,
       payerEmail: input.payerEmail,
+      distributorId: input.distributorId,
     });
 
     ledgerPayment.paymentUrl = checkout.initPoint;
+    ledgerPayment.credentialId = checkout.credentialId;
     ledgerPayment.metadata = { preferenceId: checkout.preferenceId };
     await this.paymentRepository.save(ledgerPayment);
 
@@ -194,7 +198,10 @@ export class PaymentsService {
 
     let gatewayPayment: GatewayPayment;
     try {
-      gatewayPayment = await this.paymentGateway.getPayment(input.dataId);
+      gatewayPayment = await this.paymentGateway.getPayment(
+        input.dataId,
+        input.credentialId,
+      );
     } catch (error) {
       this.logger.error(
         `No se pudo consultar el pago ${input.dataId} en la pasarela: ${errorMessage(error)}`,
@@ -209,8 +216,20 @@ export class PaymentsService {
       return null;
     }
 
-    const { isDeposit, estadoAtrasado, montoDistinto, asiento } =
-      await this.updateLedger(gatewayPayment);
+    const credentialId = input.credentialId ?? null;
+    const {
+      isDeposit,
+      estadoAtrasado,
+      montoDistinto,
+      asiento,
+      cuentaDistinta,
+    } = await this.updateLedger(gatewayPayment, credentialId);
+    if (cuentaDistinta) {
+      this.logger.warn(
+        `Pago ${gatewayPayment.id}: la cuenta de Mercado Pago de la notificación no es la del pedido ${gatewayPayment.externalReference}; se ignora`,
+      );
+      return null;
+    }
     if (asiento) {
       this.ventasEnCaja.avisarSinAsentar(
         asiento.distributorId,
@@ -229,7 +248,7 @@ export class PaymentsService {
     };
   }
 
-  verifyWebhookSignature(input: VerifyWebhookSignatureInput): boolean {
+  verifyWebhookSignature(input: VerifyWebhookSignatureInput): Promise<boolean> {
     return this.paymentGateway.verifyWebhookSignature(input);
   }
 
@@ -244,6 +263,7 @@ export class PaymentsService {
    */
   private async updateLedger(
     gatewayPayment: GatewayPayment,
+    credentialId: string | null,
     reintento = false,
   ): Promise<{
     isDeposit: boolean;
@@ -252,12 +272,17 @@ export class PaymentsService {
     montoDistinto?: { esperado: number; cobrado: number };
     /** Qué pasó con el ingreso a caja de un pago recién aprobado. */
     asiento?: { resultado: ResultadoDelAsiento; distributorId: string };
+    /** El aviso vino de una cuenta que no es la del intento de cobro: no se toca nada. */
+    cuentaDistinta?: true;
   }> {
     // Leer, validar y escribir con la fila del pago bloqueada: dos notificaciones
     // intercaladas se aplican una detrás de la otra y la segunda ya ve el estado
     // que dejó la primera (no hay carrera que deje `pending` después de `approved`).
     try {
-      return await this.actualizarLedgerEnTransaccion(gatewayPayment);
+      return await this.actualizarLedgerEnTransaccion(
+        gatewayPayment,
+        credentialId,
+      );
     } catch (error) {
       // Otra notificación del mismo pago ya se llevó ese id de pasarela
       // (índice único): no es un error, el pago ya está procesado. Se vuelve a
@@ -266,7 +291,7 @@ export class PaymentsService {
         this.logger.warn(
           `Pago ${gatewayPayment.id}: otra notificación lo procesó al mismo tiempo, se reintenta`,
         );
-        return this.updateLedger(gatewayPayment, true);
+        return this.updateLedger(gatewayPayment, credentialId, true);
       }
       throw error;
     }
@@ -274,8 +299,10 @@ export class PaymentsService {
 
   private async actualizarLedgerEnTransaccion(
     gatewayPayment: GatewayPayment,
+    credentialId: string | null,
   ): Promise<{
     isDeposit: boolean;
+    cuentaDistinta?: true;
     estadoAtrasado?: LedgerPaymentStatus;
     montoDistinto?: { esperado: number; cobrado: number };
     asiento?: { resultado: ResultadoDelAsiento; distributorId: string };
@@ -303,6 +330,17 @@ export class PaymentsService {
         // notificación del mismo pago ya tomó OTRO intento (con dos intentos sin
         // id de pasarela, cada una pudo elegir uno distinto), ese es el pago.
         ledgerPayment = (await porPasarela()) ?? candidato;
+      }
+
+      // La cuenta que consultó el pago tiene que ser la del intento de cobro: un
+      // aviso de la cuenta de otra distribuidora (o de la del sistema contra un
+      // pedido que cobra con cuenta propia, y al revés) no confirma nada.
+      if (
+        ledgerPayment
+          ? (ledgerPayment.credentialId ?? null) !== credentialId
+          : credentialId !== null
+      ) {
+        return { isDeposit: false, cuentaDistinta: true };
       }
 
       if (!ledgerPayment) {

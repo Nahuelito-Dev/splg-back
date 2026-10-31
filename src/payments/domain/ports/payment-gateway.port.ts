@@ -21,12 +21,16 @@ export interface CreateCheckoutInput {
   orderId: string;
   items: PaymentCheckoutItem[];
   payerEmail: string;
+  /** Distribuidora que cobra: define con qué cuenta de la pasarela se hace el checkout. */
+  distributorId?: string | null;
 }
 
 export interface CreateCheckoutResult {
   /** URL de Checkout Pro a la que se redirige al cliente para pagar. */
   initPoint: string;
   preferenceId: string;
+  /** Cuenta con la que se armó el checkout: id de la credencial propia, o `null` si fue la del sistema. */
+  credentialId: string | null;
 }
 
 /** Resultado normalizado de consultar un pago en la pasarela. */
@@ -44,6 +48,11 @@ export interface GatewayPayment {
    * asienta comisión.
    */
   feeAmount?: number | null;
+  /**
+   * Distribuidora dueña de la cuenta con la que se consultó el pago (`null` si
+   * fue la del sistema): el caller la compara con la del pedido.
+   */
+  accountDistributorId?: string | null;
 }
 
 export interface RefundPaymentInput {
@@ -56,6 +65,8 @@ export interface RefundPaymentInput {
    * dinero dos veces, aunque se repita la llamada.
    */
   idempotencyKey: string;
+  /** Cuenta con la que se cobró el pago (`Payment.credentialId`; `null` = la del sistema). */
+  credentialId?: string | null;
 }
 
 export interface RefundPaymentResult {
@@ -68,6 +79,8 @@ export interface VerifyWebhookSignatureInput {
   xSignature?: string;
   xRequestId?: string;
   dataId?: string;
+  /** Cuenta a la que pertenece la notificación (la identifica la `notification_url` del checkout; `null` = la del sistema). */
+  credentialId?: string | null;
 }
 
 export abstract class PaymentGatewayPort {
@@ -76,8 +89,14 @@ export abstract class PaymentGatewayPort {
     input: CreateCheckoutInput,
   ): Promise<CreateCheckoutResult>;
 
-  /** Consulta un pago por id (lo llama el webhook para confirmar el estado real). */
-  abstract getPayment(paymentId: string): Promise<GatewayPayment>;
+  /**
+   * Consulta un pago por id (lo llama el webhook para confirmar el estado real),
+   * con la cuenta con la que se cobró (`credentialId`; `null` = la del sistema).
+   */
+  abstract getPayment(
+    paymentId: string,
+    credentialId?: string | null,
+  ): Promise<GatewayPayment>;
 
   /**
    * Pide a la pasarela que devuelva `amount` de un pago aprobado. Lanza si la
@@ -92,6 +111,9 @@ export abstract class PaymentGatewayPort {
    * Valida la firma `x-signature` de una notificación de webhook. Devuelve
    * `false` (nunca lanza) ante cualquier problema: firma ausente, malformada
    * o que no coincide — el caller decide qué hacer (loguear y no procesar).
+   * Usa el secreto de la cuenta de la notificación; sin cuenta, el del entorno.
    */
-  abstract verifyWebhookSignature(input: VerifyWebhookSignatureInput): boolean;
+  abstract verifyWebhookSignature(
+    input: VerifyWebhookSignatureInput,
+  ): Promise<boolean>;
 }

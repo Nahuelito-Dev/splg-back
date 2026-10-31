@@ -58,6 +58,19 @@ export const JoiValidationSchema = Joi.object({
   MP_SUCCESS_URL: Joi.string().optional(),
   MP_FAILURE_URL: Joi.string().optional(),
   MP_PENDING_URL: Joi.string().optional(),
+  // Clave de 32 bytes codificada en base64 para cifrar credenciales propias.
+  // Es opcional: sin ella el sistema conserva la cuenta global y rechaza altas.
+  CREDENTIALS_ENCRYPTION_KEY: Joi.string()
+    .custom((value: string, helpers) =>
+      Buffer.from(value, 'base64').length === 32
+        ? value
+        : helpers.error('any.invalid'),
+    )
+    .optional()
+    .messages({
+      'any.invalid':
+        'CREDENTIALS_ENCRYPTION_KEY debe codificar exactamente 32 bytes en base64',
+    }),
   // Reporte de liberaciones (conciliación). `fake` usa un reporte de mentira
   // (sólo fuera de producción) y `MP_REPORTS_FAKE_CSV` es la ruta del CSV que devuelve.
   MP_REPORTS_DRIVER: Joi.string().valid('real', 'fake', '').optional(),

@@ -20,6 +20,9 @@ const SENSIBLES = new Set([
   'code',
   'deliverycode',
   'secret',
+  // Secreto con el que Mercado Pago firma los avisos de una cuenta propia
+  // (credenciales por distribuidora): en la auditoría HTTP, inmutable, no entra.
+  'webhooksecret',
   // Datos de quien recibe un pedido (CU-128): de un tercero y en un registro
   // inmutable, que no puede acompañar la anulación por plazo vencido.
   'receiverdocument',

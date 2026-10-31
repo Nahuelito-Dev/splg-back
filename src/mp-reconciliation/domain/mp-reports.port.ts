@@ -6,6 +6,8 @@ export interface MpReportRequest {
   from: Date;
   /** Fin del rango (instante, inclusive). */
   to: Date;
+  /** Distribuidora cuya cuenta de Mercado Pago genera el reporte (sin cuenta propia, la del entorno). */
+  distributorId?: string | null;
 }
 
 /** Un reporte de la lista de Mercado Pago. */
@@ -50,15 +52,18 @@ export class MpReportsError extends Error {
 
 /**
  * Reporte de liberaciones de Mercado Pago (`/v1/account/release_report`).
- * Cuenta global del sistema: credencial única (`MP_ACCESS_TOKEN`).
+ * Usa la cuenta propia de la distribuidora si la cargó; si no, la del entorno (`MP_ACCESS_TOKEN`).
  */
 export abstract class MercadoPagoReportsPort {
   /** Pide la generación del reporte (asíncrona). Devuelve el id si Mercado Pago lo informa. */
   abstract requestReport(request: MpReportRequest): Promise<MpReportRequested>;
 
   /** Los reportes de la cuenta. */
-  abstract listReports(): Promise<MpReportRef[]>;
+  abstract listReports(distributorId?: string | null): Promise<MpReportRef[]>;
 
   /** El CSV de un reporte ya generado, como texto. */
-  abstract downloadReport(fileName: string): Promise<string>;
+  abstract downloadReport(
+    fileName: string,
+    distributorId?: string | null,
+  ): Promise<string>;
 }

@@ -17,6 +17,7 @@ import {
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Order } from '../../order/entities/order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { MercadoPagoCredentials } from '../../distributor/entities/mercadopago-credentials.entity';
 
 /**
  * Ledger de pagos: UN registro por INTENTO de cobro (append-friendly). No
@@ -60,6 +61,21 @@ export class Payment {
   @ManyToOne(() => Distributor, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
+
+  /**
+   * Cuenta de Mercado Pago con la que se cobró: la credencial propia de la
+   * distribuidora o `null` para la del sistema. El webhook, la consulta y la
+   * devolución del pago usan siempre esa cuenta, aunque después se la desactive.
+   */
+  @Column({ name: 'credential_id', type: 'uuid', nullable: true })
+  credentialId!: string | null;
+
+  @ManyToOne(() => MercadoPagoCredentials, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'credential_id' })
+  credential?: MercadoPagoCredentials;
 
   @Column({ type: 'enum', enum: PaymentGateway })
   gateway!: PaymentGateway;
