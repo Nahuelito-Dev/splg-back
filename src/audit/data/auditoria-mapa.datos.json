@@ -351,6 +351,20 @@
       "orderColumn": null
     },
     {
+      "table": "distributor_mercadopago_credentials",
+      "entity": "MercadoPagoCredentials",
+      "pk": ["credential_id"],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "driver_liquidation",
       "entity": "DriverLiquidation",
       "pk": ["liquidation_id"],
@@ -3037,6 +3051,46 @@
       "secret": false,
       "kind": "timestamp",
       "position": 14
+    },
+    {
+      "table": "distributor_mercadopago_credentials",
+      "column": "credential_id",
+      "property": "credentialId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "distributor_mercadopago_credentials",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "distributor_mercadopago_credentials",
+      "column": "active",
+      "property": "active",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "distributor_mercadopago_credentials",
+      "column": "loaded_by_user_id",
+      "property": "loadedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "distributor_mercadopago_credentials",
+      "column": "verified_at",
+      "property": "verifiedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
     },
     {
       "table": "driver_liquidation",
@@ -6040,11 +6094,19 @@
     },
     {
       "table": "payment",
+      "column": "credential_id",
+      "property": "credentialId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "payment",
       "column": "gateway",
       "property": "gateway",
       "secret": false,
       "kind": "text",
-      "position": 3
+      "position": 4
     },
     {
       "table": "payment",
@@ -6052,7 +6114,7 @@
       "property": "integration",
       "secret": false,
       "kind": "text",
-      "position": 4
+      "position": 5
     },
     {
       "table": "payment",
@@ -6060,7 +6122,7 @@
       "property": "method",
       "secret": false,
       "kind": "text",
-      "position": 5
+      "position": 6
     },
     {
       "table": "payment",
@@ -6068,7 +6130,7 @@
       "property": "gatewayPaymentId",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 7
     },
     {
       "table": "payment",
@@ -6076,7 +6138,7 @@
       "property": "externalReference",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "payment",
@@ -6084,7 +6146,7 @@
       "property": "amount",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "payment",
@@ -6092,7 +6154,7 @@
       "property": "currency",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "payment",
@@ -6100,7 +6162,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "payment",
@@ -6108,7 +6170,7 @@
       "property": "paymentUrl",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 12
     },
     {
       "table": "payment",
@@ -6116,7 +6178,7 @@
       "property": "approvedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 13
     },
     {
       "table": "payment",
@@ -6124,7 +6186,7 @@
       "property": "isDeposit",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 14
     },
     {
       "table": "payment",
@@ -6132,7 +6194,7 @@
       "property": "metadata",
       "secret": false,
       "kind": "json",
-      "position": 14
+      "position": 15
     },
     {
       "table": "payment_refund",

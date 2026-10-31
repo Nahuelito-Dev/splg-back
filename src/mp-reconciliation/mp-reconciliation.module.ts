@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AttachmentModule } from '../attachment/attachment.module';
 import { CashModule } from '../cash/cash.module';
+import { MercadoPagoCredentialsService } from '../distributor/mercadopago-credentials.service';
 import { S3Module } from '../s3/s3.module';
 import { MpLedgerReader } from './application/mp-ledger.reader';
 import { MpReconciliationApplyService } from './application/mp-reconciliation-apply.service';
@@ -38,8 +39,11 @@ import { MpReconciliationController } from './presentation/mp-reconciliation.con
     MpReconciliationAttachmentOwnerResolver,
     {
       provide: MercadoPagoReportsPort,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): MercadoPagoReportsPort => {
+      inject: [ConfigService, MercadoPagoCredentialsService],
+      useFactory: (
+        config: ConfigService,
+        credentials: MercadoPagoCredentialsService,
+      ): MercadoPagoReportsPort => {
         if (config.get<string>('MP_REPORTS_DRIVER') === 'fake') {
           const entorno = config.get<string>('NODE_ENV');
           if (entorno !== 'development' && entorno !== 'test') {
@@ -49,7 +53,7 @@ import { MpReconciliationController } from './presentation/mp-reconciliation.con
           }
           return new FakeMercadoPagoReportsAdapter(config);
         }
-        return new MercadoPagoReportsAdapter(config);
+        return new MercadoPagoReportsAdapter(config, credentials);
       },
     },
   ],

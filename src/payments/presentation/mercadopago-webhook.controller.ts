@@ -62,10 +62,16 @@ export class MercadoPagoWebhookController {
       texto(query['id']);
     const type = texto(query['type']) ?? texto(query['topic']);
 
-    const isValidSignature = this.paymentsService.verifyWebhookSignature({
+    // Con cuenta propia, la `notification_url` del checkout trae la credencial
+    // (`?account=<id>`): elige el secreto de la firma y el token con que se consulta
+    // el pago. Sin ella, la cuenta del entorno.
+    const credentialId = idDeCredencial(query['account']);
+
+    const isValidSignature = await this.paymentsService.verifyWebhookSignature({
       xSignature,
       xRequestId,
       dataId,
+      credentialId,
     });
 
     if (!isValidSignature) {
@@ -82,7 +88,13 @@ export class MercadoPagoWebhookController {
       // pago quedó procesado, igual que cuando llamaba al caso de uso directo.
       await this.eventos.emitAsync(
         EVENTO_PAGO_NOTIFICADO,
-        new PagoNotificadoEvent(type, dataId, xSignature, xRequestId),
+        new PagoNotificadoEvent(
+          type,
+          dataId,
+          xSignature,
+          xRequestId,
+          credentialId,
+        ),
       );
     } catch (error) {
       // Nunca dejamos que un error interno haga que MP reintente en loop con
@@ -94,6 +106,12 @@ export class MercadoPagoWebhookController {
 
     return { received: true };
   }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function idDeCredencial(valor: unknown): string | undefined {
+  return typeof valor === 'string' && UUID.test(valor) ? valor : undefined;
 }
 
 function texto(valor: unknown): string | undefined {

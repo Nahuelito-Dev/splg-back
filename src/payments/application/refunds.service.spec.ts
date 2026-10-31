@@ -202,6 +202,17 @@ describe('RefundsService (CU-168)', () => {
   });
 
   describe('reintegrarPorCancelacion', () => {
+    it('devuelve con la cuenta con la que se cobró el pago, aunque ya esté desactivada', async () => {
+      pagos.push(pago({ credentialId: 'cred-vieja' }));
+
+      await service.reintegrarPorCancelacion('ord-1');
+
+      expect(gateway.getPayment).toHaveBeenCalledWith('mp-1', 'cred-vieja');
+      expect(gateway.refundPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ credentialId: 'cred-vieja' }),
+      );
+    });
+
     it('devuelve el total del pago aprobado y lo marca reintegrado', async () => {
       pagos.push(pago());
 
@@ -211,7 +222,9 @@ describe('RefundsService (CU-168)', () => {
         gatewayPaymentId: 'mp-1',
         amount: 3000,
         idempotencyKey: r.refundId,
+        credentialId: undefined,
       });
+      expect(gateway.getPayment).toHaveBeenCalledWith('mp-1', undefined);
       expect(r.status).toBe(RefundStatus.SUCCEEDED);
       expect(r.kind).toBe(RefundKind.FULL);
       expect(r.gatewayRefundId).toBe('mp-refund-1');

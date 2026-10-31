@@ -56,6 +56,55 @@ describe('MercadoPagoWebhookController', () => {
     );
   });
 
+  const CUENTA = '0b6c1c0e-6d0c-4a43-9d4e-5b1f2a7a1c11';
+
+  it('con ?account= valida la firma con esa cuenta y la pasa en el evento', async () => {
+    paymentsService.verifyWebhookSignature.mockResolvedValue(true);
+
+    await controller.handle(
+      { type: 'payment', 'data.id': 'pay-1', account: CUENTA },
+      'f',
+      'r',
+    );
+
+    expect(paymentsService.verifyWebhookSignature).toHaveBeenCalledWith({
+      xSignature: 'f',
+      xRequestId: 'r',
+      dataId: 'pay-1',
+      credentialId: CUENTA,
+    });
+    expect(eventos.emitAsync).toHaveBeenCalledWith(
+      EVENTO_PAGO_NOTIFICADO,
+      new PagoNotificadoEvent('payment', 'pay-1', 'f', 'r', CUENTA),
+    );
+  });
+
+  it('un account que no es un id se ignora: valida con la cuenta del entorno', async () => {
+    paymentsService.verifyWebhookSignature.mockResolvedValue(true);
+
+    await controller.handle(
+      { type: 'payment', 'data.id': 'pay-1', account: "x' OR 1=1" },
+      'f',
+      'r',
+    );
+
+    expect(paymentsService.verifyWebhookSignature).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialId: undefined }),
+    );
+  });
+
+  it('con la firma inválida para esa cuenta no publica nada', async () => {
+    paymentsService.verifyWebhookSignature.mockResolvedValue(false);
+
+    await controller.handle(
+      { type: 'payment', 'data.id': 'pay-1', account: CUENTA },
+      'f',
+      'r',
+    );
+
+    expect(eventos.emitAsync).not.toHaveBeenCalled();
+  });
+
   it('acepta el formato viejo: id y topic', async () => {
     paymentsService.verifyWebhookSignature.mockReturnValue(true);
 

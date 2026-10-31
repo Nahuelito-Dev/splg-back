@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { MercadoPagoCredentialsService } from '../../distributor/mercadopago-credentials.service';
 import { MpReportsError } from '../domain/mp-reports.port';
 import {
   estadoDelReporte,
@@ -14,12 +15,19 @@ describe('MercadoPagoReportsAdapter (fetch simulado)', () => {
   let fetchMock: jest.SpyInstance;
   let adapter: MercadoPagoReportsAdapter;
 
+  const resolve = jest.fn();
   const crear = (token: string | null = 'token-de-prueba') =>
-    new MercadoPagoReportsAdapter({
-      get: jest.fn().mockReturnValue(token),
-    } as unknown as ConfigService);
+    new MercadoPagoReportsAdapter(
+      { get: jest.fn().mockReturnValue(token) } as unknown as ConfigService,
+      { resolve } as unknown as MercadoPagoCredentialsService,
+    );
 
   beforeEach(() => {
+    resolve.mockReset();
+    resolve.mockImplementation(
+      (_id: string | null, sistema: { accessToken: string }) =>
+        Promise.resolve({ ...sistema, source: 'system' }),
+    );
     fetchMock = jest
       .spyOn(global, 'fetch')
       .mockRejectedValue(new Error('los tests no salen a la red'));
@@ -161,6 +169,42 @@ describe('MercadoPagoReportsAdapter (fetch simulado)', () => {
     fetchMock.mockResolvedValue(respuesta(200, '<html>'));
 
     await expect(adapter.listReports()).rejects.toBeInstanceOf(MpReportsError);
+  });
+
+  it('con cuenta propia de la distribuidora pide el reporte con su token, no con el global', async () => {
+    resolve.mockResolvedValue({
+      accessToken: 'token-propio',
+      webhookSecret: 's',
+      source: 'own',
+    });
+    fetchMock.mockResolvedValue(respuesta(200, '[]'));
+
+    await adapter.listReports('dist-1');
+
+    expect(resolve).toHaveBeenCalledWith('dist-1', {
+      accessToken: 'token-de-prueba',
+      webhookSecret: '',
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({
+      Authorization: 'Bearer token-propio',
+    });
+  });
+
+  it('si no se puede resolver la cuenta de la distribuidora (clave de cifrado) falla como MpReportsError, para que la corrida quede fallada', async () => {
+    resolve.mockRejectedValue(new Error('falta CREDENTIALS_ENCRYPTION_KEY'));
+
+    await expect(
+      adapter.requestReport({
+        from: new Date('2026-10-01T03:00:00Z'),
+        to: new Date('2026-10-02T02:59:59Z'),
+        distributorId: 'dist-1',
+      }),
+    ).rejects.toMatchObject({
+      kind: 'not_configured',
+      message: 'falta CREDENTIALS_ENCRYPTION_KEY',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('sin token no sale a la red', async () => {

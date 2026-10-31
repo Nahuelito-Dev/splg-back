@@ -12,5 +12,7 @@ export class PagoNotificadoEvent {
     readonly dataId: string | undefined,
     readonly xSignature: string | undefined,
     readonly xRequestId: string | undefined,
+    /** Cuenta propia de Mercado Pago de la notificación (id de la credencial); ausente = la del sistema. */
+    readonly credentialId?: string,
   ) {}
 }

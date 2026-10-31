@@ -262,6 +262,7 @@ describe('MpReconciliationService', () => {
       expect(reportes.requestReport).toHaveBeenCalledWith({
         from: new Date('2026-10-01T03:00:00Z'),
         to: new Date('2026-10-11T02:59:59Z'),
+        distributorId: 'dist-1',
       });
       expect(c.status).toBe(MpReconciliationStatus.REQUESTED);
       expect(c.mpReportId).toBe('777');
@@ -397,6 +398,7 @@ describe('MpReconciliationService', () => {
       expect(corrida?.fileName).toBe('release-report-777.csv');
       expect(reportes.downloadReport).toHaveBeenCalledWith(
         'release-report-777.csv',
+        'dist-1',
       );
       const tipos = insertados.map((i) => i.kind);
       expect(tipos).toContain('payment_not_in_cash');
@@ -596,7 +598,10 @@ describe('MpReconciliationService', () => {
 
       await service.sincronizar('rec-1');
 
-      expect(reportes.downloadReport).toHaveBeenCalledWith('nuevo.csv');
+      expect(reportes.downloadReport).toHaveBeenCalledWith(
+        'nuevo.csv',
+        'dist-1',
+      );
       expect(corrida?.mpReportId).toBe('nuevo');
     });
   });

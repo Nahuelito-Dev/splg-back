@@ -42,6 +42,7 @@ interface CobroMpPendiente {
   payment_id: string;
   order_id: string;
   gateway_payment_id: string | null;
+  credential_id: string | null;
   amount: string;
   metadata: Record<string, unknown> | null;
   approved_at: Date;
@@ -60,6 +61,7 @@ interface ComisionPendiente {
   payment_id: string;
   order_id: string;
   gateway_payment_id: string | null;
+  credential_id: string | null;
   metadata: Record<string, unknown> | null;
 }
 
@@ -563,7 +565,10 @@ export class CashCollectionSettingsService {
     }
     if (cobro.gateway_payment_id) {
       try {
-        const mp = await this.pasarela.getPayment(cobro.gateway_payment_id);
+        const mp = await this.pasarela.getPayment(
+          cobro.gateway_payment_id,
+          cobro.credential_id,
+        );
         return {
           amount: new Decimal(mp.amount ?? cobro.amount),
           fee: mp.feeAmount ?? null,
@@ -617,7 +622,8 @@ export class CashCollectionSettingsService {
     if (!p.gateway_payment_id) return null;
     try {
       return (
-        (await this.pasarela.getPayment(p.gateway_payment_id)).feeAmount ?? null
+        (await this.pasarela.getPayment(p.gateway_payment_id, p.credential_id))
+          .feeAmount ?? null
       );
     } catch {
       return null;
@@ -698,7 +704,7 @@ export class CashCollectionSettingsService {
     desde: Date,
   ): Promise<CobroMpPendiente[]> {
     return manager.query(
-      `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."amount", p."metadata", p."approved_at"
+      `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."credential_id", p."amount", p."metadata", p."approved_at"
        FROM "payment" p
        WHERE p."distributor_id" = $1 AND p."gateway" = 'mercadopago' AND p."status" = 'approved'
          AND p."approved_at" >= $2
@@ -776,7 +782,7 @@ export class CashCollectionSettingsService {
     desde: Date,
   ): Promise<ComisionPendiente[]> {
     return manager.query(
-      `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."metadata"
+      `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."credential_id", p."metadata"
        FROM "payment" p
        WHERE p."distributor_id" = $1 AND p."gateway" = 'mercadopago' AND p."approved_at" >= $2
          AND EXISTS (
@@ -793,7 +799,7 @@ export class CashCollectionSettingsService {
     desde: Date,
   ): Promise<ComisionPendiente[]> {
     return manager.query(
-      `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."metadata"
+      `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."credential_id", p."metadata"
        FROM "payment" p
        WHERE p."distributor_id" = $1 AND p."gateway" = 'mercadopago' AND p."approved_at" >= $2
          AND (COALESCE((p."metadata"->>'feeAmount')::numeric, 0) > 0 OR p."metadata"->>'feeStatus' = 'unreported')

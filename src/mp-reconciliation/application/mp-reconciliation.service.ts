@@ -138,6 +138,7 @@ export class MpReconciliationService {
       const pedido = {
         from: rango.desde,
         to: new Date(rango.hasta.getTime() - 1000),
+        distributorId: ctx.distributorId,
       };
       const respuesta = await this.reportes.requestReport(pedido);
       corrida.mpReportId = respuesta.reportId;
@@ -317,7 +318,7 @@ export class MpReconciliationService {
   private async procesar(corrida: MpReconciliation): Promise<void> {
     const referencia = this.elegirReporte(
       corrida,
-      await this.reportes.listReports(),
+      await this.reportes.listReports(corrida.distributorId),
     );
     if (!referencia || referencia.status === 'pending') {
       await this.anotar(corrida.reconciliationId, null);
@@ -330,7 +331,10 @@ export class MpReconciliationService {
       );
       return;
     }
-    const csv = await this.reportes.downloadReport(referencia.fileName);
+    const csv = await this.reportes.downloadReport(
+      referencia.fileName,
+      corrida.distributorId,
+    );
     const parseado = parsearReporteDeLiberaciones(csv);
     const calculo = await this.calcular(corrida, parseado);
     await this.guardarReporte(corrida, parseado, csv, calculo.propios);

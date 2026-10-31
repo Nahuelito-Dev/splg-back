@@ -165,6 +165,7 @@ describe('PaymentsService', () => {
       paymentGateway.createCheckout.mockResolvedValue({
         initPoint: 'https://mp.test/checkout',
         preferenceId: 'pref-1',
+        credentialId: 'cred-1',
       });
 
       const result = await service.createCheckout({
@@ -196,6 +197,7 @@ describe('PaymentsService', () => {
           { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
         ],
         payerEmail: 'cliente@test.com',
+        distributorId: 'dist-1',
       });
 
       // Se guarda dos veces: al crear el PENDING y al completar payment_url.
@@ -204,11 +206,13 @@ describe('PaymentsService', () => {
         paymentRepository.save.mock.calls as Payment[][]
       )[1][0];
       expect(lastSaved.paymentUrl).toBe('https://mp.test/checkout');
+      expect(lastSaved.credentialId).toBe('cred-1');
       expect(lastSaved.metadata).toEqual({ preferenceId: 'pref-1' });
 
       expect(result).toEqual({
         initPoint: 'https://mp.test/checkout',
         preferenceId: 'pref-1',
+        credentialId: 'cred-1',
       });
     });
 
@@ -299,6 +303,125 @@ describe('PaymentsService', () => {
       });
 
       expect(result).toBeNull();
+    });
+
+    it('consulta el pago con la cuenta de la notificación', async () => {
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-1',
+        status: 'approved',
+        externalReference: null,
+      });
+
+      await service.confirmFromGateway({
+        type: 'payment',
+        dataId: 'pay-1',
+        credentialId: 'cred-1',
+      });
+
+      expect(paymentGateway.getPayment).toHaveBeenCalledWith('pay-1', 'cred-1');
+    });
+
+    describe('la cuenta de Mercado Pago tiene que ser la del intento de cobro', () => {
+      const aprobado = {
+        id: 'pay-1',
+        status: 'approved',
+        externalReference: 'ord-B',
+      };
+      const ledgerDe = (credentialId: string | null) => ({
+        paymentId: 'ledger-B',
+        orderId: 'ord-B',
+        distributorId: 'dist-B',
+        credentialId,
+        externalReference: 'ord-B',
+        gatewayPaymentId: null,
+        isDeposit: false,
+        amount: 1000,
+        status: LedgerPaymentStatus.PENDING,
+        metadata: null,
+      });
+
+      it('un aviso de la cuenta de A contra el pedido de B (cobra con la del sistema) no toca nada', async () => {
+        paymentGateway.getPayment.mockResolvedValue({
+          ...aprobado,
+          accountDistributorId: 'dist-A',
+        });
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(ledgerDe(null));
+
+        const r = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+          credentialId: 'cred-A',
+        });
+
+        expect(r).toBeNull();
+        expect(paymentRepository.save).not.toHaveBeenCalled();
+        expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+      });
+
+      it('un aviso de la cuenta de A contra el pedido de B (cuenta propia de B) no toca nada', async () => {
+        paymentGateway.getPayment.mockResolvedValue(aprobado);
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(ledgerDe('cred-B'));
+
+        expect(
+          await service.confirmFromGateway({
+            type: 'payment',
+            dataId: 'pay-1',
+            credentialId: 'cred-A',
+          }),
+        ).toBeNull();
+        expect(paymentRepository.save).not.toHaveBeenCalled();
+      });
+
+      it('un aviso de la cuenta del sistema contra un pedido que cobra con cuenta propia no toca nada', async () => {
+        paymentGateway.getPayment.mockResolvedValue(aprobado);
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(ledgerDe('cred-B'));
+
+        expect(
+          await service.confirmFromGateway({
+            type: 'payment',
+            dataId: 'pay-1',
+          }),
+        ).toBeNull();
+        expect(paymentRepository.save).not.toHaveBeenCalled();
+      });
+
+      it('un aviso de una cuenta propia sin ningún intento de cobro tampoco confirma nada', async () => {
+        paymentGateway.getPayment.mockResolvedValue(aprobado);
+        paymentRepository.findOne.mockResolvedValue(null);
+
+        expect(
+          await service.confirmFromGateway({
+            type: 'payment',
+            dataId: 'pay-1',
+            credentialId: 'cred-A',
+          }),
+        ).toBeNull();
+      });
+
+      it('con la cuenta correcta (aunque ya esté desactivada) el pago se aplica', async () => {
+        paymentGateway.getPayment.mockResolvedValue(aprobado);
+        paymentRepository.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(ledgerDe('cred-B'));
+
+        const r = await service.confirmFromGateway({
+          type: 'payment',
+          dataId: 'pay-1',
+          credentialId: 'cred-B',
+        });
+
+        expect(r).toMatchObject({
+          externalReference: 'ord-B',
+          status: 'approved',
+        });
+        expect(paymentRepository.save).toHaveBeenCalled();
+      });
     });
 
     it('primera notificación: matchea el Payment PENDING por external_reference, lo actualiza y normaliza el resultado', async () => {

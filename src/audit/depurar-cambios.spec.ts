@@ -17,6 +17,20 @@ describe('depurarCambios (CU-153: las credenciales nunca se guardan)', () => {
     });
   });
 
+  it('no guarda el secreto del webhook ni el access token de la cuenta de Mercado Pago', () => {
+    expect(
+      depurarCambios({
+        accessToken: 'APP_USR-1',
+        publicKey: 'APP_USR-2',
+        webhookSecret: 'secreto',
+      }),
+    ).toEqual({
+      accessToken: '[depurado]',
+      publicKey: 'APP_USR-2',
+      webhookSecret: '[depurado]',
+    });
+  });
+
   it('nunca guarda los datos de quien recibe un pedido (CU-128)', () => {
     expect(
       depurarCambios({

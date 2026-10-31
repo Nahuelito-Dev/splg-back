@@ -1,14 +1,22 @@
 import { ConfigService } from '@nestjs/config';
+import { MercadoPagoConfig } from 'mercadopago';
+import { MercadoPagoCredentialsService } from '../../distributor/mercadopago-credentials.service';
 import { MercadoPagoAdapter } from './mercadopago.adapter';
 
 const crearReintegro = jest.fn();
 const obtenerPago = jest.fn();
+const crearPreferencia = jest.fn();
+const validarFirma = jest.fn();
 
 /** El SDK se simula entero: ningún test de acá llega a MercadoPago. */
 jest.mock('mercadopago', () => ({
   MercadoPagoConfig: jest.fn(),
-  Preference: jest.fn(),
-  WebhookSignatureValidator: { validate: jest.fn() },
+  Preference: jest.fn().mockImplementation(() => ({
+    create: (...args: unknown[]): unknown => crearPreferencia(...args),
+  })),
+  WebhookSignatureValidator: {
+    validate: (...args: unknown[]): unknown => validarFirma(...args),
+  },
   Payment: jest.fn().mockImplementation(() => ({
     get: (...args: unknown[]): unknown => obtenerPago(...args),
   })),
@@ -19,11 +27,185 @@ jest.mock('mercadopago', () => ({
 
 describe('MercadoPagoAdapter (SDK simulado)', () => {
   let adapter: MercadoPagoAdapter;
+  const resolve = jest.fn();
+  const resolveById = jest.fn();
+  const entorno: Record<string, string> = {
+    MP_ACCESS_TOKEN: 'token-del-entorno',
+    MP_WEBHOOK_SECRET: 'secreto-del-entorno',
+    MP_NOTIFICATION_URL: 'https://api.splg.test/api/webhook/mercadopago',
+  };
 
   beforeEach(() => {
-    adapter = new MercadoPagoAdapter({
-      get: jest.fn().mockReturnValue('token'),
-    } as unknown as ConfigService);
+    jest.clearAllMocks();
+    const delSistema = (
+      _id: string | null,
+      sistema: { accessToken: string; webhookSecret: string },
+    ) =>
+      Promise.resolve({
+        ...sistema,
+        source: 'system',
+        credentialId: null,
+        distributorId: null,
+      });
+    resolve.mockImplementation(delSistema);
+    resolveById.mockImplementation(delSistema);
+    adapter = new MercadoPagoAdapter(
+      { get: (k: string) => entorno[k] } as unknown as ConfigService,
+      { resolve, resolveById } as unknown as MercadoPagoCredentialsService,
+    );
+  });
+
+  const cuerpoDeLaPreferencia = (): { notification_url?: string } =>
+    (
+      crearPreferencia.mock.calls[0] as [
+        { body: { notification_url?: string } },
+      ]
+    )[0].body;
+
+  const cuentaPropia = (): void => {
+    const propia = {
+      accessToken: 'token-propio',
+      webhookSecret: 'secreto-propio',
+      source: 'own',
+      credentialId: 'cred-1',
+      distributorId: 'd1',
+    };
+    resolve.mockResolvedValue(propia);
+    resolveById.mockResolvedValue(propia);
+  };
+
+  it('sin cuenta propia el checkout usa el token y la notification_url del entorno', async () => {
+    crearPreferencia.mockResolvedValue({
+      id: 'p1',
+      init_point: 'https://mp/1',
+    });
+
+    await adapter.createCheckout({
+      orderId: 'o1',
+      items: [{ id: 'i', title: 't', quantity: 1, unitPrice: 10 }],
+      payerEmail: 'a@b.c',
+      distributorId: 'd1',
+    });
+
+    expect(MercadoPagoConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ accessToken: 'token-del-entorno' }),
+    );
+    expect(cuerpoDeLaPreferencia().notification_url).toBe(
+      'https://api.splg.test/api/webhook/mercadopago',
+    );
+  });
+
+  it('con cuenta propia el checkout usa su token y marca la cuenta en la notification_url', async () => {
+    cuentaPropia();
+    crearPreferencia.mockResolvedValue({
+      id: 'p1',
+      init_point: 'https://mp/1',
+    });
+
+    await adapter.createCheckout({
+      orderId: 'o1',
+      items: [{ id: 'i', title: 't', quantity: 1, unitPrice: 10 }],
+      payerEmail: 'a@b.c',
+      distributorId: 'd1',
+    });
+
+    expect(MercadoPagoConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ accessToken: 'token-propio' }),
+    );
+    expect(cuerpoDeLaPreferencia().notification_url).toBe(
+      'https://api.splg.test/api/webhook/mercadopago?account=cred-1',
+    );
+  });
+
+  it('getPayment y refundPayment usan la cuenta con la que se cobró, aunque ya no esté activa', async () => {
+    cuentaPropia();
+    obtenerPago.mockResolvedValue({ id: 1 });
+    crearReintegro.mockResolvedValue({ id: 2 });
+
+    const pago = await adapter.getPayment('1', 'cred-1');
+    await adapter.refundPayment({
+      gatewayPaymentId: '1',
+      amount: 5,
+      idempotencyKey: 'k',
+      credentialId: 'cred-1',
+    });
+
+    expect(pago.accountDistributorId).toBe('d1');
+    expect(resolveById).toHaveBeenNthCalledWith(
+      1,
+      'cred-1',
+      expect.any(Object),
+    );
+    expect(resolveById).toHaveBeenNthCalledWith(
+      2,
+      'cred-1',
+      expect.any(Object),
+    );
+    expect(MercadoPagoConfig).toHaveBeenCalledTimes(2);
+    expect(MercadoPagoConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ accessToken: 'token-propio' }),
+    );
+  });
+
+  it('la firma del webhook se valida con el secreto de la cuenta de la notificación', async () => {
+    cuentaPropia();
+    validarFirma.mockReturnValue(undefined);
+
+    const ok = await adapter.verifyWebhookSignature({
+      xSignature: 'ts=1,v1=x',
+      xRequestId: 'r',
+      dataId: '9',
+      credentialId: 'cred-1',
+    });
+
+    expect(ok).toBe(true);
+    expect(validarFirma).toHaveBeenCalledWith(
+      expect.objectContaining({ secret: 'secreto-propio' }),
+    );
+  });
+
+  it('sin cuenta propia la firma se valida con el secreto del entorno', async () => {
+    validarFirma.mockReturnValue(undefined);
+
+    await adapter.verifyWebhookSignature({ dataId: '9' });
+
+    expect(validarFirma).toHaveBeenCalledWith(
+      expect.objectContaining({ secret: 'secreto-del-entorno' }),
+    );
+  });
+
+  it('una firma que no cierra con el secreto elegido se rechaza', async () => {
+    cuentaPropia();
+    validarFirma.mockImplementation(() => {
+      throw new Error('firma inválida');
+    });
+
+    expect(
+      await adapter.verifyWebhookSignature({
+        dataId: '9',
+        credentialId: 'cred-1',
+      }),
+    ).toBe(false);
+  });
+
+  it('una cuenta que no existe rechaza la firma sin caer a otra cuenta', async () => {
+    resolveById.mockRejectedValue(new Error('no existe'));
+
+    expect(
+      await adapter.verifyWebhookSignature({
+        dataId: '9',
+        credentialId: 'inexistente',
+      }),
+    ).toBe(false);
+    expect(validarFirma).not.toHaveBeenCalled();
+  });
+
+  it('sin ningún secreto la firma se rechaza sin validar', async () => {
+    delete entorno.MP_WEBHOOK_SECRET;
+
+    expect(await adapter.verifyWebhookSignature({ dataId: '9' })).toBe(false);
+    expect(validarFirma).not.toHaveBeenCalled();
+    entorno.MP_WEBHOOK_SECRET = 'secreto-del-entorno';
   });
 
   it('refundPayment pide el importe con la clave de idempotencia y devuelve el id', async () => {
@@ -83,6 +265,7 @@ describe('MercadoPagoAdapter (SDK simulado)', () => {
       amount: 3000,
       refundedAmount: 500,
       feeAmount: null,
+      accountDistributorId: null,
     });
   });
 

@@ -458,6 +458,7 @@ describe('CashCollectionSettingsService', () => {
           payment_id: 'p1',
           order_id: 'o1',
           gateway_payment_id: 'mp1',
+          credential_id: 'cred-1',
           amount: '3000',
           metadata: null,
           approved_at: new Date(),
@@ -474,7 +475,7 @@ describe('CashCollectionSettingsService', () => {
 
       await service.asentarPendientes(DIST, '2026-10-01', ADMIN);
 
-      expect(getPayment).toHaveBeenCalledWith('mp1');
+      expect(getPayment).toHaveBeenCalledWith('mp1', 'cred-1');
       const llamada = asentarCobro.mock.calls[0] as [
         unknown,
         { amount: unknown; feeAmount: number; feeUnreported: boolean },
@@ -538,6 +539,7 @@ describe('CashCollectionSettingsService', () => {
           payment_id: 'pb',
           order_id: 'ob',
           gateway_payment_id: 'mpb',
+          credential_id: 'cred-b',
           metadata: { feeStatus: 'unreported', feeAmount: null },
         },
         {
@@ -573,6 +575,7 @@ describe('CashCollectionSettingsService', () => {
         expect.anything(),
         expect.objectContaining({ paymentId: 'pb', feeAmount: 55 }),
       );
+      expect(getPayment).toHaveBeenCalledWith('mpb', 'cred-b');
       expect(r.feesSettled).toBe(2);
     });
 

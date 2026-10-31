@@ -8,6 +8,7 @@ import {
   MpReportsError,
   MpReportStatus,
 } from '../domain/mp-reports.port';
+import { MercadoPagoCredentialsService } from '../../distributor/mercadopago-credentials.service';
 
 /** Base de la API de Mercado Pago y ruta del reporte de liberaciones. */
 const BASE_URL = 'https://api.mercadopago.com/v1/account/release_report';
@@ -57,22 +58,30 @@ export function estadoDelReporte(status: unknown): MpReportStatus {
  * Adaptador HTTP de los reportes de liberaciones de Mercado Pago.
  * Doc: https://www.mercadopago.com.ar/developers/en/docs/reports/released-money/api
  * (crear: POST /v1/account/release_report; lista: GET .../list;
- * archivo: GET .../{file_name}). Credencial global `MP_ACCESS_TOKEN`.
+ * archivo: GET .../{file_name}). Credencial: la cuenta propia de la
+ * distribuidora si la cargó; si no, la global `MP_ACCESS_TOKEN`.
  */
 @Injectable()
 export class MercadoPagoReportsAdapter extends MercadoPagoReportsPort {
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly credentials: MercadoPagoCredentialsService,
+  ) {
     super();
   }
 
   async requestReport(request: MpReportRequest): Promise<MpReportRequested> {
-    const respuesta = await this.llamar(BASE_URL, {
-      method: 'POST',
-      body: JSON.stringify({
-        begin_date: formatoDeMp(request.from),
-        end_date: formatoDeMp(request.to),
-      }),
-    });
+    const respuesta = await this.llamar(
+      BASE_URL,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          begin_date: formatoDeMp(request.from),
+          end_date: formatoDeMp(request.to),
+        }),
+      },
+      request.distributorId,
+    );
     if (respuesta.status === 203) {
       throw new MpReportsError(
         'rejected',
@@ -91,8 +100,12 @@ export class MercadoPagoReportsAdapter extends MercadoPagoReportsPort {
     };
   }
 
-  async listReports(): Promise<MpReportRef[]> {
-    const respuesta = await this.llamar(`${BASE_URL}/list`, { method: 'GET' });
+  async listReports(distributorId?: string | null): Promise<MpReportRef[]> {
+    const respuesta = await this.llamar(
+      `${BASE_URL}/list`,
+      { method: 'GET' },
+      distributorId,
+    );
     const cuerpo = await this.leerJson(respuesta);
     if (!Array.isArray(cuerpo)) {
       throw new MpReportsError(
@@ -110,10 +123,14 @@ export class MercadoPagoReportsAdapter extends MercadoPagoReportsPort {
     }));
   }
 
-  async downloadReport(fileName: string): Promise<string> {
+  async downloadReport(
+    fileName: string,
+    distributorId?: string | null,
+  ): Promise<string> {
     const respuesta = await this.llamar(
       `${BASE_URL}/${encodeURIComponent(fileName)}`,
       { method: 'GET' },
+      distributorId,
       TIMEOUT_DESCARGA_MS,
     );
     return new TextDecoder('utf-8').decode(await respuesta.arrayBuffer());
@@ -122,9 +139,23 @@ export class MercadoPagoReportsAdapter extends MercadoPagoReportsPort {
   private async llamar(
     url: string,
     init: { method: 'GET' | 'POST'; body?: string },
+    distributorId?: string | null,
     timeoutMs = TIMEOUT_MS,
   ): Promise<Response> {
-    const token = this.config.get<string>('MP_ACCESS_TOKEN');
+    let token: string;
+    try {
+      ({ accessToken: token } = await this.credentials.resolve(distributorId, {
+        accessToken: this.config.get<string>('MP_ACCESS_TOKEN') || '',
+        webhookSecret: '',
+      }));
+    } catch (error) {
+      throw new MpReportsError(
+        'not_configured',
+        error instanceof Error
+          ? error.message
+          : 'No se pudo resolver la cuenta de Mercado Pago',
+      );
+    }
     if (!token) {
       throw new MpReportsError(
         'not_configured',

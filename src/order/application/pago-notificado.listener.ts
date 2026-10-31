@@ -22,6 +22,7 @@ export class PagoNotificadoListener {
       dataId: evento.dataId,
       xSignature: evento.xSignature,
       xRequestId: evento.xRequestId,
+      credentialId: evento.credentialId,
     });
   }
 }
