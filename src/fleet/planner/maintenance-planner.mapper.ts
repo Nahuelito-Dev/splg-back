@@ -1,3 +1,4 @@
+import { PlanningCaseStatus } from '../entities/maintenance-planning-case.entity';
 import { diasHasta } from './domain/ventanas-de-taller';
 import { MaintenancePlanningCase } from '../entities/maintenance-planning-case.entity';
 import {
@@ -46,6 +47,22 @@ export class MaintenancePlannerMapper {
       patent: p.task.car?.carPatent ?? null,
       caseStatus: p.planningCase.status,
       urgent: p.windowEnd.getTime() > p.planningCase.projectedDueAt.getTime(),
+      projectedDueAt: p.planningCase.projectedDueAt.toISOString(),
+      ...MaintenancePlannerMapper.ventanaConfirmada(p.planningCase),
+    };
+  }
+
+  /** La ventana que quedó confirmada en el caso, la elija el chofer o el administrador. */
+  private static ventanaConfirmada(c: {
+    status: PlanningCaseStatus;
+    chosenStart: Date | null;
+    chosenEnd: Date | null;
+  }): { confirmedStart: string | null; confirmedEnd: string | null } {
+    const confirmado =
+      c.status === PlanningCaseStatus.CONFIRMED && c.chosenStart && c.chosenEnd;
+    return {
+      confirmedStart: confirmado ? c.chosenStart!.toISOString() : null,
+      confirmedEnd: confirmado ? c.chosenEnd!.toISOString() : null,
     };
   }
 

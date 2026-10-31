@@ -15,7 +15,11 @@ import {
 } from './maintenance-planner-notifier';
 import { EVENTO_NOTIFICAR_ADMIN } from '../../common/events/notificar-admin.event';
 
-const CTX = { planName: 'VTV <b>', patent: 'AB123CD' };
+const CTX = {
+  planName: 'VTV <b>',
+  patent: 'AB123CD',
+  projectedDueAt: new Date('2026-11-01T03:00:00Z'),
+};
 const propuesta = {
   proposalId: 'p1',
   caseId: 'c1',

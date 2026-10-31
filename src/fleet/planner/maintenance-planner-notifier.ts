@@ -18,6 +18,8 @@ import { MaintenanceWindowProposal } from '../entities/maintenance-window-propos
 export interface ContextoDelAviso {
   planName: string;
   patent: string;
+  /** Vencimiento proyectado del caso: una ventana que termina después es urgente. */
+  projectedDueAt?: Date;
 }
 
 const MOTIVO_DE_ESCALAMIENTO: Readonly<
@@ -78,6 +80,9 @@ export class MaintenancePlannerNotifier {
       expiresAt: proposal.expiresAt.toISOString(),
       taskName: ctx.planName,
       patent: ctx.patent,
+      urgent:
+        ctx.projectedDueAt !== undefined &&
+        proposal.windowEnd.getTime() > ctx.projectedDueAt.getTime(),
     };
     const titulo = `Turno de taller para ${ctx.patent}`;
     const detalle = `${ctx.planName}: ${cuando(proposal.windowStart)}`;
