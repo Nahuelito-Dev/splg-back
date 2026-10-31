@@ -96,6 +96,11 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
           pending: this.configService.get<string>('MP_PENDING_URL'),
         },
         auto_return: 'approved',
+        ...(input.expiresAt && {
+          expires: true,
+          expiration_date_from: fechaDeMercadoPago(new Date()),
+          expiration_date_to: fechaDeMercadoPago(input.expiresAt),
+        }),
       },
     });
 
@@ -196,6 +201,12 @@ export class MercadoPagoAdapter extends PaymentGatewayPort {
     url.searchParams.set('account', credentialId);
     return url.toString();
   }
+}
+
+/** Fecha en el formato que pide Mercado Pago, con el huso de Argentina (UTC-3 todo el año). */
+export function fechaDeMercadoPago(fecha: Date): string {
+  const local = new Date(fecha.getTime() - 3 * 3600 * 1000);
+  return local.toISOString().replace('Z', '-03:00');
 }
 
 /** Lo que el comercio no llega a recibir de un pago: el bruto menos el neto que informa la pasarela, o los cargos que absorbe él. */

@@ -23,6 +23,8 @@ export interface CreateCheckoutInput {
   payerEmail: string;
   /** Distribuidora que cobra: define con qué cuenta de la pasarela se hace el checkout. */
   distributorId?: string | null;
+  /** Hasta cuándo se puede pagar el checkout: pasado ese instante el enlace deja de cobrar. */
+  expiresAt?: Date;
 }
 
 export interface CreateCheckoutResult {

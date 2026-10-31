@@ -1,6 +1,8 @@
 import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { In, Repository } from 'typeorm';
 import { PaymentsService } from './payments.service';
 import { Payment } from '../entities/payment.entity';
@@ -24,9 +26,11 @@ describe('PaymentsService', () => {
     save: jest.Mock;
     findOne: jest.Mock;
     find: jest.Mock;
+    count: jest.Mock;
     manager: { transaction: jest.Mock };
   };
   let orderLookup: { findPaymentState: jest.Mock };
+  let events: { emit: jest.Mock };
   let ventasEnCaja: {
     asentarCobroDeMercadoPago: jest.Mock;
     asentarDevolucionExterna: jest.Mock;
@@ -44,6 +48,7 @@ describe('PaymentsService', () => {
       save: jest.fn((entity: Payment) => Promise.resolve(entity)),
       findOne: jest.fn(),
       find: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       manager: {
         transaction: jest.fn((trabajo: (m: unknown) => unknown) =>
           trabajo({ getRepository: () => paymentRepository }),
@@ -56,10 +61,13 @@ describe('PaymentsService', () => {
       verifyWebhookSignature: jest.fn(),
     };
 
+    events = { emit: jest.fn() };
     orderLookup = {
       findPaymentState: jest.fn().mockResolvedValue({
         status: OrderStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
+        createdAt: new Date(),
+        distributorId: 'dist-1',
       }),
     };
 
@@ -74,6 +82,11 @@ describe('PaymentsService', () => {
       paymentGateway as unknown as PaymentGatewayPort,
       orderLookup as unknown as OrderLookupService,
       ventasEnCaja as unknown as SalesCashService,
+      {
+        getOrThrow: (clave: string) =>
+          clave === 'RESERVATION_DEPOSIT_TTL_HOURS' ? 48 : 60,
+      } as unknown as ConfigService,
+      events as unknown as EventEmitter2,
     );
   });
 
@@ -198,6 +211,7 @@ describe('PaymentsService', () => {
         ],
         payerEmail: 'cliente@test.com',
         distributorId: 'dist-1',
+        expiresAt: expect.any(Date) as Date,
       });
 
       // Se guarda dos veces: al crear el PENDING y al completar payment_url.
@@ -213,6 +227,53 @@ describe('PaymentsService', () => {
         initPoint: 'https://mp.test/checkout',
         preferenceId: 'pref-1',
         credentialId: 'cred-1',
+      });
+    });
+
+    describe('vencimiento del enlace de pago', () => {
+      const cobrar = async (
+        isDeposit: boolean,
+        creado: Date,
+      ): Promise<Date> => {
+        orderLookup.findPaymentState.mockResolvedValue({
+          status: OrderStatus.PENDING,
+          paymentStatus: PaymentStatus.PENDING,
+          createdAt: creado,
+        });
+        paymentGateway.createCheckout.mockResolvedValue({
+          initPoint: 'https://mp.test/c',
+          preferenceId: 'pref',
+          credentialId: null,
+        });
+        await service.createCheckout({
+          orderId: 'ord-1',
+          amount: 100,
+          isDeposit,
+          items: [],
+          payerEmail: 'c@test.com',
+        });
+        const [pedido] = paymentGateway.createCheckout.mock.calls[0] as [
+          { expiresAt: Date },
+        ];
+        return pedido.expiresAt;
+      };
+
+      it('un pedido normal vence a los minutos de espera del pago online, contados desde que se creó', async () => {
+        const creado = new Date(Date.now() - 10 * 60 * 1000);
+        const vence = await cobrar(false, creado);
+        expect(vence.getTime()).toBe(creado.getTime() + 60 * 60 * 1000);
+      });
+
+      it('la seña de una reserva vence a las horas de espera de la seña', async () => {
+        const creado = new Date(Date.now() - 60 * 60 * 1000);
+        const vence = await cobrar(true, creado);
+        expect(vence.getTime()).toBe(creado.getTime() + 48 * 3600 * 1000);
+      });
+
+      it('si el plazo ya pasó, deja al menos un minuto: Mercado Pago no acepta un vencimiento pasado', async () => {
+        const antes = Date.now();
+        const vence = await cobrar(false, new Date(antes - 5 * 3600 * 1000));
+        expect(vence.getTime()).toBeGreaterThanOrEqual(antes + 60 * 1000);
       });
     });
 
@@ -982,6 +1043,33 @@ describe('PaymentsService', () => {
         );
       });
 
+      it('la devolución que pasa el pago a devuelto se informa como externa (con contracargo si lo es)', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+        const devuelto = await notificar('refunded', { refundedAmount: null });
+        expect(devuelto?.devolucionExterna).toEqual({ contracargo: false });
+
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+        const contracargo = await notificar('charged_back', {
+          refundedAmount: null,
+        });
+        expect(contracargo?.devolucionExterna).toEqual({ contracargo: true });
+      });
+
+      it('si el sistema ya lo había devuelto (ledger devuelto) o sólo hay devolución parcial, no se informa', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(
+          ledger({
+            gatewayPaymentId: 'mp-1',
+            status: LedgerPaymentStatus.REFUNDED,
+          }),
+        );
+        const propia = await notificar('refunded', { refundedAmount: null });
+        expect(propia?.devolucionExterna).toBeUndefined();
+
+        paymentRepository.findOne.mockResolvedValueOnce(aprobado());
+        const parcial = await notificar('approved', { refundedAmount: 1200 });
+        expect(parcial?.devolucionExterna).toBeUndefined();
+      });
+
       it('sin devolución en la pasarela no se mueve la caja', async () => {
         paymentRepository.findOne.mockResolvedValueOnce(aprobado());
 
@@ -1069,6 +1157,189 @@ describe('PaymentsService', () => {
 
       expect(resultado?.status).toBe('approved');
       expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('un pago nuevo del mismo checkout (reintento tras un rechazo, tarjeta tras un ticket)', () => {
+    const intento = (over: Record<string, unknown> = {}) => ({
+      paymentId: 'ledger-1',
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      gateway: 'mercadopago',
+      integration: 'checkout_pro',
+      externalReference: 'ord-1',
+      credentialId: null,
+      gatewayPaymentId: 'mp-0',
+      isDeposit: false,
+      amount: 3000,
+      paymentUrl: 'https://mp.test/pref-1',
+      status: LedgerPaymentStatus.REJECTED,
+      approvedAt: null,
+      metadata: { preferenceId: 'pref-1', gatewayStatus: 'rejected' },
+      ...over,
+    });
+    /** Ningún intento tiene el id del pago ni queda uno libre: sólo existe el previo. */
+    const soloElPrevio = (previo: object | null) => {
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null) // por id de pasarela
+        .mockResolvedValueOnce(null) // intento libre
+        .mockResolvedValueOnce(null) // por id, con el libre bloqueado
+        .mockResolvedValueOnce(previo) // intento previo del pedido
+        .mockResolvedValueOnce(null); // por id, con el previo bloqueado
+      paymentRepository.save.mockImplementation((e: Record<string, unknown>) =>
+        Promise.resolve({ paymentId: 'ledger-2', ...e }),
+      );
+    };
+    const pagoNuevo = (
+      over: Record<string, unknown> = {},
+      credentialId?: string,
+    ) => {
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'mp-2',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 3000,
+        feeAmount: 100,
+        ...over,
+      });
+      return service.confirmFromGateway({
+        type: 'payment',
+        dataId: 'mp-2',
+        credentialId,
+      });
+    };
+
+    it.each([
+      ['rechazo y reintento aprobado', LedgerPaymentStatus.REJECTED],
+      ['ticket pendiente y pago con tarjeta', LedgerPaymentStatus.PENDING],
+    ])(
+      '%s: abre un intento nuevo con la cuenta, el monto y la preferencia del anterior, lo aprueba y lo asienta en caja',
+      async (_caso, estadoPrevio) => {
+        soloElPrevio(intento({ status: estadoPrevio }));
+
+        const r = await pagoNuevo();
+
+        expect(r).toEqual(
+          expect.objectContaining({
+            gatewayPaymentId: 'mp-2',
+            status: 'approved',
+            isDeposit: false,
+          }),
+        );
+        expect(r?.montoDistinto).toBeUndefined();
+        expect(paymentRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            orderId: 'ord-1',
+            distributorId: 'dist-1',
+            credentialId: null,
+            amount: 3000,
+            isDeposit: false,
+            status: LedgerPaymentStatus.PENDING,
+            metadata: { preferenceId: 'pref-1' },
+          }),
+        );
+        expect(paymentRepository.save).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            paymentId: 'ledger-2',
+            gatewayPaymentId: 'mp-2',
+            status: LedgerPaymentStatus.APPROVED,
+          }),
+        );
+        expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            paymentId: 'ledger-2',
+            gatewayPaymentId: 'mp-2',
+            amount: 3000,
+          }),
+        );
+        expect(events.emit).not.toHaveBeenCalled();
+      },
+    );
+
+    it('con cuenta propia: el intento nuevo hereda la credencial y se confirma', async () => {
+      soloElPrevio(intento({ credentialId: 'cred-1' }));
+
+      const r = await pagoNuevo({}, 'cred-1');
+
+      expect(r).not.toBeNull();
+      expect(paymentRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ credentialId: 'cred-1' }),
+      );
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledTimes(1);
+    });
+
+    it('un pago de otra cuenta contra el checkout del pedido no abre ningún intento', async () => {
+      soloElPrevio(intento({ credentialId: 'cred-1' }));
+
+      expect(await pagoNuevo({}, 'cred-OTRA')).toBeNull();
+      expect(paymentRepository.create).not.toHaveBeenCalled();
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+    });
+
+    it('el pago nuevo aprobado por otro monto queda marcado y no se da por pagado', async () => {
+      soloElPrevio(intento());
+
+      const r = await pagoNuevo({ amount: 2000 });
+
+      expect(r?.montoDistinto).toEqual({ esperado: 3000, cobrado: 2000 });
+    });
+
+    it('un pago nuevo rechazado también queda registrado (queda como rechazado)', async () => {
+      soloElPrevio(intento());
+
+      const r = await pagoNuevo({ status: 'rejected' });
+
+      expect(r?.status).toBe('rejected');
+      expect(paymentRepository.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          gatewayPaymentId: 'mp-2',
+          status: LedgerPaymentStatus.REJECTED,
+        }),
+      );
+    });
+
+    it('sin ningún intento del pedido y con la cuenta del entorno: se confirma como hasta ahora y se avisa al administrador', async () => {
+      soloElPrevio(null);
+
+      const r = await pagoNuevo();
+
+      expect(r).toEqual(
+        expect.objectContaining({ gatewayPaymentId: 'mp-2', isDeposit: false }),
+      );
+      expect(paymentRepository.create).not.toHaveBeenCalled();
+      expect(events.emit).toHaveBeenCalledWith(
+        'admin.notificar',
+        expect.objectContaining({
+          distributorId: 'dist-1',
+          kind: 'payment_without_attempt',
+          dedupeKey: 'mp-sin-intento:mp-2',
+        }),
+      );
+    });
+
+    it('sin ningún intento del pedido y con una cuenta propia: no se confirma, pero se avisa', async () => {
+      soloElPrevio(null);
+
+      expect(await pagoNuevo({}, 'cred-1')).toBeNull();
+      expect(events.emit).toHaveBeenCalledWith(
+        'admin.notificar',
+        expect.objectContaining({ kind: 'payment_without_attempt' }),
+      );
+    });
+
+    it('la devolución desde el panel de MP no se informa si hay una solicitud de reintegro propia de ese pago', async () => {
+      paymentRepository.count.mockResolvedValue(1);
+      paymentRepository.findOne.mockResolvedValueOnce(
+        intento({
+          status: LedgerPaymentStatus.APPROVED,
+          gatewayPaymentId: 'mp-2',
+        }),
+      );
+
+      const r = await pagoNuevo({ status: 'refunded', refundedAmount: null });
+
+      expect(r?.devolucionExterna).toBeUndefined();
     });
   });
 

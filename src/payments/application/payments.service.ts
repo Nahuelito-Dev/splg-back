@@ -4,10 +4,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 
 import { Payment } from '../entities/payment.entity';
+import { PaymentRefund } from '../entities/payment-refund.entity';
 import {
   montoCoincide,
   puedeTransicionarElPago,
@@ -24,9 +27,16 @@ import {
   PaymentGatewayPort,
   VerifyWebhookSignatureInput,
 } from '../domain/ports/payment-gateway.port';
-import { OrderLookupService } from '../../order/lookup/order-lookup.service';
+import {
+  OrderLookupService,
+  OrderPaymentState,
+} from '../../order/lookup/order-lookup.service';
 import { OrderStatus, PaymentStatus } from '../../order/entities/order.entity';
 import { errorMessage } from '../../common/errors/error-message';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../../common/events/aviso-al-admin';
 import {
   ResultadoDelAsiento,
   SalesCashService,
@@ -71,6 +81,12 @@ export interface ConfirmFromGatewayResult {
    * caller no tiene que dar el pedido por pagado ni despacharlo.
    */
   montoDistinto?: { esperado: number; cobrado: number };
+  /**
+   * Presente cuando esta notificación fue la que pasó el pago a devuelto desde
+   * la pasarela (devolución hecha en su panel, o contracargo): no la pidió el
+   * sistema. El caller avisa al administrador.
+   */
+  devolucionExterna?: { contracargo: boolean };
 }
 
 /**
@@ -91,6 +107,8 @@ export class PaymentsService {
     private readonly paymentGateway: PaymentGatewayPort,
     private readonly orderLookup: OrderLookupService,
     private readonly ventasEnCaja: SalesCashService,
+    private readonly config: ConfigService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -103,7 +121,7 @@ export class PaymentsService {
   async createCheckout(
     input: CreatePaymentCheckoutInput,
   ): Promise<CreateCheckoutResult> {
-    await this.assertPedidoCobrable(input.orderId);
+    const pedido = await this.assertPedidoCobrable(input.orderId);
 
     const ledgerPayment = await this.paymentRepository.save(
       this.paymentRepository.create({
@@ -123,6 +141,7 @@ export class PaymentsService {
       items: input.items,
       payerEmail: input.payerEmail,
       distributorId: input.distributorId,
+      expiresAt: this.vencimientoDelCobro(pedido.createdAt, input.isDeposit),
     });
 
     ledgerPayment.paymentUrl = checkout.initPoint;
@@ -159,8 +178,32 @@ export class PaymentsService {
     return urls;
   }
 
-  /** 404 si el pedido no existe; 409 si ya no se puede cobrar. */
-  private async assertPedidoCobrable(orderId: string): Promise<void> {
+  /**
+   * Cuándo vence el enlace de pago: cuando vence el pedido sin pagar (el mismo
+   * plazo con que `ReservationService` cancela los impagos), así un enlace viejo
+   * no cobra un pedido que el sistema ya canceló. Una seña de reserva espera las
+   * horas de la reserva; un pedido normal, los minutos del pago online.
+   */
+  private vencimientoDelCobro(creado: Date, esSena: boolean): Date {
+    const plazoMs = esSena
+      ? this.config.getOrThrow<number>('RESERVATION_DEPOSIT_TTL_HOURS') *
+        3600 *
+        1000
+      : this.config.getOrThrow<number>(
+          'ORDER_MERCADOPAGO_PENDING_TTL_MINUTES',
+        ) *
+        60 *
+        1000;
+    // Mercado Pago rechaza un vencimiento que ya pasó: un pedido recién creado
+    // siempre deja al menos un minuto para pagar.
+    const minimo = Date.now() + 60 * 1000;
+    return new Date(Math.max(creado.getTime() + plazoMs, minimo));
+  }
+
+  /** 404 si el pedido no existe; 409 si ya no se puede cobrar. Devuelve el estado leído. */
+  private async assertPedidoCobrable(
+    orderId: string,
+  ): Promise<OrderPaymentState> {
     const pedido = await this.orderLookup.findPaymentState(orderId);
     if (!pedido) {
       throw new NotFoundException(`Pedido ${orderId} no encontrado`);
@@ -178,6 +221,7 @@ export class PaymentsService {
         'El pedido ya fue entregado: no se puede cobrar',
       );
     }
+    return pedido;
   }
 
   /**
@@ -223,7 +267,15 @@ export class PaymentsService {
       montoDistinto,
       asiento,
       cuentaDistinta,
+      devueltoAhora,
+      sinIntentoDeCobro,
     } = await this.updateLedger(gatewayPayment, credentialId);
+    if (sinIntentoDeCobro) {
+      await this.avisarPagoSinIntento(
+        gatewayPayment.externalReference,
+        gatewayPayment.id,
+      );
+    }
     if (cuentaDistinta) {
       this.logger.warn(
         `Pago ${gatewayPayment.id}: la cuenta de Mercado Pago de la notificación no es la del pedido ${gatewayPayment.externalReference}; se ignora`,
@@ -245,7 +297,39 @@ export class PaymentsService {
       status: estadoAtrasado ?? gatewayPayment.status,
       isDeposit,
       ...(montoDistinto && { montoDistinto }),
+      ...(devueltoAhora && {
+        devolucionExterna: {
+          contracargo: gatewayPayment.status === 'charged_back',
+        },
+      }),
     };
+  }
+
+  /**
+   * Pago aprobado, rechazado o pendiente de un pedido que no tiene ningún
+   * intento de cobro registrado: se avisa en la bandeja del administrador para
+   * que lo revise en Mercado Pago. Best-effort, una vez por pago.
+   */
+  private async avisarPagoSinIntento(
+    orderId: string,
+    gatewayPaymentId: string,
+  ): Promise<void> {
+    try {
+      const pedido = await this.orderLookup.findPaymentState(orderId);
+      if (!pedido?.distributorId) return;
+      pedirAvisoAlAdmin(this.events, this.logger, {
+        distributorId: pedido.distributorId,
+        kind: 'payment_without_attempt',
+        title: 'Pago de Mercado Pago sin intento de cobro registrado',
+        body: `Pedido #${idCortoDePedido(orderId)}: llegó el pago ${gatewayPaymentId} de Mercado Pago y el pedido no tiene ningún intento de cobro registrado. Revisalo en Mercado Pago.`,
+        link: { entity: 'order', id: orderId },
+        dedupeKey: `mp-sin-intento:${gatewayPaymentId}`,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo avisar el pago ${gatewayPaymentId} sin intento de cobro: ${errorMessage(error)}`,
+      );
+    }
   }
 
   verifyWebhookSignature(input: VerifyWebhookSignatureInput): Promise<boolean> {
@@ -274,6 +358,10 @@ export class PaymentsService {
     asiento?: { resultado: ResultadoDelAsiento; distributorId: string };
     /** El aviso vino de una cuenta que no es la del intento de cobro: no se toca nada. */
     cuentaDistinta?: true;
+    /** Esta notificación pasó el pago a devuelto (no lo había devuelto el sistema). */
+    devueltoAhora?: true;
+    /** El pedido no tiene ningún intento de cobro registrado para este pago. */
+    sinIntentoDeCobro?: true;
   }> {
     // Leer, validar y escribir con la fila del pago bloqueada: dos notificaciones
     // intercaladas se aplican una detrás de la otra y la segunda ya ve el estado
@@ -306,6 +394,9 @@ export class PaymentsService {
     estadoAtrasado?: LedgerPaymentStatus;
     montoDistinto?: { esperado: number; cobrado: number };
     asiento?: { resultado: ResultadoDelAsiento; distributorId: string };
+    devueltoAhora?: true;
+    /** El pedido no tiene ningún intento de cobro registrado para este pago. */
+    sinIntentoDeCobro?: true;
   }> {
     return this.paymentRepository.manager.transaction(async (manager) => {
       const repo = manager.getRepository(Payment);
@@ -332,24 +423,75 @@ export class PaymentsService {
         ledgerPayment = (await porPasarela()) ?? candidato;
       }
 
-      // La cuenta que consultó el pago tiene que ser la del intento de cobro: un
-      // aviso de la cuenta de otra distribuidora (o de la del sistema contra un
-      // pedido que cobra con cuenta propia, y al revés) no confirma nada.
-      if (
-        ledgerPayment
-          ? (ledgerPayment.credentialId ?? null) !== credentialId
-          : credentialId !== null
-      ) {
-        return { isDeposit: false, cuentaDistinta: true };
+      // Un pago nuevo del MISMO checkout (reintento tras un rechazo, o tarjeta
+      // después de un ticket que sigue pendiente) no tiene fila libre: el intento
+      // que ya tomó el pago anterior es el que dice con qué cuenta, qué monto y
+      // qué preferencia. Se le abre una fila nueva, pendiente, y sigue el camino
+      // normal (monto, estado, caja).
+      if (!ledgerPayment) {
+        const previo = await repo.findOne({
+          where: {
+            externalReference: gatewayPayment.externalReference ?? undefined,
+            status: In([
+              LedgerPaymentStatus.PENDING,
+              LedgerPaymentStatus.REJECTED,
+              LedgerPaymentStatus.CANCELLED,
+            ]),
+          },
+          order: { createdAt: 'DESC' },
+          lock: bloqueado,
+        });
+        // Con el intento bloqueado, otra notificación de este mismo pago pudo
+        // haberle abierto la fila mientras se esperaba.
+        ledgerPayment = (await porPasarela()) ?? null;
+        if (!ledgerPayment && previo) {
+          if ((previo.credentialId ?? null) !== credentialId) {
+            return { isDeposit: false, cuentaDistinta: true };
+          }
+          this.logger.log(
+            `Pago ${gatewayPayment.id}: nuevo pago del mismo checkout del pedido ${previo.orderId}; se registra un intento de cobro nuevo`,
+          );
+          ledgerPayment = await repo.save(
+            repo.create({
+              orderId: previo.orderId,
+              distributorId: previo.distributorId,
+              gateway: previo.gateway,
+              integration: previo.integration,
+              externalReference: previo.externalReference,
+              credentialId: previo.credentialId,
+              amount: previo.amount,
+              isDeposit: previo.isDeposit,
+              paymentUrl: previo.paymentUrl,
+              metadata: previo.metadata?.preferenceId
+                ? { preferenceId: previo.metadata.preferenceId }
+                : null,
+              status: LedgerPaymentStatus.PENDING,
+            }),
+          );
+        }
       }
 
       if (!ledgerPayment) {
-        // No debería ocurrir (todo checkout pasa por createCheckout), pero un
-        // pago sin ledger asociado no debe romper la confirmación del pedido.
+        // Ningún intento de cobro de este pedido: no se puede saber con qué
+        // monto ni con qué cuenta se pidió. Con la cuenta del entorno el pedido
+        // se confirma igual como hasta ahora; con una cuenta propia no se puede
+        // atribuir a ninguna distribuidora y no se confirma. En los dos casos se
+        // avisa al administrador: un cobro nunca queda en silencio.
         this.logger.warn(
           `Pago ${gatewayPayment.id} sin Payment de ledger asociado (pedido ${gatewayPayment.externalReference})`,
         );
-        return { isDeposit: false };
+        return {
+          isDeposit: false,
+          sinIntentoDeCobro: true,
+          ...(credentialId !== null && { cuentaDistinta: true as const }),
+        };
+      }
+
+      // La cuenta que consultó el pago tiene que ser la del intento de cobro: un
+      // aviso de la cuenta de otra distribuidora (o de la del sistema contra un
+      // pedido que cobra con cuenta propia, y al revés) no confirma nada.
+      if ((ledgerPayment.credentialId ?? null) !== credentialId) {
+        return { isDeposit: false, cuentaDistinta: true };
       }
 
       const nuevoEstado = this.toLedgerStatus(gatewayPayment.status);
@@ -386,6 +528,15 @@ export class PaymentsService {
         permitido &&
         nuevoEstado === LedgerPaymentStatus.APPROVED &&
         ledgerPayment.status !== LedgerPaymentStatus.APPROVED;
+      // Pasó a devuelto por esta notificación: si el sistema ya lo había devuelto
+      // (reintegro propio) el ledger ya figura devuelto y no se avisa de nuevo.
+      const devueltoAhora =
+        permitido &&
+        nuevoEstado === LedgerPaymentStatus.REFUNDED &&
+        ledgerPayment.status !== LedgerPaymentStatus.REFUNDED &&
+        (await manager
+          .getRepository(PaymentRefund)
+          .count({ where: { paymentId: ledgerPayment.paymentId } })) === 0;
       const devuelto = devueltoSegunLaPasarela(gatewayPayment);
       const devueltoGuardado = Number(
         ledgerPayment.metadata?.gatewayRefunded ?? 0,
@@ -449,6 +600,7 @@ export class PaymentsService {
         ...(!permitido && { estadoAtrasado: ledgerPayment.status }),
         ...(montoDistinto && { montoDistinto }),
         ...(asiento && { asiento }),
+        ...(devueltoAhora && { devueltoAhora: true as const }),
       };
     });
   }

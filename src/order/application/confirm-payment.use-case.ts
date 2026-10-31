@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 
 import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
@@ -10,6 +11,10 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { errorMessage } from '../../common/errors/error-message';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../../common/events/aviso-al-admin';
 
 /** Payload que llega del webhook de MercadoPago (query params `type`/`data.id`). */
 export interface ConfirmPaymentInput {
@@ -52,6 +57,7 @@ export class ConfirmPaymentUseCase {
     private readonly dispatch: RealtimeDispatchPort,
     private readonly notificationService: NotificationPort,
     private readonly refunds: RefundsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async execute(input: ConfirmPaymentInput): Promise<void> {
@@ -75,6 +81,14 @@ export class ConfirmPaymentUseCase {
       return;
     }
 
+    if (payment.devolucionExterna) {
+      this.avisarDevolucionExterna(
+        order,
+        payment.gatewayPaymentId,
+        payment.devolucionExterna,
+      );
+    }
+
     if (payment.status === 'approved') {
       if (payment.montoDistinto) {
         // La pasarela aprobó un importe distinto del esperado (el ledger ya
@@ -90,19 +104,117 @@ export class ConfirmPaymentUseCase {
     }
 
     if (payment.status === 'rejected' || payment.status === 'cancelled') {
-      // TODO: liberar el stock reservado (GasCylinderService.restituirStock) y
-      // marcar el pedido CANCELLED cuando el pago se rechaza/cancela en MP.
-      // MVP: solo lo dejamos loggeado; el pedido queda PENDING/PENDING y el
-      // cliente puede reintentar el pago (o un cron de expiración lo cancela).
-      this.logger.log(
-        `Pago ${payment.gatewayPaymentId} del pedido ${order.orderId} en estado ${payment.status} (sin acción, ver TODO)`,
-      );
+      await this.handleRejected(order, payment.gatewayPaymentId, payment);
       return;
     }
 
     this.logger.debug(
       `Pago ${payment.gatewayPaymentId} del pedido ${order.orderId} en estado ${payment.status} (aún no definitivo)`,
     );
+  }
+
+  /**
+   * Un intento de pago rechazado o cancelado en Mercado Pago: el pedido queda
+   * con el pago FALLIDO (el cliente y el administrador lo ven) y sigue
+   * pendiente, con el stock reservado y sin `gatewayPaymentId`. No se cancela
+   * acá: lo cancela y libera el stock el vencimiento por falta de pago
+   * (`ReservationService.expireUnpaidMercadoPagoOrders`), el mismo camino de
+   * un pedido abandonado. Si el cliente reintenta y se aprueba, `handleApproved`
+   * lo pasa a pagado.
+   *
+   * Sólo toca un pedido normal, pendiente y con el pago en pendiente: el
+   * rechazo de la seña de una reserva deja la reserva como está (vence por su
+   * plazo), y una notificación atrasada no pisa un pedido pagado o cerrado.
+   */
+  private async handleRejected(
+    order: Order,
+    paymentId: string,
+    payment: { status: string; isDeposit: boolean },
+  ): Promise<void> {
+    if (payment.isDeposit) {
+      this.logger.log(
+        `Seña de la reserva ${order.orderId}: pago ${paymentId} ${payment.status}; la reserva sigue esperando la seña`,
+      );
+      return;
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let marcado = false;
+    try {
+      const locked = await queryRunner.manager
+        .createQueryBuilder(Order, 'order')
+        .setLock('pessimistic_write')
+        .where('order.orderId = :id', { id: order.orderId })
+        .getOne();
+      if (
+        locked &&
+        locked.status === OrderStatus.PENDING &&
+        !locked.gatewayPaymentId &&
+        locked.paymentStatus === PaymentStatus.PENDING
+      ) {
+        locked.paymentStatus = PaymentStatus.FAILED;
+        await queryRunner.manager.save(locked);
+        marcado = true;
+      }
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+
+    this.logger.log(
+      marcado
+        ? `Pago ${paymentId} del pedido ${order.orderId} ${payment.status}: pedido con el pago fallido, sigue pendiente hasta que se reintente o venza`
+        : `Pago ${paymentId} del pedido ${order.orderId} ${payment.status}: el pedido ya no está pendiente de pago, sin cambios`,
+    );
+    if (!marcado) return;
+
+    try {
+      this.dispatch.notifyCustomer(order.customerId, 'order:payment-rejected', {
+        orderId: order.orderId,
+        paymentStatus: PaymentStatus.FAILED,
+        gatewayStatus: payment.status,
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo emitir order:payment-rejected del pedido ${order.orderId}: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Mercado Pago devolvió el pago por su cuenta (devolución desde su panel o
+   * contracargo). El ledger y la caja ya quedaron al día en `PaymentsService`;
+   * acá sólo se avisa al administrador, que decide qué hacer con el pedido (no
+   * se cancela ni se reintegra de nuevo). Una vez por pago de la pasarela y tipo
+   * (el aviso no se repite aunque MP reenvíe la notificación). No sale si el
+   * sistema tiene una solicitud de reintegro propia de ese pago: eso se decide
+   * en `PaymentsService`, que es quien llena `devolucionExterna`.
+   */
+  private avisarDevolucionExterna(
+    order: Order,
+    gatewayPaymentId: string,
+    devolucion: { contracargo: boolean },
+  ): void {
+    if (!order.distributorId) return;
+    const corto = idCortoDePedido(order.orderId);
+    pedirAvisoAlAdmin(this.events, this.logger, {
+      distributorId: order.distributorId,
+      kind: devolucion.contracargo ? 'payment_chargeback' : 'payment_refunded',
+      title: devolucion.contracargo
+        ? 'Contracargo de un pago'
+        : 'Pago devuelto desde Mercado Pago',
+      body: devolucion.contracargo
+        ? `Pedido #${corto}: el cliente desconoció el pago y Mercado Pago lo devolvió (contracargo). Revisá el pedido.`
+        : `Pedido #${corto}: el pago se devolvió desde el panel de Mercado Pago. Revisá el pedido.`,
+      link: { entity: 'order', id: order.orderId },
+      dedupeKey: `mp-${devolucion.contracargo ? 'chargeback' : 'refunded'}:${gatewayPaymentId}`,
+    });
   }
 
   /**

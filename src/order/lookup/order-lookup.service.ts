@@ -53,6 +53,9 @@ export interface OrderRecoveryRef {
 export interface OrderPaymentState {
   status: OrderStatus;
   paymentStatus: PaymentStatus;
+  /** Cuándo se creó: desde ahí corre el plazo para pagarlo. */
+  createdAt: Date;
+  distributorId: string;
 }
 
 /** El pedido visto desde `payments` para devolver un pago (CU-168). */
@@ -249,10 +252,21 @@ export class OrderLookupService {
   async findPaymentState(orderId: string): Promise<OrderPaymentState | null> {
     const order = await this.orderRepository.findOne({
       where: { orderId },
-      select: { orderId: true, status: true, paymentStatus: true },
+      select: {
+        orderId: true,
+        status: true,
+        paymentStatus: true,
+        createdAt: true,
+        distributorId: true,
+      },
     });
     return order
-      ? { status: order.status, paymentStatus: order.paymentStatus }
+      ? {
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          createdAt: order.createdAt,
+          distributorId: order.distributorId,
+        }
       : null;
   }
 
