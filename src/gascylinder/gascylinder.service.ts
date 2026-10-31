@@ -22,6 +22,10 @@ import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { DistributorService } from '../distributor/distributor.service';
+import {
+  Distributor,
+  DistributorStatus,
+} from '../distributor/entities/distributor.entity';
 
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { GasCylinderNotFoundError } from './domain/errors/gas-cylinder-not-found.error';
@@ -446,6 +450,25 @@ export class GasCylinderService {
     this.sinEscribirElVendible(gasCylinder);
     await this.gasCylinderRepository.save(gasCylinder);
     return this.findOne(id, distributorId);
+  }
+
+  /**
+   * Catálogo para un visitante: los productos activos de la distribuidora de
+   * ese slug. 404 si no existe o no está activa.
+   */
+  async catalogoPublico(
+    slug: string,
+  ): Promise<{ distributor: Distributor; products: GasCylinder[] }> {
+    const distributor = await this.distributorService.findBySlug(slug);
+    if (distributor.status !== DistributorStatus.ACTIVE) {
+      throw new NotFoundException(`Distribuidora '${slug}' no encontrada`);
+    }
+    const products = await this.gasCylinderRepository.find({
+      where: { distributorId: distributor.distributorId, isActive: true },
+      relations: CON_PROMOCIONES,
+      order: { type: 'ASC', gasCylinderId: 'ASC' },
+    });
+    return { distributor, products };
   }
 
   async getAvailableCylinders(
