@@ -330,3 +330,56 @@ describe('DispatchOfferTypeormRepository: cierres de ofertas', () => {
     });
   });
 });
+
+describe('DispatchOfferTypeormRepository.isInLiveBatch', () => {
+  const repoCon = (rows: unknown[]) => {
+    const orm = { query: jest.fn().mockResolvedValue(rows) };
+    return {
+      orm,
+      repo: new DispatchOfferTypeormRepository(
+        orm as unknown as Repository<DispatchOffer>,
+      ),
+    };
+  };
+
+  it('es verdadero si el pedido es parada viva de un lote que se está formando u ofreciendo', async () => {
+    const { repo, orm } = repoCon([{ '?column?': 1 }]);
+    expect(await repo.isInLiveBatch('ord-1')).toBe(true);
+    const [sql, params] = orm.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain(`b."status" IN ('forming', 'offered')`);
+    expect(sql).toContain('s."active"');
+    expect(params).toEqual(['ord-1']);
+  });
+
+  it('es falso si el pedido no está en un lote vivo', async () => {
+    const { repo } = repoCon([]);
+    expect(await repo.isInLiveBatch('ord-1')).toBe(false);
+  });
+});
+
+describe('DispatchOfferTypeormRepository.isHeldForBatching', () => {
+  const repoCon = (rows: unknown[]) => {
+    const orm = { query: jest.fn().mockResolvedValue(rows) };
+    return {
+      orm,
+      repo: new DispatchOfferTypeormRepository(
+        orm as unknown as Repository<DispatchOffer>,
+      ),
+    };
+  };
+
+  it('consulta el interruptor y el margen de la distribuidora del pedido, con M4 apagado por omisión', async () => {
+    const { repo, orm } = repoCon([{ '?column?': 1 }]);
+    expect(await repo.isHeldForBatching('ord-1')).toBe(true);
+    const [sql, params] = orm.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain(`'enabled')::numeric, 0) = 1`);
+    expect(sql).toContain(`'batchingHoldMinutes')::numeric, 60)`);
+    expect(sql).toContain('o."scheduled_date" IS NOT NULL');
+    expect(params).toEqual(['ord-1']);
+  });
+
+  it('es falso si no hay nada que retener (M4 apagado, inmediato o ya dentro del margen)', async () => {
+    const { repo } = repoCon([]);
+    expect(await repo.isHeldForBatching('ord-1')).toBe(false);
+  });
+});

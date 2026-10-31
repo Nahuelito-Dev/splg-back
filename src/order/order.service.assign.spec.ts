@@ -307,6 +307,56 @@ describe('OrderService · asignación manual', () => {
     expect(segundo).not.toBe(primero);
   });
 
+  describe('soloSiLibre (lote de recorrido, M4)', () => {
+    const tomadoPorB = () =>
+      makeLockedOrder({
+        status: OrderStatus.ACCEPTED,
+        deliveryId: CHOFER_B,
+        delivery: { deliveryId: CHOFER_B, userId: CHOFER_B_USER_ID } as never,
+      });
+
+    it('no le saca a otro chofer un pedido que ya tomó: 409 y no guarda nada', async () => {
+      queryBuilder.getOne.mockResolvedValueOnce(tomadoPorB());
+
+      await expect(
+        service.assignDelivery(PEDIDO, CHOFER, undefined, {
+          soloSiLibre: true,
+        }),
+      ).rejects.toThrow(
+        new ConflictException('El pedido ya no está disponible'),
+      );
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('sin la opción, la asignación manual del admin sí reasigna (no cambia)', async () => {
+      queryBuilder.getOne.mockResolvedValueOnce(tomadoPorB());
+
+      await service.assignDelivery(PEDIDO, CHOFER);
+
+      expect(queryRunner.manager.save).toHaveBeenCalled();
+    });
+
+    it('un pedido libre se asigna y repetir al mismo chofer sigue siendo idempotente', async () => {
+      queryBuilder.getOne.mockResolvedValueOnce(makeLockedOrder());
+      await service.assignDelivery(PEDIDO, CHOFER, undefined, {
+        soloSiLibre: true,
+      });
+      expect(queryRunner.manager.save).toHaveBeenCalledTimes(1);
+
+      queryBuilder.getOne.mockResolvedValueOnce(
+        makeLockedOrder({
+          status: OrderStatus.ACCEPTED,
+          deliveryId: CHOFER,
+          delivery: { deliveryId: CHOFER, userId: CHOFER_USER_ID } as never,
+        }),
+      );
+      await service.assignDelivery(PEDIDO, CHOFER, undefined, {
+        soloSiLibre: true,
+      });
+      expect(queryRunner.manager.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('reasignar de un chofer A a otro B actualiza la relación `delivery`, no sólo `deliveryId` (punto 8)', async () => {
     queryBuilder.getOne.mockResolvedValueOnce(
       makeLockedOrder({

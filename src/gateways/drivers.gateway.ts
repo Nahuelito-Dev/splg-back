@@ -187,6 +187,19 @@ export class DriversGateway
     this.server.to(`driver_${driverId}`).emit(evento, payload);
   }
 
+  /** Eventos del recorrido agrupado (CU-107): oferta del lote, oferta cerrada y lote asignado. */
+  notifyRouteBatch(
+    driverId: string,
+    evento:
+      | 'route-batch:offer'
+      | 'route-batch:offer-closed'
+      | 'route-batch:assigned',
+    payload: unknown,
+  ): void {
+    this.logger.log(`🧭 ${evento} para el chofer ${driverId}`);
+    this.server.to(`driver_${driverId}`).emit(evento, payload);
+  }
+
   notifyOrderAddressChanged(driverId: string, payload: unknown): void {
     this.logger.log(
       `📍 Avisando cambio de dirección del pedido ${idDelPedido(payload)} a chofer ${driverId}`,

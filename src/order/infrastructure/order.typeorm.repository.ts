@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Not, Raw, Repository } from 'typeorm';
+import {
+  sqlPedidoEnLoteVivo,
+  sqlPedidoRetenidoPorAgrupacion,
+} from './lote-de-recorrido.sql';
 import {
   inicioDelDiaArgentino,
   rangoDelDiaArgentino,
@@ -183,7 +187,14 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
 
   async findDistributorsWithAvailable(): Promise<string[]> {
     const filas = await this.orderRepository.find({
-      where: { status: OrderStatus.PENDING, deliveryId: IsNull() },
+      where: {
+        status: OrderStatus.PENDING,
+        deliveryId: IsNull(),
+        orderId: Raw(
+          (pedido) =>
+            `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)}`,
+        ),
+      },
       select: { orderId: true, distributorId: true },
       withDeleted: true,
     });
@@ -200,6 +211,13 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       status: OrderStatus.PENDING,
       deliveryId: IsNull(),
       ...(incluirExpress ? {} : { deliveryMode: OrderDeliveryMode.STANDARD }),
+      // Ni los de un lote de recorrido vivo ni los que M4 retiene hasta su
+      // margen: se excluyen en la consulta para que no llenen la página (el
+      // barrido de M1 toma de a 50) ni el pool los deje tomar sueltos.
+      orderId: Raw(
+        (pedido) =>
+          `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)}`,
+      ),
     };
     // Sin los de Mercado Pago que esperan el pago (`esperaPagoOnline`): no
     // es Mercado Pago, o ya está pago, o es una reserva con la seña paga.

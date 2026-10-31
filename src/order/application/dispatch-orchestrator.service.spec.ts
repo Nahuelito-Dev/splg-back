@@ -41,6 +41,8 @@ describe('DispatchOrchestratorService', () => {
     create: jest.Mock;
     findDriverOfferState: jest.Mock;
     hasActiveOffer: jest.Mock;
+    isInLiveBatch: jest.Mock;
+    isHeldForBatching: jest.Mock;
     findExpired: jest.Mock;
     updateStatus: jest.Mock;
     closeActiveOffer: jest.Mock;
@@ -95,6 +97,8 @@ describe('DispatchOrchestratorService', () => {
         .fn()
         .mockResolvedValue({ blocked: [], reofferable: [] }),
       hasActiveOffer: jest.fn().mockResolvedValue(false),
+      isInLiveBatch: jest.fn().mockResolvedValue(false),
+      isHeldForBatching: jest.fn().mockResolvedValue(false),
       findExpired: jest.fn().mockResolvedValue([]),
       updateStatus: jest.fn().mockResolvedValue(true),
       closeActiveOffer: jest.fn().mockResolvedValue(true),
@@ -373,7 +377,57 @@ describe('DispatchOrchestratorService', () => {
     });
   });
 
+  describe('choferesElegiblesCerca (lo usa M4)', () => {
+    it('busca con el mayor radio del despacho y devuelve sólo los habilitados, del más cercano al más lejano', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b', 'c']);
+      fleet.choferesInhabilitados.mockResolvedValueOnce(new Set(['b']));
+
+      const r = await orchestrator.choferesElegiblesCerca(
+        -26.8,
+        -65.2,
+        'dist-1',
+      );
+
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(-26.8, -65.2, 20);
+      expect(r).toEqual(['a', 'c']);
+    });
+  });
+
   describe('offerToNextDriver', () => {
+    it('M4: una parada de un lote de recorrido vivo no se ofrece suelta', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isInLiveBatch.mockResolvedValue(true);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBeNull();
+      expect(offers.isInLiveBatch).toHaveBeenCalledWith('ord-1');
+      expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('M4 encendido: un programado dentro del margen de espera no se ofrece suelto', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isHeldForBatching.mockResolvedValue(true);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBeNull();
+      expect(offers.isHeldForBatching).toHaveBeenCalledWith('ord-1');
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('M4 apagado o fuera del margen: M1 ofrece el programado como siempre', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isHeldForBatching.mockResolvedValue(false);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBe('near');
+    });
+
+    it('M4: si el lote se deshizo (ya no está en un lote vivo), el pedido se ofrece de nuevo', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isInLiveBatch.mockResolvedValue(false);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBe('near');
+      expect(offers.create).toHaveBeenCalledTimes(1);
+    });
+
     it('F9: un pedido común de Mercado Pago sin pagar no se ofrece (se despacha al aprobarse el pago)', async () => {
       const sinPagar = makeOrder({
         paymentMethod: PaymentMethod.MERCADOPAGO,

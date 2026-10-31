@@ -36,6 +36,7 @@ import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
 import { CylinderModule } from './cylinder/cylinder.module';
 import { CylinderRecoveryModule } from './cylinder/recovery/cylinder-recovery.module';
 import { FleetModule } from './fleet/fleet.module';
+import { RouteBatchModule } from './route-batch/route-batch.module';
 import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { CartModule } from './cart/cart.module';
@@ -247,6 +248,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     CylinderModule,
     CylinderRecoveryModule,
     FleetModule,
+    RouteBatchModule,
     FleetExpenseModule,
     InsuranceModule,
     CartModule,

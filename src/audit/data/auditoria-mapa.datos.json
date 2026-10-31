@@ -7173,6 +7173,22 @@
       "position": 4
     },
     {
+      "table": "route_batch",
+      "column": "closed_at",
+      "property": "closedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
+      "table": "route_batch",
+      "column": "close_reason",
+      "property": "closeReason",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
       "table": "route_batch_stop",
       "column": "stop_id",
       "property": "stopId",
@@ -7203,6 +7219,30 @@
       "secret": false,
       "kind": "text",
       "position": 3
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "active",
+      "property": "active",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "eta_at",
+      "property": "etaAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "leg_distance_km",
+      "property": "legDistanceKm",
+      "secret": false,
+      "kind": "text",
+      "position": 6
     },
     {
       "table": "stock_adjustment",

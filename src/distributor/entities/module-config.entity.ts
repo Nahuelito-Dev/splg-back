@@ -103,6 +103,25 @@ const CHECK_RECUPERACION = RANGOS_DE_LA_RECUPERACION.map(
 ).join(' AND ');
 
 /**
+ * Rangos de los parámetros de la agrupación por recorrido (CU-107): los mismos
+ * de `ESQUEMAS` en `process-config.ts`. `groupingRadiusKm` es el único decimal.
+ */
+const RANGOS_DE_LA_AGRUPACION: ReadonlyArray<[string, number, number]> = [
+  ['maxBatchSize', 2, 20],
+  ['groupingRadiusKm', 0.5, 50],
+  ['slotToleranceMinutes', 0, 480],
+  ['offerTtlSeconds', 10, 600],
+  ['evaluationFrequencyMinutes', 1, 1440],
+  ['batchingHoldMinutes', 0, 720],
+  ['enabled', 0, 1],
+];
+
+const CHECK_AGRUPACION = RANGOS_DE_LA_AGRUPACION.map(
+  ([k, min, max]) =>
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'groupingRadiusKm' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
+).join(' AND ');
+
+/**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
  * Casos: CU-105 a CU-108, CU-149, CU-171 y CU-173 (parametrización)
@@ -118,6 +137,10 @@ const CHECK_RECUPERACION = RANGOS_DE_LA_RECUPERACION.map(
 @Check(
   'CHK_module_config_recuperacion',
   `"module" <> 'cylinder_recovery' OR (${CHECK_RECUPERACION})`,
+)
+@Check(
+  'CHK_module_config_agrupacion',
+  `"module" <> 'route_batching' OR (${CHECK_AGRUPACION})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

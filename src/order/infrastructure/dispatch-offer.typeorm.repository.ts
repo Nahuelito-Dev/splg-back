@@ -87,6 +87,36 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return count > 0;
   }
 
+  async isInLiveBatch(orderId: string): Promise<boolean> {
+    const filas: unknown[] = await this.repo.query(
+      `SELECT 1 FROM "route_batch_stop" s
+         JOIN "route_batch" b ON b."batch_id" = s."batch_id"
+        WHERE s."order_id" = $1 AND s."active" AND b."status" IN ('forming', 'offered')
+        LIMIT 1`,
+      [orderId],
+    );
+    return filas.length > 0;
+  }
+
+  async isHeldForBatching(orderId: string): Promise<boolean> {
+    const filas: unknown[] = await this.repo.query(
+      `SELECT 1 FROM "order" o
+         JOIN "time_slot" ts ON ts."time_slot_id" = o."time_slot_id"
+         JOIN "module_config" mc ON mc."distributor_id" = o."distributor_id"
+                                AND mc."module" = 'route_batching'
+        WHERE o."order_id" = $1
+          AND o."delivery_mode" = 'standard'
+          AND o."scheduled_date" IS NOT NULL
+          AND COALESCE((mc."params" ->> 'enabled')::numeric, 0) = 1
+          AND COALESCE((mc."params" ->> 'batchingHoldMinutes')::numeric, 60) > 0
+          AND now() < ((o."scheduled_date" + ts."startTime") AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                      - make_interval(mins => COALESCE((mc."params" ->> 'batchingHoldMinutes')::numeric, 60)::int)
+        LIMIT 1`,
+      [orderId],
+    );
+    return filas.length > 0;
+  }
+
   async hasHeldOrder(orderId: string, driverId: string): Promise<boolean> {
     const count = await this.repo.count({
       where: { orderId, driverId, status: DispatchOfferStatus.ACCEPTED },

@@ -148,6 +148,12 @@ export class DispatchOrchestratorService {
     // cuando el webhook aprueba el pago.
     if (esperaPagoOnline(fresco)) return null;
     if (await this.offers.hasActiveOffer(order.orderId)) return null;
+    // Parada de un lote de recorrido que se está ofreciendo completo (M4): no
+    // se ofrece suelto a la vez. Si el lote se deshace, vuelve a este circuito.
+    if (await this.offers.isInLiveBatch(order.orderId)) return null;
+    // Con M4 encendido, un programado espera a la agrupación hasta
+    // `batchingHoldMinutes` antes de su franja; pasado el margen lo toma M1.
+    if (await this.offers.isHeldForBatching(order.orderId)) return null;
 
     // Pedido express (CU-149): política propia. Ofrece a una moto o lo pasa al
     // reparto común; en ese caso sigue acá abajo con la política normal.
@@ -343,6 +349,26 @@ export class DispatchOrchestratorService {
     if (elegibles.length === 0) return [];
     const motos = await this.fleet.choferesEnMoto(elegibles, distributorId);
     return elegibles.filter((id) => motos.has(id));
+  }
+
+  /**
+   * Choferes habilitados cerca de un punto, del más cercano al más lejano, con
+   * el mayor radio del despacho. Es el mismo criterio de elegibilidad de las
+   * ofertas sueltas (licencia, vehículo, carga de camión); lo usa M4 para elegir
+   * a quién ofrecerle un lote.
+   */
+  async choferesElegiblesCerca(
+    lat: number,
+    lng: number,
+    distributorId: string,
+  ): Promise<string[]> {
+    const { radiusStepsKm } = await this.settings.obtener(distributorId);
+    const radiusKm = Math.max(...radiusStepsKm);
+    const drivers = await this.dispatch.findNearbyDrivers(lat, lng, radiusKm);
+    return this.filterEligible(drivers, distributorId, {
+      evaluados: new Set(),
+      inhabilitados: new Set(),
+    });
   }
 
   private claveSinChoferes(orderId: string): string {

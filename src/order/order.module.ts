@@ -71,9 +71,6 @@ import { DriverRatingTypeormAdapter } from './infrastructure/driver-rating.typeo
 import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { OrderAddressChange } from './entities/order-address-change.entity';
-import { RouteBatch } from './entities/route-batch.entity';
-import { RouteBatchStop } from './entities/route-batch-stop.entity';
-import { RouteBatchOffer } from './entities/route-batch-offer.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -82,9 +79,6 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
       DispatchOffer,
       OrderStatusHistory,
       OrderAddressChange,
-      RouteBatch,
-      RouteBatchStop,
-      RouteBatchOffer,
     ]),
     CartModule, // checkout del carrito: ítems y vaciado en la transacción del pedido (CU-126)
     S3Module, // foto firmada del chofer en el tracking
@@ -163,6 +157,6 @@ import { RouteBatchOffer } from './entities/route-batch-offer.entity';
     // Puerto de notificación al cliente → adapter que delega en NotificationsService.
     { provide: NotificationPort, useClass: NotificationAdapter },
   ],
-  exports: [OrderService, CashCollectionUseCase],
+  exports: [OrderService, CashCollectionUseCase, DispatchOrchestratorService],
 })
 export class OrderModule {}

@@ -6,6 +6,7 @@ import {
   JoinColumn,
   Index,
   CreateDateColumn,
+  Check,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { Delivery } from '../../delivery/entities/delivery.entity';
@@ -19,11 +20,34 @@ export enum RouteBatchStatus {
   COMPLETED = 'completed',
 }
 
+/** Por qué se deshizo un lote (`route_batch.close_reason`). */
+export enum RouteBatchCloseReason {
+  /** Ningún chofer candidato lo tomó: los pedidos vuelven al despacho individual (M1). */
+  EXHAUSTED = 'exhausted',
+  /** Quedó con menos de dos pedidos disponibles (se cancelaron o se asignaron aparte). */
+  ORDERS_UNAVAILABLE = 'orders_unavailable',
+  /** El administrador lo deshizo desde el panel. */
+  ADMIN = 'admin',
+}
+
 /**
  * Lote de recorrido
  * Un grupo de pedidos que se entregan en un mismo viaje.
- * Casos: CU-107 (M3)
+ * Casos: CU-107 (M4)
  */
+@Check('CHK_route_batch_peso', `"total_weight_kg" >= 0`)
+@Check(
+  'CHK_route_batch_chofer',
+  `"status" NOT IN ('assigned', 'completed') OR "delivery_id" IS NOT NULL`,
+)
+@Check(
+  'CHK_route_batch_cierre',
+  `("status" IN ('dissolved', 'completed')) = ("closed_at" IS NOT NULL)`,
+)
+@Check(
+  'CHK_route_batch_motivo',
+  `("status" = 'dissolved') = ("close_reason" IS NOT NULL)`,
+)
 @Entity('route_batch')
 export class RouteBatch {
   @PrimaryGeneratedColumn('uuid', { name: 'batch_id' })
@@ -41,7 +65,6 @@ export class RouteBatch {
     name: 'status',
     type: 'enum',
     enum: RouteBatchStatus,
-
     nullable: false,
     default: RouteBatchStatus.FORMING,
   })
@@ -66,4 +89,16 @@ export class RouteBatch {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  /** Cuándo se deshizo o se completó. */
+  @Column({ name: 'closed_at', type: 'timestamptz', nullable: true })
+  closedAt!: Date | null;
+
+  @Column({
+    name: 'close_reason',
+    type: 'enum',
+    enum: RouteBatchCloseReason,
+    nullable: true,
+  })
+  closeReason!: RouteBatchCloseReason | null;
 }
