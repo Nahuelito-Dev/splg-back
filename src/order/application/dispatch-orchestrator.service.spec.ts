@@ -29,9 +29,16 @@ describe('DispatchOrchestratorService', () => {
     setIfAbsent: jest.Mock;
     del: jest.Mock;
   };
-  let orders: { findByIdFull: jest.Mock; findById: jest.Mock };
+  let orders: {
+    findByIdFull: jest.Mock;
+    findById: jest.Mock;
+    findDeliveryIdsWithOrderInProgress: jest.Mock;
+  };
   let settings: { obtener: jest.Mock };
-  let deliveries: { choferesElegibles: jest.Mock };
+  let deliveries: {
+    choferesElegibles: jest.Mock;
+    findDeliveryIdsByUserIds: jest.Mock;
+  };
   let fleet: { choferesInhabilitados: jest.Mock; choferesEnMoto: jest.Mock };
   let expressSettings: { obtener: jest.Mock };
   let expressDegrade: { pasarAlRepartoComun: jest.Mock };
@@ -84,6 +91,10 @@ describe('DispatchOrchestratorService', () => {
     orders = {
       findByIdFull: jest.fn().mockResolvedValue(makeOrder()),
       findById: jest.fn().mockResolvedValue(makeOrder()),
+      // Por defecto nadie está ocupado.
+      findDeliveryIdsWithOrderInProgress: jest
+        .fn()
+        .mockResolvedValue(new Set<string>()),
     };
     settings = {
       obtener: jest.fn().mockResolvedValue({
@@ -106,6 +117,11 @@ describe('DispatchOrchestratorService', () => {
     };
     deliveries = {
       choferesElegibles: jest.fn((ids: string[]) => Promise.resolve(ids)),
+      findDeliveryIdsByUserIds: jest.fn((ids: string[]) =>
+        Promise.resolve(
+          ids.map((id) => ({ userId: id, deliveryId: `d-${id}` })),
+        ),
+      ),
     };
     fleet = {
       choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
@@ -180,6 +196,33 @@ describe('DispatchOrchestratorService', () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
 
       expect(await orchestrator.offerToNextDriver(conTenant())).toBe('a');
+    });
+  });
+
+  describe('offerToNextDriver · ocupación', () => {
+    const conTenant = () => makeOrder({ distributorId: 'dist-1' });
+
+    it('no ofrece a un chofer con un pedido aceptado o en camino', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['ocupado', 'libre']);
+      orders.findDeliveryIdsWithOrderInProgress.mockResolvedValue(
+        new Set(['d-ocupado']),
+      );
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBe('libre');
+      expect(orders.findDeliveryIdsWithOrderInProgress).toHaveBeenCalledWith([
+        'd-ocupado',
+        'd-libre',
+      ]);
+    });
+
+    it('si el único cercano está ocupado, no hay oferta', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValue(['ocupado']);
+      orders.findDeliveryIdsWithOrderInProgress.mockResolvedValue(
+        new Set(['d-ocupado']),
+      );
+
+      expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      expect(offers.create).not.toHaveBeenCalled();
     });
   });
 

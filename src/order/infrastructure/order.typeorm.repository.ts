@@ -323,6 +323,20 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     });
   }
 
+  async findDeliveryIdsWithOrderInProgress(
+    deliveryIds: string[],
+  ): Promise<Set<string>> {
+    if (deliveryIds.length === 0) return new Set();
+    const filas = await this.orderRepository.find({
+      where: {
+        deliveryId: In(deliveryIds),
+        status: In([OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY]),
+      },
+      select: { orderId: true, deliveryId: true },
+    });
+    return new Set(filas.flatMap((o) => (o.deliveryId ? [o.deliveryId] : [])));
+  }
+
   save(order: Order): Promise<Order> {
     return this.orderRepository.save(order);
   }

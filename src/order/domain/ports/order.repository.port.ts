@@ -93,6 +93,14 @@ export abstract class OrderRepositoryPort {
     desde: Date,
   ): Promise<Order | null>;
 
+  /**
+   * De esos choferes (`delivery_id`), los que tienen un pedido aceptado o en
+   * camino: están ocupados y no se les ofrece otro.
+   */
+  abstract findDeliveryIdsWithOrderInProgress(
+    deliveryIds: string[],
+  ): Promise<Set<string>>;
+
   /** Guarda (crea o actualiza) un pedido ya materializado. */
   abstract save(order: Order): Promise<Order>;
 }
