@@ -21,6 +21,14 @@ describe('aviso por correo', () => {
     ).toBe('employees/details/e1?tab=documents');
   });
 
+  it('M5: el aviso del envase sin devolver lleva al legajo del caso de recupero', () => {
+    expect(
+      rutaDelPanelDelAviso(
+        aviso({ linkEntity: 'cylinder-recovery-case', linkId: 'c 1' }),
+      ),
+    ).toBe('physical-cylinders/recovery?case=c%201');
+  });
+
   it('F14: el aviso del seguro lleva a la pestaña de seguro del vehículo', () => {
     expect(
       rutaDelPanelDelAviso(

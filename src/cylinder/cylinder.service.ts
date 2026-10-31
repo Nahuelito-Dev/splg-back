@@ -26,6 +26,11 @@ import {
   EVENTO_DESPACHO_BLOQUEADO,
 } from './events/despacho-bloqueado.event';
 import {
+  EnvaseDevueltoEvent,
+  EVENTO_ENVASE_DEVUELTO,
+} from './events/envase-devuelto.event';
+import { InvalidCylinderTransitionError } from './domain/errors/invalid-cylinder-transition.error';
+import {
   OrderDespachoRef,
   OrderLookupService,
 } from '../order/lookup/order-lookup.service';
@@ -304,6 +309,7 @@ export class CylinderService {
     // pedidos (FOR SHARE, en orden de id) y después el envase. Con el pedido
     // bloqueado una entrega o reasignación concurrente espera y la validación
     // de estado y dueño vale hasta el commit.
+    let devuelto: EnvaseDevueltoEvent | null = null;
     try {
       await this.cylinderRepository.manager.transaction(async (manager) => {
         const visto = await manager.getRepository(Cylinder).findOne({
@@ -357,6 +363,10 @@ export class CylinderService {
             this.asegurarPedidoDespachable(pedido);
           }
         }
+        const teniaCliente =
+          cylinder.state === CylinderState.WITH_CUSTOMER
+            ? cylinder.currentCustomerId
+            : null;
         await this.recordTransition(
           cylinder,
           dto.toState,
@@ -371,11 +381,24 @@ export class CylinderService {
           },
           manager,
         );
+        if (
+          dto.toState === CylinderState.EMPTY_RETURNED &&
+          teniaCliente !== null
+        ) {
+          devuelto = new EnvaseDevueltoEvent(
+            distributorId,
+            id,
+            teniaCliente,
+            dto.orderId ?? null,
+          );
+        }
       });
     } catch (error) {
       this.avisarSiHayVencidos(error, distributorId, dto.orderId ?? null);
       throw error;
     }
+    // Ya con el commit hecho: quien escucha lee el envase devuelto.
+    if (devuelto) this.eventos.emit(EVENTO_ENVASE_DEVUELTO, devuelto);
     return this.findOne(id, distributorId);
   }
 
@@ -457,8 +480,8 @@ export class CylinderService {
 
   /**
    * Da de baja el envase (estado terminal RETIRED). Sólo desde IN_DEPOT o
-   * EMPTY_RETURNED, lo valida la máquina de estados. El motivo queda en el
-   * movimiento. El registro no se borra.
+   * EMPTY_RETURNED: uno en poder de un cliente se da por perdido con
+   * `retireLost`. El motivo queda en el movimiento. El registro no se borra.
    */
   async retire(
     id: string,
@@ -468,6 +491,12 @@ export class CylinderService {
   ): Promise<Cylinder> {
     await this.cylinderRepository.manager.transaction(async (manager) => {
       const cylinder = await this.bloquear(manager, id, distributorId);
+      if (cylinder.state === CylinderState.WITH_CUSTOMER) {
+        throw new InvalidCylinderTransitionError(
+          cylinder.state,
+          CylinderState.RETIRED,
+        );
+      }
       await this.recordTransition(
         cylinder,
         CylinderState.RETIRED,
@@ -476,6 +505,34 @@ export class CylinderService {
       );
     });
     return this.findOne(id, distributorId);
+  }
+
+  /**
+   * Da por perdido un envase que sigue en poder de un cliente (CU-108, decisión
+   * del administrador): `with_customer` → `retired`, con el cliente liberado y
+   * el motivo en el movimiento. Corre dentro de la transacción de quien decide
+   * (`manager`) para que la baja y el cierre del caso sean una sola cosa. Un
+   * envase que ya no está con un cliente es 409: el caso ya no corresponde.
+   */
+  async retireLost(
+    id: string,
+    reason: string,
+    distributorId: string,
+    actorUserId: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const cylinder = await this.bloquear(manager, id, distributorId);
+    if (cylinder.state !== CylinderState.WITH_CUSTOMER) {
+      throw new ConflictException(
+        'El envase ya no está en poder de un cliente: el caso de recupero cambió',
+      );
+    }
+    await this.recordTransition(
+      cylinder,
+      CylinderState.RETIRED,
+      { actorUserId, note: `Baja por pérdida: ${reason}` },
+      manager,
+    );
   }
 
   /**
@@ -760,7 +817,8 @@ export class CylinderService {
       cylinder.currentCustomerId = ctx.customerId ?? null;
     } else if (
       toState === CylinderState.EMPTY_RETURNED ||
-      toState === CylinderState.IN_DEPOT
+      toState === CylinderState.IN_DEPOT ||
+      toState === CylinderState.RETIRED
     ) {
       cylinder.currentCustomerId = null;
     }

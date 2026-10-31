@@ -282,3 +282,90 @@ describe('OrderLookupService (recompra)', () => {
     expect(where).toHaveProperty('createdAt');
   });
 });
+
+describe('OrderLookupService (recupero de envases, CU-108)', () => {
+  it('entregasProgramadas trae las del cliente en la ventana que todavía no salieron, de la más próxima a la más lejana', async () => {
+    const qb = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([
+        {
+          orderId: 'o1',
+          scheduledDate: '2026-11-03',
+          status: OrderStatus.PENDING,
+          deliveryId: null,
+        },
+      ]),
+    };
+    const service = new OrderLookupService({
+      createQueryBuilder: jest.fn(() => qb),
+    } as unknown as Repository<Order>);
+
+    await expect(
+      service.entregasProgramadas('u1', 'dist', '2026-10-31', '2026-11-07'),
+    ).resolves.toEqual([
+      {
+        orderId: 'o1',
+        scheduledDate: '2026-11-03',
+        status: OrderStatus.PENDING,
+        deliveryId: null,
+      },
+    ]);
+    expect(qb.where).toHaveBeenCalledWith('o.customerId = :customerId', {
+      customerId: 'u1',
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'o.distributorId = :distributorId',
+      { distributorId: 'dist' },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'o.scheduledDate BETWEEN :desde AND :hasta',
+      { desde: '2026-10-31', hasta: '2026-11-07' },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith('o.status IN (:...estados)', {
+      estados: [
+        OrderStatus.RESERVED,
+        OrderStatus.PENDING,
+        OrderStatus.ACCEPTED,
+      ],
+    });
+  });
+
+  it('findManyForRecovery lee sólo dentro de la distribuidora y sin ids no consulta', async () => {
+    const repo = {
+      find: jest.fn().mockResolvedValue([
+        {
+          orderId: 'o1',
+          customerId: 'u1',
+          status: OrderStatus.ACCEPTED,
+          deliveryId: 'del-1',
+          scheduledDate: undefined,
+        },
+      ]),
+    };
+    const service = new OrderLookupService(
+      repo as unknown as Repository<Order>,
+    );
+
+    const mapa = await service.findManyForRecovery(['o1'], 'dist');
+    expect(mapa.get('o1')).toEqual({
+      orderId: 'o1',
+      customerId: 'u1',
+      status: OrderStatus.ACCEPTED,
+      deliveryId: 'del-1',
+      scheduledDate: null,
+      deliveredAt: null,
+    });
+    const [opciones] = repo.find.mock.calls[0] as [
+      { where: { distributorId: string } },
+    ];
+    expect(opciones.where.distributorId).toBe('dist');
+
+    repo.find.mockClear();
+    expect((await service.findManyForRecovery([], 'dist')).size).toBe(0);
+    expect(repo.find).not.toHaveBeenCalled();
+  });
+});

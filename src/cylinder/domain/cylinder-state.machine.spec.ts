@@ -81,16 +81,20 @@ describe('cylinder-state.machine', () => {
     }
   });
 
-  it('la baja (retired) sólo sale de in_depot y empty_returned, y es terminal', () => {
+  it('la baja (retired) sólo sale de in_depot, empty_returned y with_customer (pérdida), y es terminal', () => {
     const desde = Object.values(CylinderState).filter((e) =>
       canTransition(e, CylinderState.RETIRED),
     );
     expect(desde.sort()).toEqual(
-      [CylinderState.IN_DEPOT, CylinderState.EMPTY_RETURNED].sort(),
+      [
+        CylinderState.IN_DEPOT,
+        CylinderState.EMPTY_RETURNED,
+        CylinderState.WITH_CUSTOMER,
+      ].sort(),
     );
     expect(CYLINDER_TRANSITIONS[CylinderState.RETIRED]).toEqual([]);
     expect(() =>
-      assertTransition(CylinderState.WITH_CUSTOMER, CylinderState.RETIRED),
+      assertTransition(CylinderState.DISPATCHED, CylinderState.RETIRED),
     ).toThrow(InvalidCylinderTransitionError);
     expect(() =>
       assertTransition(CylinderState.RETIRED, CylinderState.IN_DEPOT),

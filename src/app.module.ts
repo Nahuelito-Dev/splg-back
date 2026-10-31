@@ -34,6 +34,7 @@ import { RatingModule } from './rating/rating.module';
 import { IncidentModule } from './incident/incident.module';
 import { CoverageZoneModule } from './coverage-zone/coverage-zone.module';
 import { CylinderModule } from './cylinder/cylinder.module';
+import { CylinderRecoveryModule } from './cylinder/recovery/cylinder-recovery.module';
 import { FleetModule } from './fleet/fleet.module';
 import { FleetExpenseModule } from './fleet-expense/fleet-expense.module';
 import { InsuranceModule } from './insurance/insurance.module';
@@ -244,6 +245,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     IncidentModule,
     CoverageZoneModule,
     CylinderModule,
+    CylinderRecoveryModule,
     FleetModule,
     FleetExpenseModule,
     InsuranceModule,

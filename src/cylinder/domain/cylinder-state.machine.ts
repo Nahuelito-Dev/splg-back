@@ -8,7 +8,8 @@ import { InvalidCylinderTransitionError } from './errors/invalid-cylinder-transi
  *  - IN_DEPOT       → FILLED (se carga en planta) | RETIRED (baja)
  *  - FILLED         → DISPATCHED (sale a reparto) | IN_DEPOT (se revierte el llenado)
  *  - DISPATCHED     → WITH_CUSTOMER (se entregó) | IN_DEPOT (volvió sin entregar)
- *  - WITH_CUSTOMER  → EMPTY_RETURNED (el cliente devuelve el envase vacío)
+ *  - WITH_CUSTOMER  → EMPTY_RETURNED (el cliente devuelve el envase vacío) | RETIRED (se da
+ *                     por perdido: lo decide el administrador en el recupero de envases, CU-108)
  *  - EMPTY_RETURNED → IN_DEPOT (reingresa a depósito para volver a llenarse) | RETIRED (baja)
  *  - RETIRED        → terminal: nunca con un cliente ni en reparto, y no vuelve
  */
@@ -21,7 +22,10 @@ export const CYLINDER_TRANSITIONS: Readonly<
     CylinderState.WITH_CUSTOMER,
     CylinderState.IN_DEPOT,
   ],
-  [CylinderState.WITH_CUSTOMER]: [CylinderState.EMPTY_RETURNED],
+  [CylinderState.WITH_CUSTOMER]: [
+    CylinderState.EMPTY_RETURNED,
+    CylinderState.RETIRED,
+  ],
   [CylinderState.EMPTY_RETURNED]: [
     CylinderState.IN_DEPOT,
     CylinderState.RETIRED,

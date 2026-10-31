@@ -29,6 +29,26 @@ export interface OrderDespachoRef extends OrderRef {
   deliveryId: string | null;
 }
 
+/** Una entrega agendada de un cliente, vista desde el recupero de envases (CU-108). */
+export interface EntregaProgramadaRef {
+  orderId: string;
+  /** Día agendado (YYYY-MM-DD). */
+  scheduledDate: string;
+  status: OrderStatus;
+  deliveryId: string | null;
+}
+
+/** Un pedido visto desde el recupero de envases: de quién es, en qué está y quién lo lleva. */
+export interface OrderRecoveryRef {
+  orderId: string;
+  customerId: string;
+  status: OrderStatus;
+  deliveryId: string | null;
+  scheduledDate: string | null;
+  /** Cuándo se entregó (sólo un pedido entregado). */
+  deliveredAt: Date | null;
+}
+
 /** Estado de un pedido visto desde `payments`: si todavía se puede cobrar. */
 export interface OrderPaymentState {
   status: OrderStatus;
@@ -156,6 +176,73 @@ export class OrderLookupService {
           expressDegradedAt: order.expressDegradedAt,
         }
       : null;
+  }
+
+  /**
+   * Entregas agendadas de un cliente entre dos días (YYYY-MM-DD, inclusive) que
+   * todavía no salieron: reservadas, pendientes o aceptadas. De la más próxima a
+   * la más lejana.
+   */
+  async entregasProgramadas(
+    customerId: string,
+    distributorId: string,
+    desde: string,
+    hasta: string,
+  ): Promise<EntregaProgramadaRef[]> {
+    const pedidos = await this.orderRepository
+      .createQueryBuilder('o')
+      .select(['o.orderId', 'o.scheduledDate', 'o.status', 'o.deliveryId'])
+      .where('o.customerId = :customerId', { customerId })
+      .andWhere('o.distributorId = :distributorId', { distributorId })
+      .andWhere('o.scheduledDate BETWEEN :desde AND :hasta', { desde, hasta })
+      .andWhere('o.status IN (:...estados)', {
+        estados: [
+          OrderStatus.RESERVED,
+          OrderStatus.PENDING,
+          OrderStatus.ACCEPTED,
+        ],
+      })
+      .orderBy('o.scheduledDate', 'ASC')
+      .addOrderBy('o.createdAt', 'ASC')
+      .getMany();
+    return pedidos.map((o) => ({
+      orderId: o.orderId,
+      scheduledDate: o.scheduledDate as string,
+      status: o.status,
+      deliveryId: o.deliveryId,
+    }));
+  }
+
+  /** Cliente, estado, chofer y día agendado de varios pedidos de la distribuidora (los ajenos no aparecen). */
+  async findManyForRecovery(
+    orderIds: string[],
+    distributorId: string,
+  ): Promise<Map<string, OrderRecoveryRef>> {
+    if (orderIds.length === 0) return new Map();
+    const pedidos = await this.orderRepository.find({
+      where: { orderId: In(orderIds), distributorId },
+      select: {
+        orderId: true,
+        customerId: true,
+        status: true,
+        deliveryId: true,
+        scheduledDate: true,
+        deliveredAt: true,
+      },
+    });
+    return new Map(
+      pedidos.map((o) => [
+        o.orderId,
+        {
+          orderId: o.orderId,
+          customerId: o.customerId,
+          status: o.status,
+          deliveryId: o.deliveryId,
+          scheduledDate: o.scheduledDate ?? null,
+          deliveredAt: o.deliveredAt ?? null,
+        },
+      ]),
+    );
   }
 
   /** Estado y estado de pago del pedido, o null si no existe. */
