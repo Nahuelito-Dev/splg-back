@@ -150,6 +150,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       } as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
       {
         withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
+        isInLiveBatch: jest.fn().mockResolvedValue(false),
       } as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
       {
         emitAsync: jest.fn().mockResolvedValue([]),

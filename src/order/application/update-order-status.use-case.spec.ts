@@ -5,7 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
-import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
+import {
+  MENSAJE_PEDIDO_EN_RECORRIDO,
+  UpdateOrderStatusUseCase,
+} from './update-order-status.use-case';
 import { EVENTO_PEDIDO_ENTREGADO } from '../domain/events/pedido-entregado.event';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
@@ -34,7 +37,10 @@ describe('UpdateOrderStatusUseCase', () => {
     buscarPorIdOUsuario: jest.Mock;
     assertElegibleParaAsignacion: jest.Mock;
   };
-  let offers: { withdrawOtherActiveOffers: jest.Mock };
+  let offers: {
+    withdrawOtherActiveOffers: jest.Mock;
+    isInLiveBatch: jest.Mock;
+  };
   let eventos: { emitAsync: jest.Mock };
   let dispatch: {
     notifyDriverOrderCancelled: jest.Mock;
@@ -115,7 +121,10 @@ describe('UpdateOrderStatusUseCase', () => {
         },
       ),
     };
-    offers = { withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]) };
+    offers = {
+      withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
+      isInLiveBatch: jest.fn().mockResolvedValue(false),
+    };
     dispatch = {
       notifyDriverOrderCancelled: jest.fn(),
       notifyCustomer: jest.fn(),
@@ -409,6 +418,17 @@ describe('UpdateOrderStatusUseCase', () => {
       await useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1');
 
       expect(truckGate.assertPuedeAceptar).not.toHaveBeenCalled();
+    });
+
+    it('M4: un pedido que es parada de un recorrido vivo no se toma suelto (409) y no guarda', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      offers.isInLiveBatch.mockResolvedValue(true);
+
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
+      ).rejects.toThrow(new ConflictException(MENSAJE_PEDIDO_EN_RECORRIDO));
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
 
     it('si el chofer fue dado de baja mientras esperaba el lock es 404 y no guarda', async () => {

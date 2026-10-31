@@ -47,6 +47,20 @@ export abstract class DispatchOfferRepositoryPort {
   abstract hasActiveOffer(orderId: string, driverId?: string): Promise<boolean>;
 
   /**
+   * True si el pedido es parada de un lote de recorrido vivo (M4, CU-107): se
+   * está ofreciendo completo a un chofer y no se ofrece suelto a la vez.
+   */
+  abstract isInLiveBatch(orderId: string): Promise<boolean>;
+
+  /**
+   * True si el pedido es programado, la agrupación por recorrido (M4) está
+   * encendida en su distribuidora y todavía falta más de `batchingHoldMinutes`
+   * para que empiece su franja: hasta entonces es candidato de M4 y M1 no lo
+   * ofrece suelto. Con M4 apagado, y para un pedido inmediato, siempre falso.
+   */
+  abstract isHeldForBatching(orderId: string): Promise<boolean>;
+
+  /**
    * ¿`driverId` (user_id) TUVO este pedido alguna vez (aceptó la oferta o se le
    * asignó a mano)? Es la constancia de `recordDriverHeldOrder`.
    */

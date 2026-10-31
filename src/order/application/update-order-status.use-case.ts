@@ -100,6 +100,10 @@ const ADMIN_STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
  * Extraído de OrderService para respetar SRP: la orquestación de la transición
  * vive en la capa application/, no mezclada con las lecturas del service.
  */
+/** 409 de tomar suelto un pedido que es parada de un lote de recorrido vivo (M4). */
+export const MENSAJE_PEDIDO_EN_RECORRIDO =
+  'El pedido es parte de un recorrido que se le está ofreciendo a un chofer: no se puede tomar suelto';
+
 @Injectable()
 export class UpdateOrderStatusUseCase {
   private readonly logger = new Logger(UpdateOrderStatusUseCase.name);
@@ -539,6 +543,11 @@ export class UpdateOrderStatusUseCase {
         // Ni el chofer ni el admin toman un pedido que espera el pago online.
         if (esperaPagoOnline(order)) {
           throw new ConflictException(MENSAJE_MP_SIN_PAGAR);
+        }
+        // Una parada de un recorrido que se está ofreciendo completo no se toma
+        // suelta (ni del pool ni a mano): el lote se acepta entero o se deshace.
+        if (await this.offers.isInLiveBatch(order.orderId)) {
+          throw new ConflictException(MENSAJE_PEDIDO_EN_RECORRIDO);
         }
         if (!deliveryId || deliveryId.trim() === '') {
           throw new BadRequestException(

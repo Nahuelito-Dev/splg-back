@@ -448,6 +448,12 @@
         "functions": 42,
         "lines": 59
       },
+      "./src/route-batch/": {
+        "statements": 92,
+        "branches": 76,
+        "functions": 98,
+        "lines": 94
+      },
       "./src/s3/": {
         "statements": 94,
         "branches": 87,

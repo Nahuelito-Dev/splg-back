@@ -312,6 +312,15 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
       'Agrupa pedidos programados cercanos en un lote para ofrecérselo a un mismo chofer (CU-107).',
     fields: [
       campo(
+        'enabled',
+        'integer',
+        0,
+        1,
+        0,
+        null,
+        '1 enciende la agrupación por recorrido (el proceso periódico y «armar ahora»); 0 la apaga. Viene apagada',
+      ),
+      campo(
         'maxBatchSize',
         'integer',
         2,
@@ -355,6 +364,15 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         15,
         'min',
         'Cada cuánto se evalúan los pedidos para armar lotes',
+      ),
+      campo(
+        'batchingHoldMinutes',
+        'integer',
+        0,
+        720,
+        60,
+        'min',
+        'Con la agrupación encendida, el despacho individual espera hasta estos minutos antes de la franja para ofrecer un pedido programado (0: no espera)',
       ),
     ],
   },

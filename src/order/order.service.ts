@@ -737,6 +737,7 @@ export class OrderService {
     orderId: string,
     deliveryId: string,
     distributorId?: string | null,
+    opciones: { soloSiLibre?: boolean } = {},
   ) {
     const delivery = await this.deliveries.findById(deliveryId);
     if (!delivery) {
@@ -784,6 +785,19 @@ export class OrderService {
       // habilitación ni de su flota.
       if (delivery.distributorId !== locked.distributorId) {
         throw new NotFoundException('Repartidor no encontrado');
+      }
+      // Con `soloSiLibre` (el lote de recorrido, M4) la asignación no le saca el
+      // pedido a otro chofer ni a un admin que ya lo tomó: sólo asigna un pedido
+      // pendiente y sin chofer, o repite la asignación al mismo chofer.
+      if (opciones.soloSiLibre) {
+        const libre =
+          locked.status === OrderStatus.PENDING && !locked.deliveryId;
+        const yaEsSuyo =
+          locked.status === OrderStatus.ACCEPTED &&
+          locked.deliveryId === delivery.deliveryId;
+        if (!libre && !yaEsSuyo) {
+          throw new ConflictException('El pedido ya no está disponible');
+        }
       }
       // Repetir la asignación al MISMO chofer (reintento, doble clic) no
       // regenera el código de entrega: el QR que ya tiene el chofer sigue
