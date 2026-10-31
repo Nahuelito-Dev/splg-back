@@ -8,6 +8,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EntityManager, Repository } from 'typeorm';
 import { EnvasesVencidosException } from './cylinder-vencido.exception';
 import { EVENTO_DESPACHO_BLOQUEADO } from './events/despacho-bloqueado.event';
+import {
+  EnvaseDevueltoEvent,
+  EVENTO_ENVASE_DEVUELTO,
+} from './events/envase-devuelto.event';
 import { CylinderService } from './cylinder.service';
 import { Cylinder, CylinderState } from './entities/cylinder.entity';
 import { CylinderMovement } from './entities/cylinder-movement.entity';
@@ -580,6 +584,119 @@ describe('CylinderService', () => {
       );
 
       expect(result.currentCustomerId).toBeNull();
+    });
+  });
+
+  describe('devolución del envase (recupero de envases, CU-108)', () => {
+    it('al volver de un cliente avisa con el cliente que lo tenía, ya con la transacción cerrada', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({
+          state: CylinderState.WITH_CUSTOMER,
+          currentCustomerId: 'cust-1',
+        }),
+      );
+
+      await service.transition(
+        'cyl-1',
+        { toState: CylinderState.EMPTY_RETURNED } as TransitionCylinderDto,
+        DIST,
+        'chofer-1',
+      );
+
+      expect(eventos.emit).toHaveBeenCalledWith(
+        EVENTO_ENVASE_DEVUELTO,
+        new EnvaseDevueltoEvent(DIST, 'cyl-1', 'cust-1', null),
+      );
+    });
+
+    it('otras transiciones no avisan devolución', async () => {
+      cylinderRepo.findOne.mockResolvedValue(makeCylinder());
+      await service.transition(
+        'cyl-1',
+        { toState: CylinderState.FILLED } as TransitionCylinderDto,
+        DIST,
+      );
+      expect(eventos.emit).not.toHaveBeenCalledWith(
+        EVENTO_ENVASE_DEVUELTO,
+        expect.anything(),
+      );
+    });
+
+    it('si la transición falla no avisa devolución', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.IN_DEPOT }),
+      );
+      await expect(
+        service.transition(
+          'cyl-1',
+          { toState: CylinderState.EMPTY_RETURNED } as TransitionCylinderDto,
+          DIST,
+        ),
+      ).rejects.toBeInstanceOf(InvalidCylinderTransitionError);
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('retireLost (envase perdido, decisión del administrador)', () => {
+    const manager = () =>
+      ({
+        createQueryBuilder: jest.fn(() => lockQb),
+        getRepository: jest.fn((entity: unknown) =>
+          entity === Cylinder ? cylinderRepo : movementRepo,
+        ),
+      }) as unknown as EntityManager;
+
+    it('da de baja el envase que sigue con un cliente, lo libera y deja el motivo', async () => {
+      const envase = makeCylinder({
+        state: CylinderState.WITH_CUSTOMER,
+        currentCustomerId: 'cust-1',
+      });
+      cylinderRepo.findOne.mockResolvedValue(envase);
+
+      await service.retireLost(
+        'cyl-1',
+        'extraviado',
+        DIST,
+        'admin-1',
+        manager(),
+      );
+
+      expect(cylinderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: CylinderState.RETIRED,
+          currentCustomerId: null,
+        }),
+      );
+      expect(movementRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromState: CylinderState.WITH_CUSTOMER,
+          toState: CylinderState.RETIRED,
+          actorUserId: 'admin-1',
+          note: 'Baja por pérdida: extraviado',
+        }),
+      );
+    });
+
+    it('si el envase ya no está con un cliente es 409 y no persiste', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.EMPTY_RETURNED }),
+      );
+      await expect(
+        service.retireLost('cyl-1', 'x', DIST, 'admin-1', manager()),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(cylinderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('la baja común sigue rechazando un envase en poder de un cliente', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({
+          state: CylinderState.WITH_CUSTOMER,
+          currentCustomerId: 'cust-1',
+        }),
+      );
+      await expect(service.retire('cyl-1', 'x', DIST)).rejects.toBeInstanceOf(
+        InvalidCylinderTransitionError,
+      );
     });
   });
 

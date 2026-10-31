@@ -17,6 +17,47 @@ const CON_DECIMAL = Object.values(ESQUEMAS).find((e) =>
 const CAMPO_DECIMAL = CON_DECIMAL.fields.find((c) => c.type === 'number')!;
 
 describe('process-config', () => {
+  describe('recuperación de envases (CU-108)', () => {
+    const RECUPERO = ESQUEMAS[ConfigurableProcess.CYLINDER_RECOVERY];
+
+    it('trae tolerancia, plazo del escalón, umbral, vigencia de la oferta, ventana de entrega, hora e interruptor', () => {
+      expect(RECUPERO.fields.map((f) => f.key)).toEqual([
+        'toleranceDays',
+        'escalationStepDays',
+        'escalationAmountThreshold',
+        'pickupOfferTtlHours',
+        'pickupWindowDays',
+        'runHour',
+        'enabled',
+      ]);
+    });
+
+    it('el umbral admite decimales; el resto son enteros', () => {
+      expect(
+        validarParametros(RECUPERO, { escalationAmountThreshold: 1234.5 }),
+      ).toEqual([]);
+      expect(validarParametros(RECUPERO, { toleranceDays: 1.5 })).toHaveLength(
+        1,
+      );
+    });
+
+    it('arranca apagado y a media mañana', () => {
+      const porOmision = valoresPorOmision(RECUPERO);
+      expect(porOmision.enabled).toBe(0);
+      expect(porOmision.runHour).toBe(10);
+      expect(validarParametros(RECUPERO, { enabled: 2 })).toHaveLength(1);
+    });
+
+    it('rechaza lo que está fuera de rango', () => {
+      expect(
+        validarParametros(RECUPERO, { toleranceDays: 0, runHour: 24 }),
+      ).toHaveLength(2);
+      expect(
+        validarParametros(RECUPERO, { pickupWindowDays: 61 }),
+      ).toHaveLength(1);
+    });
+  });
+
   describe('planificador de flota (CU-105)', () => {
     const PLANIFICADOR = ESQUEMAS[ConfigurableProcess.FLEET_PLANNER];
 

@@ -2774,11 +2774,27 @@
     },
     {
       "table": "cylinder_recovery_case",
+      "column": "step_due_at",
+      "property": "stepDueAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 8
+    },
+    {
+      "table": "cylinder_recovery_case",
+      "column": "exhausted_at",
+      "property": "exhaustedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 9
+    },
+    {
+      "table": "cylinder_recovery_case",
       "column": "closed_at",
       "property": "closedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 8
+      "position": 10
     },
     {
       "table": "cylinder_recovery_case",
@@ -2786,7 +2802,7 @@
       "property": "resolvedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 11
     },
     {
       "table": "cylinder_recovery_case",
@@ -2794,7 +2810,7 @@
       "property": "resolutionNote",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 12
     },
     {
       "table": "cylinder_recovery_notice",
@@ -2838,11 +2854,35 @@
     },
     {
       "table": "cylinder_recovery_notice",
+      "column": "order_id",
+      "property": "orderId",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "cylinder_recovery_notice",
+      "column": "responded_at",
+      "property": "respondedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
+    },
+    {
+      "table": "cylinder_recovery_notice",
+      "column": "response_note",
+      "property": "responseNote",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "cylinder_recovery_notice",
       "column": "expires_at",
       "property": "expiresAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 5
+      "position": 8
     },
     {
       "table": "delivery",

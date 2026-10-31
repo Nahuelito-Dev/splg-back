@@ -83,6 +83,26 @@ const CHECK_RECOMPRA = RANGOS_DE_LA_RECOMPRA.map(
 ).join(' AND ');
 
 /**
+ * Rangos de los parámetros de la recuperación de envases (CU-108): los mismos
+ * de `ESQUEMAS` en `process-config.ts`. `escalationAmountThreshold` admite
+ * decimales; el resto son enteros.
+ */
+const RANGOS_DE_LA_RECUPERACION: ReadonlyArray<[string, number, number]> = [
+  ['toleranceDays', 1, 365],
+  ['escalationStepDays', 1, 90],
+  ['escalationAmountThreshold', 0, 100_000_000],
+  ['pickupOfferTtlHours', 1, 720],
+  ['pickupWindowDays', 1, 60],
+  ['runHour', 0, 23],
+  ['enabled', 0, 1],
+];
+
+const CHECK_RECUPERACION = RANGOS_DE_LA_RECUPERACION.map(
+  ([k, min, max]) =>
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'escalationAmountThreshold' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
+).join(' AND ');
+
+/**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
  * Casos: CU-105 a CU-108, CU-149, CU-171 y CU-173 (parametrización)
@@ -94,6 +114,10 @@ const CHECK_RECOMPRA = RANGOS_DE_LA_RECOMPRA.map(
 @Check(
   'CHK_module_config_recompra',
   `"module" <> 'repurchase' OR (${CHECK_RECOMPRA})`,
+)
+@Check(
+  'CHK_module_config_recuperacion',
+  `"module" <> 'cylinder_recovery' OR (${CHECK_RECUPERACION})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

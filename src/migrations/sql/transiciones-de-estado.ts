@@ -46,7 +46,7 @@ export const MAQUINAS_DE_ESTADO: readonly MaquinaDeEstado[] = [
       in_depot: ['filled', 'retired'],
       filled: ['dispatched', 'in_depot'],
       dispatched: ['with_customer', 'in_depot'],
-      with_customer: ['empty_returned'],
+      with_customer: ['empty_returned', 'retired'],
       empty_returned: ['in_depot', 'retired'],
       retired: [],
     },
