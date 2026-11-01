@@ -43,6 +43,26 @@ describe('OrderMapper · datos del panel', () => {
       deliveryMode: OrderDeliveryMode.STANDARD,
     }) as unknown as Order;
 
+  it('expone el recargo por medio de pago con el % con que se calculó', () => {
+    const dto = OrderMapper.toDto({
+      ...pedidoBase(),
+      paymentSurchargeAmount: 1500,
+      paymentSurchargePercentage: 7.5,
+    } as unknown as Order);
+    expect(dto.paymentSurchargeAmount).toBe(1500);
+    expect(dto.paymentSurchargePercentage).toBe(7.5);
+  });
+
+  it('un pedido anterior a la parametrización devuelve el % en null', () => {
+    const dto = OrderMapper.toDto({
+      ...pedidoBase(),
+      paymentSurchargeAmount: 2000,
+      paymentSurchargePercentage: null,
+    } as unknown as Order);
+    expect(dto.paymentSurchargeAmount).toBe(2000);
+    expect(dto.paymentSurchargePercentage).toBeNull();
+  });
+
   it('trae los datos del cliente cuando la relación viene cargada', () => {
     const pedido = {
       ...pedidoBase(),

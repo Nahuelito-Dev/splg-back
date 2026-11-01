@@ -47,6 +47,7 @@ describe('GasCylinderService — stock en la transacción del pedido', () => {
       {} as Repository<GasCylinder>,
       {} as DistributorService,
       { emitAsync: jest.fn() } as unknown as EventEmitter2,
+      {} as never,
     );
   });
 

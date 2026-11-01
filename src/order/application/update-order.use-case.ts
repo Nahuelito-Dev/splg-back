@@ -281,8 +281,14 @@ export class UpdateOrderUseCase {
       // El total sólo se recalcula si cambian renglones, dirección/zona o
       // medio de pago: editar notas o franja no lo toca.
       if (cambiaItems || cambiaDireccion || cambiaPago) {
+        const paymentSurchargePercentage =
+          await this.create.porcentajeDeRecargoDelPedido(order, paymentMethod);
         const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
-          this.create.calcularTotales(subtotalItems, zone, paymentMethod);
+          this.create.calcularTotales(
+            subtotalItems,
+            zone,
+            paymentSurchargePercentage,
+          );
         if (
           order.depositPaid &&
           totalBajoLaSenaPagada(totalAmount, order.depositAmount)
@@ -292,6 +298,7 @@ export class UpdateOrderUseCase {
         order.subtotalItems = subtotalItems;
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();
         order.paymentSurchargeAmount = paymentSurchargeAmount.toNumber();
+        order.paymentSurchargePercentage = paymentSurchargePercentage;
         order.totalAmount = totalAmount.toNumber();
       }
       order.paymentMethod = paymentMethod;

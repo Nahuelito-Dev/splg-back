@@ -64,7 +64,7 @@ export class RepurchaseInvitationResponseDto {
   @ApiProperty({ type: [InvitationItemDto] }) items!: InvitationItemDto[];
   @ApiProperty({
     description:
-      'Suma de los subtotales con promoción; el total real (con zona y recargos) se cotiza con `POST /orders/quote`',
+      'Suma de los subtotales con promoción; el total real (con zona y el recargo por medio de pago, configurable por distribuidora) se cotiza con `POST /orders/quote`',
   })
   estimatedTotal!: number;
   @ApiProperty({ type: InvitationAddressDto, nullable: true })

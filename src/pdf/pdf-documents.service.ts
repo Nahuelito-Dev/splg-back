@@ -77,6 +77,7 @@ export class PdfDocumentsService {
         // El código confirma la entrega: el cliente no lo recibe por escrito.
         deliveryCode: quien.customerUserId ? null : entidad.deliveryCode,
         paymentSurchargeAmount: entidad.paymentSurchargeAmount,
+        paymentSurchargePercentage: entidad.paymentSurchargePercentage ?? null,
       },
       membrete,
     );

@@ -1,6 +1,5 @@
 import Decimal from 'decimal.js';
 import { OrderPricingService, VolumePromotion } from './order-pricing.service';
-import { PaymentMethod } from '../entities/order.entity';
 
 /**
  * Dominio PURO de precios: sin I/O ni mocks. Cubre las reglas del SRS:
@@ -72,28 +71,25 @@ describe('OrderPricingService', () => {
   });
 
   describe('applyPaymentSurcharge', () => {
-    it('suma +10% cuando el método es TRANSFER', () => {
-      const total = pricing.applyPaymentSurcharge(
-        new Decimal(1000),
-        PaymentMethod.TRANSFER,
-      );
-      expect(total.toNumber()).toBe(1100);
+    it.each([
+      [1000, 10, 1100],
+      [1000, 0, 1000],
+      [1000, 7.5, 1075],
+      [1000, 30, 1300],
+      [1000, 0.01, 1000.1],
+      [333.33, 12.34, 374.462922],
+    ])('%s con %s %% da %s', (base, porcentaje, esperado) => {
+      expect(
+        pricing.applyPaymentSurcharge(new Decimal(base), porcentaje).toNumber(),
+      ).toBe(esperado);
     });
 
-    it('no toca el total en CASH', () => {
-      const total = pricing.applyPaymentSurcharge(
-        new Decimal(1000),
-        PaymentMethod.CASH,
-      );
-      expect(total.toNumber()).toBe(1000);
-    });
-
-    it('suma +10% cuando el método es MERCADOPAGO (pago online)', () => {
-      const total = pricing.applyPaymentSurcharge(
-        new Decimal(1000),
-        PaymentMethod.MERCADOPAGO,
-      );
-      expect(total.toNumber()).toBe(1100);
+    it('acepta el porcentaje como Decimal', () => {
+      expect(
+        pricing
+          .applyPaymentSurcharge(new Decimal(2000), new Decimal('7.5'))
+          .toNumber(),
+      ).toBe(2150);
     });
   });
 
@@ -104,10 +100,7 @@ describe('OrderPricingService', () => {
         [{ quantity: 2, discountPercentage: 10 }],
         3,
       );
-      const total = pricing.applyPaymentSurcharge(
-        subtotal,
-        PaymentMethod.TRANSFER,
-      );
+      const total = pricing.applyPaymentSurcharge(subtotal, 10);
       // unit 900 × 3 = 2700 ; ×1.1 = 2970
       expect(total.toNumber()).toBe(2970);
     });

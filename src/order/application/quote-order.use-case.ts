@@ -227,11 +227,22 @@ export class QuoteOrderUseCase {
       });
     }
 
+    // Alta: el % vigente de la distribuidora. Edición: el del pedido si el medio
+    // de pago no cambia (lo mismo que hará el PATCH).
+    const paymentSurchargePercentage = edicion
+      ? await this.createOrder.porcentajeDeRecargoDelPedido(
+          edicion.order,
+          dto.paymentMethod,
+        )
+      : await this.createOrder.porcentajeDeRecargo(
+          distributorId,
+          dto.paymentMethod,
+        );
     const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
       this.createOrder.calcularTotales(
         subtotal,
         zona,
-        dto.paymentMethod,
+        paymentSurchargePercentage,
         expressSurcharge,
       );
     // La base guarda los montos con 2 decimales: la cotización devuelve lo
@@ -271,6 +282,9 @@ export class QuoteOrderUseCase {
     res.zoneSurcharge = zoneSurchargeAmount.toNumber();
     res.paymentMethod = dto.paymentMethod;
     res.paymentSurcharge = paymentSurchargeAmount.toNumber();
+    res.paymentSurchargePercentage = new Decimal(
+      paymentSurchargePercentage,
+    ).toNumber();
     res.deliveryMode = esExpress
       ? OrderDeliveryMode.EXPRESS
       : OrderDeliveryMode.STANDARD;

@@ -10,6 +10,8 @@ import { DistributorBankController } from './distributor-bank.controller';
 import { DistributorBankService } from './distributor-bank.service';
 import { ExpressConfigController } from './express-config.controller';
 import { ExpressSettingsService } from './express-settings.service';
+import { PaymentSurchargeConfigController } from './payment-surcharge-config.controller';
+import { PaymentSurchargeSettingsService } from './payment-surcharge-settings.service';
 import { ModuleConfigController } from './module-config.controller';
 import { ProcessConfigService } from './process-config.service';
 import { DispatchSettingsService } from './dispatch-settings.service';
@@ -42,6 +44,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     DistributorController,
     DistributorBankController,
     ExpressConfigController,
+    PaymentSurchargeConfigController,
     ModuleConfigController,
     MercadoPagoCredentialsController,
   ],
@@ -54,6 +57,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     ScheduledTasksSettingsService,
     ProcessConfigService,
     ExpressSettingsService,
+    PaymentSurchargeSettingsService,
     CredentialsEncryptionService,
     MercadoPagoCredentialsService,
   ],
@@ -65,6 +69,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     ScheduledTasksSettingsService,
     ProcessConfigService,
     ExpressSettingsService,
+    PaymentSurchargeSettingsService,
     MercadoPagoCredentialsService,
   ],
 })

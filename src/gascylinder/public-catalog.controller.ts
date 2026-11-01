@@ -12,6 +12,7 @@ import { Public } from '../common/decorators/isPublic.decorator';
 import { GasCylinderService } from './gascylinder.service';
 import { GasCylinderPhotoService } from './gascylinder-photo.service';
 import { CatalogoPublicoDto } from './dto/catalogo-publico.dto';
+import { MedioDePagoDto } from './dto/gascylinder-response.dto';
 import { GasCylinderMapper } from './gascylinder.mapper';
 
 /** Lo que un visitante sin sesión puede ver de una distribuidora. */
@@ -49,5 +50,23 @@ export class PublicCatalogController {
       name: distributor.name,
       products: products.map((g) => GasCylinderMapper.toPublicDto(g)),
     };
+  }
+
+  @Public()
+  @Get(':slug/payment-methods')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Medios de pago y su recargo, sin iniciar sesión',
+    description:
+      'Público. Efectivo, transferencia y Mercado Pago con el recargo (%) que la distribuidora cobra hoy con cada uno. Es informativo: el monto exacto de un pedido lo da `POST /orders/quote`.',
+  })
+  @ApiParam({ name: 'slug', example: 'demo' })
+  @ApiOkResponse({ type: MedioDePagoDto, isArray: true })
+  @ApiNotFoundResponse({
+    description: 'La distribuidora no existe o no está activa',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Demasiados pedidos seguidos' })
+  mediosDePago(@Param('slug') slug: string): Promise<MedioDePagoDto[]> {
+    return this.gasCylinderService.mediosDePagoPublicos(slug);
   }
 }

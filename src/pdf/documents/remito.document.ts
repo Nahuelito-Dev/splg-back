@@ -8,6 +8,8 @@ export interface DatosExtraDelPedido {
   /** Sólo para el personal: el cliente no recibe el código que confirma la entrega. */
   deliveryCode: string | null;
   paymentSurchargeAmount: number;
+  /** % con que se calculó el recargo; null en los pedidos anteriores a que fuera configurable. */
+  paymentSurchargePercentage: number | null;
 }
 
 function descripcionDelRenglon(item: OrderResponseDto['items'][number]) {
@@ -93,7 +95,10 @@ export function renderRemito(
   }
   if (extra.paymentSurchargeAmount > 0) {
     lineas.push({
-      etiqueta: 'Recargo por medio de pago',
+      etiqueta:
+        extra.paymentSurchargePercentage === null
+          ? 'Recargo por medio de pago'
+          : `Recargo por medio de pago (${String(extra.paymentSurchargePercentage).replace('.', ',')} %)`,
       valor: pesos(extra.paymentSurchargeAmount),
     });
   }

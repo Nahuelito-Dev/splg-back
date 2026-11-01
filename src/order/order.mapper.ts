@@ -142,6 +142,12 @@ export class OrderMapper {
     dto.editable = esEditable(order);
     dto.deliveryMode = order.deliveryMode;
     dto.expressSurchargeAmount = Number(order.expressSurchargeAmount ?? 0);
+    dto.paymentSurchargeAmount = Number(order.paymentSurchargeAmount ?? 0);
+    dto.paymentSurchargePercentage =
+      order.paymentSurchargePercentage === null ||
+      order.paymentSurchargePercentage === undefined
+        ? null
+        : Number(order.paymentSurchargePercentage);
     dto.expressDegradedAt = order.expressDegradedAt ?? null;
 
     // Address Mapping

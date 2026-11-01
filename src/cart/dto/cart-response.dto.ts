@@ -94,7 +94,7 @@ export class CartResponseDto {
   @ApiProperty({
     example: 2200,
     description:
-      'Suma de los subtotales con promoción. NO incluye recargo de zona, de pago online ni express: el total a pagar lo da POST /orders/quote',
+      'Suma de los subtotales con promoción. NO incluye recargo de zona, por medio de pago (porcentaje configurable por distribuidora) ni express: el total a pagar y el recargo con su porcentaje los da POST /orders/quote',
   })
   total!: number;
 

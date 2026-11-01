@@ -159,11 +159,17 @@ export class ChangeOrderAddressUseCase {
 
       // Fuera de cobertura: 400 antes de tocar nada.
       const zona = await this.create.resolverZona(order.distributorId, address);
+      // El medio de pago no cambia: se conserva el % con que se calculó el pedido.
+      const paymentSurchargePercentage =
+        await this.create.porcentajeDeRecargoDelPedido(
+          order,
+          order.paymentMethod,
+        );
       const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
         this.create.calcularTotales(
           order.subtotalItems,
           zona,
-          order.paymentMethod,
+          paymentSurchargePercentage,
           // Defensivo: mientras siga express el recargo se conserva en el total.
           esExpress ? order.expressSurchargeAmount : 0,
         );
@@ -185,6 +191,7 @@ export class ChangeOrderAddressUseCase {
         }
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();
         order.paymentSurchargeAmount = paymentSurchargeAmount.toNumber();
+        order.paymentSurchargePercentage = paymentSurchargePercentage;
         order.totalAmount = totalAmount.toNumber();
       }
 

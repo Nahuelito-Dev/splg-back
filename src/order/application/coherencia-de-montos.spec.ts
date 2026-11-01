@@ -5,6 +5,8 @@ import { CoverageZonePricingService } from '../../coverage-zone/coverage-zone-pr
 import { renglonesDelCheckout } from '../domain/checkout-items';
 import { armarVista } from '../../cart/domain/cart-view';
 import { PaymentMethod } from '../entities/order.entity';
+import { PaymentSurchargeSettingsService } from '../../distributor/payment-surcharge-settings.service';
+import type { ModuleConfigService } from '../../distributor/module-config.service';
 import type { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 
 /**
@@ -14,8 +16,19 @@ import type { GasCylinder } from '../../gascylinder/entities/gascylinder.entity'
  * cargadas en cada producto.
  */
 const pricing = new OrderPricingService();
+
+/** Recargo por medio de pago de la distribuidora de la prueba. */
+let recargos = { transfer: 10, mercadopago: 10, cash: 0 };
 const useCase = Object.assign(Object.create(CreateOrderUseCase.prototype), {
   pricing,
+  paymentSurcharges: new PaymentSurchargeSettingsService({
+    parametros: () =>
+      Promise.resolve({
+        transferPercentage: recargos.transfer,
+        mercadoPagoPercentage: recargos.mercadopago,
+        cashPercentage: recargos.cash,
+      }),
+  } as unknown as ModuleConfigService),
   coverageZonePricing: new CoverageZonePricingService(),
   orderItemRepository: { create: (x: object) => x },
 }) as CreateOrderUseCase;
@@ -89,32 +102,56 @@ describe('coherencia de montos: carrito, cotización, pedido y pasarela', () => 
       expect(vista.total).toBe(subtotalPedido.toNumber());
     });
 
-    it.each([
-      PaymentMethod.CASH,
-      PaymentMethod.TRANSFER,
-      PaymentMethod.MERCADOPAGO,
-    ])('%s: la pasarela cobra exactamente el total guardado', (medio) => {
-      const { totalAmount, paymentSurchargeAmount } = useCase.calcularTotales(
-        subtotalPedido,
-        null,
-        medio,
-      );
-      const renglonesPasarela = renglonesDelCheckout(
-        renglones.map((r) => r.checkoutItem),
-        { zona: 0, online: paymentSurchargeAmount, express: 0 },
-      );
-      const cobrado = renglonesPasarela.reduce(
-        (s, r) => s.plus(new Decimal(r.unitPrice).times(r.quantity)),
-        new Decimal(0),
-      );
-      expect(cobrado.toFixed(2)).toBe(totalAmount.toFixed(2));
-      // cada renglón guarda cantidad × precio unitario = subtotal
-      renglones.forEach((r) =>
-        expect(
-          new Decimal(r.orderItem.unitPrice)
-            .times(r.orderItem.quantity)
-            .toNumber(),
-        ).toBe(r.orderItem.subtotal),
+    describe.each([
+      ['0 %', { transfer: 0, mercadopago: 0, cash: 0 }],
+      ['10 % (el de siempre)', { transfer: 10, mercadopago: 10, cash: 0 }],
+      ['7,5 %', { transfer: 7.5, mercadopago: 7.5, cash: 0 }],
+      ['distinto por medio', { transfer: 5, mercadopago: 12.34, cash: 2 }],
+    ])('recargo %s', (_n, config) => {
+      beforeEach(() => {
+        recargos = config;
+      });
+
+      it.each([
+        PaymentMethod.CASH,
+        PaymentMethod.TRANSFER,
+        PaymentMethod.MERCADOPAGO,
+      ])(
+        '%s: cotización, pedido, remito, caja y pasarela dan el mismo monto',
+        async (medio) => {
+          const porcentaje = await useCase.porcentajeDeRecargo('d1', medio);
+          const esperado = config[medio as 'cash' | 'transfer' | 'mercadopago'];
+          expect(porcentaje).toBe(esperado);
+
+          const { totalAmount, paymentSurchargeAmount } =
+            useCase.calcularTotales(subtotalPedido, null, porcentaje);
+          // Lo que cuenta el cliente: subtotal x (1 + %), a centavos.
+          const conRecargo = subtotalPedido
+            .times(new Decimal(1).plus(new Decimal(esperado).div(100)))
+            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          expect(totalAmount.toFixed(2)).toBe(conRecargo.toFixed(2));
+          expect(subtotalPedido.plus(paymentSurchargeAmount).toFixed(2)).toBe(
+            totalAmount.toFixed(2),
+          );
+
+          const renglonesPasarela = renglonesDelCheckout(
+            renglones.map((r) => r.checkoutItem),
+            { zona: 0, online: paymentSurchargeAmount, express: 0 },
+          );
+          const cobrado = renglonesPasarela.reduce(
+            (s, r) => s.plus(new Decimal(r.unitPrice).times(r.quantity)),
+            new Decimal(0),
+          );
+          expect(cobrado.toFixed(2)).toBe(totalAmount.toFixed(2));
+          // cada renglón guarda cantidad × precio unitario = subtotal
+          renglones.forEach((r) =>
+            expect(
+              new Decimal(r.orderItem.unitPrice)
+                .times(r.orderItem.quantity)
+                .toNumber(),
+            ).toBe(r.orderItem.subtotal),
+          );
+        },
       );
     });
   });

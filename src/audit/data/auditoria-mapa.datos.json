@@ -6142,11 +6142,19 @@
     },
     {
       "table": "order",
+      "column": "payment_surcharge_percentage",
+      "property": "paymentSurchargePercentage",
+      "secret": false,
+      "kind": "text",
+      "position": 38
+    },
+    {
+      "table": "order",
       "column": "subtotal_items",
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 38
+      "position": 39
     },
     {
       "table": "order",
@@ -6154,7 +6162,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 39
+      "position": 40
     },
     {
       "table": "order",
@@ -6162,7 +6170,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 40
+      "position": 41
     },
     {
       "table": "order",
@@ -6170,7 +6178,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 41
+      "position": 42
     },
     {
       "table": "order",
@@ -6178,7 +6186,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 42
+      "position": 43
     },
     {
       "table": "order_address_change",
