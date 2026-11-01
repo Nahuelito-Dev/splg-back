@@ -329,7 +329,9 @@ export class PaymentsService {
       paymentStatus: pago?.status ?? null,
       paymentStatusDetail: pago?.statusDetail ?? null,
       paymentStatusLabel: pago
-        ? etiquetaDelPago(pago.status, pago.statusDetail)
+        ? sinPagarPorCancelacion(pago, pedido)
+          ? 'Sin pagar: el pedido se canceló'
+          : etiquetaDelPago(pago.status, pago.statusDetail)
         : null,
       paymentFraudHold: pedido?.paymentFraudHold ?? false,
       canRetry: puedeReintentar && !pedido?.paymentFraudHold,
@@ -1259,6 +1261,22 @@ function agruparPorPedido(pagos: Payment[]): Map<string, Payment[]> {
 }
 
 /** Cuánto pesa cada estado para decidir cuál es «el pago» del pedido (menor = más relevante). */
+/**
+ * Un pago que nunca llegó a cobrarse (pendiente, en proceso o autorizado) de un pedido ya cancelado: ya no se espera
+ * nada de él, así que no se lo muestra como «Esperando el pago».
+ */
+function sinPagarPorCancelacion(
+  pago: Payment,
+  pedido: OrderPaymentState | null,
+): boolean {
+  return (
+    pedido?.status === OrderStatus.CANCELLED &&
+    (pago.status === LedgerPaymentStatus.PENDING ||
+      pago.status === LedgerPaymentStatus.IN_PROCESS ||
+      pago.status === LedgerPaymentStatus.AUTHORIZED)
+  );
+}
+
 const PESO_DEL_ESTADO: Readonly<Record<LedgerPaymentStatus, number>> = {
   [LedgerPaymentStatus.APPROVED]: 0,
   [LedgerPaymentStatus.IN_MEDIATION]: 0,
