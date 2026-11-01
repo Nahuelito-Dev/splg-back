@@ -150,10 +150,10 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
     });
 
     expect(qb.andWhere).toHaveBeenCalledWith('order.createdAt >= :from', {
-      from: new Date('2026-09-01T00:00:00'),
+      from: new Date('2026-09-01T03:00:00.000Z'),
     });
     expect(qb.andWhere).toHaveBeenCalledWith('order.createdAt < :to', {
-      to: new Date('2026-09-03T00:00:00'),
+      to: new Date('2026-09-03T03:00:00.000Z'),
     });
   });
 
@@ -180,11 +180,11 @@ describe('OrderTypeormRepository · filtro de GET /orders', () => {
     expect(orderRepo.findAndCount).not.toHaveBeenCalled();
     expect(qb.andWhere).toHaveBeenCalledWith(
       'order.deliveredAt >= :deliveredFrom',
-      { deliveredFrom: new Date('2026-09-01T00:00:00') },
+      { deliveredFrom: new Date('2026-09-01T03:00:00.000Z') },
     );
     expect(qb.andWhere).toHaveBeenCalledWith(
       'order.deliveredAt < :deliveredTo',
-      { deliveredTo: new Date('2026-09-03T00:00:00') },
+      { deliveredTo: new Date('2026-09-03T03:00:00.000Z') },
     );
   });
 
