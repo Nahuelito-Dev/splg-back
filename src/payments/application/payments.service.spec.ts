@@ -2396,6 +2396,27 @@ describe('PaymentsService', () => {
       });
     });
 
+    it('pedido cancelado con el pago sin completar: no dice «Esperando el pago»', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.PENDING),
+      ]);
+      orderLookup.findPaymentState.mockResolvedValue({
+        status: OrderStatus.CANCELLED,
+        paymentStatus: PaymentStatus.PENDING,
+        createdAt: new Date(),
+        distributorId: 'dist-1',
+      });
+
+      await expect(
+        service.estadoDelPagoDelPedido('ord-1', false),
+      ).resolves.toMatchObject({
+        paymentStatus: 'pending',
+        paymentStatusLabel: 'Sin pagar: el pedido se canceló',
+        canRetry: false,
+        paymentUrl: null,
+      });
+    });
+
     it('rechazado: el motivo y el texto en castellano vienen del back, y se puede reintentar si el pedido sigue vivo', async () => {
       paymentRepository.find.mockResolvedValue([
         intento(LedgerPaymentStatus.REJECTED, {
