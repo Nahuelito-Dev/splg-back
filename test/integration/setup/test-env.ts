@@ -33,7 +33,10 @@ import {
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
 import {
   CREAR_FUNCION_ESTADO_DEL_PAGO,
+  CREAR_FUNCION_HISTORIAL_DEL_PAGO,
   CREAR_TRIGGER_ESTADO_DEL_PAGO,
+  CREAR_TRIGGER_HISTORIAL_DEL_PAGO,
+  REEMPLAZAR_FUNCION_ESTADO_DEL_PAGO,
 } from '../../../src/migrations/sql/estado-del-pago';
 import {
   CREAR_FUNCIONES_DE_AUDITORIA,
@@ -261,6 +264,9 @@ function asegurarBaseDescartable(
 async function instalarTriggersDeLaBase(dataSource: DataSource) {
   await dataSource.query(CREAR_FUNCION_ESTADO_DEL_PAGO);
   await dataSource.query(CREAR_TRIGGER_ESTADO_DEL_PAGO);
+  await dataSource.query(REEMPLAZAR_FUNCION_ESTADO_DEL_PAGO);
+  await dataSource.query(CREAR_FUNCION_HISTORIAL_DEL_PAGO);
+  await dataSource.query(CREAR_TRIGGER_HISTORIAL_DEL_PAGO);
   for (const sql of [
     ...sentenciasDeTransiciones(),
     ...sentenciasDeSaldos(),

@@ -22,6 +22,7 @@ describe('ReservationService.findReservations', () => {
     payments as never,
     undefined as never,
     undefined as never,
+    undefined as never,
   );
 
   /** La confirmación corre en una transacción del repositorio: el doble le da el pedido y guarda lo que recibe. */

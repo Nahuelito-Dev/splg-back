@@ -230,6 +230,7 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
       } as never,
       { reintegrarPorCancelacion: jest.fn() } as unknown as RefundsService,
       { emit: jest.fn() } as never,
+      { withdrawOtherActiveOffers: jest.fn() } as never,
     );
   });
 

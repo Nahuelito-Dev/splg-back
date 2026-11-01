@@ -459,6 +459,37 @@ SELECT pg_temp.funciona('payment · un pago pendiente puede pasar a aprobado',
   $s$ INSERT INTO payment (order_id, gateway, integration, amount, status) SELECT order_id, gateway, integration, 1, 'pending' FROM payment LIMIT 1;
       UPDATE payment SET status = 'approved' WHERE payment_id = (SELECT payment_id FROM payment WHERE amount = 1 AND status = 'pending' LIMIT 1) $s$);
 
+-- Los nueve estados de Mercado Pago: un contracargo, una devolución o un rechazo no vuelven
+-- a aprobado; un reclamo se resuelve; el historial del pago sólo crece.
+SELECT pg_temp.falla_con('payment · un contracargo no vuelve a aprobado',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status) SELECT order_id, gateway, integration, 2, 'charged_back' FROM payment LIMIT 1;
+      UPDATE payment SET status = 'approved' WHERE payment_id = (SELECT payment_id FROM payment WHERE amount = 2 AND status = 'charged_back' LIMIT 1) $s$,
+  'CHK_payment_estado_no_retrocede');
+SELECT pg_temp.falla_con('payment · un pago en proceso no se devuelve sin haberse aprobado',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status) SELECT order_id, gateway, integration, 3, 'in_process' FROM payment LIMIT 1;
+      UPDATE payment SET status = 'refunded' WHERE payment_id = (SELECT payment_id FROM payment WHERE amount = 3 AND status = 'in_process' LIMIT 1) $s$,
+  'CHK_payment_estado_no_retrocede');
+SELECT pg_temp.funciona('payment · pendiente → en proceso → aprobado → reclamo → contracargo',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status) SELECT order_id, gateway, integration, 4, 'pending' FROM payment LIMIT 1;
+      UPDATE payment SET status = 'in_process' WHERE amount = 4 AND status = 'pending';
+      UPDATE payment SET status = 'approved' WHERE amount = 4 AND status = 'in_process';
+      UPDATE payment SET status = 'in_mediation' WHERE amount = 4 AND status = 'approved';
+      UPDATE payment SET status = 'charged_back' WHERE amount = 4 AND status = 'in_mediation' $s$);
+SELECT pg_temp.falla_con('payment · el historial no se puede vaciar',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status, status_history) SELECT order_id, gateway, integration, 5, 'pending', '[{"status":"pending"}]'::jsonb FROM payment LIMIT 1;
+      UPDATE payment SET status_history = '[]'::jsonb WHERE amount = 5 AND status = 'pending' $s$,
+  'CHK_payment_historial_solo_crece');
+SELECT pg_temp.falla_con('payment · el historial no se puede reescribir',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status, status_history) SELECT order_id, gateway, integration, 6, 'pending', '[{"status":"pending"}]'::jsonb FROM payment LIMIT 1;
+      UPDATE payment SET status_history = '[{"status":"approved"}]'::jsonb WHERE amount = 6 AND status = 'pending' $s$,
+  'CHK_payment_historial_solo_crece');
+SELECT pg_temp.funciona('payment · el historial acepta una entrada nueva al final',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status, status_history) SELECT order_id, gateway, integration, 7, 'pending', '[{"status":"pending"}]'::jsonb FROM payment LIMIT 1;
+      UPDATE payment SET status_history = status_history || '[{"status":"approved"}]'::jsonb WHERE amount = 7 AND status = 'pending' $s$);
+SELECT pg_temp.falla_con('payment · el historial tiene que ser una lista',
+  $s$ INSERT INTO payment (order_id, gateway, integration, amount, status, status_history) SELECT order_id, gateway, integration, 8, 'pending', '{"status":"pending"}'::jsonb FROM payment LIMIT 1 $s$,
+  'CHK_payment_historial_es_lista');
+
 -- ---------------------------------------------------------------------------
 -- 4c. V2: transiciones de estado (triggers)
 -- ---------------------------------------------------------------------------

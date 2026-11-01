@@ -71,6 +71,10 @@ export enum PaymentStatus {
 }
 
 @Check(
+  'CHK_order_liberacion_por_fraude',
+  `"payment_fraud_released_at" IS NULL OR ("payment_fraud_released_by" IS NOT NULL AND char_length(btrim("payment_fraud_released_reason")) >= 10)`,
+)
+@Check(
   'CHK_order_montos',
   `"totalAmount" >= 0 AND "subtotal_items" >= 0 AND "zone_surcharge_amount" >= 0 AND "express_surcharge_amount" >= 0 AND "payment_surcharge_amount" >= 0 AND "deposit_amount" >= 0`,
 )
@@ -227,6 +231,34 @@ export class Order {
     default: false,
   })
   depositPaid!: boolean;
+
+  /**
+   * Mercado Pago avisó una alerta de fraude (`stop_delivery_op_wh`) sobre el pago de
+   * este pedido y pidió no entregarlo: no se ofrece, no se acepta, no se asigna y una
+   * reserva no se activa. Es una retención aparte del estado del pago (que sigue
+   * `paid`/seña paga); se resuelve cancelando el pedido.
+   */
+  @Column({ name: 'payment_fraud_hold', type: 'boolean', default: false })
+  paymentFraudHold!: boolean;
+
+  /** Cuándo un administrador liberó la retención por fraude (queda el motivo y quién). */
+  @Column({
+    name: 'payment_fraud_released_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  paymentFraudReleasedAt!: Date | null;
+
+  @Column({ name: 'payment_fraud_released_by', type: 'uuid', nullable: true })
+  paymentFraudReleasedBy!: string | null;
+
+  /** Motivo con el que el administrador liberó la retención. */
+  @Column({
+    name: 'payment_fraud_released_reason',
+    type: 'text',
+    nullable: true,
+  })
+  paymentFraudReleasedReason!: string | null;
 
   /** Cuándo el administrador confirmó la seña recibida en efectivo o por transferencia. */
   @Column({ name: 'deposit_paid_at', type: 'timestamptz', nullable: true })

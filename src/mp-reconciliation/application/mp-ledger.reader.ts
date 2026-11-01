@@ -189,7 +189,8 @@ export class MpLedgerReader {
            COALESCE((SELECT SUM(r."amount") FROM "payment_refund" r
                      WHERE r."payment_id" = p."payment_id" AND r."status" IN ('succeeded', 'pending')), 0)
          + COALESCE((SELECT SUM(m."amount") FROM "cash_movement" m
-                     WHERE m."reference_type" = 'payment_external_refund' AND m."reference_id" = p."payment_id"), 0)
+                     WHERE m."reference_type" = 'payment_external_refund' AND m."reference_id" = p."payment_id"
+                       AND m."direction" = 'out'), 0)
          ) AS total
          FROM "payment" p WHERE p."payment_id" = ANY($1::uuid[])`,
         [paymentIds],

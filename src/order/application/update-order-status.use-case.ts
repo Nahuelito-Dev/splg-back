@@ -1,6 +1,6 @@
 import {
   esperaPagoOnline,
-  MENSAJE_MP_SIN_PAGAR,
+  mensajeDeEspera,
 } from '../domain/espera-pago-online';
 import { OrderItem } from '../entities/order-item.entity';
 import {
@@ -542,7 +542,7 @@ export class UpdateOrderStatusUseCase {
       case OrderStatus.ACCEPTED: {
         // Ni el chofer ni el admin toman un pedido que espera el pago online.
         if (esperaPagoOnline(order)) {
-          throw new ConflictException(MENSAJE_MP_SIN_PAGAR);
+          throw new ConflictException(mensajeDeEspera(order));
         }
         // Una parada de un recorrido que se está ofreciendo completo no se toma
         // suelta (ni del pool ni a mano): el lote se acepta entero o se deshace.

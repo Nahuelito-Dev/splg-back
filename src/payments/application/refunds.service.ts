@@ -10,9 +10,11 @@ import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 
 import { Payment } from '../entities/payment.entity';
+import { puedeTransicionarElPago } from '../domain/payment-status.machine';
 import { PaymentRefund } from '../entities/payment-refund.entity';
 import {
   LedgerPaymentStatus,
+  OrigenDelEstadoDelPago,
   PaymentGateway,
   RefundKind,
   RefundStatus,
@@ -86,6 +88,56 @@ export class RefundsService {
       if (solicitud) resultado.push(await this.ejecutar(solicitud, pago, null));
     }
     return resultado;
+  }
+
+  /**
+   * Un pago aprobado que sobra (el segundo cobro de un pedido que ya estaba pagado):
+   * devuelve ESE pago completo, nunca otro. Lanza si el pago no está en el ledger o
+   * no se puede dejar registrada la solicitud; lo que rechace la pasarela queda en la
+   * solicitud (`failed`) para que el administrador la reintente.
+   */
+  async reintegrarPagoDuplicado(
+    gatewayPaymentId: string,
+  ): Promise<PaymentRefund[]> {
+    const pago = await this.payments.findOne({
+      where: {
+        gatewayPaymentId,
+        gateway: Not(PaymentGateway.CASH),
+        status: In([
+          LedgerPaymentStatus.APPROVED,
+          LedgerPaymentStatus.IN_MEDIATION,
+        ]),
+      },
+    });
+    if (!pago) {
+      throw new Error(
+        `El pago ${gatewayPaymentId} no está aprobado en el ledger: no se puede registrar su devolución`,
+      );
+    }
+    const solicitud = await this.solicitudParaCancelacion(pago);
+    return solicitud ? [await this.ejecutar(solicitud, pago, null)] : [];
+  }
+
+  /** ¿El pedido tiene una devolución que la pasarela rechazó y espera que el administrador la reintente? */
+  async tieneDevolucionFallida(orderId: string): Promise<boolean> {
+    return (
+      (await this.refunds.count({
+        where: { orderId, status: RefundStatus.FAILED },
+      })) > 0
+    );
+  }
+
+  /** ¿La devolución de ESE pago de la pasarela la rechazó Mercado Pago y espera al administrador? */
+  async tieneDevolucionFallidaDelPago(
+    gatewayPaymentId: string,
+  ): Promise<boolean> {
+    const pago = await this.payments.findOne({ where: { gatewayPaymentId } });
+    if (!pago) return false;
+    return (
+      (await this.refunds.count({
+        where: { paymentId: pago.paymentId, status: RefundStatus.FAILED },
+      })) > 0
+    );
   }
 
   /**
@@ -561,10 +613,15 @@ export class RefundsService {
     const { cierre, actual, asiento } = await this.refunds.manager.transaction(
       async (manager) => {
         // Mismo orden de locks que `settle-pending`: primero el pago, después la caja.
-        await manager.query(
-          `SELECT 1 FROM "payment" WHERE "payment_id" = $1 FOR UPDATE`,
-          [pago.paymentId],
-        );
+        // Se relee el estado del pago bajo el lock: un contracargo que llegó en el medio
+        // lo dejó `charged_back` (final) y pasarlo a `refunded` lo rechaza la base.
+        const filasDelPago: Array<{ status?: LedgerPaymentStatus }> =
+          await manager.query(
+            `SELECT "status" FROM "payment" WHERE "payment_id" = $1 FOR UPDATE`,
+            [pago.paymentId],
+          );
+        const estadoDelPago =
+          filasDelPago[0]?.status ?? LedgerPaymentStatus.APPROVED;
         const resultado = await manager.update(
           PaymentRefund,
           { refundId: solicitud.refundId, status: Not(RefundStatus.SUCCEEDED) },
@@ -582,11 +639,31 @@ export class RefundsService {
         });
         // El pago pasa a reintegrado junto con el cierre y el egreso: si algo
         // falla, no queda una devolución cerrada con el pago todavía aprobado.
-        if (resultado.affected && solicitud.kind === RefundKind.FULL) {
+        if (
+          resultado.affected &&
+          solicitud.kind === RefundKind.FULL &&
+          puedeTransicionarElPago(estadoDelPago, LedgerPaymentStatus.REFUNDED)
+        ) {
           await manager.update(
             Payment,
             { paymentId: pago.paymentId },
             { status: LedgerPaymentStatus.REFUNDED },
+          );
+          // La devolución pedida desde acá también queda en el historial del pago.
+          await manager.query(
+            `UPDATE "payment" SET "status_history" = "status_history" || $2::jsonb WHERE "payment_id" = $1`,
+            [
+              pago.paymentId,
+              JSON.stringify([
+                {
+                  status: LedgerPaymentStatus.REFUNDED,
+                  statusDetail: 'refunded',
+                  at: new Date().toISOString(),
+                  origin: OrigenDelEstadoDelPago.REINTEGRO,
+                  applied: true,
+                },
+              ]),
+            ],
           );
         }
         const distributorId = pago.distributorId;

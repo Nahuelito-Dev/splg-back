@@ -114,7 +114,7 @@ describe('CashCollectionSettingsService', () => {
       query: jest.fn((sql: string) => {
         queries.push(sql);
         if (sql.includes("'payment_fee'")) return Promise.resolve(comisiones);
-        if (sql.includes(`p."status" = 'approved'`))
+        if (sql.includes(`p."status" IN ('approved', 'in_mediation')`))
           return Promise.resolve(mpPendientes);
         if (sql.includes('FROM "payment" p'))
           return Promise.resolve(pagosIngresados);

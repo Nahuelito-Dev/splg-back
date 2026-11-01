@@ -56,6 +56,8 @@ export interface OrderPaymentState {
   /** Cuándo se creó: desde ahí corre el plazo para pagarlo. */
   createdAt: Date;
   distributorId: string;
+  /** Retenido por una alerta de fraude de la pasarela. */
+  paymentFraudHold: boolean;
 }
 
 /** El pedido visto desde `payments` para devolver un pago (CU-168). */
@@ -258,10 +260,12 @@ export class OrderLookupService {
         paymentStatus: true,
         createdAt: true,
         distributorId: true,
+        paymentFraudHold: true,
       },
     });
     return order
       ? {
+          paymentFraudHold: order.paymentFraudHold === true,
           status: order.status,
           paymentStatus: order.paymentStatus,
           createdAt: order.createdAt,

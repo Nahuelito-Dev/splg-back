@@ -1,7 +1,7 @@
 import {
   Injectable,
   OnModuleInit,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -21,7 +21,7 @@ const LOCK_RETRY_JITTER_MS = 50;
 const LOCATION_AT_TTL_SEC = 24 * 60 * 60;
 
 @Injectable()
-export class RedisService implements OnModuleInit, OnModuleDestroy {
+export class RedisService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger('RedisService');
   private client!: Redis;
   private redlock!: Redlock;
@@ -53,7 +53,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  onModuleDestroy() {
+  /**
+   * Se cierra en `onApplicationShutdown` y no en `onModuleDestroy`: Nest cierra primero
+   * el servidor HTTP (esperando las requests en vuelo, p. ej. un webhook de pago que
+   * despacha con un lock de Redis) y recién después llama a este gancho.
+   */
+  onApplicationShutdown() {
     this.client.disconnect();
   }
 

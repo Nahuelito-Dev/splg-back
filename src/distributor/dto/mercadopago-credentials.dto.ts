@@ -32,7 +32,16 @@ export class SaveMercadoPagoCredentialsDto {
   webhookSecret!: string;
 }
 
+export type MercadoPagoAccountType = 'test' | 'real' | 'unknown';
+
 export class MercadoPagoCredentialsResponseDto {
+  @ApiProperty({
+    enum: ['test', 'real', 'unknown'],
+    description:
+      'Tipo de la cuenta con la que se cobra (la propia si hay, si no la del sistema), según `GET /users/me` de Mercado Pago: `test` = «Cuenta de prueba» (usuario de prueba, no cobra de verdad), `real` = «Cuenta real», `unknown` = no se pudo consultar o no hay token.',
+  })
+  accountType!: MercadoPagoAccountType;
+
   @ApiProperty({
     enum: ['own', 'system'],
     description:

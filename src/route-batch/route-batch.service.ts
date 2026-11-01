@@ -310,6 +310,7 @@ export class RouteBatchService {
           AND o."deliveryPoint" IS NOT NULL
           AND ((o."scheduled_date" + ts."endTime") AT TIME ZONE 'America/Argentina/Buenos_Aires') > $2
           AND NOT (o."paymentMethod" = 'mercadopago' AND o."paymentStatus" <> 'paid' AND NOT o."deposit_paid")
+          AND NOT o."payment_fraud_hold"
           AND NOT EXISTS (SELECT 1 FROM "order_dispatch_offer" d
                            WHERE d."order_id" = o."order_id" AND d."status" = 'offered')
           AND NOT EXISTS (SELECT 1 FROM "route_batch_stop" s
@@ -699,7 +700,9 @@ export class RouteBatchService {
     } catch (error) {
       const pedido = await this.orderService.findById(parada.orderId);
       const sigueDisponible =
-        pedido?.status === OrderStatus.PENDING && !pedido.deliveryId;
+        pedido?.status === OrderStatus.PENDING &&
+        !pedido.deliveryId &&
+        !pedido.paymentFraudHold;
       if (sigueDisponible && esLaPrimera) throw error;
       this.logger.warn(
         `Lote ${parada.batchId}: el pedido ${parada.orderId} no se asignó: ${errorMessage(error)}`,
@@ -855,11 +858,21 @@ export class RouteBatchService {
     });
     const pedidos = await this.dataSource.getRepository(Order).find({
       where: { orderId: In(paradas.map((p) => p.orderId)) },
-      select: { orderId: true, status: true, deliveryId: true },
+      select: {
+        orderId: true,
+        status: true,
+        deliveryId: true,
+        paymentFraudHold: true,
+      },
     });
     const disponibles = new Set(
       pedidos
-        .filter((p) => p.status === OrderStatus.PENDING && !p.deliveryId)
+        .filter(
+          (p) =>
+            p.status === OrderStatus.PENDING &&
+            !p.deliveryId &&
+            !p.paymentFraudHold,
+        )
         .map((p) => p.orderId),
     );
     const vigentes = paradas.filter((p) => disponibles.has(p.orderId));

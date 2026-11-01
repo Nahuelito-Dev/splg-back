@@ -22,6 +22,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger('Bootstrap');
 
+  // SIGTERM/SIGINT cierran la app ordenadamente: se deja de aceptar conexiones, se
+  // espera a que terminen las requests en vuelo (un webhook de pago a medio procesar)
+  // y recién ahí se cierran la base y Redis. Sin esto el proceso muere de golpe.
+  app.enableShutdownHooks();
+
   // Detras de un proxy (nginx, balanceador, Cloudflare) Express devuelve la IP
   // del proxy en req.ip, no la del usuario, salvo que se le diga cuantos saltos
   // confiar. Sin esto, el rate limiting por IP cuenta a todos juntos.

@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   ConflictException,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -13,6 +14,7 @@ import { MercadoPagoCredentials } from './entities/mercadopago-credentials.entit
 import {
   enmascarar,
   MercadoPagoCredentialsService,
+  tipoDeCuentaDe,
 } from './mercadopago-credentials.service';
 
 const TOKEN = 'APP_USR-1111111111111111-010101-abcdef0123456789abcdef-12345678';
@@ -81,6 +83,7 @@ describe('MercadoPagoCredentialsService', () => {
   let fallar: { alGuardar: Error | null };
   let fetchMock: jest.SpyInstance;
   const clave = randomBytes(32).toString('base64');
+  let entorno: Record<string, string>;
 
   const armar = (conClave = true): void => {
     const memoria = repoEnMemoria();
@@ -91,10 +94,12 @@ describe('MercadoPagoCredentialsService', () => {
       new CredentialsEncryptionService({
         get: () => (conClave ? clave : undefined),
       } as unknown as ConfigService),
+      { get: (k: string) => entorno[k] } as unknown as ConfigService,
     );
   };
 
   beforeEach(() => {
+    entorno = { NODE_ENV: 'development' };
     armar();
     fetchMock = jest
       .spyOn(global, 'fetch')
@@ -297,6 +302,7 @@ describe('MercadoPagoCredentialsService', () => {
         new CredentialsEncryptionService({
           get: () => undefined,
         } as unknown as ConfigService),
+        { get: () => undefined } as unknown as ConfigService,
       );
 
       expect((await sinClave.resolve('d1', SISTEMA)).source).toBe('system');
@@ -305,6 +311,160 @@ describe('MercadoPagoCredentialsService', () => {
         encryptionConfigured: false,
       });
     });
+  });
+});
+
+describe('tipoDeCuentaDe', () => {
+  it('la etiqueta test_user marca una cuenta de prueba', () => {
+    expect(tipoDeCuentaDe({ nickname: 'ALGO', tags: ['test_user'] })).toBe(
+      'test',
+    );
+  });
+
+  it('un nickname TESTUSER… marca una cuenta de prueba', () => {
+    expect(tipoDeCuentaDe({ nickname: 'TESTUSER123456', tags: [] })).toBe(
+      'test',
+    );
+  });
+
+  it('una cuenta sin esas marcas es real', () => {
+    expect(
+      tipoDeCuentaDe({ nickname: 'JENYGAS', tags: ['normal', 'mshops'] }),
+    ).toBe('real');
+    expect(tipoDeCuentaDe({})).toBe('real');
+  });
+});
+
+describe('MercadoPagoCredentialsService: cuenta de prueba o real', () => {
+  const clave = randomBytes(32).toString('base64');
+  const respuesta = (cuenta: object, status = 200) =>
+    jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(cuenta), { status })),
+      );
+  let avisos: jest.SpyInstance;
+  let registros: jest.SpyInstance;
+
+  const armar = (env: Record<string, string>) => {
+    const memoria = repoEnMemoria();
+    return {
+      memoria,
+      servicio: new MercadoPagoCredentialsService(
+        memoria.repo,
+        new CredentialsEncryptionService({
+          get: () => clave,
+        } as unknown as ConfigService),
+        { get: (k: string) => env[k] } as unknown as ConfigService,
+      ),
+    };
+  };
+
+  beforeEach(() => {
+    avisos = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    registros = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('el estado de una distribuidora sin cuenta propia dice si la del entorno es de prueba', async () => {
+    respuesta({ nickname: 'TESTUSER1', tags: ['test_user'] });
+    const { servicio } = armar({ MP_ACCESS_TOKEN: TOKEN });
+
+    expect((await servicio.status('d1')).accountType).toBe('test');
+  });
+
+  it('el estado con cuenta propia consulta con el token propio y dice que es real', async () => {
+    const f = respuesta({ nickname: 'JENYGAS', tags: ['normal'] });
+    const { servicio } = armar({ MP_ACCESS_TOKEN: 'otro-token-del-entorno' });
+    await servicio.save('d1', 'u1', DTO);
+
+    const estado = await servicio.status('d1');
+
+    expect(estado).toMatchObject({ source: 'own', accountType: 'real' });
+    expect(f).toHaveBeenCalledWith(
+      'https://api.mercadopago.com/users/me',
+      expect.objectContaining({
+        headers: { Authorization: `Bearer ${DTO.accessToken}` },
+      }),
+    );
+  });
+
+  it('sin token o con Mercado Pago caído el tipo es unknown y no rompe', async () => {
+    const { servicio } = armar({});
+    expect((await servicio.status('d1')).accountType).toBe('unknown');
+
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('sin red'));
+    const otro = armar({ MP_ACCESS_TOKEN: TOKEN }).servicio;
+    expect((await otro.status('d1')).accountType).toBe('unknown');
+  });
+
+  it('un tipo conocido se recuerda: no se vuelve a consultar en cada estado', async () => {
+    const f = respuesta({ nickname: 'X', tags: [] });
+    const { servicio } = armar({
+      MP_ACCESS_TOKEN: TOKEN,
+      NODE_ENV: 'production',
+    });
+
+    await servicio.status('d1');
+    await servicio.status('d1');
+
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('cuenta real fuera de producción: advierte una sola vez y sin imprimir el token', async () => {
+    respuesta({ nickname: 'JENYGAS', tags: [] });
+    const { servicio } = armar({
+      MP_ACCESS_TOKEN: TOKEN,
+      NODE_ENV: 'development',
+    });
+
+    await servicio.tipoDeCuenta(TOKEN, 'la del entorno');
+    await servicio.tipoDeCuenta(TOKEN, 'la del entorno');
+
+    expect(avisos).toHaveBeenCalledTimes(1);
+    const mensaje = String((avisos.mock.calls as unknown[][])[0][0]);
+    expect(mensaje).toContain('REAL');
+    expect(mensaje).toContain('development');
+    expect(mensaje).not.toContain(TOKEN);
+  });
+
+  it('cuenta de prueba en producción también advierte', async () => {
+    respuesta({ nickname: 'TESTUSER9', tags: ['test_user'] });
+    const { servicio } = armar({ NODE_ENV: 'production' });
+
+    await servicio.tipoDeCuenta(TOKEN, 'la del entorno');
+
+    expect(String((avisos.mock.calls as unknown[][])[0][0])).toContain(
+      'PRUEBA',
+    );
+  });
+
+  it('cuenta de prueba fuera de producción y real en producción no advierten', async () => {
+    respuesta({ nickname: 'TESTUSER9', tags: ['test_user'] });
+    await armar({ NODE_ENV: 'development' }).servicio.tipoDeCuenta(TOKEN, 'x');
+    respuesta({ nickname: 'JENYGAS', tags: [] });
+    await armar({ NODE_ENV: 'production' }).servicio.tipoDeCuenta(TOKEN, 'x');
+
+    expect(avisos).not.toHaveBeenCalled();
+  });
+
+  it('al arrancar consulta la cuenta del entorno y deja el tipo en el log', async () => {
+    respuesta({ nickname: 'TESTUSER9', tags: ['test_user'] });
+    const { servicio } = armar({ MP_ACCESS_TOKEN: TOKEN });
+
+    servicio.onApplicationBootstrap();
+    await new Promise((r) => setImmediate(r));
+
+    expect(registros).toHaveBeenCalledWith(
+      expect.stringContaining('cuenta de prueba'),
+    );
+  });
+
+  it('al arrancar sin token no consulta nada', () => {
+    const f = respuesta({});
+    armar({}).servicio.onApplicationBootstrap();
+
+    expect(f).not.toHaveBeenCalled();
   });
 });
 

@@ -3,11 +3,14 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { In, Repository } from 'typeorm';
+import { FindOperator, In, Repository } from 'typeorm';
 import { PaymentsService } from './payments.service';
 import { Payment } from '../entities/payment.entity';
 import { PaymentGatewayPort } from '../domain/ports/payment-gateway.port';
-import { LedgerPaymentStatus } from '../domain/payment.enums';
+import {
+  LedgerPaymentStatus,
+  OrigenDelEstadoDelPago,
+} from '../domain/payment.enums';
 import { SalesCashService } from '../../cash/application/sales-cash.service';
 
 /**
@@ -27,18 +30,21 @@ describe('PaymentsService', () => {
     findOne: jest.Mock;
     find: jest.Mock;
     count: jest.Mock;
-    manager: { transaction: jest.Mock };
+    manager: { transaction: jest.Mock; findOne: jest.Mock };
   };
   let orderLookup: { findPaymentState: jest.Mock };
   let events: { emit: jest.Mock };
   let ventasEnCaja: {
     asentarCobroDeMercadoPago: jest.Mock;
     asentarDevolucionExterna: jest.Mock;
+    asentarContracargoReintegrado: jest.Mock;
     avisarSinAsentar: jest.Mock;
   };
   let paymentGateway: {
     createCheckout: jest.Mock;
     getPayment: jest.Mock;
+    findPaymentsByReference: jest.Mock;
+    getChargeback: jest.Mock;
     verifyWebhookSignature: jest.Mock;
   };
 
@@ -53,11 +59,14 @@ describe('PaymentsService', () => {
         transaction: jest.fn((trabajo: (m: unknown) => unknown) =>
           trabajo({ getRepository: () => paymentRepository }),
         ),
+        findOne: jest.fn().mockResolvedValue({ name: 'Garrafas Jeny' }),
       },
     };
     paymentGateway = {
       createCheckout: jest.fn(),
       getPayment: jest.fn(),
+      findPaymentsByReference: jest.fn(),
+      getChargeback: jest.fn(),
       verifyWebhookSignature: jest.fn(),
     };
 
@@ -74,6 +83,7 @@ describe('PaymentsService', () => {
     ventasEnCaja = {
       asentarCobroDeMercadoPago: jest.fn().mockResolvedValue('asentado'),
       asentarDevolucionExterna: jest.fn().mockResolvedValue('asentado'),
+      asentarContracargoReintegrado: jest.fn().mockResolvedValue('asentado'),
       avisarSinAsentar: jest.fn(),
     };
 
@@ -96,7 +106,7 @@ describe('PaymentsService', () => {
       amount: 1000,
       isDeposit: false,
       items: [],
-      payerEmail: 'c@test.com',
+      payer: { email: 'c@test.com' },
     };
 
     it.each([
@@ -132,25 +142,371 @@ describe('PaymentsService', () => {
     });
   });
 
+  describe('createCheckout: datos para la pasarela', () => {
+    const input = {
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      amount: 2000,
+      isDeposit: false,
+      items: [],
+      payer: { email: 'c@test.com', fullName: 'Ana Pérez' },
+      receiverAddress: { street: 'Av. Colón 1234' },
+    };
+
+    beforeEach(() => {
+      paymentGateway.createCheckout.mockResolvedValue({
+        initPoint: 'https://mp.test/checkout',
+        preferenceId: 'pref-1',
+        credentialId: null,
+      });
+    });
+
+    const enviado = () =>
+      (
+        paymentGateway.createCheckout.mock.calls as [Record<string, unknown>][]
+      )[0][0];
+
+    it('le pasa a la pasarela el pagador y la dirección de entrega', async () => {
+      await service.createCheckout(input);
+
+      expect(enviado().payer).toEqual(input.payer);
+      expect(enviado().receiverAddress).toEqual(input.receiverAddress);
+    });
+
+    it('el descriptor del resumen es el nombre de la distribuidora, sin tildes ni símbolos y de hasta 13', async () => {
+      paymentRepository.manager.findOne.mockResolvedValue({
+        name: 'Distribuidora Ñandú & Hijos S.R.L.',
+      });
+
+      await service.createCheckout(input);
+
+      expect(enviado().statementDescriptor).toBe('DISTRIBUIDORA');
+    });
+
+    it('sin nombre legible, o si no se lo puede leer, el descriptor es SPLG', async () => {
+      paymentRepository.manager.findOne.mockResolvedValue({ name: '***' });
+      await service.createCheckout(input);
+      expect(enviado().statementDescriptor).toBe('SPLG');
+
+      paymentGateway.createCheckout.mockClear();
+      paymentRepository.manager.findOne.mockRejectedValue(new Error('base'));
+      await service.createCheckout(input);
+      expect(enviado().statementDescriptor).toBe('SPLG');
+    });
+  });
+
+  describe('pago en reclamo (in_mediation)', () => {
+    const ledger = (
+      estado: LedgerPaymentStatus,
+      metadata: Record<string, unknown> | null = null,
+    ) => ({
+      paymentId: 'ledger-1',
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      isDeposit: false,
+      amount: 1000,
+      credentialId: null,
+      status: estado,
+      statusDetail: 'accredited' as string | null,
+      statusHistory: [] as unknown[],
+      metadata,
+    });
+    const avisos = () =>
+      (events.emit.mock.calls as [string, { kind: string }][]).map(
+        ([, e]) => e.kind,
+      );
+
+    beforeEach(() => {
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-1',
+        status: 'in_mediation',
+        statusDetail: 'pending',
+        externalReference: 'ord-1',
+        amount: 1000,
+      });
+    });
+
+    it('un reclamo sobre un pago aprobado pasa el ledger a in_mediation y avisa al admin', async () => {
+      const pago = ledger(LedgerPaymentStatus.APPROVED, {
+        gatewayStatus: 'approved',
+      });
+      paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+      const r = await service.confirmFromGateway({
+        type: 'payment',
+        dataId: 'pay-1',
+      });
+
+      expect(pago.status).toBe(LedgerPaymentStatus.IN_MEDIATION);
+      expect(pago.statusDetail).toBe('pending');
+      expect(r?.status).toBe('in_mediation');
+      expect(avisos()).toEqual(['payment_in_mediation']);
+      expect((events.emit.mock.calls as unknown[][])[0][1]).toMatchObject({
+        distributorId: 'dist-1',
+        dedupeKey: 'mp-mediacion:pay-1',
+      });
+    });
+
+    it('una segunda notificación del mismo reclamo no vuelve a avisar', async () => {
+      paymentRepository.findOne.mockResolvedValueOnce(
+        ledger(LedgerPaymentStatus.IN_MEDIATION),
+      );
+
+      await service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['approved', LedgerPaymentStatus.APPROVED],
+      ['refunded', LedgerPaymentStatus.REFUNDED],
+      ['charged_back', LedgerPaymentStatus.CHARGED_BACK],
+    ])(
+      'cuando el reclamo se resuelve (%s) el ledger sale de in_mediation',
+      async (estadoDeMp, esperado) => {
+        const pago = ledger(LedgerPaymentStatus.IN_MEDIATION);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: estadoDeMp,
+          externalReference: 'ord-1',
+          amount: 1000,
+        });
+
+        await service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+
+        expect(pago.status).toBe(esperado);
+      },
+    );
+
+    it('si el aviso de la aprobación no llegó, un reclamo sobre un pago pendiente acredita el cobro (caja) y lo deja en reclamo', async () => {
+      const pago = ledger(LedgerPaymentStatus.PENDING);
+      paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+      await service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+
+      expect(pago.status).toBe(LedgerPaymentStatus.IN_MEDIATION);
+      expect(ventasEnCaja.asentarCobroDeMercadoPago).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('contracargos', () => {
+    const contracargo = {
+      id: 'cb-1',
+      paymentIds: ['pay-1'],
+      amount: 1000,
+      documentationRequired: true,
+      documentationDeadline: '2026-11-10T00:00:00.000-03:00',
+    };
+    const pagoDelLedger = () => ({
+      paymentId: 'ledger-1',
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      gatewayPaymentId: 'pay-1',
+      externalReference: 'ord-1',
+      isDeposit: false,
+      amount: 1000,
+      credentialId: null,
+      status: LedgerPaymentStatus.APPROVED,
+      statusDetail: 'accredited' as string | null,
+      statusHistory: [] as unknown[],
+      metadata: { gatewayStatus: 'approved' } as Record<string, unknown>,
+    });
+
+    it.each(['topic_chargebacks_wh', 'chargebacks'])(
+      'el tópico %s consulta el contracargo, lo marca en el pago y avisa al admin con el plazo',
+      async (type) => {
+        paymentGateway.getChargeback.mockResolvedValue(contracargo);
+        const pago = pagoDelLedger();
+        paymentRepository.findOne
+          .mockResolvedValueOnce(pago)
+          .mockResolvedValueOnce(pago);
+        paymentGateway.getPayment.mockResolvedValue({
+          id: 'pay-1',
+          status: 'approved',
+          externalReference: 'ord-1',
+          amount: 1000,
+        });
+
+        const r = await service.confirmFromGateway({
+          type,
+          dataId: 'cb-1',
+          credentialId: 'cred-1',
+        });
+
+        expect(r).toBeNull();
+        expect(paymentGateway.getChargeback).toHaveBeenCalledWith(
+          'cb-1',
+          'cred-1',
+        );
+        expect(pago.metadata).toMatchObject({
+          gatewayStatus: 'approved',
+          chargeback: {
+            id: 'cb-1',
+            amount: 1000,
+            documentationRequired: true,
+          },
+        });
+        const [evento, aviso] = events.emit.mock.calls[0] as [
+          string,
+          Record<string, string>,
+        ];
+        expect(evento).toBe('admin.notificar');
+        expect(aviso).toMatchObject({
+          distributorId: 'dist-1',
+          kind: 'payment_chargeback_opened',
+          dedupeKey: 'mp-contracargo-abierto:cb-1:pay-1',
+        });
+        expect(aviso.body).toContain('2026-11-10');
+        expect(aviso.body).toContain('comprobante de entrega');
+      },
+    );
+
+    it('si Mercado Pago no responde al consultar el contracargo LANZA: el webhook da 503 y MP reintenta', async () => {
+      paymentGateway.getChargeback.mockRejectedValue(new Error('timeout'));
+
+      await expect(
+        service.confirmFromGateway({
+          type: 'topic_chargebacks_wh',
+          dataId: 'cb-1',
+        }),
+      ).rejects.toThrow('timeout');
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('un contracargo que Mercado Pago no conoce (404) se descarta', async () => {
+      paymentGateway.getChargeback.mockRejectedValue({ status: 404 });
+
+      await expect(
+        service.confirmFromGateway({
+          type: 'topic_chargebacks_wh',
+          dataId: 'cb-1',
+        }),
+      ).resolves.toBeNull();
+    });
+
+    it('si falla guardar la marca del contracargo en el pago LANZA (503 y reintento), no se pierde', async () => {
+      paymentGateway.getChargeback.mockResolvedValue(contracargo);
+      paymentRepository.manager.transaction.mockRejectedValueOnce(
+        new Error('base caída'),
+      );
+
+      await expect(
+        service.confirmFromGateway({
+          type: 'topic_chargebacks_wh',
+          dataId: 'cb-1',
+        }),
+      ).rejects.toThrow('base caída');
+    });
+
+    it('alinea el pago con lo que dice la pasarela: charged_back pasa el ledger y asienta el egreso', async () => {
+      paymentGateway.getChargeback.mockResolvedValue(contracargo);
+      const pago = {
+        ...pagoDelLedger(),
+        status: LedgerPaymentStatus.APPROVED,
+        statusDetail: 'accredited',
+        statusHistory: [],
+        externalReference: 'ord-1',
+        isDeposit: false,
+        amount: 1000,
+        credentialId: null,
+      };
+      paymentRepository.findOne
+        .mockResolvedValueOnce(pago)
+        .mockResolvedValueOnce(pago);
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-1',
+        status: 'charged_back',
+        statusDetail: 'settled',
+        externalReference: 'ord-1',
+        amount: 1000,
+      });
+
+      await service.confirmFromGateway({
+        type: 'topic_chargebacks_wh',
+        dataId: 'cb-1',
+      });
+
+      expect(pago.status).toBe(LedgerPaymentStatus.CHARGED_BACK);
+      expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ contracargo: true, refundedTotal: 1000 }),
+      );
+    });
+
+    it('un pago que no está en el ledger no avisa', async () => {
+      paymentGateway.getChargeback.mockResolvedValue(contracargo);
+      paymentRepository.findOne.mockResolvedValueOnce(null);
+
+      await service.confirmFromGateway({
+        type: 'topic_chargebacks_wh',
+        dataId: 'cb-1',
+      });
+
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('sin distribuidora en el pago usa la del pedido', async () => {
+      paymentGateway.getChargeback.mockResolvedValue(contracargo);
+      const sinDistribuidora = { ...pagoDelLedger(), distributorId: null };
+      paymentRepository.findOne
+        .mockResolvedValueOnce(sinDistribuidora)
+        .mockResolvedValueOnce(sinDistribuidora);
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-1',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 1000,
+      });
+
+      await service.confirmFromGateway({
+        type: 'topic_chargebacks_wh',
+        dataId: 'cb-1',
+      });
+
+      expect((events.emit.mock.calls as unknown[][])[0][1]).toMatchObject({
+        distributorId: 'dist-1',
+      });
+    });
+  });
+
   describe('findPendingCheckoutUrls', () => {
-    const pago = (orderId: string, status: string, paymentUrl: string | null) =>
-      ({ orderId, status, paymentUrl }) as unknown as Payment;
+    const enUnaHora = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const hace1h = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const pago = (
+      orderId: string,
+      status: string,
+      paymentUrl: string | null,
+      extra: Record<string, unknown> = {},
+    ) =>
+      ({
+        orderId,
+        status,
+        paymentUrl,
+        gatewayPaymentId: null,
+        isDeposit: false,
+        createdAt: new Date(),
+        metadata: { expiresAt: enUnaHora },
+        ...extra,
+      }) as unknown as Payment;
 
     it('sin ids no consulta', async () => {
       expect((await service.findPendingCheckoutUrls([])).size).toBe(0);
       expect(paymentRepository.find).not.toHaveBeenCalled();
     });
 
-    it('pide todos los intentos de los pedidos, del más viejo al más nuevo, sin filtrar por estado', async () => {
+    it('pide los intentos de Mercado Pago de los pedidos, del más viejo al más nuevo, sin filtrar por estado', async () => {
       paymentRepository.find.mockResolvedValue([]);
       await service.findPendingCheckoutUrls(['o1', 'o2']);
       expect(paymentRepository.find).toHaveBeenCalledWith({
-        where: { orderId: In(['o1', 'o2']) },
+        where: { orderId: In(['o1', 'o2']), gateway: 'mercadopago' },
         order: { createdAt: 'ASC' },
       });
     });
 
-    it('publica la URL del último intento si sigue pendiente', async () => {
+    it('publica la URL del intento pendiente', async () => {
       paymentRepository.find.mockResolvedValue([
         pago('o1', 'rejected', 'https://mp.test/viejo'),
         pago('o1', 'pending', 'https://mp.test/nuevo'),
@@ -159,17 +515,74 @@ describe('PaymentsService', () => {
       expect(urls.get('o1')).toBe('https://mp.test/nuevo');
     });
 
-    it('un intento posterior rechazado, cancelado, pagado o sin URL reemplaza al pendiente: no se publica el viejo', async () => {
+    it('un rechazo o cancelación con el checkout sin vencer deja reintentar con el mismo enlace', async () => {
       paymentRepository.find.mockResolvedValue([
-        pago('o1', 'pending', 'https://mp.test/viejo-1'),
-        pago('o1', 'rejected', 'https://mp.test/rechazado'),
-        pago('o2', 'pending', 'https://mp.test/viejo-2'),
-        pago('o2', 'pending', null),
-        pago('o3', 'pending', 'https://mp.test/viejo-3'),
-        pago('o3', 'approved', 'https://mp.test/pagado'),
+        pago('o1', 'rejected', 'https://mp.test/o1'),
+        pago('o2', 'cancelled', 'https://mp.test/o2'),
       ]);
-      const urls = await service.findPendingCheckoutUrls(['o1', 'o2', 'o3']);
-      expect(urls.size).toBe(0);
+      const urls = await service.findPendingCheckoutUrls(['o1', 'o2']);
+      expect(urls.get('o1')).toBe('https://mp.test/o1');
+      expect(urls.get('o2')).toBe('https://mp.test/o2');
+    });
+
+    it('con el checkout vencido no se publica el enlace (ni rechazado ni pendiente)', async () => {
+      paymentRepository.find.mockResolvedValue([
+        pago('o1', 'rejected', 'https://mp.test/o1', {
+          metadata: { expiresAt: hace1h },
+        }),
+        pago('o2', 'pending', 'https://mp.test/o2', {
+          metadata: { expiresAt: hace1h },
+        }),
+      ]);
+      expect((await service.findPendingCheckoutUrls(['o1', 'o2'])).size).toBe(
+        0,
+      );
+    });
+
+    it.each([
+      'in_process',
+      'authorized',
+      'approved',
+      'in_mediation',
+      'refunded',
+      'charged_back',
+    ])(
+      'un pago %s: no hay enlace para reintentar (se esperaría un segundo cobro)',
+      async (estado) => {
+        paymentRepository.find.mockResolvedValue([
+          pago('o1', 'rejected', 'https://mp.test/viejo'),
+          pago('o1', estado, 'https://mp.test/o1', {
+            gatewayPaymentId: 'pay-1',
+          }),
+        ]);
+        expect((await service.findPendingCheckoutUrls(['o1'])).size).toBe(0);
+      },
+    );
+
+    it('un pendiente que ya tiene pago de la pasarela (transferencia, a la espera) no publica otro enlace', async () => {
+      paymentRepository.find.mockResolvedValue([
+        pago('o1', 'pending', 'https://mp.test/o1', {
+          gatewayPaymentId: 'pay-1',
+        }),
+      ]);
+      expect((await service.findPendingCheckoutUrls(['o1'])).size).toBe(0);
+    });
+
+    it('un pago duplicado devuelto no tapa al que quedó cobrado: sin enlace', async () => {
+      paymentRepository.find.mockResolvedValue([
+        pago('o1', 'approved', 'https://mp.test/o1', {
+          gatewayPaymentId: 'pay-1',
+        }),
+        pago('o1', 'refunded', 'https://mp.test/o1', {
+          gatewayPaymentId: 'pay-2',
+        }),
+      ]);
+      expect((await service.findPendingCheckoutUrls(['o1'])).size).toBe(0);
+    });
+
+    it('un intento sin URL no publica nada', async () => {
+      paymentRepository.find.mockResolvedValue([pago('o2', 'pending', null)]);
+      expect((await service.findPendingCheckoutUrls(['o2'])).size).toBe(0);
     });
   });
 
@@ -189,7 +602,7 @@ describe('PaymentsService', () => {
         items: [
           { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
         ],
-        payerEmail: 'cliente@test.com',
+        payer: { email: 'cliente@test.com' },
       });
 
       // Ledger creado ANTES de llamar a la pasarela.
@@ -209,7 +622,8 @@ describe('PaymentsService', () => {
         items: [
           { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
         ],
-        payerEmail: 'cliente@test.com',
+        payer: { email: 'cliente@test.com' },
+        statementDescriptor: 'GARRAFAS JENY',
         distributorId: 'dist-1',
         expiresAt: expect.any(Date) as Date,
       });
@@ -221,7 +635,10 @@ describe('PaymentsService', () => {
       )[1][0];
       expect(lastSaved.paymentUrl).toBe('https://mp.test/checkout');
       expect(lastSaved.credentialId).toBe('cred-1');
-      expect(lastSaved.metadata).toEqual({ preferenceId: 'pref-1' });
+      expect(lastSaved.metadata).toEqual({
+        preferenceId: 'pref-1',
+        expiresAt: expect.any(String) as string,
+      });
 
       expect(result).toEqual({
         initPoint: 'https://mp.test/checkout',
@@ -250,7 +667,7 @@ describe('PaymentsService', () => {
           amount: 100,
           isDeposit,
           items: [],
-          payerEmail: 'c@test.com',
+          payer: { email: 'c@test.com' },
         });
         const [pedido] = paymentGateway.createCheckout.mock.calls[0] as [
           { expiresAt: Date },
@@ -296,7 +713,7 @@ describe('PaymentsService', () => {
             unitPrice: 500,
           },
         ],
-        payerEmail: 'cliente@test.com',
+        payer: { email: 'cliente@test.com' },
       });
 
       expect(paymentRepository.create).toHaveBeenCalledWith(
@@ -313,12 +730,68 @@ describe('PaymentsService', () => {
           amount: 2000,
           isDeposit: false,
           items: [],
-          payerEmail: 'cliente@test.com',
+          payer: { email: 'cliente@test.com' },
         }),
       ).rejects.toThrow('MP caído');
 
       // Solo el save del alta (PENDING); nunca se llegó a completar payment_url.
       expect(paymentRepository.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('consultarPagosDelPedido', () => {
+    it('consulta cada cuenta con la que se armó un checkout del pedido y descarta pagos de otro pedido', async () => {
+      paymentRepository.find.mockResolvedValue([
+        { credentialId: 'cred-1' },
+        { credentialId: 'cred-1' },
+        { credentialId: null },
+      ]);
+      paymentGateway.findPaymentsByReference.mockImplementation(
+        (_ref: string, cred: string | null) =>
+          Promise.resolve([
+            {
+              id: cred ?? 'sis',
+              status: 'approved',
+              externalReference: 'ord-1',
+            },
+            { id: 'ajeno', status: 'approved', externalReference: 'otro' },
+          ]),
+      );
+
+      const pagos = await service.consultarPagosDelPedido('ord-1');
+
+      expect(paymentGateway.findPaymentsByReference).toHaveBeenCalledTimes(2);
+      expect(pagos).toEqual([
+        {
+          gatewayPaymentId: 'cred-1',
+          status: 'approved',
+          credentialId: 'cred-1',
+        },
+        { gatewayPaymentId: 'sis', status: 'approved', credentialId: null },
+      ]);
+    });
+
+    it('sin intentos en el ledger consulta la cuenta del sistema', async () => {
+      paymentRepository.find.mockResolvedValue([]);
+      paymentGateway.findPaymentsByReference.mockResolvedValue([]);
+
+      await service.consultarPagosDelPedido('ord-1');
+
+      expect(paymentGateway.findPaymentsByReference).toHaveBeenCalledWith(
+        'ord-1',
+        null,
+      );
+    });
+
+    it('si la pasarela no responde lanza (no es «sin pagos»)', async () => {
+      paymentRepository.find.mockResolvedValue([]);
+      paymentGateway.findPaymentsByReference.mockRejectedValue(
+        new Error('timeout'),
+      );
+
+      await expect(service.consultarPagosDelPedido('ord-1')).rejects.toThrow(
+        'timeout',
+      );
     });
   });
 
@@ -340,15 +813,24 @@ describe('PaymentsService', () => {
       expect(result).toBeNull();
     });
 
-    it('la consulta a la pasarela falla: devuelve null (no revienta)', async () => {
+    it('la consulta a la pasarela falla: lanza para que el webhook responda 5xx y MP reintente', async () => {
       paymentGateway.getPayment.mockRejectedValue(new Error('timeout'));
 
-      const result = await service.confirmFromGateway({
-        type: 'payment',
-        dataId: 'pay-1',
+      await expect(
+        service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' }),
+      ).rejects.toThrow('timeout');
+      expect(paymentRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('un pago que la pasarela no conoce (404) no se reintenta: se descarta', async () => {
+      paymentGateway.getPayment.mockRejectedValue({
+        status: 404,
+        message: 'Payment not found',
       });
 
-      expect(result).toBeNull();
+      await expect(
+        service.confirmFromGateway({ type: 'payment', dataId: '123456' }),
+      ).resolves.toBeNull();
     });
 
     it('pago sin external_reference: devuelve null', async () => {
@@ -1035,7 +1517,10 @@ describe('PaymentsService', () => {
       it('un contracargo se asienta como tal', async () => {
         paymentRepository.findOne.mockResolvedValueOnce(aprobado());
 
-        await notificar('charged_back', { refundedAmount: null });
+        await notificar('charged_back', {
+          refundedAmount: null,
+          statusDetail: 'settled',
+        });
 
         expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
           expect.anything(),
@@ -1343,9 +1828,808 @@ describe('PaymentsService', () => {
     });
   });
 
+  describe('los nueve estados de Mercado Pago, el motivo y el historial', () => {
+    const intento = (estado: LedgerPaymentStatus) => ({
+      paymentId: 'ledger-1',
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      credentialId: null,
+      isDeposit: false,
+      amount: 1000,
+      status: estado,
+      statusDetail: null as string | null,
+      statusHistory: [] as Array<Record<string, unknown>>,
+      approvedAt: null as Date | null,
+      metadata: null as Record<string, unknown> | null,
+    });
+    const aviso = (status: string, statusDetail?: string, extra = {}) => {
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-1',
+        status,
+        statusDetail,
+        externalReference: 'ord-1',
+        amount: 1000,
+        ...extra,
+      });
+      return service.confirmFromGateway({ type: 'payment', dataId: 'pay-1' });
+    };
+
+    it.each([
+      ['pending', LedgerPaymentStatus.PENDING],
+      ['in_process', LedgerPaymentStatus.IN_PROCESS],
+      ['authorized', LedgerPaymentStatus.AUTHORIZED],
+      ['approved', LedgerPaymentStatus.APPROVED],
+      ['rejected', LedgerPaymentStatus.REJECTED],
+      ['cancelled', LedgerPaymentStatus.CANCELLED],
+      ['refunded', LedgerPaymentStatus.REFUNDED],
+      ['charged_back', LedgerPaymentStatus.CHARGED_BACK],
+      ['in_mediation', LedgerPaymentStatus.IN_MEDIATION],
+    ])(
+      'un pago nuevo que Mercado Pago informa como %s queda en el ledger como %s',
+      async (deMp, esperado) => {
+        const pago = intento(LedgerPaymentStatus.PENDING);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        await aviso(deMp);
+
+        expect(pago.status).toBe(esperado);
+      },
+    );
+
+    it('pending → in_process → approved: cada paso se aplica, con su motivo, y el historial los guarda en orden', async () => {
+      const pago = intento(LedgerPaymentStatus.PENDING);
+      for (const [estado, motivo] of [
+        ['in_process', 'pending_review_manual'],
+        ['approved', 'accredited'],
+      ]) {
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+        await aviso(estado, motivo);
+      }
+
+      expect(pago.status).toBe(LedgerPaymentStatus.APPROVED);
+      expect(pago.statusDetail).toBe('accredited');
+      expect(
+        pago.statusHistory.map((h) => [h.status, h.statusDetail, h.applied]),
+      ).toEqual([
+        ['in_process', 'pending_review_manual', true],
+        ['approved', 'accredited', true],
+      ]);
+    });
+
+    it('el historial dice de dónde salió cada lectura', async () => {
+      const pago = intento(LedgerPaymentStatus.PENDING);
+      paymentRepository.findOne.mockResolvedValueOnce(pago);
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-1',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 1000,
+      });
+
+      await service.confirmFromGateway({
+        type: 'payment',
+        dataId: 'pay-1',
+        origin: OrigenDelEstadoDelPago.CONCILIACION,
+      });
+
+      expect(pago.statusHistory[0]).toMatchObject({
+        origin: 'conciliacion',
+        applied: true,
+        at: expect.any(String) as string,
+      });
+    });
+
+    it('un rechazo guarda el motivo (cc_rejected_*) para mostrarlo', async () => {
+      const pago = intento(LedgerPaymentStatus.PENDING);
+      paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+      const r = await aviso('rejected', 'cc_rejected_insufficient_amount');
+
+      expect(pago.statusDetail).toBe('cc_rejected_insufficient_amount');
+      expect(r?.statusDetail).toBe('cc_rejected_insufficient_amount');
+    });
+
+    it('el mismo aviso repetido (reintento de MP) no ensucia el historial', async () => {
+      const pago = intento(LedgerPaymentStatus.PENDING);
+      for (let i = 0; i < 3; i++) {
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+        await aviso('approved', 'accredited');
+      }
+
+      expect(pago.statusHistory).toHaveLength(1);
+    });
+
+    it('el mismo estado con otro motivo sí queda registrado', async () => {
+      const pago = intento(LedgerPaymentStatus.PENDING);
+      paymentRepository.findOne.mockResolvedValueOnce(pago);
+      await aviso('approved', 'accredited');
+      paymentRepository.findOne.mockResolvedValueOnce(pago);
+      await aviso('approved', 'partially_refunded');
+
+      expect(pago.statusHistory).toHaveLength(2);
+      expect(pago.statusDetail).toBe('partially_refunded');
+    });
+
+    describe('orden fuera de secuencia: un estado terminal no retrocede', () => {
+      it.each([
+        ['refunded', 'approved'],
+        ['refunded', 'in_mediation'],
+        ['charged_back', 'approved'],
+        ['charged_back', 'in_mediation'],
+        ['charged_back', 'refunded'],
+        ['rejected', 'approved'],
+        ['cancelled', 'approved'],
+        ['approved', 'in_process'],
+        ['approved', 'pending'],
+        ['in_process', 'pending'],
+      ])('un %s no vuelve a %s', async (actual, atrasado) => {
+        const pago = intento(actual as LedgerPaymentStatus);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        const r = await aviso(atrasado);
+
+        expect(pago.status).toBe(actual);
+        expect(r?.status).toBe(actual);
+        expect(pago.statusHistory[0]).toMatchObject({
+          status: atrasado,
+          applied: false,
+        });
+      });
+
+      it('el aviso atrasado no asienta cobros ni avisos', async () => {
+        const pago = intento(LedgerPaymentStatus.REFUNDED);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        await aviso('approved');
+
+        expect(ventasEnCaja.asentarCobroDeMercadoPago).not.toHaveBeenCalled();
+        expect(events.emit).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('M-1 / M-2: contracargo y su status_detail', () => {
+      it('M-1: el contracargo saca el TOTAL del pago, no lo ya devuelto (el reintegro parcial se descuenta al asentar)', async () => {
+        const pago = {
+          ...intento(LedgerPaymentStatus.APPROVED),
+          amount: 10000,
+        };
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        await aviso('charged_back', 'settled', {
+          amount: 10000,
+          refundedAmount: 1500,
+        });
+
+        expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ refundedTotal: 10000, contracargo: true }),
+        );
+      });
+
+      it('S-1: charged_back/settled («el dinero quedó retenido tras el proceso») asienta el egreso', async () => {
+        paymentRepository.findOne.mockResolvedValueOnce(
+          intento(LedgerPaymentStatus.APPROVED),
+        );
+
+        await aviso('charged_back', 'settled');
+
+        expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledTimes(1);
+      });
+
+      it.each(['in_process', null])(
+        'S-1: charged_back/%s (disputa abierta: el monto queda retenido, no retirado) NO saca plata de la caja',
+        async (detalle) => {
+          paymentRepository.findOne.mockResolvedValueOnce(
+            intento(LedgerPaymentStatus.APPROVED),
+          );
+
+          await aviso('charged_back', detalle as string);
+
+          expect(ventasEnCaja.asentarDevolucionExterna).not.toHaveBeenCalled();
+        },
+      );
+
+      it('S-1: charged_back/reimbursed con el caso resuelto a favor del comercio (coverage_applied) hace el contra-asiento automático', async () => {
+        const pago = intento(LedgerPaymentStatus.CHARGED_BACK);
+        pago.statusDetail = 'settled';
+        pago.metadata = { chargeback: { coverageApplied: true } };
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        const r = await aviso('charged_back', 'reimbursed');
+
+        expect(ventasEnCaja.asentarDevolucionExterna).not.toHaveBeenCalled();
+        expect(ventasEnCaja.asentarContracargoReintegrado).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ automatico: true }),
+        );
+        expect(r?.contracargoReintegrado).toBe(true);
+        expect(pago.statusDetail).toBe('reimbursed');
+      });
+
+      it('S-1: reimbursed SIN la resolución del caso no asienta solo: queda a conciliar con aviso', async () => {
+        const pago = intento(LedgerPaymentStatus.CHARGED_BACK);
+        pago.statusDetail = 'settled';
+        ventasEnCaja.asentarContracargoReintegrado.mockResolvedValue(
+          'a_conciliar',
+        );
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        const r = await aviso('charged_back', 'reimbursed');
+
+        expect(ventasEnCaja.asentarContracargoReintegrado).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ automatico: false }),
+        );
+        expect(r?.contracargoReintegrado).toBeUndefined();
+        expect(r?.contracargoAConciliar).toBe(true);
+      });
+
+      it('M-3: se decide por el estado de la caja, no por el cambio de detalle: si el asiento falló, el aviso siguiente (mismo detalle) lo reintenta', async () => {
+        const pago = intento(LedgerPaymentStatus.CHARGED_BACK);
+        pago.statusDetail = 'reimbursed';
+        pago.metadata = { chargeback: { coverageApplied: true } };
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        const r = await aviso('charged_back', 'reimbursed');
+
+        expect(
+          ventasEnCaja.asentarContracargoReintegrado,
+        ).toHaveBeenCalledTimes(1);
+        expect(r?.contracargoReintegrado).toBe(true);
+      });
+
+      it('B-3: reimbursed que llega sin haber visto el settled (sin egreso en la caja) no avisa nada de contracargo resuelto', async () => {
+        const pago = intento(LedgerPaymentStatus.APPROVED);
+        ventasEnCaja.asentarContracargoReintegrado.mockResolvedValue(
+          'sin_efecto',
+        );
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        const r = await aviso('charged_back', 'reimbursed');
+
+        expect(r?.contracargoReintegrado).toBeUndefined();
+        expect(r?.contracargoAConciliar).toBeUndefined();
+      });
+
+      it('M-6: un status_detail vacío se guarda como null', async () => {
+        const pago = intento(LedgerPaymentStatus.PENDING);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        await aviso('approved', '');
+
+        expect(pago.statusDetail).toBeNull();
+        expect(pago.statusHistory[0]).toMatchObject({ statusDetail: null });
+      });
+    });
+
+    describe('approved ↔ in_mediation → charged_back', () => {
+      it.each([
+        ['approved', 'in_mediation'],
+        ['in_mediation', 'approved'],
+        ['in_mediation', 'charged_back'],
+        ['in_mediation', 'refunded'],
+        ['approved', 'charged_back'],
+        ['approved', 'refunded'],
+        ['in_process', 'approved'],
+        ['in_process', 'rejected'],
+        ['authorized', 'approved'],
+        ['pending', 'in_process'],
+      ])('%s → %s se aplica', async (actual, nuevo) => {
+        const pago = intento(actual as LedgerPaymentStatus);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        await aviso(nuevo);
+
+        expect(pago.status).toBe(nuevo);
+        expect(pago.statusHistory[0]).toMatchObject({ applied: true });
+      });
+
+      it('un contracargo pone el ledger en charged_back, asienta el egreso y se informa como devolución externa', async () => {
+        const pago = intento(LedgerPaymentStatus.APPROVED);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+
+        const r = await aviso('charged_back', 'settled');
+
+        expect(pago.status).toBe(LedgerPaymentStatus.CHARGED_BACK);
+        expect(ventasEnCaja.asentarDevolucionExterna).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ contracargo: true, refundedTotal: 1000 }),
+        );
+        expect(r?.devolucionExterna).toEqual({ contracargo: true });
+      });
+
+      it('si el sistema ya había devuelto ese pago, el contracargo no se avisa dos veces como externo', async () => {
+        const pago = intento(LedgerPaymentStatus.REFUNDED);
+        paymentRepository.findOne.mockResolvedValueOnce(pago);
+        paymentRepository.count.mockResolvedValue(1);
+
+        const r = await aviso('charged_back');
+
+        expect(pago.status).toBe(LedgerPaymentStatus.REFUNDED);
+        expect(r?.devolucionExterna).toBeUndefined();
+      });
+    });
+
+    it('un segundo pago aprobado sobre un checkout cuyo primer pago ya se cobró abre su propio intento (para poder devolverlo)', async () => {
+      const cobrado = {
+        ...intento(LedgerPaymentStatus.APPROVED),
+        gatewayPaymentId: 'pay-1',
+        paymentUrl: 'https://mp.test/pref',
+        gateway: 'mercadopago',
+        integration: 'checkout_pro',
+        metadata: { preferenceId: 'pref-1' } as Record<string, unknown>,
+      };
+      paymentRepository.findOne
+        .mockResolvedValueOnce(null) // por id de pasarela
+        .mockResolvedValueOnce(null) // intento libre
+        .mockResolvedValueOnce(null) // por id, con el libre bloqueado
+        .mockResolvedValueOnce(cobrado) // el intento previo, aunque esté aprobado
+        .mockResolvedValueOnce(null); // por id, con el previo bloqueado
+      paymentRepository.save.mockImplementation((e: Record<string, unknown>) =>
+        Promise.resolve({ paymentId: 'ledger-2', ...e }),
+      );
+      paymentGateway.getPayment.mockResolvedValue({
+        id: 'pay-2',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 1000,
+      });
+
+      const r = await service.confirmFromGateway({
+        type: 'payment',
+        dataId: 'pay-2',
+      });
+
+      expect(r?.gatewayPaymentId).toBe('pay-2');
+      // El intento previo se busca sin filtrar por estado: uno ya cobrado también cuenta.
+      const busquedaDelPrevio = (
+        paymentRepository.findOne.mock.calls[3] as [
+          { where: Record<string, unknown> },
+        ]
+      )[0];
+      expect(busquedaDelPrevio.where).not.toHaveProperty('status');
+      expect(paymentRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId: 'ord-1',
+          status: LedgerPaymentStatus.PENDING,
+        }),
+      );
+      expect(paymentRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayPaymentId: 'pay-2',
+          status: LedgerPaymentStatus.APPROVED,
+        }),
+      );
+    });
+  });
+
+  describe('alerta de fraude (stop_delivery_op_wh)', () => {
+    const fila = (credentialId: string | null) => ({
+      paymentId: 'ledger-1',
+      orderId: 'ord-1',
+      distributorId: 'dist-1',
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      credentialId,
+      isDeposit: false,
+      amount: 1000,
+      status: LedgerPaymentStatus.APPROVED,
+      statusDetail: 'accredited',
+      statusHistory: [] as unknown[],
+      metadata: null as Record<string, unknown> | null,
+    });
+    /** `findOne` que respeta el filtro de cuenta (`credentialId`) como lo haría la base. */
+    const ledgerCon = (row: ReturnType<typeof fila>) =>
+      paymentRepository.findOne.mockImplementation(
+        (op: { where: { credentialId?: unknown } }) => {
+          const c = op.where.credentialId;
+          if (c === undefined) return Promise.resolve(row);
+          const pedida = c instanceof FindOperator ? null : c;
+          return Promise.resolve(
+            (row.credentialId ?? null) === pedida ? row : null,
+          );
+        },
+      );
+    const pagoDeMp = {
+      id: 'pay-1',
+      status: 'approved',
+      statusDetail: 'accredited',
+      externalReference: 'ord-1',
+      amount: 1000,
+    };
+
+    beforeEach(() => paymentGateway.getPayment.mockResolvedValue(pagoDeMp));
+
+    it('marca el pago y devuelve la alerta para que el pedido no se entregue', async () => {
+      const p = fila(null);
+      ledgerCon(p);
+
+      const r = await service.confirmFromGateway({
+        type: 'stop_delivery_op_wh',
+        dataId: 'pay-1',
+      });
+
+      expect(r).toMatchObject({
+        externalReference: 'ord-1',
+        gatewayPaymentId: 'pay-1',
+        alertaDeFraude: true,
+      });
+      expect(p.metadata).toMatchObject({
+        fraudAlert: { notifiedAt: expect.any(String) as string },
+      });
+    });
+
+    it('A-1: el pago SIEMPRE se lee de Mercado Pago con la cuenta que firmó el aviso', async () => {
+      ledgerCon(fila('cred-A'));
+
+      await service.confirmFromGateway({
+        type: 'stop_delivery_op_wh',
+        dataId: 'pay-1',
+        credentialId: 'cred-A',
+      });
+
+      expect(paymentGateway.getPayment).toHaveBeenCalledWith('pay-1', 'cred-A');
+    });
+
+    it('A-1: una cuenta que firma con SU secreto un pago de OTRA distribuidora no retiene nada (MP no lo tiene en esa cuenta: 404)', async () => {
+      const ajeno = fila('cred-A');
+      ledgerCon(ajeno);
+      paymentGateway.getPayment.mockRejectedValue({ status: 404 });
+
+      const r = await service.confirmFromGateway({
+        type: 'stop_delivery_op_wh',
+        dataId: 'pay-1',
+        credentialId: 'cred-B',
+      });
+
+      expect(r).toBeNull();
+      expect(ajeno.metadata).toBeNull();
+    });
+
+    it('A-1: aunque Mercado Pago devolviera el pago, si el ledger lo tiene con otra cuenta se descarta sin marcar', async () => {
+      const ajeno = fila('cred-A');
+      ledgerCon(ajeno);
+
+      const r = await service.confirmFromGateway({
+        type: 'stop_delivery_op_wh',
+        dataId: 'pay-1',
+        credentialId: 'cred-B',
+      });
+
+      expect(r).toBeNull();
+      expect(ajeno.metadata).toBeNull();
+    });
+
+    it('A-1: una cuenta propia no puede marcar un pago cobrado con la cuenta del sistema (ni al revés)', async () => {
+      const delSistema = fila(null);
+      ledgerCon(delSistema);
+
+      await expect(
+        service.confirmFromGateway({
+          type: 'stop_delivery_op_wh',
+          dataId: 'pay-1',
+          credentialId: 'cred-B',
+        }),
+      ).resolves.toBeNull();
+      expect(delSistema.metadata).toBeNull();
+    });
+
+    it('un pago sin external_reference se descarta', async () => {
+      ledgerCon(fila(null));
+      paymentGateway.getPayment.mockResolvedValue({
+        ...pagoDeMp,
+        externalReference: null,
+      });
+
+      await expect(
+        service.confirmFromGateway({
+          type: 'stop_delivery_op_wh',
+          dataId: 'pay-1',
+        }),
+      ).resolves.toBeNull();
+    });
+
+    it('repetida no cambia la fecha de la primera alerta', async () => {
+      const p = fila(null);
+      ledgerCon(p);
+      await service.confirmFromGateway({
+        type: 'stop_delivery_op_wh',
+        dataId: 'pay-1',
+      });
+      const primera = (p.metadata?.fraudAlert as { notifiedAt: string })
+        .notifiedAt;
+
+      await service.confirmFromGateway({
+        type: 'stop_delivery_op_wh',
+        dataId: 'pay-1',
+      });
+
+      expect(
+        (p.metadata?.fraudAlert as { notifiedAt: string }).notifiedAt,
+      ).toBe(primera);
+    });
+
+    it('si Mercado Pago no responde lanza: la bandeja de entrada lo reintenta', async () => {
+      ledgerCon(fila(null));
+      paymentGateway.getPayment.mockRejectedValue(new Error('timeout'));
+
+      await expect(
+        service.confirmFromGateway({
+          type: 'stop_delivery_op_wh',
+          dataId: 'pay-1',
+        }),
+      ).rejects.toThrow('timeout');
+    });
+  });
+
+  describe('estado del pago de un pedido (API v2)', () => {
+    const ahora = Date.now();
+    const intento = (
+      estado: LedgerPaymentStatus,
+      over: Record<string, unknown> = {},
+    ) =>
+      ({
+        orderId: 'ord-1',
+        status: estado,
+        statusDetail: null,
+        statusHistory: [],
+        paymentUrl: 'https://mp.test/pref',
+        gatewayPaymentId: 'pay-1',
+        isDeposit: false,
+        createdAt: new Date(ahora - 60_000),
+        metadata: { expiresAt: new Date(ahora + 3_600_000).toISOString() },
+        ...over,
+      }) as unknown as Payment;
+
+    it('sin pagos de Mercado Pago: estado nulo y sin reintento', async () => {
+      paymentRepository.find.mockResolvedValue([]);
+
+      await expect(
+        service.estadoDelPagoDelPedido('ord-1', false),
+      ).resolves.toMatchObject({
+        paymentStatus: null,
+        paymentStatusLabel: null,
+        canRetry: false,
+        paymentUrl: null,
+      });
+    });
+
+    it('rechazado: el motivo y el texto en castellano vienen del back, y se puede reintentar si el pedido sigue vivo', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED, {
+          statusDetail: 'cc_rejected_insufficient_amount',
+        }),
+      ]);
+
+      const r = await service.estadoDelPagoDelPedido('ord-1', false);
+
+      expect(r).toMatchObject({
+        paymentStatus: 'rejected',
+        paymentStatusDetail: 'cc_rejected_insufficient_amount',
+        paymentStatusLabel: 'Fondos insuficientes en el medio de pago',
+        canRetry: true,
+        paymentUrl: 'https://mp.test/pref',
+      });
+    });
+
+    it('M-1: un pedido retenido por fraude lo dice y no permite reintentar', async () => {
+      orderLookup.findPaymentState.mockResolvedValue({
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.PENDING,
+        createdAt: new Date(),
+        distributorId: 'dist-1',
+        paymentFraudHold: true,
+      });
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED),
+      ]);
+
+      const r = await service.estadoDelPagoDelPedido('ord-1', false);
+
+      expect(r.paymentFraudHold).toBe(true);
+      expect(r.canRetry).toBe(false);
+    });
+
+    it('sin retención el pedido lo informa en falso', async () => {
+      paymentRepository.find.mockResolvedValue([]);
+      expect(
+        (await service.estadoDelPagoDelPedido('ord-1', false)).paymentFraudHold,
+      ).toBe(false);
+    });
+
+    it('rechazado sin motivo conocido: «Rechazado por el banco»', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED, {
+          statusDetail: 'algo_nuevo_de_mp',
+        }),
+      ]);
+
+      const r = await service.estadoDelPagoDelPedido('ord-1', false);
+
+      expect(r.paymentStatusLabel).toBe('Rechazado por el banco');
+    });
+
+    it.each([
+      ['pedido cancelado', { status: OrderStatus.CANCELLED }],
+      ['pedido entregado', { status: OrderStatus.DELIVERED }],
+      ['pedido ya pagado', { paymentStatus: PaymentStatus.PAID }],
+    ])('%s: no se puede reintentar', async (_n, estado) => {
+      orderLookup.findPaymentState.mockResolvedValue({
+        status: OrderStatus.PENDING,
+        paymentStatus: PaymentStatus.PENDING,
+        createdAt: new Date(),
+        distributorId: 'dist-1',
+        ...estado,
+      });
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED),
+      ]);
+
+      const r = await service.estadoDelPagoDelPedido('ord-1', false);
+
+      expect(r.canRetry).toBe(false);
+      expect(r.paymentUrl).toBeNull();
+    });
+
+    it('el checkout vencido no se puede reintentar', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED, {
+          metadata: { expiresAt: new Date(ahora - 1000).toISOString() },
+        }),
+      ]);
+
+      expect(
+        (await service.estadoDelPagoDelPedido('ord-1', false)).canRetry,
+      ).toBe(false);
+    });
+
+    it('en curso (in_process) no se reintenta, y el texto lo dice', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.IN_PROCESS, {
+          statusDetail: 'pending_review_manual',
+        }),
+      ]);
+
+      const r = await service.estadoDelPagoDelPedido('ord-1', false);
+
+      expect(r.canRetry).toBe(false);
+      expect(r.paymentStatusLabel).toContain('Pago en revisión');
+    });
+
+    it('si hay varios intentos, el cobrado representa al pedido aunque haya uno posterior devuelto', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.APPROVED, { gatewayPaymentId: 'pay-1' }),
+        intento(LedgerPaymentStatus.REFUNDED, { gatewayPaymentId: 'pay-2' }),
+      ]);
+
+      expect(
+        (await service.estadoDelPagoDelPedido('ord-1', false)).paymentStatus,
+      ).toBe('approved');
+    });
+
+    it('un rechazo anterior no tapa al intento nuevo en curso', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED, { gatewayPaymentId: 'pay-1' }),
+        intento(LedgerPaymentStatus.IN_PROCESS, { gatewayPaymentId: 'pay-2' }),
+      ]);
+
+      expect(
+        (await service.estadoDelPagoDelPedido('ord-1', false)).paymentStatus,
+      ).toBe('in_process');
+    });
+
+    it('el historial sólo se incluye si se pide, con el texto de cada paso', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.REJECTED, {
+          statusHistory: [
+            {
+              status: 'rejected',
+              statusDetail: 'cc_rejected_bad_filled_date',
+              at: '2026-11-01T10:00:00.000Z',
+              origin: 'webhook',
+              applied: true,
+            },
+          ],
+        }),
+      ]);
+
+      const sin = await service.estadoDelPagoDelPedido('ord-1', false);
+      const con = await service.estadoDelPagoDelPedido('ord-1', true);
+
+      expect(sin).not.toHaveProperty('history');
+      expect(con.history?.[0]).toMatchObject({
+        label: 'Revisá la fecha de vencimiento de la tarjeta',
+        gatewayPaymentId: 'pay-1',
+      });
+    });
+
+    it('estadosDelPagoDePedidos arma uno por pedido', async () => {
+      paymentRepository.find.mockResolvedValue([
+        intento(LedgerPaymentStatus.APPROVED, { orderId: 'o1' }),
+      ]);
+
+      const r = await service.estadosDelPagoDePedidos(['o1', 'o2']);
+
+      expect(r.map((e) => [e.orderId, e.paymentStatus])).toEqual([
+        ['o1', 'approved'],
+        ['o2', null],
+      ]);
+    });
+  });
+
+  describe('cerrarCheckoutsDelPedido', () => {
+    const abierto = (
+      preferenceId: string | null,
+      credentialId: string | null,
+    ) =>
+      ({
+        orderId: 'ord-1',
+        credentialId,
+        metadata: preferenceId ? { preferenceId } : null,
+      }) as unknown as Payment;
+
+    beforeEach(() => {
+      (paymentGateway as Record<string, jest.Mock>).expireCheckout = jest
+        .fn()
+        .mockResolvedValue(undefined);
+    });
+
+    const expirar = () =>
+      (paymentGateway as unknown as { expireCheckout: jest.Mock })
+        .expireCheckout;
+
+    it('vence cada preferencia abierta del pedido, una sola vez, con la cuenta que la creó', async () => {
+      paymentRepository.find.mockResolvedValue([
+        abierto('pref-1', 'cred-1'),
+        abierto('pref-1', 'cred-1'),
+        abierto('pref-2', null),
+        abierto(null, null),
+      ]);
+
+      await service.cerrarCheckoutsDelPedido('ord-1');
+
+      expect(expirar()).toHaveBeenCalledTimes(2);
+      expect(expirar()).toHaveBeenCalledWith('pref-1', 'cred-1');
+      expect(expirar()).toHaveBeenCalledWith('pref-2', null);
+    });
+
+    it('cierra también el checkout de un pedido que ya se había cobrado (el enlace sigue abierto)', async () => {
+      paymentRepository.find.mockResolvedValue([]);
+
+      await service.cerrarCheckoutsDelPedido('ord-1');
+
+      expect(paymentRepository.find).toHaveBeenCalledWith({
+        where: { orderId: 'ord-1', gateway: 'mercadopago' },
+      });
+    });
+
+    it('si la pasarela falla no lanza: sigue con las demás preferencias', async () => {
+      paymentRepository.find.mockResolvedValue([
+        abierto('pref-1', null),
+        abierto('pref-2', null),
+      ]);
+      expirar().mockRejectedValueOnce(new Error('MP caído'));
+
+      await expect(
+        service.cerrarCheckoutsDelPedido('ord-1'),
+      ).resolves.toBeUndefined();
+      expect(expirar()).toHaveBeenCalledTimes(2);
+    });
+
+    it('si no se pueden leer los intentos tampoco lanza', async () => {
+      paymentRepository.find.mockRejectedValue(new Error('base'));
+
+      await expect(
+        service.cerrarCheckoutsDelPedido('ord-1'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('verifyWebhookSignature', () => {
     it('delega en el port, sin lógica propia', () => {
-      paymentGateway.verifyWebhookSignature.mockReturnValue(true);
+      paymentGateway.verifyWebhookSignature.mockReturnValue('valida');
 
       const result = service.verifyWebhookSignature({
         xSignature: 'sig',
@@ -1358,7 +2642,7 @@ describe('PaymentsService', () => {
         xRequestId: 'req',
         dataId: 'pay-1',
       });
-      expect(result).toBe(true);
+      expect(result).toBe('valida');
     });
   });
 });

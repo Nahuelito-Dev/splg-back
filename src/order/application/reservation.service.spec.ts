@@ -34,6 +34,11 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
   let stock: { restituirStock: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
+  let conciliacion: { resolverCobro: jest.Mock };
+  let paymentsMock: {
+    findPendingCheckoutUrls: jest.Mock;
+    cerrarCheckoutsDelPedido: jest.Mock;
+  };
   let frecuencias: {
     distribuidorasQueCorren: jest.Mock;
     liberarMarca: jest.Mock;
@@ -85,6 +90,11 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
       liberarMarca: jest.fn().mockResolvedValue(undefined),
     };
 
+    conciliacion = { resolverCobro: jest.fn().mockResolvedValue('libre') };
+    paymentsMock = {
+      findPendingCheckoutUrls: jest.fn().mockResolvedValue(new Map()),
+      cerrarCheckoutsDelPedido: jest.fn().mockResolvedValue(undefined),
+    };
     service = new ReservationService(
       orderRepository as unknown as import('typeorm').Repository<Order>,
       dataSource as unknown as import('typeorm').DataSource,
@@ -99,11 +109,10 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
           throw new Error('Unknown config key');
         }),
       } as unknown as import('@nestjs/config').ConfigService,
-      {
-        findPendingCheckoutUrls: jest.fn().mockResolvedValue(new Map()),
-      } as unknown as import('../../payments/application/payments.service').PaymentsService,
+      paymentsMock as unknown as import('../../payments/application/payments.service').PaymentsService,
       undefined as never,
       undefined as never,
+      conciliacion as never,
     );
   });
 
@@ -128,6 +137,56 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
         >,
       }),
     );
+  });
+
+  it('H1: si Mercado Pago tiene un pago aprobado, no cancela ni libera el stock', async () => {
+    orderRepository.find.mockResolvedValue([staleOrder]);
+    conciliacion.resolverCobro.mockResolvedValue('aplicado');
+
+    await service.expireUnpaidMercadoPagoOrders();
+
+    expect(conciliacion.resolverCobro).toHaveBeenCalledWith(staleOrder);
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    expect(stock.restituirStock).not.toHaveBeenCalled();
+  });
+
+  it('H1: si hay un pago vigente o Mercado Pago no responde, no cancela en esta pasada', async () => {
+    orderRepository.find.mockResolvedValue([staleOrder]);
+    conciliacion.resolverCobro.mockResolvedValue('esperar');
+
+    await service.expireUnpaidMercadoPagoOrders();
+
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    expect(stock.restituirStock).not.toHaveBeenCalled();
+  });
+
+  it('M1: un pago cobrado que el pedido no pudo tomar (revisar) no se cancela por vencimiento: decide el administrador', async () => {
+    orderRepository.find.mockResolvedValue([staleOrder]);
+    conciliacion.resolverCobro.mockResolvedValue('revisar');
+
+    await service.expireUnpaidMercadoPagoOrders();
+
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    expect(stock.restituirStock).not.toHaveBeenCalled();
+  });
+
+  it('al cancelar por vencimiento cierra en Mercado Pago el checkout del pedido', async () => {
+    orderRepository.find.mockResolvedValue([staleOrder]);
+
+    await service.expireUnpaidMercadoPagoOrders();
+
+    expect(paymentsMock.cerrarCheckoutsDelPedido).toHaveBeenCalledWith(
+      'ord-mp-1',
+    );
+  });
+
+  it('si no cancela (carrera con el webhook) no cierra ningún checkout', async () => {
+    orderRepository.find.mockResolvedValue([staleOrder]);
+    lockedOrder!.gatewayPaymentId = 'pay-ganó-la-carrera';
+
+    await service.expireUnpaidMercadoPagoOrders();
+
+    expect(paymentsMock.cerrarCheckoutsDelPedido).not.toHaveBeenCalled();
   });
 
   it('pedido vencido y sigue impago: cancela + restituye stock', async () => {
@@ -256,7 +315,8 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
 
       const lotes = consultasDeLote();
       expect(lotes.map((c) => c.where.distributorId)).toEqual(['d1', 'd2']);
-      expect(lotes.map((c) => c.take)).toEqual([50, 50]);
+      // Se piden más de 50 para poder rotar: el lote que se procesa sigue siendo de 50.
+      expect(lotes.map((c) => c.take)).toEqual([200, 200]);
       expect(lotes.map((c) => c.order)).toEqual([
         { createdAt: 'ASC' },
         { createdAt: 'ASC' },
@@ -322,5 +382,181 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
       )[0].where;
       expect(where.scheduledDate.value).toBe('2026-10-10');
     });
+  });
+});
+
+describe('ReservationService: rotación del lote y seña por Mercado Pago', () => {
+  const armar = () => {
+    const orderRepository = { find: jest.fn() };
+    const lockedOrder: Record<string, unknown> = {
+      orderId: 'r-1',
+      status: OrderStatus.RESERVED,
+      depositPaid: false,
+      gatewayPaymentId: null,
+    };
+    const queryBuilder = {
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(() => Promise.resolve(lockedOrder)),
+    };
+    const queryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: {
+        createQueryBuilder: jest.fn(() => queryBuilder),
+        save: jest.fn((o: unknown) => Promise.resolve(o)),
+      },
+    };
+    const conciliacion = {
+      resolverCobro: jest.fn().mockResolvedValue('libre'),
+    };
+    const stock = { restituirStock: jest.fn().mockResolvedValue(undefined) };
+    const payments = {
+      findPendingCheckoutUrls: jest.fn().mockResolvedValue(new Map()),
+      cerrarCheckoutsDelPedido: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new ReservationService(
+      orderRepository as never,
+      { createQueryRunner: () => queryRunner } as never,
+      {} as never,
+      stock as never,
+      {} as never,
+      {
+        distribuidorasQueCorren: jest.fn((_t: string, ids: string[]) =>
+          Promise.resolve(new Set(ids)),
+        ),
+        liberarMarca: jest.fn(),
+      } as never,
+      {
+        getOrThrow: jest.fn((k: string) =>
+          k === 'RESERVATION_DEPOSIT_TTL_HOURS' ? 48 : 60,
+        ),
+      } as never,
+      payments as never,
+      undefined as never,
+      undefined as never,
+      conciliacion as never,
+    );
+    const reserva = (id: string, metodo = PaymentMethod.MERCADOPAGO) =>
+      ({
+        orderId: id,
+        distributorId: 'd1',
+        status: OrderStatus.RESERVED,
+        paymentMethod: metodo,
+        items: [],
+      }) as unknown as Order;
+    return {
+      service,
+      orderRepository,
+      lockedOrder,
+      queryRunner,
+      conciliacion,
+      stock,
+      payments,
+      reserva,
+    };
+  };
+
+  it('M-5: una seña de Mercado Pago pagada sin aviso no se cancela: se consulta a la pasarela antes', async () => {
+    const t = armar();
+    t.orderRepository.find.mockResolvedValue([t.reserva('r-1')]);
+    t.conciliacion.resolverCobro.mockResolvedValue('aplicado');
+
+    await t.service.expireUnpaidReservations();
+
+    expect(t.conciliacion.resolverCobro).toHaveBeenCalledTimes(1);
+    expect(t.queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(t.stock.restituirStock).not.toHaveBeenCalled();
+  });
+
+  it.each(['esperar', 'revisar'])(
+    'M-5: con el cobro en «%s» la reserva sigue',
+    async (veredicto) => {
+      const t = armar();
+      t.orderRepository.find.mockResolvedValue([t.reserva('r-1')]);
+      t.conciliacion.resolverCobro.mockResolvedValue(veredicto);
+
+      await t.service.expireUnpaidReservations();
+
+      expect(t.queryRunner.manager.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('M-5: sin seña cobrada se cancela, con el pedido bloqueado, y se cierra el checkout', async () => {
+    const t = armar();
+    t.orderRepository.find.mockResolvedValue([t.reserva('r-1')]);
+
+    await t.service.expireUnpaidReservations();
+
+    expect(t.queryRunner.manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: OrderStatus.CANCELLED }),
+    );
+    expect(t.payments.cerrarCheckoutsDelPedido).toHaveBeenCalledWith('r-1');
+  });
+
+  it('M-5: si el webhook dio por paga la seña justo antes (re-chequeo bajo lock) no se cancela', async () => {
+    const t = armar();
+    t.orderRepository.find.mockResolvedValue([t.reserva('r-1')]);
+    t.lockedOrder.depositPaid = true;
+
+    await t.service.expireUnpaidReservations();
+
+    expect(t.queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(t.stock.restituirStock).not.toHaveBeenCalled();
+  });
+
+  it('M-5: una seña en efectivo o por transferencia no consulta a Mercado Pago', async () => {
+    const t = armar();
+    t.orderRepository.find.mockResolvedValue([
+      t.reserva('r-1', PaymentMethod.CASH),
+    ]);
+
+    await t.service.expireUnpaidReservations();
+
+    expect(t.conciliacion.resolverCobro).not.toHaveBeenCalled();
+    expect(t.queryRunner.manager.save).toHaveBeenCalled();
+  });
+
+  it('B-1: si hay más de 50 pedidos, la pasada siguiente empieza por los que no miró', async () => {
+    const t = armar();
+    const todos = Array.from({ length: 70 }, (_, i) => t.reserva(`r-${i}`));
+    t.orderRepository.find.mockImplementation((o: { take?: number }) =>
+      Promise.resolve(o.take ? todos : todos.map((p) => ({ ...p }))),
+    );
+    t.conciliacion.resolverCobro.mockResolvedValue('esperar');
+
+    await t.service.expireUnpaidReservations();
+    const primera = t.conciliacion.resolverCobro.mock.calls.map(
+      ([o]: [Order]) => o.orderId,
+    );
+    t.conciliacion.resolverCobro.mockClear();
+    await t.service.expireUnpaidReservations();
+    const segunda = t.conciliacion.resolverCobro.mock.calls.map(
+      ([o]: [Order]) => o.orderId,
+    );
+
+    expect(primera).toHaveLength(50);
+    expect(segunda.slice(0, 20)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `r-${50 + i}`),
+    );
+  });
+
+  it('M-3: la activación de reservas deja afuera las retenidas por una alerta de fraude', async () => {
+    const t = armar();
+    t.orderRepository.find.mockResolvedValue([]);
+
+    await t.service.activateDueReservations();
+
+    expect(t.orderRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          depositPaid: true,
+          paymentFraudHold: false,
+        }) as object,
+      }),
+    );
   });
 });

@@ -82,12 +82,19 @@ describe('CreateOrderUseCase', () => {
     customers = {
       buscarComprador: jest.fn().mockResolvedValue({
         email: 'cliente@test.com',
+        fullName: 'Ana Pérez',
+        phoneNumber: '+5491155551234',
       }),
       reactivarVinculo: jest.fn().mockResolvedValue(undefined),
     };
     addresses = {
       buscarDelUsuario: jest.fn().mockResolvedValue({
         addressId: 'addr-1',
+        street: 'Av. Colón 1234',
+        city: 'Posadas',
+        postalCode: '3300',
+        floor: '2',
+        apartment: 'B',
         latitude: '-34.6',
         longitude: '-58.4',
         // GeoJSON Point (lng, lat): lo que lee `coordenadasDePunto` para el
@@ -631,7 +638,19 @@ describe('CreateOrderUseCase', () => {
             unitPrice: 200,
           },
         ],
-        payerEmail: 'cliente@test.com',
+        payer: {
+          email: 'cliente@test.com',
+          fullName: 'Ana Pérez',
+          phone: '+5491155551234',
+          address: { street: 'Av. Colón 1234', zipCode: '3300' },
+        },
+        receiverAddress: {
+          street: 'Av. Colón 1234',
+          city: 'Posadas',
+          zipCode: '3300',
+          floor: '2',
+          apartment: 'B',
+        },
       });
       expect(result.paymentUrl).toBe('https://mp.test/checkout');
     });

@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   ConflictException,
   ForbiddenException,
@@ -410,6 +412,9 @@ function crearMundo(opciones: {
             orderId: id,
             status: pedidos.get(id)!.status,
             deliveryId: pedidos.get(id)!.deliveryId,
+            paymentFraudHold:
+              (pedidos.get(id) as { paymentFraudHold?: boolean })
+                .paymentFraudHold === true,
           })),
         ),
       ),
@@ -992,6 +997,17 @@ describe('RouteBatchService · aceptar (paso 8)', () => {
     expect(m.registro.asignaciones.map((a) => a.orderId)).toEqual(['p1', 'p3']);
     expect(m.paradas.find((s) => s.orderId === 'p2')!.active).toBe(false);
     expect(m.lotes[0].status).toBe(RouteBatchStatus.ASSIGNED);
+  });
+
+  it('M-2: ni los candidatos ni las paradas vivas incluyen pedidos retenidos por fraude (guarda sobre el código: el mundo simulado no ejecuta el SQL)', () => {
+    const fuente = readFileSync(
+      join(__dirname, 'route-batch.service.ts'),
+      'utf8',
+    );
+    expect(fuente).toContain('AND NOT o."payment_fraud_hold"');
+    // Y las paradas de un lote vivo de un pedido retenido salen del lote.
+    expect(fuente).toContain('!p.paymentFraudHold');
+    expect(fuente).toContain('!pedido.paymentFraudHold');
   });
 
   it('si ningún pedido sigue disponible el lote se deshace y responde 409', async () => {

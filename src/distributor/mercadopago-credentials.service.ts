@@ -4,14 +4,18 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnApplicationBootstrap,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
 import { codigoSqlDelError } from '../common/errors/db-exceptions';
 import { CredentialsEncryptionService } from './credentials-encryption.service';
 import {
+  MercadoPagoAccountType,
   MercadoPagoCredentialsResponseDto,
   SaveMercadoPagoCredentialsDto,
 } from './dto/mercadopago-credentials.dto';
@@ -31,16 +35,118 @@ export interface ResolvedMercadoPagoCredentials {
 /** Consulta de la cuenta dueña de un token: sirve para saber si Mercado Pago lo acepta. */
 const URL_CUENTA = 'https://api.mercadopago.com/users/me';
 const TIMEOUT_VERIFICACION_MS = 5000;
+/** Cuánto se recuerda de qué tipo es una cuenta: el panel consulta el estado seguido. */
+const VIGENCIA_TIPO_DE_CUENTA_MS = 10 * 60 * 1000;
+
+/**
+ * Qué tipo de cuenta es la dueña de un token, según lo que devuelve `GET /users/me`: los
+ * usuarios de prueba traen la etiqueta `test_user` y un nickname `TESTUSER…`. El
+ * prefijo del token ya no sirve (los de prueba también son `APP_USR-`).
+ */
+export function tipoDeCuentaDe(cuenta: {
+  nickname?: unknown;
+  tags?: unknown;
+}): MercadoPagoAccountType {
+  const etiquetas = Array.isArray(cuenta.tags) ? cuenta.tags : [];
+  const nickname =
+    typeof cuenta.nickname === 'string' ? cuenta.nickname.toUpperCase() : '';
+  return etiquetas.includes('test_user') || nickname.startsWith('TESTUSER')
+    ? 'test'
+    : 'real';
+}
+
+function etiquetaDelTipo(tipo: MercadoPagoAccountType): string {
+  return tipo === 'test'
+    ? 'cuenta de prueba'
+    : tipo === 'real'
+      ? 'cuenta real'
+      : 'no se pudo determinar';
+}
 
 @Injectable()
-export class MercadoPagoCredentialsService {
+export class MercadoPagoCredentialsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(MercadoPagoCredentialsService.name);
+  private readonly tiposDeCuenta = new Map<
+    string,
+    { tipo: MercadoPagoAccountType; hasta: number }
+  >();
+  private readonly advertidas = new Set<string>();
 
   constructor(
     @InjectRepository(MercadoPagoCredentials)
     private readonly repo: Repository<MercadoPagoCredentials>,
     private readonly crypto: CredentialsEncryptionService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Al arrancar se mira de qué tipo es la cuenta del entorno y se deja en el log
+   * (con advertencia si no corresponde al entorno). No frena el arranque.
+   */
+  onApplicationBootstrap(): void {
+    const token = this.config.get<string>('MP_ACCESS_TOKEN');
+    if (!token) return;
+    void this.tipoDeCuenta(token, 'la del entorno (MP_ACCESS_TOKEN)').then(
+      (tipo) =>
+        this.logger.log(
+          `Cuenta de Mercado Pago del entorno: ${etiquetaDelTipo(tipo)}`,
+        ),
+    );
+  }
+
+  /**
+   * Tipo de la cuenta dueña del token, consultando a Mercado Pago (se recuerda unos
+   * minutos). Nunca lanza: si no responde, `unknown`. Si la cuenta no corresponde al
+   * entorno (real fuera de producción, o de prueba en producción) lo advierte en el
+   * log, una vez por token. Nunca registra el token.
+   */
+  async tipoDeCuenta(
+    accessToken: string,
+    origen: string,
+  ): Promise<MercadoPagoAccountType> {
+    if (!accessToken) return 'unknown';
+    const huella = createHash('sha256').update(accessToken).digest('hex');
+    const guardado = this.tiposDeCuenta.get(huella);
+    if (guardado && guardado.hasta > Date.now()) return guardado.tipo;
+    let tipo: MercadoPagoAccountType = 'unknown';
+    try {
+      const respuesta = await fetch(URL_CUENTA, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(TIMEOUT_VERIFICACION_MS),
+      });
+      if (respuesta.ok) {
+        tipo = tipoDeCuentaDe((await respuesta.json()) as object);
+      }
+    } catch {
+      tipo = 'unknown';
+    }
+    if (tipo !== 'unknown') {
+      this.tiposDeCuenta.set(huella, {
+        tipo,
+        hasta: Date.now() + VIGENCIA_TIPO_DE_CUENTA_MS,
+      });
+      this.advertirSiNoCorresponde(tipo, origen, huella);
+    }
+    return tipo;
+  }
+
+  private advertirSiNoCorresponde(
+    tipo: MercadoPagoAccountType,
+    origen: string,
+    huella: string,
+  ): void {
+    const entorno = this.config.get<string>('NODE_ENV') || 'development';
+    const mensaje =
+      tipo === 'real' && entorno !== 'production'
+        ? `ADVERTENCIA: la cuenta de Mercado Pago ${origen} es REAL y el servidor corre en '${entorno}': los cobros de este entorno son con dinero real`
+        : tipo === 'test' && entorno === 'production'
+          ? `ADVERTENCIA: la cuenta de Mercado Pago ${origen} es de PRUEBA y el servidor corre en producción: no se puede cobrar de verdad`
+          : null;
+    const clave = `${huella}:${tipo}:${entorno}`;
+    if (!mensaje || this.advertidas.has(clave)) return;
+    this.advertidas.add(clave);
+    this.logger.warn(mensaje);
+  }
 
   /** Qué cuenta usa la distribuidora, con los valores enmascarados. */
   async status(
@@ -52,6 +158,10 @@ export class MercadoPagoCredentialsService {
     });
     if (!item || !encryptionConfigured) {
       return {
+        accountType: await this.tipoDeCuenta(
+          this.config.get<string>('MP_ACCESS_TOKEN') || '',
+          'la del entorno (MP_ACCESS_TOKEN)',
+        ),
         source: 'system',
         active: false,
         encryptionConfigured,
@@ -61,13 +171,16 @@ export class MercadoPagoCredentialsService {
         verifiedAt: null,
       };
     }
+    const accessToken = this.crypto.decrypt(item.accessTokenEncrypted);
     return {
+      accountType: await this.tipoDeCuenta(
+        accessToken,
+        `de la distribuidora ${distributorId}`,
+      ),
       source: 'own',
       active: true,
       encryptionConfigured,
-      accessTokenMasked: enmascarar(
-        this.crypto.decrypt(item.accessTokenEncrypted),
-      ),
+      accessTokenMasked: enmascarar(accessToken),
       publicKeyMasked: enmascarar(this.crypto.decrypt(item.publicKeyEncrypted)),
       webhookSecretMasked: enmascarar(
         this.crypto.decrypt(item.webhookSecretEncrypted),
