@@ -10,6 +10,15 @@ export const totalDeBase = (total: Decimal.Value): Decimal =>
   new Decimal(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
 /**
+ * Lo que queda por cobrar una vez paga la seña: total menos seña, a 2 decimales.
+ * Es el `balance` de la cotización y el `balanceDue` de la reserva: una sola cuenta.
+ */
+export const saldoTrasLaSena = (
+  total: Decimal.Value,
+  sena: Decimal.Value,
+): Decimal => totalDeBase(new Decimal(total).minus(sena));
+
+/**
  * ¿El total (ya con 2 decimales) quedó por debajo de la seña ya cobrada? Una sola
  * comparación para la cotización y la edición, así no discrepan en el borde
  * (100.089 se guarda como 100.09).

@@ -16,6 +16,7 @@ import { DriverSettlementExpense } from './entities/driver-settlement-expense.en
 import { DriverSettlementOrder } from './entities/driver-settlement-order.entity';
 import { DriverSettlement } from './entities/driver-settlement.entity';
 import { DriverSettlementController } from './presentation/driver-settlement.controller';
+import { DriverSettlementV2Controller } from './presentation/driver-settlement-v2.controller';
 
 /**
  * Rendición diaria del chofer (M-D, parte 2): el efectivo que cobró contra lo
@@ -39,7 +40,7 @@ import { DriverSettlementController } from './presentation/driver-settlement.con
     EmailModule,
     RedisModule,
   ],
-  controllers: [DriverSettlementController],
+  controllers: [DriverSettlementController, DriverSettlementV2Controller],
   providers: [
     DriverSettlementService,
     DriverSettlementQueryService,

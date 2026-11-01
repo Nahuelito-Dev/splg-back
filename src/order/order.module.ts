@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ExpressOrderController } from './express-order.controller';
 import { OrderController } from './order.controller';
+import { CustomerPurchaseStatsController } from './customer-purchase-stats.controller';
+import { CustomerPurchaseStatsService } from './application/customer-purchase-stats.service';
 import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -111,6 +113,7 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     OrderTransferReceiptController,
     ReservationV2Controller,
     OrderPaymentV2Controller,
+    CustomerPurchaseStatsController,
   ],
   providers: [
     // Confirma el pedido cuando payments publica un pago notificado.
@@ -145,6 +148,7 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     ConfirmPaymentUseCase,
     ReservationService,
     ConciliacionMercadoPagoService,
+    CustomerPurchaseStatsService,
     // Puerto de tiempo real → adapter concreto (Redis GEO + Socket.io gateways).
     // Cambiar el transporte = cambiar solo esta línea.
     { provide: RealtimeDispatchPort, useClass: RealtimeDispatchAdapter },

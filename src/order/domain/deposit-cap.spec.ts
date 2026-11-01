@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import {
   assertSenaConMercadoPago,
   assertSenaNoSuperaTotal,
+  saldoTrasLaSena,
   totalBajoLaSenaPagada,
 } from './deposit-cap';
 import { PaymentMethod } from '../entities/order.entity';
@@ -60,5 +61,17 @@ describe('assertSenaConMercadoPago', () => {
     ]) {
       expect(() => assertSenaConMercadoPago(medio, 0)).not.toThrow();
     }
+  });
+});
+
+describe('saldoTrasLaSena', () => {
+  it('es el total menos la seña, a 2 decimales', () => {
+    expect(saldoTrasLaSena(16700, 500).toNumber()).toBe(16200);
+    expect(saldoTrasLaSena(0.3, 0.1).toNumber()).toBe(0.2);
+    expect(saldoTrasLaSena('100.09', 0).toNumber()).toBe(100.09);
+  });
+
+  it('con la seña igual al total no queda saldo', () => {
+    expect(saldoTrasLaSena(5000, 5000).toNumber()).toBe(0);
   });
 });

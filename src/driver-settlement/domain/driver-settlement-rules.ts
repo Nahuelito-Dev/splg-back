@@ -7,6 +7,7 @@ import {
   RendicionEnOtroEstadoError,
   RendicionInvalidaError,
 } from './errors/driver-settlement.errors';
+import { sumar } from '../../common/utils/dinero';
 import { derivarTransiciones } from '../../common/domain/derivar-transiciones';
 
 export type AccionDeRendicion = 'submit' | 'approve' | 'reopen';
@@ -73,6 +74,23 @@ export function diferenciaDeRendicion(
   esperado: Decimal.Value,
 ): Decimal {
   return new Decimal(declarado).plus(gastos).minus(esperado);
+}
+
+/**
+ * Las cuentas de una rendición: los gastos sumados y la diferencia. Las usan
+ * por igual la presentación (lo que se guarda) y la vista previa (lo que ve el
+ * chofer mientras escribe), para que nunca discrepen.
+ */
+export function cuentasDeRendicion(
+  declarado: Decimal.Value,
+  gastos: Iterable<Decimal.Value>,
+  esperado: Decimal.Value,
+): { gastos: Decimal; diferencia: Decimal } {
+  const totalGastos = sumar(gastos);
+  return {
+    gastos: totalGastos,
+    diferencia: diferenciaDeRendicion(declarado, totalGastos, esperado),
+  };
 }
 
 /**

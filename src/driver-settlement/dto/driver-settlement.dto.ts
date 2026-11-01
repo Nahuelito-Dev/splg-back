@@ -72,6 +72,50 @@ export class SubmitDriverSettlementDto {
   notes?: string;
 }
 
+export class PreviewExpenseDto {
+  @ApiProperty({ example: 3500, description: 'Mayor que cero' })
+  @Importe()
+  amount!: number;
+}
+
+export class PreviewDriverSettlementDto {
+  @ApiProperty({
+    example: 42000,
+    description: 'Efectivo que el chofer piensa entregar (0 o más)',
+  })
+  @Importe(0)
+  declaredCash!: number;
+
+  @ApiPropertyOptional({
+    type: [PreviewExpenseDto],
+    description: 'Gastos que pagó con la cobranza (sólo el importe)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => PreviewExpenseDto)
+  expenses?: PreviewExpenseDto[];
+}
+
+export class SettlementPreviewDto {
+  @ApiProperty({ example: 40000, description: 'Efectivo esperado, en vivo' })
+  expectedCash!: number;
+
+  @ApiProperty({ example: 42000 })
+  declaredCash!: number;
+
+  @ApiProperty({ example: 3500, description: 'Suma de los gastos' })
+  driverExpenses!: number;
+
+  @ApiProperty({
+    example: 5500,
+    description:
+      'Declarado + gastos − esperado: la misma cuenta que se guarda al presentar (negativa: faltante; positiva: sobrante)',
+  })
+  difference!: number;
+}
+
 export class ApproveDriverSettlementDto {
   @ApiProperty({ description: 'Caja donde entra el efectivo rendido' })
   @IsUUID()
