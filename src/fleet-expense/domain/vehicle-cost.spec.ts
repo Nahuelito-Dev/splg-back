@@ -3,6 +3,7 @@ import {
   EntradasDeCosto,
   mesesDelRango,
   numeroDeDia,
+  resumirTablero,
 } from './vehicle-cost';
 
 const vacio: EntradasDeCosto = {
@@ -222,5 +223,20 @@ describe('helpers de fechas', () => {
 
   it('numeroDeDia cuenta días enteros', () => {
     expect(numeroDeDia('2026-03-01') - numeroDeDia('2026-02-01')).toBe(28);
+  });
+});
+
+describe('resumirTablero: km sin ruido de coma flotante', () => {
+  it('suma los km a 2 decimales', () => {
+    const fila = (km: number) => ({
+      maintenance: 1,
+      insurance: 0,
+      fuel: 0,
+      fines: 0,
+      accidents: 0,
+      total: 1,
+      km,
+    });
+    expect(resumirTablero([fila(0.1), fila(0.2)]).km).toBe(0.3);
   });
 });

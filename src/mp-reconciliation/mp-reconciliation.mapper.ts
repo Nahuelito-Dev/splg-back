@@ -4,6 +4,7 @@ import {
   MpReconciliationResponseDto,
   MpSummaryDto,
 } from './dto/mp-reconciliation.dto';
+import { brechaNeta, totalDeDiferencias } from './domain/reconciliation';
 import { MpReconciliationStatus } from './domain/mp-reconciliation.enums';
 import { MpReconciliationItem } from './entities/mp-reconciliation-item.entity';
 import {
@@ -23,6 +24,8 @@ export class MpReconciliationMapper {
     dto.mp = resumen.mp;
     dto.cash = resumen.cash;
     dto.differences = resumen.differences;
+    dto.differenceCount = totalDeDiferencias(resumen.differences);
+    dto.netGap = brechaNeta(resumen.mp.net, resumen.cash.net);
     dto.alreadyApplied = resumen.alreadyApplied;
     dto.unreadableRows = resumen.unreadableRows;
     if (verCuenta && resumen.account) dto.account = resumen.account;

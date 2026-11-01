@@ -32,6 +32,42 @@ export class CloseCashSessionDto {
   notes?: string;
 }
 
+export class PreviewCloseCashSessionDto {
+  @ApiProperty({
+    example: 18250,
+    description: 'Lo que se está contando en la caja (0 o más)',
+  })
+  @Importe(0)
+  countedAmount!: number;
+}
+
+export class CloseCashSessionPreviewDto {
+  @ApiProperty({ example: 5000, description: 'Monto con que se abrió' })
+  openingAmount!: number;
+  @ApiProperty({
+    example: 14000,
+    description: 'Entradas de la sesión, sin el ajuste de apertura',
+  })
+  totalIn!: number;
+  @ApiProperty({
+    example: 750,
+    description: 'Salidas de la sesión, sin el ajuste de apertura',
+  })
+  totalOut!: number;
+  @ApiProperty({
+    example: 18250,
+    description: 'Apertura + entradas − salidas: lo que debería haber',
+  })
+  expectedAmount!: number;
+  @ApiProperty({ example: 18000 }) countedAmount!: number;
+  @ApiProperty({
+    example: -250,
+    description:
+      'Contado − esperado: la misma cuenta que se guarda al cerrar (negativa: faltante; positiva: sobrante)',
+  })
+  difference!: number;
+}
+
 export class QueryCashSessionDto extends PaginationDto {
   @FechaCalendarioOpcional('2026-10-01', undefined)
   from?: string;

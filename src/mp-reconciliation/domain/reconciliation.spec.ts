@@ -6,10 +6,12 @@ import {
 } from '../testing/liberaciones-ejemplo';
 import { MpDifferenceKind } from './mp-reconciliation.enums';
 import {
+  brechaNeta,
   claveDeFila,
   conciliar,
   EntradaDeConciliacion,
   PagoDelLibro,
+  totalDeDiferencias,
 } from './reconciliation';
 import { parsearReporteDeLiberaciones } from './release-report.parser';
 
@@ -664,5 +666,17 @@ describe('conciliar: cuenta y claves', () => {
     expect(claveDeFila(MpDifferenceKind.FEE_PENDING, a)).toBe(
       claveDeFila(MpDifferenceKind.FEE_PENDING, b),
     );
+  });
+});
+
+describe('totalDeDiferencias y brechaNeta', () => {
+  it('suma las cantidades por tipo', () => {
+    expect(totalDeDiferencias({ payout: 2, fee_pending: 3 })).toBe(5);
+    expect(totalDeDiferencias({})).toBe(0);
+  });
+
+  it('la brecha neta es Mercado Pago − caja sin errores de coma flotante', () => {
+    expect(brechaNeta(0.3, 0.1)).toBe(0.2);
+    expect(brechaNeta(10, 25.5)).toBe(-15.5);
   });
 });

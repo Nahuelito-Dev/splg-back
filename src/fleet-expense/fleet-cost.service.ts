@@ -5,12 +5,18 @@ import { diaArgentino } from '../common/utils/dias-argentina';
 import { CarService } from '../car/car.service';
 import { Car } from '../car/entities/car.entity';
 import { FleetCostSourceService } from '../fleet/fleet-cost-source.service';
-import { CarCostDetailDto, FleetCostSummaryDto } from './dto/fleet-cost.dto';
+import {
+  CarCostDetailDto,
+  FleetCostBoardDto,
+  FleetCostSummaryDto,
+  FleetCostTotalsDto,
+} from './dto/fleet-cost.dto';
 import {
   calcularCostoDeVehiculo,
   CostoDeVehiculo,
   EntradasDeCosto,
   MAXIMO_DE_DIAS_DEL_RANGO,
+  resumirTablero,
 } from './domain/vehicle-cost';
 import { rangoDeDias } from './domain/rango';
 import { FuelLoad } from './entities/fuel-load.entity';
@@ -75,6 +81,24 @@ export class FleetCostService {
           b.total - a.total ||
           a.carId.localeCompare(b.carId),
       );
+  }
+
+  /** El tablero de la flota con sus totales por rubro y el costo por km, que calcula el back (API v2). */
+  async tableroConResumen(
+    distributorId: string,
+    from: string,
+    to: string,
+  ): Promise<FleetCostBoardDto> {
+    const vehicles = await this.tablero(distributorId, from, to);
+    const dto = new FleetCostBoardDto();
+    dto.from = from;
+    dto.to = to;
+    dto.summary = Object.assign(
+      new FleetCostTotalsDto(),
+      resumirTablero(vehicles),
+    );
+    dto.vehicles = vehicles;
+    return dto;
   }
 
   private resumen(car: Car, c: CostoDeVehiculo): FleetCostSummaryDto {

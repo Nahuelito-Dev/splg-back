@@ -63,3 +63,56 @@ export class CarCostDetailDto extends FleetCostSummaryDto {
   })
   monthly!: CostMonthDto[];
 }
+
+export class FleetCostTotalsDto {
+  @ApiProperty({ example: 3, description: 'Vehículos del tablero' })
+  vehicles!: number;
+  @ApiProperty({ description: 'Mantenimiento de toda la flota' })
+  maintenance!: number;
+  @ApiProperty({ description: 'Seguros prorrateados de toda la flota' })
+  insurance!: number;
+  @ApiProperty({ description: 'Combustible de toda la flota' })
+  fuel!: number;
+  @ApiProperty({ description: 'Multas de toda la flota' })
+  fines!: number;
+  @ApiProperty({ description: 'Siniestros de toda la flota' })
+  accidents!: number;
+  @ApiProperty({
+    description:
+      'Costo total del período: suma de los vehículos, con o sin km. Excluye los vehículos dados de baja',
+  })
+  total!: number;
+  @ApiProperty({
+    description: 'Suma de los km de los vehículos que tienen km',
+  })
+  km!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Costo de los vehículos con km sobre sus km. `null` si ninguno tiene km',
+  })
+  costPerKm!: number | null;
+  @ApiProperty({
+    description: 'Vehículos sin km: no entran al costo por km',
+  })
+  withoutKm!: number;
+}
+
+export class FleetCostBoardDto {
+  @ApiProperty({ example: '2026-10-01' }) from!: string;
+  @ApiProperty({ example: '2026-10-31' }) to!: string;
+  @ApiProperty({
+    type: FleetCostTotalsDto,
+    description:
+      'Los totales de la flota en el período, calculados por el back',
+  })
+  summary!: FleetCostTotalsDto;
+  @ApiProperty({
+    type: FleetCostSummaryDto,
+    isArray: true,
+    description:
+      'Un renglón por vehículo, de mayor a menor costo por km; sin km, al final',
+  })
+  vehicles!: FleetCostSummaryDto[];
+}
