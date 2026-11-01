@@ -99,6 +99,7 @@ describe('RefundsService (CU-168)', () => {
   };
   let service: RefundsService;
   let seq: number;
+  let pagosEnTransaccion: jest.Mock;
 
   const pago = (over: Fila = {}): Fila => ({
     paymentId: 'pay-1',
@@ -182,11 +183,16 @@ describe('RefundsService (CU-168)', () => {
       avisarSinAsentar: jest.fn(),
     };
     // La transacción del cierre trabaja sobre el mismo repositorio en memoria.
+    pagosEnTransaccion = jest.fn((criterio: Fila, cambios: Fila) =>
+      pagosRepo.update(criterio, cambios),
+    );
     const manager = {
       transaction: (trabajo: (m: unknown) => unknown) => trabajo(manager),
       query: jest.fn().mockResolvedValue([]),
-      update: (_e: unknown, criterio: Fila, cambios: Fila) =>
-        refundsRepo.update(criterio, cambios),
+      update: (entidad: unknown, criterio: Fila, cambios: Fila) =>
+        entidad === Payment
+          ? (pagosEnTransaccion(criterio, cambios) as Promise<unknown>)
+          : refundsRepo.update(criterio, cambios),
       findOneOrFail: (_e: unknown, opciones: { where?: Fila }) =>
         refundsRepo.findOneOrFail(opciones),
     };
@@ -405,6 +411,19 @@ describe('RefundsService (CU-168)', () => {
   });
 
   describe('egreso de la caja de Mercado Pago', () => {
+    it('el pago pasa a reintegrado en la misma transacción del cierre y del egreso', async () => {
+      pagos.push(pago());
+
+      await service.reintegrarPorCancelacion('ord-1');
+
+      expect(pagosEnTransaccion).toHaveBeenCalledWith(
+        { paymentId: 'pay-1' },
+        { status: LedgerPaymentStatus.REFUNDED },
+      );
+      expect(pagosRepo.update).toHaveBeenCalledTimes(1);
+      expect(pagos[0].status).toBe(LedgerPaymentStatus.REFUNDED);
+    });
+
     it('la devolución exitosa saca de la caja lo devuelto, en la misma transacción del cierre', async () => {
       pagos.push(pago());
 
