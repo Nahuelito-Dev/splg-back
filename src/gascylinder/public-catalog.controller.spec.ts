@@ -93,8 +93,8 @@ describe('GET /public/distributors/:slug/catalog', () => {
       description: 'Garrafa familiar',
       photoUrl: 'https://s3/firmada',
       promotions: [
-        { quantity: 2, discountPercentage: 5 },
-        { quantity: 5, discountPercentage: 10 },
+        { quantity: 2, discountPercentage: 5, unitPrice: 4750 },
+        { quantity: 5, discountPercentage: 10, unitPrice: 4500 },
       ],
       inStock: true,
     });

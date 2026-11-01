@@ -612,6 +612,7 @@ export class CreateOrderUseCase {
     orderItem: OrderItem;
     checkoutItem: PaymentCheckoutItem;
     subtotal: Decimal;
+    discountPercentage: number | null;
   } {
     // Aislamiento multi-tenant: la garrafa debe pertenecer EXACTAMENTE a la
     // distribuidora del pedido. Rechaza tanto una garrafa de otro tenant
@@ -624,7 +625,7 @@ export class CreateOrderUseCase {
     }
 
     // Pricing: precio de lista (DB, nunca del cliente) + promos por volumen.
-    const { unitPrice, subtotal } = this.pricing.priceItem(
+    const { unitPrice, subtotal, discountPercentage } = this.pricing.priceItem(
       gasCylinder.price,
       gasCylinder.promotions,
       itemDto.quantity,
@@ -644,6 +645,7 @@ export class CreateOrderUseCase {
         unitPrice: unitPrice.toNumber(),
       },
       subtotal,
+      discountPercentage: discountPercentage ?? null,
     };
   }
 

@@ -224,6 +224,7 @@ export class QuoteOrderUseCase {
         quantity: item.quantity,
         unitPrice: renglon.checkoutItem.unitPrice,
         subtotal: renglon.subtotal.toNumber(),
+        discountPercentage: renglon.discountPercentage,
       });
     }
 

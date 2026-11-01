@@ -1,6 +1,24 @@
 import { GasCylinder } from './entities/gascylinder.entity';
 import { GasCylinderResponseDto } from './dto/gascylinder-response.dto';
 import { ProductoPublicoDto } from './dto/catalogo-publico.dto';
+import { PromocionConPrecioDto } from './dto/create-gascylinder.dto';
+import { OrderPricingService } from '../order/domain/order-pricing.service';
+
+const precios = new OrderPricingService();
+
+/** Las promociones del producto, de menor a mayor cantidad, cada una con el precio unitario que cobra el pedido. */
+function promocionesConPrecio(g: GasCylinder): PromocionConPrecioDto[] {
+  const promos = [...(g.promotions ?? [])].sort(
+    (a, b) => a.quantity - b.quantity,
+  );
+  return promos.map((p) => ({
+    quantity: p.quantity,
+    discountPercentage: p.discountPercentage,
+    unitPrice: precios
+      .priceItem(g.price, promos, p.quantity)
+      .unitPrice.toNumber(),
+  }));
+}
 
 export class GasCylinderMapper {
   static toDto(g: GasCylinder): GasCylinderResponseDto {
@@ -15,14 +33,7 @@ export class GasCylinderMapper {
     dto.isActive = g.isActive;
     dto.photoUrl = g.photoSignedUrl ?? null;
     // Sin promociones sale null, como cuando eran una columna JSON.
-    dto.promotions = g.promotions?.length
-      ? [...g.promotions]
-          .sort((a, b) => a.quantity - b.quantity)
-          .map((p) => ({
-            quantity: p.quantity,
-            discountPercentage: p.discountPercentage,
-          }))
-      : null;
+    dto.promotions = g.promotions?.length ? promocionesConPrecio(g) : null;
     dto.createdAt = g.createdAt;
     dto.updatedAt = g.updatedAt;
     return dto;
@@ -37,12 +48,7 @@ export class GasCylinderMapper {
     dto.price = g.price;
     dto.description = g.description;
     dto.photoUrl = g.photoSignedUrl ?? null;
-    dto.promotions = [...(g.promotions ?? [])]
-      .sort((a, b) => a.quantity - b.quantity)
-      .map((p) => ({
-        quantity: p.quantity,
-        discountPercentage: p.discountPercentage,
-      }));
+    dto.promotions = promocionesConPrecio(g);
     dto.inStock = g.stock > 0;
     return dto;
   }

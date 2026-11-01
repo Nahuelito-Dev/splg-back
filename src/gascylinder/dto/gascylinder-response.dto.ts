@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { PromocionDto } from './create-gascylinder.dto';
+import { PromocionConPrecioDto } from './create-gascylinder.dto';
 
 /** Un producto del catálogo. */
 export class GasCylinderResponseDto {
@@ -35,8 +35,8 @@ export class GasCylinderResponseDto {
   })
   photoUrl!: string | null;
 
-  @ApiProperty({ type: PromocionDto, isArray: true, nullable: true })
-  promotions!: PromocionDto[] | null;
+  @ApiProperty({ type: PromocionConPrecioDto, isArray: true, nullable: true })
+  promotions!: PromocionConPrecioDto[] | null;
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: Date;
