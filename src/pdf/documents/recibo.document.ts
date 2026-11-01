@@ -3,6 +3,13 @@ import { PdfBuilder, Membrete } from '../pdf-builder';
 import { medioDePago } from '../pdf-etiquetas';
 import { codigoCorto, fechaHora, pesos } from '../pdf-formato';
 
+/** Los precios que cobra el sistema son finales: el IVA ya está incluido. */
+export const PRECIOS_CON_IVA = 'Precios finales con IVA incluido.';
+
+/** El recibo acredita el pago, pero no reemplaza a la factura. */
+export const NO_ES_FACTURA =
+  'Este recibo no es una factura: no es válido como comprobante fiscal.';
+
 /** Recibo de pago de un pedido cobrado. */
 export function renderRecibo(
   order: OrderResponseDto,
@@ -37,9 +44,11 @@ export function renderRecibo(
   pdf.totales([
     { etiqueta: 'TOTAL PAGADO', valor: pesos(order.total), destacada: true },
   ]);
+  pdf.texto(PRECIOS_CON_IVA, { apagado: true });
   pdf.texto(
     'Este recibo acredita el pago del pedido indicado. Conservalo como comprobante.',
     { apagado: true },
   );
+  pdf.texto(NO_ES_FACTURA, { apagado: true });
   return pdf.finalizar();
 }

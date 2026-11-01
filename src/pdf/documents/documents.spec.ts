@@ -161,6 +161,14 @@ describe('documentos PDF', () => {
         ID_DE_PEDIDO.replace(/-/g, '').slice(0, 8).toUpperCase(),
       );
     });
+
+    it('aclara que los precios incluyen IVA y que no es una factura', async () => {
+      const texto = textoDePdf(
+        await renderRecibo(pedidoDePrueba(), MEMBRETE_DE_PRUEBA),
+      );
+      expect(texto).toContain('Precios finales con IVA incluido.');
+      expect(texto).toContain('Este recibo no es una factura');
+    });
   });
 
   describe('rendición del chofer', () => {
