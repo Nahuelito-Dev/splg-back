@@ -580,6 +580,15 @@ export class RefundsService {
         const cerrada = await manager.findOneOrFail(PaymentRefund, {
           where: { refundId: solicitud.refundId },
         });
+        // El pago pasa a reintegrado junto con el cierre y el egreso: si algo
+        // falla, no queda una devolución cerrada con el pago todavía aprobado.
+        if (resultado.affected && solicitud.kind === RefundKind.FULL) {
+          await manager.update(
+            Payment,
+            { paymentId: pago.paymentId },
+            { status: LedgerPaymentStatus.REFUNDED },
+          );
+        }
         const distributorId = pago.distributorId;
         const salida =
           resultado.affected && distributorId
@@ -608,12 +617,6 @@ export class RefundsService {
     }
     if (!cierre.affected) return actual;
 
-    if (solicitud.kind === RefundKind.FULL) {
-      await this.payments.update(
-        { paymentId: pago.paymentId },
-        { status: LedgerPaymentStatus.REFUNDED },
-      );
-    }
     this.eventos.emit(
       EVENTO_PAGO_REINTEGRADO,
       new PagoReintegradoEvent(this.resumen(actual)),

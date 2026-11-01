@@ -25,6 +25,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Personal: documentación, asistencia, licencias, tablero y habilitación laboral (C-08) | `splg-docs/sistema/back/PERSONAL.md` |
 | Compra express, despacho a motos y reintegro de pagos (C-17) | `splg-docs/sistema/back/EXPRESS-REINTEGROS.md` |
 | Reglas en la base (CHECK, únicos, exclusiones, FK) y su verificación | `splg-docs/sistema/back/VALIDACIONES-BASE.md` |
+| Transacciones, locks, triggers de la base y operaciones con servicios externos | `splg-docs/sistema/back/TRANSACCIONES.md` |
 | Versiones de la API | Rutas en `/api/v1/...` (y `/api/...` sin número, por compatibilidad). La v1 quedó congelada el 24/10/2026: un endpoint nuevo o con contrato cambiado va con `@Version('2')` en `/api/v2/...`; los arreglos sin cambio de contrato siguen en v1. Swagger lista sólo la forma versionada. |
 | OpenAPI | `GET /docs-json` y `GET /docs-yaml` (basic auth `SWAGGER_USER` / `SWAGGER_PASSWORD` del `.env`; con `NODE_ENV=production` y sin credenciales la documentación no se sirve) |
 
