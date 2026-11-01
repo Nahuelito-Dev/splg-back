@@ -18,6 +18,14 @@ export const JoiValidationSchema = Joi.object({
     .integer()
     .min(1)
     .default(60),
+  // Horas que un pedido de Mercado Pago cancelado se sigue revisando por si entra un
+  // pago tardío (se devuelve aunque su aviso se haya perdido).
+  // Días que se conservan los avisos de Mercado Pago ya procesados en la bandeja de entrada.
+  PAYMENT_INBOX_RETENTION_DAYS: Joi.number().integer().min(7).default(90),
+  ORDER_MERCADOPAGO_CANCELLED_SWEEP_HOURS: Joi.number()
+    .integer()
+    .min(1)
+    .default(48),
   // Umbral de RSS de /health (H-53): 300 MB era el de un proceso recién
   // levantado, no el de uno trabajando (con tráfico real lo supera y el
   // load balancer lo sacaba de servicio). 512 MB da margen para la carga
@@ -55,6 +63,8 @@ export const JoiValidationSchema = Joi.object({
   MP_ACCESS_TOKEN: Joi.string().optional(),
   MP_WEBHOOK_SECRET: Joi.string().optional(),
   MP_NOTIFICATION_URL: Joi.string().optional(),
+  // A dónde vuelve el comprador tras pagar. Sin valor: `splg://pago/exito`,
+  // `splg://pago/pendiente` y `splg://pago/error` (enlaces profundos de la app).
   MP_SUCCESS_URL: Joi.string().optional(),
   MP_FAILURE_URL: Joi.string().optional(),
   MP_PENDING_URL: Joi.string().optional(),

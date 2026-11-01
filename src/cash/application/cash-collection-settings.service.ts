@@ -433,7 +433,7 @@ export class CashCollectionSettingsService {
       approved_at: Date | null;
     }> = await manager.query(
       `SELECT "payment_id", "status", "amount", "metadata", "approved_at" FROM "payment"
-       WHERE "order_id" = $1 AND "gateway" = 'mercadopago' AND "status" IN ('approved', 'refunded')
+       WHERE "order_id" = $1 AND "gateway" = 'mercadopago' AND "status" IN ('approved', 'in_mediation', 'refunded', 'charged_back')
        ORDER BY "approved_at" NULLS LAST, "createdAt"`,
       [orderId],
     );
@@ -481,7 +481,12 @@ export class CashCollectionSettingsService {
         pago.payment_id,
       );
       // Un pago devuelto por completo que nunca entró a una caja no se asienta (neto cero): no es un cobro pendiente.
-      if (!movimiento && pago.status === 'refunded') continue;
+      if (
+        !movimiento &&
+        (pago.status === 'refunded' || pago.status === 'charged_back')
+      ) {
+        continue;
+      }
       entradas.push(
         this.entrada(
           'mercadopago',
@@ -706,7 +711,7 @@ export class CashCollectionSettingsService {
     return manager.query(
       `SELECT p."payment_id", p."order_id", p."gateway_payment_id", p."credential_id", p."amount", p."metadata", p."approved_at"
        FROM "payment" p
-       WHERE p."distributor_id" = $1 AND p."gateway" = 'mercadopago' AND p."status" = 'approved'
+       WHERE p."distributor_id" = $1 AND p."gateway" = 'mercadopago' AND p."status" IN ('approved', 'in_mediation')
          AND p."approved_at" >= $2
          AND NOT EXISTS (
            SELECT 1 FROM "cash_movement" m

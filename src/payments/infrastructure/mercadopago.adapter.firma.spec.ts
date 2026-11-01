@@ -30,8 +30,12 @@ describe('MercadoPagoAdapter: firma del webhook (validador real)', () => {
     );
   });
 
-  const firmar = (dataId: string, requestId: string, secreto = SECRETO) => {
-    const ts = String(Date.now());
+  const firmar = (
+    dataId: string,
+    requestId: string,
+    secreto = SECRETO,
+    ts = String(Date.now()),
+  ) => {
     const hash = createHmac('sha256', secreto)
       .update(`id:${dataId};request-id:${requestId};ts:${ts};`)
       .digest('hex');
@@ -45,7 +49,7 @@ describe('MercadoPagoAdapter: firma del webhook (validador real)', () => {
         xRequestId: 'req-1',
         dataId: '123456',
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('valida');
   });
 
   it('rechaza una firma hecha con otro secreto', async () => {
@@ -55,7 +59,7 @@ describe('MercadoPagoAdapter: firma del webhook (validador real)', () => {
         xRequestId: 'req-1',
         dataId: '123456',
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('invalida');
   });
 
   it('rechaza si cambia el id del pago, el request-id o falta el header', async () => {
@@ -66,19 +70,35 @@ describe('MercadoPagoAdapter: firma del webhook (validador real)', () => {
         xRequestId: 'req-1',
         dataId: '999',
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('invalida');
     await expect(
       adapter.verifyWebhookSignature({
         xSignature,
         xRequestId: 'req-2',
         dataId: '123456',
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('invalida');
     await expect(
       adapter.verifyWebhookSignature({
         xRequestId: 'req-1',
         dataId: '123456',
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('invalida');
+  });
+
+  it('acepta una firma vieja, en segundos o en milisegundos: el reintento de MP llega horas después', async () => {
+    const haceUnDia = Date.now() - 24 * 3600 * 1000;
+    for (const ts of [
+      String(haceUnDia),
+      String(Math.floor(haceUnDia / 1000)),
+    ]) {
+      await expect(
+        adapter.verifyWebhookSignature({
+          xSignature: firmar('123456', 'req-1', SECRETO, ts),
+          xRequestId: 'req-1',
+          dataId: '123456',
+        }),
+      ).resolves.toBe('valida');
+    }
   });
 });

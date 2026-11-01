@@ -42,7 +42,10 @@ import { ReintegroListener } from './application/reintegro.listener';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.typeorm.repository';
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
+import { OrderFraudHoldService } from './application/order-fraud-hold.service';
+import { OrderPaymentV2Controller } from './order-payment-v2.controller';
 import { ReservationV2Controller } from './reservation-v2.controller';
+import { ConciliacionMercadoPagoService } from './application/conciliacion-mercadopago.service';
 import { ReservationService } from './application/reservation.service';
 import { PagoNotificadoListener } from './application/pago-notificado.listener';
 import { AttachmentModule } from '../attachment/attachment.module';
@@ -107,11 +110,13 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     OrderController,
     OrderTransferReceiptController,
     ReservationV2Controller,
+    OrderPaymentV2Controller,
   ],
   providers: [
     // Confirma el pedido cuando payments publica un pago notificado.
     PagoNotificadoListener,
     OrderService,
+    OrderFraudHoldService,
     OrderAttachmentOwnerResolver,
     OrderTransferReceiptService,
     DispatchService,
@@ -139,6 +144,7 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     ReintegroListener,
     ConfirmPaymentUseCase,
     ReservationService,
+    ConciliacionMercadoPagoService,
     // Puerto de tiempo real → adapter concreto (Redis GEO + Socket.io gateways).
     // Cambiar el transporte = cambiar solo esta línea.
     { provide: RealtimeDispatchPort, useClass: RealtimeDispatchAdapter },

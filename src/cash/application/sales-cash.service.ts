@@ -31,7 +31,9 @@ export type ResultadoDelAsiento =
   /** La caja rechazó el movimiento (desactivada, sin sesión abierta…). */
   | 'fallo'
   /** No hay nada que asentar (importe cero, devolución de un cobro que nunca entró). */
-  | 'sin_efecto';
+  | 'sin_efecto'
+  /** Hay un movimiento que el administrador tiene que conciliar a mano (no se asentó solo). */
+  | 'a_conciliar';
 
 export interface CobroDeMercadoPago {
   distributorId: string;
@@ -281,6 +283,73 @@ export class SalesCashService {
     );
   }
 
+  /**
+   * Mercado Pago le devolvió al comercio lo que había retenido por un contracargo
+   * (`status_detail: reimbursed`): ingreso a la misma caja por lo que salió como
+   * contracargo. Una sola vez por pago, y sólo si el contracargo había salido de la
+   * caja.
+   * https://www.mercadopago.com.ar/developers/en/docs/checkout-api-payments/response-handling/query-results
+   */
+  async asentarContracargoReintegrado(
+    manager: EntityManager,
+    c: {
+      distributorId: string;
+      orderId: string;
+      paymentId: string;
+      gatewayPaymentId: string;
+      /**
+       * `true`: el caso se resolvió a favor del vendedor (`coverage_applied`) y se asienta
+       * el ingreso solo. `false`: la documentación de Mercado Pago no dice a quién se
+       * reintegra el dinero sin esa resolución: no se asienta; si el contracargo había
+       * salido de la caja devuelve `a_conciliar` para que lo concilie el administrador.
+       */
+      automatico: boolean;
+    },
+  ): Promise<ResultadoDelAsiento> {
+    const filas: Array<{
+      cash_box_id: string;
+      direction: string;
+      total: string;
+    }> = await manager.query(
+      `SELECT m."cash_box_id", m."direction", SUM(m."amount") AS total FROM "cash_movement" m
+         WHERE m."reference_type" = 'payment_external_refund' AND m."reference_id" = $1
+           AND m."description" LIKE 'Contracargo%'
+         GROUP BY m."cash_box_id", m."direction"`,
+      [c.paymentId],
+    );
+    const salida = filas.find((f) => f.direction === 'out');
+    if (!salida) return 'sin_efecto';
+    if (filas.some((f) => f.direction === 'in')) return 'ya_asentado';
+    if (!c.automatico) return 'a_conciliar';
+    return this.enUnPuntoDeGuardado(
+      manager,
+      'contracargo reintegrado',
+      async () => {
+        const categoria = await this.categorias.deSistema(
+          manager,
+          c.distributorId,
+          CashSystemCode.ORDER_PAYMENT,
+        );
+        await this.ledger.registrar(manager, {
+          distributorId: c.distributorId,
+          cashBoxId: salida.cash_box_id,
+          direction: CashDirection.IN,
+          amount: new Decimal(salida.total),
+          categoryId: categoria.categoryId,
+          method: CashMethod.MERCADOPAGO,
+          description:
+            `Contracargo reintegrado — pedido #${corto(c.orderId)}, Mercado Pago ${c.gatewayPaymentId}`.slice(
+              0,
+              255,
+            ),
+          referenceType: CashReferenceType.PAYMENT_EXTERNAL_REFUND,
+          referenceId: c.paymentId,
+          userId: null,
+        });
+      },
+    );
+  }
+
   /** Ingreso de la transferencia confirmada a la caja de transferencias. */
   async asentarTransferencia(
     manager: EntityManager,
@@ -484,7 +553,8 @@ export class SalesCashService {
          COALESCE((SELECT SUM("amount") FROM "payment_refund"
                    WHERE "payment_id" = $1 AND "status" IN ('succeeded', 'pending')), 0)
        + COALESCE((SELECT SUM("amount") FROM "cash_movement"
-                   WHERE "reference_type" = 'payment_external_refund' AND "reference_id" = $1), 0)
+                   WHERE "reference_type" = 'payment_external_refund' AND "reference_id" = $1
+                     AND "direction" = 'out'), 0)
        ) AS total`,
       [paymentId],
     );

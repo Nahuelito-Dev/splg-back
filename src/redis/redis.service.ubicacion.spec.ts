@@ -169,3 +169,20 @@ describe('RedisService · última ubicación del chofer', () => {
     });
   });
 });
+
+describe('RedisService · apagado', () => {
+  it('Redis se cierra al final (onApplicationShutdown), no antes de que HTTP termine (onModuleDestroy)', () => {
+    const client = { disconnect: jest.fn() };
+    const service = Object.assign(Object.create(RedisService.prototype), {
+      client,
+    }) as RedisService;
+
+    expect(
+      (service as unknown as Record<string, unknown>)['onModuleDestroy'],
+    ).toBeUndefined();
+
+    service.onApplicationShutdown();
+
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+  });
+});

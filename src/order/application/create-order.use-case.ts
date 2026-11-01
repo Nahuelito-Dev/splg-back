@@ -4,6 +4,10 @@ import {
   assertSenaNoSuperaTotal,
 } from '../domain/deposit-cap';
 import { renglonesDelCheckout } from '../domain/checkout-items';
+import {
+  DatosDelComprador,
+  datosDelComprador,
+} from '../domain/checkout-comprador';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
 import {
@@ -388,7 +392,7 @@ export class CreateOrderUseCase {
         createOrderDto,
         isReservation,
         depositAmount,
-        customer,
+        datosDelComprador(customer, address),
         renglonesDelCheckout(checkoutItems, {
           zona: zoneSurchargeAmount,
           online: paymentSurchargeAmount,
@@ -437,7 +441,7 @@ export class CreateOrderUseCase {
     createOrderDto: CreateOrderDto,
     isReservation: boolean,
     depositAmount: number,
-    customer: { email: string | null },
+    comprador: DatosDelComprador,
     checkoutItems: PaymentCheckoutItem[],
   ): Promise<CreateOrderResult> {
     let paymentUrl: string | undefined;
@@ -453,7 +457,7 @@ export class CreateOrderUseCase {
           paymentUrl = await this.createDepositCheckout(
             savedOrder,
             depositAmount,
-            customer,
+            comprador,
           );
         }
         // Seña en efectivo: queda deposit_paid=false hasta que el admin la
@@ -465,7 +469,7 @@ export class CreateOrderUseCase {
         paymentUrl = await this.createMercadoPagoCheckout(
           savedOrder,
           checkoutItems,
-          customer,
+          comprador,
         );
       } else {
         // Despacho SECUENCIAL: ofrece al chofer más cercano con timeout de 30s; el
@@ -793,7 +797,7 @@ export class CreateOrderUseCase {
   private async createMercadoPagoCheckout(
     savedOrder: Order,
     checkoutItems: PaymentCheckoutItem[],
-    customer: { email: string | null },
+    comprador: DatosDelComprador,
   ): Promise<string | undefined> {
     try {
       const checkout = await this.paymentsService.createCheckout({
@@ -802,7 +806,8 @@ export class CreateOrderUseCase {
         amount: savedOrder.totalAmount,
         isDeposit: false,
         items: checkoutItems,
-        payerEmail: customer.email || '',
+        payer: comprador.payer,
+        receiverAddress: comprador.receiverAddress,
       });
       return checkout.initPoint;
     } catch (error) {
@@ -820,7 +825,7 @@ export class CreateOrderUseCase {
   private async createDepositCheckout(
     savedOrder: Order,
     depositAmount: number,
-    customer: { email: string | null },
+    comprador: DatosDelComprador,
   ): Promise<string | undefined> {
     try {
       const checkout = await this.paymentsService.createCheckout({
@@ -836,7 +841,8 @@ export class CreateOrderUseCase {
             unitPrice: depositAmount,
           },
         ],
-        payerEmail: customer.email || '',
+        payer: comprador.payer,
+        receiverAddress: comprador.receiverAddress,
       });
       return checkout.initPoint;
     } catch (error) {

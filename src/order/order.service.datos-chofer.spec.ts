@@ -251,6 +251,15 @@ describe('OrderService.getOne · enlace de pago', () => {
     expect(dto.paymentUrl).toBe('https://mp.test/checkout/1');
   });
 
+  it('con el último pago rechazado (el pedido quedó con el pago fallido) sigue trayendo payment_url para reintentar', async () => {
+    const dto = await armar({ paymentStatus: PaymentStatus.FAILED }).getOne(
+      'o1',
+      DIST,
+      'cli-1',
+    );
+    expect(dto.paymentUrl).toBe('https://mp.test/checkout/1');
+  });
+
   it('efectivo, pagado, con la seña ya confirmada, cancelado o visto por un chofer: sin enlace ni consulta', async () => {
     for (const [over, chofer] of [
       [{ paymentMethod: PaymentMethod.CASH }, undefined],

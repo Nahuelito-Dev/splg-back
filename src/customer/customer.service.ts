@@ -430,14 +430,22 @@ export class CustomersService {
    * El cliente que hace un pedido: si tiene perfil activo y su correo (para
    * la pasarela de pago). `null` si no es cliente.
    */
-  async buscarComprador(
-    userId: string,
-  ): Promise<{ email: string | null } | null> {
+  async buscarComprador(userId: string): Promise<{
+    email: string | null;
+    fullName: string | null;
+    phoneNumber: string | null;
+  } | null> {
     const customer = await this.customerRepository.findOne({
       where: { userId },
       relations: ['user'],
     });
-    return customer ? { email: customer.user.email ?? null } : null;
+    return customer
+      ? {
+          email: customer.user.email ?? null,
+          fullName: customer.user.fullName ?? null,
+          phoneNumber: customer.user.phoneNumber ?? null,
+        }
+      : null;
   }
 
   /**

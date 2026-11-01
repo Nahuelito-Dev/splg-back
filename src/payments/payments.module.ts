@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CashModule } from '../cash/cash.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { Payment } from './entities/payment.entity';
+import { PaymentNotificationInbox } from './entities/payment-notification-inbox.entity';
+import { PaymentNotificationInboxService } from './application/payment-notification-inbox.service';
 import { PaymentRefund } from './entities/payment-refund.entity';
 import { PaymentGatewayPort } from './domain/ports/payment-gateway.port';
 import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
@@ -22,7 +24,11 @@ import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook
 @Module({
   // `OrderLookupModule` no depende de nadie: sólo lee el estado del pedido.
   imports: [
-    TypeOrmModule.forFeature([Payment, PaymentRefund]),
+    TypeOrmModule.forFeature([
+      Payment,
+      PaymentRefund,
+      PaymentNotificationInbox,
+    ]),
     OrderLookupModule,
     CashModule, // los cobros y devoluciones de Mercado Pago entran y salen de una caja
   ],
@@ -35,6 +41,7 @@ import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook
   providers: [
     PaymentsService,
     RefundsService,
+    PaymentNotificationInboxService,
     // Puerto de pasarela de pago → adapter MercadoPago (Checkout Pro). Sumar
     // un gateway nuevo = agregar un adapter + resolverlo acá (o por config).
     { provide: PaymentGatewayPort, useClass: MercadoPagoAdapter },

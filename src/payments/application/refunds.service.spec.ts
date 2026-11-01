@@ -75,6 +75,9 @@ function repoEnMemoria(filas: Fila[], idCampo: string, extra: Fila = {}) {
       }
       return Promise.resolve({ affected: objetivo.length });
     }),
+    count: jest.fn(({ where }: { where?: Fila } = {}) =>
+      Promise.resolve(filtrar(filas, where).length),
+    ),
     idCampo,
     ...extra,
   };
@@ -100,6 +103,7 @@ describe('RefundsService (CU-168)', () => {
   let service: RefundsService;
   let seq: number;
   let pagosEnTransaccion: jest.Mock;
+  let managerQuery: jest.Mock;
 
   const pago = (over: Fila = {}): Fila => ({
     paymentId: 'pay-1',
@@ -186,9 +190,10 @@ describe('RefundsService (CU-168)', () => {
     pagosEnTransaccion = jest.fn((criterio: Fila, cambios: Fila) =>
       pagosRepo.update(criterio, cambios),
     );
+    managerQuery = jest.fn().mockResolvedValue([]);
     const manager = {
       transaction: (trabajo: (m: unknown) => unknown) => trabajo(manager),
-      query: jest.fn().mockResolvedValue([]),
+      query: managerQuery,
       update: (entidad: unknown, criterio: Fila, cambios: Fila) =>
         entidad === Payment
           ? (pagosEnTransaccion(criterio, cambios) as Promise<unknown>)
@@ -205,6 +210,169 @@ describe('RefundsService (CU-168)', () => {
       eventos as unknown as EventEmitter2,
       ventasEnCaja as unknown as SalesCashService,
     );
+  });
+
+  describe('A3: reintegrarPagoDuplicado', () => {
+    it('devuelve el pago indicado y NO el primero, que sí corresponde al pedido', async () => {
+      pagos.push(
+        pago({ paymentId: 'pay-1', gatewayPaymentId: 'mp-1' }),
+        pago({ paymentId: 'pay-2', gatewayPaymentId: 'mp-2' }),
+      );
+      gateway.getPayment.mockResolvedValue({
+        id: 'mp-2',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 3000,
+        refundedAmount: 0,
+      });
+
+      const [r] = await service.reintegrarPagoDuplicado('mp-2');
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+      expect(gateway.refundPayment).toHaveBeenCalledTimes(1);
+      expect(gateway.refundPayment).toHaveBeenCalledWith(
+        expect.objectContaining({ gatewayPaymentId: 'mp-2', amount: 3000 }),
+      );
+      expect(pagos[0].status).toBe(LedgerPaymentStatus.APPROVED);
+      expect(pagos[1].status).toBe(LedgerPaymentStatus.REFUNDED);
+    });
+
+    it('la devolución queda en el historial del pago, con origen «reintegro»', async () => {
+      pagos.push(pago({ paymentId: 'pay-2', gatewayPaymentId: 'mp-2' }));
+
+      await service.reintegrarPagoDuplicado('mp-2');
+
+      const [sql, parametros] = managerQuery.mock.calls.find(
+        ([consulta]: [string]) => consulta.includes('status_history'),
+      ) as [string, [string, string]];
+      expect(sql).toContain('"status_history" || $2::jsonb');
+      expect(parametros[0]).toBe('pay-2');
+      expect(JSON.parse(parametros[1])).toEqual([
+        expect.objectContaining({
+          status: 'refunded',
+          origin: 'reintegro',
+          applied: true,
+        }),
+      ]);
+    });
+
+    it('repetido (reintento del webhook) no devuelve el dinero otra vez', async () => {
+      pagos.push(pago({ paymentId: 'pay-2', gatewayPaymentId: 'mp-2' }));
+      gateway.getPayment.mockResolvedValue({
+        id: 'mp-2',
+        status: 'approved',
+        externalReference: 'ord-1',
+        amount: 3000,
+        refundedAmount: 0,
+      });
+
+      await service.reintegrarPagoDuplicado('mp-2');
+      pagos[0].status = LedgerPaymentStatus.APPROVED;
+      await service.reintegrarPagoDuplicado('mp-2');
+
+      expect(solicitudes).toHaveLength(1);
+      expect(gateway.refundPayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('un pago con reclamo abierto también se devuelve', async () => {
+      pagos.push(
+        pago({
+          paymentId: 'pay-2',
+          gatewayPaymentId: 'mp-2',
+          status: LedgerPaymentStatus.IN_MEDIATION,
+        }),
+      );
+
+      const [r] = await service.reintegrarPagoDuplicado('mp-2');
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+    });
+
+    it('si el pago no está aprobado en el ledger lanza (503 y reintento), no lo da por devuelto', async () => {
+      pagos.push(
+        pago({
+          paymentId: 'pay-2',
+          gatewayPaymentId: 'mp-2',
+          status: LedgerPaymentStatus.PENDING,
+        }),
+      );
+
+      await expect(service.reintegrarPagoDuplicado('mp-2')).rejects.toThrow(
+        /no está aprobado/,
+      );
+      await expect(
+        service.reintegrarPagoDuplicado('desconocido'),
+      ).rejects.toThrow(/no está aprobado/);
+      expect(gateway.refundPayment).not.toHaveBeenCalled();
+    });
+
+    it('lo que la pasarela rechaza queda en una solicitud fallida para que el administrador la reintente', async () => {
+      pagos.push(pago({ paymentId: 'pay-2', gatewayPaymentId: 'mp-2' }));
+      gateway.refundPayment.mockRejectedValue(new Error('MP rechazó'));
+
+      const [r] = await service.reintegrarPagoDuplicado('mp-2');
+
+      expect(r.status).toBe(RefundStatus.FAILED);
+    });
+  });
+
+  describe('B-7: un contracargo llegó mientras se cerraba la devolución', () => {
+    it('si el pago ya figura charged_back bajo el lock, la devolución se cierra igual pero el pago NO pasa a refunded (la base lo rechazaría y quedaría en loop)', async () => {
+      pagos.push(pago({ paymentId: 'pay-2', gatewayPaymentId: 'mp-2' }));
+      managerQuery.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('SELECT "status"') ? [{ status: 'charged_back' }] : [],
+        ),
+      );
+
+      const [r] = await service.reintegrarPagoDuplicado('mp-2');
+
+      expect(r.status).toBe(RefundStatus.SUCCEEDED);
+      expect(pagosEnTransaccion).not.toHaveBeenCalled();
+      expect(
+        managerQuery.mock.calls.some(([sql]: [string]) =>
+          sql.includes('status_history'),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  describe('B-2: tieneDevolucionFallidaDelPago', () => {
+    it('sólo cuenta las devoluciones fallidas de ESE pago', async () => {
+      pagos.push(pago({ paymentId: 'pay-2', gatewayPaymentId: 'mp-2' }));
+      pagos.push(pago({ paymentId: 'pay-3', gatewayPaymentId: 'mp-3' }));
+      solicitudes.push({
+        refundId: 'r1',
+        paymentId: 'pay-2',
+        orderId: 'ord-1',
+        status: RefundStatus.FAILED,
+      });
+
+      await expect(service.tieneDevolucionFallidaDelPago('mp-2')).resolves.toBe(
+        true,
+      );
+      await expect(service.tieneDevolucionFallidaDelPago('mp-3')).resolves.toBe(
+        false,
+      );
+      await expect(service.tieneDevolucionFallidaDelPago('nada')).resolves.toBe(
+        false,
+      );
+    });
+  });
+
+  describe('tieneDevolucionFallida', () => {
+    it('es true sólo si el pedido tiene una solicitud rechazada por la pasarela', async () => {
+      solicitudes.push({
+        refundId: 'r1',
+        orderId: 'ord-1',
+        status: RefundStatus.FAILED,
+      });
+
+      await expect(service.tieneDevolucionFallida('ord-1')).resolves.toBe(true);
+      await expect(service.tieneDevolucionFallida('ord-2')).resolves.toBe(
+        false,
+      );
+    });
   });
 
   describe('reintegrarPorCancelacion', () => {

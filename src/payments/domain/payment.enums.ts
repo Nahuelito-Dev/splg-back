@@ -21,13 +21,30 @@ export enum PaymentIntegration {
  * `order.entities.PaymentStatus` (pending/paid/failed), que refleja el estado
  * del PEDIDO. Un pedido puede tener varios intentos de pago (varios `Payment`)
  * antes de quedar pagado; este enum describe cada intento individual.
+ *
+ * Son los nueve estados de la API de pagos de Mercado Pago (valor idéntico al
+ * `status` que informa):
+ * https://www.mercadopago.com.ar/developers/en/docs/checkout-api-payments/response-handling/query-results
  */
 export enum LedgerPaymentStatus {
   PENDING = 'pending',
+  IN_PROCESS = 'in_process',
+  AUTHORIZED = 'authorized',
   APPROVED = 'approved',
   REJECTED = 'rejected',
   CANCELLED = 'cancelled',
   REFUNDED = 'refunded',
+  CHARGED_BACK = 'charged_back',
+  IN_MEDIATION = 'in_mediation',
+}
+
+/** De dónde salió una lectura del estado de un pago (queda en el historial). */
+export enum OrigenDelEstadoDelPago {
+  WEBHOOK = 'webhook',
+  CONCILIACION = 'conciliacion',
+  CONSULTA = 'consulta',
+  /** Lo hizo el propio sistema: una devolución pedida desde acá. */
+  REINTEGRO = 'reintegro',
 }
 
 /** Qué parte de un pago se devuelve (CU-168). */

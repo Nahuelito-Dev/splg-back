@@ -218,6 +218,8 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         (pedido) =>
           `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)}`,
       ),
+      // Ni los que Mercado Pago retuvo por una alerta de fraude.
+      paymentFraudHold: false,
     };
     // Sin los de Mercado Pago que esperan el pago (`esperaPagoOnline`): no
     // es Mercado Pago, o ya está pago, o es una reserva con la seña paga.

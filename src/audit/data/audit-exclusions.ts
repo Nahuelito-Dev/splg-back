@@ -15,6 +15,10 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   'document_sequence',
   // Cola técnica de archivos a limpiar en el storage.
   'storage_orphan',
+  // Bandeja de entrada de los avisos de Mercado Pago que no se reintentan (alerta de
+  // fraude): cola técnica sin distribuidora al guardarse; lo que se hace con el aviso
+  // (retener el pedido, avisar al admin) sí queda en la auditoría del pedido.
+  'payment_notification_inbox',
   // Una fila por intento de oferta a un chofer (cientos por día): es el
   // registro durable del despacho y de alto volumen.
   'order_dispatch_offer',

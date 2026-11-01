@@ -106,7 +106,13 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_cylinder_movement_cambio:
     'El movimiento del envase tiene que cambiar de estado (o llevar una nota si es una anotación del historial)',
   CHK_payment_estado_no_retrocede:
-    'El estado de un pago no retrocede: un pago aprobado sólo puede pasar a devuelto',
+    'El estado de un pago no retrocede: un pago aprobado sólo puede pasar a reclamo, devuelto o contracargo',
+  CHK_payment_historial_solo_crece:
+    'El historial de estados de un pago sólo se agrega: no se quitan ni se cambian entradas',
+  CHK_payment_detalle_del_estado:
+    'El motivo del estado del pago no puede estar vacío',
+  CHK_payment_historial_es_lista:
+    'El historial de estados del pago tiene que ser una lista',
   CHK_cylinder_inspection_vencimiento:
     'El próximo vencimiento tiene que ser posterior a la revisión',
   CHK_cylinder_inspection_proxima:

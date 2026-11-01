@@ -50,6 +50,7 @@ describe('ReservationService.confirmDeposit: la seña entra a una caja', () => {
       undefined as never,
       { asentarSena, avisarSinAsentar } as never,
       { cajaDelPago } as never,
+      undefined as never,
     );
   });
 

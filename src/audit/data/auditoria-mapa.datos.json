@@ -3,9 +3,7 @@
     {
       "table": "admin",
       "entity": "Admin",
-      "pk": [
-        "admin_id"
-      ],
+      "pk": ["admin_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -19,9 +17,7 @@
     {
       "table": "admin_notification",
       "entity": "AdminNotification",
-      "pk": [
-        "notification_id"
-      ],
+      "pk": ["notification_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -35,10 +31,7 @@
     {
       "table": "admin_notification_read",
       "entity": "AdminNotificationRead",
-      "pk": [
-        "notification_id",
-        "user_id"
-      ],
+      "pk": ["notification_id", "user_id"],
       "deleteColumn": null,
       "distributorMode": "request",
       "distributorColumn": null,
@@ -52,9 +45,7 @@
     {
       "table": "attachment",
       "entity": "Attachment",
-      "pk": [
-        "attachment_id"
-      ],
+      "pk": ["attachment_id"],
       "deleteColumn": "deleted_at",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -68,9 +59,7 @@
     {
       "table": "car",
       "entity": "Car",
-      "pk": [
-        "car_id"
-      ],
+      "pk": ["car_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -84,9 +73,7 @@
     {
       "table": "cash_box",
       "entity": "CashBox",
-      "pk": [
-        "cash_box_id"
-      ],
+      "pk": ["cash_box_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -100,9 +87,7 @@
     {
       "table": "cash_category",
       "entity": "CashCategory",
-      "pk": [
-        "category_id"
-      ],
+      "pk": ["category_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -116,9 +101,7 @@
     {
       "table": "cash_collection_settings",
       "entity": "CashCollectionSettings",
-      "pk": [
-        "distributor_id"
-      ],
+      "pk": ["distributor_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -132,9 +115,7 @@
     {
       "table": "cash_movement",
       "entity": "CashMovement",
-      "pk": [
-        "movement_id"
-      ],
+      "pk": ["movement_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -148,9 +129,7 @@
     {
       "table": "cash_session",
       "entity": "CashSession",
-      "pk": [
-        "session_id"
-      ],
+      "pk": ["session_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -164,9 +143,7 @@
     {
       "table": "claims",
       "entity": "Claim",
-      "pk": [
-        "claim_id"
-      ],
+      "pk": ["claim_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -180,9 +157,7 @@
     {
       "table": "commission_entry",
       "entity": "CommissionEntry",
-      "pk": [
-        "entry_id"
-      ],
+      "pk": ["entry_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -196,9 +171,7 @@
     {
       "table": "commission_rule",
       "entity": "CommissionRule",
-      "pk": [
-        "rule_id"
-      ],
+      "pk": ["rule_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -212,9 +185,7 @@
     {
       "table": "coverage_zone",
       "entity": "CoverageZone",
-      "pk": [
-        "coverage_zone_id"
-      ],
+      "pk": ["coverage_zone_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -228,9 +199,7 @@
     {
       "table": "customer",
       "entity": "Customer",
-      "pk": [
-        "customer_id"
-      ],
+      "pk": ["customer_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "none",
       "distributorColumn": null,
@@ -244,9 +213,7 @@
     {
       "table": "customer_account",
       "entity": "CustomerAccount",
-      "pk": [
-        "account_id"
-      ],
+      "pk": ["account_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -260,9 +227,7 @@
     {
       "table": "customer_account_allocation",
       "entity": "CustomerAccountAllocation",
-      "pk": [
-        "allocation_id"
-      ],
+      "pk": ["allocation_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -276,9 +241,7 @@
     {
       "table": "customer_account_entry",
       "entity": "CustomerAccountEntry",
-      "pk": [
-        "entry_id"
-      ],
+      "pk": ["entry_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -292,10 +255,7 @@
     {
       "table": "customer_distributor",
       "entity": "CustomerDistributor",
-      "pk": [
-        "user_id",
-        "distributor_id"
-      ],
+      "pk": ["user_id", "distributor_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -309,9 +269,7 @@
     {
       "table": "cylinder",
       "entity": "Cylinder",
-      "pk": [
-        "cylinder_id"
-      ],
+      "pk": ["cylinder_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -325,9 +283,7 @@
     {
       "table": "cylinder_inspection",
       "entity": "CylinderInspection",
-      "pk": [
-        "inspection_id"
-      ],
+      "pk": ["inspection_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -341,9 +297,7 @@
     {
       "table": "cylinder_recovery_case",
       "entity": "CylinderRecoveryCase",
-      "pk": [
-        "case_id"
-      ],
+      "pk": ["case_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -357,9 +311,7 @@
     {
       "table": "cylinder_recovery_notice",
       "entity": "CylinderRecoveryNotice",
-      "pk": [
-        "notice_id"
-      ],
+      "pk": ["notice_id"],
       "deleteColumn": null,
       "distributorMode": "request",
       "distributorColumn": null,
@@ -373,9 +325,7 @@
     {
       "table": "delivery",
       "entity": "Delivery",
-      "pk": [
-        "delivery_id"
-      ],
+      "pk": ["delivery_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -389,9 +339,7 @@
     {
       "table": "distributor",
       "entity": "Distributor",
-      "pk": [
-        "distributor_id"
-      ],
+      "pk": ["distributor_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "self",
       "distributorColumn": null,
@@ -405,9 +353,7 @@
     {
       "table": "distributor_mercadopago_credentials",
       "entity": "MercadoPagoCredentials",
-      "pk": [
-        "credential_id"
-      ],
+      "pk": ["credential_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -421,9 +367,7 @@
     {
       "table": "driver_liquidation",
       "entity": "DriverLiquidation",
-      "pk": [
-        "liquidation_id"
-      ],
+      "pk": ["liquidation_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -437,9 +381,7 @@
     {
       "table": "driver_settlement",
       "entity": "DriverSettlement",
-      "pk": [
-        "settlement_id"
-      ],
+      "pk": ["settlement_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -453,9 +395,7 @@
     {
       "table": "driver_settlement_collection",
       "entity": "DriverSettlementCollection",
-      "pk": [
-        "collection_id"
-      ],
+      "pk": ["collection_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -469,9 +409,7 @@
     {
       "table": "driver_settlement_expense",
       "entity": "DriverSettlementExpense",
-      "pk": [
-        "expense_id"
-      ],
+      "pk": ["expense_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -485,9 +423,7 @@
     {
       "table": "driver_settlement_order",
       "entity": "DriverSettlementOrder",
-      "pk": [
-        "settlement_order_id"
-      ],
+      "pk": ["settlement_order_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -501,9 +437,7 @@
     {
       "table": "employee",
       "entity": "Employee",
-      "pk": [
-        "employee_id"
-      ],
+      "pk": ["employee_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -517,9 +451,7 @@
     {
       "table": "employee_attendance",
       "entity": "EmployeeAttendance",
-      "pk": [
-        "attendance_id"
-      ],
+      "pk": ["attendance_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -533,9 +465,7 @@
     {
       "table": "employee_leave",
       "entity": "EmployeeLeave",
-      "pk": [
-        "leave_id"
-      ],
+      "pk": ["leave_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -549,9 +479,7 @@
     {
       "table": "fuel_load",
       "entity": "FuelLoad",
-      "pk": [
-        "fuel_load_id"
-      ],
+      "pk": ["fuel_load_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -565,9 +493,7 @@
     {
       "table": "gas_cylinder",
       "entity": "GasCylinder",
-      "pk": [
-        "gas_cylinder_id"
-      ],
+      "pk": ["gas_cylinder_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -581,9 +507,7 @@
     {
       "table": "gas_cylinder_promotion",
       "entity": "GasCylinderPromotion",
-      "pk": [
-        "promotion_id"
-      ],
+      "pk": ["promotion_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "request",
       "distributorColumn": null,
@@ -597,9 +521,7 @@
     {
       "table": "incident",
       "entity": "Incident",
-      "pk": [
-        "incident_id"
-      ],
+      "pk": ["incident_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -613,9 +535,7 @@
     {
       "table": "insurance_installment",
       "entity": "InsuranceInstallment",
-      "pk": [
-        "installment_id"
-      ],
+      "pk": ["installment_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -629,9 +549,7 @@
     {
       "table": "insurance_policy",
       "entity": "InsurancePolicy",
-      "pk": [
-        "policy_id"
-      ],
+      "pk": ["policy_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -645,9 +563,7 @@
     {
       "table": "insurer",
       "entity": "Insurer",
-      "pk": [
-        "insurer_id"
-      ],
+      "pk": ["insurer_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -661,9 +577,7 @@
     {
       "table": "job_position",
       "entity": "JobPosition",
-      "pk": [
-        "position_id"
-      ],
+      "pk": ["position_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -677,9 +591,7 @@
     {
       "table": "maintenance_plan",
       "entity": "MaintenancePlan",
-      "pk": [
-        "plan_id"
-      ],
+      "pk": ["plan_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -693,9 +605,7 @@
     {
       "table": "maintenance_planning_case",
       "entity": "MaintenancePlanningCase",
-      "pk": [
-        "case_id"
-      ],
+      "pk": ["case_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -709,9 +619,7 @@
     {
       "table": "maintenance_task",
       "entity": "MaintenanceTask",
-      "pk": [
-        "task_id"
-      ],
+      "pk": ["task_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -725,9 +633,7 @@
     {
       "table": "maintenance_task_attachment",
       "entity": "MaintenanceTaskAttachment",
-      "pk": [
-        "attachment_id"
-      ],
+      "pk": ["attachment_id"],
       "deleteColumn": "deleted_at",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -741,9 +647,7 @@
     {
       "table": "maintenance_window_proposal",
       "entity": "MaintenanceWindowProposal",
-      "pk": [
-        "proposal_id"
-      ],
+      "pk": ["proposal_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -757,9 +661,7 @@
     {
       "table": "module_config",
       "entity": "ModuleConfig",
-      "pk": [
-        "config_id"
-      ],
+      "pk": ["config_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -773,9 +675,7 @@
     {
       "table": "mp_reconciliation",
       "entity": "MpReconciliation",
-      "pk": [
-        "reconciliation_id"
-      ],
+      "pk": ["reconciliation_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -789,9 +689,7 @@
     {
       "table": "mp_reconciliation_item",
       "entity": "MpReconciliationItem",
-      "pk": [
-        "item_id"
-      ],
+      "pk": ["item_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -805,9 +703,7 @@
     {
       "table": "order",
       "entity": "Order",
-      "pk": [
-        "order_id"
-      ],
+      "pk": ["order_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -821,9 +717,7 @@
     {
       "table": "order_address_change",
       "entity": "OrderAddressChange",
-      "pk": [
-        "change_id"
-      ],
+      "pk": ["change_id"],
       "deleteColumn": null,
       "distributorMode": "request",
       "distributorColumn": null,
@@ -837,9 +731,7 @@
     {
       "table": "order_item",
       "entity": "OrderItem",
-      "pk": [
-        "order_item_id"
-      ],
+      "pk": ["order_item_id"],
       "deleteColumn": null,
       "distributorMode": "request",
       "distributorColumn": null,
@@ -853,9 +745,7 @@
     {
       "table": "payment",
       "entity": "Payment",
-      "pk": [
-        "payment_id"
-      ],
+      "pk": ["payment_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -869,9 +759,7 @@
     {
       "table": "payment_refund",
       "entity": "PaymentRefund",
-      "pk": [
-        "refund_id"
-      ],
+      "pk": ["refund_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -885,9 +773,7 @@
     {
       "table": "purchase_order",
       "entity": "PurchaseOrder",
-      "pk": [
-        "purchase_order_id"
-      ],
+      "pk": ["purchase_order_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -901,9 +787,7 @@
     {
       "table": "purchase_order_item",
       "entity": "PurchaseOrderItem",
-      "pk": [
-        "item_id"
-      ],
+      "pk": ["item_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -917,9 +801,7 @@
     {
       "table": "purchase_receipt",
       "entity": "PurchaseReceipt",
-      "pk": [
-        "receipt_id"
-      ],
+      "pk": ["receipt_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -933,9 +815,7 @@
     {
       "table": "purchase_receipt_item",
       "entity": "PurchaseReceiptItem",
-      "pk": [
-        "item_id"
-      ],
+      "pk": ["item_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -949,9 +829,7 @@
     {
       "table": "rating",
       "entity": "Rating",
-      "pk": [
-        "rating_id"
-      ],
+      "pk": ["rating_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -965,9 +843,7 @@
     {
       "table": "repurchase_invitation",
       "entity": "RepurchaseInvitation",
-      "pk": [
-        "invitation_id"
-      ],
+      "pk": ["invitation_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -981,9 +857,7 @@
     {
       "table": "role",
       "entity": "Role",
-      "pk": [
-        "role_id"
-      ],
+      "pk": ["role_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "none",
       "distributorColumn": null,
@@ -997,9 +871,7 @@
     {
       "table": "route_batch",
       "entity": "RouteBatch",
-      "pk": [
-        "batch_id"
-      ],
+      "pk": ["batch_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1013,9 +885,7 @@
     {
       "table": "route_batch_stop",
       "entity": "RouteBatchStop",
-      "pk": [
-        "stop_id"
-      ],
+      "pk": ["stop_id"],
       "deleteColumn": null,
       "distributorMode": "request",
       "distributorColumn": null,
@@ -1029,9 +899,7 @@
     {
       "table": "stock_adjustment",
       "entity": "StockAdjustment",
-      "pk": [
-        "adjustment_id"
-      ],
+      "pk": ["adjustment_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1045,9 +913,7 @@
     {
       "table": "stock_location",
       "entity": "StockLocation",
-      "pk": [
-        "location_id"
-      ],
+      "pk": ["location_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1061,9 +927,7 @@
     {
       "table": "stock_threshold",
       "entity": "StockThreshold",
-      "pk": [
-        "threshold_id"
-      ],
+      "pk": ["threshold_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1077,9 +941,7 @@
     {
       "table": "supplier",
       "entity": "Supplier",
-      "pk": [
-        "supplier_id"
-      ],
+      "pk": ["supplier_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1093,9 +955,7 @@
     {
       "table": "time_slot",
       "entity": "TimeSlot",
-      "pk": [
-        "time_slot_id"
-      ],
+      "pk": ["time_slot_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1109,9 +969,7 @@
     {
       "table": "tire",
       "entity": "Tire",
-      "pk": [
-        "tire_id"
-      ],
+      "pk": ["tire_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1125,9 +983,7 @@
     {
       "table": "tire_event",
       "entity": "TireEvent",
-      "pk": [
-        "event_id"
-      ],
+      "pk": ["event_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1141,9 +997,7 @@
     {
       "table": "traffic_fine",
       "entity": "TrafficFine",
-      "pk": [
-        "fine_id"
-      ],
+      "pk": ["fine_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1157,9 +1011,7 @@
     {
       "table": "truck_load",
       "entity": "TruckLoad",
-      "pk": [
-        "load_id"
-      ],
+      "pk": ["load_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1173,9 +1025,7 @@
     {
       "table": "truck_load_item",
       "entity": "TruckLoadItem",
-      "pk": [
-        "item_id"
-      ],
+      "pk": ["item_id"],
       "deleteColumn": null,
       "distributorMode": "parent",
       "distributorColumn": null,
@@ -1189,9 +1039,7 @@
     {
       "table": "user",
       "entity": "User",
-      "pk": [
-        "user_id"
-      ],
+      "pk": ["user_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "none",
       "distributorColumn": null,
@@ -1205,9 +1053,7 @@
     {
       "table": "user_address",
       "entity": "UserAddress",
-      "pk": [
-        "address_id"
-      ],
+      "pk": ["address_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "none",
       "distributorColumn": null,
@@ -1221,9 +1067,7 @@
     {
       "table": "vehicle_accident",
       "entity": "VehicleAccident",
-      "pk": [
-        "accident_id"
-      ],
+      "pk": ["accident_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1237,9 +1081,7 @@
     {
       "table": "vehicle_assignment",
       "entity": "VehicleAssignment",
-      "pk": [
-        "assignment_id"
-      ],
+      "pk": ["assignment_id"],
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -1253,9 +1095,7 @@
     {
       "table": "warehouse",
       "entity": "Warehouse",
-      "pk": [
-        "warehouse_id"
-      ],
+      "pk": ["warehouse_id"],
       "deleteColumn": "deletedAt",
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
@@ -5894,11 +5734,43 @@
     },
     {
       "table": "order",
+      "column": "payment_fraud_hold",
+      "property": "paymentFraudHold",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "order",
+      "column": "payment_fraud_released_at",
+      "property": "paymentFraudReleasedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 8
+    },
+    {
+      "table": "order",
+      "column": "payment_fraud_released_by",
+      "property": "paymentFraudReleasedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "order",
+      "column": "payment_fraud_released_reason",
+      "property": "paymentFraudReleasedReason",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "order",
       "column": "deposit_paid_at",
       "property": "depositPaidAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 7
+      "position": 11
     },
     {
       "table": "order",
@@ -5906,7 +5778,7 @@
       "property": "deliveryId",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 12
     },
     {
       "table": "order",
@@ -5914,7 +5786,7 @@
       "property": "addressId",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 13
     },
     {
       "table": "order",
@@ -5922,7 +5794,7 @@
       "property": "status",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 14
     },
     {
       "table": "order",
@@ -5930,7 +5802,7 @@
       "property": "paymentMethod",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 15
     },
     {
       "table": "order",
@@ -5938,7 +5810,7 @@
       "property": "paymentType",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 16
     },
     {
       "table": "order",
@@ -5946,7 +5818,7 @@
       "property": "paymentStatus",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 17
     },
     {
       "table": "order",
@@ -5954,7 +5826,7 @@
       "property": "paymentConfirmedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 14
+      "position": 18
     },
     {
       "table": "order",
@@ -5962,7 +5834,7 @@
       "property": "paymentConfirmedBy",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 19
     },
     {
       "table": "order",
@@ -5970,7 +5842,7 @@
       "property": "paymentResolvedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 16
+      "position": 20
     },
     {
       "table": "order",
@@ -5978,7 +5850,7 @@
       "property": "paymentResolvedBy",
       "secret": false,
       "kind": "text",
-      "position": 17
+      "position": 21
     },
     {
       "table": "order",
@@ -5986,7 +5858,7 @@
       "property": "paymentResolutionNote",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 22
     },
     {
       "table": "order",
@@ -5994,7 +5866,7 @@
       "property": "totalAmount",
       "secret": false,
       "kind": "text",
-      "position": 19
+      "position": 23
     },
     {
       "table": "order",
@@ -6002,7 +5874,7 @@
       "property": "notes",
       "secret": false,
       "kind": "text",
-      "position": 20
+      "position": 24
     },
     {
       "table": "order",
@@ -6010,7 +5882,7 @@
       "property": "deliveryInstructions",
       "secret": false,
       "kind": "text",
-      "position": 21
+      "position": 25
     },
     {
       "table": "order",
@@ -6018,7 +5890,7 @@
       "property": "deliveryPoint",
       "secret": false,
       "kind": "geo",
-      "position": 22
+      "position": 26
     },
     {
       "table": "order",
@@ -6026,7 +5898,7 @@
       "property": "acceptedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 23
+      "position": 27
     },
     {
       "table": "order",
@@ -6034,7 +5906,7 @@
       "property": "onTheWayAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 24
+      "position": 28
     },
     {
       "table": "order",
@@ -6042,7 +5914,7 @@
       "property": "deliveredAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 25
+      "position": 29
     },
     {
       "table": "order",
@@ -6050,7 +5922,7 @@
       "property": "cancellationReason",
       "secret": false,
       "kind": "text",
-      "position": 26
+      "position": 30
     },
     {
       "table": "order",
@@ -6058,7 +5930,7 @@
       "property": "gatewayPaymentId",
       "secret": false,
       "kind": "text",
-      "position": 27
+      "position": 31
     },
     {
       "table": "order",
@@ -6066,7 +5938,7 @@
       "property": "deliveryCode",
       "secret": true,
       "kind": "text",
-      "position": 28
+      "position": 32
     },
     {
       "table": "order",
@@ -6074,7 +5946,7 @@
       "property": "deliveryMode",
       "secret": false,
       "kind": "text",
-      "position": 29
+      "position": 33
     },
     {
       "table": "order",
@@ -6082,7 +5954,7 @@
       "property": "expressSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 30
+      "position": 34
     },
     {
       "table": "order",
@@ -6090,7 +5962,7 @@
       "property": "expressDegradedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 31
+      "position": 35
     },
     {
       "table": "order",
@@ -6098,7 +5970,7 @@
       "property": "coverageZoneId",
       "secret": false,
       "kind": "text",
-      "position": 32
+      "position": 36
     },
     {
       "table": "order",
@@ -6106,7 +5978,7 @@
       "property": "zoneName",
       "secret": false,
       "kind": "text",
-      "position": 33
+      "position": 37
     },
     {
       "table": "order",
@@ -6114,7 +5986,7 @@
       "property": "zoneSurchargeType",
       "secret": false,
       "kind": "text",
-      "position": 34
+      "position": 38
     },
     {
       "table": "order",
@@ -6122,7 +5994,7 @@
       "property": "zoneSurchargeValue",
       "secret": false,
       "kind": "text",
-      "position": 35
+      "position": 39
     },
     {
       "table": "order",
@@ -6130,7 +6002,7 @@
       "property": "zoneSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 36
+      "position": 40
     },
     {
       "table": "order",
@@ -6138,7 +6010,7 @@
       "property": "paymentSurchargeAmount",
       "secret": false,
       "kind": "text",
-      "position": 37
+      "position": 41
     },
     {
       "table": "order",
@@ -6146,7 +6018,7 @@
       "property": "paymentSurchargePercentage",
       "secret": false,
       "kind": "text",
-      "position": 38
+      "position": 42
     },
     {
       "table": "order",
@@ -6154,7 +6026,7 @@
       "property": "subtotalItems",
       "secret": false,
       "kind": "text",
-      "position": 39
+      "position": 43
     },
     {
       "table": "order",
@@ -6162,7 +6034,7 @@
       "property": "vehicleCarId",
       "secret": false,
       "kind": "text",
-      "position": 40
+      "position": 44
     },
     {
       "table": "order",
@@ -6170,7 +6042,7 @@
       "property": "vehiclePatent",
       "secret": false,
       "kind": "text",
-      "position": 41
+      "position": 45
     },
     {
       "table": "order",
@@ -6178,7 +6050,7 @@
       "property": "vehicleBrand",
       "secret": false,
       "kind": "text",
-      "position": 42
+      "position": 46
     },
     {
       "table": "order",
@@ -6186,7 +6058,7 @@
       "property": "vehicleModel",
       "secret": false,
       "kind": "text",
-      "position": 43
+      "position": 47
     },
     {
       "table": "order_address_change",
@@ -6382,11 +6254,27 @@
     },
     {
       "table": "payment",
+      "column": "status_detail",
+      "property": "statusDetail",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "payment",
+      "column": "status_history",
+      "property": "statusHistory",
+      "secret": false,
+      "kind": "json",
+      "position": 13
+    },
+    {
+      "table": "payment",
       "column": "payment_url",
       "property": "paymentUrl",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 14
     },
     {
       "table": "payment",
@@ -6394,7 +6282,7 @@
       "property": "approvedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 15
     },
     {
       "table": "payment",
@@ -6402,7 +6290,7 @@
       "property": "isDeposit",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 16
     },
     {
       "table": "payment",
@@ -6410,7 +6298,7 @@
       "property": "metadata",
       "secret": false,
       "kind": "json",
-      "position": 15
+      "position": 17
     },
     {
       "table": "payment_refund",

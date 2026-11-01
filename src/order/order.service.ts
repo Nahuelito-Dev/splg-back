@@ -1,7 +1,4 @@
-import {
-  esperaPagoOnline,
-  MENSAJE_MP_SIN_PAGAR,
-} from './domain/espera-pago-online';
+import { esperaPagoOnline, mensajeDeEspera } from './domain/espera-pago-online';
 import { OrderItem } from './entities/order-item.entity';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
 import {
@@ -396,19 +393,34 @@ export class OrderService {
       dto.cancelledBy = await this.quienCancelo(order.orderId);
     } else if (
       order.paymentMethod === PaymentMethod.MERCADOPAGO &&
-      order.paymentStatus === PaymentStatus.PENDING &&
+      (order.paymentStatus === PaymentStatus.PENDING ||
+        order.paymentStatus === PaymentStatus.FAILED) &&
       !order.depositPaid &&
       !choferUserId
     ) {
       // El enlace de pago se genera al crear el pedido (o la seña de una
       // reserva) y se guarda en el registro de cobros: la lectura lo devuelve
-      // mientras siga pendiente, para recuperarlo si se perdió la respuesta del alta.
+      // mientras se pueda pagar con él (pendiente, o un intento rechazado con el
+      // checkout sin vencer), para recuperarlo si se perdió la respuesta del alta
+      // y para que el comprador reintente.
       dto.paymentUrl =
         (await this.createOrderUseCase.enlaceDeCobroPendiente(order.orderId)) ??
         undefined;
     }
     if (incluirChofer) dto.driver = await this.datosDelChofer(order);
     return dto;
+  }
+
+  /**
+   * 404 si quien pregunta no puede leer el pedido (mismas reglas que el detalle).
+   * Para las lecturas que cuelgan del pedido y viven en otro módulo (el estado de su pago).
+   */
+  async assertLegible(
+    id: string,
+    distributorId?: string | null,
+    customerUserId?: string | null,
+  ): Promise<void> {
+    await this.pedidoLegible(id, distributorId, customerUserId);
   }
 
   /**
@@ -820,7 +832,7 @@ export class OrderService {
           locked.status === OrderStatus.ACCEPTED) &&
         esperaPagoOnline(locked)
       ) {
-        throw new ConflictException(MENSAJE_MP_SIN_PAGAR);
+        throw new ConflictException(mensajeDeEspera(locked));
       }
       this.deliveries.assertElegibleParaAsignacion(delivery);
       // Con el chofer bloqueado (el mismo lock que `ponerEnUso`, la baja y la

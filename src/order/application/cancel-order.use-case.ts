@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import { Order, OrderStatus } from '../entities/order.entity';
+import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import { transitionOrder } from '../domain/order-status.machine';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
@@ -16,6 +16,7 @@ import { ReleaseOrderUseCase } from './release-order.use-case';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { RefundsService } from '../../payments/application/refunds.service';
+import { PaymentsService } from '../../payments/application/payments.service';
 import { errorMessage } from '../../common/errors/error-message';
 
 /** Quién dispara la cancelación (define la política de estado y stock). */
@@ -77,6 +78,7 @@ export class CancelOrderUseCase {
     private readonly releaseOrder: ReleaseOrderUseCase,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly refunds: RefundsService,
+    private readonly payments: PaymentsService,
   ) {}
 
   async execute(
@@ -189,6 +191,11 @@ export class CancelOrderUseCase {
       // La cancelación no espera a la pasarela: la devolución sale aparte, con
       // su error registrado, y si falla la retoma el administrador.
       void this.reintegrarPago(order.orderId);
+      // El enlace de pago de Mercado Pago deja de cobrar: sin esto el cliente podría
+      // pagar un pedido cancelado (y el dinero habría que devolverlo).
+      if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
+        void this.payments.cerrarCheckoutsDelPedido(order.orderId);
+      }
     }
 
     return order;

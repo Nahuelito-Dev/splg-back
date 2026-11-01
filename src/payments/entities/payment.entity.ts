@@ -13,6 +13,7 @@ import {
   PaymentGateway,
   PaymentIntegration,
   LedgerPaymentStatus,
+  OrigenDelEstadoDelPago,
 } from '../domain/payment.enums';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { Order } from '../../order/entities/order.entity';
@@ -30,7 +31,27 @@ import { MercadoPagoCredentials } from '../../distributor/entities/mercadopago-c
  * caído), pero como máximo uno queda con `gateway_payment_id` set por cada
  * pago real aprobado en la pasarela (índice único parcial).
  */
+/** Una entrada del historial de estados de un pago. */
+export interface CambioDeEstadoDelPago {
+  /** Estado que informó la pasarela (uno de los nueve). */
+  status: LedgerPaymentStatus;
+  statusDetail: string | null;
+  /** ISO 8601. */
+  at: string;
+  origin: OrigenDelEstadoDelPago;
+  /** false: el aviso llegó fuera de orden y no cambió el estado del pago. */
+  applied: boolean;
+}
+
 @Check('CHK_payment_importe', `"amount" > 0`)
+@Check(
+  'CHK_payment_detalle_del_estado',
+  `"status_detail" IS NULL OR char_length(btrim("status_detail")) > 0`,
+)
+@Check(
+  'CHK_payment_historial_es_lista',
+  `jsonb_typeof("status_history") = 'array'`,
+)
 @Entity('payment')
 export class Payment {
   @PrimaryGeneratedColumn('uuid', { name: 'payment_id' })
@@ -128,6 +149,28 @@ export class Payment {
     default: LedgerPaymentStatus.PENDING,
   })
   status!: LedgerPaymentStatus;
+
+  /**
+   * Motivo que informa la pasarela del estado (`status_detail`: `accredited`,
+   * `cc_rejected_insufficient_amount`, `pending_waiting_payment`...). Es el del
+   * último aviso aplicado.
+   */
+  @Column({
+    name: 'status_detail',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  statusDetail!: string | null;
+
+  /**
+   * Historial de sólo agregar de lo que la pasarela informó del pago: estado,
+   * motivo, cuándo, de dónde salió la lectura y si se aplicó (un aviso fuera de
+   * orden queda registrado pero no cambia el estado). Un trigger de la base impide
+   * quitar o reescribir entradas.
+   */
+  @Column({ name: 'status_history', type: 'jsonb', default: () => "'[]'" })
+  statusHistory!: CambioDeEstadoDelPago[];
 
   /** URL de checkout devuelta por la pasarela (Checkout Pro init_point). */
   @Column({

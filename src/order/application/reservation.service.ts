@@ -25,6 +25,7 @@ import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { errorMessage } from '../../common/errors/error-message';
+import { ConciliacionMercadoPagoService } from './conciliacion-mercadopago.service';
 import { PaymentsService } from '../../payments/application/payments.service';
 import { CashDocumentPaymentService } from '../../cash/application/cash-document-payment.service';
 import {
@@ -59,6 +60,9 @@ export class ReservationService {
   /** Pedidos que cada ciclo procesa por distribuidora. */
   private static readonly LOTE_POR_DISTRIBUIDORA = 50;
 
+  /** Cuándo se miró cada pedido por última vez: el lote siguiente arranca por los menos mirados (si no, 50 «en espera» tapan al resto). */
+  private readonly ultimaMirada = new Map<string, number>();
+
   /** Horas que una reserva puede esperar el pago de la seña antes de expirar. */
   private readonly depositTtlHours: number;
 
@@ -81,6 +85,7 @@ export class ReservationService {
     private readonly payments: PaymentsService,
     private readonly ventasEnCaja: SalesCashService,
     private readonly pagoEnCaja: CashDocumentPaymentService,
+    private readonly conciliacion: ConciliacionMercadoPagoService,
   ) {
     // Validadas y con su valor por defecto en joi.validation.ts.
     this.depositTtlHours = config.getOrThrow<number>(
@@ -118,13 +123,13 @@ export class ReservationService {
     ]);
     for (const distributorId of corren) {
       try {
-        const pedidos = await this.orderRepository.find({
+        const candidatos = await this.orderRepository.find({
           where: { ...where, distributorId },
           order: opciones.order,
           relations: opciones.relations,
-          take: ReservationService.LOTE_POR_DISTRIBUIDORA,
+          take: ReservationService.LOTE_POR_DISTRIBUIDORA * 4,
         });
-        await procesar(pedidos);
+        await procesar(this.losMenosMirados(candidatos));
       } catch (error) {
         await this.frecuencias
           .liberarMarca(tarea, distributorId)
@@ -134,6 +139,20 @@ export class ReservationService {
         );
       }
     }
+  }
+
+  private losMenosMirados(pedidos: Order[]): Order[] {
+    if (this.ultimaMirada.size > 5000) this.ultimaMirada.clear();
+    const lote = [...pedidos]
+      .sort(
+        (a, b) =>
+          (this.ultimaMirada.get(a.orderId) ?? 0) -
+          (this.ultimaMirada.get(b.orderId) ?? 0),
+      )
+      .slice(0, ReservationService.LOTE_POR_DISTRIBUIDORA);
+    const ahora = Date.now();
+    for (const pedido of lote) this.ultimaMirada.set(pedido.orderId, ahora);
+    return lote;
   }
 
   /**
@@ -292,6 +311,8 @@ export class ReservationService {
       {
         status: OrderStatus.RESERVED,
         depositPaid: true,
+        // Una reserva retenida por una alerta de fraude no se activa.
+        paymentFraudHold: false,
         scheduledDate: LessThanOrEqual(today),
       },
       { order: { scheduledDate: 'ASC', createdAt: 'ASC' } },
@@ -347,14 +368,43 @@ export class ReservationService {
 
     this.logger.log(`Expirando ${stale.length} reserva(s) con seña impaga`);
     for (const order of stale) {
+      // Una seña por Mercado Pago pudo pagarse sin que el aviso llegara: antes de
+      // cancelar se le pregunta a la pasarela, igual que con un pedido común. Si hay
+      // un pago cobrado se aplica (queda con la seña paga), si está en curso o la
+      // pasarela no responde se espera.
+      if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
+        const cobro = await this.conciliacion.resolverCobro(order);
+        if (cobro !== 'libre') {
+          this.logger.log(
+            `Reserva ${order.orderId} no se cancela por falta de seña (cobro: ${cobro})`,
+          );
+          continue;
+        }
+      }
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
       try {
-        transitionOrder(order, OrderStatus.CANCELLED);
-        order.cancellationReason =
+        // Re-chequeo con lock pesimista: si el webhook dio por paga la seña un
+        // instante antes, no se toca la reserva.
+        const locked = await queryRunner.manager
+          .createQueryBuilder(Order, 'order')
+          .setLock('pessimistic_write')
+          .where('order.orderId = :id', { id: order.orderId })
+          .getOne();
+        if (
+          !locked ||
+          locked.status !== OrderStatus.RESERVED ||
+          locked.depositPaid ||
+          locked.gatewayPaymentId
+        ) {
+          await queryRunner.commitTransaction();
+          continue;
+        }
+        transitionOrder(locked, OrderStatus.CANCELLED);
+        locked.cancellationReason =
           'Reserva vencida: la seña no se pagó a tiempo';
-        await queryRunner.manager.save(order);
+        await queryRunner.manager.save(locked);
         await this.stock.restituirStock(
           queryRunner.manager,
           (order.items ?? []).map((it) => ({
@@ -366,6 +416,9 @@ export class ReservationService {
         this.logger.log(
           `Reserva ${order.orderId} expirada → cancelada + stock liberado`,
         );
+        if (order.paymentMethod === PaymentMethod.MERCADOPAGO) {
+          void this.payments.cerrarCheckoutsDelPedido(order.orderId);
+        }
       } catch (error) {
         await queryRunner.rollbackTransaction();
         this.logger.error(
@@ -416,6 +469,16 @@ export class ReservationService {
       `Expirando ${stale.length} pedido(s) MercadoPago sin pagar (TTL ${this.mpPendingTtlMinutes}min)`,
     );
     for (const order of stale) {
+      // Antes de cancelar se le pregunta a Mercado Pago: si el cliente pagó y el
+      // aviso no llegó, el pedido se confirma en vez de cancelarse; si la pasarela
+      // no responde, no se cancela (se reintenta en la próxima pasada).
+      const cobro = await this.conciliacion.resolverCobro(order);
+      if (cobro !== 'libre') {
+        this.logger.log(
+          `Pedido ${order.orderId} no se cancela por vencimiento (cobro: ${cobro})`,
+        );
+        continue;
+      }
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
@@ -453,6 +516,9 @@ export class ReservationService {
         this.logger.log(
           `Pedido ${order.orderId} expirado (MercadoPago sin pagar) → cancelado + stock liberado`,
         );
+        // El enlace de pago ya venció solo, pero se cierra igual: el vencimiento del
+        // pedido puede adelantarse al del checkout hasta lo que tarda esta pasada.
+        void this.payments.cerrarCheckoutsDelPedido(order.orderId);
       } catch (error) {
         await queryRunner.rollbackTransaction();
         this.logger.error(

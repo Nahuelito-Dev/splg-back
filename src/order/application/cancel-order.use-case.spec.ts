@@ -8,7 +8,7 @@ import {
   mapRoleToCancelActor,
 } from './cancel-order.use-case';
 import { ReleaseOrderUseCase } from './release-order.use-case';
-import { Order, OrderStatus } from '../entities/order.entity';
+import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
 
 /**
@@ -52,6 +52,7 @@ describe('CancelOrderUseCase', () => {
     onOrderClosed: jest.Mock;
   };
   let refunds: { reintegrarPorCancelacion: jest.Mock };
+  let payments: { cerrarCheckoutsDelPedido: jest.Mock };
   let releaseOrder: ReleaseOrderUseCase;
   let lockedOrder: Order;
 
@@ -117,6 +118,10 @@ describe('CancelOrderUseCase', () => {
       reintegrarPorCancelacion: jest.fn().mockResolvedValue([]),
     };
 
+    payments = {
+      cerrarCheckoutsDelPedido: jest.fn().mockResolvedValue(undefined),
+    };
+
     useCase = new CancelOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
       stock as unknown as import('../../gascylinder/gascylinder.service').GasCylinderService,
@@ -124,6 +129,7 @@ describe('CancelOrderUseCase', () => {
       releaseOrder,
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
       refunds as unknown as import('../../payments/application/refunds.service').RefundsService,
+      payments as unknown as import('../../payments/application/payments.service').PaymentsService,
     );
   });
 
@@ -276,6 +282,24 @@ describe('CancelOrderUseCase', () => {
       );
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(queryRunner.commitTransaction).toHaveBeenCalled();
+    });
+
+    it('al cancelar un pedido de Mercado Pago se cierra su checkout para que el enlace deje de cobrar', async () => {
+      lockedOrder = makeOrder({ paymentMethod: PaymentMethod.MERCADOPAGO });
+      queryBuilder.getOne.mockResolvedValue(lockedOrder);
+
+      await useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba');
+
+      expect(payments.cerrarCheckoutsDelPedido).toHaveBeenCalledWith('ord-1');
+    });
+
+    it('un pedido en efectivo no toca ningún checkout', async () => {
+      lockedOrder = makeOrder({ paymentMethod: PaymentMethod.CASH });
+      queryBuilder.getOne.mockResolvedValue(lockedOrder);
+
+      await useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba');
+
+      expect(payments.cerrarCheckoutsDelPedido).not.toHaveBeenCalled();
     });
 
     it('el chofer que libera el pedido NO dispara ninguna devolución', async () => {

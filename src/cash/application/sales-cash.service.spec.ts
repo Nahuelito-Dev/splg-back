@@ -460,6 +460,108 @@ describe('SalesCashService', () => {
     });
   });
 
+  describe('M-1: contracargo sobre un pago con un reintegro parcial previo', () => {
+    it('express 10000: reintegro del recargo 1500, después contracargo → el egreso es 8500 (el total menos lo ya devuelto)', async () => {
+      ingreso = { cashBoxId: 'wallet-1', amount: 10000 };
+      comprometido = 1500;
+      egresado = 1500;
+
+      await service.asentarDevolucionExterna(manager, {
+        distributorId: DIST,
+        orderId: ORDER,
+        paymentId: 'pay-1',
+        gatewayPaymentId: 'mp-99',
+        refundedTotal: 10000,
+        contracargo: true,
+      });
+
+      expect(Number(registrar.mock.calls[0][1].amount)).toBe(8500);
+      expect(registrar.mock.calls[0][1].description).toMatch(/^Contracargo/);
+    });
+  });
+
+  describe('M-2: contracargo reintegrado al comercio (status_detail reimbursed)', () => {
+    const datos = {
+      distributorId: DIST,
+      orderId: ORDER,
+      paymentId: 'pay-1',
+      gatewayPaymentId: 'mp-99',
+      automatico: true,
+    };
+    const filas = (...f: Array<[string, string, string]>) => {
+      (manager as unknown as { query: jest.Mock }).query = jest
+        .fn()
+        .mockResolvedValue(
+          f.map(([cash_box_id, direction, total]) => ({
+            cash_box_id,
+            direction,
+            total,
+          })),
+        );
+    };
+
+    it('hace el contra-asiento: ingreso a la misma caja por lo que salió como contracargo', async () => {
+      filas(['wallet-1', 'out', '8500.00']);
+
+      expect(await service.asentarContracargoReintegrado(manager, datos)).toBe(
+        'asentado',
+      );
+
+      expect(registrar.mock.calls[0][1]).toMatchObject({
+        cashBoxId: 'wallet-1',
+        direction: CashDirection.IN,
+        referenceType: CashReferenceType.PAYMENT_EXTERNAL_REFUND,
+        referenceId: 'pay-1',
+        userId: null,
+      });
+      expect(Number(registrar.mock.calls[0][1].amount)).toBe(8500);
+      expect(registrar.mock.calls[0][1].description).toMatch(
+        /^Contracargo reintegrado/,
+      );
+    });
+
+    it('S-1: sin la resolución del caso a favor del comercio NO asienta el ingreso: queda a conciliar (si el contracargo había salido de la caja)', async () => {
+      filas(['wallet-1', 'out', '8500.00']);
+
+      expect(
+        await service.asentarContracargoReintegrado(manager, {
+          ...datos,
+          automatico: false,
+        }),
+      ).toBe('a_conciliar');
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('S-1: sin automático y sin egreso previo no hay nada que conciliar', async () => {
+      filas();
+
+      expect(
+        await service.asentarContracargoReintegrado(manager, {
+          ...datos,
+          automatico: false,
+        }),
+      ).toBe('sin_efecto');
+    });
+
+    it('sin duplicar: si el ingreso ya está asentado no hace nada', async () => {
+      filas(['wallet-1', 'out', '8500.00'], ['wallet-1', 'in', '8500.00']);
+
+      expect(await service.asentarContracargoReintegrado(manager, datos)).toBe(
+        'ya_asentado',
+      );
+      expect(registrar).not.toHaveBeenCalled();
+    });
+
+    it('si el contracargo nunca salió de la caja no hay nada que devolver', async () => {
+      filas();
+
+      expect(await service.asentarContracargoReintegrado(manager, datos)).toBe(
+        'sin_efecto',
+      );
+      expect(registrar).not.toHaveBeenCalled();
+    });
+  });
+
   describe('asentarSena', () => {
     it('por transferencia entra a la caja de transferencias y sólo una vez', async () => {
       const sena = {
