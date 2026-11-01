@@ -10,9 +10,19 @@ export class InvitationItemDto {
   @ApiProperty({ format: 'uuid' }) gasCylinderId!: string;
   @ApiProperty({ example: '10kg' }) type!: string;
   @ApiProperty() quantity!: number;
-  @ApiProperty({ description: 'Precio de lista de hoy' }) unitPrice!: number;
   @ApiProperty({
-    description: 'Cantidad por precio de lista (sin promociones ni recargos)',
+    description:
+      'Precio de lista de hoy, sin promoción (es 0 si el producto ya no existe)',
+  })
+  listUnitPrice!: number;
+  @ApiProperty({
+    description:
+      'Precio unitario de hoy con la promoción por volumen que alcanza la cantidad: el mismo que cotiza el pedido',
+  })
+  unitPrice!: number;
+  @ApiProperty({
+    description:
+      'Cantidad por precio unitario con promoción (sin recargos de zona ni de pago)',
   })
   subtotal!: number;
   @ApiProperty({
@@ -54,7 +64,7 @@ export class RepurchaseInvitationResponseDto {
   @ApiProperty({ type: [InvitationItemDto] }) items!: InvitationItemDto[];
   @ApiProperty({
     description:
-      'Suma de los subtotales; el total real se cotiza con `POST /orders/quote`',
+      'Suma de los subtotales con promoción; el total real (con zona y recargos) se cotiza con `POST /orders/quote`',
   })
   estimatedTotal!: number;
   @ApiProperty({ type: InvitationAddressDto, nullable: true })

@@ -4,6 +4,7 @@ import { CartService } from './cart.service';
 import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
 import { GasCylinder } from '../gascylinder/entities/gascylinder.entity';
+import { OrderPricingService } from '../order/domain/order-pricing.service';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
 
 const garrafa = (parcial: Partial<GasCylinder> = {}): GasCylinder =>
@@ -76,10 +77,53 @@ describe('CartService', () => {
       items as unknown as Repository<CartItem>,
       dataSource as unknown as DataSource,
       catalogo as unknown as GasCylinderService,
+      new OrderPricingService(),
     );
   });
 
   describe('consultar (CU-125)', () => {
+    it('aplica las promociones activas de cada producto, igual que la cotización', async () => {
+      carts.findOne.mockResolvedValue(cart);
+      items.find.mockResolvedValue([
+        {
+          cartItemId: 'i1',
+          gasCylinderId: 'g1',
+          quantity: 4,
+          unitPrice: 14900,
+          gasCylinder: garrafa({
+            price: 14900,
+            promotions: [
+              { quantity: 2, discountPercentage: 5 },
+              { quantity: 4, discountPercentage: 12 },
+            ] as GasCylinder['promotions'],
+          }),
+        },
+        {
+          cartItemId: 'i2',
+          gasCylinderId: 'g2',
+          quantity: 1,
+          unitPrice: 20000,
+          gasCylinder: garrafa({ gasCylinderId: 'g2', price: 20000 }),
+        },
+      ]);
+
+      const { vista } = await service.consultar('u1', 'd1');
+
+      expect(vista.items[0]).toMatchObject({
+        listUnitPrice: 14900,
+        discountPercentage: 12,
+        currentUnitPrice: 13112,
+        subtotal: 52448,
+      });
+      expect(vista.items[1].discountPercentage).toBe(0);
+      expect(vista.total).toBe(72448);
+      expect(items.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          relations: { gasCylinder: { promotions: true } },
+        }),
+      );
+    });
+
     it('sin carrito responde uno vacío, no un error', async () => {
       carts.findOne.mockResolvedValue(null);
 

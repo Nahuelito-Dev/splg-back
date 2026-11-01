@@ -16,6 +16,7 @@ import {
   CANTIDAD_MAXIMA_POR_ITEM,
   VistaDelCarrito,
 } from './domain/cart-view';
+import { OrderPricingService } from '../order/domain/order-pricing.service';
 
 /** El carrito de un cliente en una distribuidora, con su vista calculada. */
 export interface CarritoConsultado {
@@ -44,6 +45,7 @@ export class CartService {
     private readonly items: Repository<CartItem>,
     private readonly dataSource: DataSource,
     private readonly catalogo: GasCylinderService,
+    private readonly pricing: OrderPricingService,
   ) {}
 
   /**
@@ -55,7 +57,7 @@ export class CartService {
     distributorId: string,
   ): Promise<CarritoConsultado> {
     const cart = await this.carts.findOne({ where: { userId, distributorId } });
-    if (!cart) return { cart: null, vista: armarVista([]) };
+    if (!cart) return { cart: null, vista: armarVista([], this.pricing) };
     return { cart, vista: await this.vistaDe(cart, this.items) };
   }
 
@@ -308,7 +310,7 @@ export class CartService {
   ): Promise<VistaDelCarrito> {
     const renglones = await repo.find({
       where: { cartId: cart.cartId },
-      relations: { gasCylinder: true },
+      relations: { gasCylinder: { promotions: true } },
       order: { gasCylinder: { type: 'ASC' } },
     });
     return armarVista(
@@ -318,10 +320,12 @@ export class CartService {
         type: r.gasCylinder.type,
         quantity: r.quantity,
         savedUnitPrice: r.unitPrice,
-        currentUnitPrice: r.gasCylinder.price,
+        listUnitPrice: r.gasCylinder.price,
+        promotions: r.gasCylinder.promotions,
         available: r.gasCylinder.isActive,
         hasEnoughStock: r.gasCylinder.stock >= r.quantity,
       })),
+      this.pricing,
     );
   }
 }

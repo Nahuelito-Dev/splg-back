@@ -74,6 +74,7 @@ describe('RepurchaseMapper', () => {
           gasCylinderId: 'g10',
           type: '10kg',
           quantity: 2,
+          listUnitPrice: 14900,
           unitPrice: 14900,
           subtotal: 29800,
           available: true,
@@ -82,6 +83,7 @@ describe('RepurchaseMapper', () => {
           gasCylinderId: 'gx',
           type: 'Producto no disponible',
           quantity: 1,
+          listUnitPrice: 0,
           unitPrice: 0,
           subtotal: 0,
           available: false,
@@ -104,6 +106,23 @@ describe('RepurchaseMapper', () => {
         paymentMethod: PaymentMethod.CASH,
         orderId: null,
       });
+    });
+
+    it('el monto estimado aplica las promociones activas de cada producto', () => {
+      const d = detalle();
+      Object.assign(d.garrafas.get('g10')!, {
+        promotions: [
+          { quantity: 2, discountPercentage: 5 },
+          { quantity: 4, discountPercentage: 12 },
+        ],
+      });
+      const dto = RepurchaseMapper.invitation(invitacion(), d);
+      expect(dto.items[0]).toMatchObject({
+        listUnitPrice: 14900,
+        unitPrice: 14155,
+        subtotal: 28310,
+      });
+      expect(dto.estimatedTotal).toBe(28310);
     });
 
     it('marca como no disponible lo que no alcanza de stock y usa la dirección formateada', () => {
