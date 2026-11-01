@@ -75,6 +75,10 @@ export enum PaymentStatus {
   `"totalAmount" >= 0 AND "subtotal_items" >= 0 AND "zone_surcharge_amount" >= 0 AND "express_surcharge_amount" >= 0 AND "payment_surcharge_amount" >= 0 AND "deposit_amount" >= 0`,
 )
 @Check(
+  'CHK_order_recargo_porcentaje',
+  `"payment_surcharge_percentage" IS NULL OR ("payment_surcharge_percentage" BETWEEN 0 AND 30 AND ("payment_surcharge_amount" = 0 OR "payment_surcharge_percentage" > 0))`,
+)
+@Check(
   'CHK_order_total_formula',
   `"totalAmount" = "subtotal_items" + "zone_surcharge_amount" + "payment_surcharge_amount" + CASE WHEN "express_degraded_at" IS NULL THEN "express_surcharge_amount" ELSE 0 END`,
 )
@@ -495,6 +499,23 @@ export class Order {
     default: 0,
   })
   paymentSurchargeAmount!: number;
+
+  /**
+   * Porcentaje de recargo por medio de pago con que se calculó
+   * `payment_surcharge_amount` (parámetro de la distribuidora al momento de
+   * crear o recalcular el pedido). Un cambio posterior del parámetro no altera
+   * el pedido. `null` en los pedidos anteriores a que fuera configurable (regía
+   * 10 % online y 0 % en efectivo).
+   */
+  @Column({
+    name: 'payment_surcharge_percentage',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: columnNumericTransformer,
+  })
+  paymentSurchargePercentage!: number | null;
 
   /** Subtotal de los ítems (ya con promociones), antes de cualquier recargo. */
   @Column({

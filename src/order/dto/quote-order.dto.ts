@@ -88,9 +88,16 @@ export class QuoteResponseDto {
   @ApiProperty({
     example: 1995,
     description:
-      'Recargo por medio de pago: +10% sobre subtotal + recargo de zona en `mercadopago` y `transfer`; 0 en `cash`',
+      'Recargo por medio de pago en pesos: `paymentSurchargePercentage` % sobre subtotal + recargo de zona (parámetro de la distribuidora por medio de pago; por omisión 10 en `mercadopago` y `transfer`, 0 en `cash`)',
   })
   paymentSurcharge!: number;
+
+  @ApiProperty({
+    example: 10,
+    description:
+      'Porcentaje de recargo del medio de pago con que se calculó `paymentSurcharge` (0 a 30, hasta 2 decimales). Es el que queda guardado en el pedido',
+  })
+  paymentSurchargePercentage!: number;
 
   @ApiProperty({
     enum: OrderDeliveryMode,

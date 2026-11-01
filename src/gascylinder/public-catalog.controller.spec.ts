@@ -35,10 +35,18 @@ const garrafa = (over: Partial<GasCylinder> = {}): GasCylinder =>
 
 describe('GET /public/distributors/:slug/catalog', () => {
   let app: INestApplication<Server>;
-  let productos: { catalogoPublico: jest.Mock };
+  let productos: {
+    catalogoPublico: jest.Mock;
+    mediosDePagoPublicos: jest.Mock;
+  };
 
   beforeEach(async () => {
     productos = {
+      mediosDePagoPublicos: jest.fn().mockResolvedValue([
+        { name: 'Efectivo', key: 'CASH', surcharge: 0 },
+        { name: 'Transferencia', key: 'TRANSFER', surcharge: 7.5 },
+        { name: 'Mercado Pago', key: 'MERCADOPAGO', surcharge: 10 },
+      ]),
       catalogoPublico: jest.fn().mockResolvedValue({
         distributor: { slug: 'demo', name: 'Demo' },
         products: [garrafa(), garrafa({ gasCylinderId: 'g2', stock: 0 })],
@@ -97,6 +105,27 @@ describe('GET /public/distributors/:slug/catalog', () => {
     );
   });
 
+  it('los medios de pago públicos traen el recargo vigente de cada uno', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/public/distributors/demo/payment-methods')
+      .expect(200);
+    expect(productos.mediosDePagoPublicos).toHaveBeenCalledWith('demo');
+    expect(res.body).toEqual([
+      { name: 'Efectivo', key: 'CASH', surcharge: 0 },
+      { name: 'Transferencia', key: 'TRANSFER', surcharge: 7.5 },
+      { name: 'Mercado Pago', key: 'MERCADOPAGO', surcharge: 10 },
+    ]);
+  });
+
+  it('medios de pago de un slug inexistente: 404', async () => {
+    productos.mediosDePagoPublicos.mockRejectedValue(
+      new NotFoundException('x'),
+    );
+    await request(app.getHttpServer())
+      .get('/public/distributors/nada/payment-methods')
+      .expect(404);
+  });
+
   it('un slug inexistente responde 404', async () => {
     productos.catalogoPublico.mockRejectedValue(new NotFoundException('x'));
     await request(app.getHttpServer())
@@ -116,6 +145,7 @@ describe('GasCylinderService.catalogoPublico', () => {
     service = new GasCylinderService(
       repo as unknown as Repository<GasCylinder>,
       distribuidoras as unknown as DistributorService,
+      {} as never,
       {} as never,
     );
   });

@@ -30,6 +30,8 @@ export enum ConfigurableProcess {
   DISPATCH = 'dispatch',
   /** Frecuencia de las tareas programadas (CU-173). */
   SCHEDULED_TASKS = 'scheduled_tasks',
+  /** Recargo por medio de pago, en % (transferencia, Mercado Pago, efectivo). */
+  PAYMENT_SURCHARGES = 'payment_surcharges',
 }
 
 /**
@@ -121,6 +123,18 @@ const CHECK_AGRUPACION = RANGOS_DE_LA_AGRUPACION.map(
     `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'groupingRadiusKm' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
 ).join(' AND ');
 
+/** Recargos por medio de pago: 0 a 30 %, hasta 2 decimales (cada clave puede faltar). */
+const CHECK_RECARGOS = [
+  'transferPercentage',
+  'mercadoPagoPercentage',
+  'cashPercentage',
+]
+  .map(
+    (k) =>
+      `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN 0 AND 30 AND ("params" ->> '${k}')::numeric = round(("params" ->> '${k}')::numeric, 2)))`,
+  )
+  .join(' AND ');
+
 /**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
@@ -141,6 +155,10 @@ const CHECK_AGRUPACION = RANGOS_DE_LA_AGRUPACION.map(
 @Check(
   'CHK_module_config_agrupacion',
   `"module" <> 'route_batching' OR (${CHECK_AGRUPACION})`,
+)
+@Check(
+  'CHK_module_config_recargos',
+  `"module"::text <> 'payment_surcharges' OR (${CHECK_RECARGOS})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

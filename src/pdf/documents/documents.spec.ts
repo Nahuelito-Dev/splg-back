@@ -21,7 +21,11 @@ import {
 import { CobrosDeEfectivoDto } from '../../reports/dto/report-response.dto';
 
 const esPdf = (b: Buffer) => b.subarray(0, 5).toString() === '%PDF-';
-const SIN_EXTRA = { deliveryCode: null, paymentSurchargeAmount: 0 };
+const SIN_EXTRA = {
+  deliveryCode: null,
+  paymentSurchargeAmount: 0,
+  paymentSurchargePercentage: null,
+};
 
 describe('documentos PDF', () => {
   it('textos con emojis, otros alfabetos y notas enormes no rompen el PDF', async () => {
@@ -44,7 +48,11 @@ describe('documentos PDF', () => {
     it('es un PDF con el membrete, el cliente, los ítems, los recargos y el total', async () => {
       const pdf = await renderRemito(
         pedidoDePrueba(),
-        { deliveryCode: '483920', paymentSurchargeAmount: 500 },
+        {
+          deliveryCode: '483920',
+          paymentSurchargeAmount: 500,
+          paymentSurchargePercentage: 7.5,
+        },
         MEMBRETE_DE_PRUEBA,
       );
 
@@ -60,6 +68,7 @@ describe('documentos PDF', () => {
       expect(texto).toContain('Garrafa 10kg');
       expect(texto).toContain('$ 29.800,00');
       expect(texto).toContain('Recargo zona Garupá');
+      expect(texto).toContain('Recargo por medio de pago (7,5 %)');
       expect(texto).toContain('Recargo envío express');
       expect(texto).toContain('Recargo por medio de pago');
       expect(texto).toContain('$ 33.300,00');

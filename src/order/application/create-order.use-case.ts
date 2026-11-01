@@ -51,6 +51,7 @@ import { PaymentsService } from '../../payments/application/payments.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { ExpressAvailabilityService } from './express-availability.service';
 import { DistributorService } from '../../distributor/distributor.service';
+import { PaymentSurchargeSettingsService } from '../../distributor/payment-surcharge-settings.service';
 import { TimeSlotService } from '../../time-slot/time-slot.service';
 import { errorCode, errorMessage } from '../../common/errors/error-message';
 import { coordenadasDePunto } from '../../common/geo/punto';
@@ -58,6 +59,12 @@ import { DomainError } from '../../common/errors/domain.error';
 import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
 
 /** Tipo de pago del pedido según el medio elegido. */
+export const MENSAJE_CAMBIO_EL_PRECIO =
+  'Cambió el precio: revisá el total y confirmá de nuevo';
+
+/** Porcentaje que regía antes de que el recargo fuera configurable en los medios online. */
+const RECARGO_ONLINE_ANTERIOR = 10;
+
 export function paymentTypeDe(method: PaymentMethod): PaymentType {
   if (method === PaymentMethod.CASH) return PaymentType.CASH;
   if (method === PaymentMethod.ACCOUNT) return PaymentType.ACCOUNT;
@@ -115,6 +122,7 @@ export class CreateOrderUseCase {
     private readonly expressAvailability: ExpressAvailabilityService,
     // Venta a cuenta corriente: el crédito se verifica en esta misma transacción.
     private readonly customerAccount: CustomerAccountPort,
+    private readonly paymentSurcharges: PaymentSurchargeSettingsService,
   ) {}
 
   /**
@@ -260,13 +268,35 @@ export class CreateOrderUseCase {
         await this.reservarRenglones(queryRunner.manager, items, distributorId);
 
       // Recargos de zona y de método de pago (ver `calcularTotales`).
+      const paymentSurchargePercentage = await this.porcentajeDeRecargo(
+        distributorId,
+        createOrderDto.paymentMethod,
+      );
       const { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount } =
         this.calcularTotales(
           subtotalItems,
           coverageZone,
-          createOrderDto.paymentMethod,
+          paymentSurchargePercentage,
           expressSurcharge,
         );
+
+      // Lo cotizado tiene que ser lo cobrado: si la cotización que vio el cliente
+      // ya no es el total de hoy, no se crea nada.
+      if (
+        createOrderDto.expectedTotal !== undefined &&
+        createOrderDto.expectedTotal !== null &&
+        !new Decimal(createOrderDto.expectedTotal).equals(
+          totalAmount.toDecimalPlaces(2, Decimal.ROUND_HALF_UP),
+        )
+      ) {
+        throw new ConflictException({
+          message: MENSAJE_CAMBIO_EL_PRECIO,
+          code: 'PRICE_CHANGED',
+          total: totalAmount
+            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+            .toNumber(),
+        });
+      }
 
       // Venta a cuenta: bloquea la cuenta del cliente y valida el crédito con el
       // total ya calculado. Va después de reservar el stock (orden de locks).
@@ -325,6 +355,7 @@ export class CreateOrderUseCase {
         zoneSurchargeValue: coverageZone?.value ?? null,
         zoneSurchargeAmount: zoneSurchargeAmount.toNumber(),
         paymentSurchargeAmount: paymentSurchargeAmount.toNumber(),
+        paymentSurchargePercentage,
         subtotalItems: subtotalItems.toNumber(),
         deliveryMode: esExpress
           ? OrderDeliveryMode.EXPRESS
@@ -617,17 +648,57 @@ export class CreateOrderUseCase {
   }
 
   /**
+   * El % de recargo del medio de pago que rige para un pedido nuevo (parámetro
+   * de la distribuidora). Una sola fuente para cotizar, crear y recotizar.
+   */
+  porcentajeDeRecargo(
+    distributorId: string | null | undefined,
+    paymentMethod: PaymentMethod,
+  ): Promise<number> {
+    return this.paymentSurcharges.porcentaje(distributorId, paymentMethod);
+  }
+
+  /**
+   * El % de un pedido que se vuelve a calcular. Si el medio de pago es el mismo
+   * conserva el % con que se calculó (un cambio del parámetro no altera pedidos
+   * existentes; los anteriores a la parametrización regían 10 % online: se deduce del
+   * recargo que se les cobró, 10 % si fue mayor a 0 y 0 % si no); si cambia de medio rige el vigente de la distribuidora.
+   */
+  async porcentajeDeRecargoDelPedido(
+    pedido: {
+      distributorId: string | null;
+      paymentMethod: PaymentMethod;
+      paymentSurchargePercentage: number | null;
+      paymentSurchargeAmount: number;
+    },
+    paymentMethod: PaymentMethod,
+  ): Promise<number> {
+    if (pedido.paymentMethod === paymentMethod) {
+      if (typeof pedido.paymentSurchargePercentage === 'number') {
+        return pedido.paymentSurchargePercentage;
+      }
+      // Anterior a la parametrización: regía 10 % online. Un pedido que se
+      // cobró sin recargo (monto 0) conserva 0 %.
+      return Number(pedido.paymentSurchargeAmount) > 0
+        ? RECARGO_ONLINE_ANTERIOR
+        : 0;
+    }
+    return this.porcentajeDeRecargo(pedido.distributorId, paymentMethod);
+  }
+
+  /**
    * Total del pedido a partir del subtotal de ítems (YA con promociones):
    * recargo de zona (fijo, o porcentual sobre el subtotal) y DESPUÉS recargo
-   * por método de pago (+10% online), que se aplica sobre el total con el
-   * recargo de zona ya sumado. El recargo express (CU-147) se suma al final y
-   * no lleva el recargo por método de pago: así lo que se devuelve si el pedido
-   * pierde el express es exactamente lo que se cobró de más.
+   * por medio de pago (`paymentSurchargePercentage`, en %), que se aplica sobre
+   * el total con el recargo de zona ya sumado. El recargo express (CU-147) se
+   * suma al final y no lleva el recargo por medio de pago: así lo que se
+   * devuelve si el pedido pierde el express es exactamente lo que se cobró de
+   * más.
    */
   calcularTotales(
     subtotalItems: Decimal.Value,
     coverageZone: ZonaParaRecargo | null,
-    paymentMethod: PaymentMethod,
+    paymentSurchargePercentage: number | Decimal,
     expressSurcharge: Decimal.Value = 0,
   ): {
     totalAmount: Decimal;
@@ -642,7 +713,7 @@ export class CreateOrderUseCase {
     // El recargo se guarda aparte y redondeado a 2 decimales, igual que el
     // resto de los montos: el total es exactamente la suma de sus partes.
     const conRecargo = this.pricing
-      .applyPaymentSurcharge(base, paymentMethod)
+      .applyPaymentSurcharge(base, paymentSurchargePercentage)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const paymentSurchargeAmount = conRecargo.minus(base);
     const totalAmount = conRecargo.plus(expressSurcharge);

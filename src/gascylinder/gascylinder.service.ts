@@ -22,6 +22,7 @@ import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { DistributorService } from '../distributor/distributor.service';
+import { PaymentSurchargeSettingsService } from '../distributor/payment-surcharge-settings.service';
 import {
   Distributor,
   DistributorStatus,
@@ -52,12 +53,6 @@ const CON_PROMOCIONES = ['promotions'];
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Medios de pago del catálogo, con su recargo en porcentaje. */
-const MEDIOS_DE_PAGO: MedioDePagoDto[] = [
-  { name: 'Efectivo', key: 'CASH', surcharge: 0 },
-  { name: 'MercadoPago / Transferencia', key: 'TRANSFER', surcharge: 10 },
-];
-
 @Injectable()
 export class GasCylinderService {
   private readonly logger = new Logger(GasCylinderService.name);
@@ -67,6 +62,7 @@ export class GasCylinderService {
     private readonly gasCylinderRepository: Repository<GasCylinder>,
     private readonly distributorService: DistributorService,
     private readonly eventos: EventEmitter2,
+    private readonly paymentSurcharges: PaymentSurchargeSettingsService,
   ) {}
 
   /**
@@ -318,7 +314,7 @@ export class GasCylinderService {
         'El stock se cambia con un ajuste de stock (PATCH /gascylinder/{id}/stock o POST /stock/adjustments), no al editar el producto',
       );
     }
-    const cambios = updateGasCylinderDto;
+    const { promotions, ...cambios } = updateGasCylinderDto;
     const gasCylinder = await this.gasCylinderRepository.preload({
       gasCylinderId: id,
       ...cambios,
@@ -329,15 +325,66 @@ export class GasCylinderService {
     }
     this.sinEscribirElVendible(gasCylinder);
 
-    // Si vinieron promociones, reemplazan a las anteriores (las que no están
-    // en la lista se dan de baja: orphanedRowAction). Cambiarle el tipo al de otro
-    // producto de la distribuidora choca con la unicidad: 409 (H-88).
+    // Cambiarle el tipo al de otro producto de la distribuidora choca con la
+    // unicidad: 409 (H-88).
     try {
-      await this.gasCylinderRepository.save(gasCylinder);
+      if (promotions === undefined) {
+        await this.gasCylinderRepository.save(gasCylinder);
+      } else {
+        await this.gasCylinderRepository.manager.transaction(
+          async (manager) => {
+            await manager.save(gasCylinder);
+            await this.reemplazarPromociones(manager, id, promotions);
+          },
+        );
+      }
     } catch (error) {
       return this.handleDBExceptions(error);
     }
     return this.findOne(id, distributorId);
+  }
+
+  /**
+   * Deja las promociones vigentes del producto como la lista que vino: la que
+   * ya existe para esa cantidad se conserva (y cambia su descuento si hace
+   * falta), las nuevas se agregan y las que no vinieron se dan de baja. Reenviar
+   * la misma lista no toca nada. Va en la transacción del producto y bajo el
+   * lock de su fila.
+   */
+  private async reemplazarPromociones(
+    manager: EntityManager,
+    gasCylinderId: string,
+    nuevas: PromocionDto[],
+  ): Promise<void> {
+    await this.bloquear(manager, gasCylinderId);
+    const vigentes = await manager.find(GasCylinderPromotion, {
+      where: { gasCylinderId },
+    });
+    const porCantidad = new Map(vigentes.map((p) => [p.quantity, p]));
+    const pedidas = new Set(nuevas.map((p) => p.quantity));
+
+    // Primero las bajas y después las altas: la unicidad es por cantidad vigente.
+    const sobran = vigentes.filter((p) => !pedidas.has(p.quantity));
+    if (sobran.length > 0) {
+      await manager.softRemove(GasCylinderPromotion, sobran);
+    }
+    for (const nueva of nuevas) {
+      const actual = porCantidad.get(nueva.quantity);
+      if (!actual) {
+        await manager.save(
+          manager.create(GasCylinderPromotion, {
+            gasCylinderId,
+            quantity: nueva.quantity,
+            discountPercentage: nueva.discountPercentage,
+          }),
+        );
+      } else if (
+        Number(actual.discountPercentage) !== Number(nueva.discountPercentage)
+      ) {
+        actual.discountPercentage = nueva.discountPercentage;
+        await manager.save(actual);
+      }
+    }
   }
 
   /**
@@ -471,6 +518,35 @@ export class GasCylinderService {
     return { distributor, products };
   }
 
+  /** Los medios de pago de la distribuidora con el recargo (%) que rige hoy. */
+  async mediosDePago(
+    distributorId: string | null | undefined,
+  ): Promise<MedioDePagoDto[]> {
+    const recargos = await this.paymentSurcharges.obtener(distributorId);
+    return [
+      { name: 'Efectivo', key: 'CASH', surcharge: recargos.cashPercentage },
+      {
+        name: 'Transferencia',
+        key: 'TRANSFER',
+        surcharge: recargos.transferPercentage,
+      },
+      {
+        name: 'Mercado Pago',
+        key: 'MERCADOPAGO',
+        surcharge: recargos.mercadoPagoPercentage,
+      },
+    ];
+  }
+
+  /** Lo mismo para un visitante: por slug; 404 si no existe o no está activa. */
+  async mediosDePagoPublicos(slug: string): Promise<MedioDePagoDto[]> {
+    const distributor = await this.distributorService.findBySlug(slug);
+    if (distributor.status !== DistributorStatus.ACTIVE) {
+      throw new NotFoundException(`Distribuidora '${slug}' no encontrada`);
+    }
+    return this.mediosDePago(distributor.distributorId);
+  }
+
   async getAvailableCylinders(
     distributor?: string,
   ): Promise<{ products: GasCylinder[]; paymentMethods: MedioDePagoDto[] }> {
@@ -487,7 +563,8 @@ export class GasCylinderService {
       order: { type: 'ASC' },
     });
 
-    return { products, paymentMethods: MEDIOS_DE_PAGO };
+    const paymentMethods = await this.mediosDePago(distributorId);
+    return { products, paymentMethods };
   }
 
   /**
@@ -788,7 +865,14 @@ export class GasCylinderService {
 }
 
 /** Dos promociones para la misma cantidad serían ambiguas: 400. */
-function assertPromocionesSinRepetir(promociones?: PromocionDto[]): void {
+function assertPromocionesSinRepetir(
+  promociones?: PromocionDto[] | null,
+): void {
+  if (promociones === null) {
+    throw new BadRequestException(
+      'promotions no puede ser null: omitila para dejarlas como están o mandá [] para quitarlas todas',
+    );
+  }
   if (!promociones) return;
   const cantidades = promociones.map((p) => p.quantity);
   if (new Set(cantidades).size !== cantidades.length) {

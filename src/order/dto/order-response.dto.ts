@@ -349,6 +349,22 @@ export class OrderResponseDto {
   expressSurchargeAmount!: number;
 
   @ApiProperty({
+    example: 2000,
+    description:
+      'Recargo por medio de pago en pesos (0 en efectivo sin recargo). Es parte del `total_amount`: subtotal de ítems + recargo de zona + este recargo (+ el express vigente).',
+  })
+  paymentSurchargeAmount!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 10,
+    description:
+      'Porcentaje con que se calculó `paymentSurchargeAmount` (parámetro de la distribuidora al crear o recalcular el pedido; un cambio posterior no lo altera). `null` en pedidos anteriores a que el recargo fuera configurable (regía 10 % online, 0 % en efectivo).',
+  })
+  paymentSurchargePercentage!: number | null;
+
+  @ApiProperty({
     type: String,
     format: 'date-time',
     nullable: true,

@@ -38,6 +38,7 @@ describe('PdfDocumentsService', () => {
       findOne: jest.fn().mockResolvedValue({
         deliveryCode: '654321',
         paymentSurchargeAmount: 0,
+        paymentSurchargePercentage: null,
       }),
     };
     rendiciones = { detalle: jest.fn().mockResolvedValue(rendicionDePrueba()) };

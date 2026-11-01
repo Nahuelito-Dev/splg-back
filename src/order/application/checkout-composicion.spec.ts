@@ -216,6 +216,7 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
         }),
       } as never,
       { assertCredito: jest.fn() } as never,
+      { porcentaje: jest.fn().mockResolvedValue(10) } as never,
     );
 
     confirmar = new ConfirmPaymentUseCase(

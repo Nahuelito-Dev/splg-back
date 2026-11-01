@@ -46,7 +46,11 @@ describe('ChangeOrderAddressUseCase', () => {
   };
   let locked: Order | null;
   let ofertasVivas: Array<{ driverId: string }>;
-  let create: { resolverZona: jest.Mock; calcularTotales: jest.Mock };
+  let create: {
+    resolverZona: jest.Mock;
+    calcularTotales: jest.Mock;
+    porcentajeDeRecargoDelPedido: jest.Mock;
+  };
   let addresses: { buscarDelUsuario: jest.Mock };
   let orders: { findByIdFull: jest.Mock };
   let realtime: {
@@ -108,6 +112,7 @@ describe('ChangeOrderAddressUseCase', () => {
     };
     create = {
       resolverZona: jest.fn().mockResolvedValue(null),
+      porcentajeDeRecargoDelPedido: jest.fn().mockResolvedValue(0),
       calcularTotales: jest.fn((sub: number) => ({
         totalAmount: new Decimal(sub),
         zoneSurchargeAmount: new Decimal(0),
@@ -174,12 +179,21 @@ describe('ChangeOrderAddressUseCase', () => {
 
       await cambiar();
 
-      expect(create.calcularTotales).toHaveBeenCalledWith(
-        1000,
-        null,
+      expect(create.calcularTotales).toHaveBeenCalledWith(1000, null, 0, 0);
+    });
+
+    it('recalcula con el % del pedido, no con el vigente: un cambio del parámetro no altera pedidos existentes', async () => {
+      create.porcentajeDeRecargoDelPedido.mockResolvedValue(7.5);
+      locked = makeOrder({ deliveryMode: OrderDeliveryMode.STANDARD });
+
+      await cambiar();
+
+      expect(create.porcentajeDeRecargoDelPedido).toHaveBeenCalledWith(
+        locked,
         PaymentMethod.CASH,
-        0,
       );
+      expect(create.calcularTotales).toHaveBeenCalledWith(1000, null, 7.5, 0);
+      expect(locked?.paymentSurchargePercentage).toBe(7.5);
     });
   });
 

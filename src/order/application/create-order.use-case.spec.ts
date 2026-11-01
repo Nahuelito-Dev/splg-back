@@ -3,6 +3,7 @@ import { EntityManager } from 'typeorm';
 import Decimal from 'decimal.js';
 import { conRespuestaVigilada } from '../../common/interceptors/respuesta-incompleta';
 import { CreateOrderUseCase } from './create-order.use-case';
+import { OrderPricingService } from '../domain/order-pricing.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import {
   OrderDeliveryMode,
@@ -35,6 +36,7 @@ describe('CreateOrderUseCase', () => {
   let addresses: { buscarDelUsuario: jest.Mock };
   let orderItemRepository: { create: jest.Mock };
   let orderRepository: { create: jest.Mock };
+  let paymentSurcharges: { porcentaje: jest.Mock };
   let pricing: { priceItem: jest.Mock; applyPaymentSurcharge: jest.Mock };
   let stock: { reservarStock: jest.Mock; leerBloqueada: jest.Mock };
   let dispatchOrchestrator: { offerToNextDriver: jest.Mock };
@@ -101,7 +103,9 @@ describe('CreateOrderUseCase', () => {
         unitPrice: new Decimal(1000),
         subtotal: new Decimal(2000),
       })),
-      applyPaymentSurcharge: jest.fn((amount: unknown) => amount),
+      applyPaymentSurcharge: jest.fn((amount: Decimal, pct: number | Decimal) =>
+        new OrderPricingService().applyPaymentSurcharge(amount, pct),
+      ),
     };
     stock = {
       leerBloqueada: jest.fn().mockResolvedValue({
@@ -172,6 +176,16 @@ describe('CreateOrderUseCase', () => {
     };
 
     customerAccount = { assertCredito: jest.fn().mockResolvedValue(undefined) };
+    paymentSurcharges = {
+      porcentaje: jest.fn((_d: unknown, medio: PaymentMethod) =>
+        Promise.resolve(
+          medio === PaymentMethod.MERCADOPAGO ||
+            medio === PaymentMethod.TRANSFER
+            ? 10
+            : 0,
+        ),
+      ),
+    };
 
     useCase = new CreateOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
@@ -197,7 +211,50 @@ describe('CreateOrderUseCase', () => {
       cart as unknown as import('../../cart/cart.service').CartService,
       expressAvailability as unknown as import('./express-availability.service').ExpressAvailabilityService,
       customerAccount as unknown as import('../domain/ports/customer-account.port').CustomerAccountPort,
+      paymentSurcharges as unknown as import('../../distributor/payment-surcharge-settings.service').PaymentSurchargeSettingsService,
     );
+  });
+
+  describe('lo cotizado es lo cobrado (expectedTotal)', () => {
+    it.each([
+      [PaymentMethod.CASH, 2000],
+      [PaymentMethod.TRANSFER, 2200],
+      [PaymentMethod.MERCADOPAGO, 2200],
+    ])('%s con el total vigente (%s): crea el pedido', async (medio, total) => {
+      const result = await useCase.execute({
+        ...baseDto,
+        paymentMethod: medio,
+        expectedTotal: total,
+      });
+      expect(result.order.orderId).toBe('ord-1');
+      expect(queryRunner.manager.save).toHaveBeenCalled();
+    });
+
+    it('si el total cambió (el recargo ahora es otro) responde 409 y no crea nada', async () => {
+      paymentSurcharges.porcentaje.mockResolvedValue(7.5);
+      await expect(
+        useCase.execute({
+          ...baseDto,
+          paymentMethod: PaymentMethod.TRANSFER,
+          expectedTotal: 2200,
+        }),
+      ).rejects.toThrow(
+        'Cambió el precio: revisá el total y confirmá de nuevo',
+      );
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(paymentsService.createCheckout).not.toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('un centavo de diferencia alcanza para el 409', async () => {
+      await expect(
+        useCase.execute({ ...baseDto, expectedTotal: 2000.01 }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('sin expectedTotal el alta no compara nada', async () => {
+      await expect(useCase.execute({ ...baseDto })).resolves.toBeDefined();
+    });
   });
 
   describe('CASH', () => {
@@ -563,15 +620,58 @@ describe('CreateOrderUseCase', () => {
       expect(paymentsService.createCheckout).toHaveBeenCalledWith({
         orderId: 'ord-1',
         distributorId: 'dist-default',
-        amount: 2000,
+        amount: 2200,
         isDeposit: false,
         items: [
           { id: 'gc-1', title: 'Garrafa 10kg', quantity: 2, unitPrice: 1000 },
+          {
+            id: 'online-surcharge',
+            title: 'Recargo por pago online',
+            quantity: 1,
+            unitPrice: 200,
+          },
         ],
         payerEmail: 'cliente@test.com',
       });
       expect(result.paymentUrl).toBe('https://mp.test/checkout');
     });
+
+    it.each([
+      [0, 2000, 0],
+      [7.5, 2150, 150],
+      [30, 2600, 600],
+    ])(
+      'con el recargo de la distribuidora en %s %%: cobra %s y guarda el %% en el pedido',
+      async (porcentaje, cobrado, recargo) => {
+        paymentSurcharges.porcentaje.mockResolvedValue(porcentaje);
+
+        await useCase.execute({
+          ...baseDto,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+        });
+
+        expect(paymentSurcharges.porcentaje).toHaveBeenCalledWith(
+          'dist-default',
+          PaymentMethod.MERCADOPAGO,
+        );
+        const llamada = paymentsService.createCheckout.mock.calls[0] as [
+          { amount: number; items: { id: string; unitPrice: number }[] },
+        ];
+        expect(llamada[0].amount).toBe(cobrado);
+        expect(
+          llamada[0].items.find((i) => i.id === 'online-surcharge')?.unitPrice,
+        ).toBe(recargo === 0 ? undefined : recargo);
+        const orden = (
+          orderRepository.create.mock.calls as unknown as Record<
+            string,
+            unknown
+          >[][]
+        )[0][0];
+        expect(orden.paymentSurchargePercentage).toBe(porcentaje);
+        expect(orden.paymentSurchargeAmount).toBe(recargo);
+        expect(orden.totalAmount).toBe(cobrado);
+      },
+    );
 
     it('si la pasarela falla, el pedido queda creado igual sin paymentUrl (best-effort)', async () => {
       paymentsService.createCheckout.mockRejectedValue(new Error('MP caído'));
@@ -670,7 +770,7 @@ describe('CreateOrderUseCase', () => {
       const { totalAmount, paymentSurchargeAmount } = useCase.calcularTotales(
         new Decimal('1000.05'),
         null,
-        PaymentMethod.MERCADOPAGO,
+        10,
       );
 
       // 1000,05 × 1,1 = 1100,055 → 1100,06
@@ -688,6 +788,7 @@ describe('CreateOrderUseCase', () => {
         expect.objectContaining({
           items: [
             expect.objectContaining({ id: 'gc-1' }),
+            expect.objectContaining({ id: 'online-surcharge' }),
             {
               id: 'express-surcharge',
               title: 'Recargo express',

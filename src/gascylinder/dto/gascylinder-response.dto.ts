@@ -65,10 +65,14 @@ export class MedioDePagoDto {
   @ApiProperty({ example: 'Efectivo' })
   name!: string;
 
-  @ApiProperty({ example: 'CASH' })
+  @ApiProperty({ example: 'CASH', enum: ['CASH', 'TRANSFER', 'MERCADOPAGO'] })
   key!: string;
 
-  @ApiProperty({ example: 0 })
+  @ApiProperty({
+    example: 0,
+    description:
+      'Recargo en % que la distribuidora cobra con ese medio de pago (parámetro configurable; el monto exacto lo da `POST /orders/quote`)',
+  })
   surcharge!: number;
 }
 

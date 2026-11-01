@@ -15,6 +15,8 @@ import {
   PaymentStatus,
 } from '../entities/order.entity';
 import { ConflictException } from '@nestjs/common';
+import { PaymentSurchargeSettingsService } from '../../distributor/payment-surcharge-settings.service';
+import type { ModuleConfigService } from '../../distributor/module-config.service';
 import { OrderPricingService } from '../domain/order-pricing.service';
 import { CreateOrderUseCase } from './create-order.use-case';
 import { QuoteOrderUseCase } from './quote-order.use-case';
@@ -41,6 +43,7 @@ describe('QuoteOrderUseCase', () => {
   };
   let expressAvailability: { evaluar: jest.Mock };
   let casoDeUso: QuoteOrderUseCase;
+  let parametrosDeRecargo: Record<string, number> | null;
   let manager: { findOne: jest.Mock; find: jest.Mock };
   let cart: { itemsParaPedido: jest.Mock };
 
@@ -56,6 +59,7 @@ describe('QuoteOrderUseCase', () => {
 
   beforeEach(() => {
     zona = null;
+    parametrosDeRecargo = null;
     cart = {
       itemsParaPedido: jest
         .fn()
@@ -96,6 +100,9 @@ describe('QuoteOrderUseCase', () => {
     const alta = Object.assign(Object.create(CreateOrderUseCase.prototype), {
       expressAvailability,
       pricing: new OrderPricingService(),
+      paymentSurcharges: new PaymentSurchargeSettingsService({
+        parametros: () => Promise.resolve(parametrosDeRecargo),
+      } as unknown as ModuleConfigService),
       coverageZonePricing: new CoverageZonePricingService(),
       orderItemRepository: { create: (x: unknown) => x },
       coverageZoneService: { checkCoverage: jest.fn() },
@@ -209,6 +216,48 @@ describe('QuoteOrderUseCase', () => {
     );
     expect(r.total).toBe(12650); // (10000 + 1500) × 1,1
     expect(r.paymentSurcharge).toBe(1150);
+  });
+
+  it.each([
+    [0, PaymentMethod.TRANSFER, 0],
+    [7.5, PaymentMethod.TRANSFER, 1500],
+    [7.5, PaymentMethod.MERCADOPAGO, 1500],
+    [12.34, PaymentMethod.TRANSFER, 2468],
+    [30, PaymentMethod.MERCADOPAGO, 6000],
+  ])(
+    'el recargo sale del parámetro de la distribuidora: %s %% con %s',
+    async (porcentaje, medio, recargo) => {
+      parametrosDeRecargo = {
+        transferPercentage: porcentaje,
+        mercadoPagoPercentage: porcentaje,
+        cashPercentage: 0,
+      };
+      const r = await casoDeUso.execute(
+        {
+          items: [{ gasCylinderId: G10, quantity: 2, unitPrice: 0 }],
+          paymentMethod: medio,
+        },
+        DIST,
+        CLIENTE,
+      );
+      expect(r.paymentSurchargePercentage).toBe(porcentaje);
+      expect(r.paymentSurcharge).toBe(recargo);
+      expect(r.total).toBe(20000 + recargo);
+    },
+  );
+
+  it('el efectivo lleva su propio porcentaje, que puede ser mayor a cero', async () => {
+    parametrosDeRecargo = { cashPercentage: 2.5 };
+    const r = await casoDeUso.execute(
+      {
+        items: [{ gasCylinderId: G10, quantity: 2, unitPrice: 0 }],
+        paymentMethod: PaymentMethod.CASH,
+      },
+      DIST,
+      CLIENTE,
+    );
+    expect(r.paymentSurchargePercentage).toBe(2.5);
+    expect(r.total).toBe(20500);
   });
 
   it('una reserva descuenta la seña del saldo', async () => {
@@ -584,6 +633,59 @@ describe('QuoteOrderUseCase', () => {
       expect(r.zoneSurcharge).toBe(500);
       expect(r.total).toBe(20500);
       expect(addresses.buscarDelUsuario).not.toHaveBeenCalled();
+    });
+
+    it('editar sin cambiar de medio conserva el % con que se creó el pedido, aunque el parámetro haya cambiado', async () => {
+      parametrosDeRecargo = { transferPercentage: 3 };
+      manager.findOne.mockResolvedValue(
+        pedido({
+          paymentMethod: PaymentMethod.TRANSFER,
+          paymentSurchargePercentage: 7.5,
+        }),
+      );
+      const r = await cotizar({ paymentMethod: PaymentMethod.TRANSFER });
+      expect(r.paymentSurchargePercentage).toBe(7.5);
+      expect(r.total).toBe(21500);
+    });
+
+    it('un pedido anterior a la parametrización conserva el 10 % online que regía', async () => {
+      parametrosDeRecargo = { transferPercentage: 3 };
+      manager.findOne.mockResolvedValue(
+        pedido({
+          paymentMethod: PaymentMethod.TRANSFER,
+          paymentSurchargePercentage: null,
+          paymentSurchargeAmount: 2000,
+        }),
+      );
+      const r = await cotizar({ paymentMethod: PaymentMethod.TRANSFER });
+      expect(r.paymentSurchargePercentage).toBe(10);
+      expect(r.total).toBe(22000);
+    });
+
+    it('un pedido anterior que se cobró sin recargo (monto 0) sigue en 0 % al editarlo', async () => {
+      manager.findOne.mockResolvedValue(
+        pedido({
+          paymentMethod: PaymentMethod.TRANSFER,
+          paymentSurchargePercentage: null,
+          paymentSurchargeAmount: 0,
+        }),
+      );
+      const r = await cotizar({ paymentMethod: PaymentMethod.TRANSFER });
+      expect(r.paymentSurchargePercentage).toBe(0);
+      expect(r.total).toBe(20000);
+    });
+
+    it('cambiar de medio de pago toma el % vigente del medio nuevo', async () => {
+      parametrosDeRecargo = { transferPercentage: 3 };
+      manager.findOne.mockResolvedValue(
+        pedido({
+          paymentMethod: PaymentMethod.CASH,
+          paymentSurchargePercentage: 0,
+        }),
+      );
+      const r = await cotizar({ paymentMethod: PaymentMethod.TRANSFER });
+      expect(r.paymentSurchargePercentage).toBe(3);
+      expect(r.total).toBe(20600);
     });
 
     it('con la seña paga, un total por debajo de la seña es 409', async () => {

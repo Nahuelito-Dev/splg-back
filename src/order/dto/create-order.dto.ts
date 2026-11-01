@@ -5,6 +5,7 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
+  Max,
   IsEnum,
   ArrayNotEmpty,
   ArrayUnique,
@@ -157,4 +158,15 @@ export class CreateOrderDto {
     message: `deliveryMode debe ser uno de: ${Object.values(OrderDeliveryMode).join(', ')}`,
   })
   deliveryMode?: OrderDeliveryMode;
+
+  @ApiPropertyOptional({
+    description:
+      'Total que el cliente vio en la cotización (`total` de `POST /orders/quote`). Si viene y el total que calcula el alta es otro (cambió una promoción, el recargo por medio de pago, la zona…), responde 409 «Cambió el precio: revisá el total y confirmá de nuevo» y no crea nada. Omitido, el alta no compara.',
+    example: 55781,
+  })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  expectedTotal?: number;
 }

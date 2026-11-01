@@ -8,6 +8,8 @@ import { ILike, Repository } from 'typeorm';
 import { GasCylinderService } from './gascylinder.service';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { DistributorService } from '../distributor/distributor.service';
+import { PaymentSurchargeSettingsService } from '../distributor/payment-surcharge-settings.service';
+import { GasCylinderPromotion } from './entities/gascylinder-promotion.entity';
 
 describe('GasCylinderService', () => {
   let service: GasCylinderService;
@@ -23,8 +25,15 @@ describe('GasCylinderService', () => {
     setLock: jest.Mock;
     andWhere: jest.Mock;
   };
-  let txManager: { createQueryBuilder: jest.Mock; save: jest.Mock };
+  let txManager: {
+    createQueryBuilder: jest.Mock;
+    save: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+    softRemove: jest.Mock;
+  };
   let eventos: { emitAsync: jest.Mock };
+  let recargos: { obtener: jest.Mock };
   let distribuidoras: {
     getDefault: jest.Mock;
     findBySlug: jest.Mock;
@@ -63,8 +72,18 @@ describe('GasCylinderService', () => {
         getOne: bloqueado.getOne,
       })),
       save: jest.fn((g: GasCylinder) => Promise.resolve(g)),
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn((_e: unknown, d: object) => d),
+      softRemove: jest.fn().mockResolvedValue([]),
     };
     eventos = { emitAsync: jest.fn().mockResolvedValue([]) };
+    recargos = {
+      obtener: jest.fn().mockResolvedValue({
+        transferPercentage: 10,
+        mercadoPagoPercentage: 10,
+        cashPercentage: 0,
+      }),
+    };
     distribuidoras = {
       getDefault: jest.fn().mockResolvedValue({ distributorId: 'd-default' }),
       findBySlug: jest.fn().mockResolvedValue({ distributorId: 'd-slug' }),
@@ -74,6 +93,7 @@ describe('GasCylinderService', () => {
       productos as unknown as Repository<GasCylinder>,
       distribuidoras as unknown as DistributorService,
       eventos as unknown as EventEmitter2,
+      recargos as unknown as PaymentSurchargeSettingsService,
     );
   });
 
@@ -215,6 +235,165 @@ describe('GasCylinderService', () => {
       (productos as unknown as { preload: jest.Mock }).preload = preload;
       await service.update('g1', { price: 200 }, 'd1');
       expect(preload).toHaveBeenCalledWith({ gasCylinderId: 'g1', price: 200 });
+    });
+  });
+
+  describe('promociones al editar un producto', () => {
+    const vigente = (quantity: number, discountPercentage: number) =>
+      ({
+        promotionId: `p${quantity}`,
+        gasCylinderId: 'g1',
+        quantity,
+        discountPercentage,
+      }) as GasCylinderPromotion;
+
+    beforeEach(() => {
+      productos.findOne.mockResolvedValue(producto(5));
+      (productos as unknown as { preload: jest.Mock }).preload = jest
+        .fn()
+        .mockResolvedValue(producto(5));
+      bloqueado.getOne.mockResolvedValue(producto(5));
+    });
+
+    it('reenviar la misma lista no inserta duplicados ni da de baja nada', async () => {
+      txManager.find.mockResolvedValue([vigente(2, 5), vigente(4, 12)]);
+
+      await service.update(
+        'g1',
+        {
+          price: 300,
+          promotions: [
+            { quantity: 2, discountPercentage: 5 },
+            { quantity: 4, discountPercentage: 12 },
+          ],
+        },
+        'd1',
+      );
+
+      expect(txManager.softRemove).not.toHaveBeenCalled();
+      // sólo se guarda el producto: ninguna promoción
+      expect(txManager.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('la promoción que ya existe para esa cantidad cambia su descuento en vez de duplicarse', async () => {
+      const existente = vigente(3, 8);
+      txManager.find.mockResolvedValue([existente]);
+
+      await service.update(
+        'g1',
+        { promotions: [{ quantity: 3, discountPercentage: 9 }] },
+        'd1',
+      );
+
+      expect(existente.discountPercentage).toBe(9);
+      expect(txManager.save).toHaveBeenCalledWith(existente);
+      expect(txManager.create).not.toHaveBeenCalled();
+    });
+
+    it('agrega las nuevas y da de baja (lógica) las que no vinieron, las bajas antes que las altas', async () => {
+      const sobra = vigente(4, 12);
+      txManager.find.mockResolvedValue([vigente(2, 5), sobra]);
+      const orden: string[] = [];
+      txManager.softRemove.mockImplementation(() => {
+        orden.push('baja');
+        return Promise.resolve([]);
+      });
+      txManager.save.mockImplementation((g: object) => {
+        if (!('gasCylinderId' in g) || 'quantity' in g) orden.push('alta');
+        return Promise.resolve(g);
+      });
+
+      await service.update(
+        'g1',
+        {
+          promotions: [
+            { quantity: 2, discountPercentage: 5 },
+            { quantity: 6, discountPercentage: 20 },
+          ],
+        },
+        'd1',
+      );
+
+      expect(txManager.softRemove).toHaveBeenCalledWith(GasCylinderPromotion, [
+        sobra,
+      ]);
+      expect(txManager.create).toHaveBeenCalledWith(GasCylinderPromotion, {
+        gasCylinderId: 'g1',
+        quantity: 6,
+        discountPercentage: 20,
+      });
+      expect(orden).toEqual(['baja', 'alta']);
+    });
+
+    it('una lista vacía da de baja todas las promociones', async () => {
+      const a = vigente(2, 5);
+      txManager.find.mockResolvedValue([a]);
+      await service.update('g1', { promotions: [] }, 'd1');
+      expect(txManager.softRemove).toHaveBeenCalledWith(GasCylinderPromotion, [
+        a,
+      ]);
+    });
+
+    it('promotions: null es 400 (no 500) y no escribe nada', async () => {
+      await expect(
+        service.update('g1', { promotions: null as never }, 'd1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(productos.save).not.toHaveBeenCalled();
+      expect(txManager.save).not.toHaveBeenCalled();
+    });
+
+    it('sin promotions en el cuerpo no toca las promociones', async () => {
+      await service.update('g1', { price: 10 }, 'd1');
+      expect(txManager.find).not.toHaveBeenCalled();
+      expect(productos.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('medios de pago públicos', () => {
+    it('una distribuidora activa informa su recargo', async () => {
+      distribuidoras.findBySlug.mockResolvedValue({
+        distributorId: 'd-slug',
+        status: 'active',
+      });
+      const medios = await service.mediosDePagoPublicos('demo');
+      expect(recargos.obtener).toHaveBeenCalledWith('d-slug');
+      expect(medios.map((m) => m.key)).toEqual([
+        'CASH',
+        'TRANSFER',
+        'MERCADOPAGO',
+      ]);
+    });
+
+    it('una distribuidora que no está activa es 404', async () => {
+      distribuidoras.findBySlug.mockResolvedValue({
+        distributorId: 'd-slug',
+        status: 'suspended',
+      });
+      await expect(service.mediosDePagoPublicos('demo')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('medios de pago del catálogo', () => {
+    it('informan el recargo vigente de la distribuidora, no un valor fijo', async () => {
+      recargos.obtener.mockResolvedValue({
+        transferPercentage: 7.5,
+        mercadoPagoPercentage: 12,
+        cashPercentage: 2,
+      });
+      (productos as unknown as { find: jest.Mock }).find = jest
+        .fn()
+        .mockResolvedValue([]);
+
+      const { paymentMethods } = await service.getAvailableCylinders('demo');
+
+      expect(recargos.obtener).toHaveBeenCalledWith('d-slug');
+      expect(paymentMethods).toEqual([
+        { name: 'Efectivo', key: 'CASH', surcharge: 2 },
+        { name: 'Transferencia', key: 'TRANSFER', surcharge: 7.5 },
+        { name: 'Mercado Pago', key: 'MERCADOPAGO', surcharge: 12 },
+      ]);
     });
   });
 

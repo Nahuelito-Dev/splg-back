@@ -57,6 +57,7 @@ describe('UpdateOrderUseCase', () => {
     resolverZona: jest.Mock;
     reservarRenglones: jest.Mock;
     calcularTotales: jest.Mock;
+    porcentajeDeRecargoDelPedido: jest.Mock;
   };
   let addresses: { buscarDelUsuario: jest.Mock };
   let slots: {
@@ -126,6 +127,7 @@ describe('UpdateOrderUseCase', () => {
         checkoutItems: [],
         subtotalItems: new Decimal(3000),
       }),
+      porcentajeDeRecargoDelPedido: jest.fn().mockResolvedValue(0),
       calcularTotales: jest.fn((sub: number | Decimal) => ({
         totalAmount: new Decimal(sub),
         zoneSurchargeAmount: new Decimal(0),
@@ -309,7 +311,7 @@ describe('UpdateOrderUseCase', () => {
     expect(create.calcularTotales).toHaveBeenCalledWith(
       expect.anything(),
       { type: 'fixed', value: 300 },
-      PaymentMethod.CASH,
+      0,
     );
   });
 
@@ -482,6 +484,23 @@ describe('UpdateOrderUseCase', () => {
       } as Parameters<UpdateOrderUseCase['execute']>[1]);
       expect(locked?.totalAmount).toBe(3300);
       expect(locked?.paymentSurchargeAmount).toBe(300);
+    });
+
+    it('guarda con el pedido el % que usó para recalcular (el del pedido o el vigente, según el medio)', async () => {
+      create.porcentajeDeRecargoDelPedido.mockResolvedValue(7.5);
+      await comoCliente({
+        items: [{ gasCylinderId: 'g2', quantity: 3 }],
+      } as Parameters<UpdateOrderUseCase['execute']>[1]);
+      expect(create.porcentajeDeRecargoDelPedido).toHaveBeenCalledWith(
+        expect.objectContaining({ orderId: 'o1' }),
+        PaymentMethod.CASH,
+      );
+      expect(create.calcularTotales).toHaveBeenCalledWith(
+        expect.anything(),
+        null,
+        7.5,
+      );
+      expect(locked?.paymentSurchargePercentage).toBe(7.5);
     });
 
     it('el admin no deja anotación de cliente en el historial', async () => {
