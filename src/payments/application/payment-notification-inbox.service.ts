@@ -40,7 +40,8 @@ export class PaymentNotificationInboxService {
   static readonly ESPERA_BASE_MS = 30_000;
   static readonly ESPERA_MAXIMA_MS = 30 * 60_000;
   static readonly LOTE = 20;
-  static readonly RETENCION_POR_DEFECTO_DIAS = 90;
+  /** 0 = no se purga nada (borrado lógico: los avisos se conservan). Sólo se purga si se configura explícitamente. */
+  static readonly RETENCION_POR_DEFECTO_DIAS = 0;
 
   constructor(
     @InjectRepository(PaymentNotificationInbox)
@@ -167,9 +168,10 @@ export class PaymentNotificationInboxService {
   }
 
   /**
-   * Una vez por día borra los avisos ya procesados de más de `PAYMENT_INBOX_RETENTION_DAYS`
-   * días (90 por defecto). Los `failed` NO se purgan: son la evidencia (`raw_body` y
-   * `credential_id`) de una alerta que el sistema no pudo procesar.
+   * Por omisión no borra nada: el sistema no elimina filas (borrado lógico) y los avisos de Mercado
+   * Pago son poco volumen. Sólo si se configura `PAYMENT_INBOX_RETENTION_DAYS` (7 o más), una vez por
+   * día borra los procesados de más de esos días. Los `failed` NO se purgan nunca: son la evidencia
+   * (`raw_body` y `credential_id`) de una alerta que el sistema no pudo procesar.
    */
   @Cron('0 20 4 * * *')
   async purgarProcesados(): Promise<number> {
@@ -177,6 +179,7 @@ export class PaymentNotificationInboxService {
       'PAYMENT_INBOX_RETENTION_DAYS',
       PaymentNotificationInboxService.RETENCION_POR_DEFECTO_DIAS,
     );
+    if (!dias || dias <= 0) return 0;
     const corte = new Date(Date.now() - dias * 24 * 3600 * 1000);
     const r = await this.bandeja.delete({
       status: EstadoDelAvisoGuardado.PROCESSED,
