@@ -611,6 +611,27 @@ const chofer = (n: number, over: Partial<ChoferSim> = {}): ChoferSim => ({
 
 const ahora = new Date('2026-11-01T12:00:00Z');
 
+// El servicio compara vencimientos con el reloj real (`new Date()`): se fija el
+// reloj del test en `ahora` para que las ofertas no venzan según el día en que corre.
+beforeEach(() => {
+  jest.useFakeTimers({
+    now: ahora,
+    doNotFake: [
+      'nextTick',
+      'setImmediate',
+      'clearImmediate',
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+      'queueMicrotask',
+    ],
+  });
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 /** Dos pedidos cercanos de la misma franja y dos choferes, listo para armar. */
 const escenarioBase = () =>
   crearMundo({
