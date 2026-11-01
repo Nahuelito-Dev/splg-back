@@ -147,7 +147,7 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Cambiar los parámetros de un proceso automático',
     description:
-      'Reemplaza la configuración: se guarda sólo lo que viene y lo demás toma su valor por omisión (`{}` restablece los valores por omisión, igual que en el despacho y las tareas programadas). Cada proceso valida con su propio esquema (`GET /module-config/processes`): un parámetro desconocido, de otro tipo o fuera de rango responde 400 con el campo. Los valores los leen los módulos M2 a M5 cuando se construyan: hoy se guardan y se validan, pero ningún proceso los consume todavía. Cuando lo hagan, rigen desde la siguiente ejecución; las que están en curso no se interrumpen.',
+      'Reemplaza la configuración: se guarda sólo lo que viene y lo demás toma su valor por omisión (`{}` restablece los valores por omisión, igual que en el despacho y las tareas programadas). Cada proceso valida con su propio esquema (`GET /module-config/processes`): un parámetro desconocido, de otro tipo o fuera de rango responde 400 con el campo. Los leen los procesos automáticos de cada módulo (M2 planificador de flota, M3 recompra, M4 recorridos, M5 recupero de envases): un cambio rige desde la siguiente ejecución y las que están en curso no se interrumpen. M3, M4 y M5 vienen apagados por omisión (`enabled` = 0) hasta que el administrador los enciende.',
   })
   @ApiParam({ name: 'process', enum: PROCESOS_AUTOMATICOS })
   @ApiBody({
