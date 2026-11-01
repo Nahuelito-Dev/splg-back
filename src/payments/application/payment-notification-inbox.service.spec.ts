@@ -82,7 +82,17 @@ describe('PaymentNotificationInboxService (M-4)', () => {
     expect(sql).toContain('FOR UPDATE SKIP LOCKED');
   });
 
-  it('B-5: purga los procesados viejos (parámetro de días) y nunca los fallidos, que son la evidencia', async () => {
+  it('por omisión no purga nada (borrado lógico)', async () => {
+    bandeja.delete = jest.fn();
+
+    await expect(service.purgarProcesados()).resolves.toBe(0);
+    expect(bandeja.delete).not.toHaveBeenCalled();
+  });
+
+  it('B-5: con PAYMENT_INBOX_RETENTION_DAYS configurado purga los procesados viejos y nunca los fallidos', async () => {
+    (service as unknown as { config: { get: () => number } }).config = {
+      get: () => 90,
+    };
     bandeja.delete = jest.fn().mockResolvedValue({ affected: 3 });
 
     await expect(service.purgarProcesados()).resolves.toBe(3);

@@ -21,7 +21,10 @@ export const JoiValidationSchema = Joi.object({
   // Horas que un pedido de Mercado Pago cancelado se sigue revisando por si entra un
   // pago tardío (se devuelve aunque su aviso se haya perdido).
   // Días que se conservan los avisos de Mercado Pago ya procesados en la bandeja de entrada.
-  PAYMENT_INBOX_RETENTION_DAYS: Joi.number().integer().min(7).default(90),
+  PAYMENT_INBOX_RETENTION_DAYS: Joi.alternatives(
+    Joi.number().valid(0),
+    Joi.number().integer().min(7),
+  ).default(0),
   ORDER_MERCADOPAGO_CANCELLED_SWEEP_HOURS: Joi.number()
     .integer()
     .min(1)
