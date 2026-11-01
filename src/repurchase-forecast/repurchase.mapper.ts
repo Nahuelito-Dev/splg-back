@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { OrderPricingService } from '../order/domain/order-pricing.service';
 import { OrderMapper } from '../order/order.mapper';
 import type { Order } from '../order/entities/order.entity';
 import {
@@ -26,6 +27,9 @@ import {
   RepurchaseStatsResponseDto,
 } from './dto/repurchase-response.dto';
 
+/** La misma regla de precio por renglón que la cotización y el pedido (pura, sin estado). */
+const PRECIOS = new OrderPricingService();
+
 function unidades(invitacion: RepurchaseInvitation): number {
   return invitacion.suggestedItems.reduce((n, i) => n + i.quantity, 0);
 }
@@ -44,13 +48,19 @@ export class RepurchaseMapper {
   ): RepurchaseInvitationResponseDto {
     const items: InvitationItemDto[] = invitacion.suggestedItems.map((i) => {
       const garrafa = detalle.garrafas.get(i.gasCylinderId);
-      const precio = garrafa?.price ?? 0;
+      const lista = garrafa?.price ?? 0;
+      const { unitPrice, subtotal } = PRECIOS.priceItem(
+        lista,
+        garrafa?.promotions,
+        i.quantity,
+      );
       return {
         gasCylinderId: i.gasCylinderId,
         type: garrafa?.type ?? 'Producto no disponible',
         quantity: i.quantity,
-        unitPrice: precio,
-        subtotal: new Decimal(precio).times(i.quantity).toNumber(),
+        listUnitPrice: lista,
+        unitPrice: unitPrice.toNumber(),
+        subtotal: subtotal.toNumber(),
         available: Boolean(garrafa?.isActive && garrafa.stock >= i.quantity),
       };
     });

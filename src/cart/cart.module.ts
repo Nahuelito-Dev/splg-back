@@ -4,6 +4,7 @@ import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
 import { CartController } from './cart.controller';
 import { CartService } from './cart.service';
+import { OrderPricingService } from '../order/domain/order-pricing.service';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
 
 @Module({
@@ -12,7 +13,7 @@ import { GasCylinderModule } from '../gascylinder/gascylinder.module';
     GasCylinderModule, // catálogo: el tipo existe, está activo y es de la distribuidora
   ],
   controllers: [CartController],
-  providers: [CartService],
+  providers: [CartService, OrderPricingService],
   exports: [CartService],
 })
 export class CartModule {}

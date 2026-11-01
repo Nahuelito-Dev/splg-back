@@ -1,9 +1,13 @@
 import { CartController } from './cart.controller';
 import { CartService, CarritoConsultado } from './cart.service';
 import { armarVista } from './domain/cart-view';
+import { OrderPricingService } from '../order/domain/order-pricing.service';
 
 describe('CartController', () => {
-  const vacio: CarritoConsultado = { cart: null, vista: armarVista([]) };
+  const vacio: CarritoConsultado = {
+    cart: null,
+    vista: armarVista([], new OrderPricingService()),
+  };
   let service: Record<
     'consultar' | 'agregarItem' | 'cambiarCantidad' | 'quitarItem' | 'vaciar',
     jest.Mock
