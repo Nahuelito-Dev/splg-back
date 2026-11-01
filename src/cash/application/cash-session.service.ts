@@ -19,7 +19,9 @@ import {
 } from '../domain/errors/cash.errors';
 import {
   CloseCashSessionDto,
+  CloseCashSessionPreviewDto,
   OpenCashSessionDto,
+  PreviewCloseCashSessionDto,
   QueryCashSessionDto,
 } from '../dto/cash-session.dto';
 import { CashBox } from '../entities/cash-box.entity';
@@ -134,11 +136,9 @@ export class CashSessionService {
           const caja = await manager.findOneByOrFail(CashBox, {
             cashBoxId: sesion.cashBoxId,
           });
-          const { entradas, salidas } = await this.totales(manager, sessionId);
-          const { esperado, diferencia } = arqueo(
-            sesion.openingAmount,
-            entradas,
-            salidas,
+          const { esperado, diferencia } = await this.arqueoDe(
+            manager,
+            sesion,
             dto.countedAmount,
           );
           if (!diferencia.isZero()) {
@@ -164,6 +164,39 @@ export class CashSessionService {
         }),
       { context: 'CashSessionService.cerrar' },
     );
+  }
+
+  /**
+   * Vista previa del cierre: la misma cuenta que `cerrar` (esperado y
+   * diferencia contra lo contado), sin asentar nada ni bloquear la caja. Sólo
+   * una sesión abierta se puede cerrar y, por eso, previsualizar.
+   */
+  async vistaPreviaDelCierre(
+    sessionId: string,
+    dto: PreviewCloseCashSessionDto,
+    distributorId: string,
+  ): Promise<CloseCashSessionPreviewDto> {
+    const manager = this.dataSource.manager;
+    const sesion = await manager.findOne(CashSession, {
+      where: { sessionId, distributorId },
+    });
+    if (!sesion) throw new SesionNoEncontradaError(sessionId);
+    if (sesion.status !== CashSessionStatus.OPEN) {
+      throw new ConflictException('La sesión ya está cerrada');
+    }
+    const { entradas, salidas, esperado, diferencia } = await this.arqueoDe(
+      manager,
+      sesion,
+      dto.countedAmount,
+    );
+    const vista = new CloseCashSessionPreviewDto();
+    vista.openingAmount = aCentavos(sesion.openingAmount);
+    vista.totalIn = aCentavos(entradas);
+    vista.totalOut = aCentavos(salidas);
+    vista.expectedAmount = aCentavos(esperado);
+    vista.countedAmount = aCentavos(dto.countedAmount);
+    vista.difference = aCentavos(diferencia);
+    return vista;
   }
 
   async findOne(
@@ -219,6 +252,25 @@ export class CashSessionService {
     return {
       data: sesiones.map((sesion) => ({ sesion, cashBoxName: caja.name })),
       total,
+    };
+  }
+
+  /** La cuenta del arqueo que comparten el cierre y su vista previa. */
+  private async arqueoDe(
+    manager: EntityManager,
+    sesion: CashSession,
+    contado: Decimal.Value,
+  ): Promise<{
+    entradas: Decimal;
+    salidas: Decimal;
+    esperado: Decimal;
+    diferencia: Decimal;
+  }> {
+    const { entradas, salidas } = await this.totales(manager, sesion.sessionId);
+    return {
+      entradas,
+      salidas,
+      ...arqueo(sesion.openingAmount, entradas, salidas, contado),
     };
   }
 

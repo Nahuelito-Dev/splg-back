@@ -10,6 +10,7 @@ import { EmailModule } from '../email/email.module';
 import { EmployeeModule } from '../employee/employee.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { CarFleetController } from './car-fleet.controller';
+import { FleetCostV2Controller } from './fleet-cost-v2.controller';
 import { DriverContextService } from './driver-context.service';
 import { FineDueAlertsCron } from './fine-due-alerts.cron';
 import { FleetCostService } from './fleet-cost.service';
@@ -74,6 +75,7 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     VehicleAccidentController,
     TireController,
     CarFleetController,
+    FleetCostV2Controller,
     FuelLoadV2Controller,
     TireV2Controller,
     VehicleAccidentV2Controller,

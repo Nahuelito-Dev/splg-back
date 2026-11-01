@@ -116,6 +116,18 @@ export class MpSummaryDto {
   })
   differences!: Record<string, number>;
   @ApiProperty({
+    example: 3,
+    description:
+      'Total de diferencias: la suma de `differences` de todos los tipos',
+  })
+  differenceCount!: number;
+  @ApiProperty({
+    example: -120.5,
+    description:
+      'Neto de Mercado Pago menos neto de la caja en el rango (negativo: la caja tiene más)',
+  })
+  netGap!: number;
+  @ApiProperty({
     example: 2,
     description: 'Filas que ya se habían asentado en otra corrida',
   })

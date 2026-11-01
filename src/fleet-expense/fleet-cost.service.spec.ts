@@ -114,6 +114,72 @@ describe('FleetCostService', () => {
     });
   });
 
+  describe('tableroConResumen (API v2)', () => {
+    it('suma los rubros de la flota y calcula el costo por km sólo con los vehículos que tienen km', async () => {
+      cargas = [
+        carga('a', 1000, 1000),
+        carga('a', 1000, 1100), // a: 2000, 100 km
+        carga('b', 1000.1, 1000),
+        carga('b', 1000.2, 1200), // b: 2000.3, 200 km
+      ];
+      fleet.mantenimiento.mockResolvedValue([
+        {
+          carId: 'c',
+          performedAt: new Date('2026-10-12T12:00:00.000Z'),
+          cost: 5000,
+        },
+      ]);
+      const r = await service.tableroConResumen(
+        'd1',
+        '2026-10-01',
+        '2026-10-31',
+      );
+      expect(r).toMatchObject({ from: '2026-10-01', to: '2026-10-31' });
+      expect(r.vehicles).toHaveLength(3);
+      expect(r.summary).toEqual({
+        vehicles: 3,
+        maintenance: 5000,
+        insurance: 0,
+        fuel: 4000.3,
+        fines: 0,
+        accidents: 0,
+        total: 9000.3,
+        km: 300,
+        // (2000 + 2000.3) / 300: el vehículo sin km queda afuera
+        costPerKm: 13.33,
+        withoutKm: 1,
+      });
+    });
+
+    it('sin ningún vehículo con km no hay costo por km, y una flota vacía da ceros', async () => {
+      const sinKm = await service.tableroConResumen(
+        'd1',
+        '2026-10-01',
+        '2026-10-31',
+      );
+      expect(sinKm.summary).toMatchObject({ costPerKm: null, withoutKm: 3 });
+      cars.findAll.mockResolvedValue([]);
+      const vacia = await service.tableroConResumen(
+        'd1',
+        '2026-10-01',
+        '2026-10-31',
+      );
+      expect(vacia.summary).toMatchObject({
+        vehicles: 0,
+        total: 0,
+        costPerKm: null,
+        withoutKm: 0,
+      });
+      expect(vacia.vehicles).toEqual([]);
+    });
+
+    it('un rango invertido es 400', async () => {
+      await expect(
+        service.tableroConResumen('d1', '2026-10-31', '2026-10-01'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   describe('costoDelVehiculo (CU-203)', () => {
     it('un vehículo de otra distribuidora es 404', async () => {
       cars.findOne.mockRejectedValue(new NotFoundException());

@@ -530,3 +530,24 @@ function conciliarDevolucion(
     );
   }
 }
+
+/** Cuántas diferencias hay en total: la suma de las cantidades por tipo. */
+export function totalDeDiferencias(
+  porTipo: Readonly<Record<string, number>>,
+): number {
+  return Object.values(porTipo).reduce((suma, n) => suma + n, 0);
+}
+
+/**
+ * Brecha neta: cuánto más neto informa Mercado Pago que lo que tiene la caja
+ * en el rango (negativa: la caja tiene más).
+ */
+export function brechaNeta(
+  netoMercadoPago: Decimal.Value,
+  netoCaja: Decimal.Value,
+): number {
+  return new Decimal(netoMercadoPago)
+    .minus(netoCaja)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    .toNumber();
+}

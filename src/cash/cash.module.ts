@@ -21,6 +21,7 @@ import { CashCategoryController } from './presentation/cash-category.controller'
 import { CashMovementV2Controller } from './presentation/cash-movement-v2.controller';
 import { CashMovementController } from './presentation/cash-movement.controller';
 import { CashSessionController } from './presentation/cash-session.controller';
+import { CashSessionV2Controller } from './presentation/cash-session-v2.controller';
 
 /**
  * Caja (M-D, parte 1): cajas, sesiones con arqueo, categorías y el libro de
@@ -41,6 +42,7 @@ import { CashSessionController } from './presentation/cash-session.controller';
   controllers: [
     CashBoxController,
     CashSessionController,
+    CashSessionV2Controller,
     CashMovementController,
     CashMovementV2Controller,
     CashCategoryController,

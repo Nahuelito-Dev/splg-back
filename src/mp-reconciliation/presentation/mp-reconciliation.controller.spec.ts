@@ -186,3 +186,39 @@ describe('MpReconciliationMapper: qué dice una corrida que espera', () => {
     ).toBeNull();
   });
 });
+
+describe('MpReconciliationMapper: los totales del resumen los manda el back', () => {
+  const conResumen = (
+    differences: Record<string, number>,
+    mp: number,
+    cash: number,
+  ) =>
+    MpReconciliationMapper.corrida(
+      {
+        ...corrida,
+        status: MpReconciliationStatus.READY,
+        summary: {
+          rows: 4,
+          mp: { gross: 0, fees: 0, taxes: 0, net: mp },
+          cash: { income: 0, expense: 0, net: cash },
+          differences,
+          alreadyApplied: 0,
+          unreadableRows: 0,
+        },
+      } as MpReconciliation,
+      false,
+    ).summary;
+
+  it('suma las diferencias de todos los tipos', () => {
+    expect(
+      conResumen({ payment_not_in_cash: 2, fee_pending: 1, payout: 4 }, 0, 0)
+        ?.differenceCount,
+    ).toBe(7);
+    expect(conResumen({}, 0, 0)?.differenceCount).toBe(0);
+  });
+
+  it('la brecha neta es Mercado Pago − caja, a centavos', () => {
+    expect(conResumen({}, 100.1, 100.3)?.netGap).toBe(-0.2);
+    expect(conResumen({}, 1200, 1000)?.netGap).toBe(200);
+  });
+});

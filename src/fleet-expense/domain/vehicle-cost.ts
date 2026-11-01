@@ -248,3 +248,42 @@ export function calcularCostoDeVehiculo(
     monthly,
   };
 }
+
+/** Las cifras de arriba del tablero de la flota. */
+export interface ResumenDelTablero extends Rubros {
+  /** Vehículos del tablero. */
+  vehicles: number;
+  /** Suma de los km de los vehículos que tienen km. */
+  km: number;
+  /** Costo por km de la flota; `null` si ningún vehículo tiene km. */
+  costPerKm: number | null;
+  /** Vehículos sin km: no entran al costo por km. */
+  withoutKm: number;
+}
+
+/**
+ * Totales por rubro de la flota y costo por km. El costo por km sólo cuenta
+ * los vehículos con km: sumar el costo de uno sin km y dividirlo por los km de
+ * los demás inflaría el promedio. El total incluye a todos.
+ */
+export function resumirTablero(
+  filas: ReadonlyArray<Rubros & { km: number }>,
+): ResumenDelTablero {
+  const suma = (valor: (f: Rubros & { km: number }) => number) =>
+    filas.reduce((s, f) => s.plus(valor(f)), new Decimal(0));
+  const conKm = filas.filter((f) => f.km > 0);
+  const km = redondear(conKm.reduce((s, f) => s.plus(f.km), new Decimal(0)));
+  const costoConKm = conKm.reduce((s, f) => s.plus(f.total), new Decimal(0));
+  return {
+    vehicles: filas.length,
+    maintenance: redondear(suma((f) => f.maintenance)),
+    insurance: redondear(suma((f) => f.insurance)),
+    fuel: redondear(suma((f) => f.fuel)),
+    fines: redondear(suma((f) => f.fines)),
+    accidents: redondear(suma((f) => f.accidents)),
+    total: redondear(suma((f) => f.total)),
+    km,
+    costPerKm: km > 0 ? redondear(costoConKm.div(km)) : null,
+    withoutKm: filas.length - conKm.length,
+  };
+}
