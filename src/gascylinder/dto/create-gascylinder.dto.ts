@@ -44,6 +44,16 @@ export class PromocionDto {
   discountPercentage!: number;
 }
 
+/** Una promoción tal como sale del catálogo: con el precio unitario que cobra el pedido. */
+export class PromocionConPrecioDto extends PromocionDto {
+  @ApiProperty({
+    description:
+      'Precio unitario con esta promoción, redondeado a centavos con la misma regla que cobra el pedido. No incluye el recargo de zona ni el del medio de pago, que se aplican sobre el total del pedido',
+    example: 13409.99,
+  })
+  unitPrice!: number;
+}
+
 export class CreateGasCylinderDto {
   @ApiProperty({ description: 'Tipo de garrafa (10, 15, 45 kg)' })
   @TextoNoVacio()

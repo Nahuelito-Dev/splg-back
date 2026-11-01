@@ -134,6 +134,8 @@ describe('QuoteOrderUseCase', () => {
     );
     // 2 × 10000 + 3 × 13500 (15000 − 10%)
     expect(r.items.map((i) => i.subtotal)).toEqual([20000, 40500]);
+    // El porcentaje de la promoción aplicada lo informa el back; sin promoción, null.
+    expect(r.items.map((i) => i.discountPercentage)).toEqual([null, 10]);
     expect(r).toMatchObject({
       subtotal: 60500,
       zone: null,

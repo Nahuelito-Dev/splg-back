@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { PromocionDto } from './create-gascylinder.dto';
+import { PromocionConPrecioDto } from './create-gascylinder.dto';
 
 /** Un producto del catálogo tal como lo ve un visitante sin sesión. */
 export class ProductoPublicoDto {
@@ -27,11 +27,11 @@ export class ProductoPublicoDto {
   photoUrl!: string | null;
 
   @ApiProperty({
-    type: PromocionDto,
+    type: PromocionConPrecioDto,
     isArray: true,
     description: 'Promociones por cantidad; vacío si no hay.',
   })
-  promotions!: PromocionDto[];
+  promotions!: PromocionConPrecioDto[];
 
   @ApiProperty({
     description: 'Si hay unidades para vender ahora. No expone la cantidad.',

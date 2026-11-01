@@ -45,6 +45,14 @@ export class QuoteItemDto {
   })
   unitPrice!: number;
   @ApiProperty({ example: 19000 }) subtotal!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 5,
+    description:
+      'Porcentaje de la promoción por volumen que se aplicó a este renglón; null si se cotizó a precio de lista',
+  })
+  discountPercentage!: number | null;
 }
 
 export class QuoteZoneDto {

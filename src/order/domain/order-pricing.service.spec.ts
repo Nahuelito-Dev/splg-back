@@ -14,6 +14,19 @@ describe('OrderPricingService', () => {
     pricing = new OrderPricingService();
   });
 
+  describe('priceItem — porcentaje aplicado', () => {
+    it('informa el porcentaje de la promoción de mayor umbral alcanzada, o null', () => {
+      const promos = [
+        { quantity: 2, discountPercentage: 5 },
+        { quantity: 4, discountPercentage: 12 },
+      ];
+      expect(pricing.priceItem(1000, promos, 1).discountPercentage).toBeNull();
+      expect(pricing.priceItem(1000, promos, 3).discountPercentage).toBe(5);
+      expect(pricing.priceItem(1000, promos, 4).discountPercentage).toBe(12);
+      expect(pricing.priceItem(1000, null, 4).discountPercentage).toBeNull();
+    });
+  });
+
   describe('priceItem — sin promociones', () => {
     it('usa el precio de lista tal cual (unit = base, subtotal = base × qty)', () => {
       const { unitPrice, subtotal } = pricing.priceItem(1000, null, 3);

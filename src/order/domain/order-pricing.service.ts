@@ -11,6 +11,8 @@ export interface VolumePromotion {
 export interface ItemPricing {
   unitPrice: Decimal;
   subtotal: Decimal;
+  /** Porcentaje de la promoción aplicada; null si se cobra a precio de lista. */
+  discountPercentage: number | null;
 }
 
 /**
@@ -49,7 +51,11 @@ export class OrderPricingService {
     // redondeado, así cantidad × precio guardado coincide siempre con el subtotal.
     unitPrice = unitPrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const subtotal = unitPrice.times(new Decimal(quantity));
-    return { unitPrice, subtotal };
+    return {
+      unitPrice,
+      subtotal,
+      discountPercentage: promo?.discountPercentage ?? null,
+    };
   }
 
   /**
