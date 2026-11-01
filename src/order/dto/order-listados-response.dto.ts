@@ -55,6 +55,12 @@ export class ReservaResponseDto {
   @ApiProperty({ example: 17600, description: 'Total menos la seña cobrada' })
   remainingBalance!: number;
   @ApiProperty({
+    example: 17600,
+    description:
+      'Saldo a cobrar al entregar una vez paga la seña: total menos seña, el mismo número que el `balance` de la cotización del alta. A diferencia de `remainingBalance`, no depende de que la seña ya esté cobrada.',
+  })
+  balanceDue!: number;
+  @ApiProperty({
     type: String,
     nullable: true,
     description:

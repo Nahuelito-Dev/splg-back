@@ -24,6 +24,7 @@ import { transitionOrder } from '../domain/order-status.machine';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { saldoTrasLaSena } from '../domain/deposit-cap';
 import { errorMessage } from '../../common/errors/error-message';
 import { ConciliacionMercadoPagoService } from './conciliacion-mercadopago.service';
 import { PaymentsService } from '../../payments/application/payments.service';
@@ -196,6 +197,7 @@ export class ReservationService {
         depositAmount,
         depositPaid: !!order.depositPaid,
         remainingBalance: total - (order.depositPaid ? depositAmount : 0),
+        balanceDue: saldoTrasLaSena(total, depositAmount).toNumber(),
         paymentUrl: enlaces.get(order.orderId) ?? null,
         timeSlot: order.timeSlot
           ? {

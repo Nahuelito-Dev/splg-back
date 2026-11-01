@@ -15,14 +15,14 @@ import { CommissionLedgerService } from '../../commission/application/commission
 import { codigoSqlDelError } from '../../common/errors/db-exceptions';
 import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
 import { diaArgentino } from '../../common/utils/dias-argentina';
-import { aCentavos, dec, sumar } from '../../common/utils/dinero';
+import { aCentavos, dec } from '../../common/utils/dinero';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import {
   DocType,
   DocumentSequenceService,
 } from '../../document-sequence/document-sequence.service';
 import {
-  diferenciaDeRendicion,
+  cuentasDeRendicion,
   exigirEstado,
   resolucionDeDiferencia,
 } from '../domain/driver-settlement-rules';
@@ -49,6 +49,7 @@ import {
   pedidosSinRendir,
   sumaACobrar,
 } from './settlement-orders';
+import { exigirRendicionDelUsuario } from './settlement-propietario';
 import { DriverSettlementQueryService } from './driver-settlement-query.service';
 
 const CARGA_CERRADA = ['closed', 'closed_with_difference', 'cancelled'];
@@ -221,7 +222,11 @@ export class DriverSettlementService {
               [id],
             );
             const esperado = sumaACobrar(pedidos).plus(cobros.total);
-            const totalGastos = sumar(gastos.map((g) => g.amount));
+            const cuentas = cuentasDeRendicion(
+              dto.declaredCash,
+              gastos.map((g) => g.amount),
+              esperado,
+            );
             for (const g of gastos) {
               await manager.insert(DriverSettlementExpense, {
                 settlementId: id,
@@ -232,10 +237,8 @@ export class DriverSettlementService {
             }
             s.expectedCash = aCentavos(esperado);
             s.declaredCash = aCentavos(dto.declaredCash);
-            s.driverExpenses = aCentavos(totalGastos);
-            s.difference = aCentavos(
-              diferenciaDeRendicion(dto.declaredCash, totalGastos, esperado),
-            );
+            s.driverExpenses = aCentavos(cuentas.gastos);
+            s.difference = aCentavos(cuentas.diferencia);
             s.status = DriverSettlementStatus.SUBMITTED;
             s.submittedAt = new Date();
             s.submittedByUserId = userId;
@@ -410,13 +413,7 @@ export class DriverSettlementService {
     });
     if (!s) throw new RendicionNoEncontradaError(id);
     if (soloDelUsuario) {
-      const [chofer]: Array<{ user_id: string }> = await manager.query(
-        `SELECT "user_id" FROM "delivery" WHERE "delivery_id" = $1`,
-        [s.deliveryId],
-      );
-      if (chofer?.user_id !== soloDelUsuario) {
-        throw new RendicionNoEncontradaError(id);
-      }
+      await exigirRendicionDelUsuario(manager, s, soloDelUsuario);
     }
     return s;
   }

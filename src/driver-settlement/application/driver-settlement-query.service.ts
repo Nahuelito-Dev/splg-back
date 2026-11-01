@@ -4,6 +4,10 @@ import { DataSource, EntityManager } from 'typeorm';
 import { deliveryIdDelUsuario } from '../../common/tenancy/chofer-empleado';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { aCentavos, dec } from '../../common/utils/dinero';
+import {
+  cuentasDeRendicion,
+  exigirEstado,
+} from '../domain/driver-settlement-rules';
 import { DriverSettlementStatus } from '../domain/driver-settlement.enums';
 import {
   ChoferNoEncontradoError,
@@ -13,9 +17,12 @@ import {
   DriverSettlementDetailDto,
   DriverSettlementPageDto,
   DriverSettlementResponseDto,
+  PreviewDriverSettlementDto,
   QueryDriverSettlementDto,
+  SettlementPreviewDto,
 } from '../dto/driver-settlement.dto';
 import { DriverSettlement } from '../entities/driver-settlement.entity';
+import { exigirRendicionDelUsuario } from './settlement-propietario';
 import { clientesDeEntrega } from './settlement-clientes';
 import { pedidosSinRendir, sumaACobrar } from './settlement-orders';
 
@@ -66,12 +73,53 @@ export class DriverSettlementQueryService {
   ): Promise<DriverSettlementDetailDto> {
     const s = await this.dataSource.manager.findOne(DriverSettlement, {
       where: { settlementId: id, distributorId },
-      relations: { delivery: true },
     });
-    if (!s || (soloDelUsuario && s.delivery?.userId !== soloDelUsuario)) {
-      throw new RendicionNoEncontradaError(id);
+    if (!s) throw new RendicionNoEncontradaError(id);
+    if (soloDelUsuario) {
+      await exigirRendicionDelUsuario(
+        this.dataSource.manager,
+        s,
+        soloDelUsuario,
+      );
     }
     return this.armarDetalle(s);
+  }
+
+  /**
+   * Vista previa de lo que se guardaría al presentar (CU-232): la misma cuenta
+   * que `presentar`, sobre lo esperado en vivo y sin escribir nada. Sólo una
+   * rendición abierta se puede presentar, y por eso previsualizar.
+   */
+  async vistaPrevia(
+    id: string,
+    dto: PreviewDriverSettlementDto,
+    distributorId: string,
+    soloDelUsuario?: string,
+  ): Promise<SettlementPreviewDto> {
+    const s = await this.dataSource.manager.findOne(DriverSettlement, {
+      where: { settlementId: id, distributorId },
+    });
+    if (!s) throw new RendicionNoEncontradaError(id);
+    if (soloDelUsuario) {
+      await exigirRendicionDelUsuario(
+        this.dataSource.manager,
+        s,
+        soloDelUsuario,
+      );
+    }
+    exigirEstado(s.status, 'submit');
+    const { expected } = await this.esperadoEnVivo(this.dataSource.manager, s);
+    const cuentas = cuentasDeRendicion(
+      dto.declaredCash,
+      (dto.expenses ?? []).map((g) => g.amount),
+      expected,
+    );
+    const preview = new SettlementPreviewDto();
+    preview.expectedCash = aCentavos(expected);
+    preview.declaredCash = aCentavos(dto.declaredCash);
+    preview.driverExpenses = aCentavos(cuentas.gastos);
+    preview.difference = aCentavos(cuentas.diferencia);
+    return preview;
   }
 
   /** La rendición del chofer en sesión ese día (por defecto hoy). */

@@ -8,6 +8,7 @@ import {
 import {
   assertSenaConMercadoPago,
   assertSenaNoSuperaTotal,
+  saldoTrasLaSena,
   totalBajoLaSenaPagada,
 } from '../domain/deposit-cap';
 import Decimal from 'decimal.js';
@@ -292,7 +293,7 @@ export class QuoteOrderUseCase {
     res.expressSurcharge = expressSurcharge;
     res.deposit = deposit.toNumber();
     res.total = total.toNumber();
-    res.balance = total.minus(deposit).toNumber();
+    res.balance = saldoTrasLaSena(total, deposit).toNumber();
     return res;
   }
 

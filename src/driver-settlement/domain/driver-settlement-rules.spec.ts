@@ -1,4 +1,5 @@
 import {
+  cuentasDeRendicion,
   diferenciaDeRendicion,
   exigirEstado,
   resolucionDeDiferencia,
@@ -56,6 +57,26 @@ describe('reglas de la rendición del chofer', () => {
 
     it('no pierde centavos', () => {
       expect(diferenciaDeRendicion('0.1', '0.2', '0.3').isZero()).toBe(true);
+    });
+  });
+
+  describe('cuentasDeRendicion', () => {
+    it('suma los gastos y calcula la diferencia con ellos', () => {
+      const c = cuentasDeRendicion(900, [60, '40.50'], 1000);
+      expect(c.gastos.toString()).toBe('100.5');
+      expect(c.diferencia.toString()).toBe('0.5');
+    });
+
+    it('sin gastos es declarado − esperado', () => {
+      const c = cuentasDeRendicion(800, [], 1000);
+      expect(c.gastos.isZero()).toBe(true);
+      expect(c.diferencia.toString()).toBe('-200');
+    });
+
+    it('no pierde centavos al sumar', () => {
+      expect(
+        cuentasDeRendicion(0, ['0.1', '0.2'], '0.3').diferencia.isZero(),
+      ).toBe(true);
     });
   });
 

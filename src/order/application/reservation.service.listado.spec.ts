@@ -74,6 +74,25 @@ describe('ReservationService.findReservations', () => {
     );
   });
 
+  it('el saldo a cobrar es total menos seña, con la seña pendiente o ya cobrada', async () => {
+    orderRepository.find.mockResolvedValue([
+      reserva({ totalAmount: 16700, depositAmount: 500, depositPaid: false }),
+      reserva({ totalAmount: 16700, depositAmount: 500, depositPaid: true }),
+      reserva({ totalAmount: 0.3, depositAmount: 0.1 }),
+    ]);
+    const [pendiente, cobrada, decimales] =
+      await service.findReservations('d1');
+    expect(pendiente).toMatchObject({
+      remainingBalance: 16700,
+      balanceDue: 16200,
+    });
+    expect(cobrada).toMatchObject({
+      remainingBalance: 16200,
+      balanceDue: 16200,
+    });
+    expect(decimales.balanceDue).toBe(0.2);
+  });
+
   it('una reserva sin franja trae timeSlot null', async () => {
     orderRepository.find.mockResolvedValue([reserva({})]);
     const [fila] = await service.findReservations('d1');
