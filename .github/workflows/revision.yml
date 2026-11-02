@@ -1,0 +1,99 @@
+name: Revisión de código
+
+# Revisión automática de cada PR y respuesta a menciones @revisor.
+# Secreto: REVISOR_TOKEN.
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    branches: [develop, main]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: revision-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  review:
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.REVISOR_TOKEN }}
+          use_sticky_comment: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Sos el revisor de código de splg-app-backend: API de SPLG (NestJS 11 + TypeORM + Postgres/PostGIS + Redis). Convenciones: splg-docs/sistema/back/CONVENCIONES.md.
+            Revisá este pull request y respondé en castellano rioplatense, directo y concreto.
+
+            La rama del PR ya está en el directorio de trabajo; usá `gh pr diff` para ver el cambio.
+
+            Buscá, en este orden:
+            1. Bugs y casos borde que rompen el comportamiento.
+            2. Seguridad: secretos, inyección, autorización, datos expuestos.
+            2b. Reglas propias de este repo (las marcadas BLOQUEANTE son bloqueantes):
+              - Aislamiento por distribuidora (tenant, header X-Distributor): todo query, servicio o endpoint que lea o escriba datos de una distribuidora tiene que filtrar por distributorId. Un endpoint sin aislamiento es BLOQUEANTE (seguridad).
+              - Cálculos de plata (precio, promo, recargo, total, comisiones): sólo en el back, con decimales exactos (nunca float). Que el cliente mande un total que el back acepta sin recalcular es BLOQUEANTE.
+              - Migraciones: nunca synchronize; cada cambio de esquema lleva migración generada y revisada, y una entidad o columna nueva actualiza el mapa de auditoría (npm run auditoria:mapa) porque la auditoría la escriben los triggers de la base.
+              - Baja siempre lógica: nada de DELETE sobre datos de negocio. Transiciones de pedido y envase por las máquinas de estado del dominio, no por update directo.
+              - Fechas de negocio en hora argentina sin depender del TZ del proceso: usar src/common/utils/dias-argentina.ts; desconfiar de new Date(y, m, d), setHours, getDate y toISOString().slice(0, 10) sobre días de negocio.
+              - Contrato: endpoints existentes conservan las claves del JSON; los nuevos van en camelCase; Swagger completo; un endpoint nuevo o con contrato cambiado va en /api/v2 (la v1 está congelada).
+              - DTOs validados (class-validator), TypeScript estricto sin any, errores de dominio y no 500.
+              - Concurrencia: locks, transacciones e idempotencia donde hay stock, cobros o asignaciones.
+            3. Tests que no fallarían sin el cambio (un test nuevo tiene que fallar sin el arreglo).
+            4. Lo que contradice las convenciones del repo.
+
+            Clasificá cada hallazgo. Empezá el comentario con `BLOQUEANTE:` si impide el merge
+            (bug real, fuga entre distribuidoras, plata calculada fuera del back, migración sin auditoría,
+            test que no prueba nada) o `SUGERENCIA:` si es opcional. Si no hay bloqueantes, decilo explícitamente.
+            No repitas lo que el lint o el CI ya controlan. No inventes: si no estás seguro, preguntá.
+
+            Dejá el resumen con `gh pr comment` y los hallazgos puntuales como comentarios en línea con
+            `mcp__github_inline_comment__create_inline_comment` (con `confirmed: true`). No modifiques archivos.
+          claude_args: |
+            --max-turns 15
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+
+  mencion:
+    # Respuesta a @revisor en comentarios; sólo de gente con permisos de escritura en el repo.
+    if: >-
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@revisor') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' &&
+       contains(github.event.comment.body, '@revisor') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.REVISOR_TOKEN }}
+          trigger_phrase: "@revisor"
+          claude_args: |
+            --max-turns 15
+            --append-system-prompt "Respondé siempre en castellano rioplatense. No commitees ni pushees."
