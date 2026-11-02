@@ -137,7 +137,9 @@ export class CreateFleetTaskDto {
   @ApiPropertyOptional({
     type: String,
     format: 'date-time',
-    description: 'Cuándo está agendado el turno/trámite, si ya se sabe',
+    description:
+      'Cuándo está agendado el turno/trámite, si ya se sabe. Un `YYYY-MM-DD` (o medianoche argentina) es ese día ' +
+      'argentino y se guarda a las 00:00 de Argentina; un instante con hora se guarda tal cual. Inválido: 400.',
   })
   @IsOptional()
   @IsDateString()
