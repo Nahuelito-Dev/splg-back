@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
-import { createHash } from 'crypto';
 import { DataSource } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
 import { RedisService } from '../../redis/redis.service';
@@ -10,7 +9,37 @@ import {
   escaparHtml,
   StockAdminNotifier,
 } from './stock-admin-notifier.service';
-import { StockReconciliationService } from './stock-reconciliation.service';
+
+/** Una garrafa tal como la arma `conciliar_stock_del_dia`. */
+interface GarrafaConciliada {
+  gasCylinderId: string;
+  gasCylinderType: string;
+  sellable: number;
+  physicalFull: number;
+  reserved: number;
+  expected: number;
+  overReserved: number;
+  difference: number;
+  reservationDeficit?: number;
+  deficitDifference?: number;
+}
+
+/** Lo que devuelve `CALL conciliar_stock_del_dia` (parámetros INOUT). */
+interface ResultadoDelProcedimiento {
+  p_consistente: boolean;
+  p_avisar: boolean;
+  p_firma: string | null;
+  p_resultado: {
+    consistent: boolean;
+    cylinders: GarrafaConciliada[];
+    deliveriesWithoutMovement: Array<{
+      orderId: string;
+      gasCylinderId: string;
+      gasCylinderType: string;
+      quantity: number;
+    }>;
+  };
+}
 
 /**
  * Conciliación nocturna del vendible contra el físico (D4). Avisa por email a
@@ -23,7 +52,6 @@ export class StockReconciliationCron {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly reconciliation: StockReconciliationService,
     private readonly notifier: StockAdminNotifier,
     private readonly redis: RedisService,
   ) {}
@@ -57,23 +85,17 @@ export class StockReconciliationCron {
 
   async conciliar(distributorId: string): Promise<void> {
     try {
-      const resultado = await this.reconciliation.conciliar(distributorId);
-      if (resultado.consistent) {
-        // Volvió a cerrar: el próximo desvío tiene que avisar de nuevo.
+      // La verificación, la huella y el borrado de la alerta viven en el
+      // procedimiento (una transacción con COMMIT/ROLLBACK propios).
+      const [fila]: Array<ResultadoDelProcedimiento> =
         await this.dataSource.query(
-          `DELETE FROM "stock_reconciliation_alert" WHERE "distributor_id" = $1`,
+          `CALL conciliar_stock_del_dia($1, NULL::boolean, NULL::boolean, NULL::text, NULL::jsonb)`,
           [distributorId],
         );
+      if (!fila || fila.p_consistente || !fila.p_avisar || !fila.p_firma)
         return;
-      }
-      const firma = firmaDe(resultado);
-      const [previo]: Array<{ signature: string }> =
-        await this.dataSource.query(
-          `SELECT "signature" FROM "stock_reconciliation_alert" WHERE "distributor_id" = $1`,
-          [distributorId],
-        );
-      // La misma diferencia de anoche no se vuelve a avisar.
-      if (previo?.signature === firma) return;
+      const resultado = fila.p_resultado;
+      const firma = fila.p_firma;
       const diferencias = resultado.cylinders
         .filter(conProblema)
         .map(
@@ -119,27 +141,3 @@ const conProblema = (c: {
   deficitDifference?: number;
 }): boolean =>
   c.difference !== 0 || c.overReserved > 0 || (c.deficitDifference ?? 0) !== 0;
-
-/** Huella de las diferencias: cambia si cambia una cifra o una entrega pendiente. */
-function firmaDe(r: {
-  cylinders: Array<{
-    gasCylinderId: string;
-    difference: number;
-    overReserved: number;
-    deficitDifference?: number;
-  }>;
-  deliveriesWithoutMovement: Array<{ orderId: string; gasCylinderId: string }>;
-}): string {
-  const partes = [
-    ...r.cylinders
-      .filter(conProblema)
-      .map(
-        (c) =>
-          `c:${c.gasCylinderId}:${c.difference}:${c.overReserved}:${c.deficitDifference ?? 0}`,
-      ),
-    ...r.deliveriesWithoutMovement.map(
-      (e) => `e:${e.orderId}:${e.gasCylinderId}`,
-    ),
-  ].sort();
-  return createHash('sha256').update(partes.join('|')).digest('hex');
-}

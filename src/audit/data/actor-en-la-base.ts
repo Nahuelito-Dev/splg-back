@@ -13,10 +13,12 @@ const PREFIJO_IRRELEVANTE = /^(?:\s|\(|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+/;
 
 /**
  * Escrituras que TypeORM manda sin transacción: INSERT, UPDATE, DELETE, MERGE,
- * TRUNCATE, COPY, CALL y los WITH que terminan en una de ellas.
+ * TRUNCATE, COPY y los WITH que terminan en una de ellas. `CALL` NO: un
+ * procedimiento que controla la transacción (`COMMIT`) no puede correr dentro
+ * de una, y el actor no sobreviviría a ese `COMMIT`.
  */
 const ES_ESCRITURA =
-  /^(?:(?:INSERT|UPDATE|DELETE|MERGE|TRUNCATE|COPY|CALL)\b|WITH\b[\s\S]*?\b(?:INSERT|UPDATE|DELETE|MERGE)\b)/i;
+  /^(?:(?:INSERT|UPDATE|DELETE|MERGE|TRUNCATE|COPY)\b|WITH\b[\s\S]*?\b(?:INSERT|UPDATE|DELETE|MERGE)\b)/i;
 
 export function esEscritura(sql: string): boolean {
   return ES_ESCRITURA.test(sql.replace(PREFIJO_IRRELEVANTE, ''));

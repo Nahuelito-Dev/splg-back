@@ -8,6 +8,14 @@ import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import { CustomerLedgerService } from '../../customer-account/application/customer-ledger.service';
 import { RedisService } from '../../redis/redis.service';
 
+/** Un saldo guardado que no es la suma de su libro (detalle del procedimiento). */
+interface SaldoDesfasado {
+  tipo: 'caja' | 'cuenta';
+  id: string;
+  saldo: string;
+  libro: string;
+}
+
 /**
  * Conciliación nocturna de las finanzas (03:30): recupera los asientos de los
  * pedidos entregados que se quedaron sin comisión o sin cargo a cuenta (un
@@ -60,40 +68,33 @@ export class FinanceReconciliationCron {
     return { comisiones, cargos, saldosDesfasados };
   }
 
-  /** Cuenta (y registra) las cajas y cuentas cuyo saldo no es la suma de su libro. */
+  /**
+   * Cuenta (y registra) las cajas y cuentas cuyo saldo no es la suma de su
+   * libro. La verificación la hace el procedimiento `verificar_saldos_de_caja`,
+   * una distribuidora por llamada.
+   */
   async verificarSaldos(): Promise<number> {
-    const cajas: Array<{
-      cash_box_id: string;
-      balance: string;
-      libro: string;
-    }> = await this.dataSource.query(
-      `SELECT b."cash_box_id", b."balance"::text,
-                COALESCE(SUM(CASE WHEN m."direction" = 'in' THEN m."amount" ELSE -m."amount" END), 0)::text AS libro
-         FROM "cash_box" b LEFT JOIN "cash_movement" m ON m."cash_box_id" = b."cash_box_id"
-         GROUP BY b."cash_box_id", b."balance"
-         HAVING b."balance" <> COALESCE(SUM(CASE WHEN m."direction" = 'in' THEN m."amount" ELSE -m."amount" END), 0)`,
-    );
-    const cuentas: Array<{
-      account_id: string;
-      balance: string;
-      libro: string;
-    }> = await this.dataSource.query(
-      `SELECT a."account_id", a."balance"::text,
-                COALESCE(SUM(CASE WHEN e."type" IN ('sale_charge', 'debit_note') THEN e."amount" ELSE -e."amount" END), 0)::text AS libro
-         FROM "customer_account" a LEFT JOIN "customer_account_entry" e ON e."account_id" = a."account_id"
-         GROUP BY a."account_id", a."balance"
-         HAVING a."balance" <> COALESCE(SUM(CASE WHEN e."type" IN ('sale_charge', 'debit_note') THEN e."amount" ELSE -e."amount" END), 0)`,
-    );
-    for (const c of cajas) {
-      this.logger.warn(
-        `Caja ${c.cash_box_id}: saldo ${c.balance} y el libro suma ${c.libro}`,
+    const distribuidoras: Array<{ distributor_id: string }> =
+      await this.dataSource.query(
+        `SELECT "distributor_id" FROM "cash_box"
+         UNION SELECT "distributor_id" FROM "customer_account"`,
       );
-    }
-    for (const c of cuentas) {
-      this.logger.warn(
-        `Cuenta corriente ${c.account_id}: saldo ${c.balance} y el libro suma ${c.libro}`,
+    let desfasados = 0;
+    for (const { distributor_id } of distribuidoras) {
+      const [fila]: Array<{
+        p_desfasadas: number;
+        p_detalle: Array<SaldoDesfasado>;
+      }> = await this.dataSource.query(
+        `CALL verificar_saldos_de_caja($1, NULL::integer, NULL::jsonb)`,
+        [distributor_id],
       );
+      for (const d of fila?.p_detalle ?? []) {
+        this.logger.warn(
+          `${d.tipo === 'caja' ? 'Caja' : 'Cuenta corriente'} ${d.id}: saldo ${d.saldo} y el libro suma ${d.libro}`,
+        );
+      }
+      desfasados += fila?.p_desfasadas ?? 0;
     }
-    return cajas.length + cuentas.length;
+    return desfasados;
   }
 }

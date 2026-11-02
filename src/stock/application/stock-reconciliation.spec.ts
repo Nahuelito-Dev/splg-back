@@ -1,7 +1,5 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
-import { EmailSenderPort } from '../../email/ports/email-sender.port';
-import { AdminService } from '../../admin/admin.service';
 import { StockAdminNotifier } from './stock-admin-notifier.service';
 import { StockReconciliationCron } from './stock-reconciliation.cron';
 import { StockReconciliationService } from './stock-reconciliation.service';
@@ -255,170 +253,150 @@ const redisConLock = (obtenido = true) => {
 };
 
 describe('StockReconciliationCron', () => {
-  const diferencia = (difference = 5) => ({
-    consistent: false,
-    cylinders: [
-      {
-        gasCylinderId: G1,
-        gasCylinderType: '10kg',
-        sellable: 5,
-        physicalFull: 0,
-        reserved: 0,
-        expected: 0,
-        overReserved: 0,
-        difference,
-      },
-    ],
-    deliveriesWithoutMovement: [],
+  const cilindro = (over: Record<string, unknown> = {}) => ({
+    gasCylinderId: G1,
+    gasCylinderType: '10kg',
+    sellable: 5,
+    physicalFull: 0,
+    reserved: 0,
+    expected: 0,
+    overReserved: 0,
+    difference: 5,
+    ...over,
   });
-  /** Simula la tabla de firmas del último aviso. */
-  const armarAvisos = (resultados: unknown[]) => {
-    let firma: string | undefined;
-    const query = jest.fn((sql: string, params: unknown[] = []) => {
-      if (sql.startsWith('SELECT'))
-        return Promise.resolve(firma ? [{ signature: firma }] : []);
-      if (sql.includes('INSERT')) firma = params[1] as string;
-      if (sql.includes('DELETE')) firma = undefined;
+  /** Lo que devuelve el CALL (parámetros INOUT) cuando hay diferencias. */
+  const conDiferencias = (
+    cylinders = [cilindro()],
+    over: Record<string, unknown> = {},
+  ) => [
+    {
+      p_consistente: false,
+      p_avisar: true,
+      p_firma: 'f'.repeat(64),
+      p_resultado: {
+        consistent: false,
+        cylinders,
+        deliveriesWithoutMovement: [],
+      },
+      ...over,
+    },
+  ];
+  const cierra = [
+    {
+      p_consistente: true,
+      p_avisar: false,
+      p_firma: null,
+      p_resultado: {
+        consistent: true,
+        cylinders: [],
+        deliveriesWithoutMovement: [],
+      },
+    },
+  ];
+  const armar = (llamadas: unknown[][]) => {
+    const query = jest.fn((sql: string) => {
+      if (sql.startsWith('CALL'))
+        return Promise.resolve(llamadas.shift() ?? cierra);
       return Promise.resolve([]);
     });
-    const conciliar = jest.fn();
-    resultados.forEach((r) => conciliar.mockResolvedValueOnce(r));
     const avisar = jest
       .fn<Promise<boolean>, [string, string, string]>()
       .mockResolvedValue(true);
     const cron = new StockReconciliationCron(
       { query } as unknown as DataSource,
-      { conciliar } as unknown as StockReconciliationService,
       { avisar } as unknown as StockAdminNotifier,
       redisConLock().redis,
     );
-    return { cron, avisar };
+    return { cron, avisar, query };
   };
 
-  it('no repite el aviso de la MISMA diferencia noche tras noche', async () => {
-    const { cron, avisar } = armarAvisos([diferencia(), diferencia()]);
+  it('llama al procedimiento con la distribuidora', async () => {
+    const { cron, query } = armar([cierra]);
     await cron.conciliar(DIST);
-    await cron.conciliar(DIST);
-    expect(avisar).toHaveBeenCalledTimes(1);
-  });
-
-  it('avisa de nuevo si la diferencia cambia', async () => {
-    const { cron, avisar } = armarAvisos([diferencia(5), diferencia(7)]);
-    await cron.conciliar(DIST);
-    await cron.conciliar(DIST);
-    expect(avisar).toHaveBeenCalledTimes(2);
-  });
-
-  it('si vuelve a cerrar y se desvía otra vez, avisa de nuevo', async () => {
-    const cierra = {
-      consistent: true,
-      cylinders: [],
-      deliveriesWithoutMovement: [],
-    };
-    const { cron, avisar } = armarAvisos([diferencia(), cierra, diferencia()]);
-    await cron.conciliar(DIST);
-    await cron.conciliar(DIST);
-    await cron.conciliar(DIST);
-    expect(avisar).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('CALL conciliar_stock_del_dia($1,'),
+      [DIST],
+    );
   });
 
   it('avisa por email si hay diferencias y NO corrige nada', async () => {
-    const reconciliation = {
-      conciliar: jest.fn().mockResolvedValue({
-        consistent: false,
-        cylinders: [
-          {
-            gasCylinderId: G1,
-            gasCylinderType: '10kg',
-            sellable: 5,
-            physicalFull: 0,
-            reserved: 0,
-            expected: 0,
-            overReserved: 0,
-            difference: 5,
-          },
-        ],
-        deliveriesWithoutMovement: [],
-      }),
-    };
-    const send = jest.fn().mockResolvedValue(undefined);
-    const admins = {
-      findAll: jest.fn().mockResolvedValue([{ user: { email: 'a@x.com' } }]),
-    };
-    const notifier = new StockAdminNotifier(
-      admins as unknown as AdminService,
-      { send } as unknown as EmailSenderPort,
-    );
-    const cron = new StockReconciliationCron(
-      { query: jest.fn().mockResolvedValue([]) } as unknown as DataSource,
-      reconciliation as unknown as StockReconciliationService,
-      notifier,
-      redisConLock().redis,
-    );
+    const { cron, avisar, query } = armar([conDiferencias()]);
     await cron.conciliar(DIST);
-    expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'a@x.com',
-        subject: expect.stringContaining('diferencias') as string,
-      }),
+    expect(avisar).toHaveBeenCalledWith(
+      DIST,
+      expect.stringContaining('diferencias') as string,
+      expect.stringContaining('10kg') as string,
     );
+    // Lo único que escribe el cron es la huella del aviso.
+    const escrituras = query.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((sql) => !sql.startsWith('CALL') && !sql.startsWith('SELECT'));
+    expect(escrituras).toHaveLength(1);
+    expect(escrituras[0]).toContain('INSERT INTO "stock_reconciliation_alert"');
+  });
+
+  it('guarda la huella que devolvió el procedimiento, después de avisar', async () => {
+    const { cron, query } = armar([conDiferencias()]);
+    await cron.conciliar(DIST);
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining('INSERT INTO "stock_reconciliation_alert"'),
+      [DIST, 'f'.repeat(64)],
+    );
+  });
+
+  it('si el procedimiento dice que la diferencia ya se avisó, no manda ni guarda nada', async () => {
+    const { cron, avisar, query } = armar([
+      conDiferencias([cilindro()], { p_avisar: false }),
+    ]);
+    await cron.conciliar(DIST);
+    expect(avisar).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('si todo cierra no manda nada', async () => {
-    const reconciliation = {
-      conciliar: jest.fn().mockResolvedValue({
-        consistent: true,
-        cylinders: [],
-        deliveriesWithoutMovement: [],
-      }),
-    };
-    const notifier = { avisar: jest.fn() };
-    const cron = new StockReconciliationCron(
-      { query: jest.fn() } as unknown as DataSource,
-      reconciliation as unknown as StockReconciliationService,
-      notifier as unknown as StockAdminNotifier,
-      redisConLock().redis,
-    );
+    const { cron, avisar } = armar([cierra]);
     await cron.conciliar(DIST);
-    expect(notifier.avisar).not.toHaveBeenCalled();
+    expect(avisar).not.toHaveBeenCalled();
   });
 
-  it('un fallo en una distribuidora no corta a las demás', async () => {
-    const reconciliation = {
-      conciliar: jest
-        .fn()
-        .mockRejectedValueOnce(new Error('boom'))
-        .mockResolvedValueOnce({
-          consistent: true,
-          cylinders: [],
-          deliveriesWithoutMovement: [],
-        }),
-    };
-    const dataSource = {
-      query: jest
-        .fn()
-        .mockResolvedValue([
-          { distributor_id: 'd1' },
-          { distributor_id: 'd2' },
-        ]),
-    };
+  it('si el mail falla no guarda la huella: el próximo desvío vuelve a avisar', async () => {
+    const { cron, avisar, query } = armar([conDiferencias()]);
+    avisar.mockRejectedValueOnce(new Error('smtp'));
+    await cron.conciliar(DIST);
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).includes('INSERT')),
+    ).toBe(false);
+  });
+
+  it('un fallo del procedimiento en una distribuidora no corta a las demás', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([
+        { distributor_id: 'd1' },
+        { distributor_id: 'd2' },
+      ])
+      .mockRejectedValueOnce(new Error('conciliar_stock_del_dia falló'))
+      .mockResolvedValueOnce(cierra);
     const cron = new StockReconciliationCron(
-      dataSource as unknown as DataSource,
-      reconciliation as unknown as StockReconciliationService,
+      { query } as unknown as DataSource,
       { avisar: jest.fn() } as unknown as StockAdminNotifier,
       redisConLock().redis,
     );
     await cron.conciliarTodas();
-    expect(reconciliation.conciliar).toHaveBeenCalledTimes(2);
+    const calls = query.mock.calls.filter(([sql]) =>
+      String(sql).startsWith('CALL'),
+    );
+    expect(calls.map(([, params]) => (params as string[])[0])).toEqual([
+      'd1',
+      'd2',
+    ]);
   });
 
   it('con varias instancias corre una sola: si otra tiene el lock, no concilia ni avisa', async () => {
-    const reconciliation = { conciliar: jest.fn() };
     const dataSource = { query: jest.fn() };
     const { redis, withLock } = redisConLock(false);
     const cron = new StockReconciliationCron(
       dataSource as unknown as DataSource,
-      reconciliation as unknown as StockReconciliationService,
       { avisar: jest.fn() } as unknown as StockAdminNotifier,
       redis,
     );
@@ -429,30 +407,21 @@ describe('StockReconciliationCron', () => {
       expect.any(Function),
     );
     expect(dataSource.query).not.toHaveBeenCalled();
-    expect(reconciliation.conciliar).not.toHaveBeenCalled();
   });
 
-  it('un exceso de reservas sobre el físico aparece en el mail y cambia la huella', async () => {
-    const sobrerreservada = {
-      consistent: false,
-      cylinders: [
-        {
-          gasCylinderId: G1,
-          gasCylinderType: '10kg',
+  it('un exceso de reservas sobre el físico aparece en el mail', async () => {
+    const { cron, avisar } = armar([
+      conDiferencias([
+        cilindro({
           sellable: 0,
           physicalFull: 3,
           reserved: 5,
-          expected: 0,
           overReserved: 2,
           difference: 0,
-        },
-      ],
-      deliveriesWithoutMovement: [],
-    };
-    const { cron, avisar } = armarAvisos([sobrerreservada, sobrerreservada]);
+        }),
+      ]),
+    ]);
     await cron.conciliar(DIST);
-    await cron.conciliar(DIST);
-    expect(avisar).toHaveBeenCalledTimes(1);
     expect(avisar.mock.calls[0]?.[2]).toMatch(
       /2 reservada\(s\) de más que el físico no cubre/,
     );
