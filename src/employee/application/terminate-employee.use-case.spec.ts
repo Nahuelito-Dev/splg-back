@@ -158,6 +158,16 @@ describe('TerminateEmployeeUseCase', () => {
     expect(users.avisarAccesoRevocado).not.toHaveBeenCalled();
   });
 
+  it('si la cuenta del empleado cambió mientras se tomaban los locks es 409 y no toca nada', async () => {
+    employees.bloquear.mockResolvedValue(empleado({ userId: 'otra-cuenta' }));
+
+    await expect(useCase.execute('e1', dto, 'd1', 'admin1')).rejects.toThrow(
+      /La cuenta del empleado cambió/,
+    );
+    expect(guardado).toHaveLength(0);
+    expect(users.bloquearEnTransaccion).not.toHaveBeenCalled();
+  });
+
   it('una fecha anterior al ingreso es 400', async () => {
     await expect(
       useCase.execute(

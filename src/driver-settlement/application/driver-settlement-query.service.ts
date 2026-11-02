@@ -8,7 +8,10 @@ import {
   cuentasDeRendicion,
   exigirEstado,
 } from '../domain/driver-settlement-rules';
-import { DriverSettlementStatus } from '../domain/driver-settlement.enums';
+import {
+  DriverSettlementStatus,
+  ESTADOS_SIN_CERRAR,
+} from '../domain/driver-settlement.enums';
 import {
   ChoferNoEncontradoError,
   RendicionNoEncontradaError,
@@ -158,10 +161,10 @@ export class DriverSettlementQueryService {
       `SELECT COUNT(*) FILTER (WHERE "business_date" = $2 AND "status" = 'open')::int AS open,
               COUNT(*) FILTER (WHERE "business_date" = $2 AND "status" = 'submitted')::int AS submitted,
               COUNT(*) FILTER (WHERE "business_date" = $2 AND "status" = 'approved')::int AS approved,
-              COUNT(*) FILTER (WHERE "business_date" < $3 AND "status" IN ('open', 'submitted'))::int AS overdue,
+              COUNT(*) FILTER (WHERE "business_date" < $3 AND "status"::text = ANY($4::text[]))::int AS overdue,
               COALESCE(SUM("declared_cash") FILTER (WHERE "status" = 'submitted'), 0)::text AS pendiente
        FROM "driver_settlement" WHERE "distributor_id" = $1`,
-      [distributorId, date, diaArgentino()],
+      [distributorId, date, diaArgentino(), [...ESTADOS_SIN_CERRAR]],
     );
     return {
       open: fila.open,

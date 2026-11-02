@@ -556,12 +556,18 @@ export class DeliveryService {
     return delivery;
   }
 
-  /** El perfil de chofer de un usuario dentro de la transacción de quien llama, o null si no tiene. */
+  /**
+   * El perfil de chofer de un usuario dentro de la transacción de quien llama, o null si no tiene.
+   * `conBajas`: también el dado de baja (la baja del usuario lo borra lógicamente antes de egresar su legajo).
+   */
   findByUserIdEnTransaccion(
     manager: EntityManager,
     userId: string,
+    opciones: { conBajas?: boolean } = {},
   ): Promise<Delivery | null> {
-    return manager.getRepository(Delivery).findOne({ where: { userId } });
+    return manager
+      .getRepository(Delivery)
+      .findOne({ where: { userId }, withDeleted: opciones.conBajas ?? false });
   }
 
   /**
