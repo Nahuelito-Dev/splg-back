@@ -54,6 +54,17 @@ export abstract class RealtimeDispatchPort {
     payload: unknown,
   ): void;
 
+  /**
+   * Aviso al chofer asignado de un código de entrega que el cliente erró
+   * (`order:delivery-code-failed`) o que quedó bloqueado
+   * (`order:delivery-code-blocked`). `driverUserId` es el id de usuario.
+   */
+  abstract notifyDriverDeliveryCode(
+    driverUserId: string,
+    event: 'order:delivery-code-failed' | 'order:delivery-code-blocked',
+    payload: unknown,
+  ): void;
+
   /** Evento arbitrario al cliente (WebSocket): estado de su pedido, etc. */
   abstract notifyCustomer(
     customerId: string,

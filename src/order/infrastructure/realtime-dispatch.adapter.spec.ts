@@ -55,3 +55,23 @@ describe('RealtimeDispatchAdapter.notifyDriverOrderAddressChanged', () => {
     });
   });
 });
+
+describe('RealtimeDispatchAdapter.notifyDriverDeliveryCode', () => {
+  it('delega en el gateway de choferes con el evento y el id de usuario', () => {
+    const notifyDeliveryCode = jest.fn();
+    const adapter = new RealtimeDispatchAdapter(
+      {} as never,
+      { notifyDeliveryCode } as never,
+      {} as never,
+      {} as never,
+    );
+    adapter.notifyDriverDeliveryCode('u1', 'order:delivery-code-failed', {
+      orderId: 'o1',
+    });
+    expect(notifyDeliveryCode).toHaveBeenCalledWith(
+      'u1',
+      'order:delivery-code-failed',
+      { orderId: 'o1' },
+    );
+  });
+});

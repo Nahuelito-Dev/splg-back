@@ -93,4 +93,17 @@ export class CodigoDeEntregaResponseDto {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ type: String, nullable: true, example: '482913' })
   deliveryCode!: string | null;
+  @ApiProperty({
+    type: Number,
+    example: 0,
+    description: 'Códigos incorrectos del cliente desde el último código nuevo',
+  })
+  attempts!: number;
+  @ApiProperty({
+    type: Boolean,
+    example: false,
+    description:
+      'El cliente agotó los intentos: el chofer tiene que generar un código nuevo',
+  })
+  blocked!: boolean;
 }

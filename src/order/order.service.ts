@@ -67,7 +67,10 @@ import { DispatchOrchestratorService } from './application/dispatch-orchestrator
 import { DispatchSettingsService } from '../distributor/dispatch-settings.service';
 import { DispatchOfferRepositoryPort } from './domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferStatus } from './entities/dispatch-offer.entity';
-import { generateDeliveryCode } from './domain/delivery-code.util';
+import {
+  generateDeliveryCode,
+  MAX_INTENTOS_CODIGO_ENTREGA,
+} from './domain/delivery-code.util';
 import { bloquearChoferVigente } from '../common/locks/chofer-lock';
 import { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
 
@@ -715,7 +718,12 @@ export class OrderService {
       );
     }
 
-    return { orderId: order.orderId, deliveryCode: order.deliveryCode };
+    return {
+      orderId: order.orderId,
+      deliveryCode: order.deliveryCode,
+      attempts: order.deliveryCodeAttempts,
+      blocked: order.deliveryCodeAttempts >= MAX_INTENTOS_CODIGO_ENTREGA,
+    };
   }
 
   /**
@@ -741,7 +749,12 @@ export class OrderService {
         'El código sólo se cambia con el pedido en camino',
       );
     }
-    return { orderId: order.orderId, deliveryCode };
+    return {
+      orderId: order.orderId,
+      deliveryCode,
+      attempts: 0,
+      blocked: false,
+    };
   }
 
   /**

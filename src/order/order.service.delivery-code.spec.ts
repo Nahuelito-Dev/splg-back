@@ -54,6 +54,7 @@ describe('OrderService · código de entrega nuevo', () => {
       PEDIDO,
       res.deliveryCode,
     );
+    expect(res).toMatchObject({ attempts: 0, blocked: false });
   });
 
   it('otro chofer no puede (403) y no se guarda nada', async () => {
@@ -79,5 +80,33 @@ describe('OrderService · código de entrega nuevo', () => {
     await expect(
       service.regenerateDeliveryCode(PEDIDO, 'admin', RoleType.ADMIN),
     ).rejects.toThrow(ConflictException);
+  });
+
+  describe('getDeliveryCode · intentos del cliente', () => {
+    const conIntentos = (n: number) => {
+      armar();
+      deliveries.buscarPorIdOUsuario.mockResolvedValue({ deliveryId: 'd-1' });
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        orderId: PEDIDO,
+        deliveryId: 'd-1',
+        status: OrderStatus.ON_THE_WAY,
+        deliveryCode: '123456',
+        deliveryCodeAttempts: n,
+      } as unknown as Order);
+    };
+
+    it('con 4 errados informa attempts 4 y blocked false', async () => {
+      conIntentos(4);
+      expect(
+        await service.getDeliveryCode(PEDIDO, 'u-1', RoleType.DELIVERY),
+      ).toMatchObject({ attempts: 4, blocked: false });
+    });
+
+    it('con 5 errados informa blocked true', async () => {
+      conIntentos(5);
+      expect(
+        await service.getDeliveryCode(PEDIDO, 'u-1', RoleType.DELIVERY),
+      ).toMatchObject({ attempts: 5, blocked: true });
+    });
   });
 });

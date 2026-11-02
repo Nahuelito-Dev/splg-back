@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -15,6 +16,8 @@ import {
   tieneFormatoDeCodigo,
 } from '../domain/delivery-code.util';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
+import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
+import { errorMessage } from '../../common/errors/error-message';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 
 /**
@@ -33,9 +36,12 @@ import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
  */
 @Injectable()
 export class ConfirmDeliveryUseCase {
+  private readonly logger = new Logger(ConfirmDeliveryUseCase.name);
+
   constructor(
     private readonly orders: OrderRepositoryPort,
     private readonly updateOrderStatusUseCase: UpdateOrderStatusUseCase,
+    private readonly realtime: RealtimeDispatchPort,
   ) {}
 
   async execute(
@@ -81,6 +87,7 @@ export class ConfirmDeliveryUseCase {
         const intentos = await this.orders.registerWrongDeliveryCode(
           order.orderId,
         );
+        this.avisarAlChofer(order, intentos);
         if (intentos >= MAX_INTENTOS_CODIGO_ENTREGA) {
           throw this.codigoBloqueado();
         }
@@ -106,6 +113,44 @@ export class ConfirmDeliveryUseCase {
       order.orderId,
       OrderStatus.DELIVERED,
     );
+  }
+
+  /**
+   * Avisa al chofer asignado, por su socket, que el cliente erró el código
+   * (`order:delivery-code-failed`) y, al agotar los intentos, que quedó
+   * bloqueado (`order:delivery-code-blocked`). Best-effort: el aviso nunca
+   * cambia la respuesta al cliente.
+   */
+  private avisarAlChofer(order: Order, intentos: number): void {
+    const choferUserId = order.delivery?.userId;
+    // Con errores simultáneos el contador puede pasar del tope: lo que excede
+    // ya se avisó (el bloqueo sale una sola vez, al cruzar exactamente el máximo).
+    if (!choferUserId || intentos > MAX_INTENTOS_CODIGO_ENTREGA) return;
+    const blocked = intentos === MAX_INTENTOS_CODIGO_ENTREGA;
+    const payload = {
+      orderId: order.orderId,
+      attempts: intentos,
+      maxAttempts: MAX_INTENTOS_CODIGO_ENTREGA,
+      blocked,
+    };
+    try {
+      this.realtime.notifyDriverDeliveryCode(
+        choferUserId,
+        'order:delivery-code-failed',
+        payload,
+      );
+      if (blocked) {
+        this.realtime.notifyDriverDeliveryCode(
+          choferUserId,
+          'order:delivery-code-blocked',
+          payload,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Pedido ${order.orderId}: no se pudo avisar al chofer del código errado: ${errorMessage(error)}`,
+      );
+    }
   }
 
   /** El 409 de un pedido cuyo código agotó los intentos. */

@@ -62,6 +62,14 @@ export class RealtimeDispatchAdapter extends RealtimeDispatchPort {
     this.driversGateway.notifyOrderAddressChanged(driverUserId, payload);
   }
 
+  notifyDriverDeliveryCode(
+    driverUserId: string,
+    event: 'order:delivery-code-failed' | 'order:delivery-code-blocked',
+    payload: unknown,
+  ): void {
+    this.driversGateway.notifyDeliveryCode(driverUserId, event, payload);
+  }
+
   notifyCustomer(customerId: string, event: string, payload: unknown): void {
     this.customersGateway.notifyCustomer(customerId, event, payload);
   }

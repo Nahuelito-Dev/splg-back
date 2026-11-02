@@ -206,6 +206,17 @@ export class DriversGateway
     );
     this.server.to(`driver_${driverId}`).emit('order:address-changed', payload);
   }
+
+  notifyDeliveryCode(
+    driverId: string,
+    evento: 'order:delivery-code-failed' | 'order:delivery-code-blocked',
+    payload: unknown,
+  ): void {
+    this.logger.log(
+      `🔐 ${evento} del pedido ${idDelPedido(payload)} para el chofer ${driverId}`,
+    );
+    this.server.to(`driver_${driverId}`).emit(evento, payload);
+  }
 }
 
 function idDelPedido(payload: unknown): string {
