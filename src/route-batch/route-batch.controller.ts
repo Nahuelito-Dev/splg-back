@@ -114,7 +114,7 @@ export class RouteBatchController {
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
   @ApiConflictResponse({
     description:
-      'La agrupación por recorrido está apagada para la distribuidora',
+      'La agrupación por recorrido está apagada para la distribuidora, o ya se están armando los lotes de esta distribuidora (cerrojo tomado): reintentar en un momento',
   })
   run(
     @CurrentDistributor({ required: true }) distributorId: string,

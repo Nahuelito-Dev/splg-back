@@ -87,6 +87,10 @@ function crearMundo(opciones: {
   const ofertas: RouteBatchOffer[] = [];
   const choferes = opciones.choferes;
   let elegibles: string[] = choferes.map((c) => c.userId);
+  /** Quién está en el radar de la distribuidora y por qué no podría recibir (diagnóstico). */
+  let radar: string[] = choferes.map((c) => c.userId);
+  const motivosPorUsuario = new Map<string, string[]>();
+  const memoriasRecibidas: Array<Map<string, string[]> | undefined> = [];
   const parametros = {
     enabled: 1,
     batchingHoldMinutes: 60,
@@ -450,6 +454,24 @@ function crearMundo(opciones: {
 
   const orchestrator = {
     choferesElegiblesCerca: jest.fn(() => Promise.resolve(elegibles)),
+    choferesCercaConMotivos: jest.fn(
+      (
+        _lat: number,
+        _lng: number,
+        _d: string,
+        conMotivos: boolean,
+        memoria?: Map<string, string[]>,
+      ) => {
+        memoriasRecibidas.push(memoria);
+        return Promise.resolve(
+          radar.map((userId) => ({
+            userId,
+            deliveryId: choferes.find((c) => c.userId === userId)!.deliveryId,
+            reasons: conMotivos ? (motivosPorUsuario.get(userId) ?? []) : [],
+          })),
+        );
+      },
+    ),
     ensureOffered: jest.fn((pedido: { orderId: string }) => {
       registro.devueltosAM1.push(pedido.orderId);
       return Promise.resolve();
@@ -580,6 +602,18 @@ function crearMundo(opciones: {
       if (!r) throw new Error('no se consiguió el cerrojo');
       return r;
     },
+    /** Lo mismo que «armar ahora»: con el diagnóstico de por qué no se armó. */
+    evaluarConMotivos: async (id: string, ahora: Date) => {
+      const r = await service.evaluar(id, ahora, true);
+      if (!r) throw new Error('no se consiguió el cerrojo');
+      return r;
+    },
+    memoriasRecibidas,
+    ponerRadar: (ids: string[], motivos: Record<string, string[]> = {}) => {
+      radar = ids;
+      motivosPorUsuario.clear();
+      Object.entries(motivos).forEach(([u, m]) => motivosPorUsuario.set(u, m));
+    },
     parametros,
     pedidos,
     choferes,
@@ -653,7 +687,7 @@ describe('RouteBatchService · armado (CU-107, pasos 2 a 7)', () => {
 
     const r = await m.evaluar(D1, ahora);
 
-    expect(r).toEqual({ candidates: 2, batches: 1, orders: 2 });
+    expect(r).toMatchObject({ candidates: 2, batches: 1, orders: 2 });
     expect(m.lotes).toHaveLength(1);
     expect(m.lotes[0]).toMatchObject({
       distributorId: D1,
@@ -679,7 +713,7 @@ describe('RouteBatchService · armado (CU-107, pasos 2 a 7)', () => {
   it('no arma lote si hay un solo pedido candidato', async () => {
     const m = crearMundo({ pedidos: [pedidoSim('p1')], choferes: [chofer(1)] });
 
-    expect(await m.evaluar(D1, ahora)).toEqual({
+    expect(await m.evaluar(D1, ahora)).toMatchObject({
       candidates: 1,
       batches: 0,
       orders: 0,
@@ -734,7 +768,7 @@ describe('RouteBatchService · armado (CU-107, pasos 2 a 7)', () => {
 
     const r = await m.evaluar(D1, ahora);
 
-    expect(r).toEqual({ candidates: 4, batches: 2, orders: 4 });
+    expect(r).toMatchObject({ candidates: 4, batches: 2, orders: 4 });
     expect(
       m.lotes.map(
         (l) => m.paradas.filter((s) => s.batchId === l.batchId).length,
@@ -1108,7 +1142,7 @@ describe('RouteBatchService · rechazar y vencer (pasos 9 a 11)', () => {
 
     const r = await m.evaluar(D1, ahora);
 
-    expect(r).toEqual({ candidates: 0, batches: 0, orders: 0 });
+    expect(r).toMatchObject({ candidates: 0, batches: 0, orders: 0 });
     expect(m.lotes).toHaveLength(1);
     // Un solo aviso al administrador por esos pedidos, no uno por vuelta.
     expect(m.registro.lotesSinChofer).toHaveLength(1);
@@ -1276,6 +1310,301 @@ describe('RouteBatchService · interruptor del módulo', () => {
       orders: 2,
     });
     expect(await m.service.estaEncendido(D1)).toBe(true);
+  });
+});
+
+describe('RouteBatchService · por qué no se armó el lote («armar ahora»)', () => {
+  const total = (r: {
+    noDriversNearby: number;
+    driversNotEligible: number;
+    notEnoughStops: number;
+    lockConflict: number;
+  }) =>
+    r.noDriversNearby +
+    r.driversNotEligible +
+    r.notEnoughStops +
+    r.lockConflict;
+  const sinMotivos = {
+    noDriversNearby: 0,
+    driversNotEligible: 0,
+    notEnoughStops: 0,
+    lockConflict: 0,
+  };
+
+  it('un lote armado no trae motivos ni detalle', async () => {
+    const m = escenarioBase();
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.batches).toBe(1);
+    expect(r.reasons).toEqual(sinMotivos);
+    expect(r.driversNotEligibleDetail).toEqual([]);
+    expect(m.mocks.orchestrator.choferesCercaConMotivos).not.toHaveBeenCalled();
+  });
+
+  it('noDriversNearby: no hay ningún chofer de la distribuidora en el radar', async () => {
+    const m = escenarioBase();
+    m.ponerElegibles([]);
+    m.ponerRadar([]);
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.batches).toBe(0);
+    expect(r.reasons).toEqual({ ...sinMotivos, noDriversNearby: 2 });
+    expect(r.driversNotEligibleDetail).toEqual([]);
+  });
+
+  it('driversNotEligible: están en el radar pero el taller o la flota los bloquea, con el motivo en castellano', async () => {
+    const m = escenarioBase();
+    m.ponerElegibles([]);
+    m.ponerRadar(['u1', 'u2'], {
+      u1: ['su vehículo tiene el taller programado en este horario'],
+      u2: ['tiene un pedido en curso', 'Abrí tu carga para recibir pedidos'],
+    });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.reasons).toEqual({ ...sinMotivos, driversNotEligible: 2 });
+    expect(r.driversNotEligibleDetail).toEqual([
+      {
+        driverName: 'Chofer u1',
+        reasons: ['su vehículo tiene el taller programado en este horario'],
+      },
+      {
+        driverName: 'Chofer u2',
+        reasons: [
+          'tiene un pedido en curso',
+          'Abrí tu carga para recibir pedidos',
+        ],
+      },
+    ]);
+  });
+
+  it('driversNotEligible: un chofer habilitado pero con un lote ofrecido o asignado figura como ocupado', async () => {
+    const m = escenarioBase();
+    m.ponerElegibles(['u1']);
+    m.ponerRadar(['u1']);
+    m.ofertas.push({
+      offerId: 'o-previa',
+      batchId: 'otro-lote',
+      deliveryId: 'dl1',
+      status: ProposalStatus.PENDING,
+      expiresAt: new Date(ahora.getTime() + 60_000),
+    } as RouteBatchOffer);
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.batches).toBe(0);
+    expect(r.reasons.driversNotEligible).toBe(2);
+    expect(r.driversNotEligibleDetail).toEqual([
+      {
+        driverName: 'Chofer u1',
+        reasons: ['ya tiene un lote ofrecido o asignado'],
+      },
+    ]);
+  });
+
+  it('el detalle se corta en 5 choferes y no repite al mismo chofer entre semillas', async () => {
+    const choferes = [1, 2, 3, 4, 5, 6, 7].map((n) => chofer(n));
+    const m = crearMundo({
+      pedidos: ['p1', 'p2', 'p3'].map((id) => pedidoSim(id)),
+      choferes,
+      parametros: { maxBatchSize: 2 },
+    });
+    m.ponerElegibles([]);
+    m.ponerRadar(
+      choferes.map((c) => c.userId),
+      Object.fromEntries(
+        choferes.map((c) => [c.userId, ['no tiene un vehículo asignado']]),
+      ),
+    );
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.driversNotEligibleDetail).toHaveLength(5);
+    expect(
+      new Set(r.driversNotEligibleDetail.map((d) => d.driverName)).size,
+    ).toBe(5);
+    expect(r.reasons.driversNotEligible).toBe(3);
+  });
+
+  it('el mismo chofer bloqueado en varias semillas figura una sola vez', async () => {
+    const m = crearMundo({
+      pedidos: ['p1', 'p2', 'p3'].map((id) => pedidoSim(id)),
+      choferes: [chofer(1)],
+      parametros: { maxBatchSize: 2 },
+    });
+    m.ponerElegibles([]);
+    m.ponerRadar(['u1'], { u1: ['su vehículo está fuera de servicio'] });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.reasons.driversNotEligible).toBe(3);
+    expect(r.driversNotEligibleDetail).toEqual([
+      {
+        driverName: 'Chofer u1',
+        reasons: ['su vehículo está fuera de servicio'],
+      },
+    ]);
+  });
+
+  it('notEnoughStops: hay chofer pero el grupo no llega a 2 paradas (capacidad del vehículo)', async () => {
+    const m = crearMundo({
+      pedidos: [
+        pedidoSim('p1', { pesoKg: 40 }),
+        pedidoSim('p2', { pesoKg: 40 }),
+      ],
+      choferes: [chofer(1, { capacidadKg: 50 })],
+    });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.reasons).toEqual({ ...sinMotivos, notEnoughStops: 2 });
+    expect(r.driversNotEligibleDetail).toEqual([]);
+  });
+
+  it('notEnoughStops: pedidos más lejos que el radio de agrupación', async () => {
+    const m = crearMundo({
+      pedidos: [pedidoSim('p1'), pedidoSim('p2', { lat: -27.3, lng: -55.93 })],
+      choferes: [chofer(1)],
+    });
+
+    expect((await m.evaluarConMotivos(D1, ahora)).reasons).toEqual({
+      ...sinMotivos,
+      notEnoughStops: 2,
+    });
+  });
+
+  it('lockConflict: M1 tomó un pedido entre la lectura y la escritura', async () => {
+    const m = escenarioBase();
+    m.mocks.dataSource.transaction.mockImplementationOnce(async (cb) => {
+      m.pedidos.get('p2')!.status = OrderStatus.CANCELLED;
+      return cb(m.mocks.manager);
+    });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.batches).toBe(0);
+    expect(r.reasons.lockConflict).toBe(1);
+    // p2 quedó solo y había chofer: no tenía con quién agruparse.
+    expect(r.reasons.notEnoughStops).toBe(1);
+  });
+
+  it('la suma de los cuatro motivos es candidates - orders (también el último pedido del pool)', async () => {
+    const m = crearMundo({
+      pedidos: ['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => pedidoSim(id)),
+      choferes: [chofer(1), chofer(2)],
+      parametros: { maxBatchSize: 2 },
+    });
+    // Dos lotes de dos (un chofer cada uno); el quinto queda solo y los dos choferes ya están ocupados.
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    const suma = total(r.reasons);
+    expect(r.orders).toBe(4);
+    expect(suma).toBe(r.candidates - r.orders);
+    expect(r.reasons).toEqual({ ...sinMotivos, driversNotEligible: 1 });
+    expect(r.driversNotEligibleDetail).toHaveLength(2);
+  });
+
+  it('la suma también cierra cuando no se armó nada', async () => {
+    const m = crearMundo({
+      pedidos: ['p1', 'p2', 'p3'].map((id) => pedidoSim(id)),
+      choferes: [chofer(1)],
+    });
+    m.ponerElegibles([]);
+    m.ponerRadar([]);
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(total(r.reasons)).toBe(3);
+    expect(r.reasons.noDriversNearby).toBe(3);
+  });
+
+  it('con un solo candidato: notEnoughStops si hay chofer elegible', async () => {
+    const m = crearMundo({ pedidos: [pedidoSim('p1')], choferes: [chofer(1)] });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.candidates).toBe(1);
+    expect(r.reasons).toEqual({ ...sinMotivos, notEnoughStops: 1 });
+  });
+
+  it('con un solo candidato y sin choferes, cuenta el motivo de los choferes', async () => {
+    const m = crearMundo({ pedidos: [pedidoSim('p1')], choferes: [chofer(1)] });
+    m.ponerElegibles([]);
+    m.ponerRadar(['u1'], { u1: ['su vehículo está fuera de servicio'] });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.reasons).toEqual({ ...sinMotivos, driversNotEligible: 1 });
+    expect(r.driversNotEligibleDetail).toEqual([
+      {
+        driverName: 'Chofer u1',
+        reasons: ['su vehículo está fuera de servicio'],
+      },
+    ]);
+  });
+
+  it('sin candidatos no hay nada que contar', async () => {
+    const m = crearMundo({ pedidos: [], choferes: [chofer(1)] });
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.reasons).toEqual(sinMotivos);
+  });
+
+  it('la memoria de motivos es una sola por corrida: todas las semillas la comparten', async () => {
+    const m = crearMundo({
+      pedidos: ['p1', 'p2', 'p3', 'p4'].map((id) => pedidoSim(id)),
+      choferes: [chofer(1), chofer(2), chofer(3)],
+    });
+    m.ponerElegibles([]);
+    m.ponerRadar(['u1', 'u2', 'u3'], {
+      u1: ['a'],
+      u2: ['b'],
+      u3: ['c'],
+    });
+
+    await m.evaluarConMotivos(D1, ahora);
+
+    const memorias = m.memoriasRecibidas;
+    expect(memorias.length).toBeGreaterThan(1);
+    expect(memorias[0]).toBeInstanceOf(Map);
+    expect(new Set(memorias).size).toBe(1);
+  });
+
+  it('si el diagnóstico falla no aborta el armado: se cuenta como choferes que no pueden', async () => {
+    const m = escenarioBase();
+    m.ponerElegibles([]);
+    m.mocks.orchestrator.choferesCercaConMotivos.mockRejectedValue(
+      new Error('redis caído'),
+    );
+
+    const r = await m.evaluarConMotivos(D1, ahora);
+
+    expect(r.batches).toBe(0);
+    expect(r.reasons).toEqual({ ...sinMotivos, driversNotEligible: 2 });
+  });
+
+  it('el proceso periódico no paga el diagnóstico de choferes', async () => {
+    const m = escenarioBase();
+    m.ponerElegibles([]);
+
+    await m.evaluar(D1, ahora);
+
+    expect(m.mocks.orchestrator.choferesCercaConMotivos).not.toHaveBeenCalled();
+  });
+
+  it('«armar ahora» pide el diagnóstico', async () => {
+    const m = escenarioBase();
+    m.ponerElegibles([]);
+    m.ponerRadar([]);
+
+    expect(await m.service.armarAhora(D1)).toMatchObject({
+      batches: 0,
+      reasons: { noDriversNearby: 2 },
+    });
   });
 });
 

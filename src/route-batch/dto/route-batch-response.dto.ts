@@ -128,6 +128,38 @@ export class RouteBatchPageDto {
   counts!: Record<string, number>;
 }
 
+export class RouteBatchRunReasonsDto {
+  @ApiProperty({
+    description:
+      'Pedidos sin lote porque no había ningún chofer de la distribuidora en el radar',
+  })
+  noDriversNearby!: number;
+  @ApiProperty({
+    description:
+      'Pedidos sin lote porque los choferes del radar no pueden recibirlo (flota o taller, laboral, carga del camión, pedido en curso, lote ya ofrecido) o no se pudo diagnosticar',
+  })
+  driversNotEligible!: number;
+  @ApiProperty({
+    description:
+      'Pedidos sin lote porque había chofer pero el grupo quedó con menos de 2 paradas (radio, franja o capacidad del vehículo) o el pedido quedó solo',
+  })
+  notEnoughStops!: number;
+  @ApiProperty({
+    description:
+      'Pedidos sin lote porque otro proceso (despacho individual) los tomó o cambiaron mientras se armaba',
+  })
+  lockConflict!: number;
+}
+
+export class RouteBatchRunDriverDetailDto {
+  @ApiProperty({ example: 'Ramón Gómez' }) driverName!: string;
+  @ApiProperty({
+    type: [String],
+    example: ['su vehículo tiene el taller programado en este horario'],
+  })
+  reasons!: string[];
+}
+
 export class RouteBatchRunResponseDto {
   @ApiProperty({ description: 'Pedidos programados que podían agruparse' })
   candidates!: number;
@@ -135,6 +167,18 @@ export class RouteBatchRunResponseDto {
   batches!: number;
   @ApiProperty({ description: 'Pedidos que quedaron en esos lotes' })
   orders!: number;
+  @ApiProperty({
+    type: RouteBatchRunReasonsDto,
+    description:
+      'Por qué quedaron pedidos sin lote: cada pedido sin lote se cuenta una vez, en un solo motivo, y la suma de los cuatro es `candidates - orders` (también con un único candidato). Se completa sólo en «armar ahora»; en el cron queda en cero.',
+  })
+  reasons!: RouteBatchRunReasonsDto;
+  @ApiProperty({
+    type: [RouteBatchRunDriverDetailDto],
+    description:
+      'Hasta 5 choferes de la distribuidora que estaban en el radar y no podían recibir un lote, con los motivos en castellano. Vacío si ningún pedido quedó sin lote por culpa de los choferes.',
+  })
+  driversNotEligibleDetail!: RouteBatchRunDriverDetailDto[];
 }
 
 /** Lo que ve el chofer: la oferta con las paradas, sin la historia de los otros choferes. */

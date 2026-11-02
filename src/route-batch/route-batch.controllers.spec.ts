@@ -6,6 +6,24 @@ import { RouteBatchController } from './route-batch.controller';
 import { RouteBatchService } from './route-batch.service';
 import { RouteBatchStatus } from '../order/entities/route-batch.entity';
 
+const resumen = {
+  candidates: 4,
+  batches: 1,
+  orders: 2,
+  reasons: {
+    noDriversNearby: 0,
+    driversNotEligible: 1,
+    notEnoughStops: 1,
+    lockConflict: 0,
+  },
+  driversNotEligibleDetail: [
+    {
+      driverName: 'Ramón Villalba',
+      reasons: ['su vehículo tiene el taller programado en este horario'],
+    },
+  ],
+};
+
 describe('controladores de los recorridos', () => {
   let service: Record<string, jest.Mock>;
   let query: Record<string, jest.Mock>;
@@ -16,9 +34,7 @@ describe('controladores de los recorridos', () => {
     service = {
       parametrosVigentes: jest.fn().mockResolvedValue({ params: {} }),
       cambiarParametros: jest.fn().mockResolvedValue({ params: {} }),
-      armarAhora: jest
-        .fn()
-        .mockResolvedValue({ candidates: 4, batches: 1, orders: 2 }),
+      armarAhora: jest.fn().mockResolvedValue(resumen),
       deshacerPorAdmin: jest.fn().mockResolvedValue(undefined),
       aceptar: jest.fn().mockResolvedValue({
         batchId: 'b1',
@@ -75,11 +91,7 @@ describe('controladores de los recorridos', () => {
   });
 
   it('armar ahora corre la pasada de la distribuidora', async () => {
-    expect(await admin.run('d1')).toEqual({
-      candidates: 4,
-      batches: 1,
-      orders: 2,
-    });
+    expect(await admin.run('d1')).toEqual(resumen);
     expect(service.armarAhora).toHaveBeenCalledWith('d1');
   });
 
