@@ -25,7 +25,7 @@ export class UpdateCoverageZoneDto extends PartialType(
     format: 'date-time',
     nullable: true,
     description:
-      'Desde cuándo rige la zona. `null` quita el límite (rige desde siempre).',
+      'Desde cuándo rige la zona. Un día `YYYY-MM-DD` rige desde las 00:00 de Argentina. `null` quita el límite (rige desde siempre).',
   })
   @IsOptional()
   @IsISO8601()
@@ -35,7 +35,8 @@ export class UpdateCoverageZoneDto extends PartialType(
     type: String,
     format: 'date-time',
     nullable: true,
-    description: 'Hasta cuándo rige la zona. `null` quita el vencimiento.',
+    description:
+      'Hasta cuándo rige la zona. Un día `YYYY-MM-DD` incluye ese día entero (vence a las 23:59:59.999 de Argentina). `null` quita el vencimiento.',
   })
   @IsOptional()
   @IsISO8601()

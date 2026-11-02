@@ -20,6 +20,7 @@ import {
 } from './dto/coverage-zone-response.dto';
 import { CoverageZonePricingService } from './coverage-zone-pricing.service';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { instanteDeVigencia } from './vigencia';
 import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 
 /** Resultado de chequear si una dirección está cubierta por la distribuidora. */
@@ -103,10 +104,21 @@ export class CoverageZoneService {
   /**
    * `new Date(null)` NO da un error: da 1970-01-01 (trata `null` como `0`).
    * Por eso una fecha de vigencia se parsea siempre por acá: cadena con
-   * valor → esa fecha; `null` (o vacío) → sin límite.
+   * valor → esa fecha; `null` (o vacío) → sin límite. Un `YYYY-MM-DD` es un día
+   * argentino (ver `instanteDeVigencia`); una fecha inexistente es un 400.
    */
-  private parseFechaVigencia(valor: string | null | undefined): Date | null {
-    return valor ? new Date(valor) : null;
+  private parseFechaVigencia(
+    valor: string | null | undefined,
+    extremo: 'desde' | 'hasta',
+  ): Date | null {
+    if (!valor) return null;
+    const fecha = instanteDeVigencia(valor, extremo);
+    if (Number.isNaN(fecha.getTime())) {
+      throw new BadRequestException(
+        `${extremo === 'desde' ? 'validFrom' : 'validUntil'}: no es una fecha válida`,
+      );
+    }
+    return fecha;
   }
 
   private validarVigencia(desde: Date | null, hasta: Date | null): void {
@@ -138,8 +150,8 @@ export class CoverageZoneService {
     const surchargeValue = dto.surchargeValue ?? 0;
     this.validarRecargo(surchargeType, surchargeValue);
 
-    const validFrom = this.parseFechaVigencia(dto.validFrom);
-    const validUntil = this.parseFechaVigencia(dto.validUntil);
+    const validFrom = this.parseFechaVigencia(dto.validFrom, 'desde');
+    const validUntil = this.parseFechaVigencia(dto.validUntil, 'hasta');
     this.validarVigencia(validFrom, validUntil);
     this.validarNoVencida(validUntil, dto.isActive ?? true);
 
@@ -293,11 +305,11 @@ export class CoverageZoneService {
 
     const validFrom =
       dto.validFrom !== undefined
-        ? this.parseFechaVigencia(dto.validFrom)
+        ? this.parseFechaVigencia(dto.validFrom, 'desde')
         : actual.validFrom;
     const validUntil =
       dto.validUntil !== undefined
-        ? this.parseFechaVigencia(dto.validUntil)
+        ? this.parseFechaVigencia(dto.validUntil, 'hasta')
         : actual.validUntil;
     this.validarVigencia(validFrom, validUntil);
     // Sólo se exige si el cambio activa la zona o toca su fecha de fin: renombrar

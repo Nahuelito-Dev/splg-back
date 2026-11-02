@@ -141,11 +141,11 @@ export class CoverageZone {
   @Column({ type: 'int', default: 0 })
   priority!: number;
 
-  /** Desde cuándo rige la zona. Null = rige desde siempre. */
+  /** Desde cuándo rige la zona. Un día `YYYY-MM-DD` del alta se guarda como las 00:00 ART. Null = rige desde siempre. */
   @Column({ name: 'valid_from', type: 'timestamptz', nullable: true })
   validFrom!: Date | null;
 
-  /** Hasta cuándo rige la zona (exclusive). Null = no vence. */
+  /** Hasta cuándo rige la zona: pasado este instante vence. Un día `YYYY-MM-DD` del alta se guarda como las 23:59:59.999 ART de ese día. Null = no vence. */
   @Column({ name: 'valid_until', type: 'timestamptz', nullable: true })
   validUntil!: Date | null;
 }

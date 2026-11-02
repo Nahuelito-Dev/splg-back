@@ -3,10 +3,11 @@ import {
   ValidationArguments,
   ValidationOptions,
 } from 'class-validator';
+import { instanteDeVigencia } from '../vigencia';
 
 /**
  * Valida que la propiedad sea una fecha posterior a otra propiedad del mismo
- * objeto (p. ej. `validUntil` > `validFrom`). Si alguna de las dos falta, no
+ * objeto (p. ej. `validUntil` > `validFrom`; los días `YYYY-MM-DD` se leen como días argentinos, ver `instanteDeVigencia`). Si alguna de las dos falta, no
  * hay nada que comparar y se considera válido (lo cubre `@IsOptional` /
  * `@IsISO8601` de cada campo por separado).
  */
@@ -28,8 +29,8 @@ export function EsPosteriorA(
           ];
           if (valor === undefined || valor === null) return true;
           if (inicio === undefined || inicio === null) return true;
-          const fin = new Date(valor as string).getTime();
-          const desde = new Date(inicio as string).getTime();
+          const fin = instanteDeVigencia(valor as string, 'hasta').getTime();
+          const desde = instanteDeVigencia(inicio as string, 'desde').getTime();
           return Number.isFinite(fin) && Number.isFinite(desde) && fin > desde;
         },
         defaultMessage: (args: ValidationArguments) =>

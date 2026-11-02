@@ -42,6 +42,12 @@ export function inicioDelDiaArgentino(dia: string): Date | null {
   return new Date(Date.UTC(p[0], p[1] - 1, p[2]) + DESFASAJE_EN_MS);
 }
 
+/** Último instante (23:59:59.999 ART) del día `YYYY-MM-DD`; `null` si es inválido. */
+export function finDelDiaArgentino(dia: string): Date | null {
+  const inicio = inicioDelDiaArgentino(dia);
+  return inicio ? new Date(inicio.getTime() + UN_DIA_EN_MS - 1) : null;
+}
+
 /**
  * `[inicio del día, inicio del día siguiente)` en hora argentina.
  * `null` si el día no tiene formato `YYYY-MM-DD` válido.
