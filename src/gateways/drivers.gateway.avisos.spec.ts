@@ -25,6 +25,38 @@ describe('DriversGateway · avisos de pedido', () => {
     expect(emit).toHaveBeenCalledWith('order:address-changed', payload);
   });
 
+  it.each([
+    'order:delivery-code-failed',
+    'order:delivery-code-blocked',
+  ] as const)('%s va a la sala del chofer', (evento) => {
+    const payload = { orderId: 'o1', attempts: 5, blocked: true };
+    gateway.notifyDeliveryCode('u-chofer', evento, payload);
+    expect(to).toHaveBeenCalledWith('driver_u-chofer');
+    expect(emit).toHaveBeenCalledWith(evento, payload);
+  });
+
+  it('la sala del aviso es la misma a la que se une el chofer con driver:join', async () => {
+    const join = jest.fn();
+    const identidades = {
+      obtener: jest.fn().mockResolvedValue({ userId: 'u-chofer' }),
+    };
+    const g = new DriversGateway(
+      {} as never,
+      identidades as never,
+      {} as never,
+      {} as never,
+    );
+    await g.handleDriverJoin(null, {
+      join,
+      data: {},
+      emit: jest.fn(),
+    } as never);
+    g.server = { to } as never;
+    g.notifyDeliveryCode('u-chofer', 'order:delivery-code-blocked', {});
+    const sala = (join.mock.calls as string[][])[0][0];
+    expect(to).toHaveBeenCalledWith(sala);
+  });
+
   it('la cancelación va a la misma sala como order:cancelled', () => {
     gateway.notifyOrderCancelled('u-chofer', { orderId: 'o1' });
     expect(to).toHaveBeenCalledWith('driver_u-chofer');

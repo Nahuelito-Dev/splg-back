@@ -27,6 +27,7 @@ describe('ConfirmDeliveryUseCase', () => {
     registerWrongDeliveryCode: jest.Mock;
   };
   let updateOrderStatusUseCase: { execute: jest.Mock };
+  let realtime: { notifyDriverDeliveryCode: jest.Mock };
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
@@ -39,6 +40,7 @@ describe('ConfirmDeliveryUseCase', () => {
       paymentStatus: PaymentStatus.PENDING,
       deliveryCode: 'A1B2C3D4E5',
       deliveryCodeAttempts: 0,
+      delivery: { userId: 'chofer-user-1' },
       items: [],
       ...over,
     }) as Order;
@@ -50,10 +52,12 @@ describe('ConfirmDeliveryUseCase', () => {
       registerWrongDeliveryCode: jest.fn().mockResolvedValue(1),
     };
     updateOrderStatusUseCase = { execute: jest.fn() };
+    realtime = { notifyDriverDeliveryCode: jest.fn() };
 
     useCase = new ConfirmDeliveryUseCase(
       orders as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
       updateOrderStatusUseCase as unknown as import('./update-order-status.use-case').UpdateOrderStatusUseCase,
+      realtime as unknown as import('../domain/ports/realtime-dispatch.port').RealtimeDispatchPort,
     );
   });
 
@@ -183,6 +187,69 @@ describe('ConfirmDeliveryUseCase', () => {
         code: 'DELIVERY_CODE_BLOQUEADO',
         message: 'Demasiados intentos: pedile al chofer un código nuevo',
       });
+    });
+
+    it('cada código errado avisa al chofer asignado con los intentos', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      orders.registerWrongDeliveryCode.mockResolvedValue(3);
+      await rechazo('FFFFFFFFFF');
+      expect(realtime.notifyDriverDeliveryCode).toHaveBeenCalledTimes(1);
+      expect(realtime.notifyDriverDeliveryCode).toHaveBeenCalledWith(
+        'chofer-user-1',
+        'order:delivery-code-failed',
+        { orderId: 'ord-1', attempts: 3, maxAttempts: 5, blocked: false },
+      );
+    });
+
+    it('el quinto errado avisa además el bloqueo al chofer', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      orders.registerWrongDeliveryCode.mockResolvedValue(5);
+      await rechazoBloqueo('FFFFFFFFFF');
+      const llamadas = realtime.notifyDriverDeliveryCode.mock.calls.map(
+        (c: unknown[]) => c[1],
+      );
+      expect(llamadas).toEqual([
+        'order:delivery-code-failed',
+        'order:delivery-code-blocked',
+      ]);
+      expect(realtime.notifyDriverDeliveryCode).toHaveBeenLastCalledWith(
+        'chofer-user-1',
+        'order:delivery-code-blocked',
+        { orderId: 'ord-1', attempts: 5, maxAttempts: 5, blocked: true },
+      );
+    });
+
+    it('errados simultáneos que pasan del tope (6.º) no repiten el aviso', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      orders.registerWrongDeliveryCode.mockResolvedValue(6);
+      expect(await rechazoBloqueo('FFFFFFFFFF')).toMatchObject({
+        statusCode: 409,
+      });
+      expect(realtime.notifyDriverDeliveryCode).not.toHaveBeenCalled();
+    });
+
+    it('un fallo del socket no cambia la respuesta al cliente', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      orders.registerWrongDeliveryCode.mockResolvedValue(5);
+      realtime.notifyDriverDeliveryCode.mockImplementation(() => {
+        throw new Error('socket caído');
+      });
+      expect(await rechazoBloqueo('FFFFFFFFFF')).toMatchObject({
+        statusCode: 409,
+      });
+    });
+
+    it('sin chofer asignado no avisa a nadie', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder({ delivery: null }));
+      orders.registerWrongDeliveryCode.mockResolvedValue(5);
+      await rechazoBloqueo('FFFFFFFFFF');
+      expect(realtime.notifyDriverDeliveryCode).not.toHaveBeenCalled();
+    });
+
+    it('el admin no dispara avisos al chofer', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      await rechazo('FFFFFFFFFF', RoleType.ADMIN);
+      expect(realtime.notifyDriverDeliveryCode).not.toHaveBeenCalled();
     });
 
     it('bloqueado, ni el código correcto confirma y no se transiciona', async () => {
