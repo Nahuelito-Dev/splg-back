@@ -49,11 +49,16 @@ export class RepurchaseMapper {
     const items: InvitationItemDto[] = invitacion.suggestedItems.map((i) => {
       const garrafa = detalle.garrafas.get(i.gasCylinderId);
       const lista = garrafa?.price ?? 0;
-      const { unitPrice, subtotal } = PRECIOS.priceItem(
-        lista,
-        garrafa?.promotions,
-        i.quantity,
+      // Con cotización, el precio y el subtotal son los de ella: una sola fuente.
+      const cotizado = detalle.cotizacion?.items.find(
+        (c) => c.gasCylinderId === i.gasCylinderId,
       );
+      const { unitPrice, subtotal } = cotizado
+        ? {
+            unitPrice: new Decimal(cotizado.unitPrice),
+            subtotal: new Decimal(cotizado.subtotal),
+          }
+        : PRECIOS.priceItem(lista, garrafa?.promotions, i.quantity);
       return {
         gasCylinderId: i.gasCylinderId,
         type: garrafa?.type ?? 'Producto no disponible',
@@ -72,9 +77,13 @@ export class RepurchaseMapper {
       projectedDepletionAt: invitacion.projectedDepletionAt,
       estimateSource: invitacion.estimateSource,
       items,
-      estimatedTotal: items
-        .reduce((suma, i) => suma.plus(i.subtotal), new Decimal(0))
-        .toNumber(),
+      estimatedTotal:
+        detalle.cotizacion?.total ??
+        items
+          .reduce((suma, i) => suma.plus(i.subtotal), new Decimal(0))
+          .toNumber(),
+      zoneSurcharge: detalle.cotizacion?.zoneSurcharge ?? null,
+      paymentSurcharge: detalle.cotizacion?.paymentSurcharge ?? null,
       address: direccion
         ? {
             addressId: direccion.addressId,
@@ -106,7 +115,16 @@ export class RepurchaseMapper {
   ): AcceptInvitationResponseDto {
     const dto = OrderMapper.toDto(order);
     dto.paymentUrl = paymentUrl;
-    return { invitation, order: dto };
+    // Aceptada, el monto es el del pedido que se creó, no una estimación.
+    return {
+      invitation: {
+        ...invitation,
+        estimatedTotal: Number(order.totalAmount),
+        zoneSurcharge: Number(order.zoneSurchargeAmount),
+        paymentSurcharge: Number(order.paymentSurchargeAmount),
+      },
+      order: dto,
+    };
   }
 
   static adminInvitation(

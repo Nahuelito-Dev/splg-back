@@ -28,7 +28,12 @@ const invitacion = (
     ...parcial,
   }) as RepurchaseInvitation;
 
-const DETALLE = { garrafas: new Map(), direccion: null, franja: null };
+const DETALLE = {
+  garrafas: new Map(),
+  direccion: null,
+  franja: null,
+  cotizacion: null,
+};
 
 describe('RepurchaseCustomerService', () => {
   let estimator: { parametros: jest.Mock; estimarCliente: jest.Mock };
@@ -91,6 +96,7 @@ describe('RepurchaseCustomerService', () => {
       );
 
       const r = await service.miRecompra('u1', 'd1', AHORA);
+      expect(detalle.detallar).toHaveBeenCalledWith(expect.anything(), AHORA);
 
       expect(r.estimacion).toBe(cliente);
       expect(r.reason).toBeNull();
@@ -160,6 +166,7 @@ describe('RepurchaseCustomerService', () => {
     it('lista las abiertas y vigentes por omisión, con el detalle de cada una', async () => {
       invitaciones.listarDelCliente.mockResolvedValue([invitacion()]);
       const r = await service.listar('u1', 'd1', true, AHORA);
+      expect(detalle.detallar).toHaveBeenCalledWith(expect.anything(), AHORA);
       expect(r).toHaveLength(1);
       expect(invitaciones.listarDelCliente).toHaveBeenCalledWith('u1', {
         distributorId: 'd1',

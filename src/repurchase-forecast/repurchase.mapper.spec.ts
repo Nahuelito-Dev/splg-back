@@ -63,6 +63,7 @@ const detalle = (): DetalleDeInvitacion => ({
     startTime: '16:00:00',
     endTime: '20:00:00',
   } as DetalleDeInvitacion['franja'],
+  cotizacion: null,
 });
 
 describe('RepurchaseMapper', () => {
@@ -108,6 +109,43 @@ describe('RepurchaseMapper', () => {
       });
     });
 
+    it('el total sale de la cotización del pedido: con recargo de zona y de pago', () => {
+      const d = detalle();
+      d.cotizacion = {
+        total: 15800,
+        zoneSurcharge: 900,
+        paymentSurcharge: 0,
+        items: [],
+      } as unknown as DetalleDeInvitacion['cotizacion'];
+      const dto = RepurchaseMapper.invitation(invitacion(), d);
+      expect(dto.estimatedTotal).toBe(15800);
+      expect(dto.zoneSurcharge).toBe(900);
+      expect(dto.paymentSurcharge).toBe(0);
+    });
+
+    it('con cotización, el precio y el subtotal de los renglones son los de ella', () => {
+      const d = detalle();
+      d.cotizacion = {
+        total: 15800,
+        zoneSurcharge: 900,
+        paymentSurcharge: 0,
+        items: [{ gasCylinderId: 'g10', unitPrice: 7000, subtotal: 14000 }],
+      } as unknown as DetalleDeInvitacion['cotizacion'];
+      const dto = RepurchaseMapper.invitation(invitacion(), d);
+      expect(dto.items[0]).toMatchObject({
+        listUnitPrice: 14900,
+        unitPrice: 7000,
+        subtotal: 14000,
+      });
+    });
+
+    it('sin cotización el total es la suma de los renglones y los recargos quedan en null', () => {
+      const dto = RepurchaseMapper.invitation(invitacion(), detalle());
+      expect(dto.estimatedTotal).toBe(29800);
+      expect(dto.zoneSurcharge).toBeNull();
+      expect(dto.paymentSurcharge).toBeNull();
+    });
+
     it('el monto estimado aplica las promociones activas de cada producto', () => {
       const d = detalle();
       Object.assign(d.garrafas.get('g10')!, {
@@ -148,10 +186,18 @@ describe('RepurchaseMapper', () => {
       distributorId: 'd1',
       orderItems: [],
       customer: undefined,
+      totalAmount: 15800,
+      zoneSurchargeAmount: 900,
+      paymentSurchargeAmount: 0,
     } as unknown as Order;
     const invitation = RepurchaseMapper.invitation(invitacion(), detalle());
     const r = RepurchaseMapper.accepted(invitation, order, 'https://mp');
-    expect(r.invitation).toBe(invitation);
+    expect(r.invitation).toMatchObject({
+      invitationId: 'i1',
+      estimatedTotal: 15800,
+      zoneSurcharge: 900,
+      paymentSurcharge: 0,
+    });
     expect(r.order.id).toBe('o1');
     expect(r.order.paymentUrl).toBe('https://mp');
   });

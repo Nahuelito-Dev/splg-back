@@ -74,7 +74,7 @@ export class RepurchaseCustomerService {
       estimacion: evaluacion?.cliente ?? null,
       reason: evaluacion ? evaluacion.reason : 'no_purchases',
       aviso: await this.aviso(userId, distributorId),
-      abierta: abierta ? await this.conDetalle(abierta) : null,
+      abierta: abierta ? await this.conDetalle(abierta, ahora) : null,
     };
   }
 
@@ -124,7 +124,7 @@ export class RepurchaseCustomerService {
     });
     const vistas: InvitacionConDetalle[] = [];
     for (const invitacion of invitaciones) {
-      vistas.push(await this.conDetalle(invitacion));
+      vistas.push(await this.conDetalle(invitacion, ahora));
     }
     return vistas;
   }
@@ -140,10 +140,11 @@ export class RepurchaseCustomerService {
 
   async conDetalle(
     invitacion: RepurchaseInvitation,
+    ahora: Date = new Date(),
   ): Promise<InvitacionConDetalle> {
     return {
       invitacion,
-      detalle: await this.detalle.detallar(invitacion),
+      detalle: await this.detalle.detallar(invitacion, ahora),
     };
   }
 }

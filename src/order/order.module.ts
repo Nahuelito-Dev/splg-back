@@ -169,6 +169,11 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     // Puerto de notificación al cliente → adapter que delega en NotificationsService.
     { provide: NotificationPort, useClass: NotificationAdapter },
   ],
-  exports: [OrderService, CashCollectionUseCase, DispatchOrchestratorService],
+  exports: [
+    OrderService,
+    QuoteOrderUseCase,
+    CashCollectionUseCase,
+    DispatchOrchestratorService,
+  ],
 })
 export class OrderModule {}
