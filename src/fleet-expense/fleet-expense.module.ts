@@ -29,6 +29,7 @@ import {
 import { FleetExpenseNotifierListener } from './fleet-expense-notifier.listener';
 import { FuelLoad } from './entities/fuel-load.entity';
 import { FuelLoadController } from './fuel-load.controller';
+import { FuelLoadMineV2Controller } from './fuel-load-mine-v2.controller';
 import { FuelLoadService } from './fuel-load.service';
 import { TireEvent } from './entities/tire-event.entity';
 import { Tire } from './entities/tire.entity';
@@ -77,6 +78,7 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     CarFleetController,
     FleetCostV2Controller,
     FuelLoadV2Controller,
+    FuelLoadMineV2Controller,
     TireV2Controller,
     VehicleAccidentV2Controller,
   ],

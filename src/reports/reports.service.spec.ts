@@ -224,14 +224,21 @@ describe('ReportsService', () => {
       qb.getRawMany
         .mockResolvedValueOnce([
           { method: 'cash', status: 'pending', count: '3', total: '30000.5' },
-          { method: 'cash', status: 'unpaid', count: '1', total: '9500' },
+          // total 9500 con una seña paga de 2000: lo adeudado es el saldo
+          {
+            method: 'cash',
+            status: 'unpaid',
+            count: '1',
+            total: '9500',
+            balance: '7500',
+          },
           { method: 'transfer', status: 'pending', count: '2', total: '8000' },
         ])
         .mockResolvedValueOnce([{ count: '2', total: '900' }]);
       const r = await service.getCollections(new Date(), new Date(), 'd1');
       expect(r).toEqual({
         pendingCash: { totalOrders: 3, totalAmount: 30000.5 },
-        unpaid: { totalOrders: 1, totalAmount: 9500 },
+        unpaid: { totalOrders: 1, totalAmount: 7500 },
         writtenOff: { totalOrders: 0, totalAmount: 0 },
         pendingTransfer: { totalOrders: 2, totalAmount: 8000 },
         notReceivedTransfer: { totalOrders: 0, totalAmount: 0 },

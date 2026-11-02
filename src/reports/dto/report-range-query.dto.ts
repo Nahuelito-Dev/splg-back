@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, Matches } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  Matches,
+} from 'class-validator';
 
 /** Cómo se agrupan los resultados en el tiempo. */
 export enum Granularidad {
@@ -53,4 +60,20 @@ export class ReportEvolutionQueryDto extends ReportRangeQueryDto {
     message: 'granularity debe ser day, week o month',
   })
   granularity?: Granularidad;
+}
+
+/** Rango del resumen de ventas, con la opción de no calcular el período anterior. */
+export class ReportSummaryQueryDto extends ReportRangeQueryDto {
+  @ApiPropertyOptional({
+    type: Boolean,
+    default: true,
+    description:
+      'Si es `false` no se calcula el período anterior (`previous` y `previousRange` vienen en null)',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  compare?: boolean;
 }

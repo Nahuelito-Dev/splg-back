@@ -1,4 +1,4 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -21,10 +21,7 @@ import {
   ReportRangeQueryDto,
   ReportEvolutionQueryDto,
 } from './dto/report-range-query.dto';
-import {
-  diaArgentino,
-  rangoDeDiasArgentinos,
-} from '../common/utils/dias-argentina';
+import { rangoDelInforme } from './rango-del-informe';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Reports')
@@ -33,30 +30,6 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
-
-  /**
-   * `startDate` inclusive y `endDate` EXCLUSIVO: `[inicio de from, inicio del
-   * día siguiente a to)` en hora argentina.
-   */
-  private parseDates(
-    from?: string,
-    to?: string,
-  ): { startDate: Date; endDate: Date } {
-    // Sin from/to: hoy en hora argentina. Con uno solo, el rango es ese día.
-    const hoy = diaArgentino();
-    const desde = from ?? to ?? hoy;
-    const hasta = to ?? from ?? hoy;
-    const rango = rangoDeDiasArgentinos(desde, hasta);
-
-    if (!rango) {
-      throw new BadRequestException('Invalid date format (YYYY-MM-DD)');
-    }
-    if (desde > hasta) {
-      throw new BadRequestException('from no puede ser posterior a to');
-    }
-
-    return { startDate: rango.desde, endDate: rango.hasta };
-  }
 
   @Get('sales-by-driver')
   @ApiOperation({
@@ -72,7 +45,7 @@ export class ReportsController {
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<VentasPorChoferDto[]> {
-    const { startDate, endDate } = this.parseDates(rango.from, rango.to);
+    const { startDate, endDate } = rangoDelInforme(rango.from, rango.to);
     // Admin de distribuidora → sólo sus ventas; super_admin sin header → todas.
     return this.reportsService.getSalesByDriver(
       startDate,
@@ -95,7 +68,7 @@ export class ReportsController {
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<VentasPorProductoDto[]> {
-    const { startDate, endDate } = this.parseDates(rango.from, rango.to);
+    const { startDate, endDate } = rangoDelInforme(rango.from, rango.to);
     return this.reportsService.getSalesByProduct(
       startDate,
       endDate,
@@ -117,7 +90,7 @@ export class ReportsController {
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<VentasPorMedioDePagoDto[]> {
-    const { startDate, endDate } = this.parseDates(rango.from, rango.to);
+    const { startDate, endDate } = rangoDelInforme(rango.from, rango.to);
     return this.reportsService.getSalesByPaymentMethod(
       startDate,
       endDate,
@@ -139,7 +112,7 @@ export class ReportsController {
     @Query() rango: ReportEvolutionQueryDto,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<EvolucionDeVentasDto[]> {
-    const { startDate, endDate } = this.parseDates(rango.from, rango.to);
+    const { startDate, endDate } = rangoDelInforme(rango.from, rango.to);
     return this.reportsService.getSalesEvolution(
       startDate,
       endDate,
@@ -153,7 +126,7 @@ export class ReportsController {
     summary: 'Cobros fuera de las ventas',
     description:
       'Días en hora argentina; `to` es inclusivo; por fecha de entrega. Cifras que NO suman a las ventas: ' +
-      'efectivo entregado pendiente de confirmar por el chofer (`pendingCash`), impagos sin resolver (`unpaid`) ' +
+      'efectivo entregado pendiente de confirmar por el chofer (`pendingCash`), impagos sin resolver (`unpaid`, por lo que falta cobrar: el total menos la seña ya paga) ' +
       'y pérdidas (`writtenOff`); y transferencias entregadas que un admin todavía no confirmó (`pendingTransfer`) ' +
       'o marcó como no recibidas (`notReceivedTransfer`).',
   })
@@ -165,7 +138,7 @@ export class ReportsController {
     @Query() rango: ReportRangeQueryDto,
     @CurrentDistributor() distributorId?: string | null,
   ): Promise<CobrosDeEfectivoDto> {
-    const { startDate, endDate } = this.parseDates(rango.from, rango.to);
+    const { startDate, endDate } = rangoDelInforme(rango.from, rango.to);
     return this.reportsService.getCollections(
       startDate,
       endDate,
