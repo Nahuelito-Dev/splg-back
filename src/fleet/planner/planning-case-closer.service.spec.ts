@@ -1,9 +1,11 @@
+import { BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { VehiculoDadoDeBajaEvent } from '../../car/events/vehiculo-dado-de-baja.event';
 import {
   MaintenancePlanningCase,
   PlanningCaseStatus,
+  PlanningWindowSource,
 } from '../entities/maintenance-planning-case.entity';
 import {
   MaintenanceWindowProposal,
@@ -83,6 +85,113 @@ describe('PlanningCaseCloser', () => {
     );
     expect(confirmado.status).toBe(PlanningCaseStatus.CONFIRMED);
     expect(otra.status).toBe(PlanningCaseStatus.NEGOTIATING);
+  });
+
+  describe('reprogramarConfirmado: el turno agendado de la tarea cambió', () => {
+    // 11:00-16:00 UTC = 08:00-13:00 ART del 02/11
+    const confirmado = (over: Partial<MaintenancePlanningCase> = {}) =>
+      caso({
+        status: PlanningCaseStatus.CONFIRMED,
+        chosenStart: new Date('2026-11-02T11:00:00Z'),
+        chosenEnd: new Date('2026-11-02T16:00:00Z'),
+        chosenSource: PlanningWindowSource.DRIVER_ACCEPTED,
+        resolvedAt: new Date('2026-10-30T12:00:00Z'),
+        ...over,
+      });
+    const reprogramar = (
+      destino: Parameters<PlanningCaseCloser['reprogramarConfirmado']>[2],
+    ) =>
+      dataSource.transaction((m) =>
+        closer.reprogramarConfirmado(m as never, 't1', destino, 'u1', AHORA),
+      );
+
+    it('un día mueve la ventana a ese día conservando la hora de inicio y la duración, y deja quién', async () => {
+      const c = confirmado();
+      const inicio = await reprogramar({ dia: '2026-11-05' });
+      expect(c.status).toBe(PlanningCaseStatus.CONFIRMED);
+      expect(c.chosenStart).toEqual(new Date('2026-11-05T11:00:00Z'));
+      expect(c.chosenEnd).toEqual(new Date('2026-11-05T16:00:00Z'));
+      expect(inicio).toEqual(c.chosenStart);
+      expect(c.chosenSource).toBe(PlanningWindowSource.ADMIN);
+      expect(c.resolvedByUserId).toBe('u1');
+      expect(c.resolvedAt).toEqual(new Date('2026-10-30T12:00:00Z'));
+      expect(c.notes).toContain('reprogramó');
+    });
+
+    it('el día es el argentino: una ventana de las 22:00 ART cae a las 22:00 ART del día nuevo (01:00 UTC del siguiente)', async () => {
+      const c = confirmado({
+        chosenStart: new Date('2026-11-02T01:00:00Z'),
+        chosenEnd: new Date('2026-11-02T03:00:00Z'),
+      });
+      await reprogramar({ dia: '2026-11-05' });
+      expect(c.chosenStart).toEqual(new Date('2026-11-06T01:00:00Z'));
+      expect(c.chosenEnd).toEqual(new Date('2026-11-06T03:00:00Z'));
+    });
+
+    it('un instante con hora arranca la ventana a esa hora, con la misma duración', async () => {
+      const c = confirmado();
+      const inicio = await reprogramar({
+        inicio: new Date('2026-11-05T15:30:00Z'),
+      });
+      expect(c.chosenStart).toEqual(new Date('2026-11-05T15:30:00Z'));
+      expect(c.chosenEnd).toEqual(new Date('2026-11-05T20:30:00Z'));
+      expect(inicio).toEqual(new Date('2026-11-05T15:30:00Z'));
+    });
+
+    it('una ventana nueva que arranca en el pasado se rechaza (400) y el caso queda como estaba', async () => {
+      const c = confirmado();
+      await expect(
+        reprogramar({ inicio: new Date('2026-10-30T10:00:00Z') }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(c.chosenStart).toEqual(new Date('2026-11-02T11:00:00Z'));
+    });
+
+    it('acepta una ventana que arranca dentro del margen de 5 minutos', async () => {
+      confirmado();
+      await expect(
+        reprogramar({ inicio: new Date('2026-10-30T14:56:00Z') }),
+      ).resolves.toBeInstanceOf(Date);
+    });
+
+    it('sin turno cancela el caso con su motivo y deja quién', async () => {
+      const c = confirmado();
+      const inicio = await reprogramar(null);
+      expect(c).toMatchObject({
+        status: PlanningCaseStatus.CANCELLED,
+        resolvedAt: AHORA,
+        resolvedByUserId: 'u1',
+      });
+      expect(c.notes).toContain('administrador');
+      expect(inicio).toBeUndefined();
+    });
+
+    it('lee el caso con la fila bloqueada', async () => {
+      confirmado();
+      const find = jest.spyOn(cases, 'find');
+      await reprogramar(null);
+      expect(find).toHaveBeenCalledWith(
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+    });
+
+    it('no toca una ventana que ya terminó, ni un caso de otra tarea, ni uno abierto', async () => {
+      const vieja = caso({
+        status: PlanningCaseStatus.CONFIRMED,
+        chosenStart: new Date('2026-10-20T11:00:00Z'),
+        chosenEnd: new Date('2026-10-20T16:00:00Z'),
+      });
+      const otra = caso({
+        taskId: 't2',
+        status: PlanningCaseStatus.CONFIRMED,
+        chosenStart: new Date('2026-11-02T11:00:00Z'),
+        chosenEnd: new Date('2026-11-02T16:00:00Z'),
+      });
+      const abierto = caso({ status: PlanningCaseStatus.ESCALATED });
+      await reprogramar(null);
+      expect(vieja.status).toBe(PlanningCaseStatus.CONFIRMED);
+      expect(otra.status).toBe(PlanningCaseStatus.CONFIRMED);
+      expect(abierto.status).toBe(PlanningCaseStatus.ESCALATED);
+    });
   });
 
   it('avisa a cada chofer que su propuesta se cerró, y un error de aviso no se propaga', async () => {

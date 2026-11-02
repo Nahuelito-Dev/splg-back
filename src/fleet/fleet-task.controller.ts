@@ -130,9 +130,10 @@ export class FleetTaskController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateFleetTaskDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<FleetTaskResponseDto> {
     return FleetTaskMapper.toDto(
-      await this.tasksService.update(id, dto, distributorId),
+      await this.tasksService.update(id, dto, distributorId, userId),
     );
   }
 

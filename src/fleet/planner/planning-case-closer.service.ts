@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
@@ -7,16 +7,24 @@ import {
   VehiculoDadoDeBajaEvent,
 } from '../../car/events/vehiculo-dado-de-baja.event';
 import { errorMessage } from '../../common/errors/error-message';
+import {
+  inicioDelDiaArgentino,
+  minutosDelDiaArgentino,
+} from '../../common/utils/dias-argentina';
 import { DeliveryService } from '../../delivery/delivery.service';
 import {
   MaintenancePlanningCase,
   PlanningCaseStatus,
+  PlanningWindowSource,
 } from '../entities/maintenance-planning-case.entity';
 import {
   MaintenanceWindowProposal,
   WindowProposalStatus,
 } from '../entities/maintenance-window-proposal.entity';
 import { MaintenancePlannerNotifier } from './maintenance-planner-notifier';
+
+/** Margen para el reloj del cliente: una ventana puede arrancar hasta 5 minutos atrás. */
+const MARGEN_A_FUTURO_MS = 5 * 60_000;
 
 const CASOS_ABIERTOS = [
   PlanningCaseStatus.NEGOTIATING,
@@ -69,6 +77,74 @@ export class PlanningCaseCloser {
       await manager.getRepository(MaintenancePlanningCase).save(caso);
     }
     return cerradas;
+  }
+
+  /**
+   * El administrador cambió el turno agendado de la tarea: la ventana del caso
+   * confirmado (vigente o futura) lo sigue, en la misma transacción y con el
+   * caso bloqueado. `{ dia }` (sólo fecha) mueve la ventana a ese día argentino
+   * conservando su hora de inicio; `{ inicio }` la arranca a esa hora; `null`
+   * cancela el caso. En todos los casos de movimiento la duración se conserva.
+   * Las ventanas que ya terminaron no se tocan. Devuelve el inicio nuevo de la
+   * ventana (`undefined` si no había caso que mover o si se canceló).
+   */
+  async reprogramarConfirmado(
+    manager: EntityManager,
+    taskId: string,
+    destino: { dia: string } | { inicio: Date } | null,
+    userId: string | null = null,
+    ahora: Date = new Date(),
+  ): Promise<Date | undefined> {
+    const repo = manager.getRepository(MaintenancePlanningCase);
+    const casos = await repo.find({
+      where: { taskId, status: PlanningCaseStatus.CONFIRMED },
+      lock: { mode: 'pessimistic_write' },
+    });
+    let nuevoInicio: Date | undefined;
+    for (const caso of casos) {
+      if (!caso.chosenStart || !caso.chosenEnd) continue;
+      if (caso.chosenEnd.getTime() <= ahora.getTime()) continue;
+      if (destino === null) {
+        caso.status = PlanningCaseStatus.CANCELLED;
+        caso.resolvedAt = ahora;
+        caso.resolvedByUserId = userId;
+        caso.notes =
+          'El administrador canceló el turno agendado de la tarea: la ventana confirmada se canceló';
+      } else {
+        const inicio = this.inicioNuevo(destino, caso.chosenStart);
+        if (inicio.getTime() < ahora.getTime() - MARGEN_A_FUTURO_MS) {
+          throw new BadRequestException(
+            'scheduledAt: la ventana tiene que ser a futuro',
+          );
+        }
+        const duracion = caso.chosenEnd.getTime() - caso.chosenStart.getTime();
+        caso.chosenStart = inicio;
+        caso.chosenEnd = new Date(inicio.getTime() + duracion);
+        caso.chosenSource = PlanningWindowSource.ADMIN;
+        caso.resolvedByUserId = userId;
+        caso.notes =
+          'El administrador reprogramó el turno agendado de la tarea: la ventana confirmada se movió';
+        nuevoInicio = inicio;
+      }
+      await repo.save(caso);
+    }
+    return nuevoInicio;
+  }
+
+  private inicioNuevo(
+    destino: { dia: string } | { inicio: Date },
+    actual: Date,
+  ): Date {
+    if ('inicio' in destino) return destino.inicio;
+    const inicioDelDia = inicioDelDiaArgentino(destino.dia);
+    if (!inicioDelDia) {
+      throw new BadRequestException(
+        `scheduledAt: día inválido (${destino.dia})`,
+      );
+    }
+    return new Date(
+      inicioDelDia.getTime() + minutosDelDiaArgentino(actual) * 60_000,
+    );
   }
 
   /** Avisa a cada chofer que su propuesta se cerró. Best-effort. */

@@ -12,7 +12,11 @@ import { EntityManager, Repository } from 'typeorm';
 import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
 import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { instanteValido } from '../cash/domain/instante-del-pago';
-import { diaArgentino } from '../common/utils/dias-argentina';
+import {
+  diaArgentino,
+  inicioDelDiaArgentino,
+  minutosDelDiaArgentino,
+} from '../common/utils/dias-argentina';
 import {
   MaintenanceTask,
   MaintenanceTaskStatus,
@@ -52,6 +56,48 @@ import type { MaintenanceWindowProposal } from './entities/maintenance-window-pr
 function fechaDeCalendario(valor: string | null | undefined) {
   if (valor === null) return null;
   return valor ? normalizarFechaCalendario(new Date(valor)) : undefined;
+}
+
+/** Lo que pidió el cuerpo para `scheduledAt`: sólo un día, un instante con hora, o borrarlo. */
+type TurnoPedido =
+  | { tipo: 'borrar' }
+  | { tipo: 'dia'; dia: string }
+  | { tipo: 'instante'; inicio: Date };
+
+const SOLO_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * `undefined` no se toca. `YYYY-MM-DD` o un instante a medianoche argentina
+ * (lo que manda un selector de fecha) es «sólo fecha»; cualquier otro instante
+ * trae hora propia.
+ */
+function turnoPedido(
+  valor: string | null | undefined,
+): TurnoPedido | undefined {
+  if (valor === undefined) return undefined;
+  if (!valor) return { tipo: 'borrar' };
+  if (SOLO_FECHA.test(valor)) return { tipo: 'dia', dia: valor };
+  const inicio = new Date(valor);
+  const aMedianoche =
+    minutosDelDiaArgentino(inicio) === 0 &&
+    inicio.getUTCSeconds() === 0 &&
+    inicio.getUTCMilliseconds() === 0;
+  return aMedianoche
+    ? { tipo: 'dia', dia: diaArgentino(inicio) }
+    : { tipo: 'instante', inicio };
+}
+
+/** ¿El turno pedido es el que la tarea ya tiene? Un día coincide con el día argentino (o el UTC que muestra el panel) del guardado. */
+function mismoTurno(pedido: TurnoPedido, guardado: Date | null): boolean {
+  if (pedido.tipo === 'borrar') return guardado === null;
+  if (guardado === null) return false;
+  if (pedido.tipo === 'instante') {
+    return guardado.getTime() === pedido.inicio.getTime();
+  }
+  return (
+    diaArgentino(guardado) === pedido.dia ||
+    guardado.toISOString().slice(0, 10) === pedido.dia
+  );
 }
 
 /** Las tareas del plan de seguro se pagan por las cuotas de la póliza, nunca por acá. */
@@ -206,9 +252,11 @@ export class FleetTaskService {
     id: string,
     dto: UpdateFleetTaskDto,
     distributorId: string,
+    userId: string | null = null,
   ): Promise<MaintenanceTask> {
     const dueAt = fechaDeCalendario(dto.dueAt);
     const validFrom = fechaDeCalendario(dto.validFrom);
+    const pedido = turnoPedido(dto.scheduledAt);
 
     // Con la fila bloqueada (como `close` y `cancel`): una edición concurrente no
     // reabre ni pisa una tarea que ya se cerró.
@@ -226,6 +274,33 @@ export class FleetTaskService {
           dueAt === undefined ? task.dueAt : dueAt,
         );
 
+        // El turno agendado y la ventana confirmada del planificador (CU-105) son
+        // lo mismo: si el turno cambia de verdad, la ventana lo sigue (también el
+        // bloqueo del despacho) o se cancela si se borra. Un turno igual al guardado
+        // (el panel lo reenvía en cada edición) no toca nada.
+        let turno: Date | null | undefined;
+        if (pedido && !mismoTurno(pedido, task.scheduledAt)) {
+          const destino =
+            pedido.tipo === 'borrar'
+              ? null
+              : pedido.tipo === 'dia'
+                ? { dia: pedido.dia }
+                : { inicio: pedido.inicio };
+          const ventana = await this.casos?.reprogramarConfirmado(
+            manager,
+            id,
+            destino,
+            userId,
+          );
+          turno =
+            ventana ??
+            (pedido.tipo === 'borrar'
+              ? null
+              : pedido.tipo === 'instante'
+                ? pedido.inicio
+                : this.inicioDelDiaOFalla(pedido.dia));
+        }
+
         Object.assign(
           task,
           sinIndefinidos({
@@ -237,9 +312,7 @@ export class FleetTaskService {
             referenceNumber: dto.referenceNumber,
             category: dto.category,
             notes: dto.notes,
-            scheduledAt: dto.scheduledAt
-              ? new Date(dto.scheduledAt)
-              : dto.scheduledAt,
+            scheduledAt: turno,
             details:
               dto.details === undefined
                 ? undefined
@@ -252,6 +325,14 @@ export class FleetTaskService {
       return traducirErrorDeBase(error, this.logger, 'tareas de flota');
     }
     return this.findOne(id, distributorId);
+  }
+
+  private inicioDelDiaOFalla(dia: string): Date {
+    const inicio = inicioDelDiaArgentino(dia);
+    if (!inicio) {
+      throw new BadRequestException(`scheduledAt: día inválido (${dia})`);
+    }
+    return inicio;
   }
 
   /**

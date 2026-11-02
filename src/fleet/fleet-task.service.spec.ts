@@ -669,6 +669,132 @@ describe('FleetTaskService', () => {
         expect(closer.avisar).toHaveBeenCalledWith([propuesta]);
       });
 
+      describe('editar el turno agendado', () => {
+        const reprogramar = jest.fn();
+        const VENTANA = new Date('2026-11-12T11:00:00.000Z');
+        const conTurno = (scheduledAt: Date | null) => {
+          const t = { ...abierta(), scheduledAt, planId: 'plan-vtv' };
+          enLaBase(t);
+          plans.findOneOrFail.mockResolvedValue(planVehiculo);
+          return t;
+        };
+        const editar = (scheduledAt: string | null | undefined) =>
+          service.update(
+            't1',
+            { scheduledAt } as Parameters<FleetTaskService['update']>[1],
+            'd1',
+            'u1',
+          );
+
+        beforeEach(() => {
+          reprogramar.mockReset().mockResolvedValue(undefined);
+          Object.assign(closer, { reprogramarConfirmado: reprogramar });
+        });
+
+        it('un sólo-fecha como lo manda el panel pasa como día argentino y la tarea queda con la ventana que devolvió el caso', async () => {
+          const t = conTurno(null);
+          reprogramar.mockResolvedValue(VENTANA);
+          await editar('2026-11-12');
+          expect(reprogramar).toHaveBeenCalledWith(
+            expect.anything(),
+            't1',
+            { dia: '2026-11-12' },
+            'u1',
+          );
+          expect(t.scheduledAt).toEqual(VENTANA);
+        });
+
+        it('sin caso que mover, la tarea guarda la medianoche argentina del día (no la UTC)', async () => {
+          const t = conTurno(null);
+          await editar('2026-11-12');
+          expect(t.scheduledAt).toEqual(new Date('2026-11-12T03:00:00.000Z'));
+        });
+
+        it('un instante a medianoche argentina es un sólo-fecha', async () => {
+          conTurno(null);
+          await editar('2026-11-12T03:00:00.000Z');
+          expect(reprogramar).toHaveBeenCalledWith(
+            expect.anything(),
+            't1',
+            { dia: '2026-11-12' },
+            'u1',
+          );
+        });
+
+        it('un instante con hora arranca la ventana a esa hora y la tarea queda con ella', async () => {
+          const t = conTurno(null);
+          reprogramar.mockResolvedValue(new Date('2026-11-13T18:30:00.000Z'));
+          await editar('2026-11-13T18:30:00.000Z');
+          expect(reprogramar).toHaveBeenCalledWith(
+            expect.anything(),
+            't1',
+            { inicio: new Date('2026-11-13T18:30:00.000Z') },
+            'u1',
+          );
+          expect(t.scheduledAt).toEqual(new Date('2026-11-13T18:30:00.000Z'));
+        });
+
+        it('borrar el turno (null) cancela el caso y la tarea queda sin turno', async () => {
+          const t = conTurno(VENTANA);
+          await editar(null);
+          expect(reprogramar).toHaveBeenCalledWith(
+            expect.anything(),
+            't1',
+            null,
+            'u1',
+          );
+          expect(t.scheduledAt).toBeNull();
+        });
+
+        it('null cuando ya era null no cancela nada', async () => {
+          conTurno(null);
+          await editar(null);
+          expect(reprogramar).not.toHaveBeenCalled();
+        });
+
+        it('el mismo día que ya tiene (lo que reenvía el panel al editar otra cosa) no toca el caso ni la hora guardada', async () => {
+          const t = conTurno(VENTANA);
+          await editar('2026-11-12');
+          expect(reprogramar).not.toHaveBeenCalled();
+          expect(t.scheduledAt).toEqual(VENTANA);
+        });
+
+        it('el día igual se compara en Argentina: 01:00 UTC del 13 es todavía el 12', async () => {
+          const t = conTurno(new Date('2026-11-13T01:00:00.000Z'));
+          await editar('2026-11-12');
+          expect(reprogramar).not.toHaveBeenCalled();
+          expect(t.scheduledAt).toEqual(new Date('2026-11-13T01:00:00.000Z'));
+        });
+
+        it('el mismo instante tampoco toca el caso', async () => {
+          conTurno(VENTANA);
+          await editar('2026-11-12T11:00:00.000Z');
+          expect(reprogramar).not.toHaveBeenCalled();
+        });
+
+        it('editar otra cosa no toca el caso', async () => {
+          conTurno(VENTANA);
+          await service.update('t1', { notes: 'x' }, 'd1', 'u1');
+          expect(reprogramar).not.toHaveBeenCalled();
+        });
+
+        it('un día inválido es 400', async () => {
+          conTurno(null);
+          await expect(editar('2026-13-45')).rejects.toBeInstanceOf(
+            BadRequestException,
+          );
+        });
+
+        it('si falla la reprogramación la tarea no se guarda', async () => {
+          conTurno(VENTANA);
+          reprogramar.mockRejectedValue(new BadRequestException('a futuro'));
+          await expect(editar('2026-11-20')).rejects.toBeInstanceOf(
+            BadRequestException,
+          );
+          expect(tasks.save).not.toHaveBeenCalled();
+        });
+      });
+
       it('una tarea que no se pudo cerrar no avisa nada', async () => {
         enLaBase(null);
         await expect(
