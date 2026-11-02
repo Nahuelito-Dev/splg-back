@@ -45,6 +45,7 @@ import {
 } from '../../../src/migrations/sql/auditoria-de-datos';
 import mapaDeAuditoria from '../../../src/audit/data/auditoria-mapa.datos.json';
 import { sentenciasDeReglasDeDatos } from '../../../src/migrations/sql/reglas-de-datos';
+import { CREAR_PROCEDIMIENTOS_DE_CONCILIACION } from '../../../src/migrations/sql/procedimientos-de-conciliacion';
 import { sentenciasDeSaldos } from '../../../src/migrations/sql/saldo-contra-libro';
 import { sentenciasDeTransiciones } from '../../../src/migrations/sql/transiciones-de-estado';
 import {
@@ -271,6 +272,7 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     ...sentenciasDeTransiciones(),
     ...sentenciasDeSaldos(),
     ...sentenciasDeReglasDeDatos(),
+    ...CREAR_PROCEDIMIENTOS_DE_CONCILIACION,
   ]) {
     await dataSource.query(sql);
   }

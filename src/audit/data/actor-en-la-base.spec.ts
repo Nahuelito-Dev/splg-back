@@ -119,6 +119,13 @@ describe('ActorEnLaBase', () => {
     expect(creado.sentencias).toEqual(['UPDATE']);
   });
 
+  it('un CALL del request va sin envolver: el procedimiento controla su propia transacción', async () => {
+    await auditContext.run(ACTOR, () =>
+      nuevoRunner().query('CALL conciliar_stock_del_dia($1)', ['d']),
+    );
+    expect(creado.sentencias).toEqual(['CALL']);
+  });
+
   it('si falla al abrir la transacción deshace y propaga el error', async () => {
     creado.runner.startTransaction.mockImplementation(() => {
       creado.runner.isTransactionActive = true;
@@ -139,7 +146,6 @@ describe('esEscritura', () => {
     'MERGE INTO "car" ...',
     'TRUNCATE "car"',
     'COPY "car" FROM STDIN',
-    'CALL hacer()',
     'WITH a AS (SELECT 1) DELETE FROM "car"',
     '/* nota */ UPDATE "car" SET x = 1',
     '-- nota\nINSERT INTO "car" ...',
@@ -153,6 +159,7 @@ describe('esEscritura', () => {
     'WITH a AS (SELECT 1) SELECT * FROM a',
     'START TRANSACTION',
     'COMMIT',
+    'CALL conciliar_stock_del_dia($1)',
     "SELECT set_config('splg.user_id', $1, true)",
     '/* UPDATE */ SELECT 1',
   ])('%s no lo es', (sql) => {
