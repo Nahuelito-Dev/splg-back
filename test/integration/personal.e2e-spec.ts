@@ -19,6 +19,8 @@ import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
+import { DriverSettlementStatus } from '../../src/driver-settlement/domain/driver-settlement.enums';
+import { DriverSettlement } from '../../src/driver-settlement/entities/driver-settlement.entity';
 import { Car } from '../../src/car/entities/car.entity';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
 import { VehicleAssignmentService } from '../../src/car/vehicle-assignment.service';
@@ -735,7 +737,7 @@ describe('Personal: puestos y legajos (e2e)', () => {
       const auto = await dataSource.getRepository(Car).save({
         distributorId,
         userId,
-        carPatent: `TST${randomUUID().slice(0, 6).toUpperCase()}`,
+        carPatent: `AB${Math.floor(Math.random() * 900 + 100)}CD`,
         carBrand: 'Fiat',
         carModel: 'Fiorino',
       } as Partial<Car>);
@@ -878,6 +880,176 @@ describe('Personal: puestos y legajos (e2e)', () => {
           .isEnabled,
       ).toBe(true);
       expect(await abiertas(delivery.deliveryId)).toBe(1);
+    });
+
+    it.each([
+      [DriverSettlementStatus.OPEN, 'abierta'],
+      [DriverSettlementStatus.SUBMITTED, 'presentada'],
+    ])(
+      'con una rendición %s: 409 con su N° y TODO queda como estaba; aprobada, el egreso pasa',
+      async (status, texto) => {
+        const { d1, admin1 } = await escenario();
+        const { userId, delivery, empleado } = await choferConVehiculo(
+          admin1,
+          d1.distributorId,
+        );
+        const rendicion = (await dataSource
+          .getRepository(DriverSettlement)
+          .save({
+            distributorId: d1.distributorId,
+            deliveryId: delivery.deliveryId,
+            number: 7,
+            businessDate: '2026-10-30',
+            status,
+            expectedCash: 1000,
+            declaredCash: status === DriverSettlementStatus.OPEN ? null : 1000,
+            difference: status === DriverSettlementStatus.OPEN ? null : 0,
+            submittedAt:
+              status === DriverSettlementStatus.OPEN ? null : new Date(),
+            driverExpenses: 0,
+          } as Partial<DriverSettlement>)) as DriverSettlement;
+        const egreso = () =>
+          http()
+            .post(`/employees/${empleado.employeeId}/termination`)
+            .set(admin1.headers)
+            .send({ terminationDate: '2026-10-04', reason: 'resignation' });
+
+        const rechazo = await egreso().expect(409);
+        expect((rechazo.body as { message: string }).message).toBe(
+          `No se puede dar de baja al chofer mientras tenga una rendición pendiente (rendición N° 7, ${texto}, del 30/10/2026): cerrala antes`,
+        );
+        expect(
+          (await dataSource.getRepository(Employee).findOneByOrFail({ userId }))
+            .status,
+        ).toBe(EmployeeStatus.ACTIVE);
+        expect(
+          (await dataSource.getRepository(User).findOneByOrFail({ userId }))
+            .blocked,
+        ).toBe(false);
+        expect(
+          (await dataSource.getRepository(Delivery).findOneByOrFail({ userId }))
+            .isEnabled,
+        ).toBe(true);
+        expect(await abiertas(delivery.deliveryId)).toBe(1);
+
+        // Presentada y aprobada, por las transiciones que admite la base.
+        const rendiciones = dataSource.getRepository(DriverSettlement);
+        const id = { settlementId: rendicion.settlementId };
+        if (status === DriverSettlementStatus.OPEN) {
+          await rendiciones.update(id, {
+            status: DriverSettlementStatus.SUBMITTED,
+            declaredCash: 1000,
+            difference: 0,
+            submittedAt: new Date(),
+          });
+        }
+        await rendiciones.update(id, {
+          status: DriverSettlementStatus.APPROVED,
+          approvedAt: new Date(),
+        });
+        await egreso().expect(200);
+        expect(await abiertas(delivery.deliveryId)).toBe(0);
+      },
+    );
+
+    it('motivo no admitido, fecha inválida e id que no es UUID: 400; sin sesión: 401', async () => {
+      const { d1, admin1 } = await escenario();
+      const { empleado } = await choferConVehiculo(admin1, d1.distributorId);
+      const url = `/employees/${empleado.employeeId}/termination`;
+      await http()
+        .post(url)
+        .set(admin1.headers)
+        .send({ terminationDate: '2026-10-04', reason: 'vacaciones' })
+        .expect(400);
+      await http()
+        .post(url)
+        .set(admin1.headers)
+        .send({ terminationDate: '2026-02-31', reason: 'other' })
+        .expect(400);
+      await http()
+        .post('/employees/no-es-un-uuid/termination')
+        .set(admin1.headers)
+        .send({ terminationDate: '2026-10-04', reason: 'other' })
+        .expect(400);
+      await http()
+        .post(url)
+        .send({ terminationDate: '2026-10-04', reason: 'other' })
+        .expect(401);
+    });
+
+    it('un chofer no egresa: en el panel su rol no entra (401) y en la app de reparto no alcanza el rol (403)', async () => {
+      const { d1, admin1 } = await escenario();
+      const { userId, empleado } = await choferConVehiculo(
+        admin1,
+        d1.distributorId,
+      );
+      const { email } = await dataSource
+        .getRepository(User)
+        .findOneByOrFail({ userId });
+      const url = `/employees/${empleado.employeeId}/termination`;
+      const cuerpo = { terminationDate: '2026-10-04', reason: 'other' };
+      const como = (origen: string) => ({
+        Authorization: `Bearer ${email}`,
+        'X-Client-Source': origen,
+      });
+      await http().post(url).set(como('panel-app')).send(cuerpo).expect(401);
+      await http().post(url).set(como('driver-app')).send(cuerpo).expect(403);
+      expect(
+        (await dataSource.getRepository(Employee).findOneByOrFail({ userId }))
+          .status,
+      ).toBe(EmployeeStatus.ACTIVE);
+    });
+
+    it('la baja del usuario (DELETE /users/:id) con una rendición pendiente: 409 y nada cambia', async () => {
+      const { d1, admin1 } = await escenario();
+      const { userId, delivery } = await choferConVehiculo(
+        admin1,
+        d1.distributorId,
+      );
+      await dataSource.getRepository(DriverSettlement).save({
+        distributorId: d1.distributorId,
+        deliveryId: delivery.deliveryId,
+        number: 3,
+        businessDate: '2026-10-30',
+        status: DriverSettlementStatus.OPEN,
+        expectedCash: 1000,
+        driverExpenses: 0,
+      } as Partial<DriverSettlement>);
+      const res = await http()
+        .delete(`/users/${userId}`)
+        .set(admin1.headers)
+        .expect(409);
+      expect((res.body as { message: string }).message).toContain(
+        'rendición N° 3, abierta, del 30/10/2026): cerrala antes',
+      );
+      expect(
+        (await dataSource.getRepository(Employee).findOneByOrFail({ userId }))
+          .status,
+      ).toBe(EmployeeStatus.ACTIVE);
+      expect(
+        await dataSource.getRepository(User).findOneBy({ userId }),
+      ).not.toBeNull();
+    });
+
+    // `DELETE /users/me` es sólo del cliente: ningún chofer da de baja su cuenta, así que la regla
+    // de rendición pendiente sólo la dispara un administrador.
+    it('el chofer no puede dar de baja su propia cuenta (DELETE /users/me es del cliente): 403 y su legajo sigue activo', async () => {
+      const { d1, admin1 } = await escenario();
+      const { userId } = await choferConVehiculo(admin1, d1.distributorId);
+      const { email } = await dataSource
+        .getRepository(User)
+        .findOneByOrFail({ userId });
+      await http()
+        .delete('/users/me')
+        .set({
+          Authorization: `Bearer ${email}`,
+          'X-Client-Source': 'driver-app',
+        })
+        .expect(403);
+      expect(
+        (await dataSource.getRepository(Employee).findOneByOrFail({ userId }))
+          .status,
+      ).toBe(EmployeeStatus.ACTIVE);
     });
 
     it('sin cuenta: sólo cambia el legajo. Reingreso: activo con fecha nueva, sin desbloquear la cuenta', async () => {

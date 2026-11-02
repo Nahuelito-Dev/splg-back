@@ -6,6 +6,9 @@ import { CommissionModule } from '../commission/commission.module';
 import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
 import { EmailModule } from '../email/email.module';
 import { RedisModule } from '../redis/redis.module';
+import { DeliveryModule } from '../delivery/delivery.module';
+import { EmployeeModule } from '../employee/employee.module';
+import { EgresoDelChoferRule } from './application/egreso-del-chofer.rule';
 import { DriverSettlementCron } from './application/driver-settlement.cron';
 import { DriverSettlementQueryService } from './application/driver-settlement-query.service';
 import { AttachmentModule } from '../attachment/attachment.module';
@@ -39,6 +42,8 @@ import { DriverSettlementV2Controller } from './presentation/driver-settlement-v
     AdminModule, // destinatarios del aviso de rendiciones sin cerrar
     EmailModule,
     RedisModule,
+    DeliveryModule, // el perfil de chofer del legajo
+    EmployeeModule, // regla de egreso del chofer (CU-181)
   ],
   controllers: [DriverSettlementController, DriverSettlementV2Controller],
   providers: [
@@ -46,6 +51,7 @@ import { DriverSettlementV2Controller } from './presentation/driver-settlement-v
     DriverSettlementQueryService,
     DriverSettlementCron,
     DriverSettlementAttachmentOwnerResolver,
+    EgresoDelChoferRule,
   ],
   exports: [DriverSettlementService, DriverSettlementQueryService],
 })

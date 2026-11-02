@@ -237,7 +237,8 @@ export class EmployeeController {
   })
   @ApiNotFoundResponse({ description: 'Empleado no encontrado' })
   @ApiConflictResponse({
-    description: 'Ya está egresado, o el chofer tiene pedidos en curso',
+    description:
+      'Ya está egresado, o el chofer tiene pedidos en curso, una carga de camión abierta o una rendición pendiente',
   })
   async terminateEmployee(
     @Param('id', ParseUUIDPipe) id: string,

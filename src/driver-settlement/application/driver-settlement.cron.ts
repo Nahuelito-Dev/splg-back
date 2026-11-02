@@ -10,6 +10,7 @@ import {
 } from '../../common/utils/dias-argentina';
 import { EmailSenderPort } from '../../email/ports/email-sender.port';
 import { RedisService } from '../../redis/redis.service';
+import { ESTADOS_SIN_CERRAR } from '../domain/driver-settlement.enums';
 import { DriverSettlementService } from './driver-settlement.service';
 
 const escaparHtml = (texto: string): string =>
@@ -84,10 +85,10 @@ export class DriverSettlementCron {
        FROM "driver_settlement" s
        JOIN "delivery" d ON d."delivery_id" = s."delivery_id"
        JOIN "user" u ON u."user_id" = d."user_id"
-       WHERE s."status" IN ('open', 'submitted') AND s."business_date" < $1::date
+       WHERE s."status"::text = ANY($2::text[]) AND s."business_date" < $1::date
          AND s."overdue_alerted_at" IS NULL
        ORDER BY s."business_date", s."number"`,
-      [diaArgentino()],
+      [diaArgentino(), [...ESTADOS_SIN_CERRAR]],
     );
     const porDistribuidora = new Map<string, FilaSinCerrar[]>();
     for (const f of filas) {
