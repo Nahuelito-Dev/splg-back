@@ -12,7 +12,12 @@ import {
 } from './entities/repurchase-invitation.entity';
 import { RecompraEstimada } from './repurchase-estimator.service';
 
-const DETALLE = { garrafas: new Map(), direccion: null, franja: null };
+const DETALLE = {
+  garrafas: new Map(),
+  direccion: null,
+  franja: null,
+  cotizacion: null,
+};
 
 const invitacion = (
   parcial: Partial<RepurchaseInvitation> = {},

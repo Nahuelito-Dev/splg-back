@@ -64,9 +64,23 @@ export class RepurchaseInvitationResponseDto {
   @ApiProperty({ type: [InvitationItemDto] }) items!: InvitationItemDto[];
   @ApiProperty({
     description:
-      'Suma de los subtotales con promoción; el total real (con zona y el recargo por medio de pago, configurable por distribuidora) se cotiza con `POST /orders/quote`',
+      'Total del pedido de hoy: el `total` de `POST /orders/quote` con la dirección y el medio de pago de la invitación (promociones por cantidad, recargo de zona y recargo por medio de pago), o sea lo que cobra el pedido al aceptarla con esos datos. Al aceptarla (respuesta de `accept`) es el total del pedido creado. Los renglones traen `unitPrice` y `subtotal` de esa misma cotización. Se recalcula en cada lectura. Si la invitación ya no está abierta o venció, o hoy el alta no la aceptaría (producto dado de baja, distribuidora suspendida, sin stock, dirección fuera de cobertura), no se cotiza: es la suma de los renglones a precio de hoy con promoción y `zoneSurcharge` y `paymentSurcharge` vienen en null',
   })
   estimatedTotal!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Recargo por zona de la dirección incluido en `estimatedTotal`; null si no se pudo cotizar',
+  })
+  zoneSurcharge!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Recargo por medio de pago incluido en `estimatedTotal`; null si no se pudo cotizar',
+  })
+  paymentSurcharge!: number | null;
   @ApiProperty({ type: InvitationAddressDto, nullable: true })
   address!: InvitationAddressDto | null;
   @ApiProperty({
