@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,24 +21,34 @@ import { RoleType } from '../../common/constants/role-type.enum';
  */
 describe('ConfirmDeliveryUseCase', () => {
   let useCase: ConfirmDeliveryUseCase;
-  let orders: { findByIdFull: jest.Mock };
+  let orders: {
+    findByIdFull: jest.Mock;
+    findOnTheWayByCustomer: jest.Mock;
+    registerWrongDeliveryCode: jest.Mock;
+  };
   let updateOrderStatusUseCase: { execute: jest.Mock };
 
   const makeOrder = (over: Partial<Order> = {}): Order =>
     ({
       orderId: 'ord-1',
       customerId: 'cust-1',
+      distributorId: 'dist-1',
       deliveryId: 'drv-1',
       status: OrderStatus.ON_THE_WAY,
       paymentMethod: PaymentMethod.CASH,
       paymentStatus: PaymentStatus.PENDING,
       deliveryCode: 'A1B2C3D4E5',
+      deliveryCodeAttempts: 0,
       items: [],
       ...over,
     }) as Order;
 
   beforeEach(() => {
-    orders = { findByIdFull: jest.fn() };
+    orders = {
+      findByIdFull: jest.fn(),
+      findOnTheWayByCustomer: jest.fn().mockResolvedValue([]),
+      registerWrongDeliveryCode: jest.fn().mockResolvedValue(1),
+    };
     updateOrderStatusUseCase = { execute: jest.fn() };
 
     useCase = new ConfirmDeliveryUseCase(
@@ -77,6 +88,141 @@ describe('ConfirmDeliveryUseCase', () => {
       useCase.execute('ord-1', 'CODIGO-MAL', 'cust-1', RoleType.CUSTOMER),
     ).rejects.toThrow(BadRequestException);
     expect(updateOrderStatusUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  const rechazoBloqueo = async (code: string): Promise<unknown> => {
+    try {
+      await useCase.execute('ord-1', code, 'cust-1', RoleType.CUSTOMER);
+    } catch (e) {
+      return (e as ConflictException).getResponse();
+    }
+    throw new Error('tenía que bloquear');
+  };
+
+  const rechazo = async (
+    code: string,
+    role: RoleType = RoleType.CUSTOMER,
+  ): Promise<unknown> => {
+    try {
+      await useCase.execute('ord-1', code, 'cust-1', role);
+    } catch (e) {
+      return (e as BadRequestException).getResponse();
+    }
+    throw new Error('tenía que rechazar el código');
+  };
+
+  it('un código con forma de basura se rechaza como FORMATO', async () => {
+    orders.findByIdFull.mockResolvedValue(makeOrder());
+    expect(await rechazo('https://x.com/a')).toMatchObject({
+      statusCode: 400,
+      code: 'DELIVERY_CODE_FORMATO',
+    });
+    expect(orders.findOnTheWayByCustomer).not.toHaveBeenCalled();
+  });
+
+  it('un código de otro pedido en camino del cliente se rechaza como OTRO_PEDIDO', async () => {
+    orders.findByIdFull.mockResolvedValue(makeOrder());
+    orders.findOnTheWayByCustomer.mockResolvedValue([
+      { orderId: 'ord-1', deliveryCode: 'A1B2C3D4E5' },
+      { orderId: 'ord-2', deliveryCode: '0123456789' },
+    ]);
+    expect(await rechazo('0123456789')).toMatchObject({
+      code: 'DELIVERY_CODE_OTRO_PEDIDO',
+    });
+    expect(orders.findOnTheWayByCustomer).toHaveBeenCalledWith(
+      'cust-1',
+      'dist-1',
+    );
+    expect(updateOrderStatusUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('un código bien formado que no es de ningún pedido suyo se rechaza como INCORRECTO', async () => {
+    orders.findByIdFull.mockResolvedValue(makeOrder());
+    orders.findOnTheWayByCustomer.mockResolvedValue([
+      { orderId: 'ord-1', deliveryCode: 'A1B2C3D4E5' },
+    ]);
+    expect(await rechazo('FFFFFFFFFF')).toMatchObject({
+      message: 'Código de entrega inválido',
+      code: 'DELIVERY_CODE_INCORRECTO',
+    });
+  });
+
+  it('el admin no consulta los pedidos de nadie: su rechazo es INCORRECTO', async () => {
+    orders.findByIdFull.mockResolvedValue(makeOrder());
+    expect(await rechazo('0123456789', RoleType.ADMIN)).toMatchObject({
+      code: 'DELIVERY_CODE_INCORRECTO',
+    });
+    expect(orders.findOnTheWayByCustomer).not.toHaveBeenCalled();
+  });
+
+  it('el código en minúsculas del pedido también confirma', async () => {
+    orders.findByIdFull.mockResolvedValue(makeOrder());
+    updateOrderStatusUseCase.execute.mockResolvedValue({});
+    await useCase.execute('ord-1', 'a1b2c3d4e5', 'cust-1', RoleType.CUSTOMER);
+    expect(updateOrderStatusUseCase.execute).toHaveBeenCalled();
+  });
+
+  describe('límite de intentos', () => {
+    it('cada código incorrecto del cliente se cuenta en la base', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      orders.registerWrongDeliveryCode.mockResolvedValue(2);
+      expect(await rechazo('FFFFFFFFFF')).toMatchObject({ statusCode: 400 });
+      expect(orders.registerWrongDeliveryCode).toHaveBeenCalledWith('ord-1');
+    });
+
+    it('el quinto incorrecto bloquea el código: 409 con DELIVERY_CODE_BLOQUEADO', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryCodeAttempts: 4 }),
+      );
+      orders.registerWrongDeliveryCode.mockResolvedValue(5);
+      await expect(
+        useCase.execute('ord-1', 'FFFFFFFFFF', 'cust-1', RoleType.CUSTOMER),
+      ).rejects.toThrow(ConflictException);
+      expect(await rechazoBloqueo('FFFFFFFFFF')).toMatchObject({
+        statusCode: 409,
+        code: 'DELIVERY_CODE_BLOQUEADO',
+        message: 'Demasiados intentos: pedile al chofer un código nuevo',
+      });
+    });
+
+    it('bloqueado, ni el código correcto confirma y no se transiciona', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryCodeAttempts: 5 }),
+      );
+      await expect(
+        useCase.execute('ord-1', 'A1B2C3D4E5', 'cust-1', RoleType.CUSTOMER),
+      ).rejects.toThrow(ConflictException);
+      expect(updateOrderStatusUseCase.execute).not.toHaveBeenCalled();
+      expect(orders.registerWrongDeliveryCode).not.toHaveBeenCalled();
+    });
+
+    it('con 4 intentos y el código correcto, confirma', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryCodeAttempts: 4 }),
+      );
+      updateOrderStatusUseCase.execute.mockResolvedValue({});
+      await useCase.execute('ord-1', 'A1B2C3D4E5', 'cust-1', RoleType.CUSTOMER);
+      expect(updateOrderStatusUseCase.execute).toHaveBeenCalled();
+    });
+
+    it('el admin no suma intentos ni queda bloqueado', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ deliveryCodeAttempts: 5 }),
+      );
+      expect(await rechazo('FFFFFFFFFF', RoleType.ADMIN)).toMatchObject({
+        code: 'DELIVERY_CODE_INCORRECTO',
+      });
+      expect(orders.registerWrongDeliveryCode).not.toHaveBeenCalled();
+      updateOrderStatusUseCase.execute.mockResolvedValue({});
+      await useCase.execute(
+        'ord-1',
+        'A1B2C3D4E5',
+        'admin-1',
+        RoleType.ADMIN,
+        'Cliente sin celular, confirmó por teléfono',
+      );
+      expect(updateOrderStatusUseCase.execute).toHaveBeenCalled();
+    });
   });
 
   it('con código correcto y ON_THE_WAY, delega en UpdateOrderStatusUseCase → DELIVERED', async () => {

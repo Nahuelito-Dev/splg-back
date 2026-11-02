@@ -3,6 +3,7 @@ import {
   CargaParaConsumo,
   esConsumoAnomalo,
   importeCoincide,
+  importeEsperado,
   litrosEntranEnElTanque,
   ordenarCargas,
   totalizarTramos,
@@ -25,6 +26,18 @@ function carga(
     ...over,
   };
 }
+
+describe('importeEsperado (litros × precio, 2 decimales)', () => {
+  it('multiplica sin error de coma flotante', () => {
+    expect(importeEsperado(40.5, 1050.5)).toBe(42545.25);
+    expect(importeEsperado(0.1, 0.2)).toBe(0.02);
+  });
+
+  it('redondea a 2 decimales', () => {
+    expect(importeEsperado(10.01, 1.005)).toBe(10.06);
+    expect(importeEsperado(3, 0.333)).toBe(1);
+  });
+});
 
 describe('importeCoincide (tolerancia del 1 %)', () => {
   it('acepta el importe exacto y el que se aparta menos de 1 %', () => {

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
+import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
 import { In, IsNull, MoreThanOrEqual, Not, Raw, Repository } from 'typeorm';
 import {
   sqlPedidoEnLoteVivo,
@@ -58,6 +60,16 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       // apareciendo en lo que ya pasó (H-74).
       withDeleted: true,
       relations: FULL_RELATIONS,
+    });
+  }
+
+  findOnTheWayByCustomer(
+    customerId: string,
+    distributorId: string,
+  ): Promise<Pick<Order, 'orderId' | 'deliveryCode'>[]> {
+    return this.orderRepository.find({
+      where: { customerId, distributorId, status: OrderStatus.ON_THE_WAY },
+      select: { orderId: true, deliveryCode: true },
     });
   }
 
@@ -337,6 +349,49 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       select: { orderId: true, deliveryId: true },
     });
     return new Set(filas.flatMap((o) => (o.deliveryId ? [o.deliveryId] : [])));
+  }
+
+  async registerWrongDeliveryCode(orderId: string): Promise<number> {
+    const res = await this.orderRepository
+      .createQueryBuilder()
+      .update(Order)
+      .set({
+        deliveryCodeAttempts: () => '"delivery_code_attempts" + 1',
+      })
+      .where('order_id = :orderId', { orderId })
+      .returning('delivery_code_attempts')
+      .execute();
+    const fila = (res.raw as Array<{ delivery_code_attempts: number }>)[0];
+    return Number(fila?.delivery_code_attempts ?? 0);
+  }
+
+  replaceDeliveryCode(orderId: string, newCode: string): Promise<boolean> {
+    return this.orderRepository.manager.transaction(async (manager) => {
+      const [filas]: [Array<{ distributor_id: string }>, number] =
+        await manager.query(
+          `UPDATE "order"
+              SET "deliveryCode" = $2, "delivery_code_attempts" = 0
+            WHERE "order_id" = $1 AND "status" = $3
+          RETURNING "distributor_id"`,
+          [orderId, newCode, OrderStatus.ON_THE_WAY],
+        );
+      if (filas.length === 0) return false;
+      // El código es un secreto y no se audita como columna: queda el hecho.
+      await AuditoriaDeDatos.registrar(manager, {
+        actionTypeId: AuditActionTypeId.UPDATE,
+        entity: Order.name,
+        recordId: orderId,
+        distributorId: filas[0].distributor_id,
+        details: [
+          {
+            field: 'deliveryCode',
+            oldValue: '[código de entrega]',
+            newValue: '[código nuevo generado por el chofer]',
+          },
+        ],
+      });
+      return true;
+    });
   }
 
   save(order: Order): Promise<Order> {

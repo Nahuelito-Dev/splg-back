@@ -44,6 +44,12 @@ export abstract class OrderRepositoryPort {
   /** Pedido por id con TODAS las relaciones (customer, delivery, items, etc.). */
   abstract findByIdFull(id: string): Promise<Order | null>;
 
+  /** Los pedidos en camino del cliente, con su código de entrega (para saber si un QR es de otro pedido suyo). */
+  abstract findOnTheWayByCustomer(
+    customerId: string,
+    distributorId: string,
+  ): Promise<Pick<Order, 'orderId' | 'deliveryCode'>[]>;
+
   abstract findAllPaginated(
     limit: number,
     offset: number,
@@ -100,6 +106,21 @@ export abstract class OrderRepositoryPort {
   abstract findDeliveryIdsWithOrderInProgress(
     deliveryIds: string[],
   ): Promise<Set<string>>;
+
+  /**
+   * Suma un código de entrega incorrecto al pedido (atómico, en la base) y
+   * devuelve cuántos lleva.
+   */
+  abstract registerWrongDeliveryCode(orderId: string): Promise<number>;
+
+  /**
+   * Cambia el código de entrega de un pedido EN CAMINO y vuelve los intentos a
+   * 0, auditándolo. Devuelve false si el pedido ya no está en camino.
+   */
+  abstract replaceDeliveryCode(
+    orderId: string,
+    newCode: string,
+  ): Promise<boolean>;
 
   /** Guarda (crea o actualiza) un pedido ya materializado. */
   abstract save(order: Order): Promise<Order>;

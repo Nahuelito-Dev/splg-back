@@ -91,6 +91,6 @@ export class RechazoDeOfertaResponseDto {
 /** `GET /orders/:id/delivery-code`: el código que el chofer muestra como QR. */
 export class CodigoDeEntregaResponseDto {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
-  @ApiProperty({ type: String, nullable: true, example: 'E498F43C8A' })
+  @ApiProperty({ type: String, nullable: true, example: '482913' })
   deliveryCode!: string | null;
 }

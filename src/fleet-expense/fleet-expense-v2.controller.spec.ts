@@ -99,6 +99,29 @@ describe('Gastos de la flota v2 (HTTP)', () => {
     await app.close();
   });
 
+  it('GET /v2/fleet/fuel-loads/quote calcula el importe: litros × precio a 2 decimales', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v2/fleet/fuel-loads/quote')
+      .query({ liters: 40.5, unitPrice: 1050.5 })
+      .expect(200);
+    expect(res.body).toEqual({
+      liters: 40.5,
+      unitPrice: 1050.5,
+      totalAmount: 42545.25,
+    });
+  });
+
+  it('GET /v2/fleet/fuel-loads/quote rechaza litros o precio inválidos', async () => {
+    await request(app.getHttpServer())
+      .get('/v2/fleet/fuel-loads/quote')
+      .query({ liters: 0, unitPrice: 1000 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/v2/fleet/fuel-loads/quote')
+      .query({ liters: 10 })
+      .expect(400);
+  });
+
   it('POST /v2/fleet/tires/:id/pay paga y responde el neumático con su estado de pago', async () => {
     const res = await request(app.getHttpServer())
       .post(`/v2/fleet/tires/${ID}/pay`)

@@ -2,12 +2,18 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 
 import { Order, OrderStatus } from '../entities/order.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
-import { compareDeliveryCode } from '../domain/delivery-code.util';
+import {
+  compareDeliveryCode,
+  DeliveryCodeError,
+  MAX_INTENTOS_CODIGO_ENTREGA,
+  tieneFormatoDeCodigo,
+} from '../domain/delivery-code.util';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { UpdateOrderStatusUseCase } from './update-order-status.use-case';
 
@@ -63,8 +69,23 @@ export class ConfirmDeliveryUseCase {
       );
     }
 
+    // Sólo cuentan (y se bloquean) los intentos del cliente: el admin que
+    // entrega con motivo no queda trabado por los errores de nadie.
+    const cuenta = role === RoleType.CUSTOMER;
+    if (cuenta && order.deliveryCodeAttempts >= MAX_INTENTOS_CODIGO_ENTREGA) {
+      throw this.codigoBloqueado();
+    }
+
     if (!compareDeliveryCode(order.deliveryCode, code)) {
-      throw new BadRequestException('Código de entrega inválido');
+      if (cuenta) {
+        const intentos = await this.orders.registerWrongDeliveryCode(
+          order.orderId,
+        );
+        if (intentos >= MAX_INTENTOS_CODIGO_ENTREGA) {
+          throw this.codigoBloqueado();
+        }
+      }
+      throw await this.codigoRechazado(order, code, role);
     }
 
     // El admin que entrega por el QR (el código lo consigue con
@@ -85,5 +106,61 @@ export class ConfirmDeliveryUseCase {
       order.orderId,
       OrderStatus.DELIVERED,
     );
+  }
+
+  /** El 409 de un pedido cuyo código agotó los intentos. */
+  private codigoBloqueado(): ConflictException {
+    return new ConflictException({
+      statusCode: 409,
+      message: 'Demasiados intentos: pedile al chofer un código nuevo',
+      error: 'Conflict',
+      code: DeliveryCodeError.BLOQUEADO,
+    });
+  }
+
+  /**
+   * El 400 de un código que no es el del pedido, con `code` para que la app
+   * diga por qué: mal leído, de otro pedido en camino del cliente, o
+   * simplemente incorrecto. El `message` de siempre se conserva.
+   */
+  private async codigoRechazado(
+    order: Order,
+    code: string,
+    role: RoleType,
+  ): Promise<BadRequestException> {
+    const motivo = await this.motivoDelRechazo(order, code, role);
+    const message =
+      motivo === DeliveryCodeError.FORMATO
+        ? 'El código no tiene el formato de un código de entrega: revisá la lectura'
+        : motivo === DeliveryCodeError.OTRO_PEDIDO
+          ? 'Ese código es de otro de tus pedidos en camino'
+          : 'Código de entrega inválido';
+    return new BadRequestException({
+      statusCode: 400,
+      message,
+      error: 'Bad Request',
+      code: motivo,
+    });
+  }
+
+  private async motivoDelRechazo(
+    order: Order,
+    code: string,
+    role: RoleType,
+  ): Promise<DeliveryCodeError> {
+    if (!tieneFormatoDeCodigo(code)) return DeliveryCodeError.FORMATO;
+    if (role === RoleType.CUSTOMER) {
+      const enCamino = await this.orders.findOnTheWayByCustomer(
+        order.customerId,
+        order.distributorId,
+      );
+      const esDeOtro = enCamino.some(
+        (o) =>
+          o.orderId !== order.orderId &&
+          compareDeliveryCode(o.deliveryCode, code),
+      );
+      if (esDeOtro) return DeliveryCodeError.OTRO_PEDIDO;
+    }
+    return DeliveryCodeError.INCORRECTO;
   }
 }

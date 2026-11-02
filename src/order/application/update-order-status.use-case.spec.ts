@@ -645,9 +645,7 @@ describe('UpdateOrderStatusUseCase', () => {
       expect(result.acceptedAt).toBeInstanceOf(Date);
       // Prueba de entrega con QR: al aceptar se genera el código secreto que
       // el chofer mostrará como QR (ver ConfirmDeliveryUseCase).
-      expect(result.deliveryCode).toEqual(
-        expect.stringMatching(/^[0-9A-F]{10}$/),
-      );
+      expect(result.deliveryCode).toEqual(expect.stringMatching(/^\d{6}$/));
       expect(orders.save).toHaveBeenCalledWith(result);
       // Cierra la oferta de despacho del chofer que aceptó (por user_id).
       expect(orchestrator.onDriverAccepted).toHaveBeenCalledWith(

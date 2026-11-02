@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from 'crypto';
+import { randomInt, timingSafeEqual } from 'crypto';
 
 /**
  * Código secreto de la prueba de entrega con QR (dominio puro, sin
@@ -11,13 +11,18 @@ import { randomBytes, timingSafeEqual } from 'crypto';
  */
 
 /**
- * 10 caracteres hexadecimales (mayúsculas, legibles en un QR chico).
- * 16^10 combinaciones ≈ 1.1 * 10^12: adivinarlo a fuerza bruta es inviable,
- * más todavía porque solo es válido mientras el pedido está ON_THE_WAY.
+ * 6 dígitos (000000 a 999999), el código que el cliente puede tipear si no
+ * puede escanear. Con `crypto.randomInt` (no `Math.random`). 10^6 combinaciones
+ * serían pocas sin freno: por eso el pedido se bloquea a los
+ * `MAX_INTENTOS_CODIGO_ENTREGA` códigos incorrectos y el chofer genera uno
+ * nuevo. Los pedidos viejos conservan su código (10 hexadecimales).
  */
 export function generateDeliveryCode(): string {
-  return randomBytes(5).toString('hex').toUpperCase();
+  return randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
+
+/** Códigos incorrectos del cliente tras los cuales el código del pedido queda bloqueado. */
+export const MAX_INTENTOS_CODIGO_ENTREGA = 5;
 
 /**
  * Comparación de tiempo constante (evita timing attacks) entre el código
@@ -30,12 +35,31 @@ export function compareDeliveryCode(
 ): boolean {
   if (!expected || !provided) return false;
 
-  const expectedBuf = Buffer.from(expected);
-  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected.toUpperCase());
+  const providedBuf = Buffer.from(provided.toUpperCase());
 
   // timingSafeEqual exige buffers del mismo largo; si difieren, el código ya
   // es inválido (comparar contra sí mismo no filtra info útil del secreto).
   if (expectedBuf.length !== providedBuf.length) return false;
 
   return timingSafeEqual(expectedBuf, providedBuf);
+}
+
+/** Por qué se rechazó un código de entrega (campo `code` del 400 de `confirm-delivery`). */
+export enum DeliveryCodeError {
+  /** No tiene la forma de un código de entrega: se leyó mal el QR o se tipeó mal. */
+  FORMATO = 'DELIVERY_CODE_FORMATO',
+  /** Es un código válido, pero de otro pedido en camino del mismo cliente. */
+  OTRO_PEDIDO = 'DELIVERY_CODE_OTRO_PEDIDO',
+  /** Tiene la forma correcta, pero no es el de este pedido. */
+  INCORRECTO = 'DELIVERY_CODE_INCORRECTO',
+  /** Se agotaron los intentos: el chofer tiene que generar un código nuevo. */
+  BLOQUEADO = 'DELIVERY_CODE_BLOQUEADO',
+}
+
+const FORMATO_DEL_CODIGO = /^[0-9A-Za-z]{4,12}$/;
+
+/** Forma plausible de un código de entrega: alfanumérico de 4 a 12 . */
+export function tieneFormatoDeCodigo(code: string): boolean {
+  return FORMATO_DEL_CODIGO.test(code);
 }

@@ -74,6 +74,7 @@ export enum PaymentStatus {
   'CHK_order_liberacion_por_fraude',
   `"payment_fraud_released_at" IS NULL OR ("payment_fraud_released_by" IS NOT NULL AND char_length(btrim("payment_fraud_released_reason")) >= 10)`,
 )
+@Check('CHK_order_intentos_codigo', `"delivery_code_attempts" >= 0`)
 @Check(
   'CHK_order_montos',
   `"totalAmount" >= 0 AND "subtotal_items" >= 0 AND "zone_surcharge_amount" >= 0 AND "express_surcharge_amount" >= 0 AND "payment_surcharge_amount" >= 0 AND "deposit_amount" >= 0`,
@@ -415,6 +416,15 @@ export class Order {
    */
   @Column({ type: 'varchar', length: 12, nullable: true })
   deliveryCode!: string | null;
+
+  /**
+   * Códigos de entrega incorrectos que mandó el cliente. Al llegar a
+   * `MAX_INTENTOS_CODIGO_ENTREGA` el código queda bloqueado hasta que el
+   * chofer genere uno nuevo (que lo vuelve a 0). En la base, no en Redis: tiene
+   * que sobrevivir a un reinicio y queda auditado.
+   */
+  @Column({ name: 'delivery_code_attempts', type: 'int', default: 0 })
+  deliveryCodeAttempts!: number;
 
   @Column({
     name: 'receiver_name',

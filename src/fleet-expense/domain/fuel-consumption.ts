@@ -142,6 +142,11 @@ export const TOLERANCIA_DEL_IMPORTE = 0.01;
 /** Los litros pueden pasar hasta un 5 % la capacidad del tanque. */
 export const TOLERANCIA_DEL_TANQUE = 1.05;
 
+/** El importe de una carga: litros × precio por litro, a 2 decimales. */
+export function importeEsperado(liters: number, unitPrice: number): number {
+  return new Decimal(liters).times(unitPrice).toDecimalPlaces(2).toNumber();
+}
+
 export function importeCoincide(
   liters: number,
   unitPrice: number,

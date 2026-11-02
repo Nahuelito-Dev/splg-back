@@ -651,7 +651,13 @@ export class OrderController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Código inválido o el pedido no está en camino',
+    description:
+      'Código inválido o el pedido no está en camino. Si el código no es el del pedido, el cuerpo trae `code`: `DELIVERY_CODE_FORMATO` (no tiene forma de código: mal leído), `DELIVERY_CODE_OTRO_PEDIDO` (es de otro pedido en camino del cliente) o `DELIVERY_CODE_INCORRECTO`.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'El cliente agotó los 5 intentos: el cuerpo trae `code: DELIVERY_CODE_BLOQUEADO` y el chofer tiene que generar un código nuevo (`POST /api/v2/orders/:id/delivery-code/regenerate`)',
   })
   @ApiResponse({
     status: 403,

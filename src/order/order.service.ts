@@ -719,6 +719,32 @@ export class OrderService {
   }
 
   /**
+   * El chofer asignado (o un admin) genera un código de entrega nuevo cuando el
+   * del pedido quedó bloqueado por intentos o se filtró: reemplaza al viejo y
+   * vuelve los intentos a 0. Sólo con el pedido en camino.
+   */
+  async regenerateDeliveryCode(
+    orderId: string,
+    userId: string,
+    role: RoleType,
+  ) {
+    const order = await this.findOne(orderId);
+    await this.assertPedidoDelChofer(order, userId, role);
+    if (order.status !== OrderStatus.ON_THE_WAY) {
+      throw new ConflictException(
+        'El código sólo se cambia con el pedido en camino',
+      );
+    }
+    const deliveryCode = generateDeliveryCode();
+    if (!(await this.orders.replaceDeliveryCode(order.orderId, deliveryCode))) {
+      throw new ConflictException(
+        'El código sólo se cambia con el pedido en camino',
+      );
+    }
+    return { orderId: order.orderId, deliveryCode };
+  }
+
+  /**
    * Confirma la entrega (el cliente escanea el QR del chofer). Delega en
    * ConfirmDeliveryUseCase: valida ownership + código secreto y dispara la
    * transición ON_THE_WAY → DELIVERED reutilizando UpdateOrderStatusUseCase.
