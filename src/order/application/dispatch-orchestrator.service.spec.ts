@@ -39,11 +39,19 @@ describe('DispatchOrchestratorService', () => {
     choferesElegibles: jest.Mock;
     findDeliveryIdsByUserIds: jest.Mock;
   };
-  let fleet: { choferesInhabilitados: jest.Mock; choferesEnMoto: jest.Mock };
+  let fleet: {
+    choferesInhabilitados: jest.Mock;
+    choferesEnMoto: jest.Mock;
+    motivosDeInhabilitacion: jest.Mock;
+  };
   let expressSettings: { obtener: jest.Mock };
   let expressDegrade: { pasarAlRepartoComun: jest.Mock };
   let events: { emit: jest.Mock };
-  let truckGate: { choferesQuePuedenRecibir: jest.Mock };
+  let truckGate: {
+    choferesQuePuedenRecibir: jest.Mock;
+    motivoParaNoRecibir: jest.Mock;
+    motivoParaElAdmin: jest.Mock;
+  };
   let offers: {
     create: jest.Mock;
     findDriverOfferState: jest.Mock;
@@ -127,6 +135,7 @@ describe('DispatchOrchestratorService', () => {
       choferesInhabilitados: jest.fn().mockResolvedValue(new Set()),
       // Por defecto todos los candidatos van en moto.
       choferesEnMoto: jest.fn((ids: string[]) => Promise.resolve(new Set(ids))),
+      motivosDeInhabilitacion: jest.fn().mockResolvedValue([]),
     };
     expressSettings = {
       obtener: jest.fn().mockResolvedValue({
@@ -143,6 +152,8 @@ describe('DispatchOrchestratorService', () => {
       choferesQuePuedenRecibir: jest.fn((_dist: string, ids: string[]) =>
         Promise.resolve(new Set(ids)),
       ),
+      motivoParaNoRecibir: jest.fn().mockResolvedValue(null),
+      motivoParaElAdmin: jest.fn().mockResolvedValue(null),
     };
     const notifications = {
       sendOfferPushToDriver: jest.fn().mockResolvedValue(undefined),
@@ -433,6 +444,114 @@ describe('DispatchOrchestratorService', () => {
 
       expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(-26.8, -65.2, 20);
       expect(r).toEqual(['a', 'c']);
+    });
+  });
+
+  describe('choferesCercaConMotivos (diagnóstico de M4)', () => {
+    it('lista sólo los choferes de la distribuidora y por qué no pueden recibir', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce([
+        'ramon',
+        'otro-tenant',
+        'libre',
+      ]);
+      deliveries.findDeliveryIdsByUserIds.mockImplementationOnce(
+        (ids: string[]) =>
+          Promise.resolve(
+            ids
+              .filter((id) => id !== 'otro-tenant')
+              .map((id) => ({ userId: id, deliveryId: `d-${id}` })),
+          ),
+      );
+      fleet.motivosDeInhabilitacion.mockImplementation((id: string) =>
+        Promise.resolve(
+          id === 'ramon'
+            ? ['su vehículo tiene el taller programado en este horario']
+            : [],
+        ),
+      );
+
+      const r = await orchestrator.choferesCercaConMotivos(
+        -26.8,
+        -65.2,
+        'dist-1',
+        true,
+      );
+
+      expect(dispatch.findNearbyDrivers).toHaveBeenCalledWith(-26.8, -65.2, 20);
+      expect(deliveries.findDeliveryIdsByUserIds).toHaveBeenCalledWith(
+        ['ramon', 'otro-tenant', 'libre'],
+        'dist-1',
+      );
+      expect(r).toEqual([
+        {
+          userId: 'ramon',
+          deliveryId: 'd-ramon',
+          reasons: ['su vehículo tiene el taller programado en este horario'],
+        },
+        { userId: 'libre', deliveryId: 'd-libre', reasons: [] },
+      ]);
+    });
+
+    it('suma deshabilitado, pedido en curso y carga del camión', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a', 'b']);
+      deliveries.choferesElegibles.mockImplementation((ids: string[]) =>
+        Promise.resolve(ids.filter((id) => id !== 'a')),
+      );
+      orders.findDeliveryIdsWithOrderInProgress.mockResolvedValue(
+        new Set(['d-b']),
+      );
+      truckGate.motivoParaElAdmin.mockResolvedValue(
+        'la carga N° 7 todavía no salió',
+      );
+
+      const r = await orchestrator.choferesCercaConMotivos(
+        -26.8,
+        -65.2,
+        'dist-1',
+        true,
+      );
+
+      expect(r.map((c) => c.reasons)).toEqual([
+        ['no está habilitado o validado'],
+        ['tiene un pedido en curso', 'la carga N° 7 todavía no salió'],
+      ]);
+    });
+
+    it('con memoria, un chofer ya evaluado no se vuelve a consultar entre semillas', async () => {
+      const radar = ['a', 'b', 'c'];
+      dispatch.findNearbyDrivers.mockResolvedValue(radar);
+      fleet.motivosDeInhabilitacion.mockResolvedValue([
+        'no tiene un vehículo asignado',
+      ]);
+      const memoria = new Map<string, string[]>();
+
+      for (let semilla = 0; semilla < 4; semilla++) {
+        await orchestrator.choferesCercaConMotivos(
+          -26.8,
+          -65.2,
+          'dist-1',
+          true,
+          memoria,
+        );
+      }
+
+      expect(fleet.motivosDeInhabilitacion).toHaveBeenCalledTimes(3);
+      expect(truckGate.motivoParaElAdmin).toHaveBeenCalledTimes(3);
+    });
+
+    it('sin pedir motivos no consulta flota ni carga', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['a']);
+
+      const r = await orchestrator.choferesCercaConMotivos(
+        -26.8,
+        -65.2,
+        'dist-1',
+        false,
+      );
+
+      expect(r).toEqual([{ userId: 'a', deliveryId: 'd-a', reasons: [] }]);
+      expect(fleet.motivosDeInhabilitacion).not.toHaveBeenCalled();
+      expect(truckGate.motivoParaElAdmin).not.toHaveBeenCalled();
     });
   });
 

@@ -54,10 +54,37 @@ interface ChoferCandidato {
   capacidadKg: CapacidadKg;
 }
 
+/** Cuántos pedidos quedaron sin lote, cada uno en un solo motivo (la suma es candidatos − pedidos en lotes). */
+export interface MotivosDeNoArmado {
+  noDriversNearby: number;
+  driversNotEligible: number;
+  notEnoughStops: number;
+  lockConflict: number;
+}
+
+export interface ChoferNoElegible {
+  driverName: string;
+  reasons: string[];
+}
+
 export interface ResumenDeEvaluacion {
   candidates: number;
   batches: number;
   orders: number;
+  reasons: MotivosDeNoArmado;
+  driversNotEligibleDetail: ChoferNoElegible[];
+}
+
+/** Lo que se va anotando de por qué cada pedido quedó sin lote. */
+interface Diagnostico {
+  /** Sólo «Armar ahora» pide el detalle; el proceso periódico no paga las consultas. */
+  activo: boolean;
+  reasons: MotivosDeNoArmado;
+  detalle: ChoferNoElegible[];
+  /** `user_id` ya listados en el detalle, para no repetirlos entre semillas. */
+  listados: Set<string>;
+  /** Motivos ya calculados por `user_id`: un chofer se evalúa una vez por corrida. */
+  motivosPorChofer: Map<string, string[]>;
 }
 
 export interface ResumenDeVencimientos {
@@ -74,6 +101,8 @@ export interface ResultadoDeDecision {
 
 const TOPE_DE_CANDIDATOS = 100;
 const CHOFERES_A_PROBAR = 5;
+const DETALLE_DE_CHOFERES = 5;
+const MOTIVO_CON_LOTE = 'ya tiene un lote ofrecido o asignado';
 const CERROJO_TTL_MS = 60_000;
 const ESPERA_DEL_CERROJO_MS = 3_000;
 /** Código de Postgres de una violación de índice único. */
@@ -177,7 +206,7 @@ export class RouteBatchService {
         'La agrupación por recorrido está apagada: encendela en los parámetros para armar lotes',
       );
     }
-    const resumen = await this.evaluar(distributorId);
+    const resumen = await this.evaluar(distributorId, new Date(), true);
     if (!resumen) {
       throw new ConflictException(
         'Ya se están armando los lotes de esta distribuidora: reintentá en un momento',
@@ -208,11 +237,12 @@ export class RouteBatchService {
   async evaluar(
     distributorId: string,
     ahora: Date = new Date(),
+    conMotivos = false,
   ): Promise<ResumenDeEvaluacion | null> {
     const r = await this.redis.withLock(
       `route-batch:evaluar:${distributorId}`,
       CERROJO_TTL_MS,
-      () => this.armarLotes(distributorId, ahora),
+      () => this.armarLotes(distributorId, ahora, conMotivos),
     );
     // `null`: otra instancia tiene el cerrojo y no se evaluó nada.
     return r.obtenido ? r.valor : null;
@@ -221,15 +251,41 @@ export class RouteBatchService {
   private async armarLotes(
     distributorId: string,
     ahora: Date,
+    conMotivos: boolean,
   ): Promise<ResumenDeEvaluacion> {
     const params = this.agrupacion(await this.parametros(distributorId));
     const candidatos = await this.candidatos(distributorId, ahora);
+    const diagnostico: Diagnostico = {
+      activo: conMotivos,
+      reasons: {
+        noDriversNearby: 0,
+        driversNotEligible: 0,
+        notEnoughStops: 0,
+        lockConflict: 0,
+      },
+      detalle: [],
+      listados: new Set(),
+      motivosPorChofer: new Map(),
+    };
     const resumen: ResumenDeEvaluacion = {
       candidates: candidatos.length,
       batches: 0,
       orders: 0,
+      reasons: diagnostico.reasons,
+      driversNotEligibleDetail: diagnostico.detalle,
     };
-    if (candidatos.length < 2) return resumen;
+    if (candidatos.length < 2) {
+      if (candidatos.length === 1 && diagnostico.activo) {
+        const ocupados = await this.choferesOcupados();
+        await this.explicarSobrante(
+          distributorId,
+          candidatos[0],
+          ocupados,
+          diagnostico,
+        );
+      }
+      return resumen;
+    }
 
     const distancias = await this.distancias(candidatos.map((c) => c.orderId));
     const distancia: DistanciaEntrePedidos = (a, b) =>
@@ -247,6 +303,7 @@ export class RouteBatchService {
         distancia,
         ocupados,
         ahora,
+        diagnostico,
       );
       if (usados) {
         resumen.batches += 1;
@@ -255,6 +312,16 @@ export class RouteBatchService {
       } else {
         pool = resto;
       }
+    }
+    // El último pedido del pool no llega a ser semilla (no hay con quién agruparlo):
+    // también se diagnostica, sin intentar un lote.
+    if (pool.length === 1) {
+      await this.explicarSobrante(
+        distributorId,
+        pool[0],
+        ocupados,
+        diagnostico,
+      );
     }
     return resumen;
   }
@@ -428,6 +495,7 @@ export class RouteBatchService {
     distancia: DistanciaEntrePedidos,
     ocupados: Set<string>,
     ahora: Date,
+    diagnostico: Diagnostico,
   ): Promise<Set<string> | null> {
     const choferes = await this.choferesCerca(
       distributorId,
@@ -435,6 +503,18 @@ export class RouteBatchService {
       semilla.lng,
       ocupados,
     );
+    if (choferes.length === 0) {
+      if (diagnostico.activo) {
+        await this.explicarSinChoferes(
+          distributorId,
+          semilla,
+          ocupados,
+          diagnostico,
+        );
+      }
+      return null;
+    }
+    let conflicto = false;
     for (const chofer of choferes) {
       const grupo = armarGrupo(
         semilla,
@@ -459,8 +539,111 @@ export class RouteBatchService {
         ocupados.add(chofer.deliveryId);
         return new Set(enElLote.map((p) => p.orderId));
       }
+      conflicto = true;
     }
+    if (conflicto) diagnostico.reasons.lockConflict += 1;
+    else diagnostico.reasons.notEnoughStops += 1;
     return null;
+  }
+
+  /**
+   * Un pedido que quedó solo (el último del pool, o el único candidato): si hay
+   * un chofer disponible el motivo es que no tiene con quién agruparse; si no,
+   * el de los choferes. Sólo con el diagnóstico pedido y sin intentar un lote.
+   */
+  private async explicarSobrante(
+    distributorId: string,
+    pedido: Candidato,
+    ocupados: Set<string>,
+    diagnostico: Diagnostico,
+  ): Promise<void> {
+    if (!diagnostico.activo) return;
+    try {
+      const choferes = await this.choferesCerca(
+        distributorId,
+        pedido.lat,
+        pedido.lng,
+        ocupados,
+      );
+      if (choferes.length > 0) {
+        diagnostico.reasons.notEnoughStops += 1;
+        return;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo diagnosticar el pedido ${pedido.orderId}: ${errorMessage(error)}`,
+      );
+      diagnostico.reasons.driversNotEligible += 1;
+      return;
+    }
+    await this.explicarSinChoferes(
+      distributorId,
+      pedido,
+      ocupados,
+      diagnostico,
+    );
+  }
+
+  /**
+   * La semilla no tuvo a quién ofrecerle: distingue radar vacío de choferes que
+   * están en el radar pero no pueden (flota, taller, laboral, carga, ocupados) y
+   * anota los primeros con sus motivos. Sólo choferes de esta distribuidora. Si
+   * el diagnóstico falla no frena el armado: se loguea y el pedido se cuenta
+   * igual como «choferes que no pueden».
+   */
+  private async explicarSinChoferes(
+    distributorId: string,
+    semilla: Candidato,
+    ocupados: ReadonlySet<string>,
+    diagnostico: Diagnostico,
+  ): Promise<void> {
+    const faltan = DETALLE_DE_CHOFERES - diagnostico.detalle.length;
+    let enRadar: Awaited<
+      ReturnType<DispatchOrchestratorService['choferesCercaConMotivos']>
+    >;
+    try {
+      enRadar = await this.orchestrator.choferesCercaConMotivos(
+        semilla.lat,
+        semilla.lng,
+        distributorId,
+        faltan > 0,
+        diagnostico.motivosPorChofer,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo diagnosticar el pedido ${semilla.orderId}: ${errorMessage(error)}`,
+      );
+      diagnostico.reasons.driversNotEligible += 1;
+      return;
+    }
+    if (enRadar.length === 0) {
+      diagnostico.reasons.noDriversNearby += 1;
+      return;
+    }
+    diagnostico.reasons.driversNotEligible += 1;
+    for (const c of enRadar) {
+      if (diagnostico.detalle.length >= DETALLE_DE_CHOFERES) break;
+      const reasons = c.reasons.length
+        ? c.reasons
+        : ocupados.has(c.deliveryId)
+          ? [MOTIVO_CON_LOTE]
+          : [];
+      if (reasons.length === 0 || diagnostico.listados.has(c.userId)) continue;
+      let driverName = 'Chofer';
+      try {
+        const perfil = await this.deliveries.buscarPorIdOUsuario(
+          c.userId,
+          true,
+        );
+        driverName = perfil?.user?.fullName ?? driverName;
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo leer el nombre del chofer ${c.userId}: ${errorMessage(error)}`,
+        );
+      }
+      diagnostico.listados.add(c.userId);
+      diagnostico.detalle.push({ driverName, reasons });
+    }
   }
 
   /**

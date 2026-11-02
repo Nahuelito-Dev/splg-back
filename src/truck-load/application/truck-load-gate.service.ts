@@ -62,6 +62,17 @@ export class TruckLoadGateService extends TruckLoadGatePort {
     return motivo ? this.textoParaLaApp(motivo) : null;
   }
 
+  async motivoParaElAdmin(
+    distributorId: string,
+    userId: string,
+  ): Promise<string | null> {
+    const exige = (await this.settings.obtener(distributorId))
+      .requireOpenTruckLoad;
+    const [fila] = await this.leer(distributorId, 'd."user_id"', [userId]);
+    const motivo = fila ? this.motivoDe(exige, fila) : null;
+    return motivo ? this.textoParaElAdmin(motivo) : null;
+  }
+
   async assertPuedeAceptar(
     distributorId: string,
     deliveryId: string,
@@ -136,6 +147,19 @@ export class TruckLoadGateService extends TruckLoadGatePort {
         return `La carga N° ${m.number} ya volvió: no se reciben pedidos hasta cerrar su rendición`;
       case 'otro-vehiculo':
         return `El vehículo en uso no es el de la carga N° ${m.number}`;
+    }
+  }
+
+  private textoParaElAdmin(m: MotivoSinPedidos): string {
+    switch (m.codigo) {
+      case 'sin-carga':
+        return 'no tiene la carga del día abierta';
+      case 'sin-salir':
+        return `la carga N° ${m.number} todavía no salió`;
+      case 'devuelta':
+        return `la carga N° ${m.number} ya volvió y falta cerrar su rendición`;
+      case 'otro-vehiculo':
+        return `su vehículo en uso no es el de la carga N° ${m.number}`;
     }
   }
 

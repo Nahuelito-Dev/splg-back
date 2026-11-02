@@ -27,6 +27,15 @@ export abstract class TruckLoadGatePort {
   ): Promise<string | null>;
 
   /**
+   * Lo mismo, redactado para el administrador (en tercera persona y con
+   * minúscula inicial, como los motivos de flota); `null` si puede.
+   */
+  abstract motivoParaElAdmin(
+    distributorId: string,
+    userId: string,
+  ): Promise<string | null>;
+
+  /**
    * Lanza 400 con un mensaje claro si el chofer (`delivery_id`) no puede aceptar.
    *
    * Con `manager` (la transacción de la aceptación) toma `FOR SHARE` sobre la

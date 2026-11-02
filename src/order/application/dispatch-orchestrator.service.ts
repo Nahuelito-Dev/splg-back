@@ -371,6 +371,78 @@ export class DispatchOrchestratorService {
     });
   }
 
+  /**
+   * Los choferes de la distribuidora que el radar tiene cerca de un punto (con
+   * el mayor radio del despacho), cada uno con por qué no puede recibir un
+   * pedido; `reasons` vacío si puede. Es el diagnóstico de `choferesElegiblesCerca`
+   * para explicar por qué M4 no armó un lote; sin `conMotivos` sólo lista quién está.
+   * `memoria` (por `user_id`) evita recalcular los motivos de un chofer ya
+   * evaluado en la misma corrida.
+   */
+  async choferesCercaConMotivos(
+    lat: number,
+    lng: number,
+    distributorId: string,
+    conMotivos: boolean,
+    memoria: Map<string, string[]> = new Map(),
+  ): Promise<Array<{ userId: string; deliveryId: string; reasons: string[] }>> {
+    const { radiusStepsKm } = await this.settings.obtener(distributorId);
+    const radar = await this.dispatch.findNearbyDrivers(
+      lat,
+      lng,
+      Math.max(...radiusStepsKm),
+    );
+    // El radar es global: sólo se informan los choferes de esta distribuidora.
+    const propios = await this.deliveries.findDeliveryIdsByUserIds(
+      radar,
+      distributorId,
+    );
+    const porUsuario = new Map(propios.map((p) => [p.userId, p.deliveryId]));
+    const resultado: Array<{
+      userId: string;
+      deliveryId: string;
+      reasons: string[];
+    }> = [];
+    for (const userId of radar) {
+      const deliveryId = porUsuario.get(userId);
+      if (!deliveryId) continue;
+      let reasons: string[] = [];
+      if (conMotivos) {
+        const guardados = memoria.get(userId);
+        reasons =
+          guardados ?? (await this.motivosParaNoRecibir(userId, distributorId));
+        memoria.set(userId, reasons);
+      }
+      resultado.push({ userId, deliveryId, reasons });
+    }
+    return resultado;
+  }
+
+  private async motivosParaNoRecibir(
+    userId: string,
+    distributorId: string,
+  ): Promise<string[]> {
+    const habilitados = await this.deliveries.choferesElegibles(
+      [userId],
+      distributorId,
+    );
+    if (habilitados.length === 0) {
+      return ['no está habilitado o validado'];
+    }
+    const motivos = await this.fleet.motivosDeInhabilitacion(
+      userId,
+      distributorId,
+    );
+    const libres = await this.sinPedidoEnCurso([userId], distributorId);
+    if (libres.length === 0) motivos.push('tiene un pedido en curso');
+    const carga = await this.truckLoadGate.motivoParaElAdmin(
+      distributorId,
+      userId,
+    );
+    if (carga) motivos.push(carga);
+    return motivos;
+  }
+
   private claveSinChoferes(orderId: string): string {
     return `dispatch:no-drivers:${orderId}`;
   }

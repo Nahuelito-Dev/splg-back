@@ -133,6 +133,21 @@ describe('TruckLoadGateService', () => {
       expect(query).not.toHaveBeenCalled();
     });
 
+    it('motivoParaElAdmin: null si puede; si no, el motivo en tercera persona y minúscula', async () => {
+      query.mockResolvedValue([fila()]);
+      expect(await gate.motivoParaElAdmin('dist', 'u1')).toBeNull();
+      exigir();
+      expect(await gate.motivoParaElAdmin('dist', 'u1')).toBe(
+        'no tiene la carga del día abierta',
+      );
+      query.mockResolvedValue([
+        enRuta({ status: TruckLoadStatus.LOADING, number: 7 }),
+      ]);
+      expect(await gate.motivoParaElAdmin('dist', 'u1')).toBe(
+        'la carga N° 7 todavía no salió',
+      );
+    });
+
     it('motivoParaNoRecibir: null si puede; el aviso de la app si no', async () => {
       query.mockResolvedValue([fila()]);
       expect(await gate.motivoParaNoRecibir('dist', 'u1')).toBeNull();
