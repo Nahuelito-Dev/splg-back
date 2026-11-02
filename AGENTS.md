@@ -16,7 +16,7 @@ Mapa del sistema y reglas del workspace: `../AGENTS.md`.
 | Migraciones | `npm run migration:generate -- src/migrations/<Nombre>` · `npm run migration:run` |
 | Seeds | `npm run seed` (roles, distribuidora, usuarios con Firebase) · `npm run seed:demo` |
 | Archivos (Amazon S3; los e2e usan un MinIO efímero con testcontainers) | `splg-docs/sistema/back/S3.md` |
-| Pedidos, cobros, cotización, historial y rutas | `splg-docs/sistema/back/PEDIDOS.md` |
+| Pedidos, cobros, cotización, historial, rutas e informes con totales (v2) | `splg-docs/sistema/back/PEDIDOS.md` |
 | Parámetros del despacho y frecuencia de tareas programadas (M1) | `splg-docs/sistema/back/PARAMETROS-DESPACHO.md` |
 | Vigencia de envases, revisiones y bloqueo del despacho (C-11) | `splg-docs/sistema/back/VIGENCIA-ENVASES.md` |
 | Carrito persistente y consumo declarado (C-12 y C-13) | `splg-docs/sistema/back/CARRITO-Y-CONSUMO.md` |

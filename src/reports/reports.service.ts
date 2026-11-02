@@ -12,8 +12,23 @@ import {
   PaymentStatus,
 } from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
-import { truncarEnArgentinaSql } from '../common/utils/dias-argentina';
+import {
+  diaArgentino,
+  truncarEnArgentinaSql,
+} from '../common/utils/dias-argentina';
 import Decimal from 'decimal.js';
+import { saldoPendienteSql } from '../order/domain/saldo-pendiente';
+import {
+  mayorVentaPrimero,
+  sumar,
+  ticketPromedio,
+} from './domain/totales-de-ventas';
+import {
+  ResumenDeVentasDto,
+  TotalDelDiaDto,
+  TotalesDeVentasDto,
+  TotalesPorProductoDto,
+} from './dto/report-v2.dto';
 import {
   CobrosDeEfectivoDto,
   EvolucionDeVentasDto,
@@ -246,6 +261,7 @@ export class ReportsService {
       .addSelect('order.paymentStatus', 'status')
       .addSelect('COUNT(order.orderId)', 'count')
       .addSelect('SUM(order.totalAmount)', 'total')
+      .addSelect(`SUM(${saldoPendienteSql('order')})`, 'balance')
       .where('order.status = :status', { status: OrderStatus.DELIVERED })
       .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
         start: startDate,
@@ -276,13 +292,19 @@ export class ReportsService {
       .groupBy('order.paymentMethod')
       .addGroupBy('order.paymentStatus')
       .getRawMany<Fila>();
-    const cifra = (metodo: PaymentMethod, estado: PaymentStatus) => {
+    // `campo`: 'total' (el total del pedido) o 'balance' (lo que falta cobrar,
+    // sin la seña ya paga: es lo adeudado en un impago).
+    const cifra = (
+      metodo: PaymentMethod,
+      estado: PaymentStatus,
+      campo: 'total' | 'balance' = 'total',
+    ) => {
       const fila = rows.find(
         (r) => r['method'] === metodo && r['status'] === estado,
       );
       return {
         totalOrders: fila ? numero(fila['count']) : 0,
-        totalAmount: fila ? numero(fila['total']) : 0,
+        totalAmount: fila ? numero(fila[campo]) : 0,
       };
     };
     // Pedidos cobrados (online o transferencia) y después cancelados: el dinero
@@ -326,10 +348,155 @@ export class ReportsService {
         totalAmount: filaReintegro ? numero(filaReintegro['total']) : 0,
       },
       pendingCash: cifra(PaymentMethod.CASH, PaymentStatus.PENDING),
-      unpaid: cifra(PaymentMethod.CASH, PaymentStatus.UNPAID),
+      unpaid: cifra(PaymentMethod.CASH, PaymentStatus.UNPAID, 'balance'),
       writtenOff: cifra(PaymentMethod.CASH, PaymentStatus.WRITTEN_OFF),
       pendingTransfer: cifra(PaymentMethod.TRANSFER, PaymentStatus.PENDING),
       notReceivedTransfer: cifra(PaymentMethod.TRANSFER, PaymentStatus.FAILED),
     };
+  }
+
+  /** Las filas de mayor a menor venta y sus totales, sumados acá y no en el panel. */
+  totalesDeVentas(
+    filas: { totalOrders: number; totalSales: number }[],
+  ): TotalesDeVentasDto {
+    return {
+      totalOrders: filas.reduce((n, f) => n + f.totalOrders, 0),
+      totalSales: sumar(filas.map((f) => f.totalSales)),
+    };
+  }
+
+  async getSalesByDriverConTotales(
+    startDate: Date,
+    endDate: Date,
+    distributorId?: string | null,
+  ) {
+    const filas = mayorVentaPrimero(
+      await this.getSalesByDriver(startDate, endDate, distributorId),
+      (f) => `${f.driverName ?? ''}|${f.driverId}`,
+    );
+    return { rows: filas, totals: this.totalesDeVentas(filas) };
+  }
+
+  async getSalesByPaymentMethodConTotales(
+    startDate: Date,
+    endDate: Date,
+    distributorId?: string | null,
+  ) {
+    const filas = mayorVentaPrimero(
+      await this.getSalesByPaymentMethod(startDate, endDate, distributorId),
+      (f) => f.method,
+    );
+    return { rows: filas, totals: this.totalesDeVentas(filas) };
+  }
+
+  async getSalesByProductConTotales(
+    startDate: Date,
+    endDate: Date,
+    distributorId?: string | null,
+  ) {
+    const filas = mayorVentaPrimero(
+      await this.getSalesByProduct(startDate, endDate, distributorId),
+      (f) => `${f.productType}|${f.description ?? ''}`,
+    );
+    const totals: TotalesPorProductoDto = {
+      totalQuantity: filas.reduce((n, f) => n + f.totalQuantity, 0),
+      totalSales: sumar(filas.map((f) => f.totalSales)),
+    };
+    return { rows: filas, totals };
+  }
+
+  /** Ventas cobradas, pedidos y ticket promedio de un rango. */
+  async getSalesSummary(
+    startDate: Date,
+    endDate: Date,
+    distributorId?: string | null,
+  ): Promise<ResumenDeVentasDto> {
+    const query = this.orderRepository
+      .createQueryBuilder('order')
+      .select('COUNT(order.orderId)', 'count')
+      .addSelect('COALESCE(SUM(order.totalAmount), 0)', 'total')
+      .where('order.status = :status', { status: OrderStatus.DELIVERED })
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
+        start: startDate,
+        end: endDate,
+      });
+    soloVentaCobrada(query, 'order');
+    if (distributorId) {
+      query.andWhere('order.distributorId = :distributorId', {
+        distributorId,
+      });
+    }
+    const [fila] = await query.getRawMany<Fila>();
+    const totalOrders = fila ? numero(fila['count']) : 0;
+    const totalSales = fila ? sumar([numero(fila['total'])]) : 0;
+    return {
+      totalSales,
+      totalOrders,
+      averageTicket: ticketPromedio(totalSales, totalOrders),
+    };
+  }
+
+  /**
+   * Lo adeudado en cobros impagos: los pedidos con `paymentStatus: unpaid` de
+   * la distribuidora, sin acotar por fecha (los mismos que lista `GET /orders`
+   * con ese filtro).
+   */
+  async getUnpaidTotal(
+    distributorId?: string | null,
+  ): Promise<{ totalOrders: number; totalAmount: number }> {
+    const query = this.orderRepository
+      .createQueryBuilder('order')
+      .withDeleted()
+      .select('COUNT(order.orderId)', 'count')
+      .addSelect(`COALESCE(SUM(${saldoPendienteSql('order')}), 0)`, 'total')
+      .where('order.paymentStatus = :unpaid', {
+        unpaid: PaymentStatus.UNPAID,
+      });
+    if (distributorId) {
+      query.andWhere('order.distributorId = :distributorId', {
+        distributorId,
+      });
+    }
+    const [fila] = await query.getRawMany<Fila>();
+    return {
+      totalOrders: fila ? numero(fila['count']) : 0,
+      totalAmount: fila ? sumar([numero(fila['total'])]) : 0,
+    };
+  }
+
+  /**
+   * Lo entregado por un chofer, día por día (hora argentina): pedidos y lo que
+   * había que cobrar de ellos (total menos la seña ya paga, igual que
+   * `remainingBalance` del pedido). Sólo días con entregas, del más reciente
+   * al más antiguo.
+   */
+  async getDriverDailyTotals(
+    driverUserId: string,
+    startDate: Date,
+    endDate: Date,
+    distributorId: string,
+  ): Promise<TotalDelDiaDto[]> {
+    const dia = truncarEnArgentinaSql('day', 'order.deliveredAt');
+    const filas = await this.orderRepository
+      .createQueryBuilder('order')
+      .innerJoin('order.delivery', 'delivery')
+      .select(dia, 'period')
+      .addSelect('COUNT(order.orderId)', 'count')
+      .addSelect(`COALESCE(SUM(${saldoPendienteSql('order')}), 0)`, 'total')
+      .where('order.status = :status', { status: OrderStatus.DELIVERED })
+      .andWhere('delivery.userId = :driverUserId', { driverUserId })
+      .andWhere('order.distributorId = :distributorId', { distributorId })
+      .andWhere('order.deliveredAt >= :start AND order.deliveredAt < :end', {
+        start: startDate,
+        end: endDate,
+      })
+      .groupBy('period')
+      .orderBy('period', 'DESC')
+      .getRawMany<Fila>();
+    return filas.map((f) => ({
+      day: diaArgentino(f['period'] as Date),
+      deliveredOrders: numero(f['count']),
+      totalAmount: sumar([numero(f['total'])]),
+    }));
   }
 }
