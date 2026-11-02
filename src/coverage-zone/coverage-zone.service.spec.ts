@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
+import { diaArgentino } from '../common/utils/dias-argentina';
 import { CoverageZoneService } from './coverage-zone.service';
 import { UpdateCoverageZoneDto } from './dto/update-coverage-zone.dto';
 import { CoverageZonePricingService } from './coverage-zone-pricing.service';
@@ -247,6 +248,62 @@ describe('CoverageZoneService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('un día YYYY-MM-DD de vigencia es un día argentino: desde 00:00 ART, hasta 23:59:59.999 ART', async () => {
+      const zona = await service.create(
+        {
+          name: 'Diaria',
+          polygon: poligono,
+          validFrom: '2099-11-02',
+          validUntil: '2099-11-10',
+        },
+        'd1',
+      );
+      expect(zona.validFrom?.toISOString()).toBe('2099-11-02T03:00:00.000Z');
+      expect(zona.validUntil?.toISOString()).toBe('2099-11-11T02:59:59.999Z');
+    });
+
+    it('desde y hasta el mismo día es una zona de un día', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Un día',
+            polygon: poligono,
+            validFrom: '2099-11-02',
+            validUntil: '2099-11-02',
+          },
+          'd1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('un hasta de hoy todavía no venció (incluye el día entero)', async () => {
+      const hoy = diaArgentino();
+      await expect(
+        service.create(
+          { name: 'Hoy', polygon: poligono, validUntil: hoy },
+          'd1',
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('una fecha inexistente (2026-02-30) es un 400 y no se guarda', async () => {
+      await expect(
+        service.create(
+          { name: 'Mal', polygon: poligono, validFrom: '2026-02-30' },
+          'd1',
+        ),
+      ).rejects.toThrow('validFrom: no es una fecha válida');
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('un instante con hora se respeta tal cual', async () => {
+      const zona = await service.create(
+        { name: 'Hora', polygon: poligono, validFrom: '2099-11-02T12:00:00Z' },
+        'd1',
+      );
+      expect(zona.validFrom?.toISOString()).toBe('2099-11-02T12:00:00.000Z');
+    });
+
     it('un polígono que se autointersecta se rechaza con el motivo de PostGIS', async () => {
       repo.query.mockResolvedValueOnce([
         { valid: false, reason: 'Self-intersection at or near point 1 2' },
@@ -415,6 +472,24 @@ describe('CoverageZoneService', () => {
       });
       const zona = await service.update('z1', { validFrom: null }, 'd1');
       expect(zona.validFrom).toBeNull();
+    });
+
+    it('al editar, un día YYYY-MM-DD también es un día argentino', async () => {
+      repo.findOne.mockResolvedValue({
+        coverageZoneId: 'z1',
+        distributorId: 'd1',
+        surchargeType: CoverageZoneSurchargeType.PERCENTAGE,
+        surchargeValue: 10,
+        validFrom: null,
+        validUntil: null,
+      });
+      const zona = await service.update(
+        'z1',
+        { validFrom: '2099-11-02', validUntil: '2099-11-10' },
+        'd1',
+      );
+      expect(zona.validFrom?.toISOString()).toBe('2099-11-02T03:00:00.000Z');
+      expect(zona.validUntil?.toISOString()).toBe('2099-11-11T02:59:59.999Z');
     });
 
     it('validUntil: null quita el vencimiento (NO lo convierte en 1970-01-01)', async () => {
