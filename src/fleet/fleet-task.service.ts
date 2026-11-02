@@ -87,16 +87,19 @@ function turnoPedido(
     : { tipo: 'instante', inicio };
 }
 
-/** ¿El turno pedido es el que la tarea ya tiene? Un día coincide con el día argentino (o el UTC que muestra el panel) del guardado. */
+/** ¿El turno pedido es el que la tarea ya tiene? Un día se compara como lo muestra el panel: 00:00Z exacto = día UTC, otro instante = día argentino. */
 function mismoTurno(pedido: TurnoPedido, guardado: Date | null): boolean {
   if (pedido.tipo === 'borrar') return guardado === null;
   if (guardado === null) return false;
   if (pedido.tipo === 'instante') {
     return guardado.getTime() === pedido.inicio.getTime();
   }
+  // Mismo criterio que el panel: 00:00Z exacto es una fila vieja (día de calendario UTC); el resto, día argentino.
+  const filaVieja = guardado.getTime() % 86_400_000 === 0;
   return (
-    diaArgentino(guardado) === pedido.dia ||
-    guardado.toISOString().slice(0, 10) === pedido.dia
+    (filaVieja
+      ? guardado.toISOString().slice(0, 10)
+      : diaArgentino(guardado)) === pedido.dia
   );
 }
 
@@ -156,6 +159,13 @@ export class FleetTaskService {
       ? normalizarFechaCalendario(new Date(dto.validFrom))
       : null;
     this.assertVigenciaCoherente(plan, validFrom, dueAt);
+    const pedido = turnoPedido(dto.scheduledAt);
+    const scheduledAt =
+      !pedido || pedido.tipo === 'borrar'
+        ? null
+        : pedido.tipo === 'instante'
+          ? pedido.inicio
+          : this.inicioDelDiaOFalla(pedido.dia);
 
     const task = this.tasks.create({
       planId: plan.planId,
@@ -170,7 +180,8 @@ export class FleetTaskService {
       dueAt,
       validFrom,
       dueKm: dto.dueKm ?? null,
-      scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
+      // Igual que en `update`: un día (o medianoche argentina) es el día argentino; con hora, ese instante.
+      scheduledAt,
       performedAt: null,
       odometerKm: null,
       cost: dto.cost ?? null,

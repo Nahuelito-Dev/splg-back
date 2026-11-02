@@ -222,6 +222,38 @@ describe('FleetTaskService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    describe('turno agendado al dar de alta', () => {
+      const alta = async (scheduledAt?: string) => {
+        plans.findOne.mockResolvedValue(planVehiculo);
+        carService.findOne.mockResolvedValue({
+          carId: 'c1',
+          distributorId: 'd1',
+        });
+        return service.create(
+          { planId: 'plan-vtv', carId: 'c1', scheduledAt },
+          'd1',
+        );
+      };
+
+      it('un YYYY-MM-DD es medianoche argentina, no medianoche UTC', async () => {
+        const t = await alta('2026-11-12');
+        expect(t.scheduledAt).toEqual(new Date('2026-11-12T03:00:00.000Z'));
+      });
+
+      it('un instante con hora se guarda tal cual', async () => {
+        const t = await alta('2026-11-13T18:30:00.000Z');
+        expect(t.scheduledAt).toEqual(new Date('2026-11-13T18:30:00.000Z'));
+      });
+
+      it('sin turno queda en null', async () => {
+        expect((await alta()).scheduledAt).toBeNull();
+      });
+
+      it('un día inexistente es 400', async () => {
+        await expect(alta('2026-02-31')).rejects.toThrow(BadRequestException);
+      });
+    });
+
     describe('documentación del personal (CU-183 a CU-185)', () => {
       const planCurso = {
         ...planVehiculo,
@@ -709,6 +741,20 @@ describe('FleetTaskService', () => {
           await editar('2026-11-12');
           expect(t.scheduledAt).toEqual(new Date('2026-11-12T03:00:00.000Z'));
         });
+
+        it.each([
+          ['2026-11-11T00:00:00.000Z', '2026-11-10', true],
+          ['2026-11-11T00:00:00.000Z', '2026-11-11', false],
+          ['2026-11-12T01:00:00.000Z', '2026-11-11', false],
+          ['2026-11-12T01:00:00.000Z', '2026-11-12', true],
+        ])(
+          'guardado %s + día %s: cambia = %s (00:00Z exacto es día UTC; otro instante, día argentino)',
+          async (guardado, dia, cambia) => {
+            conTurno(new Date(guardado));
+            await editar(dia);
+            expect(reprogramar).toHaveBeenCalledTimes(cambia ? 1 : 0);
+          },
+        );
 
         it('un instante a medianoche argentina es un sólo-fecha', async () => {
           conTurno(null);
