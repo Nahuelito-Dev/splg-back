@@ -10,6 +10,8 @@
  */
 export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   // Pedido
+  CHK_order_intentos_codigo:
+    'Los intentos del código de entrega no pueden ser negativos',
   CHK_order_montos: 'Los montos del pedido no pueden ser negativos',
   CHK_order_total_formula:
     'El total del pedido no coincide con la suma de ítems, recargos y envío',

@@ -24,9 +24,11 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 import {
+  FuelLoadQuoteResponseDto,
   FuelLoadV2PageDto,
   FuelLoadV2ResponseDto,
   PayAccidentDto,
+  QuoteFuelLoadDto,
   ReceiveReimbursementDto,
   TireV2PageDto,
   TireV2ResponseDto,
@@ -36,6 +38,7 @@ import {
 import { QueryFuelLoadDto } from './dto/fuel-load.dto';
 import { QueryTireDto } from './dto/tire.dto';
 import { QueryVehicleAccidentDto } from './dto/vehicle-accident.dto';
+import { importeEsperado } from './domain/fuel-consumption';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { FleetExpensePaymentService } from './fleet-expense-payment.service';
 import { FuelLoadService } from './fuel-load.service';
@@ -132,6 +135,22 @@ export class FuelLoadV2Controller {
     return {
       ...pagina,
       data: pagina.data.map((f) => FleetExpenseMapper.fuelLoadV2(f)),
+    };
+  }
+
+  @Get('quote')
+  @ApiOperation({
+    summary: 'Calcular el importe de una carga',
+    description:
+      'Litros × precio por litro a 2 decimales: la misma cuenta con la que el alta valida el importe. El formulario lo muestra y lo ofrece como importe de la carga.',
+  })
+  @ApiOkResponse({ type: FuelLoadQuoteResponseDto })
+  @ApiBadRequestResponse({ description: 'Litros o precio inválidos' })
+  quote(@Query() query: QuoteFuelLoadDto): FuelLoadQuoteResponseDto {
+    return {
+      liters: query.liters,
+      unitPrice: query.unitPrice,
+      totalAmount: importeEsperado(query.liters, query.unitPrice),
     };
   }
 

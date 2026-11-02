@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import Decimal from 'decimal.js';
 import {
   DataSource,
   EntityManager,
@@ -35,6 +34,7 @@ import {
   CargaParaConsumo,
   esConsumoAnomalo,
   importeCoincide,
+  importeEsperado,
   litrosEntranEnElTanque,
   ordenarCargas,
   totalizarTramos,
@@ -675,9 +675,9 @@ export class FuelLoadService {
     capacidad: number | null,
   ): void {
     if (!importeCoincide(liters, unitPrice, totalAmount)) {
-      const esperado = new Decimal(liters).times(unitPrice).toDecimalPlaces(2);
+      const esperado = importeEsperado(liters, unitPrice);
       throw new BadRequestException(
-        `totalAmount: el importe no coincide con los litros por el precio por litro (${esperado.toString()}, con una tolerancia del 1 %)`,
+        `totalAmount: el importe no coincide con los litros por el precio por litro (${esperado}, con una tolerancia del 1 %)`,
       );
     }
     if (!litrosEntranEnElTanque(liters, capacidad)) {

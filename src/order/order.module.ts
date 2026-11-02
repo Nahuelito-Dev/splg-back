@@ -46,6 +46,7 @@ import { DispatchOfferTypeormRepository } from './infrastructure/dispatch-offer.
 import { ConfirmPaymentUseCase } from './application/confirm-payment.use-case';
 import { OrderFraudHoldService } from './application/order-fraud-hold.service';
 import { OrderPaymentV2Controller } from './order-payment-v2.controller';
+import { DeliveryCodeV2Controller } from './delivery-code-v2.controller';
 import { ReservationV2Controller } from './reservation-v2.controller';
 import { ConciliacionMercadoPagoService } from './application/conciliacion-mercadopago.service';
 import { ReservationService } from './application/reservation.service';
@@ -112,6 +113,7 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     OrderController,
     OrderTransferReceiptController,
     ReservationV2Controller,
+    DeliveryCodeV2Controller,
     OrderPaymentV2Controller,
     CustomerPurchaseStatsController,
   ],

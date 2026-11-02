@@ -56,6 +56,7 @@ import {
   purgaS3Habilitada,
   resguardoDeProduccion,
 } from './lib/resguardo-de-produccion';
+import { generateDeliveryCode } from '../src/order/domain/delivery-code.util';
 import { sembrarStockHistoria } from './lib/stock-historia-demo';
 import {
   AlmacenDemo,
@@ -1588,7 +1589,7 @@ async function sembrarPedidos(
         creado,
         canceladoEl ?? entregado ?? aceptado ?? creado,
         estado === 'cancelled' ? alguno(MOTIVOS_CANCELACION) : null,
-        aceptado ? String(entre(100000, 999999)) : null,
+        aceptado ? generateDeliveryCode() : null,
         subtotal,
         dir.zonaId,
         dir.zona,

@@ -37,6 +37,34 @@ export class FuelLoadV2ResponseDto extends FuelLoadResponseDto {
   isPayable!: boolean;
 }
 
+/** Litros y precio por litro de los que el back calcula el importe de una carga. */
+export class QuoteFuelLoadDto {
+  @ApiProperty({ example: 42.5, description: 'Litros cargados' })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  @Max(IMPORTE_MAXIMO)
+  liters!: number;
+
+  @ApiProperty({ example: 1050.5, description: 'Precio por litro' })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @IsPositive()
+  @Max(IMPORTE_MAXIMO)
+  unitPrice!: number;
+}
+
+export class FuelLoadQuoteResponseDto {
+  @ApiProperty({ example: 42.5 }) liters!: number;
+  @ApiProperty({ example: 1050.5 }) unitPrice!: number;
+  @ApiProperty({
+    example: 44646.25,
+    description:
+      'Litros × precio por litro, a 2 decimales: el importe con el que se registra la carga',
+  })
+  totalAmount!: number;
+}
+
 export class FuelLoadV2PageDto {
   @ApiProperty({ type: FuelLoadV2ResponseDto, isArray: true })
   data!: FuelLoadV2ResponseDto[];
