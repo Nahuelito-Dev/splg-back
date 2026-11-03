@@ -25,6 +25,8 @@ import { EmployeeService } from '../employee/employee.service';
 import { EmployeeDocumentsService } from './employee-documents.service';
 import { EmployeeConPuesto } from '../employee/employee.mapper';
 import { MaintenancePlan } from './entities/maintenance-plan.entity';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /** Un chofer activo al que le falta cargar documentación bloqueante (CU-188). */
 interface FaltanteDeChofer {
@@ -73,6 +75,7 @@ export class FleetAlertsCron {
   ) {}
 
   @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
+  @ConRegistro(ProcessName.FLEET_ALERTS)
   async avisarVencimientosPendientes(): Promise<void> {
     const candidatas = await this.tareasSinAvisar();
     const porDistribuidora = this.agruparPorDistribuidora(candidatas);

@@ -7,6 +7,12 @@ import {
   ZONA_ARGENTINA,
 } from '../../common/utils/dias-argentina';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /**
  * CU-108: el proceso automático de la recuperación de envases. Cada hora
@@ -30,21 +36,19 @@ export class CylinderRecoveryCron {
   ) {}
 
   @Cron('0 0 * * * *', { timeZone: ZONA_ARGENTINA })
-  async recuperar(): Promise<void> {
+  @ConRegistro(ProcessName.CYLINDER_RECOVERY)
+  async recuperar() {
     try {
       const bloqueo = await this.redis.withLock(
         CylinderRecoveryCron.CERROJO,
         CylinderRecoveryCron.CERROJO_TTL_MS,
-        async () => {
-          await this.recuperarLasQueTocan(new Date());
-        },
+        () => this.recuperarLasQueTocan(new Date()),
       );
-      if (!bloqueo.obtenido) {
-        this.logger.log(
-          'Recupero de envases: lo está procesando otra instancia',
-        );
-      }
+      if (bloqueo.obtenido) return bloqueo.valor;
+      marcarSaltada();
+      this.logger.log('Recupero de envases: lo está procesando otra instancia');
     } catch (error) {
+      registrarErrorAtrapado(error, true);
       this.logger.error(
         `Recupero de envases: la ejecución falló: ${errorMessage(error)}`,
       );
@@ -66,6 +70,7 @@ export class CylinderRecoveryCron {
           `Recupero ${distributorId}: ${r.abiertos} caso(s) nuevo(s), ${r.avisos} aviso(s), ${r.ofertas} oferta(s), ${r.escalados} escalado(s), ${r.perdidos} perdido(s), ${r.cerradosPorDevolucion} devuelto(s), ${r.revisionManual} para revisión manual`,
         );
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `Recupero ${distributorId}: falló: ${errorMessage(error)}`,
         );

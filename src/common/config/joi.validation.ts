@@ -29,6 +29,10 @@ export const JoiValidationSchema = Joi.object({
     .integer()
     .min(1)
     .default(48),
+  // Días que se conserva el historial de corridas de los procesos automáticos (siempre queda la última de cada uno).
+  PROCESS_RUN_RETENTION_DAYS: Joi.number().integer().min(1).default(30),
+  // Minutos que una corrida puede seguir en curso antes de darla por colgada.
+  PROCESS_RUN_STUCK_MINUTES: Joi.number().integer().min(1).default(30),
   // Umbral de RSS de /health (H-53): 300 MB era el de un proceso recién
   // levantado, no el de uno trabajando (con tráfico real lo supera y el
   // load balancer lo sacaba de servicio). 512 MB da margen para la carga

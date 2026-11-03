@@ -7,6 +7,12 @@ import {
   ZONA_ARGENTINA,
 } from '../../common/utils/dias-argentina';
 import { MaintenancePlannerService } from './maintenance-planner.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /**
  * CU-105: el proceso automático del planificador de flota.
@@ -33,20 +39,23 @@ export class MaintenancePlannerCron {
   ) {}
 
   @Cron('0 0 * * * *', { timeZone: ZONA_ARGENTINA })
-  async planificar(): Promise<void> {
-    await this.conCerrojo(MaintenancePlannerCron.CERROJO_DIARIO, async () => {
-      await this.planificarLasQueTocan(new Date());
-    });
+  @ConRegistro(ProcessName.FLEET_PLANNER_DAILY)
+  async planificar(): Promise<number | undefined> {
+    return this.conCerrojo(MaintenancePlannerCron.CERROJO_DIARIO, () =>
+      this.planificarLasQueTocan(new Date()),
+    );
   }
 
   @Cron('0 */5 * * * *')
-  async vencerPropuestas(): Promise<void> {
-    await this.conCerrojo(
+  @ConRegistro(ProcessName.FLEET_PLANNER_EXPIRY)
+  async vencerPropuestas(): Promise<{ expired: number } | undefined> {
+    return this.conCerrojo(
       MaintenancePlannerCron.CERROJO_VENCIMIENTOS,
       async () => {
         const n = await this.planner.vencerPropuestas(new Date());
         if (n > 0)
           this.logger.log(`Planificador: ${n} propuesta(s) vencida(s)`);
+        return { expired: n };
       },
     );
   }
@@ -66,6 +75,7 @@ export class MaintenancePlannerCron {
           `Planificador ${distributorId}: ${r.propuestas} propuesta(s), ${r.escaladas} escalada(s), ${r.vehiculosFueraDeServicio} fuera de servicio`,
         );
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `Planificador ${distributorId}: falló: ${errorMessage(error)}`,
         );
@@ -74,22 +84,23 @@ export class MaintenancePlannerCron {
     return corridas;
   }
 
-  private async conCerrojo(
+  private async conCerrojo<T>(
     clave: string,
-    fn: () => Promise<void>,
-  ): Promise<void> {
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> {
     try {
       const bloqueo = await this.redis.withLock(
         clave,
         MaintenancePlannerCron.CERROJO_TTL_MS,
         fn,
       );
-      if (!bloqueo.obtenido) {
-        this.logger.log(
-          `Planificador (${clave}): lo está procesando otra instancia`,
-        );
-      }
+      if (bloqueo.obtenido) return bloqueo.valor;
+      marcarSaltada();
+      this.logger.log(
+        `Planificador (${clave}): lo está procesando otra instancia`,
+      );
     } catch (error) {
+      registrarErrorAtrapado(error, true);
       this.logger.error(
         `Planificador (${clave}): la ejecución falló: ${errorMessage(error)}`,
       );

@@ -17,6 +17,13 @@ import {
   PaymentNotificationInbox,
 } from '../entities/payment-notification-inbox.entity';
 import { Payment } from '../entities/payment.entity';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import { conDisparo } from '../../process-run/process-run.context';
+import { registrarErrorAtrapado } from '../../process-run/process-run.context';
+import {
+  ProcessName,
+  RunTrigger,
+} from '../../process-run/domain/process-catalog';
 
 export interface AvisoParaGuardar {
   type: string;
@@ -71,14 +78,16 @@ export class PaymentNotificationInboxService {
 
   /** Procesa ya, sin esperar, lo que acaba de guardarse. Nunca lanza: los reintentos son del cron. */
   procesarEnSegundoPlano(): void {
-    void this.procesarPendientes().catch((error: unknown) =>
-      this.logger.error(
-        `No se pudo procesar la bandeja de avisos: ${errorMessage(error)}`,
-      ),
+    void conDisparo(RunTrigger.WEBHOOK, () => this.procesarPendientes()).catch(
+      (error: unknown) =>
+        this.logger.error(
+          `No se pudo procesar la bandeja de avisos: ${errorMessage(error)}`,
+        ),
     );
   }
 
   @Cron('15,45 * * * * *')
+  @ConRegistro(ProcessName.PAYMENT_INBOX_PROCESS)
   async procesarPendientes(): Promise<number> {
     const tomados = await this.tomarLote();
     let procesados = 0;
@@ -104,6 +113,7 @@ export class PaymentNotificationInboxService {
         );
         procesados++;
       } catch (error) {
+        registrarErrorAtrapado(error);
         await this.registrarFallo(aviso, error);
       }
     }
@@ -174,6 +184,7 @@ export class PaymentNotificationInboxService {
    * (`raw_body` y `credential_id`) de una alerta que el sistema no pudo procesar.
    */
   @Cron('0 20 4 * * *')
+  @ConRegistro(ProcessName.PAYMENT_INBOX_PURGE)
   async purgarProcesados(): Promise<number> {
     const dias = this.config.get<number>(
       'PAYMENT_INBOX_RETENTION_DAYS',
@@ -213,6 +224,7 @@ export class PaymentNotificationInboxService {
         email: true,
       });
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo avisar la alerta ${aviso.dataId} sin procesar: ${errorMessage(error)}`,
       );

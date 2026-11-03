@@ -9,6 +9,9 @@ import {
   StorageOrphanStatus,
 } from './entities/storage-orphan.entity';
 import { errorMessage } from '../common/errors/error-message';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import { registrarErrorAtrapado } from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /** Esperas entre intentos de borrado en proceso (backoff): 1 s, 5 s y 30 s. */
 export const REMOVE_RETRY_DELAYS_MS: readonly number[] = [1_000, 5_000, 30_000];
@@ -89,12 +92,14 @@ export class S3CleanupService {
 
   /** Cuerpo del borrado en segundo plano; se exporta para poder esperarlo en tests. */
   async removeWithRetry(key: string): Promise<void> {
+    let ultimoError: unknown;
     for (let attempt = 0; attempt <= REMOVE_RETRY_DELAYS_MS.length; attempt++) {
       try {
         await this.s3.remove(key);
         await this.forget(key);
         return;
       } catch (error) {
+        ultimoError = error;
         this.logger.warn(
           `No se pudo borrar ${key} del bucket (intento ${attempt + 1}): ${errorMessage(error)}`,
         );
@@ -103,6 +108,8 @@ export class S3CleanupService {
         }
       }
     }
+    // Un intento que falló y después salió no es un error de la corrida: sólo si fallaron todos.
+    registrarErrorAtrapado(ultimoError);
     this.logger.error(
       `${key} sigue en el bucket tras los reintentos; el cron lo va a reintentar`,
     );
@@ -111,6 +118,7 @@ export class S3CleanupService {
 
   /** Reintenta lo pendiente cuyo turno ya llegó, de a tandas y por orden de turno. */
   @Cron('0 * * * *')
+  @ConRegistro(ProcessName.S3_ORPHANS_RETRY)
   async retryOrphans(): Promise<void> {
     const due = await this.orphans.find({
       where: {
@@ -125,6 +133,7 @@ export class S3CleanupService {
         await this.s3.remove(orphan.storageKey);
         await this.orphans.delete({ orphanId: orphan.orphanId });
       } catch (error) {
+        registrarErrorAtrapado(error);
         const reason = errorMessage(error);
         this.logger.warn(
           `Reintento fallido de ${orphan.storageKey} (intento ${orphan.attempts + 1}): ${reason}`,
@@ -151,6 +160,7 @@ export class S3CleanupService {
     try {
       await this.orphans.save(orphan);
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo actualizar el huérfano ${orphan.storageKey}: ${errorMessage(error)}`,
       );
@@ -162,6 +172,7 @@ export class S3CleanupService {
     try {
       await this.orphans.delete({ storageKey: key });
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo sacar ${key} de los huérfanos: ${errorMessage(error)}`,
       );
@@ -189,6 +200,7 @@ export class S3CleanupService {
         }),
       );
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo registrar el huérfano ${key}: ${errorMessage(error)}`,
       );

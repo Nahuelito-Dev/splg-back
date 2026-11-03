@@ -7,6 +7,12 @@ import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import { errorMessage } from '../../common/errors/error-message';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /**
  * Días que se conservan los datos de quien recibió un pedido, contados desde
@@ -35,19 +41,21 @@ export class ReceiverRetentionCron {
   ) {}
 
   @Cron('0 40 3 * * *', { timeZone: ZONA_ARGENTINA })
-  async anularVencidos(): Promise<void> {
+  @ConRegistro(ProcessName.RECEIVER_RETENTION)
+  async anularVencidos() {
     try {
       const bloqueo = await this.redis.withLock(
         ReceiverRetentionCron.CERROJO,
         ReceiverRetentionCron.CERROJO_TTL_MS,
         () => this.barrer(),
       );
-      if (!bloqueo.obtenido) {
-        this.logger.log(
-          'Datos de quien recibe: los está procesando otra instancia',
-        );
-      }
+      if (bloqueo.obtenido) return bloqueo.valor;
+      marcarSaltada();
+      this.logger.log(
+        'Datos de quien recibe: los está procesando otra instancia',
+      );
     } catch (error) {
+      registrarErrorAtrapado(error, true);
       this.logger.error(
         `Datos de quien recibe: la ejecución falló: ${errorMessage(error)}`,
       );

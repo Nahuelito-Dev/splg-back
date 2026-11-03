@@ -7,6 +7,12 @@ import { errorMessage } from '../../common/errors/error-message';
 import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import { CustomerLedgerService } from '../../customer-account/application/customer-ledger.service';
 import { RedisService } from '../../redis/redis.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /** Un saldo guardado que no es la suma de su libro (detalle del procedimiento). */
 interface SaldoDesfasado {
@@ -35,17 +41,18 @@ export class FinanceReconciliationCron {
   ) {}
 
   @Cron('30 3 * * *', { timeZone: ZONA_ARGENTINA })
-  async conciliar(): Promise<void> {
+  @ConRegistro(ProcessName.FINANCE_RECONCILIATION)
+  async conciliar() {
     const lock = await this.redis.withLock(
       'cron:finance-reconciliation',
       10 * 60_000,
       () => this.correr(),
     );
-    if (!lock.obtenido) {
-      this.logger.log(
-        'Conciliación financiera: la está corriendo otra instancia',
-      );
-    }
+    if (lock.obtenido) return lock.valor;
+    marcarSaltada();
+    this.logger.log(
+      'Conciliación financiera: la está corriendo otra instancia',
+    );
   }
 
   async correr(): Promise<{
@@ -59,6 +66,7 @@ export class FinanceReconciliationCron {
       comisiones = await this.comisiones.barrer();
       cargos = await this.cuentas.barrer();
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(`Falló el barrido de asientos: ${errorMessage(error)}`);
     }
     const saldosDesfasados = await this.verificarSaldos();

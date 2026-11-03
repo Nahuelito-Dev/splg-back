@@ -16,6 +16,9 @@ import { OrigenDelEstadoDelPago } from '../../payments/domain/payment.enums';
 import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
 import { PaymentStatus } from '../entities/order.entity';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import { registrarErrorAtrapado } from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /** Páginas de pedidos cancelados que mira como máximo cada pasada. */
 const PAGINAS_DE_CANCELADOS = 10;
@@ -91,6 +94,7 @@ export class ConciliacionMercadoPagoService {
     try {
       pagos = await this.payments.consultarPagosDelPedido(order.orderId);
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.warn(
         `No se pudo consultar a Mercado Pago los pagos del pedido ${order.orderId}; se reintenta en la próxima pasada: ${errorMessage(error)}`,
       );
@@ -126,6 +130,7 @@ export class ConciliacionMercadoPagoService {
           credentialId: cobrado.credentialId ?? undefined,
         });
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudo aplicar el pago cobrado ${cobrado.gatewayPaymentId} del pedido ${order.orderId}: ${errorMessage(error)}`,
         );
@@ -206,6 +211,7 @@ export class ConciliacionMercadoPagoService {
 
   /** Cada 5 minutos (en el segundo 30, desfasado del resto) revisa los pedidos de Mercado Pago pendientes y aplica los cobros que no se avisaron. */
   @Cron('30 */5 * * * *')
+  @ConRegistro(ProcessName.MP_PENDING_RECONCILIATION)
   async conciliarPendientes(): Promise<number> {
     const hasta = new Date(
       Date.now() -
@@ -243,6 +249,7 @@ export class ConciliacionMercadoPagoService {
    * pedido con una devolución rechazada espera al administrador: no se reintenta solo.
    */
   @Cron('45 */15 * * * *')
+  @ConRegistro(ProcessName.MP_CANCELLED_RECONCILIATION)
   async conciliarCancelados(): Promise<number> {
     const horas = this.config.get<number>(
       'ORDER_MERCADOPAGO_CANCELLED_SWEEP_HOURS',
@@ -324,6 +331,7 @@ export class ConciliacionMercadoPagoService {
         );
       }
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo conciliar el pedido cancelado ${pedido.orderId}: ${errorMessage(error)}`,
       );

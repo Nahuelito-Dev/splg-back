@@ -5,6 +5,12 @@ import { RedisService } from '../redis/redis.service';
 import { DispatchOrchestratorService } from './application/dispatch-orchestrator.service';
 import { RefundsService } from '../payments/application/refunds.service';
 import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /**
  * Motor de tiempo del despacho secuencial. Corre cada 15s y, tomando un lock
@@ -41,11 +47,15 @@ export class DispatchService {
   ) {}
 
   @Cron('*/15 * * * * *') // cada 15 segundos
+  @ConRegistro(ProcessName.DISPATCH_TICK)
   async tick() {
     // Distributed lock: solo una instancia procesa por tick. TTL 12s < 15s para
     // que si crashea sin liberar, expire antes del próximo tick.
     const lock = await this.redisService.acquireLock('dispatch:tick', 12000);
-    if (!lock) return;
+    if (!lock) {
+      marcarSaltada();
+      return;
+    }
 
     // Al empezar el tic, de una sola pasada: a qué distribuidoras les toca
     // (con trabajo pendiente). Sus marcas quedan puestas desde ahora.
@@ -62,6 +72,7 @@ export class DispatchService {
       await this.orchestrator.handleExpiredOffers(corren);
       await this.bootstrapPendingWithoutOffer(corren);
     } catch (err) {
+      registrarErrorAtrapado(err, true);
       this.logger.error(`tick de dispatch falló: ${(err as Error)?.message}`);
       // Las distribuidoras que no se llegaron a procesar no pierden su intervalo.
       for (const id of corren) {
@@ -76,12 +87,14 @@ export class DispatchService {
     try {
       await this.refunds.retomarPendientes();
     } catch (err) {
+      registrarErrorAtrapado(err);
       this.logger.error(
         `retomar devoluciones falló: ${(err as Error)?.message}`,
       );
     } finally {
       await lock.release().catch(() => undefined);
     }
+    return { distributors: corren.size };
   }
 
   /**

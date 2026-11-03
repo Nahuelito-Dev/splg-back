@@ -1,6 +1,10 @@
 import { EVENTO_PAGO_NOTIFICADO } from '../domain/events/pago-notificado.event';
 import { getMetadataArgsStorage } from 'typeorm';
 import { PaymentNotificationInbox } from '../entities/payment-notification-inbox.entity';
+import {
+  dentroDeCorrida,
+  nuevaCorrida,
+} from '../../process-run/process-run.context';
 import { PaymentNotificationInboxService } from './payment-notification-inbox.service';
 
 describe('bandeja de avisos: clave única (A-1)', () => {
@@ -172,6 +176,22 @@ describe('PaymentNotificationInboxService (M-4)', () => {
       (cambios.nextAttemptAt as Date).getTime() - Date.now(),
     ).toBeGreaterThan(25_000);
     expect(eventos.emit).not.toHaveBeenCalled();
+  });
+
+  it('un aviso que falla se lo cuenta al registrador (la corrida queda parcial) y uno que sale no', async () => {
+    eventos.emitAsync.mockRejectedValue(new Error('MP caído'));
+    const conFallo = nuevaCorrida();
+    await dentroDeCorrida(conFallo, () => service.procesarPendientes());
+    expect(conFallo).toMatchObject({
+      errors: 1,
+      lastError: 'MP caído',
+      fatal: null,
+    });
+
+    eventos.emitAsync.mockResolvedValue(undefined);
+    const sinFallo = nuevaCorrida();
+    await dentroDeCorrida(sinFallo, () => service.procesarPendientes());
+    expect(sinFallo.errors).toBe(0);
   });
 
   it('la espera se duplica en cada intento hasta un tope', async () => {

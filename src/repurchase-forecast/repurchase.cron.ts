@@ -10,6 +10,12 @@ import { DistributorStatus } from '../distributor/entities/distributor.entity';
 import { RedisService } from '../redis/redis.service';
 import { RepurchaseEstimatorService } from './repurchase-estimator.service';
 import { RepurchaseForecastService } from './repurchase-forecast.service';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /**
  * CU-106: el proceso automático de la recompra anticipada.
@@ -41,15 +47,17 @@ export class RepurchaseCron {
   ) {}
 
   @Cron('0 0 * * * *', { timeZone: ZONA_ARGENTINA })
-  async anticipar(): Promise<void> {
-    await this.conCerrojo(RepurchaseCron.CERROJO_DIARIO, async () => {
-      await this.anticiparLasQueTocan(new Date());
-    });
+  @ConRegistro(ProcessName.REPURCHASE_ANTICIPATE)
+  async anticipar(): Promise<number | undefined> {
+    return this.conCerrojo(RepurchaseCron.CERROJO_DIARIO, () =>
+      this.anticiparLasQueTocan(new Date()),
+    );
   }
 
   @Cron('0 */5 * * * *')
-  async vencer(): Promise<void> {
-    await this.conCerrojo(RepurchaseCron.CERROJO_VENCIMIENTOS, async () => {
+  @ConRegistro(ProcessName.REPURCHASE_EXPIRY)
+  async vencer(): Promise<{ closed: number } | undefined> {
+    return this.conCerrojo(RepurchaseCron.CERROJO_VENCIMIENTOS, async () => {
       const ahora = new Date();
       let cerradas = 0;
       for (const d of await this.distributors.findAll()) {
@@ -66,6 +74,7 @@ export class RepurchaseCron {
             cerradas += await this.forecast.vencer(ahora, d.distributorId);
           }
         } catch (error) {
+          registrarErrorAtrapado(error);
           this.logger.error(
             `Recompra ${d.distributorId}: el barrido falló: ${errorMessage(error)}`,
           );
@@ -74,6 +83,7 @@ export class RepurchaseCron {
       if (cerradas > 0) {
         this.logger.log(`Recompra: ${cerradas} invitación(es) cerrada(s)`);
       }
+      return { closed: cerradas };
     });
   }
 
@@ -91,6 +101,7 @@ export class RepurchaseCron {
         await this.forecast.ejecutar(distributorId, ahora);
         corridas += 1;
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `Recompra ${distributorId}: falló: ${errorMessage(error)}`,
         );
@@ -99,20 +110,21 @@ export class RepurchaseCron {
     return corridas;
   }
 
-  private async conCerrojo(
+  private async conCerrojo<T>(
     clave: string,
-    fn: () => Promise<void>,
-  ): Promise<void> {
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> {
     try {
       const bloqueo = await this.redis.withLock(
         clave,
         RepurchaseCron.CERROJO_TTL_MS,
         fn,
       );
-      if (!bloqueo.obtenido) {
-        this.logger.log(`Recompra (${clave}): la procesa otra instancia`);
-      }
+      if (bloqueo.obtenido) return bloqueo.valor;
+      marcarSaltada();
+      this.logger.log(`Recompra (${clave}): la procesa otra instancia`);
     } catch (error) {
+      registrarErrorAtrapado(error, true);
       this.logger.error(
         `Recompra (${clave}): la ejecución falló: ${errorMessage(error)}`,
       );
