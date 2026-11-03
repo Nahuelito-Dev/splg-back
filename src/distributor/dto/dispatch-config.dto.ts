@@ -55,6 +55,7 @@ export class DispatchConfigDto {
 
   @ApiPropertyOptional({
     description: `Radio en metros al punto de entrega dentro del cual un chofer con un solo pedido en camino cuenta como «por terminar» y puede recibir otra oferta (${DISPATCH_FINISHING_RADIUS_MIN_METERS} a ${DISPATCH_FINISHING_RADIUS_MAX_METERS}). 0 lo apaga: sólo se ofrece a choferes sin pedido en curso`,
+    type: 'integer',
     example: 300,
     minimum: DISPATCH_FINISHING_RADIUS_MIN_METERS,
     maximum: DISPATCH_FINISHING_RADIUS_MAX_METERS,
@@ -74,7 +75,7 @@ export class DispatchConfigResponseDto {
   @ApiProperty({ example: 30 })
   offerTtlSeconds!: number;
 
-  @ApiProperty({ example: 300 })
+  @ApiProperty({ type: 'integer', example: 300 })
   finishingRadiusMeters!: number;
 
   @ApiProperty({
