@@ -12,6 +12,12 @@ import { EmailSenderPort } from '../../email/ports/email-sender.port';
 import { RedisService } from '../../redis/redis.service';
 import { ESTADOS_SIN_CERRAR } from '../domain/driver-settlement.enums';
 import { DriverSettlementService } from './driver-settlement.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 const escaparHtml = (texto: string): string =>
   texto
@@ -48,33 +54,36 @@ export class DriverSettlementCron {
 
   /** CU-231: a las 23:30 abre la rendición de cada chofer con efectivo sin rendir. */
   @Cron('30 23 * * *', { timeZone: ZONA_ARGENTINA })
-  async generarRendicionesDelDia(): Promise<void> {
+  @ConRegistro(ProcessName.DRIVER_SETTLEMENT_GENERATE)
+  async generarRendicionesDelDia() {
     const lock = await this.redis.withLock(
       'cron:driver-settlement-generate',
       5 * 60_000,
       async () => {
         const abiertas = await this.rendiciones.generarDelDia();
         this.logger.log(`Rendiciones del día abiertas: ${abiertas}`);
+        return abiertas;
       },
     );
-    if (!lock.obtenido) {
-      this.logger.log('Rendiciones del día: las está abriendo otra instancia');
-    }
+    if (lock.obtenido) return lock.valor;
+    marcarSaltada();
+    this.logger.log('Rendiciones del día: las está abriendo otra instancia');
   }
 
   /** CU-234: a las 08:00 avisa las rendiciones de días anteriores sin cerrar. */
   @Cron('0 8 * * *', { timeZone: ZONA_ARGENTINA })
+  @ConRegistro(ProcessName.DRIVER_SETTLEMENT_ALERT)
   async avisarRendicionesSinCerrar(): Promise<void> {
     const lock = await this.redis.withLock(
       'cron:driver-settlement-overdue',
       5 * 60_000,
       () => this.avisar(),
     );
-    if (!lock.obtenido) {
-      this.logger.log(
-        'Aviso de rendiciones sin cerrar: lo está corriendo otra instancia',
-      );
-    }
+    if (lock.obtenido) return lock.valor;
+    marcarSaltada();
+    this.logger.log(
+      'Aviso de rendiciones sin cerrar: lo está corriendo otra instancia',
+    );
   }
 
   /** Un correo por distribuidora con las rendiciones abiertas o presentadas de días anteriores. */
@@ -101,6 +110,7 @@ export class DriverSettlementCron {
       try {
         await this.avisarDistribuidora(distributorId, lista);
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudo avisar las rendiciones sin cerrar de ${distributorId}: ${errorMessage(error)}`,
         );

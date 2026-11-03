@@ -228,6 +228,16 @@ describe('Migración HojaDeRuta (e2e)', () => {
         `INSERT INTO route_plan (distributor_id, plan_date, cutoff_at) VALUES ($1, '2026-12-15', now())`,
         [distribuidora],
       );
+      // Se deshacen, por nombre, las migraciones posteriores a la hoja de ruta (el esquema siguió creciendo).
+      const ultima = async () =>
+        (
+          await ds.query<Array<{ name: string }>>(
+            'SELECT name FROM migrations ORDER BY id DESC LIMIT 1',
+          )
+        )[0].name;
+      while (!/AuditoriaDeLaHojaDeRuta/.test(await ultima())) {
+        await ds.undoLastMigration();
+      }
       await ds.undoLastMigration(); // AuditoriaDeLaHojaDeRuta (sin efecto)
     });
 

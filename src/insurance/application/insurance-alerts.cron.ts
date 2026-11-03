@@ -21,6 +21,9 @@ import {
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsurancePolicy } from '../entities/insurance-policy.entity';
 import { InsurancePolicyService } from './insurance-policy.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import { registrarErrorAtrapado } from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /** `2026-11-22` → `22/11/2026`. */
 function fechaCorta(dia: string): string {
@@ -64,6 +67,7 @@ export class InsuranceAlertsCron {
   ) {}
 
   @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
+  @ConRegistro(ProcessName.INSURANCE_ALERTS)
   async avisar(ahora: Date = new Date()): Promise<void> {
     const hoy = diaArgentino(ahora);
     const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
@@ -95,6 +99,7 @@ export class InsuranceAlertsCron {
           if (poliza.distributorId === distributorId) this.avisarPoliza(poliza);
         }
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudieron avisar los seguros de la distribuidora ${distributorId}: ${errorMessage(error)}`,
         );

@@ -13,6 +13,10 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   // Contador de numeración con bloqueo de fila: una escritura por documento
   // emitido, sin valor de negocio propio (el documento ya se audita).
   'document_sequence',
+  // Telemetría de los procesos automáticos (F31): una fila por corrida, cientos por día y
+  // con retención; lo que cada proceso hace sobre el negocio se audita en sus propias tablas.
+  // Es telemetría del sistema y la excepción a la auditoría por triggers está aprobada.
+  'process_run',
   // Cola técnica de archivos a limpiar en el storage.
   'storage_orphan',
   // Bandeja de entrada de los avisos de Mercado Pago que no se reintentan (alerta de

@@ -36,6 +36,9 @@ import {
 import { CashMethod } from '../../cash/domain/cash.enums';
 import { ScheduledTasksSettingsService } from '../../distributor/scheduled-tasks-settings.service';
 import type { TareaConIntervalo } from '../../distributor/scheduled-tasks-settings';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import { registrarErrorAtrapado } from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /**
  * Procesos AUTOMÁTICOS de las pre-reservas (Módulo Inteligente / DSS del scope:
@@ -306,6 +309,7 @@ export class ReservationService {
    * RESERVED → PENDING + despacho automático. Sin intervención humana.
    */
   @Cron('0 */5 * * * *') // cada 5 minutos
+  @ConRegistro(ProcessName.RESERVATIONS_ACTIVATE)
   async activateDueReservations(): Promise<void> {
     const today = diaArgentino();
     await this.porDistribuidora(
@@ -339,6 +343,7 @@ export class ReservationService {
         }
         this.logger.log(`Reserva ${order.orderId} activada → despachando`);
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudo activar la reserva ${order.orderId}: ${errorMessage(error)}`,
         );
@@ -351,6 +356,7 @@ export class ReservationService {
    * RESERVED (deposit_paid=false, viejas) → CANCELLED + restituye stock.
    */
   @Cron('0 0 * * * *') // cada hora
+  @ConRegistro(ProcessName.RESERVATIONS_EXPIRE_UNPAID)
   async expireUnpaidReservations(): Promise<void> {
     const cutoff = new Date(Date.now() - this.depositTtlHours * 3600 * 1000);
     await this.porDistribuidora(
@@ -449,6 +455,7 @@ export class ReservationService {
    * use-case).
    */
   @Cron('0 */30 * * * *') // cada 30 minutos
+  @ConRegistro(ProcessName.ORDERS_EXPIRE_MP_UNPAID)
   async expireUnpaidMercadoPagoOrders(): Promise<void> {
     const cutoff = new Date(Date.now() - this.mpPendingTtlMinutes * 60 * 1000);
     await this.porDistribuidora(

@@ -7,6 +7,9 @@ import { EmployeeAttendance } from './entities/employee-attendance.entity';
 import { errorMessage } from '../common/errors/error-message';
 import { escaparHtml } from '../common/utils/html.util';
 import { ZONA_ARGENTINA, diaArgentino } from '../common/utils/dias-argentina';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import { registrarErrorAtrapado } from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /**
  * Aviso de las 7 de la mañana (hora argentina, CU-189): las jornadas de
@@ -26,6 +29,7 @@ export class AttendanceOpenAlertCron {
   ) {}
 
   @Cron('0 7 * * *', { timeZone: ZONA_ARGENTINA })
+  @ConRegistro(ProcessName.ATTENDANCE_OPEN_ALERT)
   async avisarJornadasSinCerrar(): Promise<void> {
     const hoy = diaArgentino();
     const abiertas = await this.attendance.abiertasAnteriores(hoy);
@@ -55,6 +59,7 @@ export class AttendanceOpenAlertCron {
           ),
         );
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudo avisar las jornadas sin cerrar de la distribuidora ${distributorId}: ${errorMessage(error)}`,
         );

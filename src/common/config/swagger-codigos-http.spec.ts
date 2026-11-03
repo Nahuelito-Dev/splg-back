@@ -10,6 +10,7 @@ import { FleetTaskController } from '../../fleet/fleet-task.controller';
 import { FleetTaskV2Controller } from '../../fleet/fleet-task-v2.controller';
 import { DeliveryCodeV2Controller } from '../../order/delivery-code-v2.controller';
 import { OrderController } from '../../order/order.controller';
+import { ProcessRunController } from '../../process-run/process-run.controller';
 import { RepurchaseAdminController } from '../../repurchase-forecast/repurchase-admin.controller';
 import { RepurchaseCustomerController } from '../../repurchase-forecast/repurchase-customer.controller';
 import { UsersController } from '../../users/users.controller';
@@ -30,6 +31,7 @@ const CONTROLLERS: Type<unknown>[] = [
   UsersController,
   EmployeeController,
   CoverageZoneController,
+  ProcessRunController,
 ];
 
 type Operacion = { responses?: Record<string, { description?: string }> };
@@ -97,6 +99,24 @@ describe('Swagger: códigos HTTP documentados', () => {
   it('DELETE /users/{id}: el 409 menciona la rendición pendiente del chofer', () => {
     const r = respuestas('delete', '/api/v1/users/{id}');
     expect(r['409']?.description).toMatch(/rendición pendiente/);
+  });
+
+  it.each(['/api/v2/process-runs', '/api/v2/process-runs/summary'])(
+    'GET %s declara 401 y 403 (cliente y chofer)',
+    (ruta) => {
+      const r = respuestas('get', ruta);
+      expect(r['200']).toBeDefined();
+      expect(r['401']).toBeDefined();
+      expect(r['403']?.description).toMatch(/admin/);
+    },
+  );
+
+  it('GET /process-runs declara el 400 de cada filtro', () => {
+    const r = respuestas('get', '/api/v2/process-runs');
+    expect(r['400']?.description).toMatch(/process/);
+    expect(r['400']?.description).toMatch(/status/);
+    expect(r['400']?.description).toMatch(/from/);
+    expect(r['400']?.description).toMatch(/limit/);
   });
 
   it('todo endpoint con ParseUUIDPipe de esos controllers declara su 400', () => {

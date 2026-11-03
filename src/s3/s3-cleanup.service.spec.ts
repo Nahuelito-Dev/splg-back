@@ -1,5 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
+import {
+  dentroDeCorrida,
+  nuevaCorrida,
+} from '../process-run/process-run.context';
 import { S3Service } from './s3.service';
 import {
   StorageOrphan,
@@ -164,6 +168,25 @@ describe('S3CleanupService', () => {
       expect(fila.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
     });
 
+    it('el error sólo llega al registrador si fallaron todos los intentos', async () => {
+      storage.remove
+        .mockRejectedValueOnce(new Error('S3 caído'))
+        .mockResolvedValue(undefined);
+      const sale = nuevaCorrida();
+      const a = dentroDeCorrida(sale, () => service.removeWithRetry('k1'));
+      await jest.advanceTimersByTimeAsync(sumaDeEsperas);
+      await a;
+      expect(sale.errors).toBe(0);
+
+      storage.remove.mockRejectedValue(new Error('S3 caído'));
+      const agota = nuevaCorrida();
+      const b = dentroDeCorrida(agota, () => service.removeWithRetry('k2'));
+      await jest.advanceTimersByTimeAsync(sumaDeEsperas);
+      await b;
+      expect(agota.errors).toBe(1);
+      expect(agota.lastError).toBe('S3 caído');
+    });
+
     it('si el caller no anotó nada y el borrado falla, igual deja la fila', async () => {
       storage.remove.mockRejectedValue(new Error('S3 caído'));
       const corrida = service.removeWithRetry('k9');
@@ -221,6 +244,14 @@ describe('S3CleanupService', () => {
         status: StorageOrphanStatus.PENDING,
       });
       expect(mal.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('un borrado que falla en el cron se lo cuenta al registrador', async () => {
+      filas.set('mal', fila({ storageKey: 'mal' }));
+      storage.remove.mockRejectedValue(new Error('sigue caído'));
+      const estado = nuevaCorrida();
+      await dentroDeCorrida(estado, () => service.retryOrphans());
+      expect(estado).toMatchObject({ errors: 1, lastError: 'sigue caído' });
     });
 
     it('al llegar al tope la marca fallida y loguea la key y el motivo', async () => {

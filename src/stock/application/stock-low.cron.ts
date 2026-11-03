@@ -9,6 +9,12 @@ import {
   escaparHtml,
   StockAdminNotifier,
 } from './stock-admin-notifier.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 interface FilaDeUmbral {
   threshold_id: string;
@@ -37,14 +43,15 @@ export class StockLowCron {
   ) {}
 
   @Cron('0 8 * * *', { timeZone: ZONA_ARGENTINA })
+  @ConRegistro(ProcessName.STOCK_LOW_ALERT)
   async avisarStockBajo(): Promise<void> {
     // Con varias instancias corre sólo una: si no, el mail sale duplicado.
     const lock = await this.redis.withLock('cron:stock-low', 5 * 60_000, () =>
       this.avisar(),
     );
-    if (!lock.obtenido) {
-      this.logger.log('Aviso de stock bajo: lo está corriendo otra instancia');
-    }
+    if (lock.obtenido) return lock.valor;
+    marcarSaltada();
+    this.logger.log('Aviso de stock bajo: lo está corriendo otra instancia');
   }
 
   private async avisar(): Promise<void> {
@@ -107,6 +114,7 @@ export class StockLowCron {
         [umbrales.map((u) => u.threshold_id)],
       );
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo avisar el stock bajo de la distribuidora ${distributorId}: ${errorMessage(error)}`,
       );

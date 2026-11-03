@@ -9,6 +9,12 @@ import {
   escaparHtml,
   StockAdminNotifier,
 } from './stock-admin-notifier.service';
+import { ConRegistro } from '../../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../../process-run/process-run.context';
+import { ProcessName } from '../../process-run/domain/process-catalog';
 
 /** Una garrafa tal como la arma `conciliar_stock_del_dia`. */
 interface GarrafaConciliada {
@@ -57,6 +63,7 @@ export class StockReconciliationCron {
   ) {}
 
   @Cron('0 3 * * *', { timeZone: ZONA_ARGENTINA })
+  @ConRegistro(ProcessName.STOCK_RECONCILIATION)
   async conciliarTodas(): Promise<void> {
     // Con varias instancias corre sólo una: si no, el mail sale duplicado.
     const lock = await this.redis.withLock(
@@ -64,11 +71,9 @@ export class StockReconciliationCron {
       5 * 60_000,
       () => this.conciliarDistribuidoras(),
     );
-    if (!lock.obtenido) {
-      this.logger.log(
-        'Conciliación de stock: la está corriendo otra instancia',
-      );
-    }
+    if (lock.obtenido) return lock.valor;
+    marcarSaltada();
+    this.logger.log('Conciliación de stock: la está corriendo otra instancia');
   }
 
   private async conciliarDistribuidoras(): Promise<void> {
@@ -127,6 +132,7 @@ export class StockReconciliationCron {
         [distributorId, firma],
       );
     } catch (error) {
+      registrarErrorAtrapado(error);
       this.logger.error(
         `No se pudo conciliar el stock de la distribuidora ${distributorId}: ${errorMessage(error)}`,
       );

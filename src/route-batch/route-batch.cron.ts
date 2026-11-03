@@ -3,6 +3,12 @@ import { Cron } from '@nestjs/schedule';
 import { errorMessage } from '../common/errors/error-message';
 import { RedisService } from '../redis/redis.service';
 import { RouteBatchService } from './route-batch.service';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /**
  * CU-107: el proceso automático de la agrupación por recorrido.
@@ -32,21 +38,28 @@ export class RouteBatchCron {
   ) {}
 
   @Cron('0 * * * * *')
-  async armar(): Promise<void> {
-    await this.conCerrojo(RouteBatchCron.CERROJO_ARMADO, async () => {
-      await this.armarLasQueTocan(new Date());
-    });
+  @ConRegistro(ProcessName.ROUTE_BATCH_BUILD)
+  async armar(): Promise<number | undefined> {
+    return this.conCerrojo(RouteBatchCron.CERROJO_ARMADO, () =>
+      this.armarLasQueTocan(new Date()),
+    );
   }
 
   @Cron('*/15 * * * * *')
-  async vencer(): Promise<void> {
-    await this.conCerrojo(RouteBatchCron.CERROJO_VENCIMIENTOS, async () => {
+  @ConRegistro(ProcessName.ROUTE_BATCH_EXPIRY)
+  async vencer() {
+    return this.conCerrojo(RouteBatchCron.CERROJO_VENCIMIENTOS, async () => {
       const r = await this.service.vencerOfertas(new Date());
       if (r.expired + r.rescued + r.completed > 0) {
         this.logger.log(
           `Recorridos: ${r.expired} oferta(s) vencida(s), ${r.rescued} lote(s) retomado(s), ${r.completed} completado(s)`,
         );
       }
+      return {
+        expired: r.expired,
+        rescued: r.rescued,
+        completed: r.completed,
+      };
     });
   }
 
@@ -78,6 +91,7 @@ export class RouteBatchCron {
           );
         }
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `Recorridos ${distributorId}: falló: ${errorMessage(error)}`,
         );
@@ -86,22 +100,23 @@ export class RouteBatchCron {
     return corridas;
   }
 
-  private async conCerrojo(
+  private async conCerrojo<T>(
     clave: string,
-    fn: () => Promise<void>,
-  ): Promise<void> {
+    fn: () => Promise<T>,
+  ): Promise<T | undefined> {
     try {
       const bloqueo = await this.redis.withLock(
         clave,
         RouteBatchCron.CERROJO_TTL_MS,
         fn,
       );
-      if (!bloqueo.obtenido) {
-        this.logger.log(
-          `Recorridos (${clave}): lo está procesando otra instancia`,
-        );
-      }
+      if (bloqueo.obtenido) return bloqueo.valor;
+      marcarSaltada();
+      this.logger.log(
+        `Recorridos (${clave}): lo está procesando otra instancia`,
+      );
     } catch (error) {
+      registrarErrorAtrapado(error, true);
       this.logger.error(
         `Recorridos (${clave}): la ejecución falló: ${errorMessage(error)}`,
       );

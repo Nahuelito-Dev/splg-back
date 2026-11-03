@@ -13,6 +13,9 @@ import {
 } from '../common/utils/dias-argentina';
 import { ScheduledTasksSettingsService } from '../distributor/scheduled-tasks-settings.service';
 import { TrafficFine, TrafficFineStatus } from './entities/traffic-fine.entity';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import { registrarErrorAtrapado } from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /** Se avisan las multas que vencen en esta cantidad de días o menos, y las ya vencidas. */
 export const DIAS_DE_ANTICIPACION_DE_MULTAS = 5;
@@ -54,6 +57,7 @@ export class FineDueAlertsCron {
   ) {}
 
   @Cron('0 * * * *', { timeZone: ZONA_ARGENTINA }) // cada hora en punto; cada distribuidora avisa a su hora (Argentina)
+  @ConRegistro(ProcessName.FINE_DUE_ALERTS)
   async avisarMultasPorVencer(ahora: Date = new Date()): Promise<void> {
     const hoy = diaArgentino(ahora);
     const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
@@ -85,6 +89,7 @@ export class FineDueAlertsCron {
         }
         if (toca) this.avisar(multa, hoy);
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudo avisar la multa ${multa.fineId}: ${errorMessage(error)}`,
         );

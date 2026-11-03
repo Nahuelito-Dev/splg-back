@@ -6,6 +6,8 @@ import { LessThan, Not, Repository } from 'typeorm';
 import { ZONA_ARGENTINA } from '../common/utils/dias-argentina';
 import { ImportJobStatus } from './domain/import.enums';
 import { ImportJob } from './entities/import-job.entity';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /**
  * Cada vista previa guarda sus filas (hasta 5.000) en `import_job`. Las que nadie
@@ -21,6 +23,7 @@ export class ImportCleanupCron {
   ) {}
 
   @Cron('30 3 * * *', { timeZone: ZONA_ARGENTINA })
+  @ConRegistro(ProcessName.IMPORT_CLEANUP)
   async borrarVencidas(): Promise<number> {
     const { affected } = await this.jobs.delete({
       status: Not(ImportJobStatus.CONFIRMED),

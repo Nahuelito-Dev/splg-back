@@ -9,6 +9,12 @@ import { AdminGateway } from '../gateways/admin.gateway';
 /** Evento a los admins cuando el barrido apaga la última zona activa de su distribuidora. */
 export const EVENTO_SIN_ZONAS_ACTIVAS = 'coverage:no-active-zones';
 import { errorMessage } from '../common/errors/error-message';
+import { ConRegistro } from '../process-run/process-run.recorder';
+import {
+  marcarSaltada,
+  registrarErrorAtrapado,
+} from '../process-run/process-run.context';
+import { ProcessName } from '../process-run/domain/process-catalog';
 
 /** Una zona desactivada por vencimiento. */
 interface ZonaVencida {
@@ -43,17 +49,19 @@ export class CoverageZoneExpiryCron {
   ) {}
 
   @Cron('0 */5 * * * *') // cada cinco minutos
-  async desactivarVencidas(): Promise<void> {
+  @ConRegistro(ProcessName.COVERAGE_ZONE_EXPIRY)
+  async desactivarVencidas() {
     try {
       const bloqueo = await this.redis.withLock(
         CoverageZoneExpiryCron.CERROJO,
         CoverageZoneExpiryCron.CERROJO_TTL_MS,
         () => this.barrer(),
       );
-      if (!bloqueo.obtenido) {
-        this.logger.log('Zonas vencidas: las está procesando otra instancia');
-      }
+      if (bloqueo.obtenido) return bloqueo.valor;
+      marcarSaltada();
+      this.logger.log('Zonas vencidas: las está procesando otra instancia');
     } catch (error) {
+      registrarErrorAtrapado(error, true);
       this.logger.error(
         `Zonas vencidas: la ejecución falló: ${errorMessage(error)}`,
       );
@@ -115,6 +123,7 @@ export class CoverageZoneExpiryCron {
           distributorId,
         );
       } catch (error) {
+        registrarErrorAtrapado(error);
         this.logger.error(
           `No se pudo avisar a los admins de ${distributorId}: ${errorMessage(error)}`,
         );
