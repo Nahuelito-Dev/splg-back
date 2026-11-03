@@ -234,7 +234,7 @@ const OPS = {
   'GET /api/customers': { maloQuery: { status: 'inexistente' } },
   'GET /api/delivery': { maloQuery: { status: 'inexistente' } },
   'GET /api/delivery/active': { maloQuery: { limit: 'abc' } },
-  'GET /api/employees': { maloQuery: { category: 'inexistente' } },
+  'GET /api/employees': { query: { documentStatus: 'expired' }, maloQuery: { documentStatus: 'inexistente' } },
   'GET /api/orders': { maloQuery: { status: 'inexistente' } },
   'GET /api/orders/available': { rol: 'delivery', maloQuery: { limit: 'abc' } },
   'GET /api/gascylinder': { maloQuery: { limit: 'abc' } },

@@ -27,7 +27,11 @@ import {
 import type { Response } from 'express';
 import { EmployeeService } from './employee.service';
 import { TerminateEmployeeUseCase } from './application/terminate-employee.use-case';
-import { EmployeeConPuesto, EmployeeMapper } from './employee.mapper';
+import {
+  EmployeeConPuesto,
+  EmployeeMapper,
+  ResumenDeDocumentacion,
+} from './employee.mapper';
 import { EmployeePhotoService } from './employee-photo.service';
 import {
   CreateEmployeeDto,
@@ -55,6 +59,11 @@ import {
   responderFoto,
   SubirFotoInterceptor,
 } from '../s3/photo-http';
+
+const SIN_DOCUMENTACION: ResumenDeDocumentacion = {
+  estado: null,
+  proximoVencimiento: null,
+};
 
 /**
  * Legajos del personal (CU-177 a CU-181). Los datos personales (documento,
@@ -105,13 +114,28 @@ export class EmployeeController {
     summary: 'Listar empleados, sin datos personales sensibles (CU-180)',
   })
   @ApiOkResponse({ type: EmployeePageDto })
+  @ApiBadRequestResponse({
+    description:
+      'Algún filtro inválido (por ejemplo, un `documentStatus` que no es uno de los cuatro estados)',
+  })
   async findAll(
     @Query() query: QueryEmployeeDto,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<EmployeePageDto> {
-    const { data, total } = await this.employees.findAll(query, distributorId);
+    const { data, total, documentacion } = await this.employees.findAll(
+      query,
+      distributorId,
+    );
     await this.photo.firmar(data);
-    return { data: data.map((e) => EmployeeMapper.toListItem(e)), total };
+    return {
+      data: data.map((e) =>
+        EmployeeMapper.toListItem(
+          e,
+          documentacion.get(e.employeeId) ?? SIN_DOCUMENTACION,
+        ),
+      ),
+      total,
+    };
   }
 
   @Get(':id')

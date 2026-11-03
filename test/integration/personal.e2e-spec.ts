@@ -431,8 +431,9 @@ describe('Personal: puestos y legajos (e2e)', () => {
       expect((await filtrar('hasAccount=true')).total).toBe(0);
       expect((await filtrar('hasAccount=false')).total).toBe(2);
       expect((await filtrar('page=2&limit=1')).data).toHaveLength(1);
-      // Reservado para B-A2: se acepta y se ignora.
-      expect((await filtrar('documentStatus=expired')).total).toBe(2);
+      // Sin planes sembrados no hay qué faltar: ambos legajos están al día.
+      expect((await filtrar('documentStatus=expired')).total).toBe(0);
+      expect((await filtrar('documentStatus=up_to_date')).total).toBe(2);
       await http()
         .get('/employees?status=nada')
         .set(admin1.headers)

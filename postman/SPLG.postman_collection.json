@@ -153784,7 +153784,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/employees",
+                  "raw": "{{baseUrl}}/employees?documentStatus=expired",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -153829,8 +153829,7 @@
                     },
                     {
                       "key": "documentStatus",
-                      "value": "1",
-                      "disabled": true
+                      "value": "expired"
                     }
                   ]
                 },
@@ -153862,7 +153861,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/employees",
+                      "raw": "{{baseUrl}}/employees?documentStatus=expired",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -153907,8 +153906,7 @@
                         },
                         {
                           "key": "documentStatus",
-                          "value": "1",
-                          "disabled": true
+                          "value": "expired"
                         }
                       ]
                     },
@@ -153933,7 +153931,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"data\": [\n    {\n      \"employeeId\": \"fee28927-fed7-4b14-a776-fcba78770e73\",\n      \"fileNumber\": \"L-0013\",\n      \"firstName\": \"Daniela\",\n      \"lastName\": \"Aguirre\",\n      \"position\": {\n        \"positionId\": \"cbb88dc8-669f-40bf-b8b7-11501171192e\",\n        \"name\": \"Vendedora de mostrador\",\n        \"category\": \"sales\"\n      },\n      \"status\": \"active\",\n      \"hireDate\": \"2025-08-10\",\n      \"hasAccount\": false,\n      \"photoUrl\": \"https://splg-tesis.s3.sa-east-1.amazonaws.com/employees/af0c1b75-8090-42ed-bea9-7a043adc61cd/fee28927-fed7-4b14-a776-fcba78770e73/a7ed4fb0-02e6-4935-8f62-5f38bfbcc285.png?<firma-oculta>\"\n    },\n    {\n      \"employeeId\": \"efd0efd3-772d-4511-94a6-5d182dc4c97d\",\n      \"fileNumber\": \"L-0009\",\n      \"firstName\": \"Oscar\",\n      \"lastName\": \"Almirón\",\n      \"position\": {\n        \"positionId\": \"054fb46e-5ca7-4ce6-9cad-00d50021d130\",\n        \"name\": \"Operario de depósito\",\n        \"category\": \"warehouse\"\n      },\n      \"status\": \"active\",\n      \"hireDate\": \"2021-01-13\",\n      \"hasAccount\": false,\n      \"photoUrl\": \"https://splg-tesis.s3.sa-east-1.amazonaws.com/employees/af0c1b75-8090-42ed-bea9-7a043adc61cd/efd0efd3-772d-4511-94a6-5d182dc4c97d/ccced13d-6246-4c7b-b49e-5e470e50e07c.png?<firma-oculta>\"\n    },\n    {\n      \"employeeId\": \"6258868e-a367-43ea-9b71-ea6e5d200cfb\",\n      \"fileNumber\": \"L-0008\",\n      \"firstName\": \"Matías\",\n      \"lastName\": \"Britos\",\n      \"position\": {\n        \"positionId\": \"8d5d9028-f82f-4128-9706-0beb1810345c\",\n        \"name\": \"Ayudante de reparto\",\n        \"category\": \"helper\"\n      },\n      \"status\": \"active\",\n      \"hireDate\": \"2026-06-16\",\n      \"hasAccount\": false,\n      \"photoUrl\": \"https://splg-tesis.s3.sa-east-1.amazonaws.com/employees/af0c1b75-8090-42ed-bea9-7a043adc61cd/6258868e-a367-43ea-9b71-ea6e5d200cfb/1381fb83-d096-4a6e-a245-93aa2340a186.png?<firma-oculta>\"\n    }\n  ],\n  \"total\": 15\n}"
+                  "body": "{\n  \"data\": [\n    {\n      \"employeeId\": \"fee28927-fed7-4b14-a776-fcba78770e73\",\n      \"fileNumber\": \"L-0013\",\n      \"firstName\": \"Daniela\",\n      \"lastName\": \"Aguirre\",\n      \"position\": {\n        \"positionId\": \"cbb88dc8-669f-40bf-b8b7-11501171192e\",\n        \"name\": \"Vendedora de mostrador\",\n        \"category\": \"sales\"\n      },\n      \"status\": \"active\",\n      \"hireDate\": \"2025-08-10\",\n      \"hasAccount\": false,\n      \"photoUrl\": \"https://splg-tesis.s3.sa-east-1.amazonaws.com/employees/af0c1b75-8090-42ed-bea9-7a043adc61cd/fee28927-fed7-4b14-a776-fcba78770e73/a7ed4fb0-02e6-4935-8f62-5f38bfbcc285.png?<firma-oculta>\",\n      \"documentStatus\": \"expired\",\n      \"nextDocumentDueDate\": \"2026-09-30\"\n    },\n    {\n      \"employeeId\": \"efd0efd3-772d-4511-94a6-5d182dc4c97d\",\n      \"fileNumber\": \"L-0009\",\n      \"firstName\": \"Oscar\",\n      \"lastName\": \"Almirón\",\n      \"position\": {\n        \"positionId\": \"054fb46e-5ca7-4ce6-9cad-00d50021d130\",\n        \"name\": \"Operario de depósito\",\n        \"category\": \"warehouse\"\n      },\n      \"status\": \"active\",\n      \"hireDate\": \"2021-01-13\",\n      \"hasAccount\": false,\n      \"photoUrl\": \"https://splg-tesis.s3.sa-east-1.amazonaws.com/employees/af0c1b75-8090-42ed-bea9-7a043adc61cd/efd0efd3-772d-4511-94a6-5d182dc4c97d/ccced13d-6246-4c7b-b49e-5e470e50e07c.png?<firma-oculta>\",\n      \"documentStatus\": \"expired\",\n      \"nextDocumentDueDate\": \"2026-10-12\"\n    },\n    {\n      \"employeeId\": \"6258868e-a367-43ea-9b71-ea6e5d200cfb\",\n      \"fileNumber\": \"L-0008\",\n      \"firstName\": \"Matías\",\n      \"lastName\": \"Britos\",\n      \"position\": {\n        \"positionId\": \"8d5d9028-f82f-4128-9706-0beb1810345c\",\n        \"name\": \"Ayudante de reparto\",\n        \"category\": \"helper\"\n      },\n      \"status\": \"active\",\n      \"hireDate\": \"2026-06-16\",\n      \"hasAccount\": false,\n      \"photoUrl\": \"https://splg-tesis.s3.sa-east-1.amazonaws.com/employees/af0c1b75-8090-42ed-bea9-7a043adc61cd/6258868e-a367-43ea-9b71-ea6e5d200cfb/1381fb83-d096-4a6e-a245-93aa2340a186.png?<firma-oculta>\",\n      \"documentStatus\": \"expired\",\n      \"nextDocumentDueDate\": \"2026-10-21\"\n    }\n  ],\n  \"total\": 3\n}"
                 }
               ],
               "event": [
@@ -153968,7 +153966,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/employees?category=inexistente",
+                  "raw": "{{baseUrl}}/employees?documentStatus=inexistente",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -154012,8 +154010,7 @@
                     },
                     {
                       "key": "documentStatus",
-                      "value": "1",
-                      "disabled": true
+                      "value": "inexistente"
                     }
                   ]
                 },
@@ -154045,7 +154042,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/employees?category=inexistente",
+                      "raw": "{{baseUrl}}/employees?documentStatus=inexistente",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -154089,8 +154086,7 @@
                         },
                         {
                           "key": "documentStatus",
-                          "value": "1",
-                          "disabled": true
+                          "value": "inexistente"
                         }
                       ]
                     },
@@ -154115,7 +154111,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": [\n    \"category must be one of the following values: driver, helper, warehouse, administration, sales, management, other\"\n  ],\n  \"error\": \"Bad Request\",\n  \"statusCode\": 400\n}"
+                  "body": "{\n  \"message\": [\n    \"documentStatus must be one of the following values: up_to_date, due_soon, expired, missing\"\n  ],\n  \"error\": \"Bad Request\",\n  \"statusCode\": 400\n}"
                 }
               ],
               "event": [
@@ -154151,7 +154147,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/employees",
+                  "raw": "{{baseUrl}}/employees?documentStatus=expired",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -154196,8 +154192,7 @@
                     },
                     {
                       "key": "documentStatus",
-                      "value": "1",
-                      "disabled": true
+                      "value": "expired"
                     }
                   ]
                 },
@@ -154222,7 +154217,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/employees",
+                      "raw": "{{baseUrl}}/employees?documentStatus=expired",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -154267,8 +154262,7 @@
                         },
                         {
                           "key": "documentStatus",
-                          "value": "1",
-                          "disabled": true
+                          "value": "expired"
                         }
                       ]
                     },
@@ -154322,7 +154316,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/employees",
+                  "raw": "{{baseUrl}}/employees?documentStatus=expired",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -154367,8 +154361,7 @@
                     },
                     {
                       "key": "documentStatus",
-                      "value": "1",
-                      "disabled": true
+                      "value": "expired"
                     }
                   ]
                 },
@@ -154400,7 +154393,7 @@
                       }
                     ],
                     "url": {
-                      "raw": "{{baseUrl}}/employees",
+                      "raw": "{{baseUrl}}/employees?documentStatus=expired",
                       "host": [
                         "{{baseUrl}}"
                       ],
@@ -154445,8 +154438,7 @@
                         },
                         {
                           "key": "documentStatus",
-                          "value": "1",
-                          "disabled": true
+                          "value": "expired"
                         }
                       ]
                     },

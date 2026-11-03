@@ -5,6 +5,7 @@ import {
   EmployeeTerminationReason,
   EmploymentType,
 } from '../entities/employee.entity';
+import { EmployeeDocumentStatus } from '../domain/document-status';
 import { JobPositionCategory } from '../entities/job-position.entity';
 
 export class EmployeePositionDto {
@@ -52,6 +53,29 @@ export class EmployeeListItemDto {
       'Con cuenta de acceso es la foto de perfil del usuario; sin cuenta, la del legajo.',
   })
   photoUrl!: string | null;
+}
+
+/** Una fila del listado (CU-180): la del legajo más el estado de su documentación. */
+export class EmployeeListRowDto extends EmployeeListItemDto {
+  @ApiProperty({
+    enum: EmployeeDocumentStatus,
+    nullable: true,
+    description:
+      'Estado de la documentación: `expired` (algún documento vencido), `missing` ' +
+      '(falta cargar un documento que le aplica), `due_soon` (dentro de la ventana de ' +
+      'aviso) o `up_to_date`. `null` si el legajo está egresado.',
+  })
+  documentStatus!: EmployeeDocumentStatus | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: 'date',
+    example: '2027-05-10',
+    description:
+      'Vencimiento más cercano entre sus documentos abiertos con fecha; `null` si no tiene o está egresado.',
+  })
+  nextDocumentDueDate!: string | null;
 }
 
 /** El legajo completo (CU-179): lo único que expone los datos personales. */
@@ -138,8 +162,8 @@ export class EmployeeResponseDto extends EmployeeListItemDto {
 }
 
 export class EmployeePageDto {
-  @ApiProperty({ type: EmployeeListItemDto, isArray: true })
-  data!: EmployeeListItemDto[];
+  @ApiProperty({ type: EmployeeListRowDto, isArray: true })
+  data!: EmployeeListRowDto[];
 
   @ApiProperty({ example: 42 })
   total!: number;
