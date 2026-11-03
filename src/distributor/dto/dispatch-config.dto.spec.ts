@@ -95,4 +95,22 @@ describe('DispatchConfigDto (CU-171)', () => {
       'offerTtlSeconds',
     ]);
   });
+
+  it.each([0, 1, 300, 5000])(
+    'acepta un radio por terminar de 0 a 5000 m (%s)',
+    async (m) => {
+      expect(
+        await camposInvalidos({ ...valido, finishingRadiusMeters: m }),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([-1, 5001, 10.5, '300'])(
+    'rechaza un radio por terminar fuera de 0..5000 m o no entero (%s)',
+    async (m) => {
+      expect(
+        await camposInvalidos({ ...valido, finishingRadiusMeters: m }),
+      ).toEqual(['finishingRadiusMeters']);
+    },
+  );
 });

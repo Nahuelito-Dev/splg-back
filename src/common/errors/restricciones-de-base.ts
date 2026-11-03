@@ -184,6 +184,8 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El estado del caso no coincide con sus datos (escalado, acordado o confirmado)',
   UQ_planning_case_tarea_abierto:
     'La tarea ya tiene un caso de planificación abierto',
+  CHK_module_config_despacho:
+    'Algún parámetro del despacho está fuera de su rango',
   CHK_module_config_planificador:
     'Algún parámetro del planificador de flota está fuera de su rango',
   CHK_vehicle_usage_log_valores:

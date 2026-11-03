@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
 import { In, IsNull, MoreThanOrEqual, Not, Raw, Repository } from 'typeorm';
+import { coordenadasDePunto } from '../../common/geo/punto';
 import {
   sqlPedidoEnLoteVivo,
   sqlPedidoRetenidoPorAgrupacion,
@@ -22,6 +23,7 @@ import {
   OrderListFilters,
   OrderRepositoryPort,
   PaginatedOrders,
+  PedidoEnCursoPorChofer,
 } from '../domain/ports/order.repository.port';
 
 /** Relaciones completas de un pedido (detalle / listados de admin). */
@@ -337,18 +339,34 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
     });
   }
 
-  async findDeliveryIdsWithOrderInProgress(
+  async findInProgressOfDeliveries(
     deliveryIds: string[],
-  ): Promise<Set<string>> {
-    if (deliveryIds.length === 0) return new Set();
+  ): Promise<PedidoEnCursoPorChofer[]> {
+    if (deliveryIds.length === 0) return [];
     const filas = await this.orderRepository.find({
       where: {
         deliveryId: In(deliveryIds),
         status: In([OrderStatus.ACCEPTED, OrderStatus.ON_THE_WAY]),
       },
-      select: { orderId: true, deliveryId: true },
+      select: {
+        orderId: true,
+        deliveryId: true,
+        status: true,
+        deliveryPoint: true,
+      },
     });
-    return new Set(filas.flatMap((o) => (o.deliveryId ? [o.deliveryId] : [])));
+    return filas.flatMap((o) =>
+      o.deliveryId
+        ? [
+            {
+              deliveryId: o.deliveryId,
+              orderId: o.orderId,
+              status: o.status,
+              destino: coordenadasDePunto(o.deliveryPoint),
+            },
+          ]
+        : [],
+    );
   }
 
   async registerWrongDeliveryCode(orderId: string): Promise<number> {

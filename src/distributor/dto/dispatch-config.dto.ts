@@ -11,6 +11,8 @@ import {
 } from 'class-validator';
 import { EsEstrictamenteCreciente } from '../../common/validators/es-estrictamente-creciente.validator';
 import {
+  DISPATCH_FINISHING_RADIUS_MAX_METERS,
+  DISPATCH_FINISHING_RADIUS_MIN_METERS,
   DISPATCH_OFFER_TTL_MAX_SECONDS,
   DISPATCH_OFFER_TTL_MIN_SECONDS,
   DISPATCH_RADIUS_MAX_KM,
@@ -50,6 +52,18 @@ export class DispatchConfigDto {
   @Min(DISPATCH_OFFER_TTL_MIN_SECONDS)
   @Max(DISPATCH_OFFER_TTL_MAX_SECONDS)
   offerTtlSeconds?: number;
+
+  @ApiPropertyOptional({
+    description: `Radio en metros al punto de entrega dentro del cual un chofer con un solo pedido en camino cuenta como «por terminar» y puede recibir otra oferta (${DISPATCH_FINISHING_RADIUS_MIN_METERS} a ${DISPATCH_FINISHING_RADIUS_MAX_METERS}). 0 lo apaga: sólo se ofrece a choferes sin pedido en curso`,
+    example: 300,
+    minimum: DISPATCH_FINISHING_RADIUS_MIN_METERS,
+    maximum: DISPATCH_FINISHING_RADIUS_MAX_METERS,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(DISPATCH_FINISHING_RADIUS_MIN_METERS)
+  @Max(DISPATCH_FINISHING_RADIUS_MAX_METERS)
+  finishingRadiusMeters?: number;
 }
 
 /** Respuesta de `GET`/`PUT /module-config/dispatch`. */
@@ -59,6 +73,9 @@ export class DispatchConfigResponseDto {
 
   @ApiProperty({ example: 30 })
   offerTtlSeconds!: number;
+
+  @ApiProperty({ example: 300 })
+  finishingRadiusMeters!: number;
 
   @ApiProperty({
     description:

@@ -8,10 +8,16 @@ export interface DispatchSettings {
   radiusStepsKm: number[];
   /** Ventana de aceptación de cada oferta, en segundos. */
   offerTtlSeconds: number;
+  /**
+   * Radio (m) al punto de entrega dentro del cual un chofer con un solo pedido
+   * en camino cuenta como «por terminar» y puede recibir otra oferta. 0 = apagado.
+   */
+  finishingRadiusMeters: number;
 }
 
 export const DEFAULT_RADIUS_STEPS_KM: readonly number[] = [5, 10, 15, 20];
 export const DEFAULT_OFFER_TTL_SECONDS = 30;
+export const DEFAULT_FINISHING_RADIUS_METERS = 300;
 
 export const DISPATCH_RADIUS_MIN_STEPS = 1;
 export const DISPATCH_RADIUS_MAX_STEPS = 8;
@@ -19,11 +25,14 @@ export const DISPATCH_RADIUS_MIN_KM = 1;
 export const DISPATCH_RADIUS_MAX_KM = 100;
 export const DISPATCH_OFFER_TTL_MIN_SECONDS = 10;
 export const DISPATCH_OFFER_TTL_MAX_SECONDS = 300;
+export const DISPATCH_FINISHING_RADIUS_MIN_METERS = 0;
+export const DISPATCH_FINISHING_RADIUS_MAX_METERS = 5000;
 
 export function dispatchSettingsPorDefecto(): DispatchSettings {
   return {
     radiusStepsKm: [...DEFAULT_RADIUS_STEPS_KM],
     offerTtlSeconds: DEFAULT_OFFER_TTL_SECONDS,
+    finishingRadiusMeters: DEFAULT_FINISHING_RADIUS_METERS,
   };
 }
 
@@ -59,12 +68,21 @@ export function dispatchSettingsDesde(
     esNumero(ttl) &&
     ttl >= DISPATCH_OFFER_TTL_MIN_SECONDS &&
     ttl <= DISPATCH_OFFER_TTL_MAX_SECONDS;
+  const cerca = params.finishingRadiusMeters;
+  const cercaValido =
+    esNumero(cerca) &&
+    Number.isInteger(cerca) &&
+    cerca >= DISPATCH_FINISHING_RADIUS_MIN_METERS &&
+    cerca <= DISPATCH_FINISHING_RADIUS_MAX_METERS;
 
   return {
     radiusStepsKm: pasosValidos
       ? [...(pasos as number[])]
       : porDefecto.radiusStepsKm,
     offerTtlSeconds: ttlValido ? ttl : porDefecto.offerTtlSeconds,
+    finishingRadiusMeters: cercaValido
+      ? cerca
+      : porDefecto.finishingRadiusMeters,
   };
 }
 
@@ -73,6 +91,7 @@ export function sonLosDeOmision(settings: DispatchSettings): boolean {
   const base = dispatchSettingsPorDefecto();
   return (
     settings.offerTtlSeconds === base.offerTtlSeconds &&
+    settings.finishingRadiusMeters === base.finishingRadiusMeters &&
     settings.radiusStepsKm.length === base.radiusStepsKm.length &&
     settings.radiusStepsKm.every((km, i) => km === base.radiusStepsKm[i])
   );

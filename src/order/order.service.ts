@@ -661,8 +661,10 @@ export class OrderService {
 
   /**
    * El pedido en curso del chofer (ver `OrderRepositoryPort.findCurrentOfDelivery`):
-   * el activo sin importar cuándo se creó y, si no hay, el entregado en efectivo
-   * de hoy con el cobro pendiente. `null` si no tiene ninguno.
+   * el que va en camino; si no, el aceptado más antiguo (con uno en camino y otro
+   * en espera, el de espera aparece al entregar el primero); y si no hay activos,
+   * el entregado en efectivo de hoy con el cobro pendiente. Un cobro pendiente
+   * nunca tapa a un pedido activo. `null` si no tiene ninguno.
    */
   async findCurrentOfDriver(
     driverUserId: string,

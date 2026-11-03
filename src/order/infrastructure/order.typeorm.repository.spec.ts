@@ -300,3 +300,60 @@ describe('OrderTypeormRepository · orden estable al paginar', () => {
     desempata(ordenUsado(), 'DESC');
   });
 });
+
+describe('OrderTypeormRepository · pedido en curso del chofer (CU-013)', () => {
+  const pedido = (orderId: string, status: OrderStatus) =>
+    ({ orderId, status }) as Order;
+  const desde = new Date('2026-11-02T00:00:00Z');
+
+  const armar = (activos: Order[], porCobrar: Order | null) => {
+    const orderRepo = {
+      find: jest.fn().mockResolvedValue(activos),
+      findOne: jest.fn().mockResolvedValue(porCobrar),
+    };
+    return new OrderTypeormRepository(
+      orderRepo as unknown as Repository<Order>,
+    );
+  };
+
+  it('el que va en camino manda sobre todo lo demás', async () => {
+    const repo = armar(
+      [pedido('b', OrderStatus.ACCEPTED), pedido('a', OrderStatus.ON_THE_WAY)],
+      pedido('c', OrderStatus.DELIVERED),
+    );
+    expect(
+      (await repo.findCurrentOfDelivery('d', 'dist', desde))?.orderId,
+    ).toBe('a');
+  });
+
+  it('un aceptado que espera va antes que el cobro pendiente de lo entregado', async () => {
+    const repo = armar(
+      [pedido('b', OrderStatus.ACCEPTED)],
+      pedido('a', OrderStatus.DELIVERED),
+    );
+    expect(
+      (await repo.findCurrentOfDelivery('d', 'dist', desde))?.orderId,
+    ).toBe('b');
+  });
+
+  it('sin activos devuelve el cobro pendiente del día', async () => {
+    const repo = armar([], pedido('a', OrderStatus.DELIVERED));
+    expect(
+      (await repo.findCurrentOfDelivery('d', 'dist', desde))?.orderId,
+    ).toBe('a');
+  });
+
+  it('sin cobro pendiente sigue el aceptado, y sin nada es null', async () => {
+    expect(
+      (
+        await armar(
+          [pedido('b', OrderStatus.ACCEPTED)],
+          null,
+        ).findCurrentOfDelivery('d', 'dist', desde)
+      )?.orderId,
+    ).toBe('b');
+    expect(
+      await armar([], null).findCurrentOfDelivery('d', 'dist', desde),
+    ).toBeNull();
+  });
+});

@@ -21,6 +21,7 @@ describe('DispatchOrchestratorService', () => {
   let orchestrator: DispatchOrchestratorService;
   let dispatch: {
     findNearbyDrivers: jest.Mock;
+    lastKnownPosition: jest.Mock;
     notifyDriverNewOrder: jest.Mock;
     notifyAdmins: jest.Mock;
   };
@@ -32,7 +33,7 @@ describe('DispatchOrchestratorService', () => {
   let orders: {
     findByIdFull: jest.Mock;
     findById: jest.Mock;
-    findDeliveryIdsWithOrderInProgress: jest.Mock;
+    findInProgressOfDeliveries: jest.Mock;
   };
   let settings: { obtener: jest.Mock };
   let deliveries: {
@@ -83,6 +84,7 @@ describe('DispatchOrchestratorService', () => {
   beforeEach(() => {
     dispatch = {
       findNearbyDrivers: jest.fn().mockResolvedValue([]),
+      lastKnownPosition: jest.fn().mockResolvedValue(null),
       notifyDriverNewOrder: jest.fn(),
       notifyAdmins: jest.fn(),
     };
@@ -100,14 +102,13 @@ describe('DispatchOrchestratorService', () => {
       findByIdFull: jest.fn().mockResolvedValue(makeOrder()),
       findById: jest.fn().mockResolvedValue(makeOrder()),
       // Por defecto nadie está ocupado.
-      findDeliveryIdsWithOrderInProgress: jest
-        .fn()
-        .mockResolvedValue(new Set<string>()),
+      findInProgressOfDeliveries: jest.fn().mockResolvedValue([]),
     };
     settings = {
       obtener: jest.fn().mockResolvedValue({
         radiusStepsKm: [5, 10, 15, 20],
         offerTtlSeconds: 30,
+        finishingRadiusMeters: 300,
       }),
     };
     offers = {
@@ -212,15 +213,26 @@ describe('DispatchOrchestratorService', () => {
 
   describe('offerToNextDriver · ocupación', () => {
     const conTenant = () => makeOrder({ distributorId: 'dist-1' });
+    // El pedido nuevo entrega en (-26.8, -65.2). El destino del pedido en curso
+    // del chofer está a unos 110 m de `CERCA` y a unos 1,1 km de `LEJOS`.
+    const DESTINO = { lat: -26.9, lng: -65.3 };
+    const ahora = () => new Date().toISOString();
+    const CERCA = { lat: -26.9, lng: -65.299, at: ahora() };
+    const LEJOS = { lat: -26.91, lng: -65.3, at: ahora() };
+    const enCurso = (
+      user: string,
+      status: OrderStatus,
+      orderId = `o-${user}`,
+    ) => ({ deliveryId: `d-${user}`, orderId, status, destino: DESTINO });
 
-    it('no ofrece a un chofer con un pedido aceptado o en camino', async () => {
+    it('no ofrece a un chofer con un pedido aceptado', async () => {
       dispatch.findNearbyDrivers.mockResolvedValueOnce(['ocupado', 'libre']);
-      orders.findDeliveryIdsWithOrderInProgress.mockResolvedValue(
-        new Set(['d-ocupado']),
-      );
+      orders.findInProgressOfDeliveries.mockResolvedValue([
+        enCurso('ocupado', OrderStatus.ACCEPTED),
+      ]);
 
       expect(await orchestrator.offerToNextDriver(conTenant())).toBe('libre');
-      expect(orders.findDeliveryIdsWithOrderInProgress).toHaveBeenCalledWith([
+      expect(orders.findInProgressOfDeliveries).toHaveBeenCalledWith([
         'd-ocupado',
         'd-libre',
       ]);
@@ -228,12 +240,145 @@ describe('DispatchOrchestratorService', () => {
 
     it('si el único cercano está ocupado, no hay oferta', async () => {
       dispatch.findNearbyDrivers.mockResolvedValue(['ocupado']);
-      orders.findDeliveryIdsWithOrderInProgress.mockResolvedValue(
-        new Set(['d-ocupado']),
-      );
+      orders.findInProgressOfDeliveries.mockResolvedValue([
+        enCurso('ocupado', OrderStatus.ACCEPTED),
+      ]);
 
       expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
       expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    describe('por terminar (CU-013)', () => {
+      it('en camino y dentro del radio de su destino: sí se le ofrece', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValueOnce(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBe('x');
+        expect(dispatch.lastKnownPosition).toHaveBeenCalledWith('x');
+      });
+
+      it('en camino pero lejos de su destino: no se le ofrece', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(LEJOS);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      });
+
+      it('con dos pedidos en curso no se le ofrece, aunque esté cerca', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY, 'o-1'),
+          enCurso('x', OrderStatus.ACCEPTED, 'o-2'),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      });
+
+      it('con radio 0 (apagado) se comporta como antes', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        settings.obtener.mockResolvedValue({
+          radiusStepsKm: [5],
+          offerTtlSeconds: 30,
+          finishingRadiusMeters: 0,
+        });
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+        expect(dispatch.lastKnownPosition).not.toHaveBeenCalled();
+      });
+
+      it('sin posición conocida no es candidato', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(null);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      });
+
+      it('una posición de hace más de 2 minutos no cuenta como por terminar', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue({
+          ...CERCA,
+          at: new Date(Date.now() - 121_000).toISOString(),
+        });
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+        dispatch.lastKnownPosition.mockResolvedValue({ ...CERCA, at: null });
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+        dispatch.lastKnownPosition.mockResolvedValue({
+          ...CERCA,
+          at: new Date(Date.now() - 100_000).toISOString(),
+        });
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBe('x');
+      });
+
+      it('el despacho express no considera a un por terminar', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+        expect(
+          await orchestrator.choferesEnMotoCerca(-26.8, -65.2, 'dist-1', 5),
+        ).toEqual([]);
+      });
+
+      it('aceptado (todavía no salió) no cuenta como por terminar', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ACCEPTED),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      });
+
+      it('a igual radio, primero el libre aunque el por terminar venga antes', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValueOnce(['x', 'libre']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBe('libre');
+      });
+
+      it('sigue aplicando el resto de la elegibilidad (flota)', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+        fleet.choferesInhabilitados.mockResolvedValue(new Set(['x']));
+
+        expect(await orchestrator.offerToNextDriver(conTenant())).toBeNull();
+      });
+
+      it('M4 (choferesElegiblesCerca) sigue viendo sólo choferes libres', async () => {
+        dispatch.findNearbyDrivers.mockResolvedValue(['x', 'libre']);
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          enCurso('x', OrderStatus.ON_THE_WAY),
+        ]);
+        dispatch.lastKnownPosition.mockResolvedValue(CERCA);
+
+        expect(
+          await orchestrator.choferesElegiblesCerca(-26.8, -65.2, 'dist-1'),
+        ).toEqual(['libre']);
+      });
     });
   });
 
@@ -497,9 +642,14 @@ describe('DispatchOrchestratorService', () => {
       deliveries.choferesElegibles.mockImplementation((ids: string[]) =>
         Promise.resolve(ids.filter((id) => id !== 'a')),
       );
-      orders.findDeliveryIdsWithOrderInProgress.mockResolvedValue(
-        new Set(['d-b']),
-      );
+      orders.findInProgressOfDeliveries.mockResolvedValue([
+        {
+          deliveryId: 'd-b',
+          orderId: 'o-b',
+          status: OrderStatus.ACCEPTED,
+          destino: null,
+        },
+      ]);
       truckGate.motivoParaElAdmin.mockResolvedValue(
         'la carga N° 7 todavía no salió',
       );

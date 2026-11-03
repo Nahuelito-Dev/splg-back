@@ -1,4 +1,10 @@
 import { Order, OrderStatus, PaymentStatus } from '../../entities/order.entity';
+import type { PedidoEnCursoDeChofer } from '../chofer-por-terminar';
+
+/** Pedido en curso con el `delivery_id` del chofer que lo lleva. */
+export interface PedidoEnCursoPorChofer extends PedidoEnCursoDeChofer {
+  deliveryId: string;
+}
 
 /** Resultado paginado uniforme de las consultas de pedidos. */
 export interface PaginatedOrders {
@@ -91,7 +97,9 @@ export abstract class OrderRepositoryPort {
    * El pedido en curso de un chofer, con todas sus relaciones: el que lleva en
    * camino o, si no, el aceptado más antiguo; y si no tiene ninguno, el
    * entregado en efectivo desde `desde` cuyo cobro sigue pendiente. `null` si
-   * no tiene nada de eso. Sin límite de antigüedad para los activos.
+   * no tiene nada de eso. Sin límite de antigüedad para los activos. Un cobro
+   * pendiente nunca tapa a un activo: con uno en camino y otro aceptado en espera
+   * (CU-013), el aceptado aparece recién al entregar el primero.
    */
   abstract findCurrentOfDelivery(
     deliveryId: string,
@@ -100,12 +108,12 @@ export abstract class OrderRepositoryPort {
   ): Promise<Order | null>;
 
   /**
-   * De esos choferes (`delivery_id`), los que tienen un pedido aceptado o en
-   * camino: están ocupados y no se les ofrece otro.
+   * Los pedidos aceptados o en camino de esos choferes (`delivery_id`), cada
+   * uno con su punto de entrega. Un chofer sin ninguno no aparece.
    */
-  abstract findDeliveryIdsWithOrderInProgress(
+  abstract findInProgressOfDeliveries(
     deliveryIds: string[],
-  ): Promise<Set<string>>;
+  ): Promise<PedidoEnCursoPorChofer[]>;
 
   /**
    * Suma un código de entrega incorrecto al pedido (atómico, en la base) y

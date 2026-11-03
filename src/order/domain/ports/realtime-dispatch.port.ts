@@ -38,6 +38,15 @@ export abstract class RealtimeDispatchPort {
     orderId: string,
   ): Promise<{ lat: number; lng: number; at: string | null } | null>;
 
+  /**
+   * Última posición conocida del chofer en el radar (Redis GEO), sin importar
+   * qué pedido lleve, con el momento en que se registró (`at`, null si se
+   * perdió). `null` si no está en el radar.
+   */
+  abstract lastKnownPosition(
+    driverUserId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null>;
+
   /** Oferta de un pedido nuevo a un chofer (WebSocket). */
   abstract notifyDriverNewOrder(driverId: string, payload: unknown): void;
 

@@ -136,10 +136,31 @@ const CHECK_RECARGOS = [
   .join(' AND ');
 
 /**
+ * Parámetros del despacho (CU-171, CU-013): entero en su rango; los pasos de radio
+ * sólo en su forma (lista de 1 a 8), el resto lo valida el servicio.
+ */
+const CHECK_DESPACHO = [
+  `("params" -> 'radiusStepsKm' IS NULL OR (jsonb_typeof("params" -> 'radiusStepsKm') = 'array' AND jsonb_array_length("params" -> 'radiusStepsKm') BETWEEN 1 AND 8))`,
+  ...(
+    [
+      ['offerTtlSeconds', 10, 300],
+      ['finishingRadiusMeters', 0, 5000],
+    ] as const
+  ).map(
+    ([k, min, max]) =>
+      `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max} AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)))`,
+  ),
+].join(' AND ');
+
+/**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
  * Casos: CU-105 a CU-108, CU-149, CU-171 y CU-173 (parametrización)
  */
+@Check(
+  'CHK_module_config_despacho',
+  `"module" <> 'dispatch' OR (${CHECK_DESPACHO})`,
+)
 @Check(
   'CHK_module_config_planificador',
   `"module" <> 'fleet_planner' OR (${CHECK_PLANIFICADOR})`,

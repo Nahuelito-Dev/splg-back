@@ -52,6 +52,7 @@ describe('UpdateOrderStatusUseCase', () => {
   let notifications: { sendOrderConfirmation: jest.Mock };
   let orders: {
     findByIdFull: jest.Mock<Promise<Order | null>, [string]>;
+    findInProgressOfDeliveries: jest.Mock;
     save: jest.Mock<Promise<Order>, [Order]>;
   };
   let orchestrator: {
@@ -137,6 +138,7 @@ describe('UpdateOrderStatusUseCase', () => {
     };
     orders = {
       findByIdFull: jest.fn<Promise<Order | null>, [string]>(),
+      findInProgressOfDeliveries: jest.fn().mockResolvedValue([]),
       save: jest.fn((o: Order) => Promise.resolve(o)),
     };
     orchestrator = {
@@ -321,6 +323,72 @@ describe('UpdateOrderStatusUseCase', () => {
         useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    describe('un pedido más para quien está por terminar (CU-013)', () => {
+      const aceptar = (role?: RoleType) =>
+        useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1', role);
+      const deOtro = (status: OrderStatus, orderId: string) => ({
+        deliveryId: 'drv-1',
+        orderId,
+        status,
+        destino: null,
+      });
+
+      beforeEach(() => {
+        orders.findByIdFull.mockResolvedValue(makeOrder());
+        deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      });
+
+      it('con uno en camino acepta el nuevo: queda uno solo encolado', async () => {
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          deOtro(OrderStatus.ON_THE_WAY, 'o-a'),
+        ]);
+
+        const r = await aceptar(RoleType.DELIVERY);
+
+        expect(r.status).toBe(OrderStatus.ACCEPTED);
+      });
+
+      it('con uno en camino y otro ya aceptado esperando, el chofer no toma un tercero (409)', async () => {
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          deOtro(OrderStatus.ON_THE_WAY, 'o-a'),
+          deOtro(OrderStatus.ACCEPTED, 'o-b'),
+        ]);
+
+        await expect(aceptar(RoleType.DELIVERY)).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      });
+
+      it('repetir la aceptación del mismo pedido no se cuenta como otro encolado', async () => {
+        orders.findByIdFull.mockResolvedValue(
+          makeOrder({
+            status: OrderStatus.ACCEPTED,
+            deliveryId: 'drv-1',
+          } as Partial<Order>),
+        );
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          deOtro(OrderStatus.ACCEPTED, 'ord-1'),
+          deOtro(OrderStatus.ON_THE_WAY, 'o-a'),
+        ]);
+
+        const r = await aceptar(RoleType.DELIVERY);
+
+        expect(r.status).toBe(OrderStatus.ACCEPTED);
+        expect(orders.findInProgressOfDeliveries).not.toHaveBeenCalled();
+      });
+
+      it('el administrador asigna a su criterio: no se le aplica el límite', async () => {
+        orders.findInProgressOfDeliveries.mockResolvedValue([
+          deOtro(OrderStatus.ACCEPTED, 'o-b'),
+        ]);
+
+        const r = await aceptar(RoleType.ADMIN);
+
+        expect(r.status).toBe(OrderStatus.ACCEPTED);
+      });
     });
 
     it('relee los renglones DESPUÉS del lock: guarda los vigentes y no los que trajo el JOIN', async () => {

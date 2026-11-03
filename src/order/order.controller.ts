@@ -284,7 +284,7 @@ export class OrderController {
   @ApiOperation({
     summary: 'El pedido en curso del chofer (para retomar al abrir la app)',
     description:
-      'Devuelve el pedido que el chofer tiene en curso, sin importar cuándo se creó: el que lleva `out_for_delivery` o, si no, el `accepted` más antiguo. Si no tiene ninguno, el pedido entregado HOY en efectivo cuyo cobro sigue `pending` (para que confirme el cobro). Responde `204` sin cuerpo si no tiene nada de eso. Sólo del chofer autenticado y de su distribuidora.',
+      'Devuelve el pedido que el chofer tiene en curso, sin importar cuándo se creó: el que lleva `out_for_delivery` o, si no, el `accepted` más antiguo (si hay uno en camino y otro aceptado en espera, éste aparece al entregar el primero). Si no tiene ninguno, el pedido entregado HOY en efectivo cuyo cobro sigue `pending` (para que confirme el cobro). Responde `204` sin cuerpo si no tiene nada de eso. Sólo del chofer autenticado y de su distribuidora.',
   })
   @ApiOkResponse({ type: OrderResponseDto })
   @ApiNoContentResponse({
@@ -541,7 +541,8 @@ export class OrderController {
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiConflictResponse({
     description:
-      'Aceptar (`accepted`) un pedido de Mercado Pago cuyo pago todavía no está aprobado (salvo una reserva con la seña paga)',
+      'Aceptar (`accepted`) un pedido de Mercado Pago cuyo pago todavía no está aprobado (salvo una reserva con la seña paga), ' +
+      'o, siendo chofer, tener ya otro pedido aceptado esperando (CU-013: nunca dos encolados; repetir la aceptación del mismo pedido no cuenta)',
   })
   @ApiBadRequestResponse({
     description:

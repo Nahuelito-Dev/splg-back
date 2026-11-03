@@ -104,6 +104,10 @@ const ADMIN_STATUS_EVENT: Partial<Record<OrderStatus, string>> = {
 export const MENSAJE_PEDIDO_EN_RECORRIDO =
   'El pedido es parte de un recorrido que se le está ofreciendo a un chofer: no se puede tomar suelto';
 
+/** 409 de aceptar un pedido con otro ya aceptado en espera (CU-013). */
+export const MENSAJE_PEDIDO_ENCOLADO =
+  'Ya tenés un pedido aceptado esperando: terminá el actual antes de tomar otro';
+
 @Injectable()
 export class UpdateOrderStatusUseCase {
   private readonly logger = new Logger(UpdateOrderStatusUseCase.name);
@@ -230,6 +234,7 @@ export class UpdateOrderStatusUseCase {
         previousStatus,
         queryRunner.manager,
         deliveryId,
+        role,
       );
       deliveryUser = efectos.deliveryUser;
       aceptacionADespachar = efectos.aceptacionDelChoferUserId;
@@ -537,6 +542,7 @@ export class UpdateOrderStatusUseCase {
     previousStatus: OrderStatus,
     manager: EntityManager,
     deliveryId?: string,
+    role?: RoleType,
   ): Promise<EfectosDelEstado> {
     switch (status) {
       case OrderStatus.ACCEPTED: {
@@ -606,6 +612,29 @@ export class UpdateOrderStatusUseCase {
             delivery.deliveryId,
             manager,
           );
+        }
+        // CU-013: un chofer que está por terminar su entrega puede tomar UN
+        // pedido más, nunca dos encolados. Lo controla el propio chofer; el
+        // administrador asigna a su criterio.
+        if (
+          role === RoleType.DELIVERY &&
+          !(
+            previousStatus === OrderStatus.ACCEPTED &&
+            order.deliveryId === delivery.deliveryId
+          )
+        ) {
+          const enCurso = await this.orders.findInProgressOfDeliveries([
+            delivery.deliveryId,
+          ]);
+          if (
+            enCurso.some(
+              (p) =>
+                p.orderId !== order.orderId &&
+                p.status === OrderStatus.ACCEPTED,
+            )
+          ) {
+            throw new ConflictException(MENSAJE_PEDIDO_ENCOLADO);
+          }
         }
         // Snapshot del vehículo en uso (decisión de nahue del 30/09): a
         // esta altura el chofer ya pasó el gate, así que si tiene
