@@ -6,6 +6,7 @@ import { DistributorModule } from '../distributor/distributor.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { GatewaysModule } from '../gateways/gateways.module';
 import { RouteBatch } from '../order/entities/route-batch.entity';
+import { RoutePlan } from '../order/entities/route-plan.entity';
 import { RouteBatchOffer } from '../order/entities/route-batch-offer.entity';
 import { RouteBatchStop } from '../order/entities/route-batch-stop.entity';
 import { OrderModule } from '../order/order.module';
@@ -24,7 +25,12 @@ import { RouteBatchService } from './route-batch.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([RouteBatch, RouteBatchStop, RouteBatchOffer]),
+    TypeOrmModule.forFeature([
+      RouteBatch,
+      RouteBatchStop,
+      RouteBatchOffer,
+      RoutePlan, // la clave compuesta (distribuidora, día) del lote la referencia
+    ]),
     OrderModule, // asignar los pedidos del lote y devolverlos al despacho individual
     DeliveryModule, // el chofer y su pertenencia
     CarModule, // la capacidad de carga del vehículo
