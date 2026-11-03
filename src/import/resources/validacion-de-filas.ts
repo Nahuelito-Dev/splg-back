@@ -9,6 +9,7 @@ import { validate, ValidationError } from 'class-validator';
 import {
   BadRequestDomainError,
   ConflictDomainError,
+  conDetalle,
   NotFoundDomainError,
 } from '../../common/errors/domain.error';
 import { ColumnaDeImportacion, ErrorDeFila } from '../domain/import.types';
@@ -156,19 +157,28 @@ export async function validarConDto<T extends object>(
  */
 export function conContexto(error: unknown, contexto: string): unknown {
   if (error instanceof HttpException) {
-    return new HttpException(
-      `${contexto}: ${error.message}`,
-      error.getStatus(),
+    return conDetalle(
+      new HttpException(`${contexto}: ${error.message}`, error.getStatus()),
+      error,
     );
   }
   if (error instanceof BadRequestDomainError) {
-    return new BadRequestException(`${contexto}: ${error.message}`);
+    return conDetalle(
+      new BadRequestException(`${contexto}: ${error.message}`),
+      error,
+    );
   }
   if (error instanceof NotFoundDomainError) {
-    return new NotFoundException(`${contexto}: ${error.message}`);
+    return conDetalle(
+      new NotFoundException(`${contexto}: ${error.message}`),
+      error,
+    );
   }
   if (error instanceof ConflictDomainError) {
-    return new ConflictException(`${contexto}: ${error.message}`);
+    return conDetalle(
+      new ConflictException(`${contexto}: ${error.message}`),
+      error,
+    );
   }
   return error;
 }

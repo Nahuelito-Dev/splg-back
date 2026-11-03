@@ -3,7 +3,7 @@ import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AuthGuard } from './jwt-auth.guard';
-import { AuthService } from '../auth.service';
+import { AuthService, MENSAJE_TOKEN_INVALIDO } from '../auth.service';
 import { UsersService } from '../../users/users.service';
 import { DistributorService } from '../../distributor/distributor.service';
 import { RoleType } from '../../common/constants/role-type.enum';
@@ -261,5 +261,75 @@ describe('AuthGuard — @PublicIdentificable()', () => {
     );
     expect(authService.decodeToken).not.toHaveBeenCalled();
     expect('distributorId' in request).toBe(false);
+  });
+});
+
+describe('AuthGuard — mensajes del 401', () => {
+  const reflector = new Reflector();
+  let authService: { decodeToken: jest.Mock };
+  let usersService: { findOneByEmail: jest.Mock };
+  let guard: AuthGuard;
+
+  const cabeceras = {
+    authorization: 'Bearer token',
+    'x-client-source': 'panel-app',
+  };
+
+  beforeEach(() => {
+    authService = { decodeToken: jest.fn() };
+    usersService = { findOneByEmail: jest.fn() };
+    guard = new AuthGuard(
+      reflector,
+      authService as unknown as AuthService,
+      usersService as unknown as UsersService,
+      {} as unknown as DistributorService,
+    );
+  });
+
+  it('sin token: «Falta el token de acceso»', async () => {
+    const request = requestCon({ 'x-client-source': 'panel-app' });
+
+    await expect(guard.canActivate(contextoCon(request))).rejects.toThrow(
+      new UnauthorizedException('Falta el token de acceso'),
+    );
+  });
+
+  it('token sin correo: el mismo texto de token inválido que auth.service', async () => {
+    authService.decodeToken.mockResolvedValue({});
+
+    await expect(
+      guard.canActivate(contextoCon(requestCon(cabeceras))),
+    ).rejects.toThrow(new UnauthorizedException(MENSAJE_TOKEN_INVALIDO));
+  });
+
+  it('login de un usuario sin rol: «Tu usuario no tiene un rol asignado»', async () => {
+    usersService.findOneByEmail.mockResolvedValue({
+      email: 'x@splg.com',
+      blocked: false,
+    });
+    const request = {
+      headers: { 'x-client-source': 'panel-app' },
+      method: 'POST',
+      url: '/auth/login',
+      body: { email: 'x@splg.com' },
+    } as unknown as Request;
+
+    await expect(guard.canActivate(contextoCon(request))).rejects.toThrow(
+      new UnauthorizedException('Tu usuario no tiene un rol asignado'),
+    );
+  });
+
+  it('token válido de un usuario sin rol: el 401 no da pistas de más', async () => {
+    authService.decodeToken.mockResolvedValue({ email: 'x@splg.com' });
+    usersService.findOneByEmail.mockResolvedValue({
+      email: 'x@splg.com',
+      blocked: false,
+    });
+
+    await expect(
+      guard.canActivate(contextoCon(requestCon(cabeceras))),
+    ).rejects.toThrow(
+      'Usuario inexistente o sin un rol válido para esta aplicación',
+    );
   });
 });

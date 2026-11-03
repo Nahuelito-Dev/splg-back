@@ -214,7 +214,7 @@ export class MpReconciliationService {
       where: { reconciliationId: id, distributorId },
     });
     if (!corrida) {
-      throw new NotFoundException(`Conciliación ${id} no encontrada`);
+      throw new NotFoundException('Conciliación no encontrada');
     }
     return corrida;
   }

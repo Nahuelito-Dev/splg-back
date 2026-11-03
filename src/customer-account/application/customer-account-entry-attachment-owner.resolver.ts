@@ -31,9 +31,7 @@ export class CustomerAccountEntryAttachmentOwnerResolver
       where: { entryId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(
-        `Asiento de cuenta corriente ${ownerId} no encontrado`,
-      );
+      throw new NotFoundException('Asiento de cuenta corriente no encontrado');
     }
   }
 }

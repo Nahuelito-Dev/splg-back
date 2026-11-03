@@ -1271,7 +1271,11 @@ describe('Personal: documentación, asistencia, licencias y habilitación (e2e)'
         startDate: '2099-12-14',
         endDate: '2099-12-20',
       }).expect(409);
-      expect(JSON.stringify(choque.body)).toContain(primera);
+      // Dice cuál es la licencia que pisa (tipo, estado y fechas) sin mostrar su id.
+      expect((choque.body as { message: string }).message).toBe(
+        'El período se superpone con otra licencia (vacaciones, solicitada) del 2099-12-01 al 2099-12-14',
+      );
+      expect(JSON.stringify(choque.body)).not.toContain(primera);
       // Contigua (un día después): no se pisa.
       await cargar(admin1.headers, id, {
         startDate: '2099-12-15',

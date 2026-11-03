@@ -423,7 +423,7 @@ export class CashCollectionSettingsService {
     );
     const pedido = pedidos[0];
     if (!pedido) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     const pagos: Array<{
       payment_id: string;

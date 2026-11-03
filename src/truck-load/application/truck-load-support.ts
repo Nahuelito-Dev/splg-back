@@ -83,8 +83,10 @@ export async function bloquearGarrafasComoClaveForanea(
     [unicos, distributorId],
   );
   const vistas = new Set(filas.map((f) => f.gas_cylinder_id));
-  const faltante = unicos.find((id) => !vistas.has(id));
-  if (faltante) throw new GarrafaNoEncontradaEnStockError(faltante);
+  const indice = ids.findIndex((id) => !vistas.has(id));
+  if (indice !== -1) {
+    throw new GarrafaNoEncontradaEnStockError(ids[indice], indice + 1);
+  }
 }
 
 function restriccionDelError(error: unknown): string | undefined {

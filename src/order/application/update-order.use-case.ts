@@ -147,7 +147,7 @@ export class UpdateOrderUseCase {
         (distributorId && order.distributorId !== distributorId) ||
         (esCliente && order.customerId !== actorUserId)
       ) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
 
       this.assertEditable(order, dto, esCliente);
@@ -367,7 +367,7 @@ export class UpdateOrderUseCase {
   private async releerOrFail(orderId: string): Promise<Order> {
     const result = await this.orders.findByIdFull(orderId);
     if (!result) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return result;
   }

@@ -10,6 +10,8 @@ import {
   ConflictDomainError,
   NotFoundDomainError,
 } from '../../common/errors/domain.error';
+import { detalleDe } from '../../common/errors/domain.error';
+import { GasCylinderNotFoundError } from '../../gascylinder/domain/errors/gas-cylinder-not-found.error';
 import { CreateGasCylinderDto } from '../../gascylinder/dto/create-gascylinder.dto';
 import { CreateSupplierDto } from '../../purchase/dto/supplier.dto';
 import { ColumnaDeImportacion, ErrorDeFila } from '../domain/import.types';
@@ -209,6 +211,14 @@ describe('validacion-de-filas', () => {
       expect((e as HttpException).getStatus()).toBe(409);
       const otro = conContexto(new ForbiddenException('no'), 'Fila 1');
       expect((otro as ForbiddenException).getStatus()).toBe(403);
+    });
+
+    it('conserva el detalle interno del error de dominio para el log, no en el mensaje', () => {
+      const e = conContexto(new GasCylinderNotFoundError('g-1'), 'Fila 4');
+      expect((e as HttpException).message).toBe(
+        'Fila 4: Garrafa no encontrada',
+      );
+      expect(detalleDe(e)).toBe('gasCylinderId=g-1');
     });
 
     it('traduce los errores de dominio a su excepción HTTP', () => {

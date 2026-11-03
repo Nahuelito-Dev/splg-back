@@ -5,14 +5,14 @@ import {
 } from '../../../common/errors/domain.error';
 
 export class CuentaNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Cuenta corriente no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Cuenta corriente no encontrada', `id=${id}`);
   }
 }
 
 export class ClienteNoEncontradoError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Cliente no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('Cliente no encontrado', `id=${id}`);
   }
 }
 

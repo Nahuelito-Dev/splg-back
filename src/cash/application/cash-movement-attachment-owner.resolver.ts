@@ -32,9 +32,7 @@ export class CashMovementAttachmentOwnerResolver
       where: { movementId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(
-        `Movimiento de caja ${ownerId} no encontrado`,
-      );
+      throw new NotFoundException('Movimiento de caja no encontrado');
     }
   }
 }

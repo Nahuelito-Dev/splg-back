@@ -52,8 +52,7 @@ export class ConfirmDeliveryUseCase {
     reason?: string,
   ): Promise<Order> {
     const order = await this.orders.findByIdFull(orderId);
-    if (!order)
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    if (!order) throw new NotFoundException('Pedido no encontrado');
 
     // Ownership: un cliente solo puede confirmar SUS pedidos. Admin puede
     // confirmar cualquiera (soporte / entregas asistidas telefónicamente).

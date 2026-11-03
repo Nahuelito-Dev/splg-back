@@ -120,7 +120,7 @@ export class TrafficFinePaymentService {
           relations: { car: true },
           lock: { mode: 'pessimistic_write', tables: ['traffic_fine'] },
         });
-        if (!multa) throw new NotFoundException(`Multa ${id} no encontrada`);
+        if (!multa) throw new NotFoundException('Multa no encontrada');
         if (multa.status === TrafficFineStatus.PAID) {
           throw new ConflictException('La multa ya está paga');
         }

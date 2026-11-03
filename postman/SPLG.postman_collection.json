@@ -5781,7 +5781,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -6386,7 +6386,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -6971,7 +6971,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -7556,7 +7556,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -8141,7 +8141,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -8774,7 +8774,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -9710,7 +9710,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -10295,7 +10295,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -10642,7 +10642,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -11037,7 +11037,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -11501,7 +11501,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -12306,7 +12306,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -12927,7 +12927,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -13463,7 +13463,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -13591,7 +13591,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -14114,7 +14114,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -14658,7 +14658,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -15343,7 +15343,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -16028,7 +16028,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -16641,7 +16641,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -17272,7 +17272,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -17810,7 +17810,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -18026,7 +18026,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -18534,7 +18534,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -19248,7 +19248,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -19803,7 +19803,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -20358,7 +20358,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -20913,7 +20913,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -21468,7 +21468,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -22023,7 +22023,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -22465,7 +22465,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -23002,7 +23002,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -23677,7 +23677,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -24221,7 +24221,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -24615,7 +24615,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -24822,7 +24822,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -25367,7 +25367,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -25918,7 +25918,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -26473,7 +26473,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -26815,7 +26815,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -27022,7 +27022,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -27360,7 +27360,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -27567,7 +27567,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -28248,7 +28248,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -28799,7 +28799,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -29354,7 +29354,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -29921,7 +29921,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -30484,7 +30484,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -31039,7 +31039,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -31381,7 +31381,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -31588,7 +31588,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -32139,7 +32139,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -32481,7 +32481,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -32577,7 +32577,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -32904,7 +32904,7 @@
                       "value": "application/json"
                     }
                   ],
-                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\"\n}"
+                  "body": "{\n  \"statusCode\": 401,\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\"\n}"
                 }
               ],
               "event": [
@@ -33242,7 +33242,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -33656,7 +33656,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -33862,7 +33862,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Admin with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Administrador no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -34167,7 +34167,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -34377,7 +34377,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Admin with nadie.existe@splg-test.com not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Administrador no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -34778,7 +34778,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -35052,7 +35052,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Admin with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Administrador no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -35362,7 +35362,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -35572,7 +35572,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Empleado 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Empleado no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -35767,7 +35767,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"items\": [\n    {\n      \"auditId\": \"423103a4-c312-4a85-a93a-6caec4d14ab9\",\n      \"distributorId\": \"af0c1b75-8090-42ed-bea9-7a043adc61cd\",\n      \"actorUserId\": \"0114a3eb-a5e8-438e-893e-876eda58dbb4\",\n      \"actorRole\": \"super_admin\",\n      \"httpMethod\": \"PATCH\",\n      \"resource\": \"admin\",\n      \"resourceId\": \"00000000-0000-4000-8000-000000000000\",\n      \"path\": \"/api/admin/:id\",\n      \"clientSource\": \"panel-app\",\n      \"ip\": \"::1\",\n      \"result\": \"failure\",\n      \"statusCode\": 404,\n      \"changes\": {\n        \"fullName\": \"Marcela Duarte\"\n      },\n      \"errorMessage\": \"Admin with ID: 00000000-0000-4000-8000-000000000000 not found\",\n      \"createdAt\": \"2026-10-14T15:59:07.481Z\"\n    },\n    {\n      \"auditId\": \"7c2dac63-4850-4ac2-8db5-c8de841ff0d8\",\n      \"distributorId\": \"af0c1b75-8090-42ed-bea9-7a043adc61cd\",\n      \"actorUserId\": \"0114a3eb-a5e8-438e-893e-876eda58dbb4\",\n      \"actorRole\": \"super_admin\",\n      \"httpMethod\": \"PATCH\",\n      \"resource\": \"admin\",\n      \"resourceId\": \"a93e1afd-4959-4331-8f75-326033c771de\",\n      \"path\": \"/api/admin/:id\",\n      \"clientSource\": \"panel-app\",\n      \"ip\": \"::1\",\n      \"result\": \"failure\",\n      \"statusCode\": 400,\n      \"changes\": {\n        \"fullName\": 12345\n      },\n      \"errorMessage\": \"fullName must be longer than or equal to 2 characters; fullName must be a string\",\n      \"createdAt\": \"2026-10-14T15:59:07.420Z\"\n    },\n    {\n      \"auditId\": \"235c6879-97e9-4d96-9779-c6da1ddfdd6e\",\n      \"distributorId\": \"af0c1b75-8090-42ed-bea9-7a043adc61cd\",\n      \"actorUserId\": \"0114a3eb-a5e8-438e-893e-876eda58dbb4\",\n      \"actorRole\": \"super_admin\",\n      \"httpMethod\": \"PATCH\",\n      \"resource\": \"admin\",\n      \"resourceId\": \"a93e1afd-4959-4331-8f75-326033c771de\",\n      \"path\": \"/api/admin/:id\",\n      \"clientSource\": \"panel-app\",\n      \"ip\": \"::1\",\n      \"result\": \"success\",\n      \"statusCode\": 200,\n      \"changes\": {\n        \"fullName\": \"Marcela Duarte\"\n      },\n      \"errorMessage\": null,\n      \"createdAt\": \"2026-10-14T15:59:07.399Z\"\n    }\n  ],\n  \"total\": 4044\n}"
+                  "body": "{\n  \"items\": [\n    {\n      \"auditId\": \"423103a4-c312-4a85-a93a-6caec4d14ab9\",\n      \"distributorId\": \"af0c1b75-8090-42ed-bea9-7a043adc61cd\",\n      \"actorUserId\": \"0114a3eb-a5e8-438e-893e-876eda58dbb4\",\n      \"actorRole\": \"super_admin\",\n      \"httpMethod\": \"PATCH\",\n      \"resource\": \"admin\",\n      \"resourceId\": \"00000000-0000-4000-8000-000000000000\",\n      \"path\": \"/api/admin/:id\",\n      \"clientSource\": \"panel-app\",\n      \"ip\": \"::1\",\n      \"result\": \"failure\",\n      \"statusCode\": 404,\n      \"changes\": {\n        \"fullName\": \"Marcela Duarte\"\n      },\n      \"errorMessage\": \"Administrador no encontrado\",\n      \"createdAt\": \"2026-10-14T15:59:07.481Z\"\n    },\n    {\n      \"auditId\": \"7c2dac63-4850-4ac2-8db5-c8de841ff0d8\",\n      \"distributorId\": \"af0c1b75-8090-42ed-bea9-7a043adc61cd\",\n      \"actorUserId\": \"0114a3eb-a5e8-438e-893e-876eda58dbb4\",\n      \"actorRole\": \"super_admin\",\n      \"httpMethod\": \"PATCH\",\n      \"resource\": \"admin\",\n      \"resourceId\": \"a93e1afd-4959-4331-8f75-326033c771de\",\n      \"path\": \"/api/admin/:id\",\n      \"clientSource\": \"panel-app\",\n      \"ip\": \"::1\",\n      \"result\": \"failure\",\n      \"statusCode\": 400,\n      \"changes\": {\n        \"fullName\": 12345\n      },\n      \"errorMessage\": \"fullName must be longer than or equal to 2 characters; fullName must be a string\",\n      \"createdAt\": \"2026-10-14T15:59:07.420Z\"\n    },\n    {\n      \"auditId\": \"235c6879-97e9-4d96-9779-c6da1ddfdd6e\",\n      \"distributorId\": \"af0c1b75-8090-42ed-bea9-7a043adc61cd\",\n      \"actorUserId\": \"0114a3eb-a5e8-438e-893e-876eda58dbb4\",\n      \"actorRole\": \"super_admin\",\n      \"httpMethod\": \"PATCH\",\n      \"resource\": \"admin\",\n      \"resourceId\": \"a93e1afd-4959-4331-8f75-326033c771de\",\n      \"path\": \"/api/admin/:id\",\n      \"clientSource\": \"panel-app\",\n      \"ip\": \"::1\",\n      \"result\": \"success\",\n      \"statusCode\": 200,\n      \"changes\": {\n        \"fullName\": \"Marcela Duarte\"\n      },\n      \"errorMessage\": null,\n      \"createdAt\": \"2026-10-14T15:59:07.399Z\"\n    }\n  ],\n  \"total\": 4044\n}"
                 }
               ],
               "event": [
@@ -36120,7 +36120,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -36501,7 +36501,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -37183,7 +37183,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -37685,7 +37685,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -38108,7 +38108,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -39169,7 +39169,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -39569,7 +39569,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -39775,7 +39775,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -39975,7 +39975,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -40385,7 +40385,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -40903,7 +40903,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -41173,7 +41173,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No hay un chofer con user ID 00000000-0000-4000-8000-000000000000 en esta distribuidora\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"No hay un chofer para ese usuario en esta distribuidora\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -41284,7 +41284,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Car deleted successfully\",\n  \"carId\": \"ba14933e-fb2e-4879-9cfe-4f0c7188d74b\"\n}"
+                  "body": "{\n  \"message\": \"Vehículo dado de baja\",\n  \"carId\": \"ba14933e-fb2e-4879-9cfe-4f0c7188d74b\"\n}"
                 }
               ],
               "event": [
@@ -41828,7 +41828,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -42102,7 +42102,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -42213,7 +42213,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Car deleted successfully\",\n  \"carId\": \"ae9f3ba0-5ad8-4abd-9a13-e5d7439d9407\"\n}"
+                  "body": "{\n  \"message\": \"Vehículo dado de baja\",\n  \"carId\": \"ae9f3ba0-5ad8-4abd-9a13-e5d7439d9407\"\n}"
                 }
               ],
               "event": [
@@ -42472,7 +42472,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Car deleted successfully\",\n  \"carId\": \"0a03e1a9-b7c8-4a50-a22b-ef1adf31a5a1\"\n}"
+                  "body": "{\n  \"message\": \"Vehículo dado de baja\",\n  \"carId\": \"0a03e1a9-b7c8-4a50-a22b-ef1adf31a5a1\"\n}"
                 }
               ],
               "event": [
@@ -42679,7 +42679,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -42901,7 +42901,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -43098,7 +43098,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -43498,7 +43498,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -44073,7 +44073,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -44601,7 +44601,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -44871,7 +44871,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -45650,7 +45650,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -46951,7 +46951,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -48122,7 +48122,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -49107,7 +49107,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -50063,7 +50063,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -50527,7 +50527,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -50733,7 +50733,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -51038,7 +51038,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -51248,7 +51248,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -51951,7 +51951,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -52221,7 +52221,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Proveedor no encontrado: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Proveedor no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -53697,7 +53697,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -53971,7 +53971,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -55453,7 +55453,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -55731,7 +55731,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -57457,7 +57457,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -57735,7 +57735,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -59273,7 +59273,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -59499,7 +59499,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -60594,7 +60594,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -61048,7 +61048,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -61254,7 +61254,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Proveedor no encontrado: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Proveedor no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -61691,7 +61691,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -61989,7 +61989,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Proveedor no encontrado: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Proveedor no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -62408,7 +62408,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -63204,7 +63204,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -63478,7 +63478,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Proveedor no encontrado: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Proveedor no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -64061,7 +64061,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -64283,7 +64283,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Proveedor no encontrado: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Proveedor no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -64831,7 +64831,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -65315,7 +65315,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -65521,7 +65521,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Recepción no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Recepción no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -65717,7 +65717,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -66895,7 +66895,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -67165,7 +67165,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Orden de compra no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Orden de compra no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -69025,7 +69025,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -69303,7 +69303,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Recepción no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Recepción no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -71429,7 +71429,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -71707,7 +71707,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Recepción no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Recepción no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -72703,7 +72703,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -73117,7 +73117,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -73323,7 +73323,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Zona 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Zona no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -73712,7 +73712,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -74246,7 +74246,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -75019,7 +75019,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -75293,7 +75293,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Zona 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Zona no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -75848,7 +75848,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -76070,7 +76070,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Zona 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Zona no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -76528,7 +76528,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -76982,7 +76982,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -77188,7 +77188,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Customer with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Cliente no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -77493,7 +77493,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -77703,7 +77703,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Customer with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Cliente no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -78104,7 +78104,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -78378,7 +78378,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Customer with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Cliente no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -78785,7 +78785,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -79063,7 +79063,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Customer with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Cliente no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -79521,7 +79521,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -79975,7 +79975,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -80486,7 +80486,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -81109,7 +81109,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -81379,7 +81379,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -82582,7 +82582,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -83889,7 +83889,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -84986,7 +84986,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -86087,7 +86087,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -87091,7 +87091,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -87545,7 +87545,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -87751,7 +87751,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -88180,7 +88180,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -88632,7 +88632,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -88842,7 +88842,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No hay un chofer para el usuario 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"No hay un chofer para ese usuario\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -89243,7 +89243,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -89517,7 +89517,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -89924,7 +89924,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -90202,7 +90202,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -90531,7 +90531,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -90757,7 +90757,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -91272,7 +91272,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -91550,7 +91550,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -91957,7 +91957,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -92235,7 +92235,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -92564,7 +92564,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -92790,7 +92790,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -93311,7 +93311,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -93790,7 +93790,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -94190,7 +94190,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -94396,7 +94396,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Distribuidora 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Distribuidora no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -94592,7 +94592,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -95005,7 +95005,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -95215,7 +95215,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -95559,7 +95559,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -96050,7 +96050,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -96482,7 +96482,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -96692,7 +96692,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Plan 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Plan no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -97099,7 +97099,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -97915,7 +97915,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -98193,7 +98193,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Plan 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Plan no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -98881,7 +98881,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -99373,7 +99373,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -99583,7 +99583,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Tarea 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Tarea no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -99894,7 +99894,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -100108,7 +100108,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Tarea 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Tarea no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -100653,7 +100653,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -100927,7 +100927,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Plan 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Plan no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -101880,7 +101880,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -102158,7 +102158,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Tarea 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Tarea no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -103117,7 +103117,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -103399,7 +103399,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Tarea 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Tarea no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -104358,7 +104358,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -104640,7 +104640,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Tarea 00000000-0000-4000-8000-000000000000 no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Tarea no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -105220,7 +105220,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -105430,7 +105430,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -105872,7 +105872,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -106170,7 +106170,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -106475,7 +106475,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -106685,7 +106685,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -107122,7 +107122,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -107420,7 +107420,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -107620,7 +107620,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -108280,7 +108280,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -108558,7 +108558,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -108697,7 +108697,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -108942,7 +108942,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Car deleted successfully\",\n  \"carId\": \"30841324-960f-4789-bd7d-977dfebe42ed\"\n}"
+                  "body": "{\n  \"message\": \"Vehículo dado de baja\",\n  \"carId\": \"30841324-960f-4789-bd7d-977dfebe42ed\"\n}"
                 }
               ],
               "event": [
@@ -109548,7 +109548,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -109774,7 +109774,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Chofer 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Chofer no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -110019,7 +110019,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Car deleted successfully\",\n  \"carId\": \"13e7a24d-30f4-4298-aace-7b42e0fb24cd\"\n}"
+                  "body": "{\n  \"message\": \"Vehículo dado de baja\",\n  \"carId\": \"13e7a24d-30f4-4298-aace-7b42e0fb24cd\"\n}"
                 }
               ],
               "event": [
@@ -110602,7 +110602,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -110705,7 +110705,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -111014,7 +111014,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -111415,7 +111415,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -111818,7 +111818,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder deactivated successfully\",\n  \"gasCylinderId\": \"1ec7f190-8ca4-47d0-b241-028de6ec43b1\"\n}"
+                  "body": "{\n  \"message\": \"Garrafa dada de baja\",\n  \"gasCylinderId\": \"1ec7f190-8ca4-47d0-b241-028de6ec43b1\"\n}"
                 }
               ],
               "event": [
@@ -112350,7 +112350,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -112624,7 +112624,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -112892,7 +112892,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder deactivated successfully\",\n  \"gasCylinderId\": \"d307543b-ad50-4dc0-bb97-8f2d1bd0d70a\"\n}"
+                  "body": "{\n  \"message\": \"Garrafa dada de baja\",\n  \"gasCylinderId\": \"d307543b-ad50-4dc0-bb97-8f2d1bd0d70a\"\n}"
                 }
               ],
               "event": [
@@ -113562,7 +113562,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -113840,7 +113840,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -114108,7 +114108,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder deactivated successfully\",\n  \"gasCylinderId\": \"ceeefe88-97de-414a-87d4-9eb4d7c5676b\"\n}"
+                  "body": "{\n  \"message\": \"Garrafa dada de baja\",\n  \"gasCylinderId\": \"ceeefe88-97de-414a-87d4-9eb4d7c5676b\"\n}"
                 }
               ],
               "event": [
@@ -114355,7 +114355,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder deactivated successfully\",\n  \"gasCylinderId\": \"c24c06b8-5a58-43f8-b5ac-6d036e81d29c\"\n}"
+                  "body": "{\n  \"message\": \"Garrafa dada de baja\",\n  \"gasCylinderId\": \"c24c06b8-5a58-43f8-b5ac-6d036e81d29c\"\n}"
                 }
               ],
               "event": [
@@ -114562,7 +114562,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -114784,7 +114784,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -115510,7 +115510,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -115910,7 +115910,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -116421,7 +116421,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -117412,7 +117412,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -118949,7 +118949,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -120496,7 +120496,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -122157,7 +122157,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -122439,7 +122439,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -123824,7 +123824,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -124106,7 +124106,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -124768,7 +124768,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -125274,7 +125274,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -125959,7 +125959,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -126444,7 +126444,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -126547,7 +126547,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -127908,7 +127908,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -128118,7 +128118,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -128927,7 +128927,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -129046,7 +129046,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -129570,7 +129570,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -129675,7 +129675,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -129877,7 +129877,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: bcc8aefb-dde0-4ea6-9329-03ab6511de5d not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -130984,7 +130984,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -131568,7 +131568,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -132303,7 +132303,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -133040,7 +133040,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -133559,7 +133559,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -133862,7 +133862,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -134167,7 +134167,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -134673,7 +134673,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -135078,7 +135078,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Garrafa no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -136187,7 +136187,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -136604,7 +136604,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -137285,7 +137285,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -138018,7 +138018,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -138565,7 +138565,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Garrafa no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Garrafa no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -139368,7 +139368,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -139642,7 +139642,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -140567,7 +140567,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -140793,7 +140793,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -141480,7 +141480,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -142470,7 +142470,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -142609,7 +142609,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -143421,7 +143421,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -144516,7 +144516,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -144794,7 +144794,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -145965,7 +145965,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -146195,7 +146195,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -147445,7 +147445,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -147727,7 +147727,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -149118,7 +149118,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -149400,7 +149400,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -151411,7 +151411,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -151693,7 +151693,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -152562,7 +152562,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -152840,7 +152840,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -153516,7 +153516,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -153738,7 +153738,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -154280,7 +154280,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -154762,7 +154762,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -154968,7 +154968,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Empleado 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Empleado no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -155369,7 +155369,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -155639,7 +155639,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Puesto 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Puesto no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -155750,7 +155750,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Legajo eliminado\"\n}"
+                  "body": "{\n  \"message\": \"Legajo dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -156282,7 +156282,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -156556,7 +156556,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Empleado 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Empleado no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -156667,7 +156667,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Legajo eliminado\"\n}"
+                  "body": "{\n  \"message\": \"Legajo dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -156914,7 +156914,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Legajo eliminado\"\n}"
+                  "body": "{\n  \"message\": \"Legajo dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -157121,7 +157121,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -157343,7 +157343,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Empleado 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Empleado no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -157540,7 +157540,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -158042,7 +158042,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -158288,7 +158288,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Puesto eliminado\"\n}"
+                  "body": "{\n  \"message\": \"Puesto dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -158820,7 +158820,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -159094,7 +159094,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Puesto 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Puesto no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -159205,7 +159205,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Puesto eliminado\"\n}"
+                  "body": "{\n  \"message\": \"Puesto dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -159452,7 +159452,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Puesto eliminado\"\n}"
+                  "body": "{\n  \"message\": \"Puesto dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -159659,7 +159659,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -159881,7 +159881,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Puesto 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Puesto no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -160185,7 +160185,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -160696,7 +160696,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -161112,7 +161112,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -162133,7 +162133,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -163295,7 +163295,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -164248,7 +164248,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -164900,7 +164900,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -165396,7 +165396,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -165892,7 +165892,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -166388,7 +166388,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -166914,7 +166914,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -167248,7 +167248,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -167648,7 +167648,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -167854,7 +167854,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Rol no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -168255,7 +168255,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -168501,7 +168501,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -168612,7 +168612,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Roles seeded successfully\"\n}"
+                  "body": "{\n  \"message\": \"Roles cargados\"\n}"
                 }
               ],
               "event": [
@@ -168708,7 +168708,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -169356,7 +169356,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -169630,7 +169630,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Rol no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -169741,7 +169741,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -169988,7 +169988,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role deleted successfully\"\n}"
+                  "body": "{\n  \"message\": \"Rol dado de baja\"\n}"
                 }
               ],
               "event": [
@@ -170195,7 +170195,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -170417,7 +170417,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Role with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Rol no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -171305,7 +171305,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -171555,7 +171555,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -171680,7 +171680,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Order with ID: bcc8aefb-dde0-4ea6-9329-03ab6511de5d not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Pedido no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -172479,7 +172479,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -173093,7 +173093,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -173841,7 +173841,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -174051,7 +174051,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Ajuste 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Ajuste no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -174510,7 +174510,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -175222,7 +175222,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -175625,7 +175625,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -175924,7 +175924,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -176223,7 +176223,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -177137,7 +177137,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -177411,7 +177411,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -178353,7 +178353,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -178627,7 +178627,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -180011,7 +180011,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -180297,7 +180297,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Lote de movimientos no encontrado: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Lote de movimientos no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -181500,7 +181500,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -181907,7 +181907,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Gas cylinder deactivated successfully\",\n  \"gasCylinderId\": \"6a4b477e-f4dd-4252-8c4c-009d3270b932\"\n}"
+                  "body": "{\n  \"message\": \"Garrafa dada de baja\",\n  \"gasCylinderId\": \"6a4b477e-f4dd-4252-8c4c-009d3270b932\"\n}"
                 }
               ],
               "event": [
@@ -182861,7 +182861,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -183135,7 +183135,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -184210,7 +184210,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -184484,7 +184484,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito del renglón 1 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -185295,7 +185295,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -185779,7 +185779,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -185985,7 +185985,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -186296,7 +186296,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -186510,7 +186510,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -186706,7 +186706,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -187005,7 +187005,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -187789,7 +187789,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -188059,7 +188059,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Vehículo 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Vehículo no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -189279,7 +189279,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -189557,7 +189557,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -190355,7 +190355,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -191315,7 +191315,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -191593,7 +191593,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -193055,7 +193055,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -193333,7 +193333,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -194475,7 +194475,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -194701,7 +194701,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -196429,7 +196429,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -196707,7 +196707,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -198303,7 +198303,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -198581,7 +198581,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Carga de camión no encontrada: 00000000-0000-4000-8000-000000000000\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Carga de camión no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -199337,7 +199337,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -199751,7 +199751,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -199957,7 +199957,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -200370,7 +200370,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -201317,7 +201317,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -201591,7 +201591,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -202325,7 +202325,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -202547,7 +202547,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Depósito 00000000-0000-4000-8000-000000000000 no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Depósito no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -202792,7 +202792,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -203216,7 +203216,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -203319,7 +203319,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Time slot not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Franja horaria no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -203946,7 +203946,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -204724,7 +204724,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -204998,7 +204998,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Time slot not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Franja horaria no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -205563,7 +205563,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -205785,7 +205785,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Time slot not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Franja horaria no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -206213,7 +206213,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -206657,7 +206657,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -206863,7 +206863,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Dirección no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -207168,7 +207168,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -207689,7 +207689,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -208304,7 +208304,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -208415,7 +208415,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address deleted successfully\",\n  \"addressId\": \"633acbd1-ee97-4240-8ebf-e8110c6e4127\"\n}"
+                  "body": "{\n  \"message\": \"Dirección dada de baja\",\n  \"addressId\": \"633acbd1-ee97-4240-8ebf-e8110c6e4127\"\n}"
                 }
               ],
               "event": [
@@ -208947,7 +208947,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -209221,7 +209221,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Dirección no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -209332,7 +209332,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address deleted successfully\",\n  \"addressId\": \"c5344df2-dbca-4139-b36a-8f5cba831ba7\"\n}"
+                  "body": "{\n  \"message\": \"Dirección dada de baja\",\n  \"addressId\": \"c5344df2-dbca-4139-b36a-8f5cba831ba7\"\n}"
                 }
               ],
               "event": [
@@ -209792,7 +209792,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -210018,7 +210018,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Dirección no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -210129,7 +210129,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address deleted successfully\",\n  \"addressId\": \"9a69e1ca-c813-4df7-a6d0-07d359cd43ef\"\n}"
+                  "body": "{\n  \"message\": \"Dirección dada de baja\",\n  \"addressId\": \"9a69e1ca-c813-4df7-a6d0-07d359cd43ef\"\n}"
                 }
               ],
               "event": [
@@ -210376,7 +210376,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address deleted successfully\",\n  \"addressId\": \"bc788f3c-8424-42f8-80c5-08e648b5a038\"\n}"
+                  "body": "{\n  \"message\": \"Dirección dada de baja\",\n  \"addressId\": \"bc788f3c-8424-42f8-80c5-08e648b5a038\"\n}"
                 }
               ],
               "event": [
@@ -210583,7 +210583,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -210805,7 +210805,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"Address with ID: 00000000-0000-4000-8000-000000000000 not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Dirección no encontrada\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -211263,7 +211263,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -211717,7 +211717,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -212228,7 +212228,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -212438,7 +212438,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"User with email: nadie.existe@splg-test.com not found\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+                  "body": "{\n  \"message\": \"Usuario no encontrado\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
                 }
               ],
               "event": [
@@ -212638,7 +212638,7 @@
                       "value": "application/json; charset=utf-8"
                     }
                   ],
-                  "body": "{\n  \"message\": \"No token provided\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+                  "body": "{\n  \"message\": \"Falta el token de acceso\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
                 }
               ],
               "event": [
@@ -213670,7 +213670,7 @@
                   "value": "application/json; charset=utf-8"
                 }
               ],
-              "body": "{\n  \"message\": \"Gas cylinder deactivated successfully\",\n  \"gasCylinderId\": \"a34f0b86-e50a-47f5-b29b-8625d894df17\"\n}"
+              "body": "{\n  \"message\": \"Garrafa dada de baja\",\n  \"gasCylinderId\": \"a34f0b86-e50a-47f5-b29b-8625d894df17\"\n}"
             }
           ],
           "event": [

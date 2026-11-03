@@ -265,7 +265,7 @@ export class AttachmentService {
       actor.role === RoleType.DELIVERY &&
       attachment.uploadedByUserId !== actor.userId
     ) {
-      throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
+      throw new NotFoundException('Adjunto no encontrado');
     }
     // Baja lógica: el archivo queda en el storage como respaldo.
     await this.attachments.softRemove(attachment);
@@ -280,7 +280,7 @@ export class AttachmentService {
       where: { attachmentId, distributorId },
     });
     if (!attachment) {
-      throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
+      throw new NotFoundException('Adjunto no encontrado');
     }
     // Con el dueño borrado el adjunto no puede quedar inaccesible: acá alcanza
     // con que la fila sea de la distribuidora. El resolver se exige al subir
@@ -329,7 +329,7 @@ export class AttachmentService {
           distributorId,
         )) ?? false;
       if (!esPropio) {
-        throw new NotFoundException(`No se encontró ${ownerType} ${ownerId}`);
+        throw new NotFoundException(`No se encontró el ${ownerType}`);
       }
     }
   }

@@ -175,8 +175,7 @@ export class OrderService {
    */
   async rejectOffer(orderId: string, driverId: string) {
     const order = await this.orders.findByIdFull(orderId);
-    if (!order)
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+    if (!order) throw new NotFoundException('Pedido no encontrado');
 
     // Punto 5 (segunda revisión): la oferta activa tiene que ser DE ESTE
     // chofer. Una oferta OFFERED de OTRO chofer para el mismo pedido (una
@@ -271,7 +270,7 @@ export class OrderService {
     if (!distributorId) return;
     const order = await this.orders.findById(id);
     if (order && order.distributorId !== distributorId) {
-      throw new NotFoundException(`Order with ID: ${id} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
   }
 
@@ -336,7 +335,7 @@ export class OrderService {
       esSuyo = !!chofer && order.deliveryId === chofer.deliveryId;
     }
     if (!order || !esSuyo) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     // El cliente sólo desde que el chofer sale: la ruta nace en la posición del
     // chofer y antes de eso esa posición no es suya (puede estar entregando otro).
@@ -369,7 +368,7 @@ export class OrderService {
     // Delega en el puerto de repositorio. Devuelve la entidad (uso interno por
     // updateStatus/cancel); getOne() mapea a DTO para el controller.
     const order = await this.orders.findByIdFull(id);
-    if (!order) throw new NotFoundException(`Order with ID: ${id} not found`);
+    if (!order) throw new NotFoundException('Pedido no encontrado');
     return order;
   }
 
@@ -447,13 +446,13 @@ export class OrderService {
       order.distributorId &&
       order.distributorId !== distributorId
     ) {
-      throw new NotFoundException(`Order with ID: ${id} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     // Ownership de cliente: un CUSTOMER solo puede leer SUS pedidos (evita IDOR
     // customer-a-customer dentro de la misma distribuidora). 404 para no
     // revelar que el pedido existe.
     if (customerUserId && order.customerId !== customerUserId) {
-      throw new NotFoundException(`Order with ID: ${id} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     // Un chofer solo lee lo que es suyo, lo que se le ofreció o lo que está en
     // el pool que ve en `GET /orders/available`. Lo demás es 404.
@@ -465,7 +464,7 @@ export class OrderService {
       if (await this.dispatchOffers.hasHeldOrder(order.orderId, choferUserId)) {
         throw new GoneException('Este pedido ya no está asignado a tu usuario');
       }
-      throw new NotFoundException(`Order with ID: ${id} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return order;
   }
@@ -828,7 +827,7 @@ export class OrderService {
       const locked = await consulta.getOne();
 
       if (!locked) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
       locked.items = await queryRunner.manager.find(OrderItem, {
         where: { orderId: locked.orderId },

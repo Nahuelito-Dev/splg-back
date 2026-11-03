@@ -118,9 +118,7 @@ export class DeliveryService {
       throw new ForbiddenException('No podés operar sobre otro chofer');
     }
     if (distributorId && delivery.distributorId !== distributorId) {
-      throw new NotFoundException(
-        `Chofer ${delivery.deliveryId} no encontrado`,
-      );
+      throw new NotFoundException('Chofer no encontrado');
     }
   }
 
@@ -259,7 +257,7 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException(`Chofer ${id} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
 
     return delivery;
@@ -284,7 +282,7 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException(`No hay un chofer para el usuario ${userId}`);
+      throw new NotFoundException('No hay un chofer para ese usuario');
     }
 
     return delivery;
@@ -299,7 +297,7 @@ export class DeliveryService {
       .getOne();
 
     if (!delivery) {
-      throw new NotFoundException(`No hay un chofer con el correo ${email}`);
+      throw new NotFoundException('No hay un chofer con ese correo');
     }
 
     return delivery;
@@ -431,7 +429,7 @@ export class DeliveryService {
         where: { deliveryId: id },
       });
       if (!actual || actual.distributorId !== distributorId) {
-        throw new NotFoundException(`Chofer ${id} no encontrado`);
+        throw new NotFoundException('Chofer no encontrado');
       }
     }
 
@@ -441,7 +439,7 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException(`Chofer ${id} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
 
     await this.deliveryRepository.save(delivery);
@@ -479,7 +477,7 @@ export class DeliveryService {
         `Chofer ${id} dado de baja, pero no se pudo sacar del radar de despacho: ${errorMessage(error)}`,
       );
     }
-    return MessageResponseDto.of('Delivery deleted successfully');
+    return MessageResponseDto.of('Chofer dado de baja');
   }
 
   async validateDelivery(id: string): Promise<Delivery> {
@@ -524,7 +522,7 @@ export class DeliveryService {
         .where('delivery.deliveryId = :id', { id })
         .getOne();
       if (!delivery) {
-        throw new NotFoundException(`Chofer ${id} no encontrado`);
+        throw new NotFoundException('Chofer no encontrado');
       }
       delivery.balance = new Decimal(delivery.balance || 0)
         .plus(amount)

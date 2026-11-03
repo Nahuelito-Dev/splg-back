@@ -121,7 +121,7 @@ export class CarService {
     });
 
     if (!car) {
-      throw new NotFoundException(`Vehículo ${id} no encontrado`);
+      throw new NotFoundException('Vehículo no encontrado');
     }
 
     return car;
@@ -188,7 +188,7 @@ export class CarService {
         ...columnasDelAuto(updateCarDto),
       });
       if (!car) {
-        throw new NotFoundException(`Vehículo ${id} no encontrado`);
+        throw new NotFoundException('Vehículo no encontrado');
       }
       return await this.carRepository.save(car);
     }
@@ -207,7 +207,7 @@ export class CarService {
           .andWhere('car.distributorId = :distributorId', { distributorId })
           .getOne();
         if (!bloqueado) {
-          throw new NotFoundException(`Vehículo ${id} no encontrado`);
+          throw new NotFoundException('Vehículo no encontrado');
         }
         await this.vehicleAssignments.assertVehiculoLibre(id, manager);
         const car = await manager.getRepository(Car).preload({
@@ -215,7 +215,7 @@ export class CarService {
           ...columnasDelAuto(updateCarDto),
         });
         if (!car) {
-          throw new NotFoundException(`Vehículo ${id} no encontrado`);
+          throw new NotFoundException('Vehículo no encontrado');
         }
         return await manager.getRepository(Car).save(car);
       });
@@ -245,7 +245,7 @@ export class CarService {
           .andWhere('car.distributorId = :distributorId', { distributorId })
           .getOne();
         if (!car) {
-          throw new NotFoundException(`Vehículo ${id} no encontrado`);
+          throw new NotFoundException('Vehículo no encontrado');
         }
         // No se puede dar de baja un vehículo en uso: hay que liberarlo
         // primero (`DELETE /delivery/:id/vehicle`).
@@ -263,7 +263,7 @@ export class CarService {
       new VehiculoDadoDeBajaEvent(id, distributorId),
     );
     return {
-      message: 'Car deleted successfully',
+      message: 'Vehículo dado de baja',
       carId: id,
     };
   }
@@ -331,7 +331,7 @@ export class CarService {
       .andWhere('car.distributorId = :distributorId', { distributorId })
       .getOne();
     if (!car) {
-      throw new NotFoundException(`Vehículo ${carId} no encontrado`);
+      throw new NotFoundException('Vehículo no encontrado');
     }
     return car;
   }
@@ -400,7 +400,7 @@ export class CarService {
       await this.deliveryService.findDistributorIdByUserId(userId);
     if (suDistribuidora !== distributorId) {
       throw new NotFoundException(
-        `No hay un chofer con user ID ${userId} en esta distribuidora`,
+        'No hay un chofer para ese usuario en esta distribuidora',
       );
     }
   }

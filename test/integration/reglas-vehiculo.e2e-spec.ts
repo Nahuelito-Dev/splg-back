@@ -290,7 +290,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
           d.distributorId,
           user.userId,
         ),
-      ).rejects.toThrow(/Vehículo .* no encontrado/);
+      ).rejects.toThrow('Vehículo no encontrado');
       expect(await abiertas(delivery.deliveryId)).toBe(1);
     }, 30000);
 
@@ -637,12 +637,12 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
             (e: unknown) => e,
           );
         expect(error).toBeInstanceOf(NotFoundException);
-        return (error as NotFoundException).message.replace(deliveryId, 'ID');
+        return (error as NotFoundException).message;
       };
 
       const deInexistente = await mensaje(inexistente);
       const deAjeno = await mensaje(ajeno.deliveryId);
-      expect(deInexistente).toBe('Chofer ID no encontrado');
+      expect(deInexistente).toBe('Chofer no encontrado');
       expect(deAjeno).toBe(deInexistente);
     }, 30000);
   });

@@ -139,7 +139,7 @@ describe('CarService', () => {
 
     it('responde con el id borrado', async () => {
       await expect(service.remove('c1', 'd1')).resolves.toEqual({
-        message: 'Car deleted successfully',
+        message: 'Vehículo dado de baja',
         carId: 'c1',
       });
       expect(txManager.softRemove).toHaveBeenCalledWith({ carId: 'c1' });
@@ -337,7 +337,7 @@ describe('CarService', () => {
   it('un vehículo inexistente es 404 con el mensaje en castellano', async () => {
     cars.findOne.mockResolvedValue(null);
     await expect(service.findOne('c9', 'd1')).rejects.toThrow(
-      'Vehículo c9 no encontrado',
+      'Vehículo no encontrado',
     );
   });
 

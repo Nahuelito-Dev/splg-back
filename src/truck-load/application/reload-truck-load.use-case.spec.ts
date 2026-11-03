@@ -10,7 +10,11 @@ import { TransicionDeCargaInvalidaError } from './truck-load-support';
 const uuid = (n: number) =>
   `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-function armar(status: TruckLoadStatus, tiposEnLaCarga: number) {
+function armar(
+  status: TruckLoadStatus,
+  tiposEnLaCarga: number,
+  garrafasAjenas: string[] = [],
+) {
   const carga = {
     loadId: 'carga-1',
     number: 7,
@@ -27,9 +31,15 @@ function armar(status: TruckLoadStatus, tiposEnLaCarga: number) {
         return qb;
       }),
     })),
-    query: jest.fn((sql: string) =>
+    query: jest.fn((sql: string, params: unknown[] = []) =>
       Promise.resolve(
-        sql.includes('COUNT(DISTINCT') ? [{ tipos: tiposEnLaCarga }] : [],
+        sql.includes('COUNT(DISTINCT')
+          ? [{ tipos: tiposEnLaCarga }]
+          : sql.includes('SELECT "gas_cylinder_id" FROM "gas_cylinder"')
+            ? (params[0] as string[])
+                .filter((id) => !garrafasAjenas.includes(id))
+                .map((id) => ({ gas_cylinder_id: id }))
+            : [],
       ),
     ),
   };
@@ -95,6 +105,17 @@ describe('ReloadTruckLoadUseCase', () => {
     await expect(
       useCase.execute('carga-1', dto(1), 'dist', 'admin'),
     ).rejects.toBeInstanceOf(TransicionDeCargaInvalidaError);
+    expect(ledger.aplicar).not.toHaveBeenCalled();
+  });
+
+  it('una garrafa inexistente dice el renglón del body y no mueve stock', async () => {
+    const { useCase, ledger } = armar(TruckLoadStatus.ON_ROUTE, 1, [uuid(2)]);
+    const error: unknown = await useCase
+      .execute('carga-1', dto(2), 'dist', 'u1')
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      'Garrafa del renglón 2 no encontrada',
+    );
     expect(ledger.aplicar).not.toHaveBeenCalled();
   });
 

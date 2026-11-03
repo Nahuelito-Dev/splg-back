@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  HttpException,
+  Logger,
+} from '@nestjs/common';
 import { auth } from 'firebase-admin';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { UsersService } from '../users/users.service';
@@ -12,12 +17,17 @@ import {
   EmailCambiadoResponseDto,
   PruebaDeEmailResponseDto,
 } from './dto/email-response.dto';
-import { errorMessage, errorStatus } from '../common/errors/error-message';
+import {
+  errorCode,
+  errorMessage,
+  errorStatus,
+} from '../common/errors/error-message';
 import { EnlacesDeLaApp } from './enlaces-de-la-app';
+import { MARCA_DE_LOS_MAILS } from './marca';
 
 /** Respuesta del pedido de reseteo, exista o no la cuenta. */
 const MENSAJE_DE_RESETEO =
-  'If the email exists, a password reset link has been sent';
+  'Si el correo existe, te enviamos un enlace para restablecer la contraseña';
 
 /**
  * Orquestador de emails transaccionales (reset de password, cambio de
@@ -64,7 +74,7 @@ export class EmailService {
 
     if (count > this.MAX_REQUESTS_PER_WINDOW) {
       throw new BadRequestException(
-        `Too many ${operation} attempts. Please try again later.`,
+        'Demasiados intentos: probá de nuevo más tarde',
       );
     }
   }
@@ -97,7 +107,7 @@ export class EmailService {
         }
 
         throw new BadRequestException(
-          'Too many password reset attempts. Please try again in a few minutes.',
+          'Demasiados intentos de recuperar la contraseña: probá de nuevo en unos minutos',
         );
       }
 
@@ -106,7 +116,9 @@ export class EmailService {
       this.logger.error(
         `No se pudo generar el link de reseteo: ${errorMessage(error)}`,
       );
-      throw new BadRequestException('Error generating reset link');
+      throw new BadRequestException(
+        'No se pudo generar el enlace de recuperación',
+      );
     }
   }
 
@@ -114,7 +126,7 @@ export class EmailService {
     try {
       return await this.firebaseAuth.verifyIdToken(idToken);
     } catch {
-      throw new BadRequestException('Invalid token');
+      throw new BadRequestException('Token inválido');
     }
   }
 
@@ -122,9 +134,13 @@ export class EmailService {
     try {
       await this.firebaseAuth.updateUser(uid, { email: newEmail });
     } catch (error) {
-      throw new BadRequestException(
-        `Error updating email: ${errorMessage(error)}`,
+      if (errorCode(error) === 'auth/email-already-exists') {
+        throw new BadRequestException('El correo nuevo ya está en uso');
+      }
+      this.logger.error(
+        `No se pudo actualizar el correo en Firebase: ${errorMessage(error)}`,
       );
+      throw new BadRequestException('No se pudo actualizar el correo');
     }
   }
 
@@ -137,12 +153,12 @@ export class EmailService {
 
       await this.sendEmail({
         to: email,
-        subject: `Reset your password for Yeni Gass`,
+        subject: `Restablecé tu contraseña de ${MARCA_DE_LOS_MAILS}`,
         template: 'password-reset',
         data: {
           resetLink,
           email,
-          appName: 'Yeni Gass',
+          appName: MARCA_DE_LOS_MAILS,
         },
       });
 
@@ -153,7 +169,13 @@ export class EmailService {
       if (errorStatus(error) === 404) {
         return { message: MENSAJE_DE_RESETEO };
       }
-      throw new BadRequestException(errorMessage(error));
+      if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `No se pudo enviar el correo de recuperación: ${errorMessage(error)}`,
+      );
+      throw new BadRequestException(
+        'No se pudo enviar el correo de recuperación',
+      );
     }
   }
 
@@ -166,12 +188,14 @@ export class EmailService {
       const decodedToken = await this.verifyIdToken(idToken);
 
       if (decodedToken.email !== currentEmail) {
-        throw new BadRequestException('Token does not match current email');
+        throw new BadRequestException(
+          'El token no corresponde al correo actual',
+        );
       }
 
       try {
         await this.usersService.findOneByEmail(newEmail);
-        throw new BadRequestException('New email already exists');
+        throw new BadRequestException('El correo nuevo ya está en uso');
       } catch (error) {
         if (errorStatus(error) !== 404) throw error;
       }
@@ -189,12 +213,19 @@ export class EmailService {
       );
 
       return {
-        message:
-          'Email changed successfully. Please verify your new email address.',
+        message: 'Correo actualizado: verificá tu nueva dirección',
         newEmail,
       };
     } catch (error) {
-      throw new BadRequestException(errorMessage(error));
+      if (error instanceof HttpException) {
+        // El usuario que no existe se informa como dato inválido, igual que siempre.
+        if (error.getStatus() === 404) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      this.logger.error(`No se pudo cambiar el correo: ${errorMessage(error)}`);
+      throw new BadRequestException('No se pudo cambiar el correo');
     }
   }
 
@@ -205,22 +236,22 @@ export class EmailService {
   ): Promise<void> {
     await this.sendEmail({
       to: newEmail,
-      subject: `Verify your email for Yeni Gass`,
+      subject: `Verificá tu correo de ${MARCA_DE_LOS_MAILS}`,
       template: 'email-verification',
       data: {
-        displayName: displayName || 'User',
-        appName: 'Yeni Gass',
+        displayName: displayName || 'Usuario',
+        appName: MARCA_DE_LOS_MAILS,
       },
     });
 
     await this.sendEmail({
       to: oldEmail,
-      subject: `Your sign-in email was changed for Yeni Gass`,
+      subject: `Cambió el correo de ingreso a ${MARCA_DE_LOS_MAILS}`,
       template: 'email-change-notification',
       data: {
-        displayName: displayName || 'User',
+        displayName: displayName || 'Usuario',
         newEmail,
-        appName: 'Yeni Gass',
+        appName: MARCA_DE_LOS_MAILS,
       },
     });
   }
@@ -252,11 +283,11 @@ export class EmailService {
     try {
       await this.sendEmail({
         to: email,
-        subject: `Welcome to Yeni Gass`,
+        subject: `Te damos la bienvenida a ${MARCA_DE_LOS_MAILS}`,
         template: 'welcome',
         data: {
           displayName,
-          appName: 'Yeni Gass',
+          appName: MARCA_DE_LOS_MAILS,
           supportEmail: 'support@wagnerlabs.dev',
         },
       });
@@ -280,23 +311,26 @@ export class EmailService {
       try {
         await this.sendEmail({
           to: email,
-          subject: `Test Email from Yeni Gass`,
+          subject: `Correo de prueba de ${MARCA_DE_LOS_MAILS}`,
           template: 'email-verification',
           data: {
-            displayName: 'Test User',
-            appName: 'Yeni Gass',
+            displayName: 'Usuario de prueba',
+            appName: MARCA_DE_LOS_MAILS,
           },
         });
 
         emailSent = true;
         resendStatus = 'sent';
       } catch (emailError) {
+        this.logger.warn(
+          `El servicio de correo falló en la prueba: ${errorMessage(emailError)}`,
+        );
         resendStatus = `failed: ${errorMessage(emailError)}`;
       }
 
       return {
         success: true,
-        message: 'Email service is working correctly',
+        message: 'El servicio de correo funciona correctamente',
         emailSent,
         resendStatus,
         cacheStats: {
@@ -305,9 +339,12 @@ export class EmailService {
         },
       };
     } catch (error) {
+      this.logger.error(
+        `Falló la prueba del servicio de correo: ${errorMessage(error)}`,
+      );
       return {
         success: false,
-        message: `Email service test failed: ${errorMessage(error)}`,
+        message: 'El servicio de correo falló',
       };
     }
   }

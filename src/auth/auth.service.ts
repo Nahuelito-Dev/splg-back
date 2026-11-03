@@ -200,7 +200,7 @@ export class AuthService {
     const { email } = await this.decodeToken(token);
 
     if (!email) {
-      throw new UnauthorizedException('Invalid token payload');
+      throw new UnauthorizedException(MENSAJE_TOKEN_INVALIDO);
     }
 
     let esAdmin: boolean;
@@ -210,7 +210,7 @@ export class AuthService {
       esAdmin = false;
     }
     if (!esAdmin) {
-      throw new UnauthorizedException('Admin not found');
+      throw new UnauthorizedException('Administrador no encontrado');
     }
   }
 }

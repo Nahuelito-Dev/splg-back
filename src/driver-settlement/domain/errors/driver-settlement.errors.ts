@@ -5,14 +5,14 @@ import {
 } from '../../../common/errors/domain.error';
 
 export class RendicionNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Rendición no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Rendición no encontrada', `id=${id}`);
   }
 }
 
 export class ChoferNoEncontradoError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Chofer no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('Chofer no encontrado', `id=${id}`);
   }
 }
 

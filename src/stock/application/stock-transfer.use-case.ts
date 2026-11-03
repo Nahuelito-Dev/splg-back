@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
+import { exigirGarrafasDeLosRenglones } from './renglones-de-garrafas';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { OperacionDeStockInvalidaError } from '../domain/errors/stock.errors';
 import {
@@ -88,6 +89,11 @@ export class StockTransferUseCase {
     return withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          await exigirGarrafasDeLosRenglones(
+            manager,
+            distributorId,
+            dto.items.map((i) => i.gasCylinderId),
+          );
           const origen = await this.locations.resolver(
             manager,
             distributorId,

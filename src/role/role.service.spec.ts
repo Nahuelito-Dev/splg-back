@@ -106,7 +106,7 @@ describe('RoleService', () => {
     repo.findOne.mockResolvedValue(propio);
     repo.softRemove.mockResolvedValue(undefined);
     await expect(service.remove('rol-1')).resolves.toEqual({
-      message: 'Role deleted successfully',
+      message: 'Rol dado de baja',
     });
     expect(repo.softRemove).toHaveBeenCalledWith(propio);
   });

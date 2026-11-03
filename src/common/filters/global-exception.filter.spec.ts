@@ -1,4 +1,4 @@
-import { ArgumentsHost, HttpServer } from '@nestjs/common';
+import { ArgumentsHost, HttpServer, Logger } from '@nestjs/common';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { InvalidOrderTransitionError } from '../../order/domain/errors/invalid-order-transition.error';
 import { GasCylinderNotFoundError } from '../../gascylinder/domain/errors/gas-cylinder-not-found.error';
@@ -184,9 +184,25 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
       expect.anything(),
       expect.objectContaining({
         statusCode: 404,
-        message: 'Garrafa no encontrada: gc-x',
+        message: 'Garrafa no encontrada',
       }),
       404,
     );
+  });
+
+  it('el id de un error de dominio va al log y no a la respuesta', () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    filter.catch(new GasCylinderNotFoundError('gc-secreto'), host);
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('gasCylinderId=gc-secreto'),
+    );
+    expect(JSON.stringify(applicationRef.reply.mock.calls)).not.toContain(
+      'gc-secreto',
+    );
+    warn.mockRestore();
   });
 });

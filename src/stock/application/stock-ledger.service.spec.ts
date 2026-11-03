@@ -2,7 +2,6 @@ import { ConflictException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import {
-  GarrafaNoEncontradaEnStockError,
   LoteNoEncontradoError,
   OperacionDeStockInvalidaError,
   StockInsuficienteError,
@@ -423,11 +422,26 @@ describe('StockLedgerService.aplicar', () => {
       expect(llamadas).not.toContain('lock-saldos');
     });
 
+    it('dice si la ubicación que falta es el origen o el destino, sin ids', async () => {
+      const faltaDestino = armar({ ubicaciones: [L1] });
+      await expect(
+        faltaDestino.service.aplicar(
+          faltaDestino.manager,
+          op([transferencia()]),
+        ),
+      ).rejects.toThrow('Ubicación de destino no encontrada');
+
+      const faltaOrigen = armar({ ubicaciones: [L2] });
+      await expect(
+        faltaOrigen.service.aplicar(faltaOrigen.manager, op([transferencia()])),
+      ).rejects.toThrow('Ubicación de origen no encontrada');
+    });
+
     it('una garrafa de otra distribuidora es 404', async () => {
       const { service, manager } = armar({ garrafas: [] });
       await expect(
         service.aplicar(manager, op([transferencia()])),
-      ).rejects.toBeInstanceOf(GarrafaNoEncontradaEnStockError);
+      ).rejects.toThrow('Garrafa no encontrada');
     });
 
     it('un depósito dado de baja no recibe ni entrega nada', async () => {

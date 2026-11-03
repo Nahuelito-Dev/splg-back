@@ -31,7 +31,7 @@ export class MpReconciliationAttachmentOwnerResolver
       where: { reconciliationId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Conciliación ${ownerId} no encontrada`);
+      throw new NotFoundException('Conciliación no encontrada');
     }
   }
 }

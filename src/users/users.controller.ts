@@ -449,7 +449,7 @@ export class UsersController {
     const destino = await this.usersService.findAlcance(userId);
     // Un super admin no es de ninguna distribuidora (H-62, H-76).
     if (destino.rol === RoleType.SUPER_ADMIN) {
-      throw new NotFoundException(`User with ID: ${userId} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
     if (destino.rol === RoleType.CUSTOMER) {
       throw new ForbiddenException(

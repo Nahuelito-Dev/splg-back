@@ -48,21 +48,37 @@ export class OperacionDeStockInvalidaError extends BadRequestDomainError {
 
 /** La ubicación o la garrafa no existe o es de otra distribuidora. */
 export class UbicacionNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Ubicación de stock no encontrada: ${id}`);
+  constructor(
+    readonly id: string,
+    rol?: 'origen' | 'destino',
+  ) {
+    super(
+      rol
+        ? `Ubicación de ${rol} no encontrada`
+        : 'Ubicación de stock no encontrada',
+      `id=${id}`,
+    );
   }
 }
 
 /** El lote de movimientos que se quiere contraasentar no existe en la distribuidora. */
 export class LoteNoEncontradoError extends NotFoundDomainError {
-  constructor(batchId: string) {
-    super(`Lote de movimientos no encontrado: ${batchId}`);
+  constructor(readonly batchId: string) {
+    super('Lote de movimientos no encontrado', `batchId=${batchId}`);
   }
 }
 
 /** La garrafa de un movimiento no existe o es de otra distribuidora. */
 export class GarrafaNoEncontradaEnStockError extends NotFoundDomainError {
-  constructor(gasCylinderId: string) {
-    super(`Garrafa no encontrada: ${gasCylinderId}`);
+  constructor(
+    readonly gasCylinderId: string,
+    renglon?: number,
+  ) {
+    super(
+      renglon
+        ? `Garrafa del renglón ${renglon} no encontrada`
+        : 'Garrafa no encontrada',
+      `gasCylinderId=${gasCylinderId}`,
+    );
   }
 }

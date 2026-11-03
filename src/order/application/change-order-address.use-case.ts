@@ -121,7 +121,7 @@ export class ChangeOrderAddressUseCase {
         order.customerId !== customerUserId ||
         (distributorId && order.distributorId !== distributorId)
       ) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
 
       // El estado se re-chequea ADENTRO del lock: si el pedido salió en

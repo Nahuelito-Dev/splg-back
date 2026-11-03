@@ -4,26 +4,26 @@ import {
 } from '../../../common/errors/domain.error';
 
 export class CajaNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Caja no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Caja no encontrada', `id=${id}`);
   }
 }
 
 export class SesionNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Sesión de caja no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Sesión de caja no encontrada', `id=${id}`);
   }
 }
 
 export class CategoriaNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Categoría de caja no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Categoría de caja no encontrada', `id=${id}`);
   }
 }
 
 export class MovimientoNoEncontradoError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Movimiento de caja no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('Movimiento de caja no encontrado', `id=${id}`);
   }
 }
 

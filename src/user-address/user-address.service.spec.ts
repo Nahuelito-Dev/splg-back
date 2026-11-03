@@ -131,7 +131,7 @@ describe('UserAddressService', () => {
     repo.find.mockResolvedValue([otra]);
 
     await expect(service.remove('a1', 'u1')).resolves.toEqual({
-      message: 'Address deleted successfully',
+      message: 'Dirección dada de baja',
       addressId: 'a1',
     });
     expect(otra.isDefault).toBe(true);

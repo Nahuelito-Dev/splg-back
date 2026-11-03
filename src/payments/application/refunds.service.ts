@@ -249,7 +249,7 @@ export class RefundsService {
   ): Promise<PaymentRefund[]> {
     const pedido = await this.orderLookup.findForRefund(orderId, distributorId);
     if (!pedido) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     const existentes = await this.refunds.find({ where: { orderId } });
     const recargoPendiente = existentes.some(
@@ -335,7 +335,7 @@ export class RefundsService {
   ): Promise<PaymentRefund[]> {
     const pedido = await this.orderLookup.findForRefund(orderId, distributorId);
     if (!pedido) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return this.refunds.find({
       where: { orderId },
@@ -354,7 +354,7 @@ export class RefundsService {
   ): Promise<PaymentRefund[]> {
     const pedido = await this.orderLookup.findForRefund(orderId);
     if (!pedido || pedido.customerId !== customerUserId) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     const filas = await this.refunds.find({
       where: { orderId },

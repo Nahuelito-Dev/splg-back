@@ -31,7 +31,7 @@ export class DriverSettlementAttachmentOwnerResolver
       where: { settlementId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Rendición ${ownerId} no encontrada`);
+      throw new NotFoundException('Rendición no encontrada');
     }
   }
 

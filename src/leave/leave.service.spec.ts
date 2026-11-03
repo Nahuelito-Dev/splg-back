@@ -178,7 +178,7 @@ describe('LeaveService', () => {
       await expect(
         service.create('e1', cuerpo, 'd1', 'admin-1'),
       ).rejects.toThrow(
-        /licencia l9 \(vacation, aprobada\) del 2026-12-10 al 2026-12-20/,
+        /con otra licencia \(vacaciones, aprobada\) del 2026-12-10 al 2026-12-20/,
       );
       expect(guardadas).toEqual([]);
       // Sólo cuentan las vigentes: las rechazadas y canceladas liberan el período.

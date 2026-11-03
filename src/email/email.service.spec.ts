@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EmailService } from './email.service';
 import { EmailTemplateProvider } from './email-template.provider';
 import { EmailSenderPort } from './ports/email-sender.port';
@@ -97,7 +97,8 @@ describe('EmailService', () => {
         expect.objectContaining({ to: 'cliente@test.com' }),
       );
       expect(result).toEqual({
-        message: 'If the email exists, a password reset link has been sent',
+        message:
+          'Si el correo existe, te enviamos un enlace para restablecer la contraseña',
       });
     });
 
@@ -136,7 +137,7 @@ describe('EmailService', () => {
 
       await expect(
         service.sendPasswordResetEmail('cliente@test.com'),
-      ).rejects.toThrow(/^Error generating reset link$/);
+      ).rejects.toThrow(/^No se pudo generar el enlace de recuperación$/);
     });
 
     it('usuario inexistente: responde genérico (no filtra si el email existe)', async () => {
@@ -146,8 +147,24 @@ describe('EmailService', () => {
       const result = await service.sendPasswordResetEmail('nadie@test.com');
 
       expect(result).toEqual({
-        message: 'If the email exists, a password reset link has been sent',
+        message:
+          'Si el correo existe, te enviamos un enlace para restablecer la contraseña',
       });
+    });
+
+    it('un error inesperado no expone el detalle: responde un texto genérico', async () => {
+      usersService.findOneByEmail.mockRejectedValue(
+        new Error('connection refused 10.0.0.5:5432'),
+      );
+
+      const error: unknown = await service
+        .sendPasswordResetEmail('cliente@test.com')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(
+        'No se pudo enviar el correo de recuperación',
+      );
     });
 
     it('el envío de email es best-effort: si el sender falla, igual devuelve éxito', async () => {
@@ -160,7 +177,8 @@ describe('EmailService', () => {
       const result = await service.sendPasswordResetEmail('cliente@test.com');
 
       expect(result).toEqual({
-        message: 'If the email exists, a password reset link has been sent',
+        message:
+          'Si el correo existe, te enviamos un enlace para restablecer la contraseña',
       });
     });
   });
@@ -201,6 +219,65 @@ describe('EmailService', () => {
       expect(firebaseAuth.updateUser).not.toHaveBeenCalled();
     });
 
+    it('si Firebase falla al actualizar, el cliente no recibe el detalle del SDK', async () => {
+      firebaseAuth.verifyIdToken.mockResolvedValue({
+        email: 'actual@test.com',
+        uid: 'uid-1',
+      });
+      usersService.findOneByEmail.mockRejectedValueOnce(
+        Object.assign(new Error('not found'), { status: 404 }),
+      );
+      firebaseAuth.updateUser.mockRejectedValue(
+        new Error('proyecto splg-gas: detalle interno del SDK'),
+      );
+
+      const error: unknown = await service
+        .changeEmail('actual@test.com', 'nuevo@test.com', 'token')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(
+        'No se pudo actualizar el correo',
+      );
+    });
+
+    it('si Firebase dice que el correo nuevo ya existe, informa que está en uso', async () => {
+      firebaseAuth.verifyIdToken.mockResolvedValue({
+        email: 'actual@test.com',
+        uid: 'uid-1',
+      });
+      usersService.findOneByEmail.mockRejectedValueOnce(
+        Object.assign(new Error('not found'), { status: 404 }),
+      );
+      firebaseAuth.updateUser.mockRejectedValue({
+        code: 'auth/email-already-exists',
+        message: 'detalle del SDK',
+      });
+
+      await expect(
+        service.changeEmail('actual@test.com', 'nuevo@test.com', 'token'),
+      ).rejects.toThrow('El correo nuevo ya está en uso');
+    });
+
+    it('el usuario actual inexistente (404) sigue siendo un 400', async () => {
+      firebaseAuth.verifyIdToken.mockResolvedValue({
+        email: 'actual@test.com',
+        uid: 'uid-1',
+      });
+      usersService.findOneByEmail
+        .mockRejectedValueOnce(new NotFoundException('Usuario no encontrado'))
+        .mockRejectedValueOnce(new NotFoundException('Usuario no encontrado'));
+
+      const error: unknown = await service
+        .changeEmail('actual@test.com', 'nuevo@test.com', 'token')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(
+        'Usuario no encontrado',
+      );
+    });
+
     it('flujo feliz: actualiza Firebase + usersService y notifica ambos emails', async () => {
       firebaseAuth.verifyIdToken.mockResolvedValue({
         email: 'actual@test.com',
@@ -226,8 +303,7 @@ describe('EmailService', () => {
       );
       expect(emailSender.send).toHaveBeenCalledTimes(2);
       expect(result).toEqual({
-        message:
-          'Email changed successfully. Please verify your new email address.',
+        message: 'Correo actualizado: verificá tu nueva dirección',
         newEmail: 'nuevo@test.com',
       });
     });

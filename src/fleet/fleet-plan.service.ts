@@ -75,7 +75,7 @@ export class FleetPlanService {
       where: { planId: id, distributorId },
     });
     if (!plan) {
-      throw new NotFoundException(`Plan ${id} no encontrado`);
+      throw new NotFoundException('Plan no encontrado');
     }
     return plan;
   }

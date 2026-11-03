@@ -110,7 +110,7 @@ describe('OrderService.getOne · datos del chofer', () => {
     armar(pedido());
     await expect(
       service.getOne('o1', DIST, 'otro-cliente', undefined, true),
-    ).rejects.toThrow('not found');
+    ).rejects.toThrow('no encontrado');
   });
 
   it('sin posición en el radar, location es null; si el radar falla, el pedido se lee igual', async () => {

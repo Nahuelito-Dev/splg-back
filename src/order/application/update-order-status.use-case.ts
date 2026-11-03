@@ -215,7 +215,7 @@ export class UpdateOrderStatusUseCase {
       // cambió en el medio (READ COMMITTED), y el `save` con cascade
       // desvincularía los renglones nuevos.
       if (!locked) {
-        throw new NotFoundException(`Order with ID: ${id} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
       locked.items = await queryRunner.manager.find(OrderItem, {
         where: { orderId: locked.orderId },
@@ -405,7 +405,7 @@ export class UpdateOrderStatusUseCase {
     role?: RoleType,
   ): Promise<Order> {
     const order = await this.orders.findByIdFull(id);
-    if (!order) throw new NotFoundException(`Order with ID: ${id} not found`);
+    if (!order) throw new NotFoundException('Pedido no encontrado');
 
     if (order.status === OrderStatus.RESERVED) {
       // Activar una reserva es una operación administrativa (mismo nivel que
@@ -464,7 +464,7 @@ export class UpdateOrderStatusUseCase {
       // cambió en el medio (READ COMMITTED), y el `save` con cascade
       // desvincularía los renglones nuevos.
       if (!locked) {
-        throw new NotFoundException(`Order with ID: ${id} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
       locked.items = await queryRunner.manager.find(OrderItem, {
         where: { orderId: locked.orderId },
@@ -568,9 +568,7 @@ export class UpdateOrderStatusUseCase {
 
         // El chofer tiene que ser de la misma distribuidora que el pedido.
         if (!delivery || delivery.distributorId !== order.distributorId) {
-          throw new NotFoundException(
-            `Repartidor no encontrado con ID: ${deliveryId}`,
-          );
+          throw new NotFoundException('Repartidor no encontrado');
         }
         // Mismo gate que la asignación manual (`assignDelivery`): habilitado
         // y validado. No exige que esté en línea.
@@ -579,9 +577,7 @@ export class UpdateOrderStatusUseCase {
         // la asignación a mano): el vehículo que se lee abajo no cambia hasta
         // el commit, y una baja que ganó la carrera se ve acá.
         if (!(await bloquearChoferVigente(manager, delivery.deliveryId))) {
-          throw new NotFoundException(
-            `Repartidor no encontrado con ID: ${deliveryId}`,
-          );
+          throw new NotFoundException('Repartidor no encontrado');
         }
         // Y el mismo gate de flota (CU-136 a CU-138): la licencia propia o el
         // vehículo que maneja no pueden tener un documento bloqueante vencido.

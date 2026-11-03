@@ -34,9 +34,7 @@ export class OrderDriverPhotoService {
     distributorId: string | null,
   ): Promise<EnlaceDeFoto> {
     const order = await this.orders.findByIdFull(orderId);
-    const noExiste = new NotFoundException(
-      `Order with ID: ${orderId} not found`,
-    );
+    const noExiste = new NotFoundException('Pedido no encontrado');
     if (!order) throw noExiste;
     if (distributorId && order.distributorId !== distributorId) throw noExiste;
 

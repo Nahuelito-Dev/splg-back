@@ -144,7 +144,7 @@ export class GasCylinderController {
   @ApiOperation({ summary: 'Get gas cylinder by ID' })
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiOkResponse({ type: GasCylinderResponseDto })
-  @ApiNotFoundResponse({ description: 'Gas cylinder not found' })
+  @ApiNotFoundResponse({ description: 'Garrafa no encontrada' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,

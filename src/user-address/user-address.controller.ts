@@ -111,7 +111,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Get address by ID' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
-  @ApiNotFoundResponse({ description: 'Address not found' })
+  @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
@@ -170,7 +170,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Update address by ID' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: UserAddressResponseDto })
-  @ApiNotFoundResponse({ description: 'Address not found' })
+  @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiBadRequestResponse({
     description:
@@ -197,7 +197,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Set address as default' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
-  @ApiNotFoundResponse({ description: 'Address not found' })
+  @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async setAsDefault(
@@ -215,7 +215,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Delete address by ID' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: DireccionBorradaDto })
-  @ApiNotFoundResponse({ description: 'Address not found' })
+  @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async remove(

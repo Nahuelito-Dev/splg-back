@@ -105,15 +105,14 @@ export class OpenTruckLoadUseCase {
        FOR SHARE`,
       [dto.carId, distributorId],
     );
-    if (!auto)
-      throw new NotFoundException(`Vehículo ${dto.carId} no encontrado`);
+    if (!auto) throw new NotFoundException('Vehículo no encontrado');
 
     const chofer = await this.deliveries.findById(dto.deliveryId);
     if (!chofer || chofer.distributorId !== distributorId) {
-      throw new NotFoundException(`Chofer ${dto.deliveryId} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
     if (!(await bloquearChoferVigente(manager, dto.deliveryId))) {
-      throw new NotFoundException(`Chofer ${dto.deliveryId} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
 
     const enUso = await this.assignments.vehiculoEnUso(

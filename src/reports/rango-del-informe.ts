@@ -19,7 +19,7 @@ export function rangoDelInforme(
   const rango = rangoDeDiasArgentinos(desde, hasta);
 
   if (!rango) {
-    throw new BadRequestException('Invalid date format (YYYY-MM-DD)');
+    throw new BadRequestException('Las fechas tienen que ser YYYY-MM-DD');
   }
   if (desde > hasta) {
     throw new BadRequestException('from no puede ser posterior a to');

@@ -72,7 +72,7 @@ export class S3Service {
     );
     if (!Body)
       throw new InternalServerErrorException(
-        `El objeto ${key} no tiene contenido`,
+        'El objeto pedido no tiene contenido',
       );
     return Buffer.from(await Body.transformToByteArray());
   }

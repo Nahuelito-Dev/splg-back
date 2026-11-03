@@ -183,7 +183,7 @@ export class FleetAttachmentService {
       where: { attachmentId, taskId, distributorId },
     });
     if (!attachment) {
-      throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
+      throw new NotFoundException('Adjunto no encontrado');
     }
     return attachment;
   }

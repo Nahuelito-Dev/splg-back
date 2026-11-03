@@ -316,7 +316,7 @@ export class QuoteOrderUseCase {
       (esCliente && order.customerId !== actor.userId) ||
       (!esCliente && distributorId && order.distributorId !== distributorId)
     ) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     const noEditable = motivoNoEditable(order);
     if (noEditable) {

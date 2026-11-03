@@ -264,7 +264,15 @@ export class StockLedgerService extends StockLedgerPort {
       ]),
     );
     const faltante = ids.find((id) => !conocidas.has(id));
-    if (faltante) throw new UbicacionNoEncontradaError(faltante);
+    if (faltante) {
+      const comoOrigen = op.movimientos.some(
+        (m) => m.from?.locationId === faltante,
+      );
+      throw new UbicacionNoEncontradaError(
+        faltante,
+        comoOrigen ? 'origen' : 'destino',
+      );
+    }
 
     // Un depósito inactivo o un vehículo dado de baja pueden SEGUIR entregando
     // (para vaciarlos), pero no reciben stock nuevo.

@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { MARCA_DE_LOS_MAILS } from '../marca';
 import { EmailSenderPort, SendEmailInput } from '../ports/email-sender.port';
 
-const FROM_ADDRESS = 'Yeni Gass <noreply@wagnerlabs.dev>';
+const FROM_ADDRESS = `${MARCA_DE_LOS_MAILS} <noreply@wagnerlabs.dev>`;
 
 /**
  * Adapter del EmailSenderPort sobre el SDK de Resend. Único lugar del

@@ -118,7 +118,7 @@ export class VehicleAssignmentService {
               .andWhere('car.distributorId = :distributorId', { distributorId })
               .getOne();
             if (!car) {
-              throw new NotFoundException(`Vehículo ${carId} no encontrado`);
+              throw new NotFoundException('Vehículo no encontrado');
             }
             // Un vehículo fuera de servicio (siniestro) no se asigna: vuelve
             // a la flota con `POST /cars/:id/reactivate` (CU-247).
@@ -241,7 +241,7 @@ export class VehicleAssignmentService {
   ): Promise<void> {
     const vigentes = await bloquearChoferes(manager, deliveryIds);
     if (!vigentes.has(deliveryId)) {
-      throw new NotFoundException(`Chofer ${deliveryId} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
   }
 
@@ -472,7 +472,7 @@ export class VehicleAssignmentService {
   ): Promise<void> {
     const delivery = await this.deliveryService.findOne(deliveryId); // 404 si no existe
     if (delivery.distributorId !== distributorId) {
-      throw new NotFoundException(`Chofer ${deliveryId} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
   }
 
@@ -490,7 +490,7 @@ export class VehicleAssignmentService {
       withDeleted: true,
     });
     if (!car) {
-      throw new NotFoundException(`Vehículo ${carId} no encontrado`);
+      throw new NotFoundException('Vehículo no encontrado');
     }
     return this.assignments.findAndCount({
       where: { carId },

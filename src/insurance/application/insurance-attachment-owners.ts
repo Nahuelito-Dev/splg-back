@@ -29,7 +29,7 @@ export class InsurancePolicyAttachmentOwnerResolver
       where: { policyId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Póliza ${ownerId} no encontrada`);
+      throw new NotFoundException('Póliza no encontrada');
     }
   }
 }
@@ -56,7 +56,7 @@ export class InsuranceInstallmentAttachmentOwnerResolver
       where: { installmentId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Cuota ${ownerId} no encontrada`);
+      throw new NotFoundException('Cuota no encontrada');
     }
   }
 }

@@ -10,6 +10,7 @@ import { GasCylinder } from './entities/gascylinder.entity';
 import { DistributorService } from '../distributor/distributor.service';
 import { PaymentSurchargeSettingsService } from '../distributor/payment-surcharge-settings.service';
 import { GasCylinderPromotion } from './entities/gascylinder-promotion.entity';
+import { GasCylinderNotFoundError } from './domain/errors/gas-cylinder-not-found.error';
 
 describe('GasCylinderService', () => {
   let service: GasCylinderService;
@@ -487,7 +488,14 @@ describe('GasCylinderService', () => {
 
     it('un producto inexistente es 404', async () => {
       productos.findOne.mockResolvedValue(null);
-      await expect(service.leerParaCotizar('g1')).rejects.toThrow('g1');
+      const error: unknown = await service
+        .leerParaCotizar('g1')
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(GasCylinderNotFoundError);
+      expect((error as GasCylinderNotFoundError).gasCylinderId).toBe('g1');
+      expect((error as GasCylinderNotFoundError).message).toBe(
+        'Garrafa no encontrada',
+      );
     });
 
     it('no controla el stock (lo hace quien cotiza, después de validar la distribuidora) ni lo descuenta', async () => {

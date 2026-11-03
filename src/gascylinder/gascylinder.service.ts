@@ -146,7 +146,7 @@ export class GasCylinderService {
   ): Promise<boolean> {
     const gasCylinder = await this.bloquear(manager, id);
     if (!gasCylinder || gasCylinder.distributorId !== distributorId) {
-      throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
+      throw new NotFoundException('Garrafa no encontrada');
     }
     // La vista previa ya rechaza las dadas de baja; esto cubre la que se dio de baja
     // entre la vista previa y la confirmación.
@@ -274,7 +274,7 @@ export class GasCylinderService {
     });
 
     if (!gasCylinder) {
-      throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
+      throw new NotFoundException('Garrafa no encontrada');
     }
 
     return gasCylinder;
@@ -291,7 +291,7 @@ export class GasCylinderService {
     });
 
     if (!gasCylinder) {
-      throw new NotFoundException(`Gas cylinder type ${type} not found`);
+      throw new NotFoundException('Tipo de garrafa no encontrado');
     }
 
     return gasCylinder;
@@ -321,7 +321,7 @@ export class GasCylinderService {
     });
 
     if (!gasCylinder) {
-      throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
+      throw new NotFoundException('Garrafa no encontrada');
     }
     this.sinEscribirElVendible(gasCylinder);
 
@@ -407,10 +407,10 @@ export class GasCylinderService {
         .andWhere('gc.distributorId = :distributorId', { distributorId })
         .getOne();
       if (!gasCylinder) {
-        throw new NotFoundException(`Gas cylinder with ID: ${id} not found`);
+        throw new NotFoundException('Garrafa no encontrada');
       }
       if (gasCylinder.stock + quantity < 0) {
-        throw new BadRequestException('Stock cannot be negative');
+        throw new BadRequestException('El stock no puede ser negativo');
       }
       gasCylinder.stock += quantity;
       await manager.save(gasCylinder);
@@ -440,7 +440,7 @@ export class GasCylinderService {
     await this.gasCylinderRepository.save(gasCylinder);
 
     return {
-      message: 'Gas cylinder deactivated successfully',
+      message: 'Garrafa dada de baja',
       gasCylinderId: id,
     };
   }

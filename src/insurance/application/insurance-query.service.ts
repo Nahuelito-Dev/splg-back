@@ -29,7 +29,7 @@ export class InsuranceQueryService {
       relations: { insurer: true, car: true, installments: true },
       withDeleted: true, // la aseguradora dada de baja sigue figurando en la póliza
     });
-    if (!poliza) throw new NotFoundException(`Póliza ${id} no encontrada`);
+    if (!poliza) throw new NotFoundException('Póliza no encontrada');
     return poliza;
   }
 

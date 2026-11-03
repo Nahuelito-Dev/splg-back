@@ -51,7 +51,7 @@ export class FleetExpensePaymentService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!neumatico) {
-          throw new NotFoundException(`Neumático ${id} no encontrado`);
+          throw new NotFoundException('Neumático no encontrado');
         }
         if (neumatico.cashMovementId) {
           throw new ConflictException('El neumático ya está pago');
@@ -204,7 +204,7 @@ export class FleetExpensePaymentService {
       lock: { mode: 'pessimistic_write' },
     });
     if (!siniestro) {
-      throw new NotFoundException(`Siniestro ${id} no encontrado`);
+      throw new NotFoundException('Siniestro no encontrado');
     }
     return siniestro;
   }

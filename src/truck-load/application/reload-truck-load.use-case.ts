@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { exigirGarrafasDeLosRenglones } from '../../stock/application/renglones-de-garrafas';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { StockLedgerPort } from '../../stock/domain/ports/stock-ledger.port';
@@ -45,6 +46,11 @@ export class ReloadTruckLoadUseCase {
     await withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          await exigirGarrafasDeLosRenglones(
+            manager,
+            distributorId,
+            dto.items.map((i) => i.gasCylinderId),
+          );
           const carga = await bloquearCarga(manager, id, distributorId);
           if (!puedeHacer('reponer', carga.status)) {
             throw new TransicionDeCargaInvalidaError(

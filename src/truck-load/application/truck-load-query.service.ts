@@ -469,7 +469,7 @@ export class TruckLoadQueryService {
         `SELECT "car_patent" FROM "car" WHERE "car_id" = $1 AND "distributor_id" = $2`,
         [carId, distributorId],
       );
-    if (!auto) throw new NotFoundException(`Vehículo ${carId} no encontrado`);
+    if (!auto) throw new NotFoundException('Vehículo no encontrado');
     const filas: Array<{
       gas_cylinder_id: string;
       type: string;

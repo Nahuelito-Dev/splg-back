@@ -123,7 +123,7 @@ export class AttendanceService {
             const previa = await repo.findOne({
               where: { attendanceId: id, distributorId },
             });
-            if (!previa) throw this.noEncontrada(id);
+            if (!previa) throw this.noEncontrada();
             // Mismo orden de locks que el resto: primero el legajo.
             const empleado = await this.employees.bloquear(
               manager,
@@ -438,7 +438,7 @@ export class AttendanceService {
     const pisada = await consulta.getOne();
     if (pisada) {
       throw new ConflictException(
-        `La jornada se superpone con otra del empleado (${pisada.workDate}, jornada ${pisada.attendanceId})`,
+        `La jornada se superpone con otra del empleado (${pisada.workDate})`,
       );
     }
   }
@@ -463,7 +463,7 @@ export class AttendanceService {
     return bloqueado;
   }
 
-  private noEncontrada(id: string): NotFoundException {
-    return new NotFoundException(`Jornada ${id} no encontrada`);
+  private noEncontrada(): NotFoundException {
+    return new NotFoundException('Jornada no encontrada');
   }
 }

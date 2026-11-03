@@ -45,7 +45,7 @@ export class SetOrderReceiverUseCase {
         order.customerId !== customerUserId ||
         (distributorId && order.distributorId !== distributorId)
       ) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
       if (order.status === OrderStatus.DELIVERED) {
         throw new ConflictException(MENSAJE_RECEPTOR_ENTREGADO);

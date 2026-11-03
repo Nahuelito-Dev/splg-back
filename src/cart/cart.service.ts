@@ -75,9 +75,7 @@ export class CartService {
   ): Promise<CarritoConsultado> {
     const garrafa = await this.catalogo.findOne(gasCylinderId, distributorId);
     if (!garrafa.isActive) {
-      throw new NotFoundException(
-        `Gas cylinder with ID: ${gasCylinderId} not found`,
-      );
+      throw new NotFoundException('Garrafa no encontrada');
     }
 
     try {
@@ -262,9 +260,7 @@ export class CartService {
               .findOne({ where: { cartItemId, cartId: cart.cartId } })
           : null;
         if (!cart || !item) {
-          throw new NotFoundException(
-            `El ítem ${cartItemId} no está en tu carrito`,
-          );
+          throw new NotFoundException('El ítem no está en tu carrito');
         }
         await operacion(manager, item);
         await this.tocar(manager, cart);

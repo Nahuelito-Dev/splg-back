@@ -113,7 +113,7 @@ export class CustomersController {
   @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -131,7 +131,7 @@ export class CustomersController {
   @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOneByUserId(
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -154,7 +154,7 @@ export class CustomersController {
   })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiBadRequestResponse({
     description:
       'Datos inválidos (p. ej.: property user_id should not exist; property campo_inventado should not exist)',
@@ -181,7 +181,7 @@ export class CustomersController {
   @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiBadRequestResponse({
     description:
       'Datos inválidos (p. ej.: latLng debe ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
@@ -208,7 +208,7 @@ export class CustomersController {
   @ApiOperation({ summary: 'Delete customer by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
-  @ApiNotFoundResponse({ description: 'Customer not found' })
+  @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @HttpCode(HttpStatus.OK)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
