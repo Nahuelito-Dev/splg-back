@@ -136,7 +136,7 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({ type: DeliveryResponseDto, description: 'Delivery found' })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -158,7 +158,7 @@ export class DeliveryController {
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: DeliveryResponseDto, description: 'Delivery found' })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   async findOneByUserId(
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -182,10 +182,10 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
-    description: 'Delivery updated successfully',
+    description: 'Chofer actualizado',
   })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   @ApiBadRequestResponse({
     description:
@@ -207,10 +207,10 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
-    description: 'Delivery validated successfully',
+    description: 'Chofer validado',
   })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   async validateDelivery(
     @Param('id', ParseUUIDPipe) id: string,
@@ -228,10 +228,10 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
-    description: 'Delivery invalidated successfully',
+    description: 'Chofer invalidado',
   })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   async invalidateDelivery(
     @Param('id', ParseUUIDPipe) id: string,
@@ -250,10 +250,10 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
-    description: 'Location updated successfully',
+    description: 'Ubicación actualizada',
   })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   @ApiBadRequestResponse({
     description:
@@ -282,10 +282,10 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
-    description: 'Balance updated successfully',
+    description: 'Saldo actualizado',
   })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   @ApiBadRequestResponse({
     description:
@@ -315,10 +315,10 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({
     type: DeliveryResponseDto,
-    description: 'Status updated successfully',
+    description: 'Estado actualizado',
   })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   @ApiBadRequestResponse({
     description:
@@ -341,7 +341,7 @@ export class DeliveryController {
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiNotFoundResponse({
-    description: 'Delivery not found (o de otra distribuidora)',
+    description: 'Chofer no encontrado (o de otra distribuidora)',
   })
   @ApiConflictResponse({
     description:

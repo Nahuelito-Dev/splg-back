@@ -138,7 +138,7 @@ function motivoDelRechazo(error: unknown): string {
   if (error instanceof UnauthorizedException) {
     const mensaje = error.message;
     if (mensaje === MENSAJE_CREDENCIALES) return 'credenciales incorrectas';
-    if (mensaje === 'Admin not found')
+    if (mensaje === 'Administrador no encontrado')
       return 'la cuenta no es de un administrador';
     return 'cuenta no habilitada';
   }

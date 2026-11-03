@@ -200,7 +200,7 @@ export class TimeSlotService {
     if (distributorId) where.distributorId = distributorId;
 
     const timeSlot = await this.timeSlotRepository.findOne({ where });
-    if (!timeSlot) throw new NotFoundException('Time slot not found');
+    if (!timeSlot) throw new NotFoundException('Franja horaria no encontrada');
     return timeSlot;
   }
 
@@ -221,7 +221,8 @@ export class TimeSlotService {
         where: { timeSlotId: id, distributorId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!timeSlot) throw new NotFoundException('Time slot not found');
+      if (!timeSlot)
+        throw new NotFoundException('Franja horaria no encontrada');
 
       const startTime = dto.startTime ?? timeSlot.startTime;
       const endTime = dto.endTime ?? timeSlot.endTime;

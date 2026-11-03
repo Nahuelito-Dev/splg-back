@@ -544,7 +544,7 @@ export class FuelLoadService {
       withDeleted: true,
     });
     if (!carga) {
-      throw new NotFoundException(`Carga de combustible ${id} no encontrada`);
+      throw new NotFoundException('Carga de combustible no encontrada');
     }
     return carga;
   }
@@ -660,7 +660,7 @@ export class FuelLoadService {
       lock: { mode: 'pessimistic_write' },
     });
     if (!carga) {
-      throw new NotFoundException(`Carga de combustible ${id} no encontrada`);
+      throw new NotFoundException('Carga de combustible no encontrada');
     }
     if (carga.deletedAt) {
       throw new ConflictException('La carga de combustible está anulada');

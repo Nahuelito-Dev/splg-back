@@ -22,6 +22,7 @@ const DIST = 'dddddddd-0000-4000-8000-000000000001';
 const L1 = '00000000-0000-4000-8000-000000000001';
 const L2 = '00000000-0000-4000-8000-000000000002';
 const G1 = '10000000-0000-4000-8000-000000000001';
+const G2 = '10000000-0000-4000-8000-000000000002';
 const W1 = 'a0000000-0000-4000-8000-000000000001';
 
 function armar(
@@ -29,6 +30,7 @@ function armar(
     saldos?: unknown[];
     conteoPrevio?: boolean;
     primerMovimiento?: unknown;
+    garrafasAjenas?: string[];
   } = {},
 ) {
   const orden: string[] = [];
@@ -55,7 +57,15 @@ function armar(
   });
   const manager = {
     getRepository: jest.fn((e: unknown) => repo(e)),
-    query: jest.fn().mockResolvedValue(over.saldos ?? []),
+    query: jest.fn((sql: string, params: unknown[] = []) =>
+      Promise.resolve(
+        sql.includes('SELECT "gas_cylinder_id" FROM "gas_cylinder"')
+          ? (params[0] as string[])
+              .filter((id) => !(over.garrafasAjenas ?? []).includes(id))
+              .map((id) => ({ gas_cylinder_id: id }))
+          : (over.saldos ?? []),
+      ),
+    ),
   } as unknown as EntityManager;
   const transaction = jest.fn((cb: (m: EntityManager) => Promise<unknown>) =>
     cb(manager),
@@ -170,6 +180,27 @@ describe('StockAdjustmentUseCase', () => {
     ]);
   });
 
+  it('una garrafa inexistente dice el renglón del body y no toca el libro', async () => {
+    const a = armar({ garrafasAjenas: [G2] });
+    const error: unknown = await crear(a)
+      .execute(
+        {
+          ...dto,
+          items: [
+            { gasCylinderId: G1, condition: Cond.FULL, quantityDelta: -1 },
+            { gasCylinderId: G2, condition: Cond.FULL, quantityDelta: -1 },
+          ],
+        },
+        DIST,
+        'u1',
+      )
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      'Garrafa del renglón 2 no encontrada',
+    );
+    expect(a.ledger.aplicar).not.toHaveBeenCalled();
+  });
+
   it('rechaza un signo inválido para el motivo antes de abrir la transacción', async () => {
     const a = armar();
     await expect(
@@ -257,6 +288,27 @@ describe('InitialCountUseCase', () => {
     });
   });
 
+  it('una garrafa inexistente dice el renglón del body y no toca el libro', async () => {
+    const a = armar({ garrafasAjenas: [G2] });
+    const error: unknown = await crear(a)
+      .execute(
+        {
+          warehouseId: W1,
+          items: [
+            { gasCylinderId: G1, full: 1, empty: 0 },
+            { gasCylinderId: G2, full: 1, empty: 0 },
+          ],
+        },
+        DIST,
+        'u1',
+      )
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      'Garrafa del renglón 2 no encontrada',
+    );
+    expect(a.ledger.aplicar).not.toHaveBeenCalled();
+  });
+
   it('se hace una sola vez por depósito: el segundo es 409', async () => {
     const a = armar({ conteoPrevio: true });
     await expect(crear(a).execute(dto, DIST, 'u1')).rejects.toBeInstanceOf(
@@ -338,6 +390,28 @@ describe('StockTransferUseCase', () => {
       a.manager,
       esperado(batchId, L1, L2, 'mañana'),
     );
+  });
+
+  it('una garrafa inexistente dice el renglón del body y no toca el libro', async () => {
+    const a = armar({ garrafasAjenas: [G2] });
+    const error: unknown = await crear(a)
+      .execute(
+        {
+          from: { warehouseId: W1 },
+          to: { warehouseId: 'w2' },
+          items: [
+            { gasCylinderId: G1, quantity: 1 },
+            { gasCylinderId: G2, quantity: 1 },
+          ],
+        },
+        DIST,
+        'u1',
+      )
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      'Garrafa del renglón 2 no encontrada',
+    );
+    expect(a.ledger.aplicar).not.toHaveBeenCalled();
   });
 
   it('el camión se carga sólo desde la carga del día: no se transfiere a un vehículo', async () => {
@@ -469,17 +543,20 @@ describe('ReverseBatchUseCase', () => {
       a: ReturnType<typeof armar>,
       respuestas: { haciaCamion?: string | null; cargaAbierta?: number },
     ) =>
-      (a.manager.query as jest.Mock).mockImplementation((sql: string) =>
-        Promise.resolve(
-          sql.includes('"truck_load"')
-            ? respuestas.cargaAbierta === undefined
-              ? []
-              : [{ number: respuestas.cargaAbierta }]
-            : respuestas.haciaCamion === undefined ||
-                respuestas.haciaCamion === null
-              ? []
-              : [{ patente: respuestas.haciaCamion }],
-        ),
+      (a.manager.query as jest.Mock).mockImplementation(
+        (sql: string, params: unknown[] = []) =>
+          Promise.resolve(
+            sql.includes('SELECT "gas_cylinder_id" FROM "gas_cylinder"')
+              ? (params[0] as string[]).map((id) => ({ gas_cylinder_id: id }))
+              : sql.includes('"truck_load"')
+                ? respuestas.cargaAbierta === undefined
+                  ? []
+                  : [{ number: respuestas.cargaAbierta }]
+                : respuestas.haciaCamion === undefined ||
+                    respuestas.haciaCamion === null
+                  ? []
+                  : [{ patente: respuestas.haciaCamion }],
+          ),
       );
 
     it('mete stock en un camión: 409 y no contraasienta (el camión se carga sólo por la carga del día)', async () => {

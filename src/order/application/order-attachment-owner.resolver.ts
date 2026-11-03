@@ -32,7 +32,7 @@ export class OrderAttachmentOwnerResolver
       where: { orderId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Pedido ${ownerId} no encontrado`);
+      throw new NotFoundException('Pedido no encontrado');
     }
   }
 }

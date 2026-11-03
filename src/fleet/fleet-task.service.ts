@@ -254,7 +254,7 @@ export class FleetTaskService {
       relations: ['plan'],
     });
     if (!task) {
-      throw new NotFoundException(`Tarea ${id} no encontrada`);
+      throw new NotFoundException('Tarea no encontrada');
     }
     return task;
   }
@@ -364,7 +364,7 @@ export class FleetTaskService {
       .andWhere('task.distributorId = :distributorId', { distributorId })
       .getOne();
     if (!task) {
-      throw new NotFoundException(`Tarea ${id} no encontrada`);
+      throw new NotFoundException('Tarea no encontrada');
     }
     return task;
   }
@@ -698,7 +698,7 @@ export class FleetTaskService {
   ): Promise<{ tasks: MaintenanceTask[]; isLocked: boolean }> {
     const delivery = await this.deliveryService.findOne(deliveryId); // 404 si no existe
     if (delivery.distributorId !== distributorId) {
-      throw new NotFoundException(`Chofer ${deliveryId} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
 
     const tasks = await this.tasks.find({
@@ -777,7 +777,7 @@ export class FleetTaskService {
       where: { planId, distributorId },
     });
     if (!plan) {
-      throw new NotFoundException(`Plan ${planId} no encontrado`);
+      throw new NotFoundException('Plan no encontrado');
     }
     return plan;
   }
@@ -831,7 +831,7 @@ export class FleetTaskService {
     }
     const delivery = await this.deliveryService.findOne(dto.deliveryId);
     if (delivery.distributorId !== distributorId) {
-      throw new NotFoundException(`Chofer ${dto.deliveryId} no encontrado`);
+      throw new NotFoundException('Chofer no encontrado');
     }
     return null;
   }

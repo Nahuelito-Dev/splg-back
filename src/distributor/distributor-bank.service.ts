@@ -44,9 +44,7 @@ export class DistributorBankService {
       where: { distributorId },
     });
     if (!distributor) {
-      throw new NotFoundException(
-        `Distribuidora ${distributorId} no encontrada`,
-      );
+      throw new NotFoundException('Distribuidora no encontrada');
     }
     return distributor;
   }

@@ -63,12 +63,6 @@ export class StockThresholdService {
          WHERE "warehouse_id" = ANY($1::uuid[]) AND "distributor_id" = $2 AND "deletedAt" IS NULL`,
         [depositos, distributorId],
       );
-      const faltaDeposito = depositos.find(
-        (id) => !vigentes.some((v) => v.warehouse_id === id),
-      );
-      if (faltaDeposito) {
-        throw new NotFoundException(`Depósito ${faltaDeposito} no encontrado`);
-      }
       const garrafas = [...new Set(items.map((i) => i.gasCylinderId))];
       const existentes: Array<{ gas_cylinder_id: string }> =
         await manager.query(
@@ -76,11 +70,18 @@ export class StockThresholdService {
            WHERE "gas_cylinder_id" = ANY($1::uuid[]) AND "distributor_id" = $2`,
           [garrafas, distributorId],
         );
-      const faltaGarrafa = garrafas.find(
-        (id) => !existentes.some((e) => e.gas_cylinder_id === id),
-      );
-      if (faltaGarrafa) {
-        throw new NotFoundException(`Garrafa ${faltaGarrafa} no encontrada`);
+      // El primer renglón que falla, en el orden del body (1 es el primero).
+      for (const [i, t] of dto.thresholds.entries()) {
+        if (!vigentes.some((v) => v.warehouse_id === t.warehouseId)) {
+          throw new NotFoundException(
+            `Depósito del renglón ${i + 1} no encontrado`,
+          );
+        }
+        if (!existentes.some((e) => e.gas_cylinder_id === t.gasCylinderId)) {
+          throw new NotFoundException(
+            `Garrafa del renglón ${i + 1} no encontrada`,
+          );
+        }
       }
       await manager.query(
         `INSERT INTO "stock_threshold" ("distributor_id", "warehouse_id", "gas_cylinder_id", "min_full")

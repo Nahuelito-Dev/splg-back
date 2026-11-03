@@ -273,7 +273,7 @@ export class CoverageZoneService {
         ...(distributorId ? { distributorId } : {}),
       },
     });
-    if (!zone) throw new NotFoundException(`Zona ${id} no encontrada`);
+    if (!zone) throw new NotFoundException('Zona no encontrada');
     return zone;
   }
 
@@ -340,7 +340,7 @@ export class CoverageZoneService {
         coverageZoneId: id,
         ...cambios,
       });
-      if (!zone) throw new NotFoundException(`Zona ${id} no encontrada`);
+      if (!zone) throw new NotFoundException('Zona no encontrada');
       if (zone.isActive) {
         await this.asegurarNombreYPrioridadLibres(manager, distributorId, {
           id,

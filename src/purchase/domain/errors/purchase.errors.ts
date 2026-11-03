@@ -47,19 +47,19 @@ export class CompraInvalidaError extends BadRequestDomainError {
 }
 
 export class ProveedorNoEncontradoError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Proveedor no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('Proveedor no encontrado', `id=${id}`);
   }
 }
 
 export class OrdenNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Orden de compra no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Orden de compra no encontrada', `id=${id}`);
   }
 }
 
 export class RecepcionNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Recepción no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Recepción no encontrada', `id=${id}`);
   }
 }

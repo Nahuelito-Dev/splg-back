@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AuthService } from '../auth.service';
+import { AuthService, MENSAJE_TOKEN_INVALIDO } from '../auth.service';
 import { UsersService } from '../../users/users.service';
 import { RequestSource } from '../enum/request-source.enum';
 import { User } from '../../users/entities/user.entity';
@@ -52,7 +52,7 @@ export class AuthGuard implements CanActivate {
 
     if (!requestSource) {
       throw new UnauthorizedException(
-        'Invalid or missing X-Client-Source header',
+        'Falta el encabezado X-Client-Source o no es válido',
       );
     }
 
@@ -64,7 +64,7 @@ export class AuthGuard implements CanActivate {
       const email = emailDelCuerpo(request.body);
 
       if (!email) {
-        throw new UnauthorizedException('Email is required for login');
+        throw new UnauthorizedException('Falta el correo para iniciar sesión');
       }
 
       const user = await this.usersService.findOneByEmail(email);
@@ -74,7 +74,7 @@ export class AuthGuard implements CanActivate {
     }
 
     if (!token) {
-      throw new UnauthorizedException('No token provided');
+      throw new UnauthorizedException('Falta el token de acceso');
     }
 
     await this.identificar(request, token, requestSource, context);
@@ -117,7 +117,7 @@ export class AuthGuard implements CanActivate {
     const token_user = await this.authService.decodeToken(token);
 
     if (!token_user.email) {
-      throw new UnauthorizedException('Invalid token payload');
+      throw new UnauthorizedException(MENSAJE_TOKEN_INVALIDO);
     }
 
     const local_user = await this.getUser(token_user.email, requestSource);
@@ -231,7 +231,7 @@ export class AuthGuard implements CanActivate {
       // Una falla de infraestructura no es "usuario inexistente".
       if (!(error instanceof HttpException)) throw error;
       throw new UnauthorizedException(
-        'User not found or invalid role for this application',
+        'Usuario inexistente o sin un rol válido para esta aplicación',
       );
     }
 
@@ -262,7 +262,7 @@ export class AuthGuard implements CanActivate {
     const userRole = user.role?.type;
 
     if (!userRole) {
-      throw new UnauthorizedException('User does not have a role assigned');
+      throw new UnauthorizedException('Tu usuario no tiene un rol asignado');
     }
 
     const validRolesForApp: Record<RequestSource, string[]> = {
@@ -273,7 +273,7 @@ export class AuthGuard implements CanActivate {
 
     if (!validRolesForApp[requestSource].includes(userRole)) {
       throw new UnauthorizedException(
-        'User role not allowed for this application',
+        'Tu rol no tiene acceso a esta aplicación',
       );
     }
   }

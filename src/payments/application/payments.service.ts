@@ -461,7 +461,7 @@ export class PaymentsService {
   ): Promise<OrderPaymentState> {
     const pedido = await this.orderLookup.findPaymentState(orderId);
     if (!pedido) {
-      throw new NotFoundException(`Pedido ${orderId} no encontrado`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     if (pedido.paymentStatus === PaymentStatus.PAID) {
       throw new ConflictException('El pedido ya está pagado');

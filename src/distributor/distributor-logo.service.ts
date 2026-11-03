@@ -39,7 +39,7 @@ export class DistributorLogoService {
     alcance: string | null,
   ): Promise<Distributor> {
     if (alcance && alcance !== id) {
-      throw new NotFoundException(`Distribuidora ${id} no encontrada`);
+      throw new NotFoundException('Distribuidora no encontrada');
     }
     return this.distributors.findOne(id);
   }

@@ -36,7 +36,7 @@ export class OrderFraudHoldService {
         .andWhere('order.distributorId = :distributorId', { distributorId })
         .getOne();
       if (!pedido) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
       if (!pedido.paymentFraudHold) {
         throw new ConflictException('El pedido no está retenido por fraude');

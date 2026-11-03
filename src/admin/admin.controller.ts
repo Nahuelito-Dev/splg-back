@@ -232,7 +232,7 @@ export class AdminController {
       return destino;
     }
     if (destino.user?.role?.type === String(RoleType.SUPER_ADMIN)) {
-      throw new NotFoundException(`Admin with ID: ${id} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
     if (esElMismoUsuario(destino.userId, user)) {
       throw new ForbiddenException(

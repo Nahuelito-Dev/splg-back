@@ -64,7 +64,7 @@ export class AdminService {
     const { user_id, distributor_id } = createAdminDto;
     const usuario = await this.usersService.findById(user_id);
     if (!usuario) {
-      throw new NotFoundException(`User with ID: ${user_id} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
     const rol = usuario.roleId
       ? await this.roleService.findOne(usuario.roleId)
@@ -150,7 +150,7 @@ export class AdminService {
     });
 
     if (!admin) {
-      throw new NotFoundException(`Admin with ID: ${id} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
 
     return admin;
@@ -174,7 +174,7 @@ export class AdminService {
       relations: ['user', 'user.role', 'distributor'],
     });
     if (!admin) {
-      throw new NotFoundException(`Admin with ID: ${id} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
     return admin;
   }
@@ -188,7 +188,7 @@ export class AdminService {
       .getOne();
 
     if (!admin) {
-      throw new NotFoundException(`Admin with email: ${email} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
 
     return admin;
@@ -220,7 +220,7 @@ export class AdminService {
           .getOne();
 
     if (!admin || (distributorId && admin.distributorId !== distributorId)) {
-      throw new NotFoundException(`Admin with ${term} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
 
     return admin;

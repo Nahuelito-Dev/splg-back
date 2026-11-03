@@ -453,7 +453,7 @@ export class EmployeeService {
       }
       await manager.getRepository(Employee).softRemove(empleado);
     });
-    return MessageResponseDto.of('Legajo eliminado');
+    return MessageResponseDto.of('Legajo dado de baja');
   }
 
   /** reingresarEmpleado (CU-181). No desbloquea la cuenta: es otra decisión del administrador. */
@@ -534,7 +534,7 @@ export class EmployeeService {
       relations: { position: true },
     });
     if (!empleado) {
-      throw new NotFoundException(`Empleado ${id} no encontrado`);
+      throw new NotFoundException('Empleado no encontrado');
     }
     return conPuesto(empleado);
   }
@@ -682,7 +682,7 @@ export class EmployeeService {
       lock: { mode: 'pessimistic_write' },
     });
     if (!empleado) {
-      throw new NotFoundException(`Empleado ${id} no encontrado`);
+      throw new NotFoundException('Empleado no encontrado');
     }
     return empleado;
   }

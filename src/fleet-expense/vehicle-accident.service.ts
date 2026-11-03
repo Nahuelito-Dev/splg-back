@@ -321,7 +321,7 @@ export class VehicleAccidentService {
       relations: { car: true, employee: true },
     });
     if (!siniestro) {
-      throw new NotFoundException(`Siniestro ${id} no encontrado`);
+      throw new NotFoundException('Siniestro no encontrado');
     }
     return siniestro;
   }
@@ -365,7 +365,7 @@ export class VehicleAccidentService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!siniestro) {
-          throw new NotFoundException(`Siniestro ${id} no encontrado`);
+          throw new NotFoundException('Siniestro no encontrado');
         }
         cambio(siniestro, manager);
         await manager.getRepository(VehicleAccident).save(siniestro);

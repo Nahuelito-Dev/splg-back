@@ -16,8 +16,15 @@
  * una de estas dos (ver `order/domain/errors/` y `cylinder/domain/errors/`).
  */
 export abstract class DomainError extends Error {
-  protected constructor(message: string) {
+  /**
+   * Dato interno (un id, por ejemplo) que va al log y nunca a la respuesta:
+   * `message` es lo único que ve el cliente.
+   */
+  readonly detalle?: string;
+
+  protected constructor(message: string, detalle?: string) {
     super(message);
+    this.detalle = detalle;
     this.name = new.target.name;
   }
 }
@@ -30,3 +37,16 @@ export abstract class NotFoundDomainError extends DomainError {}
 
 /** Mapeada a 409 Conflict por el GlobalExceptionFilter (el estado no admite la operación). */
 export abstract class ConflictDomainError extends DomainError {}
+
+/** Un error con dato interno (`detalle`) para el log: de dominio, o la excepción HTTP que lo reemplazó. */
+export function detalleDe(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const detalle = (error as { detalle?: unknown }).detalle;
+  return typeof detalle === 'string' && detalle !== '' ? detalle : undefined;
+}
+
+/** La misma excepción HTTP, con el `detalle` del error de dominio del que viene. */
+export function conDetalle<T extends Error>(excepcion: T, origen: unknown): T {
+  const detalle = detalleDe(origen);
+  return detalle ? Object.assign(excepcion, { detalle }) : excepcion;
+}

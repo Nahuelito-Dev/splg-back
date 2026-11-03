@@ -103,7 +103,7 @@ export class WarehouseService {
       where: { warehouseId, distributorId },
     });
     if (!warehouse) {
-      throw new NotFoundException(`Depósito ${warehouseId} no encontrado`);
+      throw new NotFoundException('Depósito no encontrado');
     }
     const ubicacion = await this.dataSource
       .getRepository(StockLocation)
@@ -138,9 +138,7 @@ export class WarehouseService {
                 : {}),
             });
             if (!warehouse) {
-              throw new NotFoundException(
-                `Depósito ${warehouseId} no encontrado`,
-              );
+              throw new NotFoundException('Depósito no encontrado');
             }
             if (dto.isActive === false && warehouse.isActive) {
               await this.asegurarSinCargaAbierta(
@@ -203,7 +201,7 @@ export class WarehouseService {
         .andWhere('w.distributorId = :distributorId', { distributorId })
         .getOne();
       if (!warehouse) {
-        throw new NotFoundException(`Depósito ${warehouseId} no encontrado`);
+        throw new NotFoundException('Depósito no encontrado');
       }
       if (warehouse.isDefault) {
         throw new ConflictException(

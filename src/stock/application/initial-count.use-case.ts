@@ -6,6 +6,7 @@ import {
   DocType,
   DocumentSequenceService,
 } from '../../document-sequence/document-sequence.service';
+import { exigirGarrafasDeLosRenglones } from './renglones-de-garrafas';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { OperacionDeStockInvalidaError } from '../domain/errors/stock.errors';
 import { StockLedgerPort } from '../domain/ports/stock-ledger.port';
@@ -57,6 +58,11 @@ export class InitialCountUseCase {
     return withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          await exigirGarrafasDeLosRenglones(
+            manager,
+            distributorId,
+            dto.items.map((i) => i.gasCylinderId),
+          );
           const ubicacion = await this.locations.ubicacionDeDeposito(
             manager,
             distributorId,

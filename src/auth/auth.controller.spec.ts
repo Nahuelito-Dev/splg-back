@@ -74,7 +74,7 @@ describe('AuthController: auditoría de ingresos', () => {
 
   it('el panel: una cuenta que no es admin es un ingreso fallido del canal panel', async () => {
     authService.loginDashboard.mockRejectedValue(
-      new UnauthorizedException('Admin not found'),
+      new UnauthorizedException('Administrador no encontrado'),
     );
     await expect(controller.dashboardLogin(dto, req, res)).rejects.toThrow(
       UnauthorizedException,

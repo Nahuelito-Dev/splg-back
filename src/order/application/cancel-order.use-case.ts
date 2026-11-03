@@ -116,7 +116,7 @@ export class CancelOrderUseCase {
         .getOne();
 
       if (!locked) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
 
       // Los renglones se leen DESPUÉS del lock y en una consulta aparte: en
@@ -131,7 +131,7 @@ export class CancelOrderUseCase {
       // cliente, sólo los suyos (lo ajeno = 404); el chofer, sólo el que tiene
       // asignado.
       if (role === 'customer' && locked.customerId !== userId) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
       if (role === 'driver' && locked.delivery?.userId !== userId) {
         throw new ForbiddenException(

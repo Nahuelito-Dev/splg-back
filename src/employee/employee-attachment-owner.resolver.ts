@@ -28,7 +28,7 @@ export class EmployeeAttachmentOwnerResolver
       where: { employeeId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Empleado ${ownerId} no encontrado`);
+      throw new NotFoundException('Empleado no encontrado');
     }
   }
 }

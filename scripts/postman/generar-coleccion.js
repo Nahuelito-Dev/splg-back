@@ -676,7 +676,7 @@ function casosOperacion(spec, metodo, ruta, op) {
       descripcion: 'Sin token: el AuthGuard rechaza la request.',
     });
     out.push(item('401 · sin token', req401, testError(401), [
-      savedResponse('Ejemplo 401', 401, errorBody(401, 'No token provided', 'Unauthorized'), req401),
+      savedResponse('Ejemplo 401', 401, errorBody(401, 'Falta el token de acceso', 'Unauthorized'), req401),
     ]));
   }
 

@@ -203,7 +203,7 @@ describe('AuthService', () => {
     });
     admins.findOneByEmail.mockRejectedValue(new Error('no existe'));
     await expect(service.loginDashboard('t')).rejects.toThrow(
-      'Admin not found',
+      'Administrador no encontrado',
     );
   });
 });

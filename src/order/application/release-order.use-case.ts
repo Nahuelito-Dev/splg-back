@@ -79,7 +79,7 @@ export class ReleaseOrderUseCase {
         .getOne();
 
       if (!locked) {
-        throw new NotFoundException(`Order with ID: ${orderId} not found`);
+        throw new NotFoundException('Pedido no encontrado');
       }
 
       if (

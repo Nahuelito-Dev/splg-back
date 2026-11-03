@@ -32,7 +32,7 @@ export class StockAdjustmentAttachmentOwnerResolver
       where: { adjustmentId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Ajuste de stock ${ownerId} no encontrado`);
+      throw new NotFoundException('Ajuste de stock no encontrado');
     }
   }
 }

@@ -39,6 +39,20 @@ export interface PaginaDeLicencias {
   total: number;
 }
 
+const ETIQUETA_DEL_TIPO: Record<LeaveType, string> = {
+  [LeaveType.VACATION]: 'vacaciones',
+  [LeaveType.SICK]: 'enfermedad',
+  [LeaveType.WORK_ACCIDENT]: 'accidente de trabajo',
+  [LeaveType.STUDY]: 'estudio',
+  [LeaveType.MARRIAGE]: 'matrimonio',
+  [LeaveType.BIRTH]: 'nacimiento',
+  [LeaveType.BEREAVEMENT]: 'duelo',
+  [LeaveType.UNPAID]: 'sin goce de sueldo',
+  [LeaveType.SUSPENSION]: 'suspensión',
+  [LeaveType.UNJUSTIFIED_ABSENCE]: 'ausencia injustificada',
+  [LeaveType.OTHER]: 'otra',
+};
+
 const ETIQUETA_DEL_ESTADO: Record<LeaveStatus, string> = {
   [LeaveStatus.REQUESTED]: 'solicitada',
   [LeaveStatus.APPROVED]: 'aprobada',
@@ -340,14 +354,14 @@ export class LeaveService {
       const previa = await repo.findOne({
         where: { leaveId: id, distributorId },
       });
-      if (!previa) throw this.noEncontrada(id);
+      if (!previa) throw this.noEncontrada();
       await this.employees.bloquear(manager, previa.employeeId, distributorId);
     }
     const bloqueada = await repo.findOne({
       where: { leaveId: id, distributorId },
       lock: { mode: 'pessimistic_write' },
     });
-    if (!bloqueada) throw this.noEncontrada(id);
+    if (!bloqueada) throw this.noEncontrada();
     const empleado = await manager
       .getRepository(Employee)
       .findOneByOrFail({ employeeId: bloqueada.employeeId });
@@ -374,8 +388,8 @@ export class LeaveService {
     }
   }
 
-  private noEncontrada(id: string): NotFoundException {
-    return new NotFoundException(`Licencia ${id} no encontrada`);
+  private noEncontrada(): NotFoundException {
+    return new NotFoundException('Licencia no encontrada');
   }
 
   private assertPeriodo(inicio: string, fin: string): void {
@@ -407,7 +421,7 @@ export class LeaveService {
     const pisada = await consulta.orderBy('l.startDate', 'ASC').getOne();
     if (pisada) {
       throw new ConflictException(
-        `El período se superpone con la licencia ${pisada.leaveId} (${pisada.type}, ${ETIQUETA_DEL_ESTADO[pisada.status]}) del ${pisada.startDate} al ${pisada.endDate}`,
+        `El período se superpone con otra licencia (${ETIQUETA_DEL_TIPO[pisada.type]}, ${ETIQUETA_DEL_ESTADO[pisada.status]}) del ${pisada.startDate} al ${pisada.endDate}`,
       );
     }
   }

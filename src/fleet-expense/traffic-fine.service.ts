@@ -274,7 +274,7 @@ export class TrafficFineService {
       relations: { car: true, employee: true },
     });
     if (!multa) {
-      throw new NotFoundException(`Multa ${id} no encontrada`);
+      throw new NotFoundException('Multa no encontrada');
     }
     return multa;
   }
@@ -327,7 +327,7 @@ export class TrafficFineService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!multa) {
-          throw new NotFoundException(`Multa ${id} no encontrada`);
+          throw new NotFoundException('Multa no encontrada');
         }
         await cambio(manager, multa);
         await manager.getRepository(TrafficFine).save(multa);

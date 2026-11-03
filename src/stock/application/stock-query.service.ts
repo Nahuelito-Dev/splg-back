@@ -365,7 +365,7 @@ export class StockQueryService {
   ): Promise<StockAdjustmentResponseDto> {
     const [ajuste] = await this.cargarAjustes([adjustmentId], distributorId);
     if (!ajuste) {
-      throw new NotFoundException(`Ajuste ${adjustmentId} no encontrado`);
+      throw new NotFoundException('Ajuste no encontrado');
     }
     return ajuste;
   }

@@ -29,9 +29,7 @@ export class FuelLoadAttachmentOwnerResolver
       where: { fuelLoadId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(
-        `Carga de combustible ${ownerId} no encontrada`,
-      );
+      throw new NotFoundException('Carga de combustible no encontrada');
     }
   }
 
@@ -68,7 +66,7 @@ export class TrafficFineAttachmentOwnerResolver
       where: { fineId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Multa ${ownerId} no encontrada`);
+      throw new NotFoundException('Multa no encontrada');
     }
   }
 }
@@ -95,7 +93,7 @@ export class TrafficFinePaymentAttachmentOwnerResolver
       where: { fineId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Multa ${ownerId} no encontrada`);
+      throw new NotFoundException('Multa no encontrada');
     }
   }
 }
@@ -122,7 +120,7 @@ export class VehicleAccidentAttachmentOwnerResolver
       where: { accidentId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(`Siniestro ${ownerId} no encontrado`);
+      throw new NotFoundException('Siniestro no encontrado');
     }
   }
 

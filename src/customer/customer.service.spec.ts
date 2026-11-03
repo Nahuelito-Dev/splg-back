@@ -85,7 +85,7 @@ describe('CustomersService', () => {
   it('la baja es lógica y responde con un mensaje', async () => {
     customers.findOne.mockResolvedValue(cliente());
     await expect(service.remove('c1')).resolves.toEqual({
-      message: 'Customer deleted successfully',
+      message: 'Cliente dado de baja',
     });
     expect(customers.softRemove).toHaveBeenCalledWith({ customerId: 'c1' });
   });

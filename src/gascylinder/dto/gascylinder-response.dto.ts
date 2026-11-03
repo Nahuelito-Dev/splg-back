@@ -87,7 +87,7 @@ export class DisponiblesDto {
 
 /** La baja de un producto: se desactiva, no se borra. */
 export class BajaDeProductoDto {
-  @ApiProperty({ example: 'Gas cylinder deactivated successfully' })
+  @ApiProperty({ example: 'Garrafa dada de baja' })
   message!: string;
 
   @ApiProperty({ format: 'uuid' })

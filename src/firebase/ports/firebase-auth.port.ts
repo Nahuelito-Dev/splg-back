@@ -17,6 +17,18 @@ export interface CreateFirebaseUserProps {
   phone_number?: string;
 }
 
+const logger = new Logger('FirebaseAuthPort');
+
+const MENSAJES_DE_ALTA_EN_FIREBASE: Record<string, string> = {
+  'auth/invalid-password':
+    'La contraseña es muy débil: usá al menos 6 caracteres',
+  'auth/email-already-exists': 'Ese correo ya está registrado',
+  'auth/phone-number-already-exists': 'El teléfono ya está en uso',
+  'auth/invalid-email': 'El formato del correo no es válido',
+  'auth/invalid-phone-number':
+    'El formato del teléfono no es válido: usá el formato E.164, por ejemplo +5493764000000',
+};
+
 /**
  * PUERTO de autenticación de Firebase (Admin SDK). Los services de dominio
  * (auth, users, customer, delivery) hablan con ESTA interfaz, no con
@@ -78,17 +90,11 @@ export abstract class FirebaseAuthPort {
     } catch (error) {
       const code = errorCode(error);
 
-      let errorMessage = `Error creating Firebase user: ${mensajeDe(error)}`;
-
-      if (code === 'auth/weak-password') {
-        errorMessage = 'Password is too weak. Use at least 6 characters.';
-      } else if (code === 'auth/email-already-exists') {
-        errorMessage = 'Email already exists in Firebase.';
-      } else if (code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email format.';
-      } else if (code === 'auth/invalid-phone-number') {
-        errorMessage =
-          'Invalid phone number format. Use E.164 format: +1234567890';
+      const errorMessage =
+        MENSAJES_DE_ALTA_EN_FIREBASE[code ?? ''] ??
+        'No se pudo crear la cuenta';
+      if (!(code && code in MENSAJES_DE_ALTA_EN_FIREBASE)) {
+        logger.error(`Alta en Firebase rechazada: ${mensajeDe(error)}`);
       }
 
       throw new BadRequestException(errorMessage);

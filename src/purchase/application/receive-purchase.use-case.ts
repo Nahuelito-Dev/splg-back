@@ -18,6 +18,7 @@ import {
   StockMovementReason,
   StockReferenceType,
 } from '../../stock/domain/stock.enums';
+import { exigirGarrafasDeLosRenglones } from '../../stock/application/renglones-de-garrafas';
 import { StockLocationService } from '../../stock/application/stock-location.service';
 import { StockOnHandService } from '../../stock/application/stock-on-hand.service';
 import { WarehouseService } from '../../stock/application/warehouse.service';
@@ -134,6 +135,11 @@ export class ReceivePurchaseUseCase {
     return withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          await exigirGarrafasDeLosRenglones(
+            manager,
+            distributorId,
+            dto.items.map((i) => i.gasCylinderId),
+          );
           const orden = dto.purchaseOrderId
             ? await this.cargarOrden(
                 manager,
@@ -170,7 +176,13 @@ export class ReceivePurchaseUseCase {
             dto.supplierDocumentNumber,
           );
           const renglones = this.renglones(dto, orden?.items ?? null);
-          if (orden) await this.validarContraOrden(manager, orden, renglones);
+          if (orden)
+            await this.validarContraOrden(
+              manager,
+              distributorId,
+              orden,
+              renglones,
+            );
 
           const ubicacion = await this.locations.ubicacionDeDeposito(
             manager,
@@ -352,6 +364,7 @@ export class ReceivePurchaseUseCase {
 
   private async validarContraOrden(
     manager: EntityManager,
+    distributorId: string,
     { orden, items }: { orden: PurchaseOrder; items: PurchaseOrderItem[] },
     renglones: Renglon[],
   ): Promise<void> {
@@ -359,7 +372,7 @@ export class ReceivePurchaseUseCase {
     const ajeno = renglones.find((r) => !pedido.has(r.gasCylinderId));
     if (ajeno) {
       throw new CompraInvalidaError(
-        `${await this.tipoDe(manager, ajeno.gasCylinderId)} no está en la orden de compra N° ${orden.number}: recibila como compra directa o agregala a otra orden`,
+        `${await this.tipoDe(manager, distributorId, ajeno.gasCylinderId)} no está en la orden de compra N° ${orden.number}: recibila como compra directa o agregala a otra orden`,
       );
     }
     const excesos = excesosDeRecepcion(pedido, renglones);
@@ -367,7 +380,7 @@ export class ReceivePurchaseUseCase {
       const detalle: string[] = [];
       for (const e of excesos) {
         detalle.push(
-          `${await this.tipoDe(manager, e.gasCylinderId)}: llegan ${e.recibido} y sólo quedan ${e.pendiente} por recibir`,
+          `${await this.tipoDe(manager, distributorId, e.gasCylinderId)}: llegan ${e.recibido} y sólo quedan ${e.pendiente} por recibir`,
         );
       }
       throw new CompraInvalidaError(
@@ -378,13 +391,15 @@ export class ReceivePurchaseUseCase {
 
   private async tipoDe(
     manager: EntityManager,
+    distributorId: string,
     gasCylinderId: string,
   ): Promise<string> {
     const [fila]: Array<{ type: string }> = await manager.query(
-      `SELECT "type" FROM "gas_cylinder" WHERE "gas_cylinder_id" = $1`,
-      [gasCylinderId],
+      `SELECT "type" FROM "gas_cylinder"
+       WHERE "gas_cylinder_id" = $1 AND "distributor_id" = $2`,
+      [gasCylinderId, distributorId],
     );
-    return fila?.type ?? gasCylinderId;
+    return fila?.type ?? 'Una garrafa';
   }
 
   private async asegurarDocumentoLibre(

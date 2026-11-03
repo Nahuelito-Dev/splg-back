@@ -197,7 +197,7 @@ export class OrderTransferReceiptService {
   ): Promise<Order> {
     const order = await this.orders.findOne({ where: { orderId } });
     if (!order || order.customerId !== customerUserId) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return order;
   }
@@ -208,7 +208,7 @@ export class OrderTransferReceiptService {
   ): Promise<Order> {
     const order = await this.orders.findOne({ where: { orderId } });
     if (!order || (distributorId && order.distributorId !== distributorId)) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return order;
   }
@@ -223,7 +223,7 @@ export class OrderTransferReceiptService {
       .where('order.orderId = :orderId', { orderId })
       .getOne();
     if (!order) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return order;
   }

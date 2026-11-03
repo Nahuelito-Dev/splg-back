@@ -32,9 +32,7 @@ export class PurchaseReceiptAttachmentOwnerResolver
       where: { receiptId: ownerId, distributorId },
     });
     if (!existe) {
-      throw new NotFoundException(
-        `Recepción de compra ${ownerId} no encontrada`,
-      );
+      throw new NotFoundException('Recepción de compra no encontrada');
     }
   }
 }

@@ -135,7 +135,50 @@ describe('PurchaseOrderService', () => {
         DIST,
         'u',
       ),
-    ).rejects.toThrow(/Garrafa no encontrada/);
+    ).rejects.toThrow('Garrafa del renglón 1 no encontrada');
+  });
+
+  it('con varios renglones, dice cuál es la garrafa que no está (sin mostrar ids)', async () => {
+    const { service, manager } = armar(E.DRAFT);
+    const OTRA = '22222222-2222-4222-8222-222222222222';
+    (manager.query as jest.Mock).mockResolvedValue([{ gas_cylinder_id: G1 }]);
+    const error: unknown = await service
+      .create(
+        {
+          supplierId: SUP,
+          items: [
+            { gasCylinderId: G1, quantity: 1, unitCost: 1 },
+            { gasCylinderId: OTRA, quantity: 1, unitCost: 1 },
+          ],
+        },
+        DIST,
+        'u',
+      )
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      'Garrafa del renglón 2 no encontrada',
+    );
+    expect((error as Error).message).not.toContain(OTRA);
+  });
+
+  it('si faltan varias, informa la primera en el orden del body y no en el de los ids', async () => {
+    const { service, manager } = armar(E.DRAFT);
+    const ULTIMA = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const PRIMERA = '00000000-0000-4000-8000-000000000000';
+    (manager.query as jest.Mock).mockResolvedValue([]);
+    await expect(
+      service.create(
+        {
+          supplierId: SUP,
+          items: [
+            { gasCylinderId: ULTIMA, quantity: 1, unitCost: 1 },
+            { gasCylinderId: PRIMERA, quantity: 1, unitCost: 1 },
+          ],
+        },
+        DIST,
+        'u',
+      ),
+    ).rejects.toThrow('Garrafa del renglón 1 no encontrada');
   });
 
   it.each([E.SENT, E.PARTIALLY_RECEIVED, E.RECEIVED, E.CANCELLED])(

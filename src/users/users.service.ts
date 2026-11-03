@@ -188,7 +188,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException(`User with ID: ${id} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return user;
@@ -224,7 +224,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException(`User with email: ${email} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return user;
@@ -266,7 +266,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException(`User with ID: ${id} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     // La contraseña vive en el proveedor de identidad, no en la base: antes se
@@ -351,7 +351,7 @@ export class UsersService {
       relations: ['role', 'delivery', 'admins'],
     });
     if (!user) {
-      throw new NotFoundException(`User with ID: ${id} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
     return {
       rol: user.role?.type,
@@ -390,7 +390,7 @@ export class UsersService {
       relations: ['customer', 'delivery', 'addresses', 'role', 'admins'],
     });
     if (!user) {
-      throw new NotFoundException(`User with ID: ${id} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     // Orden de locks: chofer (y usuario) primero, legajo después. Un choque
@@ -539,7 +539,7 @@ export class UsersService {
       select: { userId: true, firebaseUid: true, deletedAt: true },
     });
     if (!user) {
-      throw new NotFoundException(`User with ID: ${userId} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
     if (user.deletedAt) {
       if (user.firebaseUid) {
@@ -641,9 +641,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException(
-        `User with Firebase UID: ${firebaseUid} not found`,
-      );
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return user;
@@ -677,7 +675,7 @@ export class UsersService {
       { blocked: true },
     );
     if (!affected) {
-      throw new NotFoundException(`User with ID: ${userId} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
   }
 

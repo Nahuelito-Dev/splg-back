@@ -198,9 +198,9 @@ export class CustomersService {
       .andWhere('removed_at IS NOT NULL')
       .execute();
     if (!res.affected) {
-      throw new NotFoundException(`Customer with ID: ${customerId} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
-    return MessageResponseDto.of('Customer restored in distributor');
+    return MessageResponseDto.of('Cliente reactivado en la distribuidora');
   }
 
   /**
@@ -250,7 +250,7 @@ export class CustomersService {
         )
         .execute();
     });
-    return MessageResponseDto.of('Customer removed from distributor');
+    return MessageResponseDto.of('Cliente quitado de la distribuidora');
   }
 
   /**
@@ -268,7 +268,7 @@ export class CustomersService {
       where: { userId },
     });
     if (!customer) {
-      throw new NotFoundException(`Customer for user ID: ${userId} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
     Object.assign(customer, consumo);
     await this.customerRepository.save(customer);
@@ -318,7 +318,7 @@ export class CustomersService {
       where: { userId },
     });
     if (!customer) {
-      throw new NotFoundException(`Customer for user ID: ${userId} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
     if (preferencia.noticeEnabled !== undefined) {
       customer.repurchaseNoticeEnabled = preferencia.noticeEnabled;
@@ -467,7 +467,7 @@ export class CustomersService {
       .andWhere(clienteDeLaDistribuidora('customer.userId'), { distributorId })
       .getExists();
     if (!existe) {
-      throw new NotFoundException(`Customer with ID: ${valor} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
   }
 
@@ -486,7 +486,7 @@ export class CustomersService {
     });
 
     if (!customer) {
-      throw new NotFoundException(`Customer with ID: ${id} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
 
     this.assertOwnership(customer.userId, requesterUserId);
@@ -509,7 +509,7 @@ export class CustomersService {
     });
 
     if (!customer) {
-      throw new NotFoundException(`Customer for user ID: ${userId} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
 
     return customer;
@@ -529,7 +529,7 @@ export class CustomersService {
       .getOne();
 
     if (!customer) {
-      throw new NotFoundException(`Customer with email: ${email} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
 
     return customer;
@@ -554,7 +554,7 @@ export class CustomersService {
     });
 
     if (!customer) {
-      throw new NotFoundException(`Customer with ID: ${id} not found`);
+      throw new NotFoundException('Cliente no encontrado');
     }
 
     await this.customerRepository.save(customer);
@@ -568,7 +568,7 @@ export class CustomersService {
     await this.customerRepository.softRemove(
       this.customerRepository.create({ customerId: id }),
     );
-    return MessageResponseDto.of('Customer deleted successfully');
+    return MessageResponseDto.of('Cliente dado de baja');
   }
 
   async updateLocation(

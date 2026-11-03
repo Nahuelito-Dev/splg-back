@@ -77,7 +77,7 @@ export class InsuranceInstallmentService {
       relations: { policy: { insurer: true, car: true } },
       withDeleted: true, // la aseguradora dada de baja sigue figurando
     });
-    if (!cuota) throw new NotFoundException(`Cuota ${id} no encontrada`);
+    if (!cuota) throw new NotFoundException('Cuota no encontrada');
     return cuota;
   }
 
@@ -302,7 +302,7 @@ export class InsuranceInstallmentService {
       where: { installmentId: id, distributorId },
       lock: { mode: 'pessimistic_write' },
     });
-    if (!cuota) throw new NotFoundException(`Cuota ${id} no encontrada`);
+    if (!cuota) throw new NotFoundException('Cuota no encontrada');
     return cuota;
   }
 

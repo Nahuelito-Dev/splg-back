@@ -213,6 +213,22 @@ describe('MpReconciliationApplyService', () => {
       );
     });
 
+    it('un renglón repetido no corre la numeración: el 404 dice el lugar del body, sin ids', async () => {
+      items = [item(MpDifferenceKind.TAX_ROW)];
+      const conocida = items[0].itemId;
+
+      const error: unknown = await aplicar([
+        { itemId: conocida },
+        { itemId: conocida },
+        { itemId: 'fantasma' },
+      ]).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect((error as Error).message).toBe(
+        'Diferencia del renglón 3 no encontrada',
+      );
+    });
+
     it('la distribuidora no ve (404) las diferencias de la cuenta; el super admin sí las asienta', async () => {
       items = [
         item(MpDifferenceKind.TAX_ROW, {

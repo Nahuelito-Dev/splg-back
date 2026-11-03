@@ -67,7 +67,7 @@ export class TireService {
       relations: { car: true },
     });
     if (!neumatico) {
-      throw new NotFoundException(`Neumático ${id} no encontrado`);
+      throw new NotFoundException('Neumático no encontrado');
     }
     return neumatico;
   }
@@ -130,7 +130,7 @@ export class TireService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!neumatico) {
-          throw new NotFoundException(`Neumático ${id} no encontrado`);
+          throw new NotFoundException('Neumático no encontrado');
         }
         if (!movimientoValidoParaElEstado(dto.type, neumatico.status)) {
           throw new ConflictException(MOVIMIENTO_INVALIDO);

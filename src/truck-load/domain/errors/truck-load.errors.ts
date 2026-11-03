@@ -17,8 +17,8 @@ export const estadoDeCargaEnTexto = (estado: TruckLoadStatus): string =>
   ESTADO_EN_TEXTO[estado];
 
 export class CargaNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Carga de camión no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Carga de camión no encontrada', `id=${id}`);
   }
 }
 

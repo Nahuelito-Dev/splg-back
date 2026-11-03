@@ -64,7 +64,7 @@ export class UserAddressService {
     const user = await this.usersService.findById(dueño);
 
     if (!user) {
-      throw new NotFoundException(`User with ID: ${dueño} not found`);
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     if (createUserAddressDto.isDefault) {
@@ -150,7 +150,7 @@ export class UserAddressService {
     });
 
     if (!address) {
-      throw new NotFoundException(`Address with ID: ${id} not found`);
+      throw new NotFoundException('Dirección no encontrada');
     }
 
     this.assertOwnership(address.userId, requesterUserId);
@@ -186,7 +186,7 @@ export class UserAddressService {
       if (addresses.length > 0) {
         return addresses[0];
       }
-      throw new NotFoundException(`No addresses found for user: ${userId}`);
+      throw new NotFoundException('El usuario no tiene direcciones');
     }
 
     return address;
@@ -215,7 +215,7 @@ export class UserAddressService {
     });
 
     if (!address) {
-      throw new NotFoundException(`Address with ID: ${id} not found`);
+      throw new NotFoundException('Dirección no encontrada');
     }
 
     if (updateUserAddressDto.isDefault) {
@@ -247,7 +247,7 @@ export class UserAddressService {
     await this.userAddressRepository.softRemove(address);
 
     return {
-      message: 'Address deleted successfully',
+      message: 'Dirección dada de baja',
       addressId: id,
     };
   }

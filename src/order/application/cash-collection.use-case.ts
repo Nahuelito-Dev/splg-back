@@ -604,7 +604,7 @@ export class CashCollectionUseCase {
     }
     const order = await consulta.getOne();
     if (!order) {
-      throw new NotFoundException(`Order with ID: ${orderId} not found`);
+      throw new NotFoundException('Pedido no encontrado');
     }
     return order;
   }

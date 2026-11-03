@@ -21,7 +21,7 @@ export class RoleService {
    * Los cuatro roles que el sistema necesita para funcionar. El codigo los
    * busca por su texto (`findOne({ where: { type: 'customer' } })`), asi que
    * renombrarlos o borrarlos rompe el registro de usuarios: el alta de un
-   * cliente falla con "Customer role not found".
+   * cliente falla con "No existe el rol customer: falta correr el seed de roles".
    *
    * Se derivan de RoleType para que haya una sola fuente de verdad: antes esta
    * lista estaba repetida a mano dentro de seedRoles().
@@ -52,7 +52,7 @@ export class RoleService {
     });
 
     if (!role) {
-      throw new NotFoundException(`Role with ID: ${id} not found`);
+      throw new NotFoundException('Rol no encontrado');
     }
 
     return role;
@@ -68,7 +68,7 @@ export class RoleService {
     });
 
     if (!role) {
-      throw new NotFoundException(`Role with ID: ${id} not found`);
+      throw new NotFoundException('Rol no encontrado');
     }
 
     return await this.roleRepository.save(role);
@@ -76,7 +76,7 @@ export class RoleService {
 
   async remove(id: string): Promise<MessageResponseDto> {
     const role = await this.findOne(id);
-    this.assertNoEsDelSistema(role.type, 'borrar');
+    this.assertNoEsDelSistema(role.type, 'dar de baja');
 
     // Baja lógica: la clave foránea ya no frena el borrado de un rol con
     // usuarios, así que se chequea a mano (incluye usuarios dados de baja,
@@ -89,7 +89,7 @@ export class RoleService {
       .getCount();
     if (usuarios > 0) {
       throw new ConflictException(
-        `El rol '${role.type}' todavía tiene ${usuarios} usuario(s): reasignalos antes de borrarlo`,
+        `El rol '${role.type}' todavía tiene ${usuarios} usuario(s): reasignalos antes de darlo de baja`,
       );
     }
 
@@ -98,14 +98,14 @@ export class RoleService {
     } catch (error) {
       traducirErrorDeBase(error, this.logger, 'roles');
     }
-    return MessageResponseDto.of('Role deleted successfully');
+    return MessageResponseDto.of('Rol dado de baja');
   }
 
   private assertNoEsDelSistema(tipo: string, accion: string): void {
     if (RoleService.ROLES_DEL_SISTEMA.includes(tipo)) {
       throw new ConflictException(
         `El rol '${tipo}' es parte del sistema y no se puede ${accion}: ` +
-          'el codigo lo busca por ese nombre y cambiarlo deja sin funcionar ' +
+          'el código lo busca por ese nombre y cambiarlo deja sin funcionar ' +
           'el registro de usuarios.',
       );
     }
@@ -129,6 +129,6 @@ export class RoleService {
       }
     }
 
-    return MessageResponseDto.of('Roles seeded successfully');
+    return MessageResponseDto.of('Roles cargados');
   }
 }

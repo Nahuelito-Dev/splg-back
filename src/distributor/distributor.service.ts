@@ -76,7 +76,7 @@ export class DistributorService {
       where: { distributorId: id },
     });
     if (!distributor) {
-      throw new NotFoundException(`Distribuidora ${id} no encontrada`);
+      throw new NotFoundException('Distribuidora no encontrada');
     }
     return distributor;
   }

@@ -58,7 +58,7 @@ export class GasCylinderPhotoService {
     const producto = await this.products.findOne(id, distributorId);
     // El camino público no sirve la imagen de un producto dado de baja.
     if (soloActivos && !producto.isActive) {
-      throw new NotFoundException('Gas cylinder not found');
+      throw new NotFoundException('Garrafa no encontrada');
     }
     return this.fotos.enlace(producto.photoKey);
   }

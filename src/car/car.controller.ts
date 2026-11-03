@@ -97,7 +97,7 @@ export class CarController {
   @ApiOperation({ summary: 'Get car by ID' })
   @ApiParam({ name: 'id', description: 'Car UUID' })
   @ApiOkResponse({ type: CarResponseDto })
-  @ApiNotFoundResponse({ description: 'Car not found' })
+  @ApiNotFoundResponse({ description: 'Vehículo no encontrado' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
@@ -155,7 +155,7 @@ export class CarController {
   })
   @ApiParam({ name: 'id', description: 'Car UUID' })
   @ApiOkResponse({ type: CarResponseDto })
-  @ApiNotFoundResponse({ description: 'Car not found' })
+  @ApiNotFoundResponse({ description: 'Vehículo no encontrado' })
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
@@ -183,7 +183,7 @@ export class CarController {
   @ApiOperation({ summary: 'Update car by ID' })
   @ApiParam({ name: 'id', description: 'Car UUID' })
   @ApiOkResponse({ type: CarResponseDto })
-  @ApiNotFoundResponse({ description: 'Car not found' })
+  @ApiNotFoundResponse({ description: 'Vehículo no encontrado' })
   @ApiBadRequestResponse({
     description: 'Patente con formato inválido (AAA123 o AA123AA)',
   })
@@ -205,7 +205,7 @@ export class CarController {
   @ApiOperation({ summary: 'Delete car by ID' })
   @ApiParam({ name: 'id', description: 'Car UUID' })
   @ApiOkResponse({ type: CarBorradoResponseDto })
-  @ApiNotFoundResponse({ description: 'Car not found' })
+  @ApiNotFoundResponse({ description: 'Vehículo no encontrado' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,

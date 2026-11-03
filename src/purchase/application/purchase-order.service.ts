@@ -329,9 +329,12 @@ export class PurchaseOrderService {
       [ids, distributorId],
     );
     const vistas = new Set(filas.map((f) => f.gas_cylinder_id));
-    const faltante = ids.find((id) => !vistas.has(id));
-    if (faltante)
-      throw new NotFoundException(`Garrafa no encontrada: ${faltante}`);
+    const indice = items.findIndex((i) => !vistas.has(i.gasCylinderId));
+    if (indice !== -1) {
+      throw new NotFoundException(
+        `Garrafa del renglón ${indice + 1} no encontrada`,
+      );
+    }
   }
 
   private async insertarRenglones(

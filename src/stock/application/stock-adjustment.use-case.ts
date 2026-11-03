@@ -6,6 +6,7 @@ import {
   DocType,
   DocumentSequenceService,
 } from '../../document-sequence/document-sequence.service';
+import { exigirGarrafasDeLosRenglones } from './renglones-de-garrafas';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { StockLedgerPort } from '../domain/ports/stock-ledger.port';
 import {
@@ -59,6 +60,11 @@ export class StockAdjustmentUseCase {
     actorUserId: string,
   ): Promise<string> {
     validarItemsDeAjuste(dto.reason, dto.items);
+    await exigirGarrafasDeLosRenglones(
+      manager,
+      distributorId,
+      dto.items.map((i) => i.gasCylinderId),
+    );
     const ubicacion = await this.locations.resolver(
       manager,
       distributorId,

@@ -16,6 +16,6 @@ export class ListadoDeDireccionesDto {
 }
 
 export class DireccionBorradaDto {
-  @ApiProperty({ example: 'Address deleted successfully' }) message!: string;
+  @ApiProperty({ example: 'Dirección dada de baja' }) message!: string;
   @ApiProperty({ format: 'uuid' }) addressId!: string;
 }

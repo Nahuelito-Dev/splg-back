@@ -473,7 +473,7 @@ export class OrderController {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ type: OrderResponseDto })
-  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   @ApiBadRequestResponse({
     description:
       'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")',
@@ -538,7 +538,7 @@ export class OrderController {
       'El pedido no está asignado a este chofer, un chofer intentó activar una reserva a mano, o un chofer intentó marcar ' +
       '`delivered` (la entrega se confirma con el QR del cliente)',
   })
-  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   @ApiConflictResponse({
     description:
       'Aceptar (`accepted`) un pedido de Mercado Pago cuyo pago todavía no está aprobado (salvo una reserva con la seña paga), ' +
@@ -628,7 +628,7 @@ export class OrderController {
     status: 403,
     description: 'El pedido no está asignado a este chofer',
   })
-  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   async getDeliveryCode(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -670,7 +670,7 @@ export class OrderController {
     status: 403,
     description: 'No autorizado (pedido de otro cliente)',
   })
-  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 404, description: 'Pedido no encontrado' })
   async confirmDelivery(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -850,7 +850,7 @@ export class OrderController {
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
   @ApiOkResponse({ type: OrderResponseDto, description: 'Chofer asignado' })
-  @ApiResponse({ status: 404, description: 'Order or delivery not found' })
+  @ApiResponse({ status: 404, description: 'Pedido o chofer no encontrado' })
   @ApiConflictResponse({
     description:
       'El pedido se paga con Mercado Pago y el pago todavía no está aprobado',
@@ -943,7 +943,7 @@ export class OrderController {
     description:
       'El pedido no está pendiente, tiene chofer (cliente: «El pedido ya fue tomado por un repartidor: no se puede modificar») o pago online',
   })
-  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -1053,7 +1053,7 @@ export class OrderController {
   @ApiBadRequestResponse({
     description: 'No se puede cancelar un pedido finalizado',
   })
-  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async cancelOrder(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -1089,7 +1089,7 @@ export class OrderController {
     description:
       'Falta el motivo (`reason`: obligatorio para cliente y administrador, no para el chofer que libera el pedido), motivo en blanco, o datos inválidos (p. ej.: reason must be shorter than or equal to 500 characters)',
   })
-  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiOkResponse({
     type: OrderResponseDto,
     description:
@@ -1131,7 +1131,7 @@ export class OrderController {
     status: 403,
     description: 'El pedido no está asignado a este chofer',
   })
-  @ApiNotFoundResponse({ description: 'Order with ID: {id} not found' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async notifyArrival(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,

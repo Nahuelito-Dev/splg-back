@@ -57,7 +57,7 @@ export class InsurerService {
       where: { insurerId: id, distributorId },
     });
     if (!aseguradora) {
-      throw new NotFoundException(`Aseguradora ${id} no encontrada`);
+      throw new NotFoundException('Aseguradora no encontrada');
     }
     return aseguradora;
   }

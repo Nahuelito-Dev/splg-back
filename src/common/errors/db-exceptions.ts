@@ -121,7 +121,7 @@ export function traducirErrorDeBase(
       throw new ConflictException(
         mensajeDeRestriccion(e.constraint) ??
           `El registro referenciado no existe, o está siendo usado por otros ` +
-            `registros y no se puede borrar${donde}`,
+            `registros y no se puede dar de baja${donde}`,
       );
 
     case CODIGOS.NO_NULO:

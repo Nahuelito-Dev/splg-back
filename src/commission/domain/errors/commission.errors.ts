@@ -5,26 +5,26 @@ import {
 } from '../../../common/errors/domain.error';
 
 export class ReglaNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Regla de comisión no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Regla de comisión no encontrada', `id=${id}`);
   }
 }
 
 export class LiquidacionNoEncontradaError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Liquidación no encontrada: ${id}`);
+  constructor(readonly id: string) {
+    super('Liquidación no encontrada', `id=${id}`);
   }
 }
 
 export class EmpleadoNoEncontradoError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Empleado no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('Empleado no encontrado', `id=${id}`);
   }
 }
 
 export class ProductoNoEncontradoError extends NotFoundDomainError {
-  constructor(id: string) {
-    super(`Producto no encontrado: ${id}`);
+  constructor(readonly id: string) {
+    super('Producto no encontrado', `id=${id}`);
   }
 }
 

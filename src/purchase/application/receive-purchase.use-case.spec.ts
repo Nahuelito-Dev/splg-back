@@ -37,6 +37,10 @@ function armar(
     costoPrevio?: number | null;
     ledgerError?: Error;
     documentoRepetido?: boolean;
+    /** Garrafas que no son de la distribuidora. */
+    garrafasAjenas?: string[];
+    /** El tipo de la garrafa no se encuentra. */
+    sinTipo?: boolean;
     /** Cuándo empezó el stock del depósito (su conteo inicial o su alta). */
     inicioDelDeposito?: Date | null;
   } = {},
@@ -57,9 +61,20 @@ function armar(
         : undefined;
   const items = (over.items ?? []).map((i) => ({ ...i }));
   const manager = {
-    query: jest.fn((sql: string) => {
+    query: jest.fn((sql: string, params: unknown[] = []) => {
       if (sql.includes('FROM "purchase_receipt"')) {
         return Promise.resolve(over.documentoRepetido ? [{}] : []);
+      }
+      if (sql.includes('SELECT "gas_cylinder_id" FROM "gas_cylinder"')) {
+        const ajenas = over.garrafasAjenas ?? [];
+        return Promise.resolve(
+          (params[0] as string[])
+            .filter((id) => !ajenas.includes(id))
+            .map((id) => ({ gas_cylinder_id: id })),
+        );
+      }
+      if (sql.includes('SELECT "type" FROM "gas_cylinder"')) {
+        return Promise.resolve(over.sinTipo ? [] : [{ type: '10kg' }]);
       }
       return Promise.resolve([{ type: '10kg' }]);
     }),
@@ -445,6 +460,85 @@ describe('ReceivePurchaseUseCase', () => {
         USER,
       ),
     ).rejects.toThrow(/no está en la orden de compra/);
+  });
+
+  it('sin orden: una garrafa inexistente dice el renglón del body, sin ids y antes del libro', async () => {
+    const { useCase, ledger } = armar({ orden: null, garrafasAjenas: [G2] });
+    const error: unknown = await useCase
+      .execute(
+        dto({
+          supplierId: SUP,
+          items: [
+            {
+              gasCylinderId: G1,
+              quantityFull: 3,
+              quantityEmptyOut: 2,
+              unitCost: 1000,
+            },
+            { gasCylinderId: G2, quantityFull: 1, unitCost: 1000 },
+          ],
+        }),
+        DIST,
+        USER,
+      )
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      'Garrafa del renglón 2 no encontrada',
+    );
+    expect(ledger.aplicar).not.toHaveBeenCalled();
+  });
+
+  it('con orden: también numera por el body', async () => {
+    const { useCase, ledger } = armar({
+      orden: { status: E.SENT },
+      garrafasAjenas: [G2],
+      items: [
+        { gasCylinderId: G1, quantity: 10, receivedQuantity: 0, unitCost: 900 },
+      ],
+    });
+    await expect(
+      useCase.execute(
+        dto({
+          purchaseOrderId: OC,
+          items: [
+            { gasCylinderId: G1, quantityFull: 1 },
+            { gasCylinderId: G2, quantityFull: 1 },
+          ],
+        }),
+        DIST,
+        USER,
+      ),
+    ).rejects.toThrow('Garrafa del renglón 2 no encontrada');
+    expect(ledger.aplicar).not.toHaveBeenCalled();
+  });
+
+  it('el tipo de la garrafa se busca en la distribuidora y nunca muestra el uuid', async () => {
+    const { useCase, manager } = armar({
+      orden: { status: E.SENT },
+      sinTipo: true,
+      items: [
+        { gasCylinderId: G1, quantity: 10, receivedQuantity: 0, unitCost: 900 },
+      ],
+    });
+    const error: unknown = await useCase
+      .execute(
+        dto({
+          purchaseOrderId: OC,
+          items: [{ gasCylinderId: G2, quantityFull: 1 }],
+        }),
+        DIST,
+        USER,
+      )
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toMatch(
+      /^Una garrafa no está en la orden/,
+    );
+    expect((error as Error).message).not.toContain(G2);
+    const consultas = (manager.query as jest.Mock).mock.calls;
+    expect(consultas).toContainEqual([
+      expect.stringContaining('"distributor_id" = $2'),
+      [G2, DIST],
+    ]);
   });
 
   it('la orden de otra distribuidora es 404 (el lock filtra por tenant)', async () => {

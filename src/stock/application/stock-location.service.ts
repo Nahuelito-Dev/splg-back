@@ -58,7 +58,7 @@ export class StockLocationService {
       .andWhere('w.deletedAt IS NULL')
       .getOne();
     if (!ubicacion) {
-      throw new NotFoundException(`Depósito ${warehouseId} no encontrado`);
+      throw new NotFoundException('Depósito no encontrado');
     }
     return ubicacion;
   }
@@ -82,7 +82,7 @@ export class StockLocationService {
       [warehouseId, distributorId],
     );
     if (!fila) {
-      throw new NotFoundException(`Depósito ${warehouseId} no encontrado`);
+      throw new NotFoundException('Depósito no encontrado');
     }
     if (!fila.is_active) {
       throw new OperacionDeStockInvalidaError(
@@ -140,7 +140,7 @@ export class StockLocationService {
       where: { locationId, distributorId },
     });
     if (!ubicacion) {
-      throw new NotFoundException(`Ubicación ${locationId} no encontrada`);
+      throw new NotFoundException('Ubicación no encontrada');
     }
     return ubicacion;
   }

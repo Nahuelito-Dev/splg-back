@@ -103,9 +103,7 @@ export class ImportService {
               .andWhere('j.distributorId = :distributorId', { distributorId })
               .getOne();
             if (!job) {
-              throw new NotFoundException(
-                `Importación ${importId} no encontrada`,
-              );
+              throw new NotFoundException('Importación no encontrada');
             }
             if (job.status === ImportJobStatus.CONFIRMED) {
               return { job, yaConfirmada: true };

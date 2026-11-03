@@ -45,6 +45,6 @@ export class CarResponseDto {
 }
 
 export class CarBorradoResponseDto {
-  @ApiProperty({ example: 'Car deleted successfully' }) message!: string;
+  @ApiProperty({ example: 'Vehículo dado de baja' }) message!: string;
   @ApiProperty({ format: 'uuid' }) carId!: string;
 }

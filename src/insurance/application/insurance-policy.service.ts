@@ -87,9 +87,7 @@ export class InsurancePolicyService {
           where: { insurerId: dto.insurerId, distributorId },
         });
         if (!aseguradora) {
-          throw new NotFoundException(
-            `Aseguradora ${dto.insurerId} no encontrada`,
-          );
+          throw new NotFoundException('Aseguradora no encontrada');
         }
         await this.assertSinSolapamiento(
           manager,
@@ -162,9 +160,7 @@ export class InsurancePolicyService {
             where: { insurerId: dto.insurerId, distributorId },
           });
           if (!existe) {
-            throw new NotFoundException(
-              `Aseguradora ${dto.insurerId} no encontrada`,
-            );
+            throw new NotFoundException('Aseguradora no encontrada');
           }
         }
         Object.assign(poliza, sinIndefinidos({ ...dto }));
@@ -317,7 +313,7 @@ export class InsurancePolicyService {
       where: { policyId: id, distributorId },
       lock: { mode: 'pessimistic_write' },
     });
-    if (!poliza) throw new NotFoundException(`Póliza ${id} no encontrada`);
+    if (!poliza) throw new NotFoundException('Póliza no encontrada');
     return poliza;
   }
 

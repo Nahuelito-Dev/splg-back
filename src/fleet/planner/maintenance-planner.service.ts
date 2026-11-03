@@ -861,7 +861,7 @@ export class MaintenancePlannerService {
       withDeleted: true,
     });
     if (!propuesta) {
-      throw new NotFoundException(`Propuesta ${proposalId} no encontrada`);
+      throw new NotFoundException('Propuesta no encontrada');
     }
     return propuesta;
   }
@@ -1037,7 +1037,7 @@ export class MaintenancePlannerService {
             where: { proposalId, deliveryId: delivery.deliveryId },
           });
         if (!previa) {
-          throw new NotFoundException(`Propuesta ${proposalId} no encontrada`);
+          throw new NotFoundException('Propuesta no encontrada');
         }
         const caso = await this.bloquearCaso(manager, previa.caseId);
         const propuesta = await manager
@@ -1074,7 +1074,7 @@ export class MaintenancePlannerService {
       relations: { planningCase: true },
     });
     if (!propuesta) {
-      throw new NotFoundException(`Propuesta ${proposalId} no encontrada`);
+      throw new NotFoundException('Propuesta no encontrada');
     }
     const caso = propuesta.planningCase;
     const dia = diaArgentino(alt.start);
@@ -1180,7 +1180,7 @@ export class MaintenancePlannerService {
       },
       withDeleted: true,
     });
-    if (!caso) throw new NotFoundException(`Caso ${caseId} no encontrado`);
+    if (!caso) throw new NotFoundException('Caso no encontrado');
     caso.proposals = [...(caso.proposals ?? [])].sort(
       (a, b) => a.rank - b.rank,
     );
@@ -1514,7 +1514,7 @@ export class MaintenancePlannerService {
       where: { taskId, distributorId },
       relations: { plan: true },
     });
-    if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
+    if (!task) throw new NotFoundException('Tarea no encontrada');
     if (!task.carId) {
       throw new BadRequestException(
         'Sólo las tareas de un vehículo tienen ventana de taller',
@@ -1647,7 +1647,7 @@ export class MaintenancePlannerService {
       where: distributorId ? { caseId, distributorId } : { caseId },
       lock: { mode: 'pessimistic_write' },
     });
-    if (!caso) throw new NotFoundException(`Caso ${caseId} no encontrado`);
+    if (!caso) throw new NotFoundException('Caso no encontrado');
     return caso;
   }
 

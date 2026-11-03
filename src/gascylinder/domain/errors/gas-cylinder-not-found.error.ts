@@ -6,7 +6,7 @@ import { NotFoundDomainError } from '../../../common/errors/domain.error';
  * lanzaba `NotFoundException` directo.
  */
 export class GasCylinderNotFoundError extends NotFoundDomainError {
-  constructor(gasCylinderId: string) {
-    super(`Garrafa no encontrada: ${gasCylinderId}`);
+  constructor(readonly gasCylinderId: string) {
+    super('Garrafa no encontrada', `gasCylinderId=${gasCylinderId}`);
   }
 }

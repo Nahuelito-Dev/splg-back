@@ -13,6 +13,7 @@ import { BaseExceptionFilter } from '@nestjs/core';
 import {
   BadRequestDomainError,
   ConflictDomainError,
+  detalleDe,
   NotFoundDomainError,
 } from '../errors/domain.error';
 import {
@@ -51,6 +52,8 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     // acá a la MISMA HttpException que el código lanzaba antes de extraerlos a
     // `domain/errors/`, para que el status y el mensaje de la respuesta NO
     // cambien.
+    const interno = detalleDe(exception);
+    const detalle = interno ? ` (${interno})` : '';
     exception = this.mapDomainError(exception);
 
     const ctx = host.switchToHttp();
@@ -75,7 +78,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
           ? exception.message
           : 'Internal server error';
 
-    const line = `[${requestId}] ${method} ${path} ${status} ${duration ?? '-'}ms — ${message}`;
+    const line = `[${requestId}] ${method} ${path} ${status} ${duration ?? '-'}ms — ${message}${detalle}`;
 
     // 5xx = error real del servidor → stack trace. 4xx = error de cliente
     // (validación, not found, etc.) → una línea, sin ruido.

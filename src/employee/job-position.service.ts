@@ -128,21 +128,21 @@ export class JobPositionService {
       });
       if (activos > 0) {
         throw new ConflictException(
-          `El puesto "${puesto.name}" lo ocupan ${activos} empleado(s) activo(s): reasignalos antes de eliminarlo`,
+          `El puesto "${puesto.name}" lo ocupan ${activos} empleado(s) activo(s): reasignalos antes de darlo de baja`,
         );
       }
       // Un legajo egresado sigue apuntando a su puesto: borrarlo lo dejaría sin él.
       const legajos = await empleados.count({ where: { positionId: id } });
       if (legajos > 0) {
         throw new ConflictException(
-          `El puesto "${puesto.name}" figura en ${legajos} legajo(s), también egresados: desactivalo (isActive=false) en vez de eliminarlo`,
+          `El puesto "${puesto.name}" figura en ${legajos} legajo(s), también egresados: desactivalo (isActive=false) en vez de darlo de baja`,
         );
       }
       if (puesto.isActive && CATEGORIAS_PROTEGIDAS.includes(puesto.category)) {
         await this.assertNoEsElUltimoActivo(manager, puesto);
       }
       await manager.getRepository(JobPosition).softRemove(puesto);
-      return MessageResponseDto.of('Puesto eliminado');
+      return MessageResponseDto.of('Puesto dado de baja');
     });
   }
 
@@ -189,7 +189,7 @@ export class JobPositionService {
       .getRepository(JobPosition)
       .findOne({ where: { positionId: id, distributorId } });
     if (!puesto) {
-      throw new NotFoundException(`Puesto ${id} no encontrado`);
+      throw new NotFoundException('Puesto no encontrado');
     }
     return puesto;
   }
@@ -199,7 +199,7 @@ export class JobPositionService {
       where: { positionId: id, distributorId },
     });
     if (!puesto) {
-      throw new NotFoundException(`Puesto ${id} no encontrado`);
+      throw new NotFoundException('Puesto no encontrado');
     }
     return puesto;
   }
@@ -217,7 +217,7 @@ export class JobPositionService {
       lock: { mode: 'pessimistic_read' },
     });
     if (!puesto) {
-      throw new NotFoundException(`Puesto ${id} no encontrado`);
+      throw new NotFoundException('Puesto no encontrado');
     }
     if (!puesto.isActive) {
       throw new ConflictException(
@@ -318,7 +318,7 @@ export class JobPositionService {
     });
     if (otros === 0) {
       throw new ConflictException(
-        `"${puesto.name}" es el último puesto activo de categoría ${puesto.category}: creá otro antes de desactivarlo, recategorizarlo o eliminarlo`,
+        `"${puesto.name}" es el último puesto activo de categoría ${puesto.category}: creá otro antes de desactivarlo, recategorizarlo o darlo de baja`,
       );
     }
   }

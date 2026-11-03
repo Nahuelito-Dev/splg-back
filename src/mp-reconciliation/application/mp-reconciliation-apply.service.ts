@@ -76,7 +76,7 @@ export class MpReconciliationApplyService {
       where: { reconciliationId: corridaId, distributorId: ctx.distributorId },
     });
     if (!corrida) {
-      throw new NotFoundException(`Conciliación ${corridaId} no encontrada`);
+      throw new NotFoundException('Conciliación no encontrada');
     }
     if (corrida.status !== MpReconciliationStatus.READY) {
       throw new ConflictException(
@@ -95,11 +95,13 @@ export class MpReconciliationApplyService {
     for (const itemId of pedidos.keys()) {
       const item = hallados.get(itemId);
       if (!item || (item.accountLevel && ctx.role !== RoleType.SUPER_ADMIN)) {
-        throw new NotFoundException(`Diferencia ${itemId} no encontrada`);
+        throw new NotFoundException(
+          `Diferencia del renglón ${dto.items.findIndex((i) => i.itemId === itemId) + 1} no encontrada`,
+        );
       }
       if (!item.appliable) {
         throw new BadRequestException(
-          `La diferencia ${itemId} (${item.kind}) no se puede asentar desde acá: ${item.note}`,
+          `Esa diferencia (${item.kind}) no se puede asentar desde acá: ${item.note}`,
         );
       }
       if (item.needsCashBox && !pedidos.get(itemId)) {
