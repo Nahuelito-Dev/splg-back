@@ -119,6 +119,7 @@ export class EmployeeController {
   @ApiParam({ name: 'id', description: 'Empleado UUID' })
   @ApiOkResponse({ type: EmployeeResponseDto })
   @ApiNotFoundResponse({ description: 'Empleado no encontrado' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -163,6 +164,7 @@ export class EmployeeController {
   @ApiOkResponse({ type: EmployeeResponseDto })
   @ApiNotFoundResponse({ description: 'Empleado no encontrado' })
   @ApiConflictResponse({ description: 'El legajo tiene cuenta de acceso' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -177,6 +179,7 @@ export class EmployeeController {
   @Get(':id/photo')
   @ApiVerFoto('Ver la foto del legajo (la del usuario si tiene cuenta)')
   @ApiParam({ name: 'id', description: 'Empleado UUID' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async getPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: DownloadQueryDto,
@@ -216,6 +219,7 @@ export class EmployeeController {
   @ApiConflictResponse({
     description: 'No es una alta errónea: corresponde el egreso',
   })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,

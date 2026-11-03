@@ -76,6 +76,9 @@ export class FleetTaskController {
     description: 'El vehículo/chofer no coincide con el subject del plan',
   })
   @ApiNotFoundResponse({ description: 'Plan, vehículo o chofer no encontrado' })
+  @ApiConflictResponse({
+    description: 'El empleado del plan está egresado',
+  })
   async create(
     @Body() dto: CreateFleetTaskDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -107,6 +110,7 @@ export class FleetTaskController {
   @ApiParam({ name: 'id', description: 'Task UUID' })
   @ApiOkResponse({ type: FleetTaskResponseDto })
   @ApiNotFoundResponse({ description: 'Tarea no encontrada' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -121,10 +125,13 @@ export class FleetTaskController {
   @ApiParam({ name: 'id', description: 'Task UUID' })
   @ApiOkResponse({ type: FleetTaskResponseDto })
   @ApiNotFoundResponse({ description: 'Tarea no encontrada' })
-  @ApiBadRequestResponse({ description: 'La tarea ya está hecha o cancelada' })
+  @ApiBadRequestResponse({
+    description:
+      'El id no es un UUID, el cuerpo trae un campo que no se puede editar o con formato inválido (fecha irreal, turno sólo-fecha inválido), el inicio de la vigencia es posterior al vencimiento, la habilitación queda sin vencimiento o el detalle no es válido para el plan',
+  })
   @ApiConflictResponse({
     description:
-      'La tarea ya está hecha o cancelada (la cerró otra operación mientras se editaba)',
+      'La tarea ya está hecha o cancelada (incluso si la cerró otra operación mientras se editaba)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -210,6 +217,7 @@ export class FleetTaskController {
   @ApiParam({ name: 'id', description: 'Task UUID' })
   @ApiOkResponse({ type: FleetTaskAttachmentResponseDto, isArray: true })
   @ApiNotFoundResponse({ description: 'Tarea no encontrada' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async listAttachments(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -240,6 +248,7 @@ export class FleetTaskController {
       'Sin `modo`: redirección (302) a la URL firmada de S3, que sirve el archivo con su content-type original',
   })
   @ApiNotFoundResponse({ description: 'Tarea o adjunto no encontrado' })
+  @ApiBadRequestResponse({ description: 'Un id no es un UUID' })
   async downloadAttachment(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
@@ -274,6 +283,7 @@ export class FleetTaskController {
   @ApiParam({ name: 'attachmentId', description: 'Attachment UUID' })
   @ApiOkResponse({ description: 'Borrado' })
   @ApiNotFoundResponse({ description: 'Tarea o adjunto no encontrado' })
+  @ApiBadRequestResponse({ description: 'Un id no es un UUID' })
   async removeAttachment(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
