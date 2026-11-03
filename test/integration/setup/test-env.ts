@@ -93,6 +93,38 @@ export function telefonoDePrueba(): string {
   return `+549${String(randomInt(0, 10_000_000_000)).padStart(10, '0')}`;
 }
 
+const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function letrasAlAzar(cantidad: number): string {
+  return Array.from({ length: cantidad }, () => LETRAS[randomInt(0, 26)]).join(
+    '',
+  );
+}
+
+/**
+ * Patente única con el formato Mercosur `AB123CD`, el que exige
+ * `CHK_car_patente` (~4,5 × 10⁸ combinaciones: no choca con
+ * `UQ_car_patente_distribuidora_vigente` dentro de una suite).
+ */
+export function patenteDePrueba(): string {
+  return `${letrasAlAzar(2)}${String(randomInt(0, 1000)).padStart(3, '0')}${letrasAlAzar(2)}`;
+}
+
+/**
+ * CUIT de persona jurídica (prefijo 30) con dígito verificador válido: cumple
+ * `CHK_distributor_cuit` y también `es_cuit_valido` de la base.
+ */
+export function cuitDePrueba(): string {
+  const factores = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  for (;;) {
+    const base = `30${String(randomInt(0, 100_000_000)).padStart(8, '0')}`;
+    const suma = factores.reduce((acc, f, i) => acc + f * Number(base[i]), 0);
+    const resto = suma % 11;
+    const verificador = resto === 0 ? 0 : 11 - resto;
+    if (verificador < 10) return `${base}${verificador}`;
+  }
+}
+
 /**
  * S3 por defecto de las suites que no prueban archivos: la app exige bucket y
  * región para arrancar, y el endpoint apunta a un puerto donde no escucha

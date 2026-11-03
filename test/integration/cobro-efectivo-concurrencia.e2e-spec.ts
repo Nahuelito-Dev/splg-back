@@ -8,7 +8,12 @@
  * parcial lo respalda.
  */
 import { DataSource } from 'typeorm';
-import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  telefonoDePrueba,
+  cuitDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -31,7 +36,8 @@ import { CashCollectionUseCase } from '../../src/order/application/cash-collecti
 import { ReportsService } from '../../src/reports/reports.service';
 import { OrderService } from '../../src/order/order.service';
 import { AdminGateway } from '../../src/gateways/admin.gateway';
-import { fechasDeEntrega } from './setup/pedido-valido';
+import { fechasDeEntrega, tipoDePago } from './setup/pedido-valido';
+import { EVENTO_INCIDENCIA_CREADA } from '../../src/incident/aviso-de-incidencia';
 
 describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
   let env: TestEnv;
@@ -69,7 +75,7 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
       name: `Distribuidora Cobro ${sufijo}`,
       slug: `dist-cobro-${sufijo}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `dist-cobro${sufijo}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>)) as Distributor;
@@ -115,6 +121,13 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
     return { order, chofer, distributor };
   }
 
+  // El socket también lleva el aviso de la bandeja del admin: se cuentan sólo
+  // los de incidencia creada.
+  const avisosDeIncidencia = () =>
+    (notify.mock.calls as unknown[][]).filter(
+      (c) => c[0] === EVENTO_INCIDENCIA_CREADA,
+    ).length;
+
   const incidenciasDe = (orderId: string) =>
     dataSource.getRepository(Incident).find({ where: { orderId } });
 
@@ -136,7 +149,7 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
     expect(incidencias).toHaveLength(1);
     expect(incidencias[0].type).toBe(IncidentType.UNPAID_COLLECTION);
     expect(new Set(resultados.map((r) => r.incident.incidentId)).size).toBe(1);
-    expect(notify).toHaveBeenCalledTimes(1);
+    expect(avisosDeIncidencia()).toBe(1);
     const guardado = await dataSource
       .getRepository(Order)
       .findOneOrFail({ where: { orderId: order.orderId } });
@@ -164,7 +177,7 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
     );
 
     expect(await incidenciasDe(order.orderId)).toHaveLength(1);
-    expect(notify).toHaveBeenCalledTimes(1);
+    expect(avisosDeIncidencia()).toBe(1);
   }, 60000);
 
   it('el índice único parcial respalda: una segunda incidencia viva del mismo pedido no entra, pero sí tras descartar la primera', async () => {
@@ -251,8 +264,10 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
         ...order,
         orderId: undefined,
         paymentMethod,
+        paymentType: tipoDePago(paymentMethod),
         paymentStatus,
         totalAmount,
+        subtotalItems: totalAmount,
         deliveredAt: new Date(),
       } as Partial<Order>);
     await copia(PaymentMethod.CASH, PaymentStatus.PAID, 100);
@@ -325,8 +340,18 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
     const { order, admin, admin2 } = await pedidoImpago();
 
     const [a, b] = await Promise.all([
-      cash.resolveUnpaid(order.orderId, admin.userId, 'written_off', 'nota A'),
-      cash.resolveUnpaid(order.orderId, admin2.userId, 'written_off', 'nota B'),
+      cash.resolveUnpaid(
+        order.orderId,
+        admin.userId,
+        'written_off',
+        'Nota del admin A',
+      ),
+      cash.resolveUnpaid(
+        order.orderId,
+        admin2.userId,
+        'written_off',
+        'Nota del admin B',
+      ),
     ]);
 
     expect([a.changed, b.changed].filter(Boolean)).toHaveLength(1);
@@ -346,7 +371,12 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
 
   it('repetir la resolución no pisa ni la nota del pedido ni la de la incidencia', async () => {
     const { order, admin, admin2 } = await pedidoImpago();
-    await cash.resolveUnpaid(order.orderId, admin.userId, 'paid', 'primera');
+    await cash.resolveUnpaid(
+      order.orderId,
+      admin.userId,
+      'paid',
+      'Primera resolución',
+    );
     const antes = await pedidoGuardado(order.orderId);
     const [incAntes] = await incidenciasDe(order.orderId);
 
@@ -354,16 +384,16 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
       order.orderId,
       admin2.userId,
       'paid',
-      'segunda',
+      'Segunda resolución',
     );
 
     expect(r.changed).toBe(false);
     const despues = await pedidoGuardado(order.orderId);
     const [incDespues] = await incidenciasDe(order.orderId);
-    expect(despues.paymentResolutionNote).toBe('primera');
+    expect(despues.paymentResolutionNote).toBe('Primera resolución');
     expect(despues.paymentResolvedBy).toBe(antes.paymentResolvedBy);
     expect(despues.paymentConfirmedBy).toBe(admin.userId);
-    expect(incDespues.resolutionNote).toBe('primera');
+    expect(incDespues.resolutionNote).toBe('Primera resolución');
     expect(incDespues.resolvedAt?.getTime()).toBe(
       incAntes.resolvedAt?.getTime(),
     );
@@ -381,12 +411,17 @@ describe('Cobro en efectivo: concurrencia (e2e, Postgres real)', () => {
       IncidentStatus.OPEN,
     );
 
-    await cash.resolveUnpaid(order.orderId, admin.userId, 'paid', 'cobrado');
+    await cash.resolveUnpaid(
+      order.orderId,
+      admin.userId,
+      'paid',
+      'Cobrado en el local',
+    );
     await expect(
       incidents.resolve(inc.incidentId, { resolutionNote: 'pisa' }),
     ).rejects.toThrow(/ya está resuelta/);
     expect((await incidenciasDe(order.orderId))[0].resolutionNote).toBe(
-      'cobrado',
+      'Cobrado en el local',
     );
   }, 60000);
 });

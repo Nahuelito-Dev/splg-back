@@ -125,6 +125,9 @@ describe('completar fotos de la demo (e2e)', () => {
       entities: [StorageOrphan],
       migrations: [join(__dirname, '../../src/migrations/*.ts')],
       synchronize: false,
+      // Como `src/data-source.ts`: un valor nuevo de un enum no se puede usar en
+      // la misma transacción que lo agrega.
+      migrationsTransactionMode: 'each',
     });
     await ds.initialize();
     await ds.runMigrations();

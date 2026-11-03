@@ -13,6 +13,8 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
+  cuitDePrueba,
 } from './setup/test-env';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Car } from '../../src/car/entities/car.entity';
@@ -36,6 +38,7 @@ import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { conBypassManager } from './setup/bypass';
+import { fechasSegunEstado } from './setup/pedido-valido';
 
 type Headers = Record<string, string>;
 
@@ -140,7 +143,7 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
     const auto = await ds.getRepository(Car).save({
       distributorId: d.distributorId,
       userId: c.user.userId,
-      carPatent: `T${seq}${randomUUID().slice(0, 4).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>);
     await ds.getRepository(VehicleAssignment).save({
       distributorId: d.distributorId,
@@ -158,7 +161,7 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       name: 'Distribuidora A',
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);
@@ -166,7 +169,7 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       name: 'Distribuidora B',
       slug: `distb-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `31-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `b${seq}${Date.now()}@test.local`,
       phone: '+540000000001',
     } as Partial<Distributor>);
@@ -283,13 +286,29 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
     http().patch(`/orders/${id}/receiver`).set(headers).send(cuerpo);
 
   /** Deja al pedido tomado por el chofer, como si lo hubiera aceptado. */
-  const aceptar = (id: string, e: E, estado = OrderStatus.ACCEPTED) =>
-    ds
-      .getRepository(Order)
-      .update(
-        { orderId: id },
-        { status: estado, deliveryId: e.chofer.del.deliveryId },
-      );
+  /** Lleva el pedido hasta `estado` paso a paso (las transiciones válidas), con las fechas y el chofer que la base exige. */
+  const aceptar = async (id: string, e: E, estado = OrderStatus.ACCEPTED) => {
+    const repo = ds.getRepository(Order);
+    const ahora = new Date();
+    await repo.update(
+      { orderId: id },
+      {
+        status: OrderStatus.ACCEPTED,
+        deliveryId: e.chofer.del.deliveryId,
+        acceptedAt: ahora,
+      },
+    );
+    if (estado === OrderStatus.ACCEPTED) return;
+    await repo.update(
+      { orderId: id },
+      { status: OrderStatus.ON_THE_WAY, onTheWayAt: ahora },
+    );
+    if (estado === OrderStatus.ON_THE_WAY) return;
+    await repo.update(
+      { orderId: id },
+      { status: OrderStatus.DELIVERED, deliveredAt: ahora },
+    );
+  };
 
   describe('CU-127 · cambiar la dirección de entrega', () => {
     it('pendiente en efectivo: recalcula el total con el recargo de la zona nueva, mueve el punto de entrega y asienta el cambio', async () => {
@@ -409,7 +428,7 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       await http()
         .patch(`/orders/${id}/cancel`)
         .set(e.cliente)
-        .send({})
+        .send({ reason: 'Ya no lo necesito' })
         .expect(200);
       await direccionDe(e, id, { addressId: e.a2.addressId }).expect(409);
     });
@@ -572,7 +591,10 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
         conBypassManager(ds, ['transiciones'], (m) =>
           m
             .getRepository(Order)
-            .update({ orderId: id }, { status: OrderStatus.ON_THE_WAY }),
+            .update(
+              { orderId: id },
+              { status: OrderStatus.ON_THE_WAY, onTheWayAt: new Date() },
+            ),
         ),
       ]);
       const p = await pedidoDe(id);
@@ -744,7 +766,7 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       await http()
         .patch(`/orders/${cancelado}/cancel`)
         .set(e.cliente)
-        .send({})
+        .send({ reason: 'Ya no lo necesito' })
         .expect(200);
       await receptorDe(cancelado, receptor, e.cliente).expect(409);
     });
@@ -769,7 +791,7 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       for (let i = 0; i < 30 && !altaAuditada; i++) {
         await esperar(200);
         const filas: unknown[] = await ds.query(
-          `SELECT 1 FROM audit_detail WHERE field = 'totalAmount' AND new_value = '2200'`,
+          `SELECT 1 FROM audit_detail WHERE field = 'totalAmount' AND new_value::numeric = 2200`,
         );
         altaAuditada = filas.length > 0;
       }
@@ -860,11 +882,22 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
         const id = await crearPedido(e);
         await receptorDe(id, receptor, e.cliente).expect(200);
         await conBypassManager(ds, ['transiciones'], (m) =>
-          m.getRepository(Order).update({ orderId: id }, { status: estado }),
+          m.getRepository(Order).update(
+            { orderId: id },
+            {
+              status: estado,
+              ...(estado === OrderStatus.DELIVERED && {
+                deliveryId: e.chofer.del.deliveryId,
+              }),
+              ...fechasSegunEstado(estado),
+            },
+          ),
         );
         if (entregadoHace !== undefined) {
           await ds.query(
-            `UPDATE "order" SET "deliveredAt" = now() - make_interval(days => $2),
+            // Sólo el entregado lleva `deliveredAt` (CHK_order_entregado_fecha).
+            `UPDATE "order" SET "deliveredAt" = CASE WHEN status = 'delivered'
+                      THEN now() - make_interval(days => $2) END,
                     "updatedAt" = now() - make_interval(days => $2)
               WHERE order_id = $1`,
             [id, entregadoHace],
@@ -902,9 +935,14 @@ describe('Dirección de entrega y quién recibe el pedido (C-10, e2e)', () => {
       const id = await crearPedido(e);
       await receptorDe(id, receptor, e.cliente).expect(200);
       await conBypassManager(ds, ['transiciones'], (m) =>
-        m
-          .getRepository(Order)
-          .update({ orderId: id }, { status: OrderStatus.DELIVERED }),
+        m.getRepository(Order).update(
+          { orderId: id },
+          {
+            status: OrderStatus.DELIVERED,
+            deliveryId: e.chofer.del.deliveryId,
+            ...fechasSegunEstado(OrderStatus.DELIVERED),
+          },
+        ),
       );
       await ds.query(
         `UPDATE "order" SET "deliveredAt" = now() - interval '40 days' WHERE order_id = $1`,

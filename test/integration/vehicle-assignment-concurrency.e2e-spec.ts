@@ -30,6 +30,7 @@ import {
   createTestApp,
   truncateAllTables,
   telefonoDePrueba,
+  patenteDePrueba,
 } from './setup/test-env';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
@@ -76,7 +77,7 @@ describe('Vehículo en uso — invariante de base (e2e)', () => {
 
   async function seedCar(distributorId: string, userId: string) {
     const carRepo = dataSource.getRepository(Car);
-    const patente = `TST${randomUUID().slice(0, 6).toUpperCase()}`;
+    const patente = patenteDePrueba();
     return (await carRepo.save({
       distributorId,
       userId,

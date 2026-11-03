@@ -13,6 +13,7 @@ import {
   createTestApp,
   truncateAllTables,
   telefonoDePrueba,
+  patenteDePrueba,
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
 import { generarImagenDemo } from '../../scripts/lib/imagenes-demo';
@@ -242,7 +243,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
     const car = (await dataSource.getRepository(Car).save({
       distributorId: d1.distributorId,
       userId: chofer.user.userId,
-      carPatent: `TST${randomUUID().slice(0, 6).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
       carBrand: 'Fiat',
       carModel: 'Fiorino',
     } as Partial<Car>)) as Car;
@@ -1394,7 +1395,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       const car = (await dataSource.getRepository(Car).save({
         distributorId: d1.distributorId,
         userId: chofer.user.userId,
-        carPatent: `TST${randomUUID().slice(0, 6).toUpperCase()}`,
+        carPatent: patenteDePrueba(),
       } as Partial<Car>)) as Car;
       await subir(`/car/${car.carId}/photo`, admin1.headers).expect(200);
       await subir(`/users/${chofer.user.userId}/photo`, admin1.headers).expect(

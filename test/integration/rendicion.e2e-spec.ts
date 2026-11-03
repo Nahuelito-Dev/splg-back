@@ -20,7 +20,12 @@ import { Car } from '../../src/car/entities/car.entity';
 import { WarehouseService } from '../../src/stock/application/warehouse.service';
 import { conIdempotencia } from './setup/con-idempotencia';
 import { Finanzas, Headers, cuerpo } from './setup/finanzas';
-import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  truncateAllTables,
+  patenteDePrueba,
+} from './setup/test-env';
 import { forzarEstado } from './setup/bypass';
 
 const mockReintentos = { n: 0 };
@@ -686,14 +691,17 @@ describe('Rendición del chofer (e2e)', () => {
       const auto = await ds.getRepository(Car).save({
         distributorId: base.e.distributorId,
         userId: base.chofer.userId,
-        carPatent: `T${randomUUID().slice(0, 5).toUpperCase()}`,
+        carPatent: patenteDePrueba(),
       } as Partial<Car>);
       const deposito = await env.app
         .get(WarehouseService)
         .asegurarPredeterminado(base.e.distributorId);
       const [carga] = await ds.query<Array<{ load_id: string }>>(
-        `INSERT INTO truck_load (distributor_id, number, car_id, delivery_id, origin_location_id, business_date, status, opened_by_user_id)
-         VALUES ($1, 1, $2, $3, $4, $5, $6, $7) RETURNING load_id`,
+        // Con las fechas que su estado exige (salida, regreso y cierre).
+        `INSERT INTO truck_load (distributor_id, number, car_id, delivery_id, origin_location_id, business_date, status, opened_by_user_id,
+                                 departed_at, returned_at, closed_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING load_id`,
         [
           base.e.distributorId,
           auto.carId,
@@ -702,6 +710,13 @@ describe('Rendición del chofer (e2e)', () => {
           hoy(),
           estado,
           base.e.adminUserId,
+          ['loading', 'cancelled'].includes(estado) ? null : new Date(),
+          ['returned', 'closed', 'closed_with_difference'].includes(estado)
+            ? new Date()
+            : null,
+          ['closed', 'closed_with_difference', 'cancelled'].includes(estado)
+            ? new Date()
+            : null,
         ],
       );
       return { ...base, cargaId: carga.load_id };
@@ -720,7 +735,7 @@ describe('Rendición del chofer (e2e)', () => {
       );
       await forzarEstado(
         ds,
-        `UPDATE truck_load SET status = 'closed' WHERE load_id = $1`,
+        `UPDATE truck_load SET status = 'closed', closed_at = now() WHERE load_id = $1`,
         [cargaId],
       );
       const aprobada = cuerpo<Rendicion>(

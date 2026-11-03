@@ -30,7 +30,6 @@ import {
 } from '../../src/order/entities/order.entity';
 import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { entregarComoAdmin } from './setup/entrega-admin';
-import { conBypass } from './setup/bypass';
 
 type Headers = Record<string, string>;
 
@@ -1187,17 +1186,16 @@ describe('Compras (e2e)', () => {
         const g = await seedGarrafa(e.distributorId);
         const p = await proveedor(e);
         // 25 llenas sin costo en el depósito; después R1 a 100, R2 a 300 y R3 a 100 (10 cada una)
-        await conBypass(
-          ds,
-          ['saldos'],
-          `INSERT INTO "stock_balance" ("distributor_id","location_id","gas_cylinder_id","condition","quantity")
-           VALUES ($1, $2, $3, 'full', 25)`,
-          [e.distributorId, e.locationId, g.gasCylinderId],
-        );
-        await ds.query(
-          `UPDATE "gas_cylinder" SET "stock" = 25 WHERE "gas_cylinder_id" = $1`,
-          [g.gasCylinderId],
-        );
+        // Las 25 entran por el libro (conteo inicial del depósito): un saldo
+        // sin movimiento lo rechaza la base (`CHK_stock_balance_saldo_contra_libro`).
+        await http()
+          .post('/stock/initial-counts')
+          .set(e.headers)
+          .send({
+            warehouseId: e.warehouseId,
+            items: [{ gasCylinderId: g.gasCylinderId, full: 25, empty: 0 }],
+          })
+          .expect(201);
         const compras: Recepcion[] = [];
         for (const [doc, costo] of [
           ['R1', 100],

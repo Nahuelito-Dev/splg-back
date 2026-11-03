@@ -29,6 +29,9 @@ describe('Migración StockFisico (e2e)', () => {
       entities: [join(__dirname, '../../src/**/*.entity.ts')],
       migrations: migraciones,
       synchronize: false,
+      // Como `src/data-source.ts`: un valor nuevo de un enum no se puede usar en
+      // la misma transacción que lo agrega.
+      migrationsTransactionMode: 'each',
     });
 
   const dir = join(__dirname, '../../src/migrations');
@@ -51,6 +54,11 @@ describe('Migración StockFisico (e2e)', () => {
   const g15 = randomUUID();
   const gB = randomUUID();
 
+  // Chofer de A: los pedidos aceptados, en camino y entregados lo llevan, con
+  // sus fechas, y el cancelado su motivo (los CHECK de migraciones posteriores
+  // validan estas filas).
+  let choferA: string;
+
   async function pedido(
     distributorId: string,
     customerId: string,
@@ -60,11 +68,25 @@ describe('Migración StockFisico (e2e)', () => {
     quantity: number,
   ) {
     const orderId = randomUUID();
+    const conChofer = ['accepted', 'on_the_way', 'delivered'].includes(status);
+    const ahora = new Date();
     await ds.query(
       `INSERT INTO "order" ("order_id", "distributor_id", "customer_id", "address_id", "status",
-                            "paymentMethod", "totalAmount", "subtotal_items")
-       VALUES ($1, $2, $3, $4, $5, 'cash', 100, 100)`,
-      [orderId, distributorId, customerId, addressId, status],
+                            "paymentMethod", "totalAmount", "subtotal_items",
+                            "delivery_id", "acceptedAt", "onTheWayAt", "deliveredAt", "cancellationReason")
+       VALUES ($1, $2, $3, $4, $5, 'cash', 100, 100, $6, $7, $8, $9, $10)`,
+      [
+        orderId,
+        distributorId,
+        customerId,
+        addressId,
+        status,
+        conChofer ? choferA : null,
+        conChofer ? ahora : null,
+        ['on_the_way', 'delivered'].includes(status) ? ahora : null,
+        status === 'delivered' ? ahora : null,
+        status === 'cancelled' ? 'El cliente se arrepintió' : null,
+      ],
     );
     await ds.query(
       `INSERT INTO "order_item" ("order_id", "gas_cylinder_id", "quantity", "unitPrice", "subtotal")
@@ -103,6 +125,16 @@ describe('Migración StockFisico (e2e)', () => {
       `INSERT INTO "user_address" ("address_id", "user_id", "street", "city") VALUES ($1, $2, 'x', 'y')`,
       [addressId, userId],
     );
+    const choferUserId = randomUUID();
+    await ds.query(
+      `INSERT INTO "user" ("user_id", "email") VALUES ($1, 'chofer@x.com')`,
+      [choferUserId],
+    );
+    const [chofer] = await ds.query<Array<{ delivery_id: string }>>(
+      `INSERT INTO "delivery" ("user_id", "distributor_id") VALUES ($1, $2) RETURNING "delivery_id"`,
+      [choferUserId, distA],
+    );
+    choferA = chofer.delivery_id;
     await ds.query(
       `INSERT INTO "gas_cylinder" ("gas_cylinder_id", "distributor_id", "type", "weight", "price", "stock")
        VALUES ($1, $4, '10kg', 10, 100, 40), ($2, $4, '15kg', 15, 150, 0), ($3, $5, '5kg', 5, 50, 0)`,

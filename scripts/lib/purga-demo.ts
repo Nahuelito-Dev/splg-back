@@ -26,7 +26,7 @@ import { EntityManager } from 'typeorm';
 import { limpiarCompras } from './purchase-demo';
 import { limpiarCargas } from './truck-load-demo';
 
-const TRIGGERS_DE_SOLO_ESCRITURA: ReadonlyArray<
+export const TRIGGERS_DE_SOLO_ESCRITURA: ReadonlyArray<
   [tabla: string, trigger: string]
 > = [
   ['stock_movement', 'stock_movement_inmutable'],
@@ -85,6 +85,8 @@ const TABLAS_DE_GESTION: readonly string[] = [
   'payment_refund',
   'admin_notification',
   'import_job',
+  'mp_reconciliation_item',
+  'mp_reconciliation',
 ];
 
 export interface ResumenDePurga {
@@ -263,6 +265,11 @@ export async function purgarDistribuidoras(
   );
 
   if (opciones.borrarDistribuidoras) {
+    // Las credenciales de Mercado Pago (las carga el admin) sólo se van con la
+    // distribuidora, y después de los pagos que las referencian.
+    await q(
+      `DELETE FROM "distributor_mercadopago_credentials" WHERE "distributor_id" = ANY($1::uuid[])`,
+    );
     await q(`DELETE FROM "delivery" WHERE "distributor_id" = ANY($1::uuid[])`);
     await q(`DELETE FROM "admin" WHERE "distributor_id" = ANY($1::uuid[])`);
     await q(

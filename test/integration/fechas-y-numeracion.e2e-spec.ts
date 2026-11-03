@@ -147,9 +147,12 @@ describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
         } as Partial<Order>)) as Order;
         await migracion.down(qr);
         // Escrito en UTC: leído como hora argentina quedaría 3 h en el futuro
-        // respecto de `updatedAt`.
+        // respecto de `updatedAt`. La aceptación y la salida, en hora argentina
+        // dentro del pedido (el pedido entregado las exige).
         await qr.query(
-          `UPDATE "order" SET "createdAt" = '2026-07-07 01:00:00+00', "updatedAt" = '2026-07-07 02:30:00+00', "deliveredAt" = '2026-07-07 02:30:00' WHERE "order_id" = $1`,
+          `UPDATE "order" SET "createdAt" = '2026-07-07 01:00:00+00', "updatedAt" = '2026-07-07 02:30:00+00',
+                  "acceptedAt" = '2026-07-06 22:10:00', "onTheWayAt" = '2026-07-06 22:20:00',
+                  "deliveredAt" = '2026-07-07 02:30:00' WHERE "order_id" = $1`,
           [pedido.orderId],
         );
         await expect(migracion.up(qr)).rejects.toThrow(/abortada/);
@@ -192,8 +195,8 @@ describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
       qr: ReturnType<DataSource['createQueryRunner']>,
     ) =>
       (await qr.query(
-        `SELECT conname, contype FROM pg_constraint WHERE conrelid = 'document_sequence'::regclass ORDER BY conname`,
-      )) as { conname: string; contype: string }[];
+        `SELECT conname, contype, pg_get_constraintdef(oid) AS definicion FROM pg_constraint WHERE conrelid = 'document_sequence'::regclass ORDER BY conname`,
+      )) as { conname: string; contype: string; definicion: string }[];
 
     it('up y down; la migración deja el mismo esquema que la entidad', async () => {
       const migracion = new CrearDocumentSequence1791000100000();
@@ -203,6 +206,7 @@ describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
         const delEsquema = await restricciones(qr);
         const columnasEsquema = (await qr.query(columnas)) as unknown[];
         expect(delEsquema.map((r) => r.conname)).toEqual([
+          'CHK_document_sequence_valores',
           'FK_document_sequence_distributor',
           'PK_document_sequence',
         ]);
@@ -214,6 +218,14 @@ describe('Fechas con zona y numeración de comprobantes (e2e)', () => {
         expect(existe).toBe(false);
 
         await migracion.up(qr);
+        // El CHECK lo agrega una migración posterior (ChecksDeLaBase): esta crea el resto.
+        expect((await restricciones(qr)).map((r) => r.conname)).toEqual([
+          'FK_document_sequence_distributor',
+          'PK_document_sequence',
+        ]);
+        await qr.query(
+          `ALTER TABLE "document_sequence" ADD CONSTRAINT "CHK_document_sequence_valores" CHECK ("last_number" >= 0 AND "doc_type" ~ '^[a-z][a-z0-9_]{0,39}$')`,
+        );
         expect(await restricciones(qr)).toEqual(delEsquema);
         expect(await qr.query(columnas)).toEqual(columnasEsquema);
       } finally {

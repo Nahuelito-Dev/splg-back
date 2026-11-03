@@ -6,7 +6,12 @@
  */
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  telefonoDePrueba,
+  patenteDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -29,6 +34,11 @@ import { OrderItem } from '../../src/order/entities/order-item.entity';
 import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { OfertaDeDespachoReemplazada1791100500000 } from '../../src/migrations/1791100500000-OfertaDeDespachoReemplazada';
 import { RealtimeDispatchPort } from '../../src/order/domain/ports/realtime-dispatch.port';
+import {
+  crearTriggerDeTransicion,
+  MAQUINAS_DE_ESTADO,
+  nombreDelTriggerDeTransicion,
+} from '../../src/migrations/sql/transiciones-de-estado';
 import { forzarEstado } from './setup/bypass';
 
 const LAT = -34.6037;
@@ -73,7 +83,7 @@ describe('Despacho: editar un pedido con oferta viva (e2e, Postgres + Redis real
     const auto = await ds.getRepository(Car).save({
       distributorId: distributor.distributorId,
       userId: user.userId,
-      carPatent: `R${sufijo.toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>);
     await ds.getRepository(VehicleAssignment).save({
       distributorId: distributor.distributorId,
@@ -185,6 +195,10 @@ describe('Despacho: editar un pedido con oferta viva (e2e, Postgres + Redis real
     const { distributor, order } = await nuevoPedido();
     const chofer = (await nuevoChofer(distributor, LAT + 0.001)).userId;
     const migracion = new OfertaDeDespachoReemplazada1791100500000();
+    const maquina = MAQUINAS_DE_ESTADO.find(
+      (m) => m.tabla === 'order_dispatch_offer',
+    );
+    if (!maquina) throw new Error('falta la máquina de order_dispatch_offer');
     const qr = ds.createQueryRunner();
     try {
       await ds.getRepository(DispatchOffer).save({
@@ -192,8 +206,14 @@ describe('Despacho: editar un pedido con oferta viva (e2e, Postgres + Redis real
         driverId: chofer,
         distributorId: distributor.distributorId,
         status: DispatchOfferStatus.SUPERSEDED,
+        offeredAt: new Date(Date.now() - 60_000),
         expiresAt: new Date(),
       } as Partial<DispatchOffer>);
+      // El trigger de transiciones (migración posterior) depende de la columna:
+      // se quita para revertir esta migración, como haría la reversión en orden.
+      await qr.query(
+        `DROP TRIGGER "${nombreDelTriggerDeTransicion(maquina.tabla)}" ON "${maquina.tabla}"`,
+      );
       await migracion.down(qr);
       const [fila] = (await qr.query(
         `SELECT status::text AS s FROM order_dispatch_offer WHERE order_id = $1`,
@@ -207,6 +227,11 @@ describe('Despacho: editar un pedido con oferta viva (e2e, Postgres + Redis real
         [order.orderId],
       );
     } finally {
+      // Pase lo que pase, el trigger vuelve: los demás tests dependen de él.
+      await qr.query(
+        `DROP TRIGGER IF EXISTS "${nombreDelTriggerDeTransicion(maquina.tabla)}" ON "${maquina.tabla}"`,
+      );
+      await qr.query(crearTriggerDeTransicion(maquina));
       await qr.release();
     }
   }, 60000);

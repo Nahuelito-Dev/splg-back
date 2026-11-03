@@ -111,7 +111,7 @@ describe('Importación masiva (e2e)', () => {
     nombre = 'carga.csv',
   ) =>
     http()
-      .post(`/imports/${recurso}/preview`)
+      .post(`/v2/imports/${recurso}/preview`)
       .set(e.headers)
       .attach('file', Buffer.from(texto, 'utf-8'), nombre);
 
@@ -122,7 +122,7 @@ describe('Importación masiva (e2e)', () => {
   ) => cuerpo<Vista>(await subir(e, recurso, texto).expect(201));
 
   const confirmar = (e: { headers: Headers }, importId: string) =>
-    http().post(`/imports/${importId}/confirm`).set(e.headers);
+    http().post(`/v2/imports/${importId}/confirm`).set(e.headers);
 
   const garrafas = (distributorId: string) =>
     ds.getRepository(GasCylinder).find({
@@ -147,14 +147,14 @@ describe('Importación masiva (e2e)', () => {
       const e = await seedDistribuidora();
       for (const recurso of ['garrafas', 'precios', 'stock', 'proveedores']) {
         const csv = await http()
-          .get(`/imports/${recurso}/template?format=csv`)
+          .get(`/v2/imports/${recurso}/template?format=csv`)
           .set(e.headers)
           .expect(200);
         expect(csv.headers['content-disposition']).toContain(
           `plantilla-${recurso}.csv`,
         );
         const xlsx = await http()
-          .get(`/imports/${recurso}/template`)
+          .get(`/v2/imports/${recurso}/template`)
           .set(e.headers)
           .buffer(true)
           .parse((r, cb) => {
@@ -172,7 +172,7 @@ describe('Importación masiva (e2e)', () => {
     it('la plantilla de garrafas, con su fila de ejemplo, es una vista previa válida', async () => {
       const e = await seedDistribuidora();
       const plantilla = await http()
-        .get('/imports/garrafas/template?format=csv')
+        .get('/v2/imports/garrafas/template?format=csv')
         .set(e.headers)
         .expect(200);
       const v = cuerpo<Vista>(
@@ -183,14 +183,17 @@ describe('Importación masiva (e2e)', () => {
 
     it('un cliente (rol sin permiso) es 403 en los tres endpoints', async () => {
       const { headers } = await sembrarClienteAutenticado(env.app);
-      await http().get('/imports/garrafas/template').set(headers).expect(403);
       await http()
-        .post('/imports/garrafas/preview')
+        .get('/v2/imports/garrafas/template')
+        .set(headers)
+        .expect(403);
+      await http()
+        .post('/v2/imports/garrafas/preview')
         .set(headers)
         .attach('file', Buffer.from('Tipo\n1\n'), 'a.csv')
         .expect(403);
       await http()
-        .post(`/imports/${randomUUID()}/confirm`)
+        .post(`/v2/imports/${randomUUID()}/confirm`)
         .set(headers)
         .expect(403);
     });
@@ -519,11 +522,46 @@ describe('Importación masiva (e2e)', () => {
         isActive: true,
         distributorId: e.distributorId,
       } as Partial<GasCylinder>);
+      // Al subir el archivo hay 3 vacías: la vista previa es válida. Antes de
+      // confirmar se pierde una, y el descuento de 3 ya no entra.
+      await http()
+        .post('/stock/initial-counts')
+        .set(e.headers)
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          warehouseId: e.warehouseId,
+          items: [{ gasCylinderId: g.gasCylinderId, full: 0, empty: 3 }],
+        })
+        .expect(201);
       const v = await vista(
         e,
         'stock',
         `Depósito;Tipo;Condición;Variación\n${e.codigoDeposito};10 kg;llena;40\n${e.codigoDeposito};10 kg;vacía;-3\n`,
       );
+      await http()
+        .post('/stock/adjustments')
+        .set(e.headers)
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          location: { warehouseId: e.warehouseId },
+          reason: 'lost',
+          notes: 'Una vacía que no apareció',
+          items: [
+            {
+              gasCylinderId: g.gasCylinderId,
+              condition: 'empty',
+              quantityDelta: -1,
+            },
+          ],
+        })
+        .expect(201);
+      const contarAjustes = async () =>
+        (
+          await ds.query<Array<{ n: string }>>(
+            `SELECT count(*)::text AS n FROM stock_adjustment`,
+          )
+        )[0].n;
+      const ajustesAntes = await contarAjustes();
 
       const resp = await confirmar(e, v.importId).expect(400);
 
@@ -531,10 +569,8 @@ describe('Importación masiva (e2e)', () => {
         new RegExp(`^Depósito ${e.codigoDeposito}: Stock insuficiente`),
       );
       expect(await saldo(e.locationId, g.gasCylinderId, 'full')).toBe(0);
-      const [{ n }] = await ds.query<Array<{ n: string }>>(
-        `SELECT count(*)::text AS n FROM stock_adjustment`,
-      );
-      expect(n).toBe('0');
+      expect(await saldo(e.locationId, g.gasCylinderId, 'empty')).toBe(2);
+      expect(await contarAjustes()).toBe(ajustesAntes);
     });
   });
 
@@ -584,7 +620,7 @@ describe('Importación masiva (e2e)', () => {
       const buffer = Buffer.from(await libro.xlsx.writeBuffer());
 
       const res = await http()
-        .post('/imports/garrafas/preview')
+        .post('/v2/imports/garrafas/preview')
         .set(e.headers)
         .attach('file', buffer, 'carga.xlsx')
         .expect(201);
@@ -598,12 +634,15 @@ describe('Importación masiva (e2e)', () => {
     it('rechaza lo que no es xlsx ni csv, el encabezado equivocado y el recurso inexistente', async () => {
       const e = await seedDistribuidora();
       await http()
-        .post('/imports/garrafas/preview')
+        .post('/v2/imports/garrafas/preview')
         .set(e.headers)
         .attach('file', Buffer.from('%PDF-1.4'), 'a.pdf')
         .expect(415);
       await subir(e, 'garrafas', 'Color\nrojo\n').expect(400);
-      await http().post('/imports/garrafas/preview').set(e.headers).expect(400);
+      await http()
+        .post('/v2/imports/garrafas/preview')
+        .set(e.headers)
+        .expect(400);
       await subir(e, 'clientes', 'Tipo\n1\n').expect(400);
     });
   });

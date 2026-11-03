@@ -463,6 +463,7 @@ describe('seed:demo en contenedores (e2e)', () => {
         stock_location: { kind: 'warehouse', warehouse_id: randomUUID() },
         stock_movement: { to_location_id: randomUUID(), to_condition: 'full' },
         // Lo que cada regla de la base exige a una fila suelta.
+        cash_movement: { created_by_user_id: randomUUID() },
         cylinder_inspection: { next_due_at: new Date() },
         document_sequence: { doc_type: 'prueba_vieja', last_number: 1 },
         driver_liquidation: { gross: 10, deductions: 0, net: 10 },
@@ -471,6 +472,16 @@ describe('seed:demo en contenedores (e2e)', () => {
           valid_to: '2026-12-31',
         },
         maintenance_task: { car_id: randomUUID() },
+        maintenance_window_proposal: {
+          window_start: new Date(Date.now() - 3_600_000),
+          window_end: new Date(),
+        },
+        repurchase_invitation: {
+          expires_at: new Date(Date.now() + 86_400_000),
+          suggested_items: '[{"cantidad":1}]',
+          estimate_source: 'history',
+          payment_method: 'cash',
+        },
         supplier: { cuit: '20123456786' },
         time_slot: { startTime: '08:00:00', endTime: '12:00:00' },
         warehouse: { code: 'DEP-PRUEBA' },
@@ -663,7 +674,7 @@ describe('seed:demo en contenedores (e2e)', () => {
         WHERE table_schema = 'public'
           AND data_type IN ('character varying', 'text')
           AND table_name NOT IN ('migrations', 'spatial_ref_sys', 'storage_orphan', 'geography_columns', 'geometry_columns')
-          AND column_name !~* '(key|_id$|^id$|uid|hash|token|code|^ip$|path|url|external_reference|gateway|serial|cbu|mime|original_name|selfie|entity|resource|http_method|client_source|actor_role)'`,
+          AND column_name !~* '(key|_id$|^id$|uid|hash|token|code|^ip$|path|url|external_reference|gateway|serial|cbu|mime|original_name|selfie|secret|entity|resource|http_method|client_source|actor_role)'`,
     );
     expect(columnas.length).toBeGreaterThan(50);
     const sucias: string[] = [];

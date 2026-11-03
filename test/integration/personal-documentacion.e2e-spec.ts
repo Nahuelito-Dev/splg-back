@@ -14,6 +14,7 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
 } from './setup/test-env';
 import { FirebaseAuthPort } from '../../src/firebase/ports/firebase-auth.port';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
@@ -221,7 +222,7 @@ describe('Personal: documentación, asistencia, licencias y habilitación (e2e)'
     const auto = (await dataSource.getRepository(Car).save({
       distributorId,
       userId,
-      carPatent: `TST${randomUUID().slice(0, 6).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
       carBrand: 'Fiat',
       carModel: 'Fiorino',
     } as Partial<Car>)) as Car;

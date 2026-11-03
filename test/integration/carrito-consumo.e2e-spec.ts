@@ -13,6 +13,7 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  cuitDePrueba,
 } from './setup/test-env';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Cart } from '../../src/cart/entities/cart.entity';
@@ -124,7 +125,7 @@ describe('Carrito y consumo declarado (HTTP e2e)', () => {
       name: nombre,
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);

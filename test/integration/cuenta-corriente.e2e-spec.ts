@@ -17,7 +17,12 @@ import {
 import { conIdempotencia } from './setup/con-idempotencia';
 import { entregarComoAdmin } from './setup/entrega-admin';
 import { Finanzas, Headers, cuerpo } from './setup/finanzas';
-import { TestEnv, createTestApp, truncateAllTables } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  cuitDePrueba,
+  truncateAllTables,
+} from './setup/test-env';
 import { forzarEstado } from './setup/bypass';
 
 const mockReintentos = { n: 0 };
@@ -413,7 +418,7 @@ describe('Cuentas corrientes (e2e)', () => {
       ).toBe(2000);
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
+        `UPDATE "order" SET status = 'cancelled', "cancellationReason" = 'El cliente se arrepintió' WHERE order_id = $1`,
         [p.order_id],
       );
       expect(
@@ -651,17 +656,18 @@ describe('Cuentas corrientes (e2e)', () => {
       expect(cargos.map((c) => c.pendingAmount)).toEqual([0, 1500]);
     });
 
-    it('un pago mayor a la deuda deja saldo a favor', async () => {
+    it('un pago mayor a la deuda se rechaza (409) y no mueve ni la cuenta ni la caja', async () => {
       const { e, cajaId, cuenta } = await conDeuda();
       await abrirCaja(e, cajaId);
-      await pagar(e.headers, cuenta.accountId, {
+      const res = await pagar(e.headers, cuenta.accountId, {
         amount: 6000,
         method: 'cash',
         cashBoxId: cajaId,
-      }).expect(201);
-      expect(await saldoDe(cuenta.accountId)).toBe(-1000);
+      }).expect(409);
+      expect(JSON.stringify(res.body)).toContain('supera la deuda');
+      expect(await saldoDe(cuenta.accountId)).toBe(5000);
       const detalle = await cuentaDe(e.headers, cuenta.accountId);
-      expect(detalle.availableCredit).toBe(101000);
+      expect(detalle.availableCredit).toBe(95000);
     });
 
     it('valida: sin caja (409), caja sin sesión (409), importe no positivo (400), caja ajena (404), cuenta ajena (404), cuenta cerrada (409)', async () => {
@@ -692,16 +698,24 @@ describe('Cuentas corrientes (e2e)', () => {
         method: 'cash',
         cashBoxId: cajaId,
       }).expect(404);
-      await forzarEstado(
-        ds,
-        `UPDATE customer_account SET status = 'closed' WHERE account_id = $1`,
-        [cuenta.accountId],
+      // Una cuenta sólo se cierra con saldo cero: la cerrada es la de otro cliente.
+      const otro = await f.cliente('Beto');
+      const cerrada = cuerpo<Cuenta>(
+        await habilitar(e.headers, otro.userId, {
+          taxId: cuitDePrueba(),
+        }).expect(201),
       );
-      await pagar(e.headers, cuenta.accountId, {
+      await http()
+        .patch(`/customer-accounts/${cerrada.accountId}`)
+        .set(e.headers)
+        .send({ status: 'closed' })
+        .expect(200);
+      await pagar(e.headers, cerrada.accountId, {
         amount: 100,
         method: 'cash',
         cashBoxId: cajaId,
       }).expect(409);
+      expect(await saldoDe(cerrada.accountId)).toBe(0);
       expect(await saldoDe(cuenta.accountId)).toBe(5000);
     });
 
@@ -787,8 +801,10 @@ describe('Cuentas corrientes (e2e)', () => {
         type: 'payment',
         cashMovementId: null,
         collectedByDeliveryId: chofer.deliveryId,
-        balanceAfter: 3000,
+        // El chofer no ve el saldo del cliente (contrato de `balanceAfter`).
+        balanceAfter: null,
       });
+      expect(await saldoDe(cuenta.accountId)).toBe(3000);
       const [caja] = await ds.query<Array<{ balance: string; movs: number }>>(
         `SELECT balance, (SELECT COUNT(*)::int FROM cash_movement) AS movs FROM cash_box WHERE cash_box_id = $1`,
         [cajaId],

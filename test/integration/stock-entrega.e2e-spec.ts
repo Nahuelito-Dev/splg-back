@@ -6,7 +6,12 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
-import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  telefonoDePrueba,
+  patenteDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -86,7 +91,7 @@ describe('Entrega de un pedido y stock físico (e2e, Postgres real)', () => {
     const auto = (await ds.getRepository(Car).save({
       distributorId: distributor.distributorId,
       userId: chofer.userId,
-      carPatent: `E${seq}${randomUUID().slice(0, 4).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>)) as Car;
 
     const clienteUser = (await ds.getRepository(User).save({
