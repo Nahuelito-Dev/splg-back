@@ -48,7 +48,7 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Parámetros del despacho de la distribuidora',
     description:
-      'Pasos de radio (km) y ventana de aceptación de la oferta (s). Si la distribuidora no configuró nada, devuelve los valores por omisión (`isDefault: true`).',
+      'Pasos de radio (km), ventana de aceptación de la oferta (s) y radio en metros al destino para los choferes por terminar su entrega (CU-013). Si la distribuidora no configuró nada, devuelve los valores por omisión (`isDefault: true`).',
   })
   @ApiOkResponse({ type: DispatchConfigResponseDto })
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
@@ -62,7 +62,7 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Cambiar los parámetros del despacho',
     description:
-      'Reemplaza la configuración. De 1 a 8 pasos de radio, cada uno entre 1 y 100 km y estrictamente mayor que el anterior; ventana entre 10 y 300 s. Rige para las ofertas que se creen desde ese momento (las ya enviadas conservan su vencimiento); en otras instancias del servidor, como máximo un minuto después.',
+      'Reemplaza la configuración. De 1 a 8 pasos de radio, cada uno entre 1 y 100 km y estrictamente mayor que el anterior; ventana entre 10 y 300 s; radio de choferes por terminar entre 0 y 5000 m, entero (0 lo apaga: sólo se ofrece a choferes sin pedido en curso). Rige para las ofertas que se creen desde ese momento (las ya enviadas conservan su vencimiento); en otras instancias del servidor, como máximo un minuto después.',
   })
   @ApiOkResponse({ type: DispatchConfigResponseDto })
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
