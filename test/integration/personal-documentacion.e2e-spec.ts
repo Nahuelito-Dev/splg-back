@@ -37,6 +37,7 @@ import {
   MaintenancePlan,
   MaintenanceSubject,
 } from '../../src/fleet/entities/maintenance-plan.entity';
+import { calcularEstadoDeVencimiento } from '../../src/fleet/domain/expiration-status';
 import { MaintenanceTask } from '../../src/fleet/entities/maintenance-task.entity';
 import { FleetPlanSeedListener } from '../../src/fleet/fleet-plan-seed.listener';
 import { FleetAlertsCron } from '../../src/fleet/fleet-alerts.cron';
@@ -543,6 +544,206 @@ describe('Personal: documentación, asistencia, licencias y habilitación (e2e)'
         .get(`/employees/${choferId}/documents`)
         .set(admin2.headers)
         .expect(404);
+    });
+  });
+
+  describe('estado de la documentación en el listado (CU-180)', () => {
+    type Fila = {
+      employeeId: string;
+      documentStatus: string | null;
+      nextDocumentDueDate: string | null;
+    };
+    const listar = async (headers: Headers, qs = '') =>
+      cuerpoDe<{ data: Fila[]; total: number }>(
+        await http().get(`/employees${qs}`).set(headers).expect(200),
+      );
+
+    it('calcula el estado por empleado, filtra por SQL con paginado correcto y aísla distribuidoras', async () => {
+      const { d1, admin1, admin2 } = await escenario();
+      const art = await planDe(d1.distributorId, 'Alta en ART');
+      const psico = await planDe(d1.distributorId, 'Examen psicofísico');
+      const enDias = (n: number) =>
+        new Date(Date.now() + n * 86_400_000).toISOString();
+      const deposito = () =>
+        legajo(admin1.headers, d1.distributorId, JobPositionCategory.WAREHOUSE);
+      const conArt = async (empleadoId: string, dueAt: string) =>
+        cargarDocumento(admin1.headers, {
+          planId: art.planId,
+          employeeId: empleadoId,
+          dueAt,
+          details: DETALLE_ART,
+        }).expect(201);
+
+      const alDia = await deposito();
+      await conArt(alDia, enDias(200));
+      const porVencer = await deposito();
+      await conArt(porVencer, enDias(10));
+      const vencida = await deposito();
+      await conArt(vencida, '2020-01-01T00:00:00.000Z');
+      const faltante = await deposito();
+      const egresado = await deposito();
+      await dataSource.getRepository(Employee).update(
+        { employeeId: egresado },
+        {
+          status: EmployeeStatus.TERMINATED,
+          terminationDate: diaArgentino(),
+        },
+      );
+      // Vencida gana sobre faltante: al chofer le faltan otros planes.
+      const choferVencido = await legajo(
+        admin1.headers,
+        d1.distributorId,
+        JobPositionCategory.DRIVER,
+      );
+      await cargarDocumento(admin1.headers, {
+        planId: psico.planId,
+        employeeId: choferVencido,
+        dueAt: '2020-01-01T00:00:00.000Z',
+        details: { examDate: '2019-01-01' },
+      }).expect(201);
+      // Una tarea cerrada no cuenta: vuelve a faltar.
+      const cerrada = await deposito();
+      const tarea = await conArt(cerrada, enDias(200));
+      await http()
+        .patch(
+          `/fleet/tasks/${cuerpoDe<{ taskId: string }>(tarea).taskId}/close`,
+        )
+        .set(admin1.headers)
+        .send({ performedAt: new Date().toISOString() })
+        .expect(200);
+
+      const todos = await listar(admin1.headers, '?limit=50');
+      const estadoDe = (id: string) =>
+        todos.data.find((f) => f.employeeId === id)?.documentStatus;
+      expect(estadoDe(alDia)).toBe('up_to_date');
+      expect(estadoDe(porVencer)).toBe('due_soon');
+      expect(estadoDe(vencida)).toBe('expired');
+      expect(estadoDe(faltante)).toBe('missing');
+      expect(estadoDe(egresado)).toBeNull();
+      expect(estadoDe(choferVencido)).toBe('expired');
+      expect(estadoDe(cerrada)).toBe('missing');
+      expect(
+        todos.data.find((f) => f.employeeId === vencida)?.nextDocumentDueDate,
+      ).toBe('2020-01-01');
+      expect(
+        todos.data.find((f) => f.employeeId === faltante)?.nextDocumentDueDate,
+      ).toBeNull();
+
+      const ids = async (qs: string) =>
+        (await listar(admin1.headers, qs)).data.map((f) => f.employeeId).sort();
+      expect(await ids('?documentStatus=expired&limit=50')).toEqual(
+        [vencida, choferVencido].sort(),
+      );
+      expect(await ids('?documentStatus=missing&limit=50')).toEqual(
+        [faltante, cerrada].sort(),
+      );
+      expect(await ids('?documentStatus=due_soon&limit=50')).toEqual([
+        porVencer,
+      ]);
+      expect(await ids('?documentStatus=up_to_date&limit=50')).toEqual([alDia]);
+      // Combina con otros filtros.
+      expect(
+        await ids('?documentStatus=expired&category=driver&limit=50'),
+      ).toEqual([choferVencido]);
+
+      // El total y la página salen del filtro, no de la lista completa.
+      const pagina = await listar(
+        admin1.headers,
+        '?documentStatus=missing&limit=1&page=2',
+      );
+      expect(pagina.total).toBe(2);
+      expect(pagina.data).toHaveLength(1);
+
+      // Otra distribuidora no ve nada de esto.
+      expect(
+        (await listar(admin2.headers, '?documentStatus=expired')).total,
+      ).toBe(0);
+    });
+
+    it('rechaza un estado inválido (400), sin sesión (401) y con rol de chofer (403)', async () => {
+      const { admin1 } = await escenario();
+      await http()
+        .get('/employees?documentStatus=nada')
+        .set(admin1.headers)
+        .expect(400);
+      await http().get('/employees?documentStatus=expired').expect(401);
+      const c = await chofer(admin1.headers);
+      await http()
+        .get('/employees?documentStatus=expired')
+        .set(c.headers)
+        .expect(403);
+    });
+
+    it('bordes: licencia del perfil de reparto, perfil dado de baja, día del vencimiento, plan inactivo y plan que no le aplica', async () => {
+      const { d1, admin1 } = await escenario();
+      const licencia = await planDe(d1.distributorId, 'Licencia de conducir');
+      const art = await planDe(d1.distributorId, 'Alta en ART');
+      const estadoDe = async (id: string) =>
+        (await listar(admin1.headers, '?limit=50')).data.find(
+          (f) => f.employeeId === id,
+        )?.documentStatus;
+
+      // Chofer con cuenta: su licencia cuelga del perfil de reparto, no del legajo.
+      const c = await chofer(admin1.headers);
+      await cargarDocumento(admin1.headers, {
+        planId: licencia.planId,
+        deliveryId: c.delivery.deliveryId,
+        dueAt: '2020-01-01T00:00:00.000Z',
+      }).expect(201);
+      expect(await estadoDe(c.empleado.employeeId)).toBe('expired');
+      // Con el perfil dado de baja ya no cuenta: vuelven a faltarle los planes.
+      await dataSource
+        .getRepository(Delivery)
+        .softDelete({ deliveryId: c.delivery.deliveryId });
+      expect(await estadoDe(c.empleado.employeeId)).toBe('missing');
+
+      // El día del vencimiento y el siguiente, contra la regla de dominio.
+      const hoy = new Date();
+      const medianoche = (dias: number) =>
+        new Date(
+          Date.UTC(
+            hoy.getUTCFullYear(),
+            hoy.getUTCMonth(),
+            hoy.getUTCDate() + dias,
+          ),
+        );
+      const esperado = (dueAt: Date) =>
+        ({ expired: 'expired', due_soon: 'due_soon', current: 'up_to_date' })[
+          calcularEstadoDeVencimiento(dueAt, art.leadTimeDays) as string
+        ];
+      for (const dias of [0, -1]) {
+        const id = await legajo(
+          admin1.headers,
+          d1.distributorId,
+          JobPositionCategory.WAREHOUSE,
+        );
+        await cargarDocumento(admin1.headers, {
+          planId: art.planId,
+          employeeId: id,
+          dueAt: medianoche(dias).toISOString(),
+          details: DETALLE_ART,
+        }).expect(201);
+        expect(await estadoDe(id)).toBe(esperado(medianoche(dias)));
+      }
+      // Un plan inactivo, o que no le aplica por categoría, no da «faltante».
+      const sinNada = await legajo(
+        admin1.headers,
+        d1.distributorId,
+        JobPositionCategory.SALES,
+      );
+      expect(await estadoDe(sinNada)).toBe('missing');
+      await dataSource
+        .getRepository(MaintenancePlan)
+        .update({ planId: art.planId }, { isActive: false });
+      expect(await estadoDe(sinNada)).toBe('up_to_date');
+      await dataSource.getRepository(MaintenancePlan).update(
+        { planId: art.planId },
+        {
+          isActive: true,
+          appliesToCategories: [JobPositionCategory.DRIVER],
+        },
+      );
+      expect(await estadoDe(sinNada)).toBe('up_to_date');
     });
   });
 

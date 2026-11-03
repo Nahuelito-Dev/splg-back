@@ -26,7 +26,12 @@ import { QueryEmployeeDto } from './dto/query-employee.dto';
 import { ReinstateEmployeeDto } from './dto/terminate-employee.dto';
 import { JobPositionService } from './job-position.service';
 import { EmployeeRulesRegistry } from './employee-rules.registry';
-import { EmployeeConPuesto } from './employee.mapper';
+import { EmployeeConPuesto, ResumenDeDocumentacion } from './employee.mapper';
+import { EmployeeDocumentStatus } from './domain/document-status';
+import {
+  SQL_ESTADO_DE_DOCUMENTACION,
+  SQL_PROXIMO_VENCIMIENTO,
+} from './employee-document-status.sql';
 import { partirNombreCompleto } from './domain/nombre';
 import {
   nacimientoAnteriorAlIngreso,
@@ -284,7 +289,11 @@ export class EmployeeService {
   async findAll(
     query: QueryEmployeeDto,
     distributorId: string,
-  ): Promise<Pagina<EmployeeConPuesto>> {
+  ): Promise<
+    Pagina<EmployeeConPuesto> & {
+      documentacion: Map<string, ResumenDeDocumentacion>;
+    }
+  > {
     const limit = query.limit ?? 10;
     const page = query.page ?? 1;
     const consulta = this.employees
@@ -318,6 +327,12 @@ export class EmployeeService {
       );
     }
 
+    if (query.documentStatus) {
+      consulta.andWhere(`${SQL_ESTADO_DE_DOCUMENTACION} = :documentStatus`, {
+        documentStatus: query.documentStatus,
+      });
+    }
+
     const [data, total] = await consulta
       .orderBy('e.lastName', 'ASC')
       .addOrderBy('e.firstName', 'ASC')
@@ -325,7 +340,40 @@ export class EmployeeService {
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
-    return { data: data.map(conPuesto), total };
+    return {
+      data: data.map(conPuesto),
+      total,
+      documentacion: await this.resumenDeDocumentacion(
+        data.map((e) => e.employeeId),
+      ),
+    };
+  }
+
+  /** El estado de la documentación de esos legajos (CU-180), calculado en la base. */
+  private async resumenDeDocumentacion(
+    ids: string[],
+  ): Promise<Map<string, ResumenDeDocumentacion>> {
+    const resumen = new Map<string, ResumenDeDocumentacion>();
+    if (ids.length === 0) return resumen;
+    const filas = await this.employees
+      .createQueryBuilder('e')
+      .innerJoin('e.position', 'p')
+      .select('e.employeeId', 'employeeId')
+      .addSelect(SQL_ESTADO_DE_DOCUMENTACION, 'estado')
+      .addSelect(SQL_PROXIMO_VENCIMIENTO, 'proximo')
+      .where('e.employeeId IN (:...ids)', { ids })
+      .getRawMany<{
+        employeeId: string;
+        estado: EmployeeDocumentStatus | null;
+        proximo: string | null;
+      }>();
+    for (const f of filas) {
+      resumen.set(f.employeeId, {
+        estado: f.estado,
+        proximoVencimiento: f.proximo,
+      });
+    }
+    return resumen;
   }
 
   /** consultarEmpleado (CU-179): el legajo completo y, si es chofer, su perfil de reparto. */

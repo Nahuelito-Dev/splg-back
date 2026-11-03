@@ -2,9 +2,11 @@ import { Employee } from './entities/employee.entity';
 import { JobPosition } from './entities/job-position.entity';
 import {
   EmployeeListItemDto,
+  EmployeeListRowDto,
   EmployeePositionDto,
   EmployeeResponseDto,
 } from './dto/employee-response.dto';
+import { EmployeeDocumentStatus } from './domain/document-status';
 import { JobPositionResponseDto } from './dto/job-position-response.dto';
 
 export class JobPositionMapper {
@@ -25,6 +27,12 @@ export class JobPositionMapper {
 /** Un empleado con su puesto cargado: lo que el mapper necesita. */
 export type EmployeeConPuesto = Employee & { position: JobPosition };
 
+/** Lo que el listado muestra de la documentación de un legajo (CU-180). */
+export interface ResumenDeDocumentacion {
+  estado: EmployeeDocumentStatus | null;
+  proximoVencimiento: string | null;
+}
+
 function puestoDto(puesto: JobPosition): EmployeePositionDto {
   const dto = new EmployeePositionDto();
   dto.positionId = puesto.positionId;
@@ -34,8 +42,14 @@ function puestoDto(puesto: JobPosition): EmployeePositionDto {
 }
 
 export class EmployeeMapper {
-  static toListItem(empleado: EmployeeConPuesto): EmployeeListItemDto {
-    return EmployeeMapper.llenarFila(new EmployeeListItemDto(), empleado);
+  static toListItem(
+    empleado: EmployeeConPuesto,
+    documentacion: ResumenDeDocumentacion,
+  ): EmployeeListRowDto {
+    const dto = EmployeeMapper.llenarFila(new EmployeeListRowDto(), empleado);
+    dto.documentStatus = documentacion.estado;
+    dto.nextDocumentDueDate = documentacion.proximoVencimiento;
+    return dto;
   }
 
   static toDto(

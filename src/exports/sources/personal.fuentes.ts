@@ -10,7 +10,8 @@ import type {
 import { ConsultarAuditoriaDto } from '../../audit/dto/consultar-auditoria.dto';
 import type { AsientoDeAuditoriaDto } from '../../audit/dto/audit-log-response.dto';
 import { QueryEmployeeDto } from '../../employee/dto/query-employee.dto';
-import type { EmployeeListItemDto } from '../../employee/dto/employee-response.dto';
+import type { EmployeeListRowDto } from '../../employee/dto/employee-response.dto';
+import { ETIQUETA_DE_DOCUMENTACION } from '../../employee/domain/document-status';
 import { EmployeeMapper } from '../../employee/employee.mapper';
 import { EmployeeService } from '../../employee/employee.service';
 import type { FuenteDeExporte } from '../export.types';
@@ -52,7 +53,7 @@ export interface ServiciosDePersonal {
 
 export function fuentesDePersonal(s: ServiciosDePersonal): FuenteDeExporte[] {
   return [
-    fuente<QueryEmployeeDto, EmployeeListItemDto>({
+    fuente<QueryEmployeeDto, EmployeeListRowDto>({
       recurso: 'legajos',
       descripcion:
         'Legajos del personal, sin datos personales sensibles (mismos filtros que GET /employees)',
@@ -61,7 +62,15 @@ export function fuentesDePersonal(s: ServiciosDePersonal): FuenteDeExporte[] {
       leer: async (query, distribuidoraId) => {
         const r = await s.employees.findAll(query, distribuidoraId);
         return {
-          filas: r.data.map((e) => EmployeeMapper.toListItem(e)),
+          filas: r.data.map((e) =>
+            EmployeeMapper.toListItem(
+              e,
+              r.documentacion.get(e.employeeId) ?? {
+                estado: null,
+                proximoVencimiento: null,
+              },
+            ),
+          ),
           total: r.total,
         };
       },
@@ -74,6 +83,10 @@ export function fuentesDePersonal(s: ServiciosDePersonal): FuenteDeExporte[] {
         texto('Estado', (e) => e.status),
         fecha('Ingreso', (e) => e.hireDate),
         booleano('Tiene cuenta', (e) => e.hasAccount),
+        texto('Documentación', (e) =>
+          e.documentStatus ? ETIQUETA_DE_DOCUMENTACION[e.documentStatus] : null,
+        ),
+        fecha('Próximo vencimiento', (e) => e.nextDocumentDueDate),
       ],
     }),
 

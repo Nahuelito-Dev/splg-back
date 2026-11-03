@@ -9,6 +9,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
+import { EmployeeDocumentStatus } from '../domain/document-status';
 import { EmployeeStatus } from '../entities/employee.entity';
 import { JobPositionCategory } from '../entities/job-position.entity';
 
@@ -49,10 +50,12 @@ export class QueryEmployeeDto extends PickType(PaginationDto, [
   hasAccount?: boolean;
 
   @ApiPropertyOptional({
+    enum: EmployeeDocumentStatus,
     description:
-      'Reservado para la documentación del personal (tanda B-A2): hoy se acepta y se ignora',
+      'Estado de la documentación (CU-180). Sólo alcanza a los legajos activos: ' +
+      'los egresados no tienen estado y no aparecen con este filtro',
   })
   @IsOptional()
-  @IsString()
-  documentStatus?: string;
+  @IsEnum(EmployeeDocumentStatus)
+  documentStatus?: EmployeeDocumentStatus;
 }
