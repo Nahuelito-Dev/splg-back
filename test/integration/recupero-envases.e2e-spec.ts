@@ -31,9 +31,12 @@ import { CylinderRecoveryService } from '../../src/cylinder/recovery/cylinder-re
 import { RecoveryDecision } from '../../src/cylinder/recovery/dto/recovery-request.dto';
 import { OrderLookupService } from '../../src/order/lookup/order-lookup.service';
 import { Order } from '../../src/order/entities/order.entity';
+import { diaArgentino } from '../../src/common/utils/dias-argentina';
 
 const DIA = 24 * 60 * 60 * 1000;
-const T0 = new Date('2026-10-31T12:00:00Z');
+// El reloj del motor se controla, pero la base sella `sent_at` con su `now()`: T0 tiene que ser el presente
+// para que los vencimientos calculados desde T0 no queden en el pasado respecto de la base.
+const T0 = new Date();
 
 describe('Recupero de envases (e2e)', () => {
   let pg: StartedPostgreSqlContainer;
@@ -605,7 +608,7 @@ describe('Recupero de envases (e2e)', () => {
       const pedido = await pedidoDe(d, u);
       await ds.query(
         `UPDATE "order" SET scheduled_date = $2 WHERE order_id = $1`,
-        [pedido, '2026-11-03'],
+        [pedido, diaArgentino(new Date(T0.getTime() + 3 * DIA))],
       );
 
       const r = await engine.ejecutar(d, T0);
