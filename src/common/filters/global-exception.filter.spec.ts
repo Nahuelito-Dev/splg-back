@@ -4,6 +4,10 @@ import { InvalidOrderTransitionError } from '../../order/domain/errors/invalid-o
 import { GasCylinderNotFoundError } from '../../gascylinder/domain/errors/gas-cylinder-not-found.error';
 import { InsufficientStockError } from '../../gascylinder/domain/errors/insufficient-stock.error';
 import { InvalidCylinderTransitionError } from '../../cylinder/domain/errors/invalid-cylinder-transition.error';
+import {
+  InvalidRouteInputError,
+  MissingStopLoadError,
+} from '../../route-batch/domain/errors/route-sheet.errors';
 import { OrderStatus } from '../../order/entities/order.entity';
 import { CylinderState } from '../../cylinder/entities/cylinder.entity';
 
@@ -44,6 +48,29 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
     filter = new GlobalExceptionFilter(applicationRef as unknown as HttpServer);
     host = makeHost();
   });
+
+  it.each([
+    [
+      'datos de ruteo inválidos',
+      new InvalidRouteInputError('el pedido ord-123 está repetido'),
+    ],
+    ['carga faltante', new MissingStopLoadError('ord-123')],
+  ])(
+    '%s es una falla interna: 500 genérico, sin el detalle ni los ids en la respuesta',
+    (_nombre, error) => {
+      filter.catch(error, host);
+      expect(applicationRef.reply).toHaveBeenCalledTimes(1);
+      const [, cuerpo, status] = applicationRef.reply.mock.calls[0] as [
+        unknown,
+        { statusCode: number; message: string },
+        number,
+      ];
+      expect(status).toBe(500);
+      expect(cuerpo.statusCode).toBe(500);
+      expect(cuerpo.message).toBe('Internal server error');
+      expect(JSON.stringify(cuerpo)).not.toContain('ord-123');
+    },
+  );
 
   it.each(['55P03', '57014'])(
     'un error de base %s (lock/statement timeout) responde 503 en castellano',

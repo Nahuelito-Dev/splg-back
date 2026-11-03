@@ -237,6 +237,48 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Ya existe una zona activa con esa prioridad: cada zona tiene una prioridad distinta',
   CHK_route_batch_stop_secuencia: 'El orden de la parada empieza en 1',
   UQ_route_batch_stop_secuencia: 'Ya hay otra parada con ese orden en la ruta',
+  CHK_route_batch_stop_ventana:
+    'La franja estimada de la parada tiene que tener inicio y fin, y terminar después de empezar',
+  CHK_route_batch_stop_salida:
+    'Una parada que salió de la hoja necesita el motivo y la fecha de salida, y al revés',
+  CHK_route_batch_stop_tramo_min: 'El tramo de la parada no puede ser negativo',
+  CHK_route_plan_propuesta:
+    'Una planificación con la propuesta armada necesita la fecha de la propuesta (una planificación abierta se puede cerrar sin propuesta)',
+  CHK_route_plan_cierre:
+    'La planificación cerrada necesita su fecha de cierre, y sólo ella',
+  UQ_route_plan_dia:
+    'Ya hay una planificación de ese día para la distribuidora',
+  CHK_route_batch_hoja_fecha:
+    'Sólo la hoja de ruta lleva fecha de reparto, y toda hoja de ruta la lleva',
+  CHK_route_batch_estados_oferta:
+    'Un lote ofrecido no puede estar en borrador ni confirmado',
+  CHK_route_batch_estados_hoja:
+    'Una hoja de ruta no puede estar formándose ni ofrecida',
+  CHK_route_batch_hoja_confirmada:
+    'Una hoja confirmada necesita chofer, vehículo y la fecha de confirmación',
+  CHK_route_batch_hoja_iniciada:
+    'Una hoja en curso necesita la fecha de inicio',
+  CHK_route_batch_unidades: 'Las garrafas de la hoja no pueden ser negativas',
+  CHK_route_batch_pico: 'El pico de envases de la hoja no puede ser negativo',
+  CHK_route_batch_totales:
+    'La distancia y la duración de la hoja no pueden ser negativas',
+  CHK_route_batch_hoja_numero:
+    'Sólo la hoja de ruta lleva número, y empieza en 1',
+  CHK_route_batch_metodo:
+    'El método de orden de la hoja tiene que ser nn_2opt o manual',
+  CHK_route_batch_matriz:
+    'El origen de los tiempos de la hoja tiene que ser osrm, google o haversine',
+  CHK_route_batch_propuesta_por:
+    'Quien propuso la hoja tiene que ser el sistema o un administrador',
+  UQ_route_batch_hoja_chofer_dia:
+    'El chofer ya tiene otra hoja de ruta confirmada o en curso ese día',
+  UQ_route_batch_hoja_vehiculo_dia:
+    'El vehículo ya tiene otra hoja de ruta confirmada o en curso ese día',
+  UQ_route_batch_numero: 'Ya existe una hoja con ese número',
+  CHK_car_max_cylinders:
+    'La cantidad de garrafas del vehículo tiene que ser mayor que cero',
+  CHK_module_config_hoja_de_ruta:
+    'Algún parámetro de la hoja de ruta está fuera de su rango',
   CHK_order_dispatch_offer_vencimiento:
     'La oferta tiene que vencer después de ofrecerse',
   UQ_order_dispatch_offer_viva:
@@ -307,6 +349,8 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'La cuenta corriente no puede pasar a ese estado desde el estado en que está',
   CHK_order_dispatch_offer_transicion_de_estado:
     'La oferta de despacho no puede pasar a ese estado desde el estado en que está',
+  CHK_route_batch_transicion_de_estado:
+    'El lote de recorrido no puede pasar a ese estado desde el estado en que está',
   // Cajas de cobro de las ventas
   CHK_cash_collection_settings_mercadopago_billetera:
     'La caja de Mercado Pago tiene que ser una billetera',

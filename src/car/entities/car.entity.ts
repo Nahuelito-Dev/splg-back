@@ -34,6 +34,10 @@ export enum FuelType {
   'CHK_car_patente',
   `"car_patent" IS NULL OR "car_patent" ~ '^([A-Z]{3}[0-9]{3}|[A-Z]{2}[0-9]{3}[A-Z]{2})$'`,
 )
+@Check(
+  'CHK_car_max_cylinders',
+  `"max_cylinders" IS NULL OR "max_cylinders" > 0`,
+)
 @Index('UQ_car_patente_distribuidora_vigente', { synchronize: false })
 @Unique('UQ_car_id_distribuidora', ['carId', 'distributorId'])
 @Entity('car')
@@ -150,6 +154,10 @@ export class Car {
     nullable: true,
   })
   maxLoadKg!: number | null;
+
+  /** Garrafas que entran en el vehículo (tope del reparto planificado). */
+  @Column({ name: 'max_cylinders', type: 'int', nullable: true })
+  maxCylinders!: number | null;
 
   @Column({ name: 'odometer_km', type: 'integer', nullable: true })
   odometerKm!: number | null;

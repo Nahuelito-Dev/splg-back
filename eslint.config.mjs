@@ -41,8 +41,15 @@ export default tseslint.config(
       'jest/no-disabled-tests': 'error',
       'jest/expect-expect': [
         'error',
-        // cuentan como aserción el `.expect(...)` de supertest y `desempata`, que hace `expect` adentro
-        { assertFunctionNames: ['expect', '**.expect', 'desempata'] },
+        // cuentan como aserción el `.expect(...)` de supertest, `desempata` y `rechazaPor`, que hacen `expect` adentro
+        {
+          assertFunctionNames: [
+            'expect',
+            '**.expect',
+            'desempata',
+            'rechazaPor',
+          ],
+        },
       ],
       'jest/no-identical-title': 'error',
       'jest/valid-expect': 'error',

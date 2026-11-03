@@ -186,6 +186,8 @@ export async function purgarDistribuidoras(
        (SELECT "batch_id" FROM "route_batch" WHERE "distributor_id" = ANY($1::uuid[]))`,
   );
   await q(`DELETE FROM "route_batch" WHERE "distributor_id" = ANY($1::uuid[])`);
+  // La planificación del día: las hojas la referencian, así que va después.
+  await q(`DELETE FROM "route_plan" WHERE "distributor_id" = ANY($1::uuid[])`);
 
   // Recupero de envases.
   await q(

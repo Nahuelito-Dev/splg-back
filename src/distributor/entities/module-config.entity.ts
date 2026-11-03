@@ -32,6 +32,8 @@ export enum ConfigurableProcess {
   SCHEDULED_TASKS = 'scheduled_tasks',
   /** Recargo por medio de pago, en % (transferencia, Mercado Pago, efectivo). */
   PAYMENT_SURCHARGES = 'payment_surcharges',
+  /** Hoja de ruta: planificación del día siguiente (M4, modalidad `planned`). */
+  ROUTE_PLANNING = 'route_planning',
 }
 
 /**
@@ -123,6 +125,31 @@ const CHECK_AGRUPACION = RANGOS_DE_LA_AGRUPACION.map(
     `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'groupingRadiusKm' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
 ).join(' AND ');
 
+/**
+ * Rangos de los parámetros de la hoja de ruta: los mismos de `ESQUEMAS` en
+ * `process-config.ts`. `trafficFactor` es el único decimal.
+ */
+const RANGOS_DE_LA_HOJA: ReadonlyArray<[string, number, number]> = [
+  ['enabled', 0, 1],
+  ['cutoffHour', 0, 23],
+  ['cutoffMinute', 0, 59],
+  ['autoPropose', 0, 1],
+  ['maxStopsPerSheet', 2, 40],
+  ['serviceMinutes', 1, 60],
+  ['trafficFactor', 1, 3],
+  ['etaWindowMinutes', 10, 120],
+  ['etaRecalcMinSeconds', 30, 900],
+  ['etaRecalcMinMeters', 50, 5000],
+  ['etaNotifyShiftMinutes', 5, 120],
+  ['lateOrderPolicy', 0, 1],
+  ['notStartedAlertMinutes', 0, 240],
+];
+
+const CHECK_HOJA = RANGOS_DE_LA_HOJA.map(
+  ([k, min, max]) =>
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'trafficFactor' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
+).join(' AND ');
+
 /** Recargos por medio de pago: 0 a 30 %, hasta 2 decimales (cada clave puede faltar). */
 const CHECK_RECARGOS = [
   'transferPercentage',
@@ -180,6 +207,10 @@ const CHECK_DESPACHO = [
 @Check(
   'CHK_module_config_recargos',
   `"module"::text <> 'payment_surcharges' OR (${CHECK_RECARGOS})`,
+)
+@Check(
+  'CHK_module_config_hoja_de_ruta',
+  `"module"::text <> 'route_planning' OR (${CHECK_HOJA})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

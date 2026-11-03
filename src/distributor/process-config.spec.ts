@@ -7,7 +7,11 @@ import {
   valoresDesde,
   valoresPorOmision,
 } from './process-config';
-import { ConfigurableProcess } from './entities/module-config.entity';
+import { getMetadataArgsStorage } from 'typeorm';
+import {
+  ConfigurableProcess,
+  ModuleConfig,
+} from './entities/module-config.entity';
 
 const REPURCHASE = ESQUEMAS[ConfigurableProcess.REPURCHASE];
 /** Un proceso con un campo decimal (`number`), para probar que acepta decimales. */
@@ -17,6 +21,55 @@ const CON_DECIMAL = Object.values(ESQUEMAS).find((e) =>
 const CAMPO_DECIMAL = CON_DECIMAL.fields.find((c) => c.type === 'number')!;
 
 describe('process-config', () => {
+  describe('hoja de ruta (route_planning)', () => {
+    const HOJA = ESQUEMAS[ConfigurableProcess.ROUTE_PLANNING];
+
+    it('viene apagada, cierra a las 18:00 y propone sola', () => {
+      const v = valoresPorOmision(HOJA);
+      expect(v).toMatchObject({
+        enabled: 0,
+        cutoffHour: 18,
+        cutoffMinute: 0,
+        autoPropose: 1,
+        maxStopsPerSheet: 20,
+        serviceMinutes: 10,
+        trafficFactor: 1.2,
+        etaWindowMinutes: 30,
+        lateOrderPolicy: 1,
+        notStartedAlertMinutes: 30,
+      });
+    });
+
+    it('el factor de tránsito admite decimales; el resto son enteros', () => {
+      expect(validarParametros(HOJA, { trafficFactor: 1.35 })).toEqual([]);
+      expect(validarParametros(HOJA, { serviceMinutes: 7.5 })).toHaveLength(1);
+      expect(validarParametros(HOJA, { cutoffHour: 24 })).toHaveLength(1);
+      expect(validarParametros(HOJA, { trafficFactor: 0.9 })).toHaveLength(1);
+      expect(validarParametros(HOJA, { maxStopsPerSheet: 41 })).toHaveLength(1);
+    });
+
+    it('el CHECK de la base tiene los mismos campos y rangos que el esquema', () => {
+      const check = getMetadataArgsStorage().checks.find(
+        (c) =>
+          c.target === ModuleConfig &&
+          c.name === 'CHK_module_config_hoja_de_ruta',
+      );
+      expect(check).toBeDefined();
+      const expresion = check?.expression ?? '';
+      for (const c of HOJA.fields) {
+        expect(expresion).toContain(
+          `("params" ->> '${c.key}')::numeric BETWEEN ${c.min} AND ${c.max}`,
+        );
+      }
+      const claves = [
+        ...expresion.matchAll(/jsonb_typeof\("params" -> '(\w+)'\)/g),
+      ];
+      expect(claves.map((m) => m[1]).sort()).toEqual(
+        HOJA.fields.map((c) => c.key).sort(),
+      );
+    });
+  });
+
   describe('recuperación de envases (CU-108)', () => {
     const RECUPERO = ESQUEMAS[ConfigurableProcess.CYLINDER_RECOVERY];
 
@@ -131,12 +184,13 @@ describe('process-config', () => {
     });
   });
 
-  it('son cuatro procesos; el despacho, las tareas, el express y el control de stock no están', () => {
+  it('son cinco procesos; el despacho, las tareas, el express y el control de stock no están', () => {
     expect([...PROCESOS_AUTOMATICOS].sort()).toEqual([
       'cylinder_recovery',
       'fleet_planner',
       'repurchase',
       'route_batching',
+      'route_planning',
     ]);
     expect(esProcesoAutomatico('dispatch')).toBe(false);
     expect(esProcesoAutomatico('scheduled_tasks')).toBe(false);

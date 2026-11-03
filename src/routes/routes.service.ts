@@ -18,6 +18,7 @@ import { errorMessage } from '../common/errors/error-message';
 import { OrderService } from '../order/order.service';
 import { RedisService } from '../redis/redis.service';
 import { DrivingRouteDto } from './dto/driving-route.dto';
+import { urlDeOsrm } from './osrm-url';
 import { PuntoDeRuta, decodificarPolilinea } from './polyline';
 
 /** `fetch` inyectable: los tests simulan al proveedor sin red. */
@@ -44,7 +45,6 @@ const DECIMALES_DE_CACHE = 4;
 const TTL_DE_CACHE_SEG = 60;
 const TTL_DIARIO_SEG = 24 * 60 * 60;
 const TIMEOUT_PROVEEDOR_MS = 5000;
-const OSRM_PUBLICO = 'https://router.project-osrm.org';
 const RADIO_TIERRA_M = 6_371_000;
 
 /** Distancia entre dos puntos sobre la esfera (haversine), en metros. */
@@ -295,7 +295,7 @@ export class RoutesService {
         );
       }
     }
-    const osrm = this.urlDeOsrm();
+    const osrm = urlDeOsrm(this.config);
     if (!osrm) {
       this.logger.error(
         'Sin proveedor de rutas: falta GOOGLE_DIRECTIONS_API_KEY y OSRM_BASE_URL (el OSRM público sólo se usa en desarrollo)',
@@ -312,16 +312,6 @@ export class RoutesService {
         'No se pudo calcular la ruta: el servicio de mapas no responde',
       );
     }
-  }
-
-  /** El OSRM propio; el público sólo con `NODE_ENV` de desarrollo o test. */
-  private urlDeOsrm(): string | null {
-    const propio = this.config.get<string>('OSRM_BASE_URL');
-    if (propio) return propio.replace(/\/+$/, '');
-    const entorno = this.config.get<string>('NODE_ENV');
-    return entorno === 'development' || entorno === 'test'
-      ? OSRM_PUBLICO
-      : null;
   }
 
   private async pedir<T>(url: string): Promise<T> {
