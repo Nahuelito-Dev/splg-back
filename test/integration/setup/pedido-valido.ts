@@ -7,7 +7,11 @@ import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { Delivery } from '../../../src/delivery/entities/delivery.entity';
 import { User } from '../../../src/users/entities/user.entity';
-import { OrderStatus } from '../../../src/order/entities/order.entity';
+import {
+  OrderStatus,
+  PaymentMethod,
+  PaymentType,
+} from '../../../src/order/entities/order.entity';
 import { telefonoDePrueba } from './test-env';
 
 /** Las tres fechas de un pedido entregado (aceptado, en camino, entregado). */
@@ -67,5 +71,21 @@ export function fechasSegunEstado(
       return { cancellationReason: 'Cancelado en la prueba' };
     default:
       return {};
+  }
+}
+
+/**
+ * El tipo de pago que corresponde al medio (`CHK_order_pago_coherente`):
+ * efectivo y cuenta corriente son el mismo tipo; transferencia y Mercado Pago
+ * son pagos en línea.
+ */
+export function tipoDePago(medio: PaymentMethod): PaymentType {
+  switch (medio) {
+    case PaymentMethod.CASH:
+      return PaymentType.CASH;
+    case PaymentMethod.ACCOUNT:
+      return PaymentType.ACCOUNT;
+    default:
+      return PaymentType.ONLINE;
   }
 }

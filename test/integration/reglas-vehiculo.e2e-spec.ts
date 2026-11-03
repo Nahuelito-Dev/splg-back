@@ -15,6 +15,7 @@ import {
   createTestApp,
   truncateAllTables,
   telefonoDePrueba,
+  patenteDePrueba,
 } from './setup/test-env';
 import {
   Order,
@@ -47,7 +48,6 @@ import {
   MaintenanceTask,
   MaintenanceTaskStatus,
 } from '../../src/fleet/entities/maintenance-task.entity';
-import { NormalizarPatentes1790900000000 } from '../../src/migrations/1790900000000-NormalizarPatentes';
 import { fechasSegunEstado } from './setup/pedido-valido';
 import { forzarEstado } from './setup/bypass';
 
@@ -106,7 +106,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
   async function seedAuto(
     distributorId: string,
     userId: string,
-    patente = `TST${randomUUID().slice(0, 6).toUpperCase()}`,
+    patente = patenteDePrueba(),
   ) {
     return (await dataSource.getRepository(Car).save({
       distributorId,
@@ -368,41 +368,6 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
 
       const encontrado = await autos.findByPatent('ab 123 cd', d.distributorId);
       expect(encontrado?.carId).toBe(creado.carId);
-    }, 30000);
-
-    it('la migración normaliza las existentes y deja sin tocar las que chocarían', async () => {
-      const d = await seedDistribuidora();
-      const { user } = await seedChofer(d.distributorId);
-      const sucia = await seedAuto(d.distributorId, user.userId, 'cd 456-ef');
-      const choqueA = await seedAuto(d.distributorId, user.userId, 'gh 111 ij');
-      const choqueB = await seedAuto(d.distributorId, user.userId, 'GH-111-IJ');
-      const baja = await seedAuto(d.distributorId, user.userId, 'kl 222 mn');
-      await dataSource.getRepository(Car).softDelete({ carId: baja.carId });
-
-      const advertencias = jest
-        .spyOn(console, 'warn')
-        .mockImplementation(() => undefined);
-      const qr = dataSource.createQueryRunner();
-      await qr.connect();
-      try {
-        await new NormalizarPatentes1790900000000().up(qr);
-      } finally {
-        await qr.release();
-      }
-      const avisos = advertencias.mock.calls.map((c) => String(c[0]));
-      advertencias.mockRestore();
-
-      const patente = async (id: string) =>
-        (
-          await dataSource
-            .getRepository(Car)
-            .findOne({ where: { carId: id }, withDeleted: true })
-        )?.carPatent;
-      expect(await patente(sucia.carId)).toBe('CD456EF');
-      expect(await patente(choqueA.carId)).toBe('gh 111 ij');
-      expect(await patente(choqueB.carId)).toBe('GH-111-IJ');
-      expect(await patente(baja.carId)).toBe('KL222MN');
-      expect(avisos.some((a) => a.includes('GH111IJ'))).toBe(true);
     }, 30000);
   });
 
@@ -703,11 +668,15 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
         criticality: MaintenanceCriticality.BLOCKING,
       } as Partial<MaintenancePlan>)) as MaintenancePlan;
       const mismaFecha = new Date('2030-01-01T00:00:00Z');
+      // Toda tarea es de un sujeto (CHK_maintenance_task_un_sujeto): un vehículo.
+      const { user } = await seedChofer(d.distributorId);
+      const auto = await seedAuto(d.distributorId, user.userId);
       const repo = dataSource.getRepository(MaintenanceTask);
       const nueva = (planId: string, dueAt: Date | null) =>
         repo.save({
           planId,
           distributorId: d.distributorId,
+          carId: auto.carId,
           status: MaintenanceTaskStatus.FORECAST,
           dueAt,
         } as Partial<MaintenanceTask>);
@@ -836,7 +805,7 @@ describe('Reglas de vehículo en uso, bajas, patentes, emails y stock (e2e)', ()
         async (qr) => {
           await forzarEstado(
             qr,
-            `UPDATE "order" SET status = 'accepted', delivery_id = $1 WHERE order_id = $2`,
+            `UPDATE "order" SET status = 'accepted', delivery_id = $1, "acceptedAt" = now() WHERE order_id = $2`,
             [delivery.deliveryId, pedido.orderId],
           );
         },

@@ -55,7 +55,7 @@ describe('Filtros del panel (e2e)', () => {
 
   async function seedCliente(
     distributorId: string,
-    opciones: { blocked?: boolean; pidio?: boolean } = {},
+    opciones: { blocked?: boolean; pidio?: boolean; deliveryId?: string } = {},
   ) {
     const sufijo = randomUUID().slice(0, 8);
     const rol = await seedRol(RoleType.CUSTOMER);
@@ -85,8 +85,9 @@ describe('Filtros del panel (e2e)', () => {
         paymentMethod: PaymentMethod.CASH,
         totalAmount: 1000,
         subtotalItems: 1000,
-        deliveryId: (await sembrarChoferDeFixture(dataSource, distributorId))
-          .deliveryId,
+        deliveryId:
+          opciones.deliveryId ??
+          (await sembrarChoferDeFixture(dataSource, distributorId)).deliveryId,
         ...fechasDeEntrega(),
       } as Partial<Order>);
     }
@@ -205,7 +206,11 @@ describe('Filtros del panel (e2e)', () => {
       const superAdmin = await seedAdmin(RoleType.SUPER_ADMIN, null);
       const chofer = await seedChofer(a.distributorId);
       await seedChofer(b.distributorId);
-      await seedCliente(a.distributorId);
+      // El pedido entregado del cliente lo lleva el chofer de A (sin otro usuario).
+      const { deliveryId } = await dataSource
+        .getRepository(Delivery)
+        .findOneByOrFail({ userId: chofer.userId });
+      await seedCliente(a.distributorId, { deliveryId });
 
       const choferes = await get(adminA, '/users?role=delivery').expect(200);
       expect(
@@ -311,10 +316,14 @@ describe('Filtros del panel (e2e)', () => {
         '2026-09-10T10:00:00Z',
       );
       await seedEnvase(a.distributorId, 'SN-OTRO');
+      // El envase de B sólo puede moverse con un pedido de B: la clave foránea
+      // del movimiento es por distribuidora.
+      const { pedido: pedidoDeB } = await seedCliente(b.distributorId);
+      const pedB = pedidoDeB as Order;
       const deB = await seedEnvase(b.distributorId, 'SN-VIAJE');
       await mover(
         deB,
-        ped.orderId,
+        pedB.orderId,
         CylinderState.DISPATCHED,
         '2026-10-02T10:00:00Z',
       );
@@ -362,19 +371,31 @@ describe('Filtros del panel (e2e)', () => {
       ).expect(200);
       expect(cuerpo<Envase[]>(resto)).toHaveLength(1);
 
-      // Tenant: el admin de A nunca ve el envase de B aunque comparta pedido.
+      // Tenant: el admin de A nunca ve el envase de B, ni pidiendo el pedido de B.
       expect(
         cuerpo<Envase[]>(porPedido).map((c) => c.cylinder_id),
       ).not.toContain(deB.cylinderId);
-      // Super admin sin header ve las dos; con header, sólo la elegida.
+      const ajeno = await get(
+        adminA,
+        `/cylinders?orderId=${pedB.orderId}`,
+      ).expect(200);
+      expect(cuerpo<Envase[]>(ajeno)).toEqual([]);
+      // Super admin sin header ve los de A; con el header de B, el pedido de A
+      // no le trae nada y el de B, su envase.
       const global = await get(
         superAdmin,
         `/cylinders?orderId=${ped.orderId}`,
       ).expect(200);
-      expect(global.headers['x-total-count']).toBe('4');
-      const soloB = await get(
+      expect(global.headers['x-total-count']).toBe('3');
+      const deAConB = await get(
         superAdmin,
         `/cylinders?orderId=${ped.orderId}`,
+        b.slug,
+      ).expect(200);
+      expect(cuerpo<Envase[]>(deAConB)).toEqual([]);
+      const soloB = await get(
+        superAdmin,
+        `/cylinders?orderId=${pedB.orderId}`,
         b.slug,
       ).expect(200);
       expect(cuerpo<Envase[]>(soloB).map((c) => c.cylinder_id)).toEqual([

@@ -9,7 +9,12 @@
  */
 import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  telefonoDePrueba,
+  cuitDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -26,7 +31,7 @@ import { UnpaidCashService } from '../../src/incident/unpaid-cash.service';
 import { ReportsService } from '../../src/reports/reports.service';
 import { OrderService } from '../../src/order/order.service';
 import { AdminGateway } from '../../src/gateways/admin.gateway';
-import { fechasSegunEstado } from './setup/pedido-valido';
+import { fechasSegunEstado, tipoDePago } from './setup/pedido-valido';
 
 describe('Cobros y lecturas de pedidos (e2e, Postgres real)', () => {
   let env: TestEnv;
@@ -59,7 +64,7 @@ describe('Cobros y lecturas de pedidos (e2e, Postgres real)', () => {
       name: `Distribuidora Tanda ${sufijo}`,
       slug: `dist-tanda-${sufijo}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `dist-tanda${sufijo}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>)) as Distributor;
@@ -104,6 +109,7 @@ describe('Cobros y lecturas de pedidos (e2e, Postgres real)', () => {
         deliveryId: delivery.deliveryId,
         ...fechasSegunEstado(parcial.status ?? OrderStatus.DELIVERED),
         ...parcial,
+        paymentType: tipoDePago(parcial.paymentMethod ?? PaymentMethod.CASH),
       } as Partial<Order>)) as Order;
 
     return { distributor, chofer, delivery, cliente, pedido };

@@ -1,13 +1,12 @@
 /**
  * Ciclo de adjuntos genéricos contra la API con Postgres real: subir ->
  * listar -> descargar -> borrar, el aislamiento entre distribuidoras, los
- * límites del archivo y lo que puede tocar un chofer. El dueño `employee` es
- * el real (módulo Personal); los demás todavía no existen y el test registra
- * resolvers de ejemplo.
+ * límites del archivo y lo que puede tocar un chofer. Los dueños son los
+ * reales: `employee` (Personal), `purchase_receipt` (Compras) y `fuel_load`
+ * (Flota).
  */
 import { randomUUID } from 'crypto';
 import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
-import { NotFoundException } from '@nestjs/common';
 import request from 'supertest';
 import { JPG_REAL } from './setup/imagenes';
 import { DataSource } from 'typeorm';
@@ -16,6 +15,8 @@ import {
   createTestApp,
   truncateAllTables,
   telefonoDePrueba,
+  patenteDePrueba,
+  cuitDePrueba,
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
 import { AttachmentOwnerRegistry } from '../../src/attachment/attachment-owner.registry';
@@ -23,6 +24,11 @@ import {
   Attachment,
   AttachmentOwnerType,
 } from '../../src/attachment/entities/attachment.entity';
+import { Car, FuelType } from '../../src/car/entities/car.entity';
+import {
+  FuelLoad,
+  FuelPaymentMethod,
+} from '../../src/fleet-expense/entities/fuel-load.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
@@ -45,36 +51,15 @@ import {
   JobPositionCategory,
 } from '../../src/employee/entities/job-position.entity';
 
-interface Dueno {
-  distributorId: string;
-  userId?: string;
-}
-
 describe('Adjuntos genéricos (e2e)', () => {
   let minio: TestMinio;
   let env: TestEnv;
   let dataSource: DataSource;
-  // El "dueño" de ejemplo: id -> a qué distribuidora (y a qué usuario) pertenece.
-  const cargas = new Map<string, Dueno>();
 
   beforeAll(async () => {
     minio = await startMinio();
     env = await createTestApp({ s3: minio.env });
     dataSource = env.app.get(DataSource);
-
-    const registry = env.app.get(AttachmentOwnerRegistry);
-    const asegurar = (mapa: Map<string, Dueno>) => (id: string, d: string) => {
-      if (mapa.get(id)?.distributorId !== d) {
-        return Promise.reject(new NotFoundException(`No existe ${id}`));
-      }
-      return Promise.resolve();
-    };
-    registry.register({
-      ownerType: AttachmentOwnerType.FUEL_LOAD,
-      assertOwner: asegurar(cargas),
-      isOwnedByUser: (id, userId) =>
-        Promise.resolve(cargas.get(id)?.userId === userId),
-    });
   }, 240000);
 
   afterAll(async () => {
@@ -84,7 +69,6 @@ describe('Adjuntos genéricos (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(env.app);
-    cargas.clear();
   });
 
   /** Pide el enlace (`?modo=url`) y baja el archivo desde la URL firmada de S3. */
@@ -167,6 +151,31 @@ describe('Adjuntos genéricos (e2e)', () => {
         'X-Client-Source': tipo === 'admin' ? 'panel-app' : 'delivery-app',
       },
     };
+  }
+
+  /** Una carga de combustible real, registrada por `userId`: el dueño `fuel_load`. */
+  async function seedCarga(
+    distributorId: string,
+    userId: string,
+  ): Promise<string> {
+    const auto = await dataSource.getRepository(Car).save({
+      distributorId,
+      userId,
+      carPatent: patenteDePrueba(),
+    } as Partial<Car>);
+    const carga = await dataSource.getRepository(FuelLoad).save({
+      distributorId,
+      carId: auto.carId,
+      loadedAt: new Date(),
+      fuelType: FuelType.DIESEL,
+      liters: 40,
+      unitPrice: 1000,
+      totalAmount: 40000,
+      odometerKm: 1000,
+      paymentMethod: FuelPaymentMethod.CARD,
+      createdByUserId: userId,
+    } as Partial<FuelLoad>);
+    return carga.fuelLoadId;
   }
 
   const PDF = Buffer.from('%PDF-1.4 contenido de prueba');
@@ -298,12 +307,24 @@ describe('Adjuntos genéricos (e2e)', () => {
 
   it('un tipo sin resolver registrado es 400 claro', async () => {
     const { admin1 } = await escenario();
-    const res = await subir(
-      admin1.headers,
-      'traffic_fine',
-      randomUUID(),
-    ).expect(400);
-    expect(JSON.stringify(res.body)).toContain('traffic_fine');
+    // Hoy todos los tipos tienen su resolver: se simula uno que todavía no lo registró.
+    const registro = env.app.get(AttachmentOwnerRegistry);
+    const original = registro.find.bind(registro);
+    const sinMultas = jest
+      .spyOn(registro, 'find')
+      .mockImplementation((tipo) =>
+        tipo === AttachmentOwnerType.TRAFFIC_FINE ? undefined : original(tipo),
+      );
+    try {
+      const res = await subir(
+        admin1.headers,
+        'traffic_fine',
+        randomUUID(),
+      ).expect(400);
+      expect(JSON.stringify(res.body)).toContain('traffic_fine');
+    } finally {
+      sinMultas.mockRestore();
+    }
   });
 
   it('un tipo que no existe es 400 y un id que no es uuid es 400', async () => {
@@ -333,7 +354,7 @@ describe('Adjuntos genéricos (e2e)', () => {
     const proveedor = await dataSource.getRepository(Supplier).save({
       distributorId: d1.distributorId,
       businessName: 'Gas del Litoral',
-      cuit: '30715123456',
+      cuit: cuitDePrueba(),
       kind: SupplierKind.FILLING_PLANT,
     } as Partial<Supplier>);
     const deposito = await dataSource.getRepository(Warehouse).save({
@@ -511,16 +532,8 @@ describe('Adjuntos genéricos (e2e)', () => {
       const { d1, admin1, empleado } = await escenario();
       const chofer = await seedUsuario('delivery', d1.distributorId);
       const otro = await seedUsuario('delivery', d1.distributorId);
-      const suya = randomUUID();
-      const ajena = randomUUID();
-      cargas.set(suya, {
-        distributorId: d1.distributorId,
-        userId: chofer.user.userId,
-      });
-      cargas.set(ajena, {
-        distributorId: d1.distributorId,
-        userId: otro.user.userId,
-      });
+      const suya = await seedCarga(d1.distributorId, chofer.user.userId);
+      const ajena = await seedCarga(d1.distributorId, otro.user.userId);
 
       const creado = await subir(chofer.headers, 'fuel_load', suya).expect(201);
       const id = (creado.body as { attachmentId: string }).attachmentId;

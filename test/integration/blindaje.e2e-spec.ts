@@ -15,6 +15,8 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
+  cuitDePrueba,
 } from './setup/test-env';
 import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
 import sharp from 'sharp';
@@ -52,6 +54,7 @@ import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { fechasSegunEstado } from './setup/pedido-valido';
 import { forzarEstado } from './setup/bypass';
+import { diaArgentino } from '../../src/common/utils/dias-argentina';
 
 type Headers = Record<string, string>;
 
@@ -107,7 +110,7 @@ describe('Blindaje (e2e)', () => {
       name: nombre,
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);
@@ -140,7 +143,7 @@ describe('Blindaje (e2e)', () => {
     const auto = await ds.getRepository(Car).save({
       distributorId: dA.distributorId,
       userId: chofer1.user.userId,
-      carPatent: `T${seq}${randomUUID().slice(0, 4).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>);
     await ds.getRepository(VehicleAssignment).save({
       distributorId: dA.distributorId,
@@ -305,7 +308,7 @@ describe('Blindaje (e2e)', () => {
         http()
           .patch(`/orders/${id}/payment/resolve-unpaid`)
           .set(sup)
-          .send({ resolution: 'paid', note: 'x' }),
+          .send({ resolution: 'paid', note: 'Cobrado en el local' }),
         http().patch(`/orders/${id}/cancel`).set(sup).send({}),
         http().delete(`/orders/${id}`).set(sup),
         http().patch(`/orders/${id}/assign/${e.del1.deliveryId}`).set(sup),
@@ -387,7 +390,7 @@ describe('Blindaje (e2e)', () => {
       await http()
         .patch(`/orders/${p.orderId}/payment/resolve-unpaid`)
         .set(e.supEnB)
-        .send({ resolution: 'paid', note: 'x' })
+        .send({ resolution: 'paid', note: 'Cobrado en el local' })
         .expect(404);
       await http()
         .patch(`/orders/${p.orderId}/payment/resolve-unpaid`)
@@ -541,9 +544,18 @@ describe('Blindaje (e2e)', () => {
       const e = await escenario();
       const clave = randomUUID();
       const pA = await pedido(e, { status: OrderStatus.ACCEPTED });
+      // El pedido aceptado de B tiene un chofer de B (la clave foránea es por distribuidora).
+      const choferB = await usuario('delivery', 'Chofer B');
+      const delB = await ds.getRepository(Delivery).save({
+        userId: choferB.user.userId,
+        distributorId: e.dB.distributorId,
+        validated: true,
+        isEnabled: true,
+      } as Partial<Delivery>);
       const pB = await pedido(e, {
         distributorId: e.dB.distributorId,
         status: OrderStatus.ACCEPTED,
+        deliveryId: delB.deliveryId,
       });
       // El super admin cambia de distribuidora con la MISMA clave y la misma ruta.
       const a = await http()
@@ -728,7 +740,7 @@ describe('Blindaje (e2e)', () => {
         paymentSurchargeAmount: 100,
       });
     }
-    const hoy = () => new Date().toISOString().slice(0, 10);
+    const hoy = () => diaArgentino();
 
     it('hasta que el admin la confirma no suma a las ventas y aparece en cobros; confirmada, sí', async () => {
       const e = await escenario();
@@ -1122,7 +1134,7 @@ describe('Blindaje (e2e)', () => {
       // El cron de vencimiento cancela sin usuario en el request.
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
+        `UPDATE "order" SET status = 'cancelled', "cancellationReason" = 'Venció sin chofer' WHERE order_id = $1`,
         [porSistema],
       );
       await ds.getRepository(OrderStatusHistory).insert({
@@ -1190,7 +1202,7 @@ describe('Blindaje (e2e)', () => {
       // Cerrado: no se expone nada del chofer.
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'delivered' WHERE order_id = $1`,
+        `UPDATE "order" SET status = 'delivered', "deliveredAt" = now() WHERE order_id = $1`,
         [p.orderId],
       );
       const cerrado = await http()
@@ -1213,8 +1225,9 @@ describe('Blindaje (e2e)', () => {
         carId: e.carId,
         deliveryId: e.del1.deliveryId,
         originLocationId: ubicacion.locationId,
-        businessDate: new Date().toISOString().slice(0, 10),
+        businessDate: diaArgentino(),
         status: TruckLoadStatus.ON_ROUTE,
+        departedAt: new Date(),
         openedByUserId: e.adminAUserId,
       } as Partial<TruckLoad>);
       await ds.getRepository(TruckLoadItem).save({
@@ -1251,7 +1264,7 @@ describe('Blindaje (e2e)', () => {
       ]);
       await forzarEstado(
         qr,
-        `UPDATE truck_load SET status = 'returned' WHERE load_id = $1`,
+        `UPDATE truck_load SET status = 'returned', returned_at = now() WHERE load_id = $1`,
         [loadId],
       );
       return qr;
@@ -1336,12 +1349,12 @@ describe('Blindaje (e2e)', () => {
         // Deja el escenario limpio para la vuelta siguiente.
         await forzarEstado(
           ds,
-          `UPDATE truck_load SET status = 'cancelled' WHERE load_id = $1`,
+          `UPDATE truck_load SET status = 'cancelled', cancel_reason = 'Fin de la vuelta de la prueba', closed_at = now() WHERE load_id = $1`,
           [carga.loadId],
         );
         await forzarEstado(
           ds,
-          `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
+          `UPDATE "order" SET status = 'cancelled', "cancellationReason" = 'Cancelado en la prueba' WHERE order_id = $1`,
           [p.orderId],
         );
       }

@@ -131,7 +131,7 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
       ...over,
     } as Partial<Cylinder>);
 
-  async function pedido(distributorId: string): Promise<Order> {
+  async function cliente(): Promise<User> {
     const r = await rol(RoleType.CUSTOMER);
     const user = await ds.getRepository(User).save({
       email: `cli.${randomUUID().slice(0, 8)}@test.local`,
@@ -141,6 +141,11 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
     await ds
       .getRepository(Customer)
       .save({ userId: user.userId } as Partial<Customer>);
+    return user;
+  }
+
+  async function pedido(distributorId: string): Promise<Order> {
+    const user = await cliente();
     const address = await ds.getRepository(UserAddress).save({
       userId: user.userId,
       street: 'Av. Test 123',
@@ -217,6 +222,7 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
       const admin = await adminDe(d.distributorId);
       const c = await envase(d.distributorId, 'SN-1', {
         state: CylinderState.WITH_CUSTOMER,
+        currentCustomerId: (await cliente()).userId,
       });
 
       const r = await post(admin, `/cylinders/${c.cylinderId}/inspections`)
@@ -712,6 +718,16 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
       const vigente = await envase(d.distributorId, 'VIGENTE', {
         expiresAt: new Date(enDias(30)),
       });
+      // El chofer despacha en el contexto de un pedido suyo (sin `orderId`, 403).
+      const { deliveryId } = await ds
+        .getRepository(Delivery)
+        .findOneByOrFail({ userId: chofer.userId });
+      const suyo = await pedido(d.distributorId);
+      await ds.getRepository(Order).update(suyo.orderId, {
+        status: OrderStatus.ACCEPTED,
+        acceptedAt: new Date(),
+        deliveryId,
+      });
 
       const r = await desdeApp(
         chofer,
@@ -719,7 +735,7 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
           `/cylinders/${vencido.cylinderId}/transition`,
         ),
       )
-        .send({ toState: 'dispatched' })
+        .send({ toState: 'dispatched', orderId: suyo.orderId })
         .expect(409);
       expect(cuerpo<Rechazo>(r).code).toBe('CYLINDER_EXPIRED');
 
@@ -729,7 +745,7 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
           `/cylinders/${vigente.cylinderId}/transition`,
         ),
       )
-        .send({ toState: 'dispatched' })
+        .send({ toState: 'dispatched', orderId: suyo.orderId })
         .expect(200);
       expect(await estadoDe(vigente.cylinderId)).toBe(CylinderState.DISPATCHED);
     });

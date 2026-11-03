@@ -12,6 +12,7 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
 } from './setup/test-env';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Car, FleetStatus } from '../../src/car/entities/car.entity';
@@ -36,8 +37,9 @@ import {
   MaintenanceDocumentKind,
 } from '../../src/fleet/entities/maintenance-plan.entity';
 import { FleetPlanSeedListener } from '../../src/fleet/fleet-plan-seed.listener';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AdminNotificationsService } from '../../src/admin-notifications/admin-notifications.service';
 import { FineDueAlertsCron } from '../../src/fleet-expense/fine-due-alerts.cron';
-import { TrafficFine } from '../../src/fleet-expense/entities/traffic-fine.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 
@@ -55,7 +57,6 @@ describe('Flota ampliada C-18 (e2e)', () => {
   let env: TestEnv;
   let ds: DataSource;
   let enviados: Array<{ to: string; subject: string; html: string }>;
-  let envioFalla: boolean;
 
   beforeAll(async () => {
     env = await createTestApp();
@@ -63,7 +64,6 @@ describe('Flota ampliada C-18 (e2e)', () => {
     jest
       .spyOn(env.app.get(EmailSenderPort), 'send')
       .mockImplementation((mail) => {
-        if (envioFalla) return Promise.reject(new Error('smtp caído'));
         enviados.push(mail);
         return Promise.resolve();
       });
@@ -76,7 +76,6 @@ describe('Flota ampliada C-18 (e2e)', () => {
   beforeEach(async () => {
     await truncateAllTables(env.app);
     enviados = [];
-    envioFalla = false;
   });
 
   const http = () => request(env.app.getHttpServer());
@@ -167,7 +166,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
     const auto = (await ds.getRepository(Car).save({
       distributorId: d.distributorId,
       userId: user.userId,
-      carPatent: `F${seq}${randomUUID().slice(0, 4).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
       carBrand: 'Fiat',
       carModel: 'Fiorino',
       fuelType: 'diesel',
@@ -1149,16 +1148,73 @@ describe('Flota ampliada C-18 (e2e)', () => {
       await http().get('/fleet/fines?status=otra').set(d1.admin).expect(400);
     });
 
-    it('CU-326: avisa por correo las pendientes que vencen en 7 días o menos (o vencidas) y marca para no repetir', async () => {
+    /**
+     * Corre el cron y espera, sin plazos, a que la bandeja termine de registrar
+     * cada aviso que pidió (el listener corre aparte del cron). Si el aviso era
+     * nuevo, también a que salgan sus correos.
+     */
+    const correrAviso = async (hora = 8): Promise<void> => {
+      const emisor = env.app.get(EventEmitter2);
+      const bandeja = env.app.get(AdminNotificationsService);
+      const emitidos: string[] = [];
+      const registros: Array<Promise<unknown>> = [];
+      const emitir = emisor.emit.bind(emisor);
+      const registrar = bandeja.registrar.bind(bandeja);
+      const espiaEmit = jest
+        .spyOn(emisor, 'emit')
+        .mockImplementation((evento, ...args: unknown[]) => {
+          emitidos.push(String(evento));
+          return emitir(evento, ...args);
+        });
+      const espiaRegistrar = jest
+        .spyOn(bandeja, 'registrar')
+        .mockImplementation((evento) => {
+          const registro = registrar(evento);
+          registros.push(registro);
+          return registro;
+        });
+      try {
+        await env.app
+          .get(FineDueAlertsCron)
+          .avisarMultasPorVencer(aLaHoraDelAviso(diaArgentino(), hora));
+        await esperar(() => registros.length >= emitidos.length);
+        const nuevos = (await Promise.all(registros)).filter(Boolean).length;
+        await esperar(() => enviados.length >= nuevos);
+      } finally {
+        espiaEmit.mockRestore();
+        espiaRegistrar.mockRestore();
+      }
+    };
+
+    /** Cuántos avisos de multa hay en la bandeja por clave de deduplicación. */
+    const avisosPorClave = async (): Promise<Record<string, number>> => {
+      const filas: Array<{ dedupe_key: string; n: number }> = await ds.query<
+        Array<{ dedupe_key: string; n: number }>
+      >(
+        `SELECT dedupe_key, count(*)::int AS n FROM admin_notification WHERE kind LIKE 'traffic_fine%' GROUP BY dedupe_key`,
+      );
+      return Object.fromEntries(filas.map((f) => [f.dedupe_key, f.n]));
+    };
+
+    const claveDe = (
+      fineId: string,
+      tipo: 'due' | 'overdue',
+      dueDate: string,
+    ) => `traffic-fine:${fineId}:${tipo}:${dueDate}`;
+
+    it('CU-326: avisa las pendientes que vencen en 5 días o menos (o vencidas), sólo una vez cada una', async () => {
       const { d1, d2, c1, c2 } = await escenario();
       const hoy = diaArgentino();
-      const crear = async (h: Headers, carId: string, dueDate: string | null) =>
+      const crear = async (h: Headers, carId: string, dueDate: string) =>
         cuerpoDe<{ fineId: string }>(
-          await postMulta(h, multa(carId, { dueDate })).expect(201),
+          await postMulta(
+            h,
+            multa(carId, { dueDate, occurredAt: haceDias(10).toISOString() }),
+          ).expect(201),
         );
       const proxima = await crear(d1.admin, c1.carId, sumarDias(hoy, 5));
       const vencida = await crear(d1.admin, c1.carId, sumarDias(hoy, -2));
-      const lejana = await crear(d1.admin, c1.carId, sumarDias(hoy, 20));
+      await crear(d1.admin, c1.carId, sumarDias(hoy, 20)); // lejana
       const pagada = await crear(d1.admin, c1.carId, sumarDias(hoy, 3));
       await http()
         .patch(`/fleet/fines/${pagada.fineId}/pay`)
@@ -1172,75 +1228,70 @@ describe('Flota ampliada C-18 (e2e)', () => {
         .send({ reason: 'x' })
         .expect(200);
       const deOtra = await crear(d2.admin, c2.carId, sumarDias(hoy, 1));
-
-      const cron = env.app.get(FineDueAlertsCron);
-      await cron.avisarMultasPorVencer();
-
-      const alertadas = async () =>
-        (await ds.getRepository(TrafficFine).find({ where: {} }))
-          .filter((m) => m.alertedAt !== null)
-          .map((m) => m.fineId)
-          .sort();
-      expect(await alertadas()).toEqual(
-        [proxima.fineId, vencida.fineId, deOtra.fineId].sort(),
+      // ya avisada por el correo anterior (`alerted_at`): no se repite por la bandeja
+      const yaAvisada = await crear(d1.admin, c1.carId, sumarDias(hoy, 2));
+      await ds.query(
+        `UPDATE traffic_fine SET alerted_at = now() WHERE fine_id = $1`,
+        [yaAvisada.fineId],
       );
-      expect(lejana.fineId).toBeDefined();
+
+      await correrAviso();
+
+      // un aviso por multa: la próxima y la vencida de d1, la de d2
+      const esperadas = {
+        [claveDe(proxima.fineId, 'due', sumarDias(hoy, 5))]: 1,
+        [claveDe(vencida.fineId, 'overdue', sumarDias(hoy, -2))]: 1,
+        [claveDe(deOtra.fineId, 'due', sumarDias(hoy, 1))]: 1,
+      };
+      expect(await avisosPorClave()).toEqual(esperadas);
       expect(enviados.map((m) => m.to).sort()).toEqual(
-        [d1.adminEmail, d2.adminEmail].sort(),
+        [d1.adminEmail, d1.adminEmail, d2.adminEmail].sort(),
       );
-      const aviso1 = enviados.find((m) => m.to === d1.adminEmail);
-      expect(aviso1?.html).toContain('VENCIDA');
+      expect(
+        enviados.some((m) => m.to === d1.adminEmail && /vencida/i.test(m.html)),
+      ).toBe(true);
 
-      // la corrida siguiente no repite
+      // la corrida siguiente no repite: ni filas nuevas ni correos
       enviados = [];
-      await cron.avisarMultasPorVencer();
+      await correrAviso();
+      expect(await avisosPorClave()).toEqual(esperadas);
       expect(enviados).toEqual([]);
     });
 
-    it('CU-326: si el envío falla no marca y se reintenta en la corrida siguiente', async () => {
+    it('CU-326: fuera de la hora del aviso de flota no avisa', async () => {
       const { d1, c1 } = await escenario();
-      const m = cuerpoDe<{ fineId: string }>(
-        await postMulta(
-          d1.admin,
-          multa(c1.carId, { dueDate: sumarDias(diaArgentino(), 2) }),
-        ).expect(201),
-      );
-      const cron = env.app.get(FineDueAlertsCron);
-
-      envioFalla = true;
-      await cron.avisarMultasPorVencer();
-      const sinMarcar = await ds
-        .getRepository(TrafficFine)
-        .findOneByOrFail({ fineId: m.fineId });
-      expect(sinMarcar.alertedAt).toBeNull();
-
-      envioFalla = false;
-      await cron.avisarMultasPorVencer();
-      expect(enviados).toHaveLength(1);
-      const marcada = await ds
-        .getRepository(TrafficFine)
-        .findOneByOrFail({ fineId: m.fineId });
-      expect(marcada.alertedAt).not.toBeNull();
+      await postMulta(
+        d1.admin,
+        multa(c1.carId, { dueDate: sumarDias(diaArgentino(), 2) }),
+      ).expect(201);
+      await correrAviso(15);
+      expect(await avisosPorClave()).toEqual({});
+      expect(enviados).toEqual([]);
     });
 
     it('CU-326: una fecha de vencimiento nueva vuelve a entrar en el aviso', async () => {
       const { d1, c1 } = await escenario();
+      const hoy = diaArgentino();
       const m = cuerpoDe<{ fineId: string }>(
         await postMulta(
           d1.admin,
-          multa(c1.carId, { dueDate: sumarDias(diaArgentino(), 2) }),
+          multa(c1.carId, { dueDate: sumarDias(hoy, 2) }),
         ).expect(201),
       );
-      const cron = env.app.get(FineDueAlertsCron);
-      await cron.avisarMultasPorVencer();
+      await correrAviso();
+      expect(await avisosPorClave()).toEqual({
+        [claveDe(m.fineId, 'due', sumarDias(hoy, 2))]: 1,
+      });
       await http()
         .patch(`/fleet/fines/${m.fineId}`)
         .set(d1.admin)
-        .send({ dueDate: sumarDias(diaArgentino(), 3) })
+        .send({ dueDate: sumarDias(hoy, 3) })
         .expect(200);
-      enviados = [];
-      await cron.avisarMultasPorVencer();
-      expect(enviados).toHaveLength(1);
+      await correrAviso();
+      expect(await avisosPorClave()).toEqual({
+        [claveDe(m.fineId, 'due', sumarDias(hoy, 2))]: 1,
+        [claveDe(m.fineId, 'due', sumarDias(hoy, 3))]: 1,
+      });
     });
   });
 
@@ -1311,7 +1362,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
       expect(JSON.stringify(asignar.body)).toContain('fuera de servicio');
     });
 
-    it('CU-201: inutilizable con un pedido en curso o una carga de camión abierta es 409 y no registra nada', async () => {
+    it('CU-201: inutilizable con una carga de camión abierta SE REGISTRA, el vehículo sale de servicio y la asignación se mantiene', async () => {
       const { d1, c1 } = await escenario();
       const abiertas = async () =>
         ds
@@ -1338,14 +1389,19 @@ describe('Flota ampliada C-18 (e2e)', () => {
       const res = await postSiniestro(
         d1.admin,
         siniestro(c1.carId, { vehicleUnusable: true }),
-      ).expect(409);
-      expect(JSON.stringify(res.body)).toContain('fuera de servicio');
-      expect((await autoDe(c1.carId)).fleetStatus).toBe(FleetStatus.ACTIVE);
+      ).expect(201);
+      const cuerpo = cuerpoDe<{
+        assignmentKept: boolean;
+        assignmentKeptReason: string | null;
+      }>(res);
+      expect(cuerpo.assignmentKept).toBe(true);
+      expect(cuerpo.assignmentKeptReason).toBeTruthy();
+      expect((await autoDe(c1.carId)).fleetStatus).toBe(FleetStatus.GROUNDED);
       expect(await abiertas()).toBe(1);
       const lista = cuerpoDe<{ total: number }>(
         await http().get('/fleet/accidents').set(d1.admin).expect(200),
       );
-      expect(lista.total).toBe(0);
+      expect(lista.total).toBe(1);
     });
 
     it('CU-201: un derrame de gas avisa de inmediato a los administradores', async () => {
@@ -2230,7 +2286,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
           name: 'Service / cambio de aceite',
         },
       });
-      const cerrar = async (km: number) => {
+      const cerrar = async (km: number, performedAt: Date) => {
         const t = cuerpoDe<{ taskId: string }>(
           await http()
             .post('/fleet/tasks')
@@ -2241,16 +2297,22 @@ describe('Flota ampliada C-18 (e2e)', () => {
         await http()
           .patch(`/fleet/tasks/${t.taskId}/close`)
           .set(d1.admin)
-          .send({ performedAt: new Date().toISOString(), odometerKm: km })
+          .send({ performedAt: performedAt.toISOString(), odometerKm: km })
           .expect(200);
       };
-      await cerrar(50000);
+      await cerrar(50000, new Date());
       expect((await autoDe(c1.carId)).odometerKm).toBe(50000);
-      await cerrar(40000);
+      // una tarea hecha antes con menos km es coherente y no baja el del vehículo
+      await cerrar(40000, haceDias(30));
       expect((await autoDe(c1.carId)).odometerKm).toBe(50000);
     });
   });
 });
+
+/** El instante de las `hora` (8 por omisión: la del aviso de flota) del día argentino `dia`. */
+function aLaHoraDelAviso(dia: string, hora = 8): Date {
+  return new Date(`${dia}T${String(hora).padStart(2, '0')}:00:00-03:00`);
+}
 
 /** Espera a que un efecto asíncrono (un listener de eventos) se cumpla. */
 async function esperar(condicion: () => boolean, ms = 5000): Promise<void> {

@@ -15,6 +15,8 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
+  cuitDePrueba,
 } from './setup/test-env';
 import { MENSAJE_FALTA_DISTRIBUIDORA } from '../../src/common/decorators/current-distributor.decorator';
 import { Admin } from '../../src/admin/entities/admin.entity';
@@ -116,7 +118,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       name: `Dist ${seq}`,
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);
@@ -178,7 +180,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
     const auto = await ds.getRepository(Car).save({
       distributorId: d.distributorId,
       userId: user.userId,
-      carPatent: `R${sufijo.toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>);
     await ds.getRepository(VehicleAssignment).save({
       distributorId: d.distributorId,
@@ -732,7 +734,8 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       };
       const vencer = (orderId: string) =>
         ds.query(
-          `UPDATE order_dispatch_offer SET "expiresAt" = now() - interval '1 minute'
+          `UPDATE order_dispatch_offer SET "expiresAt" = now() - interval '1 minute',
+           "offeredAt" = now() - interval '1 minute' - ("expiresAt" - "offeredAt")
            WHERE order_id = $1 AND status = 'offered'`,
           [orderId],
         );

@@ -29,6 +29,9 @@ describe('Migración CajaYRendicion (e2e)', () => {
       entities: [join(__dirname, '../../src/**/*.entity.ts')],
       migrations: migraciones,
       synchronize: false,
+      // Como `src/data-source.ts`: un valor nuevo de un enum no se puede usar en
+      // la misma transacción que lo agrega.
+      migrationsTransactionMode: 'each',
     });
 
   const dir = join(__dirname, '../../src/migrations');
@@ -39,6 +42,13 @@ describe('Migración CajaYRendicion (e2e)', () => {
   const anteriores = todas.slice(
     0,
     todas.findIndex((f) => /VentaACuentaEnPedido/.test(f)),
+  );
+  // Hasta CajaYRendicion inclusive: el esquema que esta migración deja, sin las
+  // posteriores (que suman categorías de caja y que `undoLastMigration` tendría
+  // que deshacer primero).
+  const hastaCaja = todas.slice(
+    0,
+    todas.findIndex((f) => /CajaYRendicion/.test(f)) + 1,
   );
 
   const distA = randomUUID();
@@ -83,7 +93,7 @@ describe('Migración CajaYRendicion (e2e)', () => {
     );
     await ds.destroy();
 
-    ds = nuevo(todas);
+    ds = nuevo(hastaCaja);
     await ds.initialize();
     await ds.runMigrations();
 

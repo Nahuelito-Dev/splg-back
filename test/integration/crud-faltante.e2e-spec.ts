@@ -230,10 +230,14 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
       distributorId: string,
       state = CylinderState.IN_DEPOT,
       serial = `SN-${randomUUID().slice(0, 6)}`,
+      currentCustomerId: string | null = null,
     ): Promise<Cylinder> {
-      return ds
-        .getRepository(Cylinder)
-        .save({ distributorId, serial, state } as Partial<Cylinder>);
+      return ds.getRepository(Cylinder).save({
+        distributorId,
+        serial,
+        state,
+        currentCustomerId,
+      } as Partial<Cylinder>);
     }
 
     it('PATCH edita datos maestros, no el estado, y el serial repetido es 409', async () => {
@@ -277,9 +281,10 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
       const conCliente = await envase(
         a.distributorId,
         CylinderState.WITH_CUSTOMER,
+        undefined,
+        cliente.user.userId,
       );
       const enReparto = await envase(a.distributorId, CylinderState.DISPATCHED);
-      void cliente;
 
       await patch(
         adminA,
@@ -487,14 +492,31 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
       );
       await patch(adminB, `/orders/${id}`, { notes: 'x' }).expect(404);
 
-      for (const status of [
-        OrderStatus.ACCEPTED,
-        OrderStatus.ON_THE_WAY,
-        OrderStatus.DELIVERED,
-        OrderStatus.CANCELLED,
-      ]) {
+      const chofer = await usuario(RoleType.DELIVERY, a.distributorId);
+      const perfil = await ds
+        .getRepository(Delivery)
+        .findOneByOrFail({ userId: chofer.user.userId });
+      // Cada estado con los datos que la base le exige (chofer, fechas, motivo).
+      const ahora = new Date();
+      const conChofer = { deliveryId: perfil.deliveryId, acceptedAt: ahora };
+      const estados: Array<Partial<Order>> = [
+        { status: OrderStatus.ACCEPTED, ...conChofer },
+        { status: OrderStatus.ON_THE_WAY, ...conChofer, onTheWayAt: ahora },
+        {
+          status: OrderStatus.DELIVERED,
+          ...conChofer,
+          onTheWayAt: ahora,
+          deliveredAt: ahora,
+        },
+        {
+          status: OrderStatus.CANCELLED,
+          deliveredAt: null,
+          cancellationReason: 'Prueba de edición',
+        },
+      ];
+      for (const estado of estados) {
         await conBypassManager(ds, ['transiciones'], (m) =>
-          m.getRepository(Order).update({ orderId: id }, { status }),
+          m.getRepository(Order).update({ orderId: id }, estado),
         );
         await patch(adminA, `/orders/${id}`, {
           notes: 'x',
@@ -503,16 +525,17 @@ describe('CRUD faltante de las tablas del panel (e2e)', () => {
       }
       expect(await stockDe(p1.gasCylinderId)).toBe(8);
 
-      const chofer = await usuario(RoleType.DELIVERY, a.distributorId);
-      const perfil = await ds
-        .getRepository(Delivery)
-        .findOneByOrFail({ userId: chofer.user.userId });
-      await ds
-        .getRepository(Order)
-        .update(
+      await conBypassManager(ds, ['transiciones'], (m) =>
+        m.getRepository(Order).update(
           { orderId: id },
-          { status: OrderStatus.PENDING, deliveryId: perfil.deliveryId },
-        );
+          {
+            status: OrderStatus.PENDING,
+            deliveryId: perfil.deliveryId,
+            acceptedAt: null,
+            onTheWayAt: null,
+          },
+        ),
+      );
       await patch(adminA, `/orders/${id}`, { notes: 'x' }).expect(409);
     }, 60000);
 

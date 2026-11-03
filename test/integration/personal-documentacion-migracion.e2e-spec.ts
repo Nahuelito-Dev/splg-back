@@ -30,6 +30,9 @@ describe('Migración DocumentacionAsistenciaYLicenciasDelPersonal (e2e)', () => 
       entities: [join(__dirname, '../../src/**/*.entity.ts')],
       migrations: migraciones,
       synchronize: false,
+      // Como `src/data-source.ts`: un valor nuevo de un enum no se puede usar en
+      // la misma transacción que lo agrega.
+      migrationsTransactionMode: 'each',
     });
 
   const dir = join(__dirname, '../../src/migrations');
@@ -43,6 +46,10 @@ describe('Migración DocumentacionAsistenciaYLicenciasDelPersonal (e2e)', () => 
       /DocumentacionAsistenciaYLicenciasDelPersonal/.test(f),
     ),
   );
+  // Hasta esta migración inclusive: el esquema que deja, sin las posteriores
+  // (que siembran más planes y que `undoLastMigration` tendría que deshacer
+  // primero).
+  const hastaEsta = todas.slice(0, anteriores.length + 1);
 
   const distA = randomUUID();
   const distB = randomUUID();
@@ -122,7 +129,7 @@ describe('Migración DocumentacionAsistenciaYLicenciasDelPersonal (e2e)', () => 
     await crearEmpleado(otroEmpleado, distA, puesto, 2);
     await ds.destroy();
 
-    ds = nuevo(todas);
+    ds = nuevo(hastaEsta);
     await ds.initialize();
     await ds.runMigrations();
   }, 300000);
@@ -292,6 +299,8 @@ describe('Migración DocumentacionAsistenciaYLicenciasDelPersonal (e2e)', () => 
   });
 
   it('no se deshace si hay jornadas o licencias cargadas', async () => {
+    // La prueba de concurrencia de arriba deja confirmada una licencia en ese período.
+    await ds.query(`DELETE FROM "employee_leave"`);
     await licencia(empleado, '2099-12-01', '2099-12-14');
     const runner = ds.createQueryRunner();
     try {

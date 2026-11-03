@@ -12,6 +12,7 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  cuitDePrueba,
 } from './setup/test-env';
 import { MENSAJE_FALTA_DISTRIBUIDORA } from '../../src/common/decorators/current-distributor.decorator';
 import { Admin } from '../../src/admin/entities/admin.entity';
@@ -91,7 +92,7 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
       name: `Dist ${seq}`,
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);

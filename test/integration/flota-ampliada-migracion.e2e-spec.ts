@@ -33,6 +33,9 @@ describe('Migración FlotaAmpliada (e2e)', () => {
       entities: [join(raiz, '**', '*.entity.ts')],
       migrations: [join(raiz, 'migrations', '*.ts')],
       synchronize: false,
+      // Como `src/data-source.ts`: un valor nuevo de un enum no se puede usar en
+      // la misma transacción que lo agrega.
+      migrationsTransactionMode: 'each',
     });
     await ds.initialize();
   }, 180000);
@@ -151,10 +154,18 @@ describe('Migración FlotaAmpliada (e2e)', () => {
        VALUES ($1, 'Habilitación', 'vehicle', 'by_fixed_date', 30, 'blocking', true, 'hazmat_vehicle_permit')`,
       [distributorId],
     );
+    // La tarea es de un vehículo (CHK_maintenance_task_un_sujeto).
+    const [{ user_id: userId }] = await ds.query<Array<{ user_id: string }>>(
+      `INSERT INTO "user" (email) VALUES ('chofer@con-tareas.com') RETURNING user_id`,
+    );
+    const [{ car_id: carId }] = await ds.query<Array<{ car_id: string }>>(
+      `INSERT INTO car (distributor_id, user_id, car_patent) VALUES ($1, $2, 'AB123CD') RETURNING car_id`,
+      [distributorId, userId],
+    );
     await ds.query(
-      `INSERT INTO maintenance_task (plan_id, distributor_id, status)
-       SELECT plan_id, distributor_id, 'scheduled' FROM maintenance_plan WHERE distributor_id = $1`,
-      [distributorId],
+      `INSERT INTO maintenance_task (plan_id, distributor_id, car_id, status)
+       SELECT plan_id, distributor_id, $2, 'scheduled' FROM maintenance_plan WHERE distributor_id = $1`,
+      [distributorId, carId],
     );
     await expect(deshacerHastaFlota()).rejects.toThrow(
       /habilitaciones de mercancías peligrosas cargadas/,

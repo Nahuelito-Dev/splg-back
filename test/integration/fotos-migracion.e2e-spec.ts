@@ -41,6 +41,9 @@ describe('migraciones de fotos de entidades (e2e)', () => {
       database: contenedor.getDatabase(),
       migrations: [join(__dirname, '../../src/migrations/*.ts')],
       synchronize: false,
+      // Como `src/data-source.ts`: un valor nuevo de un enum no se puede usar en
+      // la misma transacción que lo agrega.
+      migrationsTransactionMode: 'each',
     });
     await ds.initialize();
   }, 240000);

@@ -17,6 +17,7 @@ import { Distributor } from '../../src/distributor/entities/distributor.entity';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
+import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import { Customer } from '../../src/customer/entities/customer.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { Order, PaymentStatus } from '../../src/order/entities/order.entity';
@@ -117,6 +118,15 @@ describe('Pedidos del panel (e2e)', () => {
           tipo === RoleType.CUSTOMER ? 'customer-app' : 'panel-app',
       },
     };
+  }
+
+  /** Un chofer de la distribuidora: un pedido en camino lo exige la base. */
+  async function choferDe(distributorId: string): Promise<string> {
+    const { user } = await usuario(RoleType.DELIVERY, distributorId);
+    const perfil = await ds
+      .getRepository(Delivery)
+      .save({ userId: user.userId, distributorId } as Partial<Delivery>);
+    return perfil.deliveryId;
   }
 
   async function escenario() {
@@ -436,8 +446,8 @@ describe('Pedidos del panel (e2e)', () => {
       const id = await pedidoPorApi(a.slug, cliente, p);
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'on_the_way' WHERE order_id = $1`,
-        [id],
+        `UPDATE "order" SET status = 'on_the_way', delivery_id = $2, "acceptedAt" = now(), "onTheWayAt" = now() WHERE order_id = $1`,
+        [id, await choferDe(a.distributorId)],
       );
       const entregar = (q: Quien, body: object) =>
         patch(q, `/orders/${id}/status`, body).set('X-Distributor', a.slug);
@@ -511,8 +521,8 @@ describe('Pedidos del panel (e2e)', () => {
       const delCliente = await pedidoPorApi(a.slug, cliente, p);
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'on_the_way', "deliveryCode" = 'QRCODE1234' WHERE order_id = ANY($1)`,
-        [[delAdmin, delCliente]],
+        `UPDATE "order" SET status = 'on_the_way', "deliveryCode" = 'QRCODE1234', delivery_id = $2, "acceptedAt" = now(), "onTheWayAt" = now() WHERE order_id = ANY($1)`,
+        [[delAdmin, delCliente], await choferDe(a.distributorId)],
       );
       const confirmar = (q: Quien, id: string, body: object) =>
         http()

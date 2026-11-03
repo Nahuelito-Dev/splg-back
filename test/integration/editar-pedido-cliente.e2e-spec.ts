@@ -13,6 +13,8 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
+  cuitDePrueba,
 } from './setup/test-env';
 import { Customer } from '../../src/customer/entities/customer.entity';
 import { Car } from '../../src/car/entities/car.entity';
@@ -89,7 +91,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
       name: 'Distribuidora A',
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);
@@ -126,7 +128,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
     const auto = await ds.getRepository(Car).save({
       distributorId: dist.distributorId,
       userId: chofer.user.userId,
-      carPatent: `T${seq}${randomUUID().slice(0, 4).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>);
     await ds.getRepository(VehicleAssignment).save({
       distributorId: dist.distributorId,
@@ -359,7 +361,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
     const id = await crearPedido(e, 2);
     await forzarEstado(
       ds,
-      `UPDATE "order" SET status = 'accepted', delivery_id = $1 WHERE order_id = $2`,
+      `UPDATE "order" SET status = 'accepted', delivery_id = $1, "acceptedAt" = now() WHERE order_id = $2`,
       [e.del.deliveryId, id],
     );
     const res = await http()
@@ -380,7 +382,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
     const e = await escenario();
     const id = await crearPedido(e, 1);
     await ds.query(
-      `UPDATE "order" SET "paymentMethod" = 'mercadopago' WHERE order_id = $1`,
+      `UPDATE "order" SET "paymentMethod" = 'mercadopago', "paymentType" = 'online' WHERE order_id = $1`,
       [id],
     );
     const res = await http()
@@ -402,7 +404,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
       ]);
       await forzarEstado(
         qr,
-        `UPDATE "order" SET status = 'accepted', delivery_id = $1 WHERE order_id = $2`,
+        `UPDATE "order" SET status = 'accepted', delivery_id = $1, "acceptedAt" = now() WHERE order_id = $2`,
         [e.del.deliveryId, id],
       );
       let terminado = false;
@@ -474,7 +476,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
         expect(aceptacion.status).toBe(200);
         await forzarEstado(
           ds,
-          `UPDATE "order" SET status = 'cancelled' WHERE order_id = $1`,
+          `UPDATE "order" SET status = 'cancelled', "cancellationReason" = 'Cancelado en la prueba' WHERE order_id = $1`,
           [id],
         );
         await ds.query(
@@ -655,7 +657,7 @@ describe('Editar el pedido como cliente (HTTP e2e)', () => {
       const id = await crearPedido(e, 2);
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'accepted', delivery_id = $2 WHERE order_id = $1`,
+        `UPDATE "order" SET status = 'accepted', delivery_id = $2, "acceptedAt" = now() WHERE order_id = $1`,
         [id, e.del.deliveryId],
       );
       const q = await cotizar(e, e.cliente, id);

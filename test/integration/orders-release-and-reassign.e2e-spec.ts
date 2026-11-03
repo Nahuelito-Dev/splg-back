@@ -25,7 +25,13 @@
  * propios datos con ids únicos.
  */
 import { DataSource } from 'typeorm';
-import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  telefonoDePrueba,
+  patenteDePrueba,
+  cuitDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -78,7 +84,7 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
       name: `Distribuidora Test ${seq}`,
       slug: `dist-test-${seq}-${Date.now()}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `dist${seq}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>)) as Distributor;
@@ -115,7 +121,7 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
       const auto = (await dataSource.getRepository(Car).save({
         distributorId: distributor.distributorId,
         userId: usuario.userId,
-        carPatent: `T${seq}${chofer.deliveryId.slice(0, 5).toUpperCase()}`,
+        carPatent: patenteDePrueba(),
       } as Partial<Car>)) as Car;
       await dataSource.getRepository(VehicleAssignment).save({
         distributorId: distributor.distributorId,
@@ -211,8 +217,8 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
     const { order, cylinder } = await seedOrderAssignedToDriverA();
 
     const results = await Promise.allSettled([
-      orderService.cancelOrder(order.orderId, 'admin-1', 'admin'),
-      orderService.cancelOrder(order.orderId, 'admin-1', 'admin'),
+      orderService.cancelOrder(order.orderId, 'admin-1', 'admin', 'Duplicado'),
+      orderService.cancelOrder(order.orderId, 'admin-1', 'admin', 'Duplicado'),
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
@@ -273,7 +279,10 @@ describe('Order.delivery vs Order.deliveryId + lock pesimista (e2e, Postgres rea
     await holder.manager.update(
       Order,
       { orderId: order.orderId },
-      { status: OrderStatus.CANCELLED },
+      {
+        status: OrderStatus.CANCELLED,
+        cancellationReason: 'Cancelado mientras avanzaba',
+      },
     );
     await holder.commitTransaction();
     await holder.release();

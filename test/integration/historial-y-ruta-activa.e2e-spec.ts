@@ -13,6 +13,7 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  cuitDePrueba,
 } from './setup/test-env';
 import { MENSAJE_FALTA_DISTRIBUIDORA } from '../../src/common/decorators/current-distributor.decorator';
 import { Admin } from '../../src/admin/entities/admin.entity';
@@ -77,7 +78,7 @@ describe('Historial de estados y pedido activo del chofer (HTTP e2e)', () => {
       name: nombre,
       slug: `dist-${seq}-${randomUUID().slice(0, 4)}`,
       legalName: 'Test SRL',
-      taxId: `30-${seq}${Date.now()}`,
+      taxId: cuitDePrueba(),
       email: `d${seq}${Date.now()}@test.local`,
       phone: '+540000000000',
     } as Partial<Distributor>);

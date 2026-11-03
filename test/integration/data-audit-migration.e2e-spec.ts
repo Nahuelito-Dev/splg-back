@@ -437,11 +437,18 @@ describe('Migración AuditoriaDeDatos (e2e)', () => {
     });
 
     it('revertir la migración y volver a correrla funciona', async () => {
-      await ds.undoLastMigration();
-      const [{ existe }] = await ds.query<Array<{ existe: boolean }>>(
-        `SELECT to_regclass('public.audit_entity_map') IS NOT NULL AS existe`,
-      );
-      expect(existe).toBe(false);
+      // Desde la última hacia atrás hasta sacar la que crea el mapa, sin
+      // depender de cuántas migraciones posteriores haya.
+      const mapaExiste = async () => {
+        const [{ existe }] = await ds.query<Array<{ existe: boolean }>>(
+          `SELECT to_regclass('public.audit_entity_map') IS NOT NULL AS existe`,
+        );
+        return existe;
+      };
+      for (let i = 0; i < 300 && (await mapaExiste()); i++) {
+        await ds.undoLastMigration();
+      }
+      expect(await mapaExiste()).toBe(false);
       await ds.runMigrations();
       const [{ n }] = await ds.query<Array<{ n: string }>>(
         `SELECT count(*) AS n FROM pg_trigger WHERE tgname = 'TRG_auditoria'`,

@@ -5,7 +5,12 @@
  */
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
+import {
+  TestEnv,
+  createTestApp,
+  telefonoDePrueba,
+  patenteDePrueba,
+} from './setup/test-env';
 import {
   Order,
   OrderStatus,
@@ -74,7 +79,7 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
     const auto = await ds.getRepository(Car).save({
       distributorId: distributor.distributorId,
       userId: user.userId,
-      carPatent: `R${sufijo.toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>);
     await ds.getRepository(VehicleAssignment).save({
       distributorId: distributor.distributorId,
@@ -129,7 +134,8 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
   /** Simula que la oferta vigente venció hace `minutos` y corre el cron. */
   async function vencerOfertaVigente(orderId: string, minutos: number) {
     await ds.query(
-      `UPDATE order_dispatch_offer SET "expiresAt" = now() - ($2 || ' minutes')::interval
+      `UPDATE order_dispatch_offer SET "expiresAt" = now() - ($2 || ' minutes')::interval,
+           "offeredAt" = now() - ($2 || ' minutes')::interval - ("expiresAt" - "offeredAt")
        WHERE order_id = $1 AND status = 'offered'`,
       [orderId, String(minutos)],
     );
@@ -177,7 +183,8 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
     // 5. Pasado el cooldown (3 min desde el vencimiento) se re-ofrece al lento
     //    y jamás al que rechazó.
     await ds.query(
-      `UPDATE order_dispatch_offer SET "expiresAt" = now() - interval '4 minutes'
+      `UPDATE order_dispatch_offer SET "expiresAt" = now() - interval '4 minutes',
+           "offeredAt" = now() - interval '4 minutes' - ("expiresAt" - "offeredAt")
        WHERE order_id = $1 AND status = 'expired'`,
       [order.orderId],
     );
@@ -218,7 +225,8 @@ describe('Despacho: re-oferta de ofertas vencidas (e2e, Postgres + Redis reales)
 
     // Aunque pase el cooldown, el único chofer no vuelve a ser candidato.
     await ds.query(
-      `UPDATE order_dispatch_offer SET "expiresAt" = now() - interval '10 minutes'
+      `UPDATE order_dispatch_offer SET "expiresAt" = now() - interval '10 minutes',
+           "offeredAt" = now() - interval '10 minutes' - ("expiresAt" - "offeredAt")
        WHERE order_id = $1`,
       [order.orderId],
     );

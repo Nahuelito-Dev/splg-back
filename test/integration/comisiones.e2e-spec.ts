@@ -4,6 +4,7 @@
  * idempotencia, copia de la regla, barrido), consulta del chofer, y liquidación
  * (borrador, aprobar, pagar contra la caja, anular, numeración y concurrencia).
  */
+import { diaArgentino, sumarDias } from '../../src/common/utils/dias-argentina';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { codigoSqlDelError } from '../../src/common/errors/db-exceptions';
@@ -418,10 +419,9 @@ describe('Comisiones (e2e)', () => {
       const { e, cliente } = await armar();
       await crearRegla(e.headers, {}).expect(201);
       const ledger = env.app.get(CommissionLedgerService);
-      const sinChofer = await f.pedidoEntregado(e, { chofer: null, cliente });
-      expect(await ledger.devengarPorPedido(sinChofer.orderId)).toBe(
-        'no-entregado',
-      );
+      // Un pedido entregado sin chofer ya no existe (`CHK_order_chofer_asignado`):
+      // lo que no está entregado (acá, un pedido que no existe) no devenga.
+      expect(await ledger.devengarPorPedido(randomUUID())).toBe('no-entregado');
       // Chofer con perfil pero sin legajo.
       const sinLegajo = await f.chofer(e.distributorId);
       await ds.query(
@@ -639,24 +639,80 @@ describe('Comisiones (e2e)', () => {
       expect(mockReintentos.n).toBe(0);
     });
 
-    it('la numeración es correlativa por distribuidora y sin huecos', async () => {
+    /** Mueve a `dia` (día argentino, mediodía) los asientos todavía sin liquidar del chofer. */
+    const retrodatar = (employeeId: string, dia: string) =>
+      ds.transaction(async (m) => {
+        await m.query('SET LOCAL session_replication_role = replica');
+        await m.query(
+          `UPDATE commission_entry SET occurred_at = $2::timestamptz
+            WHERE employee_id = $1 AND liquidation_id IS NULL`,
+          [employeeId, `${dia}T12:00:00-03:00`],
+        );
+      });
+
+    it('la numeración es correlativa por distribuidora y sin huecos, también para un mismo chofer con períodos que no se pisan', async () => {
       const { e, chofer, cliente } = await conComisiones();
+      const hoy = diaArgentino();
+      await retrodatar(chofer.employeeId, sumarDias(hoy, -10));
       const l1 = cuerpo<Liquidacion>(
-        await liquidar(e.headers, chofer.employeeId).expect(201),
+        await liquidar(e.headers, chofer.employeeId, {
+          periodTo: sumarDias(hoy, -5),
+        }).expect(201),
       );
       await entregarPedido(e, chofer, cliente, 1);
+      await retrodatar(chofer.employeeId, sumarDias(hoy, -3));
+      // Un período que pisa el de la primera: la base y el back lo rechazan.
+      await liquidar(e.headers, chofer.employeeId, {
+        periodFrom: sumarDias(hoy, -6),
+        periodTo: sumarDias(hoy, -1),
+      }).expect(409);
       const l2 = cuerpo<Liquidacion>(
-        await liquidar(e.headers, chofer.employeeId).expect(201),
+        await liquidar(e.headers, chofer.employeeId, {
+          periodFrom: sumarDias(hoy, -4),
+          periodTo: sumarDias(hoy, -1),
+        }).expect(201),
       );
       expect([l1.number, l2.number]).toEqual([1, 2]);
-      // Una que falla no consume número.
-      await liquidar(e.headers, chofer.employeeId).expect(409);
-      await entregarPedido(e, chofer, cliente, 1);
+      // Una que falla (nada que liquidar) no consume número.
+      await liquidar(e.headers, chofer.employeeId, {
+        periodFrom: hoy,
+        periodTo: hoy,
+      }).expect(409);
+      // Otro chofer de la misma distribuidora sigue la misma numeración.
+      const otro = await f.chofer(e.distributorId);
+      await entregarPedido(e, otro, cliente, 1);
       const l3 = cuerpo<Liquidacion>(
-        await liquidar(e.headers, chofer.employeeId).expect(201),
+        await liquidar(e.headers, otro.employeeId).expect(201),
       );
       expect(l3.number).toBe(3);
     });
+
+    // HALLAZGO (no se arregla acá): una liquidación cuyo período termina hoy deja
+    // sin liquidar las entregas que ocurren después ese mismo día. Su período
+    // ya está tomado (el siguiente solapa hoy) y el que arranca mañana no las
+    // incluye. Cuando se resuelva, este test pasa a rojo y hay que sacarle `failing`.
+    it.failing(
+      'una entrega posterior a una liquidación que termina hoy se puede liquidar',
+      async () => {
+        const { e, chofer, cliente } = await conComisiones();
+        const hoy = diaArgentino();
+        await liquidar(e.headers, chofer.employeeId, {
+          periodTo: hoy,
+        }).expect(201);
+        await entregarPedido(e, chofer, cliente, 1);
+        const intentos = [
+          { periodFrom: hoy, periodTo: hoy },
+          { periodFrom: sumarDias(hoy, 1), periodTo: sumarDias(hoy, 30) },
+        ];
+        const estados: number[] = [];
+        for (const periodo of intentos) {
+          estados.push(
+            (await liquidar(e.headers, chofer.employeeId, periodo)).status,
+          );
+        }
+        expect(estados).toContain(201);
+      },
+    );
 
     it('aprobar sólo un borrador; pagar sólo una aprobada: el egreso del neto sale de la caja con su categoría', async () => {
       const { e, chofer, cajaId } = await conComisiones();

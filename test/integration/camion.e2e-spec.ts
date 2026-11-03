@@ -14,8 +14,10 @@ import {
   createTestApp,
   telefonoDePrueba,
   truncateAllTables,
+  patenteDePrueba,
 } from './setup/test-env';
 import { conIdempotencia } from './setup/con-idempotencia';
+import { tipoDePago } from './setup/pedido-valido';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Car } from '../../src/car/entities/car.entity';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
@@ -209,7 +211,7 @@ describe('Carga y rendición del camión (e2e)', () => {
     const auto = (await ds.getRepository(Car).save({
       distributorId: e.distributorId,
       userId: user.userId,
-      carPatent: `C${seq}${randomUUID().slice(0, 4).toUpperCase()}`,
+      carPatent: patenteDePrueba(),
     } as Partial<Car>)) as Car;
     if (ponerEnUso) {
       await ds.getRepository(VehicleAssignment).save({
@@ -301,6 +303,7 @@ describe('Carga y rendición del camión (e2e)', () => {
       addressId: dir.addressId,
       status: OrderStatus.ON_THE_WAY,
       paymentMethod: metodo,
+      paymentType: tipoDePago(metodo),
       totalAmount: 1000 * cantidad,
       subtotalItems: 1000 * cantidad,
       deliveryId: c.deliveryId,
@@ -1482,7 +1485,7 @@ describe('Carga y rendición del camión (e2e)', () => {
       // (se lo da por entregado para poder volver)
       await forzarEstado(
         ds,
-        `UPDATE "order" SET status = 'delivered' WHERE delivery_id = $1`,
+        `UPDATE "order" SET status = 'delivered', "acceptedAt" = coalesce("acceptedAt", now()), "onTheWayAt" = coalesce("onTheWayAt", now()), "deliveredAt" = now() WHERE delivery_id = $1`,
         [c.deliveryId],
       );
 
