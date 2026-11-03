@@ -25,6 +25,11 @@ import {
   idCortoDePedido,
   pedirAvisoAlAdmin,
 } from '../../common/events/aviso-al-admin';
+import {
+  posicionReciente,
+  situacionDelChofer,
+  type SituacionDeChofer,
+} from '../domain/chofer-por-terminar';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 
 /** Por qué un pedido pendiente se quedó sin candidatos (payload de `order:no-drivers`). */
@@ -174,9 +179,8 @@ export class DispatchOrchestratorService {
     }
 
     // Se leen en cada oferta: un cambio de configuración rige para la próxima.
-    const { radiusStepsKm, offerTtlSeconds } = await this.settings.obtener(
-      order.distributorId,
-    );
+    const { radiusStepsKm, offerTtlSeconds, finishingRadiusMeters } =
+      await this.settings.obtener(order.distributorId);
 
     const { blocked, reofferable } = await this.offers.findDriverOfferState(
       order.orderId,
@@ -193,6 +197,7 @@ export class DispatchOrchestratorService {
       nuncaContactadosOBloqueados,
       order.distributorId,
       radiusStepsKm,
+      finishingRadiusMeters,
     );
     const candidate =
       nuevos.candidate ??
@@ -204,6 +209,7 @@ export class DispatchOrchestratorService {
               new Set(blocked),
               order.distributorId,
               radiusStepsKm,
+              finishingRadiusMeters,
             )
           ).candidate
         : null);
@@ -623,6 +629,7 @@ export class DispatchOrchestratorService {
     exclude: Set<string>,
     distributorId: string | null | undefined,
     radiusStepsKm: readonly number[],
+    finishingRadiusMeters: number,
   ): Promise<{ candidate: string | null; elegiblesEnRango: number }> {
     const cacheDeFlota: CacheDeInhabilitacion = {
       evaluados: new Set(),
@@ -636,6 +643,7 @@ export class DispatchOrchestratorService {
         drivers,
         distributorId,
         cacheDeFlota,
+        finishingRadiusMeters,
       );
       eligible.forEach((id) => enRango.add(id));
       const next = eligible.find((id) => !exclude.has(id));
@@ -666,13 +674,18 @@ export class DispatchOrchestratorService {
     driverIds: string[],
     distributorId: string | null | undefined,
     cache: CacheDeInhabilitacion,
+    finishingRadiusMeters = 0,
   ): Promise<string[]> {
     if (driverIds.length === 0) return driverIds;
     const habilitados = await this.deliveries.choferesElegibles(
       driverIds,
       distributorId,
     );
-    const elegibles = await this.sinPedidoEnCurso(habilitados, distributorId);
+    const elegibles = await this.sinPedidoEnCurso(
+      habilitados,
+      distributorId,
+      finishingRadiusMeters,
+    );
     if (elegibles.length === 0) return elegibles;
 
     const nuevos = elegibles.filter((id) => !cache.evaluados.has(id));
@@ -695,25 +708,61 @@ export class DispatchOrchestratorService {
   }
 
   /**
-   * Un chofer con un pedido aceptado o en camino está ocupado: no se le ofrece
-   * otro (la oferta se gastaría y la app la rechaza).
+   * Los choferes que pueden recibir otro pedido: los libres y, con
+   * `finishingRadiusMeters` > 0, los «por terminar» (CU-013, regla en
+   * `situacionDelChofer`). Un chofer ocupado no recibe otro (la oferta se
+   * gastaría y la app la rechaza). Conserva el orden por cercanía, con los
+   * libres antes que los por terminar dentro del mismo paso de radio.
    */
   private async sinPedidoEnCurso(
     driverIds: string[],
     distributorId: string | null | undefined,
+    finishingRadiusMeters = 0,
   ): Promise<string[]> {
     if (driverIds.length === 0) return driverIds;
+    const situaciones = await this.situaciones(
+      driverIds,
+      distributorId,
+      finishingRadiusMeters,
+    );
+    const libres = driverIds.filter((id) => situaciones.get(id) === 'libre');
+    const porTerminar = driverIds.filter(
+      (id) => situaciones.get(id) === 'por_terminar',
+    );
+    return [...libres, ...porTerminar];
+  }
+
+  /** Situación de cada chofer (`user_id`); el que no tiene perfil en la distribuidora no figura. */
+  private async situaciones(
+    driverIds: string[],
+    distributorId: string | null | undefined,
+    finishingRadiusMeters: number,
+  ): Promise<Map<string, SituacionDeChofer>> {
     const perfiles = await this.deliveries.findDeliveryIdsByUserIds(
       driverIds,
       distributorId,
     );
-    const ocupados = await this.orders.findDeliveryIdsWithOrderInProgress(
+    const enCurso = await this.orders.findInProgressOfDeliveries(
       perfiles.map((p) => p.deliveryId),
     );
-    const userIdsOcupados = new Set(
-      perfiles.filter((p) => ocupados.has(p.deliveryId)).map((p) => p.userId),
-    );
-    return driverIds.filter((id) => !userIdsOcupados.has(id));
+    const resultado = new Map<string, SituacionDeChofer>();
+    for (const id of driverIds) resultado.set(id, 'libre');
+    for (const perfil of perfiles) {
+      const pedidos = enCurso.filter((p) => p.deliveryId === perfil.deliveryId);
+      if (pedidos.length === 0) continue;
+      const ultima =
+        finishingRadiusMeters > 0 && pedidos.length === 1
+          ? await this.dispatch.lastKnownPosition(perfil.userId)
+          : null;
+      // Una posición vieja no prueba que esté llegando.
+      const posicion =
+        ultima && posicionReciente(ultima.at, Date.now()) ? ultima : null;
+      resultado.set(
+        perfil.userId,
+        situacionDelChofer(pedidos, posicion, finishingRadiusMeters),
+      );
+    }
+    return resultado;
   }
 
   /**

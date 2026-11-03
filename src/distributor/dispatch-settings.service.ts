@@ -93,6 +93,9 @@ export class DispatchSettingsService {
         ...(settings.offerTtlSeconds != null
           ? { offerTtlSeconds: settings.offerTtlSeconds }
           : {}),
+        ...(settings.finishingRadiusMeters != null
+          ? { finishingRadiusMeters: settings.finishingRadiusMeters }
+          : {}),
       },
       actorUserId,
     );
@@ -104,6 +107,7 @@ export class DispatchSettingsService {
     return {
       radiusStepsKm: [...settings.radiusStepsKm],
       offerTtlSeconds: settings.offerTtlSeconds,
+      finishingRadiusMeters: settings.finishingRadiusMeters,
     };
   }
 }

@@ -122,6 +122,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       } as unknown as import('../domain/ports/notification.port').NotificationPort,
       {
         findByIdFull: jest.fn().mockResolvedValue(order),
+        findInProgressOfDeliveries: jest.fn().mockResolvedValue([]),
       } as unknown as import('../domain/ports/order.repository.port').OrderRepositoryPort,
       {
         onDriverAccepted: jest.fn().mockResolvedValue(undefined),

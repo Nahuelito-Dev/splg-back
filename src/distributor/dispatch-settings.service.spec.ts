@@ -7,7 +7,11 @@ describe('DispatchSettingsService (CU-171)', () => {
   let service: DispatchSettingsService;
   let configs: { parametros: jest.Mock; fila: jest.Mock; guardar: jest.Mock };
 
-  const DEFAULTS = { radiusStepsKm: [5, 10, 15, 20], offerTtlSeconds: 30 };
+  const DEFAULTS = {
+    radiusStepsKm: [5, 10, 15, 20],
+    offerTtlSeconds: 30,
+    finishingRadiusMeters: 300,
+  };
 
   beforeEach(() => {
     jest.useFakeTimers({ now: new Date('2026-10-15T12:00:00Z') });
@@ -40,6 +44,7 @@ describe('DispatchSettingsService (CU-171)', () => {
     expect(await service.obtener('d1')).toEqual({
       radiusStepsKm: [2, 4],
       offerTtlSeconds: 60,
+      finishingRadiusMeters: 300,
     });
   });
 
@@ -94,6 +99,7 @@ describe('DispatchSettingsService (CU-171)', () => {
     expect(await service.obtener('d1')).toEqual({
       radiusStepsKm: [3],
       offerTtlSeconds: 90,
+      finishingRadiusMeters: 300,
     });
     // La otra distribuidora conserva su copia: no volvió a la base.
     await service.obtener('d2');
@@ -129,6 +135,34 @@ describe('DispatchSettingsService (CU-171)', () => {
       ...DEFAULTS,
       offerTtlSeconds: 45,
     });
+  });
+
+  it('finishingRadiusMeters: 0 (apagado) es válido; negativo, fraccionario o enorme cae al valor por omisión', () => {
+    const radio = (finishingRadiusMeters: unknown) =>
+      dispatchSettingsDesde({ finishingRadiusMeters }).finishingRadiusMeters;
+    expect(radio(0)).toBe(0);
+    expect(radio(5000)).toBe(5000);
+    expect(radio(450)).toBe(450);
+    expect(radio(-1)).toBe(300);
+    expect(radio(5001)).toBe(300);
+    expect(radio(10.5)).toBe(300);
+    expect(radio('x')).toBe(300);
+  });
+
+  it('guardar el radio por terminar lo manda a la configuración y deja de ser isDefault', async () => {
+    configs.fila.mockResolvedValue({
+      params: { finishingRadiusMeters: 0 },
+      updatedAt: null,
+      updatedByUserId: 'u1',
+    });
+    const r = await service.guardar('d1', { finishingRadiusMeters: 0 }, 'u1');
+    expect(configs.guardar).toHaveBeenCalledWith(
+      'd1',
+      ConfigurableProcess.DISPATCH,
+      { finishingRadiusMeters: 0 },
+      'u1',
+    );
+    expect(r).toMatchObject({ finishingRadiusMeters: 0, isDefault: false });
   });
 
   it('PUT parcial: guarda sólo lo que vino y lo que falta se lee con su valor por omisión', async () => {
