@@ -131,6 +131,7 @@ export class CoverageZoneController {
   @ApiNotFoundResponse({
     description: 'La zona no existe o es de otra distribuidora',
   })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -180,6 +181,7 @@ export class CoverageZoneController {
   @ApiNotFoundResponse({
     description: 'La zona no existe o es de otra distribuidora',
   })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,

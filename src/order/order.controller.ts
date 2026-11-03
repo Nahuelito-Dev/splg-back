@@ -251,6 +251,7 @@ export class OrderController {
   })
   @ApiParam({ name: 'customerId', description: 'Customer UUID' })
   @ApiOkResponse({ type: PaginatedOrdersResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findByCustomer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('customerId', ParseUUIDPipe) customerId: string,
@@ -310,6 +311,7 @@ export class OrderController {
   @ApiOperation({ summary: 'Get orders by delivery ID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
   @ApiOkResponse({ type: PaginatedOrdersResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findByDelivery(
     @CurrentUser() user: AuthenticatedUser,
     @Param('deliveryId', ParseUUIDPipe) deliveryId: string,
@@ -411,6 +413,7 @@ export class OrderController {
     description: 'El pedido no está aceptado ni en camino',
   })
   @ApiForbiddenResponse({ description: 'El pedido lo tiene otro chofer' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async getDriverPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: DownloadQueryDto,
@@ -594,6 +597,7 @@ export class OrderController {
   @ApiNotFoundResponse({
     description: 'El pedido no existe o es de otra distribuidora',
   })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async rejectOffer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -884,6 +888,7 @@ export class OrderController {
     type: OrderResponseDto,
     description: 'El pedido, sin cambios',
   })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async updateLocation(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,

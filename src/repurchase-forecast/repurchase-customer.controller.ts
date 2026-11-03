@@ -136,6 +136,7 @@ export class RepurchaseCustomerController {
   @ApiOperation({ summary: 'Una de mis invitaciones de recompra' })
   @ApiParam({ name: 'id', description: 'Invitation UUID' })
   @ApiOkResponse({ type: RepurchaseInvitationResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'No existe o es de otro cliente' })
   async invitacion(
     @Param('id', ParseUUIDPipe) id: string,
@@ -156,7 +157,7 @@ export class RepurchaseCustomerController {
   @ApiCreatedResponse({ type: AcceptInvitationResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Sin stock para lo sugerido, franja sin fecha (o al revés), dirección fuera de cobertura u otra regla del pedido',
+      'El id no es un UUID, sin stock para lo sugerido, franja sin fecha (o al revés), dirección fuera de cobertura u otra regla del pedido',
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otro cliente' })
   @ApiConflictResponse({
@@ -190,6 +191,7 @@ export class RepurchaseCustomerController {
   })
   @ApiParam({ name: 'id', description: 'Invitation UUID' })
   @ApiOkResponse({ type: RepurchaseInvitationResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'No existe o es de otro cliente' })
   @ApiConflictResponse({ description: 'Ya no está abierta' })
   async descartar(

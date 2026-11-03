@@ -246,6 +246,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserResponseDto })
   @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -261,6 +262,7 @@ export class UsersController {
   @ApiVerFoto('Ver la foto de perfil de un usuario')
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiForbiddenResponse({ description: 'No es su cuenta' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async getPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: DownloadQueryDto,
@@ -284,6 +286,7 @@ export class UsersController {
   @ApiForbiddenResponse({ description: 'No es su cuenta' })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -476,13 +479,14 @@ export class UsersController {
   })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiForbiddenResponse({
     description: 'Es la cuenta de un cliente, o la propia',
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
     description:
-      'Es un chofer con pedidos aceptados o en camino (hay que cancelarlos o reasignarlos antes), o el último administrador activo de su distribuidora o el último super administrador',
+      'Es un chofer con pedidos aceptados o en camino (hay que cancelarlos o reasignarlos antes), un chofer con una rendición pendiente (CU-181), o el último administrador activo de su distribuidora o el último super administrador',
   })
   @HttpCode(HttpStatus.OK)
   async remove(

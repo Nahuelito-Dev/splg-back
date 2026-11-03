@@ -1,5 +1,6 @@
 import { Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -33,6 +34,7 @@ export class DeliveryCodeV2Controller {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiCreatedResponse({ type: CodigoDeEntregaResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiForbiddenResponse({
     description: 'El pedido no está asignado a este chofer',
   })

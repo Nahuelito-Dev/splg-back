@@ -59,6 +59,7 @@ export class FleetTaskV2Controller {
   @ApiParam({ name: 'id', description: 'Task UUID' })
   @ApiOkResponse({ type: FleetTaskV2ResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
