@@ -13,8 +13,8 @@ const invitacion = (unidades = 2): RepurchaseInvitation =>
     invitationId: 'i1',
     distributorId: 'd1',
     userId: 'u1',
-    projectedDepletionAt: new Date('2026-11-03T15:00:00Z'),
-    expiresAt: new Date('2026-11-01T15:00:00Z'),
+    projectedDepletionAt: new Date('2099-11-03T15:00:00Z'),
+    expiresAt: new Date('2099-11-01T15:00:00Z'),
     suggestedItems: [{ gasCylinderId: 'g', quantity: unidades }],
   }) as RepurchaseInvitation;
 
@@ -48,8 +48,8 @@ describe('RepurchaseNotifier', () => {
       {
         invitationId: 'i1',
         distributorId: 'd1',
-        projectedDepletionAt: '2026-11-03T15:00:00.000Z',
-        expiresAt: '2026-11-01T15:00:00.000Z',
+        projectedDepletionAt: '2099-11-03T15:00:00.000Z',
+        expiresAt: '2099-11-01T15:00:00.000Z',
       },
     );
     const [token, mensaje] = fcm.sendToToken.mock.calls[0] as [
