@@ -11,6 +11,7 @@ import {
   Check,
   Unique,
 } from 'typeorm';
+import type { Point } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { WarehouseKind } from '../domain/stock.enums';
 
@@ -53,6 +54,16 @@ export class Warehouse {
 
   @Column({ type: 'text', nullable: true })
   address!: string | null;
+
+  /** Punto de salida del recorrido de las hojas de ruta. */
+  @Column({
+    name: 'location',
+    type: 'geometry',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+  })
+  location!: Point | null;
 
   @Column({ name: 'is_default', type: 'boolean', default: false })
   isDefault!: boolean;

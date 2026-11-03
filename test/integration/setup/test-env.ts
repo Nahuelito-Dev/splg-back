@@ -48,6 +48,7 @@ import { sentenciasDeReglasDeDatos } from '../../../src/migrations/sql/reglas-de
 import { CREAR_PROCEDIMIENTOS_DE_CONCILIACION } from '../../../src/migrations/sql/procedimientos-de-conciliacion';
 import { sentenciasDeSaldos } from '../../../src/migrations/sql/saldo-contra-libro';
 import { sentenciasDeTransiciones } from '../../../src/migrations/sql/transiciones-de-estado';
+import { sentenciasDelLote } from '../../../src/migrations/sql/transicion-lote-de-recorrido';
 import {
   CREAR_ES_CUIL_VALIDO,
   CREAR_ES_CUIT_VALIDO,
@@ -302,6 +303,7 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
   await dataSource.query(CREAR_TRIGGER_HISTORIAL_DEL_PAGO);
   for (const sql of [
     ...sentenciasDeTransiciones(),
+    ...sentenciasDelLote(),
     ...sentenciasDeSaldos(),
     ...sentenciasDeReglasDeDatos(),
     ...CREAR_PROCEDIMIENTOS_DE_CONCILIACION,

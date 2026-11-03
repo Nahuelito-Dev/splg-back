@@ -897,6 +897,20 @@
       "orderColumn": null
     },
     {
+      "table": "route_plan",
+      "entity": "RoutePlan",
+      "pk": ["plan_id"],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "stock_adjustment",
       "entity": "StockAdjustment",
       "pk": ["adjustment_id"],
@@ -1430,11 +1444,19 @@
     },
     {
       "table": "car",
+      "column": "max_cylinders",
+      "property": "maxCylinders",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "car",
       "column": "odometer_km",
       "property": "odometerKm",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 14
     },
     {
       "table": "car",
@@ -1442,7 +1464,7 @@
       "property": "fleetStatus",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
     },
     {
       "table": "car",
@@ -1450,7 +1472,7 @@
       "property": "fuelType",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 16
     },
     {
       "table": "car",
@@ -1458,7 +1480,7 @@
       "property": "tankCapacityLiters",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 17
     },
     {
       "table": "car",
@@ -1466,7 +1488,7 @@
       "property": "inServiceSince",
       "secret": false,
       "kind": "timestamp",
-      "position": 17
+      "position": 18
     },
     {
       "table": "car",
@@ -1474,7 +1496,7 @@
       "property": "photoKey",
       "secret": false,
       "kind": "text",
-      "position": 18
+      "position": 19
     },
     {
       "table": "cash_box",
@@ -7093,6 +7115,150 @@
       "position": 6
     },
     {
+      "table": "route_batch",
+      "column": "kind",
+      "property": "kind",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "route_batch",
+      "column": "plan_date",
+      "property": "planDate",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "route_batch",
+      "column": "number",
+      "property": "number",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "route_batch",
+      "column": "car_id",
+      "property": "carId",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "route_batch",
+      "column": "origin_warehouse_id",
+      "property": "originWarehouseId",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "route_batch",
+      "column": "truck_load_id",
+      "property": "truckLoadId",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "route_batch",
+      "column": "planned_start_at",
+      "property": "plannedStartAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "route_batch",
+      "column": "total_distance_km",
+      "property": "totalDistanceKm",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "route_batch",
+      "column": "total_duration_min",
+      "property": "totalDurationMin",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "route_batch",
+      "column": "total_units",
+      "property": "totalUnits",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "route_batch",
+      "column": "peak_units",
+      "property": "peakUnits",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "route_batch",
+      "column": "optimization_method",
+      "property": "optimizationMethod",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "route_batch",
+      "column": "matrix_source",
+      "property": "matrixSource",
+      "secret": false,
+      "kind": "text",
+      "position": 19
+    },
+    {
+      "table": "route_batch",
+      "column": "proposed_by",
+      "property": "proposedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 20
+    },
+    {
+      "table": "route_batch",
+      "column": "edited_at",
+      "property": "editedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 21
+    },
+    {
+      "table": "route_batch",
+      "column": "confirmed_at",
+      "property": "confirmedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 22
+    },
+    {
+      "table": "route_batch",
+      "column": "confirmed_by_user_id",
+      "property": "confirmedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 23
+    },
+    {
+      "table": "route_batch",
+      "column": "started_at",
+      "property": "startedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 24
+    },
+    {
       "table": "route_batch_stop",
       "column": "stop_id",
       "property": "stopId",
@@ -7147,6 +7313,142 @@
       "secret": false,
       "kind": "text",
       "position": 6
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "planned_eta_at",
+      "property": "plannedEtaAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "leg_duration_min",
+      "property": "legDurationMin",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "sequence_locked",
+      "property": "sequenceLocked",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "notified_window_start",
+      "property": "notifiedWindowStart",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 10
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "notified_window_end",
+      "property": "notifiedWindowEnd",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "notified_at",
+      "property": "notifiedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "removed_reason",
+      "property": "removedReason",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "removed_at",
+      "property": "removedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 14
+    },
+    {
+      "table": "route_plan",
+      "column": "plan_id",
+      "property": "planId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "route_plan",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "route_plan",
+      "column": "plan_date",
+      "property": "planDate",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "route_plan",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "route_plan",
+      "column": "cutoff_at",
+      "property": "cutoffAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
+    },
+    {
+      "table": "route_plan",
+      "column": "proposed_at",
+      "property": "proposedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
+      "table": "route_plan",
+      "column": "proposal_summary",
+      "property": "proposalSummary",
+      "secret": false,
+      "kind": "json",
+      "position": 6
+    },
+    {
+      "table": "route_plan",
+      "column": "closed_at",
+      "property": "closedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "route_plan",
+      "column": "closed_by_user_id",
+      "property": "closedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 8
     },
     {
       "table": "stock_adjustment",
@@ -8622,11 +8924,19 @@
     },
     {
       "table": "warehouse",
+      "column": "location",
+      "property": "location",
+      "secret": false,
+      "kind": "geo",
+      "position": 6
+    },
+    {
+      "table": "warehouse",
       "column": "is_default",
       "property": "isDefault",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 7
     },
     {
       "table": "warehouse",
@@ -8634,7 +8944,7 @@
       "property": "isActive",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "warehouse",
@@ -8642,7 +8952,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 8
+      "position": 9
     }
   ]
 }

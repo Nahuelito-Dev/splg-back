@@ -11,6 +11,7 @@ export enum DocType {
   DRIVER_LIQUIDATION = 'driver_liquidation',
   STOCK_ADJUSTMENT = 'stock_adjustment',
   EMPLOYEE_FILE = 'employee_file',
+  ROUTE_SHEET = 'route_sheet',
 }
 
 /** Mismo largo que la columna `doc_type`. */

@@ -78,7 +78,7 @@ describe('ProcessConfigService', () => {
     expect(v.minOrders).toBe(6);
   });
 
-  it('todos devuelve los cuatro procesos (el express tiene su propia ruta)', async () => {
-    expect(await service.todos('d1')).toHaveLength(4);
+  it('todos devuelve los cinco procesos (el express tiene su propia ruta)', async () => {
+    expect(await service.todos('d1')).toHaveLength(5);
   });
 });
