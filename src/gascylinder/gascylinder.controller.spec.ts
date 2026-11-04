@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
@@ -6,6 +6,7 @@ import type { Server } from 'http';
 import { GasCylinderController } from './gascylinder.controller';
 import { GasCylinderService } from './gascylinder.service';
 import { GasCylinderPhotoService } from './gascylinder-photo.service';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 /**
  * El catálogo es público (la app cliente lo ve sin sesión), pero con un
@@ -47,9 +48,7 @@ describe('GasCylinderController · catálogo público con identidad opcional', (
       req.distributorId = tenant;
       next();
     });
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(crearValidationPipe({ forbidNonWhitelisted: false }));
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

@@ -4,11 +4,11 @@ import { IsOptional, IsString, IsUUID } from 'class-validator';
 /** Aviso de confirmación de un pedido al cliente que lo hizo. */
 export class SendOrderConfirmationDto {
   @ApiProperty({ description: 'Identificador del cliente destinatario' })
-  @IsUUID('4', { message: 'customerId debe ser un UUID' })
+  @IsUUID('4')
   customerId!: string;
 
   @ApiProperty({ description: 'Pedido que se confirma' })
-  @IsUUID('4', { message: 'orderId debe ser un UUID' })
+  @IsUUID('4')
   orderId!: string;
 
   @ApiPropertyOptional({

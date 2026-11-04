@@ -216,7 +216,7 @@ describe('CoverageZoneService', () => {
           },
           'd1',
         ),
-      ).rejects.toThrow('validUntil ya pasó');
+      ).rejects.toThrow('La fecha de fin ya pasó');
       expect(manager.save).not.toHaveBeenCalled();
     });
 
@@ -292,7 +292,7 @@ describe('CoverageZoneService', () => {
           { name: 'Mal', polygon: poligono, validFrom: '2026-02-30' },
           'd1',
         ),
-      ).rejects.toThrow('validFrom: no es una fecha válida');
+      ).rejects.toThrow('Válido desde: no es una fecha válida');
       expect(manager.save).not.toHaveBeenCalled();
     });
 
@@ -369,7 +369,7 @@ describe('CoverageZoneService', () => {
         repo.findOne.mockResolvedValue(vencida());
         await expect(
           service.update('z1', { isActive: true }, 'd1'),
-        ).rejects.toThrow('validUntil ya pasó');
+        ).rejects.toThrow('La fecha de fin ya pasó');
         expect(manager.save).not.toHaveBeenCalled();
       });
 

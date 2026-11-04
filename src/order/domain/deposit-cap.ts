@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { PaymentMethod } from '../entities/order.entity';
+import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 
 const aPesos = (monto: Decimal.Value): string =>
   new Decimal(monto).toDecimalPlaces(2).toFixed(2);
@@ -39,8 +40,11 @@ export function assertSenaNoSuperaTotal(
 ): void {
   const totalRedondeado = totalDeBase(total);
   if (new Decimal(deposit).gt(totalRedondeado)) {
-    throw new BadRequestException(
+    throw conCodigo(
+      BadRequestException,
+      400,
       `La seña ($${aPesos(deposit)}) no puede superar el total del pedido ($${aPesos(totalRedondeado)})`,
+      CODIGOS_DE_ERROR.DEPOSIT_EXCEEDS_TOTAL,
     );
   }
 }

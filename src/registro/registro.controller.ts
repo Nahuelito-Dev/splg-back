@@ -71,7 +71,7 @@ export class RegistroController {
   @ApiCreatedResponse({ type: UserResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: email must be an email; password must be longer than or equal to 6 characters)',
+      'Datos inválidos (p. ej.: Correo electrónico: tiene que ser un correo electrónico válido; Contraseña: tiene que tener al menos 6 caracteres)',
   })
   @ApiConflictResponse({ description: 'Email o teléfono ya en uso' })
   registrarClienteRutaAnterior(

@@ -52,6 +52,7 @@ import { sinIndefinidos } from '../common/utils/sin-indefinidos.util';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { diaArgentino } from '../common/utils/dias-argentina';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
+import { valorLegible } from '../common/validation/etiquetas';
 
 const LARGO_DEL_LEGAJO = 4;
 const PREFIJO_DOCUMENTO_PENDIENTE = 'PENDIENTE-';
@@ -190,7 +191,7 @@ export class EmployeeService {
         );
     if (rolDeAcceso(puesto.category) !== datos.rol) {
       throw new BadRequestException(
-        `El puesto "${puesto.name}" (categoría ${puesto.category}) no corresponde a una cuenta con rol ${datos.rol}`,
+        `El puesto "${puesto.name}" (categoría ${valorLegible(puesto.category)}) no corresponde a una cuenta con rol ${valorLegible(datos.rol)}`,
       );
     }
 
@@ -252,7 +253,7 @@ export class EmployeeService {
     );
     if (rolDeAcceso(puesto.category) !== datos.rol) {
       throw new BadRequestException(
-        `El puesto "${puesto.name}" (categoría ${puesto.category}) no admite una cuenta con rol ${datos.rol}`,
+        `El puesto "${puesto.name}" (categoría ${valorLegible(puesto.category)}) no admite una cuenta con rol ${valorLegible(datos.rol)}`,
       );
     }
     await this.pasarFotoAlUsuario(manager, empleado, datos.userId);
@@ -790,7 +791,7 @@ export class EmployeeService {
     const usuario = await this.users.findOne(empleado.userId);
     if (usuario.role?.type !== rolDeAcceso(puesto.category)) {
       throw new ConflictException(
-        `El puesto "${puesto.name}" no es compatible con la cuenta del empleado (rol ${usuario.role?.type ?? 'sin rol'})`,
+        `El puesto "${puesto.name}" no es compatible con la cuenta del empleado (rol ${usuario.role?.type ? valorLegible(usuario.role.type) : 'sin rol'})`,
       );
     }
   }

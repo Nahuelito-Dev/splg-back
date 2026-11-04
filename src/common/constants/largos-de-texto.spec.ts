@@ -1,4 +1,4 @@
-import { ArgumentMetadata, ValidationPipe } from '@nestjs/common';
+import { ArgumentMetadata } from '@nestjs/common';
 import { CreateClaimDto } from '../../claims/dto/create-claim.dto';
 import { ReopenClaimDto } from '../../claims/dto/reopen-claim.dto';
 import { ResolveClaimDto } from '../../claims/dto/resolve-claim.dto';
@@ -11,13 +11,10 @@ import {
   LARGO_MOTIVO_DE_RECLAMO,
   LARGO_NOTA,
 } from './largos-de-texto';
+import { crearValidationPipe } from '../validation/validation-pipe';
 
 // El mismo pipe global de `main.ts`.
-const pipe = new ValidationPipe({
-  whitelist: true,
-  forbidNonWhitelisted: true,
-  transform: true,
-});
+const pipe = crearValidationPipe();
 const validar = (metatype: ArgumentMetadata['metatype'], body: object) =>
   pipe.transform(body, { type: 'body', metatype });
 

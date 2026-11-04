@@ -14,7 +14,7 @@ export class ImportTemplateQueryDto {
     description: 'Formato de la plantilla',
   })
   @IsOptional()
-  @IsEnum(ImportFormat, { message: 'format: usá xlsx o csv' })
+  @IsEnum(ImportFormat)
   format?: ImportFormat;
 }
 

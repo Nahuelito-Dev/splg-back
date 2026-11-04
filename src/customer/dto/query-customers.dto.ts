@@ -20,8 +20,6 @@ export class QueryCustomersDto extends PaginationDto {
       'el total en `X-Total-Count` sirve para el contador de cada pestaña.',
   })
   @IsOptional()
-  @IsEnum(CustomerStatusFilter, {
-    message: 'status debe ser active o blocked',
-  })
+  @IsEnum(CustomerStatusFilter)
   status?: CustomerStatusFilter;
 }

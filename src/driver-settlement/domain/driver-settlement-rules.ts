@@ -106,7 +106,7 @@ export function resolucionDeDiferencia(
   if (dif.isZero()) return DifferenceResolution.NONE;
   if (!pedida || pedida === DifferenceResolution.NONE) {
     throw new RendicionInvalidaError(
-      'Hay una diferencia: indicá cómo se resuelve (differenceResolution: absorbed o charged_to_driver)',
+      'Hay una diferencia: indicá cómo se resuelve (la absorbe la empresa o queda a cargo del chofer)',
     );
   }
   if (pedida === DifferenceResolution.CHARGED_TO_DRIVER && dif.gt(0)) {

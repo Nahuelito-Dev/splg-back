@@ -157,7 +157,7 @@ export class CustomersController {
   @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: property user_id should not exist; property campo_inventado should not exist)',
+      'Datos inválidos (p. ej.: Se envió un dato que no corresponde: Usuario; Se envió un dato que no corresponde)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(
@@ -184,7 +184,7 @@ export class CustomersController {
   @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: latLng debe ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
+      'Datos inválidos (p. ej.: Coordenadas: tiene que ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async updateLocation(

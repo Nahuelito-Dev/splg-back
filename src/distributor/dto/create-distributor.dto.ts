@@ -24,7 +24,7 @@ export class CreateDistributorDto {
   @MinLength(2)
   @MaxLength(60)
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-    message: 'slug debe ser minúsculas, números y guiones (ej: demo)',
+    message: 'slug debe ser minúsculas, números y guiones (p. ej. demo)',
   })
   slug!: string;
 
@@ -59,9 +59,7 @@ export class CreateDistributorDto {
 
   @ApiPropertyOptional({ enum: DistributorStatus })
   @IsOptional()
-  @IsEnum(DistributorStatus, {
-    message: 'status debe ser active o suspended',
-  })
+  @IsEnum(DistributorStatus)
   status?: DistributorStatus;
 
   @ApiPropertyOptional()

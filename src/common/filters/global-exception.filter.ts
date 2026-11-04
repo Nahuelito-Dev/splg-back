@@ -4,7 +4,6 @@ import {
   Catch,
   ConflictException,
   HttpException,
-  HttpStatus,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -23,6 +22,7 @@ import {
   esTimeoutDeBase,
   traducirRestriccionConocida,
 } from '../errors/db-exceptions';
+import { traducirExcepcion } from '../validation/traducir-excepcion';
 import type { Request } from 'express';
 
 /**
@@ -67,16 +67,12 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       ? Date.now() - request.startTime
       : undefined;
 
-    const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+    // El status sale de la excepción ya traducida: un error 4xx crudo (body-parser,
+    // http-errors) no se loguea como 5xx. El mensaje y el stack son los originales.
+    const traducida = traducirExcepcion(exception);
+    const status = traducida.getStatus();
     const message =
-      exception instanceof HttpException
-        ? exception.message
-        : exception instanceof Error
-          ? exception.message
-          : 'Internal server error';
+      exception instanceof Error ? exception.message : 'Internal server error';
 
     const line = `[${requestId}] ${method} ${path} ${status} ${duration ?? '-'}ms — ${message}${detalle}`;
 
@@ -91,7 +87,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       this.logger.warn(line);
     }
 
-    super.catch(exception, host);
+    super.catch(traducida, host);
   }
 
   /**

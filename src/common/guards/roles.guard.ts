@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { RoleType } from '../constants/role-type.enum';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import type { Request } from 'express';
+import { valorLegible } from '../validation/etiquetas';
 
 /**
  * Autorización por rol. Se registra como guard GLOBAL (APP_GUARD) después de
@@ -50,7 +51,9 @@ export class RolesGuard implements CanActivate {
 
     if (!requiredRoles.includes(user.role)) {
       throw new ForbiddenException(
-        `Acceso denegado. Requiere rol: ${requiredRoles.join(', ')}`,
+        `No tenés permiso para esta operación: es para ${requiredRoles
+          .map((r) => valorLegible(r, 'role'))
+          .join(' o ')}`,
       );
     }
 

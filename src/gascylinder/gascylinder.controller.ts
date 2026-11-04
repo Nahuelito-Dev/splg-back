@@ -205,7 +205,7 @@ export class GasCylinderController {
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: weight debe ser mayor que 0; price debe ser mayor que 0)',
+      'Datos inválidos (p. ej.: Peso: tiene que ser mayor que 0; Precio: tiene que ser mayor que 0)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

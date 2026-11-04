@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 
 /** Los roles que se pueden dar de alta. `qa_pruebas` no se crea por la API. */
 export const ROLES_REGISTRABLES = [
@@ -97,9 +98,12 @@ function resolverDistribuidora(
     return { rol, distributorId: null };
   }
   if (!distributorId) {
-    throw new BadRequestException(
-      'Falta la distribuidora: enviala en distributorId o en el header ' +
+    throw conCodigo(
+      BadRequestException,
+      400,
+      'Falta la distribuidora: enviala en el cuerpo o en el header ' +
         'X-Distributor (slug o id).',
+      CODIGOS_DE_ERROR.MISSING_DISTRIBUTOR,
     );
   }
   return { rol, distributorId };

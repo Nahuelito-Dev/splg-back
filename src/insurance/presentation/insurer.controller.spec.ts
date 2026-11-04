@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VersioningType,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -13,6 +12,7 @@ import { RedisService } from '../../redis/redis.service';
 import { InsurerService } from '../application/insurer.service';
 import { Insurer } from '../entities/insurer.entity';
 import { InsurerController } from './insurer.controller';
+import { crearValidationPipe } from '../../common/validation/validation-pipe';
 
 const ID = '0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f001';
 
@@ -63,13 +63,7 @@ describe('InsurerController · aseguradoras en la API v2', () => {
       type: VersioningType.URI,
       defaultVersion: [VERSION_NEUTRAL, '1'],
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

@@ -233,7 +233,7 @@ export class OrderService {
     }
     if (deliveredFrom && deliveredTo && deliveredFrom > deliveredTo) {
       throw new BadRequestException(
-        'deliveredFrom no puede ser posterior a deliveredTo',
+        '«Entregado desde» no puede ser posterior a «Entregado hasta»',
       );
     }
     return this.orders.findAllPaginated(limit, offset, distributorId, {

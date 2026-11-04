@@ -5,7 +5,7 @@ import type { IncidentResponseDto } from '../../incident/dto/incident-response.d
 import { IncidentMapper } from '../../incident/incident.mapper';
 import { IncidentService } from '../../incident/incident.service';
 import type { FuenteDeExporte } from '../export.types';
-import { codigo, fechaHora, texto } from './columnas';
+import { codigo, fechaHora, opcion, texto } from './columnas';
 import { fuente, SinFiltros } from './fuente';
 
 export interface ServiciosDeAtencion {
@@ -33,7 +33,7 @@ export function fuentesDeAtencion(s: ServiciosDeAtencion): FuenteDeExporte[] {
         codigo('Teléfono del cliente', (c) => c.customer?.phone_number),
         texto('Motivo', (c) => c.reason),
         texto('Descripción', (c) => c.description, 44),
-        texto('Estado', (c) => c.status),
+        opcion('Estado', 'status', (c) => c.status),
         texto('Resolución', (c) => c.resolutionNote, 36),
       ],
     }),
@@ -52,9 +52,9 @@ export function fuentesDeAtencion(s: ServiciosDeAtencion): FuenteDeExporte[] {
       columnas: [
         fechaHora('Fecha', (i) => i.createdAt),
         codigo('Pedido', (i) => i.order_id, 38),
-        texto('Tipo', (i) => i.type),
+        opcion('Tipo', 'type', (i) => i.type),
         texto('Descripción', (i) => i.description, 44),
-        texto('Estado', (i) => i.status),
+        opcion('Estado', 'status', (i) => i.status),
         texto('Resolución', (i) => i.resolution_note, 36),
         fechaHora('Resuelta', (i) => i.resolvedAt),
       ],

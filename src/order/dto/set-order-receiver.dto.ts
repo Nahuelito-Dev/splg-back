@@ -30,7 +30,7 @@ export class SetOrderReceiverDto {
   )
   @Matches(FORMATO_DE_DOCUMENTO, {
     message:
-      'receiverDocument: formato inválido (DNI, CUIT/CUIL o pasaporte: de 6 a 15 letras o dígitos)',
+      'receiverDocument: formato inválido (DNI, CUIT/CUIL o pasaporte, de 6 a 15 letras o dígitos)',
   })
   receiverDocument!: string;
 

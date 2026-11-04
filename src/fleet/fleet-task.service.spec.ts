@@ -162,7 +162,9 @@ describe('FleetTaskService', () => {
           },
           'd1',
         ),
-      ).rejects.toThrow(/validFrom/);
+      ).rejects.toThrow(
+        'Válido desde: el inicio de la vigencia no puede ser posterior al vencimiento',
+      );
     });
 
     it('la habilitación de mercancías peligrosas sin vencimiento es 400 (CU-197)', async () => {
@@ -173,7 +175,9 @@ describe('FleetTaskService', () => {
       carService.findOne.mockResolvedValue({ carId: 'c1' });
       await expect(
         service.create({ planId: 'plan-vtv', carId: 'c1' }, 'd1'),
-      ).rejects.toThrow(/dueAt/);
+      ).rejects.toThrow(
+        'Vencimiento: la habilitación necesita la fecha de vencimiento',
+      );
     });
 
     it('un plan de vehículo sin carId es 400', async () => {
@@ -368,7 +372,9 @@ describe('FleetTaskService', () => {
             { planId: 'plan-curso', employeeId: 'e1', details: detalleCurso },
             'd1',
           ),
-        ).rejects.toThrow(/dueAt/);
+        ).rejects.toThrow(
+          'Vencimiento: el vencimiento del documento es obligatorio',
+        );
       });
 
       it('un plan inactivo se rechaza (400)', async () => {
@@ -682,7 +688,7 @@ describe('FleetTaskService', () => {
         expect(closer.cerrar).toHaveBeenCalledWith(
           expect.anything(),
           { taskId: 't1' },
-          expect.stringContaining('cerró'),
+          expect.stringContaining('cerró') as string,
         );
         expect(closer.avisar).toHaveBeenCalledWith([propuesta]);
         expect(closer.cerrar.mock.invocationCallOrder[0]).toBeLessThan(
@@ -696,7 +702,7 @@ describe('FleetTaskService', () => {
         expect(closer.cerrar).toHaveBeenCalledWith(
           expect.anything(),
           { taskId: 't1' },
-          expect.stringContaining('canceló'),
+          expect.stringContaining('canceló') as string,
         );
         expect(closer.avisar).toHaveBeenCalledWith([propuesta]);
       });
@@ -826,9 +832,12 @@ describe('FleetTaskService', () => {
 
         it('un día inválido es 400', async () => {
           conTurno(null);
-          await expect(editar('2026-13-45')).rejects.toBeInstanceOf(
-            BadRequestException,
-          );
+          await expect(editar('2026-13-45')).rejects.toMatchObject({
+            response: {
+              code: 'SCHEDULED_DAY_INVALID',
+              message: expect.stringMatching(/^scheduledAt: /) as string,
+            },
+          });
         });
 
         it('si falla la reprogramación la tarea no se guarda', async () => {
@@ -1202,7 +1211,9 @@ describe('FleetTaskService', () => {
           cashBoxId: CAJA,
           userId: 'u1',
         }),
-      ).rejects.toThrow(/payment/);
+      ).rejects.toThrow(
+        'Pago: la tarea no tiene costo para pagar; cargá el costo primero',
+      );
       expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
     });
   });

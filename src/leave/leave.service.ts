@@ -227,7 +227,7 @@ export class LeaveService {
   ): Promise<PaginaDeLicencias> {
     if (query.from && query.to && query.to < query.from) {
       throw new BadRequestException(
-        'to: la fecha final no puede ser anterior a from',
+        'Hasta: la fecha final no puede ser anterior a la inicial',
       );
     }
     const limit = query.limit ?? 10;
@@ -395,7 +395,7 @@ export class LeaveService {
   private assertPeriodo(inicio: string, fin: string): void {
     if (validarPeriodo(inicio, fin)) {
       throw new BadRequestException(
-        'endDate: la fecha de fin no puede ser anterior a la de inicio',
+        'Fecha de fin: la fecha de fin no puede ser anterior a la de inicio',
       );
     }
   }
@@ -434,10 +434,10 @@ export class LeaveService {
       case null:
         return;
       case 'MOTIVO_OBLIGATORIO':
-        throw new BadRequestException('reason: el motivo es obligatorio');
+        throw new BadRequestException('Motivo: el motivo es obligatorio');
       case 'FIN_ANTERIOR_AL_INICIO':
         throw new BadRequestException(
-          'endDate: la fecha de fin no puede ser anterior a la de inicio',
+          'Fecha de fin: la fecha de fin no puede ser anterior a la de inicio',
         );
       case 'NO_ESTA_SOLICITADA':
         throw new ConflictException(

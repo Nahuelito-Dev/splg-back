@@ -1,3 +1,5 @@
+import { etiquetaDeCampo } from '../common/validation/etiquetas';
+import { mensajeCampoNoPermitido } from '../common/validation/traducir-validacion';
 import { ConfigurableProcess } from './entities/module-config.entity';
 
 /**
@@ -223,7 +225,7 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
     ],
     cruzada: (v) =>
       v.workshopStartHour >= v.workshopEndHour
-        ? 'workshopStartHour: tiene que ser anterior a workshopEndHour'
+        ? 'Hora de apertura del taller: tiene que ser anterior a la hora de cierre'
         : null,
   },
   [ConfigurableProcess.REPURCHASE]: {
@@ -611,10 +613,12 @@ export function validarParametros(
   for (const [clave, valor] of Object.entries(recibido)) {
     const c = conocidos.get(clave);
     if (!c) {
-      errores.push(`property ${clave} should not exist`);
+      errores.push(mensajeCampoNoPermitido(clave));
     } else if (!valorValido(c, valor)) {
       const tipo = c.type === 'integer' ? 'un entero' : 'un número';
-      errores.push(`${clave}: tiene que ser ${tipo} entre ${c.min} y ${c.max}`);
+      errores.push(
+        `${etiquetaDeCampo(clave) ?? 'Dato'}: tiene que ser ${tipo} entre ${c.min} y ${c.max}`,
+      );
     }
   }
   if (errores.length > 0) return errores;

@@ -91,12 +91,12 @@ export class CoverageZoneService {
   private validarRecargo(type: CoverageZoneSurchargeType, value: number): void {
     if (value < 0) {
       throw new BadRequestException(
-        'surchargeValue: un recargo no puede ser negativo',
+        'Valor del recargo: un recargo no puede ser negativo',
       );
     }
     if (type === CoverageZoneSurchargeType.PERCENTAGE && value > 100) {
       throw new BadRequestException(
-        'surchargeValue: un recargo porcentual tiene que estar entre 0 y 100',
+        'Valor del recargo: un recargo porcentual tiene que estar entre 0 y 100',
       );
     }
   }
@@ -115,7 +115,7 @@ export class CoverageZoneService {
     const fecha = instanteDeVigencia(valor, extremo);
     if (Number.isNaN(fecha.getTime())) {
       throw new BadRequestException(
-        `${extremo === 'desde' ? 'validFrom' : 'validUntil'}: no es una fecha válida`,
+        `${extremo === 'desde' ? 'Válido desde' : 'Válido hasta'}: no es una fecha válida`,
       );
     }
     return fecha;
@@ -124,7 +124,7 @@ export class CoverageZoneService {
   private validarVigencia(desde: Date | null, hasta: Date | null): void {
     if (desde && hasta && hasta <= desde) {
       throw new BadRequestException(
-        'validUntil tiene que ser posterior a validFrom',
+        'La fecha de fin de la vigencia tiene que ser posterior a la de inicio',
       );
     }
   }
@@ -133,7 +133,7 @@ export class CoverageZoneService {
   private validarNoVencida(hasta: Date | null, activa: boolean): void {
     if (activa && hasta && hasta.getTime() <= Date.now()) {
       throw new BadRequestException(
-        'validUntil ya pasó: una zona vencida no puede quedar activa',
+        'La fecha de fin ya pasó: una zona vencida no puede quedar activa',
       );
     }
   }
@@ -292,7 +292,7 @@ export class CoverageZoneService {
     // admite nulos: sin esto llegaba a la base y rebotaba contra la columna.
     if (dto.surchargeType === null || dto.surchargeValue === null) {
       throw new BadRequestException(
-        'surchargeType y surchargeValue no pueden ser null: omitilos para no cambiarlos',
+        'El tipo y el valor del recargo no pueden quedar vacíos: omitilos para no cambiarlos',
       );
     }
 

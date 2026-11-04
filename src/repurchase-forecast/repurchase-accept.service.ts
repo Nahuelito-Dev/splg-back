@@ -68,7 +68,7 @@ export class RepurchaseAcceptService {
   ): Promise<InvitacionAceptada> {
     if (Boolean(cuerpo.timeSlotId) !== Boolean(cuerpo.scheduledDate)) {
       throw new BadRequestException(
-        'timeSlotId y scheduledDate van juntos: mandá los dos para agendar la entrega, o ninguno para usar tu franja habitual (si no, la entrega es inmediata)',
+        'La franja horaria y la fecha van juntas: mandá las dos para agendar la entrega, o ninguno para usar tu franja habitual (si no, la entrega es inmediata)',
       );
     }
     return this.conCerrojo(invitationId, () =>

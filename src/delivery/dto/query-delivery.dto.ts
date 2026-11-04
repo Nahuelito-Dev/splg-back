@@ -24,8 +24,6 @@ export class QueryDeliveryDto extends PaginationDto {
       '`X-Total-Count` sirve para mostrar el contador de cada grupo.',
   })
   @IsOptional()
-  @IsEnum(DeliveryStatusFilter, {
-    message: 'status debe ser enabled, disabled, online o unvalidated',
-  })
+  @IsEnum(DeliveryStatusFilter)
   status?: DeliveryStatusFilter;
 }

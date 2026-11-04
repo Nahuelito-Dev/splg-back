@@ -19,9 +19,7 @@ export class CreateCashBoxDto {
     example: CashBoxKind.CASH,
     description: 'Efectivo, banco o billetera virtual',
   })
-  @IsEnum(CashBoxKind, {
-    message: `kind debe ser uno de: ${Object.values(CashBoxKind).join(', ')}`,
-  })
+  @IsEnum(CashBoxKind)
   kind!: CashBoxKind;
 
   @ApiPropertyOptional({

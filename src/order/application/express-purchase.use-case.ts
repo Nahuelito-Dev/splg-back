@@ -24,6 +24,7 @@ import { OrderItem } from '../entities/order-item.entity';
 import { CreateOrderResult, CreateOrderUseCase } from './create-order.use-case';
 import { ExpressAvailabilityService } from './express-availability.service';
 import { QuoteOrderUseCase } from './quote-order.use-case';
+import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 
 interface CompraExpress {
   address: UserAddress;
@@ -131,8 +132,11 @@ export class ExpressPurchaseUseCase {
     const id =
       distributorId ?? (await this.distributors.getDefault())?.distributorId;
     if (!id) {
-      throw new BadRequestException(
+      throw conCodigo(
+        BadRequestException,
+        400,
         'Falta la distribuidora: enviá el header X-Distributor (slug o id)',
+        CODIGOS_DE_ERROR.MISSING_DISTRIBUTOR,
       );
     }
     return id;
@@ -183,7 +187,7 @@ export class ExpressPurchaseUseCase {
       (await this.garrafaHabitual(customerId, distributorId));
     if (!gasCylinderId) {
       throw new BadRequestException(
-        'Todavía no tenés compras: elegí el tipo de garrafa (gasCylinderId)',
+        'Todavía no tenés compras: elegí el tipo de garrafa',
       );
     }
     return { address, gasCylinderId, quantity: dto.quantity ?? 1 };

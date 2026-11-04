@@ -61,6 +61,7 @@ import { errorCode, errorMessage } from '../../common/errors/error-message';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { DomainError } from '../../common/errors/domain.error';
 import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
+import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 
 /** Tipo de pago del pedido según el medio elegido. */
 export const MENSAJE_CAMBIO_EL_PRECIO =
@@ -147,12 +148,15 @@ export class CreateOrderUseCase {
 
     if (createOrderDto.fromCart && createOrderDto.items !== undefined) {
       throw new BadRequestException(
-        'Con fromCart los ítems salen del carrito: no mandes items',
+        'Si el pedido sale del carrito, los productos se toman de ahí: no los mandes',
       );
     }
     if (createOrderDto.fromCart && !distributorId) {
-      throw new BadRequestException(
+      throw conCodigo(
+        BadRequestException,
+        400,
         'Falta la distribuidora: enviá el header X-Distributor para comprar desde el carrito',
+        CODIGOS_DE_ERROR.MISSING_DISTRIBUTOR,
       );
     }
     if (
@@ -167,7 +171,7 @@ export class CreateOrderUseCase {
     // Pre-reserva: requiere fecha agendada (se reserva PARA un día futuro).
     if (createOrderDto.isReservation && !createOrderDto.scheduledDate) {
       throw new BadRequestException(
-        'Una reserva requiere scheduledDate (fecha de entrega agendada)',
+        'Una reserva requiere la fecha de entrega agendada',
       );
     }
 
@@ -185,7 +189,7 @@ export class CreateOrderUseCase {
       createOrderDto.scheduledDate < diaArgentino()
     ) {
       throw new BadRequestException(
-        'scheduledDate no puede ser una fecha pasada',
+        'La fecha de entrega agendada no puede ser pasada',
       );
     }
 

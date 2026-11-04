@@ -100,7 +100,9 @@ export class ExportsService {
   private formatoDe(valor: unknown): ExportFormat {
     if (valor === undefined) return ExportFormat.CSV;
     if (valor === ExportFormat.CSV || valor === ExportFormat.XLSX) return valor;
-    throw new BadRequestException('format debe ser csv o xlsx');
+    throw new BadRequestException(
+      'Formato: elegí una opción válida (CSV o Excel (XLSX))',
+    );
   }
 
   private verificarTope(lote: LoteDeFilas, maximo: number): void {

@@ -1,4 +1,3 @@
-import { ValidationPipe } from '@nestjs/common';
 import type { Type } from '@nestjs/common';
 import type {
   Columna,
@@ -7,6 +6,7 @@ import type {
   FuenteDeExporte,
   Pagina,
 } from '../export.types';
+import { crearValidationPipe } from '../../common/validation/validation-pipe';
 
 const ANCHO_POR_TIPO = {
   texto: 28,
@@ -20,11 +20,7 @@ const ANCHO_POR_TIPO = {
 } as const;
 
 /** Mismo criterio de validación que el resto de la API: sólo los filtros del listado. */
-const validador = new ValidationPipe({
-  whitelist: true,
-  forbidNonWhitelisted: true,
-  transform: true,
-});
+const validador = crearValidationPipe();
 
 /** El exporte baja todo: la paginación la maneja el back, no el cliente. */
 const CLAVES_DE_PAGINACION = ['limit', 'offset', 'page'] as const;

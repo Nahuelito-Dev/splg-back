@@ -124,12 +124,12 @@ export class FleetPlanService {
   }): void {
     if (dto.trigger === MaintenanceTrigger.BY_KM && !dto.intervalKm) {
       throw new BadRequestException(
-        'Un plan por km necesita intervalKm (p. ej. cada 10000 km)',
+        'Un plan por km necesita el intervalo en km (p. ej. cada 10000 km)',
       );
     }
     if (dto.trigger === MaintenanceTrigger.BY_TIME && !dto.intervalMonths) {
       throw new BadRequestException(
-        'Un plan por tiempo necesita intervalMonths (p. ej. cada 6 meses)',
+        'Un plan por tiempo necesita el intervalo en meses (p. ej. cada 6 meses)',
       );
     }
     if (
@@ -137,7 +137,7 @@ export class FleetPlanService {
       (dto.intervalKm || dto.intervalMonths)
     ) {
       throw new BadRequestException(
-        'Un plan por fecha fija no lleva intervalKm ni intervalMonths: la fecha la fija cada tarea',
+        'Un plan por fecha fija no lleva intervalo en km ni en meses: la fecha la fija cada tarea',
       );
     }
   }

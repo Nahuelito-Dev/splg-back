@@ -1,4 +1,4 @@
-import { MENSAJE_FALTA_DISTRIBUIDORA } from '../common/decorators/current-distributor.decorator';
+import { faltaLaDistribuidora } from '../common/decorators/current-distributor.decorator';
 import {
   BadRequestException,
   ConflictException,
@@ -74,7 +74,7 @@ export class AdminService {
     const esSuperAdmin = rol?.type === String(RoleType.SUPER_ADMIN);
     if (!esAdminDeEmpresa && !esSuperAdmin) {
       throw new BadRequestException(
-        'Sólo un usuario con rol admin o super_admin tiene perfil de administrador',
+        'Sólo un usuario administrador o super administrador tiene perfil de administrador',
       );
     }
     if (esAdminDeEmpresa !== Boolean(distributor_id)) {
@@ -87,7 +87,7 @@ export class AdminService {
     // sólo del cuerpo.
     if (esAdminDeEmpresa) {
       if (!distribuidoraElegida) {
-        throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+        throw faltaLaDistribuidora();
       }
       if (distributor_id !== distribuidoraElegida) {
         throw new BadRequestException(

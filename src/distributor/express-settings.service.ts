@@ -85,7 +85,7 @@ export class ExpressSettingsService {
     const hasta = settings.serviceTo ?? base.serviceTo;
     if (minutosDeHora(desde) >= minutosDeHora(hasta)) {
       throw new BadRequestException(
-        'El horario express tiene que empezar antes de terminar (serviceFrom < serviceTo, sin cruzar la medianoche)',
+        'El horario express tiene que empezar antes de terminar (sin cruzar la medianoche)',
       );
     }
     const definidos = Object.fromEntries(

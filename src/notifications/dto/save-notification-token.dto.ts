@@ -11,7 +11,7 @@ export enum PlataformaNotificacion {
 /** Registro del token de un dispositivo para poder avisarle. */
 export class SaveNotificationTokenDto {
   @ApiProperty({ description: 'Usuario dueño del dispositivo' })
-  @IsUUID('4', { message: 'userId debe ser un UUID' })
+  @IsUUID('4')
   userId!: string;
 
   @ApiProperty({ description: 'Token de FCM del dispositivo' })
@@ -23,8 +23,6 @@ export class SaveNotificationTokenDto {
     description: 'Desde qué plataforma se registra',
     enum: PlataformaNotificacion,
   })
-  @IsEnum(PlataformaNotificacion, {
-    message: 'platform debe ser android, ios o web',
-  })
+  @IsEnum(PlataformaNotificacion)
   platform!: PlataformaNotificacion;
 }

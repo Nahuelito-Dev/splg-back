@@ -1317,7 +1317,7 @@ describe('Personal: puestos y legajos (e2e)', () => {
         .delete(`/job-positions/${puesto.positionId}`)
         .set(admin1.headers)
         .expect(409);
-      expect(JSON.stringify(res.body)).toContain('isActive=false');
+      expect(JSON.stringify(res.body)).toContain('desactivalo');
       await http()
         .get(`/employees/${e.employeeId}`)
         .set(admin1.headers)

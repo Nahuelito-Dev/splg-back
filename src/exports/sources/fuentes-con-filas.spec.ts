@@ -87,7 +87,7 @@ describe('fuentes: las columnas leen los campos del listado', () => {
       '10kg',
       4,
       'Depósito',
-      'full',
+      'Llenas',
       undefined,
       null,
     ]);
@@ -254,9 +254,69 @@ describe('fuentes: las columnas leen los campos del listado', () => {
     expect(lote.filas[0].slice(7, 12)).toEqual([
       'Directo en la base',
       'Base de datos (trigger)',
-      'warehouse',
+      'Depósito',
       'postgres',
       'psql',
+    ]);
+  });
+
+  it('auditoria muestra el rol y el resultado con su texto (el chofer se llama «Chofer»)', async () => {
+    const consultar = jest.fn().mockResolvedValue({
+      total: 2,
+      items: ['delivery', 'super_admin'].map((rol) => ({
+        createdAt: new Date('2026-10-30T12:00:00Z'),
+        httpMethod: 'PATCH',
+        resource: 'orders',
+        actorRole: rol,
+        result: 'success',
+        statusCode: 200,
+        details: [],
+      })),
+    });
+    const f = buscar(
+      fuentesDePersonal({ audit: { consultar } } as never),
+      'auditoria',
+    );
+
+    const lote = await filasDe(f);
+
+    expect(lote.filas.map((fila) => [fila[6], fila[9]])).toEqual([
+      ['Chofer', 'Exitosa'],
+      ['Super administrador', 'Exitosa'],
+    ]);
+  });
+
+  it('auditoria-datos: «Entidad» y «Tabla» salen con el mismo nombre, y el id de tabla no se cuela', async () => {
+    const findAllV2 = jest.fn().mockResolvedValue({
+      total: 2,
+      data: [
+        ['Claim', 'claims'],
+        ['GasCylinder', 'gas_cylinder'],
+      ].map(([entity, tableName]) => ({
+        dateTime: new Date('2026-10-30T12:00:00Z'),
+        actionType: { id: 2, name: 'Modificación' },
+        user: null,
+        entity,
+        recordId: 'r1',
+        ip: null,
+        origin: 'user',
+        source: 'app',
+        tableName,
+        dbUser: null,
+        appName: null,
+        details: [],
+      })),
+    });
+    const f = buscar(
+      fuentesDePersonal({ dataAudit: { findAllV2 } } as never),
+      'auditoria-datos',
+    );
+
+    const lote = await filasDe(f);
+
+    expect(lote.filas.map((fila) => [fila[4], fila[9]])).toEqual([
+      ['Reclamo', 'Reclamo'],
+      ['Garrafa (producto)', 'Garrafa (producto)'],
     ]);
   });
 

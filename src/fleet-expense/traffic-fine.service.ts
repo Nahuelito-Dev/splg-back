@@ -184,23 +184,25 @@ export class TrafficFineService {
     userId: string,
   ): Promise<TrafficFine> {
     if (dto.paidAt > diaArgentino()) {
-      throw new BadRequestException('paidAt: no puede ser posterior a hoy');
+      throw new BadRequestException(
+        'Fecha de pago: no puede ser posterior a hoy',
+      );
     }
     if (dto.cashBoxId && !dto.paidInCash) {
       throw new BadRequestException(
-        'cashBoxId: sólo se indica cuando el pago es en efectivo (paidInCash)',
+        'Caja: sólo se indica cuando el pago es en efectivo',
       );
     }
     return this.mutar(id, distributorId, async (manager, multa) => {
       this.assertAbierta(multa, 'La multa no admite el pago');
       if (new Decimal(dto.paidAmount).gt(multa.amount)) {
         throw new BadRequestException(
-          'paidAmount: no puede superar el importe de la multa',
+          'Importe pagado: no puede superar el importe de la multa',
         );
       }
       if (dto.paidAt < diaArgentino(multa.occurredAt)) {
         throw new BadRequestException(
-          'paidAt: no puede ser anterior a la fecha de la infracción',
+          'Fecha de pago: no puede ser anterior a la fecha de la infracción',
         );
       }
       multa.status = TrafficFineStatus.PAID;
@@ -246,7 +248,7 @@ export class TrafficFineService {
       const employeeId = dto.employeeId ?? multa.employeeId;
       if (!employeeId) {
         throw new BadRequestException(
-          'employeeId: indicá el empleado responsable (la multa no tiene uno)',
+          'Empleado: indicá el empleado responsable (la multa no tiene uno)',
         );
       }
       multa.employeeId = employeeId;
@@ -351,12 +353,12 @@ export class TrafficFineService {
   private assertFechas(occurredAt: Date, dueDate: string | null): void {
     if (occurredAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
       throw new BadRequestException(
-        'occurredAt: la infracción no puede ser futura',
+        'Fecha del hecho: la infracción no puede ser futura',
       );
     }
     if (dueDate !== null && dueDate < diaArgentino(occurredAt)) {
       throw new BadRequestException(
-        'dueDate: el vencimiento no puede ser anterior a la fecha de la infracción',
+        'Fecha de vencimiento: el vencimiento no puede ser anterior a la fecha de la infracción',
       );
     }
   }
@@ -364,7 +366,7 @@ export class TrafficFineService {
   private assertImportes(amount: number, voluntario: number | null): void {
     if (voluntario !== null && voluntario > amount) {
       throw new BadRequestException(
-        'voluntaryPaymentAmount: no puede superar el importe de la multa',
+        'Importe del pago voluntario: no puede superar el importe de la multa',
       );
     }
   }

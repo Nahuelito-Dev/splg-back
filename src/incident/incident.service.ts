@@ -20,6 +20,7 @@ import { OrderService } from '../order/order.service';
 import { AdminGateway } from '../gateways/admin.gateway';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { avisarIncidenciaAAdmins } from './aviso-de-incidencia';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 
 @Injectable()
 export class IncidentService {
@@ -235,8 +236,11 @@ export class IncidentService {
     if (incident.type === IncidentType.UNPAID_COLLECTION) {
       const order = await this.orderService.findById(incident.orderId);
       if (order?.paymentStatus === PaymentStatus.UNPAID) {
-        throw new ConflictException(
+        throw conCodigo(
+          ConflictException,
+          409,
           'La incidencia de cobro impago se cierra resolviendo el cobro del pedido: PATCH /orders/:id/payment/resolve-unpaid',
+          CODIGOS_DE_ERROR.UNPAID_INCIDENT_CLOSES_WITH_PAYMENT,
         );
       }
     }

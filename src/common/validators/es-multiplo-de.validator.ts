@@ -14,7 +14,7 @@ export function EsMultiploDe(base: number, options?: ValidationOptions) {
       propertyName,
       constraints: [base],
       options: {
-        message: `${propertyName} tiene que ser un múltiplo entero de ${base} segundos (el ciclo de base de la tarea)`,
+        message: `tiene que ser un múltiplo entero de ${base} segundos (el ciclo de base de la tarea)`,
         ...options,
       },
       validator: { validate: (valor: unknown) => esMultiploDe(valor, base) },

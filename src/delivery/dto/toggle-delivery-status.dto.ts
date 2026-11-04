@@ -9,6 +9,6 @@ export class ToggleDeliveryStatusDto {
       'también lo desconecta y lo saca del radar de despacho',
     example: true,
   })
-  @IsBoolean({ message: 'isEnabled tiene que ser true o false' })
+  @IsBoolean({ message: 'isEnabled tiene que ser verdadero o falso' })
   isEnabled!: boolean;
 }

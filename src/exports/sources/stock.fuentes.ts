@@ -5,7 +5,7 @@ import type {
 } from '../../stock/dto/stock-response.dto';
 import { StockQueryService } from '../../stock/application/stock-query.service';
 import type { FuenteDeExporte } from '../export.types';
-import { codigo, entero, fechaHora, texto } from './columnas';
+import { codigo, entero, fechaHora, opcion, texto } from './columnas';
 import { fuente, porPagina, SinFiltros } from './fuente';
 
 export interface ServiciosDeStock {
@@ -53,11 +53,11 @@ export function fuentesDeStock(s: ServiciosDeStock): FuenteDeExporte[] {
         texto('Garrafa', (m) => m.gasCylinderType),
         entero('Cantidad', (m) => m.quantity),
         texto('Origen', (m) => m.from?.name),
-        texto('Condición de origen', (m) => m.fromCondition),
+        opcion('Condición de origen', 'condition', (m) => m.fromCondition),
         texto('Destino', (m) => m.to?.name),
-        texto('Condición de destino', (m) => m.toCondition),
-        texto('Motivo', (m) => m.reason),
-        texto('Tipo de referencia', (m) => m.referenceType),
+        opcion('Condición de destino', 'condition', (m) => m.toCondition),
+        opcion('Motivo', 'reason', (m) => m.reason),
+        opcion('Tipo de referencia', 'referenceType', (m) => m.referenceType),
         codigo('Referencia', (m) => m.referenceId, 38),
         texto('Usuario', (m) => m.actorName),
         texto('Notas', (m) => m.notes, 36),

@@ -37,7 +37,7 @@ export class ConsultarAuditoriaDto {
 
   @ApiPropertyOptional({ enum: AuditResult })
   @IsOptional()
-  @IsEnum(AuditResult, { message: 'result debe ser success o failure' })
+  @IsEnum(AuditResult)
   result?: AuditResult;
 
   @ApiPropertyOptional({ type: String, format: 'date-time' })

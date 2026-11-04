@@ -91,7 +91,7 @@ export class DriverSettlementService {
     // la base lo exige con CHK_driver_settlement_fecha_futura.
     if (businessDate > diaArgentino()) {
       throw new RendicionInvalidaError(
-        'businessDate: no se puede abrir la rendición de un día futuro',
+        'Fecha de la jornada: no se puede abrir la rendición de un día futuro',
       );
     }
     return withTransactionRetry(

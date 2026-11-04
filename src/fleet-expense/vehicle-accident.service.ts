@@ -39,6 +39,7 @@ import {
   SiniestroConAsignacionPendienteEvent,
   SiniestroConDerrameEvent,
 } from './events/fleet-expense.events';
+import { valorLegible } from '../common/validation/etiquetas';
 
 /** Un siniestro recién registrado y qué pasó con la asignación de su vehículo. */
 export interface SiniestroRegistrado {
@@ -123,7 +124,7 @@ export class VehicleAccidentService {
     const fecha = new Date(occurredAt);
     if (fecha.getTime() > Date.now() + TOLERANCIA_DE_RELOJ_MS) {
       throw new BadRequestException(
-        'occurredAt: el siniestro no puede ser futuro',
+        'Fecha del hecho: el siniestro no puede ser futuro',
       );
     }
     return fecha;
@@ -236,14 +237,14 @@ export class VehicleAccidentService {
       // El derrame de gas se informa una vez y no se retira: es un incidente de seguridad.
       if (dto.hazmatRelease === false && siniestro.hazmatRelease) {
         throw new BadRequestException(
-          'hazmatRelease: un derrame de gas ya informado no se puede retirar',
+          'Habilitación de mercancías peligrosas: un derrame de gas ya informado no se puede retirar',
         );
       }
       nuevoDerrame = dto.hazmatRelease === true && !siniestro.hazmatRelease;
       if (dto.status !== undefined) {
         if (!transicionDeSiniestroValida(siniestro.status, dto.status)) {
           throw new ConflictException(
-            `El siniestro no puede pasar de ${siniestro.status} a ${dto.status}: el ciclo es denunciado, en revisión y en reparación`,
+            `El siniestro no puede pasar de «${valorLegible(siniestro.status)}» a «${valorLegible(dto.status)}»: el ciclo es denunciado, en revisión y en reparación`,
           );
         }
         siniestro.status = dto.status;
@@ -288,7 +289,7 @@ export class VehicleAccidentService {
       this.assertAbierto(siniestro, 'El siniestro ya está cerrado');
       if (dto.insurerReimbursement > dto.repairCost) {
         throw new BadRequestException(
-          'insurerReimbursement: el reintegro del seguro no puede superar el costo de la reparación',
+          'Reintegro de la aseguradora: el reintegro del seguro no puede superar el costo de la reparación',
         );
       }
       if (
@@ -296,7 +297,7 @@ export class VehicleAccidentService {
         Math.max(dto.repairCost, dto.deductibleAmount) < siniestro.paymentAmount
       ) {
         throw new ConflictException(
-          'repairCost: ya se registró un pago de la empresa por más que el costo de la reparación y la franquicia',
+          'Costo de la reparación: ya se registró un pago de la empresa por más que el costo de la reparación y la franquicia',
         );
       }
       if (
@@ -304,7 +305,7 @@ export class VehicleAccidentService {
         dto.insurerReimbursement < siniestro.reimbursementAmount
       ) {
         throw new ConflictException(
-          'insurerReimbursement: ya se registró un reintegro del seguro por más que ese importe',
+          'Reintegro de la aseguradora: ya se registró un reintegro del seguro por más que ese importe',
         );
       }
       siniestro.status = VehicleAccidentStatus.CLOSED;

@@ -57,7 +57,7 @@ export class UserAddressService {
     }
     if (!dueño) {
       throw new BadRequestException(
-        'user_id: indicá el usuario dueño de la dirección',
+        'Usuario: indicá el usuario dueño de la dirección',
       );
     }
 

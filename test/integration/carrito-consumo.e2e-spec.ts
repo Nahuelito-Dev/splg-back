@@ -578,7 +578,7 @@ describe('Carrito y consumo declarado (HTTP e2e)', () => {
       const e = await escenario();
       const res = await corregir(e.c1, { quantityPerMonth: 2 });
       expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body)).toContain('cylinderTypeId');
+      expect(JSON.stringify(res.body)).toContain('tipo de garrafa habitual');
     });
 
     it('nunca compró: convierte a kg y estima desde ahora con la garrafa llena', async () => {
@@ -717,7 +717,8 @@ describe('Carrito y consumo declarado (HTTP e2e)', () => {
 
       const sin = await corregir(e.c1, cuerpo);
       expect(sin.status).toBe(400);
-      expect(JSON.stringify(sin.body)).toContain('confirmOutOfRange');
+      expect(JSON.stringify(sin.body)).toContain('fuera del rango razonable');
+      expect(sin.body).toMatchObject({ code: 'CONSUMPTION_OUT_OF_RANGE' });
       const ficha = await ds
         .getRepository(Customer)
         .findOneByOrFail({ userId: e.cli1.user.userId });

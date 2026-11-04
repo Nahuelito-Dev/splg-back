@@ -41,7 +41,7 @@ export function validarFechaEsperada(
 ): void {
   if (fecha && fecha < hoy) {
     throw new CompraInvalidaError(
-      'expectedDate: la fecha esperada de entrega no puede ser anterior a hoy',
+      'Fecha esperada: la fecha esperada de entrega no puede ser anterior a hoy',
     );
   }
 }

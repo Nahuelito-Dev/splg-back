@@ -166,7 +166,9 @@ describe('PurchaseReceiptService.cambiarEstadoDePago', () => {
   });
 
   it('cashBoxId sin paidInCash es 400', async () => {
-    await expect(pagar({ cashBoxId: 'caja1' })).rejects.toThrow(/cashBoxId/);
+    await expect(pagar({ cashBoxId: 'caja1' })).rejects.toThrow(
+      'Caja: sólo se indica cuando el pago es en efectivo',
+    );
   });
 
   it('paidInCash al marcarla impaga es 400', async () => {
@@ -177,7 +179,9 @@ describe('PurchaseReceiptService.cambiarEstadoDePago', () => {
         'd1',
         'u1',
       ),
-    ).rejects.toThrow(/paidInCash/);
+    ).rejects.toThrow(
+      'Pagado en efectivo: sólo se indica al marcar la recepción como pagada',
+    );
   });
 
   it('una recepción anulada no cambia de estado de pago', async () => {
@@ -286,7 +290,7 @@ describe('PurchaseReceiptService.pagar (v2)', () => {
     const manana = new Date(Date.now() + 86400000).toISOString();
     await expect(
       service.pagar('r1', { ...dto, paidAt: manana }, 'd1', 'u1'),
-    ).rejects.toThrow(/paidAt/);
+    ).rejects.toThrow(/Fecha de pago: no puede ser posterior a hoy/);
   });
 
   it('marcarla impaga (v1) borra la fecha de pago', async () => {

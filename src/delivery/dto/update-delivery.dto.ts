@@ -17,6 +17,6 @@ import { IsBoolean, IsOptional } from 'class-validator';
 export class UpdateDeliveryDto {
   @ApiPropertyOptional({ description: 'Chofer aprobado por la distribuidora' })
   @IsOptional()
-  @IsBoolean({ message: 'validated tiene que ser true o false' })
+  @IsBoolean({ message: 'validated tiene que ser verdadero o falso' })
   validated?: boolean;
 }

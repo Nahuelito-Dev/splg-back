@@ -84,7 +84,7 @@ export class IncidentController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: orderId must be a UUID; type must be one of the following values: damaged, out_of_stock, no_show, other). `unpaid_collection` no se acepta acá: se crea con `PATCH /orders/{id}/payment/unpaid`',
+      'Datos inválidos (p. ej.: Pedido: no es válido; Tipo: elegí una opción válida (dañado, sin stock, cliente ausente u otro)). `unpaid_collection` no se acepta acá: se crea con `PATCH /orders/{id}/payment/unpaid`',
   })
   async create(
     @Body() dto: CreateIncidentDto,
@@ -198,7 +198,7 @@ export class IncidentController {
   })
   @ApiBadRequestResponse({
     description:
-      'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: resolutionNote must be a string)',
+      'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: Nota de resolución: tiene que ser un texto)',
   })
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,

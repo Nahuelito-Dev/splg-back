@@ -99,7 +99,7 @@ export class CashDocumentPaymentService {
     );
     if (Number(filas[0]?.n ?? 0) > 0) {
       throw new BadRequestException(
-        'Indicá la caja de efectivo de la que sale el pago (cashBoxId)',
+        'Indicá la caja de efectivo de la que sale el pago',
       );
     }
     return null;
@@ -140,7 +140,7 @@ export class CashDocumentPaymentService {
       TODAS_LAS_CAJAS,
     );
     if (!cajaId) {
-      throw new BadRequestException('cashBoxId: indicá la caja del pago');
+      throw new BadRequestException('Caja: indicá la caja del pago');
     }
     return this.egresar(manager, {
       ...pago,
@@ -161,7 +161,7 @@ export class CashDocumentPaymentService {
       TODAS_LAS_CAJAS,
     );
     if (!cajaId) {
-      throw new BadRequestException('cashBoxId: indicá la caja del cobro');
+      throw new BadRequestException('Caja: indicá la caja del cobro');
     }
     const categoria = await this.categorias.deSistema(
       manager,

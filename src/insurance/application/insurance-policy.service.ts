@@ -61,7 +61,7 @@ export class InsurancePolicyService {
     const car = await this.cars.findOne(dto.carId, distributorId); // 404 «Vehículo … no encontrado»
     if (dto.validTo <= dto.validFrom) {
       throw new BadRequestException(
-        'validTo: la póliza tiene que vencer después de que empieza',
+        'Válido hasta: la póliza tiene que vencer después de que empieza',
       );
     }
     const cuotas = generarCuotas({
@@ -72,12 +72,12 @@ export class InsurancePolicyService {
     });
     if (cuotas[0].dueDate < dto.validFrom) {
       throw new BadRequestException(
-        'installments.firstDueDate: la primera cuota no puede vencer antes de que empiece la póliza',
+        'Primer vencimiento de las cuotas: la primera cuota no puede vencer antes de que empiece la póliza',
       );
     }
     if (cuotas[cuotas.length - 1].dueDate > dto.validTo) {
       throw new BadRequestException(
-        'installments: la última cuota vence después de que vence la póliza',
+        'Cuotas: la última cuota vence después de que vence la póliza',
       );
     }
 

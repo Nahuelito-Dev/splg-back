@@ -21,6 +21,8 @@ import { UsersService } from '../users/users.service';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import { etiquetaDeValor } from '../common/validation/etiquetas';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 
 /** Categorías de las que depende el alta de personal con cuenta: nunca se quedan sin un puesto activo. */
 const CATEGORIAS_PROTEGIDAS = [
@@ -127,15 +129,21 @@ export class JobPositionService {
         where: { positionId: id, status: EmployeeStatus.ACTIVE },
       });
       if (activos > 0) {
-        throw new ConflictException(
+        throw conCodigo(
+          ConflictException,
+          409,
           `El puesto "${puesto.name}" lo ocupan ${activos} empleado(s) activo(s): reasignalos antes de darlo de baja`,
+          CODIGOS_DE_ERROR.POSITION_HAS_ACTIVE_EMPLOYEES,
         );
       }
       // Un legajo egresado sigue apuntando a su puesto: borrarlo lo dejaría sin él.
       const legajos = await empleados.count({ where: { positionId: id } });
       if (legajos > 0) {
-        throw new ConflictException(
-          `El puesto "${puesto.name}" figura en ${legajos} legajo(s), también egresados: desactivalo (isActive=false) en vez de darlo de baja`,
+        throw conCodigo(
+          ConflictException,
+          409,
+          `El puesto "${puesto.name}" figura en ${legajos} legajo(s), también egresados: desactivalo en vez de darlo de baja`,
+          CODIGOS_DE_ERROR.POSITION_IN_RECORDS,
         );
       }
       if (puesto.isActive && CATEGORIAS_PROTEGIDAS.includes(puesto.category)) {
@@ -260,7 +268,7 @@ export class JobPositionService {
       if (sembrado) return sembrado;
     }
     throw new ConflictException(
-      `La distribuidora no tiene un puesto activo de categoría "${categorias.join('" ni "')}": creá uno o indicá positionId`,
+      `La distribuidora no tiene un puesto activo de categoría "${categorias.join('" ni "')}": creá uno o indicá el puesto`,
     );
   }
 
@@ -317,8 +325,11 @@ export class JobPositionService {
       },
     });
     if (otros === 0) {
-      throw new ConflictException(
-        `"${puesto.name}" es el último puesto activo de categoría ${puesto.category}: creá otro antes de desactivarlo, recategorizarlo o darlo de baja`,
+      throw conCodigo(
+        ConflictException,
+        409,
+        `"${puesto.name}" es el último puesto activo de la categoría ${etiquetaDeValor(puesto.category) ?? 'del puesto'}: creá otro antes de desactivarlo, recategorizarlo o darlo de baja`,
+        CODIGOS_DE_ERROR.POSITION_LAST_ACTIVE,
       );
     }
   }
@@ -340,8 +351,11 @@ export class JobPositionService {
     const esperado: string | null = rolDeAcceso(categoria);
     const incompatibles = [...roles.values()].filter((rol) => rol !== esperado);
     if (incompatibles.length > 0) {
-      throw new ConflictException(
-        `${incompatibles.length} empleado(s) del puesto "${puesto.name}" tienen una cuenta cuyo rol no corresponde a la categoría ${categoria}`,
+      throw conCodigo(
+        ConflictException,
+        409,
+        `${incompatibles.length} empleado(s) del puesto "${puesto.name}" tienen una cuenta cuyo rol no corresponde a la categoría ${etiquetaDeValor(categoria) ?? 'elegida'}`,
+        CODIGOS_DE_ERROR.POSITION_ROLE_MISMATCH,
       );
     }
   }
@@ -359,7 +373,12 @@ export class JobPositionService {
       consulta.andWhere('p.positionId <> :excluirId', { excluirId });
     }
     if (await consulta.getExists()) {
-      throw new ConflictException(`Ya existe un puesto llamado "${nombre}"`);
+      throw conCodigo(
+        ConflictException,
+        409,
+        `Ya existe un puesto llamado "${nombre}"`,
+        CODIGOS_DE_ERROR.POSITION_NAME_TAKEN,
+      );
     }
   }
 

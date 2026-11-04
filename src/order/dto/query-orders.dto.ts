@@ -42,9 +42,7 @@ export class QueryOrdersDto extends PaginationDto {
   @Transform(({ value }: { value: unknown }) =>
     value === 'out_for_delivery' ? OrderStatus.ON_THE_WAY : value,
   )
-  @IsEnum(OrderStatus, {
-    message: 'status debe ser un estado de pedido válido',
-  })
+  @IsEnum(OrderStatus)
   status?: OrderStatus;
 
   @ApiPropertyOptional({
@@ -54,9 +52,7 @@ export class QueryOrdersDto extends PaginationDto {
       '`unpaid` los impagos sin resolver; `written_off` las pérdidas. Siempre acotado a la distribuidora en contexto.',
   })
   @IsOptional()
-  @IsEnum(PaymentStatus, {
-    message: 'paymentStatus debe ser un estado de pago válido',
-  })
+  @IsEnum(PaymentStatus)
   paymentStatus?: PaymentStatus;
 
   @ApiPropertyOptional({
@@ -126,9 +122,7 @@ export class QueryOrdersDto extends PaginationDto {
       'Campo por el que se ordena. Con `deliveredAt` los pedidos sin entregar quedan al final',
   })
   @IsOptional()
-  @IsIn(ORDEN_DE_PEDIDOS, {
-    message: 'sort debe ser createdAt o deliveredAt',
-  })
+  @IsIn(ORDEN_DE_PEDIDOS)
   sort?: (typeof ORDEN_DE_PEDIDOS)[number];
 
   @ApiPropertyOptional({
@@ -137,6 +131,6 @@ export class QueryOrdersDto extends PaginationDto {
     description: 'Sentido del orden: `desc` los más nuevos primero',
   })
   @IsOptional()
-  @IsIn(SENTIDO_DE_ORDEN, { message: 'order debe ser asc o desc' })
+  @IsIn(SENTIDO_DE_ORDEN)
   order?: (typeof SENTIDO_DE_ORDEN)[number];
 }

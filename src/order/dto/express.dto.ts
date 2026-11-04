@@ -80,9 +80,7 @@ export class DeliveryOptionsResponseDto {
 /** Cuerpo de `POST /orders/express` y `POST /orders/express/quote` (CU-147). */
 export class ExpressPurchaseDto {
   @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
-  @IsEnum(PaymentMethod, {
-    message: `paymentMethod debe ser uno de: ${Object.values(PaymentMethod).join(', ')}`,
-  })
+  @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
 
   @ApiPropertyOptional({

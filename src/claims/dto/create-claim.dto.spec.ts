@@ -1,5 +1,6 @@
-import { ArgumentMetadata, ValidationPipe } from '@nestjs/common';
+import { ArgumentMetadata } from '@nestjs/common';
 import { CreateClaimDto } from './create-claim.dto';
+import { crearValidationPipe } from '../../common/validation/validation-pipe';
 
 const base = {
   orderId: '2c0f7a9e-6f4f-4f55-9d0e-0a5a4d1b7c11',
@@ -9,11 +10,7 @@ const base = {
 };
 
 // El mismo pipe global de `main.ts`.
-const pipe = new ValidationPipe({
-  whitelist: true,
-  forbidNonWhitelisted: true,
-  transform: true,
-});
+const pipe = crearValidationPipe();
 const meta: ArgumentMetadata = { type: 'body', metatype: CreateClaimDto };
 
 describe('CreateClaimDto: la foto no viaja como texto', () => {
@@ -30,7 +27,7 @@ describe('CreateClaimDto: la foto no viaja como texto', () => {
       pipe.transform({ ...base, photoUrl }, meta),
     ).rejects.toMatchObject({
       status: 400,
-      response: { message: ['property photoUrl should not exist'] },
+      response: { message: ['Se envió un dato que no corresponde: Foto'] },
     });
   });
 });

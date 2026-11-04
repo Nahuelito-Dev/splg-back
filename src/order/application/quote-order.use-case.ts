@@ -85,16 +85,18 @@ export class QuoteOrderUseCase {
   ): Promise<QuoteResponseDto> {
     if (dto.fromCart && dto.items !== undefined) {
       throw new BadRequestException(
-        'Con fromCart los ítems salen del carrito: no mandes items',
+        'Si el pedido sale del carrito, los productos se toman de ahí: no los mandes',
       );
     }
     if (dto.fromCart && dto.orderId) {
       throw new BadRequestException(
-        'fromCart no se combina con orderId: la edición de un pedido no usa el carrito',
+        'Editar un pedido no usa el carrito: no combines las dos cosas',
       );
     }
     if (!dto.fromCart && dto.items === undefined) {
-      throw new BadRequestException('items es obligatorio (o usá fromCart)');
+      throw new BadRequestException(
+        'Los productos son obligatorios (o usá el carrito)',
+      );
     }
 
     // Cotización de edición: el pedido manda (distribuidora, cliente, zona,
@@ -110,7 +112,7 @@ export class QuoteOrderUseCase {
     }
     if (!edicion && dto.isReservation && !dto.scheduledDate) {
       throw new BadRequestException(
-        'Una reserva requiere scheduledDate (fecha de entrega agendada)',
+        'Una reserva requiere la fecha de entrega agendada',
       );
     }
 
@@ -158,7 +160,7 @@ export class QuoteOrderUseCase {
       }
       if (!dto.addressId) {
         throw new BadRequestException(
-          'Indicá addressId para cotizar la modalidad express',
+          'Indicá la dirección para cotizar la modalidad express',
         );
       }
       this.createOrder.assertExpressCompatible(dto);
@@ -174,7 +176,7 @@ export class QuoteOrderUseCase {
     } else if (dto.addressId) {
       if (!customerId) {
         throw new BadRequestException(
-          'Indicá customerId para cotizar con la zona de una dirección',
+          'Indicá el cliente para cotizar con la zona de una dirección',
         );
       }
       const address = await this.addresses.buscarDelUsuario(
@@ -362,7 +364,7 @@ export class QuoteOrderUseCase {
     if (cambiaAgenda && timeSlotId && scheduledDate) {
       if (dto.scheduledDate === undefined && scheduledDate < diaArgentino()) {
         throw new BadRequestException(
-          'La fecha agendada del pedido ya pasó: indicá una fecha nueva (scheduledDate) para cambiar la franja',
+          'La fecha agendada del pedido ya pasó: indicá una fecha nueva para cambiar la franja',
         );
       }
       await this.timeSlots.assertSlotAvailable(

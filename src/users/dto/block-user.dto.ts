@@ -7,6 +7,6 @@ export class BlockUserDto {
     description: 'true bloquea la cuenta, false la habilita de nuevo',
     example: true,
   })
-  @IsBoolean({ message: 'block tiene que ser true o false' })
+  @IsBoolean({ message: 'block tiene que ser verdadero o falso' })
   block!: boolean;
 }

@@ -136,7 +136,7 @@ export class PurchaseReceiptService {
       }
       if (diaArgentino(pagadoEn) < diaArgentino(recepcion.receivedAt)) {
         throw new CompraInvalidaError(
-          'paidAt: no puede ser anterior a la recepción de la compra',
+          'Fecha de pago: no puede ser anterior a la recepción de la compra',
         );
       }
       const total = new Decimal(recepcion.totalAmount);
@@ -166,12 +166,12 @@ export class PurchaseReceiptService {
   private validarPedido(pago: PagoDeRecepcion): void {
     if (pago.paymentStatus !== PaymentStatus.PAID && pago.paidInCash) {
       throw new CompraInvalidaError(
-        'paidInCash: sólo se indica al marcar la recepción como pagada',
+        'Pagado en efectivo: sólo se indica al marcar la recepción como pagada',
       );
     }
     if (pago.cashBoxId && !pago.paidInCash) {
       throw new CompraInvalidaError(
-        'cashBoxId: sólo se indica cuando el pago es en efectivo (paidInCash)',
+        'Caja: sólo se indica cuando el pago es en efectivo',
       );
     }
   }

@@ -2,7 +2,6 @@ import {
   ExecutionContext,
   ForbiddenException,
   INestApplication,
-  ValidationPipe,
   VERSION_NEUTRAL,
   VersioningType,
 } from '@nestjs/common';
@@ -20,6 +19,7 @@ import { DownloadDisposition } from '../s3/dto/download-link.dto';
 import { PdfQueryDto, ReporteDeVentasPdfQueryDto } from './dto/pdf-query.dto';
 import { PdfController } from './pdf.controller';
 import { PdfDocumentsService } from './pdf-documents.service';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const ID = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
 const PDF = Buffer.from('%PDF-1.3 prueba');
@@ -71,13 +71,7 @@ describe('PdfController (API v2)', () => {
         req.user = usuario(rol) as Request['user'];
         next();
       });
-      app.useGlobalPipes(
-        new ValidationPipe({
-          whitelist: true,
-          forbidNonWhitelisted: true,
-          transform: true,
-        }),
-      );
+      app.useGlobalPipes(crearValidationPipe());
       // Escucha una sola vez: sin esto supertest abre y cierra un servidor por
       // pedido y, con la suite en paralelo, a veces corta con «socket hang up».
       await app.listen(0, '127.0.0.1');

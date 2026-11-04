@@ -46,7 +46,7 @@ export class DeliveryOptionsUseCase {
       actor.role === RoleType.CUSTOMER ? actor.userId : query.customerId;
     if (!customerId) {
       throw new BadRequestException(
-        'Indicá customerId para consultar las opciones de entrega de su dirección',
+        'Indicá el cliente para consultar las opciones de entrega de su dirección',
       );
     }
     const address = await this.addresses.buscarDelUsuario(

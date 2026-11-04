@@ -60,7 +60,7 @@ export class DriverLiquidationService {
   ): Promise<LiquidacionConEmpleado> {
     if (dto.periodFrom > dto.periodTo) {
       throw new ComisionInvalidaError(
-        'El período no es válido: periodFrom no puede ser posterior a periodTo',
+        'El período no es válido: «Período desde» no puede ser posterior a «Período hasta»',
       );
     }
     const rango = rangoDeDiasArgentinos(dto.periodFrom, dto.periodTo);

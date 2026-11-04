@@ -5,6 +5,7 @@ import {
   CustomerEntryType,
 } from './customer-account.enums';
 import { CuentaConflictoError } from './errors/customer-account.errors';
+import { valorLegible } from '../../common/validation/etiquetas';
 
 /** `+1` si el asiento suma a la deuda del cliente, `-1` si la baja. */
 export function signoDelAsiento(tipo: CustomerEntryType): 1 | -1 {
@@ -134,9 +135,9 @@ export function exigirTransicionDeCuenta(
   if (desde === hacia) return;
   if (!TRANSICIONES_DE_CUENTA[desde].includes(hacia)) {
     throw new CuentaConflictoError(
-      `Una cuenta ${desde === CustomerAccountStatus.CLOSED ? 'cerrada' : desde} no puede pasar a ${hacia}: ${
+      `Una cuenta ${valorLegible(desde, 'accountStatus')} no puede pasar a ${valorLegible(hacia, 'accountStatus')}: ${
         desde === CustomerAccountStatus.CLOSED
-          ? 'reabrila primero (estado active)'
+          ? 'reabrila primero'
           : 'transición no permitida'
       }`,
     );

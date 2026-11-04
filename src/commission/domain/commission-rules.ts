@@ -125,7 +125,7 @@ export function validarRegla(r: {
   }
   if (r.validTo !== null && r.validTo < r.validFrom) {
     throw new ComisionInvalidaError(
-      'La vigencia termina antes de empezar: validTo no puede ser anterior a validFrom',
+      'La vigencia termina antes de empezar: «Válido hasta» no puede ser anterior a «Válido desde»',
     );
   }
 }

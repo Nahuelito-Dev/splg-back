@@ -38,7 +38,7 @@ export class RoleController {
   @ApiOperation({ summary: 'Crear un rol' })
   @ApiCreatedResponse({ type: RoleResponseDto })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: type must be a string)',
+    description: 'Datos inválidos (p. ej.: Tipo: tiene que ser un texto)',
   })
   async create(@Body() createRoleDto: CreateRoleDto): Promise<RoleResponseDto> {
     return RoleMapper.toDto(await this.roleService.create(createRoleDto));
@@ -68,7 +68,7 @@ export class RoleController {
   @ApiNotFoundResponse({ description: 'El rol no existe' })
   @ApiConflictResponse({ description: 'Es un rol del sistema' })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: type must be a string)',
+    description: 'Datos inválidos (p. ej.: Tipo: tiene que ser un texto)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

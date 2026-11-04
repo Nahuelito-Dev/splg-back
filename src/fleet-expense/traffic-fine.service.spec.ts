@@ -178,7 +178,7 @@ describe('TrafficFineService', () => {
             'd1',
             'u1',
           ),
-        ).rejects.toThrow('paidAt: no puede ser anterior');
+        ).rejects.toThrow('Fecha de pago: no puede ser anterior');
         expect(guardadas).toHaveLength(0);
       });
     });
@@ -276,7 +276,7 @@ describe('TrafficFineService', () => {
       it('cashBoxId sin paidInCash es 400', async () => {
         await expect(
           service.pagar('m1', { ...pago, paidInCash: false }, 'd1', 'u1'),
-        ).rejects.toThrow(/cashBoxId/);
+        ).rejects.toThrow('Caja: sólo se indica cuando el pago es en efectivo');
       });
     });
 

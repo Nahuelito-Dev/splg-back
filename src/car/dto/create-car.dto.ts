@@ -53,7 +53,7 @@ export class CreateCarDto {
   @IsString()
   @Matches(PATENTE_ARGENTINA, {
     message:
-      'car_patent debe ser una patente argentina: AAA123 (formato anterior) o AA123AA (Mercosur), sin espacios ni guiones',
+      'car_patent debe ser una patente argentina (AAA123 en el formato anterior o AA123AA en el Mercosur), sin espacios ni guiones',
   })
   car_patent?: string | null;
 

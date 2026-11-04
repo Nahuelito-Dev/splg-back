@@ -244,7 +244,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
         d1.admin,
         carga(c1.carId, { totalAmount: 41000 }),
       ).expect(400);
-      expect(JSON.stringify(res.body)).toContain('totalAmount');
+      expect(JSON.stringify(res.body)).toContain('Importe total');
       // 1 % de tolerancia: 40399 pasa
       await postCarga(d1.admin, carga(c1.carId, { totalAmount: 40399 })).expect(
         201,
@@ -257,7 +257,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
         d1.admin,
         carga(c1.carId, { liters: 64, totalAmount: 64000 }),
       ).expect(400);
-      expect(JSON.stringify(res.body)).toContain('liters');
+      expect(JSON.stringify(res.body)).toContain('Litros');
       await postCarga(
         d1.admin,
         carga(c1.carId, { liters: 63, totalAmount: 63000 }),
@@ -270,7 +270,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
         .getRepository(Car)
         .update({ carId: c1.carId }, { fuelType: null });
       const res = await postCarga(d1.admin, carga(c1.carId)).expect(400);
-      expect(JSON.stringify(res.body)).toContain('fuelType');
+      expect(JSON.stringify(res.body)).toContain('Tipo de combustible');
       await postCarga(
         d1.admin,
         carga(c1.carId, { fuelType: 'gasoline' }),
@@ -289,7 +289,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
         carga(c1.carId, { odometerKm: 900 }),
       ).expect(400);
       expect(JSON.stringify(res.body)).toContain(
-        'El kilometraje es menor que el de la última carga',
+        'Kilometraje: es menor que el de la última carga',
       );
 
       // forzar sin nota: 400
@@ -722,7 +722,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
         .set(d1.admin)
         .send({ planId: plan.planId, carId: c1.carId })
         .expect(400);
-      expect(JSON.stringify(sinVencimiento.body)).toContain('dueAt');
+      expect(JSON.stringify(sinVencimiento.body)).toContain('Vencimiento');
 
       const invertida = await http()
         .post('/fleet/tasks')
@@ -734,7 +734,7 @@ describe('Flota ampliada C-18 (e2e)', () => {
           dueAt: '2026-12-31',
         })
         .expect(400);
-      expect(JSON.stringify(invertida.body)).toContain('validFrom');
+      expect(JSON.stringify(invertida.body)).toContain('Válido desde');
     });
 
     it('plan o vehículo de otra distribuidora es 404', async () => {

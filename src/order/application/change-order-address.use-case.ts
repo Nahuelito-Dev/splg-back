@@ -29,6 +29,7 @@ import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { MENSAJE_SENA_PAGADA } from '../domain/order-editable';
 import { RedisService } from '../../redis/redis.service';
 import { errorMessage } from '../../common/errors/error-message';
+import { valorLegible } from '../../common/validation/etiquetas';
 
 export const MENSAJE_PEDIDO_YA_SALIO =
   'El pedido ya salió o fue entregado: no se puede cambiar la dirección';
@@ -137,7 +138,7 @@ export class ChangeOrderAddressUseCase {
         order.status !== OrderStatus.ACCEPTED
       ) {
         throw new ConflictException(
-          `Sólo se cambia la dirección de un pedido pendiente o aceptado (estado actual: ${order.status})`,
+          `Sólo se cambia la dirección de un pedido pendiente o aceptado (estado actual: ${valorLegible(order.status)})`,
         );
       }
 

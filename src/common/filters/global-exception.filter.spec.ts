@@ -1,4 +1,10 @@
-import { ArgumentsHost, HttpServer, Logger } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  HttpServer,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { GlobalExceptionFilter } from './global-exception.filter';
 import { InvalidOrderTransitionError } from '../../order/domain/errors/invalid-order-transition.error';
 import { GasCylinderNotFoundError } from '../../gascylinder/domain/errors/gas-cylinder-not-found.error';
@@ -67,7 +73,7 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
       ];
       expect(status).toBe(500);
       expect(cuerpo.statusCode).toBe(500);
-      expect(cuerpo.message).toBe('Internal server error');
+      expect(cuerpo.message).toBe('Error interno del servidor');
       expect(JSON.stringify(cuerpo)).not.toContain('ord-123');
     },
   );
@@ -231,5 +237,33 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
       'gc-secreto',
     );
     warn.mockRestore();
+  });
+
+  it('traduce el 400 de un Parse*Pipe y el 404 de ruta inexistente, con su status', () => {
+    filter.catch(
+      new BadRequestException('Validation failed (uuid is expected)'),
+      host,
+    );
+    expect(applicationRef.reply).toHaveBeenLastCalledWith(
+      expect.anything(),
+      {
+        statusCode: 400,
+        error: 'Solicitud inválida',
+        code: 'INVALID_ID',
+        message: 'El identificador no es válido',
+      },
+      400,
+    );
+
+    filter.catch(new NotFoundException('Cannot GET /api/v1/nada'), host);
+    expect(applicationRef.reply).toHaveBeenLastCalledWith(
+      expect.anything(),
+      {
+        statusCode: 404,
+        error: 'No encontrado',
+        message: 'No existe la ruta GET /api/v1/nada',
+      },
+      404,
+    );
   });
 });

@@ -13,6 +13,7 @@ import {
   puedeOtorgarseCuenta,
   rolDeAcceso,
 } from '../employee/domain/access-role';
+import { valorLegible } from '../common/validation/etiquetas';
 
 /**
  * Otorgar una cuenta de acceso a un empleado (CU-182): el rol sale de la
@@ -46,13 +47,13 @@ export class GrantEmployeeAccountUseCase {
     const rol = rolDeAcceso(empleado.position.category);
     if (!puedeOtorgarseCuenta(empleado.position.category) || !rol) {
       throw new BadRequestException(
-        `Sólo los choferes tienen cuenta de acceso: el puesto "${empleado.position.name}" es de categoría ${empleado.position.category}`,
+        `Sólo los choferes tienen cuenta de acceso: el puesto "${empleado.position.name}" es de categoría ${valorLegible(empleado.position.category)}`,
       );
     }
     const telefono = dto.phoneNumber ?? empleado.phone;
     if (!telefono || !/^\+[1-9]\d{7,14}$/.test(telefono)) {
       throw new BadRequestException(
-        'Falta un teléfono en formato E.164 (+549...): enviá phoneNumber o cargalo en el legajo',
+        'Falta un teléfono en formato E.164 (+549...): enviá el teléfono o cargalo en el legajo',
       );
     }
 

@@ -15,7 +15,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
 import {
   INestApplication,
-  ValidationPipe,
   VERSION_NEUTRAL,
   VersioningType,
 } from '@nestjs/common';
@@ -57,6 +56,7 @@ import {
   AUDIT_ACTION_TYPE_NAMES,
   AuditActionType,
 } from '../../../src/audit/entities/audit-action-type.entity';
+import { crearValidationPipe } from '../../../src/common/validation/validation-pipe';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
  * devuelva algo que `supertest` acepta sin pasar por `any`. */
@@ -216,13 +216,7 @@ export async function createTestApp(
   app.useGlobalFilters(
     new GlobalExceptionFilter(app.get(HttpAdapterHost).httpAdapter),
   );
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  app.useGlobalPipes(crearValidationPipe());
   const cleanup = async () => {
     await app.close();
     await redisContainer.stop();

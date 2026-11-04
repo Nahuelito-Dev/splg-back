@@ -384,7 +384,9 @@ describe('LeaveService', () => {
     it('un período invertido es 400 e indica el filtro', async () => {
       await expect(
         service.findAll({ from: '2026-05-01', to: '2026-04-01' }, 'd1'),
-      ).rejects.toThrow(/^to:/);
+      ).rejects.toThrow(
+        'Hasta: la fecha final no puede ser anterior a la inicial',
+      );
     });
   });
 

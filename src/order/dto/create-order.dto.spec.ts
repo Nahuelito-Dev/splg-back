@@ -1,5 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { traducirErrores } from '../../common/validation/traducir-validacion';
 import { CreateOrderDto } from './create-order.dto';
 import { QuoteOrderDto } from './quote-order.dto';
 
@@ -11,9 +12,7 @@ const base = {
 };
 
 const mensajes = async (clase: new () => object, cuerpo: object) =>
-  (await validate(plainToInstance(clase, cuerpo))).flatMap((e) =>
-    Object.values(e.constraints ?? {}),
-  );
+  traducirErrores(await validate(plainToInstance(clase, cuerpo)));
 
 describe('items vacíos', () => {
   it('el alta rechaza items: [] (un pedido sin renglones)', async () => {
@@ -40,7 +39,7 @@ describe('items repetidos', () => {
     ['la cotización', QuoteOrderDto],
   ])('%s rechaza la misma garrafa en dos renglones', async (_n, clase) => {
     expect(await mensajes(clase, { ...base, items: repetidos })).toContain(
-      'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',
+      'Productos: no puede repetir la misma garrafa (sumá las cantidades en un solo renglón)',
     );
   });
 
@@ -76,7 +75,7 @@ describe('depositAmount', () => {
     expect(
       await mensajes(clase, { ...reserva, depositAmount: 0.001 }),
     ).toContain(
-      'depositAmount must be a number conforming to the specified constraints',
+      'Importe de la seña: tiene que ser un número válido (revisá la cantidad de decimales)',
     );
   });
 

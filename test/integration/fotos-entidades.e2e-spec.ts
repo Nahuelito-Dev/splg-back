@@ -1347,7 +1347,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
           .send({ logo_url, phone: '123' })
           .expect(400);
         expect(JSON.stringify(res.body)).toContain(
-          'property logo_url should not exist',
+          'Se envió un dato que no corresponde: Logotipo',
         );
       }
       await http()

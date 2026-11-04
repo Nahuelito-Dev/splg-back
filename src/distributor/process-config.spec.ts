@@ -161,7 +161,7 @@ describe('process-config', () => {
           workshopEndHour: 12,
         }),
       ).toEqual([
-        'workshopStartHour: tiene que ser anterior a workshopEndHour',
+        'Hora de apertura del taller: tiene que ser anterior a la hora de cierre',
       ]);
       expect(
         validarParametros(PLANIFICADOR, {
@@ -219,13 +219,13 @@ describe('process-config', () => {
 
     it('rechaza un campo desconocido', () => {
       expect(validarParametros(REPURCHASE, { invento: 1 })).toEqual([
-        'property invento should not exist',
+        'Se envió un dato que no corresponde',
       ]);
     });
 
     it('rechaza un valor fuera de rango y nombra el campo', () => {
       expect(validarParametros(REPURCHASE, { anticipationDays: 31 })).toEqual([
-        'anticipationDays: tiene que ser un entero entre 1 y 30',
+        'Días de anticipación: tiene que ser un entero entre 1 y 30',
       ]);
       expect(
         validarParametros(REPURCHASE, { anticipationDays: 0 }),

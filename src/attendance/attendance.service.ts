@@ -23,6 +23,8 @@ import { Employee, EmployeeStatus } from '../employee/entities/employee.entity';
 import { diaArgentino } from '../common/utils/dias-argentina';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
+import { rutaLegible } from '../common/validation/etiquetas';
 
 export interface PaginaDeJornadas {
   data: JornadaConLegajo[];
@@ -32,7 +34,7 @@ export interface PaginaDeJornadas {
 }
 
 const MENSAJE_EGRESO =
-  'checkOutAt: el egreso tiene que ser posterior al ingreso';
+  'Hora de salida: tiene que ser posterior a la hora de ingreso';
 
 /** Tolerancia con el reloj del cliente: una marca de hasta un minuto en el futuro se acepta. */
 const TOLERANCIA_RELOJ_MS = 60_000;
@@ -41,7 +43,9 @@ const SIN_FIN = new Date('9999-12-31T00:00:00Z');
 /** Una jornada no puede registrarse ni corregirse hacia el futuro. */
 function assertNoFutura(instante: Date | null, campo: string): void {
   if (instante && instante.getTime() > Date.now() + TOLERANCIA_RELOJ_MS) {
-    throw new BadRequestException(`${campo}: no puede ser una fecha futura`);
+    throw new BadRequestException(
+      `${rutaLegible(campo.split('.'))}: no puede ser una fecha futura`,
+    );
   }
 }
 
@@ -175,7 +179,7 @@ export class AttendanceService {
   ): Promise<PaginaDeJornadas> {
     if (query.from && query.to && query.to < query.from) {
       throw new BadRequestException(
-        'to: la fecha final no puede ser anterior a from',
+        'Hasta: la fecha final no puede ser anterior a la inicial',
       );
     }
     const limit = query.limit ?? 10;
@@ -393,8 +397,11 @@ export class AttendanceService {
         where: { employeeId: empleado.employeeId, checkOutAt: IsNull() },
       }))
     ) {
-      throw new ConflictException(
+      throw conCodigo(
+        ConflictException,
+        409,
         'El empleado ya tiene una jornada abierta: cerrala antes de abrir otra',
+        CODIGOS_DE_ERROR.WORKDAY_ALREADY_OPEN,
       );
     }
     await this.assertSinSuperposicion(
