@@ -29,6 +29,7 @@ import { limpiarMetadatosDeImagen } from '../s3/limpiar-imagen';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import type { Disposicion } from '../s3/content-disposition';
+import { valorLegible } from '../common/validation/etiquetas';
 
 /** Quién pide: el rol decide si hace falta que el dueño sea "propio". */
 export interface AttachmentActor {
@@ -70,7 +71,7 @@ const ENDPOINT_DEL_DUENO: Readonly<
 export function mensajeSoloPorSuEndpoint(
   ownerType: AttachmentOwnerType,
 ): string {
-  return `Los adjuntos de "${ownerType}" no se suben ni se dan de baja por /attachments: usá el endpoint de su módulo (${ENDPOINT_DEL_DUENO[ownerType] ?? 'el de su módulo'})`;
+  return `Los adjuntos de «${valorLegible(ownerType, 'ownerType')}» se cargan y se dan de baja desde su propia sección (${ENDPOINT_DEL_DUENO[ownerType] ?? 'la de su módulo'})`;
 }
 
 /** Trabajo extra que corre en la MISMA transacción que guarda el adjunto. */
@@ -315,7 +316,7 @@ export class AttachmentService {
       !OWNER_TYPES_DEL_CHOFER.includes(ownerType)
     ) {
       throw new ForbiddenException(
-        `Un chofer no puede acceder a adjuntos de tipo ${ownerType}`,
+        `Un chofer no puede acceder a adjuntos de «${valorLegible(ownerType, 'ownerType')}»`,
       );
     }
 
@@ -329,7 +330,9 @@ export class AttachmentService {
           distributorId,
         )) ?? false;
       if (!esPropio) {
-        throw new NotFoundException(`No se encontró el ${ownerType}`);
+        throw new NotFoundException(
+          `No se encontró «${valorLegible(ownerType, 'ownerType')}»`,
+        );
       }
     }
   }
@@ -338,7 +341,7 @@ export class AttachmentService {
     const resolver = this.registry.find(ownerType);
     if (!resolver) {
       throw new BadRequestException(
-        `Todavía no se pueden adjuntar archivos a "${ownerType}"`,
+        `Todavía no se pueden adjuntar archivos a «${valorLegible(ownerType)}»`,
       );
     }
     return resolver;

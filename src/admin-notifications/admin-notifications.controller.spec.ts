@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VERSION_NEUTRAL,
   VersioningType,
 } from '@nestjs/common';
@@ -12,6 +11,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { AdminNotificationsController } from './admin-notifications.controller';
 import { AdminNotificationsService } from './admin-notifications.service';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const ID = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
 
@@ -46,13 +46,7 @@ describe('AdminNotificationsController (API v2)', () => {
       } as AuthenticatedUser as Request['user'];
       next();
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1');
   });
 

@@ -49,7 +49,7 @@ export class TimeSlotController {
   @ApiCreatedResponse({ type: TimeSlotResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: name should not be empty; startTime must be in HH:MM format), inicio >= fin o capacidad fuera de 1-10000',
+      'Datos inválidos (p. ej.: Nombre: no puede estar vacío; Hora de inicio: tiene que ser una hora con formato HH:MM), inicio >= fin o capacidad fuera de 1-10000',
   })
   @ApiConflictResponse({
     description:

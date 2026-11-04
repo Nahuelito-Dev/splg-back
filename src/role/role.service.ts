@@ -12,6 +12,7 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import { valorLegible } from '../common/validation/etiquetas';
 
 @Injectable()
 export class RoleService {
@@ -89,7 +90,7 @@ export class RoleService {
       .getCount();
     if (usuarios > 0) {
       throw new ConflictException(
-        `El rol '${role.type}' todavía tiene ${usuarios} usuario(s): reasignalos antes de darlo de baja`,
+        `El rol «${valorLegible(role.type)}» todavía tiene ${usuarios} usuario(s): reasignalos antes de darlo de baja`,
       );
     }
 

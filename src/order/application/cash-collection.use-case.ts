@@ -481,7 +481,7 @@ export class CashCollectionUseCase {
     );
     if (Number(filas[0]?.n ?? 0) > 0) {
       throw new BadRequestException(
-        'Indicá la caja donde entra el efectivo cobrado (cashBoxId)',
+        'Indicá la caja donde entra el efectivo cobrado',
       );
     }
   }

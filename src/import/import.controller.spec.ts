@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VersioningType,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -18,6 +17,7 @@ import { ImportService } from './import.service';
 import { ImportTemplateService } from './import-template.service';
 import { Workbook } from 'exceljs';
 import { Readable } from 'stream';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const job = (parcial: Partial<ImportJob> = {}): ImportJob =>
   ({
@@ -84,13 +84,7 @@ describe('ImportController', () => {
       type: VersioningType.URI,
       defaultVersion: [VERSION_NEUTRAL, '1'],
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

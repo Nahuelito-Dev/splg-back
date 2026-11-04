@@ -46,7 +46,7 @@ export class NotificationsController {
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: token no puede estar vacío; title must be shorter than or equal to 100 characters)',
+      'Datos inválidos (p. ej.: Token: no puede estar vacío; Título: tiene que tener como máximo 100 caracteres)',
   })
   async sendTestNotification(
     @Body() dto: SendTestNotificationDto,
@@ -68,7 +68,7 @@ export class NotificationsController {
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: customerId debe ser un UUID; orderId debe ser un UUID)',
+      'Datos inválidos (p. ej.: Cliente: no es válido; Pedido: no es válido)',
   })
   @ApiNotFoundResponse({ description: 'El cliente no existe' })
   async sendOrderConfirmation(
@@ -105,7 +105,7 @@ export class NotificationsController {
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: userId debe ser un UUID; token no puede estar vacío)',
+      'Datos inválidos (p. ej.: Usuario: no es válido; Token: no puede estar vacío)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async saveToken(

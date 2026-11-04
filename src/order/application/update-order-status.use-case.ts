@@ -341,12 +341,12 @@ export class UpdateOrderStatusUseCase {
     const motivo = reason?.trim() ?? '';
     if (motivo.length < MOTIVO_ENTREGA_MANUAL_MIN) {
       throw new BadRequestException(
-        `reason: indicá el motivo de la entrega manual (al menos ${MOTIVO_ENTREGA_MANUAL_MIN} caracteres)`,
+        `Motivo: indicá el motivo de la entrega manual (al menos ${MOTIVO_ENTREGA_MANUAL_MIN} caracteres)`,
       );
     }
     if (motivo.length > MOTIVO_ENTREGA_MANUAL_MAX) {
       throw new BadRequestException(
-        `reason: hasta ${MOTIVO_ENTREGA_MANUAL_MAX} caracteres`,
+        `Motivo: hasta ${MOTIVO_ENTREGA_MANUAL_MAX} caracteres`,
       );
     }
     return motivo;

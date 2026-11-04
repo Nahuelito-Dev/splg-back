@@ -25,8 +25,6 @@ export class ResolveIncidentDto {
       'una incidencia abierta, con el motivo en `resolutionNote`',
   })
   @IsOptional()
-  @IsIn(CIERRES, {
-    message: `status debe ser uno de: ${CIERRES.join(', ')}`,
-  })
+  @IsIn(CIERRES)
   status?: IncidentStatus.RESOLVED | IncidentStatus.DISCARDED;
 }

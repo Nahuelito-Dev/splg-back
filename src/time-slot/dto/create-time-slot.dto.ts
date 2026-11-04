@@ -22,14 +22,14 @@ export class CreateTimeSlotDto {
   @ApiProperty({ example: '09:00', description: 'Hora de inicio (HH:MM)' })
   @IsString()
   @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-    message: 'startTime must be in HH:MM format',
+    message: 'startTime: tiene que ser una hora con formato HH:MM',
   })
   startTime!: string;
 
   @ApiProperty({ example: '13:00', description: 'Hora de fin (HH:MM)' })
   @IsString()
   @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-    message: 'endTime must be in HH:MM format',
+    message: 'endTime: tiene que ser una hora con formato HH:MM',
   })
   endTime!: string;
 

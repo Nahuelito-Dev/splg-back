@@ -5,6 +5,7 @@ import {
   StockCondition,
   StockMovementReason,
 } from './stock.enums';
+import { valorLegible } from '../../common/validation/etiquetas';
 
 /** Clave de un saldo: ubicación, tipo de garrafa y condición. */
 export function claveDeSaldo(
@@ -167,7 +168,7 @@ export function validarItemsDeAjuste(
     vistos.add(clave);
     if (MOTIVOS_DE_BAJA.includes(reason) && item.quantityDelta > 0) {
       throw new OperacionDeStockInvalidaError(
-        `Con el motivo ${reason} la variación tiene que ser negativa`,
+        `Con el motivo «${valorLegible(reason)}» la variación tiene que ser negativa`,
       );
     }
     if (reason === StockAdjustmentReason.FOUND && item.quantityDelta < 0) {

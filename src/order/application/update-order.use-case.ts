@@ -220,14 +220,14 @@ export class UpdateOrderUseCase {
         dto.scheduledDate < diaArgentino()
       ) {
         throw new BadRequestException(
-          'scheduledDate no puede ser una fecha pasada',
+          'La fecha de entrega agendada no puede ser pasada',
         );
       }
       if (cambiaAgenda && timeSlotId && scheduledDate) {
         const hoy = diaArgentino();
         if (dto.scheduledDate === undefined && scheduledDate < hoy) {
           throw new BadRequestException(
-            'La fecha agendada del pedido ya pasó: indicá una fecha nueva (scheduledDate) para cambiar la franja',
+            'La fecha agendada del pedido ya pasó: indicá una fecha nueva para cambiar la franja',
           );
         }
         await this.timeSlotService.assertSlotAvailableTx(

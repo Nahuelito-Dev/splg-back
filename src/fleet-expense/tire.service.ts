@@ -173,7 +173,7 @@ export class TireService {
       case TireEventType.MOUNT: {
         if (!dto.carId || !dto.position) {
           throw new BadRequestException(
-            'carId y position: son obligatorios en un montaje',
+            'Vehículo y posición: son obligatorios en un montaje',
           );
         }
         await this.cars.bloquear(manager, dto.carId, distributorId);
@@ -194,12 +194,12 @@ export class TireService {
       case TireEventType.ROTATE: {
         if (!dto.position) {
           throw new BadRequestException(
-            'position: es obligatoria en una rotación',
+            'Posición: es obligatoria en una rotación',
           );
         }
         if (dto.carId && dto.carId !== t.carId) {
           throw new BadRequestException(
-            'carId: la rotación es dentro del mismo vehículo',
+            'Vehículo: la rotación es dentro del mismo vehículo',
           );
         }
         if (dto.position === t.position) {
@@ -255,7 +255,7 @@ export class TireService {
     const ultimo = fila?.max ?? null;
     if (ultimo !== null && dto.odometerKm < Number(ultimo)) {
       throw new BadRequestException(
-        `odometerKm: es menor que el último registrado de este neumático en el vehículo (${ultimo} km)`,
+        `Kilometraje: es menor que el último registrado de este neumático en el vehículo (${ultimo} km)`,
       );
     }
   }
@@ -265,7 +265,7 @@ export class TireService {
     const montaje = t.mountedOdometerKm ?? 0;
     if (odometerKm < montaje) {
       throw new BadRequestException(
-        `odometerKm: es menor que el del montaje (${montaje} km)`,
+        `Kilometraje: es menor que el del montaje (${montaje} km)`,
       );
     }
     t.kmTraveled += odometerKm - montaje;

@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -26,9 +26,7 @@ export class AcceptInvitationDto {
     description: 'Medio de pago; por omisión el de la invitación',
   })
   @IsOptional()
-  @IsEnum(MEDIOS_AL_ACEPTAR, {
-    message: `paymentMethod debe ser uno de: ${MEDIOS_AL_ACEPTAR.join(', ')}`,
-  })
+  @IsIn(MEDIOS_AL_ACEPTAR)
   paymentMethod?: PaymentMethod;
 
   @ApiPropertyOptional({

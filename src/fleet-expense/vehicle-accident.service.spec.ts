@@ -204,7 +204,7 @@ describe('VehicleAccidentService', () => {
           'd1',
           'u1',
         ),
-      ).rejects.toThrow(/occurredAt/);
+      ).rejects.toThrow('Fecha del hecho: el siniestro no puede ser futuro');
     });
 
     it('un vehículo de otra distribuidora es 404', async () => {
@@ -318,18 +318,20 @@ describe('VehicleAccidentService', () => {
           { ...importes, insurerReimbursement: 400000 },
           'd1',
         ),
-      ).rejects.toThrow(/insurerReimbursement/);
+      ).rejects.toThrow(
+        'Reintegro de la aseguradora: el reintegro del seguro no puede superar el costo de la reparación',
+      );
       expect(repo.save).not.toHaveBeenCalled();
     });
 
     it('no cierra con menos que un pago de la empresa o un reintegro ya registrados (409)', async () => {
       repo.findOne.mockResolvedValue(guardado({ paymentAmount: 400000 }));
       await expect(service.cerrar('s1', importes, 'd1')).rejects.toThrow(
-        /repairCost/,
+        'Costo de la reparación: ya se registró un pago de la empresa por más que el costo de la reparación y la franquicia',
       );
       repo.findOne.mockResolvedValue(guardado({ reimbursementAmount: 260000 }));
       await expect(service.cerrar('s1', importes, 'd1')).rejects.toThrow(
-        /insurerReimbursement/,
+        'Reintegro de la aseguradora: ya se registró un reintegro del seguro por más que ese importe',
       );
     });
 

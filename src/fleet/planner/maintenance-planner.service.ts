@@ -68,6 +68,7 @@ import {
 import { diasDeLaMascara, FERIADOS_AR } from './domain/dias-de-taller';
 import { ProyeccionDeVencimiento } from './domain/proyeccion-de-vencimiento';
 import { enumerarVentanas, evaluarVentanas } from './domain/ventanas-de-taller';
+import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 
 const MS_POR_DIA = 86_400_000;
 const ESTADOS_CERRADOS = [
@@ -884,8 +885,11 @@ export class MaintenancePlannerService {
     const ctx = await this.contexto.cargar(distributorId, cars, params, ahora);
     const quedan = ctx.unidadesDe(carId)(diaArgentino(inicio));
     if (quedan !== null && quedan < params.minVehiclesPerZone) {
-      throw new ConflictException(
+      throw conCodigo(
+        ConflictException,
+        409,
         `Esa ventana deja la zona de cobertura del vehículo con ${quedan} unidad(es), por debajo del mínimo de ${params.minVehiclesPerZone}: otro vehículo de la zona ya tiene el taller ese día`,
+        CODIGOS_DE_ERROR.COVERAGE_BELOW_MINIMUM,
       );
     }
   }
@@ -943,7 +947,7 @@ export class MaintenancePlannerService {
     ahora: Date = new Date(),
   ): Promise<MaintenanceWindowProposal> {
     const motivo = rechazo.reason.trim();
-    if (!motivo) throw new BadRequestException('reason: indicá el motivo');
+    if (!motivo) throw new BadRequestException('Motivo: indicá el motivo');
     const delivery = await this.deliveries.findOneByUserId(userId);
     const params = await this.parametros(delivery.distributorId);
     const alternativa = rechazo.alternative;
@@ -1080,12 +1084,12 @@ export class MaintenancePlannerService {
     const dia = diaArgentino(alt.start);
     if (alt.end.getTime() <= alt.start.getTime()) {
       throw new BadRequestException(
-        'alternative: el fin tiene que ser posterior al inicio',
+        'Alternativa: el fin tiene que ser posterior al inicio',
       );
     }
     if (diaArgentino(new Date(alt.end.getTime() - 1)) !== dia) {
       throw new BadRequestException(
-        'alternative: tiene que caber en un mismo día',
+        'Alternativa: tiene que caber en un mismo día',
       );
     }
     const desde = Math.floor(minutosDelDiaArgentino(alt.start) / 60);
@@ -1094,7 +1098,7 @@ export class MaintenancePlannerService {
     );
     if (desde < params.workshopStartHour || hasta > params.workshopEndHour) {
       throw new BadRequestException(
-        `alternative: tiene que estar dentro del horario de taller (${params.workshopStartHour} a ${params.workshopEndHour} h)`,
+        `Alternativa: tiene que estar dentro del horario de taller (${params.workshopStartHour} a ${params.workshopEndHour} h)`,
       );
     }
     const posibles = enumerarVentanas({
@@ -1108,7 +1112,7 @@ export class MaintenancePlannerService {
     });
     if (!posibles.some((v) => v.day === dia)) {
       throw new BadRequestException(
-        'alternative: el día tiene que ser posterior al aviso mínimo y anterior al vencimiento proyectado',
+        'Alternativa: el día tiene que ser posterior al aviso mínimo y anterior al vencimiento proyectado',
       );
     }
     const cars = (await this.carService.findAll(caso.distributorId)).filter(
@@ -1122,8 +1126,11 @@ export class MaintenancePlannerService {
     );
     const quedan = ctx.unidadesDe(caso.carId)(dia);
     if (quedan !== null && quedan < params.minVehiclesPerZone) {
-      throw new BadRequestException(
-        'alternative: ese día dejaría la zona de cobertura por debajo del mínimo de unidades',
+      throw conCodigo(
+        BadRequestException,
+        400,
+        'Alternativa: ese día dejaría la zona de cobertura por debajo del mínimo de unidades',
+        CODIGOS_DE_ERROR.COVERAGE_BELOW_MINIMUM,
       );
     }
   }
@@ -1542,16 +1549,18 @@ export class MaintenancePlannerService {
     let origen = caso.chosenSource;
     if (r.windowStart || r.windowEnd) {
       if (!r.windowStart || !r.windowEnd) {
-        throw new BadRequestException('windowStart y windowEnd van juntos');
+        throw new BadRequestException(
+          'El inicio y el fin de la ventana van juntos',
+        );
       }
       if (r.windowEnd.getTime() <= r.windowStart.getTime()) {
         throw new BadRequestException(
-          'windowEnd: tiene que ser posterior a windowStart',
+          'Fin de la ventana: tiene que ser posterior al inicio',
         );
       }
       if (r.windowStart.getTime() < ahora.getTime() - 5 * 60_000) {
         throw new BadRequestException(
-          'windowStart: la ventana tiene que ser a futuro',
+          'Inicio de la ventana: la ventana tiene que ser a futuro',
         );
       }
       inicio = r.windowStart;
@@ -1560,12 +1569,12 @@ export class MaintenancePlannerService {
     }
     if (!r.windowStart && inicio && inicio.getTime() < ahora.getTime()) {
       throw new BadRequestException(
-        'La ventana acordada ya pasó: elegí otra (windowStart y windowEnd)',
+        'La ventana acordada ya pasó: elegí otra (inicio y fin de la ventana)',
       );
     }
     if (!inicio || !fin || !origen) {
       throw new BadRequestException(
-        'Indicá la ventana (windowStart y windowEnd): el caso todavía no tiene una acordada con el chofer',
+        'Indicá la ventana (inicio y fin): el caso todavía no tiene una acordada con el chofer',
       );
     }
     const tareaRepo = manager.getRepository(MaintenanceTask);

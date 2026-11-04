@@ -16,6 +16,7 @@ import {
   NotFoundDomainError,
 } from '../common/errors/domain.error';
 import { errorMessage } from '../common/errors/error-message';
+import { traducirExcepcion } from '../common/validation/traducir-excepcion';
 import { SOLO_LECTURA_KEY } from './solo-lectura.decorator';
 
 const ESCRITURAS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -129,7 +130,8 @@ function idDelRecurso(params: Record<string, string>): string | null {
  */
 function motivoDelRechazo(error: unknown): string {
   if (error instanceof HttpException) {
-    const cuerpo = error.getResponse();
+    // El mismo texto en castellano que recibe el cliente (lo arma el filtro global).
+    const cuerpo = traducirExcepcion(error).getResponse();
     if (typeof cuerpo === 'object' && cuerpo !== null && 'message' in cuerpo) {
       const { message } = cuerpo;
       if (Array.isArray(message)) return message.map(String).join('; ');

@@ -594,7 +594,7 @@ describe('S3 contra MinIO (e2e)', () => {
         .send({ ...cuerpo, photoUrl: 'https://externa.example/x.jpg' })
         .expect(400);
       expect(JSON.stringify(rechazado.body)).toContain(
-        'property photoUrl should not exist',
+        'Se envió un dato que no corresponde: Foto',
       );
       const creado = await request(env.app.getHttpServer())
         .post('/claims')

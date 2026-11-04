@@ -195,7 +195,7 @@ export function parsearReporteDeLiberaciones(csv: string): ParsedReleaseReport {
   const faltan = COLUMNAS_OBLIGATORIAS.filter((c) => !nombres.includes(c));
   if (faltan.length > 0) {
     throw new ReleaseReportFormatError(
-      `El reporte no trae las columnas ${faltan.join(', ')}: configuralo con los nombres de columna en inglés (report_translation "en") y volvé a pedirlo`,
+      `El reporte no trae las columnas ${faltan.join(', ')}: configuralo en Mercado Pago con los nombres de columna en inglés y volvé a pedirlo`,
     );
   }
   const indice = new Map(nombres.map((n, i) => [n, i]));

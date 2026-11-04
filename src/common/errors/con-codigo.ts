@@ -1,0 +1,42 @@
+import { STATUS_CODES } from 'http';
+import type { HttpException } from '@nestjs/common';
+
+/**
+ * Una excepción de Nest con un `code` estable (en inglés) además del texto en
+ * castellano. Las apps y el panel reconocen el `code` y no dependen de la
+ * redacción del `message`. Mismo shape de siempre más el campo extra:
+ * `{statusCode, message, error, code}`.
+ */
+export function conCodigo<T extends HttpException>(
+  Clase: new (respuesta: object) => T,
+  status: number,
+  message: string,
+  code: string,
+): T {
+  return new Clase({
+    statusCode: status,
+    message,
+    error: STATUS_CODES[status],
+    code,
+  });
+}
+
+/** Códigos que las apps y el panel reconocen (ver ENTREGA de la tanda de mensajes). */
+export const CODIGOS_DE_ERROR = {
+  CONSUMPTION_OUT_OF_RANGE: 'CONSUMPTION_OUT_OF_RANGE',
+  IDEMPOTENCY_KEY_INVALID: 'IDEMPOTENCY_KEY_INVALID',
+  IDEMPOTENCY_IN_PROGRESS: 'IDEMPOTENCY_IN_PROGRESS',
+  IDEMPOTENCY_KEY_REUSED: 'IDEMPOTENCY_KEY_REUSED',
+  MISSING_DISTRIBUTOR: 'MISSING_DISTRIBUTOR',
+  UNPAID_INCIDENT_CLOSES_WITH_PAYMENT: 'UNPAID_INCIDENT_CLOSES_WITH_PAYMENT',
+  WORKDAY_ALREADY_OPEN: 'WORKDAY_ALREADY_OPEN',
+  POSITION_HAS_ACTIVE_EMPLOYEES: 'POSITION_HAS_ACTIVE_EMPLOYEES',
+  POSITION_IN_RECORDS: 'POSITION_IN_RECORDS',
+  POSITION_LAST_ACTIVE: 'POSITION_LAST_ACTIVE',
+  POSITION_ROLE_MISMATCH: 'POSITION_ROLE_MISMATCH',
+  POSITION_NAME_TAKEN: 'POSITION_NAME_TAKEN',
+  DEPOSIT_EXCEEDS_TOTAL: 'DEPOSIT_EXCEEDS_TOTAL',
+  SCHEDULED_DAY_INVALID: 'SCHEDULED_DAY_INVALID',
+  SCHEDULED_WINDOW_IN_PAST: 'SCHEDULED_WINDOW_IN_PAST',
+  COVERAGE_BELOW_MINIMUM: 'COVERAGE_BELOW_MINIMUM',
+} as const;

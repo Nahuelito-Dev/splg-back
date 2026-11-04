@@ -155,6 +155,23 @@ describe('AuditInterceptor (CU-153)', () => {
     );
   });
 
+  it('el motivo queda en castellano, el mismo que recibe el cliente (id mal formado)', async () => {
+    const error = new BadRequestException(
+      'Validation failed (uuid is expected)',
+    );
+    await expect(
+      lastValueFrom(
+        interceptor.intercept(contexto('PATCH'), {
+          handle: () => throwError(() => error),
+        }),
+      ),
+    ).rejects.toBe(error);
+    expect(asiento()).toMatchObject({
+      statusCode: 400,
+      errorMessage: 'El identificador no es válido',
+    });
+  });
+
   it('las lecturas no se registran', async () => {
     await lastValueFrom(interceptor.intercept(contexto('GET'), handler([])));
     expect(registrar).not.toHaveBeenCalled();

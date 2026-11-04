@@ -189,7 +189,7 @@ export class DeliveryController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: property calification should not exist; validated tiene que ser true o false)',
+      'Datos inválidos (p. ej.: Se envió un dato que no corresponde; Validado: tiene que ser verdadero o falso)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -257,7 +257,7 @@ export class DeliveryController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: latLng debe ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
+      'Datos inválidos (p. ej.: Coordenadas: tiene que ser "latitud,longitud", por ejemplo -27.3671,-55.8961)',
   })
   async updateLocation(
     @Param('id', ParseUUIDPipe) id: string,
@@ -289,7 +289,7 @@ export class DeliveryController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: amount fuera de rango; amount fuera de rango)',
+      'Datos inválidos (p. ej.: Importe: fuera de rango; Importe: fuera de rango)',
   })
   async updateBalance(
     @Param('id', ParseUUIDPipe) id: string,
@@ -322,7 +322,7 @@ export class DeliveryController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: isEnabled tiene que ser true o false)',
+      'Datos inválidos (p. ej.: Habilitado: tiene que ser verdadero o falso)',
   })
   async toggleStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -379,7 +379,7 @@ export class DeliveryController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: available tiene que ser true o false)',
+      'Datos inválidos (p. ej.: Disponible: tiene que ser verdadero o falso)',
   })
   async toggleAvailability(
     @Param('userId', ParseUUIDPipe) userId: string,

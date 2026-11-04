@@ -772,7 +772,9 @@ describe('QuoteOrderUseCase', () => {
           DIST,
           CLIENTE,
         ),
-      ).rejects.toThrow(/addressId/);
+      ).rejects.toThrow(
+        'Indicá la dirección para cotizar la modalidad express',
+      );
     });
 
     it('no se combina con una reserva', async () => {

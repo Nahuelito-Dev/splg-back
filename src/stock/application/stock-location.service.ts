@@ -35,7 +35,7 @@ export class StockLocationService {
     const tieneVehiculo = ref.carId !== undefined;
     if (tieneDeposito === tieneVehiculo) {
       throw new OperacionDeStockInvalidaError(
-        'La ubicación se indica con warehouseId o con carId, uno solo',
+        'La ubicación es un depósito o un vehículo, uno solo',
       );
     }
     if (ref.warehouseId) {

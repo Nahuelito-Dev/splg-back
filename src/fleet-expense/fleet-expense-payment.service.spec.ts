@@ -183,7 +183,9 @@ describe('FleetExpensePaymentService (caja completa, etapa 2)', () => {
       });
       await expect(
         service.pagarSiniestro('s1', pago, 'd1', 'u1'),
-      ).rejects.toThrow(/amount/);
+      ).rejects.toThrow(
+        'Importe: no puede superar lo cargado al cerrar el siniestro',
+      );
       expect(pagos.pagarDesdeUnaCaja).not.toHaveBeenCalled();
     });
 

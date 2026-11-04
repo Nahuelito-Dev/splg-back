@@ -18,14 +18,14 @@ export function rangoDeFiltros(from?: string, to?: string): RangoOpcional {
   const desde = from ? (inicioDelDiaArgentino(from) ?? undefined) : undefined;
   const hasta = to ? rangoDelDiaArgentino(to)?.hasta : undefined;
   if (from && !desde) {
-    throw new BadRequestException('from: no es una fecha válida (YYYY-MM-DD)');
+    throw new BadRequestException('Desde: no es una fecha válida (YYYY-MM-DD)');
   }
   if (to && !hasta) {
-    throw new BadRequestException('to: no es una fecha válida (YYYY-MM-DD)');
+    throw new BadRequestException('Hasta: no es una fecha válida (YYYY-MM-DD)');
   }
   if (desde && hasta && desde >= hasta) {
     throw new BadRequestException(
-      'from: la fecha de inicio no puede ser posterior a la de fin',
+      'Desde: la fecha de inicio no puede ser posterior a la de fin',
     );
   }
   return { desde, hasta };

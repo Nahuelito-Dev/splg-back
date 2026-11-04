@@ -108,10 +108,12 @@ export class TrafficFinePaymentService {
   ): Promise<void> {
     const pagadoEn = instanteDelPago(dto.paidAt);
     if (Number.isNaN(pagadoEn.getTime())) {
-      throw new BadRequestException('paidAt: fecha inválida');
+      throw new BadRequestException('Fecha de pago: fecha inválida');
     }
     if (pagadoEn.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
-      throw new BadRequestException('paidAt: no puede ser posterior a hoy');
+      throw new BadRequestException(
+        'Fecha de pago: no puede ser posterior a hoy',
+      );
     }
     try {
       await this.dataSource.transaction(async (manager) => {
@@ -129,12 +131,12 @@ export class TrafficFinePaymentService {
         }
         if (new Decimal(dto.amount).gt(multa.amount)) {
           throw new BadRequestException(
-            'amount: no puede superar el importe de la multa',
+            'Importe: no puede superar el importe de la multa',
           );
         }
         if (diaArgentino(pagadoEn) < diaArgentino(multa.occurredAt)) {
           throw new BadRequestException(
-            'paidAt: no puede ser anterior a la fecha de la infracción',
+            'Fecha de pago: no puede ser anterior a la fecha de la infracción',
           );
         }
         const comprobante = await this.attachments.findDelDueno(
@@ -146,12 +148,12 @@ export class TrafficFinePaymentService {
         );
         if (!comprobante) {
           throw new BadRequestException(
-            'attachmentId: el comprobante no existe o no es de esta multa',
+            'Archivo adjunto: el comprobante no existe o no es de esta multa',
           );
         }
         if (!esMimeTypePermitido(comprobante.mimeType)) {
           throw new BadRequestException(
-            'attachmentId: el comprobante tiene que ser un PDF o una imagen (JPG, PNG, WEBP)',
+            'Archivo adjunto: el comprobante tiene que ser un PDF o una imagen (JPG, PNG, WEBP)',
           );
         }
         const cajaId = await this.pagos.cajaDelPago(
@@ -161,7 +163,7 @@ export class TrafficFinePaymentService {
           CAJAS_DEL_PAGO,
         );
         if (!cajaId) {
-          throw new BadRequestException('cashBoxId: indicá la caja del pago');
+          throw new BadRequestException('Caja: indicá la caja del pago');
         }
         const movimiento = await this.pagos.egresar(manager, {
           distributorId,

@@ -15,6 +15,7 @@ import {
   fecha,
   fechaHora,
   moneda,
+  opcion,
   texto,
 } from './columnas';
 import { fuente, porPagina } from './fuente';
@@ -40,7 +41,7 @@ export function fuentesDeCompras(s: ServiciosDeCompras): FuenteDeExporte[] {
         entero('N°', (o) => o.number),
         texto('Proveedor', (o) => o.supplierName),
         texto('Depósito de destino', (o) => o.destinationWarehouseName),
-        texto('Estado', (o) => o.status),
+        opcion('Estado', 'status', (o) => o.status),
         fechaHora('Emitida', (o) => o.issuedAt),
         fecha('Entrega esperada', (o) => o.expectedDate),
         entero('Unidades pedidas', (o) => o.orderedQuantity),
@@ -70,11 +71,15 @@ export function fuentesDeCompras(s: ServiciosDeCompras): FuenteDeExporte[] {
         texto('Proveedor', (r) => r.supplierName),
         entero('Orden de compra', (r) => r.purchaseOrderNumber),
         texto('Depósito', (r) => r.warehouseName),
-        texto('Tipo de comprobante', (r) => r.supplierDocumentType),
+        opcion(
+          'Tipo de comprobante',
+          'supplierDocumentType',
+          (r) => r.supplierDocumentType,
+        ),
         codigo('N° de comprobante', (r) => r.supplierDocumentNumber),
         moneda('Total', (r) => r.totalAmount),
-        texto('Estado del pago', (r) => r.paymentStatus),
-        texto('Estado', (r) => r.status),
+        opcion('Estado del pago', 'paymentStatus', (r) => r.paymentStatus),
+        opcion('Estado', 'status', (r) => r.status),
       ],
     }),
 
@@ -93,7 +98,7 @@ export function fuentesDeCompras(s: ServiciosDeCompras): FuenteDeExporte[] {
       columnas: [
         texto('Razón social', (p) => p.businessName),
         codigo('CUIT', (p) => p.cuit),
-        texto('Rubro', (p) => p.kind),
+        opcion('Rubro', 'kind', (p) => p.kind),
         texto('Contacto', (p) => p.contactName),
         codigo('Teléfono', (p) => p.phone),
         texto('Email', (p) => p.email),

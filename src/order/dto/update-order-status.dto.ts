@@ -38,9 +38,7 @@ export class UpdateOrderStatusDto {
   @Transform(({ value }: { value: unknown }) =>
     value === 'out_for_delivery' ? OrderStatus.ON_THE_WAY : value,
   )
-  @IsEnum(OrderStatus, {
-    message: `status debe ser uno de: ${Object.values(OrderStatus).join(', ')}`,
-  })
+  @IsEnum(OrderStatus)
   status!: OrderStatus;
 
   @ApiProperty({

@@ -51,6 +51,8 @@ import { calcularEstadoDeVencimiento } from './domain/expiration-status';
 import { validarDetalle } from './domain/document-details';
 import { PlanningCaseCloser } from './planner/planning-case-closer.service';
 import type { MaintenanceWindowProposal } from './entities/maintenance-window-proposal.entity';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
+import { valorLegible } from '../common/validation/etiquetas';
 
 /** Fecha de calendario del cuerpo: `undefined` no se toca, `null` borra, un ISO se normaliza. */
 function fechaDeCalendario(valor: string | null | undefined) {
@@ -341,7 +343,12 @@ export class FleetTaskService {
   private inicioDelDiaOFalla(dia: string): Date {
     const inicio = inicioDelDiaArgentino(dia);
     if (!inicio) {
-      throw new BadRequestException(`scheduledAt: día inválido (${dia})`);
+      throw conCodigo(
+        BadRequestException,
+        400,
+        `scheduledAt: día inválido (${dia})`,
+        CODIGOS_DE_ERROR.SCHEDULED_DAY_INVALID,
+      );
     }
     return inicio;
   }
@@ -379,7 +386,7 @@ export class FleetTaskService {
     const performedAt = new Date(dto.performedAt);
     if (performedAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
       throw new BadRequestException(
-        'performedAt no puede ser una fecha futura: registrá cuándo se hizo',
+        'La fecha de realización no puede ser futura: registrá cuándo se hizo',
       );
     }
     const pagadoEn = pago
@@ -418,7 +425,7 @@ export class FleetTaskService {
         task.cost = dto.cost ?? task.cost;
         if (pago && !(task.cost && task.cost > 0)) {
           throw new BadRequestException(
-            'payment: la tarea no tiene costo para pagar: indicá `cost`',
+            'Pago: la tarea no tiene costo para pagar; cargá el costo primero',
           );
         }
         task.provider = dto.provider ?? task.provider;
@@ -518,11 +525,11 @@ export class FleetTaskService {
     }
     const monto = new Decimal(importe ?? task.cost);
     if (monto.lte(0)) {
-      throw new BadRequestException('amount: tiene que ser mayor que cero');
+      throw new BadRequestException('Importe: tiene que ser mayor que cero');
     }
     if (monto.gt(task.cost)) {
       throw new BadRequestException(
-        'amount: no puede superar el costo de la tarea',
+        'Importe: no puede superar el costo de la tarea',
       );
     }
     if (
@@ -530,7 +537,7 @@ export class FleetTaskService {
       diaArgentino(pagadoEn) < diaArgentino(task.performedAt)
     ) {
       throw new BadRequestException(
-        'paidAt: no puede ser anterior a la fecha en que se hizo la tarea',
+        'Fecha de pago: no puede ser anterior a la fecha en que se hizo la tarea',
       );
     }
     const quien =
@@ -581,12 +588,12 @@ export class FleetTaskService {
     const siguiente = await vecina('>', 'ASC');
     if (anterior?.odometerKm != null && odometerKm < anterior.odometerKm) {
       throw new BadRequestException(
-        `odometerKm: es menor que el de la tarea anterior del vehículo (${anterior.odometerKm} km)`,
+        `Kilometraje: es menor que el de la tarea anterior del vehículo (${anterior.odometerKm} km)`,
       );
     }
     if (siguiente?.odometerKm != null && odometerKm > siguiente.odometerKm) {
       throw new BadRequestException(
-        `odometerKm: es mayor que el de una tarea posterior del vehículo (${siguiente.odometerKm} km): corregí la fecha o el kilometraje`,
+        `Kilometraje: es mayor que el de una tarea posterior del vehículo (${siguiente.odometerKm} km; corregí la fecha o el kilometraje)`,
       );
     }
   }
@@ -749,12 +756,12 @@ export class FleetTaskService {
       !dueAt
     ) {
       throw new BadRequestException(
-        'dueAt: la habilitación necesita la fecha de vencimiento',
+        'Vencimiento: la habilitación necesita la fecha de vencimiento',
       );
     }
     if (validFrom && dueAt && validFrom.getTime() > dueAt.getTime()) {
       throw new BadRequestException(
-        'validFrom: el inicio de la vigencia no puede ser posterior al vencimiento',
+        'Válido desde: el inicio de la vigencia no puede ser posterior al vencimiento',
       );
     }
   }
@@ -795,7 +802,7 @@ export class FleetTaskService {
     if (plan.subject === MaintenanceSubject.VEHICLE) {
       if (!dto.carId || dto.deliveryId || dto.employeeId) {
         throw new BadRequestException(
-          'Un plan de vehículo necesita carId (y no deliveryId ni employeeId)',
+          'Un plan de vehículo necesita el vehículo (y no el chofer ni el empleado)',
         );
       }
       await this.carService.findOne(dto.carId, distributorId); // 404 si no existe/no es de esta distribuidora
@@ -805,7 +812,7 @@ export class FleetTaskService {
     if (plan.subject === MaintenanceSubject.EMPLOYEE) {
       if (!dto.employeeId || dto.carId || dto.deliveryId) {
         throw new BadRequestException(
-          'Un plan de personal necesita employeeId (y no carId ni deliveryId)',
+          'Un plan de personal necesita el empleado (y no el vehículo ni el chofer)',
         );
       }
       // 404 si no existe/no es de esta distribuidora; 409 si está egresado
@@ -818,7 +825,7 @@ export class FleetTaskService {
       }
       if (!aplicaALaCategoria(plan, empleado.position.category)) {
         throw new BadRequestException(
-          `El plan «${plan.name}» no aplica a la categoría del puesto del empleado (${empleado.position.category})`,
+          `El plan «${plan.name}» no aplica a la categoría del puesto del empleado (${valorLegible(empleado.position.category)})`,
         );
       }
       return empleado;
@@ -826,7 +833,7 @@ export class FleetTaskService {
 
     if (!dto.deliveryId || dto.carId || dto.employeeId) {
       throw new BadRequestException(
-        'Un plan de chofer necesita deliveryId (y no carId ni employeeId)',
+        'Un plan de chofer necesita el chofer (y no el vehículo ni el empleado)',
       );
     }
     const delivery = await this.deliveryService.findOne(dto.deliveryId);
@@ -845,7 +852,7 @@ export class FleetTaskService {
     if (empleado && plan.trigger === MaintenanceTrigger.BY_FIXED_DATE) {
       if (!dto.dueAt) {
         throw new BadRequestException(
-          'dueAt: el vencimiento del documento es obligatorio',
+          'Vencimiento: el vencimiento del documento es obligatorio',
         );
       }
     }

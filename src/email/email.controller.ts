@@ -64,7 +64,8 @@ export class EmailController {
   @ApiOperation({ summary: 'Test email service functionality' })
   @ApiCreatedResponse({ type: PruebaDeEmailResponseDto })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: email debe ser un correo válido)',
+    description:
+      'Datos inválidos (p. ej.: Correo electrónico: tiene que ser un correo electrónico válido)',
   })
   testEmailService(
     @Body() body: TestEmailDto,

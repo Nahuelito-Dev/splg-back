@@ -66,9 +66,7 @@ export class CreateUserAddressDto {
     description: 'Con qué precisión se resolvió la dirección en el mapa',
   })
   @IsOptional()
-  @IsEnum(PrecisionDeGeocodificacion, {
-    message: 'geocodePrecision debe ser exact, approximate o unresolved',
-  })
+  @IsEnum(PrecisionDeGeocodificacion)
   geocodePrecision?: PrecisionDeGeocodificacion;
 
   @ApiProperty({

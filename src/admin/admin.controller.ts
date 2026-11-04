@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -42,7 +41,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { esElMismoUsuario } from '../common/utils/alcance.util';
 import {
   CurrentDistributor,
-  MENSAJE_FALTA_DISTRIBUIDORA,
+  faltaLaDistribuidora,
 } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -59,7 +58,7 @@ export class AdminController {
   @ApiCreatedResponse({ type: AdminResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · el perfil de un admin de empresa exige X-Distributor y que coincida con distributor_id · property role_id should not exist; user_id must be a UUID',
+      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · el perfil de un admin de empresa exige X-Distributor y que coincida con distributor_id · Se envió un dato que no corresponde: Rol; Usuario: no es válido',
   })
   async create(
     @Body() createAdminDto: CreateAdminDto,
@@ -151,7 +150,7 @@ export class AdminController {
   @ApiOkResponse({ type: AdminResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: phoneNumber debe estar en formato E.164; property email should not exist)',
+      'Datos inválidos (p. ej.: Teléfono: tiene que estar en formato E.164; Se envió un dato que no corresponde: Correo electrónico)',
   })
   @ApiForbiddenResponse({
     description: 'Un admin de empresa se editó a sí mismo',
@@ -227,7 +226,7 @@ export class AdminController {
         !distributorId &&
         destino.user?.role?.type !== String(RoleType.SUPER_ADMIN)
       ) {
-        throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+        throw faltaLaDistribuidora();
       }
       return destino;
     }

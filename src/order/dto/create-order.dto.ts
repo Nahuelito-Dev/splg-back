@@ -58,7 +58,7 @@ export class CreateOrderDto {
   @ArrayNotEmpty({ message: 'El pedido necesita al menos un renglón' })
   @ArrayUnique((item: OrderItemDto) => item.gasCylinderId, {
     message:
-      'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',
+      'items no puede repetir la misma garrafa (sumá las cantidades en un solo renglón)',
   })
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
@@ -78,9 +78,7 @@ export class CreateOrderDto {
     enum: PaymentMethod,
     example: PaymentMethod.CASH,
   })
-  @IsEnum(PaymentMethod, {
-    message: `paymentMethod debe ser uno de: ${Object.values(PaymentMethod).join(', ')}`,
-  })
+  @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
 
   @ApiProperty({ description: 'Notas adicionales', required: false })
@@ -154,9 +152,7 @@ export class CreateOrderDto {
     example: OrderDeliveryMode.STANDARD,
   })
   @IsOptional()
-  @IsEnum(OrderDeliveryMode, {
-    message: `deliveryMode debe ser uno de: ${Object.values(OrderDeliveryMode).join(', ')}`,
-  })
+  @IsEnum(OrderDeliveryMode)
   deliveryMode?: OrderDeliveryMode;
 
   @ApiPropertyOptional({

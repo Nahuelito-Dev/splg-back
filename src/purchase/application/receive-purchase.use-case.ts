@@ -157,7 +157,7 @@ export class ReceivePurchaseUseCase {
               orden.orden.destinationWarehouseId.toLowerCase()
           ) {
             throw new CompraInvalidaError(
-              `La orden de compra N° ${orden.orden.number} se recibe en su depósito de destino: el depósito indicado no coincide. Omití warehouseId o usá el de la orden`,
+              `La orden de compra N° ${orden.orden.number} se recibe en su depósito de destino: el depósito indicado no coincide. Omití el depósito o usá el de la orden`,
             );
           }
           if (!warehouseId) {
@@ -287,7 +287,7 @@ export class ReceivePurchaseUseCase {
   private fechaDeRecepcion(valor: string | undefined): Date {
     const fecha = valor ? new Date(valor) : new Date();
     if (Number.isNaN(fecha.getTime())) {
-      throw new CompraInvalidaError('receivedAt no es una fecha válida');
+      throw new CompraInvalidaError('La fecha de recepción no es válida');
     }
     if (fecha.getTime() > Date.now() + TOLERANCIA_FUTURO_MS) {
       throw new CompraInvalidaError(
@@ -327,7 +327,7 @@ export class ReceivePurchaseUseCase {
     }
     if (!dto.supplierId) {
       throw new CompraInvalidaError(
-        'Una compra sin orden necesita el proveedor (supplierId)',
+        'Una compra sin orden necesita el proveedor',
       );
     }
     return dto.supplierId;
@@ -350,7 +350,7 @@ export class ReceivePurchaseUseCase {
         (quantityFull === 0 || itemsDeOrden !== null ? 0 : undefined);
       if (unitCost === undefined) {
         throw new CompraInvalidaError(
-          'Una compra sin orden necesita el costo unitario (unitCost) de cada renglón',
+          'Una compra sin orden necesita el costo unitario de cada renglón',
         );
       }
       return {

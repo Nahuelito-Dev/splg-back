@@ -197,7 +197,7 @@ describe('AttendanceService', () => {
       const manana = new Date(Date.now() + 86_400_000).toISOString();
       await expect(
         service.register('e1', { checkInAt: manana }, 'd1', 'a'),
-      ).rejects.toThrow(/checkInAt: no puede ser una fecha futura/);
+      ).rejects.toThrow(/Hora de ingreso: no puede ser una fecha futura/);
       await expect(
         service.register(
           'e1',
@@ -205,7 +205,7 @@ describe('AttendanceService', () => {
           'd1',
           'a',
         ),
-      ).rejects.toThrow(/checkOutAt: no puede ser una fecha futura/);
+      ).rejects.toThrow(/Hora de salida: no puede ser una fecha futura/);
       expect(employees.findActivo).not.toHaveBeenCalled();
     });
 
@@ -246,7 +246,13 @@ describe('AttendanceService', () => {
           'd1',
           'admin-1',
         ),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          code: 'WORKDAY_ALREADY_OPEN',
+          message: expect.stringContaining('jornada abierta') as string,
+        },
+      });
       expect(guardadas).toEqual([]);
     });
 
@@ -393,7 +399,9 @@ describe('AttendanceService', () => {
     it('un período invertido es 400', async () => {
       await expect(
         service.findAll({ from: '2026-05-01', to: '2026-04-01' }, 'd1'),
-      ).rejects.toThrow(/^to:/);
+      ).rejects.toThrow(
+        'Hasta: la fecha final no puede ser anterior a la inicial',
+      );
     });
   });
 

@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  ExecutionContext,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ExecutionContext, UnprocessableEntityException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { lastValueFrom, of } from 'rxjs';
 import {
@@ -174,6 +170,9 @@ describe('IdempotencyInterceptor', () => {
     );
     await expect(intento).rejects.toThrow(UnprocessableEntityException);
     await expect(intento).rejects.toThrow(MENSAJE_CLAVE_OTROS_DATOS);
+    await expect(intento).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+    });
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -227,7 +226,12 @@ describe('IdempotencyInterceptor', () => {
     const handler = jest.fn(() => of('A'));
     await expect(
       interceptor.intercept(ctx({ route: '/x/:id/y' }), { handle: handler }),
-    ).rejects.toThrow(ConflictException);
+    ).rejects.toMatchObject({
+      response: {
+        code: 'IDEMPOTENCY_IN_PROGRESS',
+        message: expect.stringContaining('Idempotency-Key') as string,
+      },
+    });
     expect(handler).not.toHaveBeenCalled();
   });
 

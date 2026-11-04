@@ -56,9 +56,7 @@ export class ReportEvolutionQueryDto extends ReportRangeQueryDto {
     example: Granularidad.DIA,
   })
   @IsOptional()
-  @IsEnum(Granularidad, {
-    message: 'granularity debe ser day, week o month',
-  })
+  @IsEnum(Granularidad)
   granularity?: Granularidad;
 }
 

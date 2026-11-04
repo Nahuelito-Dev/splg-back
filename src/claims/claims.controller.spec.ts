@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
@@ -10,6 +10,7 @@ import { RedisService } from '../redis/redis.service';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const ID = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
 
@@ -49,9 +50,7 @@ describe('ClaimsController · distribuidora obligatoria', () => {
       req.distributorId = distributorId;
       next();
     });
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(crearValidationPipe({ forbidNonWhitelisted: false }));
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 
@@ -183,9 +182,7 @@ describe('ClaimsController · mis reclamos', () => {
       req.distributorId = distributorId;
       next();
     });
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(crearValidationPipe({ forbidNonWhitelisted: false }));
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

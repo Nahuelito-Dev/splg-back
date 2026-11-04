@@ -28,7 +28,7 @@ export function Cuil(valorVacio: null | undefined = null): PropertyDecorator {
         validate: (valor: unknown) =>
           typeof valor === 'string' && esCuilValido(valor),
         defaultMessage: () =>
-          'cuil no es válido: son 11 dígitos con el dígito verificador correcto',
+          'cuil no es válido (son 11 dígitos con el dígito verificador correcto)',
       },
     }),
   );

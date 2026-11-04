@@ -12,6 +12,6 @@ export class ToggleDeliveryAvailabilityDto {
     description: 'true habilita al chofer para recibir ofertas',
     example: true,
   })
-  @IsBoolean({ message: 'available tiene que ser true o false' })
+  @IsBoolean({ message: 'available tiene que ser verdadero o falso' })
   available!: boolean;
 }

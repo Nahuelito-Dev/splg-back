@@ -27,8 +27,6 @@ export class ResolveClaimDto {
     enum: ESTADOS_FINALES,
     example: ClaimStatus.RESOLVED,
   })
-  @IsIn(ESTADOS_FINALES, {
-    message: `status debe ser uno de: ${ESTADOS_FINALES.join(', ')}`,
-  })
+  @IsIn(ESTADOS_FINALES)
   status!: ClaimStatus.RESOLVED | ClaimStatus.REJECTED;
 }

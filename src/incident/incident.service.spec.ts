@@ -465,7 +465,14 @@ describe('IncidentService', () => {
         async (status) => {
           await expect(
             service.resolve('i1', { resolutionNote: 'x', status }, 'd1'),
-          ).rejects.toThrow(/resolve-unpaid/);
+          ).rejects.toMatchObject({
+            response: {
+              code: 'UNPAID_INCIDENT_CLOSES_WITH_PAYMENT',
+              message: expect.stringMatching(
+                /^La incidencia de cobro impago se cierra/,
+              ) as string,
+            },
+          });
           expect(incidents.update).not.toHaveBeenCalled();
         },
       );

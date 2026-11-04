@@ -92,7 +92,9 @@ describe('CashDocumentPaymentService', () => {
 
     it('sin caja y con cajas de efectivo activas es 400', async () => {
       manager.query.mockResolvedValue([{ n: '2' }]);
-      await expect(service.cajaDelPago(m(), 'd1')).rejects.toThrow(/cashBoxId/);
+      await expect(service.cajaDelPago(m(), 'd1')).rejects.toThrow(
+        'Indicá la caja de efectivo de la que sale el pago',
+      );
     });
 
     it('sin caja y sin cajas de efectivo devuelve null: se paga sin movimiento', async () => {

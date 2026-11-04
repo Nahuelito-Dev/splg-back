@@ -318,7 +318,7 @@ describe('UpdateOrderUseCase', () => {
   it('una fecha nueva pasada es 400 aunque no haya franja', async () => {
     await expect(
       useCase.execute('o1', { scheduledDate: '2020-01-01' }, 'u1', 'd1'),
-    ).rejects.toThrow('scheduledDate no puede ser una fecha pasada');
+    ).rejects.toThrow('La fecha de entrega agendada no puede ser pasada');
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
   });
 

@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
@@ -6,6 +6,7 @@ import type { Server } from 'http';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { RoleType } from '../common/constants/role-type.enum';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const EMPRESA_A = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
 const EMPRESA_B = '9d8e7f60-1b2c-4d3e-8f4a-5b6c7d8e9f01';
@@ -39,9 +40,7 @@ describe('AdminController · GET /admin', () => {
       req.distributorId = contexto;
       next();
     });
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(crearValidationPipe({ forbidNonWhitelisted: false }));
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 
@@ -148,13 +147,7 @@ describe('AdminController · PATCH y DELETE /admin/:id', () => {
       req.distributorId = EMPRESA_A;
       next();
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

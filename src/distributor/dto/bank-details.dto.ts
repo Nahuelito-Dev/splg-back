@@ -47,7 +47,7 @@ export class BankDetailsDto {
   @IsString()
   @Matches(ALIAS_BANCARIO_REGEX, {
     message:
-      'alias tiene que tener entre 6 y 20 caracteres: letras, números, punto y guion',
+      'alias tiene que tener entre 6 y 20 caracteres (letras, números, punto y guion)',
   })
   alias?: string | null;
 

@@ -97,12 +97,12 @@ export class RegistroService {
       alta.rol !== RoleType.ADMIN
     ) {
       throw new BadRequestException(
-        'employeeId y legajo sólo valen para choferes y administradores',
+        'Vincular un legajo existente o crear uno sólo vale para choferes y administradores',
       );
     }
     if (datos.employeeId && datos.legajo) {
       throw new BadRequestException(
-        'Indicá employeeId (vincular un legajo existente) o legajo (crear uno), no los dos',
+        'Indicá un legajo existente para vincular o los datos de un legajo nuevo para crear, no los dos',
       );
     }
 

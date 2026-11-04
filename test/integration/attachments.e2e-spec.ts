@@ -321,7 +321,7 @@ describe('Adjuntos genéricos (e2e)', () => {
         'traffic_fine',
         randomUUID(),
       ).expect(400);
-      expect(JSON.stringify(res.body)).toContain('traffic_fine');
+      expect(JSON.stringify(res.body)).toContain('multa');
     } finally {
       sinMultas.mockRestore();
     }

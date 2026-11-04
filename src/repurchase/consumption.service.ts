@@ -16,6 +16,7 @@ import {
   estimarProximaRecompra,
   kilosPorMes,
 } from './domain/consumption';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 
 /** Lo que el cliente declara: garrafas por mes de un tipo. */
 export interface DeclaracionDeConsumo {
@@ -81,7 +82,7 @@ export class ConsumptionService {
       declaracion.cylinderTypeId ?? actual.declaredCylinderTypeId;
     if (!cylinderTypeId) {
       throw new BadRequestException(
-        'Indicá el tipo de garrafa habitual (cylinderTypeId): todavía no declaraste uno',
+        'Indicá el tipo de garrafa habitual: todavía no declaraste uno',
       );
     }
     const garrafa = await this.garrafaHabitual(
@@ -155,7 +156,7 @@ export class ConsumptionService {
       actual.avgMonthlyConsumptionKg === null
     ) {
       throw new BadRequestException(
-        'Indicá quantityPerMonth (garrafas por mes); sólo con cylinderTypeId se puede cambiar la garrafa de quien ya declaró su consumo',
+        'Indicá cuántas garrafas por mes; sólo con el tipo de garrafa se puede cambiar la garrafa de quien ya declaró su consumo',
       );
     }
     return actual.avgMonthlyConsumptionKg;
@@ -189,10 +190,12 @@ export class ConsumptionService {
       );
     }
     if (!consumoEnRango(kgPorMes) && !declaracion.confirmOutOfRange) {
-      throw new BadRequestException(
+      throw conCodigo(
+        BadRequestException,
+        400,
         `El consumo declarado (${kgPorMes} kg por mes) está fuera del rango razonable ` +
-          `(${CONSUMO_MINIMO_KG_MES} a ${CONSUMO_MAXIMO_KG_MES} kg por mes): ` +
-          'confirmalo enviando confirmOutOfRange: true',
+          `(${CONSUMO_MINIMO_KG_MES} a ${CONSUMO_MAXIMO_KG_MES} kg por mes): confirmalo`,
+        CODIGOS_DE_ERROR.CONSUMPTION_OUT_OF_RANGE,
       );
     }
     return kgPorMes;

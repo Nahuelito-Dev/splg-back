@@ -22,7 +22,8 @@ export function EsEstrictamenteCreciente(options?: ValidationOptions) {
       target: object.constructor,
       propertyName,
       options: {
-        message: `${propertyName} tiene que ser una lista estrictamente creciente: cada valor mayor que el anterior, sin repetidos`,
+        message:
+          'tiene que ser una lista estrictamente creciente (cada valor mayor que el anterior, sin repetidos)',
         ...options,
       },
       validator: { validate: esEstrictamenteCreciente },

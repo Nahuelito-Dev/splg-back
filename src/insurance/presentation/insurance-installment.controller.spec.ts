@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VersioningType,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -15,6 +14,7 @@ import { InsuranceQueryService } from '../application/insurance-query.service';
 import { InstallmentStatus } from '../domain/insurance.enums';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsuranceInstallmentController } from './insurance-installment.controller';
+import { crearValidationPipe } from '../../common/validation/validation-pipe';
 
 const CUOTA = '0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f001';
 const ADJUNTO = '0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f002';
@@ -89,13 +89,7 @@ describe('InsuranceInstallmentController · cuotas del seguro en la API v2', () 
       type: VersioningType.URI,
       defaultVersion: [VERSION_NEUTRAL, '1'],
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

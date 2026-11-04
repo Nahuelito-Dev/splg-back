@@ -5,11 +5,22 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { CODIGOS_DE_ERROR, conCodigo } from '../errors/con-codigo';
 import { RoleType } from '../constants/role-type.enum';
 
 /** Respuesta 400 cuando una escritura exige distribuidora y no hay. */
 export const MENSAJE_FALTA_DISTRIBUIDORA =
   'Falta la distribuidora: enviá el header X-Distributor (slug o id)';
+
+/** El 400 de «falta la distribuidora», con el `code` que reconocen el panel y las apps. */
+export function faltaLaDistribuidora(): BadRequestException {
+  return conCodigo(
+    BadRequestException,
+    400,
+    MENSAJE_FALTA_DISTRIBUIDORA,
+    CODIGOS_DE_ERROR.MISSING_DISTRIBUTOR,
+  );
+}
 
 /**
  * Inyecta el `distributor_id` (tenant) efectivo de la request, resuelto por
@@ -55,7 +66,7 @@ export const CurrentDistributor = createParamDecorator(
         : Boolean(opts?.required);
 
     if (exige && !distributorId) {
-      throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+      throw faltaLaDistribuidora();
     }
 
     return distributorId;

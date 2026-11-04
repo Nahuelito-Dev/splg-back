@@ -193,7 +193,7 @@ describe('FuelLoadService', () => {
     it('una caja con un medio que no es cash_box es 400', async () => {
       await expect(
         service.registrar({ ...dto, cashBoxId: 'caja1' }, 'd1', 'u1'),
-      ).rejects.toThrow(/cashBoxId/);
+      ).rejects.toThrow('Caja: sólo se indica cuando el pago es de la caja');
       expect(repo.save).not.toHaveBeenCalled();
     });
 
@@ -453,7 +453,7 @@ describe('FuelLoadService', () => {
     it('sin combustible en la carga ni en el vehículo es 400', async () => {
       cars.bloquear.mockResolvedValue({ carId: 'c1', fuelType: null });
       await expect(service.registrar(dto, 'd1', 'u1')).rejects.toThrow(
-        /fuelType/,
+        'Tipo de combustible: indicá el combustible',
       );
       expect(repo.save).not.toHaveBeenCalled();
     });
@@ -461,7 +461,9 @@ describe('FuelLoadService', () => {
     it('un importe que no coincide con litros × precio es 400 con el campo', async () => {
       await expect(
         service.registrar({ ...dto, totalAmount: 50000 }, 'd1', 'u1'),
-      ).rejects.toThrow(/totalAmount/);
+      ).rejects.toThrow(
+        'Importe total: no coincide con los litros por el precio por litro',
+      );
       expect(repo.save).not.toHaveBeenCalled();
     });
 
@@ -472,7 +474,7 @@ describe('FuelLoadService', () => {
           'd1',
           'u1',
         ),
-      ).rejects.toThrow(/liters/);
+      ).rejects.toThrow('Litros: superan la capacidad del tanque');
     });
 
     it('sin capacidad cargada no se controla el tanque', async () => {
@@ -492,7 +494,7 @@ describe('FuelLoadService', () => {
     it('un kilometraje menor que el de la última carga es 400', async () => {
       anterior.getOne.mockResolvedValue({ odometerKm: 1200 });
       await expect(service.registrar(dto, 'd1', 'u1')).rejects.toThrow(
-        'El kilometraje es menor que el de la última carga',
+        'Kilometraje: es menor que el de la última carga',
       );
     });
 
@@ -500,7 +502,9 @@ describe('FuelLoadService', () => {
       anterior.getOne.mockResolvedValue({ odometerKm: 1200 });
       await expect(
         service.registrar({ ...dto, odometerCorrection: true }, 'd1', 'u1'),
-      ).rejects.toThrow(/odometerCorrectionNote/);
+      ).rejects.toThrow(
+        'Nota de la corrección del odómetro: es obligatoria al corregir el kilometraje',
+      );
 
       await service.registrar(
         {
@@ -547,7 +551,9 @@ describe('FuelLoadService', () => {
         vecinas(800, 900);
         await expect(
           service.registrar({ ...dto, odometerCorrection: true }, 'd1', 'u1'),
-        ).rejects.toThrow(/odometerCorrectionNote/);
+        ).rejects.toThrow(
+          'Nota de la corrección del odómetro: es obligatoria al corregir el kilometraje',
+        );
 
         vecinas(800, 900);
         await service.registrar(
@@ -572,7 +578,7 @@ describe('FuelLoadService', () => {
           'd1',
           'u1',
         ),
-      ).rejects.toThrow(/loadedAt/);
+      ).rejects.toThrow('Fecha de carga: la carga no puede ser futura');
     });
 
     it('un vehículo de otra distribuidora corta antes de todo (404)', async () => {
@@ -647,7 +653,7 @@ describe('FuelLoadService', () => {
         odometerCorrectionNote: 'x',
       } as typeof propia;
       await expect(service.registrarPropia(trucho, 'd1', 'u1')).rejects.toThrow(
-        'El kilometraje es menor',
+        'Kilometraje: es menor',
       );
     });
   });
@@ -686,7 +692,9 @@ describe('FuelLoadService', () => {
       repo.findOne.mockResolvedValue(vigente());
       await expect(
         service.modificar('f1', { liters: 20 }, 'd1'),
-      ).rejects.toThrow(/totalAmount/);
+      ).rejects.toThrow(
+        'Importe total: no coincide con los litros por el precio por litro',
+      );
     });
 
     it('modificar el kilometraje hacia abajo lo baja en el vehículo si lo había fijado esta carga', async () => {

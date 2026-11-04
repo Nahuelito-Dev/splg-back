@@ -180,7 +180,7 @@ export class OrderController {
   ): void {
     if (fromCart && user.role !== RoleType.CUSTOMER) {
       throw new ForbiddenException(
-        'fromCart es del cliente: el personal manda los items',
+        'Tomar los productos del carrito es del cliente: el personal manda los productos',
       );
     }
   }
@@ -546,9 +546,9 @@ export class OrderController {
   })
   @ApiBadRequestResponse({
     description:
-      'Transición de pedido inválida: cancelled → accepted · status debe ser uno de: reserved, pending, accepted, ' +
-      'on_the_way, delivered, cancelled · la reserva no tiene la seña paga o todavía no llegó su fecha agendada · ' +
-      'al aceptar (status=accepted), el repartidor está deshabilitado, no está validado, o tiene un documento de ' +
+      'Transición de pedido inválida (p. ej. de cancelado a aceptado) · Estado: elegí una opción válida (reservado, pendiente, aceptado, ' +
+      'en camino, entregado o cancelado) · la reserva no tiene la seña paga o todavía no llegó su fecha agendada · ' +
+      'al aceptar, el repartidor está deshabilitado, no está validado, o tiene un documento de ' +
       'flota vencido que lo inhabilita (seguro, VTV o licencia)',
   })
   async updateStatus(
@@ -1087,7 +1087,7 @@ export class OrderController {
   })
   @ApiBadRequestResponse({
     description:
-      'Falta el motivo (`reason`: obligatorio para cliente y administrador, no para el chofer que libera el pedido), motivo en blanco, o datos inválidos (p. ej.: reason must be shorter than or equal to 500 characters)',
+      'Falta el motivo (obligatorio para cliente y administrador, no para el chofer que libera el pedido), motivo en blanco, o datos inválidos (p. ej.: Motivo: tiene que tener como máximo 500 caracteres)',
   })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiOkResponse({

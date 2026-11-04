@@ -52,13 +52,29 @@ describe('ConsumptionService', () => {
       });
     });
 
+    it('el 400 de fuera de rango conserva el texto que reconocen las apps y suma un code', async () => {
+      await expect(
+        service.calcularDeclaracion(
+          { cylinderTypeId: 'g10', quantityPerMonth: 0.1 },
+          ahora,
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'CONSUMPTION_OUT_OF_RANGE',
+          message: expect.stringContaining(
+            'fuera del rango razonable',
+          ) as string,
+        },
+      });
+    });
+
     it('fuera de rango pide confirmación', async () => {
       await expect(
         service.calcularDeclaracion(
           { cylinderTypeId: 'g10', quantityPerMonth: 0.1 },
           ahora,
         ),
-      ).rejects.toThrow(/confirmOutOfRange/);
+      ).rejects.toThrow('fuera del rango razonable');
       await expect(
         service.calcularDeclaracion(
           { cylinderTypeId: 'g10', quantityPerMonth: 60 },
@@ -169,7 +185,7 @@ describe('ConsumptionService', () => {
 
     it('sin cantidad ni garrafa, o sin consumo previo, pide la cantidad', async () => {
       await expect(service.actualizar('u1', {}, null, ahora)).rejects.toThrow(
-        /quantityPerMonth/,
+        'Indicá cuántas garrafas por mes; sólo con el tipo de garrafa se puede cambiar la garrafa de quien ya declaró su consumo',
       );
 
       customers.findOneByUserId.mockResolvedValue({
@@ -178,7 +194,9 @@ describe('ConsumptionService', () => {
       });
       await expect(
         service.actualizar('u1', { cylinderTypeId: 'g10' }, null, ahora),
-      ).rejects.toThrow(/quantityPerMonth/);
+      ).rejects.toThrow(
+        'Indicá cuántas garrafas por mes; sólo con el tipo de garrafa se puede cambiar la garrafa de quien ya declaró su consumo',
+      );
       expect(customers.guardarConsumo).not.toHaveBeenCalled();
     });
 
@@ -196,7 +214,9 @@ describe('ConsumptionService', () => {
 
       await expect(
         service.actualizar('u1', { quantityPerMonth: 1 }, null, ahora),
-      ).rejects.toThrow(/cylinderTypeId/);
+      ).rejects.toThrow(
+        'Indicá el tipo de garrafa habitual: todavía no declaraste uno',
+      );
     });
 
     it('un tipo indicado se acota a la distribuidora en contexto; el declarado antes, no', async () => {

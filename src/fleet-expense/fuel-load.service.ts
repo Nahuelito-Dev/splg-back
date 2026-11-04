@@ -131,7 +131,9 @@ export class FuelLoadService {
     const ahora = Date.now();
     const fecha = loadedAt ? new Date(loadedAt) : new Date(ahora);
     if (fecha.getTime() > ahora + TOLERANCIA_DE_RELOJ_MS) {
-      throw new BadRequestException('loadedAt: la carga no puede ser futura');
+      throw new BadRequestException(
+        'Fecha de carga: la carga no puede ser futura',
+      );
     }
     return fecha;
   }
@@ -152,7 +154,7 @@ export class FuelLoadService {
       datos.paymentMethod !== FuelPaymentMethod.CASH_BOX
     ) {
       throw new BadRequestException(
-        'cashBoxId: sólo se indica cuando el pago es de la caja (paymentMethod: cash_box)',
+        'Caja: sólo se indica cuando el pago es de la caja',
       );
     }
     try {
@@ -161,7 +163,7 @@ export class FuelLoadService {
         const fuelType = datos.fuelType ?? car.fuelType;
         if (!fuelType) {
           throw new BadRequestException(
-            'fuelType: indicá el combustible (el vehículo no tiene uno cargado)',
+            'Tipo de combustible: indicá el combustible (el vehículo no tiene uno cargado)',
           );
         }
         this.assertImporteYTanque(
@@ -304,7 +306,7 @@ export class FuelLoadService {
               medioAnterior === FuelPaymentMethod.DRIVER_CASH)
           ) {
             throw new ConflictException(
-              'Una carga del chofer no pasa de efectivo propio (driver_cash) a caja (cash_box) ni al revés: si se registró mal, anulala y registrala de nuevo',
+              'Una carga del chofer no pasa de efectivo del chofer a caja ni al revés: si se registró mal, anulala y registrala de nuevo',
             );
           }
           if (
@@ -421,7 +423,7 @@ export class FuelLoadService {
         const carga = await this.cargarParaEscribir(manager, id, distributorId);
         if (carga.paymentMethod !== FuelPaymentMethod.CASH_BOX) {
           throw new BadRequestException(
-            'Sólo se asienta en una caja la carga pagada de la caja (cash_box)',
+            'Sólo se asienta en una caja la carga pagada de la caja',
           );
         }
         await this.cars.bloquear(manager, carga.carId, distributorId);
@@ -513,7 +515,7 @@ export class FuelLoadService {
         }
         if (diaArgentino(pagadoEn) < diaArgentino(carga.loadedAt)) {
           throw new BadRequestException(
-            'paidAt: no puede ser anterior a la fecha de la carga',
+            'Fecha de pago: no puede ser anterior a la fecha de la carga',
           );
         }
         const movimiento = await this.pagos.pagarDesdeUnaCaja(manager, {
@@ -677,12 +679,12 @@ export class FuelLoadService {
     if (!importeCoincide(liters, unitPrice, totalAmount)) {
       const esperado = importeEsperado(liters, unitPrice);
       throw new BadRequestException(
-        `totalAmount: el importe no coincide con los litros por el precio por litro (${esperado}, con una tolerancia del 1 %)`,
+        `Importe total: no coincide con los litros por el precio por litro (${esperado}, con una tolerancia del 1 %)`,
       );
     }
     if (!litrosEntranEnElTanque(liters, capacidad)) {
       throw new BadRequestException(
-        `liters: superan la capacidad del tanque (${capacidad} L, con una tolerancia del 5 %)`,
+        `Litros: superan la capacidad del tanque (${capacidad} L, con una tolerancia del 5 %)`,
       );
     }
   }
@@ -726,13 +728,13 @@ export class FuelLoadService {
     if (!correccion) {
       throw new BadRequestException(
         menorQueLaAnterior
-          ? 'odometerKm: El kilometraje es menor que el de la última carga'
-          : 'odometerKm: El kilometraje es mayor que el de una carga posterior: corregí la fecha o el kilometraje',
+          ? 'Kilometraje: es menor que el de la última carga'
+          : 'Kilometraje: es mayor que el de una carga posterior (corregí la fecha o el kilometraje)',
       );
     }
     if (!nota) {
       throw new BadRequestException(
-        'odometerCorrectionNote: la corrección del kilometraje necesita una nota',
+        'Nota de la corrección del odómetro: es obligatoria al corregir el kilometraje',
       );
     }
   }

@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VersioningType,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -19,6 +18,7 @@ import {
 import { FuelLoadService } from './fuel-load.service';
 import { TireService } from './tire.service';
 import { VehicleAccidentService } from './vehicle-accident.service';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const ID = '0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f001';
 const CAJA = '0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f003';
@@ -85,13 +85,7 @@ describe('Gastos de la flota v2 (HTTP)', () => {
       type: VersioningType.URI,
       defaultVersion: [VERSION_NEUTRAL, '1'],
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1');
   });
 

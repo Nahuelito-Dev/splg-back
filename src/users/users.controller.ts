@@ -15,7 +15,6 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
-  BadRequestException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -58,7 +57,7 @@ import {
 } from '../common/utils/alcance.util';
 import {
   CurrentDistributor,
-  MENSAJE_FALTA_DISTRIBUIDORA,
+  faltaLaDistribuidora,
 } from '../common/decorators/current-distributor.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { UserMapper } from './user.mapper';
@@ -355,7 +354,7 @@ export class UsersController {
   })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: property email should not exist; phone_number fuera del formato E.164 +549...)',
+      'Datos inválidos (p. ej.: Se envió un dato que no corresponde: Correo electrónico; Teléfono: fuera del formato E.164 +549...)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(
@@ -441,7 +440,7 @@ export class UsersController {
         rol !== String(RoleType.SUPER_ADMIN) &&
         rol !== String(RoleType.CUSTOMER)
       ) {
-        throw new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA);
+        throw faltaLaDistribuidora();
       }
     }
     await this.assertDeSuDistribuidora(userId, distributorId);
@@ -520,7 +519,8 @@ export class UsersController {
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: block tiene que ser true o false)',
+    description:
+      'Datos inválidos (p. ej.: Bloquear: tiene que ser verdadero o falso)',
   })
   async blockUser(
     @Param('id', ParseUUIDPipe) id: string,

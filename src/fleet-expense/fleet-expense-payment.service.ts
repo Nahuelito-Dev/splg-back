@@ -20,6 +20,7 @@ import {
 } from './dto/fleet-expense-v2.dto';
 import { Tire } from './entities/tire.entity';
 import { VehicleAccident } from './entities/vehicle-accident.entity';
+import { rutaLegible } from '../common/validation/etiquetas';
 
 /**
  * Pago de los gastos de la flota que no son combustible ni multas (API v2): la
@@ -58,7 +59,7 @@ export class FleetExpensePaymentService {
         }
         if (diaArgentino(pagadoEn) < diaArgentino(neumatico.createdAt)) {
           throw new BadRequestException(
-            'paidAt: no puede ser anterior a la compra del neumático',
+            'Fecha de pago: no puede ser anterior a la compra del neumático',
           );
         }
         if (neumatico.cost <= 0) {
@@ -109,7 +110,7 @@ export class FleetExpensePaymentService {
         const tope = this.topeDelPago(siniestro);
         if (tope && new Decimal(dto.amount).gt(tope)) {
           throw new BadRequestException(
-            `amount: no puede superar lo cargado al cerrar el siniestro (${tope.toFixed(2)})`,
+            `Importe: no puede superar lo cargado al cerrar el siniestro (${tope.toFixed(2)})`,
           );
         }
         const movimiento = await this.pagos.pagarDesdeUnaCaja(manager, {
@@ -166,7 +167,7 @@ export class FleetExpensePaymentService {
           }
           if (new Decimal(dto.amount).gt(cargado)) {
             throw new BadRequestException(
-              `amount: no puede superar el reintegro cargado al cerrar el siniestro (${cargado.toFixed(2)})`,
+              `Importe: no puede superar el reintegro cargado al cerrar el siniestro (${cargado.toFixed(2)})`,
             );
           }
         }
@@ -229,7 +230,7 @@ export class FleetExpensePaymentService {
   ): void {
     if (diaArgentino(instante) < diaArgentino(siniestro.occurredAt)) {
       throw new BadRequestException(
-        `${campo}: no puede ser anterior a la fecha del siniestro`,
+        `${rutaLegible(campo.split('.'))}: no puede ser anterior a la fecha del siniestro`,
       );
     }
   }

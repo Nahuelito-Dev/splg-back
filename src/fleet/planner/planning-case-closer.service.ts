@@ -22,6 +22,7 @@ import {
   WindowProposalStatus,
 } from '../entities/maintenance-window-proposal.entity';
 import { MaintenancePlannerNotifier } from './maintenance-planner-notifier';
+import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 
 /** Margen para el reloj del cliente: una ventana puede arrancar hasta 5 minutos atrás. */
 const MARGEN_A_FUTURO_MS = 5 * 60_000;
@@ -113,8 +114,11 @@ export class PlanningCaseCloser {
       } else {
         const inicio = this.inicioNuevo(destino, caso.chosenStart);
         if (inicio.getTime() < ahora.getTime() - MARGEN_A_FUTURO_MS) {
-          throw new BadRequestException(
+          throw conCodigo(
+            BadRequestException,
+            400,
             'scheduledAt: la ventana tiene que ser a futuro',
+            CODIGOS_DE_ERROR.SCHEDULED_WINDOW_IN_PAST,
           );
         }
         const duracion = caso.chosenEnd.getTime() - caso.chosenStart.getTime();
@@ -138,8 +142,11 @@ export class PlanningCaseCloser {
     if ('inicio' in destino) return destino.inicio;
     const inicioDelDia = inicioDelDiaArgentino(destino.dia);
     if (!inicioDelDia) {
-      throw new BadRequestException(
+      throw conCodigo(
+        BadRequestException,
+        400,
         `scheduledAt: día inválido (${destino.dia})`,
+        CODIGOS_DE_ERROR.SCHEDULED_DAY_INVALID,
       );
     }
     return new Date(

@@ -1,14 +1,10 @@
-import {
-  ValidationPipe,
-  Logger,
-  VersioningType,
-  VERSION_NEUTRAL,
-} from '@nestjs/common';
+import { Logger, VersioningType, VERSION_NEUTRAL } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { montarDocumentacion } from './common/config/documentacion';
 
+import { crearValidationPipe } from './common/validation/validation-pipe';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { origenesPermitidos } from './common/config/cors-origins';
@@ -70,13 +66,7 @@ async function bootstrap() {
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  app.useGlobalPipes(crearValidationPipe());
 
   // CORS restringido a una allowlist desde env (CORS_ORIGINS, separada por comas).
   // Sin allowlist configurada: sin orígenes cross-site (política segura por defecto).

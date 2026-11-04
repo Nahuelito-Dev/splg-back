@@ -296,7 +296,7 @@ export class CylinderService {
 
     if (dto.toState === CylinderState.WITH_CUSTOMER && !dto.orderId) {
       throw new BadRequestException(
-        'Entregar el envase al cliente (with_customer) requiere indicar el pedido (orderId)',
+        'Entregar el envase al cliente requiere indicar el pedido',
       );
     }
 
@@ -443,7 +443,7 @@ export class CylinderService {
           dto.manufacturedAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS
         ) {
           throw new BadRequestException(
-            'manufacturedAt: la fecha de fabricación no puede ser futura',
+            'Fecha de fabricación: la fecha de fabricación no puede ser futura',
           );
         }
         if (
@@ -665,7 +665,7 @@ export class CylinderService {
       }
     } else if (!orderId) {
       throw new ForbiddenException(
-        'Un chofer mueve envases sólo en el contexto de uno de sus pedidos (orderId)',
+        'Un chofer mueve envases sólo en el contexto de uno de sus pedidos',
       );
     }
   }

@@ -86,7 +86,7 @@ export class UpdateOrderDto {
   @ArrayNotEmpty()
   @ArrayUnique((item: UpdateOrderItemDto) => item.gasCylinderId, {
     message:
-      'items no puede repetir la misma garrafa: sumá las cantidades en un solo renglón',
+      'items no puede repetir la misma garrafa (sumá las cantidades en un solo renglón)',
   })
   @ValidateNested({ each: true })
   @Type(() => UpdateOrderItemDto)

@@ -388,7 +388,7 @@ describe('CreateOrderUseCase', () => {
           ...extra,
           scheduledDate: '2020-01-01',
         }),
-      ).rejects.toThrow('scheduledDate no puede ser una fecha pasada');
+      ).rejects.toThrow('La fecha de entrega agendada no puede ser pasada');
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
 

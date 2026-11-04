@@ -201,7 +201,7 @@ export class ClaimsController {
   })
   @ApiBadRequestResponse({
     description:
-      'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: resolution should not be empty; status debe ser uno de: resolved, rejected) ' +
+      'Falta la distribuidora (header X-Distributor, sólo super admin) o datos inválidos (p. ej.: Resolución: no puede estar vacío; Estado: elegí una opción válida (resuelto o rechazado)) ' +
       'o transición de reclamo inválida (p. ej.: resolved → rejected sin reabrir antes)',
   })
   async resolve(
@@ -258,7 +258,7 @@ export class ClaimsController {
   })
   @ApiBadRequestResponse({
     description:
-      'Falta la distribuidora (header X-Distributor, sólo super admin), datos inválidos (reason should not be empty) o el reclamo no está resuelto ni rechazado',
+      'Falta la distribuidora (header X-Distributor, sólo super admin), datos inválidos (Motivo: no puede estar vacío) o el reclamo no está resuelto ni rechazado',
   })
   async reopen(
     @Param('id', ParseUUIDPipe) id: string,

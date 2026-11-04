@@ -18,6 +18,7 @@ import {
 import type { Request } from 'express';
 import { createHash } from 'crypto';
 import { conRespuestaVigilada } from './respuesta-incompleta';
+import { CODIGOS_DE_ERROR, conCodigo } from '../errors/con-codigo';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -131,8 +132,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     if (!UUID_REGEX.test(rawKey)) {
-      throw new BadRequestException(
+      throw conCodigo(
+        BadRequestException,
+        400,
         'Idempotency-Key debe ser un UUID v4 válido',
+        CODIGOS_DE_ERROR.IDEMPOTENCY_KEY_INVALID,
       );
     }
 
@@ -212,8 +216,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
       },
     );
     if (!resultado.obtenido) {
-      throw new ConflictException(
+      throw conCodigo(
+        ConflictException,
+        409,
         'Request en curso con la misma Idempotency-Key. Reintente más tarde.',
+        CODIGOS_DE_ERROR.IDEMPOTENCY_IN_PROGRESS,
       );
     }
     return of(resultado.valor.body);
@@ -241,7 +248,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
     // Entradas viejas sin hash: se aceptan como antes.
     if (parsed.bodyHash && parsed.bodyHash !== bodyHash) {
-      throw new UnprocessableEntityException(MENSAJE_CLAVE_OTROS_DATOS);
+      throw conCodigo(
+        UnprocessableEntityException,
+        422,
+        MENSAJE_CLAVE_OTROS_DATOS,
+        CODIGOS_DE_ERROR.IDEMPOTENCY_KEY_REUSED,
+      );
     }
     this.logger.debug(`Idempotency hit (cachedAt=${parsed.cachedAt})`);
     return { body: parsed.body };

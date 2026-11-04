@@ -3,6 +3,7 @@ import {
   ValidationArguments,
   ValidationOptions,
 } from 'class-validator';
+import { etiquetaDeCampo } from '../../common/validation/etiquetas';
 import { instanteDeVigencia } from '../vigencia';
 
 /**
@@ -34,7 +35,7 @@ export function EsPosteriorA(
           return Number.isFinite(fin) && Number.isFinite(desde) && fin > desde;
         },
         defaultMessage: (args: ValidationArguments) =>
-          `${args.property} tiene que ser posterior a ${propiedadInicio}`,
+          `${args.property} tiene que ser posterior a «${etiquetaDeCampo(propiedadInicio) ?? 'la fecha de inicio'}»`,
       },
     });
   };

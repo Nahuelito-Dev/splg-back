@@ -77,7 +77,7 @@ export class DistributorController {
   @ApiConflictResponse({ description: 'slug duplicado' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: name must be longer than or equal to 2 characters; slug debe ser minúsculas, números y guiones (ej: demo))',
+      'Datos inválidos (p. ej.: Nombre: tiene que tener al menos 2 caracteres; Identificador de la distribuidora: tiene que tener sólo minúsculas, números y guiones (ej: demo))',
   })
   async create(
     @Body() dto: CreateDistributorDto,
@@ -130,7 +130,8 @@ export class DistributorController {
   @ApiOkResponse({ type: DistributorResponseDto })
   @ApiNotFoundResponse({ description: 'La distribuidora no existe' })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: property slug should not exist)',
+    description:
+      'Datos inválidos (p. ej.: Se envió un dato que no corresponde: Identificador de la distribuidora)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

@@ -45,6 +45,7 @@ import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
+import { etiquetaDeCampo } from '../../src/common/validation/etiquetas';
 
 type Headers = Record<string, string>;
 
@@ -357,7 +358,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       const e = await escenario();
       const res = await putDespacho(e, cuerpo).expect(400);
       expect(JSON.stringify(res.body)).toMatch(
-        /radiusStepsKm|offerTtlSeconds|finishingRadiusMeters|otro/,
+        /Escalones de radio|Segundos de vigencia de la oferta|Radio de cierre|dato que no corresponde/,
       );
       // Lo rechazado no se guardó.
       const filas = await ds.query<unknown[]>(
@@ -607,7 +608,9 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       const res = await putTareas(e, { ...TAREAS_VALIDAS, ...cambio }).expect(
         400,
       );
-      expect(JSON.stringify(res.body)).toContain(Object.keys(cambio)[0]);
+      const campo = Object.keys(cambio)[0];
+      expect(JSON.stringify(res.body)).toContain(etiquetaDeCampo(campo));
+      expect(JSON.stringify(res.body)).not.toContain(campo);
     });
 
     it('PUT parcial: lo que no se manda se lee con su valor por omisión; PUT sin campos restablece (isDefault true)', async () => {

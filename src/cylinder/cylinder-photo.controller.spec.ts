@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VersioningType,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -10,6 +9,7 @@ import request from 'supertest';
 import type { Server } from 'http';
 import { CylinderPhotoController } from './cylinder-photo.controller';
 import { CylinderPhotoService } from './cylinder-photo.service';
+import { crearValidationPipe } from '../common/validation/validation-pipe';
 
 const ID = '0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f001';
 const PNG = Buffer.from('89504e470d0a1a0a0000000d', 'hex');
@@ -37,9 +37,7 @@ describe('CylinderPhotoController · foto en la API v2', () => {
       type: VersioningType.URI,
       defaultVersion: [VERSION_NEUTRAL, '1'],
     });
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    app.useGlobalPipes(crearValidationPipe({ forbidNonWhitelisted: false }));
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

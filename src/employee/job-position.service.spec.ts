@@ -88,7 +88,13 @@ describe('JobPositionService', () => {
         { name: 'chofer', category: JobPositionCategory.DRIVER },
         'd1',
       ),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: 'POSITION_NAME_TAKEN',
+        message: expect.stringMatching(/Ya existe un puesto llamado/) as string,
+      },
+    });
     expect(positions.save).not.toHaveBeenCalled();
   });
 
@@ -118,7 +124,13 @@ describe('JobPositionService', () => {
     positions.findOne.mockResolvedValue(puesto());
     employees.count.mockResolvedValue(3);
 
-    await expect(service.remove('p1', 'd1')).rejects.toThrow(/3 empleado/);
+    await expect(service.remove('p1', 'd1')).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: 'POSITION_HAS_ACTIVE_EMPLOYEES',
+        message: expect.stringMatching(/lo ocupan 3 empleado/) as string,
+      },
+    });
     expect(positions.softRemove).not.toHaveBeenCalled();
   });
 
@@ -126,7 +138,14 @@ describe('JobPositionService', () => {
     positions.findOne.mockResolvedValue(puesto());
     employees.count.mockResolvedValueOnce(0).mockResolvedValueOnce(2);
 
-    await expect(service.remove('p1', 'd1')).rejects.toThrow(/isActive=false/);
+    await expect(service.remove('p1', 'd1')).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: 'POSITION_IN_RECORDS',
+        message:
+          'El puesto "Chofer" figura en 2 legajo(s), también egresados: desactivalo en vez de darlo de baja',
+      },
+    });
     expect(positions.softRemove).not.toHaveBeenCalled();
   });
 
@@ -136,7 +155,13 @@ describe('JobPositionService', () => {
 
     await expect(
       service.update('p1', { isActive: false }, 'd1'),
-    ).rejects.toThrow(/último puesto activo/);
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: 'POSITION_LAST_ACTIVE',
+        message: expect.stringMatching(/último puesto activo/) as string,
+      },
+    });
     await expect(
       service.update('p1', { category: JobPositionCategory.OTHER }, 'd1'),
     ).rejects.toThrow(/último puesto activo/);
@@ -159,7 +184,15 @@ describe('JobPositionService', () => {
         { category: JobPositionCategory.ADMINISTRATION },
         'd1',
       ),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: 'POSITION_ROLE_MISMATCH',
+        message: expect.stringMatching(
+          /cuenta cuyo rol no corresponde/,
+        ) as string,
+      },
+    });
     expect(positions.save).not.toHaveBeenCalled();
 
     // Una categoría con el mismo rol sí se puede.

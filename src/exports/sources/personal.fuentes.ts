@@ -15,7 +15,17 @@ import { ETIQUETA_DE_DOCUMENTACION } from '../../employee/domain/document-status
 import { EmployeeMapper } from '../../employee/employee.mapper';
 import { EmployeeService } from '../../employee/employee.service';
 import type { FuenteDeExporte } from '../export.types';
-import { booleano, codigo, entero, fecha, fechaHora, texto } from './columnas';
+import {
+  booleano,
+  codigo,
+  entero,
+  entidad,
+  fecha,
+  fechaHora,
+  opcion,
+  texto,
+} from './columnas';
+import mapaDeAuditoria from '../../audit/data/auditoria-mapa.datos.json';
 import { fuente, porOffset, porPagina } from './fuente';
 
 /** Los cambios de un asiento de auditoría de datos, en una celda. */
@@ -26,6 +36,11 @@ const VALOR_OCULTO = 'valor oculto';
 /** Campos que no salen en un archivo: identificadores personales, claves y tokens. */
 const CAMPO_SENSIBLE =
   /cbu|cuil|cuit|document|dni|firebase|token|password|secret|key/i;
+
+/** Tabla auditada → nombre de su entidad (la columna «Tabla» sale con el mismo nombre que «Entidad»). */
+const ENTIDAD_DE_TABLA: ReadonlyMap<string, string> = new Map(
+  mapaDeAuditoria.entities.map((e) => [e.table, e.entity]),
+);
 
 const ORIGEN: Record<OrigenDeAuditoria, string> = {
   user: 'Usuario',
@@ -79,8 +94,8 @@ export function fuentesDePersonal(s: ServiciosDePersonal): FuenteDeExporte[] {
         texto('Apellido', (e) => e.lastName),
         texto('Nombre', (e) => e.firstName),
         texto('Puesto', (e) => e.position.name),
-        texto('Categoría', (e) => e.position.category),
-        texto('Estado', (e) => e.status),
+        opcion('Categoría', 'category', (e) => e.position.category),
+        opcion('Estado', 'status', (e) => e.status),
         fecha('Ingreso', (e) => e.hireDate),
         booleano('Tiene cuenta', (e) => e.hasAccount),
         texto('Documentación', (e) =>
@@ -109,10 +124,10 @@ export function fuentesDePersonal(s: ServiciosDePersonal): FuenteDeExporte[] {
         codigo('Id del recurso', (a) => a.resourceId, 38),
         texto('Ruta', (a) => a.path, 40),
         codigo('Usuario', (a) => a.actorUserId, 38),
-        texto('Rol', (a) => a.actorRole),
+        opcion('Rol', 'role', (a) => a.actorRole),
         texto('Aplicación', (a) => a.clientSource),
         texto('IP', (a) => a.ip),
-        texto('Resultado', (a) => a.result),
+        opcion('Resultado', 'result', (a) => a.result),
         entero('Código HTTP', (a) => a.statusCode),
         texto('Error', (a) => a.errorMessage, 40),
       ],
@@ -133,14 +148,18 @@ export function fuentesDePersonal(s: ServiciosDePersonal): FuenteDeExporte[] {
         texto('Acción', (a) => a.actionType.name),
         texto('Usuario', (a) => a.user?.fullName),
         texto('Email del usuario', (a) => a.user?.email),
-        texto('Entidad', (a) => a.entity),
+        entidad('Entidad', (a) => a.entity),
         codigo('Registro', (a) => a.recordId, 38),
         texto('IP', (a) => a.ip),
         texto('Origen', (a) => ORIGEN[a.origin]),
         texto('Escrito por', (a) =>
           a.source === 'db' ? 'Base de datos (trigger)' : 'Aplicación',
         ),
-        texto('Tabla', (a) => a.tableName),
+        entidad('Tabla', (a) =>
+          a.tableName === null
+            ? null
+            : (ENTIDAD_DE_TABLA.get(a.tableName) ?? a.tableName),
+        ),
         texto('Usuario de la base', (a) => a.dbUser),
         texto('Aplicación', (a) => a.appName),
         texto('Cambios', cambiosDe, 60),

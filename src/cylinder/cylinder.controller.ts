@@ -73,7 +73,7 @@ export class CylinderController {
     description: 'El serial ya existe en tu distribuidora',
   })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos (p. ej.: gasCylinderId must be a UUID)',
+    description: 'Datos inválidos (p. ej.: Producto: no es válido)',
   })
   async create(
     @Body() dto: CreateCylinderDto,

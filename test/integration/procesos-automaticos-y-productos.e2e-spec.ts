@@ -32,6 +32,7 @@ import { GasCylinderPromotion } from '../../src/gascylinder/entities/gascylinder
 import { RedisService } from '../../src/redis/redis.service';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
+import { etiquetaDeCampo } from '../../src/common/validation/etiquetas';
 
 type Headers = Record<string, string>;
 
@@ -263,7 +264,10 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
           .set(e.adminA.headers)
           .send(cuerpo)
           .expect(400);
-        expect(JSON.stringify(res.body)).toContain(campo);
+        expect(JSON.stringify(res.body)).toContain(
+          etiquetaDeCampo(campo) ?? 'Se envió un dato que no corresponde',
+        );
+        expect(JSON.stringify(res.body)).not.toContain(campo);
         const despues = await http()
           .get(`/module-config/${proceso}`)
           .set(e.adminA.headers)
@@ -501,7 +505,7 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
           validUntil: '2020-01-01T00:00:00Z',
         })
         .expect(400);
-      expect(JSON.stringify(nueva.body)).toContain('validUntil ya pasó');
+      expect(JSON.stringify(nueva.body)).toContain('La fecha de fin ya pasó');
 
       const apagada = await zona(e.dA, 'apagada', {
         isActive: false,

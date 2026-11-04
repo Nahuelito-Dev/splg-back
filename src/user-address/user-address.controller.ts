@@ -64,7 +64,7 @@ export class UserAddressController {
   @ApiNotFoundResponse({ description: 'El usuario no existe' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: user_id must be a UUID; street must be a string)',
+      'Datos inválidos (p. ej.: Usuario: no es válido; Calle: tiene que ser un texto)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async create(
@@ -75,7 +75,7 @@ export class UserAddressController {
     if (esAdministrador(user)) {
       if (!createUserAddressDto.user_id) {
         throw new BadRequestException(
-          'user_id: indicá el usuario dueño de la dirección',
+          'Usuario: indicá el usuario dueño de la dirección',
         );
       }
       await this.acotar(
@@ -174,7 +174,7 @@ export class UserAddressController {
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: latitude debe ser una latitud válida; longitude debe ser una longitud válida)',
+      'Datos inválidos (p. ej.: Latitud: tiene que ser una latitud válida; Longitud: tiene que ser una longitud válida)',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async update(

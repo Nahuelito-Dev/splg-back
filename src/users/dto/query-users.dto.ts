@@ -13,8 +13,6 @@ export class QueryUsersDto extends PaginationDto {
       'total va en `maxUsers` y también en `X-Total-Count`.',
   })
   @IsOptional()
-  @IsEnum(RoleType, {
-    message: 'role debe ser admin, super_admin, customer o delivery',
-  })
+  @IsEnum(RoleType)
   role?: RoleType;
 }

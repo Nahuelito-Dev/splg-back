@@ -40,9 +40,9 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 import { ApiTotal, informarTotal } from '../common/http/total';
 
 const DATOS_INVALIDOS =
-  'Datos inválidos (p. ej.: polygon must contain at least 3 elements; ' +
-  'surchargeValue: un recargo porcentual tiene que estar entre 0 y 100; ' +
-  'color: tiene que ser un hexadecimal de 6 dígitos, ej. #FF7A00)';
+  'Datos inválidos (p. ej.: Polígono: tiene que tener al menos 3 elementos; ' +
+  'Valor del recargo: un recargo porcentual tiene que estar entre 0 y 100; ' +
+  'Color: tiene que ser un hexadecimal de 6 dígitos, ej. #FF7A00)';
 
 @ApiTags('Coverage Zones')
 @ApiBearerAuth()

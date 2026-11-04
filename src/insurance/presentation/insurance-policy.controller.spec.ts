@@ -1,6 +1,5 @@
 import {
   INestApplication,
-  ValidationPipe,
   VersioningType,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -14,6 +13,7 @@ import { InsurancePolicyService } from '../application/insurance-policy.service'
 import { InsuranceQueryService } from '../application/insurance-query.service';
 import { InsurancePolicy } from '../entities/insurance-policy.entity';
 import { InsurancePolicyController } from './insurance-policy.controller';
+import { crearValidationPipe } from '../../common/validation/validation-pipe';
 
 const UUID = (n: number) => `0b0f5f0e-6a53-4a39-8f0d-0c5ad4b6f00${n}`;
 
@@ -74,13 +74,7 @@ describe('InsurancePolicyController · pólizas en la API v2', () => {
       type: VersioningType.URI,
       defaultVersion: [VERSION_NEUTRAL, '1'],
     });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(crearValidationPipe());
     await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
   });
 

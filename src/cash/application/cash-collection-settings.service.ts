@@ -823,10 +823,10 @@ export class CashCollectionSettingsService {
       ? from.slice(0, 10)
       : sumarDias(diaArgentino(), -DIAS_POR_OMISION);
     const inicio = inicioDelDiaArgentino(dia);
-    if (!inicio) throw new BadRequestException('from: fecha inválida');
+    if (!inicio) throw new BadRequestException('Desde: fecha inválida');
     if (dia < sumarDias(diaArgentino(), -DIAS_MAXIMOS)) {
       throw new BadRequestException(
-        `from: no se asienta más de ${DIAS_MAXIMOS} días hacia atrás`,
+        `Desde: no se asienta más de ${DIAS_MAXIMOS} días hacia atrás`,
       );
     }
     return inicio;

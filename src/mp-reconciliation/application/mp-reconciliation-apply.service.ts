@@ -40,6 +40,7 @@ import {
 import { MpReconciliationItem } from '../entities/mp-reconciliation-item.entity';
 import { MpReconciliation } from '../entities/mp-reconciliation.entity';
 import type { MpContexto } from './mp-reconciliation.service';
+import { valorLegible } from '../../common/validation/etiquetas';
 
 /** Lo que dejó un ajuste al asentarse. */
 interface Asentado {
@@ -101,7 +102,7 @@ export class MpReconciliationApplyService {
       }
       if (!item.appliable) {
         throw new BadRequestException(
-          `Esa diferencia (${item.kind}) no se puede asentar desde acá: ${item.note}`,
+          `Esa diferencia (${valorLegible(item.kind)}) no se puede asentar desde acá: ${item.note}`,
         );
       }
       if (item.needsCashBox && !pedidos.get(itemId)) {
@@ -290,7 +291,7 @@ export class MpReconciliationApplyService {
         return this.asentarRetiro(manager, item, cajaMp, cajaDestino, ctx);
       default:
         throw new BadRequestException(
-          `La diferencia de tipo ${item.kind} no se asienta desde acá`,
+          `La diferencia de tipo «${valorLegible(item.kind)}» no se asienta desde acá`,
         );
     }
   }
