@@ -1,6 +1,6 @@
 /**
  * C-07 contra la API con Postgres y Redis reales:
- *  - CU-172: parámetros de los cuatro procesos automáticos (`/module-config/:proceso`).
+ *  - CU-172: parámetros de los procesos automáticos (`/module-config/:proceso`).
  *  - CU-151: el barrido que desactiva las zonas de cobertura vencidas.
  *  - CU-268 y CU-269: productos dados de baja (listado y reactivación).
  */
@@ -35,10 +35,11 @@ import { User } from '../../src/users/entities/user.entity';
 
 type Headers = Record<string, string>;
 
-const CUATRO = [
+const PROCESOS = [
   'fleet_planner',
   'repurchase',
   'route_batching',
+  'route_planning',
   'cylinder_recovery',
 ];
 
@@ -136,7 +137,7 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
     };
   }
   describe('CU-172 · parámetros de un proceso automático', () => {
-    it('lista los cuatro procesos con su esquema y los valores por omisión', async () => {
+    it('lista los procesos configurables con su esquema y los valores por omisión', async () => {
       const e = await escenario();
       const res = await http()
         .get('/module-config/processes')
@@ -149,7 +150,7 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
         params: Record<string, number>;
         updatedAt: string | null;
       }>;
-      expect(lista.map((p) => p.process).sort()).toEqual([...CUATRO].sort());
+      expect(lista.map((p) => p.process).sort()).toEqual([...PROCESOS].sort());
       for (const p of lista) {
         expect(p.isDefault).toBe(true);
         expect(p.updatedAt).toBeNull();

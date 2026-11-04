@@ -674,7 +674,7 @@ describe('seed:demo en contenedores (e2e)', () => {
         WHERE table_schema = 'public'
           AND data_type IN ('character varying', 'text')
           AND table_name NOT IN ('migrations', 'spatial_ref_sys', 'storage_orphan', 'geography_columns', 'geometry_columns')
-          AND column_name !~* '(key|_id$|^id$|uid|hash|token|code|^ip$|path|url|external_reference|gateway|serial|cbu|mime|original_name|selfie|secret|entity|resource|http_method|client_source|actor_role)'`,
+          AND column_name !~* '(key|_id$|^id$|uid|hash|token|code|^ip$|path|url|external_reference|gateway|serial|cbu|mime|original_name|selfie|secret|entity|resource|http_method|client_source|actor_role|^instance$)'`,
     );
     expect(columnas.length).toBeGreaterThan(50);
     const sucias: string[] = [];
