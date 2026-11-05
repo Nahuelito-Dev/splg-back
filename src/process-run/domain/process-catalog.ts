@@ -37,6 +37,7 @@ export enum ProcessName {
   PROCESS_RUN_WATCH = 'process_run_watch',
   PROCESS_RUN_PURGE = 'process_run_purge',
   DOCUMENT_READING = 'document_reading',
+  DOCUMENT_READING_PROPOSALS = 'document_reading_proposals',
 }
 
 export enum ProcessRunStatus {
@@ -85,6 +86,11 @@ const HORA = 60 * MIN;
 const DIA = 24 * HORA;
 
 export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
+  [ProcessName.DOCUMENT_READING_PROPOSALS]: {
+    module: 'M6',
+    title: 'Lectura de documentos: vencimiento de propuestas',
+    periodSeconds: 5 * MIN,
+  },
   [ProcessName.DOCUMENT_READING]: {
     module: 'M6',
     title: 'Lectura de documentos',

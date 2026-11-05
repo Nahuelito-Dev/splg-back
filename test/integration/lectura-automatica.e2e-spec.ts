@@ -178,7 +178,8 @@ describe('Lectura automática de documentos (M6 E3a, e2e)', () => {
       `SELECT status FROM document_reading WHERE attachment_id = $1`,
       [cuota],
     );
-    expect(status).toBe('read');
+    // El dueño no existe: la conciliación (E3b) la deja propuesta para revisar.
+    expect(status).toBe('proposed');
     // Lo leído no vuelve a leerse en la corrida siguiente.
     await expect(corrida.run(dist)).resolves.toMatchObject({ read: 0 });
     expect(leer).toHaveBeenCalledTimes(1);
@@ -257,7 +258,7 @@ describe('Lectura automática de documentos (M6 E3a, e2e)', () => {
       read: 1,
       failed: 0,
     });
-    await expect(estado(bueno)).resolves.toMatchObject({ status: 'read' });
+    await expect(estado(bueno)).resolves.toMatchObject({ status: 'proposed' });
     expect(leer).toHaveBeenCalledTimes(1);
   });
 

@@ -13,6 +13,7 @@ import { DocumentReadingQueueService } from './document-reading-queue.service';
 import { DocumentReadingSettingsService } from './document-reading-settings.service';
 import { DOCUMENT_READING_OWNERS } from './document-reading-owners';
 import { DocumentReadingStatus } from './entities/document-reading.entity';
+import { DocumentReadingProposalService } from './document-reading-proposal.service';
 
 export interface DocumentReadingRunResult {
   distributors: number;
@@ -49,6 +50,7 @@ export class DocumentReadingRunnerService {
     private readonly readings: DocumentReadingService,
     private readonly s3: S3Service,
     private readonly redis: RedisService,
+    private readonly proposals: DocumentReadingProposalService,
   ) {}
   get disponible(): boolean {
     return this.readings.disponible;
@@ -138,7 +140,20 @@ export class DocumentReadingRunnerService {
             ? { tipoEsperado: owner.expectedType }
             : undefined,
         });
-        switch (reading.registro.status) {
+        const status = reading.registro.status;
+        try {
+          // Con el módulo apagado (corrida manual) no se propone: nadie la vencería.
+          // El barrido la toma cuando se encienda.
+          if (params.enabled)
+            await this.proposals.procesarLectura(reading.registro);
+        } catch (conciliacion) {
+          // La lectura ya quedó guardada: un fallo al cruzarla no la vuelve fallida.
+          registrarErrorAtrapado(conciliacion);
+          this.logger.warn(
+            `Conciliación de la lectura ${reading.registro.readingId} falló: ${errorMessage(conciliacion)}`,
+          );
+        }
+        switch (status) {
           case DocumentReadingStatus.READ:
           case DocumentReadingStatus.UNREADABLE:
             result.read += 1;

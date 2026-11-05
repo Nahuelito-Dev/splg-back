@@ -18,6 +18,7 @@ import {
   DocumentReadingRunnerService,
 } from './document-reading-runner.service';
 import { DocumentReadingService } from './document-reading.service';
+import { DocumentReadingProposalService } from './document-reading-proposal.service';
 import { DocumentReadingSettingsService } from './document-reading-settings.service';
 
 const attachment = (
@@ -50,6 +51,7 @@ describe('DocumentReadingRunnerService', () => {
   };
   let s3: { get: jest.Mock };
   let redis: { withLock: jest.Mock };
+  let proposals: { procesarLectura: jest.Mock };
   let runner: DocumentReadingRunnerService;
 
   beforeEach(() => {
@@ -69,12 +71,18 @@ describe('DocumentReadingRunnerService', () => {
         fn().then((valor) => ({ obtenido: true as const, valor })),
       ),
     };
+    proposals = {
+      procesarLectura: jest
+        .fn()
+        .mockImplementation((reading) => Promise.resolve(reading)),
+    };
     runner = new DocumentReadingRunnerService(
       settings as unknown as DocumentReadingSettingsService,
       queue as unknown as DocumentReadingQueueService,
       readings as unknown as DocumentReadingService,
       s3 as unknown as S3Service,
       redis as unknown as RedisService,
+      proposals as unknown as DocumentReadingProposalService,
     );
   });
 
@@ -149,6 +157,19 @@ describe('DocumentReadingRunnerService', () => {
   ])('cuenta el estado %s', async (status, expected) => {
     readings.leerAdjunto.mockResolvedValue({ registro: { status } });
     await expect(runner.run('d1')).resolves.toMatchObject(expected);
+  });
+
+  it('concilia cada lectura y si la conciliación falla la lectura sigue contando como leída', async () => {
+    readings.leerAdjunto.mockResolvedValue({
+      registro: { readingId: 'r1', status: DocumentReadingStatus.READ },
+    });
+    proposals.procesarLectura.mockRejectedValueOnce(new Error('base caída'));
+    const corrida = nuevaCorrida();
+    const result = await dentroDeCorrida(corrida, () => runner.run('d1'));
+    expect(proposals.procesarLectura).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ read: 1, failed: 0 });
+    expect(readings.registrarFalloPrevio).not.toHaveBeenCalled();
+    expect(corrida.errors).toBe(1);
   });
 
   it('pasa al lector el tipo esperado del dueño', async () => {

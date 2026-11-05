@@ -17,6 +17,11 @@ export const DocumentReadingMapper = {
       costUsd: Number(r.costUsd),
       attempts: r.attempts,
       lastError: r.lastError,
+      proposal: r.proposal,
+      proposalExpiresAt: r.proposalExpiresAt?.toISOString() ?? null,
+      remindedAt: r.remindedAt?.toISOString() ?? null,
+      escalatedAt: r.escalatedAt?.toISOString() ?? null,
+      reconciledAt: r.reconciledAt?.toISOString() ?? null,
       readAt: r.readAt ? r.readAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
     };
