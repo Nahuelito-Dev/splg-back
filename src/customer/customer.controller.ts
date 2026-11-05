@@ -66,6 +66,9 @@ export class CustomersController {
       'Get customers (scopeado por distribuidora: solo los que pidieron a esa empresa)',
   })
   @ApiOkResponse({ type: CustomerResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: 'Parámetros de paginación o filtros inválidos',
+  })
   @ApiTotal()
   async findAll(
     @Query() paginationDto: QueryCustomersDto,
@@ -113,6 +116,7 @@ export class CustomersController {
   @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
@@ -131,6 +135,7 @@ export class CustomersController {
   @ApiForbiddenResponse({ description: 'Es de otro cliente' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
+  @ApiBadRequestResponse({ description: 'El id de usuario no es un UUID' })
   @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOneByUserId(
@@ -208,6 +213,9 @@ export class CustomersController {
   @ApiOperation({ summary: 'Delete customer by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o falta la distribuidora',
+  })
   @ApiNotFoundResponse({ description: 'Cliente no encontrado' })
   @HttpCode(HttpStatus.OK)
   async remove(
@@ -235,6 +243,9 @@ export class CustomersController {
   })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o falta la distribuidora',
+  })
   @ApiNotFoundResponse({
     description: 'El cliente no es de esa distribuidora',
   })
@@ -260,6 +271,9 @@ export class CustomersController {
   })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o falta la distribuidora',
+  })
   @ApiNotFoundResponse({
     description: 'No hay un cliente dado de baja con esa distribuidora',
   })
