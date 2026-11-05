@@ -3,6 +3,7 @@
  * los endpoints de monitoreo y el aislamiento entre distribuidoras.
  */
 import { randomUUID } from 'crypto';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
@@ -39,6 +40,13 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
   beforeAll(async () => {
     env = await createTestApp();
     ds = env.app.get(DataSource);
+    // Esta suite mira la tabla de corridas: con los crons reales andando, cada
+    // uno anota las suyas en cualquier momento y los conteos dependen de la
+    // hora. Se frenan todos; los casos llaman a mano al proceso que prueban.
+    const agenda = env.app.get(SchedulerRegistry);
+    for (const tarea of agenda.getCronJobs().values()) void tarea.stop();
+    for (const nombre of agenda.getIntervals()) agenda.deleteInterval(nombre);
+    for (const nombre of agenda.getTimeouts()) agenda.deleteTimeout(nombre);
   }, 240000);
 
   afterAll(async () => {
