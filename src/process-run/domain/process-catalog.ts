@@ -36,6 +36,7 @@ export enum ProcessName {
   IMPORT_CLEANUP = 'import_cleanup',
   PROCESS_RUN_WATCH = 'process_run_watch',
   PROCESS_RUN_PURGE = 'process_run_purge',
+  DOCUMENT_READING = 'document_reading',
 }
 
 export enum ProcessRunStatus {
@@ -67,7 +68,7 @@ export enum ProcessHealth {
 
 export interface ProcessCatalogEntry {
   /** Módulo inteligente al que pertenece (M1..M5) o `null` si es una tarea programada común. */
-  module: 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | null;
+  module: 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6' | null;
   title: string;
   /** Cada cuánto corre su `@Cron`, en segundos. Es lo que se espera ver registrado. */
   periodSeconds: number;
@@ -84,6 +85,11 @@ const HORA = 60 * MIN;
 const DIA = 24 * HORA;
 
 export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
+  [ProcessName.DOCUMENT_READING]: {
+    module: 'M6',
+    title: 'Lectura de documentos',
+    periodSeconds: MIN,
+  },
   [ProcessName.DISPATCH_TICK]: {
     module: 'M1',
     title: 'Despacho: tic de asignación y ofertas',

@@ -34,6 +34,7 @@ export enum ConfigurableProcess {
   PAYMENT_SURCHARGES = 'payment_surcharges',
   /** Hoja de ruta: planificación del día siguiente (M4, modalidad `planned`). */
   ROUTE_PLANNING = 'route_planning',
+  DOCUMENT_READING = 'document_reading',
 }
 
 /**
@@ -150,6 +151,19 @@ const CHECK_HOJA = RANGOS_DE_LA_HOJA.map(
     `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'trafficFactor' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
 ).join(' AND ');
 
+const RANGOS_LECTURA_DOCUMENTOS: ReadonlyArray<[string, number, number]> = [
+  ['enabled', 0, 1],
+  ['frequencyMinutes', 5, 1440],
+  ['batchSize', 1, 100],
+  ['maxAttempts', 1, 10],
+  ['monthlyBudgetUsd', 0, 10000],
+  ['typesMask', 1, 255],
+];
+const CHECK_LECTURA_DOCUMENTOS = RANGOS_LECTURA_DOCUMENTOS.map(
+  ([k, min, max]) =>
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'monthlyBudgetUsd' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
+).join(' AND ');
+
 /** Recargos por medio de pago: 0 a 30 %, hasta 2 decimales (cada clave puede faltar). */
 const CHECK_RECARGOS = [
   'transferPercentage',
@@ -211,6 +225,10 @@ const CHECK_DESPACHO = [
 @Check(
   'CHK_module_config_hoja_de_ruta',
   `"module"::text <> 'route_planning' OR (${CHECK_HOJA})`,
+)
+@Check(
+  'CHK_module_config_lectura',
+  `"module"::text <> 'document_reading' OR (${CHECK_LECTURA_DOCUMENTOS})`,
 )
 @Entity('module_config')
 @Unique('UQ_module_config_distributor_module', ['distributorId', 'module'])

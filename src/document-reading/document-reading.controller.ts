@@ -1,6 +1,16 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -11,14 +21,18 @@ import {
 import { RoleType } from '../common/constants/role-type.enum';
 import { Auth } from '../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { DocumentReadingMapper } from './document-reading.mapper';
 import { DocumentReadingService } from './document-reading.service';
 import {
   DocumentReadingDto,
   DocumentReadingListDto,
   DocumentReadingSpendDto,
+  DocumentReadingRunDto,
   QueryDocumentReadingsDto,
+  RunDocumentReadingsDto,
 } from './dto/document-reading.dto';
+import { DocumentReadingRunnerService } from './document-reading-runner.service';
 
 const FALTA_DISTRIBUIDORA = 'Falta la distribuidora (`X-Distributor`)';
 
@@ -26,7 +40,30 @@ const FALTA_DISTRIBUIDORA = 'Falta la distribuidora (`X-Distributor`)';
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'document-readings', version: '2' })
 export class DocumentReadingController {
-  constructor(private readonly lecturas: DocumentReadingService) {}
+  constructor(
+    private readonly lecturas: DocumentReadingService,
+    private readonly runner: DocumentReadingRunnerService,
+  ) {}
+
+  @Post('run')
+  @HttpCode(200)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Correr la lectura automática ahora',
+    description:
+      'Lee los adjuntos pendientes de esta distribuidora dentro del tope mensual. Con dryRun sólo informa cuántos se leerían.',
+  })
+  @ApiOkResponse({ type: DocumentReadingRunDto })
+  @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
+  @ApiConflictResponse({
+    description: 'La lectura de documentos está apagada; dryRun funciona igual',
+  })
+  async correr(
+    @Body() dto: RunDocumentReadingsDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<DocumentReadingRunDto> {
+    return this.runner.run(distributorId, { dryRun: dto.dryRun });
+  }
 
   @Get()
   @ApiOperation({

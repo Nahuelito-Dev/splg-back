@@ -184,9 +184,10 @@ describe('process-config', () => {
     });
   });
 
-  it('son cinco procesos; el despacho, las tareas, el express y el control de stock no están', () => {
+  it('son seis procesos; el despacho, las tareas, el express y el control de stock no están', () => {
     expect([...PROCESOS_AUTOMATICOS].sort()).toEqual([
       'cylinder_recovery',
+      'document_reading',
       'fleet_planner',
       'repurchase',
       'route_batching',
