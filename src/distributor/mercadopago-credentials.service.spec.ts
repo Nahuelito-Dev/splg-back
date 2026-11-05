@@ -95,6 +95,7 @@ describe('MercadoPagoCredentialsService', () => {
         get: () => (conClave ? clave : undefined),
       } as unknown as ConfigService),
       { get: (k: string) => entorno[k] } as unknown as ConfigService,
+      (url, init) => fetch(url, init),
     );
   };
 
@@ -303,6 +304,7 @@ describe('MercadoPagoCredentialsService', () => {
           get: () => undefined,
         } as unknown as ConfigService),
         { get: () => undefined } as unknown as ConfigService,
+        (url, init) => fetch(url, init),
       );
 
       expect((await sinClave.resolve('d1', SISTEMA)).source).toBe('system');
@@ -356,6 +358,7 @@ describe('MercadoPagoCredentialsService: cuenta de prueba o real', () => {
           get: () => clave,
         } as unknown as ConfigService),
         { get: (k: string) => env[k] } as unknown as ConfigService,
+        (url, init) => fetch(url, init),
       ),
     };
   };

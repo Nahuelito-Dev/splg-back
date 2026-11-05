@@ -14,6 +14,7 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
 import {
+  InjectionToken,
   INestApplication,
   VERSION_NEUTRAL,
   VersioningType,
@@ -142,7 +143,10 @@ const S3_SIN_SERVICIO: Record<string, string> = {
 };
 
 export async function createTestApp(
-  opciones: { s3?: Record<string, string> } = {},
+  opciones: {
+    s3?: Record<string, string>;
+    overrides?: Array<{ token: InjectionToken; value: unknown }>;
+  } = {},
 ): Promise<TestEnv> {
   // 1. Postgres (con PostGIS) y Redis efímeros
   const pgContainer = await new PostgreSqlContainer(IMAGEN_POSTGIS)
@@ -201,9 +205,13 @@ export async function createTestApp(
   const { AppModule } =
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('../../../src/app.module') as typeof import('../../../src/app.module');
-  const moduleFixture: TestingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
+  let moduleBuilder = Test.createTestingModule({ imports: [AppModule] });
+  for (const override of opciones.overrides ?? []) {
+    moduleBuilder = moduleBuilder
+      .overrideProvider(override.token)
+      .useValue(override.value);
+  }
+  const moduleFixture: TestingModule = await moduleBuilder.compile();
 
   const app = moduleFixture.createNestApplication<TestApp>();
   // Igual que `main.ts` (sin el prefijo `/api`): lo que no declara versión es

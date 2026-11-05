@@ -111,6 +111,9 @@ export class CoverageZoneController {
       '(y `amount`, si se mandó `subtotal`) en clientes nuevos.',
   })
   @ApiOkResponse({ type: CoverageCheckResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Latitud, longitud o subtotal inválidos',
+  })
   check(
     @Query() dto: CheckCoverageDto,
     @CurrentDistributor({ required: true }) distributorId: string,
