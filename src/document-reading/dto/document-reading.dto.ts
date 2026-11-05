@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 
 import { TipoDeDocumento } from '../../document-reader/tipos-de-documento';
 import { DocumentReadingStatus } from '../entities/document-reading.entity';
@@ -131,4 +138,23 @@ export class DocumentReadingSpendDto {
 
   @ApiProperty({ description: 'Si el servicio de lectura está configurado' })
   available!: boolean;
+}
+
+export class RunDocumentReadingsDto {
+  @ApiPropertyOptional({
+    description:
+      'Con true sólo cuenta los adjuntos que leería, sin descargar ni leer archivos',
+  })
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+export class DocumentReadingRunDto {
+  @ApiProperty() distributors!: number;
+  @ApiProperty() read!: number;
+  @ApiProperty() duplicates!: number;
+  @ApiProperty() failed!: number;
+  @ApiProperty() skipped!: number;
+  @ApiProperty() budgetReached!: number;
 }

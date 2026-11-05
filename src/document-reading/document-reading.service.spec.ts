@@ -249,3 +249,67 @@ describe('DocumentReadingService: cerrojo', () => {
     expect(leer).not.toHaveBeenCalled();
   });
 });
+
+describe('DocumentReadingService.registrarFalloPrevio', () => {
+  it('sin lectura previa crea una fallida con huella en ceros, intento 1 y el motivo', async () => {
+    const { service, guardar } = armar({});
+    const r = await service.registrarFalloPrevio({
+      distributorId: 'dist-a',
+      attachmentId: 'adj-9',
+      motivo: 'El archivo no está en el almacenamiento: subilo de nuevo',
+    });
+    expect(r).toMatchObject({
+      status: DocumentReadingStatus.FAILED,
+      attempts: 1,
+      fileSha256: '0'.repeat(64),
+      lastError: expect.stringContaining('almacenamiento') as string,
+    });
+    expect(guardar).toHaveBeenCalledTimes(1);
+  });
+
+  it('con una fallida previa suma el intento', async () => {
+    const { service } = armar({
+      existente: {
+        status: DocumentReadingStatus.FAILED,
+        attempts: 2,
+        fileSha256: '0'.repeat(64),
+      },
+    });
+    const r = await service.registrarFalloPrevio({
+      distributorId: 'dist-a',
+      attachmentId: 'adj-9',
+      motivo: 'x',
+    });
+    expect(r.attempts).toBe(3);
+  });
+
+  it('una ya leída no se toca', async () => {
+    const { service, guardar } = armar({
+      existente: {
+        readingId: 'r-1',
+        status: DocumentReadingStatus.READ,
+        attempts: 1,
+      },
+    });
+    const r = await service.registrarFalloPrevio({
+      distributorId: 'dist-a',
+      attachmentId: 'adj-9',
+      motivo: 'x',
+    });
+    expect(r.status).toBe(DocumentReadingStatus.READ);
+    expect(guardar).not.toHaveBeenCalled();
+  });
+
+  it('al leer de verdad un adjunto que había fallado, se guarda la huella real', async () => {
+    const { service } = armar({
+      existente: {
+        status: DocumentReadingStatus.FAILED,
+        attempts: 1,
+        fileSha256: '0'.repeat(64),
+      },
+    });
+    const { registro } = await service.leerAdjunto(documento);
+    expect(registro.fileSha256).toBe(huella);
+    expect(registro.status).toBe(DocumentReadingStatus.READ);
+  });
+});

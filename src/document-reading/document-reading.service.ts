@@ -119,6 +119,7 @@ export class DocumentReadingService {
       },
       order: { readAt: 'ASC' },
     });
+    if (existente) existente.fileSha256 = huella;
     const registro =
       existente ??
       this.repo.create({
@@ -195,6 +196,45 @@ export class DocumentReadingService {
       `Lectura ${guardado.readingId}: ${lectura.tipo}, ${lectura.campos.length} campos, US$ ${lectura.uso.costoUsd}`,
     );
     return { registro: guardado, lectura };
+  }
+
+  /**
+   * Un adjunto que no se pudo ni empezar a leer (el archivo no está en el
+   * almacenamiento, no se pudo bajar): queda fallido con su intento y el motivo,
+   * para que la cola lo deje al agotar los intentos y no trabe a los demás.
+   */
+  async registrarFalloPrevio(fallo: {
+    distributorId: string;
+    attachmentId: string;
+    motivo: string;
+  }): Promise<DocumentReading> {
+    const { distributorId, attachmentId, motivo } = fallo;
+    const existente = await this.repo.findOne({
+      where: { attachmentId, distributorId },
+    });
+    if (existente && ESTADOS_LEIDOS.includes(existente.status))
+      return existente;
+    const registro =
+      existente ??
+      this.repo.create({
+        distributorId,
+        attachmentId,
+        // Sin el archivo no hay huella: ceros hasta que se lea de verdad.
+        fileSha256: '0'.repeat(64),
+        expectedType: null,
+        fields: [],
+        warnings: [],
+        duplicateOfId: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        attempts: 0,
+        readAt: null,
+      });
+    registro.status = DocumentReadingStatus.FAILED;
+    registro.attempts += 1;
+    registro.lastError = motivo.slice(0, 500);
+    return this.repo.save(registro);
   }
 
   async listar(

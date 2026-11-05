@@ -332,6 +332,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   xlsx: 'Planilla de Excel',
   corrected: 'Corregido',
   duplicate: 'Duplicado',
+  document_reading: 'Lectura de documentos',
   proposed: 'Propuesto',
   unreadable: 'Ilegible',
   'status:read': 'Leído',
