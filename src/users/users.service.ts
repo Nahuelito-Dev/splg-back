@@ -125,6 +125,9 @@ export class UsersService {
         'declaredCylinderType',
       )
       .leftJoinAndSelect('user.delivery', 'delivery')
+      .orderBy('user.createdAt', 'DESC')
+      // Desempate: con la misma fecha la paginación no repite ni saltea filas.
+      .addOrderBy('user.userId', 'ASC')
       .take(limit)
       .skip(offset);
 
