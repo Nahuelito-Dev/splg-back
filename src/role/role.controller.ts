@@ -40,6 +40,7 @@ export class RoleController {
   @ApiBadRequestResponse({
     description: 'Datos inválidos (p. ej.: Tipo: tiene que ser un texto)',
   })
+  @ApiConflictResponse({ description: 'Ya existe un rol con ese nombre' })
   async create(@Body() createRoleDto: CreateRoleDto): Promise<RoleResponseDto> {
     return RoleMapper.toDto(await this.roleService.create(createRoleDto));
   }
@@ -55,6 +56,7 @@ export class RoleController {
   @Get(':id')
   @ApiOperation({ summary: 'Consultar un rol' })
   @ApiOkResponse({ type: RoleResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'El rol no existe' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -80,6 +82,7 @@ export class RoleController {
   @Delete(':id')
   @ApiOperation({ summary: 'Borrar un rol' })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'El rol no existe' })
   @ApiConflictResponse({
     description: 'Es un rol del sistema, o todavía tiene usuarios',

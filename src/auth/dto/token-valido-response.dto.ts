@@ -10,13 +10,13 @@ import { ApiProperty } from '@nestjs/swagger';
  * (`{ valid: true }`) corresponde a `/v2`.
  */
 export class TokenValidoResponseDto {
-  @ApiProperty({ example: 'token valid' })
+  @ApiProperty({ example: 'Token válido' })
   response!: string;
 
   @ApiProperty({ example: 100 })
   status!: number;
 
-  @ApiProperty({ example: 'token valid' })
+  @ApiProperty({ example: 'Token válido' })
   message!: string;
 
   @ApiProperty({ example: 'HttpException' })
@@ -24,9 +24,9 @@ export class TokenValidoResponseDto {
 
   static crear(): TokenValidoResponseDto {
     const dto = new TokenValidoResponseDto();
-    dto.response = 'token valid';
+    dto.response = 'Token válido';
     dto.status = 100;
-    dto.message = 'token valid';
+    dto.message = 'Token válido';
     dto.name = 'HttpException';
     return dto;
   }

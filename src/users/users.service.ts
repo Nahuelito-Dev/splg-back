@@ -722,9 +722,7 @@ export class UsersService {
       id: user.userId,
       email: user.email ?? null,
       isBlocked: user.blocked,
-      message: user.blocked
-        ? 'Usuario BLOQUEADO 🚫'
-        : 'Usuario DESBLOQUEADO ✅',
+      message: user.blocked ? 'Usuario bloqueado' : 'Usuario desbloqueado',
     };
   }
 }

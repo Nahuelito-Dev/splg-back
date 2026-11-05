@@ -74,6 +74,7 @@ export class RegistroController {
       'Datos inválidos (p. ej.: Correo electrónico: tiene que ser un correo electrónico válido; Contraseña: tiene que tener al menos 6 caracteres)',
   })
   @ApiConflictResponse({ description: 'Email o teléfono ya en uso' })
+  @ApiTooManyRequestsResponse({ description: 'Demasiadas altas seguidas' })
   registrarClienteRutaAnterior(
     @Body() dto: RegistrarClienteDto,
   ): Promise<UserResponseDto> {
