@@ -35,12 +35,19 @@ export const IDEMPOTENT_DESPUES_DE_MULTER_KEY = 'idempotentDespuesDeMulter';
  *
  * Si el cliente NO envía el header, el handler se ejecuta normalmente
  * (no se aplica idempotencia). Esto mantiene backward compat.
+ *
+ * `sinCuerpo: true` para las rutas que no reciben body (`PATCH /:id/assign/..`,
+ * `POST /:id/reject`): no puede haber «otro body», así que Swagger no declara 422.
  */
-export const Idempotent = () =>
+export const Idempotent = (opciones: { sinCuerpo?: boolean } = {}) =>
   applyDecorators(
     SetMetadata(IDEMPOTENT_KEY, true),
-    ApiUnprocessableEntityResponse({
-      description:
-        'La `Idempotency-Key` ya se usó con otro body. Revisá si la operación anterior se registró antes de reintentar.',
-    }),
+    ...(opciones.sinCuerpo
+      ? []
+      : [
+          ApiUnprocessableEntityResponse({
+            description:
+              'La `Idempotency-Key` ya se usó con otro body. Revisá si la operación anterior se registró antes de reintentar.',
+          }),
+        ]),
   );

@@ -119,10 +119,18 @@ export class OrderController {
       'Idempotente vía header `Idempotency-Key` (UUID v4). Reintentos con la misma key retornan la respuesta cacheada por 24h.',
   })
   @ApiCreatedResponse({ type: OrderResponseDto, description: 'Pedido creado' })
-  @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({
     status: 409,
-    description: 'Otro request con la misma Idempotency-Key está en curso',
+    description:
+      'Otra solicitud con la misma Idempotency-Key está en curso (`code: IDEMPOTENCY_IN_PROGRESS`), o el total esperado (`expectedTotal`) ya no es el de hoy (`code: PRICE_CHANGED`, con el `total` vigente)',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Un cliente cargando el pedido de otro, la venta a cuenta corriente sin ser administrador, o el carrito (`fromCart`) pedido por el personal',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'El cliente, la dirección o la garrafa no existen, o la dirección no es del cliente',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   @ApiBadRequestResponse({
@@ -335,6 +343,10 @@ export class OrderController {
   @Get('available')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get available orders for delivery' })
+  @ApiBadRequestResponse({
+    description:
+      'Paginación inválida (límite fuera de 1 a 100, offset negativo)',
+  })
   @ApiOkResponse({
     type: AvailableOrdersResponseDto,
     description:
@@ -580,7 +592,7 @@ export class OrderController {
   @Post(':id/reject')
   @HttpCode(200)
   @Auth(RoleType.DELIVERY)
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary:
       'Chofer rechaza/ignora una oferta de pedido (CU-016) o una asignación manual (H-55)',
@@ -690,7 +702,7 @@ export class OrderController {
 
   @Patch(':id/payment/cash-received')
   @Auth(RoleType.DELIVERY)
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'El chofer confirma que cobró el efectivo ("pago recibido")',
     description:
@@ -785,6 +797,7 @@ export class OrderController {
       'Falta o es inválido el motivo, el pedido no está entregado o no es en efectivo, o falta la distribuidora',
   })
   @ApiConflictResponse({ description: 'El pago ya se informó como impago' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async registerCash(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -818,6 +831,7 @@ export class OrderController {
   @ApiConflictResponse({
     description: 'La transferencia ya se resolvió con la decisión contraria',
   })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async confirmTransfer(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -836,7 +850,7 @@ export class OrderController {
   }
 
   @Patch(':id/assign/:deliveryId')
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Assign order to delivery',
@@ -889,7 +903,11 @@ export class OrderController {
     type: OrderResponseDto,
     description: 'El pedido, sin cambios',
   })
-  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @ApiBadRequestResponse({
+    description:
+      'El id no es un UUID, o la latitud o la longitud no son válidas',
+  })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async updateLocation(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -930,7 +948,8 @@ export class OrderController {
       'Dirección, franja/fecha, medio de pago, notas y renglones. Si vienen ' +
       '`items` reemplazan a los actuales: se devuelve el stock viejo y se ' +
       'reserva el nuevo con los precios y recargos vigentes (mismas reglas ' +
-      'que el alta). Fuera de `pending`, o con pago online, responde 409. ' +
+      'que el alta). Fuera de `pending`, o con un pedido de Mercado Pago, responde 409; ' +
+      'pasar un pedido a Mercado Pago es 400 (la transferencia sí se edita). ' +
       'Para eliminar un pedido: `PATCH /orders/:id/cancel`.',
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
@@ -941,7 +960,7 @@ export class OrderController {
   })
   @ApiConflictResponse({
     description:
-      'El pedido no está pendiente, tiene chofer (cliente: «El pedido ya fue tomado por un repartidor: no se puede modificar») o pago online',
+      'El pedido no está pendiente, tiene chofer (cliente: «El pedido ya fue tomado por un repartidor: no se puede modificar») o es de Mercado Pago',
   })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async update(
@@ -1087,7 +1106,10 @@ export class OrderController {
   })
   @ApiBadRequestResponse({
     description:
-      'Falta el motivo (obligatorio para cliente y administrador, no para el chofer que libera el pedido), motivo en blanco, o datos inválidos (p. ej.: Motivo: tiene que tener como máximo 500 caracteres)',
+      'Falta el motivo (obligatorio para cliente y administrador, no para el chofer que libera el pedido), motivo en blanco, datos inválidos (p. ej.: Motivo: tiene que tener como máximo 500 caracteres) o el pedido ya está entregado o cancelado («No se puede cancelar un pedido finalizado»)',
+  })
+  @ApiForbiddenResponse({
+    description: 'El chofer que cancela no es el del pedido',
   })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiOkResponse({
@@ -1142,7 +1164,7 @@ export class OrderController {
   }
 
   @Patch(':id/confirm-deposit')
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:

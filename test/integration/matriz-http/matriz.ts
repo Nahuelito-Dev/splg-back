@@ -95,7 +95,7 @@ export interface Caso<C extends ContextoMatriz> {
   /** Prepara lo que el caso necesita (así no depende de otros casos). */
   antes?: (ctx: C) => Promise<void>;
   /** Chequeo extra sobre el cuerpo de la respuesta. */
-  verificar?: (cuerpo: unknown, ctx: C) => void;
+  verificar?: (cuerpo: unknown, ctx: C) => void | Promise<void>;
 }
 
 const resolver = <T, C>(valor: Perezoso<T, C> | undefined, ctx: C) =>
@@ -288,7 +288,7 @@ export function correrMatriz<C extends ContextoMatriz>(
             }
           }
         }
-        c.verificar?.(cuerpo, ctx);
+        await c.verificar?.(cuerpo, ctx);
       });
     }
   });

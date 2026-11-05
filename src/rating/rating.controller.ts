@@ -45,7 +45,11 @@ export class RatingController {
       'deriva del pedido. Una calificación por pedido y por lado.',
   })
   @ApiCreatedResponse({ type: RatingResponseDto })
-  @ApiBadRequestResponse({ description: 'Pedido no entregado / sin chofer' })
+  @ApiBadRequestResponse({
+    description:
+      'Estrellas o comentario inválidos, o el pedido no está entregado o no tiene chofer',
+  })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiForbiddenResponse({
     description: 'Pedido de otro / no entregado por vos',
   })
@@ -72,6 +76,7 @@ export class RatingController {
   })
   @ApiParam({ name: 'userId', description: 'User UUID del calificado' })
   @ApiOkResponse({ type: RatingSummaryDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   getSummary(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentDistributor() distributorId: string | null,
@@ -86,6 +91,7 @@ export class RatingController {
   })
   @ApiParam({ name: 'userId', description: 'User UUID del calificado' })
   @ApiOkResponse({ type: RatingResponseDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findForUser(
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentDistributor() distributorId: string | null,
@@ -99,6 +105,7 @@ export class RatingController {
   @ApiOperation({ summary: 'Ficha de una calificación (incluye las ocultas)' })
   @ApiParam({ name: 'id', description: 'Rating UUID' })
   @ApiOkResponse({ type: RatingResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({
     description: 'La calificación no existe o es de otra distribuidora',
   })
@@ -121,7 +128,9 @@ export class RatingController {
   })
   @ApiParam({ name: 'id', description: 'Rating UUID' })
   @ApiOkResponse({ type: RatingResponseDto })
-  @ApiBadRequestResponse({ description: 'Falta el motivo' })
+  @ApiBadRequestResponse({
+    description: 'Falta el motivo, está en blanco o pasa de 500 caracteres',
+  })
   @ApiNotFoundResponse({
     description: 'La calificación no existe o es de otra distribuidora',
   })
@@ -153,7 +162,9 @@ export class RatingController {
   })
   @ApiParam({ name: 'id', description: 'Rating UUID' })
   @ApiOkResponse({ type: RatingResponseDto })
-  @ApiBadRequestResponse({ description: 'Falta el motivo' })
+  @ApiBadRequestResponse({
+    description: 'Falta el motivo, está en blanco o pasa de 500 caracteres',
+  })
   @ApiNotFoundResponse({
     description: 'La calificación no existe o es de otra distribuidora',
   })

@@ -60,6 +60,9 @@ export class CartController {
       'Total calculado sobre los precios vigentes del catálogo; cada ítem informa la diferencia con el precio guardado. Sin carrito, responde uno vacío. Un tipo dado de baja se marca `available: false` y no suma.',
   })
   @ApiOkResponse({ type: CartResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Falta la distribuidora (`X-Distributor`)',
+  })
   async consultar(
     @CurrentUser('user_id') userId: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -79,7 +82,7 @@ export class CartController {
   @ApiCreatedResponse({ type: CartResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Cantidad inválida (no entera o no positiva) o que supera el máximo por ítem',
+      'Cantidad inválida (no entera o no positiva) o que supera el máximo por ítem, o falta la distribuidora (`X-Distributor`)',
   })
   @ApiNotFoundResponse({
     description:
@@ -107,7 +110,7 @@ export class CartController {
   @ApiOkResponse({ type: CartResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Cantidad cero, negativa o no entera: para dejarlo en cero hay que quitar el ítem',
+      'Cantidad cero, negativa o no entera (para dejarlo en cero hay que quitar el ítem), el ítem no es un UUID, o falta la distribuidora (`X-Distributor`)',
   })
   @ApiNotFoundResponse({
     description: 'El ítem no está en el carrito del cliente',
@@ -134,6 +137,10 @@ export class CartController {
   @ApiOperation({ summary: 'Quitar un ítem del carrito (CU-124)' })
   @ApiParam({ name: 'itemId', format: 'uuid' })
   @ApiOkResponse({ type: CartResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'El ítem no es un UUID, o falta la distribuidora (`X-Distributor`)',
+  })
   @ApiNotFoundResponse({
     description: 'El ítem no está en el carrito del cliente',
   })
@@ -155,6 +162,9 @@ export class CartController {
     description: 'Sin carrito no hace nada y responde uno vacío.',
   })
   @ApiOkResponse({ type: CartResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Falta la distribuidora (`X-Distributor`)',
+  })
   async vaciar(
     @CurrentUser('user_id') userId: string,
     @CurrentDistributor({ required: true }) distributorId: string,

@@ -219,7 +219,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       throw conCodigo(
         ConflictException,
         409,
-        'Request en curso con la misma Idempotency-Key. Reintente más tarde.',
+        'Hay otra solicitud en curso con la misma clave de idempotencia: reintentá en unos segundos.',
         CODIGOS_DE_ERROR.IDEMPOTENCY_IN_PROGRESS,
       );
     }

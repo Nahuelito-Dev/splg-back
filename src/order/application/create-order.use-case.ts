@@ -298,6 +298,8 @@ export class CreateOrderUseCase {
         )
       ) {
         throw new ConflictException({
+          statusCode: 409,
+          error: 'Conflict',
           message: MENSAJE_CAMBIO_EL_PRECIO,
           code: 'PRICE_CHANGED',
           total: totalAmount
