@@ -365,6 +365,20 @@
       "orderColumn": null
     },
     {
+      "table": "document_reading",
+      "entity": "DocumentReading",
+      "pk": ["reading_id"],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "driver_liquidation",
       "entity": "DriverLiquidation",
       "pk": ["liquidation_id"],
@@ -3161,6 +3175,158 @@
       "secret": false,
       "kind": "timestamp",
       "position": 4
+    },
+    {
+      "table": "document_reading",
+      "column": "reading_id",
+      "property": "readingId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "document_reading",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "document_reading",
+      "column": "attachment_id",
+      "property": "attachmentId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "document_reading",
+      "column": "file_sha256",
+      "property": "fileSha256",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "document_reading",
+      "column": "expected_type",
+      "property": "expectedType",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "document_reading",
+      "column": "detected_type",
+      "property": "detectedType",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "document_reading",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "document_reading",
+      "column": "legible",
+      "property": "legible",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "document_reading",
+      "column": "fields",
+      "property": "fields",
+      "secret": false,
+      "kind": "json",
+      "position": 8
+    },
+    {
+      "table": "document_reading",
+      "column": "warnings",
+      "property": "warnings",
+      "secret": false,
+      "kind": "json",
+      "position": 9
+    },
+    {
+      "table": "document_reading",
+      "column": "duplicate_of_id",
+      "property": "duplicateOfId",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "document_reading",
+      "column": "model",
+      "property": "model",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "document_reading",
+      "column": "input_tokens",
+      "property": "inputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "document_reading",
+      "column": "output_tokens",
+      "property": "outputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "document_reading",
+      "column": "cost_usd",
+      "property": "costUsd",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "document_reading",
+      "column": "attempts",
+      "property": "attempts",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "document_reading",
+      "column": "last_error",
+      "property": "lastError",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "document_reading",
+      "column": "read_at",
+      "property": "readAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 17
+    },
+    {
+      "table": "document_reading",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 18
     },
     {
       "table": "driver_liquidation",

@@ -156,6 +156,10 @@ describe('InsuranceInstallmentService', () => {
       expect(lector.leer).toHaveBeenCalledWith(
         { buffer: PNG, mimeType: 'image/png' },
         { expectedAmount: '29958.00', payee: 'Seguros Rivadavia' },
+        expect.objectContaining({
+          distributorId: 'd1',
+          attachmentId: expect.any(String) as string,
+        }),
       );
       expect(r.scan).toEqual({ available: true, data: leido });
     });

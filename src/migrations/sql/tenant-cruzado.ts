@@ -40,6 +40,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   insurer: 'insurer_id',
   insurance_policy: 'policy_id',
   attachment: 'attachment_id',
+  document_reading: 'reading_id',
   mp_reconciliation: 'reconciliation_id',
 };
 
@@ -130,6 +131,9 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['route_batch', 'car_id', 'car'],
     ['route_batch', 'origin_warehouse_id', 'warehouse'],
     ['route_batch', 'truck_load_id', 'truck_load'],
+    // Lecturas de documentos (módulo M6)
+    ['document_reading', 'attachment_id', 'attachment'],
+    ['document_reading', 'duplicate_of_id', 'document_reading'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

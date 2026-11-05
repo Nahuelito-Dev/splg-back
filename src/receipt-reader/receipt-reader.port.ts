@@ -35,10 +35,17 @@ export interface DatosDelComprobante {
   warnings: string[];
 }
 
+/** De dónde viene el comprobante: con él, la lectura queda guardada y no se repite. */
+export interface OrigenDelComprobante {
+  distributorId: string;
+  attachmentId: string;
+}
+
 export abstract class ReceiptReaderPort {
   abstract readonly disponible: boolean;
   abstract leer(
     archivo: ArchivoDeComprobante,
     pistas?: PistasDelComprobante,
+    origen?: OrigenDelComprobante,
   ): Promise<DatosDelComprobante | null>;
 }

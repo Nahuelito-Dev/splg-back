@@ -6,9 +6,11 @@ import {
   NivelDeConfianza,
 } from '../document-reader/document-reader.port';
 import { TipoDeDocumento } from '../document-reader/tipos-de-documento';
+import { DocumentReadingService } from '../document-reading/document-reading.service';
 import {
   ArchivoDeComprobante,
   DatosDelComprobante,
+  OrigenDelComprobante,
   PistasDelComprobante,
   ReceiptReaderPort,
 } from './receipt-reader.port';
@@ -27,7 +29,10 @@ const ORDEN: NivelDeConfianza[] = ['baja', 'media', 'alta'];
  */
 @Injectable()
 export class LectorDeComprobantesSobreDocumentos extends ReceiptReaderPort {
-  constructor(private readonly documentos: DocumentReaderPort) {
+  constructor(
+    private readonly documentos: DocumentReaderPort,
+    private readonly lecturas?: DocumentReadingService,
+  ) {
     super();
   }
 
@@ -38,14 +43,21 @@ export class LectorDeComprobantesSobreDocumentos extends ReceiptReaderPort {
   async leer(
     archivo: ArchivoDeComprobante,
     pistas?: PistasDelComprobante,
+    origen?: OrigenDelComprobante,
   ): Promise<DatosDelComprobante | null> {
     const esperado: Record<string, string> = {};
     if (pistas?.expectedAmount) esperado['importe'] = pistas.expectedAmount;
     if (pistas?.payee) esperado['destinatario'] = pistas.payee;
-    const lectura = await this.documentos.leer(archivo, {
+    const opciones = {
       tipoEsperado: TipoDeDocumento.COMPROBANTE_DE_PAGO,
       pistas: esperado,
-    });
+    };
+    // Con el adjunto, la lectura queda guardada (módulo M6) y no se vuelve a pagar.
+    const lectura =
+      origen && this.lecturas
+        ? (await this.lecturas.leerAdjunto({ ...origen, archivo, opciones }))
+            .lectura
+        : await this.documentos.leer(archivo, opciones);
     if (!lectura) return null;
     const valor = (nombre: string) =>
       lectura.campos.find((c) => c.nombre === nombre)?.valor ?? null;

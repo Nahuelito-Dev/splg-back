@@ -137,6 +137,10 @@ describe('TrafficFinePaymentService (F15)', () => {
       expect(lector.leer).toHaveBeenCalledWith(
         { buffer: PNG, mimeType: 'image/png' },
         { expectedAmount: '59500.00', payee: 'Municipalidad de Posadas' },
+        expect.objectContaining({
+          distributorId: 'd1',
+          attachmentId: expect.any(String) as string,
+        }),
       );
       expect(r.scan).toEqual({ available: true, data: leido });
     });
@@ -148,10 +152,17 @@ describe('TrafficFinePaymentService (F15)', () => {
       lector.disponible = true;
       lector.leer.mockResolvedValue(null);
       await service.subirComprobante('m1', archivo(), 'd1', ACTOR);
-      expect(lector.leer).toHaveBeenCalledWith(expect.anything(), {
-        expectedAmount: '85000.00',
-        payee: 'Municipalidad de Posadas',
-      });
+      expect(lector.leer).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          expectedAmount: '85000.00',
+          payee: 'Municipalidad de Posadas',
+        },
+        expect.objectContaining({
+          distributorId: 'd1',
+          attachmentId: expect.any(String) as string,
+        }),
+      );
     });
 
     it('sin voluntario la pista es el importe de la multa', async () => {
@@ -161,10 +172,17 @@ describe('TrafficFinePaymentService (F15)', () => {
       lector.disponible = true;
       lector.leer.mockResolvedValue(null);
       await service.subirComprobante('m1', archivo(), 'd1', ACTOR);
-      expect(lector.leer).toHaveBeenCalledWith(expect.anything(), {
-        expectedAmount: '85000.00',
-        payee: 'Municipalidad de Posadas',
-      });
+      expect(lector.leer).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          expectedAmount: '85000.00',
+          payee: 'Municipalidad de Posadas',
+        },
+        expect.objectContaining({
+          distributorId: 'd1',
+          attachmentId: expect.any(String) as string,
+        }),
+      );
     });
 
     it('un escaneo que falla nunca rompe la subida', async () => {

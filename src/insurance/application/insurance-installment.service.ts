@@ -32,7 +32,10 @@ import { instanteDelPago } from '../domain/payment-date';
 import { InstallmentStatus } from '../domain/insurance.enums';
 import { InsuranceInstallment } from '../entities/insurance-installment.entity';
 import { InsurancePolicy } from '../entities/insurance-policy.entity';
-import { ReceiptReaderPort } from '../../receipt-reader/receipt-reader.port';
+import {
+  OrigenDelComprobante,
+  ReceiptReaderPort,
+} from '../../receipt-reader/receipt-reader.port';
 
 /** Margen para el reloj del cliente al registrar «cuándo se pagó» (5 minutos). */
 const MARGEN_FECHA_FUTURA_MS = 5 * 60 * 1000;
@@ -152,7 +155,10 @@ export class InsuranceInstallmentService {
     );
     const dto = new UploadedReceiptDto();
     dto.attachmentId = adjunto.attachmentId;
-    dto.scan = await this.escanear(file, adjunto.mimeType, cuota);
+    dto.scan = await this.escanear(file, adjunto.mimeType, cuota, {
+      distributorId,
+      attachmentId: adjunto.attachmentId,
+    });
     return dto;
   }
 
@@ -250,6 +256,7 @@ export class InsuranceInstallmentService {
     file: Express.Multer.File | undefined,
     mimeType: string,
     cuota: InsuranceInstallment,
+    origen: OrigenDelComprobante,
   ): Promise<ReceiptScanDto> {
     const escaneo = new ReceiptScanDto();
     escaneo.available = this.lector.disponible;
@@ -270,6 +277,7 @@ export class InsuranceInstallmentService {
             expectedAmount: cuota.amount.toFixed(2),
             payee: cuota.policy?.insurer?.name,
           },
+          origen,
         ),
         tope,
       ]);
