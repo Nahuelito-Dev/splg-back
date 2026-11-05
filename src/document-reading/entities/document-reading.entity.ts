@@ -18,6 +18,29 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 import { CampoLeido } from '../../document-reader/document-reader.port';
 import { TipoDeDocumento } from '../../document-reader/tipos-de-documento';
 
+export type DocumentProposalAction =
+  | 'pay_installment'
+  | 'pay_fine'
+  | 'update_policy'
+  | 'register_purchase_invoice'
+  | 'update_employee_document'
+  | 'review';
+export interface DocumentProposalDifference {
+  field: string;
+  expected: string | null;
+  read: string | null;
+  message: string;
+}
+export interface DocumentProposal {
+  action: DocumentProposalAction;
+  ownerType: string;
+  ownerId: string;
+  expected: Record<string, string | null>;
+  read: Record<string, string | null>;
+  differences: DocumentProposalDifference[];
+  summary: string;
+}
+
 /**
  * Estado de la lectura de un documento (módulo M6). Los últimos cuatro los usa
  * la conciliación y la confirmación del administrador.
@@ -85,6 +108,10 @@ const LEIDOS_SQL = ESTADOS_LEIDOS.map((e) => `'${e}'`).join(', ');
 @Check(
   'CHK_document_reading_duplicado',
   `("status" = 'duplicate') = ("duplicate_of_id" IS NOT NULL)`,
+)
+@Check(
+  'CHK_document_reading_propuesta',
+  `("status" = 'proposed') = ("proposal" IS NOT NULL AND "proposal_expires_at" IS NOT NULL)`,
 )
 @Check(
   'CHK_document_reading_leido',
@@ -190,6 +217,22 @@ export class DocumentReading {
 
   @Column({ name: 'last_error', type: 'text', nullable: true })
   lastError!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  proposal!: DocumentProposal | null;
+
+  @Column({ name: 'proposal_expires_at', type: 'timestamptz', nullable: true })
+  proposalExpiresAt!: Date | null;
+
+  @Column({ name: 'reminded_at', type: 'timestamptz', nullable: true })
+  remindedAt!: Date | null;
+
+  @Column({ name: 'escalated_at', type: 'timestamptz', nullable: true })
+  escalatedAt!: Date | null;
+
+  /** Momento en que se intentó cruzar la lectura con su dueño. */
+  @Column({ name: 'reconciled_at', type: 'timestamptz', nullable: true })
+  reconciledAt!: Date | null;
 
   @Column({ name: 'read_at', type: 'timestamptz', nullable: true })
   readAt!: Date | null;

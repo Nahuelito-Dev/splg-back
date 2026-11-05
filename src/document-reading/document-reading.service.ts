@@ -137,6 +137,10 @@ export class DocumentReadingService {
         costUsd: 0,
         attempts: 0,
         lastError: null,
+        proposal: null,
+        proposalExpiresAt: null,
+        remindedAt: null,
+        escalatedAt: null,
         readAt: null,
       });
 

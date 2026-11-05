@@ -53,11 +53,16 @@ export class LectorDeComprobantesSobreDocumentos extends ReceiptReaderPort {
       pistas: esperado,
     };
     // Con el adjunto, la lectura queda guardada (módulo M6) y no se vuelve a pagar.
-    const lectura =
-      origen && this.lecturas
-        ? (await this.lecturas.leerAdjunto({ ...origen, archivo, opciones }))
-            .lectura
-        : await this.documentos.leer(archivo, opciones);
+    let lectura;
+    if (origen && this.lecturas) {
+      const resultado = await this.lecturas.leerAdjunto({
+        ...origen,
+        archivo,
+        opciones,
+      });
+      // La concilia el barrido periódico, con margen para que el admin termine el pago.
+      lectura = resultado.lectura;
+    } else lectura = await this.documentos.leer(archivo, opciones);
     if (!lectura) return null;
     const valor = (nombre: string) =>
       lectura.campos.find((c) => c.nombre === nombre)?.valor ?? null;

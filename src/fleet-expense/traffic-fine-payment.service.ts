@@ -33,6 +33,7 @@ import {
 } from '../receipt-reader/receipt-reader.port';
 import { PayTrafficFineV2Dto } from './dto/traffic-fine-v2.dto';
 import { multaAbierta } from './domain/estados';
+import { importeEsperadoDeLaMulta } from './domain/importe-esperado-de-la-multa';
 import { TrafficFineService } from './traffic-fine.service';
 import { TrafficFine, TrafficFineStatus } from './entities/traffic-fine.entity';
 
@@ -200,16 +201,6 @@ export class TrafficFinePaymentService {
     }
   }
 
-  /** El voluntario si todavía vale (sin vencimiento o no vencido); si no, el importe de la multa. */
-  private importeEsperado(multa: TrafficFine): string {
-    const vigente =
-      multa.voluntaryPaymentAmount !== null &&
-      (multa.dueDate === null || multa.dueDate >= diaArgentino());
-    return new Decimal(
-      vigente ? (multa.voluntaryPaymentAmount ?? multa.amount) : multa.amount,
-    ).toFixed(2);
-  }
-
   private async escanear(
     file: Express.Multer.File | undefined,
     mimeType: string,
@@ -232,7 +223,7 @@ export class TrafficFinePaymentService {
         this.lector.leer(
           { buffer: file.buffer, mimeType },
           {
-            expectedAmount: this.importeEsperado(multa),
+            expectedAmount: importeEsperadoDeLaMulta(multa),
             payee: multa.jurisdiction,
           },
           origen,

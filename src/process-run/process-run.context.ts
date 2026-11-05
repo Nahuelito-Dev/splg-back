@@ -44,6 +44,11 @@ export function registrarErrorAtrapado(error: unknown, fatal = false): void {
   if (fatal) actual.fatal = mensaje;
 }
 
+/** Cuántos errores atrapó la corrida en curso hasta ahora (0 fuera de una corrida registrada). */
+export function erroresAtrapados(): number {
+  return corrida.getStore()?.errors ?? 0;
+}
+
 /** Ejecuta `fn` marcando que no la disparó el cron (p. ej. el webhook que adelanta el procesamiento). */
 export function conDisparo<T>(origen: RunTrigger, fn: () => T): T {
   return disparo.run(origen, fn);

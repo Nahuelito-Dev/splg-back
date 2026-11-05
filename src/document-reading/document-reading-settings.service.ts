@@ -9,6 +9,10 @@ export interface DocumentReadingSettings {
   maxAttempts: number;
   monthlyBudgetUsd: number;
   typesMask: number;
+  amountTolerancePct: number;
+  dateToleranceDays: number;
+  proposalTtlHours: number;
+  reminderTtlHours: number;
 }
 
 @Injectable()
@@ -26,6 +30,10 @@ export class DocumentReadingSettingsService {
       maxAttempts: p.maxAttempts,
       monthlyBudgetUsd: p.monthlyBudgetUsd,
       typesMask: p.typesMask,
+      amountTolerancePct: p.amountTolerancePct,
+      dateToleranceDays: p.dateToleranceDays,
+      proposalTtlHours: p.proposalTtlHours,
+      reminderTtlHours: p.reminderTtlHours,
     };
   }
 }

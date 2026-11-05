@@ -158,10 +158,14 @@ const RANGOS_LECTURA_DOCUMENTOS: ReadonlyArray<[string, number, number]> = [
   ['maxAttempts', 1, 10],
   ['monthlyBudgetUsd', 0, 10000],
   ['typesMask', 1, 255],
+  ['amountTolerancePct', 0, 20],
+  ['dateToleranceDays', 0, 60],
+  ['proposalTtlHours', 1, 168],
+  ['reminderTtlHours', 1, 168],
 ];
 const CHECK_LECTURA_DOCUMENTOS = RANGOS_LECTURA_DOCUMENTOS.map(
   ([k, min, max]) =>
-    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'monthlyBudgetUsd' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
+    `("params" -> '${k}' IS NULL OR (jsonb_typeof("params" -> '${k}') = 'number' AND ("params" ->> '${k}')::numeric BETWEEN ${min} AND ${max}${k === 'monthlyBudgetUsd' || k === 'amountTolerancePct' ? '' : ` AND ("params" ->> '${k}')::numeric = trunc(("params" ->> '${k}')::numeric)`}))`,
 ).join(' AND ');
 
 /** Recargos por medio de pago: 0 a 30 %, hasta 2 decimales (cada clave puede faltar). */

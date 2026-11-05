@@ -10,7 +10,62 @@ import {
 } from 'class-validator';
 
 import { TipoDeDocumento } from '../../document-reader/tipos-de-documento';
+import type { DocumentProposalAction } from '../entities/document-reading.entity';
 import { DocumentReadingStatus } from '../entities/document-reading.entity';
+
+const ACCIONES_DE_PROPUESTA: DocumentProposalAction[] = [
+  'pay_installment',
+  'pay_fine',
+  'update_policy',
+  'register_purchase_invoice',
+  'update_employee_document',
+  'review',
+];
+
+export class DocumentProposalDifferenceDto {
+  @ApiProperty({ example: 'importe' })
+  field!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '150000.00' })
+  expected!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '145000' })
+  read!: string | null;
+
+  @ApiProperty({ example: 'El importe del comprobante difiere del esperado' })
+  message!: string;
+}
+
+export class DocumentProposalDto {
+  @ApiProperty({ enum: ACCIONES_DE_PROPUESTA })
+  action!: DocumentProposalAction;
+
+  @ApiProperty({ example: 'insurance_installment' })
+  ownerType!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  ownerId!: string;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string', nullable: true },
+    description: 'Lo que el sistema esperaba, por campo',
+  })
+  expected!: Record<string, string | null>;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string', nullable: true },
+    description: 'Lo que se leyó del documento, por campo',
+  })
+  read!: Record<string, string | null>;
+
+  @ApiProperty({ type: [DocumentProposalDifferenceDto] })
+  differences!: DocumentProposalDifferenceDto[];
+
+  @ApiProperty({ example: 'Comprobante de cuota listo para confirmar.' })
+  summary!: string;
+}
 
 export class QueryDocumentReadingsDto {
   @ApiPropertyOptional({ enum: DocumentReadingStatus })
@@ -108,6 +163,25 @@ export class DocumentReadingDto {
 
   @ApiProperty({ type: String, nullable: true })
   lastError!: string | null;
+
+  @ApiProperty({
+    type: DocumentProposalDto,
+    nullable: true,
+    description: 'Propuesta de conciliación para el administrador',
+  })
+  proposal!: DocumentProposalDto | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  proposalExpiresAt!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  remindedAt!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  escalatedAt!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  reconciledAt!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   readAt!: string | null;
