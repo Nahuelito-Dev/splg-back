@@ -512,6 +512,8 @@ describe('UsersService', () => {
     const armarQb = () => {
       const qb = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -522,6 +524,13 @@ describe('UsersService', () => {
       ).createQueryBuilder = jest.fn().mockReturnValue(qb);
       return qb;
     };
+
+    it('orden estable: la fecha de alta y, con la misma fecha, el id', async () => {
+      const qb = armarQb();
+      await service.findAll({});
+      expect(qb.orderBy).toHaveBeenCalledWith('user.createdAt', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('user.userId', 'ASC');
+    });
 
     it('sin role no filtra por rol', async () => {
       const qb = armarQb();

@@ -126,7 +126,8 @@ export class UsersController {
       '`term` busca en correo, nombre y teléfono; `role` filtra por tipo ' +
       'de rol. Un admin de empresa ve sólo los usuarios de su distribuidora ' +
       '(H-66); un super admin ve todos, o los de la distribuidora que ' +
-      'indique en `X-Distributor`.',
+      'indique en `X-Distributor`. Orden: fecha de alta, la más nueva ' +
+      'primero (con la misma fecha, por id).',
   })
   @ApiOkResponse({ type: ListadoDeUsuariosDto })
   @ApiTotal()
