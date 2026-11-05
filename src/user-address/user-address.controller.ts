@@ -97,6 +97,7 @@ export class UserAddressController {
   @Auth(RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Listar todas las direcciones (paginado)' })
   @ApiOkResponse({ type: ListadoDeDireccionesDto })
+  @ApiBadRequestResponse({ description: 'Parámetros de paginación inválidos' })
   async findAll(
     @Query() paginationDto: PaginationDto,
   ): Promise<ListadoDeDireccionesDto> {
@@ -111,6 +112,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Get address by ID' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
@@ -129,6 +131,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Get addresses by user ID' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'El id de usuario no es un UUID' })
   @ApiForbiddenResponse({ description: 'Son de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
@@ -149,6 +152,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Get default address for user' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
+  @ApiBadRequestResponse({ description: 'El id de usuario no es un UUID' })
   @ApiNotFoundResponse({ description: 'No default address found' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
@@ -197,6 +201,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Set address as default' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: UserAddressConUsuarioDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
@@ -215,6 +220,7 @@ export class UserAddressController {
   @ApiOperation({ summary: 'Delete address by ID' })
   @ApiParam({ name: 'id', description: 'Address UUID' })
   @ApiOkResponse({ type: DireccionBorradaDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({ description: 'Dirección no encontrada' })
   @ApiForbiddenResponse({ description: 'Es de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })

@@ -60,6 +60,10 @@ export class CustomerAccountController {
       'Con saldo, crédito disponible y deuda vencida de cada cuenta. Filtra por estado, deuda vencida y texto (razón social, CUIT, nombre o correo).',
   })
   @ApiOkResponse({ type: CustomerAccountPageDto })
+  @ApiBadRequestResponse({
+    description:
+      'Parámetros de paginación o filtros inválidos, o falta la distribuidora',
+  })
   findAll(
     @Query() query: QueryCustomerAccountDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -97,6 +101,7 @@ export class CustomerAccountController {
       'Lo que se debe repartido en 0-30, 31-60, 61-90 y más de 90 días desde la fecha del comprobante, por cuenta y en total.',
   })
   @ApiOkResponse({ type: AgingReportDto })
+  @ApiBadRequestResponse({ description: 'Falta la distribuidora' })
   aging(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<AgingReportDto> {
@@ -109,6 +114,9 @@ export class CustomerAccountController {
   })
   @ApiParam({ name: 'id', description: 'Cuenta UUID' })
   @ApiOkResponse({ type: CustomerAccountDetailDto })
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o falta la distribuidora',
+  })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   findOne(
     @Param('id', ParseUUIDPipe) id: string,

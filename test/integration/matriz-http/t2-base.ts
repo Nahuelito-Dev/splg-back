@@ -335,7 +335,7 @@ export const unico = (): string => randomUUID().slice(0, 8);
  * que la reusa con otro cuerpo espera 422.
  */
 export async function usarClave(
-  ctx: EscenarioT2,
+  ctx: ContextoMatriz,
   metodo: 'post' | 'patch',
   ruta: string,
   actor: string,
