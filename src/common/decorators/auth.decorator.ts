@@ -18,12 +18,19 @@ import { Roles } from './roles.decorator';
  * endpoint nace protegido. Esto agrega la autorización por rol.
  */
 export function Auth(...roles: RoleType[]): MethodDecorator & ClassDecorator {
+  // Con los cuatro roles el 403 por rol no puede pasar: no se documenta (el 403
+  // por pertenencia, si lo hay, lo declara el endpoint).
+  const abiertoATodos = Object.values(RoleType).every((r) => roles.includes(r));
   return applyDecorators(
     Roles(...roles),
     ApiBearerAuth(),
     ApiUnauthorizedResponse({ description: 'Sin token o token inválido' }),
-    ApiForbiddenResponse({
-      description: `Requiere rol: ${roles.join(', ')}`,
-    }),
+    ...(abiertoATodos
+      ? []
+      : [
+          ApiForbiddenResponse({
+            description: `Requiere rol: ${roles.join(', ')}`,
+          }),
+        ]),
   );
 }

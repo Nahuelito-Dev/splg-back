@@ -229,7 +229,8 @@ describe('IdempotencyInterceptor', () => {
     ).rejects.toMatchObject({
       response: {
         code: 'IDEMPOTENCY_IN_PROGRESS',
-        message: expect.stringContaining('Idempotency-Key') as string,
+        message:
+          'Hay otra solicitud en curso con la misma clave de idempotencia: reintentá en unos segundos.',
       },
     });
     expect(handler).not.toHaveBeenCalled();

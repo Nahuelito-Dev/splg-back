@@ -149,6 +149,7 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
   const usersDe = (c: unknown) => (c as { users: unknown[] }).users;
   const casosListado: Array<Caso<Ctx>> = [
     listar('admin de empresa', 'adminA', 200, {
+      ruta: '/users?limit=100',
       verificar: (c, x) => {
         const correos = JSON.stringify(c);
         expect(correos).toContain(x.clienteA.email);

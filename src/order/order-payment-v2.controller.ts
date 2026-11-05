@@ -99,6 +99,10 @@ export class OrderPaymentV2Controller {
   })
   @ApiParam({ name: 'id', description: 'Order UUID' })
   @ApiOkResponse({ description: 'Retención liberada' })
+  @ApiBadRequestResponse({
+    description:
+      'El id no es un UUID, el motivo falta o no tiene de 10 a 500 caracteres, o el super admin no mandó `X-Distributor`',
+  })
   @ApiConflictResponse({ description: 'El pedido no está retenido' })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   async liberarRetencion(

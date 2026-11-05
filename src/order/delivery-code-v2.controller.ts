@@ -26,7 +26,7 @@ export class DeliveryCodeV2Controller {
   constructor(private readonly orderService: OrderService) {}
 
   @Post(':id/delivery-code/regenerate')
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Generar un código de entrega nuevo',
     description:

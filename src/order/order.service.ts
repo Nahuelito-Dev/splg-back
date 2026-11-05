@@ -229,7 +229,7 @@ export class OrderService {
     } = queryDto;
     // Mismo criterio que /reports: un rango invertido es un error, no un listado vacío.
     if (from && to && from > to) {
-      throw new BadRequestException('from no puede ser posterior a to');
+      throw new BadRequestException('«Desde» no puede ser posterior a «Hasta»');
     }
     if (deliveredFrom && deliveredTo && deliveredFrom > deliveredTo) {
       throw new BadRequestException(
