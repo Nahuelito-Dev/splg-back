@@ -1,12 +1,22 @@
+import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 
+import { DocumentReadingService } from '../document-reading/document-reading.service';
 import { ReceiptReaderModule } from '../receipt-reader/receipt-reader.module';
 import { ReceiptReaderPort } from '../receipt-reader/receipt-reader.port';
 import { ClaudeDocumentReader } from './claude-document-reader';
 import { DocumentReaderModule } from './document-reader.module';
 import { DocumentReaderPort } from './document-reader.port';
 import { LectorDeDocumentosNulo } from './lector-de-documentos-nulo';
+
+/** El servicio de lecturas necesita la base: acá alcanza con que exista. */
+@Global()
+@Module({
+  providers: [{ provide: DocumentReadingService, useValue: {} }],
+  exports: [DocumentReadingService],
+})
+class LecturasDePruebaModule {}
 
 async function armar(env: Record<string, string>) {
   const modulo = await Test.createTestingModule({
@@ -16,6 +26,7 @@ async function armar(env: Record<string, string>) {
         ignoreEnvFile: true,
         load: [() => env],
       }),
+      LecturasDePruebaModule,
       DocumentReaderModule,
       ReceiptReaderModule,
     ],

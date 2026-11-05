@@ -87,4 +87,5 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   TruckLoadItem: 'Renglón de carga de camión',
   VehicleAccident: 'Siniestro',
   Warehouse: 'Depósito',
+  DocumentReading: 'Lectura de documento',
 };

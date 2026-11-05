@@ -82,6 +82,7 @@ import { FirebaseModule } from './firebase/firebase.module';
 import { ExportsModule } from './exports/exports.module';
 import { PeoplePhotosModule } from './people-photos/people-photos.module';
 import { DocumentReaderModule } from './document-reader/document-reader.module';
+import { DocumentReadingModule } from './document-reading/document-reading.module';
 import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
 
 @Module({
@@ -219,6 +220,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     // notificado que publica payments y confirma order.
     EventEmitterModule.forRoot(),
     DocumentReaderModule,
+    DocumentReadingModule,
     ReceiptReaderModule,
     // Global: un único init del Admin SDK de Firebase para todo el proceso
     // (ver firebase/firebase.module.ts). Provee FirebaseAuthPort y FcmPort.

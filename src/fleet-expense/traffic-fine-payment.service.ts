@@ -27,7 +27,10 @@ import {
   UploadedReceiptDto,
 } from '../insurance/dto/insurance-installment.dto';
 import { instanteDelPago } from '../insurance/domain/payment-date';
-import { ReceiptReaderPort } from '../receipt-reader/receipt-reader.port';
+import {
+  OrigenDelComprobante,
+  ReceiptReaderPort,
+} from '../receipt-reader/receipt-reader.port';
 import { PayTrafficFineV2Dto } from './dto/traffic-fine-v2.dto';
 import { multaAbierta } from './domain/estados';
 import { TrafficFineService } from './traffic-fine.service';
@@ -95,7 +98,10 @@ export class TrafficFinePaymentService {
     );
     const dto = new UploadedReceiptDto();
     dto.attachmentId = adjunto.attachmentId;
-    dto.scan = await this.escanear(file, adjunto.mimeType, multa);
+    dto.scan = await this.escanear(file, adjunto.mimeType, multa, {
+      distributorId,
+      attachmentId: adjunto.attachmentId,
+    });
     return dto;
   }
 
@@ -208,6 +214,7 @@ export class TrafficFinePaymentService {
     file: Express.Multer.File | undefined,
     mimeType: string,
     multa: TrafficFine,
+    origen: OrigenDelComprobante,
   ): Promise<ReceiptScanDto> {
     const escaneo = new ReceiptScanDto();
     escaneo.available = this.lector.disponible;
@@ -228,6 +235,7 @@ export class TrafficFinePaymentService {
             expectedAmount: this.importeEsperado(multa),
             payee: multa.jurisdiction,
           },
+          origen,
         ),
         tope,
       ]);

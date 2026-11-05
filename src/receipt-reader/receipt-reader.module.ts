@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 
 import { DocumentReaderPort } from '../document-reader/document-reader.port';
+import { DocumentReadingService } from '../document-reading/document-reading.service';
 import { LectorDeComprobantesSobreDocumentos } from './lector-de-comprobantes-sobre-documentos';
 import { ReceiptReaderPort } from './receipt-reader.port';
 
@@ -13,9 +14,11 @@ import { ReceiptReaderPort } from './receipt-reader.port';
   providers: [
     {
       provide: ReceiptReaderPort,
-      inject: [DocumentReaderPort],
-      useFactory: (documentos: DocumentReaderPort) =>
-        new LectorDeComprobantesSobreDocumentos(documentos),
+      inject: [DocumentReaderPort, DocumentReadingService],
+      useFactory: (
+        documentos: DocumentReaderPort,
+        lecturas: DocumentReadingService,
+      ) => new LectorDeComprobantesSobreDocumentos(documentos, lecturas),
     },
   ],
   exports: [ReceiptReaderPort],
