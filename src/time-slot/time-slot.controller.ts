@@ -76,6 +76,7 @@ export class TimeSlotController {
       '(cada una trae `isActive`); se reactivan con `PATCH /time-slot/:id {isActive:true}`.',
   })
   @ApiOkResponse({ type: TimeSlotResponseDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'Query inválida' })
   async findAll(
     @CurrentDistributor() distributorId: string | null,
     @CurrentUser() user: AuthenticatedUser,
@@ -100,6 +101,7 @@ export class TimeSlotController {
       'same-day. La distribuidora se pasa por ?distributor=slug|uuid.',
   })
   @ApiOkResponse({ type: SlotAvailabilityDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'Fecha o distribuidora inválida' })
   getAvailability(
     @Query() query: AvailabilityQueryDto,
   ): Promise<SlotAvailabilityDto[]> {
@@ -113,6 +115,7 @@ export class TimeSlotController {
     description: 'La franja no existe o es de otra distribuidora',
   })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
@@ -155,6 +158,7 @@ export class TimeSlotController {
   @ApiNotFoundResponse({
     description: 'La franja no existe o es de otra distribuidora',
   })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,

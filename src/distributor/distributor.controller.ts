@@ -118,6 +118,7 @@ export class DistributorController {
   @ApiParam({ name: 'id', description: 'Distributor UUID' })
   @ApiOkResponse({ type: DistributorResponseDto })
   @ApiNotFoundResponse({ description: 'La distribuidora no existe' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<DistributorResponseDto> {
@@ -171,7 +172,7 @@ export class DistributorController {
   })
   @ApiParam({ name: 'id', description: 'Distributor UUID' })
   @ApiOkResponse({ type: DistributorResponseDto })
-  @ApiNotFoundResponse({ description: 'La distribuidora no existe' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async removeLogo(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -205,6 +206,7 @@ export class DistributorController {
   @ApiParam({ name: 'id', description: 'Distributor UUID' })
   @ApiOkResponse({ description: 'Sin cuerpo' })
   @ApiNotFoundResponse({ description: 'La distribuidora no existe' })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.distributorService.remove(id);
   }

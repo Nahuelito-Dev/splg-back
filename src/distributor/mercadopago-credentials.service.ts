@@ -1,6 +1,8 @@
 import {
   BadGatewayException,
   ConflictException,
+  Inject,
+  InjectionToken,
   Injectable,
   Logger,
   NotFoundException,
@@ -37,6 +39,13 @@ const URL_CUENTA = 'https://api.mercadopago.com/users/me';
 const TIMEOUT_VERIFICACION_MS = 5000;
 /** Cuánto se recuerda de qué tipo es una cuenta: el panel consulta el estado seguido. */
 const VIGENCIA_TIPO_DE_CUENTA_MS = 10 * 60 * 1000;
+
+/** Cliente HTTP inyectable: permite aislar la verificación de Mercado Pago. */
+export const MERCADOPAGO_FETCH: InjectionToken = 'MERCADOPAGO_FETCH';
+export type MercadoPagoFetch = (
+  url: string,
+  init?: RequestInit,
+) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
 
 /**
  * Qué tipo de cuenta es la dueña de un token, según lo que devuelve `GET /users/me`: los
@@ -77,6 +86,7 @@ export class MercadoPagoCredentialsService implements OnApplicationBootstrap {
     private readonly repo: Repository<MercadoPagoCredentials>,
     private readonly crypto: CredentialsEncryptionService,
     private readonly config: ConfigService,
+    @Inject(MERCADOPAGO_FETCH) private readonly http: MercadoPagoFetch,
   ) {}
 
   /**
@@ -110,7 +120,7 @@ export class MercadoPagoCredentialsService implements OnApplicationBootstrap {
     if (guardado && guardado.hasta > Date.now()) return guardado.tipo;
     let tipo: MercadoPagoAccountType = 'unknown';
     try {
-      const respuesta = await fetch(URL_CUENTA, {
+      const respuesta = await this.http(URL_CUENTA, {
         headers: { Authorization: `Bearer ${accessToken}` },
         signal: AbortSignal.timeout(TIMEOUT_VERIFICACION_MS),
       });
@@ -312,9 +322,9 @@ export class MercadoPagoCredentialsService implements OnApplicationBootstrap {
   }
 
   private async verificarToken(accessToken: string): Promise<void> {
-    let respuesta: Response;
+    let respuesta: Pick<Response, 'ok' | 'status' | 'json'>;
     try {
-      respuesta = await fetch(URL_CUENTA, {
+      respuesta = await this.http(URL_CUENTA, {
         headers: { Authorization: `Bearer ${accessToken}` },
         signal: AbortSignal.timeout(TIMEOUT_VERIFICACION_MS),
       });

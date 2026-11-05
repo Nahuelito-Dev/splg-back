@@ -19,7 +19,10 @@ import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.servic
 import { S3Module } from '../s3/s3.module';
 import { MercadoPagoCredentials } from './entities/mercadopago-credentials.entity';
 import { CredentialsEncryptionService } from './credentials-encryption.service';
-import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
+import {
+  MERCADOPAGO_FETCH,
+  MercadoPagoCredentialsService,
+} from './mercadopago-credentials.service';
 import { MercadoPagoCredentialsController } from './mercadopago-credentials.controller';
 
 /**
@@ -59,6 +62,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     ExpressSettingsService,
     PaymentSurchargeSettingsService,
     CredentialsEncryptionService,
+    { provide: MERCADOPAGO_FETCH, useValue: fetch },
     MercadoPagoCredentialsService,
   ],
   exports: [
