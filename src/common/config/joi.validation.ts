@@ -88,6 +88,10 @@ export const JoiValidationSchema = Joi.object({
       'any.invalid':
         'CREDENTIALS_ENCRYPTION_KEY debe codificar exactamente 32 bytes en base64',
     }),
+  // Lector de documentos (módulo M6). Sin la clave, los datos se cargan a mano.
+  ANTHROPIC_API_KEY: Joi.string().allow('').optional(),
+  LECTOR_MODELO: Joi.string().allow('').optional(),
+  LECTOR_ESFUERZO: Joi.string().valid('low', 'medium', 'high', '').optional(),
   // Reporte de liberaciones (conciliación). `fake` usa un reporte de mentira
   // (sólo fuera de producción) y `MP_REPORTS_FAKE_CSV` es la ruta del CSV que devuelve.
   MP_REPORTS_DRIVER: Joi.string().valid('real', 'fake', '').optional(),
