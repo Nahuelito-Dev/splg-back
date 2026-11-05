@@ -627,15 +627,20 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       await corrida({ process: ProcessName.FINE_DUE_ALERTS }, 60);
       const r = await env.app.get(ProcessRunWatchCron).purgar();
       expect(r.purged).toBe(1);
-      const quedan = (await runs().find()).map((x) => x.process).sort();
-      expect(quedan).toEqual(
-        [
-          'fine_due_alerts',
-          'fleet_alerts',
-          'process_run_purge',
-          'stock_low_alert',
-        ].sort(),
-      );
+      // Sólo los procesos que sembró el test: los crons de la app siguen
+      // corriendo durante el e2e y pueden anotar corridas propias.
+      const sembrados = [
+        'fine_due_alerts',
+        'fleet_alerts',
+        'process_run_purge',
+        'stock_low_alert',
+      ];
+      const quedan = (await runs().find())
+        .map((x) => x.process as string)
+        .filter((p) => sembrados.includes(p))
+        .sort();
+      // De fleet_alerts queda sólo la última (la de hace 35 días).
+      expect(quedan).toEqual([...sembrados].sort());
     });
   });
 });
