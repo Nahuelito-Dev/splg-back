@@ -72,7 +72,11 @@ export class RoleService {
       throw new NotFoundException('Rol no encontrado');
     }
 
-    return await this.roleRepository.save(role);
+    try {
+      return await this.roleRepository.save(role);
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'roles');
+    }
   }
 
   async remove(id: string): Promise<MessageResponseDto> {
@@ -105,9 +109,8 @@ export class RoleService {
   private assertNoEsDelSistema(tipo: string, accion: string): void {
     if (RoleService.ROLES_DEL_SISTEMA.includes(tipo)) {
       throw new ConflictException(
-        `El rol '${tipo}' es parte del sistema y no se puede ${accion}: ` +
-          'el código lo busca por ese nombre y cambiarlo deja sin funcionar ' +
-          'el registro de usuarios.',
+        `El rol «${valorLegible(tipo, 'role')}» es parte del sistema y no se puede ${accion}: ` +
+          'lo usan el registro de usuarios y los permisos.',
       );
     }
   }

@@ -12,6 +12,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiPayloadTooLargeResponse,
+  ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -34,6 +35,7 @@ export function ApiSubirFoto(
   resumen: string,
   tipo: new () => object,
   descripcion = '',
+  { conNotFound = true }: { conNotFound?: boolean } = {},
 ): MethodDecorator {
   return applyDecorators(
     ApiOperation({
@@ -53,9 +55,14 @@ export function ApiSubirFoto(
       },
     }),
     ApiOkResponse({ type: tipo }),
-    ApiNotFoundResponse({
-      description: 'No existe o es de otra distribuidora',
-    }),
+    ...(conNotFound
+      ? [
+          ApiNotFoundResponse({
+            description: 'No existe o es de otra distribuidora',
+          }),
+        ]
+      : []),
+    ApiUnauthorizedResponse({ description: 'Sin token o token inválido' }),
     ApiBadRequestResponse({ description: 'Falta la foto o está vacía' }),
     ApiUnsupportedMediaTypeResponse({
       description: 'No es JPG, PNG ni WEBP (o el contenido no coincide)',
@@ -65,7 +72,10 @@ export function ApiSubirFoto(
 }
 
 /** Swagger de `GET .../photo`. */
-export function ApiVerFoto(resumen: string): MethodDecorator {
+export function ApiVerFoto(
+  resumen: string,
+  descripcionDe400 = 'El modo no es válido',
+): MethodDecorator {
   return applyDecorators(
     ApiOperation({
       summary: resumen,
@@ -75,6 +85,8 @@ export function ApiVerFoto(resumen: string): MethodDecorator {
         'no tiene foto, `url: null`.',
     }),
     ApiOkResponse({ type: PhotoLinkResponseDto }),
+    ApiUnauthorizedResponse({ description: 'Sin token o token inválido' }),
+    ApiBadRequestResponse({ description: descripcionDe400 }),
     ApiNotFoundResponse({
       description:
         'No existe o es de otra distribuidora; sin `modo`, también si no tiene foto',

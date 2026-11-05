@@ -7,10 +7,20 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { DomainError } from './domain.error';
+import { etiquetaDeCampo } from '../validation/etiquetas';
 import {
   esConflictoDeEstado,
   mensajeDeRestriccion,
 } from './restricciones-de-base';
+
+/** Etiqueta legible de una columna (`full_name` → «Nombre completo»); sin etiqueta, ninguna. */
+function etiquetaDeColumna(columna: string | undefined): string | undefined {
+  if (!columna) return undefined;
+  const camel = columna.replace(/_([a-z0-9])/g, (_, c: string) =>
+    c.toUpperCase(),
+  );
+  return etiquetaDeCampo(camel) ?? etiquetaDeCampo(columna);
+}
 
 /**
  * Códigos de error de Postgres que sabemos traducir.
@@ -82,7 +92,7 @@ export function traducirErrorDeBase(
       );
       throw new ConflictException(
         mensajeDeRestriccion(e.constraint) ??
-          `Ya existe un registro con esos datos${donde}`,
+          'Ya existe un registro con esos datos',
       );
 
     case CODIGOS.EXCLUSION_VIOLADA:
@@ -127,7 +137,7 @@ export function traducirErrorDeBase(
     case CODIGOS.NO_NULO:
       logger.warn(`Campo obligatorio vacío${donde}: ${e.column ?? ''}`);
       throw new BadRequestException(
-        `Falta un dato obligatorio${e.column ? `: ${e.column}` : donde}`,
+        `Falta un dato obligatorio${etiquetaDeColumna(e.column) ? `: ${etiquetaDeColumna(e.column)}` : ''}`,
       );
 
     case CODIGOS.SINTAXIS_INVALIDA:

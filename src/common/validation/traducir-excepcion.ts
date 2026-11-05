@@ -218,8 +218,10 @@ export function traducirExcepcion(exception: unknown): HttpException {
   const cuerpo = exception.getResponse();
 
   if (typeof cuerpo === 'string') {
+    // Un cuerpo de texto (HttpException('…'), el throttler) sale con la misma
+    // forma que el resto: { statusCode, message, error }.
     const es = traducirTexto(cuerpo, status, false);
-    return es === null ? exception : new HttpException(es.message, status);
+    return respuesta(status, es === null ? cuerpo : es.message);
   }
   if (typeof cuerpo !== 'object' || cuerpo === null) return exception;
 

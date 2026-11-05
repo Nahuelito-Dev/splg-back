@@ -58,9 +58,9 @@ describe('AuthService', () => {
 
   it('POST /auth conserva la forma histórica de la respuesta', () => {
     expect({ ...service.checkIfTokenValid() }).toEqual({
-      response: 'token valid',
+      response: 'Token válido',
       status: 100,
-      message: 'token valid',
+      message: 'Token válido',
       name: 'HttpException',
     });
   });

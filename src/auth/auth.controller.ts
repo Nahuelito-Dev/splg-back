@@ -10,10 +10,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
@@ -63,7 +65,14 @@ export class AuthController {
     description:
       'Email o contraseña incorrectos (misma respuesta para un usuario inexistente y para una contraseña equivocada) o cuenta dada de baja (Firebase la rechaza antes de mirar la clave: misma respuesta, no revela que existe). Con la clave correcta, una cuenta bloqueada recibe `La cuenta no está habilitada`',
   })
+  @ApiBadRequestResponse({
+    description: 'Falta el correo o la contraseña, o no son válidos',
+  })
   @ApiTooManyRequestsResponse({ description: 'Demasiados intentos fallidos' })
+  @ApiServiceUnavailableResponse({
+    description:
+      'El proveedor de acceso no responde: probar de nuevo en unos minutos',
+  })
   login(
     @Body() dto: LoginDto,
     @Req() req: Request,
@@ -81,7 +90,14 @@ export class AuthController {
     description:
       'Email o contraseña incorrectos, cuenta no habilitada o no es de un administrador',
   })
+  @ApiBadRequestResponse({
+    description: 'Falta el correo o la contraseña, o no son válidos',
+  })
   @ApiTooManyRequestsResponse({ description: 'Demasiados intentos fallidos' })
+  @ApiServiceUnavailableResponse({
+    description:
+      'El proveedor de acceso no responde: probar de nuevo en unos minutos',
+  })
   async dashboardLogin(
     @Body() dto: LoginDto,
     @Req() req: Request,

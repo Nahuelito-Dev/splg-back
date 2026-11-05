@@ -33,6 +33,6 @@ export class BloqueoDeUsuarioDto {
   @ApiProperty()
   isBlocked!: boolean;
 
-  @ApiProperty({ example: 'Usuario BLOQUEADO 🚫' })
+  @ApiProperty({ example: 'Usuario bloqueado' })
   message!: string;
 }

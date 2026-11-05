@@ -37,6 +37,25 @@ describe('traducirErrorDeBase', () => {
     },
   );
 
+  it('un dato obligatorio vacío (23502) nombra el campo con su etiqueta, no con la columna', () => {
+    const llamar = () =>
+      traducirErrorDeBase(
+        { code: '23502', column: 'full_name', message: 'null value' },
+        logger,
+        'usuarios',
+      );
+    expect(llamar).toThrow('Falta un dato obligatorio: Nombre completo');
+  });
+
+  it('un dato obligatorio vacío sin etiqueta no muestra el nombre de la columna', () => {
+    const llamar = () =>
+      traducirErrorDeBase(
+        { code: '23502', column: 'columna_rara_xyz', message: 'null value' },
+        logger,
+      );
+    expect(llamar).toThrow(/^Falta un dato obligatorio$/);
+  });
+
   const warn = jest.fn();
   const error = jest.fn();
   // Referencias directas a los `jest.fn()`, no a `logger.warn`/`logger.error`:

@@ -60,6 +60,10 @@ export class AdminController {
     description:
       'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · el perfil de un admin de empresa exige X-Distributor y que coincida con distributor_id · Se envió un dato que no corresponde: Rol; Usuario: no es válido',
   })
+  @ApiNotFoundResponse({ description: 'El usuario no existe' })
+  @ApiConflictResponse({
+    description: 'El usuario ya tiene perfil de administrador',
+  })
   async create(
     @Body() createAdminDto: CreateAdminDto,
     @CurrentDistributor() distributorId: string | null,
@@ -124,6 +128,7 @@ export class AdminController {
       'con perfil de admin).',
   })
   @ApiOkResponse({ type: AdminResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiNotFoundResponse({
     description: 'No existe o es de otra distribuidora',
   })
@@ -185,6 +190,7 @@ export class AdminController {
       'super administrador.',
   })
   @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiForbiddenResponse({
     description: 'Se dio de baja a sí mismo (también el super admin)',
   })

@@ -380,9 +380,11 @@ describe('mensajes de Nest en castellano', () => {
       new HttpException('ThrottlerException: Too Many Requests', 429),
     );
     expect(t.getStatus()).toBe(429);
-    expect(t.getResponse()).toBe(
-      'Demasiadas solicitudes: probá de nuevo en unos instantes',
-    );
+    expect(t.getResponse()).toEqual({
+      statusCode: 429,
+      message: 'Demasiadas solicitudes: probá de nuevo en unos instantes',
+      error: 'Demasiadas solicitudes',
+    });
     expect(texto(new PayloadTooLargeException('File too large'))).toMatchObject(
       {
         message: 'El archivo es demasiado grande',

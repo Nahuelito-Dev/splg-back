@@ -150,6 +150,7 @@ export class UsersController {
     'Subir o reemplazar mi foto de perfil',
     UserResponseDto,
     'La sube cada usuario (cliente, chofer o admin) para su propia cuenta.',
+    { conNotFound: false },
   )
   @SubirFotoInterceptor()
   async uploadMyPhoto(
@@ -167,6 +168,7 @@ export class UsersController {
       'segundo plano). No da de baja la cuenta.',
   })
   @ApiOkResponse({ type: UserResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async removeMyPhoto(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<UserResponseDto> {
@@ -258,10 +260,12 @@ export class UsersController {
   }
 
   @Get(':id/photo')
-  @ApiVerFoto('Ver la foto de perfil de un usuario')
+  @ApiVerFoto(
+    'Ver la foto de perfil de un usuario',
+    'El id no es un UUID o el modo no es válido',
+  )
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiForbiddenResponse({ description: 'No es su cuenta' })
-  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async getPhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: DownloadQueryDto,
