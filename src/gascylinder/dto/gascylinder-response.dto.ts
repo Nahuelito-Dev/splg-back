@@ -18,7 +18,12 @@ export class GasCylinderResponseDto {
   @ApiProperty()
   price!: number;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Precio del envase vacío de este tipo; null: sin precio cargado',
+  })
   container_price!: number | null;
 
   @ApiProperty()

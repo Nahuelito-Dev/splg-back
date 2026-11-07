@@ -83,6 +83,7 @@ export class CreateGasCylinderDto {
   price!: number;
 
   @ApiPropertyOptional({
+    type: Number,
     nullable: true,
     description:
       'Precio de venta del envase vacío de este tipo (se cobra cuando el cliente pide más garrafas que los envases que tiene). null: sin precio cargado',
