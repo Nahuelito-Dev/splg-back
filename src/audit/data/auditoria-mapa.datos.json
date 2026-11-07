@@ -4694,11 +4694,19 @@
     },
     {
       "table": "gas_cylinder",
+      "column": "container_price",
+      "property": "containerPrice",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "gas_cylinder",
       "column": "stock",
       "property": "stock",
       "secret": false,
       "kind": "text",
-      "position": 5
+      "position": 6
     },
     {
       "table": "gas_cylinder",
@@ -4706,7 +4714,7 @@
       "property": "reservationDeficit",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 7
     },
     {
       "table": "gas_cylinder",
@@ -4714,7 +4722,7 @@
       "property": "averageUnitCost",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "gas_cylinder",
@@ -4722,7 +4730,7 @@
       "property": "description",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "gas_cylinder",
@@ -4730,7 +4738,7 @@
       "property": "isActive",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "gas_cylinder",
@@ -4738,7 +4746,7 @@
       "property": "photoKey",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "gas_cylinder_promotion",

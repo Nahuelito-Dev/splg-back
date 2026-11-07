@@ -1,5 +1,7 @@
+import { ArgumentMetadata, BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { crearValidationPipe } from '../../common/validation/validation-pipe';
 import { CreateGasCylinderDto } from './create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './update-gascylinder.dto';
 
@@ -10,6 +12,24 @@ const propiedadesInvalidas = async <T extends object>(
   (await validate(plainToInstance(clase, cuerpo))).map((e) => e.property);
 
 const valido = { type: 'Garrafa 10 kg', weight: 10, price: 15000 };
+
+const mensajesDeValidacion = async (
+  clase: new () => object,
+  cuerpo: object,
+): Promise<string[]> => {
+  const pipe = crearValidationPipe();
+  const metadata: ArgumentMetadata = { type: 'body', metatype: clase };
+  try {
+    await pipe.transform(cuerpo, metadata);
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    const response = (error as BadRequestException).getResponse() as {
+      message: string[];
+    };
+    return response.message;
+  }
+  return [];
+};
 
 describe('CreateGasCylinderDto', () => {
   it('un producto válido pasa', async () => {
@@ -73,6 +93,65 @@ describe('CreateGasCylinderDto', () => {
         }),
       ).toEqual([]);
     });
+  });
+
+  describe('container_price', () => {
+    it.each([0, -5, 12.345, 10_000_001, 'texto'])(
+      '%p es inválido',
+      async (container_price) => {
+        expect(
+          await propiedadesInvalidas(CreateGasCylinderDto, {
+            ...valido,
+            container_price,
+          }),
+        ).toContain('container_price');
+      },
+    );
+
+    it.each([0.01, 10_000_000, 106000])(
+      '%p es válido',
+      async (container_price) => {
+        expect(
+          await propiedadesInvalidas(CreateGasCylinderDto, {
+            ...valido,
+            container_price,
+          }),
+        ).toEqual([]);
+      },
+    );
+
+    it('null es válido y ausente en PATCH no se valida', async () => {
+      expect(
+        await propiedadesInvalidas(CreateGasCylinderDto, {
+          ...valido,
+          container_price: null,
+        }),
+      ).toEqual([]);
+      expect(await propiedadesInvalidas(UpdateGasCylinderDto, {})).toEqual([]);
+    });
+
+    it.each([
+      [0, 'Precio del envase: tiene que ser un número positivo'],
+      [
+        12.345,
+        'Precio del envase: tiene que ser un número válido (revisá la cantidad de decimales)',
+      ],
+      [10_000_001, 'Precio del envase: tiene que ser como máximo 10000000'],
+      [
+        'texto',
+        'Precio del envase: tiene que ser un número válido (revisá la cantidad de decimales)',
+      ],
+    ])(
+      'traduce %p al mensaje en castellano',
+      async (container_price, mensaje) => {
+        await expect(
+          mensajesDeValidacion(CreateGasCylinderDto, {
+            ...valido,
+            container_price,
+          }),
+        ).resolves.toContain(mensaje);
+      },
+    );
   });
 
   describe('promociones', () => {

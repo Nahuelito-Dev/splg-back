@@ -153,6 +153,49 @@ describe('GasCylinderService', () => {
     expect(productos.save).not.toHaveBeenCalled();
   });
 
+  describe('precio del envase', () => {
+    it('en el alta persiste container_price como containerPrice', async () => {
+      productos.findOne.mockResolvedValue(null);
+
+      await service.create(
+        {
+          type: '10kg',
+          weight: 10,
+          price: 100,
+          container_price: 106000,
+        },
+        'd1',
+      );
+
+      expect(productos.create).toHaveBeenCalledWith(
+        expect.objectContaining({ containerPrice: 106000 }),
+      );
+    });
+
+    it('en PATCH guarda el valor, null lo borra y ausente no lo toca', async () => {
+      productos.findOne.mockResolvedValue(producto(5));
+      const preload = jest.fn().mockResolvedValue(producto(5));
+      (productos as unknown as { preload: jest.Mock }).preload = preload;
+
+      await service.update('g1', { container_price: 106000 }, 'd1');
+      await service.update('g1', { container_price: null }, 'd1');
+      await service.update('g1', { price: 200 }, 'd1');
+
+      expect(preload).toHaveBeenNthCalledWith(1, {
+        gasCylinderId: 'g1',
+        containerPrice: 106000,
+      });
+      expect(preload).toHaveBeenNthCalledWith(2, {
+        gasCylinderId: 'g1',
+        containerPrice: null,
+      });
+      expect(preload).toHaveBeenNthCalledWith(3, {
+        gasCylinderId: 'g1',
+        price: 200,
+      });
+    });
+  });
+
   describe('stock vendible inicial y edición', () => {
     it('un producto nuevo con stock publica el evento para que el stock lo registre como físico', async () => {
       productos.findOne.mockResolvedValue(null);

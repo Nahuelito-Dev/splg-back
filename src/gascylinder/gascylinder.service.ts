@@ -97,6 +97,7 @@ export class GasCylinderService {
     assertPromocionesSinRepetir(createGasCylinderDto.promotions);
     const gasCylinder = this.gasCylinderRepository.create({
       ...createGasCylinderDto,
+      containerPrice: createGasCylinderDto.container_price ?? null,
       distributorId,
     });
     try {
@@ -126,6 +127,7 @@ export class GasCylinderService {
     assertPromocionesSinRepetir(dto.promotions);
     const gasCylinder = manager.getRepository(GasCylinder).create({
       ...dto,
+      containerPrice: dto.container_price ?? null,
       distributorId,
     });
     return this.guardarNueva(manager, gasCylinder, distributorId);
@@ -314,10 +316,15 @@ export class GasCylinderService {
         'El stock se cambia con un ajuste de stock (PATCH /gascylinder/{id}/stock o POST /stock/adjustments), no al editar el producto',
       );
     }
-    const { promotions, ...cambios } = updateGasCylinderDto;
+    const {
+      promotions,
+      container_price: containerPrice,
+      ...cambios
+    } = updateGasCylinderDto;
     const gasCylinder = await this.gasCylinderRepository.preload({
       gasCylinderId: id,
       ...cambios,
+      ...(containerPrice === undefined ? {} : { containerPrice }),
     });
 
     if (!gasCylinder) {

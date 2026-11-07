@@ -90,6 +90,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   comment: 'Comentario',
   compare: 'Comparar',
   condition: 'Condición',
+  container_price: 'Precio del envase',
   confirmOutOfRange: 'Confirmación fuera de rango',
   consumption: 'Consumo',
   contactName: 'Nombre de contacto',
