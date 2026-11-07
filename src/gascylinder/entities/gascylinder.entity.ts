@@ -20,6 +20,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
   `"price" > 0 AND "weight" > 0 AND "stock" >= 0 AND "reservation_deficit" >= 0 AND ("average_unit_cost" IS NULL OR "average_unit_cost" >= 0)`,
 )
 @Check('CHK_gas_cylinder_tipo', `btrim("type") <> ''`)
+@Check(
+  'CHK_gas_cylinder_precio_envase',
+  `"container_price" IS NULL OR "container_price" > 0`,
+)
 @Index('UQ_gas_cylinder_tipo_normalizado', { synchronize: false })
 @Unique('UQ_gas_cylinder_id_distribuidora', ['gasCylinderId', 'distributorId'])
 @Entity('gas_cylinder')
@@ -60,6 +64,17 @@ export class GasCylinder {
     transformer: columnNumericTransformer,
   })
   price!: number;
+
+  /** Precio de venta del envase vacío; null si no se vende por separado. */
+  @Column({
+    name: 'container_price',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: columnNumericTransformer,
+  })
+  containerPrice!: number | null;
 
   @Column({ type: 'int', default: 0 })
   stock!: number;

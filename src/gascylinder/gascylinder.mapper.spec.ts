@@ -8,6 +8,7 @@ const garrafa = (over: Partial<GasCylinder> = {}): GasCylinder =>
     type: 'Garrafa 10kg',
     weight: 10,
     price: 14900,
+    containerPrice: null,
     stock: 5,
     description: null,
     isActive: true,
@@ -20,6 +21,14 @@ const garrafa = (over: Partial<GasCylinder> = {}): GasCylinder =>
   }) as unknown as GasCylinder;
 
 describe('GasCylinderMapper · precio de cada promoción', () => {
+  it('incluye el precio del envase, incluso cuando todavía no está cargado', () => {
+    expect(GasCylinderMapper.toDto(garrafa()).container_price).toBeNull();
+    expect(
+      GasCylinderMapper.toDto(garrafa({ containerPrice: 106000 }))
+        .container_price,
+    ).toBe(106000);
+  });
+
   it('cada promoción trae el precio unitario que cobra el pedido, de menor a mayor cantidad', () => {
     expect(GasCylinderMapper.toDto(garrafa()).promotions).toEqual([
       { quantity: 2, discountPercentage: 5, unitPrice: 14155 },

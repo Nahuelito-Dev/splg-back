@@ -28,6 +28,7 @@ export class GasCylinderMapper {
     dto.type = g.type;
     dto.weight = g.weight;
     dto.price = g.price;
+    dto.container_price = g.containerPrice;
     dto.stock = g.stock;
     dto.description = g.description;
     dto.isActive = g.isActive;

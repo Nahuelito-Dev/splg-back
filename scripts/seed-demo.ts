@@ -240,6 +240,7 @@ const CATALOGO = [
     type: 'Garrafa 5kg',
     weight: 5,
     price: 8500,
+    containerPrice: null,
     stock: 140,
     description:
       'Envase de 5 kg. El más chico, para consumo puntual, camping o un anafe.',
@@ -249,6 +250,7 @@ const CATALOGO = [
     type: 'Garrafa 10kg',
     weight: 10,
     price: 14900,
+    containerPrice: 106000,
     stock: 260,
     description:
       'Envase de 10 kg. El de mayor rotación: cocina y calefacción de un hogar chico.',
@@ -261,6 +263,7 @@ const CATALOGO = [
     type: 'Garrafa 15kg',
     weight: 15,
     price: 21500,
+    containerPrice: 131000,
     stock: 95,
     description:
       'Envase de 15 kg. Familias grandes y comercios con consumo sostenido.',
@@ -270,6 +273,7 @@ const CATALOGO = [
     type: 'Garrafa 25kg',
     weight: 25,
     price: 34000,
+    containerPrice: null,
     stock: 40,
     description:
       'Envase de 25 kg. Uso comercial: parrillas, panaderías y hotelería.',
@@ -279,6 +283,7 @@ const CATALOGO = [
     type: 'Garrafa 45kg',
     weight: 45,
     price: 61500,
+    containerPrice: 99000,
     stock: 24,
     description:
       'Envase de 45 kg. Industria y gran consumo: cocinas de restaurante, lavaderos y secaderos.',
@@ -544,10 +549,18 @@ async function main() {
   for (const p of CATALOGO) {
     const [row] = await q(
       `INSERT INTO gas_cylinder
-         (distributor_id, type, weight, price, stock, description, "isActive")
-       VALUES ($1,$2,$3,$4,$5,$6,true)
+         (distributor_id, type, weight, price, container_price, stock, description, "isActive")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true)
        RETURNING gas_cylinder_id`,
-      [distId, p.type, p.weight, p.price, p.stock, p.description],
+      [
+        distId,
+        p.type,
+        p.weight,
+        p.price,
+        p.containerPrice,
+        p.stock,
+        p.description,
+      ],
     );
     for (const promo of p.promotions) {
       await q(

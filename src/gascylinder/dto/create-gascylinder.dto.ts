@@ -83,6 +83,17 @@ export class CreateGasCylinderDto {
   price!: number;
 
   @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Precio de venta del envase vacío de este tipo (se cobra cuando el cliente pide más garrafas que los envases que tiene). null: sin precio cargado',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  @Max(PRECIO_MAXIMO)
+  container_price?: number | null;
+
+  @ApiPropertyOptional({
     description:
       'Stock vendible inicial: se registra como físico del depósito predeterminado. ' +
       'En la edición (PATCH /gascylinder/{id}) no se admite: responde 400; el stock cambia con PATCH /gascylinder/{id}/stock.',
