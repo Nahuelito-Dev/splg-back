@@ -1,7 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 
 import { crearValidationPipe } from '../../common/validation/validation-pipe';
-import { CorrectDocumentReadingDto } from './document-reading.dto';
+import {
+  CorrectDocumentReadingDto,
+  RejectDocumentReadingDto,
+} from './document-reading.dto';
 
 describe('CorrectDocumentReadingDto', () => {
   const pipe = crearValidationPipe();
@@ -23,5 +26,33 @@ describe('CorrectDocumentReadingDto', () => {
     await expect(validar({ fields: 'x' })).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+});
+
+describe('RejectDocumentReadingDto', () => {
+  const pipe = crearValidationPipe();
+  const motivo = async (body: unknown): Promise<string[]> => {
+    try {
+      await pipe.transform(body, {
+        type: 'body',
+        metatype: RejectDocumentReadingDto,
+      });
+      return [];
+    } catch (e) {
+      const r = (e as BadRequestException).getResponse() as {
+        message: string | string[];
+      };
+      return ([] as string[]).concat(r.message);
+    }
+  };
+
+  it('sin motivo, lo primero que dice es que es obligatorio', async () => {
+    const mensajes = await motivo({});
+    expect(mensajes[0]).toBe('Motivo: es obligatorio');
+  });
+
+  it('un motivo vacío no pasa', async () => {
+    expect((await motivo({ reason: '' })).length).toBeGreaterThan(0);
+    expect(await motivo({ reason: 'No corresponde' })).toEqual([]);
   });
 });

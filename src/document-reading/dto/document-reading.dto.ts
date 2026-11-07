@@ -2,14 +2,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDefined,
   IsEnum,
   IsInt,
-  IsOptional,
+  IsNotEmpty,
   IsObject,
+  IsOptional,
   IsString,
   IsUUID,
-  MaxLength,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -246,7 +248,9 @@ export class CorrectDocumentReadingDto {
 }
 export class RejectDocumentReadingDto {
   @ApiProperty({ minLength: 1, maxLength: 500 })
+  @IsDefined()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(500)
   reason!: string;
 }
