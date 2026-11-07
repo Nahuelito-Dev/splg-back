@@ -11,6 +11,7 @@ import {
 } from './entities/document-reading.entity';
 import { DocumentReadingSettingsService } from './document-reading-settings.service';
 import { DocumentReconciliationService } from './document-reconciliation.service';
+import { AVISO_DE_NEGATIVA } from '../document-reader/document-reader.port';
 
 @Injectable()
 export class DocumentReadingProposalService {
@@ -33,7 +34,9 @@ export class DocumentReadingProposalService {
         this.avisarLectura(
           reading,
           'Documento ilegible',
-          'Documento ilegible: subí una imagen mejor.',
+          reading.warnings?.includes(AVISO_DE_NEGATIVA)
+            ? `${AVISO_DE_NEGATIVA}: cargá los datos a mano`
+            : 'Documento ilegible: subí una imagen mejor.',
           'ilegible',
         );
       return reading;

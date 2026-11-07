@@ -134,6 +134,7 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     // Lecturas de documentos (módulo M6)
     ['document_reading', 'attachment_id', 'attachment'],
     ['document_reading', 'duplicate_of_id', 'document_reading'],
+    ['document_reading_example', 'source_reading_id', 'document_reading'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

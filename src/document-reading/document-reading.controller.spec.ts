@@ -15,6 +15,7 @@ describe('DocumentReadingController', () => {
     const controller = new DocumentReadingController(
       {} as DocumentReadingService,
       { run } as unknown as DocumentReadingRunnerService,
+      {} as never,
     );
     await expect(controller.correr({ dryRun: true }, 'd1')).resolves.toEqual({
       distributors: 1,

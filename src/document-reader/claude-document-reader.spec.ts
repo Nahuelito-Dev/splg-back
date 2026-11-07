@@ -26,7 +26,12 @@ interface Pedido {
 }
 
 const respuesta = (salida: unknown, extra: Record<string, unknown> = {}) => ({
-  parsed_output: salida,
+  content: [
+    {
+      type: 'text' as const,
+      text: typeof salida === 'string' ? salida : JSON.stringify(salida),
+    },
+  ],
   stop_reason: 'end_turn',
   model: 'claude-opus-5-5',
   usage: {
@@ -39,21 +44,21 @@ const respuesta = (salida: unknown, extra: Record<string, unknown> = {}) => ({
 });
 
 function armar(resultado: unknown) {
-  const parse = jest.fn((pedido: Pedido) => {
+  const create = jest.fn((pedido: Pedido) => {
     void pedido;
     if (typeof resultado === 'function')
       return Promise.reject((resultado as () => Error)());
     return Promise.resolve(resultado);
   });
   const cliente = {
-    beta: { messages: { parse } },
+    beta: { messages: { create } },
   } as unknown as ClienteAnthropic;
   const lector = new ClaudeDocumentReader(cliente, {
     modelo: 'claude-opus-5-5',
     esfuerzo: 'medium',
   });
-  const pedido = () => parse.mock.calls[0][0];
-  return { lector, parse, pedido };
+  const pedido = () => create.mock.calls[0][0];
+  return { lector, create, pedido };
 }
 
 const pdf = {
@@ -108,7 +113,7 @@ describe('ClaudeDocumentReader', () => {
   });
 
   it('no manda al servicio un formato que no lee, un archivo vacío ni uno demasiado grande', async () => {
-    const { lector, parse } = armar(respuesta(null));
+    const { lector, create } = armar(respuesta(null));
     await expect(
       lector.leer({ buffer: Buffer.from('x'), mimeType: 'text/plain' }),
     ).resolves.toBeNull();
@@ -121,7 +126,7 @@ describe('ClaudeDocumentReader', () => {
         mimeType: 'application/pdf',
       }),
     ).resolves.toBeNull();
-    expect(parse).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('pasa lo esperado y las correcciones anteriores en el pedido', async () => {
@@ -157,7 +162,8 @@ describe('ClaudeDocumentReader', () => {
       }),
     );
     const lectura = await lector.leer(pdf);
-    expect(lectura?.campos.map((c) => c.nombre)).toEqual(['vencimiento']);
+    if (!lectura || 'fallida' in lectura) throw new Error('lectura fallida');
+    expect(lectura.campos.map((c) => c.nombre)).toEqual(['vencimiento']);
   });
 
   it('anula con un aviso el dato que no tiene el formato esperado', async () => {
@@ -170,12 +176,13 @@ describe('ClaudeDocumentReader', () => {
       }),
     );
     const lectura = await lector.leer(pdf);
-    expect(lectura?.campos[0]).toEqual({
+    if (!lectura || 'fallida' in lectura) throw new Error('lectura fallida');
+    expect(lectura.campos[0]).toEqual({
       nombre: 'importe',
       valor: null,
       confianza: 'baja',
     });
-    expect(lectura?.avisos).toEqual([
+    expect(lectura.avisos).toEqual([
       'ya venía un aviso',
       expect.stringContaining('«38.390,00»') as string,
     ]);
@@ -205,11 +212,61 @@ describe('ClaudeDocumentReader', () => {
     });
   });
 
-  it('un rechazo del servicio, una salida inválida o un error de la API no rompen: devuelve null', async () => {
+  it('con el modelo de respaldo usa el texto que viene después del último corte', async () => {
+    const valida = {
+      tipo: TipoDeDocumento.COMPROBANTE_DE_PAGO,
+      legible: true,
+      campos: [{ nombre: 'importe', valor: '29958.00', confianza: 'alta' }],
+      avisos: [],
+    };
+    const conRespaldo = respuesta(valida, {
+      model: 'claude-sonnet-5-5',
+      content: [
+        { type: 'text', text: '{"tipo":"comprobante_de' },
+        { type: 'fallback' },
+        { type: 'text', text: JSON.stringify(valida) },
+      ],
+    });
+    await expect(armar(conRespaldo).lector.leer(pdf)).resolves.toMatchObject({
+      legible: true,
+      campos: [{ nombre: 'importe', valor: '29958.00' }],
+      uso: { modelo: 'claude-sonnet-5-5' },
+    });
+  });
+
+  it('una salida cortada por max_tokens es una fallida reintentable con su consumo', async () => {
+    await expect(
+      armar(
+        respuesta(
+          '{"tipo":"comprobante_de_pago","legible":true,"campos":[{"nom',
+          {
+            stop_reason: 'max_tokens',
+          },
+        ),
+      ).lector.leer(pdf),
+    ).resolves.toMatchObject({ fallida: true, uso: { costoUsd: 0.008 } });
+  });
+
+  it('conserva el consumo: rechazo ilegible, JSON inválido o esquema inválido reintentables; error de API null', async () => {
     await expect(
       armar(respuesta(null, { stop_reason: 'refusal' })).lector.leer(pdf),
-    ).resolves.toBeNull();
-    await expect(armar(respuesta(null)).lector.leer(pdf)).resolves.toBeNull();
+    ).resolves.toMatchObject({
+      legible: false,
+      tipo: 'otro',
+      avisos: ['El servicio de lectura no quiso procesar este documento'],
+      uso: { costoUsd: 0.008 },
+    });
+    await expect(armar(respuesta('{')).lector.leer(pdf)).resolves.toMatchObject(
+      { fallida: true, uso: { costoUsd: 0.008 } },
+    );
+    await expect(
+      armar(
+        respuesta(
+          { tipo: TipoDeDocumento.OTRO, legible: false },
+          { stop_reason: 'end_turn' },
+        ),
+      ).lector.leer(pdf),
+    ).resolves.toMatchObject({ fallida: true, uso: { costoUsd: 0.008 } });
     const caido = armar(() => {
       throw new Anthropic.APIError(529, undefined, 'Overloaded', new Headers());
     });

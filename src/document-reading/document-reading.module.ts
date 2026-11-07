@@ -21,6 +21,10 @@ import { PurchaseReceipt } from '../purchase/entities/purchase-receipt.entity';
 import { PurchaseOrder } from '../purchase/entities/purchase-order.entity';
 import { Supplier } from '../purchase/entities/supplier.entity';
 import { Employee } from '../employee/entities/employee.entity';
+import { DocumentReadingExample } from './entities/document-reading-example.entity';
+import { DocumentReadingDecisionService } from './document-reading-decision.service';
+import { InsuranceModule } from '../insurance/insurance.module';
+import { FleetExpenseModule } from '../fleet-expense/fleet-expense.module';
 
 /**
  * Lecturas de documentos del módulo M6 (lo que se extrajo de cada adjunto).
@@ -31,6 +35,7 @@ import { Employee } from '../employee/entities/employee.entity';
   imports: [
     TypeOrmModule.forFeature([
       DocumentReading,
+      DocumentReadingExample,
       Attachment,
       InsuranceInstallment,
       TrafficFine,
@@ -42,6 +47,8 @@ import { Employee } from '../employee/entities/employee.entity';
       Employee,
     ]),
     S3Module,
+    InsuranceModule,
+    FleetExpenseModule,
   ],
   controllers: [DocumentReadingController],
   providers: [
@@ -53,6 +60,7 @@ import { Employee } from '../employee/entities/employee.entity';
     DocumentReconciliationService,
     DocumentReadingProposalService,
     DocumentReadingProposalCron,
+    DocumentReadingDecisionService,
   ],
   exports: [
     DocumentReadingService,

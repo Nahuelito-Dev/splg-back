@@ -88,4 +88,5 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   VehicleAccident: 'Siniestro',
   Warehouse: 'Depósito',
   DocumentReading: 'Lectura de documento',
+  DocumentReadingExample: 'Ejemplo de corrección de lectura',
 };

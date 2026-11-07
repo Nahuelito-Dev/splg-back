@@ -3,7 +3,9 @@ import { Injectable } from '@nestjs/common';
 import {
   CampoLeido,
   DocumentReaderPort,
+  esLecturaFallida,
   NivelDeConfianza,
+  AVISO_DE_NEGATIVA,
 } from '../document-reader/document-reader.port';
 import { TipoDeDocumento } from '../document-reader/tipos-de-documento';
 import { DocumentReadingService } from '../document-reading/document-reading.service';
@@ -63,7 +65,13 @@ export class LectorDeComprobantesSobreDocumentos extends ReceiptReaderPort {
       // La concilia el barrido periódico, con margen para que el admin termine el pago.
       lectura = resultado.lectura;
     } else lectura = await this.documentos.leer(archivo, opciones);
-    if (!lectura) return null;
+    if (
+      !lectura ||
+      esLecturaFallida(lectura) ||
+      // Sólo la negativa del servicio va a carga manual; un ilegible común trae sus avisos.
+      (!lectura.legible && lectura.avisos.includes(AVISO_DE_NEGATIVA))
+    )
+      return null;
     const valor = (nombre: string) =>
       lectura.campos.find((c) => c.nombre === nombre)?.valor ?? null;
     const avisos = [...lectura.avisos];

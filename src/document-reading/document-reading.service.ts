@@ -7,10 +7,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
+import { DocumentReadingExample } from './entities/document-reading-example.entity';
 
 import {
   ArchivoDeDocumento,
   DocumentReaderPort,
+  esLecturaFallida,
   LecturaDeDocumento,
   OpcionesDeLectura,
 } from '../document-reader/document-reader.port';
@@ -54,6 +56,15 @@ const CERROJO_ESPERA_MS = 45_000;
 const ORIGINALES = ESTADOS_LEIDOS.filter(
   (e) => e !== DocumentReadingStatus.DUPLICATE,
 );
+const CAMPOS_DE_FORMATO = new Set([
+  'cuit_del_emisor',
+  'cuit_del_destinatario',
+  'destinatario',
+  'patente',
+  'numero_de_poliza',
+  'titular',
+  'documento',
+]);
 
 /**
  * Las lecturas de documentos del módulo M6: cada adjunto se lee una sola vez,
@@ -69,6 +80,8 @@ export class DocumentReadingService {
     private readonly repo: Repository<DocumentReading>,
     private readonly lector: DocumentReaderPort,
     private readonly redis: RedisService,
+    @InjectRepository(DocumentReadingExample)
+    private readonly examples: Repository<DocumentReadingExample>,
   ) {}
 
   get disponible(): boolean {
@@ -139,6 +152,7 @@ export class DocumentReadingService {
         lastError: null,
         proposal: null,
         proposalExpiresAt: null,
+        attemptedAt: null,
         remindedAt: null,
         escalatedAt: null,
         readAt: null,
@@ -168,11 +182,25 @@ export class DocumentReadingService {
     }
 
     registro.attempts += 1;
-    const lectura = await this.lector.leer(archivo, opciones);
-    if (!lectura) {
+    const opcionesConEjemplos = await this.conEjemplos(distributorId, opciones);
+    const lectura = await this.lector.leer(archivo, opcionesConEjemplos);
+    // Sólo un intento que llegó al proveedor (con consumo) cuenta para el gasto del mes;
+    // un error de red no mueve de mes lo que ya se había gastado.
+    if (lectura) registro.attemptedAt = new Date();
+    if (!lectura || esLecturaFallida(lectura)) {
       Object.assign(registro, {
         status: DocumentReadingStatus.FAILED,
         lastError: 'El servicio de lectura no devolvió un resultado',
+        ...(lectura
+          ? {
+              model: lectura.uso.modelo,
+              inputTokens: registro.inputTokens + lectura.uso.tokensDeEntrada,
+              outputTokens: registro.outputTokens + lectura.uso.tokensDeSalida,
+              costUsd: Number(
+                (Number(registro.costUsd) + lectura.uso.costoUsd).toFixed(6),
+              ),
+            }
+          : {}),
       });
       const guardado = await this.repo.save(registro);
       return { registro: guardado, lectura: null };
@@ -200,6 +228,36 @@ export class DocumentReadingService {
       `Lectura ${guardado.readingId}: ${lectura.tipo}, ${lectura.campos.length} campos, US$ ${lectura.uso.costoUsd}`,
     );
     return { registro: guardado, lectura };
+  }
+
+  private async conEjemplos(
+    distributorId: string,
+    opciones?: OpcionesDeLectura,
+  ): Promise<OpcionesDeLectura | undefined> {
+    if (!opciones?.tipoEsperado) return opciones;
+    const filas =
+      (await this.examples.find({
+        where: { distributorId, documentType: opciones.tipoEsperado },
+        order: { createdAt: 'DESC' },
+        take: 30,
+      })) ?? [];
+    const vistos = new Set<string>();
+    const ejemplos = filas
+      .filter((e) => {
+        if (!CAMPOS_DE_FORMATO.has(e.field) || e.readValue === e.correctValue)
+          return false;
+        const k = `${e.field}\u0000${e.correctValue}`;
+        if (vistos.has(k)) return false;
+        vistos.add(k);
+        return true;
+      })
+      .slice(0, 10)
+      .map((e) => ({
+        campo: e.field,
+        leido: e.readValue,
+        correcto: e.correctValue,
+      }));
+    return { ...opciones, ...(ejemplos.length ? { ejemplos } : {}) };
   }
 
   /**
@@ -280,9 +338,9 @@ export class DocumentReadingService {
       .select('COUNT(*) FILTER (WHERE r.input_tokens > 0)', 'lecturas')
       .addSelect('COALESCE(SUM(r.cost_usd), 0)', 'costo')
       .where('r.distributor_id = :distributorId', { distributorId })
-      // El mes en que se leyó (y se pagó), no el de la subida.
+      // El mes del intento que llegó al proveedor, aunque no haya podido leer.
       .andWhere(
-        `date_trunc('month', r.read_at AT TIME ZONE 'America/Argentina/Buenos_Aires') = date_trunc('month', CAST(:fecha AS timestamptz) AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
+        `date_trunc('month', r.attempted_at AT TIME ZONE 'America/Argentina/Buenos_Aires') = date_trunc('month', CAST(:fecha AS timestamptz) AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
         { fecha: fecha.toISOString() },
       )
       .getRawOne<{ lecturas: string; costo: string }>();

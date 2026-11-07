@@ -61,11 +61,12 @@ describe('migración de la conciliación de documentos (e2e)', () => {
 
   it('marca lo leído antes como conciliado, revierte dejando las propuestas en read y vuelve a correr', async () => {
     await ds.runMigrations();
-    expect(await ultima()).toBe('AuditoriaDeLaConciliacion1795000000004');
-    // Volver a antes de la conciliación (la auditoría y la propia migración).
-    await ds.undoLastMigration();
-    await ds.undoLastMigration();
-    expect(await ultima()).toBe('LecturaAutomaticaDeDocumentos1795000000002');
+    const final = await ultima();
+    // Volver a antes de la conciliación (ésta y las que vinieron después).
+    const volverA = async (nombre: string) => {
+      while ((await ultima()) !== nombre) await ds.undoLastMigration();
+    };
+    await volverA('LecturaAutomaticaDeDocumentos1795000000002');
     expect(await columnas()).toEqual([]);
 
     const [{ distributor_id: dist }]: Array<{ distributor_id: string }> =
@@ -130,8 +131,7 @@ describe('migración de la conciliación de documentos (e2e)', () => {
       `UPDATE document_reading SET status = 'proposed', proposal = '{"action":"review"}', proposal_expires_at = now() WHERE reading_id = $1`,
       [leida],
     );
-    await ds.undoLastMigration();
-    await ds.undoLastMigration();
+    await volverA('LecturaAutomaticaDeDocumentos1795000000002');
     expect(await columnas()).toEqual([]);
     const [{ status }]: Array<{ status: string }> = await ds.query(
       `SELECT status FROM document_reading WHERE reading_id = $1`,
@@ -140,6 +140,6 @@ describe('migración de la conciliación de documentos (e2e)', () => {
     expect(status).toBe('read');
 
     await ds.runMigrations();
-    expect(await ultima()).toBe('AuditoriaDeLaConciliacion1795000000004');
+    expect(await ultima()).toBe(final);
   });
 });

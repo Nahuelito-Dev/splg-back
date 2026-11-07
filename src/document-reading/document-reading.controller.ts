@@ -33,6 +33,14 @@ import {
   RunDocumentReadingsDto,
 } from './dto/document-reading.dto';
 import { DocumentReadingRunnerService } from './document-reading-runner.service';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { DocumentReadingDecisionService } from './document-reading-decision.service';
+import {
+  ConfirmDocumentReadingDto,
+  CorrectDocumentReadingDto,
+  RejectDocumentReadingDto,
+} from './dto/document-reading.dto';
 
 const FALTA_DISTRIBUIDORA = 'Falta la distribuidora (`X-Distributor`)';
 
@@ -43,6 +51,7 @@ export class DocumentReadingController {
   constructor(
     private readonly lecturas: DocumentReadingService,
     private readonly runner: DocumentReadingRunnerService,
+    private readonly decisions: DocumentReadingDecisionService,
   ) {}
 
   @Post('run')
@@ -119,6 +128,80 @@ export class DocumentReadingController {
   ): Promise<DocumentReadingDto> {
     return DocumentReadingMapper.toDto(
       await this.lecturas.obtener(id, distributorId),
+    );
+  }
+  @Post(':id/confirm')
+  @HttpCode(200)
+  @Idempotent()
+  @ApiOperation({ summary: 'Confirmar una propuesta de lectura' })
+  @ApiParam({ name: 'id', description: 'UUID de la lectura propuesta' })
+  @ApiOkResponse({ type: DocumentReadingDto })
+  @ApiBadRequestResponse({
+    description:
+      'El id o los datos son inválidos; una diferencia de importe o fecha exige corregir o rechazar.',
+  })
+  @ApiNotFoundResponse({
+    description: 'La lectura no existe en esta distribuidora',
+  })
+  @ApiConflictResponse({
+    description:
+      'La propuesta ya fue resuelta o el pago choca con su estado actual',
+  })
+  async confirmar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmDocumentReadingDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DocumentReadingDto> {
+    return DocumentReadingMapper.toDto(
+      await this.decisions.confirmar(id, dto, distributorId, user.user_id),
+    );
+  }
+  @Post(':id/correct')
+  @HttpCode(200)
+  @Idempotent()
+  @ApiOperation({ summary: 'Corregir y confirmar una propuesta de lectura' })
+  @ApiParam({ name: 'id', description: 'UUID de la lectura propuesta' })
+  @ApiOkResponse({ type: DocumentReadingDto })
+  @ApiBadRequestResponse({
+    description: 'El id, una corrección o los datos del pago son inválidos',
+  })
+  @ApiNotFoundResponse({
+    description: 'La lectura no existe en esta distribuidora',
+  })
+  @ApiConflictResponse({
+    description:
+      'La propuesta ya fue resuelta o el pago choca con su estado actual',
+  })
+  async corregir(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CorrectDocumentReadingDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DocumentReadingDto> {
+    return DocumentReadingMapper.toDto(
+      await this.decisions.corregir(id, dto, distributorId, user.user_id),
+    );
+  }
+  @Post(':id/reject')
+  @HttpCode(200)
+  @Idempotent()
+  @ApiOperation({ summary: 'Rechazar una propuesta de lectura' })
+  @ApiParam({ name: 'id', description: 'UUID de la lectura propuesta' })
+  @ApiOkResponse({ type: DocumentReadingDto })
+  @ApiBadRequestResponse({ description: 'El id o el motivo son inválidos' })
+  @ApiNotFoundResponse({
+    description: 'La lectura no existe en esta distribuidora',
+  })
+  @ApiConflictResponse({ description: 'La propuesta ya fue resuelta' })
+  async rechazar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectDocumentReadingDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DocumentReadingDto> {
+    return DocumentReadingMapper.toDto(
+      await this.decisions.rechazar(id, dto, distributorId, user.user_id),
     );
   }
 }
