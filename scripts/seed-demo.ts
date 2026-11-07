@@ -239,8 +239,8 @@ const CATALOGO = [
   {
     type: 'Garrafa 5kg',
     weight: 5,
-    price: 8500,
-    containerPrice: null,
+    price: 16000,
+    containerPrice: 120000,
     stock: 140,
     description:
       'Envase de 5 kg. El más chico, para consumo puntual, camping o un anafe.',
@@ -249,8 +249,8 @@ const CATALOGO = [
   {
     type: 'Garrafa 10kg',
     weight: 10,
-    price: 14900,
-    containerPrice: 106000,
+    price: 29000,
+    containerPrice: 165000,
     stock: 260,
     description:
       'Envase de 10 kg. El de mayor rotación: cocina y calefacción de un hogar chico.',
@@ -262,8 +262,8 @@ const CATALOGO = [
   {
     type: 'Garrafa 15kg',
     weight: 15,
-    price: 21500,
-    containerPrice: 131000,
+    price: 44000,
+    containerPrice: 210000,
     stock: 95,
     description:
       'Envase de 15 kg. Familias grandes y comercios con consumo sostenido.',
@@ -272,8 +272,8 @@ const CATALOGO = [
   {
     type: 'Garrafa 25kg',
     weight: 25,
-    price: 34000,
-    containerPrice: null,
+    price: 72000,
+    containerPrice: 300000,
     stock: 40,
     description:
       'Envase de 25 kg. Uso comercial: parrillas, panaderías y hotelería.',
@@ -282,8 +282,8 @@ const CATALOGO = [
   {
     type: 'Garrafa 45kg',
     weight: 45,
-    price: 61500,
-    containerPrice: 99000,
+    price: 110000,
+    containerPrice: 420000,
     stock: 24,
     description:
       'Envase de 45 kg. Industria y gran consumo: cocinas de restaurante, lavaderos y secaderos.',
