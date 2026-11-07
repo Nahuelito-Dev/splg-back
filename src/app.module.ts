@@ -24,6 +24,7 @@ import { CarModule } from './car/car.module';
 import { RoleModule } from './role/role.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { CustomersModule } from './customer/customer.module';
+import { CustomerContainerModule } from './customer-container/customer-container.module';
 import { OrderModule } from './order/order.module';
 import { GasCylinderModule } from './gascylinder/gascylinder.module';
 import { EmailModule } from './email/email.module';
@@ -233,6 +234,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     RoleModule,
     DeliveryModule,
     CustomersModule,
+    CustomerContainerModule,
     OrderModule,
     GasCylinderModule,
     EmailModule,

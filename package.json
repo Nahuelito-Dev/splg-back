@@ -16,6 +16,7 @@
     "auditoria:mapa": "ts-node --files scripts/auditoria-mapa.ts",
     "seed:demo": "ts-node --files scripts/seed-demo.ts",
     "cuentas:demo": "ts-node --files scripts/cuentas-demo.ts",
+    "envases:saldo-inicial": "ts-node --files scripts/cuenta-de-envases-inicial.ts",
     "s3:diagnostico": "ts-node --files scripts/diagnostico-bucket.ts",
     "fotos:demo": "ts-node --files scripts/completar-fotos-demo.ts",
     "fotos:reales": "ts-node --files scripts/fotos-reales-demo.ts",

@@ -41,6 +41,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   insurance_policy: 'policy_id',
   attachment: 'attachment_id',
   document_reading: 'reading_id',
+  customer_container_account: 'account_id',
   mp_reconciliation: 'reconciliation_id',
 };
 
@@ -135,6 +136,10 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['document_reading', 'attachment_id', 'attachment'],
     ['document_reading', 'duplicate_of_id', 'document_reading'],
     ['document_reading_example', 'source_reading_id', 'document_reading'],
+    // Cuenta de envases (F35 E2)
+    ['customer_container_account', 'gas_cylinder_id', 'gas_cylinder'],
+    ['customer_container_movement', 'account_id', 'customer_container_account'],
+    ['customer_container_movement', 'order_id', 'order'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>
