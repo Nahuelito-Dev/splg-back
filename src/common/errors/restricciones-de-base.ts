@@ -122,6 +122,12 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_stock_movement_origen_destino_distintos:
     'El movimiento de stock tiene que cambiar de lugar o de condición',
   CHK_stock_adjustment_notas: 'El ajuste de stock necesita una nota',
+  CHK_customer_container_account_owned:
+    'La cantidad de envases propios no puede ser negativa',
+  CHK_customer_container_movement_quantity:
+    'El movimiento de envases tiene que tener una cantidad distinta de cero',
+  CHK_customer_container_movement_note:
+    'El ajuste de envases necesita una nota de entre 10 y 500 caracteres',
   // Compras
   CHK_purchase_order_cancelada:
     'Una orden de compra cancelada necesita el motivo',

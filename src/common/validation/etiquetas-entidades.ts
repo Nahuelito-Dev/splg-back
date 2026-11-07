@@ -19,6 +19,8 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   CoverageZone: 'Zona de cobertura',
   Customer: 'Cliente',
   Cylinder: 'Envase físico',
+  CustomerContainerAccount: 'Cuenta de envases del cliente',
+  CustomerContainerMovement: 'Movimiento de envases del cliente',
   CylinderInspection: 'Inspección de envase',
   CylinderRecoveryCase: 'Caso de recupero de envase',
   CylinderRecoveryNotice: 'Aviso de recupero de envase',

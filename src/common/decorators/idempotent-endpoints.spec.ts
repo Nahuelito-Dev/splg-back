@@ -10,6 +10,7 @@ import { OrderController } from '../../order/order.controller';
 import { LeaveController } from '../../leave/leave.controller';
 import { AttendanceController } from '../../attendance/attendance.controller';
 import { DocumentReadingController } from '../../document-reading/document-reading.controller';
+import { CustomerContainerController } from '../../customer-container/customer-container.controller';
 
 type Clase = { name: string; prototype: object };
 
@@ -25,6 +26,7 @@ const IDEMPOTENTES: Array<[Clase, string[]]> = [
   [LeaveController, ['create']],
   [AttendanceController, ['register', 'checkIn', 'checkOut']],
   [DocumentReadingController, ['confirmar', 'corregir', 'rechazar']],
+  [CustomerContainerController, ['ajustar']],
   [
     OrderController,
     [

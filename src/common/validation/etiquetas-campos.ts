@@ -108,6 +108,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   customerId: 'Cliente',
   customerUserId: 'Usuario del cliente',
   cylinderId: 'Envase',
+  gas_cylinder_id: 'Tipo de envase',
   cylinderTypeId: 'Tipo de envase',
   date: 'Fecha',
   days: 'Días',

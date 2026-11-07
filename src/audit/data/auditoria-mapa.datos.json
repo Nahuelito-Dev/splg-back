@@ -290,6 +290,38 @@
       "orderColumn": null
     },
     {
+      "table": "customer_container_account",
+      "entity": "CustomerContainerAccount",
+      "pk": [
+        "account_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "customer_container_movement",
+      "entity": "CustomerContainerMovement",
+      "pk": [
+        "movement_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "customer_distributor",
       "entity": "CustomerDistributor",
       "pk": [
@@ -2731,6 +2763,110 @@
       "secret": false,
       "kind": "text",
       "position": 12
+    },
+    {
+      "table": "customer_container_account",
+      "column": "account_id",
+      "property": "accountId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "customer_container_account",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "customer_container_account",
+      "column": "customer_user_id",
+      "property": "customerUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "customer_container_account",
+      "column": "gas_cylinder_id",
+      "property": "gasCylinderId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "customer_container_account",
+      "column": "owned",
+      "property": "owned",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "movement_id",
+      "property": "movementId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "account_id",
+      "property": "accountId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "quantity",
+      "property": "quantity",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "order_id",
+      "property": "orderId",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "note",
+      "property": "note",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "customer_container_movement",
+      "column": "actor_user_id",
+      "property": "actorUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 7
     },
     {
       "table": "customer_distributor",
