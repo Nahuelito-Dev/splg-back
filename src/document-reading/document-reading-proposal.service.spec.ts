@@ -72,6 +72,19 @@ describe('DocumentReadingProposalService', () => {
     expect(repo.update).toHaveBeenCalled();
     expect(events.emit).toHaveBeenCalled();
   });
+  it('pide carga manual cuando Claude negó procesar el documento', async () => {
+    const ilegible = {
+      ...reading(DocumentReadingStatus.UNREADABLE),
+      warnings: ['El servicio de lectura no quiso procesar este documento'],
+    } as DocumentReading;
+    await service.procesarLectura(ilegible);
+    expect(events.emit).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: 'El servicio de lectura no quiso procesar este documento: cargá los datos a mano',
+      }),
+    );
+  });
   it('recuerda una vez y luego escala sin repetir', async () => {
     const pending = {
       ...reading(DocumentReadingStatus.PROPOSED),

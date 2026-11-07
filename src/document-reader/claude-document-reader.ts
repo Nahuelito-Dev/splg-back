@@ -5,10 +5,12 @@ import { z } from 'zod';
 
 import {
   ArchivoDeDocumento,
+  LecturaFallida,
   CampoLeido,
   DocumentReaderPort,
   LecturaDeDocumento,
   OpcionesDeLectura,
+  AVISO_DE_NEGATIVA,
 } from './document-reader.port';
 import {
   CATALOGO_DE_DOCUMENTOS,
@@ -245,11 +247,13 @@ export class ClaudeDocumentReader extends DocumentReaderPort {
   async leer(
     archivo: ArchivoDeDocumento,
     opciones: OpcionesDeLectura = {},
-  ): Promise<LecturaDeDocumento | null> {
+  ): Promise<LecturaDeDocumento | LecturaFallida | null> {
     const bloque = this.bloqueDelArchivo(archivo);
     if (!bloque) return null;
     try {
-      const respuesta = await this.cliente.beta.messages.parse({
+      // `parse` arroja antes de entregarnos usage si el JSON no valida. Con
+      // `create` la respuesta (y su consumo) siempre llega hasta acá.
+      const respuesta = await this.cliente.beta.messages.create({
         model: this.configuracion.modelo,
         max_tokens: 8000,
         betas: ['server-side-fallback-2026-07-01'],
@@ -274,16 +278,41 @@ export class ClaudeDocumentReader extends DocumentReaderPort {
       });
       if (respuesta.stop_reason === 'refusal') {
         this.logger.warn('El servicio de lectura declinó el documento');
-        return null;
+        return this.inutil(respuesta.model, respuesta.usage, AVISO_DE_NEGATIVA);
       }
-      const leido = respuesta.parsed_output;
-      if (!leido) {
+      // Con el respaldo del servidor, lo que vale es la salida del último modelo: el texto
+      // que viene después del último bloque `fallback` (lo anterior se descarta).
+      const bloques = respuesta.content;
+      const corte = bloques.map((b) => b.type).lastIndexOf('fallback');
+      const texto = bloques
+        .slice(corte + 1)
+        .filter(
+          (b): b is Extract<(typeof bloques)[number], { type: 'text' }> =>
+            b.type === 'text',
+        )
+        .pop();
+      const resultado =
+        respuesta.stop_reason === 'max_tokens' || !texto
+          ? null
+          : LecturaDelModelo.safeParse(
+              (() => {
+                try {
+                  return JSON.parse(texto.text) as unknown;
+                } catch {
+                  return null;
+                }
+              })(),
+            );
+      if (!resultado || !resultado.success) {
         this.logger.warn(
           `Lectura sin resultado válido (stop_reason=${respuesta.stop_reason})`,
         );
-        return null;
+        return {
+          fallida: true,
+          uso: this.uso(respuesta.model, respuesta.usage),
+        };
       }
-      return this.armar(leido, respuesta.model, respuesta.usage);
+      return this.armar(resultado.data, respuesta.model, respuesta.usage);
     } catch (error) {
       if (error instanceof Anthropic.APIError) {
         this.logger.warn(
@@ -294,6 +323,29 @@ export class ClaudeDocumentReader extends DocumentReaderPort {
       }
       return null;
     }
+  }
+
+  private uso(modelo: string, usage: UsoDeTokens) {
+    return this.armar(
+      { tipo: TipoDeDocumento.OTRO, legible: false, campos: [], avisos: [] },
+      modelo,
+      usage,
+    ).uso;
+  }
+
+  private inutil(
+    modelo: string,
+    usage: UsoDeTokens,
+    aviso: string,
+  ): LecturaDeDocumento {
+    const uso = this.uso(modelo, usage);
+    return {
+      tipo: TipoDeDocumento.OTRO,
+      legible: false,
+      campos: [],
+      avisos: [aviso],
+      uso,
+    };
   }
 
   private bloqueDelArchivo(archivo: ArchivoDeDocumento) {

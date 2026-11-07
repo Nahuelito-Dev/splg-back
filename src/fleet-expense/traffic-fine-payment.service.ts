@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { AttachmentService } from '../attachment/attachment.service';
 import type { AttachmentActor } from '../attachment/attachment.service';
 import { AttachmentOwnerType } from '../attachment/entities/attachment.entity';
@@ -113,6 +113,23 @@ export class TrafficFinePaymentService {
     distributorId: string,
     userId: string,
   ): Promise<void> {
+    try {
+      await this.dataSource.transaction((manager) =>
+        this.pagarEn(manager, id, dto, distributorId, userId),
+      );
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'multas');
+    }
+  }
+
+  /** Ejecuta el pago dentro de una transacción ya abierta. */
+  async pagarEn(
+    manager: EntityManager,
+    id: string,
+    dto: PayTrafficFineV2Dto,
+    distributorId: string,
+    userId: string,
+  ): Promise<void> {
     const pagadoEn = instanteDelPago(dto.paidAt);
     if (Number.isNaN(pagadoEn.getTime())) {
       throw new BadRequestException('Fecha de pago: fecha inválida');
@@ -122,83 +139,73 @@ export class TrafficFinePaymentService {
         'Fecha de pago: no puede ser posterior a hoy',
       );
     }
-    try {
-      await this.dataSource.transaction(async (manager) => {
-        const multa = await manager.findOne(TrafficFine, {
-          where: { fineId: id, distributorId },
-          relations: { car: true },
-          lock: { mode: 'pessimistic_write', tables: ['traffic_fine'] },
-        });
-        if (!multa) throw new NotFoundException('Multa no encontrada');
-        if (multa.status === TrafficFineStatus.PAID) {
-          throw new ConflictException('La multa ya está paga');
-        }
-        if (!multaAbierta(multa.status)) {
-          throw new ConflictException('La multa anulada no admite el pago');
-        }
-        if (new Decimal(dto.amount).gt(multa.amount)) {
-          throw new BadRequestException(
-            'Importe: no puede superar el importe de la multa',
-          );
-        }
-        if (diaArgentino(pagadoEn) < diaArgentino(multa.occurredAt)) {
-          throw new BadRequestException(
-            'Fecha de pago: no puede ser anterior a la fecha de la infracción',
-          );
-        }
-        const comprobante = await this.attachments.findDelDueno(
-          manager,
-          dto.attachmentId,
-          AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
-          id,
-          distributorId,
-        );
-        if (!comprobante) {
-          throw new BadRequestException(
-            'Archivo adjunto: el comprobante no existe o no es de esta multa',
-          );
-        }
-        if (!esMimeTypePermitido(comprobante.mimeType)) {
-          throw new BadRequestException(
-            'Archivo adjunto: el comprobante tiene que ser un PDF o una imagen (JPG, PNG, WEBP)',
-          );
-        }
-        const cajaId = await this.pagos.cajaDelPago(
-          manager,
-          distributorId,
-          dto.cashBoxId,
-          CAJAS_DEL_PAGO,
-        );
-        if (!cajaId) {
-          throw new BadRequestException('Caja: indicá la caja del pago');
-        }
-        const movimiento = await this.pagos.egresar(manager, {
-          distributorId,
-          cashBoxId: cajaId,
-          amount: dto.amount,
-          systemCode: CashSystemCode.TRAFFIC_FINE,
-          referenceType: CashReferenceType.TRAFFIC_FINE,
-          referenceId: id,
-          description: `Multa ${multa.actNumber} — ${multa.jurisdiction} (${multa.car?.carPatent ?? multa.carId})`,
-          userId,
-          method: await this.pagos.medioDeLaCaja(
-            manager,
-            distributorId,
-            cajaId,
-          ),
-        });
-
-        multa.status = TrafficFineStatus.PAID;
-        multa.paidAt = pagadoEn;
-        multa.paidAmount = dto.amount;
-        multa.operationNumber = dto.operationNumber ?? null;
-        multa.cashMovementId = movimiento.movementId;
-        multa.receiptAttachmentId = comprobante.attachmentId;
-        await manager.save(multa);
-      });
-    } catch (error) {
-      return traducirErrorDeBase(error, this.logger, 'multas');
+    const multa = await manager.findOne(TrafficFine, {
+      where: { fineId: id, distributorId },
+      relations: { car: true },
+      lock: { mode: 'pessimistic_write', tables: ['traffic_fine'] },
+    });
+    if (!multa) throw new NotFoundException('Multa no encontrada');
+    if (multa.status === TrafficFineStatus.PAID) {
+      throw new ConflictException('La multa ya está paga');
     }
+    if (!multaAbierta(multa.status)) {
+      throw new ConflictException('La multa anulada no admite el pago');
+    }
+    if (new Decimal(dto.amount).gt(multa.amount)) {
+      throw new BadRequestException(
+        'Importe: no puede superar el importe de la multa',
+      );
+    }
+    if (diaArgentino(pagadoEn) < diaArgentino(multa.occurredAt)) {
+      throw new BadRequestException(
+        'Fecha de pago: no puede ser anterior a la fecha de la infracción',
+      );
+    }
+    const comprobante = await this.attachments.findDelDueno(
+      manager,
+      dto.attachmentId,
+      AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
+      id,
+      distributorId,
+    );
+    if (!comprobante) {
+      throw new BadRequestException(
+        'Archivo adjunto: el comprobante no existe o no es de esta multa',
+      );
+    }
+    if (!esMimeTypePermitido(comprobante.mimeType)) {
+      throw new BadRequestException(
+        'Archivo adjunto: el comprobante tiene que ser un PDF o una imagen (JPG, PNG, WEBP)',
+      );
+    }
+    const cajaId = await this.pagos.cajaDelPago(
+      manager,
+      distributorId,
+      dto.cashBoxId,
+      CAJAS_DEL_PAGO,
+    );
+    if (!cajaId) {
+      throw new BadRequestException('Caja: indicá la caja del pago');
+    }
+    const movimiento = await this.pagos.egresar(manager, {
+      distributorId,
+      cashBoxId: cajaId,
+      amount: dto.amount,
+      systemCode: CashSystemCode.TRAFFIC_FINE,
+      referenceType: CashReferenceType.TRAFFIC_FINE,
+      referenceId: id,
+      description: `Multa ${multa.actNumber} — ${multa.jurisdiction} (${multa.car?.carPatent ?? multa.carId})`,
+      userId,
+      method: await this.pagos.medioDeLaCaja(manager, distributorId, cajaId),
+    });
+
+    multa.status = TrafficFineStatus.PAID;
+    multa.paidAt = pagadoEn;
+    multa.paidAmount = dto.amount;
+    multa.operationNumber = dto.operationNumber ?? null;
+    multa.cashMovementId = movimiento.movementId;
+    multa.receiptAttachmentId = comprobante.attachmentId;
+    await manager.save(multa);
   }
 
   private async escanear(

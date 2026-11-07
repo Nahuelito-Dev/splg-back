@@ -26,6 +26,10 @@ export interface CampoLeido {
 }
 
 /** Una corrección anterior del administrador, para leer mejor la próxima vez. */
+/** Aviso de una lectura que el servicio se negó a hacer (lo buscan E3b y el formulario). */
+export const AVISO_DE_NEGATIVA =
+  'El servicio de lectura no quiso procesar este documento';
+
 export interface EjemploDeCorreccion {
   campo: string;
   leido: string | null;
@@ -60,11 +64,23 @@ export interface LecturaDeDocumento {
   uso: UsoDeLaLectura;
 }
 
+/** Una respuesta cobrada que no produjo una lectura utilizable; se reintenta. */
+export interface LecturaFallida {
+  fallida: true;
+  uso: UsoDeLaLectura;
+}
+
+export function esLecturaFallida(
+  lectura: LecturaDeDocumento | LecturaFallida,
+): lectura is LecturaFallida {
+  return 'fallida' in lectura && lectura.fallida;
+}
+
 export abstract class DocumentReaderPort {
   abstract readonly disponible: boolean;
-  /** Devuelve null si el lector no está disponible o la lectura falló. */
+  /** Devuelve null si no hubo respuesta; conserva el consumo si la respuesta falló. */
   abstract leer(
     archivo: ArchivoDeDocumento,
     opciones?: OpcionesDeLectura,
-  ): Promise<LecturaDeDocumento | null>;
+  ): Promise<LecturaDeDocumento | LecturaFallida | null>;
 }

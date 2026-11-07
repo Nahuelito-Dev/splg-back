@@ -6,6 +6,7 @@
  * (`etiquetas.spec.ts`) falla si un DTO valida un campo que no figura acá.
  */
 export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
+  fields: 'Campos corregidos',
   // Parámetros de los procesos automáticos (no son campos de un DTO).
   minOrders: 'Mínimo de pedidos',
   anticipationDays: 'Días de anticipación',

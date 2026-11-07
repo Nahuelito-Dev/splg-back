@@ -104,6 +104,8 @@ import { VehicleAccidentService } from './vehicle-accident.service';
     VehicleAccidentService,
     TireService,
     FleetCostService,
+    // La confirmación de una lectura del módulo M6 registra el pago de la multa.
+    TrafficFinePaymentService,
   ],
 })
 export class FleetExpenseModule {}

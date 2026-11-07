@@ -169,6 +169,23 @@ export class InsuranceInstallmentService {
     distributorId: string,
     userId: string,
   ): Promise<void> {
+    try {
+      await this.dataSource.transaction((manager) =>
+        this.pagarEn(manager, id, dto, distributorId, userId),
+      );
+    } catch (error) {
+      return traducirErrorDeBase(error, this.logger, 'cuotas de seguro');
+    }
+  }
+
+  /** Ejecuta el pago dentro de una transacción ya abierta. */
+  async pagarEn(
+    manager: EntityManager,
+    id: string,
+    dto: PayInsuranceInstallmentDto,
+    distributorId: string,
+    userId: string,
+  ): Promise<void> {
     const pagadoEn = instanteDelPago(dto.paidAt);
     if (Number.isNaN(pagadoEn.getTime())) {
       throw new BadRequestException('Fecha de pago: fecha inválida');
@@ -178,78 +195,65 @@ export class InsuranceInstallmentService {
         'Fecha de pago: no puede ser posterior a hoy',
       );
     }
-    try {
-      await this.dataSource.transaction(async (manager) => {
-        const cuota = await this.bloquear(manager, id, distributorId);
-        if (cuota.status === InstallmentStatus.PAID) {
-          throw new ConflictException('La cuota ya está paga');
-        }
-        this.assertPendiente(
-          cuota,
-          'La cuota está cancelada: no admite el pago',
-        );
-
-        const comprobante = await this.attachments.findDelDueno(
-          manager,
-          dto.attachmentId,
-          AttachmentOwnerType.INSURANCE_INSTALLMENT,
-          id,
-          distributorId,
-        );
-        if (!comprobante) {
-          throw new BadRequestException(
-            'Archivo adjunto: el comprobante no existe o no es de esta cuota',
-          );
-        }
-
-        if (!esMimeTypePermitido(comprobante.mimeType)) {
-          throw new BadRequestException(
-            'Archivo adjunto: el comprobante tiene que ser un PDF o una imagen (JPG, PNG, WEBP)',
-          );
-        }
-
-        const poliza = await manager.findOneOrFail(InsurancePolicy, {
-          where: { policyId: cuota.policyId, distributorId },
-          relations: { insurer: true, car: true },
-          withDeleted: true,
-        });
-        const cajaId = await this.pagos.cajaDelPago(
-          manager,
-          distributorId,
-          dto.cashBoxId,
-          CAJAS_DEL_PAGO,
-        );
-        if (!cajaId) {
-          throw new BadRequestException('Caja: indicá la caja del pago');
-        }
-        const movimiento = await this.pagos.egresar(manager, {
-          distributorId,
-          cashBoxId: cajaId,
-          amount: dto.amount,
-          systemCode: CashSystemCode.INSURANCE,
-          referenceType: CashReferenceType.INSURANCE_INSTALLMENT,
-          referenceId: id,
-          description: `Seguro ${poliza.car?.carPatent ?? poliza.carId} — ${poliza.insurer?.name ?? ''}, cuota ${cuota.number}/${cuota.total}`,
-          userId,
-          method: await this.pagos.medioDeLaCaja(
-            manager,
-            distributorId,
-            cajaId,
-          ),
-        });
-
-        cuota.status = InstallmentStatus.PAID;
-        cuota.paidAt = pagadoEn;
-        cuota.paidAmount = dto.amount;
-        cuota.operationNumber = dto.operationNumber ?? null;
-        cuota.paidByUserId = userId;
-        cuota.cashMovementId = movimiento.movementId;
-        cuota.receiptAttachmentId = comprobante.attachmentId;
-        await manager.save(cuota);
-      });
-    } catch (error) {
-      return traducirErrorDeBase(error, this.logger, 'cuotas de seguro');
+    const cuota = await this.bloquear(manager, id, distributorId);
+    if (cuota.status === InstallmentStatus.PAID) {
+      throw new ConflictException('La cuota ya está paga');
     }
+    this.assertPendiente(cuota, 'La cuota está cancelada: no admite el pago');
+
+    const comprobante = await this.attachments.findDelDueno(
+      manager,
+      dto.attachmentId,
+      AttachmentOwnerType.INSURANCE_INSTALLMENT,
+      id,
+      distributorId,
+    );
+    if (!comprobante) {
+      throw new BadRequestException(
+        'Archivo adjunto: el comprobante no existe o no es de esta cuota',
+      );
+    }
+
+    if (!esMimeTypePermitido(comprobante.mimeType)) {
+      throw new BadRequestException(
+        'Archivo adjunto: el comprobante tiene que ser un PDF o una imagen (JPG, PNG, WEBP)',
+      );
+    }
+
+    const poliza = await manager.findOneOrFail(InsurancePolicy, {
+      where: { policyId: cuota.policyId, distributorId },
+      relations: { insurer: true, car: true },
+      withDeleted: true,
+    });
+    const cajaId = await this.pagos.cajaDelPago(
+      manager,
+      distributorId,
+      dto.cashBoxId,
+      CAJAS_DEL_PAGO,
+    );
+    if (!cajaId) {
+      throw new BadRequestException('Caja: indicá la caja del pago');
+    }
+    const movimiento = await this.pagos.egresar(manager, {
+      distributorId,
+      cashBoxId: cajaId,
+      amount: dto.amount,
+      systemCode: CashSystemCode.INSURANCE,
+      referenceType: CashReferenceType.INSURANCE_INSTALLMENT,
+      referenceId: id,
+      description: `Seguro ${poliza.car?.carPatent ?? poliza.carId} — ${poliza.insurer?.name ?? ''}, cuota ${cuota.number}/${cuota.total}`,
+      userId,
+      method: await this.pagos.medioDeLaCaja(manager, distributorId, cajaId),
+    });
+
+    cuota.status = InstallmentStatus.PAID;
+    cuota.paidAt = pagadoEn;
+    cuota.paidAmount = dto.amount;
+    cuota.operationNumber = dto.operationNumber ?? null;
+    cuota.paidByUserId = userId;
+    cuota.cashMovementId = movimiento.movementId;
+    cuota.receiptAttachmentId = comprobante.attachmentId;
+    await manager.save(cuota);
   }
 
   private async escanear(

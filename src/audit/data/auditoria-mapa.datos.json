@@ -435,6 +435,22 @@
       "orderColumn": null
     },
     {
+      "table": "document_reading_example",
+      "entity": "DocumentReadingExample",
+      "pk": [
+        "example_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "driver_liquidation",
       "entity": "DriverLiquidation",
       "pk": [
@@ -3494,11 +3510,59 @@
     },
     {
       "table": "document_reading",
+      "column": "attempted_at",
+      "property": "attemptedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 19
+    },
+    {
+      "table": "document_reading",
+      "column": "decided_at",
+      "property": "decidedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 20
+    },
+    {
+      "table": "document_reading",
+      "column": "decided_by_user_id",
+      "property": "decidedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 21
+    },
+    {
+      "table": "document_reading",
+      "column": "decision_note",
+      "property": "decisionNote",
+      "secret": false,
+      "kind": "text",
+      "position": 22
+    },
+    {
+      "table": "document_reading",
+      "column": "corrections",
+      "property": "corrections",
+      "secret": false,
+      "kind": "json",
+      "position": 23
+    },
+    {
+      "table": "document_reading",
+      "column": "executed",
+      "property": "executed",
+      "secret": false,
+      "kind": "text",
+      "position": 24
+    },
+    {
+      "table": "document_reading",
       "column": "reminded_at",
       "property": "remindedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 19
+      "position": 25
     },
     {
       "table": "document_reading",
@@ -3506,7 +3570,7 @@
       "property": "escalatedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 20
+      "position": 26
     },
     {
       "table": "document_reading",
@@ -3514,7 +3578,7 @@
       "property": "reconciledAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 21
+      "position": 27
     },
     {
       "table": "document_reading",
@@ -3522,7 +3586,7 @@
       "property": "readAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 22
+      "position": 28
     },
     {
       "table": "document_reading",
@@ -3530,7 +3594,63 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 23
+      "position": 29
+    },
+    {
+      "table": "document_reading_example",
+      "column": "example_id",
+      "property": "exampleId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "document_reading_example",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "document_reading_example",
+      "column": "document_type",
+      "property": "documentType",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "document_reading_example",
+      "column": "field",
+      "property": "field",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "document_reading_example",
+      "column": "read_value",
+      "property": "readValue",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "document_reading_example",
+      "column": "correct_value",
+      "property": "correctValue",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "document_reading_example",
+      "column": "source_reading_id",
+      "property": "sourceReadingId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
     },
     {
       "table": "driver_liquidation",

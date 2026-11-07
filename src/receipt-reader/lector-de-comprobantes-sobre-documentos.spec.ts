@@ -102,6 +102,17 @@ describe('LectorDeComprobantesSobreDocumentos', () => {
     });
   });
 
+  it('una negativa del servicio deja que el formulario cargue los datos a mano', async () => {
+    const negativa = armar({
+      tipo: TipoDeDocumento.OTRO,
+      legible: false,
+      campos: [],
+      avisos: ['El servicio de lectura no quiso procesar este documento'],
+      uso,
+    });
+    await expect(negativa.lector.leer(archivo)).resolves.toBeNull();
+  });
+
   it('refleja si el lector de documentos está disponible y devuelve null si no leyó', async () => {
     const { lector } = armar(null, false);
     expect(lector.disponible).toBe(false);

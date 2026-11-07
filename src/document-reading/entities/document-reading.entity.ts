@@ -15,6 +15,7 @@ import {
 
 import { Attachment } from '../../attachment/entities/attachment.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { User } from '../../users/entities/user.entity';
 import { CampoLeido } from '../../document-reader/document-reader.port';
 import { TipoDeDocumento } from '../../document-reader/tipos-de-documento';
 
@@ -39,6 +40,11 @@ export interface DocumentProposal {
   read: Record<string, string | null>;
   differences: DocumentProposalDifference[];
   summary: string;
+}
+export interface DocumentReadingCorrection {
+  field: string;
+  read: string | null;
+  value: string;
 }
 
 /**
@@ -111,7 +117,27 @@ const LEIDOS_SQL = ESTADOS_LEIDOS.map((e) => `'${e}'`).join(', ');
 )
 @Check(
   'CHK_document_reading_propuesta',
-  `("status" = 'proposed') = ("proposal" IS NOT NULL AND "proposal_expires_at" IS NOT NULL)`,
+  `"status" <> 'proposed' OR ("proposal" IS NOT NULL AND "proposal_expires_at" IS NOT NULL)`,
+)
+@Check(
+  'CHK_document_reading_decision',
+  `("status" IN ('confirmed','corrected','rejected')) = ("decided_at" IS NOT NULL AND "decided_by_user_id" IS NOT NULL)`,
+)
+@Check(
+  'CHK_document_reading_rejected_note',
+  `"status" <> 'rejected' OR "decision_note" IS NOT NULL`,
+)
+@Check(
+  'CHK_document_reading_decision_note_length',
+  `"decision_note" IS NULL OR char_length("decision_note") <= 500`,
+)
+@Check(
+  'CHK_document_reading_corrected',
+  `("status" = 'corrected') = ("corrections" IS NOT NULL)`,
+)
+@Check(
+  'CHK_document_reading_executed',
+  `NOT "executed" OR "status" IN ('confirmed','corrected')`,
 )
 @Check(
   'CHK_document_reading_leido',
@@ -223,6 +249,33 @@ export class DocumentReading {
 
   @Column({ name: 'proposal_expires_at', type: 'timestamptz', nullable: true })
   proposalExpiresAt!: Date | null;
+
+  /** Último intento que llegó al proveedor, incluso si no produjo una lectura. */
+  @Column({ name: 'attempted_at', type: 'timestamptz', nullable: true })
+  attemptedAt!: Date | null;
+
+  /** Cuándo y quién confirmó, corrigió o rechazó la propuesta (etapa 4). */
+  @Column({ name: 'decided_at', type: 'timestamptz', nullable: true })
+  decidedAt!: Date | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'decided_by_user_id' })
+  decidedBy?: User | null;
+
+  @Column({ name: 'decided_by_user_id', type: 'uuid', nullable: true })
+  decidedByUserId!: string | null;
+
+  /** Motivo del rechazo o comentario de la corrección. */
+  @Column({ name: 'decision_note', type: 'text', nullable: true })
+  decisionNote!: string | null;
+
+  /** Lo que el administrador cambió respecto de lo leído. */
+  @Column({ type: 'jsonb', nullable: true })
+  corrections!: DocumentReadingCorrection[] | null;
+
+  /** La confirmación ejecutó la acción (p. ej. registró el pago). */
+  @Column({ type: 'boolean', default: false })
+  executed!: boolean;
 
   @Column({ name: 'reminded_at', type: 'timestamptz', nullable: true })
   remindedAt!: Date | null;

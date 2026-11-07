@@ -47,6 +47,7 @@ function armar(opciones: {
   original?: Partial<DocumentReading> | null;
   leido?: LecturaDeDocumento | null;
   disponible?: boolean;
+  ejemplos?: Array<Record<string, unknown>>;
 }) {
   const findOne = jest
     .fn()
@@ -71,7 +72,9 @@ function armar(opciones: {
     leer,
   } as unknown as DocumentReaderPort;
   return {
-    service: new DocumentReadingService(repo, lector, redisQueEjecuta),
+    service: new DocumentReadingService(repo, lector, redisQueEjecuta, {
+      find: jest.fn().mockResolvedValue(opciones.ejemplos ?? []),
+    } as never),
     guardar: save,
     leer,
     findOne,
@@ -107,6 +110,7 @@ describe('DocumentReadingService.leerAdjunto', () => {
       lastError: null,
     });
     expect(registro.readAt).toBeInstanceOf(Date);
+    expect(registro.attemptedAt).toBeInstanceOf(Date);
     expect(leida?.tipo).toBe('comprobante_de_pago');
     expect(guardar).toHaveBeenCalledTimes(1);
   });
@@ -173,11 +177,20 @@ describe('DocumentReadingService.leerAdjunto', () => {
     const { registro, lectura: leida } = await service.leerAdjunto(documento);
     expect(leida).toBeNull();
     expect(registro.readAt ?? null).toBeNull();
+    // Un error de red no llegó al proveedor: no mueve de mes el gasto ya hecho.
+    expect(registro.attemptedAt ?? null).toBeNull();
     expect(registro).toMatchObject({
       status: DocumentReadingStatus.FAILED,
       attempts: 1,
       lastError: expect.any(String) as string,
     });
+    const intentoViejo = new Date('2026-10-31T23:50:00-03:00');
+    const sinRed = armar({
+      leido: null,
+      existente: { ...registro, attempts: 1, attemptedAt: intentoViejo },
+    });
+    const caida = await sinRed.service.leerAdjunto(documento);
+    expect(caida.registro.attemptedAt).toEqual(intentoViejo);
     const reintento = armar({ existente: { ...registro, attempts: 1 } });
     const otra = await reintento.service.leerAdjunto(documento);
     expect(otra.registro).toMatchObject({
@@ -206,6 +219,123 @@ describe('DocumentReadingService.leerAdjunto', () => {
     });
     expect(where.attachmentId).toBeDefined();
   });
+
+  it('pasa ejemplos recientes sólo cuando conoce el tipo esperado', async () => {
+    const { service, leer } = armar({
+      ejemplos: [
+        {
+          field: 'destinatario',
+          readValue: 'La Segundaa',
+          correctValue: 'La Segunda',
+        },
+      ],
+    });
+    await service.leerAdjunto(documento);
+    expect(leer).toHaveBeenCalledWith(archivo, {
+      ...documento.opciones,
+      ejemplos: [
+        {
+          campo: 'destinatario',
+          leido: 'La Segundaa',
+          correcto: 'La Segunda',
+        },
+      ],
+    });
+
+    const sinTipo = armar({ ejemplos: [{ field: 'destinatario' }] });
+    await sinTipo.service.leerAdjunto({ ...documento, opciones: undefined });
+    expect(sinTipo.leer).toHaveBeenCalledWith(archivo, undefined);
+  });
+
+  it('al leer sólo usa ejemplos de campos de formato', async () => {
+    const { service, leer } = armar({
+      ejemplos: [
+        { field: 'importe', readValue: '10', correctValue: '11.00' },
+        {
+          field: 'destinatario',
+          readValue: 'La Segundaa',
+          correctValue: 'La Segunda',
+        },
+      ],
+    });
+    await service.leerAdjunto(documento);
+    expect(leer).toHaveBeenCalledWith(
+      archivo,
+      expect.objectContaining({
+        ejemplos: [
+          {
+            campo: 'destinatario',
+            leido: 'La Segundaa',
+            correcto: 'La Segunda',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('una respuesta fallida conserva su consumo en la fila reintentable', async () => {
+    const { service } = armar({
+      leido: {
+        fallida: true,
+        uso: {
+          modelo: 'claude-opus-5-5',
+          tokensDeEntrada: 1000,
+          tokensDeSalida: 200,
+          costoUsd: 0.008,
+        },
+      } as never,
+    });
+    const { registro, lectura: resultado } =
+      await service.leerAdjunto(documento);
+    expect(resultado).toBeNull();
+    expect(registro).toMatchObject({
+      status: DocumentReadingStatus.FAILED,
+      inputTokens: 1000,
+      outputTokens: 200,
+      costUsd: 0.008,
+    });
+    expect(registro.readAt ?? null).toBeNull();
+    expect(registro.attemptedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('DocumentReadingService.gastoDelMes', () => {
+  it('agrupa el consumo por el intento, aun si la lectura falló', async () => {
+    type Builder = {
+      select: jest.Mock<Builder, [string, string]>;
+      addSelect: jest.Mock<Builder, [string, string]>;
+      where: jest.Mock<Builder, [string, Record<string, string>]>;
+      andWhere: jest.Mock<Builder, [string, Record<string, string>]>;
+      getRawOne: jest.Mock<Promise<{ lecturas: string; costo: string }>, []>;
+    };
+    const andWhere = jest.fn<Builder, [string, Record<string, string>]>();
+    const builder: Builder = {
+      select: jest.fn<Builder, [string, string]>(),
+      addSelect: jest.fn<Builder, [string, string]>(),
+      where: jest.fn<Builder, [string, Record<string, string>]>(),
+      andWhere,
+      getRawOne: jest.fn<Promise<{ lecturas: string; costo: string }>, []>(),
+    };
+    builder.select.mockReturnValue(builder);
+    builder.addSelect.mockReturnValue(builder);
+    builder.where.mockReturnValue(builder);
+    andWhere.mockReturnValue(builder);
+    builder.getRawOne.mockResolvedValue({ lecturas: '1', costo: '0.008' });
+    const repo = {
+      createQueryBuilder: jest.fn().mockReturnValue(builder),
+    } as unknown as Repository<DocumentReading>;
+    const service = new DocumentReadingService(
+      repo,
+      {} as DocumentReaderPort,
+      redisQueEjecuta,
+      {} as never,
+    );
+    await expect(
+      service.gastoDelMes('d1', new Date('2026-11-05T12:00:00Z')),
+    ).resolves.toEqual({ lecturas: 1, costoUsd: 0.008 });
+    expect(andWhere.mock.calls[0][0]).toContain('r.attempted_at');
+    expect(andWhere.mock.calls[0][0]).not.toContain('r.read_at');
+  });
 });
 
 describe('DocumentReadingService.obtener', () => {
@@ -216,6 +346,7 @@ describe('DocumentReadingService.obtener', () => {
       repo,
       { disponible: true } as DocumentReaderPort,
       redisQueEjecuta,
+      { find: jest.fn() } as never,
     );
     await expect(service.obtener('r-1', 'dist-b')).rejects.toBeInstanceOf(
       NotFoundException,

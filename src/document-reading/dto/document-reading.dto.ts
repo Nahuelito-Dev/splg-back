@@ -5,6 +5,10 @@ import {
   IsEnum,
   IsInt,
   IsOptional,
+  IsObject,
+  IsString,
+  IsUUID,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator';
@@ -173,6 +177,20 @@ export class DocumentReadingDto {
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   proposalExpiresAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  attemptedAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  decidedAt!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  decidedByUserId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) decisionNote!: string | null;
+  @ApiProperty({
+    type: () => DocumentReadingCorrectionDto,
+    isArray: true,
+    nullable: true,
+  })
+  corrections!: DocumentReadingCorrectionDto[] | null;
+  @ApiProperty() executed!: boolean;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   remindedAt!: string | null;
@@ -192,6 +210,46 @@ export class DocumentReadingDto {
   @ApiPropertyOptional({ type: DocumentReadingAttachmentDto })
   attachment?: DocumentReadingAttachmentDto;
 }
+export class DocumentReadingCorrectionDto {
+  @ApiProperty() field!: string;
+  @ApiProperty({ type: String, nullable: true }) read!: string | null;
+  @ApiProperty() value!: string;
+}
+export class ConfirmDocumentReadingDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Obligatoria al confirmar una propuesta que registra un pago',
+  })
+  @IsOptional()
+  @IsUUID()
+  cashBoxId?: string;
+}
+export class CorrectDocumentReadingDto {
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  @IsObject()
+  // Sin un tipo explícito, class-transformer toma `fields.constructor` como clase y tira
+  // un TypeError (500) si el cuerpo trae esa clave.
+  @Type(() => Object)
+  fields!: Record<string, string>;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Obligatoria al corregir una propuesta que registra un pago',
+  })
+  @IsOptional()
+  @IsUUID()
+  cashBoxId?: string;
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+export class RejectDocumentReadingDto {
+  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+}
 
 export class DocumentReadingListDto {
   @ApiProperty({ type: DocumentReadingDto, isArray: true })
@@ -203,7 +261,8 @@ export class DocumentReadingListDto {
 
 export class DocumentReadingSpendDto {
   @ApiProperty({
-    description: 'Documentos leídos este mes (los duplicados no cuentan)',
+    description:
+      'Intentos de lectura con consumo este mes, incluidos los que fallaron (los duplicados no cuentan)',
   })
   readings!: number;
 
