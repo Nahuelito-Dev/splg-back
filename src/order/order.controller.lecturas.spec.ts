@@ -35,6 +35,7 @@ describe('OrderController · cancelledBy en la respuesta de la cancelación', ()
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
   });
 
@@ -86,6 +87,7 @@ describe('OrderController · pedido en curso del chofer', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
   });
 
@@ -127,6 +129,7 @@ describe('OrderController · historial de estados', () => {
     orderService = { getStatusHistory: jest.fn().mockResolvedValue([]) };
     controller = new OrderController(
       orderService as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

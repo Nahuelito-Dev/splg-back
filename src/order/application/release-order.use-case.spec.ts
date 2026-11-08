@@ -18,7 +18,11 @@ describe('ReleaseOrderUseCase', () => {
     commitTransaction: jest.Mock;
     rollbackTransaction: jest.Mock;
     release: jest.Mock;
-    manager: { createQueryBuilder: jest.Mock; save: jest.Mock };
+    manager: {
+      createQueryBuilder: jest.Mock;
+      update: jest.Mock;
+      save: jest.Mock;
+    };
   };
   let queryBuilder: {
     setLock: jest.Mock;
@@ -69,6 +73,7 @@ describe('ReleaseOrderUseCase', () => {
       release: jest.fn().mockResolvedValue(undefined),
       manager: {
         createQueryBuilder: jest.fn(() => queryBuilder),
+        update: jest.fn().mockResolvedValue(undefined),
         save: jest.fn((o: unknown) => Promise.resolve(o)),
       },
     };
@@ -106,6 +111,11 @@ describe('ReleaseOrderUseCase', () => {
       expect(result.deliveryId).toBeNull();
       expect(result.delivery).toBeNull();
       expect(result.acceptedAt).toBeNull();
+      expect(queryRunner.manager.update).toHaveBeenCalledWith(
+        expect.anything(),
+        { orderId: 'ord-1' },
+        { emptiesReceived: null },
+      );
       expect(queryRunner.commitTransaction).toHaveBeenCalled();
       expect(queryRunner.release).toHaveBeenCalled();
     });

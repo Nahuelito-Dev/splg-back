@@ -55,6 +55,14 @@ export class OrderItemResponseDto {
   @Expose()
   containersCharged!: number;
 
+  @ApiProperty({ type: Number, example: 1 })
+  @Expose()
+  emptiesExpected!: number;
+
+  @ApiProperty({ type: Number, nullable: true, example: 1 })
+  @Expose()
+  emptiesReceived!: number | null;
+
   @ApiProperty({
     type: Number,
     nullable: true,

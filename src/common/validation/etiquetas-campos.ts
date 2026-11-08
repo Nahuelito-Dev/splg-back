@@ -195,6 +195,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   fullName: 'Nombre completo',
   full_name: 'Nombre completo',
   gasCylinderId: 'Producto',
+  emptiesReceived: 'Vacías recibidas',
   geocodePrecision: 'Precisión de la ubicación',
   graceDays: 'Días de gracia',
   graceUntil: 'Gracia hasta',

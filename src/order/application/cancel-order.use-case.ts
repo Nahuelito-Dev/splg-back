@@ -160,7 +160,7 @@ export class CancelOrderUseCase {
       if (role === 'driver') {
         // Mutación pura del camino único, aplicada DENTRO de esta misma
         // transacción/lock (no abre una segunda sobre el mismo pedido).
-        this.releaseOrder.applyRelease(locked);
+        await this.releaseOrder.releaseWithin(queryRunner.manager, locked);
       } else {
         if (role === 'customer' && locked.status === OrderStatus.ON_THE_WAY) {
           throw new BadRequestException(

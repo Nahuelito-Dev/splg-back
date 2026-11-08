@@ -12,7 +12,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DataSource, EntityManager, QueryRunner } from 'typeorm';
+import { DataSource, EntityManager, In, QueryRunner } from 'typeorm';
 
 import {
   Order,
@@ -48,10 +48,15 @@ import { errorMessage } from '../../common/errors/error-message';
 import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
 import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.service';
 import { EntityPhotoService } from '../../s3/entity-photo.service';
+import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
 import { CustomerContainerService } from '../../customer-container/customer-container.service';
 import { CustomerContainerMovementReason } from '../../customer-container/entities/customer-container-movement.entity';
+import {
+  idCortoDePedido,
+  pedirAvisoAlAdmin,
+} from '../../common/events/aviso-al-admin';
 import {
   MOTIVO_ENTREGA_MANUAL_MAX,
   MOTIVO_ENTREGA_MANUAL_MIN,
@@ -281,7 +286,10 @@ export class UpdateOrderStatusUseCase {
       });
     }
 
-    if (status === OrderStatus.DELIVERED) await this.publicarEntrega(order);
+    if (status === OrderStatus.DELIVERED) {
+      await this.publicarEntrega(order);
+      await this.avisarFaltantesDeVacias(order);
+    }
 
     await this.emitStatusEvent(order, status, deliveryUser);
     // Panel admin en vivo, sólo a los admins DE ESA distribuidora (+ super
@@ -331,6 +339,55 @@ export class UpdateOrderStatusUseCase {
         `Falló un oyente de la entrega del pedido ${order.orderId}: ${errorMessage(error)}`,
       );
     }
+  }
+
+  /**
+   * Aviso al panel si el cliente devolvió menos vacías que las esperadas. El nombre del cliente y de los tipos se leen
+   * aparte (no se suman al pedido que devuelve el endpoint); si la lectura falla, se avisa igual con textos genéricos.
+   */
+  private async avisarFaltantesDeVacias(order: Order): Promise<void> {
+    const faltantes = (order.items ?? []).flatMap((item) => {
+      const expected = item.quantity - item.containersCharged;
+      const received = item.emptiesReceived ?? expected;
+      const missing = expected - received;
+      return missing > 0 ? [{ item, missing }] : [];
+    });
+    if (faltantes.length === 0) return;
+    let customer = 'El cliente';
+    const tipos = new Map<string, string>();
+    try {
+      const [cliente, cilindros] = await Promise.all([
+        this.dataSource
+          .getRepository(User)
+          .findOne({ where: { userId: order.customerId } }),
+        this.dataSource.getRepository(GasCylinder).find({
+          where: {
+            gasCylinderId: In(faltantes.map(({ item }) => item.gasCylinderId)),
+          },
+          withDeleted: true,
+        }),
+      ]);
+      if (cliente?.fullName) customer = cliente.fullName;
+      for (const c of cilindros) tipos.set(c.gasCylinderId, c.type);
+    } catch (e) {
+      this.logger.warn(
+        `No se pudieron leer los nombres para el aviso de vacías: ${(e as Error).message}`,
+      );
+    }
+    const detail = faltantes
+      .map(
+        ({ item, missing }) =>
+          `${missing} envase(s) de ${tipos.get(item.gasCylinderId) ?? 'tipo desconocido'}`,
+      )
+      .join(', ');
+    pedirAvisoAlAdmin(this.eventos, this.logger, {
+      distributorId: order.distributorId,
+      kind: 'empties_shortfall',
+      title: 'Faltante de envases en una entrega',
+      body: `${customer} no devolvió ${detail} en el pedido #${idCortoDePedido(order.orderId)}`,
+      link: { entity: 'order', id: order.orderId },
+      dedupeKey: `empties-shortfall:${order.orderId}`,
+    });
   }
 
   /** El motivo de una entrega manual del admin (400 si falta o es muy corto); `null` si no aplica. */
@@ -764,6 +821,8 @@ export class UpdateOrderStatusUseCase {
           items: (order.items ?? []).map((i) => ({
             gasCylinderId: i.gasCylinderId,
             quantity: i.quantity,
+            containersCharged: i.containersCharged,
+            emptiesReceived: i.emptiesReceived,
           })),
         });
         return SIN_EFECTOS;

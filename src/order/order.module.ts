@@ -78,6 +78,7 @@ import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { OrderAddressChange } from './entities/order-address-change.entity';
 import { CustomerContainerModule } from '../customer-container/customer-container.module';
+import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -133,6 +134,7 @@ import { CustomerContainerModule } from '../customer-container/customer-containe
     UpdateOrderUseCase,
     ChangeOrderAddressUseCase,
     SetOrderReceiverUseCase,
+    DeclareEmptiesUseCase,
     ReceiverRetentionCron,
     UpdateOrderStatusUseCase,
     OrderDriverPhotoService,

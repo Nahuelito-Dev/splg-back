@@ -6,7 +6,12 @@ export interface EntregaDePedido {
   distributorId: string;
   /** Vehículo con el que el chofer aceptó el pedido; puede ser null. */
   vehicleCarId: string | null;
-  items: ReadonlyArray<{ gasCylinderId: string; quantity: number }>;
+  items: ReadonlyArray<{
+    gasCylinderId: string;
+    quantity: number;
+    containersCharged: number;
+    emptiesReceived: number | null;
+  }>;
 }
 
 /**

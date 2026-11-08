@@ -70,16 +70,70 @@ function armar(opts: {
 }
 
 const entrega = (
-  items = [{ gasCylinderId: G1, quantity: 2 }],
+  items: Array<{
+    gasCylinderId: string;
+    quantity: number;
+    containersCharged?: number;
+    emptiesReceived?: number | null;
+  }> = [{ gasCylinderId: G1, quantity: 2 }],
   car: string | null = 'car-1',
 ) => ({
   orderId: 'ord-1',
   distributorId: DIST,
   vehicleCarId: car,
-  items,
+  items: items.map((item) => ({
+    containersCharged: 0,
+    emptiesReceived: null,
+    ...item,
+  })),
 });
 
 describe('StockDeliveryService (entrega de un pedido: D5 y D6)', () => {
+  it('con cero vacías recibidas no registra movimiento de vacías', async () => {
+    const { service, manager, ledger } = armar({
+      llenas: { [`${CAMION}|${G1}`]: 10 },
+    });
+
+    await service.registrarEntrega(
+      manager,
+      entrega([
+        {
+          gasCylinderId: G1,
+          quantity: 2,
+          containersCharged: 0,
+          emptiesReceived: 0,
+        },
+      ]),
+    );
+
+    expect(ledger.aplicar.mock.calls[0][1].movimientos).toEqual([
+      expect.objectContaining({ reason: Razon.DELIVERY, quantity: 2 }),
+    ]);
+  });
+
+  it('sin declaración toma quantity menos los envases cobrados', async () => {
+    const { service, manager, ledger } = armar({
+      llenas: { [`${CAMION}|${G1}`]: 10 },
+    });
+
+    await service.registrarEntrega(
+      manager,
+      entrega([
+        {
+          gasCylinderId: G1,
+          quantity: 3,
+          containersCharged: 1,
+          emptiesReceived: null,
+        },
+      ]),
+    );
+
+    expect(ledger.aplicar.mock.calls[0][1].movimientos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: Razon.EMPTY_COLLECTED, quantity: 2 }),
+      ]),
+    );
+  });
   it('descuenta la llena del camión del chofer si tiene saldo y suma la vacía de canje 1:1', async () => {
     const { service, manager, ledger } = armar({
       llenas: { [`${CAMION}|${G1}`]: 10, [`${DEPOSITO}|${G1}`]: 50 },
