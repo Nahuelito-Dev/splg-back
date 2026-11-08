@@ -77,6 +77,7 @@ import { DriverRatingTypeormAdapter } from './infrastructure/driver-rating.typeo
 import { NotificationAdapter } from './infrastructure/notification.adapter';
 import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { OrderAddressChange } from './entities/order-address-change.entity';
+import { CustomerContainerModule } from '../customer-container/customer-container.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -106,6 +107,7 @@ import { OrderAddressChange } from './entities/order-address-change.entity';
     CashModule, // el cobro del admin entra a una caja por el libro (CashLedgerService)
     AttachmentModule, // dueño `order` de los adjuntos: comprobante de la transferencia
     TruckLoadModule, // D5: con control de carga activo, el despacho exige carga abierta (TruckLoadGatePort)
+    CustomerContainerModule,
   ],
   // ExpressOrderController va primero: `GET /orders/delivery-options` no puede caer en `GET /orders/:id`.
   controllers: [

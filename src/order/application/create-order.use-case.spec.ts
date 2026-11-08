@@ -219,6 +219,7 @@ describe('CreateOrderUseCase', () => {
       expressAvailability as unknown as import('./express-availability.service').ExpressAvailabilityService,
       customerAccount as unknown as import('../domain/ports/customer-account.port').CustomerAccountPort,
       paymentSurcharges as unknown as import('../../distributor/payment-surcharge-settings.service').PaymentSurchargeSettingsService,
+      { envasesACobrar: jest.fn().mockResolvedValue([]) } as never,
     );
   });
 

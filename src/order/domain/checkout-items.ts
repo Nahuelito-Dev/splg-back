@@ -4,6 +4,7 @@ import type { PaymentCheckoutItem } from '../../payments/domain/ports/payment-ga
 /** Montos que se suman a los renglones de productos en un cobro de la pasarela. */
 export interface RecargosDelCobro {
   zona: Decimal.Value;
+  envases: Decimal.Value;
   online: Decimal.Value;
   express: Decimal.Value;
 }
@@ -24,7 +25,7 @@ const renglonDeRecargo = (
 
 /**
  * Renglones del checkout de un pedido: los productos más un renglón por cada
- * recargo que forma parte del total (zona, pago online, express). La pasarela
+ * recargo que forma parte del total (zona, envases, pago online, express). La pasarela
  * tiene que cobrar EXACTAMENTE el total guardado en el ledger; si no, el control
  * de monto del webhook corta el despacho de un pago legítimo.
  */
@@ -35,6 +36,7 @@ export function renglonesDelCheckout(
   return [
     ...productos,
     ...renglonDeRecargo('zone-surcharge', 'Recargo de zona', recargos.zona),
+    ...renglonDeRecargo('containers', 'Envases', recargos.envases),
     ...renglonDeRecargo(
       'online-surcharge',
       'Recargo por pago online',

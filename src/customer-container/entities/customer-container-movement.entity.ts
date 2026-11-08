@@ -54,6 +54,10 @@ export enum CustomerContainerMovementReason {
   unique: true,
   where: `"reason" = 'initial_from_deliveries'`,
 })
+@Index('UQ_customer_container_movement_compra', ['accountId', 'orderId'], {
+  unique: true,
+  where: `"reason" = 'purchased'`,
+})
 export class CustomerContainerMovement {
   @PrimaryGeneratedColumn('uuid', { name: 'movement_id' })
   movementId!: string;

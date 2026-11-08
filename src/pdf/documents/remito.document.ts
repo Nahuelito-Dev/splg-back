@@ -81,6 +81,17 @@ export function renderRemito(
   );
 
   const lineas = [{ etiqueta: 'Subtotal', valor: pesos(order.subtotalItems) }];
+  // F35: los envases que el cliente no tenía se venden en el pedido y suman al total.
+  if (order.containerChargeAmount > 0) {
+    const envases = order.items.reduce(
+      (total, i) => total + (i.containersCharged ?? 0),
+      0,
+    );
+    lineas.push({
+      etiqueta: envases === 1 ? 'Envase (1)' : `Envases (${envases})`,
+      valor: pesos(order.containerChargeAmount),
+    });
+  }
   if (order.zoneSurcharge && order.zoneSurcharge.amount > 0) {
     lineas.push({
       etiqueta: `Recargo zona ${order.zoneSurcharge.name}`,

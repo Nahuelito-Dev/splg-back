@@ -50,6 +50,8 @@ import { FleetDispatchLockService } from '../../fleet/fleet-dispatch-lock.servic
 import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { AuditoriaDeDatos } from '../../audit/data/auditoria-de-datos';
 import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity';
+import { CustomerContainerService } from '../../customer-container/customer-container.service';
+import { CustomerContainerMovementReason } from '../../customer-container/entities/customer-container-movement.entity';
 import {
   MOTIVO_ENTREGA_MANUAL_MAX,
   MOTIVO_ENTREGA_MANUAL_MIN,
@@ -137,6 +139,7 @@ export class UpdateOrderStatusUseCase {
     private readonly offers: DispatchOfferRepositoryPort,
     // Avisa "pedido entregado" a quien le interese (cuenta corriente, comisiones).
     private readonly eventos: EventEmitter2,
+    private readonly customerContainers: CustomerContainerService,
   ) {}
 
   async execute(
@@ -737,6 +740,18 @@ export class UpdateOrderStatusUseCase {
           this.logger.log(
             `Pedido ${order.orderId} entregado: ${advanced} envase(s) → with_customer`,
           );
+        }
+        for (const item of order.items ?? []) {
+          if ((item.containersCharged ?? 0) > 0) {
+            await this.customerContainers.registrar(manager, {
+              distributorId: order.distributorId,
+              customerUserId: order.customerId,
+              gasCylinderId: item.gasCylinderId,
+              quantity: item.containersCharged,
+              reason: CustomerContainerMovementReason.PURCHASED,
+              orderId: order.orderId,
+            });
+          }
         }
         // Stock físico (D5, D6): sale la llena del camión del chofer o del
         // depósito y entra la vacía de canje. También por el MISMO manager:

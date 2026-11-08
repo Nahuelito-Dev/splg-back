@@ -173,6 +173,7 @@ export class ChangeOrderAddressUseCase {
           paymentSurchargePercentage,
           // Defensivo: mientras siga express el recargo se conserva en el total.
           esExpress ? order.expressSurchargeAmount : 0,
+          Number(order.containerChargeAmount ?? 0),
         );
 
       const cambiaElRecargo =

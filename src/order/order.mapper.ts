@@ -92,6 +92,7 @@ export class OrderMapper {
     dto.id = order.orderId;
     dto.distributorId = order.distributorId;
     dto.total = Number(order.totalAmount); // Ensure number
+    dto.containerChargeAmount = Number(order.containerChargeAmount ?? 0);
     dto.createdAt = order.createdAt;
     dto.deliveryNotes = order.deliveryInstructions || null;
     dto.customerNotes = order.notes || null;
@@ -186,6 +187,12 @@ export class OrderMapper {
       renglon.quantity = item.quantity;
       renglon.unitPrice = Number(item.unitPrice);
       renglon.subtotal = Number(item.subtotal);
+      renglon.containersCharged = Number(item.containersCharged ?? 0);
+      renglon.containerUnitPrice =
+        item.containerUnitPrice === null ||
+        item.containerUnitPrice === undefined
+          ? null
+          : Number(item.containerUnitPrice);
       renglon.cylinder = null;
       if (item.gasCylinder) {
         const producto = new ProductoDelRenglonDto();

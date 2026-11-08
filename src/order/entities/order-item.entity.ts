@@ -14,6 +14,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
 
 @Check('CHK_order_item_cantidad', `"quantity" > 0`)
 @Check('CHK_order_item_importes', `"unitPrice" >= 0 AND "subtotal" >= 0`)
+@Check(
+  'CHK_order_item_envases_cobrados',
+  `"containers_charged" >= 0 AND "containers_charged" <= "quantity" AND ("containers_charged" = 0 OR "container_unit_price" > 0)`,
+)
 @Index('UQ_order_item_pedido_producto', ['orderId', 'gasCylinderId'], {
   unique: true,
 })
@@ -60,4 +64,17 @@ export class OrderItem {
     transformer: columnNumericTransformer,
   })
   subtotal!: number;
+
+  @Column({ name: 'containers_charged', type: 'int', default: 0 })
+  containersCharged!: number;
+
+  @Column({
+    name: 'container_unit_price',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    transformer: columnNumericTransformer,
+  })
+  containerUnitPrice!: number | null;
 }

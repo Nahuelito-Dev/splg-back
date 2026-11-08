@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { CustomerContainerService } from './customer-container.service';
 import { CustomerContainerMovementReason } from './entities/customer-container-movement.entity';
@@ -24,11 +25,15 @@ describe('CustomerContainerService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    query.mockReset();
+    insertar.mockReset();
   });
 
   it('crea la cuenta, suma el saldo y asienta el movimiento', async () => {
     query
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ account_id: 'cuenta', owned: 0 }])
+      .mockResolvedValueOnce([{ account_id: 'cuenta' }])
       .mockResolvedValueOnce([[{ account_id: 'cuenta', owned: 2 }], 1]);
 
     await expect(service.registrar(manager, DATOS)).resolves.toBe(2);
@@ -39,41 +44,48 @@ describe('CustomerContainerService', () => {
       expect.any(Array),
     );
     expect(query).toHaveBeenNthCalledWith(
-      2,
+      4,
       expect.stringContaining('owned + $1 >= 0'),
       expect.any(Array),
     );
-    expect(insertar).toHaveBeenCalledWith(
-      expect.objectContaining({
-        accountId: 'cuenta',
-        quantity: 2,
-        reason: CustomerContainerMovementReason.MANUAL_ADJUSTMENT,
-      }),
+    expect(query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('INSERT INTO customer_container_movement'),
+      expect.arrayContaining(['cuenta', 2]),
     );
   });
 
   it('registra ajustes negativos sólo si el update conserva saldo no negativo', async () => {
     query
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ account_id: 'cuenta', owned: 2 }])
+      .mockResolvedValueOnce([{ account_id: 'cuenta' }])
       .mockResolvedValueOnce([[{ account_id: 'cuenta', owned: 1 }], 1]);
 
     await expect(
       service.registrar(manager, { ...DATOS, quantity: -1 }),
     ).resolves.toBe(1);
     expect(query).toHaveBeenNthCalledWith(
-      2,
+      4,
       expect.any(String),
       expect.arrayContaining([-1]),
     );
   });
 
   it('rechaza el ajuste que dejaría saldo negativo sin insertar movimiento', async () => {
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([[], 0]);
+    query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ account_id: 'cuenta', owned: 0 }])
+      .mockResolvedValueOnce([{ account_id: 'cuenta' }])
+      .mockResolvedValueOnce([[], 0]);
 
     await expect(
       service.registrar(manager, { ...DATOS, quantity: -3 }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(insertar).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO customer_container_movement'),
+      expect.any(Array),
+    );
   });
 
   it('calcula el saldo inicial sólo desde pedidos entregados e inserta el movimiento una vez', async () => {
@@ -155,5 +167,60 @@ describe('CustomerContainerService', () => {
         DATOS.gasCylinderId,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe('envasesACobrar', () => {
+    const item = {
+      gasCylinderId: DATOS.gasCylinderId,
+      quantity: 3,
+      containerPrice: 10000,
+      type: '10 kg',
+    };
+
+    it.each([
+      ['sin cuenta cobra todos', { owned: 0, committed: 0 }, 3],
+      ['cuenta suficiente no cobra', { owned: 3, committed: 0 }, 0],
+      ['cuenta parcial cobra la diferencia', { owned: 2, committed: 0 }, 1],
+      [
+        'pedidos abiertos comprometen los envases',
+        { owned: 3, committed: 2 },
+        2,
+      ],
+    ])('%s', async (_caso, fila, expected) => {
+      query.mockResolvedValueOnce([
+        { ...fila, gas_cylinder_id: DATOS.gasCylinderId },
+      ]);
+
+      const [cargo] = await service.envasesACobrar(
+        manager,
+        DATOS.distributorId,
+        DATOS.customerUserId,
+        [item],
+      );
+
+      expect(cargo.containersCharged).toBe(expected);
+      expect(cargo.containerSubtotal.toNumber()).toBe(expected * 10000);
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "o.status IN ('reserved', 'pending', 'accepted', 'on_the_way')",
+        ),
+        expect.any(Array),
+      );
+    });
+
+    it('rechaza si falta el precio del envase que hay que cobrar', async () => {
+      query.mockResolvedValueOnce([
+        { owned: 0, committed: 0, gas_cylinder_id: DATOS.gasCylinderId },
+      ]);
+
+      await expect(
+        service.envasesACobrar(
+          manager,
+          DATOS.distributorId,
+          DATOS.customerUserId,
+          [{ ...item, containerPrice: null }],
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 });

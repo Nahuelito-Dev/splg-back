@@ -78,6 +78,30 @@ describe('documentos PDF', () => {
       expect(texto).toContain('Página 1 de 1');
     });
 
+    it('con envases cobrados imprime su línea y el total los incluye', async () => {
+      const base = pedidoDePrueba();
+      const pedido = {
+        ...base,
+        containerChargeAmount: 330000,
+        items: base.items.map((i, n) => ({
+          ...i,
+          containersCharged: n === 0 ? 2 : 0,
+        })),
+      };
+      const texto = textoDePdf(
+        await renderRemito(pedido, SIN_EXTRA, MEMBRETE_DE_PRUEBA),
+      );
+      expect(texto).toContain('Envases (2)');
+      expect(texto).toContain('330.000');
+    });
+
+    it('sin envases cobrados no imprime la línea', async () => {
+      const texto = textoDePdf(
+        await renderRemito(pedidoDePrueba(), SIN_EXTRA, MEMBRETE_DE_PRUEBA),
+      );
+      expect(texto).not.toContain('Envases (');
+    });
+
     it('sin código de entrega no imprime la línea del código', async () => {
       const texto = textoDePdf(
         await renderRemito(pedidoDePrueba(), SIN_EXTRA, MEMBRETE_DE_PRUEBA),

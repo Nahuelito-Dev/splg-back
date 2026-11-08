@@ -45,6 +45,7 @@ describe('QuoteOrderUseCase', () => {
   let casoDeUso: QuoteOrderUseCase;
   let parametrosDeRecargo: Record<string, number> | null;
   let manager: { findOne: jest.Mock; find: jest.Mock };
+  let envases: { envasesACobrar: jest.Mock };
   let cart: { itemsParaPedido: jest.Mock };
 
   const garrafa = (over: Partial<GasCylinder>): GasCylinder =>
@@ -110,6 +111,7 @@ describe('QuoteOrderUseCase', () => {
     jest
       .spyOn(alta, 'resolverZona')
       .mockImplementation(() => Promise.resolve(zona as never));
+    envases = { envasesACobrar: jest.fn().mockResolvedValue([]) };
     casoDeUso = new QuoteOrderUseCase(
       alta,
       stock as never,
@@ -118,6 +120,7 @@ describe('QuoteOrderUseCase', () => {
       timeSlots as never,
       { manager } as never,
       cart as never,
+      envases as never,
     );
   });
 
@@ -508,6 +511,9 @@ describe('QuoteOrderUseCase', () => {
       zoneName: null,
       depositAmount: 0,
       depositPaid: false,
+      // Lo guardado: 2 × 10000, sin envases (la edición con los mismos renglones lo conserva).
+      subtotalItems: 20000,
+      containerChargeAmount: 0,
       ...over,
     });
     const cotizar = (over: Record<string, unknown> = {}, actor = CLIENTE) =>
@@ -523,12 +529,54 @@ describe('QuoteOrderUseCase', () => {
       );
     const reservadoPrevio = (cantidad: number) =>
       manager.find.mockResolvedValue([
-        { gasCylinderId: G10, quantity: cantidad },
+        {
+          gasCylinderId: G10,
+          quantity: cantidad,
+          unitPrice: 10000,
+          subtotal: 10000 * cantidad,
+          containersCharged: 0,
+          containerUnitPrice: null,
+        },
       ]);
 
     beforeEach(() => {
       manager.findOne.mockResolvedValue(pedido());
       reservadoPrevio(2);
+    });
+
+    it('con los mismos renglones no recalcula envases (un precio de envase borrado después no la rechaza, como el PATCH)', async () => {
+      envases.envasesACobrar.mockRejectedValue(new Error('sin precio'));
+      await expect(cotizar()).resolves.toMatchObject({ total: 20000 });
+      expect(envases.envasesACobrar).not.toHaveBeenCalled();
+    });
+
+    it('con los mismos renglones devuelve los precios y envases guardados; con otros, revaloriza', async () => {
+      // Guardado a 9000 c/u con 1 envase de 50000; el catálogo hoy está a 10000.
+      manager.findOne.mockResolvedValue(
+        pedido({ subtotalItems: 18000, containerChargeAmount: 50000 }),
+      );
+      manager.find.mockResolvedValue([
+        {
+          gasCylinderId: G10,
+          quantity: 2,
+          unitPrice: 9000,
+          subtotal: 18000,
+          containersCharged: 1,
+          containerUnitPrice: 50000,
+        },
+      ]);
+      const igual = await cotizar();
+      expect(igual.subtotal).toBe(18000);
+      expect(igual.containerChargeAmount).toBe(50000);
+      expect(igual.items[0]).toMatchObject({
+        unitPrice: 9000,
+        containersCharged: 1,
+        containerSubtotal: 50000,
+      });
+      const otro = await cotizar({
+        items: [{ gasCylinderId: G10, quantity: 3, unitPrice: 0 }],
+      });
+      expect(otro.subtotal).toBe(30000);
     });
 
     it('franja propia llena y ya terminada (fecha pasada): sin cambiar la agenda no se valida ni se rechaza', async () => {
@@ -573,7 +621,7 @@ describe('QuoteOrderUseCase', () => {
     ])(
       'stock justo, cantidad %s: se cotiza',
       async (_n, cantidad, vendible) => {
-        manager.find.mockResolvedValue([{ gasCylinderId: G10, quantity: 2 }]);
+        reservadoPrevio(2);
         stock.leerParaCotizar.mockResolvedValue(garrafa({ stock: vendible }));
         const r = await cotizar({
           items: [{ gasCylinderId: G10, quantity: cantidad, unitPrice: 0 }],
