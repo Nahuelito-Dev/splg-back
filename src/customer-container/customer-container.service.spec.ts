@@ -21,12 +21,16 @@ describe('CustomerContainerService', () => {
     query,
     getRepository: jest.fn(() => ({ insert: insertar })),
   } as unknown as EntityManager;
-  const service = new CustomerContainerService();
+  const containerChargeSettings = { habilitado: jest.fn() };
+  const service = new CustomerContainerService(
+    containerChargeSettings as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
     query.mockReset();
     insertar.mockReset();
+    containerChargeSettings.habilitado.mockResolvedValue(true);
   });
 
   it('crea la cuenta, suma el saldo y asienta el movimiento', async () => {
@@ -221,6 +225,25 @@ describe('CustomerContainerService', () => {
           [{ ...item, containerPrice: null }],
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('apagado devuelve cargos en cero sin consultar cuenta ni precio', async () => {
+      containerChargeSettings.habilitado.mockResolvedValue(false);
+
+      await expect(
+        service.envasesACobrar(
+          manager,
+          DATOS.distributorId,
+          DATOS.customerUserId,
+          [{ ...item, containerPrice: null }],
+        ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          containersCharged: 0,
+          containerUnitPrice: null,
+        }),
+      ]);
+      expect(query).not.toHaveBeenCalled();
     });
   });
 });

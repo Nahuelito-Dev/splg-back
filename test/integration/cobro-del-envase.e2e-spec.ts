@@ -19,6 +19,10 @@ import { GasCylinder } from '../../src/gascylinder/entities/gascylinder.entity';
 import { GasCylinderPromotion } from '../../src/gascylinder/entities/gascylinder-promotion.entity';
 import { CoverageZone } from '../../src/coverage-zone/entities/coverage-zone.entity';
 import { CustomerContainerMovementReason } from '../../src/customer-container/entities/customer-container-movement.entity';
+import {
+  ConfigurableProcess,
+  ModuleConfig,
+} from '../../src/distributor/entities/module-config.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import {
   Order,
@@ -123,6 +127,11 @@ describe('Cobro del envase (Postgres real)', () => {
       stock: 10,
       isActive: true,
     } as Partial<GasCylinder>);
+    await dataSource.getRepository(ModuleConfig).save({
+      distributorId: distributor.distributorId,
+      module: ConfigurableProcess.CONTAINER_CHARGE,
+      params: { enabled: 1 },
+    } as Partial<ModuleConfig>);
     return {
       distributorId: distributor.distributorId,
       customerId: user.userId,
@@ -244,6 +253,11 @@ describe('Cobro del envase (Postgres real)', () => {
      */
     async function escenario(envase: number | null = 500): Promise<Entorno> {
       const e = await f.distribuidora();
+      await dataSource.getRepository(ModuleConfig).save({
+        distributorId: e.distributorId,
+        module: ConfigurableProcess.CONTAINER_CHARGE,
+        params: { enabled: 1 },
+      } as Partial<ModuleConfig>);
       await dataSource
         .getRepository(GasCylinder)
         .update(
