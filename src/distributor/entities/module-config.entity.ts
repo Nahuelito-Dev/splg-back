@@ -32,6 +32,8 @@ export enum ConfigurableProcess {
   SCHEDULED_TASKS = 'scheduled_tasks',
   /** Recargo por medio de pago, en % (transferencia, Mercado Pago, efectivo). */
   PAYMENT_SURCHARGES = 'payment_surcharges',
+  /** Cobro de los envases que no posee el cliente. */
+  CONTAINER_CHARGE = 'container_charge',
   /** Hoja de ruta: planificación del día siguiente (M4, modalidad `planned`). */
   ROUTE_PLANNING = 'route_planning',
   DOCUMENT_READING = 'document_reading',
@@ -197,6 +199,11 @@ const CHECK_DESPACHO = [
   ),
 ].join(' AND ');
 
+/** Interruptor del cobro de envases: sólo admite 0 o 1. */
+const CHECK_COBRO_ENVASES =
+  `jsonb_typeof("params" -> 'enabled') = 'number' AND ` +
+  `("params" ->> 'enabled')::numeric IN (0, 1)`;
+
 /**
  * Configuración de módulo
  * Los parámetros de un proceso automático para una distribuidora.
@@ -225,6 +232,10 @@ const CHECK_DESPACHO = [
 @Check(
   'CHK_module_config_recargos',
   `"module"::text <> 'payment_surcharges' OR (${CHECK_RECARGOS})`,
+)
+@Check(
+  'CHK_module_config_cobro_envases',
+  `"module"::text <> 'container_charge' OR (${CHECK_COBRO_ENVASES})`,
 )
 @Check(
   'CHK_module_config_hoja_de_ruta',

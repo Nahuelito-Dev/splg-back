@@ -25,7 +25,9 @@ async function main(): Promise<void> {
   await ds.initialize();
   try {
     await ds.transaction((manager) =>
-      new CustomerContainerService().inicializarSaldoDesdeEntregas(manager),
+      new CustomerContainerService({
+        habilitado: async () => false,
+      } as never).inicializarSaldoDesdeEntregas(manager),
     );
     console.log(
       'Saldo inicial de envases procesado para todas las distribuidoras.',

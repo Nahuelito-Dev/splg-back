@@ -525,6 +525,12 @@ async function main() {
   }
   const distId: string = dist.distributor_id;
   console.log(`\nDistribuidora: ${dist.name} (${SLUG})`);
+  await q(
+    `INSERT INTO module_config (distributor_id, module, params)
+     VALUES ($1, 'container_charge', '{"enabled": 1}'::jsonb)
+     ON CONFLICT (distributor_id, module) DO UPDATE SET params = EXCLUDED.params, updated_at = now()`,
+    [distId],
+  );
 
   // ── 2. Purga completa y nombres reales de las cuentas con login ────────────
   const purga = await purgar(q, distId);

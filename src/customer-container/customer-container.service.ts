@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import Decimal from 'decimal.js';
+import { ContainerChargeSettingsService } from '../distributor/container-charge-settings.service';
 import { CustomerContainerMovementReason } from './entities/customer-container-movement.entity';
 import { CustomerContainerResponseDto } from './dto/customer-container-response.dto';
 import { CustomerContainerMovementsResponseDto } from './dto/customer-container-movements-response.dto';
@@ -55,6 +56,10 @@ interface FilaDeMovimiento {
 
 @Injectable()
 export class CustomerContainerService {
+  constructor(
+    private readonly containerChargeSettings: ContainerChargeSettingsService,
+  ) {}
+
   /** Calcula los envases que el cliente debe comprar para este pedido. */
   async envasesACobrar(
     manager: EntityManager,
@@ -64,6 +69,14 @@ export class CustomerContainerService {
     excludeOrderId?: string,
   ): Promise<CargoDeEnvase[]> {
     if (items.length === 0) return [];
+    if (!(await this.containerChargeSettings.habilitado(distributorId))) {
+      return items.map((item) => ({
+        gasCylinderId: item.gasCylinderId,
+        containersCharged: 0,
+        containerUnitPrice: null,
+        containerSubtotal: new Decimal(0),
+      }));
+    }
     const filas: Array<{
       gas_cylinder_id: string;
       owned: number;
