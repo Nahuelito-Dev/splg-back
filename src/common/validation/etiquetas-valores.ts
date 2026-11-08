@@ -194,6 +194,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   review: 'Revisar documento',
   document_reading_proposal: 'Propuesta de conciliación de documento',
   document_reading_notice: 'Aviso de lectura de documento',
+  empties_shortfall: 'Faltante de envases en la entrega',
   document_reading_proposals: 'Vencimiento de propuestas de documentos',
   insurance_reimbursement: 'Reintegro de seguro',
   invoice: 'Factura',

@@ -105,12 +105,18 @@ export class StockDeliveryService extends StockDeliveryPort {
     const resultado: ResultadoDeEntrega = { aplicadas: [], omitidas: [] };
     {
       // Por garrafa y en orden de id: es el orden de locks.
-      const pedido = new Map<string, number>();
+      const pedido = new Map<string, { quantity: number; empties: number }>();
       for (const item of entrega.items) {
-        pedido.set(
-          item.gasCylinderId,
-          (pedido.get(item.gasCylinderId) ?? 0) + item.quantity,
-        );
+        const actual = pedido.get(item.gasCylinderId) ?? {
+          quantity: 0,
+          empties: 0,
+        };
+        pedido.set(item.gasCylinderId, {
+          quantity: actual.quantity + item.quantity,
+          empties:
+            actual.empties +
+            (item.emptiesReceived ?? item.quantity - item.containersCharged),
+        });
       }
       const hechos = await this.yaRegistrados(manager, entrega.orderId);
       const pendientes = [...pedido]
@@ -138,7 +144,8 @@ export class StockDeliveryService extends StockDeliveryPort {
       );
 
       const movimientos: MovimientoDeStock[] = [];
-      for (const [gasCylinderId, cantidad] of pendientes) {
+      for (const [gasCylinderId, detalle] of pendientes) {
+        const { quantity: cantidad, empties } = detalle;
         const origen = this.elegirOrigen(
           llenas,
           camion?.locationId,
@@ -155,22 +162,22 @@ export class StockDeliveryService extends StockDeliveryPort {
         }
         const locationId =
           origen === 'vehiculo' ? camion!.locationId : deposito.locationId;
-        movimientos.push(
-          {
+        movimientos.push({
+          gasCylinderId,
+          quantity: cantidad,
+          from: { locationId, condition: StockCondition.FULL },
+          to: null,
+          reason: StockMovementReason.DELIVERY,
+        });
+        if (empties > 0) {
+          movimientos.push({
             gasCylinderId,
-            quantity: cantidad,
-            from: { locationId, condition: StockCondition.FULL },
-            to: null,
-            reason: StockMovementReason.DELIVERY,
-          },
-          {
-            gasCylinderId,
-            quantity: cantidad,
+            quantity: empties,
             from: null,
             to: { locationId, condition: StockCondition.EMPTY },
             reason: StockMovementReason.EMPTY_COLLECTED,
-          },
-        );
+          });
+        }
         resultado.aplicadas.push({ gasCylinderId, origen });
       }
       if (movimientos.length === 0) return resultado;

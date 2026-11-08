@@ -43,7 +43,12 @@ export class ReapplyDeliveriesUseCase {
     const porPedido = new Map<
       string,
       EntregaDePedido & {
-        items: Array<{ gasCylinderId: string; quantity: number }>;
+        items: Array<{
+          gasCylinderId: string;
+          quantity: number;
+          containersCharged: number;
+          emptiesReceived: number | null;
+        }>;
       }
     >();
     for (const r of renglones) {
@@ -56,6 +61,9 @@ export class ReapplyDeliveriesUseCase {
       entrega.items.push({
         gasCylinderId: r.gasCylinderId,
         quantity: Number(r.quantity),
+        containersCharged: Number(r.containersCharged),
+        emptiesReceived:
+          r.emptiesReceived === null ? null : Number(r.emptiesReceived),
       });
       porPedido.set(r.orderId, entrega);
     }

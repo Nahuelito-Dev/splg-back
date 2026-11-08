@@ -42,6 +42,7 @@ const IDEMPOTENTES: Array<[Clase, string[]]> = [
       'assignDelivery',
       'changeAddress',
       'setReceiver',
+      'declareEmptiesReceived',
     ],
   ],
 ];

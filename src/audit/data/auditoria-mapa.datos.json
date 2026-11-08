@@ -6845,6 +6845,14 @@
       "position": 7
     },
     {
+      "table": "order_item",
+      "column": "empties_received",
+      "property": "emptiesReceived",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
       "table": "payment",
       "column": "payment_id",
       "property": "paymentId",

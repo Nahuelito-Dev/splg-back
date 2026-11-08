@@ -10,6 +10,7 @@ import {
   Query,
   Res,
   ParseUUIDPipe,
+  Version,
   ForbiddenException,
   HttpCode,
   HttpStatus,
@@ -87,6 +88,8 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
+import { DeclareEmptiesDto } from './dto/declare-empties.dto';
+import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
 import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
@@ -109,6 +112,7 @@ export class OrderController {
     private readonly truckLoadGate: TruckLoadGatePort,
     private readonly changeAddressUseCase: ChangeOrderAddressUseCase,
     private readonly setReceiverUseCase: SetOrderReceiverUseCase,
+    private readonly declareEmpties: DeclareEmptiesUseCase,
   ) {}
 
   @Post()
@@ -698,6 +702,37 @@ export class OrderController {
       body.reason,
     );
     return OrderMapper.toDto(order);
+  }
+
+  @Patch(':id/empties')
+  @Version('2')
+  @Auth(RoleType.DELIVERY)
+  @Idempotent()
+  @ApiOperation({
+    summary: 'Declarar las vacías recibidas en la entrega',
+    description:
+      'Sólo el chofer asignado puede declarar las vacías recibidas mientras el pedido está en camino. Idempotente vía header `Idempotency-Key`.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({ type: OrderResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Tipo de envase inexistente en el pedido o cantidad fuera de rango',
+  })
+  @ApiForbiddenResponse({
+    description: 'El pedido no está asignado a este chofer',
+  })
+  @ApiConflictResponse({ description: 'El pedido no está en camino' })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  async declareEmptiesReceived(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: DeclareEmptiesDto,
+    @CurrentDistributor({ required: 'staff' }) distributorId: string | null,
+  ) {
+    return OrderMapper.toDto(
+      await this.declareEmpties.execute(id, user.user_id, distributorId, body),
+    );
   }
 
   @Patch(':id/payment/cash-received')

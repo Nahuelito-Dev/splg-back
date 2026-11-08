@@ -395,6 +395,8 @@ export class OrderLookupService {
       vehicleCarId: string | null;
       gasCylinderId: string;
       quantity: number;
+      containersCharged: number;
+      emptiesReceived: number | null;
     }>
   > {
     const filas = await (manager ?? this.orderRepository.manager)
@@ -405,6 +407,8 @@ export class OrderLookupService {
       .addSelect('ord.vehicleCarId', 'vehicleCarId')
       .addSelect('item.gasCylinderId', 'gasCylinderId')
       .addSelect('item.quantity', 'quantity')
+      .addSelect('item.containersCharged', 'containersCharged')
+      .addSelect('item.emptiesReceived', 'emptiesReceived')
       .where('ord.distributorId = :distributorId', { distributorId })
       .andWhere('ord.status = :entregado', {
         entregado: OrderStatus.DELIVERED,
@@ -418,6 +422,8 @@ export class OrderLookupService {
         vehicleCarId: string | null;
         gasCylinderId: string;
         quantity: number;
+        containersCharged: number;
+        emptiesReceived: number | null;
       }>();
     return filas;
   }

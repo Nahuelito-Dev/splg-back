@@ -188,6 +188,9 @@ export class OrderMapper {
       renglon.unitPrice = Number(item.unitPrice);
       renglon.subtotal = Number(item.subtotal);
       renglon.containersCharged = Number(item.containersCharged ?? 0);
+      renglon.emptiesExpected =
+        item.quantity - Number(item.containersCharged ?? 0);
+      renglon.emptiesReceived = item.emptiesReceived ?? null;
       renglon.containerUnitPrice =
         item.containerUnitPrice === null ||
         item.containerUnitPrice === undefined

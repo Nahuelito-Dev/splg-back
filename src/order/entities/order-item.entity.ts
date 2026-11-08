@@ -18,6 +18,10 @@ import { columnNumericTransformer } from '../../common/transformers/column-numer
   'CHK_order_item_envases_cobrados',
   `"containers_charged" >= 0 AND "containers_charged" <= "quantity" AND ("containers_charged" = 0 OR "container_unit_price" > 0)`,
 )
+@Check(
+  'CHK_order_item_vacias_recibidas',
+  `"empties_received" IS NULL OR ("empties_received" >= 0 AND "empties_received" <= "quantity" - "containers_charged")`,
+)
 @Index('UQ_order_item_pedido_producto', ['orderId', 'gasCylinderId'], {
   unique: true,
 })
@@ -77,4 +81,7 @@ export class OrderItem {
     transformer: columnNumericTransformer,
   })
   containerUnitPrice!: number | null;
+
+  @Column({ name: 'empties_received', type: 'int', nullable: true })
+  emptiesReceived!: number | null;
 }

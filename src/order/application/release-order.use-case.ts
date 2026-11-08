@@ -3,9 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 import { Order, OrderStatus } from '../entities/order.entity';
+import { OrderItem } from '../entities/order-item.entity';
 import { transitionOrder } from '../domain/order-status.machine';
 import { releaseDriverAssignment } from '../domain/release-driver-assignment';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -91,7 +92,10 @@ export class ReleaseOrderUseCase {
         );
       }
 
-      previousDriverUserId = this.applyRelease(locked);
+      previousDriverUserId = await this.releaseWithin(
+        queryRunner.manager,
+        locked,
+      );
       order = await queryRunner.manager.save(locked);
       await queryRunner.commitTransaction();
     } catch (e) {
@@ -115,6 +119,25 @@ export class ReleaseOrderUseCase {
    * el caller dispare `notifyReleased` con el mismo dato una vez que su
    * transacción haga commit.
    */
+  /**
+   * La liberación completa dentro de la transacción del caller: la mutación
+   * de `applyRelease` y el borrado de las vacías declaradas (la declaración es
+   * del chofer que tenía el pedido). Todo camino que libera pasa por acá.
+   */
+  async releaseWithin(
+    manager: EntityManager,
+    order: Order,
+  ): Promise<string | null> {
+    const previousDriverUserId = this.applyRelease(order);
+    await manager.update(
+      OrderItem,
+      { orderId: order.orderId },
+      { emptiesReceived: null },
+    );
+    for (const item of order.items ?? []) item.emptiesReceived = null;
+    return previousDriverUserId;
+  }
+
   applyRelease(order: Order): string | null {
     transitionOrder(order, OrderStatus.PENDING);
     const previousDriverUserId = order.delivery?.userId ?? null;

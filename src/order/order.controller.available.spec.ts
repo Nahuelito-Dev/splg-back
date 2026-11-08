@@ -30,6 +30,7 @@ describe('OrderController · GET /orders/available y los pedidos express', () =>
       truckLoadGate as never,
       {} as never,
       {} as never,
+      {} as never,
     );
   });
 

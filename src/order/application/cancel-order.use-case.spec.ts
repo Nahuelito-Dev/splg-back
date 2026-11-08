@@ -8,6 +8,7 @@ import {
   mapRoleToCancelActor,
 } from './cancel-order.use-case';
 import { ReleaseOrderUseCase } from './release-order.use-case';
+import { OrderItem } from '../entities/order-item.entity';
 import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
 
@@ -31,6 +32,7 @@ describe('CancelOrderUseCase', () => {
     manager: {
       createQueryBuilder: jest.Mock;
       save: jest.Mock;
+      update: jest.Mock;
       find: jest.Mock;
     };
   };
@@ -87,6 +89,7 @@ describe('CancelOrderUseCase', () => {
       manager: {
         createQueryBuilder: jest.fn(() => queryBuilder),
         save: jest.fn((o: unknown) => Promise.resolve(o)),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
         find: jest.fn(() => Promise.resolve(lockedOrder.items)),
       },
     };
@@ -176,6 +179,23 @@ describe('CancelOrderUseCase', () => {
       expect(result.acceptedAt).toBeNull();
       expect(result.onTheWayAt).toBeNull();
       expect(stock.restituirStock).not.toHaveBeenCalled();
+    });
+
+    it('borra las vacías que había declarado (F35 E4: la declaración es del chofer que lo tenía)', async () => {
+      lockedOrder = makeOrder({
+        status: OrderStatus.ON_THE_WAY,
+        onTheWayAt: new Date('2026-01-01'),
+        items: [{ emptiesReceived: 0 }] as unknown as Order['items'],
+      });
+
+      const result = await useCase.execute('ord-1', 'user-drv-1', 'driver');
+
+      expect(queryRunner.manager.update).toHaveBeenCalledWith(
+        OrderItem,
+        { orderId: 'ord-1' },
+        { emptiesReceived: null },
+      );
+      expect(result.items[0].emptiesReceived).toBeNull();
     });
 
     it('cierra la oferta del chofer por su user_id, no por el id del perfil de reparto', async () => {
