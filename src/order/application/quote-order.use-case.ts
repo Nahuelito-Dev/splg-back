@@ -38,6 +38,8 @@ import {
   zonaGuardada,
 } from '../domain/order-editable';
 import { diaArgentino } from '../../common/utils/dias-argentina';
+import { CustomerContainerService } from '../../customer-container/customer-container.service';
+import { cambiaronLosRenglones } from '../domain/renglones-del-pedido';
 
 /**
  * Cotización de un pedido: el mismo cálculo que el alta (`CreateOrderUseCase`:
@@ -55,6 +57,7 @@ export class QuoteOrderUseCase {
     private readonly timeSlots: TimeSlotService,
     private readonly dataSource: DataSource,
     private readonly cart: CartService,
+    private readonly customerContainers: CustomerContainerService,
   ) {}
 
   private itemsDelCarrito(
@@ -130,6 +133,11 @@ export class QuoteOrderUseCase {
         'No autorizado a cotizar pedidos para otro cliente',
       );
     }
+    if (!customerId && (dto.items?.length ?? 0) > 0) {
+      throw new BadRequestException(
+        'Elegí el cliente para cotizar: el total depende de los envases que tiene',
+      );
+    }
 
     if (edicion) {
       await this.validarAgendaDeEdicion(edicion.order, dto, distributorId);
@@ -203,6 +211,12 @@ export class QuoteOrderUseCase {
     // Mismo orden que el alta: los renglones se valorizan de a uno.
     let subtotal = new Decimal(0);
     const items: QuoteResponseDto['items'] = [];
+    const containerCandidates: Array<{
+      gasCylinderId: string;
+      quantity: number;
+      containerPrice: number | null;
+      type: string;
+    }> = [];
     for (const item of aCotizar) {
       const producto = await this.stock.leerParaCotizar(item.gasCylinderId);
       // Primero la distribuidora y después el stock, como el alta: con el id de
@@ -228,7 +242,65 @@ export class QuoteOrderUseCase {
         unitPrice: renglon.checkoutItem.unitPrice,
         subtotal: renglon.subtotal.toNumber(),
         discountPercentage: renglon.discountPercentage,
+        containersCharged: 0,
+        containerUnitPrice: null,
+        containerSubtotal: 0,
       });
+      containerCandidates.push({
+        gasCylinderId: producto.gasCylinderId,
+        quantity: item.quantity,
+        containerPrice: producto.containerPrice,
+        type: producto.type,
+      });
+    }
+    // Edición con los mismos renglones: el PATCH conserva precios y envases guardados
+    // (no recalcula ni valida envases), así que la cotización tampoco.
+    const mismosRenglones =
+      !!edicion &&
+      !dto.fromCart &&
+      !cambiaronLosRenglones(edicion.renglones, aCotizar);
+    const containerCharges = mismosRenglones
+      ? []
+      : await this.customerContainers.envasesACobrar(
+          this.dataSource.manager,
+          distributorId as string,
+          customerId as string,
+          containerCandidates,
+          edicion?.order.orderId,
+        );
+    let containerChargeAmount = containerCharges.reduce(
+      (total, cargo) => total.plus(cargo.containerSubtotal),
+      new Decimal(0),
+    );
+    for (const item of items) {
+      const cargo = containerCharges.find(
+        (candidate) => candidate.gasCylinderId === item.gasCylinderId,
+      );
+      item.containersCharged = cargo?.containersCharged ?? 0;
+      item.containerUnitPrice = cargo?.containerUnitPrice ?? null;
+      item.containerSubtotal = cargo?.containerSubtotal.toNumber() ?? 0;
+    }
+    // Edición con los mismos renglones: el PATCH conserva los precios y envases
+    // guardados, así que la cotización devuelve esos mismos montos.
+    if (mismosRenglones && edicion) {
+      subtotal = new Decimal(edicion.order.subtotalItems);
+      containerChargeAmount = new Decimal(edicion.order.containerChargeAmount);
+      for (const item of items) {
+        const guardado = edicion.renglones.find(
+          (r) => r.gasCylinderId === item.gasCylinderId,
+        );
+        if (!guardado) continue;
+        item.unitPrice = Number(guardado.unitPrice);
+        item.subtotal = Number(guardado.subtotal);
+        item.containersCharged = guardado.containersCharged;
+        item.containerUnitPrice =
+          guardado.containerUnitPrice === null
+            ? null
+            : Number(guardado.containerUnitPrice);
+        item.containerSubtotal = new Decimal(guardado.containerUnitPrice ?? 0)
+          .times(guardado.containersCharged)
+          .toNumber();
+      }
     }
 
     // Alta: el % vigente de la distribuidora. Edición: el del pedido si el medio
@@ -248,6 +320,7 @@ export class QuoteOrderUseCase {
         zona,
         paymentSurchargePercentage,
         expressSurcharge,
+        containerChargeAmount,
       );
     // La base guarda los montos con 2 decimales: la cotización devuelve lo
     // mismo que quedará en el pedido.
@@ -274,6 +347,7 @@ export class QuoteOrderUseCase {
     const res = new QuoteResponseDto();
     res.items = items;
     res.subtotal = subtotal.toNumber();
+    res.containerChargeAmount = containerChargeAmount.toNumber();
     res.zone = zona
       ? {
           coverageZoneId: zona.id,
@@ -308,7 +382,11 @@ export class QuoteOrderUseCase {
     distributorId: string | null,
     actor: { userId: string; role: RoleType },
     dto: QuoteOrderDto,
-  ): Promise<{ order: Order; cantidades: Map<string, number> }> {
+  ): Promise<{
+    order: Order;
+    cantidades: Map<string, number>;
+    renglones: OrderItem[];
+  }> {
     const esCliente = actor.role === RoleType.CUSTOMER;
     const order = await this.dataSource.manager.findOne(Order, {
       where: { orderId },
@@ -339,7 +417,7 @@ export class QuoteOrderUseCase {
         (cantidades.get(r.gasCylinderId) ?? 0) + r.quantity,
       );
     }
-    return { order, cantidades };
+    return { order, cantidades, renglones };
   }
 
   /**

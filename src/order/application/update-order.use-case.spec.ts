@@ -126,6 +126,7 @@ describe('UpdateOrderUseCase', () => {
         orderItems: [{ gasCylinderId: 'g2', quantity: 3 }] as OrderItem[],
         checkoutItems: [],
         subtotalItems: new Decimal(3000),
+        containerCandidates: [],
       }),
       porcentajeDeRecargoDelPedido: jest.fn().mockResolvedValue(0),
       calcularTotales: jest.fn((sub: number | Decimal) => ({
@@ -169,6 +170,7 @@ describe('UpdateOrderUseCase', () => {
       realtime as unknown as RealtimeDispatchPort,
       orquestador as unknown as DispatchOrchestratorService,
       redis as unknown as RedisService,
+      { envasesACobrar: jest.fn().mockResolvedValue([]) } as never,
     );
   });
 
@@ -311,6 +313,8 @@ describe('UpdateOrderUseCase', () => {
     expect(create.calcularTotales).toHaveBeenCalledWith(
       expect.anything(),
       { type: 'fixed', value: 300 },
+      0,
+      0,
       0,
     );
   });
@@ -499,6 +503,8 @@ describe('UpdateOrderUseCase', () => {
         expect.anything(),
         null,
         7.5,
+        0,
+        0,
       );
       expect(locked?.paymentSurchargePercentage).toBe(7.5);
     });

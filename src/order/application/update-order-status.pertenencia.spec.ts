@@ -156,6 +156,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         emitAsync: jest.fn().mockResolvedValue([]),
       } as unknown as import('@nestjs/event-emitter').EventEmitter2,
+      { registrar: jest.fn().mockResolvedValue(0) } as never,
     );
     return { order, queryRunner, queryBuilder };
   };

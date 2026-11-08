@@ -136,7 +136,7 @@ describe('coherencia de montos: carrito, cotización, pedido y pasarela', () => 
 
           const renglonesPasarela = renglonesDelCheckout(
             renglones.map((r) => r.checkoutItem),
-            { zona: 0, online: paymentSurchargeAmount, express: 0 },
+            { zona: 0, envases: 0, online: paymentSurchargeAmount, express: 0 },
           );
           const cobrado = renglonesPasarela.reduce(
             (s, r) => s.plus(new Decimal(r.unitPrice).times(r.quantity)),
@@ -154,6 +154,37 @@ describe('coherencia de montos: carrito, cotización, pedido y pasarela', () => 
         },
       );
     });
+  });
+
+  it('suma los envases al checkout y les aplica sólo el recargo del pago', () => {
+    const envases = new Decimal(10000);
+    const { totalAmount, paymentSurchargeAmount } = useCase.calcularTotales(
+      20000,
+      null,
+      10,
+      0,
+      envases,
+    );
+    const checkout = renglonesDelCheckout(
+      [{ id: 'gas', title: 'Garrafa', quantity: 1, unitPrice: 20000 }],
+      { zona: 0, envases, online: paymentSurchargeAmount, express: 0 },
+    );
+    expect(checkout).toContainEqual(
+      expect.objectContaining({
+        id: 'containers',
+        title: 'Envases',
+        unitPrice: 10000,
+      }),
+    );
+    expect(
+      checkout
+        .reduce(
+          (total, item) =>
+            total.plus(new Decimal(item.unitPrice).times(item.quantity)),
+          new Decimal(0),
+        )
+        .toFixed(2),
+    ).toBe(totalAmount.toFixed(2));
   });
 
   it('el caso del bug: 2 y 4 garrafas de 10 kg con la promo cargada', () => {

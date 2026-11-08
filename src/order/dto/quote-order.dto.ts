@@ -53,6 +53,10 @@ export class QuoteItemDto {
       'Porcentaje de la promoción por volumen que se aplicó a este renglón; null si se cotizó a precio de lista',
   })
   discountPercentage!: number | null;
+  @ApiProperty({ example: 1 }) containersCharged!: number;
+  @ApiProperty({ type: Number, nullable: true, example: 10000 })
+  containerUnitPrice!: number | null;
+  @ApiProperty({ example: 10000 }) containerSubtotal!: number;
 }
 
 export class QuoteZoneDto {
@@ -72,6 +76,13 @@ export class QuoteResponseDto {
     description: 'Suma de los renglones, ya con promociones por volumen',
   })
   subtotal!: number;
+
+  @ApiProperty({
+    example: 10000,
+    description:
+      'Importe de los envases cobrados, sin promoción ni recargos de zona o express.',
+  })
+  containerChargeAmount!: number;
 
   @ApiProperty({
     type: QuoteZoneDto,

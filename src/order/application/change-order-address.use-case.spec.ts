@@ -179,7 +179,7 @@ describe('ChangeOrderAddressUseCase', () => {
 
       await cambiar();
 
-      expect(create.calcularTotales).toHaveBeenCalledWith(1000, null, 0, 0);
+      expect(create.calcularTotales).toHaveBeenCalledWith(1000, null, 0, 0, 0);
     });
 
     it('recalcula con el % del pedido, no con el vigente: un cambio del parámetro no altera pedidos existentes', async () => {
@@ -192,7 +192,13 @@ describe('ChangeOrderAddressUseCase', () => {
         locked,
         PaymentMethod.CASH,
       );
-      expect(create.calcularTotales).toHaveBeenCalledWith(1000, null, 7.5, 0);
+      expect(create.calcularTotales).toHaveBeenCalledWith(
+        1000,
+        null,
+        7.5,
+        0,
+        0,
+      );
       expect(locked?.paymentSurchargePercentage).toBe(7.5);
     });
   });

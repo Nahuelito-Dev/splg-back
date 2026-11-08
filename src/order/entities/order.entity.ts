@@ -85,8 +85,9 @@ export enum PaymentStatus {
 )
 @Check(
   'CHK_order_total_formula',
-  `"totalAmount" = "subtotal_items" + "zone_surcharge_amount" + "payment_surcharge_amount" + CASE WHEN "express_degraded_at" IS NULL THEN "express_surcharge_amount" ELSE 0 END`,
+  `"totalAmount" = "subtotal_items" + "zone_surcharge_amount" + "container_charge_amount" + "payment_surcharge_amount" + CASE WHEN "express_degraded_at" IS NULL THEN "express_surcharge_amount" ELSE 0 END`,
 )
+@Check('CHK_order_cargo_envases', '"container_charge_amount" >= 0')
 @Check(
   'CHK_order_pago_coherente',
   `("paymentMethod" = 'cash') = ("paymentType" = 'cash') AND ("paymentMethod" = 'account') = ("paymentType" = 'account')`,
@@ -474,6 +475,16 @@ export class Order {
     default: 0,
   })
   expressSurchargeAmount!: number;
+
+  @Column({
+    name: 'container_charge_amount',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  containerChargeAmount!: number;
 
   /** Cuándo ningún chofer en moto aceptó y el pedido pasó al reparto común (CU-149). */
   @Column({ name: 'express_degraded_at', type: 'timestamptz', nullable: true })

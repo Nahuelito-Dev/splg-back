@@ -9,6 +9,7 @@ import {
 import { totalBajoLaSenaPagada } from '../domain/deposit-cap';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { DataSource } from 'typeorm';
+import Decimal from 'decimal.js';
 
 import { Order, PaymentMethod } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
@@ -39,6 +40,8 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { RedisService } from '../../redis/redis.service';
 import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-incompleta';
 import { errorMessage } from '../../common/errors/error-message';
+import { CustomerContainerService } from '../../customer-container/customer-container.service';
+import { cambiaronLosRenglones } from '../domain/renglones-del-pedido';
 
 /** Lo que la transacción de la edición devuelve para los efectos posteriores. */
 type EdicionAplicada = {
@@ -82,6 +85,7 @@ export class UpdateOrderUseCase {
     private readonly realtime: RealtimeDispatchPort,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly redis: RedisService,
+    private readonly customerContainers: CustomerContainerService,
   ) {}
 
   async execute(
@@ -164,8 +168,7 @@ export class UpdateOrderUseCase {
       const paymentMethod = dto.paymentMethod ?? order.paymentMethod;
       const cambiaPago = paymentMethod !== order.paymentMethod;
       const cambiaItems =
-        Boolean(dto.items) &&
-        this.cambiaronLosRenglones(order.items, dto.items);
+        Boolean(dto.items) && cambiaronLosRenglones(order.items, dto.items);
 
       // Dirección: tiene que ser del cliente del pedido; cambia el punto de
       // entrega, la zona y deja el cambio en el historial de direcciones.
@@ -255,7 +258,8 @@ export class UpdateOrderUseCase {
 
       // Renglones: se devuelve el stock viejo y se reserva el nuevo.
       let subtotalItems = order.subtotalItems;
-      if (dto.items) {
+      let containerChargeAmount = Number(order.containerChargeAmount ?? 0);
+      if (cambiaItems && dto.items) {
         // Un solo orden de locks para devolver y reservar: la unión de ids
         // viejos y nuevos, por id ascendente.
         await this.stock.bloquearEnOrden(manager, [
@@ -276,10 +280,32 @@ export class UpdateOrderUseCase {
         );
         order.items = reservado.orderItems;
         subtotalItems = reservado.subtotalItems.toNumber();
+        const cargos = await this.customerContainers.envasesACobrar(
+          manager,
+          order.distributorId,
+          order.customerId,
+          reservado.containerCandidates,
+          order.orderId,
+        );
+        containerChargeAmount = cargos
+          .reduce(
+            (total, cargo) => total.plus(cargo.containerSubtotal),
+            new Decimal(0),
+          )
+          .toNumber();
+        for (const item of order.items) {
+          const cargo = cargos.find(
+            (candidate) => candidate.gasCylinderId === item.gasCylinderId,
+          );
+          item.containersCharged = cargo?.containersCharged ?? 0;
+          item.containerUnitPrice = cargo?.containerUnitPrice ?? null;
+        }
       }
 
-      // El total sólo se recalcula si cambian renglones, dirección/zona o
-      // medio de pago: editar notas o franja no lo toca.
+      // El total se recalcula si cambian los renglones (se revalorizan precios y
+      // envases al día), la dirección/zona o el medio de pago. Con los mismos
+      // renglones el pedido conserva sus precios y envases guardados (la cotización
+      // de edición devuelve lo mismo: `cambiaronLosRenglones`).
       if (cambiaItems || cambiaDireccion || cambiaPago) {
         const paymentSurchargePercentage =
           await this.create.porcentajeDeRecargoDelPedido(order, paymentMethod);
@@ -288,6 +314,8 @@ export class UpdateOrderUseCase {
             subtotalItems,
             zone,
             paymentSurchargePercentage,
+            0,
+            containerChargeAmount,
           );
         if (
           order.depositPaid &&
@@ -296,6 +324,7 @@ export class UpdateOrderUseCase {
           throw new ConflictException(MENSAJE_SENA_PAGADA);
         }
         order.subtotalItems = subtotalItems;
+        order.containerChargeAmount = containerChargeAmount;
         order.zoneSurchargeAmount = zoneSurchargeAmount.toNumber();
         order.paymentSurchargeAmount = paymentSurchargeAmount.toNumber();
         order.paymentSurchargePercentage = paymentSurchargePercentage;
@@ -433,23 +462,6 @@ export class UpdateOrderUseCase {
   }
 
   /** ¿Los renglones nuevos difieren de los guardados (garrafa y cantidad)? */
-  private cambiaronLosRenglones(
-    actuales: ReadonlyArray<{ gasCylinderId: string; quantity: number }>,
-    nuevos:
-      | ReadonlyArray<{ gasCylinderId: string; quantity: number }>
-      | undefined,
-  ): boolean {
-    if (!nuevos) return false;
-    const mapa = (
-      r: ReadonlyArray<{ gasCylinderId: string; quantity: number }>,
-    ) => new Map(r.map((i) => [i.gasCylinderId, i.quantity]));
-    const a = mapa(actuales);
-    const n = mapa(nuevos);
-    if (a.size !== n.size) return true;
-    for (const [id, cantidad] of n) if (a.get(id) !== cantidad) return true;
-    return false;
-  }
-
   /** Sólo se edita un pedido pendiente, sin chofer y sin pago online. */
   private assertEditable(
     order: Order,

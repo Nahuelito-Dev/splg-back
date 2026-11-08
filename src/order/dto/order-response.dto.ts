@@ -51,6 +51,18 @@ export class OrderItemResponseDto {
   @Expose({ name: 'subtotal' })
   subtotal!: number;
 
+  @ApiProperty({ example: 1 })
+  @Expose()
+  containersCharged!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 10000,
+  })
+  @Expose()
+  containerUnitPrice!: number | null;
+
   @ApiProperty({
     name: 'gas_cylinder',
     type: ProductoDelRenglonDto,
@@ -240,6 +252,14 @@ export class OrderResponseDto {
   total!: number;
 
   @ApiProperty({
+    example: 10000,
+    description:
+      'Cargo por envases sin promoción; lleva el recargo por medio de pago, no los recargos de zona ni express.',
+  })
+  @Expose()
+  containerChargeAmount!: number;
+
+  @ApiProperty({
     description:
       'Estado para las apps: `on_the_way` sale como `out_for_delivery`',
     enum: [
@@ -351,7 +371,7 @@ export class OrderResponseDto {
   @ApiProperty({
     example: 2000,
     description:
-      'Recargo por medio de pago en pesos (0 en efectivo sin recargo). Es parte del `total_amount`: subtotal de ítems + recargo de zona + este recargo (+ el express vigente).',
+      'Recargo por medio de pago en pesos (0 en efectivo sin recargo), calculado también sobre los envases. Es parte del `total_amount`: subtotal de ítems + envases + recargo de zona + este recargo (+ el express vigente).',
   })
   paymentSurchargeAmount!: number;
 

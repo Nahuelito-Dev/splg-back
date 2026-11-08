@@ -232,6 +232,7 @@ describe('UpdateOrderStatusUseCase', () => {
       truckGate as unknown as import('../domain/ports/truck-load-gate.port').TruckLoadGatePort,
       offers as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
       eventos as unknown as import('@nestjs/event-emitter').EventEmitter2,
+      { registrar: jest.fn().mockResolvedValue(0) } as never,
     );
   });
 

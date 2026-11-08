@@ -62,6 +62,7 @@ import { coordenadasDePunto } from '../../common/geo/punto';
 import { DomainError } from '../../common/errors/domain.error';
 import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
+import { CustomerContainerService } from '../../customer-container/customer-container.service';
 
 /** Tipo de pago del pedido según el medio elegido. */
 export const MENSAJE_CAMBIO_EL_PRECIO =
@@ -128,6 +129,7 @@ export class CreateOrderUseCase {
     // Venta a cuenta corriente: el crédito se verifica en esta misma transacción.
     private readonly customerAccount: CustomerAccountPort,
     private readonly paymentSurcharges: PaymentSurchargeSettingsService,
+    private readonly customerContainers: CustomerContainerService,
   ) {}
 
   /**
@@ -272,8 +274,27 @@ export class CreateOrderUseCase {
       }
 
       // Reserva de stock con lock + precios de servidor (ver `reservarRenglones`).
-      const { orderItems, checkoutItems, subtotalItems } =
+      // El FOR UPDATE de gas_cylinder de esa reserva serializa dos altas que
+      // calculan en paralelo los envases comprometidos del mismo tipo.
+      const { orderItems, checkoutItems, subtotalItems, containerCandidates } =
         await this.reservarRenglones(queryRunner.manager, items, distributorId);
+      const containerCharges = await this.customerContainers.envasesACobrar(
+        queryRunner.manager,
+        distributorId as string,
+        createOrderDto.customerId,
+        containerCandidates,
+      );
+      const containerChargeAmount = containerCharges.reduce(
+        (total, cargo) => total.plus(cargo.containerSubtotal),
+        new Decimal(0),
+      );
+      for (const orderItem of orderItems) {
+        const cargo = containerCharges.find(
+          (candidate) => candidate.gasCylinderId === orderItem.gasCylinderId,
+        );
+        orderItem.containersCharged = cargo?.containersCharged ?? 0;
+        orderItem.containerUnitPrice = cargo?.containerUnitPrice ?? null;
+      }
 
       // Recargos de zona y de método de pago (ver `calcularTotales`).
       const paymentSurchargePercentage = await this.porcentajeDeRecargo(
@@ -286,6 +307,7 @@ export class CreateOrderUseCase {
           coverageZone,
           paymentSurchargePercentage,
           expressSurcharge,
+          containerChargeAmount,
         );
 
       // Lo cotizado tiene que ser lo cobrado: si la cotización que vio el cliente
@@ -367,6 +389,7 @@ export class CreateOrderUseCase {
         paymentSurchargeAmount: paymentSurchargeAmount.toNumber(),
         paymentSurchargePercentage,
         subtotalItems: subtotalItems.toNumber(),
+        containerChargeAmount: containerChargeAmount.toNumber(),
         deliveryMode: esExpress
           ? OrderDeliveryMode.EXPRESS
           : OrderDeliveryMode.STANDARD,
@@ -401,6 +424,7 @@ export class CreateOrderUseCase {
         datosDelComprador(customer, address),
         renglonesDelCheckout(checkoutItems, {
           zona: zoneSurchargeAmount,
+          envases: containerChargeAmount,
           online: paymentSurchargeAmount,
           express: expressSurcharge,
         }),
@@ -574,12 +598,24 @@ export class CreateOrderUseCase {
     orderItems: OrderItem[];
     checkoutItems: PaymentCheckoutItem[];
     subtotalItems: Decimal;
+    containerCandidates: Array<{
+      gasCylinderId: string;
+      quantity: number;
+      containerPrice: number | null;
+      type: string;
+    }>;
   }> {
     let subtotalItems = new Decimal(0);
     const orderItems: OrderItem[] = [];
     // Ítems para el checkout de MercadoPago (título legible + precio de
     // SERVIDOR). Se arman en el mismo loop para no releer las garrafas.
     const checkoutItems: PaymentCheckoutItem[] = [];
+    const containerCandidates: Array<{
+      gasCylinderId: string;
+      quantity: number;
+      containerPrice: number | null;
+      type: string;
+    }> = [];
 
     // Los locks de las garrafas se toman siempre en el mismo orden (por id):
     // dos pedidos con las mismas garrafas en distinto orden no se cruzan.
@@ -604,9 +640,15 @@ export class CreateOrderUseCase {
       subtotalItems = subtotalItems.plus(renglon.subtotal);
       orderItems.push(renglon.orderItem);
       checkoutItems.push(renglon.checkoutItem);
+      containerCandidates.push({
+        gasCylinderId: gasCylinder.gasCylinderId,
+        quantity: itemDto.quantity,
+        containerPrice: gasCylinder.containerPrice,
+        type: gasCylinder.type,
+      });
     }
 
-    return { orderItems, checkoutItems, subtotalItems };
+    return { orderItems, checkoutItems, subtotalItems, containerCandidates };
   }
 
   /**
@@ -712,6 +754,7 @@ export class CreateOrderUseCase {
     coverageZone: ZonaParaRecargo | null,
     paymentSurchargePercentage: number | Decimal,
     expressSurcharge: Decimal.Value = 0,
+    containerChargeAmount: Decimal.Value = 0,
   ): {
     totalAmount: Decimal;
     zoneSurchargeAmount: Decimal;
@@ -721,7 +764,9 @@ export class CreateOrderUseCase {
       subtotalItems,
       coverageZone,
     );
-    const base = zoneSurchargeAmount.plus(subtotalItems);
+    const base = zoneSurchargeAmount
+      .plus(subtotalItems)
+      .plus(containerChargeAmount);
     // El recargo se guarda aparte y redondeado a 2 decimales, igual que el
     // resto de los montos: el total es exactamente la suma de sus partes.
     const conRecargo = this.pricing
