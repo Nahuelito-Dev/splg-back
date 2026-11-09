@@ -27,6 +27,16 @@ export interface PolizaParaLaFlota {
   policyNumber: string;
 }
 
+export interface VigenciaCorregida {
+  distributorId: string;
+  taskId: string;
+  /** `YYYY-MM-DD` */
+  validFrom: string;
+  /** `YYYY-MM-DD` */
+  validTo: string;
+  policyNumber: string;
+}
+
 /** Una tarea que la póliza dio por hecha, con el estado en que estaba para poder reabrirla. */
 export interface TareaCerrada {
   taskId: string;
@@ -183,6 +193,37 @@ export class FleetInsuranceSyncService {
       closedTasks: cerradas,
       reason: null,
     };
+  }
+
+  /**
+   * Corrige la tarea que la póliza ya tiene vinculada, en su lugar: conserva el
+   * vínculo y las tareas que la póliza cerró (las que `revertir` tiene que
+   * reabrir). Una tarea ya cerrada no se toca. Si el vencimiento cambia, la
+   * tarea vuelve a avisar.
+   */
+  async recalcularVencimiento(
+    manager: EntityManager,
+    datos: VigenciaCorregida,
+  ): Promise<boolean> {
+    const repo = manager.getRepository(MaintenanceTask);
+    const tarea = await repo.findOne({
+      where: { taskId: datos.taskId, distributorId: datos.distributorId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!tarea || ESTADOS_CERRADOS.includes(tarea.status)) return false;
+    const vencimiento = normalizarFechaCalendario(
+      new Date(`${datos.validTo}T00:00:00.000Z`),
+    );
+    if (tarea.dueAt?.getTime() !== vencimiento.getTime()) {
+      tarea.alertedAt = null;
+    }
+    tarea.dueAt = vencimiento;
+    tarea.validFrom = normalizarFechaCalendario(
+      new Date(`${datos.validFrom}T00:00:00.000Z`),
+    );
+    tarea.referenceNumber = datos.policyNumber.slice(0, 60);
+    await repo.save(tarea);
+    return true;
   }
 
   /**

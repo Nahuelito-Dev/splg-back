@@ -65,6 +65,6 @@ import { SupplierPhotoController } from './presentation/supplier-photo.controlle
     PurchaseReceiptAttachmentOwnerResolver,
   ],
   // SupplierService: la importación masiva da de alta proveedores.
-  exports: [PurchaseQueryService, SupplierService],
+  exports: [PurchaseQueryService, SupplierService, PurchaseReceiptService],
 })
 export class PurchaseModule {}

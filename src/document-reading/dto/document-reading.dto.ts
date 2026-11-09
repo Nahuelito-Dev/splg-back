@@ -225,6 +225,14 @@ export class ConfirmDocumentReadingDto {
   @IsOptional()
   @IsUUID()
   cashBoxId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Tarea de documentación a renovar cuando la propuesta tiene más de una posible',
+  })
+  @IsOptional()
+  @IsUUID()
+  fleetTaskId?: string;
 }
 export class CorrectDocumentReadingDto {
   @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
@@ -240,6 +248,14 @@ export class CorrectDocumentReadingDto {
   @IsOptional()
   @IsUUID()
   cashBoxId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Tarea de documentación a renovar cuando la propuesta tiene más de una posible',
+  })
+  @IsOptional()
+  @IsUUID()
+  fleetTaskId?: string;
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()
   @IsString()

@@ -78,6 +78,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   car_patent: 'Patente',
   car_year: 'Año del vehículo',
   cashBoxId: 'Caja',
+  fleetTaskId: 'Tarea de documentación',
   cashPercentage: 'Porcentaje en efectivo',
   category: 'Categoría',
   categoryId: 'Categoría',

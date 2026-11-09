@@ -1,4 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
 import { DataSource, EntityManager } from 'typeorm';
@@ -16,6 +20,15 @@ import {
 } from '../domain/errors/purchase.errors';
 import { PaymentStatus, PurchaseReceiptStatus } from '../domain/purchase.enums';
 import { PurchaseReceipt } from '../entities/purchase-receipt.entity';
+import { SupplierDocumentType } from '../domain/purchase.enums';
+import { PurchaseOrder } from '../entities/purchase-order.entity';
+import { Supplier } from '../entities/supplier.entity';
+import {
+  assertDuenoSinCambios,
+  dinero,
+  esImporteIgual,
+  ValoresDelDueno,
+} from '../../common/utils/conciliacion-de-documentos';
 
 export interface PagoDeRecepcion {
   paymentStatus: PaymentStatus;
@@ -31,6 +44,72 @@ export class PurchaseReceiptService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly pagos: CashDocumentPaymentService,
   ) {}
+
+  /**
+   * Registra la factura leída en la recepción, dentro de la transacción de la
+   * lectura. El total no se toca: se controla contra el mismo esperado y con la
+   * misma tolerancia que la conciliación.
+   */
+  async registrarFacturaDesdeLectura(
+    manager: EntityManager,
+    id: string,
+    distributorId: string,
+    datos: {
+      numero: string;
+      total: string | null;
+      tolerancePct: number;
+      expected: ValoresDelDueno;
+    },
+  ): Promise<void> {
+    const recepcion = await manager
+      .getRepository(PurchaseReceipt)
+      .createQueryBuilder('r')
+      .setLock('pessimistic_write')
+      .where('r.receiptId = :id AND r.distributorId = :distributorId', {
+        id,
+        distributorId,
+      })
+      .getOne();
+    if (!recepcion) throw new RecepcionNoEncontradaError(id);
+    if (recepcion.status === PurchaseReceiptStatus.VOIDED) {
+      throw new ConflictException(
+        'La recepción está anulada: no se le registra la factura',
+      );
+    }
+    const orden = recepcion.purchaseOrderId
+      ? await manager.findOne(PurchaseOrder, {
+          where: { purchaseOrderId: recepcion.purchaseOrderId, distributorId },
+          withDeleted: true,
+          lock: { mode: 'pessimistic_read' },
+        })
+      : null;
+    const proveedor = await manager.findOne(Supplier, {
+      where: { supplierId: recepcion.supplierId, distributorId },
+      withDeleted: true,
+      lock: { mode: 'pessimistic_read' },
+    });
+    const esperado = dinero(
+      recepcion.totalAmount || orden?.totalAmount || null,
+    );
+    assertDuenoSinCambios(datos.expected, {
+      cuit_del_emisor: proveedor?.cuit ?? null,
+      total: esperado,
+    });
+    if (!esImporteIgual(esperado, datos.total, datos.tolerancePct)) {
+      throw new BadRequestException(
+        'Total: el importe de la factura no coincide con el de la recepción',
+      );
+    }
+    if (recepcion.supplierDocumentType === SupplierDocumentType.INVOICE) {
+      if (recepcion.supplierDocumentNumber === datos.numero) return;
+      throw new ConflictException(
+        `La recepción ya tiene registrada la factura ${recepcion.supplierDocumentNumber}`,
+      );
+    }
+    recepcion.supplierDocumentType = SupplierDocumentType.INVOICE;
+    recepcion.supplierDocumentNumber = datos.numero;
+    await manager.save(recepcion);
+  }
 
   /**
    * Marca el remito como pagado o impago. Pagado en efectivo, el total sale de

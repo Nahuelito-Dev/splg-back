@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
-import { DataSource } from 'typeorm';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
 import { CashDocumentPaymentService } from '../../cash/application/cash-document-payment.service';
 import {
   CashReferenceType,
@@ -9,7 +10,12 @@ import {
   CompraInvalidaError,
   RecepcionNoEncontradaError,
 } from '../domain/errors/purchase.errors';
-import { PaymentStatus, PurchaseReceiptStatus } from '../domain/purchase.enums';
+import {
+  PaymentStatus,
+  PurchaseReceiptStatus,
+  SupplierDocumentType,
+} from '../domain/purchase.enums';
+import { PurchaseOrder } from '../entities/purchase-order.entity';
 import { PurchaseReceipt } from '../entities/purchase-receipt.entity';
 import { PurchaseReceiptService } from './purchase-receipt.service';
 
@@ -308,5 +314,108 @@ describe('PurchaseReceiptService.pagar (v2)', () => {
       'u1',
     );
     expect(guardadas[0]).toMatchObject({ paidAt: null, cashMovementId: null });
+  });
+});
+
+describe('PurchaseReceiptService.registrarFacturaDesdeLectura', () => {
+  const datos = {
+    numero: 'F-1',
+    total: '100.00',
+    tolerancePct: 1,
+    expected: {},
+  };
+  const correr = (
+    recepcion: Partial<PurchaseReceipt> | null,
+    orden: object | null = null,
+    extra: object = {},
+  ) => {
+    const qb = {
+      setLock: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn(() => Promise.resolve(recepcion)),
+    };
+    const manager = {
+      getRepository: jest.fn(() => ({ createQueryBuilder: () => qb })),
+      findOne: jest.fn((entidad: unknown) =>
+        Promise.resolve(
+          entidad === PurchaseOrder ? orden : { cuit: '20123456786' },
+        ),
+      ),
+      save: jest.fn((x: unknown) => Promise.resolve(x)),
+    };
+    const service = new PurchaseReceiptService(
+      {} as DataSource,
+      {} as CashDocumentPaymentService,
+    );
+    return {
+      manager,
+      promesa: service.registrarFacturaDesdeLectura(
+        manager as unknown as EntityManager,
+        'r1',
+        'd1',
+        { ...datos, ...extra },
+      ),
+    };
+  };
+  const remito = (over: Partial<PurchaseReceipt> = {}) =>
+    ({
+      status: PurchaseReceiptStatus.CONFIRMED,
+      totalAmount: 100,
+      purchaseOrderId: null,
+      supplierDocumentType: SupplierDocumentType.DELIVERY_NOTE,
+      supplierDocumentNumber: 'R-1',
+      ...over,
+    }) as PurchaseReceipt;
+
+  it('registra la factura y sólo cambia tipo y número', async () => {
+    const recepcion = remito();
+    const { promesa, manager } = correr(recepcion);
+    await promesa;
+    expect(recepcion.supplierDocumentType).toBe(SupplierDocumentType.INVOICE);
+    expect(recepcion.supplierDocumentNumber).toBe('F-1');
+    expect(recepcion.totalAmount).toBe(100);
+    expect(manager.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('sin total propio usa el de la orden, igual que la conciliación', async () => {
+    const { promesa } = correr(
+      remito({ totalAmount: 0, purchaseOrderId: 'o1' }),
+      { totalAmount: 100 },
+    );
+    await expect(promesa).resolves.toBeUndefined();
+  });
+
+  it('total fuera de tolerancia es 400; dentro pasa', async () => {
+    await expect(
+      correr(remito(), null, { total: '102.00' }).promesa,
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      correr(remito(), null, { total: '100.90' }).promesa,
+    ).resolves.toBeUndefined();
+  });
+
+  it('anulada, o con otra factura, es 409; la misma factura no escribe', async () => {
+    await expect(
+      correr(remito({ status: PurchaseReceiptStatus.VOIDED })).promesa,
+    ).rejects.toThrow(ConflictException);
+    const factura = {
+      supplierDocumentType: SupplierDocumentType.INVOICE,
+      supplierDocumentNumber: 'F-9',
+    };
+    await expect(correr(remito(factura)).promesa).rejects.toThrow(
+      ConflictException,
+    );
+    const misma = correr(remito({ ...factura, supplierDocumentNumber: 'F-1' }));
+    await misma.promesa;
+    expect(misma.manager.save).not.toHaveBeenCalled();
+  });
+
+  it('dueño cambiado es 409 y otra distribuidora no se encuentra', async () => {
+    await expect(
+      correr(remito(), null, { expected: { total: '250.00' } }).promesa,
+    ).rejects.toThrow(ConflictException);
+    await expect(correr(null).promesa).rejects.toThrow(
+      RecepcionNoEncontradaError,
+    );
   });
 });

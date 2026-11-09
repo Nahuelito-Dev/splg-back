@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { CarService } from '../../car/car.service';
 import { FleetInsuranceSyncService } from '../../fleet/fleet-insurance-sync.service';
 import { InstallmentStatus } from '../domain/insurance.enums';
@@ -24,7 +24,11 @@ const sincronizada = {
 describe('InsurancePolicyService', () => {
   let service: InsurancePolicyService;
   let cars: { findOne: jest.Mock };
-  let flota: { sincronizar: jest.Mock; revertir: jest.Mock };
+  let flota: {
+    sincronizar: jest.Mock;
+    revertir: jest.Mock;
+    recalcularVencimiento: jest.Mock;
+  };
   let manager: {
     findOne: jest.Mock;
     exists: jest.Mock;
@@ -45,6 +49,7 @@ describe('InsurancePolicyService', () => {
     flota = {
       sincronizar: jest.fn().mockResolvedValue(sincronizada),
       revertir: jest.fn().mockResolvedValue({ reverted: true, notes: [] }),
+      recalcularVencimiento: jest.fn().mockResolvedValue(true),
     };
     manager = {
       findOne: jest.fn((entidad: unknown) =>
@@ -266,6 +271,153 @@ describe('InsurancePolicyService', () => {
         service.crear(dto(cambio as Partial<CreateInsurancePolicyDto>), 'd1'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(guardados).toHaveLength(0);
+    });
+  });
+
+  describe('actualizarDesdeLectura', () => {
+    const lectura = {
+      policyNumber: 'NUEVA',
+      validFrom: '2026-01-01',
+      validTo: '2026-12-01',
+      patent: 'AB123CD',
+      expected: {},
+    };
+    const dePoliza = (over: Partial<InsurancePolicy> = {}) =>
+      ({
+        policyId: 'p1',
+        carId: 'c1',
+        insurerId: 'i1',
+        policyNumber: 'VIEJA',
+        validFrom: '2026-01-01',
+        validTo: '2027-01-01',
+        cancelledAt: null,
+        fleetTaskId: 't1',
+        fleetClosedTasks: [{ taskId: 'previa', status: 'scheduled' }],
+        fleetPending: false,
+        ...over,
+      }) as InsurancePolicy;
+    const preparar = (
+      poliza: InsurancePolicy,
+      cuotas: Array<{ dueDate: string; status: string; amount: number }> = [],
+      auto: object | null = {
+        carId: 'c1',
+        carPatent: 'AB123CD',
+        typeCar: null,
+      },
+    ) => {
+      manager.findOne.mockImplementation((entidad: unknown) => {
+        if (entidad === InsurancePolicy) return Promise.resolve(poliza);
+        if (entidad === Insurer) return Promise.resolve({ name: 'Rivadavia' });
+        return Promise.resolve(auto);
+      });
+      manager.find.mockResolvedValue(cuotas);
+    };
+    const correr = (datos: object = lectura) =>
+      service.actualizarDesdeLectura(
+        manager as unknown as EntityManager,
+        'p1',
+        'd1',
+        datos as typeof lectura,
+      );
+
+    it('con tarea vinculada la recalcula y conserva vínculo y cerradas', async () => {
+      const poliza = dePoliza();
+      preparar(poliza);
+      await correr();
+      expect(flota.recalcularVencimiento).toHaveBeenCalledWith(manager, {
+        distributorId: 'd1',
+        taskId: 't1',
+        validFrom: '2026-01-01',
+        validTo: '2026-12-01',
+        policyNumber: 'NUEVA',
+      });
+      expect(flota.sincronizar).not.toHaveBeenCalled();
+      expect(poliza.fleetTaskId).toBe('t1');
+      expect(poliza.fleetClosedTasks).toEqual([
+        { taskId: 'previa', status: 'scheduled' },
+      ]);
+    });
+
+    it('sin tarea vinculada sincroniza; lo que no sincroniza no pisa el vínculo', async () => {
+      const poliza = dePoliza({ fleetTaskId: null, fleetClosedTasks: [] });
+      preparar(poliza);
+      flota.sincronizar.mockResolvedValue({
+        synced: false,
+        pending: true,
+        taskId: 'ajena',
+        closedTasks: [],
+        reason: 'x',
+      });
+      await correr();
+      expect(poliza.fleetTaskId).toBeNull();
+      expect(poliza.fleetPending).toBe(true);
+    });
+
+    it('sin tarea vinculada y sincronizada, queda el vínculo nuevo y suma las cerradas', async () => {
+      const poliza = dePoliza({ fleetTaskId: null, fleetClosedTasks: [] });
+      preparar(poliza);
+      flota.sincronizar.mockResolvedValue({
+        synced: true,
+        pending: false,
+        taskId: 'nueva',
+        closedTasks: [{ taskId: 'c1', status: 'scheduled' }],
+        reason: null,
+      });
+      await correr();
+      expect(poliza.fleetTaskId).toBe('nueva');
+      expect(poliza.fleetClosedTasks).toHaveLength(1);
+    });
+
+    it('la aseguradora se busca aunque tenga baja lógica; si no está, 404', async () => {
+      const poliza = dePoliza({ fleetTaskId: null, fleetClosedTasks: [] });
+      preparar(poliza);
+      await correr();
+      expect(manager.findOne).toHaveBeenCalledWith(
+        Insurer,
+        expect.objectContaining({ withDeleted: true }),
+      );
+      manager.findOne.mockImplementation((entidad: unknown) =>
+        Promise.resolve(
+          entidad === InsurancePolicy
+            ? dePoliza({ fleetTaskId: null })
+            : entidad === Insurer
+              ? null
+              : { carId: 'c1', carPatent: 'AB123CD' },
+        ),
+      );
+      await expect(correr()).rejects.toThrow(NotFoundException);
+    });
+
+    it('cancelada, sin vehículo, otra patente, dueño cambiado o vigencia inválida no escriben', async () => {
+      preparar(dePoliza({ cancelledAt: new Date() }));
+      await expect(correr()).rejects.toThrow(ConflictException);
+      preparar(dePoliza(), [], null);
+      await expect(correr()).rejects.toThrow(NotFoundException);
+      preparar(dePoliza());
+      await expect(correr({ ...lectura, patent: 'ZZ999ZZ' })).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(
+        correr({ ...lectura, expected: { numero_de_poliza: 'OTRA' } }),
+      ).rejects.toThrow(ConflictException);
+      await expect(
+        correr({ ...lectura, validTo: '2025-01-01' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(guardados).toHaveLength(0);
+    });
+
+    it('las cuotas vivas tienen que quedar dentro de la vigencia; las canceladas no cuentan', async () => {
+      const cuota = (dueDate: string, status: string) => ({
+        dueDate,
+        status,
+        amount: 10,
+      });
+      preparar(dePoliza(), [cuota('2026-12-20', InstallmentStatus.PENDING)]);
+      await expect(correr()).rejects.toThrow('última cuota');
+      preparar(dePoliza(), [cuota('2025-12-20', InstallmentStatus.PENDING)]);
+      await expect(correr()).rejects.toThrow('primera cuota');
+      preparar(dePoliza(), [cuota('2026-12-20', InstallmentStatus.CANCELLED)]);
+      await expect(correr()).resolves.toBeUndefined();
     });
   });
 

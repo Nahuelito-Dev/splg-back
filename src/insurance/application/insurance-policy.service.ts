@@ -9,7 +9,12 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
 import { DataSource, EntityManager } from 'typeorm';
 import { CarService } from '../../car/car.service';
+import { Car } from '../../car/entities/car.entity';
 import { errorMessage } from '../../common/errors/error-message';
+import {
+  assertDuenoSinCambios,
+  ValoresDelDueno,
+} from '../../common/utils/conciliacion-de-documentos';
 import { MaintenanceTaskStatus } from '../../fleet/entities/maintenance-task.entity';
 import { traducirErrorDeBase } from '../../common/errors/db-exceptions';
 import { sinIndefinidos } from '../../common/utils/sin-indefinidos.util';
@@ -70,16 +75,11 @@ export class InsurancePolicyService {
       firstDueDate: dto.installments.firstDueDate,
       graceDays: dto.installments.graceDays ?? DIAS_DE_GRACIA_POR_OMISION,
     });
-    if (cuotas[0].dueDate < dto.validFrom) {
-      throw new BadRequestException(
-        'Primer vencimiento de las cuotas: la primera cuota no puede vencer antes de que empiece la póliza',
-      );
-    }
-    if (cuotas[cuotas.length - 1].dueDate > dto.validTo) {
-      throw new BadRequestException(
-        'Cuotas: la última cuota vence después de que vence la póliza',
-      );
-    }
+    this.assertCuotasEnVigencia(
+      cuotas.map((c) => c.dueDate),
+      dto.validFrom,
+      dto.validTo,
+    );
 
     try {
       return await this.dataSource.transaction(async (manager) => {
@@ -169,6 +169,101 @@ export class InsurancePolicyService {
     } catch (error) {
       return traducirErrorDeBase(error, this.logger, 'pólizas de seguro');
     }
+  }
+
+  /**
+   * Corrige número y vigencia con lo que confirmó el administrador, dentro de
+   * la transacción de la lectura. La tarea que la póliza ya tiene se corrige en
+   * su lugar; sin tarea vinculada o abierta, se sincroniza como una póliza nueva.
+   */
+  async actualizarDesdeLectura(
+    manager: EntityManager,
+    id: string,
+    distributorId: string,
+    datos: {
+      policyNumber: string;
+      validFrom: string;
+      validTo: string;
+      patent: string | null;
+      expected: ValoresDelDueno;
+    },
+  ): Promise<void> {
+    const poliza = await this.bloquear(manager, id, distributorId);
+    this.assertNoCancelada(poliza, 'La póliza cancelada no se modifica');
+    const car = await manager.findOne(Car, {
+      where: { carId: poliza.carId, distributorId },
+      lock: { mode: 'pessimistic_read' },
+    });
+    if (!car) throw new NotFoundException('Vehículo no encontrado');
+    assertDuenoSinCambios(datos.expected, {
+      patente: car.carPatent,
+      numero_de_poliza: poliza.policyNumber,
+      vigencia_desde: poliza.validFrom,
+      vigencia_hasta: poliza.validTo,
+    });
+    if (datos.patent && datos.patent !== car.carPatent) {
+      throw new BadRequestException(
+        'Patente: la patente leída no coincide con el vehículo de la póliza',
+      );
+    }
+    if (datos.validTo <= datos.validFrom) {
+      throw new BadRequestException(
+        'Válido hasta: la póliza tiene que vencer después de que empieza',
+      );
+    }
+    const cuotas = await manager.find(InsuranceInstallment, {
+      where: { policyId: poliza.policyId, distributorId },
+    });
+    this.assertCuotasEnVigencia(
+      cuotas
+        .filter((c) => c.status !== InstallmentStatus.CANCELLED)
+        .map((c) => c.dueDate)
+        .sort(),
+      datos.validFrom,
+      datos.validTo,
+    );
+    poliza.policyNumber = datos.policyNumber;
+    poliza.validFrom = datos.validFrom;
+    poliza.validTo = datos.validTo;
+    await manager.save(poliza);
+
+    if (
+      poliza.fleetTaskId &&
+      (await this.flota.recalcularVencimiento(manager, {
+        distributorId,
+        taskId: poliza.fleetTaskId,
+        validFrom: poliza.validFrom,
+        validTo: poliza.validTo,
+        policyNumber: poliza.policyNumber,
+      }))
+    ) {
+      return;
+    }
+    const aseguradora = await manager.findOne(Insurer, {
+      where: { insurerId: poliza.insurerId, distributorId },
+      withDeleted: true,
+    });
+    if (!aseguradora) throw new NotFoundException('Aseguradora no encontrada');
+    const costo = cuotas.reduce((s, c) => s.plus(c.amount), new Decimal(0));
+    const resultado = await this.flota.sincronizar(manager, {
+      distributorId,
+      carId: car.carId,
+      typeCar: car.typeCar,
+      validFrom: poliza.validFrom,
+      validTo: poliza.validTo,
+      cost: costo.toDecimalPlaces(2).toNumber(),
+      insurerName: aseguradora.name,
+      policyNumber: poliza.policyNumber,
+    });
+    poliza.fleetPending = resultado.pending;
+    if (resultado.synced) {
+      poliza.fleetTaskId = resultado.taskId;
+      poliza.fleetClosedTasks = [
+        ...poliza.fleetClosedTasks,
+        ...resultado.closedTasks,
+      ];
+    }
+    await manager.save(poliza);
   }
 
   /**
@@ -315,6 +410,25 @@ export class InsurancePolicyService {
     });
     if (!poliza) throw new NotFoundException('Póliza no encontrada');
     return poliza;
+  }
+
+  /** `vencimientos` en orden: ninguna cuota vence fuera de la vigencia de la póliza. */
+  private assertCuotasEnVigencia(
+    vencimientos: string[],
+    validFrom: string,
+    validTo: string,
+  ): void {
+    if (vencimientos.length === 0) return;
+    if (vencimientos[0] < validFrom) {
+      throw new BadRequestException(
+        'Primer vencimiento de las cuotas: la primera cuota no puede vencer antes de que empiece la póliza',
+      );
+    }
+    if (vencimientos[vencimientos.length - 1] > validTo) {
+      throw new BadRequestException(
+        'Cuotas: la última cuota vence después de que vence la póliza',
+      );
+    }
   }
 
   private assertNoCancelada(poliza: InsurancePolicy, mensaje: string): void {

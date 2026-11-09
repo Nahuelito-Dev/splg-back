@@ -50,6 +50,6 @@ import { InsurerController } from './presentation/insurer.controller';
     InsurancePolicyAttachmentOwnerResolver,
     InsuranceInstallmentAttachmentOwnerResolver,
   ],
-  exports: [InsuranceInstallmentService],
+  exports: [InsuranceInstallmentService, InsurancePolicyService],
 })
 export class InsuranceModule {}
