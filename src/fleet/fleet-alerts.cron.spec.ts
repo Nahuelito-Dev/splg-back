@@ -208,9 +208,10 @@ describe('FleetAlertsCron', () => {
   });
 
   it('CU-173: avisa sólo a la distribuidora cuya hora es la actual', async () => {
+    const dueAt = new Date('2026-10-20T12:00:00Z');
     getMany.mockResolvedValue([
-      tareaPorVencer({ taskId: 't1', distributorId: 'd1' }),
-      tareaPorVencer({ taskId: 't2', distributorId: 'd2' }),
+      tareaPorVencer({ taskId: 't1', distributorId: 'd1', dueAt }),
+      tareaPorVencer({ taskId: 't2', distributorId: 'd2', dueAt }),
     ]);
     adminService.findAll.mockResolvedValue([]);
     esLaHora.mockImplementation((id: string) => Promise.resolve(id === 'd2'));
