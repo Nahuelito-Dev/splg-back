@@ -72,6 +72,9 @@ export class DeliveryVehicleController {
   }
 
   @Get(':id/vehicle')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Vehículo en uso de un chofer' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -102,7 +105,8 @@ export class DeliveryVehicleController {
   @ApiOkResponse({ type: VehicleInUseResponseDto })
   @ApiNotFoundResponse({ description: 'Chofer o vehículo no encontrado' })
   @ApiBadRequestResponse({
-    description: 'El vehículo está inhabilitado por documentación vencida',
+    description:
+      'El vehículo está inhabilitado por documentación vencida, datos inválidos, o super admin sin X-Distributor',
   })
   @ApiConflictResponse({
     description:
@@ -136,6 +140,9 @@ export class DeliveryVehicleController {
   }
 
   @Delete(':id/vehicle')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Liberar el vehículo en uso de un chofer' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -156,6 +163,10 @@ export class DeliveryVehicleController {
   }
 
   @Get(':id/vehicle-history')
+  @ApiBadRequestResponse({
+    description:
+      'El id no es un UUID, paginación inválida, o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Historial de vehículos de un chofer' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })

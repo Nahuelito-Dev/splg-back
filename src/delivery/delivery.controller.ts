@@ -70,6 +70,7 @@ export class DeliveryController {
   }
 
   @Get()
+  @ApiBadRequestResponse({ description: 'Filtro o paginación inválidos' })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all deliveries with pagination (scopeado por distribuidora)',
@@ -102,6 +103,7 @@ export class DeliveryController {
   // H-64: los choferes activos (con su ubicación) los ve un administrador, y el
   // de empresa sólo los de su distribuidora.
   @Get('active')
+  @ApiBadRequestResponse({ description: 'Paginación inválida' })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all active deliveries',
@@ -131,6 +133,7 @@ export class DeliveryController {
   }
 
   @Get(':id')
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Get delivery by ID' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -153,6 +156,7 @@ export class DeliveryController {
   }
 
   @Get('user/:userId')
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Get delivery by user ID' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
@@ -202,6 +206,9 @@ export class DeliveryController {
   }
 
   @Patch(':id/validate')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID, o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Validate delivery' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -223,6 +230,9 @@ export class DeliveryController {
   }
 
   @Patch(':id/invalidate')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID, o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Invalidate delivery' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -336,6 +346,9 @@ export class DeliveryController {
   }
 
   @Delete(':id')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID, o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete delivery by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -345,7 +358,7 @@ export class DeliveryController {
   })
   @ApiConflictResponse({
     description:
-      'Tiene pedidos aceptados o en camino: hay que cancelarlos o reasignarlos antes',
+      'Tiene pedidos aceptados o en camino, una carga de camión abierta o, si tiene legajo, una rendición pendiente o efectivo sin rendir',
   })
   @HttpCode(HttpStatus.OK)
   async remove(

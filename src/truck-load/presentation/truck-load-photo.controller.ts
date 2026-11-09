@@ -10,7 +10,9 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import {
+  ApiFoundResponse,
   ApiNotFoundResponse,
+  ApiBadRequestResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -63,6 +65,7 @@ export class TruckLoadPhotoController {
   }
 
   @Delete(':id/photo')
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiOperation({
     summary: 'Sacar la foto de la carga',
     description:
@@ -81,6 +84,9 @@ export class TruckLoadPhotoController {
   @Get(':id/photo')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiVerFoto('Ver la foto de la carga')
+  @ApiFoundResponse({
+    description: 'Redirección a la URL firmada (sin `modo`)',
+  })
   @ApiParam({ name: 'id', description: 'Carga UUID' })
   async ver(
     @Param('id', ParseUUIDPipe) id: string,
