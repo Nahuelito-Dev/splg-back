@@ -129,13 +129,21 @@ export class ReleaseOrderUseCase {
     order: Order,
   ): Promise<string | null> {
     const previousDriverUserId = this.applyRelease(order);
+    await this.borrarVaciasDeclaradas(manager, order);
+    return previousDriverUserId;
+  }
+
+  /** La declaración de vacías no sobrevive a un pedido liberado o cancelado. */
+  async borrarVaciasDeclaradas(
+    manager: EntityManager,
+    order: Order,
+  ): Promise<void> {
     await manager.update(
       OrderItem,
       { orderId: order.orderId },
       { emptiesReceived: null },
     );
     for (const item of order.items ?? []) item.emptiesReceived = null;
-    return previousDriverUserId;
   }
 
   applyRelease(order: Order): string | null {
