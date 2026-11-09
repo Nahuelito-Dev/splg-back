@@ -138,14 +138,15 @@ export class DocumentReadingController {
   @ApiOkResponse({ type: DocumentReadingDto })
   @ApiBadRequestResponse({
     description:
-      'El id o los datos son inválidos; una diferencia de importe o fecha exige corregir o rechazar.',
+      'El id o los datos son inválidos; una diferencia de importe, fecha o total exige corregir o rechazar; una diferencia de patente o documento, o un apto «no apto», sólo admite rechazar; número o vigencia inválidos, cuotas fuera de la vigencia, vencimiento pasado o más de una tarea posible sin elegir.',
   })
   @ApiNotFoundResponse({
-    description: 'La lectura no existe en esta distribuidora',
+    description:
+      'La lectura, la póliza, la recepción, el legajo o la tarea elegida no existen en esta distribuidora',
   })
   @ApiConflictResponse({
     description:
-      'La propuesta ya fue resuelta o el pago choca con su estado actual',
+      'La propuesta ya fue resuelta, el pago choca con su estado, el dueño cambió desde la propuesta, la póliza está cancelada, la recepción está anulada o ya tiene otra factura, el empleado egresó o la tarea elegida ya está cerrada',
   })
   async confirmar(
     @Param('id', ParseUUIDPipe) id: string,
@@ -164,14 +165,16 @@ export class DocumentReadingController {
   @ApiParam({ name: 'id', description: 'UUID de la lectura propuesta' })
   @ApiOkResponse({ type: DocumentReadingDto })
   @ApiBadRequestResponse({
-    description: 'El id, una corrección o los datos del pago son inválidos',
+    description:
+      'El id, una corrección o los datos del pago son inválidos; el total corregido no coincide con el de la recepción; una diferencia de patente o documento, o un apto «no apto», sólo admite rechazar; número o vigencia inválidos, cuotas fuera de la vigencia, vencimiento pasado o más de una tarea posible sin elegir.',
   })
   @ApiNotFoundResponse({
-    description: 'La lectura no existe en esta distribuidora',
+    description:
+      'La lectura, la póliza, la recepción, el legajo o la tarea elegida no existen en esta distribuidora',
   })
   @ApiConflictResponse({
     description:
-      'La propuesta ya fue resuelta o el pago choca con su estado actual',
+      'La propuesta ya fue resuelta, el pago choca con su estado, el dueño cambió desde la propuesta, la póliza está cancelada, la recepción está anulada o ya tiene otra factura, el empleado egresó o la tarea elegida ya está cerrada',
   })
   async corregir(
     @Param('id', ParseUUIDPipe) id: string,

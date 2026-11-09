@@ -56,6 +56,12 @@ describe('DocumentReadingDecisionService', () => {
   let examples: { save: jest.Mock; create: jest.Mock };
   let installments: { pagarEn: jest.Mock };
   let fines: { pagarEn: jest.Mock };
+  let policies: { actualizarDesdeLectura: jest.Mock };
+  let fleetTasks: {
+    renovarDocumentoDesdeLectura: jest.Mock;
+    avisarCasosCerrados: jest.Mock;
+  };
+  let receipts: { registrarFacturaDesdeLectura: jest.Mock };
   let dataSource: { transaction: jest.Mock };
   let service: DocumentReadingDecisionService;
 
@@ -71,6 +77,16 @@ describe('DocumentReadingDecisionService', () => {
     };
     installments = { pagarEn: jest.fn().mockResolvedValue(undefined) };
     fines = { pagarEn: jest.fn().mockResolvedValue(undefined) };
+    policies = {
+      actualizarDesdeLectura: jest.fn().mockResolvedValue(undefined),
+    };
+    fleetTasks = {
+      renovarDocumentoDesdeLectura: jest.fn().mockResolvedValue([]),
+      avisarCasosCerrados: jest.fn().mockResolvedValue(undefined),
+    };
+    receipts = {
+      registrarFacturaDesdeLectura: jest.fn().mockResolvedValue(undefined),
+    };
     dataSource = {
       transaction: jest.fn((fn: (manager: unknown) => Promise<unknown>) =>
         fn({
@@ -86,6 +102,12 @@ describe('DocumentReadingDecisionService', () => {
       examples as never,
       installments as never,
       fines as never,
+      policies as never,
+      fleetTasks as never,
+      receipts as never,
+      {
+        parametros: jest.fn().mockResolvedValue({ amountTolerancePct: 1 }),
+      } as never,
       dataSource as unknown as DataSource,
     );
   });
@@ -415,16 +437,223 @@ describe('DocumentReadingDecisionService', () => {
     expect(readings.update).toHaveBeenCalledTimes(1);
   });
 
-  it('las acciones sin ejecución (E4b) sólo cierran la propuesta', async () => {
-    readings.findOne.mockResolvedValue(lectura('update_policy', {}));
+  it('confirmar una póliza la actualiza dentro de la transacción y queda ejecutada', async () => {
+    readings.findOne.mockResolvedValue(
+      lectura('update_policy', {
+        numero_de_poliza: 'P-1',
+        vigencia_desde: '2026-01-01',
+        vigencia_hasta: '2027-01-01',
+        patente: 'AB123CD',
+      }),
+    );
     await service.confirmar('r1', {}, 'd1', 'u1');
-    expect(installments.pagarEn).not.toHaveBeenCalled();
-    expect(fines.pagarEn).not.toHaveBeenCalled();
-    expect(readings.update).toHaveBeenCalledTimes(1);
-    expect(llamadas()[0][2]).toMatchObject({
-      status: DocumentReadingStatus.CONFIRMED,
-      executed: false,
-    });
+    expect(policies.actualizarDesdeLectura).toHaveBeenCalledWith(
+      expect.anything(),
+      'cuota-1',
+      'd1',
+      expect.objectContaining({ policyNumber: 'P-1' }),
+    );
+    expect(ultimoUpdate()[2]).toEqual({ executed: true });
+  });
+
+  it('registra la factura dentro del manager y rechaza una diferencia de total', async () => {
+    readings.findOne.mockResolvedValue(
+      lectura('register_purchase_invoice', {
+        numero: '0001-00000042',
+        total: '10.00',
+      }),
+    );
+    await service.confirmar('r1', {}, 'd1', 'u1');
+    expect(receipts.registrarFacturaDesdeLectura).toHaveBeenCalledWith(
+      expect.anything(),
+      'cuota-1',
+      'd1',
+      {
+        numero: '0001-00000042',
+        total: '10.00',
+        tolerancePct: 1,
+        expected: {},
+      },
+    );
+    expect(ultimoUpdate()[2]).toEqual({ executed: true });
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'register_purchase_invoice',
+        { numero: '0001-00000042', total: '9.00' },
+        {
+          proposal: {
+            ...lectura('register_purchase_invoice').proposal!,
+            differences: [
+              { field: 'total', expected: '10.00', read: '9.00', message: '' },
+            ],
+          },
+        },
+      ),
+    );
+    await expect(service.confirmar('r1', {}, 'd1', 'u1')).rejects.toThrow(
+      'Total: el importe',
+    );
+  });
+
+  it('renueva el documento del empleado sólo si trae vencimiento', async () => {
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'update_employee_document',
+        { vencimiento: '2027-01-01' },
+        {
+          detectedType: TipoDeDocumento.APTO_MEDICO,
+        },
+      ),
+    );
+    await service.confirmar(
+      'r1',
+      { fleetTaskId: '11111111-1111-4111-8111-111111111111' },
+      'd1',
+      'u1',
+    );
+    expect(fleetTasks.renovarDocumentoDesdeLectura).toHaveBeenCalledWith(
+      expect.anything(),
+      'cuota-1',
+      'd1',
+      {
+        documentKind: 'psychophysical',
+        vencimiento: '2027-01-01',
+        fechaDelDocumento: null,
+        taskId: '11111111-1111-4111-8111-111111111111',
+        attachmentId: 'a1',
+        expected: {},
+      },
+    );
+    expect(fleetTasks.avisarCasosCerrados).toHaveBeenCalledWith([]);
+    expect(ultimoUpdate()[2]).toEqual({ executed: true });
+  });
+
+  const conDiferencia = (
+    field: string,
+    action: DocumentProposalAction,
+  ): Partial<DocumentReading> => ({
+    proposal: {
+      ...lectura(action).proposal!,
+      differences: [{ field, expected: 'a', read: 'b', message: '' }],
+    },
+  });
+
+  it('patente distinta: sólo rechazar, sin tomar la propuesta', async () => {
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'update_policy',
+        {
+          numero_de_poliza: 'N',
+          vigencia_desde: '2026-01-01',
+          vigencia_hasta: '2027-01-01',
+          patente: 'ZZ999ZZ',
+        },
+        conDiferencia('patente', 'update_policy'),
+      ),
+    );
+    await expect(service.confirmar('r1', {}, 'd1', 'u1')).rejects.toThrow(
+      'rechazá la propuesta',
+    );
+    expect(readings.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['numero_de_poliza', 'N'.repeat(41), 'Número de póliza'],
+    ['numero_de_poliza', ' ', 'faltan número'],
+  ])('póliza con %s inválido es 400', async (campo, valor, mensaje) => {
+    readings.findOne.mockResolvedValue(
+      lectura('update_policy', {
+        vigencia_desde: '2026-01-01',
+        vigencia_hasta: '2027-01-01',
+        [campo]: valor,
+      }),
+    );
+    await expect(service.confirmar('r1', {}, 'd1', 'u1')).rejects.toThrow(
+      mensaje,
+    );
+    expect(readings.update).not.toHaveBeenCalled();
+  });
+
+  it('factura sin número, con número largo o sin total corregido es 400', async () => {
+    readings.findOne.mockResolvedValue(
+      lectura('register_purchase_invoice', { numero: null, total: '1.00' }),
+    );
+    await expect(service.confirmar('r1', {}, 'd1', 'u1')).rejects.toThrow(
+      'indicá el número',
+    );
+    readings.findOne.mockResolvedValue(
+      lectura('register_purchase_invoice', {
+        numero: 'N'.repeat(31),
+        total: '1.00',
+      }),
+    );
+    await expect(service.confirmar('r1', {}, 'd1', 'u1')).rejects.toThrow(
+      'hasta 30',
+    );
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'register_purchase_invoice',
+        { numero: 'F-1', total: '1.00' },
+        {
+          ...conDiferencia('total', 'register_purchase_invoice'),
+          detectedType: TipoDeDocumento.FACTURA_O_REMITO,
+        },
+      ),
+    );
+    await expect(
+      service.corregir('r1', { fields: { numero: 'F-2' } }, 'd1', 'u1'),
+    ).rejects.toThrow('indicá el importe');
+    expect(readings.update).not.toHaveBeenCalled();
+  });
+
+  it('legajo: no apto y documento distinto sólo se rechazan', async () => {
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'update_employee_document',
+        { vencimiento: '2027-01-01', resultado: 'No Apto' },
+        { detectedType: TipoDeDocumento.APTO_MEDICO },
+      ),
+    );
+    await expect(service.confirmar('r1', {}, 'd1', 'u1')).rejects.toThrow(
+      'no apto',
+    );
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'update_employee_document',
+        { vencimiento: '2027-01-01', documento: '11111111' },
+        {
+          ...conDiferencia('documento', 'update_employee_document'),
+          detectedType: TipoDeDocumento.APTO_MEDICO,
+        },
+      ),
+    );
+    await expect(
+      service.corregir('r1', { fields: { documento: '22222222' } }, 'd1', 'u1'),
+    ).rejects.toThrow('Documento');
+    expect(readings.update).not.toHaveBeenCalled();
+    await expect(
+      service.rechazar('r1', { reason: 'no sirve' }, 'd1', 'u1'),
+    ).resolves.toBeDefined();
+  });
+
+  it('sin vencimiento el legajo no se ejecuta; la licencia usa su tipo', async () => {
+    readings.findOne.mockResolvedValue(lectura('update_employee_document', {}));
+    await service.confirmar('r1', {}, 'd1', 'u1');
+    expect(fleetTasks.renovarDocumentoDesdeLectura).not.toHaveBeenCalled();
+    readings.findOne.mockResolvedValue(
+      lectura(
+        'update_employee_document',
+        { vencimiento: '2027-01-01' },
+        { detectedType: TipoDeDocumento.LICENCIA_DE_CONDUCIR },
+      ),
+    );
+    await service.confirmar('r1', {}, 'd1', 'u1');
+    expect(fleetTasks.renovarDocumentoDesdeLectura).toHaveBeenCalledWith(
+      expect.anything(),
+      'cuota-1',
+      'd1',
+      expect.objectContaining({ documentKind: 'driver_license' }),
+    );
   });
 
   it('exige corregir diferencias de importe o fecha antes de reclamar la propuesta', async () => {
@@ -539,7 +768,11 @@ describe('DocumentReadingDecisionService', () => {
     readings.findOne.mockResolvedValue(
       lectura(
         'update_policy',
-        {},
+        {
+          numero_de_poliza: 'P-1',
+          vigencia_desde: '2026-01-01',
+          vigencia_hasta: '2027-01-01',
+        },
         { remindedAt: new Date(), escalatedAt: null },
       ),
     );

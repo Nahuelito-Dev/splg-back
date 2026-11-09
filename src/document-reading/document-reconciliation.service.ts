@@ -7,6 +7,10 @@ import {
   AttachmentOwnerType,
 } from '../attachment/entities/attachment.entity';
 import { pedirAvisoAlAdmin } from '../common/events/aviso-al-admin';
+import {
+  dinero,
+  esImporteIgual,
+} from '../common/utils/conciliacion-de-documentos';
 import { TipoDeDocumento } from '../document-reader/tipos-de-documento';
 import { Employee } from '../employee/entities/employee.entity';
 import {
@@ -76,22 +80,6 @@ const mismoCodigo = (a: string | null, b: string | null): boolean => {
 const mismosDigitos = (a: string | null, b: string | null): boolean => {
   const x = (a ?? '').replace(/\D/g, '');
   return x !== '' && x === (b ?? '').replace(/\D/g, '');
-};
-const dinero = (v: number | string | null): string | null =>
-  v === null ? null : Number(v).toFixed(2);
-const esImporteIgual = (
-  esperado: string | null,
-  leido: string | null,
-  tolerancia: number,
-): boolean => {
-  if (!esperado?.trim() || !leido?.trim()) return false;
-  const e = Number(esperado);
-  const l = Number(leido);
-  return (
-    Number.isFinite(e) &&
-    Number.isFinite(l) &&
-    (e === 0 ? l === 0 : (Math.abs(l - e) / Math.abs(e)) * 100 <= tolerancia)
-  );
 };
 const coincideDestinatario = (
   esperado: string | null,

@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Not, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Not, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 
 import { normalizarCampo } from '../document-reader/claude-document-reader';
@@ -16,6 +16,10 @@ import {
 } from '../document-reader/tipos-de-documento';
 import { TrafficFinePaymentService } from '../fleet-expense/traffic-fine-payment.service';
 import { InsuranceInstallmentService } from '../insurance/application/insurance-installment.service';
+import { InsurancePolicyService } from '../insurance/application/insurance-policy.service';
+import { FleetTaskService } from '../fleet/fleet-task.service';
+import { MaintenanceDocumentKind } from '../fleet/entities/maintenance-plan.entity';
+import { PurchaseReceiptService } from '../purchase/application/purchase-receipt.service';
 import { ETIQUETAS_CAMPOS } from '../common/validation/etiquetas-campos';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import {
@@ -24,8 +28,11 @@ import {
   RejectDocumentReadingDto,
 } from './dto/document-reading.dto';
 import { DocumentReadingExample } from './entities/document-reading-example.entity';
+import { DocumentReadingSettingsService } from './document-reading-settings.service';
+import type { MaintenanceWindowProposal } from '../fleet/entities/maintenance-window-proposal.entity';
 import {
   DocumentProposalAction,
+  DocumentProposal,
   DocumentReading,
   DocumentReadingCorrection,
   DocumentReadingStatus,
@@ -53,6 +60,10 @@ const PISTAS: Readonly<Record<string, string>> = {
   total: ' (usá punto decimal y sin separador de miles, p. ej. 29958.00)',
   fecha_de_pago: ' (AAAA-MM-DD, con hora si la tiene)',
 };
+/** Largos de las columnas donde terminan estos datos. */
+const LARGO_NUMERO_DE_POLIZA = 40;
+const LARGO_NUMERO_DE_COMPROBANTE = 30;
+
 const CAMPOS_DE_FORMATO = new Set([
   'cuit_del_emisor',
   'cuit_del_destinatario',
@@ -70,6 +81,7 @@ interface Decision {
     | DocumentReadingStatus.REJECTED;
   cambios: Record<string, string>;
   cashBoxId?: string;
+  fleetTaskId?: string;
   nota: string | null;
 }
 
@@ -90,6 +102,10 @@ export class DocumentReadingDecisionService {
     private readonly examples: Repository<DocumentReadingExample>,
     private readonly installments: InsuranceInstallmentService,
     private readonly fines: TrafficFinePaymentService,
+    private readonly policies: InsurancePolicyService,
+    private readonly fleetTasks: FleetTaskService,
+    private readonly receipts: PurchaseReceiptService,
+    private readonly settings: DocumentReadingSettingsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
@@ -104,6 +120,7 @@ export class DocumentReadingDecisionService {
       status: DocumentReadingStatus.CONFIRMED,
       cambios: {},
       cashBoxId: dto.cashBoxId,
+      fleetTaskId: dto.fleetTaskId,
       nota: null,
     });
   }
@@ -118,6 +135,7 @@ export class DocumentReadingDecisionService {
       status: DocumentReadingStatus.CORRECTED,
       cambios: dto.fields,
       cashBoxId: dto.cashBoxId,
+      fleetTaskId: dto.fleetTaskId,
       nota: dto.note?.trim() || null,
     });
   }
@@ -194,9 +212,22 @@ export class DocumentReadingDecisionService {
       decision.status !== DocumentReadingStatus.REJECTED &&
       ACCIONES_DE_PAGO.has(propuesta.action);
     const pago = paga ? this.datosDelPago(lectura, valores, decision) : null;
+    this.validarAccion(
+      propuesta.action,
+      valores,
+      propuesta.differences,
+      decision,
+    );
 
+    const tolerancePct =
+      propuesta.action === 'register_purchase_invoice' &&
+      decision.status !== DocumentReadingStatus.REJECTED
+        ? (await this.settings.parametros(distributorId)).amountTolerancePct
+        : 0;
+    const avisos: MaintenanceWindowProposal[] = [];
+    let resultado: DocumentReading;
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      resultado = await this.dataSource.transaction(async (manager) => {
         // Reclamo condicional: dos decisiones (o el cron) no resuelven la misma propuesta.
         const tomada = await manager.update(
           DocumentReading,
@@ -260,6 +291,25 @@ export class DocumentReadingDecisionService {
           );
         }
 
+        if (decision.status !== DocumentReadingStatus.REJECTED) {
+          const ejecutada = await this.ejecutarAccion(
+            manager,
+            lectura,
+            propuesta,
+            valores,
+            decision,
+            tolerancePct,
+            avisos,
+          );
+          if (ejecutada) {
+            await manager.update(
+              DocumentReading,
+              { readingId: id, distributorId, status: decision.status },
+              { executed: true },
+            );
+          }
+        }
+
         if (lectura.detectedType) {
           // Aceptar lo leído no enseña nada: sólo se aprende de un valor que cambió.
           const aprendibles = correcciones.filter(
@@ -299,6 +349,157 @@ export class DocumentReadingDecisionService {
             : 'decisión de lectura',
       );
     }
+    await this.fleetTasks.avisarCasosCerrados(avisos);
+    return resultado;
+  }
+
+  private validarAccion(
+    action: DocumentProposalAction,
+    valores: Record<string, string | null>,
+    differences: DocumentProposal['differences'],
+    decision: Decision,
+  ): void {
+    if (decision.status === DocumentReadingStatus.REJECTED) return;
+    if (action === 'update_policy') this.validarPoliza(valores, differences);
+    if (action === 'update_employee_document') {
+      this.validarLegajo(valores, differences);
+    }
+    if (action === 'register_purchase_invoice') {
+      this.validarFactura(valores, differences, decision);
+    }
+  }
+
+  private validarPoliza(
+    valores: Record<string, string | null>,
+    differences: DocumentProposal['differences'],
+  ): void {
+    if (differences.some((d) => d.field === 'patente')) {
+      throw new BadRequestException(
+        'Patente: la patente leída no coincide con el vehículo; rechazá la propuesta',
+      );
+    }
+    const numero = valores['numero_de_poliza']?.trim();
+    if (!numero || !valores['vigencia_desde'] || !valores['vigencia_hasta']) {
+      throw new BadRequestException(
+        'Póliza: faltan número o fechas de vigencia',
+      );
+    }
+    if (numero.length > LARGO_NUMERO_DE_POLIZA) {
+      throw new BadRequestException(
+        `Número de póliza: hasta ${LARGO_NUMERO_DE_POLIZA} caracteres`,
+      );
+    }
+  }
+
+  private validarLegajo(
+    valores: Record<string, string | null>,
+    differences: DocumentProposal['differences'],
+  ): void {
+    if (/^no\s*apto$/i.test(valores['resultado']?.trim() ?? '')) {
+      throw new BadRequestException(
+        'Resultado: el certificado dice «no apto» y no renueva el documento; rechazá la propuesta',
+      );
+    }
+    if (differences.some((d) => d.field === 'documento')) {
+      throw new BadRequestException(
+        'Documento: el número leído no coincide con el legajo; rechazá la propuesta',
+      );
+    }
+  }
+
+  private validarFactura(
+    valores: Record<string, string | null>,
+    differences: DocumentProposal['differences'],
+    decision: Decision,
+  ): void {
+    const numero = valores['numero']?.trim();
+    if (!numero) {
+      throw new BadRequestException(
+        'Número de factura: indicá el número correcto',
+      );
+    }
+    if (numero.length > LARGO_NUMERO_DE_COMPROBANTE) {
+      throw new BadRequestException(
+        `Número de factura: hasta ${LARGO_NUMERO_DE_COMPROBANTE} caracteres`,
+      );
+    }
+    if (!differences.some((d) => d.field === 'total')) return;
+    if (decision.status === DocumentReadingStatus.CONFIRMED) {
+      throw new BadRequestException(
+        'Total: el importe de la factura no coincide con el de la recepción; corregilo o rechazá la propuesta',
+      );
+    }
+    if (!Object.hasOwn(decision.cambios, 'total')) {
+      throw new BadRequestException(
+        'Total: indicá el importe correcto de la factura',
+      );
+    }
+  }
+
+  private async ejecutarAccion(
+    manager: EntityManager,
+    lectura: DocumentReading,
+    propuesta: DocumentProposal,
+    valores: Record<string, string | null>,
+    decision: Decision,
+    tolerancePct: number,
+    avisos: MaintenanceWindowProposal[],
+  ): Promise<boolean> {
+    const { action, ownerId, expected } = propuesta;
+    const { distributorId } = lectura;
+    if (action === 'update_policy') {
+      await this.policies.actualizarDesdeLectura(
+        manager,
+        ownerId,
+        distributorId,
+        {
+          policyNumber: valores['numero_de_poliza']!.trim(),
+          validFrom: valores['vigencia_desde']!,
+          validTo: valores['vigencia_hasta']!,
+          patent: valores['patente'],
+          expected,
+        },
+      );
+      return true;
+    }
+    if (action === 'register_purchase_invoice') {
+      await this.receipts.registrarFacturaDesdeLectura(
+        manager,
+        ownerId,
+        distributorId,
+        {
+          numero: valores['numero']!.trim(),
+          total: valores['total'],
+          tolerancePct,
+          expected,
+        },
+      );
+      return true;
+    }
+    if (action === 'update_employee_document') {
+      const vencimiento = valores['vencimiento'];
+      if (!vencimiento) return false;
+      avisos.push(
+        ...(await this.fleetTasks.renovarDocumentoDesdeLectura(
+          manager,
+          ownerId,
+          distributorId,
+          {
+            documentKind:
+              lectura.detectedType === TipoDeDocumento.APTO_MEDICO
+                ? MaintenanceDocumentKind.PSYCHOPHYSICAL
+                : MaintenanceDocumentKind.DRIVER_LICENSE,
+            vencimiento,
+            fechaDelDocumento: valores['fecha'] ?? null,
+            taskId: decision.fleetTaskId,
+            attachmentId: lectura.attachmentId,
+            expected,
+          },
+        )),
+      );
+      return true;
+    }
+    return false;
   }
 
   /** Los campos que el admin cambió, validados con las mismas reglas del lector. */

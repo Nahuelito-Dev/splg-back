@@ -25,6 +25,8 @@ import { DocumentReadingExample } from './entities/document-reading-example.enti
 import { DocumentReadingDecisionService } from './document-reading-decision.service';
 import { InsuranceModule } from '../insurance/insurance.module';
 import { FleetExpenseModule } from '../fleet-expense/fleet-expense.module';
+import { FleetModule } from '../fleet/fleet.module';
+import { PurchaseModule } from '../purchase/purchase.module';
 
 /**
  * Lecturas de documentos del módulo M6 (lo que se extrajo de cada adjunto).
@@ -49,6 +51,8 @@ import { FleetExpenseModule } from '../fleet-expense/fleet-expense.module';
     S3Module,
     InsuranceModule,
     FleetExpenseModule,
+    FleetModule,
+    PurchaseModule,
   ],
   controllers: [DocumentReadingController],
   providers: [

@@ -288,4 +288,54 @@ describe('FleetInsuranceSyncService', () => {
       expect(guardadas).toHaveLength(0);
     });
   });
+
+  describe('recalcularVencimiento', () => {
+    const corregida = {
+      distributorId: 'd1',
+      taskId: 't1',
+      validFrom: '2026-01-01',
+      validTo: '2027-03-01',
+      policyNumber: 'P-9',
+    };
+    const conTarea = (tarea: Partial<MaintenanceTask> | null) => {
+      const repo = {
+        findOne: jest.fn().mockResolvedValue(tarea),
+        save: jest.fn((t: unknown) => Promise.resolve(t)),
+      };
+      return {
+        repo,
+        manager: {
+          getRepository: jest.fn(() => repo),
+        } as unknown as EntityManager,
+      };
+    };
+
+    it('mueve la tarea en su lugar y vuelve a avisar', async () => {
+      const tarea: Partial<MaintenanceTask> = {
+        status: MaintenanceTaskStatus.SCHEDULED,
+        dueAt: new Date('2027-06-01T00:00:00.000Z'),
+        alertedAt: new Date(),
+      };
+      const { repo, manager: m } = conTarea(tarea);
+      await expect(service.recalcularVencimiento(m, corregida)).resolves.toBe(
+        true,
+      );
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(tarea.dueAt?.toISOString().slice(0, 10)).toBe('2027-03-01');
+      expect(tarea.alertedAt).toBeNull();
+      expect(tarea.referenceNumber).toBe('P-9');
+    });
+
+    it('no toca una tarea cerrada ni una que no existe', async () => {
+      const cerrada = conTarea({ status: MaintenanceTaskStatus.DONE });
+      await expect(
+        service.recalcularVencimiento(cerrada.manager, corregida),
+      ).resolves.toBe(false);
+      expect(cerrada.repo.save).not.toHaveBeenCalled();
+      const ausente = conTarea(null);
+      await expect(
+        service.recalcularVencimiento(ausente.manager, corregida),
+      ).resolves.toBe(false);
+    });
+  });
 });

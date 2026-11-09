@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { EntityManager, Repository } from 'typeorm';
+import { Brackets, EntityManager, Repository } from 'typeorm';
 import { CashDocumentPaymentService } from '../cash/application/cash-document-payment.service';
 import { CashReferenceType, CashSystemCode } from '../cash/domain/cash.enums';
 import { instanteValido } from '../cash/domain/instante-del-pago';
@@ -53,6 +53,12 @@ import { PlanningCaseCloser } from './planner/planning-case-closer.service';
 import type { MaintenanceWindowProposal } from './entities/maintenance-window-proposal.entity';
 import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 import { valorLegible } from '../common/validation/etiquetas';
+import { Attachment } from '../attachment/entities/attachment.entity';
+import { MaintenanceTaskAttachment } from './entities/maintenance-task-attachment.entity';
+import {
+  assertDuenoSinCambios,
+  ValoresDelDueno,
+} from '../common/utils/conciliacion-de-documentos';
 
 /** Fecha de calendario del cuerpo: `undefined` no se toca, `null` borra, un ISO se normaliza. */
 function fechaDeCalendario(valor: string | null | undefined) {
@@ -458,6 +464,166 @@ export class FleetTaskService {
     }
     await this.casos?.avisar(propuestasCerradas);
     return this.findOne(id, distributorId);
+  }
+
+  /**
+   * Renueva un documento del legajo dentro de la transacción de una lectura: la
+   * tarea actual queda hecha con el adjunto leído y la próxima vence en la fecha
+   * leída. La licencia cuelga del perfil de reparto; el resto, del legajo.
+   * Devuelve las propuestas del planificador que hay que avisar al confirmar la
+   * transacción (`avisarCasosCerrados`).
+   */
+  async renovarDocumentoDesdeLectura(
+    manager: EntityManager,
+    employeeId: string,
+    distributorId: string,
+    datos: {
+      documentKind: MaintenanceDocumentKind;
+      vencimiento: string;
+      fechaDelDocumento: string | null;
+      taskId?: string;
+      attachmentId: string;
+      expected: ValoresDelDueno;
+    },
+  ): Promise<MaintenanceWindowProposal[]> {
+    const empleado = await this.employees.findActivo(
+      employeeId,
+      distributorId,
+      manager,
+    );
+    assertDuenoSinCambios(datos.expected, {
+      documento: empleado.documentNumber,
+      titular: `${empleado.firstName} ${empleado.lastName}`,
+    });
+    if (datos.vencimiento < diaArgentino()) {
+      throw new BadRequestException(
+        'Vencimiento: la fecha ya pasó; corregila o rechazá la propuesta',
+      );
+    }
+    const perfiles = empleado.userId
+      ? await this.deliveryService.findDeliveryIdsByUserIds(
+          [empleado.userId],
+          distributorId,
+        )
+      : [];
+    const deliveryIds = perfiles.map((p) => p.deliveryId);
+    const repo = manager.getRepository(MaintenanceTask);
+    const consulta = repo
+      .createQueryBuilder('task')
+      .innerJoinAndSelect('task.plan', 'plan')
+      .setLock('pessimistic_write', undefined, ['task'])
+      .where('task.distributor_id = :distributorId', { distributorId })
+      .andWhere('plan.document_kind = :documentKind', {
+        documentKind: datos.documentKind,
+      })
+      .andWhere(
+        new Brackets((qb) => {
+          qb.where('task.employee_id = :employeeId', { employeeId });
+          if (deliveryIds.length > 0) {
+            qb.orWhere('task.delivery_id IN (:...deliveryIds)', {
+              deliveryIds,
+            });
+          }
+        }),
+      );
+    if (datos.taskId) {
+      consulta.andWhere('task.task_id = :taskId', { taskId: datos.taskId });
+    } else {
+      consulta.andWhere('task.status NOT IN (:...cerradas)', {
+        cerradas: ESTADOS_CERRADOS,
+      });
+    }
+    const candidatas = await consulta.getMany();
+    if (candidatas.length === 0) {
+      throw new NotFoundException('Tarea de documentación no encontrada');
+    }
+    if (candidatas.length > 1) {
+      throw new BadRequestException(
+        'Tarea de documentación: elegí cuál renovar porque hay más de una posible',
+      );
+    }
+    const [tarea] = candidatas;
+    if (ESTADOS_CERRADOS.includes(tarea.status)) {
+      throw new ConflictException(
+        `La tarea de documentación ya está ${tarea.status === MaintenanceTaskStatus.DONE ? 'hecha' : 'cancelada'}: elegí otra`,
+      );
+    }
+    const dueAt = normalizarFechaCalendario(
+      new Date(`${datos.vencimiento}T00:00:00.000Z`),
+    );
+    const validFrom = datos.fechaDelDocumento
+      ? normalizarFechaCalendario(
+          new Date(`${datos.fechaDelDocumento}T00:00:00.000Z`),
+        )
+      : null;
+    this.assertVigenciaCoherente(tarea.plan, validFrom, dueAt);
+
+    const adjunto = await manager.findOne(Attachment, {
+      where: { attachmentId: datos.attachmentId, distributorId },
+    });
+    if (!adjunto) throw new NotFoundException('Adjunto no encontrado');
+    const propuestas =
+      (await this.casos?.cerrar(
+        manager,
+        { taskId: tarea.taskId },
+        'La tarea se cerró por fuera del planificador',
+      )) ?? [];
+
+    tarea.status = MaintenanceTaskStatus.DONE;
+    tarea.performedAt = new Date();
+    await repo.save(tarea);
+    // El archivo sigue siendo uno solo: esta fila apunta a la misma clave del storage.
+    const adjuntos = manager.getRepository(MaintenanceTaskAttachment);
+    await adjuntos.save(
+      adjuntos.create({
+        taskId: tarea.taskId,
+        distributorId,
+        storageKey: adjunto.storageKey,
+        originalName: adjunto.originalName,
+        mimeType: adjunto.mimeType,
+        sizeBytes: adjunto.sizeBytes,
+        uploadedByUserId: adjunto.uploadedByUserId,
+      }),
+    );
+    await repo.save(
+      repo.create({
+        planId: tarea.planId,
+        distributorId,
+        employeeId: tarea.employeeId,
+        carId: null,
+        deliveryId: tarea.deliveryId,
+        status: MaintenanceTaskStatus.SCHEDULED,
+        validFrom,
+        dueAt,
+        dueKm: null,
+        predictedDueAt: null,
+        scheduledAt: null,
+        performedAt: null,
+        odometerKm: null,
+        cost: tarea.cost,
+        provider: tarea.provider,
+        referenceNumber: tarea.referenceNumber,
+        category: tarea.category,
+        alertedAt: null,
+        notes: tarea.notes,
+        details:
+          datos.documentKind === MaintenanceDocumentKind.PSYCHOPHYSICAL &&
+          datos.fechaDelDocumento
+            ? { examDate: datos.fechaDelDocumento }
+            : tarea.details,
+        cashMovementId: null,
+        paidAt: null,
+        paidAmount: null,
+      }),
+    );
+    return propuestas;
+  }
+
+  /** Avisa las propuestas que cerró una renovación, ya confirmada la transacción. */
+  async avisarCasosCerrados(
+    propuestas: MaintenanceWindowProposal[],
+  ): Promise<void> {
+    await this.casos?.avisar(propuestas);
   }
 
   /**
