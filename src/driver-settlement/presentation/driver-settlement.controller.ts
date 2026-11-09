@@ -47,6 +47,10 @@ export class DriverSettlementController {
   ) {}
 
   @Get()
+  @ApiBadRequestResponse({
+    description:
+      'Filtro o paginación inválidos, o super admin sin X-Distributor',
+  })
   @ApiOperation({
     summary: 'Listar las rendiciones (tablero del día por chofer)',
     description:
@@ -61,6 +65,10 @@ export class DriverSettlementController {
   }
 
   @Post()
+  @ApiBadRequestResponse({
+    description:
+      'Chofer o fecha inválidos, fecha futura, o super admin sin X-Distributor',
+  })
   @Idempotent()
   @ApiOperation({
     summary: 'Abrir la rendición de un chofer para un día',
@@ -88,6 +96,7 @@ export class DriverSettlementController {
   }
 
   @Get('mine')
+  @ApiBadRequestResponse({ description: 'Fecha inválida o futura' })
   @Auth(RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Mi rendición del día (chofer)',
@@ -95,7 +104,6 @@ export class DriverSettlementController {
       'Los pedidos en efectivo del día, los cobros de cuenta corriente y el efectivo esperado. Si todavía no existe, la abre (idempotente): el chofer necesita tenerla abierta para registrar cobros en la calle.',
   })
   @ApiOkResponse({ type: DriverSettlementDetailDto })
-  @ApiNotFoundResponse({ description: 'El usuario no tiene perfil de chofer' })
   async mine(
     @Query() query: QueryMySettlementDto,
     @CurrentUser('user_id') userId: string,
@@ -116,6 +124,9 @@ export class DriverSettlementController {
   }
 
   @Get(':id')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o super admin sin X-Distributor',
+  })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Ver una rendición con sus pedidos, cobros y gastos',
@@ -148,10 +159,10 @@ export class DriverSettlementController {
       'El chofer (o el administrador por él) declara el efectivo y los gastos pagados con la cobranza. Recalcula lo esperado y toma los pedidos en efectivo sin rendir. Diferencia = declarado + gastos − esperado (negativa: faltante).',
   })
   @ApiParam({ name: 'id', description: 'Rendición UUID' })
-  @ApiOkResponse({ type: DriverSettlementDetailDto })
+  @ApiCreatedResponse({ type: DriverSettlementDetailDto })
   @ApiBadRequestResponse({
     description:
-      'Efectivo o gasto negativo, o un gasto sin categoría de egreso',
+      'Efectivo o gasto negativo, un gasto sin categoría de egreso, o super admin sin X-Distributor',
   })
   @ApiNotFoundResponse({
     description:
@@ -187,7 +198,7 @@ export class DriverSettlementController {
   @ApiOkResponse({ type: DriverSettlementDetailDto })
   @ApiBadRequestResponse({
     description:
-      'Hay diferencia y no se indica cómo se resuelve, o un sobrante a cargo del chofer',
+      'Hay diferencia y no se indica cómo se resuelve, un sobrante a cargo del chofer, datos inválidos, o super admin sin X-Distributor',
   })
   @ApiNotFoundResponse({
     description:
@@ -195,7 +206,7 @@ export class DriverSettlementController {
   })
   @ApiConflictResponse({
     description:
-      'No está presentada, la caja exige sesión y no la tiene abierta, o la carga del camión no está cerrada',
+      'No está presentada, la caja exige sesión y no la tiene abierta o está desactivada, la carga del camión no está cerrada, o un faltante a cargo de un chofer sin legajo',
   })
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
@@ -208,7 +219,10 @@ export class DriverSettlementController {
   }
 
   @Patch(':id/reopen')
-  @Idempotent()
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o super admin sin X-Distributor',
+  })
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Reabrir una rendición presentada',
     description:

@@ -98,6 +98,7 @@ export class TruckLoadController {
   }
 
   @Get('settings')
+  @ApiBadRequestResponse({ description: 'Super admin sin X-Distributor' })
   @ApiOperation({
     summary: 'Parámetros del control de stock del camión',
     description:
@@ -111,6 +112,7 @@ export class TruckLoadController {
   }
 
   @Put('settings')
+  @ApiBadRequestResponse({ description: 'Campo faltante o inválido' })
   @ApiOperation({
     summary: 'Cambiar los parámetros del control de stock del camión',
   })
@@ -124,6 +126,9 @@ export class TruckLoadController {
   }
 
   @Get('cars/:carId/stock')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o super admin sin X-Distributor',
+  })
   @ApiOperation({
     summary: 'Stock actual de un camión',
     description:
@@ -168,6 +173,7 @@ export class TruckLoadController {
   }
 
   @Get()
+  @ApiBadRequestResponse({ description: 'Filtro o paginación inválidos' })
   @ApiOperation({
     summary: 'Listar las cargas por fecha, camión, chofer y estado',
   })
@@ -180,6 +186,7 @@ export class TruckLoadController {
   }
 
   @Get(':id')
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary:
@@ -223,7 +230,7 @@ export class TruckLoadController {
 
   @Patch(':id/depart')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Confirmar la salida del camión (loading -> on_route)',
     description:
@@ -337,6 +344,9 @@ export class TruckLoadController {
   }
 
   @Patch(':id/cancel')
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID, o motivo inválido',
+  })
   @ApiOperation({
     summary: 'Cancelar una carga que todavía no salió',
     description:

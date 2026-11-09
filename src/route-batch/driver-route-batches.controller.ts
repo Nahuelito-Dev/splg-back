@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiConflictResponse,
+  ApiBadRequestResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -45,6 +46,7 @@ export class DriverRouteBatchesController {
   ) {}
 
   @Get()
+  @ApiBadRequestResponse({ description: 'Paginación inválida' })
   @ApiOperation({
     summary: 'Mis lotes de recorrido',
     description:
@@ -59,6 +61,7 @@ export class DriverRouteBatchesController {
   }
 
   @Get(':id')
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiOperation({ summary: 'Uno de mis lotes de recorrido' })
   @ApiParam({ name: 'id', description: 'Batch UUID' })
   @ApiOkResponse({ type: DriverRouteBatchResponseDto })
@@ -71,7 +74,11 @@ export class DriverRouteBatchesController {
   }
 
   @Post(':id/accept')
-  @Idempotent()
+  @ApiBadRequestResponse({
+    description:
+      'El id no es un UUID, chofer deshabilitado o sin validar, o con documentación vencida',
+  })
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Aceptar el recorrido',
     description:
@@ -94,7 +101,8 @@ export class DriverRouteBatchesController {
   }
 
   @Post(':id/reject')
-  @Idempotent()
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Rechazar el recorrido',
     description:

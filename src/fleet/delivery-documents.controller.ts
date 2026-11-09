@@ -1,6 +1,7 @@
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import {
   ApiNotFoundResponse,
+  ApiBadRequestResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -25,6 +26,9 @@ export class DeliveryDocumentsController {
   constructor(private readonly tasksService: FleetTaskService) {}
 
   @Get()
+  @ApiBadRequestResponse({
+    description: 'El id no es un UUID o super admin sin X-Distributor',
+  })
   @ApiOperation({
     summary: 'Documentación de un chofer (licencia) y si está inhabilitado',
   })

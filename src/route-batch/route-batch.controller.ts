@@ -104,7 +104,7 @@ export class RouteBatchController {
   }
 
   @Post('run')
-  @Idempotent()
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Armar lotes ahora',
     description:
@@ -123,6 +123,7 @@ export class RouteBatchController {
   }
 
   @Get(':id')
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiOperation({ summary: 'Un lote de recorrido con sus paradas y ofertas' })
   @ApiParam({ name: 'id', description: 'Batch UUID' })
   @ApiOkResponse({ type: RouteBatchResponseDto })
@@ -135,7 +136,8 @@ export class RouteBatchController {
   }
 
   @Post(':id/dissolve')
-  @Idempotent()
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @Idempotent({ sinCuerpo: true })
   @ApiOperation({
     summary: 'Deshacer un lote',
     description:
