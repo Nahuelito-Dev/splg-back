@@ -169,6 +169,10 @@ export class CancelOrderUseCase {
         }
         transitionOrder(locked, OrderStatus.CANCELLED);
         locked.cancellationReason = motivo;
+        await this.releaseOrder.borrarVaciasDeclaradas(
+          queryRunner.manager,
+          locked,
+        );
         await this.stock.restituirStock(queryRunner.manager, locked.items);
       }
 

@@ -186,5 +186,31 @@ describe('Matriz HTTP F35: PATCH /v2/orders/:id/empties (e2e)', () => {
     }),
   ];
 
+  const cancelar = endpoint<EscenarioT2>(
+    'patch',
+    '/orders/{id}/cancel',
+    (c) => `/orders/${c.p.vacias}/cancel`,
+  );
+  correrMatriz('F35 E4 · cancelar borra lo declarado', ver, [
+    cancelar('admin cancela un pedido en camino con vacías', 'adminA', 200, {
+      antes: async (c) => {
+        await preparar()(c);
+        await c.app
+          .get(DataSource)
+          .getRepository(OrderItem)
+          .update({ orderId: c.p.vacias }, { emptiesReceived: 1 });
+      },
+      body: { reason: 'Prueba de cancelación' },
+      cabeceras: conClave,
+      verificar: async (_cuerpo, c) => {
+        const item = await c.app
+          .get(DataSource)
+          .getRepository(OrderItem)
+          .findOneByOrFail({ orderId: c.p.vacias });
+        expect(item.emptiesReceived).toBeNull();
+      },
+    }),
+  ]);
+
   correrMatriz('F35 E4 · vacías recibidas', ver, casos);
 });

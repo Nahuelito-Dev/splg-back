@@ -343,6 +343,29 @@ describe('CancelOrderUseCase', () => {
       expect(dispatchOrchestrator.onOrderClosed).toHaveBeenCalledWith('ord-1');
     });
 
+    it('el admin que cancela un pedido en camino borra las vacías declaradas', async () => {
+      lockedOrder = makeOrder({
+        status: OrderStatus.ON_THE_WAY,
+        onTheWayAt: new Date('2026-01-01'),
+        items: [{ emptiesReceived: 0 }] as unknown as Order['items'],
+      });
+
+      const result = await useCase.execute(
+        'ord-1',
+        'admin-1',
+        'admin',
+        'Motivo de prueba',
+      );
+
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(queryRunner.manager.update).toHaveBeenCalledWith(
+        OrderItem,
+        { orderId: 'ord-1' },
+        { emptiesReceived: null },
+      );
+      expect(result.items[0].emptiesReceived).toBeNull();
+    });
+
     it('customer cancela y se devuelve el stock', async () => {
       const result = await useCase.execute(
         'ord-1',
