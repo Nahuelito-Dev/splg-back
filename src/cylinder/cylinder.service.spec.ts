@@ -23,6 +23,7 @@ import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { CreateCylinderDto } from './dto/create-cylinder.dto';
 import { InvalidCylinderTransitionError } from './domain/errors/invalid-cylinder-transition.error';
 import { TransitionCylinderDto } from './dto/transition-cylinder.dto';
+import { CustomerContainerService } from '../customer-container/customer-container.service';
 
 /**
  * CylinderService: ciclo físico del envase. Mockeamos los tres repos (envase,
@@ -43,6 +44,7 @@ describe('CylinderService', () => {
   let gasCylinders: { findOne: jest.Mock };
   let lockQb: { getOne: jest.Mock; getMany: jest.Mock; [k: string]: jest.Mock };
   let eventos: { emit: jest.Mock };
+  let cuentaDeEnvases: { descontarPropioDevuelto: jest.Mock };
 
   const DIST = 'dist-1';
 
@@ -89,6 +91,9 @@ describe('CylinderService', () => {
       getMany: jest.fn(),
     };
     eventos = { emit: jest.fn() };
+    cuentaDeEnvases = {
+      descontarPropioDevuelto: jest.fn().mockResolvedValue(false),
+    };
     const manager = {
       createQueryBuilder: jest.fn(() => lockQb),
       getRepository: jest.fn((entity: unknown) =>
@@ -107,6 +112,7 @@ describe('CylinderService', () => {
       gasCylinders as unknown as GasCylinderService,
       eventos as unknown as EventEmitter2,
       deliveries as unknown as DeliveryService,
+      cuentaDeEnvases as unknown as CustomerContainerService,
     );
   });
 
@@ -607,6 +613,71 @@ describe('CylinderService', () => {
         EVENTO_ENVASE_DEVUELTO,
         new EnvaseDevueltoEvent(DIST, 'cyl-1', 'cust-1', null),
       );
+    });
+
+    it('F35 E5: la cuenta de envases se concilia DENTRO de la transacción de la devolución', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({
+          state: CylinderState.WITH_CUSTOMER,
+          currentCustomerId: 'cust-1',
+        }),
+      );
+      await service.transition(
+        'cyl-1',
+        {
+          toState: CylinderState.EMPTY_RETURNED,
+          orderId: undefined,
+        } as TransitionCylinderDto,
+        DIST,
+      );
+      const [manager, datos] = cuentaDeEnvases.descontarPropioDevuelto.mock
+        .calls[0] as [{ createQueryBuilder: unknown }, object];
+      // Mismo manager que la transacción (el que bloqueó el envase), no uno nuevo.
+      expect(manager.createQueryBuilder).toBeDefined();
+      expect(datos).toEqual({
+        distributorId: DIST,
+        customerUserId: 'cust-1',
+        cylinderId: 'cyl-1',
+        orderId: null,
+      });
+      // Después de mover el envase: el movimiento ya se guardó.
+      expect(movementRepo.save.mock.invocationCallOrder[0]).toBeLessThan(
+        cuentaDeEnvases.descontarPropioDevuelto.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('F35 E5: si la cuenta falla, la devolución falla y no se avisa', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({
+          state: CylinderState.WITH_CUSTOMER,
+          currentCustomerId: 'cust-1',
+        }),
+      );
+      cuentaDeEnvases.descontarPropioDevuelto.mockRejectedValue(
+        new Error('cuenta caída'),
+      );
+      await expect(
+        service.transition(
+          'cyl-1',
+          { toState: CylinderState.EMPTY_RETURNED } as TransitionCylinderDto,
+          DIST,
+        ),
+      ).rejects.toThrow('cuenta caída');
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('una vacía que no venía de un cliente no toca la cuenta', async () => {
+      cylinderRepo.findOne.mockResolvedValue(
+        makeCylinder({ state: CylinderState.DISPATCHED }),
+      );
+      await service
+        .transition(
+          'cyl-1',
+          { toState: CylinderState.EMPTY_RETURNED } as TransitionCylinderDto,
+          DIST,
+        )
+        .catch(() => undefined);
+      expect(cuentaDeEnvases.descontarPropioDevuelto).not.toHaveBeenCalled();
     });
 
     it('otras transiciones no avisan devolución', async () => {

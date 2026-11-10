@@ -25,6 +25,7 @@ describe('CylinderRecoveryCron', () => {
         escalados: 0,
         perdidos: 0,
         cerradosPorDevolucion: 0,
+        cerradosPorCuenta: 0,
         revisionManual: 0,
       }),
     };

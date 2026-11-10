@@ -13,6 +13,7 @@ import { CylinderMovement } from './entities/cylinder-movement.entity';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { GasCylinderModule } from '../gascylinder/gascylinder.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
+import { CustomerContainerModule } from '../customer-container/customer-container.module';
 import { CylinderInspection } from './entities/cylinder-inspection.entity';
 import { CylinderRecoveryCase } from './entities/cylinder-recovery-case.entity';
 import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.entity';
@@ -33,6 +34,7 @@ import { CylinderRecoveryNotice } from './entities/cylinder-recovery-notice.enti
     GatewaysModule, // el aviso al panel cuando se bloquea un despacho
     GasCylinderModule, // el producto del envase tiene que existir y ser del tenant
     S3Module, // foto del envase
+    CustomerContainerModule, // F35 E5: la devolución de un envase propio baja la cuenta
   ],
   controllers: [CylinderController, CylinderPhotoController],
   providers: [

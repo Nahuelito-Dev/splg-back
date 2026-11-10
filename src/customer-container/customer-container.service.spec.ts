@@ -141,6 +141,28 @@ describe('CustomerContainerService', () => {
     );
   });
 
+  it('loanedByM5 informa sólo los reclamables con «Cobrar envases» encendido (F35 E5)', async () => {
+    query.mockResolvedValue([]);
+
+    await service.listar(manager, DATOS.distributorId, DATOS.customerUserId);
+    containerChargeSettings.habilitado.mockResolvedValueOnce(false);
+    await service.listar(manager, DATOS.distributorId, DATOS.customerUserId);
+
+    expect(containerChargeSettings.habilitado).toHaveBeenCalledWith(
+      DATOS.distributorId,
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('GREATEST(0, COUNT(c.cylinder_id)'),
+      [DATOS.distributorId, DATOS.customerUserId, true],
+    );
+    expect(query).toHaveBeenNthCalledWith(2, expect.any(String), [
+      DATOS.distributorId,
+      DATOS.customerUserId,
+      false,
+    ]);
+  });
+
   it('acepta cualquier tipo de la distribuidora, incluso uno inactivo', async () => {
     query.mockResolvedValueOnce([{ existe: true }]);
 
@@ -244,6 +266,94 @@ describe('CustomerContainerService', () => {
         }),
       ]);
       expect(query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('descontarPropioDevuelto (F35 E5, en la transacción de la devolución)', () => {
+    const datos = (orderId: string | null = null) => ({
+      distributorId: DATOS.distributorId,
+      customerUserId: DATOS.customerUserId,
+      cylinderId: 'cyl-1',
+      orderId,
+    });
+    /** Envase, [canje], cuenta bloqueada, envases en su poder y, si descuenta, el `registrar`. */
+    const base = (owned: number, n: number, canje?: boolean) => {
+      query.mockResolvedValueOnce([
+        { gas_cylinder_id: DATOS.gasCylinderId, serial: 'SN-1' },
+      ]);
+      if (canje !== undefined) query.mockResolvedValueOnce(canje ? [{}] : []);
+      query
+        .mockResolvedValueOnce([{ account_id: 'cuenta', owned }])
+        .mockResolvedValueOnce([{ n }]);
+    };
+
+    it('con más propios que envases en su poder descuenta uno como devolución', async () => {
+      base(2, 1);
+      const registrar = jest.spyOn(service, 'registrar').mockResolvedValue(1);
+      await expect(
+        service.descontarPropioDevuelto(manager, datos()),
+      ).resolves.toBe(true);
+      expect(registrar).toHaveBeenCalledWith(manager, {
+        distributorId: DATOS.distributorId,
+        customerUserId: DATOS.customerUserId,
+        gasCylinderId: DATOS.gasCylinderId,
+        quantity: -1,
+        reason: CustomerContainerMovementReason.RETURNED,
+        note: 'Devolvió el envase propio SN-1',
+      });
+      expect((query.mock.calls[1] as [string])[0]).toContain('FOR UPDATE');
+      for (const [, params] of query.mock.calls as Array<[string, string[]]>) {
+        expect(params).toContain(DATOS.distributorId);
+      }
+      registrar.mockRestore();
+    });
+
+    it('con los propios iguales a los que tiene no descuenta (era prestado)', async () => {
+      base(1, 1);
+      await expect(
+        service.descontarPropioDevuelto(manager, datos()),
+      ).resolves.toBe(false);
+      expect(query).toHaveBeenCalledTimes(3);
+    });
+
+    it('el canje en un pedido del mismo cliente no toca la cuenta', async () => {
+      base(2, 0, true);
+      await expect(
+        service.descontarPropioDevuelto(manager, datos('ord-1')),
+      ).resolves.toBe(false);
+      expect(query.mock.calls[1]).toEqual([
+        expect.stringContaining('FROM "order"'),
+        ['ord-1', DATOS.distributorId, DATOS.customerUserId],
+      ]);
+    });
+
+    it('sin cuenta, sin tipo o con el cobro apagado no hace nada', async () => {
+      query
+        .mockResolvedValueOnce([
+          { gas_cylinder_id: DATOS.gasCylinderId, serial: 'S' },
+        ])
+        .mockResolvedValueOnce([]);
+      await expect(
+        service.descontarPropioDevuelto(manager, datos()),
+      ).resolves.toBe(false);
+      query.mockResolvedValueOnce([{ gas_cylinder_id: null, serial: 'S' }]);
+      await expect(
+        service.descontarPropioDevuelto(manager, datos()),
+      ).resolves.toBe(false);
+      containerChargeSettings.habilitado.mockResolvedValueOnce(false);
+      query.mockClear();
+      await expect(
+        service.descontarPropioDevuelto(manager, datos()),
+      ).resolves.toBe(false);
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('si el descuento falla, el error sube (la devolución revierte)', async () => {
+      base(2, 1);
+      query.mockRejectedValueOnce(new Error('base caída'));
+      await expect(
+        service.descontarPropioDevuelto(manager, datos()),
+      ).rejects.toThrow('base caída');
     });
   });
 });

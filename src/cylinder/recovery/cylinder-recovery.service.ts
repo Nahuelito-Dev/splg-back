@@ -35,6 +35,11 @@ import {
   ContextoDelRecupero,
   CylinderRecoveryNotifier,
 } from './cylinder-recovery.notifier';
+import {
+  CylinderRecoveryAccountService,
+  EnvasesCubiertos,
+  NOTA_CUBIERTO_POR_LA_CUENTA,
+} from './cylinder-recovery-account.service';
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
@@ -62,6 +67,8 @@ export interface ResultadoDeLaCorrida {
   escalados: number;
   perdidos: number;
   cerradosPorDevolucion: number;
+  /** Casos cerrados sin cargo porque el envase quedó cubierto por los propios del cliente (F35 E5). */
+  cerradosPorCuenta: number;
   revisionManual: number;
 }
 
@@ -98,6 +105,7 @@ export class CylinderRecoveryService {
     private readonly processConfig: ProcessConfigService,
     private readonly orders: OrderLookupService,
     private readonly notifier: CylinderRecoveryNotifier,
+    private readonly cuenta: CylinderRecoveryAccountService,
   ) {}
 
   // ───────────────────────── parámetros ─────────────────────────
@@ -167,6 +175,25 @@ export class CylinderRecoveryService {
     }));
   }
 
+  /**
+   * Los envases afuera que se pueden reclamar. Con «Cobrar envases» encendido
+   * se excluyen los cubiertos por los propios del cliente (F35 E5); apagado,
+   * son todos los de `envasesAfuera`.
+   */
+  async envasesAReclamar(distributorId: string): Promise<{
+    afuera: EnvaseRetenido[];
+    cubiertos: EnvasesCubiertos | null;
+  }> {
+    const cubiertos = await this.cuenta.cubiertos(distributorId);
+    const afuera = await this.envasesAfuera(distributorId);
+    return {
+      afuera: cubiertos
+        ? afuera.filter((e) => !cubiertos.has(e.cylinderId))
+        : afuera,
+      cubiertos,
+    };
+  }
+
   /** Separa los retenidos (con quién y desde cuándo) de los que quedan para revisión manual. */
   clasificar(
     afuera: EnvaseRetenido[],
@@ -234,14 +261,19 @@ export class CylinderRecoveryService {
       escalados: 0,
       perdidos: 0,
       cerradosPorDevolucion: 0,
+      cerradosPorCuenta: 0,
       revisionManual: 0,
     };
 
-    const { retenidos, revisionManual } = this.clasificar(
-      await this.envasesAfuera(distributorId),
-      p,
-      ahora,
-    );
+    const { afuera, cubiertos } = await this.envasesAReclamar(distributorId);
+    if (cubiertos) {
+      resultado.cerradosPorCuenta = await this.cerrarCubiertos(
+        distributorId,
+        cubiertos,
+        ahora,
+      );
+    }
+    const { retenidos, revisionManual } = this.clasificar(afuera, p, ahora);
     resultado.revisionManual = revisionManual.length;
     for (const r of revisionManual) {
       this.logger.warn(
@@ -292,6 +324,82 @@ export class CylinderRecoveryService {
       await this.notifier.alClienteAgrupado(userId, avisos);
     }
     return resultado;
+  }
+
+  /**
+   * F35 E5: los casos vivos cuyo envase quedó cubierto por los propios del
+   * cliente (por ejemplo, después de una compra) se cierran sin cargo, los más
+   * nuevos primero, sin aviso al cliente. Devuelve cuántos cerró.
+   */
+  private async cerrarCubiertos(
+    distributorId: string,
+    cubiertos: EnvasesCubiertos,
+    ahora: Date,
+  ): Promise<number> {
+    if (cubiertos.size === 0) return 0;
+    const vivos = await this.cases.find({
+      where: {
+        distributorId,
+        status: In([...ESTADOS_VIVOS_DEL_RECUPERO]),
+        cylinderId: In([...cubiertos.keys()]),
+      },
+      select: { caseId: true, cylinderId: true, userId: true },
+      order: { deliveredAt: 'DESC', openedAt: 'DESC' },
+    });
+    let cerrados = 0;
+    for (const vivo of vivos) {
+      // Un caso de otro cliente (el envase cambió de manos) lo cierra la pasada normal como devuelto.
+      if (cubiertos.get(vivo.cylinderId) !== vivo.userId) continue;
+      try {
+        const cerro = await this.cases.manager.transaction(async (manager) => {
+          const caso = await manager
+            .createQueryBuilder(CylinderRecoveryCase, 'c')
+            .setLock('pessimistic_write')
+            .where('c.caseId = :caseId', { caseId: vivo.caseId })
+            .andWhere('c.distributorId = :distributorId', { distributorId })
+            .getOne();
+          if (!caso || !ESTADOS_VIVOS_DEL_RECUPERO.includes(caso.status)) {
+            return false;
+          }
+          // La foto de `cubiertos` es de antes: bajo lock (caso → envase → cuenta, el mismo orden que la
+          // decisión y la devolución) se relee el envase y se recalcula la cobertura de ese cliente y tipo.
+          const envase = await manager
+            .createQueryBuilder(Cylinder, 'e')
+            .setLock('pessimistic_write')
+            .where('e.cylinderId = :id', { id: caso.cylinderId })
+            .andWhere('e.distributorId = :distributorId', { distributorId })
+            .getOne();
+          if (
+            envase?.state !== CylinderState.WITH_CUSTOMER ||
+            envase.currentCustomerId !== caso.userId ||
+            !envase.gasCylinderId
+          ) {
+            return false;
+          }
+          const sigue = await this.cuenta.sigueCubierto(manager, {
+            distributorId,
+            cylinderId: caso.cylinderId,
+            customerUserId: caso.userId,
+            gasCylinderId: envase.gasCylinderId,
+          });
+          if (!sigue) return false;
+          await this.cerrar(
+            manager,
+            caso,
+            RecoveryCaseStatus.CLOSED_NO_CHARGE,
+            ahora,
+            NOTA_CUBIERTO_POR_LA_CUENTA,
+          );
+          return true;
+        });
+        if (cerro) cerrados += 1;
+      } catch (error) {
+        this.logger.error(
+          `Recupero ${distributorId}: no se pudo cerrar el caso cubierto ${vivo.caseId}: ${errorMessage(error)}`,
+        );
+      }
+    }
+    return cerrados;
   }
 
   /** Abre el caso del envase (paso 3); si ya hay uno vivo lo retoma y devuelve false. */

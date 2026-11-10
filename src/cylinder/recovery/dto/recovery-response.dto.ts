@@ -177,6 +177,11 @@ export class RecoveryRunResponseDto {
   @ApiProperty() escalated!: number;
   @ApiProperty() lost!: number;
   @ApiProperty() closedByReturn!: number;
+  @ApiProperty({
+    description:
+      'Casos cerrados sin cargo porque, con «Cobrar envases» encendido, el envase quedó cubierto por los envases propios del cliente (cuenta de envases). Con el cobro apagado siempre es 0.',
+  })
+  closedCoveredByOwned!: number;
   @ApiProperty() manualReview!: number;
 }
 

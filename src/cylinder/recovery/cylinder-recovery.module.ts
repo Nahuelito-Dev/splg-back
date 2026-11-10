@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomersModule } from '../../customer/customer.module';
+import { CustomerContainerModule } from '../../customer-container/customer-container.module';
 import { DeliveryModule } from '../../delivery/delivery.module';
 import { DistributorModule } from '../../distributor/distributor.module';
 import { GatewaysModule } from '../../gateways/gateways.module';
@@ -18,6 +19,7 @@ import { CylinderRecoveryCron } from './cylinder-recovery.cron';
 import { CylinderRecoveryListener } from './cylinder-recovery.listener';
 import { CylinderRecoveryNotifier } from './cylinder-recovery.notifier';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
+import { CylinderRecoveryAccountService } from './cylinder-recovery-account.service';
 
 /**
  * Recuperación de envases no devueltos (CU-108, módulo inteligente M5): detecta
@@ -33,6 +35,7 @@ import { CylinderRecoveryService } from './cylinder-recovery.service';
     OrderLookupModule,
     DeliveryModule,
     CustomersModule,
+    CustomerContainerModule,
     GatewaysModule,
   ],
   controllers: [
@@ -42,6 +45,7 @@ import { CylinderRecoveryService } from './cylinder-recovery.service';
   ],
   providers: [
     CylinderRecoveryService,
+    CylinderRecoveryAccountService,
     CylinderRecoveryCasesService,
     CylinderRecoveryNotifier,
     CylinderRecoveryCron,

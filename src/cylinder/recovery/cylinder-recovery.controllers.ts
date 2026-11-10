@@ -182,6 +182,7 @@ export class CylinderRecoveryAdminController {
       escalated: r.escalados,
       lost: r.perdidos,
       closedByReturn: r.cerradosPorDevolucion,
+      closedCoveredByOwned: r.cerradosPorCuenta,
       manualReview: r.revisionManual,
     };
   }
