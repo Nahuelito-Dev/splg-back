@@ -392,6 +392,11 @@ describe('Recupero de envases (e2e)', () => {
         guardar: jest.fn(),
       };
       const orders = new OrderLookupService(ds.getRepository(Order));
+      // «Cobrar envases» apagado: el recupero no se concilia con la cuenta (F35 E5).
+      const apagado = {
+        cubiertos: () => Promise.resolve(null),
+        compraPorDeposito: () => Promise.resolve(false),
+      };
       const notifier = {
         alCliente: (caso: CylinderRecoveryCase) => {
           notificados.push(`cliente:${caso.caseId}`);
@@ -407,6 +412,7 @@ describe('Recupero de envases (e2e)', () => {
         processConfig as never,
         orders,
         notifier as never,
+        apagado as never,
       );
       const cylinders = new CylinderService(
         ds.getRepository(Cylinder),
@@ -415,6 +421,7 @@ describe('Recupero de envases (e2e)', () => {
         {} as never,
         new EventEmitter2(),
         {} as never,
+        { descontarPropioDevuelto: () => Promise.resolve(false) } as never,
       );
       cases = new CylinderRecoveryCasesService(
         ds.getRepository(CylinderRecoveryCase),
@@ -424,6 +431,7 @@ describe('Recupero de envases (e2e)', () => {
         orders,
         {} as never,
         processConfig as never,
+        apagado as never,
       );
       return { distributorId };
     };

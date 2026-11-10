@@ -30,6 +30,7 @@ describe('controladores del recupero de envases', () => {
       escalados: 0,
       perdidos: 1,
       cerradosPorDevolucion: 4,
+      cerradosPorCuenta: 6,
       revisionManual: 5,
     }),
   };
@@ -75,6 +76,7 @@ describe('controladores del recupero de envases', () => {
         escalated: 0,
         lost: 1,
         closedByReturn: 4,
+        closedCoveredByOwned: 6,
         manualReview: 5,
       });
     });

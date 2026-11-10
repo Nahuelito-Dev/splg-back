@@ -4,7 +4,7 @@ import { ProposalStatus } from '../../common/enums/proposal-status.enum';
 import { ProcessConfigService } from '../../distributor/process-config.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { OrderStatus } from '../../order/entities/order.entity';
-import { CylinderState } from '../entities/cylinder.entity';
+import { Cylinder, CylinderState } from '../entities/cylinder.entity';
 import {
   CylinderRecoveryCase,
   RecoveryCaseStatus,
@@ -15,6 +15,10 @@ import {
 } from '../entities/cylinder-recovery-notice.entity';
 import { CylinderRecoveryNotifier } from './cylinder-recovery.notifier';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
+import {
+  CylinderRecoveryAccountService,
+  NOTA_CUBIERTO_POR_LA_CUENTA,
+} from './cylinder-recovery-account.service';
 import { parametrosDeRecupero } from './domain/recovery-rules';
 import {
   AHORA,
@@ -47,6 +51,7 @@ describe('CylinderRecoveryService', () => {
     escaladoAlAdmin: jest.Mock;
   };
   let processConfig: { obtener: jest.Mock };
+  let cuenta: { cubiertos: jest.Mock; sigueCubierto: jest.Mock };
   let service: CylinderRecoveryService;
   const P = parametrosDeRecupero(PARAMETROS);
 
@@ -73,12 +78,18 @@ describe('CylinderRecoveryService', () => {
       escaladoAlAdmin: jest.fn(),
     };
     processConfig = { obtener: jest.fn().mockResolvedValue(PARAMETROS) };
+    // «Cobrar envases» apagado: el recupero no se concilia con la cuenta.
+    cuenta = {
+      cubiertos: jest.fn().mockResolvedValue(null),
+      sigueCubierto: jest.fn().mockResolvedValue(true),
+    };
     service = new CylinderRecoveryService(
       casesRepo as unknown as Repository<CylinderRecoveryCase>,
       {} as Repository<CylinderRecoveryNotice>,
       processConfig as unknown as ProcessConfigService,
       orders as unknown as OrderLookupService,
       notifier as unknown as CylinderRecoveryNotifier,
+      cuenta as unknown as CylinderRecoveryAccountService,
     );
   });
 
@@ -334,6 +345,172 @@ describe('CylinderRecoveryService', () => {
         }),
       );
       expect(notifier.escaladoAlAdmin).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('ejecutar con «Cobrar envases» encendido (F35 E5)', () => {
+    beforeEach(() => {
+      db.envases = [unEnvase({ gasCylinderId: 'tipo-10' })];
+      casesRepo.manager.query.mockResolvedValue([
+        {
+          cylinderId: 'cyl-1',
+          serial: 'SN-001',
+          customerId: 'cust-1',
+          deposit: '70000.00',
+          deliveredAt: new Date(AHORA.getTime() - 40 * DIA),
+        },
+      ]);
+    });
+
+    it('un envase cubierto por los propios del cliente no abre caso', async () => {
+      cuenta.cubiertos.mockResolvedValue(new Map([['cyl-1', 'cust-1']]));
+      casesRepo.find.mockResolvedValue([]);
+      const r = await service.ejecutar(DIST, AHORA);
+      expect(r.abiertos).toBe(0);
+      expect(casesRepo.save).not.toHaveBeenCalled();
+      expect(notifier.alClienteAgrupado).not.toHaveBeenCalled();
+    });
+
+    it('un envase reclamable (no cubierto) abre su caso como siempre', async () => {
+      cuenta.cubiertos.mockResolvedValue(new Map([['otro', 'cust-1']]));
+      casesRepo.find.mockResolvedValue([]);
+      const r = await service.ejecutar(DIST, AHORA);
+      expect(r.abiertos).toBe(1);
+      expect(r.cerradosPorCuenta).toBe(0);
+    });
+
+    it('el caso vivo de un envase que quedó cubierto se cierra sin cargo, con su motivo y sin aviso', async () => {
+      cuenta.cubiertos.mockResolvedValue(new Map([['cyl-1', 'cust-1']]));
+      casesRepo.find
+        .mockResolvedValueOnce([
+          { caseId: 'case-1', cylinderId: 'cyl-1', userId: 'cust-1' },
+        ])
+        .mockResolvedValueOnce([]);
+      const r = await service.ejecutar(DIST, AHORA);
+      expect(r.cerradosPorCuenta).toBe(1);
+      expect(db.casos[0]).toEqual(
+        expect.objectContaining({
+          status: RecoveryCaseStatus.CLOSED_NO_CHARGE,
+          closedAt: AHORA,
+          resolutionNote: NOTA_CUBIERTO_POR_LA_CUENTA,
+        }),
+      );
+      // Los más nuevos primero, sólo vivos, sólo los cubiertos y de la distribuidora.
+      expect(casesRepo.find).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: expect.objectContaining({ distributorId: DIST }) as object,
+          order: { deliveredAt: 'DESC', openedAt: 'DESC' },
+        }),
+      );
+      expect(notifier.porSocket).not.toHaveBeenCalled();
+      expect(notifier.alClienteAgrupado).not.toHaveBeenCalled();
+      expect(notifier.escaladoAlAdmin).not.toHaveBeenCalled();
+    });
+
+    describe('relectura bajo lock antes de cerrar (la foto de cubiertos es vieja)', () => {
+      beforeEach(() => {
+        cuenta.cubiertos.mockResolvedValue(new Map([['cyl-1', 'cust-1']]));
+        casesRepo.find
+          .mockResolvedValueOnce([
+            { caseId: 'case-1', cylinderId: 'cyl-1', userId: 'cust-1' },
+          ])
+          .mockResolvedValueOnce([]);
+        db.envases = [unEnvase({ gasCylinderId: 'tipo-10' })];
+      });
+
+      it('bloquea caso, envase y cuenta en ese orden y recalcula para ese cliente y tipo', async () => {
+        const r = await service.ejecutar(DIST, AHORA);
+        expect(r.cerradosPorCuenta).toBe(1);
+        const entidades = db.manager.createQueryBuilder.mock.calls.map(
+          (c) => c[0],
+        );
+        expect(entidades.slice(0, 2)).toEqual([CylinderRecoveryCase, Cylinder]);
+        expect(cuenta.sigueCubierto).toHaveBeenCalledWith(db.manager, {
+          distributorId: DIST,
+          cylinderId: 'cyl-1',
+          customerUserId: 'cust-1',
+          gasCylinderId: 'tipo-10',
+        });
+      });
+
+      it('si al recalcular ya no está cubierto, no lo cierra', async () => {
+        cuenta.sigueCubierto.mockResolvedValue(false);
+        const r = await service.ejecutar(DIST, AHORA);
+        expect(r.cerradosPorCuenta).toBe(0);
+        expect(db.casos[0].status).toBe(RecoveryCaseStatus.OPEN);
+      });
+
+      it('si el envase ya volvió o cambió de manos, no lo cierra por la cuenta', async () => {
+        for (const envase of [
+          unEnvase({
+            gasCylinderId: 'tipo-10',
+            state: CylinderState.EMPTY_RETURNED,
+            currentCustomerId: null,
+          }),
+          unEnvase({ gasCylinderId: 'tipo-10', currentCustomerId: 'cust-2' }),
+          unEnvase({ gasCylinderId: null }),
+        ]) {
+          db.envases = [envase];
+          db.casos = [unCaso()];
+          casesRepo.find
+            .mockResolvedValueOnce([
+              { caseId: 'case-1', cylinderId: 'cyl-1', userId: 'cust-1' },
+            ])
+            .mockResolvedValueOnce([]);
+          const r = await service.ejecutar(DIST, AHORA);
+          expect(r.cerradosPorCuenta).toBe(0);
+          expect(db.casos[0].resolutionNote).not.toBe(
+            NOTA_CUBIERTO_POR_LA_CUENTA,
+          );
+        }
+        expect(cuenta.sigueCubierto).not.toHaveBeenCalled();
+      });
+    });
+
+    it('un caso de otro cliente sobre un envase cubierto no se cierra por la cuenta', async () => {
+      cuenta.cubiertos.mockResolvedValue(new Map([['cyl-1', 'cust-2']]));
+      casesRepo.find
+        .mockResolvedValueOnce([
+          { caseId: 'case-1', cylinderId: 'cyl-1', userId: 'cust-1' },
+        ])
+        .mockResolvedValueOnce([]);
+      const r = await service.ejecutar(DIST, AHORA);
+      expect(r.cerradosPorCuenta).toBe(0);
+      expect(db.casos[0].status).toBe(RecoveryCaseStatus.OPEN);
+    });
+
+    it('un caso que ya no está vivo al bloquearlo no se cuenta', async () => {
+      db.casos = [unCaso({ status: RecoveryCaseStatus.RETURNED })];
+      cuenta.cubiertos.mockResolvedValue(new Map([['cyl-1', 'cust-1']]));
+      casesRepo.find
+        .mockResolvedValueOnce([
+          { caseId: 'case-1', cylinderId: 'cyl-1', userId: 'cust-1' },
+        ])
+        .mockResolvedValueOnce([]);
+      const r = await service.ejecutar(DIST, AHORA);
+      expect(r.cerradosPorCuenta).toBe(0);
+    });
+
+    it('si cerrar un caso cubierto falla, la corrida sigue', async () => {
+      cuenta.cubiertos.mockResolvedValue(new Map([['cyl-1', 'cust-1']]));
+      casesRepo.find
+        .mockResolvedValueOnce([
+          { caseId: 'case-1', cylinderId: 'cyl-1', userId: 'cust-1' },
+        ])
+        .mockResolvedValueOnce([]);
+      casesRepo.manager.transaction.mockRejectedValueOnce(new Error('lock'));
+      const r = await service.ejecutar(DIST, AHORA);
+      expect(r.cerradosPorCuenta).toBe(0);
+    });
+
+    it('envasesAReclamar excluye los cubiertos; apagado devuelve todos', async () => {
+      cuenta.cubiertos.mockResolvedValueOnce(new Map([['cyl-1', 'cust-1']]));
+      expect((await service.envasesAReclamar(DIST)).afuera).toEqual([]);
+      cuenta.cubiertos.mockResolvedValueOnce(null);
+      const apagado = await service.envasesAReclamar(DIST);
+      expect(apagado.afuera.map((e) => e.cylinderId)).toEqual(['cyl-1']);
+      expect(apagado.cubiertos).toBeNull();
     });
   });
 

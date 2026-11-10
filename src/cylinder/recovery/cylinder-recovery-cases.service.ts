@@ -32,6 +32,7 @@ import {
 } from '../entities/cylinder-recovery-notice.entity';
 import { CylinderRecoveryMapper } from './cylinder-recovery.mapper';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
+import { CylinderRecoveryAccountService } from './cylinder-recovery-account.service';
 import { choferPuedeRetirar } from './domain/recovery-rules';
 import {
   QueryRecoveryCasesDto,
@@ -74,6 +75,7 @@ export class CylinderRecoveryCasesService {
     private readonly orders: OrderLookupService,
     private readonly deliveries: DeliveryService,
     private readonly processConfig: ProcessConfigService,
+    private readonly cuenta: CylinderRecoveryAccountService,
   ) {}
 
   // ───────────────────────── administrador ─────────────────────────
@@ -189,6 +191,14 @@ export class CylinderRecoveryCasesService {
       switch (dto.decision) {
         case RecoveryDecision.CHARGE_DEPOSIT:
           caso.status = RecoveryCaseStatus.DEPOSIT_CHARGED;
+          // F35 E5: con «Cobrar envases» encendido el envase pasa a ser del cliente.
+          await this.cuenta.compraPorDeposito(manager, {
+            distributorId,
+            customerUserId: caso.userId,
+            gasCylinderId: envase.gasCylinderId,
+            serial: envase.serial,
+            actorUserId,
+          });
           break;
         case RecoveryDecision.CLOSE_NO_CHARGE:
           caso.status = RecoveryCaseStatus.CLOSED_NO_CHARGE;
@@ -244,11 +254,8 @@ export class CylinderRecoveryCasesService {
       (c) => c.status === RecoveryCaseStatus.ESCALATED,
     );
     const params = await this.engine.parametros(distributorId);
-    const { revisionManual } = this.engine.clasificar(
-      await this.engine.envasesAfuera(distributorId),
-      params,
-      ahora,
-    );
+    const { afuera } = await this.engine.envasesAReclamar(distributorId);
+    const { revisionManual } = this.engine.clasificar(afuera, params, ahora);
     const suma = (cs: RecoveryCaseDto[]): number =>
       cs
         .reduce((acc, c) => acc.plus(c.depositAmount), new Decimal(0))

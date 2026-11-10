@@ -35,6 +35,7 @@ import {
   OrderLookupService,
 } from '../order/lookup/order-lookup.service';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
+import { CustomerContainerService } from '../customer-container/customer-container.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { OrderStatus } from '../order/entities/order.entity';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -96,6 +97,7 @@ export class CylinderService {
     private readonly gasCylinders: GasCylinderService,
     private readonly eventos: EventEmitter2,
     private readonly deliveries: DeliveryService,
+    private readonly cuentaDeEnvases: CustomerContainerService,
   ) {}
 
   /**
@@ -385,6 +387,14 @@ export class CylinderService {
           dto.toState === CylinderState.EMPTY_RETURNED &&
           teniaCliente !== null
         ) {
+          // F35 E5: si volvió un envase propio, la cuenta de envases baja uno en esta misma
+          // transacción; si el descuento falla, la devolución revierte.
+          await this.cuentaDeEnvases.descontarPropioDevuelto(manager, {
+            distributorId,
+            customerUserId: teniaCliente,
+            cylinderId: id,
+            orderId: dto.orderId ?? null,
+          });
           devuelto = new EnvaseDevueltoEvent(
             distributorId,
             id,

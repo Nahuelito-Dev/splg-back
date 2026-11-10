@@ -21,6 +21,7 @@ import {
 } from '../entities/cylinder-recovery-notice.entity';
 import { CylinderRecoveryCasesService } from './cylinder-recovery-cases.service';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
+import { CylinderRecoveryAccountService } from './cylinder-recovery-account.service';
 import { RecoveryDecision } from './dto/recovery-request.dto';
 import {
   AHORA,
@@ -52,9 +53,11 @@ describe('CylinderRecoveryCasesService', () => {
   let engine: {
     parametros: jest.Mock;
     envasesAfuera: jest.Mock;
+    envasesAReclamar: jest.Mock;
     clasificar: jest.Mock;
     cerrarPorDevolucion: jest.Mock;
   };
+  let cuenta: { compraPorDeposito: jest.Mock };
   let cylinders: {
     getHistory: jest.Mock;
     retireLost: jest.Mock;
@@ -114,6 +117,9 @@ describe('CylinderRecoveryCasesService', () => {
     engine = {
       parametros: jest.fn().mockResolvedValue(PARAMETROS),
       envasesAfuera: jest.fn().mockResolvedValue([]),
+      envasesAReclamar: jest
+        .fn()
+        .mockResolvedValue({ afuera: [], cubiertos: null }),
       clasificar: jest
         .fn()
         .mockReturnValue({ retenidos: [], revisionManual: [] }),
@@ -134,6 +140,8 @@ describe('CylinderRecoveryCasesService', () => {
       obtener: jest.fn().mockResolvedValue(PARAMETROS),
       guardar: jest.fn().mockResolvedValue({ process: 'cylinder_recovery' }),
     };
+    // «Cobrar envases» apagado: la cuenta de envases no se toca.
+    cuenta = { compraPorDeposito: jest.fn().mockResolvedValue(false) };
     service = new CylinderRecoveryCasesService(
       casesRepo as unknown as Repository<CylinderRecoveryCase>,
       noticesRepo as unknown as Repository<CylinderRecoveryNotice>,
@@ -142,6 +150,7 @@ describe('CylinderRecoveryCasesService', () => {
       orders as unknown as OrderLookupService,
       deliveries as unknown as DeliveryService,
       processConfig as unknown as ProcessConfigService,
+      cuenta as unknown as CylinderRecoveryAccountService,
     );
   });
 
@@ -307,6 +316,63 @@ describe('CylinderRecoveryCasesService', () => {
       );
       expect(cylinders.retireLost).not.toHaveBeenCalled();
       expect(r.status).toBe(RecoveryCaseStatus.DEPOSIT_CHARGED);
+    });
+
+    it('cobrar el depósito le pasa el envase a la cuenta, en la misma transacción (F35 E5)', async () => {
+      db.envases = [unEnvase({ gasCylinderId: 'tipo-10' })];
+      await service.resolver(
+        'case-1',
+        DIST,
+        {
+          decision: RecoveryDecision.CHARGE_DEPOSIT,
+          note: 'Se cobra con el próximo pedido',
+        },
+        ADMIN,
+        AHORA,
+      );
+      expect(cuenta.compraPorDeposito).toHaveBeenCalledWith(db.manager, {
+        distributorId: DIST,
+        customerUserId: 'cust-1',
+        gasCylinderId: 'tipo-10',
+        serial: 'SN-001',
+        actorUserId: ADMIN,
+      });
+    });
+
+    it('si la cuenta falla, la decisión no se guarda (la transacción revierte)', async () => {
+      cuenta.compraPorDeposito.mockRejectedValue(new Error('cuenta caída'));
+      await expect(
+        service.resolver(
+          'case-1',
+          DIST,
+          {
+            decision: RecoveryDecision.CHARGE_DEPOSIT,
+            note: 'Se cobra con el próximo pedido',
+          },
+          ADMIN,
+          AHORA,
+        ),
+      ).rejects.toThrow('cuenta caída');
+      expect(db.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('dar de baja o cerrar sin cargo no tocan la cuenta', async () => {
+      for (const decision of [
+        RecoveryDecision.WRITE_OFF,
+        RecoveryDecision.CLOSE_NO_CHARGE,
+      ]) {
+        db.casos = [
+          unCaso({ status: RecoveryCaseStatus.ESCALATED, exhaustedAt: AHORA }),
+        ];
+        await service.resolver(
+          'case-1',
+          DIST,
+          { decision, note: 'Decisión del administrador' },
+          ADMIN,
+          AHORA,
+        );
+      }
+      expect(cuenta.compraPorDeposito).not.toHaveBeenCalled();
     });
 
     it('cerrar sin cargo', async () => {

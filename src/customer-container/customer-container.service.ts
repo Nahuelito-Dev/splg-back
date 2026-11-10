@@ -200,6 +200,70 @@ export class CustomerContainerService {
     return cuenta.owned;
   }
 
+  /**
+   * F35 E5: volvió un envase con serie de un cliente (`with_customer` →
+   * `empty_returned`). Con «Cobrar envases» encendido, si después de la
+   * devolución el cliente tiene más propios que envases con serie de ese tipo
+   * en su poder, era propio: se descuenta uno (`returned`), sin reintegro.
+   * No aplica al canje de una entrega del mismo cliente (devuelve la vacía y
+   * recibe la llena: sus propios no cambian). Corre en la MISMA transacción
+   * que la devolución, con el envase ya movido: si falla, la devolución
+   * revierte. Devuelve true si descontó.
+   */
+  async descontarPropioDevuelto(
+    manager: EntityManager,
+    datos: {
+      distributorId: string;
+      customerUserId: string;
+      cylinderId: string;
+      orderId: string | null;
+    },
+  ): Promise<boolean> {
+    const { distributorId, customerUserId, cylinderId, orderId } = datos;
+    if (!(await this.containerChargeSettings.habilitado(distributorId))) {
+      return false;
+    }
+    const [envase]: Array<{ gas_cylinder_id: string | null; serial: string }> =
+      await manager.query(
+        `SELECT gas_cylinder_id, serial FROM cylinder
+          WHERE cylinder_id = $1 AND distributor_id = $2`,
+        [cylinderId, distributorId],
+      );
+    if (!envase?.gas_cylinder_id) return false;
+    if (orderId) {
+      const canje: unknown[] = await manager.query(
+        `SELECT 1 FROM "order"
+          WHERE order_id = $1 AND distributor_id = $2 AND customer_id = $3`,
+        [orderId, distributorId, customerUserId],
+      );
+      if (canje.length > 0) return false;
+    }
+    // El lock de la cuenta ordena dos devoluciones simultáneas del mismo tipo.
+    const [cuenta]: CuentaFila[] = await manager.query(
+      `SELECT account_id, owned FROM customer_container_account
+        WHERE distributor_id = $1 AND customer_user_id = $2 AND gas_cylinder_id = $3
+        FOR UPDATE`,
+      [distributorId, customerUserId, envase.gas_cylinder_id],
+    );
+    if (!cuenta) return false;
+    const [{ n }]: Array<{ n: number }> = await manager.query(
+      `SELECT COUNT(*)::int AS n FROM cylinder
+        WHERE distributor_id = $1 AND current_customer_id = $2
+          AND gas_cylinder_id = $3 AND state = 'with_customer'`,
+      [distributorId, customerUserId, envase.gas_cylinder_id],
+    );
+    if (Number(cuenta.owned) <= Number(n)) return false;
+    await this.registrar(manager, {
+      distributorId,
+      customerUserId,
+      gasCylinderId: envase.gas_cylinder_id,
+      quantity: -1,
+      reason: CustomerContainerMovementReason.RETURNED,
+      note: `Devolvió el envase propio ${envase.serial}`,
+    });
+    return true;
+  }
+
   async inicializarSaldoDesdeEntregas(manager: EntityManager): Promise<void> {
     // Dos sentencias: en una sola, el UPDATE final no ve las cuentas que insertó una CTE anterior.
     await manager.query(`
@@ -249,10 +313,16 @@ export class CustomerContainerService {
     distributorId: string,
     customerUserId: string,
   ): Promise<CustomerContainerResponseDto[]> {
+    // F35 E5: con «Cobrar envases» encendido el recupero sólo reclama lo que excede a los propios.
+    const concilia =
+      await this.containerChargeSettings.habilitado(distributorId);
     return manager.query(
       `SELECT g.gas_cylinder_id AS "gasCylinderId", g.type,
               COALESCE(a.owned, 0)::int AS owned, g."isActive" AS "isActive",
-              COUNT(c.cylinder_id) FILTER (WHERE c.state = 'with_customer')::int AS "loanedByM5"
+              (CASE WHEN $3::boolean
+                    THEN GREATEST(0, COUNT(c.cylinder_id) FILTER (WHERE c.state = 'with_customer') - COALESCE(a.owned, 0))
+                    ELSE COUNT(c.cylinder_id) FILTER (WHERE c.state = 'with_customer')
+               END)::int AS "loanedByM5"
        FROM gas_cylinder g
        LEFT JOIN customer_container_account a ON a.distributor_id = g.distributor_id
          AND a.gas_cylinder_id = g.gas_cylinder_id AND a.customer_user_id = $2
@@ -263,7 +333,7 @@ export class CustomerContainerService {
        HAVING g."isActive" = true OR COALESCE(a.owned, 0) > 0
          OR COUNT(c.cylinder_id) FILTER (WHERE c.state = 'with_customer') > 0
        ORDER BY g.type ASC`,
-      [distributorId, customerUserId],
+      [distributorId, customerUserId, concilia],
     );
   }
 

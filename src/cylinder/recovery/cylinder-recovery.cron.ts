@@ -67,7 +67,7 @@ export class CylinderRecoveryCron {
         const r = await this.recovery.ejecutar(distributorId, ahora);
         corridas += 1;
         this.logger.log(
-          `Recupero ${distributorId}: ${r.abiertos} caso(s) nuevo(s), ${r.avisos} aviso(s), ${r.ofertas} oferta(s), ${r.escalados} escalado(s), ${r.perdidos} perdido(s), ${r.cerradosPorDevolucion} devuelto(s), ${r.revisionManual} para revisión manual`,
+          `Recupero ${distributorId}: ${r.abiertos} caso(s) nuevo(s), ${r.avisos} aviso(s), ${r.ofertas} oferta(s), ${r.escalados} escalado(s), ${r.perdidos} perdido(s), ${r.cerradosPorDevolucion} devuelto(s), ${r.cerradosPorCuenta} cubierto(s) por la cuenta, ${r.revisionManual} para revisión manual`,
         );
       } catch (error) {
         registrarErrorAtrapado(error);
