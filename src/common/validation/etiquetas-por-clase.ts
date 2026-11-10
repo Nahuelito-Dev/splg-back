@@ -119,6 +119,7 @@ export const ETIQUETAS_POR_CLASE: Readonly<Record<string, string>> = {
     { items: 'Envases' },
   ),
   ...paraClases(['ApplyMpReconciliationDto'], { items: 'Pagos' }),
+  ...paraClases(['DeclareEmptiesDto'], { items: 'Vacías' }),
   ...paraClases(
     [
       'CreatePurchaseOrderDto',

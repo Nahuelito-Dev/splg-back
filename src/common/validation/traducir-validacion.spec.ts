@@ -48,6 +48,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { STATUS_CODES } from 'http';
+import { DeclareEmptiesDto } from '../../order/dto/declare-empties.dto';
 import { traducirErrores } from './traducir-validacion';
 import { traducirExcepcion } from './traducir-excepcion';
 import { crearValidationPipe } from './validation-pipe';
@@ -194,7 +195,7 @@ describe('traducción de los mensajes de validación', () => {
     'Alias: tiene que tener como máximo 5 caracteres',
     'Marca: tiene que tener al menos 2 caracteres',
     'Empleados: tiene que tener al menos 3 elementos',
-    'Choferes: no puede tener más de 1 elementos',
+    'Choferes: no puede tener más de 1 elemento',
     'Usuarios: no puede estar vacío',
     'Umbrales: no puede tener elementos repetidos',
     'CUIT: no tiene un formato válido',
@@ -224,6 +225,29 @@ describe('traducción de los mensajes de validación', () => {
         },
       ]),
     ).toEqual(['Se envió un dato que no corresponde: Correo electrónico']);
+  });
+
+  it('con 1 dice «elemento» y «carácter»; las vacías del pedido se llaman Vacías', () => {
+    expect(
+      traducirErrores([
+        {
+          property: 'items',
+          target: new DeclareEmptiesDto(),
+          constraints: {
+            arrayMinSize: 'items must contain at least 1 elements',
+          },
+        },
+        {
+          property: 'code',
+          constraints: {
+            minLength: 'code must be longer than or equal to 1 characters',
+          },
+        },
+      ]),
+    ).toEqual([
+      'Vacías: tiene que tener al menos 1 elemento',
+      'Código: tiene que tener al menos 1 carácter',
+    ]);
   });
 
   it('un mensaje propio del DTO pasa con la ruta del padre', () => {

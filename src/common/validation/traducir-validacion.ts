@@ -31,6 +31,10 @@ const fija =
   () =>
     texto;
 
+/** «1 elemento», «3 elementos». */
+const cuantos = (n: string, uno: string, varios: string): string =>
+  `${n} ${n === '1' ? uno : varios}`;
+
 const regla = (en: RegExp, es: Traduccion | string): Regla => ({
   en,
   es: typeof es === 'string' ? fija(es) : es,
@@ -129,11 +133,13 @@ const REGLAS: Readonly<Record<string, Regla>> = {
   ),
   minLength: regla(
     /^must be longer than or equal to (\d+) characters$/,
-    (m) => `tiene que tener al menos ${m[1]} caracteres`,
+    (m) =>
+      `tiene que tener al menos ${cuantos(m[1], 'carácter', 'caracteres')}`,
   ),
   maxLength: regla(
     /^must be shorter than or equal to (\d+) characters$/,
-    (m) => `tiene que tener como máximo ${m[1]} caracteres`,
+    (m) =>
+      `tiene que tener como máximo ${cuantos(m[1], 'carácter', 'caracteres')}`,
   ),
   isLength: regla(
     /^must be longer than or equal to (\d+) and shorter than or equal to (\d+) characters$/,
@@ -141,11 +147,11 @@ const REGLAS: Readonly<Record<string, Regla>> = {
   ),
   arrayMinSize: regla(
     /^must contain at least (\d+) elements$/,
-    (m) => `tiene que tener al menos ${m[1]} elementos`,
+    (m) => `tiene que tener al menos ${cuantos(m[1], 'elemento', 'elementos')}`,
   ),
   arrayMaxSize: regla(
     /^must contain no more than (\d+) elements$/,
-    (m) => `no puede tener más de ${m[1]} elementos`,
+    (m) => `no puede tener más de ${cuantos(m[1], 'elemento', 'elementos')}`,
   ),
   arrayNotEmpty: regla(/^should not be empty$/, 'no puede estar vacío'),
   matches: regla(
