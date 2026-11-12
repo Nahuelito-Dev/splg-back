@@ -145,6 +145,7 @@ export class GasCylinderController {
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiOkResponse({ type: GasCylinderResponseDto })
   @ApiNotFoundResponse({ description: 'Garrafa no encontrada' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
@@ -161,6 +162,7 @@ export class GasCylinderController {
   })
   @ApiOkResponse({ type: GasCylinderResponseDto })
   @ApiNotFoundResponse({ description: 'No hay un producto activo de ese tipo' })
+  @ApiBadRequestResponse({ description: 'El tipo no es válido' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
   async findByType(
     @Param() { type }: TipoParamDto,
@@ -183,6 +185,7 @@ export class GasCylinderController {
       'sin sesión, a `?distributor=` o a la distribuidora por defecto.',
   })
   @ApiOkResponse({ type: DisponiblesDto })
+  @ApiBadRequestResponse({ description: 'La distribuidora no es válida' })
   async getAvailableCylinders(
     @Query() { distributor }: DistribuidoraQueryDto,
     @CurrentDistributor() distributorId: string | null,
@@ -205,7 +208,7 @@ export class GasCylinderController {
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiBadRequestResponse({
     description:
-      'Datos inválidos (p. ej.: Peso: tiene que ser mayor que 0; Precio: tiene que ser mayor que 0)',
+      'Datos o identificador inválidos (p. ej.: Peso: tiene que ser mayor que 0; Precio: tiene que ser mayor que 0)',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -276,6 +279,7 @@ export class GasCylinderController {
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiOkResponse({ type: GasCylinderResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   async removePhoto(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -313,6 +317,7 @@ export class GasCylinderController {
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
   @ApiOkResponse({ type: BajaDeProductoDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,

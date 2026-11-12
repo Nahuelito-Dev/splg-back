@@ -63,7 +63,9 @@ export class QueryRecoveryCasesDto extends PaginationDto {
       'Sólo los casos que siguen en pie (abiertos, escalados o perdidos)',
   })
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
   @IsBoolean()
   live?: boolean;
 
@@ -72,7 +74,9 @@ export class QueryRecoveryCasesDto extends PaginationDto {
       'Sólo los casos que esperan la decisión del administrador (escalados o perdidos)',
   })
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
   @IsBoolean()
   pending?: boolean;
 }

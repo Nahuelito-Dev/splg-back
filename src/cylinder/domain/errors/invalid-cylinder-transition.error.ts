@@ -1,4 +1,5 @@
 import { BadRequestDomainError } from '../../../common/errors/domain.error';
+import { valorLegible } from '../../../common/validation/etiquetas';
 import { CylinderState } from '../../entities/cylinder.entity';
 
 /**
@@ -9,6 +10,8 @@ import { CylinderState } from '../../entities/cylinder.entity';
  */
 export class InvalidCylinderTransitionError extends BadRequestDomainError {
   constructor(from: CylinderState, to: CylinderState) {
-    super(`Transición de envase inválida: ${from} → ${to}`);
+    super(
+      `Transición de envase inválida: ${valorLegible(from)} → ${valorLegible(to)}`,
+    );
   }
 }

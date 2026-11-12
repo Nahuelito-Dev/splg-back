@@ -50,6 +50,9 @@ export class WarehouseController {
   @Get()
   @ApiOperation({ summary: 'Listar los depósitos de la distribuidora' })
   @ApiOkResponse({ type: WarehouseResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: 'Filtros inválidos o falta la distribuidora',
+  })
   async findAll(
     @Query() query: QueryWarehouseDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -79,6 +82,9 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Depósito UUID' })
   @ApiOkResponse({ type: WarehouseDetailDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({
+    description: 'El identificador no es válido o falta la distribuidora',
+  })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -95,6 +101,9 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Depósito UUID' })
   @ApiOkResponse({ type: WarehouseResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({
+    description: 'Datos o identificador inválidos, o falta la distribuidora',
+  })
   @ApiConflictResponse({
     description:
       'Código repetido, o se intenta sacar la marca / desactivar el predeterminado',
@@ -114,6 +123,9 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Depósito UUID' })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({
+    description: 'El identificador no es válido o falta la distribuidora',
+  })
   @ApiConflictResponse({
     description: 'Es el predeterminado o todavía tiene garrafas',
   })
