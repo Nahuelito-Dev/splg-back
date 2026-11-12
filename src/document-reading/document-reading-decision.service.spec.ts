@@ -133,14 +133,24 @@ describe('DocumentReadingDecisionService', () => {
     );
     expect(fines.pagarEn).not.toHaveBeenCalled();
     // Reclamo condicional, y después ejecutada.
-    expect(llamadas()[0][1]).toEqual({
+    expect(llamadas()[0][1]).toMatchObject({
       readingId: 'r1',
       distributorId: 'd1',
       status: DocumentReadingStatus.PROPOSED,
-      proposalExpiresAt: VENCE,
       remindedAt: IsNull(),
       escalatedAt: IsNull(),
     });
+    // El vencimiento se compara al milisegundo (una fila escrita con now() trae microsegundos).
+    const vence = llamadas()[0][1].proposalExpiresAt as {
+      type: string;
+      objectLiteralParameters: Record<string, unknown>;
+      getSql: (col: string) => string;
+    };
+    expect(vence.type).toBe('raw');
+    expect(vence.objectLiteralParameters).toEqual({ vence: VENCE });
+    expect(vence.getSql('"r"."proposal_expires_at"')).toBe(
+      `date_trunc('milliseconds', "r"."proposal_expires_at") = :vence`,
+    );
     expect(llamadas()[0][2]).toMatchObject({
       status: DocumentReadingStatus.CONFIRMED,
       decidedByUserId: 'u1',
