@@ -40,6 +40,9 @@ export const TRIGGERS_DE_SOLO_ESCRITURA: ReadonlyArray<
 
 /** Tablas con `distributor_id` que se vacían, en orden (cada una ya sin hijos). */
 const TABLAS_POR_DISTRIBUIDORA: readonly string[] = [
+  // Lector de documentos (M6): los ejemplos aprendidos y las lecturas, antes que sus adjuntos.
+  'document_reading_example',
+  'document_reading',
   'maintenance_task_attachment',
   'attachment',
   'vehicle_usage_log',
