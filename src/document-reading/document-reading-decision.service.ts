@@ -6,7 +6,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, IsNull, Not, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  IsNull,
+  Not,
+  Raw,
+  Repository,
+} from 'typeorm';
 import Decimal from 'decimal.js';
 
 import { normalizarCampo } from '../document-reader/claude-document-reader';
@@ -236,9 +243,13 @@ export class DocumentReadingDecisionService {
             distributorId,
             status: DocumentReadingStatus.PROPOSED,
             // Si el cron recordó o escaló la propuesta desde que se leyó, la decisión fue
-            // sobre otra versión. El vencimiento se escribe siempre desde JS (milisegundos),
-            // así que compararlo por igualdad es exacto.
-            proposalExpiresAt: lectura.proposalExpiresAt ?? IsNull(),
+            // sobre otra versión. Se compara al milisegundo: lo que se leyó llega a JS con
+            // milisegundos, y una fila escrita desde SQL (now()) guarda microsegundos.
+            proposalExpiresAt: lectura.proposalExpiresAt
+              ? Raw((col) => `date_trunc('milliseconds', ${col}) = :vence`, {
+                  vence: lectura.proposalExpiresAt,
+                })
+              : IsNull(),
             remindedAt: lectura.remindedAt ? Not(IsNull()) : IsNull(),
             escalatedAt: lectura.escalatedAt ? Not(IsNull()) : IsNull(),
           },
