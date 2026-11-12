@@ -309,6 +309,8 @@ export class DocumentReadingService {
         ...(filtro.status ? { status: filtro.status } : {}),
         ...(filtro.type ? { detectedType: filtro.type } : {}),
       },
+      // El adjunto da el nombre del archivo y su dueño a cada fila del panel.
+      relations: { attachment: true },
       order: { createdAt: 'DESC', readingId: 'ASC' },
       take: filtro.limit,
       skip: filtro.offset,

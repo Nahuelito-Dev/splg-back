@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { diaArgentino, sumarDias } from '../../src/common/utils/dias-argentina';
 import { DocumentReadingDecisionService } from '../../src/document-reading/document-reading-decision.service';
 import { DocumentReadingSettingsService } from '../../src/document-reading/document-reading-settings.service';
+import { DocumentReadingService } from '../../src/document-reading/document-reading.service';
 import { BASE_PLAN_DEFINITIONS } from '../../src/fleet/domain/base-plans';
 import {
   MaintenanceDocumentKind,
@@ -398,6 +399,22 @@ describe('Decisión de lecturas M6 E4b (e2e)', () => {
   }, 240_000);
 
   afterAll(async () => env?.cleanup());
+
+  it('el listado trae el adjunto de cada lectura, como la ficha', async () => {
+    const { policyId } = await poliza();
+    const id = await propuesta('update_policy', 'insurance_policy', policyId, {
+      numero_de_poliza: 'LISTADO',
+    });
+    const { data } = await env.app
+      .get(DocumentReadingService)
+      .listar(dist, { limit: 100, offset: 0 });
+    const fila = data.find((r) => r.readingId === id);
+    expect(fila?.attachment).toMatchObject({
+      originalName: 'e4b.pdf',
+      ownerType: 'insurance_policy',
+      ownerId: policyId,
+    });
+  });
 
   it('confirmar y corregir póliza actualizan los datos y dejan executed', async () => {
     for (const corregir of [false, true]) {
