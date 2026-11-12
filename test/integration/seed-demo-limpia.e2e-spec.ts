@@ -466,6 +466,12 @@ describe('seed:demo en contenedores (e2e)', () => {
         cash_movement: { created_by_user_id: randomUUID() },
         cylinder_inspection: { next_due_at: new Date() },
         document_sequence: { doc_type: 'prueba_vieja', last_number: 1 },
+        document_reading: {
+          status: 'pending',
+          file_sha256: '0'.repeat(64),
+          fields: '[]',
+          warnings: '[]',
+        },
         driver_liquidation: { gross: 10, deductions: 0, net: 10 },
         insurance_policy: {
           valid_from: '2026-01-01',

@@ -42,6 +42,7 @@ const PROCESOS = [
   'route_batching',
   'route_planning',
   'cylinder_recovery',
+  'document_reading',
 ];
 
 describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e)', () => {
