@@ -872,7 +872,7 @@ describe('CylinderService', () => {
       expect(cylinderRepo.save).not.toHaveBeenCalled();
     });
 
-    it('propaga el 400 si un envase no está FILLED (no se puede despachar)', async () => {
+    it('informa estados legibles si un envase no está lleno (no se puede despachar)', async () => {
       orderRepo.findParaDespacho.mockResolvedValue(PEDIDO);
       lockQb.getMany.mockResolvedValue([
         makeCylinder({ state: CylinderState.IN_DEPOT }),
@@ -880,7 +880,9 @@ describe('CylinderService', () => {
 
       await expect(
         service.assignToOrder('ord-1', ['SN-001'], DIST),
-      ).rejects.toThrow(/Transición de envase inválida/);
+      ).rejects.toThrow(
+        'Transición de envase inválida: en depósito → despachado',
+      );
     });
 
     it.each([

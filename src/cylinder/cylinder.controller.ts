@@ -75,6 +75,9 @@ export class CylinderController {
   @ApiBadRequestResponse({
     description: 'Datos inválidos (p. ej.: Producto: no es válido)',
   })
+  @ApiNotFoundResponse({
+    description: 'El producto no existe en la distribuidora',
+  })
   async create(
     @Body() dto: CreateCylinderDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -218,6 +221,7 @@ export class CylinderController {
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
   @ApiOkResponse({ type: CylinderResponseDto })
   @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
@@ -239,6 +243,7 @@ export class CylinderController {
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
   @ApiOkResponse({ type: CylinderVigenciaResponseDto })
   @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   async getVigencia(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,
@@ -289,6 +294,7 @@ export class CylinderController {
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
   @ApiOkResponse({ type: CylinderMovementResponseDto, isArray: true })
   @ApiNotFoundResponse({ description: 'Envase no encontrado' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   async getHistory(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor() distributorId: string | null,

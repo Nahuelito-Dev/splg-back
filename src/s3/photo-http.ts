@@ -8,6 +8,7 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConsumes,
+  ApiFoundResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -85,6 +86,7 @@ export function ApiVerFoto(
         'no tiene foto, `url: null`.',
     }),
     ApiOkResponse({ type: PhotoLinkResponseDto }),
+    ApiFoundResponse({ description: 'Redirige a la URL firmada de la foto' }),
     ApiUnauthorizedResponse({ description: 'Sin token o token inválido' }),
     ApiBadRequestResponse({ description: descripcionDe400 }),
     ApiNotFoundResponse({

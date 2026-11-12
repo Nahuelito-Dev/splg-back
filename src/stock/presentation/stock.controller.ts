@@ -90,6 +90,9 @@ export class StockController {
     summary: 'Saldos por ubicación, tipo de garrafa y condición (CU-208)',
   })
   @ApiOkResponse({ type: StockBalanceDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: 'Filtros inválidos o falta la distribuidora',
+  })
   saldos(
     @Query() query: QueryStockBalanceDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -105,6 +108,7 @@ export class StockController {
       'por pedidos abiertos, el vendible y el mínimo configurado.',
   })
   @ApiOkResponse({ type: StockSummaryDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'Falta la distribuidora' })
   resumen(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<StockSummaryDto[]> {
@@ -116,6 +120,7 @@ export class StockController {
     summary: 'Ubicaciones de stock: depósitos y vehículos con ubicación',
   })
   @ApiOkResponse({ type: StockLocationDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'Falta la distribuidora' })
   ubicaciones(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<StockLocationDto[]> {
@@ -265,6 +270,9 @@ export class StockController {
   @Get('adjustments')
   @ApiOperation({ summary: 'Listar los ajustes de stock, paginado' })
   @ApiOkResponse({ type: StockAdjustmentPageDto })
+  @ApiBadRequestResponse({
+    description: 'Filtros inválidos o falta la distribuidora',
+  })
   ajustes(
     @Query() query: QueryStockAdjustmentDto,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -277,6 +285,9 @@ export class StockController {
   @ApiParam({ name: 'id', description: 'Ajuste UUID' })
   @ApiOkResponse({ type: StockAdjustmentResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({
+    description: 'El identificador no es válido o falta la distribuidora',
+  })
   ajuste(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -287,6 +298,7 @@ export class StockController {
   @Get('thresholds')
   @ApiOperation({ summary: 'Mínimos de llenas por depósito y tipo (CU-210)' })
   @ApiOkResponse({ type: StockThresholdDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'Falta la distribuidora' })
   umbrales(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<StockThresholdDto[]> {
@@ -301,6 +313,9 @@ export class StockController {
       'avisa por email a los administradores cuando las llenas bajan del mínimo.',
   })
   @ApiOkResponse({ type: StockThresholdDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos o falta la distribuidora',
+  })
   @ApiNotFoundResponse({ description: 'Depósito o garrafa inexistente' })
   configurarUmbrales(
     @Body() dto: UpsertThresholdsDto,
@@ -318,6 +333,7 @@ export class StockController {
       'y las entregas sin movimiento; no corrige nada.',
   })
   @ApiOkResponse({ type: StockReconciliationDto })
+  @ApiBadRequestResponse({ description: 'Falta la distribuidora' })
   conciliar(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<StockReconciliationDto> {
@@ -333,6 +349,7 @@ export class StockController {
       'depósito). Idempotente: no duplica lo ya descontado.',
   })
   @ApiCreatedResponse({ type: ReapplyDeliveriesResultDto })
+  @ApiBadRequestResponse({ description: 'Falta la distribuidora' })
   reaplicar(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ResultadoDeReaplicacion> {

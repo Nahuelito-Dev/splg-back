@@ -82,6 +82,9 @@ export class CylinderRecoveryAdminController {
   @ApiParam({ name: 'id', description: 'Case UUID' })
   @ApiOkResponse({ type: RecoveryCaseDetailDto })
   @ApiNotFoundResponse({ description: 'Caso no encontrado' })
+  @ApiBadRequestResponse({
+    description: `El identificador no es válido o ${FALTA_DISTRIBUIDORA.toLowerCase()}`,
+  })
   detalle(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -99,7 +102,8 @@ export class CylinderRecoveryAdminController {
   @ApiParam({ name: 'id', description: 'Case UUID' })
   @ApiOkResponse({ type: RecoveryCaseDetailDto })
   @ApiBadRequestResponse({
-    description: 'Falta la nota o la decisión es inválida',
+    description:
+      'Falta la nota, la decisión o el identificador es inválido; también falta la distribuidora',
   })
   @ApiNotFoundResponse({ description: 'Caso no encontrado' })
   @ApiConflictResponse({
@@ -149,7 +153,9 @@ export class CylinderRecoveryAdminController {
       'Cambia sólo los que vienen; el resto conserva su valor. Rige desde la próxima corrida.',
   })
   @ApiOkResponse({ type: ProcessConfigResponseDto })
-  @ApiBadRequestResponse({ description: 'Valor fuera de rango' })
+  @ApiBadRequestResponse({
+    description: `Valor fuera de rango o ${FALTA_DISTRIBUIDORA.toLowerCase()}`,
+  })
   settingsPatch(
     @Body() dto: PatchRecoverySettingsDto,
     @CurrentDistributor({ required: true }) distributorId: string,

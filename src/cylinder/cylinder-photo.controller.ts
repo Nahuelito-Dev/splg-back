@@ -10,6 +10,7 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -63,6 +64,7 @@ export class CylinderPhotoController {
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
   @ApiOkResponse({ type: PhotoCurrentResponseDto })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
+  @ApiBadRequestResponse({ description: 'El identificador no es válido' })
   async quitar(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentDistributor({ required: true }) distributorId: string,
