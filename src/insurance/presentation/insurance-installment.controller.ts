@@ -46,6 +46,7 @@ import {
   InsuranceInstallmentPageDto,
 } from '../dto/insurance-policy.dto';
 import { InsuranceMapper } from './insurance.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Cuotas del seguro: listado, corrección, comprobante con escaneo y pago (API v2). */
 @ApiTags('Seguros · Cuotas')
@@ -57,6 +58,7 @@ export class InsuranceInstallmentController {
     private readonly consultas: InsuranceQueryService,
   ) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar las cuotas de seguro',
@@ -79,6 +81,7 @@ export class InsuranceInstallmentController {
     };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una cuota' })
   @ApiParam({ name: 'id', description: 'Cuota UUID' })
@@ -93,6 +96,7 @@ export class InsuranceInstallmentController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Corregir el vencimiento, la gracia o el importe de una cuota',
@@ -116,6 +120,7 @@ export class InsuranceInstallmentController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/receipt')
   @ApiOperation({
     summary: 'Subir el comprobante de pago de la cuota (se escanea solo)',
@@ -155,6 +160,7 @@ export class InsuranceInstallmentController {
     });
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @HttpCode(HttpStatus.OK)
   @Idempotent()

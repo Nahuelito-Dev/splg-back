@@ -22,6 +22,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Incidents')
 @ApiBearerAuth()
@@ -78,6 +79,7 @@ export class UnpaidCashController {
   }
 
   @Patch(':id/payment/register-unpaid')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({

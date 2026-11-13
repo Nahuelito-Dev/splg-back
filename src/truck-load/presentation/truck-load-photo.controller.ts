@@ -37,6 +37,7 @@ import {
 } from '../../s3/photo-http';
 import { TruckLoadAccessService } from '../application/truck-load-access.service';
 import { TruckLoadPhotoService } from '../application/truck-load-photo.service';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Foto principal de la carga (API v2). */
 @ApiTags('Cargas de camión')
@@ -48,6 +49,7 @@ export class TruckLoadPhotoController {
     private readonly access: TruckLoadAccessService,
   ) {}
 
+  @Permiso('stock.gestionar')
   @Put(':id/photo')
   @ApiSubirFoto(
     'Subir o reemplazar la foto principal de la carga',
@@ -64,6 +66,7 @@ export class TruckLoadPhotoController {
     return aFotoVigente(await this.photo.subir(id, distributorId, file));
   }
 
+  @Permiso('stock.gestionar')
   @Delete(':id/photo')
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiOperation({
@@ -82,6 +85,7 @@ export class TruckLoadPhotoController {
   }
 
   @Get(':id/photo')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiVerFoto('Ver la foto de la carga')
   @ApiFoundResponse({

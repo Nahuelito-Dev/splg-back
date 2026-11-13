@@ -36,6 +36,7 @@ import {
   ReverseCashMovementDto,
   TransferCashDto,
 } from '../dto/cash-movement.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const aDto = (m: MovimientoConNombres): CashMovementResponseDto =>
   CashMapper.movimiento(m.movimiento, m);
@@ -47,6 +48,7 @@ const aDto = (m: MovimientoConNombres): CashMovementResponseDto =>
 export class CashMovementController {
   constructor(private readonly movimientos: CashMovementService) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({
     summary: 'Consultar los movimientos de caja',
@@ -69,6 +71,7 @@ export class CashMovementController {
     return { data: data.map(aDto), total };
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -94,6 +97,7 @@ export class CashMovementController {
     return aDto(await this.movimientos.registrar(dto, distributorId, userId));
   }
 
+  @Permiso('finanzas.gestionar')
   @Post('transfer')
   @Idempotent()
   @ApiOperation({
@@ -120,6 +124,7 @@ export class CashMovementController {
     return { out: aDto(r.out), in: aDto(r.in) };
   }
 
+  @Permiso('caja.anular')
   @Post(':id/reverse')
   @Idempotent()
   @ApiOperation({
@@ -149,6 +154,7 @@ export class CashMovementController {
     );
   }
 
+  @Permiso('caja.anular')
   @Post(':id/reverse-transfer')
   @Idempotent()
   @ApiOperation({

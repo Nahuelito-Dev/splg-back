@@ -47,6 +47,7 @@ import {
   responderFoto,
   SubirFotoInterceptor,
 } from '../s3/photo-http';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Incidents')
 @ApiBearerAuth()
@@ -70,6 +71,7 @@ export class IncidentController {
 
   @Post()
   @Idempotent()
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Reportar una incidencia de entrega (chofer durante el reparto)',
@@ -102,6 +104,7 @@ export class IncidentController {
   }
 
   @Get()
+  @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Listar incidencias (scopeado por distribuidora)' })
   @ApiOkResponse({ type: IncidentResponseDto, isArray: true })
@@ -113,6 +116,7 @@ export class IncidentController {
   }
 
   @Get('order/:orderId')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Incidencias de un pedido' })
   @ApiParam({ name: 'orderId', description: 'Order UUID' })
@@ -139,6 +143,7 @@ export class IncidentController {
   }
 
   @Get(':id')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Ficha de la incidencia (con pedido y cliente)' })
   @ApiParam({ name: 'id', description: 'Incident UUID' })
@@ -154,6 +159,7 @@ export class IncidentController {
   }
 
   @Patch(':id')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Editar descripción y tipo de una incidencia abierta',
@@ -182,6 +188,7 @@ export class IncidentController {
   // un admin ya llega con la suya fijada por el guard; el super admin tiene
   // que elegir una (`X-Distributor`) en vez de resolver cross-tenant.
   @Patch(':id/resolve')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Resolver o descartar una incidencia',
@@ -211,6 +218,7 @@ export class IncidentController {
   }
 
   @Put(':id/photo')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiSubirFoto(
     'Subir o reemplazar la foto de una incidencia',
@@ -234,6 +242,7 @@ export class IncidentController {
   }
 
   @Delete(':id/photo')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sacar la foto de una incidencia',
@@ -257,6 +266,7 @@ export class IncidentController {
   }
 
   @Get(':id/photo')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiVerFoto('Ver la foto de una incidencia')
   @ApiParam({ name: 'id', description: 'Incident UUID' })

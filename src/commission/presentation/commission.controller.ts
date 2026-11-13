@@ -18,6 +18,7 @@ import {
   QueryMyCommissionsDto,
 } from '../dto/commission.dto';
 import { CommissionMapper } from './commission.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Libro de comisiones del chofer. */
 @ApiTags('Comisiones · Asientos')
@@ -26,6 +27,7 @@ export class CommissionController {
   constructor(private readonly consultas: CommissionQueryService) {}
 
   @Get()
+  @Permiso('finanzas.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Listar los asientos de comisión',

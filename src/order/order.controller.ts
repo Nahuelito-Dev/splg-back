@@ -93,6 +93,7 @@ import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
 import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -198,6 +199,7 @@ export class OrderController {
   }
 
   @Post('quote')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Cotizar un pedido',
@@ -230,6 +232,7 @@ export class OrderController {
   }
 
   @Get()
+  @Permiso('pedidos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all orders with pagination',
@@ -255,6 +258,7 @@ export class OrderController {
   }
 
   @Get('customer/:customerId')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get orders by customer ID',
@@ -319,6 +323,7 @@ export class OrderController {
   }
 
   @Get('delivery/:deliveryId')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get orders by delivery ID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
@@ -345,6 +350,7 @@ export class OrderController {
   }
 
   @Get('available')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get available orders for delivery' })
   @ApiBadRequestResponse({
@@ -401,6 +407,7 @@ export class OrderController {
   }
 
   @Get('reservations')
+  @Permiso('despacho.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Listar las reservas (pedidos RESERVED) con estado de seña',
@@ -417,6 +424,7 @@ export class OrderController {
   }
 
   @Get(':id/driver-photo')
+  @Permiso('pedidos.ver')
   @Auth(
     RoleType.CUSTOMER,
     RoleType.DELIVERY,
@@ -445,6 +453,7 @@ export class OrderController {
   }
 
   @Get(':id/status-history')
+  @Permiso('pedidos.ver')
   @Auth(
     RoleType.CUSTOMER,
     RoleType.DELIVERY,
@@ -522,6 +531,7 @@ export class OrderController {
   }
 
   @Patch(':id/status')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
@@ -625,6 +635,7 @@ export class OrderController {
   }
 
   @Get(':id/delivery-code')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Obtener el código secreto de entrega (para el QR del chofer)',
@@ -655,6 +666,7 @@ export class OrderController {
   }
 
   @Post(':id/confirm-delivery')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
@@ -778,6 +790,7 @@ export class OrderController {
   }
 
   @Patch(':id/payment/resolve-unpaid')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
@@ -819,6 +832,7 @@ export class OrderController {
   }
 
   @Patch(':id/payment/register-cash')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
@@ -851,6 +865,7 @@ export class OrderController {
   }
 
   @Patch(':id/payment/confirm-transfer')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
@@ -886,6 +901,7 @@ export class OrderController {
 
   @Patch(':id/assign/:deliveryId')
   @Idempotent({ sinCuerpo: true })
+  @Permiso('despacho.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Assign order to delivery',
@@ -960,6 +976,7 @@ export class OrderController {
   }
 
   @Get('stats/summary')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get order statistics (scopeado por distribuidora)',
@@ -972,6 +989,7 @@ export class OrderController {
   }
 
   @Patch(':id')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Idempotent()
   @ApiOperation({
@@ -1091,6 +1109,7 @@ export class OrderController {
   }
 
   @Delete(':id')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Cancel order (Admin Force)',
@@ -1127,6 +1146,7 @@ export class OrderController {
   }
 
   @Patch(':id/cancel')
+  @Permiso('pedidos.gestionar')
   @Auth(
     RoleType.CUSTOMER,
     RoleType.DELIVERY,
@@ -1170,6 +1190,7 @@ export class OrderController {
   }
 
   @Patch(':id/arrived')
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Avisar al cliente que el repartidor llegó',
@@ -1200,6 +1221,7 @@ export class OrderController {
 
   @Patch(':id/confirm-deposit')
   @Idempotent({ sinCuerpo: true })
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
@@ -1230,6 +1252,7 @@ export class OrderController {
   }
 
   @Get('stats/chart')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get sales chart data (Last 7 days, scopeado por distribuidora)',

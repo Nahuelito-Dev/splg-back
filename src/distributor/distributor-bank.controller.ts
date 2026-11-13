@@ -10,6 +10,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { DistributorBankService } from './distributor-bank.service';
 import { BankDetailsDto, BankDetailsResponseDto } from './dto/bank-details.dto';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -21,6 +22,7 @@ const FALTA_DISTRIBUIDORA =
 export class DistributorBankController {
   constructor(private readonly bank: DistributorBankService) {}
 
+  @Permiso('configuracion.ver')
   @Get()
   @ApiOperation({
     summary: 'Datos bancarios de la distribuidora',
@@ -35,6 +37,7 @@ export class DistributorBankController {
     return this.bank.obtener(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put()
   @ApiOperation({
     summary: 'Cargar o cambiar los datos bancarios',

@@ -45,6 +45,7 @@ import {
 } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -74,6 +75,7 @@ export class AdminController {
   }
 
   @Get('/term/:term')
+  @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Find admin by term (id o correo)' })
   @ApiOkResponse({ type: AdminVistaResponseDto })
@@ -88,6 +90,7 @@ export class AdminController {
   }
 
   @Get()
+  @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all admins (scopeado por distribuidora)',
@@ -120,6 +123,7 @@ export class AdminController {
   }
 
   @Get(':id')
+  @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Ficha de un administrador (scopeado por distribuidora)',
@@ -142,6 +146,7 @@ export class AdminController {
   }
 
   @Patch(':id')
+  @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Editar los datos de un administrador',
@@ -178,6 +183,7 @@ export class AdminController {
   }
 
   @Delete(':id')
+  @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

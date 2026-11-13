@@ -46,6 +46,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { alcanceDelDueño } from '../common/utils/alcance.util';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Delivery')
 @ApiBearerAuth()
@@ -71,6 +72,7 @@ export class DeliveryController {
 
   @Get()
   @ApiBadRequestResponse({ description: 'Filtro o paginación inválidos' })
+  @Permiso('personal.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all deliveries with pagination (scopeado por distribuidora)',
@@ -104,6 +106,7 @@ export class DeliveryController {
   // de empresa sólo los de su distribuidora.
   @Get('active')
   @ApiBadRequestResponse({ description: 'Paginación inválida' })
+  @Permiso('personal.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all active deliveries',
@@ -134,6 +137,7 @@ export class DeliveryController {
 
   @Get(':id')
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @Permiso('personal.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Get delivery by ID' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -157,6 +161,7 @@ export class DeliveryController {
 
   @Get('user/:userId')
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @Permiso('personal.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Get delivery by user ID' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
@@ -181,6 +186,7 @@ export class DeliveryController {
   @Patch(':id')
   // H-61: sólo un administrador edita a un chofer, y el de empresa sólo a los
   // de su distribuidora.
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update delivery by ID' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -209,6 +215,7 @@ export class DeliveryController {
   @ApiBadRequestResponse({
     description: 'El id no es un UUID, o super admin sin X-Distributor',
   })
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Validate delivery' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -233,6 +240,7 @@ export class DeliveryController {
   @ApiBadRequestResponse({
     description: 'El id no es un UUID, o super admin sin X-Distributor',
   })
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Invalidate delivery' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -255,6 +263,7 @@ export class DeliveryController {
 
   // H-64: la ubicación la informa el propio chofer (o un admin).
   @Patch(':id/location')
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Update delivery location' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -287,6 +296,7 @@ export class DeliveryController {
   }
 
   @Patch(':id/balance')
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update delivery balance' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -313,6 +323,7 @@ export class DeliveryController {
   }
 
   @Patch(':id/status')
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Habilita o deshabilita al chofer (admin)',
@@ -349,6 +360,7 @@ export class DeliveryController {
   @ApiBadRequestResponse({
     description: 'El id no es un UUID, o super admin sin X-Distributor',
   })
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete delivery by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -372,6 +384,7 @@ export class DeliveryController {
   // H-64: un chofer se pone disponible o no a sí mismo; un admin, a los de su
   // distribuidora.
   @Patch('user/:userId/availability')
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Toggle driver availability by User ID (ON/OFF)',

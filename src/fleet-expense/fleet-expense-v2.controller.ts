@@ -44,6 +44,7 @@ import { FleetExpensePaymentService } from './fleet-expense-payment.service';
 import { FuelLoadService } from './fuel-load.service';
 import { TireService } from './tire.service';
 import { VehicleAccidentService } from './vehicle-accident.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const NO_EXISTE = 'No existe o es de otra distribuidora';
 const CAJA_NO_ENCONTRADA = `${NO_EXISTE} (también la caja)`;
@@ -60,6 +61,7 @@ export class TireV2Controller {
     private readonly pagos: FleetExpensePaymentService,
   ) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Listar los neumáticos, con su estado de pago' })
   @ApiOkResponse({ type: TireV2PageDto })
@@ -71,6 +73,7 @@ export class TireV2Controller {
     return { data: data.map((t) => FleetExpenseMapper.tireV2(t)), total };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un neumático con su historial y su pago' })
   @ApiParam({ name: 'id', description: 'Neumático UUID' })
@@ -85,6 +88,7 @@ export class TireV2Controller {
     return FleetExpenseMapper.tireV2(neumatico, eventos);
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @Idempotent()
   @ApiOperation({
@@ -121,6 +125,7 @@ export class TireV2Controller {
 export class FuelLoadV2Controller {
   constructor(private readonly loads: FuelLoadService) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Consultar las cargas vigentes, con su estado de pago',
@@ -138,6 +143,7 @@ export class FuelLoadV2Controller {
     };
   }
 
+  @Permiso('flota.ver')
   @Get('quote')
   @ApiOperation({
     summary: 'Calcular el importe de una carga',
@@ -154,6 +160,7 @@ export class FuelLoadV2Controller {
     };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una carga (también la anulada), con su pago' })
   @ApiParam({ name: 'id', description: 'Carga UUID' })
@@ -168,6 +175,7 @@ export class FuelLoadV2Controller {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @Idempotent()
   @ApiOperation({
@@ -207,6 +215,7 @@ export class VehicleAccidentV2Controller {
     private readonly pagos: FleetExpensePaymentService,
   ) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Consultar los siniestros, con su pago y reintegro',
@@ -224,6 +233,7 @@ export class VehicleAccidentV2Controller {
     };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un siniestro, con su pago y reintegro' })
   @ApiParam({ name: 'id', description: 'Siniestro UUID' })
@@ -238,6 +248,7 @@ export class VehicleAccidentV2Controller {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @Idempotent()
   @ApiOperation({
@@ -267,6 +278,7 @@ export class VehicleAccidentV2Controller {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/reimbursement')
   @Idempotent()
   @ApiOperation({

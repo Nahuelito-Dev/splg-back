@@ -59,6 +59,7 @@ import {
   responderFoto,
   SubirFotoInterceptor,
 } from '../s3/photo-http';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const SIN_DOCUMENTACION: ResumenDeDocumentacion = {
   estado: null,
@@ -90,6 +91,7 @@ export class EmployeeController {
     return EmployeeMapper.toDto(empleado, deliveryId);
   }
 
+  @Permiso('personal.gestionar')
   @Post()
   @ApiOperation({ summary: 'Registrar el legajo de un empleado (CU-177)' })
   @ApiCreatedResponse({ type: EmployeeResponseDto })
@@ -109,6 +111,7 @@ export class EmployeeController {
     return this.toDto(await this.employees.create(dto, distributorId), null);
   }
 
+  @Permiso('personal.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar empleados, sin datos personales sensibles (CU-180)',
@@ -138,6 +141,7 @@ export class EmployeeController {
     };
   }
 
+  @Permiso('personal.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver el legajo completo de un empleado (CU-179)' })
   @ApiParam({ name: 'id', description: 'Empleado UUID' })
@@ -155,6 +159,7 @@ export class EmployeeController {
     return this.toDto(empleado, deliveryId);
   }
 
+  @Permiso('personal.gestionar')
   @Put(':id/photo')
   @ApiSubirFoto(
     'Subir o reemplazar la foto del legajo',
@@ -177,6 +182,7 @@ export class EmployeeController {
     );
   }
 
+  @Permiso('personal.gestionar')
   @Delete(':id/photo')
   @ApiOperation({
     summary: 'Sacar la foto del legajo',
@@ -200,6 +206,7 @@ export class EmployeeController {
     );
   }
 
+  @Permiso('personal.ver')
   @Get(':id/photo')
   @ApiVerFoto('Ver la foto del legajo (la del usuario si tiene cuenta)')
   @ApiParam({ name: 'id', description: 'Empleado UUID' })
@@ -213,6 +220,7 @@ export class EmployeeController {
     responderFoto(res, query.modo, await this.photo.enlace(id, distributorId));
   }
 
+  @Permiso('personal.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Modificar el legajo de un empleado (CU-178)' })
   @ApiParam({ name: 'id', description: 'Empleado UUID' })
@@ -233,6 +241,7 @@ export class EmployeeController {
     return this.toDto(empleado, deliveryId);
   }
 
+  @Permiso('personal.gestionar')
   @Delete(':id')
   @ApiOperation({
     summary: 'Eliminar un legajo dado de alta por error (CU-178)',
@@ -251,6 +260,7 @@ export class EmployeeController {
     return this.employees.remove(id, distributorId);
   }
 
+  @Permiso('personal.gestionar')
   @Post(':id/termination')
   @Idempotent()
   @HttpCode(HttpStatus.OK)
@@ -283,6 +293,7 @@ export class EmployeeController {
     return this.toDto(empleado, deliveryId);
   }
 
+  @Permiso('personal.gestionar')
   @Post(':id/reinstatement')
   @Idempotent()
   @HttpCode(HttpStatus.OK)

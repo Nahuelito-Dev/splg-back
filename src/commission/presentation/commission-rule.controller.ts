@@ -31,6 +31,7 @@ import {
   UpdateCommissionRuleDto,
 } from '../dto/commission.dto';
 import { CommissionMapper } from './commission.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Reglas de comisión por entrega (CU-240, CU-333). */
 @ApiTags('Comisiones · Reglas')
@@ -39,6 +40,7 @@ import { CommissionMapper } from './commission.mapper';
 export class CommissionRuleController {
   constructor(private readonly reglas: CommissionRuleService) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({ summary: 'Listar las reglas de comisión' })
   @ApiOkResponse({ type: CommissionRulePageDto })
@@ -50,6 +52,7 @@ export class CommissionRuleController {
     return { data: data.map((r) => CommissionMapper.regla(r)), total };
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -76,6 +79,7 @@ export class CommissionRuleController {
     return CommissionMapper.regla(await this.reglas.create(dto, distributorId));
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id')
   @Idempotent()
   @ApiOperation({

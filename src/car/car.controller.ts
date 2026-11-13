@@ -42,6 +42,7 @@ import {
   responderFoto,
   SubirFotoInterceptor,
 } from '../s3/photo-http';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Cars')
 @ApiBearerAuth()
@@ -64,6 +65,7 @@ export class CarController {
     return cars.map((c) => CarMapper.toDto(c));
   }
 
+  @Permiso('flota.gestionar')
   @Post()
   @ApiOperation({ summary: 'Create a new car' })
   @ApiCreatedResponse({ type: CarResponseDto })
@@ -83,6 +85,7 @@ export class CarController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Get all cars' })
   @ApiOkResponse({ type: CarResponseDto, isArray: true })
@@ -93,6 +96,7 @@ export class CarController {
     return this.toDtos(cars);
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Get car by ID' })
   @ApiParam({ name: 'id', description: 'Car UUID' })
@@ -105,6 +109,7 @@ export class CarController {
     return this.toDto(await this.carService.findOne(id, distributorId));
   }
 
+  @Permiso('flota.ver')
   @Get('user/:userId')
   @ApiOperation({ summary: 'Get cars by user ID' })
   @ApiParam({ name: 'userId', description: 'User UUID' })
@@ -117,6 +122,7 @@ export class CarController {
     return this.toDtos(cars);
   }
 
+  @Permiso('flota.ver')
   @Get('patent/:patent')
   @ApiOperation({ summary: 'Get car by patent' })
   @ApiOkResponse({
@@ -131,6 +137,7 @@ export class CarController {
     return car ? this.toDto(car) : null;
   }
 
+  @Permiso('flota.gestionar')
   @Put(':id/photo')
   @ApiSubirFoto(
     'Subir o reemplazar la foto principal del vehículo',
@@ -146,6 +153,7 @@ export class CarController {
     return this.toDto(await this.carPhoto.subir(id, distributorId, file));
   }
 
+  @Permiso('flota.gestionar')
   @Delete(':id/photo')
   @ApiOperation({
     summary: 'Sacar la foto del vehículo',
@@ -163,6 +171,7 @@ export class CarController {
     return this.toDto(await this.carPhoto.quitar(id, distributorId));
   }
 
+  @Permiso('flota.ver')
   @Get(':id/photo')
   @ApiVerFoto('Ver la foto del vehículo')
   @ApiParam({ name: 'id', description: 'Car UUID' })
@@ -179,6 +188,7 @@ export class CarController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Update car by ID' })
   @ApiParam({ name: 'id', description: 'Car UUID' })
@@ -201,6 +211,7 @@ export class CarController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Delete(':id')
   @ApiOperation({ summary: 'Delete car by ID' })
   @ApiParam({ name: 'id', description: 'Car UUID' })

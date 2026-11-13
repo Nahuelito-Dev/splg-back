@@ -40,6 +40,7 @@ import {
 } from './dto/planner-response.dto';
 import { MaintenancePlannerMapper } from './maintenance-planner.mapper';
 import { MaintenancePlannerService } from './maintenance-planner.service';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -58,6 +59,7 @@ const FALTA_DISTRIBUIDORA =
 export class MaintenancePlannerController {
   constructor(private readonly planner: MaintenancePlannerService) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Casos del planificador de taller',
@@ -84,6 +86,7 @@ export class MaintenancePlannerController {
     };
   }
 
+  @Permiso('flota.ver')
   @Get('forecast')
   @ApiOperation({
     summary: 'Próximos vencimientos proyectados de la flota',
@@ -109,6 +112,7 @@ export class MaintenancePlannerController {
     };
   }
 
+  @Permiso('flota.ver')
   @Get('settings')
   @ApiOperation({
     summary: 'Parámetros del planificador de la distribuidora',
@@ -123,6 +127,7 @@ export class MaintenancePlannerController {
     return this.planner.parametrosVigentes(distributorId);
   }
 
+  @Permiso('flota.gestionar')
   @Patch('settings')
   @ApiOperation({
     summary: 'Cambiar parámetros del planificador',
@@ -141,6 +146,7 @@ export class MaintenancePlannerController {
     return this.planner.cambiarParametros(distributorId, { ...dto }, userId);
   }
 
+  @Permiso('flota.gestionar')
   @Post('run')
   @Idempotent()
   @ApiOperation({
@@ -165,6 +171,7 @@ export class MaintenancePlannerController {
     };
   }
 
+  @Permiso('flota.ver')
   @Get('cases/:id')
   @ApiOperation({
     summary: 'Ver un caso con todas sus propuestas y el cuadro de ventanas',
@@ -181,6 +188,7 @@ export class MaintenancePlannerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post('cases/:id/confirm')
   @Idempotent()
   @ApiOperation({
@@ -221,6 +229,7 @@ export class MaintenancePlannerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post('cases/:id/cancel')
   @Idempotent()
   @ApiOperation({
@@ -242,6 +251,7 @@ export class MaintenancePlannerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post('tasks/:taskId/force-window')
   @Idempotent()
   @ApiOperation({
@@ -279,6 +289,7 @@ export class MaintenancePlannerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post('tasks/:taskId/replan')
   @Idempotent()
   @ApiOperation({

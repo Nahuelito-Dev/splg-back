@@ -38,6 +38,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { ApiTotal, informarTotal } from '../common/http/total';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const DATOS_INVALIDOS =
   'Datos inválidos (p. ej.: Polígono: tiene que tener al menos 3 elementos; ' +
@@ -51,6 +52,7 @@ export class CoverageZoneController {
   constructor(private readonly coverageZoneService: CoverageZoneService) {}
 
   @Post()
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Crear una zona de cobertura (polígono) de la distribuidora',
@@ -75,6 +77,7 @@ export class CoverageZoneController {
   }
 
   @Get()
+  @Permiso('catalogo.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Listar las zonas de cobertura de la distribuidora',
@@ -100,6 +103,7 @@ export class CoverageZoneController {
   // Declarado ANTES de ':id': si no, Nest interpreta "check" como un :id y
   // ParseUUIDPipe lo rechaza con 400 en vez de resolver este endpoint.
   @Get('check')
+  @Permiso('catalogo.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
@@ -127,6 +131,7 @@ export class CoverageZoneController {
   }
 
   @Get(':id')
+  @Permiso('catalogo.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Ver una zona de cobertura' })
   @ApiParam({ name: 'id', description: 'Coverage zone UUID' })
@@ -145,6 +150,7 @@ export class CoverageZoneController {
   }
 
   @Patch(':id')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Editar una zona de cobertura',
@@ -176,6 +182,7 @@ export class CoverageZoneController {
   }
 
   @Delete(':id')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Eliminar una zona de cobertura (baja lógica)' })
   @ApiParam({ name: 'id', description: 'Coverage zone UUID' })

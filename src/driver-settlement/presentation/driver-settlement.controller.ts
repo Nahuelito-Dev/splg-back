@@ -35,6 +35,7 @@ import {
   QueryMySettlementDto,
   SubmitDriverSettlementDto,
 } from '../dto/driver-settlement.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Rendición diaria del chofer (CU-231, 232, 233, 330). */
 @ApiTags('Rendiciones del chofer')
@@ -46,6 +47,7 @@ export class DriverSettlementController {
     private readonly consultas: DriverSettlementQueryService,
   ) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiBadRequestResponse({
     description:
@@ -64,6 +66,7 @@ export class DriverSettlementController {
     return this.consultas.findAll(distributorId, query);
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @ApiBadRequestResponse({
     description:
@@ -97,6 +100,7 @@ export class DriverSettlementController {
 
   @Get('mine')
   @ApiBadRequestResponse({ description: 'Fecha inválida o futura' })
+  @Permiso('finanzas.ver')
   @Auth(RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Mi rendición del día (chofer)',
@@ -127,6 +131,7 @@ export class DriverSettlementController {
   @ApiBadRequestResponse({
     description: 'El id no es un UUID o super admin sin X-Distributor',
   })
+  @Permiso('finanzas.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Ver una rendición con sus pedidos, cobros y gastos',
@@ -151,6 +156,7 @@ export class DriverSettlementController {
   }
 
   @Post(':id/submit')
+  @Permiso('finanzas.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @Idempotent()
   @ApiOperation({
@@ -187,6 +193,7 @@ export class DriverSettlementController {
     return this.consultas.detalle(id, distributorId, soloDelUsuario);
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/approve')
   @Idempotent()
   @ApiOperation({
@@ -218,6 +225,7 @@ export class DriverSettlementController {
     return this.consultas.detalle(id, distributorId);
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/reopen')
   @ApiBadRequestResponse({
     description: 'El id no es un UUID o super admin sin X-Distributor',

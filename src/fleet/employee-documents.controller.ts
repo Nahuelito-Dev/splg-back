@@ -13,6 +13,7 @@ import { FleetPlanMapper } from './fleet-plan.mapper';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * La documentación de un empleado (CU-183 a CU-185, CU-187). Vive en `fleet`
@@ -24,6 +25,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class EmployeeDocumentsController {
   constructor(private readonly documents: EmployeeDocumentsService) {}
 
+  @Permiso('personal.ver')
   @Get(':id/documents')
   @ApiOperation({
     summary:

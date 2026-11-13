@@ -29,6 +29,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Puestos de trabajo de la distribuidora (CU-176). */
 @ApiTags('Personal · Puestos')
@@ -37,6 +38,7 @@ import { MessageResponseDto } from '../common/dtos/message-response.dto';
 export class JobPositionController {
   constructor(private readonly positions: JobPositionService) {}
 
+  @Permiso('personal.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar los puestos con su cantidad de empleados activos',
@@ -51,6 +53,7 @@ export class JobPositionController {
     );
   }
 
+  @Permiso('personal.gestionar')
   @Post()
   @ApiOperation({ summary: 'Crear un puesto de trabajo' })
   @ApiCreatedResponse({ type: JobPositionResponseDto })
@@ -69,6 +72,7 @@ export class JobPositionController {
     return JobPositionMapper.toDto(puesto, activeEmployees);
   }
 
+  @Permiso('personal.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Modificar un puesto (nombre, categoría o activo)' })
   @ApiParam({ name: 'id', description: 'Puesto UUID' })
@@ -88,6 +92,7 @@ export class JobPositionController {
     return JobPositionMapper.toDto(puesto, activeEmployees);
   }
 
+  @Permiso('personal.gestionar')
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar un puesto (baja lógica)' })
   @ApiParam({ name: 'id', description: 'Puesto UUID' })

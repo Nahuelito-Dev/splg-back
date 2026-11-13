@@ -12,12 +12,14 @@ import {
   PreviewPurchaseTotalDto,
   PurchaseTotalPreviewDto,
 } from '../dto/purchase-total-preview.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** El total de una compra tal como lo guarda el back (API v2). No escribe nada. */
 @ApiTags('Compras · Total (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'purchase-orders', version: '2' })
 export class PurchaseTotalV2Controller {
+  @Permiso('compras.gestionar')
   @Post('preview-total')
   @HttpCode(200)
   @ApiOperation({

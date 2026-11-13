@@ -35,6 +35,7 @@ import {
   UpdateInsurerDto,
 } from '../dto/insurer.dto';
 import { InsuranceMapper } from './insurance.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Aseguradoras de la distribuidora, con el enlace de pago de sus cuotas (API v2). */
 @ApiTags('Seguros · Aseguradoras')
@@ -43,6 +44,7 @@ import { InsuranceMapper } from './insurance.mapper';
 export class InsurerController {
   constructor(private readonly insurers: InsurerService) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar las aseguradoras',
@@ -58,6 +60,7 @@ export class InsurerController {
     return { data: data.map((i) => InsuranceMapper.insurer(i)), total };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una aseguradora' })
   @ApiParam({ name: 'id', description: 'Aseguradora UUID' })
@@ -72,6 +75,7 @@ export class InsurerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -93,6 +97,7 @@ export class InsurerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Modificar una aseguradora' })
   @ApiParam({ name: 'id', description: 'Aseguradora UUID' })
@@ -110,6 +115,7 @@ export class InsurerController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({

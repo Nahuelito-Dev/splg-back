@@ -32,6 +32,7 @@ import {
 import { CashDirection } from '../domain/cash.enums';
 import { sumar } from '../../common/utils/dinero';
 import { aCentavos } from '../../common/utils/dinero';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Sesiones de caja: ver y cerrar con arqueo (CU-227). */
 @ApiTags('Finanzas · Cajas')
@@ -44,6 +45,7 @@ export class CashSessionController {
     private readonly cajas: CashBoxService,
   ) {}
 
+  @Permiso('finanzas.ver')
   @Get(':id')
   @ApiOperation({
     summary: 'Ver una sesión con sus movimientos',
@@ -76,6 +78,7 @@ export class CashSessionController {
     });
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/close')
   @Idempotent()
   @ApiOperation({

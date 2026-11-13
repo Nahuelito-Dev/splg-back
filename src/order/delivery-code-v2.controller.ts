@@ -17,6 +17,7 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { CodigoDeEntregaResponseDto } from './dto/order-listados-response.dto';
 import { OrderService } from './order.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Código de entrega del pedido en camino (API v2). */
 @ApiTags('Pedidos · Código de entrega (v2)')
@@ -25,6 +26,7 @@ import { OrderService } from './order.service';
 export class DeliveryCodeV2Controller {
   constructor(private readonly orderService: OrderService) {}
 
+  @Permiso('despacho.gestionar')
   @Post(':id/delivery-code/regenerate')
   @Idempotent({ sinCuerpo: true })
   @ApiOperation({

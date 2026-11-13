@@ -41,6 +41,7 @@ import {
   CorrectDocumentReadingDto,
   RejectDocumentReadingDto,
 } from './dto/document-reading.dto';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA = 'Falta la distribuidora (`X-Distributor`)';
 
@@ -54,6 +55,7 @@ export class DocumentReadingController {
     private readonly decisions: DocumentReadingDecisionService,
   ) {}
 
+  @Permiso('lectura.ver')
   @Post('run')
   @HttpCode(200)
   @Idempotent()
@@ -74,6 +76,7 @@ export class DocumentReadingController {
     return this.runner.run(distributorId, { dryRun: dto.dryRun });
   }
 
+  @Permiso('lectura.ver')
   @Get()
   @ApiOperation({
     summary: 'Lecturas de documentos (módulo M6)',
@@ -92,6 +95,7 @@ export class DocumentReadingController {
     return { data: data.map((r) => DocumentReadingMapper.toDto(r)), total };
   }
 
+  @Permiso('lectura.ver')
   @Get('spend')
   @ApiOperation({
     summary: 'Gasto del mes en lecturas',
@@ -112,6 +116,7 @@ export class DocumentReadingController {
     };
   }
 
+  @Permiso('lectura.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ficha de una lectura, con su adjunto' })
   @ApiParam({ name: 'id', description: 'Reading UUID' })
@@ -130,6 +135,7 @@ export class DocumentReadingController {
       await this.lecturas.obtener(id, distributorId),
     );
   }
+  @Permiso('lectura.decidir')
   @Post(':id/confirm')
   @HttpCode(200)
   @Idempotent()
@@ -158,6 +164,7 @@ export class DocumentReadingController {
       await this.decisions.confirmar(id, dto, distributorId, user.user_id),
     );
   }
+  @Permiso('lectura.decidir')
   @Post(':id/correct')
   @HttpCode(200)
   @Idempotent()
@@ -186,6 +193,7 @@ export class DocumentReadingController {
       await this.decisions.corregir(id, dto, distributorId, user.user_id),
     );
   }
+  @Permiso('lectura.decidir')
   @Post(':id/reject')
   @HttpCode(200)
   @Idempotent()

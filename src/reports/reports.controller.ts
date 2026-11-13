@@ -23,6 +23,7 @@ import {
 } from './dto/report-range-query.dto';
 import { rangoDelInforme } from './rango-del-informe';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Reports')
 @ApiBearerAuth()
@@ -31,6 +32,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  @Permiso('reportes.ver')
   @Get('sales-by-driver')
   @ApiOperation({
     summary: 'Ventas por Repartidor',
@@ -54,6 +56,7 @@ export class ReportsController {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('sales-by-product')
   @ApiOperation({
     summary: 'Ventas por Producto',
@@ -76,6 +79,7 @@ export class ReportsController {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('sales-by-payment')
   @ApiOperation({
     summary: 'Ventas por Método de Pago',
@@ -98,6 +102,7 @@ export class ReportsController {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('sales-evolution')
   @ApiOperation({
     summary: 'Evolución de ventas por período (día/semana/mes)',
@@ -121,6 +126,7 @@ export class ReportsController {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('collections')
   @ApiOperation({
     summary: 'Cobros fuera de las ventas',

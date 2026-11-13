@@ -15,6 +15,7 @@ import { FleetVehicleStatusService } from './fleet-vehicle-status.service';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Reactivar un vehículo fuera de servicio (CU-247). Vive en `fleet`, que es quien conoce la documentación. */
 @ApiTags('Fleet · Vehicle status')
@@ -26,6 +27,7 @@ export class CarReactivationController {
     private readonly carPhoto: CarPhotoService,
   ) {}
 
+  @Permiso('flota.gestionar')
   @Post(':id/reactivate')
   @ApiOperation({
     summary: 'Reactivar un vehículo fuera de servicio',

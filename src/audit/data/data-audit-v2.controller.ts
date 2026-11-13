@@ -15,6 +15,7 @@ import {
   QueryAuditEntriesV2Dto,
 } from './data-audit.dto';
 import { DataAuditService } from './data-audit.service';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * Auditoría de datos, v2: lo mismo que la v1 más de dónde salió cada asiento
@@ -27,6 +28,7 @@ export class DataAuditV2Controller {
   constructor(private readonly service: DataAuditService) {}
 
   @Get('entries')
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Consultar la auditoría de datos (con origen del asiento)',
@@ -47,6 +49,7 @@ export class DataAuditV2Controller {
   }
 
   @Get('entries/:id')
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Una auditoría de datos con sus detalles (con origen del asiento)',
@@ -63,6 +66,7 @@ export class DataAuditV2Controller {
   }
 
   @Get('action-types')
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Catálogo de acciones auditadas',

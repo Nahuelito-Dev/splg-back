@@ -51,6 +51,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Claims')
 @ApiBearerAuth()
@@ -68,6 +69,7 @@ export class ClaimsController {
 
   @Post()
   @Idempotent()
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Cliente crea un reclamo' })
   @ApiCreatedResponse({ type: ClaimResponseDto })
@@ -94,6 +96,7 @@ export class ClaimsController {
   }
 
   @Get()
+  @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Admin ve todos los reclamos' })
   @ApiOkResponse({ type: ClaimResponseDto, isArray: true })
@@ -146,6 +149,7 @@ export class ClaimsController {
   }
 
   @Get(':id')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Ficha del reclamo (con pedido y cliente)' })
   @ApiParam({ name: 'id', description: 'Claim UUID' })
@@ -161,6 +165,7 @@ export class ClaimsController {
   }
 
   @Patch(':id')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Editar motivo y descripción de un reclamo pendiente',
@@ -185,6 +190,7 @@ export class ClaimsController {
   }
 
   @Patch(':id/resolve')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Admin resuelve un reclamo',
@@ -220,6 +226,7 @@ export class ClaimsController {
   }
 
   @Patch(':id/take')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Admin toma un reclamo pendiente para revisarlo',
@@ -244,6 +251,7 @@ export class ClaimsController {
   }
 
   @Patch(':id/reopen')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Admin reabre un reclamo resuelto o rechazado',
@@ -271,6 +279,7 @@ export class ClaimsController {
   }
 
   @Post(':id/photo')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Subir o reemplazar la foto de un reclamo (CU-174)',
@@ -319,6 +328,7 @@ export class ClaimsController {
   }
 
   @Delete(':id/photo')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sacar la foto de un reclamo',
@@ -351,6 +361,7 @@ export class ClaimsController {
   }
 
   @Get(':id/photo')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Ver la foto de un reclamo (CU-175)',

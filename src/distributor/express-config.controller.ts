@@ -14,6 +14,7 @@ import {
   ExpressConfigResponseDto,
 } from './dto/express-config.dto';
 import { ExpressSettingsService } from './express-settings.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)"), cuerpo fuera de los límites (detalle por campo) o horario que no empieza antes de terminar';
@@ -25,6 +26,7 @@ const FALTA_DISTRIBUIDORA =
 export class ExpressConfigController {
   constructor(private readonly express: ExpressSettingsService) {}
 
+  @Permiso('configuracion.ver')
   @Get()
   @ApiOperation({
     summary: 'Parámetros de la compra express de la distribuidora',
@@ -39,6 +41,7 @@ export class ExpressConfigController {
     return this.express.vigentes(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put()
   @ApiOperation({
     summary: 'Cambiar los parámetros de la compra express',

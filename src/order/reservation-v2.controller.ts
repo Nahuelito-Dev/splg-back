@@ -18,6 +18,7 @@ import { ReservationService } from './application/reservation.service';
 import { ConfirmDepositV2Dto } from './dto/confirm-deposit-v2.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderMapper } from './order.mapper';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Confirmar la seña de una reserva eligiendo la caja donde entra (API v2). */
 @ApiTags('Pedidos · Reservas (v2)')
@@ -26,6 +27,7 @@ import { OrderMapper } from './order.mapper';
 export class ReservationV2Controller {
   constructor(private readonly reservas: ReservationService) {}
 
+  @Permiso('pedidos.gestionar')
   @Patch(':id/confirm-deposit')
   @Idempotent()
   @ApiOperation({

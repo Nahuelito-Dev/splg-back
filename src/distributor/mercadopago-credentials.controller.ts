@@ -18,6 +18,7 @@ import {
   SaveMercadoPagoCredentialsDto,
 } from './dto/mercadopago-credentials.dto';
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -29,6 +30,7 @@ const FALTA_DISTRIBUIDORA =
 export class MercadoPagoCredentialsController {
   constructor(private readonly credentials: MercadoPagoCredentialsService) {}
 
+  @Permiso('configuracion.ver')
   @Get()
   @ApiOperation({
     summary: 'Cuenta de Mercado Pago con la que cobra la distribuidora',
@@ -43,6 +45,7 @@ export class MercadoPagoCredentialsController {
     return this.credentials.status(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put()
   @ApiOperation({
     summary: 'Cargar o reemplazar la cuenta propia de Mercado Pago',
@@ -70,6 +73,7 @@ export class MercadoPagoCredentialsController {
     return this.credentials.save(distributorId, userId, dto);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put('deactivate')
   @ApiOperation({
     summary: 'Desactivar la cuenta propia y volver a la del sistema',

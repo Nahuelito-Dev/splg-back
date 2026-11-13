@@ -33,6 +33,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Licencias y ausencias del personal. Las que se cargan sobre un empleado
@@ -44,6 +45,7 @@ import { Idempotent } from '../common/decorators/idempotent.decorator';
 export class LeaveController {
   constructor(private readonly leaves: LeaveService) {}
 
+  @Permiso('personal.gestionar')
   @Post('employees/:id/leaves')
   @Idempotent()
   @ApiOperation({
@@ -70,6 +72,7 @@ export class LeaveController {
     );
   }
 
+  @Permiso('personal.ver')
   @Get('employees/:id/vacation-balance')
   @ApiOperation({
     summary: 'Consultar el saldo de vacaciones de un empleado (CU-193)',
@@ -88,6 +91,7 @@ export class LeaveController {
     return this.leaves.vacationBalance(id, distributorId, query.year);
   }
 
+  @Permiso('personal.ver')
   @Get('leaves')
   @ApiOperation({
     summary: 'Consultar las licencias y la bandeja de pendientes (CU-319)',
@@ -102,6 +106,7 @@ export class LeaveController {
     return { data: data.map((l) => LeaveMapper.toDto(l)), total };
   }
 
+  @Permiso('personal.gestionar')
   @Patch('leaves/:id')
   @ApiOperation({
     summary: 'Modificar una licencia solicitada (CU-316)',
@@ -121,6 +126,7 @@ export class LeaveController {
     return LeaveMapper.toDto(await this.leaves.update(id, dto, distributorId));
   }
 
+  @Permiso('personal.gestionar')
   @Patch('leaves/:id/approve')
   @ApiOperation({ summary: 'Aprobar una solicitud de licencia (CU-192)' })
   @ApiParam({ name: 'id', description: 'Licencia UUID' })
@@ -137,6 +143,7 @@ export class LeaveController {
     );
   }
 
+  @Permiso('personal.gestionar')
   @Patch('leaves/:id/reject')
   @ApiOperation({
     summary: 'Rechazar una solicitud de licencia, con motivo (CU-318)',
@@ -157,6 +164,7 @@ export class LeaveController {
     );
   }
 
+  @Permiso('personal.gestionar')
   @Patch('leaves/:id/cancel')
   @ApiOperation({
     summary: 'Cancelar una licencia que todavía no terminó (CU-317)',

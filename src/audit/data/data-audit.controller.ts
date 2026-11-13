@@ -15,6 +15,7 @@ import {
   QueryAuditEntriesDto,
 } from './data-audit.dto';
 import { DataAuditService } from './data-audit.service';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * Auditoría de datos según el modelo de la cátedra: Auditoria,
@@ -27,6 +28,7 @@ export class DataAuditController {
   constructor(private readonly service: DataAuditService) {}
 
   @Get('entries')
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Consultar la auditoría de datos',
@@ -46,6 +48,7 @@ export class DataAuditController {
   }
 
   @Get('entries/:id')
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Una auditoría de datos con sus detalles',
@@ -63,6 +66,7 @@ export class DataAuditController {
   }
 
   @Get('action-types')
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Catálogo de acciones auditadas',

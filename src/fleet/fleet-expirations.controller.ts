@@ -6,6 +6,7 @@ import { FleetExpirationsResponseDto } from './dto/expirations-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Fleet · Expirations')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -13,6 +14,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class FleetExpirationsController {
   constructor(private readonly expirations: FleetExpirationsService) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary:

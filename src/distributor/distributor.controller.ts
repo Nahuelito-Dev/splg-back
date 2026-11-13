@@ -44,6 +44,7 @@ import {
   responderFoto,
   SubirFotoInterceptor,
 } from '../s3/photo-http';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Gestión de distribuidoras (tenants). Es una operación de PLATAFORMA:
@@ -142,6 +143,7 @@ export class DistributorController {
   }
 
   @Put(':id/logo')
+  @Permiso('configuracion.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiSubirFoto(
     'Subir o reemplazar el logo de la distribuidora',
@@ -163,6 +165,7 @@ export class DistributorController {
   }
 
   @Delete(':id/logo')
+  @Permiso('configuracion.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sacar el logo de la distribuidora',
@@ -184,6 +187,7 @@ export class DistributorController {
   }
 
   @Get(':id/logo')
+  @Permiso('configuracion.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiVerFoto('Ver el logo de la distribuidora')
   @ApiParam({ name: 'id', description: 'Distributor UUID' })

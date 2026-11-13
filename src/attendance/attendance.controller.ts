@@ -39,6 +39,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Asistencia del personal: la grilla del panel y las marcas del chofer (`/attendance/mine/*`). */
 @ApiTags('Personal · Asistencia')
@@ -48,6 +49,7 @@ export class AttendanceController {
 
   @Post('employees/:id/attendance')
   @Idempotent()
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Registrar la asistencia de un empleado desde el panel (CU-189)',
@@ -73,6 +75,7 @@ export class AttendanceController {
   }
 
   @Get('attendance')
+  @Permiso('personal.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Consultar la asistencia de los empleados (CU-314)',
@@ -96,6 +99,7 @@ export class AttendanceController {
   }
 
   @Patch('attendance/:id')
+  @Permiso('personal.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:

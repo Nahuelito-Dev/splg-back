@@ -36,6 +36,7 @@ import {
 } from './dto/fuel-load.dto';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { FuelLoadService } from './fuel-load.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Cargas de combustible de la flota (CU-195, CU-320 a CU-322). */
 @ApiTags('Fleet · Combustible')
@@ -44,6 +45,7 @@ import { FuelLoadService } from './fuel-load.service';
 export class FuelLoadController {
   constructor(private readonly loads: FuelLoadService) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -69,6 +71,7 @@ export class FuelLoadController {
 
   @Post('mine')
   @Idempotent()
+  @Permiso('flota.gestionar')
   @Auth(RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Registrar una carga de combustible (chofer)',
@@ -90,6 +93,7 @@ export class FuelLoadController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Consultar las cargas de combustible vigentes',
@@ -109,6 +113,7 @@ export class FuelLoadController {
     };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({
     summary: 'Ver una carga de combustible (también la anulada)',
@@ -125,6 +130,7 @@ export class FuelLoadController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Modificar una carga de combustible',
@@ -148,6 +154,7 @@ export class FuelLoadController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Delete(':id')
   @ApiOperation({
     summary: 'Anular una carga de combustible',
@@ -166,6 +173,7 @@ export class FuelLoadController {
     return this.loads.anular(id, distributorId, userId);
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/cash-payment')
   @Idempotent()
   @ApiOperation({

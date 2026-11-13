@@ -34,6 +34,7 @@ import {
   UnpayDriverLiquidationDto,
 } from '../dto/driver-liquidation.dto';
 import { CommissionMapper } from './commission.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Liquidaciones de comisiones de los choferes (CU-242, 243, 334, 335). */
 @ApiTags('Comisiones · Liquidaciones')
@@ -42,6 +43,7 @@ import { CommissionMapper } from './commission.mapper';
 export class DriverLiquidationController {
   constructor(private readonly liquidaciones: DriverLiquidationService) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({ summary: 'Listar las liquidaciones' })
   @ApiOkResponse({ type: DriverLiquidationPageDto })
@@ -56,6 +58,7 @@ export class DriverLiquidationController {
     return { data: data.map((l) => CommissionMapper.liquidacion(l)), total };
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -81,6 +84,7 @@ export class DriverLiquidationController {
     );
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una liquidación con sus asientos' })
   @ApiParam({ name: 'id', description: 'Liquidación UUID' })
@@ -97,6 +101,7 @@ export class DriverLiquidationController {
     return CommissionMapper.liquidacionConAsientos(item, asientos);
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/approve')
   @Idempotent()
   @ApiOperation({ summary: 'Aprobar una liquidación en borrador' })
@@ -114,6 +119,7 @@ export class DriverLiquidationController {
     );
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/pay')
   @Idempotent()
   @ApiOperation({
@@ -142,6 +148,7 @@ export class DriverLiquidationController {
     );
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/unpay')
   @Idempotent()
   @ApiOperation({
@@ -170,6 +177,7 @@ export class DriverLiquidationController {
     );
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id/void')
   @Idempotent()
   @ApiOperation({

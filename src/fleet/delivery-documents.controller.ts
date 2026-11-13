@@ -13,6 +13,7 @@ import { FleetDriverDocumentsResponseDto } from './dto/documents-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Fachada de sólo lectura, para el panel de un chofer (CU-138). Vive en
@@ -25,6 +26,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class DeliveryDocumentsController {
   constructor(private readonly tasksService: FleetTaskService) {}
 
+  @Permiso('personal.ver')
   @Get()
   @ApiBadRequestResponse({
     description: 'El id no es un UUID o super admin sin X-Distributor',

@@ -68,6 +68,7 @@ import {
   ListadoDeUsuariosDto,
   UsuarioExisteDto,
 } from './dto/usuarios-response.dto';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -119,6 +120,7 @@ export class UsersController {
   }
 
   @Get()
+  @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all users with pagination and search',
@@ -213,6 +215,7 @@ export class UsersController {
   }
 
   @Put(':id/photo')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiSubirFoto(
     'Subir o reemplazar la foto de perfil de un usuario',
@@ -237,6 +240,7 @@ export class UsersController {
   }
 
   @Delete(':id/photo')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sacar la foto de perfil de un usuario',
@@ -306,6 +310,7 @@ export class UsersController {
   }
 
   @Get('phone/:phoneNumber')
+  @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get user by phone number' })
   @ApiOkResponse({
@@ -472,6 +477,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Dar de baja un usuario (baja lógica)',
@@ -506,6 +512,7 @@ export class UsersController {
   }
 
   @Patch(':id/block')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'ADMIN: Bloquear/Desbloquear usuario',

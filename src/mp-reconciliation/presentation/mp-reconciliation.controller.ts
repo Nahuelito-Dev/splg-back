@@ -41,6 +41,7 @@ import {
   QueryMpReconciliationDto,
 } from '../dto/mp-reconciliation.dto';
 import { MpReconciliationMapper } from '../mp-reconciliation.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * Conciliación de la caja de Mercado Pago contra el reporte de liberaciones
@@ -58,6 +59,7 @@ export class MpReconciliationController {
     private readonly aplicador: MpReconciliationApplyService,
   ) {}
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -87,6 +89,7 @@ export class MpReconciliationController {
     );
   }
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({ summary: 'Corridas de conciliación de la distribuidora' })
   @ApiOkResponse({ type: MpReconciliationPageDto })
@@ -105,6 +108,7 @@ export class MpReconciliationController {
     };
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id')
   @ApiOperation({
     summary: 'Una corrida con sus diferencias',
@@ -124,6 +128,7 @@ export class MpReconciliationController {
     return MpReconciliationMapper.detalle(corrida, items, this.veCuenta(ctx));
   }
 
+  @Permiso('finanzas.gestionar')
   @Post(':id/apply')
   @Idempotent()
   @ApiOperation({
@@ -153,6 +158,7 @@ export class MpReconciliationController {
     return this.aplicador.aplicar(id, dto, this.contexto(distributorId, user));
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id/report')
   @ApiOperation({
     summary: 'Bajar el reporte de liberaciones',

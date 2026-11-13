@@ -26,6 +26,7 @@ import { FleetPlanResponseDto } from './dto/plan-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Planes de mantenimiento/habilitación de la flota (CU-136 a CU-142): la
@@ -42,6 +43,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class FleetPlanController {
   constructor(private readonly plans: FleetPlanService) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @ApiOperation({ summary: 'Crear un plan de mantenimiento/habilitación' })
   @ApiCreatedResponse({ type: FleetPlanResponseDto })
@@ -56,6 +58,7 @@ export class FleetPlanController {
     return FleetPlanMapper.toDto(await this.plans.create(dto, distributorId));
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Listar los planes de la distribuidora' })
   @ApiOkResponse({ type: FleetPlanResponseDto, isArray: true })
@@ -67,6 +70,7 @@ export class FleetPlanController {
     return plans.map((p) => FleetPlanMapper.toDto(p));
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un plan' })
   @ApiParam({ name: 'id', description: 'Plan UUID' })
@@ -79,6 +83,7 @@ export class FleetPlanController {
     return FleetPlanMapper.toDto(await this.plans.findOne(id, distributorId));
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Editar un plan (o desactivarlo con isActive: false)',

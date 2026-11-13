@@ -33,6 +33,7 @@ import {
 } from './dto/tire.dto';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { TireService } from './tire.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 export class TireMovementResponseDto {
   @ApiProperty({ type: TireEventResponseDto }) event!: TireEventResponseDto;
@@ -50,6 +51,7 @@ export class TireMovementResponseDto {
 export class TireController {
   constructor(private readonly tires: TireService) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -72,6 +74,7 @@ export class TireController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Listar los neumáticos' })
   @ApiOkResponse({ type: TirePageDto })
@@ -83,6 +86,7 @@ export class TireController {
     return { data: data.map((t) => FleetExpenseMapper.tire(t)), total };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un neumático con su historial de movimientos' })
   @ApiParam({ name: 'id', description: 'Neumático UUID' })
@@ -97,6 +101,7 @@ export class TireController {
     return FleetExpenseMapper.tire(neumatico, eventos);
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/events')
   @Idempotent()
   @ApiOperation({

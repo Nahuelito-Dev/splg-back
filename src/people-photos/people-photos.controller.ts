@@ -16,6 +16,7 @@ import {
   PeoplePhotosResponseDto,
 } from './dto/people-photos.dto';
 import { PeoplePhotosService } from './people-photos.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('People')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -23,6 +24,7 @@ import { PeoplePhotosService } from './people-photos.service';
 export class PeoplePhotosController {
   constructor(private readonly service: PeoplePhotosService) {}
 
+  @Permiso('personal.gestionar')
   @Post('photos')
   @SoloLectura()
   @HttpCode(HttpStatus.OK)

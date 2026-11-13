@@ -26,6 +26,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** `POST /employees/:id/account`: vive acá porque delega en el alta de usuarios (CU-182). */
 @ApiTags('Personal · Empleados')
@@ -37,6 +38,7 @@ export class EmployeeAccountController {
     private readonly photo: EmployeePhotoService,
   ) {}
 
+  @Permiso('administradores.gestionar')
   @Post(':id/account')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

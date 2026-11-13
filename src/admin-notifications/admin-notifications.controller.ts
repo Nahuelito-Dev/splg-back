@@ -36,7 +36,6 @@ import { QueryAdminNotificationsDto } from './dto/query-admin-notifications.dto'
 @Controller({ path: 'admin-notifications', version: '2' })
 export class AdminNotificationsController {
   constructor(private readonly service: AdminNotificationsService) {}
-
   @Get()
   @ApiOperation({
     summary: 'Bandeja de avisos',
@@ -52,7 +51,6 @@ export class AdminNotificationsController {
   ): Promise<AdminNotificationListResponseDto> {
     return this.service.listar(userId, distributorId, query);
   }
-
   @Get('unread-count')
   @ApiOperation({ summary: 'Cuántos avisos no leí' })
   @ApiOkResponse({ type: UnreadCountResponseDto })
@@ -62,7 +60,6 @@ export class AdminNotificationsController {
   ): Promise<UnreadCountResponseDto> {
     return this.service.contarSinLeer(userId, distributorId);
   }
-
   @Patch('read-all')
   @ApiOperation({
     summary: 'Marcar todos como leídos',
@@ -76,7 +73,6 @@ export class AdminNotificationsController {
   ): Promise<ReadAllResponseDto> {
     return this.service.marcarTodosLeidos(userId, distributorId);
   }
-
   @Patch(':id/read')
   @ApiOperation({
     summary: 'Marcar un aviso como leído',

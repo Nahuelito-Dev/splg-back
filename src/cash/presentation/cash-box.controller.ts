@@ -39,6 +39,7 @@ import {
   QueryCashSessionDto,
 } from '../dto/cash-session.dto';
 import { CashMapper } from '../cash.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Cajas de la distribuidora y apertura de sus sesiones (CU-225, 226, 264). */
 @ApiTags('Finanzas · Cajas')
@@ -50,6 +51,7 @@ export class CashBoxController {
     private readonly sesiones: CashSessionService,
   ) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar las cajas con su saldo',
@@ -68,6 +70,7 @@ export class CashBoxController {
     };
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({ summary: 'Crear una caja' })
@@ -84,6 +87,7 @@ export class CashBoxController {
     return CashMapper.caja(c.caja, c.openSessionId);
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una caja' })
   @ApiParam({ name: 'id', description: 'Caja UUID' })
@@ -97,6 +101,7 @@ export class CashBoxController {
     return CashMapper.caja(c.caja, c.openSessionId);
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id')
   @Idempotent()
   @ApiOperation({
@@ -119,6 +124,7 @@ export class CashBoxController {
     return CashMapper.caja(c.caja, c.openSessionId);
   }
 
+  @Permiso('finanzas.gestionar')
   @Post(':id/sessions')
   @Idempotent()
   @ApiOperation({
@@ -143,6 +149,7 @@ export class CashBoxController {
     return CashMapper.sesion(s.sesion, s.cashBoxName);
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id/sessions')
   @ApiOperation({
     summary: 'Sesiones de una caja, de la más nueva a la más vieja',

@@ -31,6 +31,7 @@ import {
   QueryCashCategoryDto,
   UpdateCashCategoryDto,
 } from '../dto/cash-category.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Categorías de ingresos y gastos (CU-230, CU-265). */
 @ApiTags('Finanzas · Categorías de caja')
@@ -41,6 +42,7 @@ export class CashCategoryController {
 
   @Get()
   // El chofer las lee para declarar los gastos de su rendición (CU-232).
+  @Permiso('finanzas.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Listar las categorías de ingresos y gastos' })
   @ApiOkResponse({ type: CashCategoryPageDto })
@@ -52,6 +54,7 @@ export class CashCategoryController {
     return { data: data.map((c) => CashMapper.categoria(c)), total };
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({ summary: 'Crear una categoría de ingresos o gastos' })
@@ -68,6 +71,7 @@ export class CashCategoryController {
     );
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id')
   @Idempotent()
   @ApiOperation({ summary: 'Renombrar o activar/desactivar una categoría' })
@@ -87,6 +91,7 @@ export class CashCategoryController {
     );
   }
 
+  @Permiso('finanzas.gestionar')
   @Delete(':id')
   @ApiOperation({
     summary: 'Desactivar una categoría',

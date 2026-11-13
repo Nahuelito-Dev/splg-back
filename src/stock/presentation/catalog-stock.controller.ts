@@ -25,6 +25,7 @@ import { UpdateStockDto } from '../../gascylinder/dto/update-stock.dto';
 import { GasCylinderMapper } from '../../gascylinder/gascylinder.mapper';
 import { GasCylinderPhotoService } from '../../gascylinder/gascylinder-photo.service';
 import { CatalogStockAdjustmentUseCase } from '../application/catalog-stock-adjustment.use-case';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * `PATCH /gascylinder/:id/stock`: la ruta de siempre del catálogo, que desde el
@@ -41,6 +42,7 @@ export class CatalogStockController {
     private readonly photos: GasCylinderPhotoService,
   ) {}
 
+  @Permiso('stock.gestionar')
   @Patch(':id/stock')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
