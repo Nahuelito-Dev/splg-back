@@ -14,7 +14,8 @@ import {
   RepurchaseInvitation,
   RepurchaseInvitationStatus,
 } from '../../../src/repurchase-forecast/entities/repurchase-invitation.entity';
-import { PaymentMethod } from '../../../src/order/entities/order.entity';
+import { Order, PaymentMethod } from '../../../src/order/entities/order.entity';
+import { UserAddress } from '../../../src/user-address/entities/user-address.entity';
 import { usarClave } from './t2-base';
 
 describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
@@ -329,6 +330,7 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
   );
   let invitacionAceptada: string | undefined;
   let invitacionDescartada: string | undefined;
+  let direccionBorrada: string | undefined;
   let claveDeAceptacion: string | undefined;
   let invitacionConClave: string | undefined;
   const aceptarPendiente = endpoint<EscenarioT3>(
@@ -404,6 +406,9 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
     accept('franja con UUID inválido', 'clienteA', 400, {
       body: { timeSlotId: 'x', scheduledDate: '2026-11-10' },
     }),
+    accept('dirección con UUID inválido', 'clienteA', 400, {
+      body: { addressId: 'x' },
+    }),
     accept('fecha inválida', 'clienteA', 400, {
       body: { scheduledDate: 'ayer' },
     }),
@@ -445,11 +450,52 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
           verificarInvitacionPendiente(c, c.invitationA),
       },
     ),
+    accept('dirección de otro cliente', 'clienteA', 404, {
+      antes: reabrirInvitacionA,
+      body: (c) => ({ addressId: c.addressB }),
+      mensajeExacto: 'No encontramos esa dirección entre las tuyas',
+      verificar: async (_b, c) =>
+        verificarInvitacionPendiente(c, c.invitationA),
+    }),
+    accept('dirección inexistente', 'clienteA', 404, {
+      antes: reabrirInvitacionA,
+      body: (c) => ({ addressId: c.inexistente }),
+      mensajeExacto: 'No encontramos esa dirección entre las tuyas',
+      verificar: async (_b, c) =>
+        verificarInvitacionPendiente(c, c.invitationA),
+    }),
+    accept('dirección propia fuera de cobertura', 'clienteA', 400, {
+      antes: reabrirInvitacionA,
+      body: (c) => ({ addressId: c.addressAFuera }),
+      mensajeExacto:
+        'La dirección está fuera de la zona de cobertura de la distribuidora',
+      verificar: async (_b, c) =>
+        verificarInvitacionPendiente(c, c.invitationA),
+    }),
+    accept('dirección dada de baja lógicamente', 'clienteA', 404, {
+      antes: async (c) => {
+        await reabrirInvitacionA(c);
+        const direcciones = c.app.get(DataSource).getRepository(UserAddress);
+        const direccion = await direcciones.save({
+          userId: c.clienteA.userId,
+          street: 'Calle A baja 400',
+          city: 'Córdoba',
+          isDefault: false,
+          location: { type: 'Point', coordinates: [-64.19, -31.41] },
+        } as Partial<UserAddress>);
+        await direcciones.softRemove(direccion);
+        direccionBorrada = direccion.addressId;
+      },
+      body: () => ({ addressId: direccionBorrada ?? '' }),
+      mensajeExacto: 'No encontramos esa dirección entre las tuyas',
+      verificar: async (_b, c) =>
+        verificarInvitacionPendiente(c, c.invitationA),
+    }),
     aceptarPendiente('acepta la invitación y crea su pedido', 'clienteA', 201, {
       antes: async (c) => {
         invitacionAceptada = await crearInvitacionPendiente(c);
       },
-      body: {},
+      body: (c) => ({ addressId: c.addressAAlternativa }),
       verificar: async (b, c) => {
         const invitacion = await c.app
           .get(DataSource)
@@ -458,8 +504,16 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
         expect(invitacion).toMatchObject({
           status: RepurchaseInvitationStatus.ACCEPTED,
         });
-        expect(invitacion.orderId).toEqual(expect.any(String));
-        expect(JSON.stringify(b)).toContain(invitacion.orderId);
+        const orderId = invitacion.orderId ?? '';
+        expect(orderId).toEqual(expect.any(String));
+        expect(JSON.stringify(b)).toContain(orderId);
+        const pedido = await c.app
+          .get(DataSource)
+          .getRepository(Order)
+          .findOneByOrFail({ orderId });
+        expect(pedido.addressId).toBe(c.addressAAlternativa);
+        expect(Number(pedido.zoneSurchargeAmount)).toBe(250);
+        expect(Number(pedido.totalAmount)).toBe(1250);
       },
     }),
     aceptarPendiente(

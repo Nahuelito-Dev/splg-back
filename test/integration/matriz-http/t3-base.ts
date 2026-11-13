@@ -7,6 +7,7 @@ import {
   TaxCondition,
 } from '../../../src/customer-account/domain/customer-account.enums';
 import { Customer } from '../../../src/customer/entities/customer.entity';
+import { CoverageZone } from '../../../src/coverage-zone/entities/coverage-zone.entity';
 import { GasCylinder } from '../../../src/gascylinder/entities/gascylinder.entity';
 import {
   DistribuidoraCreadaEvent,
@@ -33,6 +34,8 @@ export interface EscenarioT3 extends Escenario {
   customerA: string;
   customerB: string;
   addressA: string;
+  addressAAlternativa: string;
+  addressAFuera: string;
   addressB: string;
   accountA: string;
   accountB: string;
@@ -41,6 +44,19 @@ export interface EscenarioT3 extends Escenario {
   gasCylinderA: string;
   gasCylinderB: string;
 }
+
+const cuadrado = (lng: number, lat: number) => ({
+  type: 'Polygon' as const,
+  coordinates: [
+    [
+      [lng - 0.003, lat - 0.003],
+      [lng + 0.003, lat - 0.003],
+      [lng + 0.003, lat + 0.003],
+      [lng - 0.003, lat + 0.003],
+      [lng - 0.003, lat - 0.003],
+    ],
+  ],
+});
 
 export async function sembrarBaseT3(app: TestApp): Promise<EscenarioT3> {
   const e = await sembrarEscenario(app);
@@ -65,6 +81,21 @@ export async function sembrarBaseT3(app: TestApp): Promise<EscenarioT3> {
     e.distA.slug,
   );
   const ds = app.get(DataSource);
+  const zonas = ds.getRepository(CoverageZone);
+  await zonas.save({
+    distributorId: e.distA.id,
+    name: 'Centro T3',
+    area: cuadrado(-64.19, -31.41),
+    surchargeType: 'percentage',
+    surchargeValue: 10,
+  } as Partial<CoverageZone>);
+  await zonas.save({
+    distributorId: e.distA.id,
+    name: 'Alternativa T3',
+    area: cuadrado(-64.18, -31.4),
+    surchargeType: 'percentage',
+    surchargeValue: 25,
+  } as Partial<CoverageZone>);
   const customers = ds.getRepository(Customer);
   const customerA = await customers.findOneByOrFail({
     userId: e.clienteA.userId,
@@ -86,6 +117,20 @@ export async function sembrarBaseT3(app: TestApp): Promise<EscenarioT3> {
     city: 'Córdoba',
     isDefault: true,
     location: { type: 'Point', coordinates: [-64.2, -31.42] },
+  } as Partial<UserAddress>);
+  const addressAAlternativa = await addresses.save({
+    userId: e.clienteA.userId,
+    street: 'Calle A 200',
+    city: 'Córdoba',
+    isDefault: false,
+    location: { type: 'Point', coordinates: [-64.18, -31.4] },
+  } as Partial<UserAddress>);
+  const addressAFuera = await addresses.save({
+    userId: e.clienteA.userId,
+    street: 'Calle A fuera 300',
+    city: 'Córdoba',
+    isDefault: false,
+    location: { type: 'Point', coordinates: [-64.1, -31.3] },
   } as Partial<UserAddress>);
   const accounts = ds.getRepository(CustomerAccount);
   const gasCylinders = ds.getRepository(GasCylinder);
@@ -165,6 +210,8 @@ export async function sembrarBaseT3(app: TestApp): Promise<EscenarioT3> {
     customerA: customerA.customerId,
     customerB: customerB.customerId,
     addressA: addressA.addressId,
+    addressAAlternativa: addressAAlternativa.addressId,
+    addressAFuera: addressAFuera.addressId,
     addressB: addressB.addressId,
     accountA: accountA.accountId,
     accountB: accountB.accountId,

@@ -10,6 +10,7 @@ import { DistributorService } from '../distributor/distributor.service';
 import { DistributorStatus } from '../distributor/entities/distributor.entity';
 import { RedisService } from '../redis/redis.service';
 import { TimeSlotService } from '../time-slot/time-slot.service';
+import { UserAddressService } from '../user-address/user-address.service';
 import {
   RepurchaseInvitation,
   RepurchaseInvitationStatus as Estado,
@@ -48,6 +49,7 @@ describe('RepurchaseAcceptService', () => {
   let orders: { create: jest.Mock; findOne: jest.Mock };
   let distribuidoras: { findOne: jest.Mock };
   let franjas: { findOne: jest.Mock };
+  let direcciones: { buscarDelUsuario: jest.Mock };
   let pedidos: { hayPedidoDesde: jest.Mock };
   let notifier: { cerrada: jest.Mock };
   let redis: {
@@ -77,6 +79,7 @@ describe('RepurchaseAcceptService', () => {
         .mockResolvedValue({ status: DistributorStatus.ACTIVE }),
     };
     franjas = { findOne: jest.fn() };
+    direcciones = { buscarDelUsuario: jest.fn().mockResolvedValue({}) };
     orders = {
       create: jest.fn().mockResolvedValue({
         order: { orderId: 'o1' } as Order,
@@ -107,6 +110,7 @@ describe('RepurchaseAcceptService', () => {
       redis as unknown as RedisService,
       distribuidoras as unknown as DistributorService,
       franjas as unknown as TimeSlotService,
+      direcciones as unknown as UserAddressService,
     );
   });
 
@@ -156,6 +160,40 @@ describe('RepurchaseAcceptService', () => {
       scheduledDate: '2026-11-03',
       notes: 'Portón verde',
     });
+  });
+
+  it('usa la dirección vigente que el cliente eligió al crear el pedido', async () => {
+    await service.aceptar('i1', 'u1', { addressId: 'a2' }, AHORA);
+
+    expect(direcciones.buscarDelUsuario).toHaveBeenCalledWith('a2', 'u1');
+    expect((orders.create.mock.calls as unknown[][])[0][0]).toMatchObject({
+      addressId: 'a2',
+    });
+  });
+
+  it.each(['ajena', 'inexistente'])(
+    'la dirección %s elegida no se revela y responde 404',
+    async () => {
+      direcciones.buscarDelUsuario.mockResolvedValue(null);
+
+      await expect(
+        service.aceptar('i1', 'u1', { addressId: 'a2' }, AHORA),
+      ).rejects.toThrow('No encontramos esa dirección entre las tuyas');
+
+      expect(orders.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('una dirección borrada lógicamente no se revela y responde 404', async () => {
+    direcciones.buscarDelUsuario.mockImplementation((addressId: string) =>
+      Promise.resolve(addressId === 'a-borrada' ? null : {}),
+    );
+
+    await expect(
+      service.aceptar('i1', 'u1', { addressId: 'a-borrada' }, AHORA),
+    ).rejects.toThrow('No encontramos esa dirección entre las tuyas');
+
+    expect(orders.create).not.toHaveBeenCalled();
   });
 
   it.each([{ timeSlotId: 't1' }, { scheduledDate: '2026-11-03' }])(
@@ -237,6 +275,17 @@ describe('RepurchaseAcceptService', () => {
       'La dirección de la invitación ya no existe',
     );
     expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('con dirección propia, acepta aunque ya no exista la de la invitación', async () => {
+    invitaciones.delCliente.mockResolvedValue(invitacion({ addressId: null }));
+
+    await service.aceptar('i1', 'u1', { addressId: 'a2' }, AHORA);
+
+    expect(direcciones.buscarDelUsuario).toHaveBeenCalledWith('a2', 'u1');
+    expect((orders.create.mock.calls as unknown[][])[0][0]).toMatchObject({
+      addressId: 'a2',
+    });
   });
 
   it('si el pedido falla (sin stock, fuera de cobertura) la invitación sigue abierta', async () => {

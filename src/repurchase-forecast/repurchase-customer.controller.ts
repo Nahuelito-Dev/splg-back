@@ -151,7 +151,7 @@ export class RepurchaseCustomerController {
   @ApiOperation({
     summary: 'Aceptar una invitación: crear el pedido',
     description:
-      'Crea el pedido precargado por el mismo camino que `POST /orders` (reserva de stock, precio y promociones de hoy, recargos, despacho): el cuerpo es opcional y sólo cambia medio de pago, franja (`timeSlotId` y `scheduledDate` van juntos) o notas. Sin franja, la entrega es inmediata. Idempotente vía `Idempotency-Key`. Con MercadoPago, `order.paymentUrl` trae el enlace de cobro.',
+      'Crea el pedido precargado por el mismo camino que `POST /orders` (reserva de stock, precio y promociones de hoy, recargos, despacho): el cuerpo es opcional y sólo cambia dirección de entrega, medio de pago, franja (`timeSlotId` y `scheduledDate` van juntos) o notas. Sin dirección usa la de la invitación; sin franja, la entrega es inmediata. Idempotente vía `Idempotency-Key`. Con MercadoPago, `order.paymentUrl` trae el enlace de cobro.',
   })
   @ApiParam({ name: 'id', description: 'Invitation UUID' })
   @ApiCreatedResponse({ type: AcceptInvitationResponseDto })
@@ -159,7 +159,10 @@ export class RepurchaseCustomerController {
     description:
       'El id no es un UUID, sin stock para lo sugerido, franja sin fecha (o al revés), dirección fuera de cobertura u otra regla del pedido',
   })
-  @ApiNotFoundResponse({ description: 'No existe o es de otro cliente' })
+  @ApiNotFoundResponse({
+    description:
+      'No existe o es de otro cliente, o la dirección elegida no pertenece al cliente',
+  })
   @ApiConflictResponse({
     description:
       'Ya aceptada, descartada, vencida, o cerrada porque ya hiciste un pedido',
