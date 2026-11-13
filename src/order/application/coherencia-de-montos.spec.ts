@@ -156,7 +156,7 @@ describe('coherencia de montos: carrito, cotización, pedido y pasarela', () => 
     });
   });
 
-  it('suma los envases al checkout y les aplica sólo el recargo del pago', () => {
+  it('suma los envases al checkout sin aplicarles recargo del pago', () => {
     const envases = new Decimal(10000);
     const { totalAmount, paymentSurchargeAmount } = useCase.calcularTotales(
       20000,
@@ -169,6 +169,7 @@ describe('coherencia de montos: carrito, cotización, pedido y pasarela', () => 
       [{ id: 'gas', title: 'Garrafa', quantity: 1, unitPrice: 20000 }],
       { zona: 0, envases, online: paymentSurchargeAmount, express: 0 },
     );
+    expect(paymentSurchargeAmount.toString()).toBe('2000');
     expect(checkout).toContainEqual(
       expect.objectContaining({
         id: 'containers',
