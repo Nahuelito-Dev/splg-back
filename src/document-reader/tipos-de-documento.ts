@@ -9,6 +9,7 @@ export enum TipoDeDocumento {
   POLIZA = 'poliza',
   REVISION_TECNICA = 'revision_tecnica',
   CEDULA_DEL_VEHICULO = 'cedula_del_vehiculo',
+  FOTO_DE_PATENTE = 'foto_de_patente',
   LICENCIA_DE_CONDUCIR = 'licencia_de_conducir',
   APTO_MEDICO = 'apto_medico',
   OTRO = 'otro',
@@ -123,6 +124,12 @@ export const CATALOGO_DE_DOCUMENTOS: readonly DefinicionDeDocumento[] = [
         descripcion: `Vencimiento de la cédula, si figura: ${FECHA}`,
       },
     ],
+  },
+  {
+    tipo: TipoDeDocumento.FOTO_DE_PATENTE,
+    descripcion:
+      'Foto enfocada de la patente o dominio de un vehículo, sin documentación adicional',
+    campos: [{ nombre: 'patente', descripcion: PATENTE }],
   },
   {
     tipo: TipoDeDocumento.LICENCIA_DE_CONDUCIR,

@@ -38,6 +38,8 @@ export interface Adjunto {
   contenido: Buffer;
   nombre: string;
   tipo: string;
+  /** Campos de texto que viajan en el mismo multipart (`documentType`). */
+  campos?: Record<string, string>;
 }
 
 /** Lo mínimo que tiene que dar el escenario de una suite. */
@@ -192,6 +194,9 @@ function pedir(
 ): request.Test {
   const req = request(app.getHttpServer())[metodo](ruta).set(cabeceras);
   if (adjunto) {
+    for (const [campo, valor] of Object.entries(adjunto.campos ?? {})) {
+      void req.field(campo, valor);
+    }
     return req.attach(adjunto.campo, adjunto.contenido, {
       filename: adjunto.nombre,
       contentType: adjunto.tipo,

@@ -15,6 +15,8 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   missing: ETIQUETA_DE_DOCUMENTACION[EmployeeDocumentStatus.MISSING],
   'documentStatus:expired':
     ETIQUETA_DE_DOCUMENTACION[EmployeeDocumentStatus.EXPIRED],
+  'documentType:seguro': 'Seguro',
+  'documentType:cedula': 'Cédula del vehículo',
   'rol:delivery': 'Chofer',
   'role:delivery': 'Chofer',
   // La cuenta corriente es femenina: «una cuenta activa / bloqueada / cerrada».
@@ -186,6 +188,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   insurance: 'Seguro',
   insurance_alerts: 'Avisos de seguros',
   insurance_installment: 'Cuota de seguro',
+  car_document: 'Documento del vehículo',
   pay_installment: 'Pagar cuota de seguro',
   pay_fine: 'Pagar multa',
   update_policy: 'Actualizar póliza',
@@ -350,6 +353,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   cedula_del_vehiculo: 'Cédula del vehículo',
   comprobante_de_pago: 'Comprobante de pago',
   factura_o_remito: 'Factura o remito',
+  foto_de_patente: 'Foto de patente',
   licencia_de_conducir: 'Licencia de conducir',
   otro: 'Otro',
   poliza: 'Póliza',

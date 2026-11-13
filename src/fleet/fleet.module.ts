@@ -47,6 +47,14 @@ import { VehicleUsageCron } from './planner/vehicle-usage.cron';
 import { PlanningCaseCloser } from './planner/planning-case-closer.service';
 import { MaintenancePlannerController } from './planner/maintenance-planner.controller';
 import { DriverMaintenanceProposalsController } from './planner/driver-maintenance-proposals.controller';
+import { AttachmentModule } from '../attachment/attachment.module';
+import { CarDocumentsV2Controller } from './car-documents-v2.controller';
+import {
+  CarDocumentsService,
+  TOPE_DEL_ESCANEO,
+  TOPE_DEL_ESCANEO_MS,
+} from './car-documents.service';
+import { CarDocumentAttachmentOwnerResolver } from './car-document-attachment-owner';
 
 /**
  * Flota: planes de mantenimiento/habilitación y sus tareas (CU-136 a CU-142),
@@ -77,6 +85,7 @@ import { DriverMaintenanceProposalsController } from './planner/driver-maintenan
     LeaveModule, // licencias aprobadas: inhabilitan al chofer (CU-246)
     CashModule, // el pago de una tarea hecha sale de una caja
     GatewaysModule, // la propuesta de ventana le llega al chofer por el socket
+    AttachmentModule, // documentos de vehículo y su lectura M6
   ],
   controllers: [
     FleetPlanController,
@@ -91,6 +100,7 @@ import { DriverMaintenanceProposalsController } from './planner/driver-maintenan
     CarReactivationController,
     MaintenancePlannerController,
     DriverMaintenanceProposalsController,
+    CarDocumentsV2Controller,
   ],
   providers: [
     FleetPlanService,
@@ -112,6 +122,9 @@ import { DriverMaintenanceProposalsController } from './planner/driver-maintenan
     VehicleUsageFeedService,
     VehicleUsageCron,
     PlanningCaseCloser,
+    CarDocumentsService,
+    { provide: TOPE_DEL_ESCANEO, useValue: TOPE_DEL_ESCANEO_MS },
+    CarDocumentAttachmentOwnerResolver,
   ],
   // FleetTaskService: fachadas de sólo lectura de la flota (`/cars/:id/documents`,
   // `/fleet/*`). FleetDispatchLockService: el gate único de bloqueo que usa

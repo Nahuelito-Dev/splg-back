@@ -666,6 +666,110 @@ describe('AttachmentService', () => {
     });
   });
 
+  describe('documentos del vehículo: se leen y se dan de baja por su endpoint', () => {
+    const doc = {
+      attachmentId: 'a1',
+      ownerType: AttachmentOwnerType.CAR_DOCUMENT,
+      ownerId: 'car-1',
+      storageKey: 'k',
+      originalName: 'poliza.pdf',
+      mimeType: 'application/pdf',
+      uploadedByUserId: 'u-admin',
+    };
+    const dueno = {
+      ownerType: AttachmentOwnerType.CAR_DOCUMENT,
+      ownerId: 'car-1',
+    };
+
+    it('el listado genérico es 400 y remite a la ruta v2, sin consultar', async () => {
+      await expect(
+        service.list(AttachmentOwnerType.CAR_DOCUMENT, 'car-1', 'd1', ADMIN),
+      ).rejects.toThrow(/GET \/api\/v2\/cars\/:id\/documents/);
+      expect(attachments.find).not.toHaveBeenCalled();
+    });
+
+    it('la descarga genérica (URL o redirect) es 400 y no firma nada', async () => {
+      attachments.findOne.mockResolvedValue(doc);
+      await expect(
+        service.getSignedDownload('a1', 'd1', ADMIN),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.getDownload('a1', 'd1', ADMIN)).rejects.toThrow(
+        /se ven y se bajan desde su propia sección/,
+      );
+      expect(storage.getSignedDownload).not.toHaveBeenCalled();
+    });
+
+    it('con el dueño esperado busca acotado a ese dueño y firma', async () => {
+      attachments.findOne.mockResolvedValue(doc);
+      storage.getSignedDownload.mockResolvedValue({
+        url: 'https://s3/firmada',
+        expiresAt: new Date(),
+      });
+      await service.getSignedDownload('a1', 'd1', ADMIN, undefined, dueno);
+      expect(attachments.findOne).toHaveBeenCalledWith({
+        where: {
+          attachmentId: 'a1',
+          distributorId: 'd1',
+          ownerType: 'car_document',
+          ownerId: 'car-1',
+        },
+      });
+      expect(storage.getSignedDownload).toHaveBeenCalled();
+    });
+
+    it('un adjunto que no es de ese dueño es 404', async () => {
+      attachments.findOne.mockResolvedValue(null);
+      await expect(
+        service.getSignedDownload('a1', 'd1', ADMIN, undefined, dueno),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.removeDelDueno('a1', dueno, 'd1', ADMIN),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(attachments.softRemove).not.toHaveBeenCalled();
+    });
+
+    it('la baja del dueño es lógica, acotada al dueño, y saltea el bloqueo del genérico', async () => {
+      attachments.findOne.mockResolvedValue(doc);
+      await service.removeDelDueno('a1', dueno, 'd1', ADMIN);
+      expect(attachments.findOne).toHaveBeenCalledWith({
+        where: expect.objectContaining({ ownerId: 'car-1' }) as unknown,
+      });
+      expect(attachments.softRemove).toHaveBeenCalledWith(doc);
+      expect(storage.remove).not.toHaveBeenCalled();
+      // El genérico la sigue bloqueando.
+      await expect(service.remove('a1', 'd1', ADMIN)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(attachments.softRemove).toHaveBeenCalledTimes(1);
+    });
+
+    it('el listado desde su endpoint sí consulta', async () => {
+      const resolverAuto = {
+        ownerType: AttachmentOwnerType.CAR_DOCUMENT,
+        assertOwner: jest.fn().mockResolvedValue(undefined),
+      };
+      const registry = new AttachmentOwnerRegistry();
+      registry.register(resolverAuto as AttachmentOwnerResolver);
+      const conAuto = new AttachmentService(
+        attachments as unknown as Repository<Attachment>,
+        registry,
+        storage as unknown as S3Service,
+        cleanup as unknown as S3CleanupService,
+      );
+      attachments.find.mockResolvedValue([doc]);
+      await expect(
+        conAuto.list(
+          AttachmentOwnerType.CAR_DOCUMENT,
+          'car-1',
+          'd1',
+          ADMIN,
+          true,
+        ),
+      ).resolves.toEqual([doc]);
+      expect(resolverAuto.assertOwner).toHaveBeenCalledWith('car-1', 'd1');
+    });
+  });
+
   describe('huérfanos: la intención se anota antes', () => {
     it('al subir: reserva la key ANTES del put y la confirma en la transacción que guarda', async () => {
       await service.upload(
