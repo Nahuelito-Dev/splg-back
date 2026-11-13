@@ -53,6 +53,8 @@ const SIN_DISTRIBUIDORA =
 export class StaffRoleController {
   constructor(private readonly roles: StaffRoleService) {}
 
+  // También lo lee quien sólo asigna roles a los administradores («Cambiar rol»).
+  @Permiso('roles.gestionar', 'administradores.gestionar')
   @Get()
   @ApiOperation({
     summary: 'Listar los roles del personal con su cantidad de administradores',

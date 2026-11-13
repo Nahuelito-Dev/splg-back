@@ -1009,6 +1009,9 @@ export class OrderService {
         paymentMethod: order.paymentMethod,
         expiresAt: new Date(Date.now() + offerTtlSeconds * 1000).toISOString(),
         items: order.items,
+        // Ya está asignado: la app lo abre como entrega, no como una oferta que se
+        // acepta o se deja vencer. Las versiones viejas lo ignoran y siguen igual.
+        assigned: true,
       });
     } catch (error) {
       this.logger.error(

@@ -176,6 +176,25 @@ describe('AdminService', () => {
     expect(roles.findOne).toHaveBeenCalledWith('r-admin');
   });
 
+  it('el alta devuelve el admin releído con el rol de personal que puso la base', async () => {
+    users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
+    roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
+    admins.save.mockResolvedValue({ adminId: 'a-nuevo', userId: 'u1' });
+    const releido = {
+      adminId: 'a-nuevo',
+      userId: 'u1',
+      staffRole: { staffRoleId: 'r1', name: 'Administrador', isSystem: true },
+    };
+    admins.findOne.mockResolvedValue(releido);
+    await expect(
+      service.create({ user_id: 'u1', distributor_id: 'd1' }, 'd1'),
+    ).resolves.toBe(releido);
+    expect(admins.findOne).toHaveBeenCalledWith({
+      where: { adminId: 'a-nuevo' },
+      relations: ['staffRole'],
+    });
+  });
+
   it('el perfil de un admin de empresa exige X-Distributor y que coincida con el cuerpo', async () => {
     users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
     roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });

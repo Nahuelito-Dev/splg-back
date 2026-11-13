@@ -391,10 +391,15 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     // -------------------------------------------------------------- listar roles
     listar('sin token', undefined, 401, sinToken),
     ...cuentasDeLasApps(listar),
-    listar('admin sin roles.gestionar', 'adminLector', 403, {
-      code: 'PERMISSION_DENIED',
-      mensajeExacto: SIN_PERMISO_ROLES,
-    }),
+    listar(
+      'admin sin roles.gestionar ni administradores.gestionar',
+      'adminLector',
+      403,
+      {
+        code: 'PERMISSION_DENIED',
+        mensajeExacto: `${SIN_PERMISO_ROLES} ni para gestionar los administradores`,
+      },
+    ),
     listar('admin de la A: sistema primero, sólo los de la A', 'adminA', 200, {
       verificar: (c, x) =>
         expect(resumenDeLista(c, x)).toEqual({
@@ -826,7 +831,15 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       expect(editado).toMatchObject({
         permissions: ['administradores.gestionar'],
       });
-      await pedir('get', '/v2/staff-roles', 'adminC', 403);
+      // Ya no gestiona roles: no abre la ficha de uno, aunque la lista la sigue viendo
+      // porque asigna roles (administradores.gestionar).
+      await pedir(
+        'get',
+        `/v2/staff-roles/${ctx.rolGestorDeRolesC}`,
+        'adminC',
+        403,
+      );
+      await pedir('get', '/v2/staff-roles', 'adminC', 200);
     });
 
     it('la auditoría asienta el alta del rol y la reasignación con el usuario que las hizo', async () => {
