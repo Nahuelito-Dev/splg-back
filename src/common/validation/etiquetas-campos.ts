@@ -32,6 +32,16 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   etaNotifyShiftMinutes: 'Minutos de corrimiento para avisar al cliente',
   lateOrderPolicy: 'Política para pedidos atrasados',
   notStartedAlertMinutes: 'Minutos para avisar que no se inició el pedido',
+  // Hoja de ruta (F34).
+  acceptLateStops: 'Aceptar paradas fuera de franja',
+  lock: 'Fijar la parada',
+  locked: 'Paradas fijas',
+  orderIds: 'Pedidos',
+  planDate: 'Fecha de reparto',
+  plannedStartAt: 'Hora de salida',
+  targetSheetId: 'Hoja de destino',
+  targetVersion: 'Versión de la hoja de destino',
+  version: 'Versión',
   // Campos que el DTO no declara a propósito (se rechazan como «dato que no corresponde»).
   logo_url: 'Logotipo',
   photoUrl: 'Foto',

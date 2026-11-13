@@ -261,6 +261,8 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   process_run_purge: 'Limpieza del historial de procesos',
   process_run_watch: 'Control de procesos',
   psychophysical: 'Examen psicofísico',
+  route_planning_close_days: 'Cierre de los días de la hoja de ruta',
+  route_planning_propose: 'Propuesta de la hoja de ruta del día siguiente',
   purchase_receipt: 'Recepción de compra',
   ready: 'Lista',
   receiver_retention: 'Retención de datos del receptor',

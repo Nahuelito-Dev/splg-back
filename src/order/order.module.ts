@@ -1,3 +1,4 @@
+import { RoutePlanningHoldModule } from '../route-batch/planning-hold/route-planning-hold.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ExpressOrderController } from './express-order.controller';
@@ -82,6 +83,7 @@ import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
 import { VencimientoSinChoferService } from './application/vencimiento-sin-chofer.service';
 @Module({
   imports: [
+    RoutePlanningHoldModule, // el despacho no ofrece lo retenido por una hoja de ruta (F34)
     TypeOrmModule.forFeature([
       Order,
       OrderItem,

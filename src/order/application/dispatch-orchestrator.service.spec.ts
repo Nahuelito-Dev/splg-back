@@ -58,6 +58,7 @@ describe('DispatchOrchestratorService', () => {
     findDriverOfferState: jest.Mock;
     hasActiveOffer: jest.Mock;
     isInLiveBatch: jest.Mock;
+    isInPlannedRouteSheet: jest.Mock;
     isHeldForBatching: jest.Mock;
     findExpired: jest.Mock;
     updateStatus: jest.Mock;
@@ -118,6 +119,7 @@ describe('DispatchOrchestratorService', () => {
         .mockResolvedValue({ blocked: [], reofferable: [] }),
       hasActiveOffer: jest.fn().mockResolvedValue(false),
       isInLiveBatch: jest.fn().mockResolvedValue(false),
+      isInPlannedRouteSheet: jest.fn().mockResolvedValue(false),
       isHeldForBatching: jest.fn().mockResolvedValue(false),
       findExpired: jest.fn().mockResolvedValue([]),
       updateStatus: jest.fn().mockResolvedValue(true),
@@ -714,6 +716,24 @@ describe('DispatchOrchestratorService', () => {
       expect(offers.isInLiveBatch).toHaveBeenCalledWith('ord-1');
       expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
       expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('F34: una parada de una hoja de ruta en borrador o confirmada no se ofrece', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isInPlannedRouteSheet.mockResolvedValue(true);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBeNull();
+      expect(offers.isInPlannedRouteSheet).toHaveBeenCalledWith('ord-1');
+      expect(dispatch.findNearbyDrivers).not.toHaveBeenCalled();
+      expect(offers.create).not.toHaveBeenCalled();
+    });
+
+    it('F34: fuera de una hoja de ruta viva, el pedido se ofrece como siempre', async () => {
+      dispatch.findNearbyDrivers.mockResolvedValueOnce(['near']);
+      offers.isInPlannedRouteSheet.mockResolvedValue(false);
+
+      expect(await orchestrator.offerToNextDriver(makeOrder())).toBe('near');
+      expect(offers.create).toHaveBeenCalledTimes(1);
     });
 
     it('M4 encendido: un programado dentro del margen de espera no se ofrece suelto', async () => {

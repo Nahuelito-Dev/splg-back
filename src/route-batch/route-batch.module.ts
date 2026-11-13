@@ -17,6 +17,26 @@ import { RouteBatchController } from './route-batch.controller';
 import { RouteBatchCron } from './route-batch.cron';
 import { RouteBatchNotifier } from './route-batch.notifier';
 import { RouteBatchService } from './route-batch.service';
+import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
+import { RoutesModule } from '../routes/routes.module';
+import { RoutePlanProposalService } from './application/route-plan-proposal.service';
+import { RoutePlanService } from './application/route-plan.service';
+import { RouteSheetCalculator } from './application/route-sheet-calculator.service';
+import { RouteSheetDataService } from './application/route-sheet-data.service';
+import { RouteSheetEditingService } from './application/route-sheet-editing.service';
+import { RouteSheetLifecycleService } from './application/route-sheet-lifecycle.service';
+import { RouteSheetLocks } from './application/route-sheet-locks.service';
+import { RouteSheetQueryService } from './application/route-sheet-query.service';
+import { RouteSheetPdfService } from './application/route-sheet-pdf.service';
+import { PdfBrandingService } from '../pdf/pdf-branding.service';
+import { S3Module } from '../s3/s3.module';
+import { RouteSheetWriter } from './application/route-sheet-writer.service';
+import {
+  RoutePlansController,
+  RoutePlanningSettingsController,
+} from './presentation/route-plans.controller';
+import { RouteSheetsController } from './presentation/route-sheets.controller';
+import { RoutePlanningCron } from './route-planning.cron';
 
 /**
  * Agrupación inteligente de pedidos por recorrido (CU-107, módulo M4). Arma
@@ -38,13 +58,35 @@ import { RouteBatchService } from './route-batch.service';
     DistributorModule, // los parámetros de la agrupación
     GatewaysModule, // la oferta le llega al chofer por el socket
     RedisModule, // cerrojos del proceso y de cada lote
+    RoutesModule, // matriz de tiempos de la hoja de ruta (OSRM o línea recta)
+    DocumentSequenceModule, // número de la hoja al confirmarla
+    S3Module, // el logo de la distribuidora en el PDF de la hoja
   ],
-  controllers: [RouteBatchController, DriverRouteBatchesController],
+  controllers: [
+    RouteBatchController,
+    DriverRouteBatchesController,
+    RoutePlansController,
+    RouteSheetsController,
+    RoutePlanningSettingsController,
+  ],
   providers: [
     RouteBatchService,
     RouteBatchQueryService,
     RouteBatchNotifier,
     RouteBatchCron,
+    // Hoja de ruta (F34, E3): planificación, edición y propuesta.
+    RouteSheetDataService,
+    RouteSheetCalculator,
+    RouteSheetWriter,
+    RouteSheetLocks,
+    RoutePlanService,
+    RoutePlanProposalService,
+    RouteSheetEditingService,
+    RouteSheetLifecycleService,
+    RouteSheetQueryService,
+    RouteSheetPdfService,
+    PdfBrandingService, // membrete del PDF (el de `pdf/`, que no lo exporta)
+    RoutePlanningCron,
   ],
 })
 export class RouteBatchModule {}

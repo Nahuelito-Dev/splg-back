@@ -385,6 +385,7 @@ export class RouteBatchService {
           AND NOT EXISTS (SELECT 1 FROM "route_batch_stop" s
                             JOIN "route_batch" b ON b."batch_id" = s."batch_id"
                            WHERE s."order_id" = o."order_id" AND b."status" = 'dissolved'
+                             AND b."kind" = 'offer'
                              AND b."close_reason" IN ('exhausted', 'admin'))
         ORDER BY 2, 6, 1
         LIMIT ${TOPE_DE_CANDIDATOS}`,

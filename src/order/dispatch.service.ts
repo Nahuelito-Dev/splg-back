@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { OrderService } from './order.service';
 import { RedisService } from '../redis/redis.service';
@@ -12,6 +12,7 @@ import {
 } from '../process-run/process-run.context';
 import { ProcessName } from '../process-run/domain/process-catalog';
 import { VencimientoSinChoferService } from './application/vencimiento-sin-chofer.service';
+import { RoutePlanningHoldService } from '../route-batch/planning-hold/route-planning-hold.service';
 
 /**
  * Motor de tiempo del despacho secuencial. Corre cada 15s y, tomando un lock
@@ -48,6 +49,7 @@ export class DispatchService {
     private readonly frecuencias: ScheduledTasksSettingsService,
     private readonly refunds: RefundsService,
     private readonly vencimientos: VencimientoSinChoferService,
+    @Optional() private readonly hojaDeRuta?: RoutePlanningHoldService,
   ) {}
 
   @Cron('*/15 * * * * *') // cada 15 segundos
@@ -119,8 +121,13 @@ export class DispatchService {
         distributorId,
         true,
       );
+      // Hoja de ruta (F34): lo retenido por una hoja en borrador o confirmada no se ofrece.
+      const retenidos = await this.hojaDeRuta?.isHeldForPlanning(
+        orders.map((o) => o.orderId),
+      );
       for (const order of orders) {
         if (new Date(order.createdAt) > staleBefore) continue;
+        if (retenidos?.has(order.orderId)) continue;
         await this.orchestrator.ensureOffered(order);
       }
     }
