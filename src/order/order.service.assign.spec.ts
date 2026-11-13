@@ -197,6 +197,7 @@ describe('OrderService · asignación manual', () => {
       truckGate as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
       {} as never,
       dispatchSettings as unknown as DispatchSettingsService,
+      {} as never,
     );
     // La respuesta final releé el pedido; en vez de volver a pedir el lock
     // (consumiría la cola de `mockResolvedValueOnce` de cada test), devuelve
@@ -665,6 +666,7 @@ describe('OrderService · asignación manual', () => {
       {
         assertPuedeAsignar: jest.fn().mockResolvedValue(undefined),
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
+      {} as never,
       {} as never,
       {} as never,
     );

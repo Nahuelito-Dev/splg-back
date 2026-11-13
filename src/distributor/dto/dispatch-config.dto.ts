@@ -13,6 +13,8 @@ import { EsEstrictamenteCreciente } from '../../common/validators/es-estrictamen
 import {
   DISPATCH_FINISHING_RADIUS_MAX_METERS,
   DISPATCH_FINISHING_RADIUS_MIN_METERS,
+  DISPATCH_ARRIVAL_RADIUS_MAX_METERS,
+  DISPATCH_ARRIVAL_RADIUS_MIN_METERS,
   DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES,
   DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES,
   DISPATCH_OFFER_TTL_MAX_SECONDS,
@@ -81,6 +83,20 @@ export class DispatchConfigDto {
   @Min(DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES)
   @Max(DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES)
   noDriverExpiryMinutes?: number;
+
+  @ApiPropertyOptional({
+    description: `Radio en metros dentro del cual el chofer puede marcar «Llegué» (${DISPATCH_ARRIVAL_RADIUS_MIN_METERS} a ${DISPATCH_ARRIVAL_RADIUS_MAX_METERS}). 0 desactiva el control`,
+    type: 'integer',
+    example: 150,
+    default: 150,
+    minimum: DISPATCH_ARRIVAL_RADIUS_MIN_METERS,
+    maximum: DISPATCH_ARRIVAL_RADIUS_MAX_METERS,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(DISPATCH_ARRIVAL_RADIUS_MIN_METERS)
+  @Max(DISPATCH_ARRIVAL_RADIUS_MAX_METERS)
+  arrivalRadiusMeters?: number;
 }
 
 /** Respuesta de `GET`/`PUT /module-config/dispatch`. */
@@ -101,6 +117,9 @@ export class DispatchConfigResponseDto {
     example: 120,
   })
   noDriverExpiryMinutes!: number;
+
+  @ApiProperty({ type: 'integer', example: 150 })
+  arrivalRadiusMeters!: number;
 
   @ApiProperty({
     description:

@@ -113,4 +113,20 @@ describe('DispatchConfigDto (CU-171)', () => {
       ).toEqual(['finishingRadiusMeters']);
     },
   );
+
+  it.each([0, 150, 5000])(
+    'acepta el radio de llegada entre 0 y 5000 m (%s)',
+    async (m) => {
+      expect(await camposInvalidos({ arrivalRadiusMeters: m })).toEqual([]);
+    },
+  );
+
+  it.each([-1, 5001, 10.5, '150'])(
+    'rechaza el radio de llegada fuera de 0..5000 m o no entero (%s)',
+    async (m) => {
+      expect(await camposInvalidos({ arrivalRadiusMeters: m })).toEqual([
+        'arrivalRadiusMeters',
+      ]);
+    },
+  );
 });

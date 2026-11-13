@@ -252,6 +252,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
         offerTtlSeconds: 30,
         finishingRadiusMeters: 300,
         noDriverExpiryMinutes: 120,
+        arrivalRadiusMeters: 150,
         isDefault: true,
         updatedAt: null,
         updatedByUserId: null,
@@ -355,6 +356,9 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       ['minutos sin chofer de más de 1440', { noDriverExpiryMinutes: 1441 }],
       ['minutos sin chofer fraccionarios', { noDriverExpiryMinutes: 30.5 }],
       ['minutos sin chofer como texto', { noDriverExpiryMinutes: '120' }],
+      ['radio de llegada negativo', { arrivalRadiusMeters: -1 }],
+      ['radio de llegada de 5001 m', { arrivalRadiusMeters: 5001 }],
+      ['radio de llegada fraccionario', { arrivalRadiusMeters: 10.5 }],
       [
         'campo desconocido',
         { radiusStepsKm: [5], offerTtlSeconds: 30, otro: 1 },
@@ -363,7 +367,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       const e = await escenario();
       const res = await putDespacho(e, cuerpo).expect(400);
       expect(JSON.stringify(res.body)).toMatch(
-        /Escalones de radio|Segundos de vigencia de la oferta|Radio de cierre|Minutos sin chofer antes de cancelar el pedido|dato que no corresponde/,
+        /Escalones de radio|Segundos de vigencia de la oferta|Radio de cierre|Minutos sin chofer antes de cancelar el pedido|Radio para marcar Llegué \(metros\)|dato que no corresponde/,
       );
       // Lo rechazado no se guardó.
       const filas = await ds.query<unknown[]>(
@@ -420,6 +424,20 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
         .set(e.adminB.headers)
         .expect(200);
       expect(deB.body).toMatchObject({ noDriverExpiryMinutes: 120 });
+    });
+
+    it('radio de llegada: 0 lo apaga, 5000 es el tope y si no viene se lee 150', async () => {
+      const e = await escenario();
+      const apagado = await putDespacho(e, { arrivalRadiusMeters: 0 }).expect(
+        200,
+      );
+      expect(apagado.body).toMatchObject({
+        arrivalRadiusMeters: 0,
+        isDefault: false,
+      });
+      await putDespacho(e, { arrivalRadiusMeters: 5000 }).expect(200);
+      const parcial = await putDespacho(e, { offerTtlSeconds: 60 }).expect(200);
+      expect(parcial.body).toMatchObject({ arrivalRadiusMeters: 150 });
     });
 
     it('super admin sin X-Distributor: 400 con el mensaje de siempre; con X-Distributor opera esa distribuidora', async () => {

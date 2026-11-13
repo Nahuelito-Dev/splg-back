@@ -75,6 +75,7 @@ describe('OrderService · rejectOffer', () => {
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
       {} as never,
       {} as never,
+      {} as never,
     );
   });
 

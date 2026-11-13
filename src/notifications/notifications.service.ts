@@ -206,18 +206,22 @@ export class NotificationsService {
    * plano el socket no llega, y sin este push el aviso se pierde justo en el
    * caso que CU-011 quería cubrir. No-op si el cliente no registró token.
    * Nunca lanza: el aviso de llegada no debe romperse por un fallo de FCM.
+   * Devuelve si salió: `sent` con el id de FCM, `no_token` si el cliente no
+   * registró dispositivo y `failed` si FCM falló o no confirmó a tiempo (el
+   * adaptador devuelve `''` al vencer el tope), para que quien avisa pueda
+   * reintentar.
    */
   async sendArrivalPushToCustomer(
     customerUserId: string,
     orderId: string,
     driverName: string,
-  ): Promise<void> {
+  ): Promise<'sent' | 'no_token' | 'failed'> {
     try {
       const { token } =
         await this.customersService.findNotificationToken(customerUserId);
-      if (!token) return;
+      if (!token) return 'no_token';
 
-      await this.fcm.sendToToken(token, {
+      const messageId = await this.fcm.sendToToken(token, {
         notification: {
           title: '¡Tu pedido llegó!',
           body: `${driverName} está en la puerta.`,
@@ -226,13 +230,21 @@ export class NotificationsService {
         android: { priority: 'high' },
         apns: { headers: { 'apns-priority': '10' } },
       });
+      if (!messageId) {
+        this.logger.warn(
+          `Push de llegada al cliente ${customerUserId} sin confirmar (pedido ${orderId})`,
+        );
+        return 'failed';
+      }
       this.logger.log(
         `Push de llegada enviado al cliente ${customerUserId} (pedido ${orderId})`,
       );
+      return 'sent';
     } catch (error) {
       this.logger.warn(
         `No se pudo enviar push de llegada al cliente ${customerUserId}: ${errorMessage(error)}`,
       );
+      return 'failed';
     }
   }
 

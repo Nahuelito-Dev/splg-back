@@ -73,6 +73,26 @@ import {
 } from './domain/delivery-code.util';
 import { bloquearChoferVigente } from '../common/locks/chofer-lock';
 import { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
+import { RedisService } from '../redis/redis.service';
+import type { PushDeLlegada } from './domain/ports/notification.port';
+
+/** Respuesta del aviso «Llegué» (también la de un aviso repetido). */
+const AVISO_DE_LLEGADA = { message: 'Cliente notificado' } as const;
+/** Cuánto dura la marca de «ya avisé la llegada» de un pedido y chofer. */
+const ARRIVAL_MARK_TTL_SECONDS = 6 * 60 * 60;
+/** Tope de cada operación de Redis de la marca de llegada. */
+const ARRIVAL_MARK_TIMEOUT_MS = 500;
+/**
+ * Marca «enviando»: el turno de avisar. Vence sola si el proceso muere a
+ * mitad del aviso; es mayor que el tope de FCM (5 s por omisión) más la
+ * lectura del token.
+ */
+const ARRIVAL_SENDING_TTL_SECONDS = 15;
+/** Valor de la marca cuando el push salió (dura `ARRIVAL_MARK_TTL_SECONDS`). */
+const MARCA_ENVIADO = 'sent';
+/** Cuánto espera un toque a que se resuelva el aviso que está enviando otro. */
+const ARRIVAL_WAIT_MAX_MS = 8_000;
+const ARRIVAL_WAIT_STEP_MS = 250;
 
 @Injectable()
 export class OrderService {
@@ -119,6 +139,8 @@ export class OrderService {
     private readonly driverRatings: DriverRatingPort,
     // CU-171: la asignación manual avisa al chofer con la misma ventana del despacho.
     private readonly dispatchSettings: DispatchSettingsService,
+    // «Llegué» v2: marca de aviso ya enviado (un segundo toque no re-notifica).
+    private readonly redis: RedisService,
   ) {}
 
   /**
@@ -1185,6 +1207,203 @@ export class OrderService {
       );
     }
 
+    return this.notificarLlegada(order);
+  }
+
+  /**
+   * V2: controla la cercanía al destino antes de avisar al cliente.
+   *
+   * Orden: pedido de la distribuidora (404, en el controller) → existe (404) →
+   * es del chofer (403) → en camino (409) → ya avisado (200 sin re-notificar)
+   * → dentro del radio (409 `ARRIVAL_TOO_FAR`) → aviso.
+   *
+   * Un solo aviso, pero que llegue: el primer aviso deja una marca en Redis por
+   * pedido y chofer y los toques siguientes responden lo mismo sin volver a
+   * notificar. La marca sólo queda si el push salió: si no salió (FCM falló o
+   * no confirmó, o el cliente no tiene token) se borra y el próximo toque
+   * vuelve a avisar. Cada operación de la marca tiene un tope corto; si Redis
+   * no responde a tiempo se avisa igual.
+   */
+  async notifyDriverArrivedWithDistance(
+    orderId: string,
+    userId: string,
+    role: RoleType,
+    latitude: number,
+    longitude: number,
+  ) {
+    const order = await this.findOne(orderId);
+    await this.assertPedidoDelChofer(order, userId, role);
+
+    if (order.status !== OrderStatus.ON_THE_WAY) {
+      throw new ConflictException({
+        statusCode: 409,
+        message: 'El pedido debe estar en camino para avisar llegada',
+        error: 'Conflict',
+        code: 'ORDER_NOT_ON_THE_WAY',
+      });
+    }
+
+    const marca = `order:arrived:${order.orderId}:${order.deliveryId ?? ''}`;
+    if ((await this.leerMarca(marca)) === MARCA_ENVIADO) {
+      return { ...AVISO_DE_LLEGADA };
+    }
+
+    const { arrivalRadiusMeters } = await this.dispatchSettings.obtener(
+      order.distributorId,
+    );
+    const destino = order.deliveryPoint ?? order.address?.location ?? null;
+    if (arrivalRadiusMeters > 0 && destino) {
+      const [destinoLongitude, destinoLatitude] = destino.coordinates;
+      // Se compara la distancia real; sólo la respuesta va redondeada.
+      const distancia = this.distanciaEnMetros(
+        latitude,
+        longitude,
+        destinoLatitude,
+        destinoLongitude,
+      );
+      if (distancia > arrivalRadiusMeters) {
+        const distanceMeters = Math.round(distancia);
+        throw new ConflictException({
+          statusCode: 409,
+          message: `Todavía estás a ${distanceMeters} m del domicilio. Marcá «Llegué» cuando estés en la puerta.`,
+          error: 'Conflict',
+          code: 'ARRIVAL_TOO_FAR',
+          distanceMeters,
+          radiusMeters: arrivalRadiusMeters,
+        });
+      }
+    } else if (arrivalRadiusMeters > 0) {
+      this.logger.warn(
+        `Pedido ${order.orderId}: se permite marcar llegada sin controlar distancia porque no tiene ubicación de entrega`,
+      );
+    }
+
+    // Un solo aviso, pero que llegue: el turno de avisar se toma con SET NX
+    // («enviando», TTL corto). El que encuentra a otro enviando espera a ver
+    // si salió (→ no avisa) o si la marca se borró porque falló (→ avisa él).
+    const turno = await this.tomarTurnoDeAviso(marca);
+    if (turno === 'ya_salio') return { ...AVISO_DE_LLEGADA };
+
+    let push: PushDeLlegada = 'failed';
+    try {
+      push = await this.avisarLlegada(order);
+    } finally {
+      if (push === 'sent') {
+        await this.conTope(
+          this.redis.setex(marca, ARRIVAL_MARK_TTL_SECONDS, MARCA_ENVIADO),
+          undefined,
+          `guardar ${marca}`,
+        );
+      } else {
+        this.logger.warn(
+          `Pedido ${order.orderId}: el push de llegada no salió (${push}); el próximo «Llegué» vuelve a avisar`,
+        );
+        // Sólo se borra la marca propia: si se avisó sin turno (Redis no
+        // respondió o se agotó la espera) la marca es de otro.
+        if (turno === 'mio') {
+          await this.conTope(
+            this.redis.del(marca),
+            undefined,
+            `borrar ${marca}`,
+          );
+        }
+      }
+    }
+    return { ...AVISO_DE_LLEGADA };
+  }
+
+  private leerMarca(marca: string): Promise<string | null> {
+    return this.conTope(this.redis.get(marca), null, `leer ${marca}`);
+  }
+
+  /**
+   * - `mio`: tomó la marca «enviando» (o Redis no responde: fail-open).
+   * - `ya_salio`: otro toque ya avisó y el push salió.
+   * - `sin_turno`: otro está enviando y no se resolvió dentro de la espera;
+   *   se avisa igual (mejor un aviso de más que ninguno).
+   */
+  private async tomarTurnoDeAviso(
+    marca: string,
+  ): Promise<'mio' | 'ya_salio' | 'sin_turno'> {
+    const limite = Date.now() + ARRIVAL_WAIT_MAX_MS;
+    for (;;) {
+      const tomada = await this.conTope(
+        this.redis.setIfAbsent(marca, ARRIVAL_SENDING_TTL_SECONDS),
+        true,
+        `tomar ${marca}`,
+      );
+      if (tomada) return 'mio';
+      const estado = await this.leerMarca(marca);
+      if (estado === MARCA_ENVIADO) return 'ya_salio';
+      if (Date.now() >= limite) {
+        this.logger.warn(
+          `${marca}: otro aviso sigue enviándose tras ${ARRIVAL_WAIT_MAX_MS} ms; se avisa igual`,
+        );
+        return 'sin_turno';
+      }
+      // «enviando»: se espera; null: se borró (el otro falló) y se reintenta
+      // tomarla en la vuelta siguiente.
+      await new Promise((r) => setTimeout(r, ARRIVAL_WAIT_STEP_MS));
+    }
+  }
+
+  /**
+   * Una operación de Redis del «Llegué» con tope: con Redis desconectado
+   * ioredis encola el comando y la promesa puede tardar mucho. Si falla o no
+   * responde en `ARRIVAL_MARK_TIMEOUT_MS`, devuelve `siFalla` (el aviso sigue).
+   */
+  private async conTope<T>(
+    operacion: Promise<T>,
+    siFalla: T,
+    que: string,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const vencido = new Promise<'vencido'>((resolve) => {
+      timer = setTimeout(() => resolve('vencido'), ARRIVAL_MARK_TIMEOUT_MS);
+    });
+    try {
+      const r = await Promise.race([operacion, vencido]);
+      if (r === 'vencido') {
+        this.logger.warn(
+          `Redis no respondió en ${ARRIVAL_MARK_TIMEOUT_MS} ms al ${que}: se sigue`,
+        );
+        operacion.catch(() => undefined);
+        return siFalla;
+      }
+      return r;
+    } catch (error) {
+      this.logger.warn(`No se pudo ${que}: ${String(error)}`);
+      return siFalla;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private distanciaEnMetros(
+    latitudeA: number,
+    longitudeA: number,
+    latitudeB: number,
+    longitudeB: number,
+  ): number {
+    const aRad = (latitudeA * Math.PI) / 180;
+    const bRad = (latitudeB * Math.PI) / 180;
+    const deltaLatitud = ((latitudeB - latitudeA) * Math.PI) / 180;
+    const deltaLongitud = ((longitudeB - longitudeA) * Math.PI) / 180;
+    const senoLatitud = Math.sin(deltaLatitud / 2);
+    const senoLongitud = Math.sin(deltaLongitud / 2);
+    const h =
+      senoLatitud * senoLatitud +
+      Math.cos(aRad) * Math.cos(bRad) * senoLongitud * senoLongitud;
+    return 6_371_000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  }
+
+  private async notificarLlegada(order: Order) {
+    await this.avisarLlegada(order);
+    return { ...AVISO_DE_LLEGADA };
+  }
+
+  /** Socket + push al cliente; devuelve si el push salió. */
+  private async avisarLlegada(order: Order): Promise<PushDeLlegada> {
     const driverName = order.delivery?.user?.fullName || 'El repartidor';
 
     this.dispatch.notifyCustomer(order.customerId, 'order:arrived', {
@@ -1194,14 +1413,12 @@ export class OrderService {
     });
 
     // Push además del socket: si el cliente tiene la app cerrada el socket no
-    // le llega. Best-effort, no bloquea la respuesta al chofer.
-    await this.notifications.sendArrivalPushToCustomer(
+    // le llega. Nunca lanza; devuelve si salió.
+    return this.notifications.sendArrivalPushToCustomer(
       order.customerId,
       order.orderId,
       driverName,
     );
-
-    return { message: 'Cliente notificado' };
   }
 
   /**

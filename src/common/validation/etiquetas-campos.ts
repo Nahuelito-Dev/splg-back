@@ -55,6 +55,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   anomaly: 'Anomalía',
   anticipationKm: 'Anticipación (km)',
   apartment: 'Departamento',
+  arrivalRadiusMeters: 'Radio para marcar Llegué (metros)',
   appeal: 'Apelación',
   appliesToCategories: 'Categorías a las que aplica',
   attachmentId: 'Archivo adjunto',

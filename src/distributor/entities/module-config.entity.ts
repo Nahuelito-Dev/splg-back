@@ -193,6 +193,7 @@ const CHECK_DESPACHO = [
       ['offerTtlSeconds', 10, 300],
       ['finishingRadiusMeters', 0, 5000],
       ['noDriverExpiryMinutes', 1, 1440],
+      ['arrivalRadiusMeters', 0, 5000],
     ] as const
   ).map(
     ([k, min, max]) =>
