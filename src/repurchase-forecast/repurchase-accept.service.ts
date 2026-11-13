@@ -13,6 +13,7 @@ import {
 import { DistributorService } from '../distributor/distributor.service';
 import { DistributorStatus } from '../distributor/entities/distributor.entity';
 import { TimeSlotService } from '../time-slot/time-slot.service';
+import { UserAddressService } from '../user-address/user-address.service';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { CreateOrderDto } from '../order/dto/create-order.dto';
 import { Order } from '../order/entities/order.entity';
@@ -58,6 +59,7 @@ export class RepurchaseAcceptService {
     private readonly redis: RedisService,
     private readonly distribuidoras: DistributorService,
     private readonly franjas: TimeSlotService,
+    private readonly direcciones: UserAddressService,
   ) {}
 
   async aceptar(
@@ -147,16 +149,29 @@ export class RepurchaseAcceptService {
         'La invitación se cerró porque ya hiciste un pedido',
       );
     }
-    if (!invitacion.addressId) {
+    const addressId = cuerpo.addressId ?? invitacion.addressId;
+    if (!addressId) {
       throw new ConflictException(
         'La dirección de la invitación ya no existe: hacé el pedido desde la app',
       );
     }
 
+    if (cuerpo.addressId) {
+      const direccion = await this.direcciones.buscarDelUsuario(
+        cuerpo.addressId,
+        userId,
+      );
+      if (!direccion) {
+        throw new NotFoundException(
+          'No encontramos esa dirección entre las tuyas',
+        );
+      }
+    }
+
     const entrega = await this.entregaDe(invitacion, cuerpo, ahora);
     const dto = new CreateOrderDto();
     dto.customerId = userId;
-    dto.addressId = invitacion.addressId;
+    dto.addressId = addressId;
     dto.items = invitacion.suggestedItems.map((i) => ({
       gasCylinderId: i.gasCylinderId,
       quantity: i.quantity,

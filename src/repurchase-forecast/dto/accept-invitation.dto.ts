@@ -22,6 +22,15 @@ export const MEDIOS_AL_ACEPTAR = [
  */
 export class AcceptInvitationDto {
   @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Dirección de entrega; por omisión la de la invitación. Tiene que ser una dirección vigente del cliente',
+  })
+  @IsOptional()
+  @IsUUID()
+  addressId?: string;
+
+  @ApiPropertyOptional({
     enum: MEDIOS_AL_ACEPTAR,
     description: 'Medio de pago; por omisión el de la invitación',
   })
