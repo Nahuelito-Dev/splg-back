@@ -45,7 +45,8 @@
     "postman:probar": "node scripts/postman/probar.js",
     "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "verify": "npm run typecheck && npm run lint:check && jest --ci --coverage && nest build"
+    "verify": "npm run typecheck && npm run lint:check && jest --ci --coverage && npm run test:perf && nest build",
+    "test:perf": "jest --ci --runInBand --testPathIgnorePatterns /node_modules/ --testRegex '.*\\.perf\\.spec\\.ts$'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",
@@ -143,7 +144,8 @@
       "!main.ts",
       "!data-source.ts",
       "!migrations/**",
-      "!**/index.ts"
+      "!**/index.ts",
+      "!**/*.perf.spec.ts"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
@@ -502,6 +504,10 @@
     },
     "setupFiles": [
       "<rootDir>/../test/jest-sin-keep-alive.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "\\.perf\\.spec\\.ts$"
     ]
   }
 }
