@@ -25,7 +25,12 @@ import { PuntoDeRuta, decodificarPolilinea } from './polyline';
 export const ROUTES_FETCH: InjectionToken = 'ROUTES_FETCH';
 export type FetchFn = (
   url: string,
-  init?: { signal?: AbortSignal },
+  init?: {
+    signal?: AbortSignal;
+    method?: 'GET' | 'POST';
+    headers?: Record<string, string>;
+    body?: string;
+  },
 ) => Promise<{
   ok: boolean;
   status: number;
@@ -47,6 +52,15 @@ const TTL_DIARIO_SEG = 24 * 60 * 60;
 const TIMEOUT_PROVEEDOR_MS = 5000;
 const RADIO_TIERRA_M = 6_371_000;
 
+/** El mensaje de error que trae el cuerpo de una respuesta fallida del proveedor. */
+function mensajeDelProveedor(cuerpo: unknown): string | null {
+  if (!cuerpo || typeof cuerpo !== 'object') return null;
+  const c = cuerpo as ErrorDelProveedor;
+  if (typeof c.error === 'object' && c.error?.message) return c.error.message;
+  if (typeof c.error === 'string') return c.error;
+  return c.error_message ?? c.message ?? null;
+}
+
 /** Distancia entre dos puntos sobre la esfera (haversine), en metros. */
 export function distanciaEnMetros(a: PuntoDeRuta, b: PuntoDeRuta): number {
   const rad = (g: number) => (g * Math.PI) / 180;
@@ -58,15 +72,36 @@ export function distanciaEnMetros(a: PuntoDeRuta, b: PuntoDeRuta): number {
   return 2 * RADIO_TIERRA_M * Math.asin(Math.sqrt(h));
 }
 
-interface GoogleDirections {
-  status: string;
+/** Google Routes API (`directions/v2:computeRoutes`). */
+export const GOOGLE_ROUTES_URL =
+  'https://routes.googleapis.com/directions/v2:computeRoutes';
+/** Sólo los campos que se usan: la Routes API cobra según la máscara. */
+export const GOOGLE_ROUTES_FIELD_MASK =
+  'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline';
+
+interface GoogleRoutes {
   routes?: Array<{
-    overview_polyline?: { points?: string };
-    legs?: Array<{
-      distance?: { value?: number };
-      duration?: { value?: number };
-    }>;
+    /** Se omite cuando es 0. */
+    distanceMeters?: number;
+    /** Segundos con sufijo `s` (`"123s"`, `"12.5s"`); se omite cuando es 0. */
+    duration?: string;
+    polyline?: { encodedPolyline?: string };
   }>;
+}
+
+/** Cuerpo de error de Google: `{ error: { message } }` (Routes) o `error_message` (APIs heredadas). */
+interface ErrorDelProveedor {
+  error?: { message?: string } | string;
+  error_message?: string;
+  message?: string;
+}
+
+/** `"123s"` → 123. Una duración con otro formato es un error del proveedor. */
+export function segundosDeDuracion(duracion: string | undefined): number {
+  if (duracion === undefined) return 0;
+  const m = /^(\d+(?:\.\d+)?)s$/.exec(duracion);
+  if (!m) throw new Error(`duración inválida: ${duracion}`);
+  return Number(m[1]);
 }
 interface OsrmRoute {
   code: string;
@@ -81,7 +116,7 @@ interface OsrmRoute {
  * chofer; `from` sólo se acepta si está a menos de
  * `ROUTES_FROM_MAX_DISTANCE_M` de ella. Cada consulta que llega al proveedor
  * cuenta contra un tope diario por usuario y otro por distribuidora (429), para
- * acotar el gasto de Google. Google Directions con una clave DEL SERVIDOR
+ * acotar el gasto de Google. Google Routes API con una clave DEL SERVIDOR
  * (`GOOGLE_DIRECTIONS_API_KEY`); sin clave el OSRM público sólo se usa en
  * desarrollo (en producción hace falta `OSRM_BASE_URL` propio). Con Redis caído
  * se degrada: los cupos pasan a contarse en memoria y no hay caché.
@@ -290,9 +325,9 @@ export class RoutesService {
       try {
         return await this.conGoogle(origen, destino, claveGoogle);
       } catch (error) {
-        this.logger.warn(
-          `Google Directions falló, se usa OSRM: ${errorMessage(error)}`,
-        );
+        // El mensaje viene del proveedor: la clave nunca llega al log.
+        const motivo = errorMessage(error).split(claveGoogle).join('***');
+        this.logger.warn(`Google Routes falló, se usa OSRM: ${motivo}`);
       }
     }
     const osrm = urlDeOsrm(this.config);
@@ -314,12 +349,25 @@ export class RoutesService {
     }
   }
 
-  private async pedir<T>(url: string): Promise<T> {
+  private async pedir<T>(
+    url: string,
+    opciones: {
+      method?: 'GET' | 'POST';
+      headers?: Record<string, string>;
+      body?: string;
+    } = {},
+  ): Promise<T> {
     const control = new AbortController();
     const timer = setTimeout(() => control.abort(), TIMEOUT_PROVEEDOR_MS);
     try {
-      const res = await this.http(url, { signal: control.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await this.http(url, { ...opciones, signal: control.signal });
+      if (!res.ok) {
+        const detalle = await res
+          .json()
+          .then((cuerpo) => mensajeDelProveedor(cuerpo))
+          .catch(() => null);
+        throw new Error(`HTTP ${res.status}${detalle ? `: ${detalle}` : ''}`);
+      }
       return (await res.json()) as T;
     } finally {
       clearTimeout(timer);
@@ -331,22 +379,33 @@ export class RoutesService {
     d: PuntoDeRuta,
     clave: string,
   ): Promise<DrivingRouteDto> {
-    const url =
-      'https://maps.googleapis.com/maps/api/directions/json' +
-      `?origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}` +
-      `&mode=driving&key=${encodeURIComponent(clave)}`;
-    const data = await this.pedir<GoogleDirections>(url);
+    const punto = (p: PuntoDeRuta) => ({
+      location: { latLng: { latitude: p.lat, longitude: p.lng } },
+    });
+    const data = await this.pedir<GoogleRoutes>(GOOGLE_ROUTES_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': clave,
+        'X-Goog-FieldMask': GOOGLE_ROUTES_FIELD_MASK,
+      },
+      body: JSON.stringify({
+        origin: punto(o),
+        destination: punto(d),
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_UNAWARE',
+      }),
+    });
     const ruta = data.routes?.[0];
-    const codificada = ruta?.overview_polyline?.points;
-    if (data.status !== 'OK' || !ruta || !codificada) {
-      throw new Error(`status ${data.status}`);
+    const codificada = ruta?.polyline?.encodedPolyline;
+    if (!ruta || !codificada) {
+      throw new Error(ruta ? 'ruta sin polilínea' : 'sin rutas');
     }
-    const tramos = ruta.legs ?? [];
     return this.armar(
       'google',
       codificada,
-      tramos.reduce((t, l) => t + (l.distance?.value ?? 0), 0),
-      tramos.reduce((t, l) => t + (l.duration?.value ?? 0), 0),
+      ruta.distanceMeters ?? 0,
+      segundosDeDuracion(ruta.duration),
     );
   }
 

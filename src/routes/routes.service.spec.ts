@@ -12,8 +12,11 @@ import {
   LIMITE_DIARIO_POR_DISTRIBUIDORA,
   LIMITE_DIARIO_POR_USUARIO,
   LIMITE_POR_MINUTO,
+  GOOGLE_ROUTES_FIELD_MASK,
+  GOOGLE_ROUTES_URL,
   RoutesService,
   distanciaEnMetros,
+  segundosDeDuracion,
 } from './routes.service';
 
 const POLILINEA = '_p~iF~ps|U_ulLnnqC_mqNvxq`@';
@@ -27,14 +30,11 @@ const respuesta = (cuerpo: unknown, ok = true, status = 200) =>
   Promise.resolve({ ok, status, json: () => Promise.resolve(cuerpo) });
 
 const GOOGLE_OK = {
-  status: 'OK',
   routes: [
     {
-      overview_polyline: { points: POLILINEA },
-      legs: [
-        { distance: { value: 3000 }, duration: { value: 400 } },
-        { distance: { value: 2230 }, duration: { value: 380 } },
-      ],
+      distanceMeters: 5230,
+      duration: '780s',
+      polyline: { encodedPolyline: POLILINEA },
     },
   ],
 };
@@ -119,10 +119,31 @@ describe('RoutesService', () => {
       encodedPolyline: POLILINEA,
     });
     expect(r.points).toHaveLength(3);
-    const url = (http.mock.calls[0] as [string])[0];
-    expect(url).toContain('origin=-34.6037,-58.3816');
-    expect(url).toContain('destination=-34.6118,-58.4173');
-    expect(url).toContain('key=clave-del-servidor');
+    const [url, init] = http.mock.calls[0] as [
+      string,
+      { method: string; headers: Record<string, string>; body: string },
+    ];
+    expect(url).toBe(GOOGLE_ROUTES_URL);
+    expect(url).not.toContain('clave-del-servidor');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({
+      'X-Goog-Api-Key': 'clave-del-servidor',
+      'X-Goog-FieldMask': GOOGLE_ROUTES_FIELD_MASK,
+      'Content-Type': 'application/json',
+    });
+    expect(GOOGLE_ROUTES_FIELD_MASK).toBe(
+      'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
+    );
+    expect(JSON.parse(init.body)).toEqual({
+      origin: {
+        location: { latLng: { latitude: -34.6037, longitude: -58.3816 } },
+      },
+      destination: {
+        location: { latLng: { latitude: -34.6118, longitude: -58.4173 } },
+      },
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_UNAWARE',
+    });
     expect(datosParaLaRuta).toHaveBeenCalledWith(
       ORDEN,
       'u-chofer',
@@ -159,15 +180,150 @@ describe('RoutesService', () => {
     );
   });
 
-  it('si Google responde un error, cae a OSRM (en desarrollo)', async () => {
-    env = { ...env, NODE_ENV: 'development' };
-    http.mockImplementation((url: string) =>
-      url.includes('googleapis')
-        ? respuesta({ status: 'REQUEST_DENIED' })
-        : respuesta(OSRM_OK),
-    );
-    const r = await service.driving(ORDEN, undefined, CHOFER);
-    expect(r.provider).toBe('osrm');
+  describe('Google Routes API', () => {
+    const google = (cuerpo: unknown, ok = true, status = 200) =>
+      http.mockImplementation((url: string) =>
+        url.includes('googleapis')
+          ? respuesta(cuerpo, ok, status)
+          : respuesta(OSRM_OK),
+      );
+    const avisos = () => {
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } })
+          .logger,
+        'warn',
+      );
+      warn.mockImplementation(() => undefined);
+      return warn;
+    };
+    beforeEach(() => {
+      env = { ...env, NODE_ENV: 'development' };
+    });
+
+    it('un 4xx con su mensaje cae a OSRM y el mensaje de Google queda en el aviso', async () => {
+      const warn = avisos();
+      google(
+        {
+          error: {
+            code: 403,
+            message: 'Routes API has not been used in project 123',
+            status: 'PERMISSION_DENIED',
+          },
+        },
+        false,
+        403,
+      );
+      const r = await service.driving(ORDEN, undefined, CHOFER);
+      expect(r.provider).toBe('osrm');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'HTTP 403: Routes API has not been used in project 123',
+        ),
+      );
+    });
+
+    it('si el mensaje del proveedor trae la clave, el aviso la tapa', async () => {
+      const warn = avisos();
+      google(
+        { error: { message: 'API key clave-del-servidor not valid' } },
+        false,
+        400,
+      );
+      await service.driving(ORDEN, undefined, CHOFER);
+      const mensaje = String(warn.mock.calls[0]?.[0]);
+      expect(mensaje).toContain('API key *** not valid');
+      expect(mensaje).not.toContain('clave-del-servidor');
+    });
+
+    it('un 4xx con `error_message` (formato heredado) también lo deja en el aviso', async () => {
+      const warn = avisos();
+      google({ error_message: "You're calling a legacy API" }, false, 400);
+      const r = await service.driving(ORDEN, undefined, CHOFER);
+      expect(r.provider).toBe('osrm');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("HTTP 400: You're calling a legacy API"),
+      );
+    });
+
+    it('la duración viene como "123s" y la distancia redondeada', async () => {
+      google({
+        routes: [
+          {
+            distanceMeters: 1234.4,
+            duration: '123s',
+            polyline: { encodedPolyline: POLILINEA },
+          },
+        ],
+      });
+      const r = await service.driving(ORDEN, undefined, CHOFER);
+      expect(r).toMatchObject({
+        provider: 'google',
+        distanceMeters: 1234,
+        durationSeconds: 123,
+      });
+    });
+
+    it('distancia y duración omitidas (cero) se leen como 0', async () => {
+      google({ routes: [{ polyline: { encodedPolyline: POLILINEA } }] });
+      const r = await service.driving(ORDEN, undefined, CHOFER);
+      expect(r).toMatchObject({
+        provider: 'google',
+        distanceMeters: 0,
+        durationSeconds: 0,
+      });
+    });
+
+    it('polilínea vacía: cae a OSRM', async () => {
+      google({
+        routes: [
+          {
+            distanceMeters: 10,
+            duration: '5s',
+            polyline: { encodedPolyline: '' },
+          },
+        ],
+      });
+      const r = await service.driving(ORDEN, undefined, CHOFER);
+      expect(r.provider).toBe('osrm');
+    });
+
+    it('sin rutas (200 vacío): cae a OSRM', async () => {
+      google({});
+      expect((await service.driving(ORDEN, undefined, CHOFER)).provider).toBe(
+        'osrm',
+      );
+    });
+
+    it('una duración con otro formato: cae a OSRM', async () => {
+      google({
+        routes: [
+          { duration: '2 min', polyline: { encodedPolyline: POLILINEA } },
+        ],
+      });
+      expect((await service.driving(ORDEN, undefined, CHOFER)).provider).toBe(
+        'osrm',
+      );
+    });
+
+    it('OSRM sigue por GET, sin cuerpo ni la clave de Google', async () => {
+      google({}, false, 500);
+      await service.driving(ORDEN, undefined, CHOFER);
+      const [url, init] = http.mock.calls[1] as [
+        string,
+        { method?: string; headers?: unknown; body?: unknown },
+      ];
+      expect(url).toContain('/route/v1/driving/');
+      expect(init.method).toBeUndefined();
+      expect(init.body).toBeUndefined();
+      expect(init.headers).toBeUndefined();
+    });
+
+    it('segundosDeDuracion', () => {
+      expect(segundosDeDuracion('123s')).toBe(123);
+      expect(segundosDeDuracion('12.5s')).toBe(12.5);
+      expect(segundosDeDuracion(undefined)).toBe(0);
+      expect(() => segundosDeDuracion('123')).toThrow();
+    });
   });
 
   it('si no responde ningún proveedor, 502', async () => {
@@ -187,9 +343,13 @@ describe('RoutesService', () => {
     it('`from` cerca de la posición del chofer se acepta', async () => {
       const cerca = `${POSICION.lat + 0.0005},${POSICION.lng}`; // ~55 m
       await service.driving(ORDEN, cerca, CHOFER);
-      expect((http.mock.calls[0] as [string])[0]).toContain(
-        `origin=${POSICION.lat + 0.0005},${POSICION.lng}`,
-      );
+      const cuerpo = JSON.parse(
+        (http.mock.calls[0] as [string, { body: string }])[1].body,
+      ) as { origin: { location: { latLng: unknown } } };
+      expect(cuerpo.origin.location.latLng).toEqual({
+        latitude: POSICION.lat + 0.0005,
+        longitude: POSICION.lng,
+      });
     });
 
     it('`from` lejos de la posición del chofer: 400 y no consulta al proveedor', async () => {
