@@ -52,7 +52,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Con 530 suites y cobertura, Jest pasa los 2 GB de heap que Node 20 da por omisión
+      # y el runner corta con «JavaScript heap out of memory» (pasa desde el 10/11). En la
+      # Mac no se ve porque el heap por omisión es mayor.
       - run: npm run verify
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   integracion:
     # Tests lentos (Docker). Corre en PR y en el push a develop.
