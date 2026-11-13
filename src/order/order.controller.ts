@@ -90,6 +90,7 @@ import { withTransactionRetry } from '../common/utils/with-transaction-retry';
 import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { DeclareEmptiesDto } from './dto/declare-empties.dto';
 import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
+import { ArrivedDto } from './dto/arrived.dto';
 
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
 import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
@@ -1217,6 +1218,47 @@ export class OrderController {
   ) {
     await this.orderService.assertDeLaDistribuidora(id, distributorId);
     return this.orderService.notifyDriverArrived(id, user.user_id, user.role);
+  }
+
+  @Patch(':id/arrived')
+  @Version('2')
+  @Permiso('pedidos.gestionar')
+  @Auth(RoleType.DELIVERY)
+  @ApiOperation({
+    summary: 'Avisar al cliente que el repartidor llegó',
+    description:
+      'El chofer asignado informa su posición GPS al llegar. Si la distribuidora configuró un radio de llegada y el domicilio tiene ubicación, sólo se notifica dentro de ese radio.',
+  })
+  @ApiParam({ name: 'id', description: 'Order UUID' })
+  @ApiOkResponse({
+    type: MessageResponseDto,
+    description: 'Cliente notificado',
+  })
+  @ApiBadRequestResponse({
+    description: 'Latitud o longitud faltante o fuera de rango',
+  })
+  @ApiForbiddenResponse({
+    description: 'El pedido no está asignado a este chofer',
+  })
+  @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
+  @ApiConflictResponse({
+    description:
+      'El pedido no está en camino (`code: ORDER_NOT_ON_THE_WAY`), o el chofer está fuera del radio (`code: ARRIVAL_TOO_FAR`, con `distanceMeters` y `radiusMeters`). Un segundo aviso del mismo chofer responde 200 sin volver a notificar al cliente.',
+  })
+  async notifyArrivalV2(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ArrivedDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ) {
+    await this.orderService.assertDeLaDistribuidora(id, distributorId);
+    return this.orderService.notifyDriverArrivedWithDistance(
+      id,
+      user.user_id,
+      user.role,
+      body.latitude,
+      body.longitude,
+    );
   }
 
   @Patch(':id/confirm-deposit')

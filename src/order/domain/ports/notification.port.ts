@@ -16,6 +16,9 @@
  * inconsistencia señalada en la revisión (los use-cases de `order`), y
  * ensancharlo ahí es un cambio de alcance mayor que no aporta al P2-8.
  */
+/** Resultado del push de llegada al cliente. */
+export type PushDeLlegada = 'sent' | 'no_token' | 'failed';
+
 export abstract class NotificationPort {
   /**
    * Notifica al cliente que su pedido fue confirmado/actualizado (push best-
@@ -31,13 +34,15 @@ export abstract class NotificationPort {
   /**
    * Avisa al cliente que el repartidor llegó al domicilio (push best-effort,
    * complementario al socket `order:arrived`). Nunca lanza: si falla, el aviso
-   * en tiempo real ya salió y el flujo del pedido no se interrumpe.
+   * en tiempo real ya salió y el flujo del pedido no se interrumpe. Devuelve si
+   * el push salió (`sent`), si el cliente no tiene token (`no_token`) o si FCM
+   * falló o no confirmó a tiempo (`failed`).
    */
   abstract sendArrivalPushToCustomer(
     customerId: string,
     orderId: string,
     driverName: string,
-  ): Promise<void>;
+  ): Promise<PushDeLlegada>;
 
   /**
    * Avisa al cliente que su pago se aprobó (push best-effort, complementario

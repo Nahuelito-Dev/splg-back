@@ -144,6 +144,55 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('sendArrivalPushToCustomer (dice si el push salió)', () => {
+    it('sent: manda ORDER_ARRIVED al token del cliente y FCM devuelve el id', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'fcm-c' });
+      await expect(
+        service.sendArrivalPushToCustomer('c1', 'o1', 'Ana'),
+      ).resolves.toBe('sent');
+      expect(sendToToken).toHaveBeenCalledWith(
+        'fcm-c',
+        expect.objectContaining({
+          data: { event: 'ORDER_ARRIVED', orderId: 'o1' },
+          notification: expect.objectContaining({
+            body: 'Ana está en la puerta.',
+          }) as unknown,
+        }),
+      );
+    });
+
+    it('no_token: el cliente no registró dispositivo, no se manda nada', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: null });
+      await expect(
+        service.sendArrivalPushToCustomer('c1', 'o1', 'Ana'),
+      ).resolves.toBe('no_token');
+      expect(sendToToken).not.toHaveBeenCalled();
+    });
+
+    it('failed: FCM falla, no lanza', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'fcm-c' });
+      sendToToken.mockRejectedValue(new Error('FCM caído'));
+      await expect(
+        service.sendArrivalPushToCustomer('c1', 'o1', 'Ana'),
+      ).resolves.toBe('failed');
+    });
+
+    it('failed: FCM no confirmó a tiempo (el adaptador devuelve sin id)', async () => {
+      customers.findNotificationToken.mockResolvedValue({ token: 'fcm-c' });
+      sendToToken.mockResolvedValue('');
+      await expect(
+        service.sendArrivalPushToCustomer('c1', 'o1', 'Ana'),
+      ).resolves.toBe('failed');
+    });
+
+    it('failed: no se pudo leer el token, no lanza', async () => {
+      customers.findNotificationToken.mockRejectedValue(new Error('base'));
+      await expect(
+        service.sendArrivalPushToCustomer('c1', 'o1', 'Ana'),
+      ).resolves.toBe('failed');
+    });
+  });
+
   describe('sendPaymentApprovedPush', () => {
     beforeEach(() => {
       customers.findNotificationToken.mockResolvedValue({

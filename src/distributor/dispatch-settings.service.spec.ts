@@ -12,6 +12,7 @@ describe('DispatchSettingsService (CU-171)', () => {
     offerTtlSeconds: 30,
     finishingRadiusMeters: 300,
     noDriverExpiryMinutes: 120,
+    arrivalRadiusMeters: 150,
   };
 
   beforeEach(() => {
@@ -47,6 +48,7 @@ describe('DispatchSettingsService (CU-171)', () => {
       offerTtlSeconds: 60,
       finishingRadiusMeters: 300,
       noDriverExpiryMinutes: 120,
+      arrivalRadiusMeters: 150,
     });
   });
 
@@ -103,6 +105,7 @@ describe('DispatchSettingsService (CU-171)', () => {
       offerTtlSeconds: 90,
       finishingRadiusMeters: 300,
       noDriverExpiryMinutes: 120,
+      arrivalRadiusMeters: 150,
     });
     // La otra distribuidora conserva su copia: no volvió a la base.
     await service.obtener('d2');
@@ -194,6 +197,33 @@ describe('DispatchSettingsService (CU-171)', () => {
       'u1',
     );
     expect(r).toMatchObject({ noDriverExpiryMinutes: 45, isDefault: false });
+  });
+
+  it('arrivalRadiusMeters: 0 lo apaga; los enteros entre 0 y 5000 son válidos', () => {
+    const leer = (v: unknown) =>
+      dispatchSettingsDesde({ arrivalRadiusMeters: v }).arrivalRadiusMeters;
+    expect(leer(0)).toBe(0);
+    expect(leer(150)).toBe(150);
+    expect(leer(5000)).toBe(5000);
+    expect(leer(-1)).toBe(150);
+    expect(leer(5001)).toBe(150);
+    expect(leer(10.5)).toBe(150);
+  });
+
+  it('guardar el radio de llegada lo manda a la configuración', async () => {
+    configs.fila.mockResolvedValue({
+      params: { arrivalRadiusMeters: 0 },
+      updatedAt: null,
+      updatedByUserId: 'u1',
+    });
+    const r = await service.guardar('d1', { arrivalRadiusMeters: 0 }, 'u1');
+    expect(configs.guardar).toHaveBeenCalledWith(
+      'd1',
+      ConfigurableProcess.DISPATCH,
+      { arrivalRadiusMeters: 0 },
+      'u1',
+    );
+    expect(r).toMatchObject({ arrivalRadiusMeters: 0, isDefault: false });
   });
 
   it('PUT parcial: guarda sólo lo que vino y lo que falta se lee con su valor por omisión', async () => {

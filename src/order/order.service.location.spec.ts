@@ -60,6 +60,7 @@ describe('OrderService · posición del chofer', () => {
       } as unknown as import('./domain/ports/truck-load-gate.port').TruckLoadGatePort,
       {} as never,
       {} as never,
+      {} as never,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue(pedido);
   });

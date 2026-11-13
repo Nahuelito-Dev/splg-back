@@ -33,6 +33,7 @@ describe('OrderService · código de entrega nuevo', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue({
       orderId: PEDIDO,

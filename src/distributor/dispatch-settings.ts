@@ -18,12 +18,15 @@ export interface DispatchSettings {
    * ofrecer (o desde que arranca su agenda) antes de que el sistema lo cancele.
    */
   noDriverExpiryMinutes: number;
+  /** Radio máximo para que el chofer pueda marcar que llegó. 0 = apagado. */
+  arrivalRadiusMeters: number;
 }
 
 export const DEFAULT_RADIUS_STEPS_KM: readonly number[] = [5, 10, 15, 20];
 export const DEFAULT_OFFER_TTL_SECONDS = 30;
 export const DEFAULT_FINISHING_RADIUS_METERS = 300;
 export const DEFAULT_NO_DRIVER_EXPIRY_MINUTES = 120;
+export const DEFAULT_ARRIVAL_RADIUS_METERS = 150;
 
 export const DISPATCH_RADIUS_MIN_STEPS = 1;
 export const DISPATCH_RADIUS_MAX_STEPS = 8;
@@ -35,6 +38,8 @@ export const DISPATCH_FINISHING_RADIUS_MIN_METERS = 0;
 export const DISPATCH_FINISHING_RADIUS_MAX_METERS = 5000;
 export const DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES = 1;
 export const DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES = 1440;
+export const DISPATCH_ARRIVAL_RADIUS_MIN_METERS = 0;
+export const DISPATCH_ARRIVAL_RADIUS_MAX_METERS = 5000;
 
 export function dispatchSettingsPorDefecto(): DispatchSettings {
   return {
@@ -42,6 +47,7 @@ export function dispatchSettingsPorDefecto(): DispatchSettings {
     offerTtlSeconds: DEFAULT_OFFER_TTL_SECONDS,
     finishingRadiusMeters: DEFAULT_FINISHING_RADIUS_METERS,
     noDriverExpiryMinutes: DEFAULT_NO_DRIVER_EXPIRY_MINUTES,
+    arrivalRadiusMeters: DEFAULT_ARRIVAL_RADIUS_METERS,
   };
 }
 
@@ -89,6 +95,12 @@ export function dispatchSettingsDesde(
     Number.isInteger(vencimiento) &&
     vencimiento >= DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES &&
     vencimiento <= DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES;
+  const llegada = params.arrivalRadiusMeters;
+  const llegadaValida =
+    esNumero(llegada) &&
+    Number.isInteger(llegada) &&
+    llegada >= DISPATCH_ARRIVAL_RADIUS_MIN_METERS &&
+    llegada <= DISPATCH_ARRIVAL_RADIUS_MAX_METERS;
 
   return {
     radiusStepsKm: pasosValidos
@@ -101,6 +113,9 @@ export function dispatchSettingsDesde(
     noDriverExpiryMinutes: vencimientoValido
       ? vencimiento
       : porDefecto.noDriverExpiryMinutes,
+    arrivalRadiusMeters: llegadaValida
+      ? llegada
+      : porDefecto.arrivalRadiusMeters,
   };
 }
 
@@ -111,6 +126,7 @@ export function sonLosDeOmision(settings: DispatchSettings): boolean {
     settings.offerTtlSeconds === base.offerTtlSeconds &&
     settings.finishingRadiusMeters === base.finishingRadiusMeters &&
     settings.noDriverExpiryMinutes === base.noDriverExpiryMinutes &&
+    settings.arrivalRadiusMeters === base.arrivalRadiusMeters &&
     settings.radiusStepsKm.length === base.radiusStepsKm.length &&
     settings.radiusStepsKm.every((km, i) => km === base.radiusStepsKm[i])
   );
