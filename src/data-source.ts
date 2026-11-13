@@ -24,8 +24,10 @@ export default new DataSource({
     application_name: 'splg-migraciones',
     ...(isSsl ? { ssl: { rejectUnauthorized: false } } : {}),
   },
-  entities: ['src/**/*.entity{.ts,.js}'],
-  migrations: ['src/migrations/*{.ts,.js}'],
+  // Relativo a este archivo: sirve igual desde src/ (ts-node) que desde dist/ (la imagen
+  // del servidor, donde no hay src/).
+  entities: [`${__dirname}/**/*.entity{.ts,.js}`],
+  migrations: [`${__dirname}/migrations/*{.ts,.js}`],
   synchronize: false,
   // Cada migración en su propia transacción: un valor nuevo de un enum no se puede usar
   // en la misma transacción que lo agrega, y una instalación desde cero lo necesita.
