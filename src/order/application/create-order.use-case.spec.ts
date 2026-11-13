@@ -421,6 +421,28 @@ describe('CreateOrderUseCase', () => {
       }
     });
 
+    it('available_since: un pedido inmediato se puede ofrecer desde el alta; una reserva, recién al activarse', async () => {
+      const creadas = () =>
+        orderRepository.create.mock.calls as unknown as Array<
+          [{ availableSince: Date | null }]
+        >;
+      const antes = Date.now();
+      await useCase.execute(baseDto);
+      const inmediato = creadas()[0][0].availableSince;
+      expect(inmediato).toBeInstanceOf(Date);
+      expect(inmediato?.getTime()).toBeGreaterThanOrEqual(antes);
+
+      orderRepository.create.mockClear();
+      await useCase.execute({
+        ...baseDto,
+        paymentMethod: PaymentMethod.TRANSFER,
+        isReservation: true,
+        depositAmount: 100,
+        scheduledDate: '2099-01-01',
+      });
+      expect(creadas()[0][0].availableSince).toBeNull();
+    });
+
     it('una reserva no se paga con cuenta corriente', async () => {
       await expect(
         useCase.execute({

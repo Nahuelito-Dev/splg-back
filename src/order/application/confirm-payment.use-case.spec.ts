@@ -1,5 +1,10 @@
 import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
-import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
+import {
+  Order,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../entities/order.entity';
 
 /**
  * Caso de uso de confirmación de pago (webhook MercadoPago). Foco: idempotencia
@@ -314,6 +319,50 @@ describe('ConfirmPaymentUseCase', () => {
       }),
     );
     expect(dispatchOrchestrator.offerToNextDriver).toHaveBeenCalledTimes(1);
+  });
+
+  it('approved sobre un pendiente de Mercado Pago sin chofer: la espera de chofer cuenta desde la aprobación', async () => {
+    const alta = new Date('2026-01-01T10:00:00Z');
+    Object.assign(lockedOrder, {
+      status: OrderStatus.PENDING,
+      deliveryId: null,
+      paymentMethod: PaymentMethod.MERCADOPAGO,
+      depositPaid: false,
+      paymentFraudHold: false,
+      availableSince: alta,
+    });
+    paymentsService.confirmFromGateway.mockResolvedValue({
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
+    });
+
+    await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+    expect(lockedOrder.availableSince).not.toBe(alta);
+    expect(lockedOrder.availableSince).toBe(lockedOrder.paymentConfirmedAt);
+  });
+
+  it('approved con la retención por fraude puesta: no empieza a contar (lo hará al liberarse)', async () => {
+    const alta = new Date('2026-01-01T10:00:00Z');
+    Object.assign(lockedOrder, {
+      status: OrderStatus.PENDING,
+      deliveryId: null,
+      paymentMethod: PaymentMethod.MERCADOPAGO,
+      paymentFraudHold: true,
+      availableSince: alta,
+    });
+    paymentsService.confirmFromGateway.mockResolvedValue({
+      externalReference: 'ord-1',
+      gatewayPaymentId: 'pay-1',
+      status: 'approved',
+      isDeposit: false,
+    });
+
+    await useCase.execute({ type: 'payment', dataId: 'pay-1' });
+
+    expect(lockedOrder.availableSince).toBe(alta);
   });
 
   it('approved + ya pagado (idempotencia): NO re-despacha ni re-guarda', async () => {

@@ -75,6 +75,10 @@ describe('Parámetros del despacho en la base (e2e)', () => {
     { radiusStepsKm: [] },
     { radiusStepsKm: [1, 2, 3, 4, 5, 6, 7, 8, 9] },
     { radiusStepsKm: 'x' },
+    { noDriverExpiryMinutes: 0 },
+    { noDriverExpiryMinutes: 1441 },
+    { noDriverExpiryMinutes: 30.5 },
+    { noDriverExpiryMinutes: '120' },
   ])('rechaza %j (CHK_module_config_despacho)', async (params) => {
     expect(await escribir(params)).toContain('CHK_module_config_despacho');
   });
@@ -84,6 +88,8 @@ describe('Parámetros del despacho en la base (e2e)', () => {
     { finishingRadiusMeters: 0 },
     { finishingRadiusMeters: 5000, offerTtlSeconds: 10 },
     { radiusStepsKm: [5, 10, 15, 20], offerTtlSeconds: 300 },
+    { noDriverExpiryMinutes: 1 },
+    { noDriverExpiryMinutes: 1440 },
   ])('acepta %j', async (params) => {
     expect(await escribir(params)).toBe('guardó');
   });

@@ -5,7 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
@@ -18,9 +18,38 @@ import { RoleType } from '../../common/constants/role-type.enum';
 import { RefundsService } from '../../payments/application/refunds.service';
 import { PaymentsService } from '../../payments/application/payments.service';
 import { errorMessage } from '../../common/errors/error-message';
+import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
+import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
 
-/** Quién dispara la cancelación (define la política de estado y stock). */
-export type CancelActor = 'customer' | 'driver' | 'admin' | 'superadmin';
+/**
+ * Quién dispara la cancelación (define la política de estado y stock).
+ * `system`: un proceso automático, sin usuario (el vencimiento sin chofer).
+ */
+export type CancelActor =
+  | 'customer'
+  | 'driver'
+  | 'admin'
+  | 'superadmin'
+  | 'system';
+
+/** Los actores que llegan desde un request (todos menos el sistema). */
+export type UserCancelActor = Exclude<CancelActor, 'system'>;
+
+/**
+ * Condición que se evalúa con el pedido ya bloqueado (y sus renglones leídos),
+ * dentro de la transacción: si da `false`, no se cancela y no queda ningún
+ * efecto ni aviso. La usan los procesos automáticos para re-decidir con el
+ * dato fresco lo que eligieron antes de pedir el lock.
+ */
+export type CondicionBajoLock = (
+  locked: Order,
+  manager: EntityManager,
+) => Promise<boolean>;
+
+/** Opciones de `execute` para los procesos automáticos. */
+export interface CancelOrderOptions {
+  siSigueCorrespondiendo?: CondicionBajoLock;
+}
 
 /** Quién canceló, como lo ve el cliente en `order:cancelled` y en `GET /orders/:id`. */
 export type CancelledBy = 'customer' | 'admin' | 'system' | 'driver';
@@ -36,7 +65,7 @@ export function cancelledByDe(actor: CancelActor): CancelledBy {
  * controller (`PATCH /orders/:id/cancel`) y `UpdateOrderStatusUseCase` (cuando
  * `PATCH /orders/:id/status` delega la cancelación acá).
  */
-export function mapRoleToCancelActor(role?: RoleType): CancelActor {
+export function mapRoleToCancelActor(role?: RoleType): UserCancelActor {
   switch (role) {
     case RoleType.CUSTOMER:
       return 'customer';
@@ -79,6 +108,7 @@ export class CancelOrderUseCase {
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
     private readonly refunds: RefundsService,
     private readonly payments: PaymentsService,
+    private readonly offers: DispatchOfferRepositoryPort,
   ) {}
 
   async execute(
@@ -86,6 +116,7 @@ export class CancelOrderUseCase {
     userId: string,
     role: CancelActor,
     reason?: string,
+    opciones: CancelOrderOptions = {},
   ): Promise<Order> {
     // El chofer no cancela: devuelve el pedido al pool. Quien sí cancela
     // (cliente, administrador) tiene que dejar el motivo.
@@ -100,6 +131,7 @@ export class CancelOrderUseCase {
 
     let order: Order;
     let previousDriverUserId: string | null;
+    let ofertasRetiradas: string[] = [];
     try {
       // `FOR UPDATE OF "ord"` (tercer argumento de setLock): sin acotar la
       // tabla, Postgres rechaza el lock con "FOR UPDATE cannot be applied to
@@ -152,6 +184,16 @@ export class CancelOrderUseCase {
         );
       }
 
+      // Lo que eligió un proceso automático antes del lock se re-decide acá,
+      // con la fila bloqueada: si ya no corresponde, no queda nada hecho.
+      if (
+        opciones.siSigueCorrespondiendo &&
+        !(await opciones.siSigueCorrespondiendo(locked, queryRunner.manager))
+      ) {
+        await queryRunner.rollbackTransaction();
+        return locked;
+      }
+
       // El driver_id de una oferta (DispatchOffer) y las salas de socket del
       // chofer son por `user_id`, no por `order.deliveryId` (el id de su
       // perfil de reparto: son ids distintos).
@@ -174,6 +216,14 @@ export class CancelOrderUseCase {
           locked,
         );
         await this.stock.restituirStock(queryRunner.manager, locked.items);
+        // La oferta que un chofer tenía en pantalla deja de valer en la misma
+        // transacción: no puede aceptar un pedido cancelado.
+        ofertasRetiradas = await this.offers.withdrawOtherActiveOffers(
+          queryRunner.manager,
+          orderId,
+          null,
+          DispatchOfferStatus.SUPERSEDED,
+        );
       }
 
       order = await queryRunner.manager.save(locked);
@@ -192,6 +242,13 @@ export class CancelOrderUseCase {
         .onOrderClosed(order.orderId)
         .catch(() => undefined);
       this.notify(order, previousDriverUserId, role);
+      for (const driverUserId of ofertasRetiradas) {
+        this.dispatch.notifyDriverOrderCancelled(driverUserId, {
+          orderId: order.orderId,
+          status: order.status,
+          message: 'El pedido se canceló: la oferta ya no está vigente',
+        });
+      }
       // La cancelación no espera a la pasarela: la devolución sale aparte, con
       // su error registrado, y si falla la retoma el administrador.
       void this.reintegrarPago(order.orderId);

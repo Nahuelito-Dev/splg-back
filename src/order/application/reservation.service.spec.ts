@@ -122,6 +122,29 @@ describe('ReservationService.expireUnpaidMercadoPagoOrders', () => {
     expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
   });
 
+  it('la reserva que activa el cron empieza a contar la espera de chofer al activarse', async () => {
+    const reserva = {
+      orderId: 'r-1',
+      distributorId: 'd1',
+      status: OrderStatus.RESERVED,
+      depositPaid: true,
+      availableSince: null,
+    } as unknown as Order;
+    const save = jest.fn((o: Order) => Promise.resolve(o));
+    Object.assign(orderRepository, { save });
+    orderRepository.find.mockResolvedValue([reserva]);
+    orders.findByIdFull.mockResolvedValue(null);
+
+    await service.activateDueReservations();
+
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: OrderStatus.PENDING,
+        availableSince: expect.any(Date) as Date,
+      }),
+    );
+  });
+
   it('busca PENDING + mercadopago + sin gatewayPaymentId, vencidos por TTL', async () => {
     orderRepository.find.mockResolvedValue([]);
 

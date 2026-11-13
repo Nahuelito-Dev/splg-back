@@ -13,11 +13,17 @@ export interface DispatchSettings {
    * en camino cuenta como «por terminar» y puede recibir otra oferta. 0 = apagado.
    */
   finishingRadiusMeters: number;
+  /**
+   * Minutos que un pedido pendiente puede esperar chofer desde que se puede
+   * ofrecer (o desde que arranca su agenda) antes de que el sistema lo cancele.
+   */
+  noDriverExpiryMinutes: number;
 }
 
 export const DEFAULT_RADIUS_STEPS_KM: readonly number[] = [5, 10, 15, 20];
 export const DEFAULT_OFFER_TTL_SECONDS = 30;
 export const DEFAULT_FINISHING_RADIUS_METERS = 300;
+export const DEFAULT_NO_DRIVER_EXPIRY_MINUTES = 120;
 
 export const DISPATCH_RADIUS_MIN_STEPS = 1;
 export const DISPATCH_RADIUS_MAX_STEPS = 8;
@@ -27,12 +33,15 @@ export const DISPATCH_OFFER_TTL_MIN_SECONDS = 10;
 export const DISPATCH_OFFER_TTL_MAX_SECONDS = 300;
 export const DISPATCH_FINISHING_RADIUS_MIN_METERS = 0;
 export const DISPATCH_FINISHING_RADIUS_MAX_METERS = 5000;
+export const DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES = 1;
+export const DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES = 1440;
 
 export function dispatchSettingsPorDefecto(): DispatchSettings {
   return {
     radiusStepsKm: [...DEFAULT_RADIUS_STEPS_KM],
     offerTtlSeconds: DEFAULT_OFFER_TTL_SECONDS,
     finishingRadiusMeters: DEFAULT_FINISHING_RADIUS_METERS,
+    noDriverExpiryMinutes: DEFAULT_NO_DRIVER_EXPIRY_MINUTES,
   };
 }
 
@@ -74,6 +83,12 @@ export function dispatchSettingsDesde(
     Number.isInteger(cerca) &&
     cerca >= DISPATCH_FINISHING_RADIUS_MIN_METERS &&
     cerca <= DISPATCH_FINISHING_RADIUS_MAX_METERS;
+  const vencimiento = params.noDriverExpiryMinutes;
+  const vencimientoValido =
+    esNumero(vencimiento) &&
+    Number.isInteger(vencimiento) &&
+    vencimiento >= DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES &&
+    vencimiento <= DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES;
 
   return {
     radiusStepsKm: pasosValidos
@@ -83,6 +98,9 @@ export function dispatchSettingsDesde(
     finishingRadiusMeters: cercaValido
       ? cerca
       : porDefecto.finishingRadiusMeters,
+    noDriverExpiryMinutes: vencimientoValido
+      ? vencimiento
+      : porDefecto.noDriverExpiryMinutes,
   };
 }
 
@@ -92,6 +110,7 @@ export function sonLosDeOmision(settings: DispatchSettings): boolean {
   return (
     settings.offerTtlSeconds === base.offerTtlSeconds &&
     settings.finishingRadiusMeters === base.finishingRadiusMeters &&
+    settings.noDriverExpiryMinutes === base.noDriverExpiryMinutes &&
     settings.radiusStepsKm.length === base.radiusStepsKm.length &&
     settings.radiusStepsKm.every((km, i) => km === base.radiusStepsKm[i])
   );

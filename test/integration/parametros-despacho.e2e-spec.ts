@@ -251,6 +251,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
         radiusStepsKm: [5, 10, 15, 20],
         offerTtlSeconds: 30,
         finishingRadiusMeters: 300,
+        noDriverExpiryMinutes: 120,
         isDefault: true,
         updatedAt: null,
         updatedByUserId: null,
@@ -350,6 +351,10 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       ['radio por terminar negativo', { finishingRadiusMeters: -1 }],
       ['radio por terminar de 5001 m', { finishingRadiusMeters: 5001 }],
       ['radio por terminar fraccionario', { finishingRadiusMeters: 10.5 }],
+      ['minutos sin chofer en 0', { noDriverExpiryMinutes: 0 }],
+      ['minutos sin chofer de más de 1440', { noDriverExpiryMinutes: 1441 }],
+      ['minutos sin chofer fraccionarios', { noDriverExpiryMinutes: 30.5 }],
+      ['minutos sin chofer como texto', { noDriverExpiryMinutes: '120' }],
       [
         'campo desconocido',
         { radiusStepsKm: [5], offerTtlSeconds: 30, otro: 1 },
@@ -358,7 +363,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       const e = await escenario();
       const res = await putDespacho(e, cuerpo).expect(400);
       expect(JSON.stringify(res.body)).toMatch(
-        /Escalones de radio|Segundos de vigencia de la oferta|Radio de cierre|dato que no corresponde/,
+        /Escalones de radio|Segundos de vigencia de la oferta|Radio de cierre|Minutos sin chofer antes de cancelar el pedido|dato que no corresponde/,
       );
       // Lo rechazado no se guardó.
       const filas = await ds.query<unknown[]>(
@@ -391,6 +396,30 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       await putDespacho(e, { finishingRadiusMeters: 5000 }).expect(200);
       const parcial = await putDespacho(e, { offerTtlSeconds: 60 }).expect(200);
       expect(parcial.body).toMatchObject({ finishingRadiusMeters: 300 });
+    });
+
+    it('minutos sin chofer: 1 y 1440 son los topes, guardar otro valor deja de ser isDefault y si no viene se lee 120', async () => {
+      const e = await escenario();
+      const corto = await putDespacho(e, { noDriverExpiryMinutes: 1 }).expect(
+        200,
+      );
+      expect(corto.body).toMatchObject({
+        noDriverExpiryMinutes: 1,
+        isDefault: false,
+      });
+      await putDespacho(e, { noDriverExpiryMinutes: 1440 }).expect(200);
+      const releido = await http()
+        .get('/module-config/dispatch')
+        .set(e.adminA.headers)
+        .expect(200);
+      expect(releido.body).toMatchObject({ noDriverExpiryMinutes: 1440 });
+      const parcial = await putDespacho(e, { offerTtlSeconds: 60 }).expect(200);
+      expect(parcial.body).toMatchObject({ noDriverExpiryMinutes: 120 });
+      const deB = await http()
+        .get('/module-config/dispatch')
+        .set(e.adminB.headers)
+        .expect(200);
+      expect(deB.body).toMatchObject({ noDriverExpiryMinutes: 120 });
     });
 
     it('super admin sin X-Distributor: 400 con el mensaje de siempre; con X-Distributor opera esa distribuidora', async () => {

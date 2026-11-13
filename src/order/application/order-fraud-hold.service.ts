@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import { Order } from '../entities/order.entity';
+import { Order, OrderStatus } from '../entities/order.entity';
+import { esperaPagoOnline } from '../domain/espera-pago-online';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 
 /**
  * Libera la retención de un pedido por una alerta de fraude de Mercado Pago
@@ -43,6 +45,15 @@ export class OrderFraudHoldService {
       }
       pedido.paymentFraudHold = false;
       pedido.paymentFraudReleasedAt = new Date();
+      // Un pedido que vuelve a poder salir empieza a contar la espera de chofer
+      // desde ahora (una reserva, cuando se active).
+      if (
+        pedido.status === OrderStatus.PENDING &&
+        !pedido.deliveryId &&
+        !esperaPagoOnline(pedido)
+      ) {
+        marcarOfrecible(pedido, pedido.paymentFraudReleasedAt);
+      }
       pedido.paymentFraudReleasedBy = userId;
       pedido.paymentFraudReleasedReason = motivo;
       await manager.save(pedido);

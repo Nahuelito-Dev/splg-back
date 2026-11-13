@@ -7,6 +7,7 @@ import {
   OrderDeliveryMode,
   OrderStatus,
 } from '../entities/order.entity';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { RefundStatus } from '../../payments/domain/payment.enums';
 import { RefundsService } from '../../payments/application/refunds.service';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -79,6 +80,8 @@ export class ExpressDegradeService {
       const recargo = locked.expressSurchargeAmount;
       locked.deliveryMode = OrderDeliveryMode.STANDARD;
       locked.expressDegradedAt = new Date();
+      // Recién ahora se ofrece a los choferes comunes: desde acá corre su espera.
+      marcarOfrecible(locked, locked.expressDegradedAt);
       locked.totalAmount = new Decimal(locked.totalAmount)
         .minus(recargo)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)

@@ -368,6 +368,9 @@ export class CreateOrderUseCase {
         receiverRelationship:
           createOrderDto.receiver?.receiverRelationship ?? null,
         status: isReservation ? OrderStatus.RESERVED : OrderStatus.PENDING,
+        // Desde ya se puede ofrecer (si espera un pago online, el pago aprobado lo
+        // vuelve a marcar); una reserva, recién cuando se active.
+        availableSince: isReservation ? null : new Date(),
         paymentMethod: createOrderDto.paymentMethod,
         paymentType,
         timeSlotId: createOrderDto.timeSlotId,

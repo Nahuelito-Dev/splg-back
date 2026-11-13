@@ -79,6 +79,7 @@ import { OrderStatusHistory } from './entities/order-status-history.entity';
 import { OrderAddressChange } from './entities/order-address-change.entity';
 import { CustomerContainerModule } from '../customer-container/customer-container.module';
 import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
+import { VencimientoSinChoferService } from './application/vencimiento-sin-chofer.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -128,6 +129,7 @@ import { DeclareEmptiesUseCase } from './application/declare-empties.use-case';
     OrderAttachmentOwnerResolver,
     OrderTransferReceiptService,
     DispatchService,
+    VencimientoSinChoferService,
     OrderPricingService,
     CreateOrderUseCase,
     QuoteOrderUseCase,

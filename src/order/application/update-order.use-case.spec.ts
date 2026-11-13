@@ -302,6 +302,26 @@ describe('UpdateOrderUseCase', () => {
     );
   });
 
+  describe('espera de chofer (available_since)', () => {
+    const viejo = new Date('2026-01-01T10:00:00Z');
+    const guardado = () =>
+      (queryRunner.manager.save.mock.calls.at(-1) as [Order])[0];
+
+    it('editar sólo las notas no la reinicia', async () => {
+      locked = makeOrder({ availableSince: viejo });
+      await useCase.execute('o1', { notes: 'otra nota' }, 'u1', 'd1');
+      expect(guardado().availableSince).toBe(viejo);
+    });
+
+    it('cambiar la fecha agendada la reinicia', async () => {
+      locked = makeOrder({ availableSince: viejo });
+      await useCase.execute('o1', { scheduledDate: '2099-01-01' }, 'u1', 'd1');
+      expect(guardado().scheduledDate).toBe('2099-01-01');
+      expect(guardado().availableSince).not.toBe(viejo);
+      expect(guardado().availableSince).toBeInstanceOf(Date);
+    });
+  });
+
   it('sin snapshot de zona pero con recargo guardado, lo conserva como fijo', async () => {
     locked = makeOrder({ zoneSurchargeAmount: 300 });
     await useCase.execute(

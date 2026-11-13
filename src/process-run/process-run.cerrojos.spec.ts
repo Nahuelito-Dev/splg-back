@@ -100,7 +100,7 @@ const casos = (): Caso[] => {
     ],
     [
       'M1 despacho',
-      () => new DispatchService(nada, r, nada, nada, nada).tick(),
+      () => new DispatchService(nada, r, nada, nada, nada, nada).tick(),
     ],
   ];
 };

@@ -23,6 +23,7 @@ import { User } from '../../users/entities/user.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { transitionOrder } from '../domain/order-status.machine';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { assertReservaActivable } from '../domain/reservation-activation';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
@@ -534,6 +535,7 @@ export class UpdateOrderStatusUseCase {
       if (!yaActivada) {
         assertReservaActivable(locked);
         transitionOrder(locked, OrderStatus.PENDING);
+        marcarOfrecible(locked);
       }
 
       order = await queryRunner.manager.save(locked);

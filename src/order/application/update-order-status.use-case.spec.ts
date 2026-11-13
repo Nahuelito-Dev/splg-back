@@ -1206,6 +1206,8 @@ describe('UpdateOrderStatusUseCase', () => {
       );
 
       expect(result.status).toBe(OrderStatus.PENDING);
+      // Desde la activación corre la espera de chofer.
+      expect(result.availableSince).toBeInstanceOf(Date);
       expect(orders.save).toHaveBeenCalled();
       expect(orchestrator.offerToNextDriver).toHaveBeenCalledWith(result);
       expect(releaseOrderUseCase.execute).not.toHaveBeenCalled();

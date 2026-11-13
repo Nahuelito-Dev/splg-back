@@ -270,6 +270,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   nextDueAt: 'Próximo vencimiento',
   note: 'Nota',
   notes: 'Notas',
+  noDriverExpiryMinutes: 'Minutos sin chofer antes de cancelar el pedido',
   noticeId: 'Aviso',
   notificationToken: 'Token de notificaciones',
   notification_token: 'Token de notificaciones',

@@ -190,6 +190,27 @@ describe('ReleaseOrderUseCase', () => {
       expect(order.vehicleModel).toBeNull();
     });
 
+    it('liberado por el chofer: la espera de chofer vuelve a contar desde ahora', () => {
+      const viejo = new Date('2026-01-01T10:00:00Z');
+      const order = makeOrder({ availableSince: viejo });
+      const antes = Date.now();
+      useCase.applyRelease(order);
+      expect(order.availableSince).not.toEqual(viejo);
+      expect(order.availableSince?.getTime()).toBeGreaterThanOrEqual(antes);
+    });
+
+    it('uno que ya estaba pendiente y sin chofer no reinicia su espera', () => {
+      const viejo = new Date('2026-01-01T10:00:00Z');
+      const order = makeOrder({
+        status: OrderStatus.PENDING,
+        delivery: null,
+        deliveryId: null,
+        availableSince: viejo,
+      });
+      useCase.applyRelease(order);
+      expect(order.availableSince).toEqual(viejo);
+    });
+
     it('sin chofer previo, devuelve null', () => {
       const order = makeOrder({ delivery: null, deliveryId: null });
       expect(useCase.applyRelease(order)).toBeNull();
