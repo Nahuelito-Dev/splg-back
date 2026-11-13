@@ -28,6 +28,8 @@ export enum AttachmentOwnerType {
   INSURANCE_INSTALLMENT = 'insurance_installment',
   TRAFFIC_FINE_PAYMENT = 'traffic_fine_payment',
   MP_RECONCILIATION = 'mp_reconciliation',
+  /** Documentación y foto de patente de un vehículo (F13). */
+  CAR_DOCUMENT = 'car_document',
 }
 
 /**

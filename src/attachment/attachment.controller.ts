@@ -160,6 +160,10 @@ export class AttachmentController {
       'Sin `modo`: redirección (302) a la URL firmada de S3, que sirve el archivo con su content-type original',
   })
   @ApiNotFoundResponse({ description: 'Adjunto no encontrado' })
+  @ApiBadRequestResponse({
+    description:
+      'Id mal formado, o es un documento del vehículo: se baja por `GET /api/v2/cars/:carId/documents/:attachmentId/download`',
+  })
   async download(
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
     @Query() query: DownloadAttachmentQueryDto,
@@ -199,7 +203,8 @@ export class AttachmentController {
     description: 'El dueño no existe o es de otra distribuidora',
   })
   @ApiBadRequestResponse({
-    description: 'El tipo de dueño todavía no admite adjuntos',
+    description:
+      'El tipo de dueño todavía no admite adjuntos, o es `car_document` (los documentos del vehículo se listan por `GET /api/v2/cars/:carId/documents`)',
   })
   @ApiForbiddenResponse({
     description: 'Un chofer no puede acceder a ese tipo de dueño',

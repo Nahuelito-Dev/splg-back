@@ -54,6 +54,7 @@ export const OWNER_TYPES_SOLO_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
     AttachmentOwnerType.INSURANCE_INSTALLMENT,
     AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
     AttachmentOwnerType.MP_RECONCILIATION,
+    AttachmentOwnerType.CAR_DOCUMENT,
   ];
 
 /** El endpoint de cada uno de esos dueños, para el mensaje de 400. */
@@ -65,6 +66,7 @@ const ENDPOINT_DEL_DUENO: Readonly<
   [AttachmentOwnerType.TRAFFIC_FINE_PAYMENT]: 'POST /traffic-fines/:id/receipt',
   [AttachmentOwnerType.MP_RECONCILIATION]:
     'POST /api/v2/mercadopago/reconciliations',
+  [AttachmentOwnerType.CAR_DOCUMENT]: 'POST /api/v2/cars/:id/documents',
 };
 
 /** Mensaje de 400 del endpoint genérico para esos dueños. */
@@ -72,6 +74,34 @@ export function mensajeSoloPorSuEndpoint(
   ownerType: AttachmentOwnerType,
 ): string {
   return `Los adjuntos de «${valorLegible(ownerType, 'ownerType')}» se cargan y se dan de baja desde su propia sección (${ENDPOINT_DEL_DUENO[ownerType] ?? 'la de su módulo'})`;
+}
+
+/**
+ * Dueños cuyos adjuntos se listan y se bajan sólo por el endpoint de su módulo,
+ * con el permiso de ese módulo (los documentos del vehículo piden `flota.ver`):
+ * los GET genéricos de `/attachments` (que piden `catalogo.ver`) no los muestran.
+ */
+export const OWNER_TYPES_LECTURA_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
+  [AttachmentOwnerType.CAR_DOCUMENT];
+
+/** Dónde se ven los adjuntos de esos dueños, para el mensaje de 400. */
+const ENDPOINT_DE_LECTURA_DEL_DUENO: Readonly<
+  Partial<Record<AttachmentOwnerType, string>>
+> = {
+  [AttachmentOwnerType.CAR_DOCUMENT]: 'GET /api/v2/cars/:id/documents',
+};
+
+/** Mensaje de 400 de los GET genéricos para esos dueños. */
+export function mensajeLecturaPorSuEndpoint(
+  ownerType: AttachmentOwnerType,
+): string {
+  return `Los adjuntos de «${valorLegible(ownerType, 'ownerType')}» se ven y se bajan desde su propia sección (${ENDPOINT_DE_LECTURA_DEL_DUENO[ownerType] ?? 'la de su módulo'})`;
+}
+
+/** El dueño del que tiene que ser un adjunto pedido desde el endpoint de su módulo. */
+export interface DuenoDelAdjunto {
+  ownerType: AttachmentOwnerType;
+  ownerId: string;
 }
 
 /** Trabajo extra que corre en la MISMA transacción que guarda el adjunto. */
@@ -192,12 +222,23 @@ export class AttachmentService {
     });
   }
 
+  /**
+   * `desdeSuEndpoint`: lo pide el endpoint propio del módulo dueño (con su
+   * permiso); si no, los dueños de `OWNER_TYPES_LECTURA_POR_SU_ENDPOINT` son 400.
+   */
   async list(
     ownerType: AttachmentOwnerType,
     ownerId: string,
     distributorId: string,
     actor: AttachmentActor,
+    desdeSuEndpoint = false,
   ): Promise<Attachment[]> {
+    if (
+      !desdeSuEndpoint &&
+      OWNER_TYPES_LECTURA_POR_SU_ENDPOINT.includes(ownerType)
+    ) {
+      throw new BadRequestException(mensajeLecturaPorSuEndpoint(ownerType));
+    }
     await this.assertAcceso(ownerType, ownerId, distributorId, actor);
     return this.attachments.find({
       where: { distributorId, ownerType, ownerId },
@@ -210,11 +251,13 @@ export class AttachmentService {
     distributorId: string,
     actor: AttachmentActor,
     disposition?: Disposicion,
+    dueno?: DuenoDelAdjunto,
   ): Promise<string> {
-    const attachment = await this.findOneOrThrow(
+    const attachment = await this.findParaLeer(
       attachmentId,
       distributorId,
       actor,
+      dueno,
     );
 
     const signed = await this.storage.getSignedDownload(attachment.storageKey, {
@@ -226,18 +269,21 @@ export class AttachmentService {
   }
 
   /**
-   * URL firmada del adjunto.
+   * URL firmada del adjunto. Con `dueno` (lo pide el endpoint del módulo) el
+   * adjunto tiene que ser de ese dueño, si no es 404.
    */
   async getSignedDownload(
     attachmentId: string,
     distributorId: string,
     actor: AttachmentActor,
     disposition?: Disposicion,
+    dueno?: DuenoDelAdjunto,
   ): Promise<SignedDownload> {
-    const attachment = await this.findOneOrThrow(
+    const attachment = await this.findParaLeer(
       attachmentId,
       distributorId,
       actor,
+      dueno,
     );
     return this.storage.getSignedDownload(attachment.storageKey, {
       fileName: attachment.originalName,
@@ -272,13 +318,65 @@ export class AttachmentService {
     await this.attachments.softRemove(attachment);
   }
 
+  /**
+   * Baja lógica desde el endpoint del módulo dueño (los dueños de
+   * `OWNER_TYPES_SOLO_POR_SU_ENDPOINT`): 404 si el adjunto no es de ese dueño
+   * o de esa distribuidora. El archivo queda en el storage como respaldo.
+   */
+  async removeDelDueno(
+    attachmentId: string,
+    dueno: DuenoDelAdjunto,
+    distributorId: string,
+    actor: AttachmentActor,
+  ): Promise<void> {
+    const attachment = await this.findOneOrThrow(
+      attachmentId,
+      distributorId,
+      actor,
+      dueno,
+    );
+    await this.attachments.softRemove(attachment);
+  }
+
+  /** Para ver o bajar: sin `dueno`, los que se leen por su endpoint son 400. */
+  private async findParaLeer(
+    attachmentId: string,
+    distributorId: string,
+    actor: AttachmentActor,
+    dueno?: DuenoDelAdjunto,
+  ): Promise<Attachment> {
+    const attachment = await this.findOneOrThrow(
+      attachmentId,
+      distributorId,
+      actor,
+      dueno,
+    );
+    if (
+      !dueno &&
+      OWNER_TYPES_LECTURA_POR_SU_ENDPOINT.includes(attachment.ownerType)
+    ) {
+      throw new BadRequestException(
+        mensajeLecturaPorSuEndpoint(attachment.ownerType),
+      );
+    }
+    return attachment;
+  }
+
   private async findOneOrThrow(
     attachmentId: string,
     distributorId: string,
     actor: AttachmentActor,
+    dueno?: DuenoDelAdjunto,
   ): Promise<Attachment> {
     const attachment = await this.attachments.findOne({
-      where: { attachmentId, distributorId },
+      where: dueno
+        ? {
+            attachmentId,
+            distributorId,
+            ownerType: dueno.ownerType,
+            ownerId: dueno.ownerId,
+          }
+        : { attachmentId, distributorId },
     });
     if (!attachment) {
       throw new NotFoundException('Adjunto no encontrado');
