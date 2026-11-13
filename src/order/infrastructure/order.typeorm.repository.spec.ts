@@ -288,6 +288,30 @@ describe('OrderTypeormRepository · orden estable al paginar', () => {
     expect(where[2].depositPaid).toBe(true);
   });
 
+  it('F34: findAvailable deja afuera las paradas de una hoja de ruta en borrador o confirmada', async () => {
+    const orderRepo = {
+      findAndCount: jest
+        .fn<Promise<[Order[], number]>, [{ where: unknown }]>()
+        .mockResolvedValue([[], 0]),
+    };
+    const repo = new OrderTypeormRepository(
+      orderRepo as unknown as Repository<Order>,
+    );
+    await repo.findAvailable(20, 0, 'dist-1');
+    const where = orderRepo.findAndCount.mock.calls[0][0].where as Array<{
+      orderId: { getSql: (c: string) => string };
+    }>;
+    for (const w of where) {
+      const sql = w.orderId.getSql('Order.orderId');
+      expect(sql).toContain(
+        `b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed')`,
+      );
+      expect(sql).toMatch(
+        /AND NOT EXISTS \(SELECT 1 FROM "route_batch_stop" s[\s\S]*'planned'/,
+      );
+    }
+  });
+
   it('findAvailable desempata por id', async () => {
     const { repo, ordenUsado } = armar();
     await repo.findAvailable(20, 0, 'dist-1');

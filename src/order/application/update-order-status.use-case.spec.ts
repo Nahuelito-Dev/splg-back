@@ -40,6 +40,7 @@ describe('UpdateOrderStatusUseCase', () => {
   let offers: {
     withdrawOtherActiveOffers: jest.Mock;
     isInLiveBatch: jest.Mock;
+    isInPlannedRouteSheet: jest.Mock;
   };
   let eventos: { emitAsync: jest.Mock };
   let dispatch: {
@@ -125,6 +126,7 @@ describe('UpdateOrderStatusUseCase', () => {
     offers = {
       withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
       isInLiveBatch: jest.fn().mockResolvedValue(false),
+      isInPlannedRouteSheet: jest.fn().mockResolvedValue(false),
     };
     dispatch = {
       notifyDriverOrderCancelled: jest.fn(),
@@ -497,6 +499,26 @@ describe('UpdateOrderStatusUseCase', () => {
       await expect(
         useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
       ).rejects.toThrow(new ConflictException(MENSAJE_PEDIDO_EN_RECORRIDO));
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    });
+
+    it('F34: una parada de una hoja de ruta no la toma ni el chofer ni el admin (409 ORDER_IN_ROUTE_SHEET) y no guarda', async () => {
+      orders.findByIdFull.mockResolvedValue(makeOrder());
+      deliveries.buscarPorIdOUsuario.mockResolvedValue(choferVigente);
+      offers.isInPlannedRouteSheet.mockResolvedValue(true);
+
+      for (const rol of [RoleType.DELIVERY, RoleType.ADMIN]) {
+        await expect(
+          useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1', rol),
+        ).rejects.toMatchObject({
+          status: 409,
+          response: { code: 'ORDER_IN_ROUTE_SHEET' },
+        });
+      }
+      expect(offers.isInPlannedRouteSheet).toHaveBeenCalledWith(
+        'ord-1',
+        queryRunner.manager,
+      );
       expect(queryRunner.manager.save).not.toHaveBeenCalled();
     });
 

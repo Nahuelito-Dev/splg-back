@@ -361,6 +361,7 @@ export class OrderController {
   @ApiOkResponse({
     type: AvailableOrdersResponseDto,
     description:
+      'Pedidos pendientes sin chofer de la distribuidora. No incluye las paradas de un recorrido que se está ofreciendo (M4) ni las de una hoja de ruta en borrador o confirmada (F34): vuelven al listado si se sacan de la hoja o la hoja se cancela. ' +
       'Si el chofer no puede recibir pedidos por su carga de camión (sin carga con el control activo, carga sin salir o ya devuelta), `orders` viene vacío, `openLoadRequired` es true y `message` dice por qué ("Abrí tu carga para recibir pedidos"). La app también lo sabe por `GET /truck-loads/mine`.',
   })
   async findAvailableOrders(
@@ -569,7 +570,9 @@ export class OrderController {
   @ApiConflictResponse({
     description:
       'Aceptar (`accepted`) un pedido de Mercado Pago cuyo pago todavía no está aprobado (salvo una reserva con la seña paga), ' +
-      'o, siendo chofer, tener ya otro pedido aceptado esperando (CU-013: nunca dos encolados; repetir la aceptación del mismo pedido no cuenta)',
+      'o, siendo chofer, tener ya otro pedido aceptado esperando (CU-013: nunca dos encolados; repetir la aceptación del mismo pedido no cuenta), ' +
+      'o aceptar un pedido que es parada de un recorrido que se está ofreciendo (M4), ' +
+      'o aceptar o asignar un pedido que es parada de una hoja de ruta en borrador o confirmada (`code: ORDER_IN_ROUTE_SHEET`: lo lleva el chofer de la hoja; hay que sacarlo de la hoja primero)',
   })
   @ApiBadRequestResponse({
     description:
@@ -919,7 +922,8 @@ export class OrderController {
   @ApiResponse({ status: 404, description: 'Pedido o chofer no encontrado' })
   @ApiConflictResponse({
     description:
-      'El pedido se paga con Mercado Pago y el pago todavía no está aprobado',
+      'El pedido se paga con Mercado Pago y el pago todavía no está aprobado, ' +
+      'o es parada de una hoja de ruta en borrador o confirmada (`code: ORDER_IN_ROUTE_SHEET`): no se asigna ni se reasigna por fuera de la hoja',
   })
   @ApiBadRequestResponse({
     description:

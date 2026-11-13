@@ -243,6 +243,8 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Ya existe una zona activa con esa prioridad: cada zona tiene una prioridad distinta',
   CHK_route_batch_stop_secuencia: 'El orden de la parada empieza en 1',
   UQ_route_batch_stop_secuencia: 'Ya hay otra parada con ese orden en la ruta',
+  UQ_route_batch_stop_pedido_activo:
+    'El pedido ya está en otra hoja o recorrido',
   CHK_route_batch_stop_ventana:
     'La franja estimada de la parada tiene que tener inicio y fin, y terminar después de empezar',
   CHK_route_batch_stop_salida:

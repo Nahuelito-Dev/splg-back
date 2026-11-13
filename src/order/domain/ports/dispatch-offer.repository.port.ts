@@ -53,6 +53,18 @@ export abstract class DispatchOfferRepositoryPort {
   abstract isInLiveBatch(orderId: string): Promise<boolean>;
 
   /**
+   * True si el pedido es parada activa de una hoja de ruta (F34) en borrador o
+   * confirmada: lo planifica el admin y lo asigna el chofer al iniciar la hoja,
+   * así que el despacho automático (ofertas) no lo ofrece suelto, el chofer no
+   * lo acepta y el admin no lo asigna por fuera de la hoja. Con `manager`, lee
+   * dentro de la transacción de quien llama (con el pedido bloqueado).
+   */
+  abstract isInPlannedRouteSheet(
+    orderId: string,
+    manager?: EntityManager,
+  ): Promise<boolean>;
+
+  /**
    * True si el pedido es programado, la agrupación por recorrido (M4) está
    * encendida en su distribuidora y todavía falta más de `batchingHoldMinutes`
    * para que empiece su franja: hasta entonces es candidato de M4 y M1 no lo

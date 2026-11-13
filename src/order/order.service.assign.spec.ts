@@ -51,7 +51,10 @@ describe('OrderService · asignación manual', () => {
     notifyDriverOrderCancelled: jest.Mock;
     stopTracking: jest.Mock;
   };
-  let dispatchOffers: { withdrawOtherActiveOffers: jest.Mock };
+  let dispatchOffers: {
+    withdrawOtherActiveOffers: jest.Mock;
+    isInPlannedRouteSheet: jest.Mock;
+  };
   let orchestrator: { onOrderAssigned: jest.Mock };
   let dispatchSettings: { obtener: jest.Mock };
   let dataSource: { createQueryRunner: jest.Mock };
@@ -158,6 +161,7 @@ describe('OrderService · asignación manual', () => {
     };
     dispatchOffers = {
       withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
+      isInPlannedRouteSheet: jest.fn().mockResolvedValue(false),
     };
     orchestrator = { onOrderAssigned: jest.fn().mockResolvedValue(undefined) };
     dispatchSettings = {
@@ -443,6 +447,24 @@ describe('OrderService · asignación manual', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(dispatch.notifyDriverNewOrder).not.toHaveBeenCalled();
+  });
+
+  it('F34: un pedido que está en una hoja de ruta no se asigna ni se reasigna a mano (409 ORDER_IN_ROUTE_SHEET), con el pedido bloqueado', async () => {
+    dispatchOffers.isInPlannedRouteSheet.mockResolvedValue(true);
+
+    await expect(
+      service.assignDelivery(PEDIDO, CHOFER, 'dist-1'),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'ORDER_IN_ROUTE_SHEET' },
+    });
+    expect(dispatchOffers.isInPlannedRouteSheet).toHaveBeenCalledWith(
+      PEDIDO,
+      queryRunner.manager,
+    );
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
 
   it('pedido inexistente: 404 dentro de la transacción', async () => {

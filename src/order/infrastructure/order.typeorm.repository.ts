@@ -5,6 +5,7 @@ import { AuditActionTypeId } from '../../audit/entities/audit-action-type.entity
 import { In, IsNull, MoreThanOrEqual, Not, Raw, Repository } from 'typeorm';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import {
+  sqlPedidoEnHojaDeRuta,
   sqlPedidoEnLoteVivo,
   sqlPedidoRetenidoPorAgrupacion,
 } from './lote-de-recorrido.sql';
@@ -206,7 +207,7 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
         deliveryId: IsNull(),
         orderId: Raw(
           (pedido) =>
-            `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)}`,
+            `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)} AND NOT ${sqlPedidoEnHojaDeRuta(pedido)}`,
         ),
       },
       select: { orderId: true, distributorId: true },
@@ -225,12 +226,13 @@ export class OrderTypeormRepository extends OrderRepositoryPort {
       status: OrderStatus.PENDING,
       deliveryId: IsNull(),
       ...(incluirExpress ? {} : { deliveryMode: OrderDeliveryMode.STANDARD }),
-      // Ni los de un lote de recorrido vivo ni los que M4 retiene hasta su
-      // margen: se excluyen en la consulta para que no llenen la página (el
+      // Ni los de un lote de recorrido vivo, ni los que M4 retiene hasta su
+      // margen, ni las paradas de una hoja de ruta en borrador o confirmada (F34):
+      // se excluyen en la consulta para que no llenen la página (el
       // barrido de M1 toma de a 50) ni el pool los deje tomar sueltos.
       orderId: Raw(
         (pedido) =>
-          `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)}`,
+          `NOT ${sqlPedidoEnLoteVivo(pedido)} AND NOT ${sqlPedidoRetenidoPorAgrupacion(pedido)} AND NOT ${sqlPedidoEnHojaDeRuta(pedido)}`,
       ),
       // Ni los que Mercado Pago retuvo por una alerta de fraude.
       paymentFraudHold: false,

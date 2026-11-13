@@ -72,6 +72,7 @@ import {
   MAX_INTENTOS_CODIGO_ENTREGA,
 } from './domain/delivery-code.util';
 import { bloquearChoferVigente } from '../common/locks/chofer-lock';
+import { pedidoEnHojaDeRuta } from './domain/errors/order-in-route-sheet.error';
 import { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
 import { RedisService } from '../redis/redis.service';
 import type { PushDeLlegada } from './domain/ports/notification.port';
@@ -859,6 +860,17 @@ export class OrderService {
       // habilitación ni de su flota.
       if (delivery.distributorId !== locked.distributorId) {
         throw new NotFoundException('Repartidor no encontrado');
+      }
+      // Una parada de una hoja de ruta en borrador o confirmada (F34) no se
+      // asigna ni se reasigna por fuera de la hoja. Se lee con el pedido
+      // bloqueado: el alta de la parada bloquea la misma fila.
+      if (
+        await this.dispatchOffers.isInPlannedRouteSheet(
+          locked.orderId,
+          queryRunner.manager,
+        )
+      ) {
+        throw pedidoEnHojaDeRuta();
       }
       // Con `soloSiLibre` (el lote de recorrido, M4) la asignación no le saca el
       // pedido a otro chofer ni a un admin que ya lo tomó: sólo asigna un pedido

@@ -98,6 +98,21 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     return filas.length > 0;
   }
 
+  async isInPlannedRouteSheet(
+    orderId: string,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const filas: unknown[] = await (manager ?? this.repo).query(
+      `SELECT 1 FROM "route_batch_stop" s
+         JOIN "route_batch" b ON b."batch_id" = s."batch_id"
+        WHERE s."order_id" = $1 AND s."active"
+          AND b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed')
+        LIMIT 1`,
+      [orderId],
+    );
+    return filas.length > 0;
+  }
+
   async isHeldForBatching(orderId: string): Promise<boolean> {
     const filas: unknown[] = await this.repo.query(
       `SELECT 1 FROM "order" o

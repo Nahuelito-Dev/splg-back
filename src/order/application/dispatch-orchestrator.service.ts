@@ -156,6 +156,9 @@ export class DispatchOrchestratorService {
     // Parada de un lote de recorrido que se está ofreciendo completo (M4): no
     // se ofrece suelto a la vez. Si el lote se deshace, vuelve a este circuito.
     if (await this.offers.isInLiveBatch(order.orderId)) return null;
+    // Parada de una hoja de ruta en borrador o confirmada (F34): la asigna el
+    // chofer al iniciar la hoja, no se ofrece suelta.
+    if (await this.offers.isInPlannedRouteSheet(order.orderId)) return null;
     // Con M4 encendido, un programado espera a la agrupación hasta
     // `batchingHoldMinutes` antes de su franja; pasado el margen lo toma M1.
     if (await this.offers.isHeldForBatching(order.orderId)) return null;

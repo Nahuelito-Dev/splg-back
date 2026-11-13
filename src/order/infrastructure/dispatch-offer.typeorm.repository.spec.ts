@@ -357,6 +357,45 @@ describe('DispatchOfferTypeormRepository.isInLiveBatch', () => {
   });
 });
 
+describe('DispatchOfferTypeormRepository.isInPlannedRouteSheet', () => {
+  const repoCon = (rows: unknown[]) => {
+    const orm = { query: jest.fn().mockResolvedValue(rows) };
+    return {
+      orm,
+      repo: new DispatchOfferTypeormRepository(
+        orm as unknown as Repository<DispatchOffer>,
+      ),
+    };
+  };
+
+  it('es verdadero si el pedido es parada activa de una hoja de ruta en borrador o confirmada', async () => {
+    const { repo, orm } = repoCon([{ '?column?': 1 }]);
+    expect(await repo.isInPlannedRouteSheet('ord-1')).toBe(true);
+    const [sql, params] = orm.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain(`b."kind" = 'planned'`);
+    expect(sql).toContain(`b."status" IN ('draft', 'confirmed')`);
+    expect(sql).toContain('s."active"');
+    expect(params).toEqual(['ord-1']);
+  });
+
+  it('con el manager de la transacción lee ahí (con el pedido bloqueado)', async () => {
+    const { repo, orm } = repoCon([]);
+    const manager = { query: jest.fn().mockResolvedValue([{}]) };
+    expect(
+      await repo.isInPlannedRouteSheet(
+        'ord-1',
+        manager as unknown as EntityManager,
+      ),
+    ).toBe(true);
+    expect(orm.query).not.toHaveBeenCalled();
+  });
+
+  it('es falso si el pedido no está en una hoja viva', async () => {
+    const { repo } = repoCon([]);
+    expect(await repo.isInPlannedRouteSheet('ord-1')).toBe(false);
+  });
+});
+
 describe('DispatchOfferTypeormRepository.isHeldForBatching', () => {
   const repoCon = (rows: unknown[]) => {
     const orm = { query: jest.fn().mockResolvedValue(rows) };

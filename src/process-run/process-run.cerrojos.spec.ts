@@ -9,6 +9,7 @@ import { ReceiverRetentionCron } from '../order/application/receiver-retention.c
 import { DispatchService } from '../order/dispatch.service';
 import { RepurchaseCron } from '../repurchase-forecast/repurchase.cron';
 import { RouteBatchCron } from '../route-batch/route-batch.cron';
+import { RoutePlanningCron } from '../route-batch/route-planning.cron';
 import { StockLowCron } from '../stock/application/stock-low.cron';
 import { StockReconciliationCron } from '../stock/application/stock-reconciliation.cron';
 import { dentroDeCorrida, nuevaCorrida } from './process-run.context';
@@ -42,6 +43,14 @@ const casos = (): Caso[] => {
     ['M3 recompra: vencer', () => recompra.vencer()],
     ['M4 recorridos: armar', () => lotes.armar()],
     ['M4 recorridos: vencer', () => lotes.vencer()],
+    [
+      'M4 hoja de ruta: proponer',
+      () => new RoutePlanningCron(nada, nada, r).proponer(),
+    ],
+    [
+      'M4 hoja de ruta: cerrar días',
+      () => new RoutePlanningCron(nada, nada, r).cerrarDias(),
+    ],
     ['M2 planificador: planificar', () => planificador.planificar()],
     [
       'M2 planificador: vencer propuestas',

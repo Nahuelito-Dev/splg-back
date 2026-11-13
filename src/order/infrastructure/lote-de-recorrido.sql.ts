@@ -20,6 +20,16 @@ export const sqlPedidoEnLoteVivo = (columna: string): string =>
              AND b."status" IN ('forming', 'offered'))`;
 
 /**
+ * El pedido es parada activa de una hoja de ruta (F34) en borrador o
+ * confirmada: lo lleva el chofer de la hoja; no está en el pool ni se ofrece.
+ */
+export const sqlPedidoEnHojaDeRuta = (columna: string): string =>
+  `EXISTS (SELECT 1 FROM "route_batch_stop" s
+            JOIN "route_batch" b ON b."batch_id" = s."batch_id"
+           WHERE s."order_id" = ${columnaDelPedido(columna)} AND s."active"
+             AND b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed'))`;
+
+/**
  * Con M4 encendido en la distribuidora del pedido, un programado estándar al
  * que le falta más que `batchingHoldMinutes` para su franja: es candidato de M4
  * y no se ofrece suelto. Apagado (por omisión) nunca lo retiene.

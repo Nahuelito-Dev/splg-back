@@ -152,6 +152,7 @@ describe('UpdateOrderStatusUseCase · pertenencia del pedido', () => {
       {
         withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]),
         isInLiveBatch: jest.fn().mockResolvedValue(false),
+        isInPlannedRouteSheet: jest.fn().mockResolvedValue(false),
       } as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
       {
         emitAsync: jest.fn().mockResolvedValue([]),

@@ -95,6 +95,37 @@ describe('DispatchService', () => {
     expect(orchestrator.ensureOffered).toHaveBeenCalledTimes(2);
   });
 
+  it('no ofrece los pedidos que retiene una hoja de ruta (borrador o confirmada)', async () => {
+    const hojaDeRuta = {
+      isHeldForPlanning: jest.fn().mockResolvedValue(new Set(['en-hoja'])),
+    };
+    service = new DispatchService(
+      orderService as unknown as import('./order.service').OrderService,
+      redis as unknown as import('../redis/redis.service').RedisService,
+      orchestrator as unknown as import('./application/dispatch-orchestrator.service').DispatchOrchestratorService,
+      frecuencias as unknown as import('../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
+      refunds as unknown as import('../payments/application/refunds.service').RefundsService,
+      vencimientos as unknown as import('./application/vencimiento-sin-chofer.service').VencimientoSinChoferService,
+      hojaDeRuta as unknown as import('../route-batch/planning-hold/route-planning-hold.service').RoutePlanningHoldService,
+    );
+    conPendientes('d1');
+    orderService.findAvailableOrders.mockResolvedValue({
+      orders: [
+        makeOrder({ orderId: 'en-hoja' }),
+        makeOrder({ orderId: 'suelto' }),
+      ],
+    });
+    await service.tick();
+    expect(hojaDeRuta.isHeldForPlanning).toHaveBeenCalledWith([
+      'en-hoja',
+      'suelto',
+    ]);
+    expect(orchestrator.ensureOffered).toHaveBeenCalledTimes(1);
+    expect(orchestrator.ensureOffered).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: 'suelto' }),
+    );
+  });
+
   it('saltea pedidos creados hace menos de 1 minuto', async () => {
     conPendientes('d1');
     orderService.findAvailableOrders.mockResolvedValue({

@@ -23,6 +23,7 @@ import { User } from '../../users/entities/user.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { transitionOrder } from '../domain/order-status.machine';
+import { pedidoEnHojaDeRuta } from '../domain/errors/order-in-route-sheet.error';
 import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { assertReservaActivable } from '../domain/reservation-activation';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
@@ -616,6 +617,11 @@ export class UpdateOrderStatusUseCase {
         // suelta (ni del pool ni a mano): el lote se acepta entero o se deshace.
         if (await this.offers.isInLiveBatch(order.orderId)) {
           throw new ConflictException(MENSAJE_PEDIDO_EN_RECORRIDO);
+        }
+        // Una parada de una hoja de ruta en borrador o confirmada (F34) la lleva
+        // el chofer de la hoja: ni el chofer ni el admin la toman suelta.
+        if (await this.offers.isInPlannedRouteSheet(order.orderId, manager)) {
+          throw pedidoEnHojaDeRuta();
         }
         if (!deliveryId || deliveryId.trim() === '') {
           throw new BadRequestException(

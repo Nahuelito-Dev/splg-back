@@ -38,6 +38,8 @@ export enum ProcessName {
   PROCESS_RUN_PURGE = 'process_run_purge',
   DOCUMENT_READING = 'document_reading',
   DOCUMENT_READING_PROPOSALS = 'document_reading_proposals',
+  ROUTE_PLANNING_PROPOSE = 'route_planning_propose',
+  ROUTE_PLANNING_CLOSE_DAYS = 'route_planning_close_days',
 }
 
 export enum ProcessRunStatus {
@@ -132,6 +134,17 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
     title: 'Recorridos: armado de lotes',
     periodSeconds: MIN,
     recordEverySeconds: 5 * MIN,
+  },
+  [ProcessName.ROUTE_PLANNING_PROPOSE]: {
+    module: 'M4',
+    title: 'Hoja de ruta: propuesta del día siguiente',
+    periodSeconds: MIN,
+    recordEverySeconds: 5 * MIN,
+  },
+  [ProcessName.ROUTE_PLANNING_CLOSE_DAYS]: {
+    module: 'M4',
+    title: 'Hoja de ruta: cierre de los días',
+    periodSeconds: 5 * MIN,
   },
   [ProcessName.ROUTE_BATCH_EXPIRY]: {
     module: 'M4',
