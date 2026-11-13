@@ -16,6 +16,7 @@ import { GlobalExceptionFilter } from '../../../src/common/filters/global-except
 import {
   InjectionToken,
   INestApplication,
+  Type,
   VERSION_NEUTRAL,
   VersioningType,
 } from '@nestjs/common';
@@ -58,6 +59,7 @@ import {
   AuditActionType,
 } from '../../../src/audit/entities/audit-action-type.entity';
 import { crearValidationPipe } from '../../../src/common/validation/validation-pipe';
+import { sentenciasDeRolesDelPersonal } from '../../../src/migrations/sql/roles-del-personal';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
  * devuelva algo que `supertest` acepta sin pasar por `any`. */
@@ -146,6 +148,8 @@ export async function createTestApp(
   opciones: {
     s3?: Record<string, string>;
     overrides?: Array<{ token: InjectionToken; value: unknown }>;
+    /** Controllers sólo de la prueba (p. ej. uno con `@Permiso` para el guard). */
+    controllers?: Type<unknown>[];
   } = {},
 ): Promise<TestEnv> {
   // 1. Postgres (con PostGIS) y Redis efímeros
@@ -205,7 +209,10 @@ export async function createTestApp(
   const { AppModule } =
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('../../../src/app.module') as typeof import('../../../src/app.module');
-  let moduleBuilder = Test.createTestingModule({ imports: [AppModule] });
+  let moduleBuilder = Test.createTestingModule({
+    imports: [AppModule],
+    controllers: opciones.controllers ?? [],
+  });
   for (const override of opciones.overrides ?? []) {
     moduleBuilder = moduleBuilder
       .overrideProvider(override.token)
@@ -309,6 +316,9 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     ...sentenciasDeSaldos(),
     ...sentenciasDeReglasDeDatos(),
     ...CREAR_PROCEDIMIENTOS_DE_CONCILIACION,
+    // Roles del personal (F37): únicos parciales, rol de sistema por
+    // distribuidora y rol de personal de cada admin.
+    ...sentenciasDeRolesDelPersonal(),
   ]) {
     await dataSource.query(sql);
   }

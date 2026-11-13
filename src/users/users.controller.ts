@@ -490,7 +490,7 @@ export class UsersController {
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
     description:
-      'Es un chofer con pedidos aceptados o en camino (hay que cancelarlos o reasignarlos antes), un chofer con una rendición pendiente (CU-181), o el último administrador activo de su distribuidora o el último super administrador',
+      'Es un chofer con pedidos aceptados o en camino (hay que cancelarlos o reasignarlos antes), un chofer con una rendición pendiente (CU-181), o el último administrador activo de su distribuidora o el último super administrador, o el último administrador activo que puede gestionar los roles y permisos de la distribuidora (`LAST_ROLES_MANAGER`)',
   })
   @HttpCode(HttpStatus.OK)
   async remove(
@@ -520,7 +520,7 @@ export class UsersController {
   })
   @ApiConflictResponse({
     description:
-      'Es el último administrador activo de su distribuidora o el último super administrador',
+      'Es el último administrador activo de su distribuidora o el último super administrador, o el último administrador activo que puede gestionar los roles y permisos de la distribuidora (`LAST_ROLES_MANAGER`)',
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiBadRequestResponse({

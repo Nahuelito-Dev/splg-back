@@ -43,6 +43,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   document_reading: 'reading_id',
   customer_container_account: 'account_id',
   mp_reconciliation: 'reconciliation_id',
+  staff_role: 'staff_role_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -140,6 +141,8 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['customer_container_account', 'gas_cylinder_id', 'gas_cylinder'],
     ['customer_container_movement', 'account_id', 'customer_container_account'],
     ['customer_container_movement', 'order_id', 'order'],
+    // Rol del personal del admin (F37 E1)
+    ['admin', 'staff_role_id', 'staff_role'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

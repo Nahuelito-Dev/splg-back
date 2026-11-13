@@ -404,6 +404,16 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_insurance_installment_pagada:
     'Una cuota paga necesita la fecha, el importe, quién pagó, el egreso de caja y el comprobante',
   UQ_insurance_installment_numero: 'La póliza ya tiene esa cuota',
+  // Roles del personal del panel (F37)
+  UQ_staff_role_nombre_vigente: 'Ya existe un rol con ese nombre',
+  UQ_staff_role_sistema_vigente:
+    'La distribuidora ya tiene su rol de sistema «Administrador»',
+  UQ_staff_role_id_distribuidora: 'El rol ya existe en la distribuidora',
+  CHK_staff_role_nombre: 'El nombre del rol tiene que tener al menos 2 letras',
+  CHK_staff_role_sistema_sin_lista:
+    'El rol de sistema tiene todos los permisos: no lleva una lista propia',
+  CHK_admin_rol_de_personal:
+    'Todo administrador de una distribuidora tiene que tener un rol de personal (y el super administrador, ninguno)',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

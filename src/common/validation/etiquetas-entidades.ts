@@ -31,6 +31,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   GasCylinderPromotion: 'Promoción de garrafa',
   Incident: 'Incidencia',
   JobPosition: 'Puesto de trabajo',
+  StaffRole: 'Rol del personal',
   MaintenancePlan: 'Plan de flota',
   MaintenanceTask: 'Tarea de flota',
   MaintenanceTaskAttachment: 'Adjunto de tarea',

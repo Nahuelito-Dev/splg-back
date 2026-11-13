@@ -1,4 +1,9 @@
 import {
+  assertQuedaQuienGestioneRoles,
+  bloquearGestoresDeRoles,
+  contarGestoresDeRoles,
+} from '../common/permisos/gestores-de-roles';
+import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -486,7 +491,9 @@ export class UsersService {
    * la baja y para el bloqueo. Primero toma el lock del ámbito y recién
    * después lee el estado del destino y cuenta a los demás, así dos bajas o
    * bloqueos simultáneos se ven entre sí. Un administrador ya bloqueado no
-   * cuenta, así que darlo de baja no cambia nada. Lectura cruda de `admin`, la
+   * cuenta, así que darlo de baja no cambia nada. En una distribuidora tampoco
+   * puede quedar sin nadie que gestione los roles del personal (F37,
+   * `common/permisos/gestores-de-roles.ts`). Lectura cruda de `admin`, la
    * misma excepción de `common/tenancy/pertenencia.ts`.
    */
   private async asegurarQueQuedaAdministrador(
@@ -523,6 +530,17 @@ export class UsersService {
         esSuper
           ? 'Es el último super administrador activo: dá de alta o desbloqueá a otro antes'
           : 'Es el último administrador activo de la distribuidora: dá de alta o desbloqueá a otro antes',
+      );
+    }
+    // Y que quede alguien que pueda gestionar los roles del personal (F37).
+    // El lock de roles va después del de bajas, el orden de todos lados.
+    if (!esSuper && perfil.distributorId) {
+      await bloquearGestoresDeRoles(manager, perfil.distributorId, {
+        yaTieneElDeBajas: true,
+      });
+      assertQuedaQuienGestioneRoles(
+        await contarGestoresDeRoles(manager, perfil.distributorId),
+        await contarGestoresDeRoles(manager, perfil.distributorId, user.userId),
       );
     }
   }

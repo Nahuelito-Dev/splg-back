@@ -166,6 +166,42 @@ describe('UsersService', () => {
         expect(manager.softRemove).toHaveBeenCalled();
       });
 
+      /** Hay otro admin activo, pero el destino es el único que gestiona roles. */
+      const unicoGestor = () =>
+        manager.query.mockImplementation((sql: string, params?: unknown[]) => {
+          if (sql.includes('"is_system" OR')) {
+            // Sin excluir a nadie: 1 (el destino). Excluyéndolo: 0.
+            return Promise.resolve([{ n: params?.[3] ? 0 : 1 }]);
+          }
+          if (sql.includes('count(*)')) return Promise.resolve([{ n: '1' }]);
+          if (sql.includes('SELECT blocked')) {
+            return Promise.resolve([{ blocked: false }]);
+          }
+          return Promise.resolve([]);
+        });
+
+      it('el último que gestiona los roles (F37) es 409 LAST_ROLES_MANAGER, con el lock de roles después del de bajas', async () => {
+        users.findOne.mockResolvedValue(admin());
+        unicoGestor();
+        const error = await service.remove('u1').catch((e: unknown) => e);
+        expect(
+          (error as ConflictException).getResponse() as Record<string, unknown>,
+        ).toMatchObject({ statusCode: 409, code: 'LAST_ROLES_MANAGER' });
+        expect(manager.softRemove).not.toHaveBeenCalled();
+        const locks = (manager.query.mock.calls as [string, unknown[]][])
+          .filter(([q]) => q.includes('pg_advisory_xact_lock'))
+          .map(([, p]) => p[0]);
+        expect(locks).toEqual(['admin-baja:d1', 'staff-role:d1']);
+      });
+
+      it('bloquear al último que gestiona los roles también es 409', async () => {
+        users.findOne.mockResolvedValue(admin());
+        unicoGestor();
+        await expect(service.toggleBlockUser('u1', true)).rejects.toThrow(
+          'gestionar los roles y permisos',
+        );
+      });
+
       it('si el destino ya está bloqueado en la base (leído tras el lock), no hay que contar a nadie', async () => {
         // la copia cargada antes de la transacción dice que no está bloqueado
         users.findOne.mockResolvedValue(admin({ blocked: false }));

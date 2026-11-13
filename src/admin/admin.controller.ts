@@ -200,7 +200,7 @@ export class AdminController {
   })
   @ApiConflictResponse({
     description:
-      'Es el último administrador activo de la distribuidora o el último super administrador',
+      'Es el último administrador activo de la distribuidora o el último super administrador, o el último administrador activo que puede gestionar los roles y permisos de la distribuidora (`LAST_ROLES_MANAGER`)',
   })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
