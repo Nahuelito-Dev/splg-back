@@ -49,7 +49,7 @@ export const JoiValidationSchema = Joi.object({
   APP_URL: Joi.string()
     .uri({ scheme: ['https'] })
     .optional(),
-  // Rutas por calles (`GET /routes/driving`): clave de Google Directions DEL
+  // Rutas por calles (`GET /routes/driving`): clave de la Routes API de Google DEL
   // SERVIDOR (sin ella se usa OSRM) y, opcional, otro servidor OSRM.
   GOOGLE_DIRECTIONS_API_KEY: Joi.string().empty('').optional(),
   OSRM_BASE_URL: Joi.string()
