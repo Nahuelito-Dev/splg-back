@@ -3,6 +3,20 @@ import { RoleResponseDto } from '../../role/dto/role-response.dto';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
 import { DistributorResponseDto } from '../../distributor/dto/distributor-response.dto';
 
+/** El rol de personal de un administrador, resumido para las listas del panel. */
+export class AdminStaffRoleDto {
+  @ApiProperty({ format: 'uuid' })
+  staffRoleId!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty({
+    description: 'Es el rol de sistema «Administrador» (todos los permisos)',
+  })
+  isSystem!: boolean;
+}
+
 export class AdminResponseDto {
   @ApiProperty({ format: 'uuid' })
   admin_id!: string;
@@ -32,6 +46,14 @@ export class AdminResponseDto {
 
   @ApiPropertyOptional({ type: DistributorResponseDto })
   distributor?: DistributorResponseDto;
+
+  @ApiPropertyOptional({
+    type: AdminStaffRoleDto,
+    nullable: true,
+    description:
+      'Rol de personal del administrador (F37); null para el super admin',
+  })
+  staffRole?: AdminStaffRoleDto | null;
 }
 
 /** Vista resumida de un administrador, para buscarlo por id o por correo. */

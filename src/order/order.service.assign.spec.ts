@@ -395,6 +395,7 @@ describe('OrderService · asignación manual', () => {
         event: 'NEW_ORDER',
         orderId: PEDIDO,
         totalAmount: 9900,
+        assigned: true,
       }),
     );
   });

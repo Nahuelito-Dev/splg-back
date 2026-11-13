@@ -183,6 +183,10 @@ describe('controllers de roles del personal', () => {
         handler(AdminStaffRoleController, 'assign'),
       ),
     ).toEqual(['administradores.gestionar']);
+    // Quien sólo asigna roles («Cambiar rol») también lista los roles.
+    expect(
+      Reflect.getMetadata(PERMISO_KEY, handler(StaffRoleController, 'findAll')),
+    ).toEqual(['roles.gestionar', 'administradores.gestionar']);
     expect(
       Reflect.getMetadata(PERMISO_KEY, PermissionsController),
     ).toBeUndefined();

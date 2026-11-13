@@ -21,6 +21,15 @@ export class AdminMapper {
     if (admin.distributor) {
       dto.distributor = DistributorMapper.toDto(admin.distributor);
     }
+    if (admin.staffRole !== undefined) {
+      dto.staffRole = admin.staffRole
+        ? {
+            staffRoleId: admin.staffRole.staffRoleId,
+            name: admin.staffRole.name,
+            isSystem: admin.staffRole.isSystem,
+          }
+        : null;
+    }
     return dto;
   }
 

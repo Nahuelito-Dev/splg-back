@@ -104,7 +104,15 @@ export class AdminService {
       userId: user_id,
       distributorId: distributor_id ?? null,
     });
-    return await this.adminRepository.save(admin);
+    const guardado = await this.adminRepository.save(admin);
+    // El rol de personal lo pone la base al insertar (rol de sistema): se relee
+    // para que la respuesta lo traiga como en GET /admin.
+    return (
+      (await this.adminRepository.findOne({
+        where: { adminId: guardado.adminId },
+        relations: ['staffRole'],
+      })) ?? guardado
+    );
   }
 
   /**
@@ -118,7 +126,7 @@ export class AdminService {
         ...(distributorId ? { distributorId } : {}),
         user: { userId: Not(IsNull()) },
       },
-      relations: ['user', 'user.role', 'distributor'],
+      relations: ['user', 'user.role', 'distributor', 'staffRole'],
     });
   }
 
@@ -146,7 +154,7 @@ export class AdminService {
   async findOne(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
       where: { adminId: id },
-      relations: ['user', 'user.role'],
+      relations: ['user', 'user.role', 'staffRole'],
     });
 
     if (!admin) {
@@ -171,7 +179,7 @@ export class AdminService {
         ...(distributorId ? { distributorId } : {}),
         user: { userId: Not(IsNull()) },
       },
-      relations: ['user', 'user.role', 'distributor'],
+      relations: ['user', 'user.role', 'distributor', 'staffRole'],
     });
     if (!admin) {
       throw new NotFoundException('Administrador no encontrado');
