@@ -744,10 +744,9 @@ export class CreateOrderUseCase {
    * Total del pedido a partir del subtotal de ítems (YA con promociones):
    * recargo de zona (fijo, o porcentual sobre el subtotal) y DESPUÉS recargo
    * por medio de pago (`paymentSurchargePercentage`, en %), que se aplica sobre
-   * el total con el recargo de zona ya sumado. El recargo express (CU-147) se
-   * suma al final y no lleva el recargo por medio de pago: así lo que se
-   * devuelve si el pedido pierde el express es exactamente lo que se cobró de
-   * más.
+   * el total con el recargo de zona ya sumado. El cargo de envases y el
+   * recargo express (CU-147) se suman al final y no llevan recargo por medio
+   * de pago.
    */
   calcularTotales(
     subtotalItems: Decimal.Value,
@@ -764,16 +763,18 @@ export class CreateOrderUseCase {
       subtotalItems,
       coverageZone,
     );
-    const base = zoneSurchargeAmount
-      .plus(subtotalItems)
-      .plus(containerChargeAmount);
+    // El cobro de envases es independiente: nunca integra la base del recargo
+    // por medio de pago.
+    const base = zoneSurchargeAmount.plus(subtotalItems);
     // El recargo se guarda aparte y redondeado a 2 decimales, igual que el
     // resto de los montos: el total es exactamente la suma de sus partes.
     const conRecargo = this.pricing
       .applyPaymentSurcharge(base, paymentSurchargePercentage)
       .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const paymentSurchargeAmount = conRecargo.minus(base);
-    const totalAmount = conRecargo.plus(expressSurcharge);
+    const totalAmount = conRecargo
+      .plus(containerChargeAmount)
+      .plus(expressSurcharge);
     return { totalAmount, zoneSurchargeAmount, paymentSurchargeAmount };
   }
 

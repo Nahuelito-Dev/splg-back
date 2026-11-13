@@ -398,10 +398,10 @@ describe('Recupero de envases (e2e)', () => {
         compraPorDeposito: () => Promise.resolve(false),
       };
       const notifier = {
-        alCliente: (caso: CylinderRecoveryCase) => {
+        porSocket: (caso: CylinderRecoveryCase) => {
           notificados.push(`cliente:${caso.caseId}`);
-          return Promise.resolve();
         },
+        alClienteAgrupado: () => Promise.resolve(),
         escaladoAlAdmin: (caso: CylinderRecoveryCase) => {
           notificados.push(`admin:${caso.caseId}`);
         },

@@ -398,13 +398,13 @@ describe('Cobro del envase (Postgres real)', () => {
 
       const q = cuerpo<Cotizacion>(await cotizar(e, body).expect(200));
       // subtotal 2000, zona 10 % = 200 (sólo sobre la recarga), envase 1 × 500,
-      // recargo de transferencia 10 % sobre (2000 + 200 + 500) = 270.
+      // recargo de transferencia 10 % sobre garrafas + zona (2000 + 200) = 220.
       expect(q).toMatchObject({
         subtotal: 2000,
         zoneSurcharge: 200,
         containerChargeAmount: 500,
-        paymentSurcharge: 270,
-        total: 2970,
+        paymentSurcharge: 220,
+        total: 2920,
       });
       expect(q.items[0]).toMatchObject({
         containersCharged: 1,
@@ -413,7 +413,7 @@ describe('Cobro del envase (Postgres real)', () => {
       });
 
       const p = await crearOk(e, { ...body, expectedTotal: q.total });
-      expect(p.total_amount).toBe(2970);
+      expect(p.total_amount).toBe(2920);
       expect(p.containerChargeAmount).toBe(500);
       expect(p.order_items[0]).toMatchObject({
         quantity: 2,
@@ -423,11 +423,11 @@ describe('Cobro del envase (Postgres real)', () => {
 
       const enBase = await pedidoEnBase(p.order_id);
       expect(enBase).toMatchObject({
-        total: '2970.00',
+        total: '2920.00',
         subtotal_items: '2000.00',
         zone_surcharge_amount: '200.00',
         container_charge_amount: '500.00',
-        payment_surcharge_amount: '270.00',
+        payment_surcharge_amount: '220.00',
       });
       expect(await renglonesEnBase(p.order_id)).toEqual([
         { quantity: 2, containers_charged: 1, container_unit_price: '500.00' },
@@ -563,14 +563,14 @@ describe('Cobro del envase (Postgres real)', () => {
       const body = cuerpoDelPedido(e, c, 2, { paymentMethod: 'transfer' });
 
       // Recarga 2 × 900 = 1800; zona 10 % de 1800 = 180; envases 2 × 500 = 1000
-      // (sin el 10 % de la promo); transferencia 10 % de (1800 + 180 + 1000) = 298.
+      // (sin el 10 % de la promo); transferencia 10 % de garrafas + zona (1800 + 180) = 198.
       const q = cuerpo<Cotizacion>(await cotizar(e, body).expect(200));
       expect(q).toMatchObject({
         subtotal: 1800,
         zoneSurcharge: 180,
         containerChargeAmount: 1000,
-        paymentSurcharge: 298,
-        total: 3278,
+        paymentSurcharge: 198,
+        total: 3178,
       });
       expect(q.items[0]).toMatchObject({
         unitPrice: 900,
@@ -580,11 +580,11 @@ describe('Cobro del envase (Postgres real)', () => {
       });
       const p = await crearOk(e, { ...body, expectedTotal: q.total });
       expect(await pedidoEnBase(p.order_id)).toMatchObject({
-        total: '3278.00',
+        total: '3178.00',
         subtotal_items: '1800.00',
         zone_surcharge_amount: '180.00',
         container_charge_amount: '1000.00',
-        payment_surcharge_amount: '298.00',
+        payment_surcharge_amount: '198.00',
       });
     });
 
@@ -650,8 +650,8 @@ describe('Cobro del envase (Postgres real)', () => {
             items: itemsDeCotizacion(e, 2),
           }).expect(200),
         );
-        // 2000 + 200 + 500 = 2700; transferencia 10 % = 270.
-        expect(q).toMatchObject({ containerChargeAmount: 500, total: 2970 });
+        // 2000 + 200 + 500 = 2700; transferencia 10 % sobre 2000 + 200 = 220.
+        expect(q).toMatchObject({ containerChargeAmount: 500, total: 2920 });
         const editado = cuerpo<PedidoJson>(
           await http()
             .patch(`/orders/${p.order_id}`)
@@ -662,9 +662,9 @@ describe('Cobro del envase (Postgres real)', () => {
         expect(editado.total_amount).toBe(q.total);
         expect(editado.containerChargeAmount).toBe(500);
         expect(await pedidoEnBase(p.order_id)).toMatchObject({
-          total: '2970.00',
+          total: '2920.00',
           container_charge_amount: '500.00',
-          payment_surcharge_amount: '270.00',
+          payment_surcharge_amount: '220.00',
         });
       });
 
@@ -683,7 +683,7 @@ describe('Cobro del envase (Postgres real)', () => {
             orderId: p.order_id,
           }).expect(200),
         );
-        expect(q.total).toBe(2970);
+        expect(q.total).toBe(2920);
         const editado = cuerpo<PedidoJson>(
           await http()
             .patch(`/orders/${p.order_id}`)
