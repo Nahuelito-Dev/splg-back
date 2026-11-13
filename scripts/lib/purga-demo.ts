@@ -247,6 +247,16 @@ export async function purgarDistribuidoras(
   await q(
     `DELETE FROM "job_position" WHERE "distributor_id" = ANY($1::uuid[])`,
   );
+  // Roles del personal: los admins que quedan vuelven al de sistema y los
+  // roles propios se van (el de sistema queda: es de la distribuidora).
+  await q(
+    `UPDATE "admin" SET "staff_role_id" = staff_role_de_sistema("distributor_id")
+      WHERE "distributor_id" = ANY($1::uuid[])
+        AND "staff_role_id" IS DISTINCT FROM staff_role_de_sistema("distributor_id")`,
+  );
+  await q(
+    `DELETE FROM "staff_role" WHERE "distributor_id" = ANY($1::uuid[]) AND NOT "is_system"`,
+  );
 
   // Catálogo y operación.
   await q(`DELETE FROM "time_slot" WHERE "distributor_id" = ANY($1::uuid[])`);

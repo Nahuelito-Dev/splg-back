@@ -16,6 +16,7 @@ import {
   THROTTLER_SUBIDAS,
 } from './common/guards/app-throttler.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PermissionGuard } from './admin/guards/permission.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { RegistroModule } from './registro/registro.module';
@@ -300,6 +301,12 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      // Permisos del personal del panel (F37): después de RolesGuard, sólo
+      // para los endpoints con @Permiso y sólo restringe a los admin.
+      provide: APP_GUARD,
+      useClass: PermissionGuard,
     },
     {
       // Logging estructurado, PRIMERO en la cadena de interceptors: mide la

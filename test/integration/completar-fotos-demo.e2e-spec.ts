@@ -184,7 +184,19 @@ describe('completar fotos de la demo (e2e)', () => {
       distributor_id: distId,
       user_id: ids.chofer[0],
     });
-    await insertar('admin', { distributor_id: distId, user_id: ids.admin[0] });
+    // Con `session_replication_role = replica` no corren los triggers que le
+    // ponen el rol de sistema: el rol de personal va explícito (lo exige
+    // `CHK_admin_rol_de_personal`).
+    const rolDePersonal = await insertar('staff_role', {
+      distributor_id: distId,
+      name: 'Administrador',
+      is_system: true,
+    });
+    await insertar('admin', {
+      distributor_id: distId,
+      user_id: ids.admin[0],
+      staff_role_id: rolDePersonal,
+    });
     await insertar('order', {
       distributor_id: distId,
       customer_id: ids.cliente[0],

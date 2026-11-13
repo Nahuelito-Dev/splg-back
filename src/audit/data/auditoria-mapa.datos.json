@@ -1107,6 +1107,22 @@
       "orderColumn": null
     },
     {
+      "table": "staff_role",
+      "entity": "StaffRole",
+      "pk": [
+        "staff_role_id"
+      ],
+      "deleteColumn": "deletedAt",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "stock_adjustment",
       "entity": "StockAdjustment",
       "pk": [
@@ -1371,6 +1387,14 @@
       "secret": false,
       "kind": "text",
       "position": 2
+    },
+    {
+      "table": "admin",
+      "column": "staff_role_id",
+      "property": "staffRoleId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
     },
     {
       "table": "admin_notification",
@@ -8115,6 +8139,62 @@
       "secret": false,
       "kind": "text",
       "position": 8
+    },
+    {
+      "table": "staff_role",
+      "column": "staff_role_id",
+      "property": "staffRoleId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "staff_role",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "staff_role",
+      "column": "name",
+      "property": "name",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "staff_role",
+      "column": "description",
+      "property": "description",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "staff_role",
+      "column": "permissions",
+      "property": "permissions",
+      "secret": false,
+      "kind": "json",
+      "position": 4
+    },
+    {
+      "table": "staff_role",
+      "column": "is_system",
+      "property": "isSystem",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "staff_role",
+      "column": "deletedAt",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
     },
     {
       "table": "stock_adjustment",
