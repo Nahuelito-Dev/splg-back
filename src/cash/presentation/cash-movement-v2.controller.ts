@@ -15,6 +15,7 @@ import {
   CashMovementV2PageDto,
   QueryCashMovementV2Dto,
 } from '../dto/cash-movement.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** El libro de movimientos con el pedido del que nace cada cobro de venta (API v2; el resto sigue en `/cash-movements` v1). */
 @ApiTags('Finanzas · Movimientos de caja (v2)')
@@ -23,6 +24,7 @@ import {
 export class CashMovementV2Controller {
   constructor(private readonly movimientos: CashMovementService) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({
     summary: 'Consultar los movimientos de caja, con su pedido',

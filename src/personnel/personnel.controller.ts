@@ -5,6 +5,7 @@ import { PersonnelDashboardDto } from './dto/personnel-dashboard.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Personal · Tablero')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -12,6 +13,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class PersonnelController {
   constructor(private readonly dashboard: PersonnelDashboardService) {}
 
+  @Permiso('personal.ver')
   @Get('dashboard')
   @ApiOperation({
     summary: 'Consultar el tablero de personal (CU-194)',

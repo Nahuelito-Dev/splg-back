@@ -38,6 +38,7 @@ import {
   UpdateSupplierDto,
 } from '../dto/supplier.dto';
 import { SupplierMapper } from './supplier.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Proveedores de la distribuidora (CU-214). Baja lógica. */
 @ApiTags('Compras · Proveedores')
@@ -49,6 +50,7 @@ export class SupplierController {
     private readonly queries: PurchaseQueryService,
   ) {}
 
+  @Permiso('stock.ver')
   @Get()
   @ApiOperation({ summary: 'Listar los proveedores, paginado y filtrable' })
   @ApiOkResponse({ type: SupplierPageDto })
@@ -60,6 +62,7 @@ export class SupplierController {
     return { data: data.map((s) => SupplierMapper.toDto(s)), total };
   }
 
+  @Permiso('compras.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -81,6 +84,7 @@ export class SupplierController {
     );
   }
 
+  @Permiso('stock.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un proveedor' })
   @ApiParam({ name: 'id', description: 'Proveedor UUID' })
@@ -95,6 +99,7 @@ export class SupplierController {
     );
   }
 
+  @Permiso('stock.ver')
   @Get(':id/purchase-history')
   @ApiOperation({
     summary: 'Historial de compras de un proveedor',
@@ -112,6 +117,7 @@ export class SupplierController {
     return this.queries.historialDeProveedor(id, distributorId, query);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Editar un proveedor' })
   @ApiParam({ name: 'id', description: 'Proveedor UUID' })
@@ -130,6 +136,7 @@ export class SupplierController {
     );
   }
 
+  @Permiso('compras.gestionar')
   @Delete(':id')
   @ApiOperation({ summary: 'Dar de baja un proveedor (baja lógica)' })
   @ApiParam({ name: 'id', description: 'Proveedor UUID' })

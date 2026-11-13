@@ -36,6 +36,7 @@ import {
 } from './dto/express.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderMapper } from './order.mapper';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const EXPRESS_NO_DISPONIBLE =
   'La modalidad express dejó de estar disponible (`code: EXPRESS_NOT_AVAILABLE`, con `reason`: disabled, no_location, out_of_coverage, out_of_hours o no_motorcycle_driver): la app ofrece el flujo con franja horaria';
@@ -56,6 +57,7 @@ export class ExpressOrderController {
   ) {}
 
   @Get('delivery-options')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Modalidades de entrega disponibles para una dirección (CU-148)',

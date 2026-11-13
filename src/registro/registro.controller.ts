@@ -22,6 +22,7 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 import { RoleType } from '../common/constants/role-type.enum';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UserMapper } from '../users/user.mapper';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Las dos puertas del alta de usuarios. El caso de uso es uno solo
@@ -82,6 +83,7 @@ export class RegistroController {
   }
 
   @Post('users')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiTags('Users')
   @ApiOperation({

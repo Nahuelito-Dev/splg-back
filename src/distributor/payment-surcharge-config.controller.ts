@@ -14,6 +14,7 @@ import {
   PaymentSurchargeConfigResponseDto,
 } from './dto/payment-surcharge-config.dto';
 import { PaymentSurchargeSettingsService } from './payment-surcharge-settings.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const CUERPO_INVALIDO =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)") o porcentaje fuera de 0 a 30 / con más de 2 decimales (detalle por campo)';
@@ -25,6 +26,7 @@ const CUERPO_INVALIDO =
 export class PaymentSurchargeConfigController {
   constructor(private readonly recargos: PaymentSurchargeSettingsService) {}
 
+  @Permiso('configuracion.ver')
   @Get()
   @ApiOperation({
     summary: 'Recargos por medio de pago de la distribuidora',
@@ -39,6 +41,7 @@ export class PaymentSurchargeConfigController {
     return this.recargos.vigentes(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put()
   @ApiOperation({
     summary: 'Cambiar los recargos por medio de pago',

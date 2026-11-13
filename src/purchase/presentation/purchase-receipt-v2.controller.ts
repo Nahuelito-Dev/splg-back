@@ -35,6 +35,7 @@ import {
   QueryPurchaseReceiptDto,
 } from '../dto/purchase-receipt.dto';
 import { PaymentStatus } from '../domain/purchase.enums';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const NO_ENCONTRADA = 'No existe o es de otra distribuidora';
 
@@ -51,6 +52,7 @@ export class PurchaseReceiptV2Controller {
     private readonly queries: PurchaseQueryService,
   ) {}
 
+  @Permiso('stock.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar las recepciones, con su estado de pago',
@@ -77,6 +79,7 @@ export class PurchaseReceiptV2Controller {
     };
   }
 
+  @Permiso('stock.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una recepción, con su estado de pago' })
   @ApiParam({ name: 'id', description: 'Recepción UUID' })
@@ -89,6 +92,7 @@ export class PurchaseReceiptV2Controller {
     return this.conPago(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Post(':id/pay')
   @IdempotencyKeyObligatoria()
   @ApiOperation({

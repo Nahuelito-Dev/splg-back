@@ -24,6 +24,7 @@ import {
   CloseCashSessionPreviewDto,
   PreviewCloseCashSessionDto,
 } from '../dto/cash-session.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Vista previa del cierre de caja (API v2; ver y cerrar siguen en `/cash-sessions` v1). */
 @ApiTags('Finanzas · Cajas (v2)')
@@ -32,6 +33,7 @@ import {
 export class CashSessionV2Controller {
   constructor(private readonly sesiones: CashSessionService) {}
 
+  @Permiso('finanzas.gestionar')
   @Post(':id/close-preview')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

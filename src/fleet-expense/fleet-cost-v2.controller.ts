@@ -11,6 +11,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 import { FleetCostBoardDto } from './dto/fleet-cost.dto';
 import { QueryRangeDto } from './dto/fuel-load.dto';
 import { FleetCostService } from './fleet-cost.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** El tablero de costos con sus totales (API v2; el v1 devuelve sólo la lista de vehículos). */
 @ApiTags('Fleet · Costos (v2)')
@@ -19,6 +20,7 @@ import { FleetCostService } from './fleet-cost.service';
 export class FleetCostV2Controller {
   constructor(private readonly costs: FleetCostService) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({
     summary: 'Tablero de costos de la flota, con sus totales',

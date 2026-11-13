@@ -12,6 +12,7 @@ import { RegistroDeAuditoriaDto } from './dto/audit-log-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Audit')
 @ApiBearerAuth()
@@ -24,6 +25,7 @@ export class AuditController {
    * ni baja de asientos (los escribe el sistema, CU-153).
    */
   @Get()
+  @Permiso('auditoria.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Consultar el registro de auditoría',

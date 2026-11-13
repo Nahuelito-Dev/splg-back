@@ -21,6 +21,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 import { contentDisposition } from '../s3/content-disposition';
 import { DownloadDisposition } from '../s3/dto/download-link.dto';
 import { PdfQueryDto, ReporteDeVentasPdfQueryDto } from './dto/pdf-query.dto';
@@ -55,6 +56,7 @@ export class PdfController {
   constructor(private readonly documentos: PdfDocumentsService) {}
 
   @Get('orders/:id/remito.pdf')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Remito del pedido en PDF',
@@ -85,6 +87,7 @@ export class PdfController {
   }
 
   @Get('orders/:id/recibo.pdf')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Recibo de pago del pedido en PDF',
@@ -115,6 +118,7 @@ export class PdfController {
   }
 
   @Get('driver-settlements/:id/pdf')
+  @Permiso('finanzas.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Rendición del chofer en PDF',
@@ -145,6 +149,7 @@ export class PdfController {
   }
 
   @Get('driver-liquidations/:id/pdf')
+  @Permiso('finanzas.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Liquidación de comisiones en PDF',
@@ -166,6 +171,7 @@ export class PdfController {
   }
 
   @Get('cash-sessions/:id/pdf')
+  @Permiso('finanzas.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Cierre de caja (sesión) en PDF',
@@ -188,6 +194,7 @@ export class PdfController {
   }
 
   @Get('reports/sales.pdf')
+  @Permiso('reportes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Reporte de ventas del período en PDF',

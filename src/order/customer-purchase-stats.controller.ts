@@ -11,6 +11,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CustomerPurchaseStatsService } from './application/customer-purchase-stats.service';
 import { CustomerPurchaseStatsDto } from './dto/customer-purchase-stats.dto';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Estadísticas de compra de un cliente para la ficha del panel (API v2). */
 @ApiTags('Pedidos · Estadísticas del cliente (v2)')
@@ -19,6 +20,7 @@ import { CustomerPurchaseStatsDto } from './dto/customer-purchase-stats.dto';
 export class CustomerPurchaseStatsController {
   constructor(private readonly estadisticas: CustomerPurchaseStatsService) {}
 
+  @Permiso('clientes.ver')
   @Get(':customerId/stats')
   @ApiOperation({
     summary: 'Lo que un cliente le compró a la distribuidora',

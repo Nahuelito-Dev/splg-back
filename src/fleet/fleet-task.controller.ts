@@ -54,6 +54,7 @@ import {
 import { aEnlaceDeDescarga } from '../s3/download-link';
 import { ArchivoIdempotente } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Tareas de flota: cada vencimiento/servicio concreto (CU-136 a CU-141) y sus
@@ -68,6 +69,7 @@ export class FleetTaskController {
     private readonly attachmentsService: FleetAttachmentService,
   ) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({ summary: 'Crear una tarea contra un plan' })
@@ -88,6 +90,7 @@ export class FleetTaskController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Listar tareas, con filtros' })
   @ApiOkResponse({ type: FleetTaskResponseDto, isArray: true })
@@ -105,6 +108,7 @@ export class FleetTaskController {
     return tasks.map((t) => FleetTaskMapper.toDto(t));
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una tarea, con sus adjuntos' })
   @ApiParam({ name: 'id', description: 'Task UUID' })
@@ -120,6 +124,7 @@ export class FleetTaskController {
     return FleetTaskMapper.toDto(task, attachments);
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Editar una tarea abierta' })
   @ApiParam({ name: 'id', description: 'Task UUID' })
@@ -144,6 +149,7 @@ export class FleetTaskController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/close')
   @ApiOperation({
     summary: 'CU-141: registrar que el mantenimiento/habilitación se hizo',
@@ -162,6 +168,7 @@ export class FleetTaskController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancelar una tarea abierta' })
   @ApiParam({ name: 'id', description: 'Task UUID' })
@@ -178,6 +185,7 @@ export class FleetTaskController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/attachments')
   @ApiOperation({
     summary: 'Subir un adjunto (póliza, VTV, licencia, comprobante)',
@@ -212,6 +220,7 @@ export class FleetTaskController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get(':id/attachments')
   @ApiOperation({ summary: 'Listar los adjuntos de una tarea' })
   @ApiParam({ name: 'id', description: 'Task UUID' })
@@ -226,6 +235,7 @@ export class FleetTaskController {
     return attachments.map((a) => FleetAttachmentMapper.toDto(a));
   }
 
+  @Permiso('flota.ver')
   @Get(':id/attachments/:attachmentId/download')
   @ApiOperation({
     summary: 'Descargar un adjunto',
@@ -276,6 +286,7 @@ export class FleetTaskController {
     res.redirect(HttpStatus.FOUND, url);
   }
 
+  @Permiso('flota.gestionar')
   @Delete(':id/attachments/:attachmentId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Borrar un adjunto' })

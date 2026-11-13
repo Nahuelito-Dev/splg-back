@@ -15,6 +15,7 @@ import {
 } from './dto/process-run-response.dto';
 import { QueryProcessRunsDto } from './dto/query-process-runs.dto';
 import { ProcessRunService } from './process-run.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Monitoreo de los procesos automáticos (API v2). El admin ve las corridas de
@@ -28,6 +29,7 @@ import { ProcessRunService } from './process-run.service';
 export class ProcessRunController {
   constructor(private readonly service: ProcessRunService) {}
 
+  @Permiso('configuracion.ver')
   @Get('summary')
   @ApiOperation({
     summary: 'Última corrida de cada proceso automático',
@@ -42,6 +44,7 @@ export class ProcessRunController {
     return this.service.resumen(distributorId, role === RoleType.SUPER_ADMIN);
   }
 
+  @Permiso('configuracion.ver')
   @Get()
   @ApiOperation({
     summary: 'Historial de corridas',

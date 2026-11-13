@@ -30,6 +30,7 @@ import {
   SubirFotoInterceptor,
 } from '../../s3/photo-http';
 import { SupplierPhotoService } from '../application/supplier-photo.service';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Foto principal del proveedor (API v2). */
 @ApiTags('Compras · Proveedores')
@@ -38,6 +39,7 @@ import { SupplierPhotoService } from '../application/supplier-photo.service';
 export class SupplierPhotoController {
   constructor(private readonly photo: SupplierPhotoService) {}
 
+  @Permiso('compras.gestionar')
   @Put(':id/photo')
   @ApiSubirFoto(
     'Subir o reemplazar la foto principal del proveedor',
@@ -54,6 +56,7 @@ export class SupplierPhotoController {
     return aFotoVigente(await this.photo.subir(id, distributorId, file));
   }
 
+  @Permiso('compras.gestionar')
   @Delete(':id/photo')
   @ApiOperation({
     summary: 'Sacar la foto del proveedor',
@@ -70,6 +73,7 @@ export class SupplierPhotoController {
     return aFotoVigente(await this.photo.quitar(id, distributorId));
   }
 
+  @Permiso('stock.ver')
   @Get(':id/photo')
   @ApiVerFoto('Ver la foto del proveedor')
   @ApiParam({ name: 'id', description: 'Proveedor UUID' })

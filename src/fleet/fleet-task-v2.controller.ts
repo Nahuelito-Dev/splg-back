@@ -31,6 +31,7 @@ import {
 } from './dto/task-response.dto';
 import { FleetTaskMapper } from './fleet-task.mapper';
 import { FleetTaskService } from './fleet-task.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Tareas de flota con su estado de pago (API v2): el costo de un servicio
@@ -43,6 +44,7 @@ import { FleetTaskService } from './fleet-task.service';
 export class FleetTaskV2Controller {
   constructor(private readonly tasks: FleetTaskService) {}
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Listar tareas, con su estado de pago' })
   @ApiOkResponse({ type: FleetTaskV2PageDto })
@@ -54,6 +56,7 @@ export class FleetTaskV2Controller {
     return { data: data.map((t) => FleetTaskMapper.toV2Dto(t)), total };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una tarea, con su estado de pago' })
   @ApiParam({ name: 'id', description: 'Task UUID' })
@@ -67,6 +70,7 @@ export class FleetTaskV2Controller {
     return FleetTaskMapper.toV2Dto(await this.tasks.findOne(id, distributorId));
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/close')
   @Idempotent()
   @ApiOperation({
@@ -102,6 +106,7 @@ export class FleetTaskV2Controller {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @Idempotent()
   @ApiOperation({

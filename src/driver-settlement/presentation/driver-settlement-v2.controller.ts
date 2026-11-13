@@ -26,6 +26,7 @@ import {
   PreviewDriverSettlementDto,
   SettlementPreviewDto,
 } from '../dto/driver-settlement.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Vista previa de la rendición del chofer (API v2). */
 @ApiTags('Rendiciones del chofer (v2)')
@@ -34,6 +35,7 @@ import {
 export class DriverSettlementV2Controller {
   constructor(private readonly consultas: DriverSettlementQueryService) {}
 
+  @Permiso('finanzas.gestionar')
   @Post(':id/preview')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

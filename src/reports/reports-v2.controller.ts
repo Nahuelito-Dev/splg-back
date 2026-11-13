@@ -25,6 +25,7 @@ import {
 } from './dto/report-v2.dto';
 import { rangoDelInforme } from './rango-del-informe';
 import { ReportsService } from './reports.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const NOTA_VENTAS =
   'Mismos criterios que la v1 (días en hora argentina, `to` inclusivo, sólo lo COBRADO). ';
@@ -40,6 +41,7 @@ const NOTA_VENTAS =
 export class ReportsV2Controller {
   constructor(private readonly reports: ReportsService) {}
 
+  @Permiso('reportes.ver')
   @Get('sales-by-driver')
   @ApiOperation({
     summary: 'Ventas por repartidor, con totales',
@@ -63,6 +65,7 @@ export class ReportsV2Controller {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('sales-by-payment')
   @ApiOperation({
     summary: 'Ventas por medio de pago, con totales',
@@ -86,6 +89,7 @@ export class ReportsV2Controller {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('sales-by-product')
   @ApiOperation({
     summary: 'Ventas por producto, con totales',
@@ -109,6 +113,7 @@ export class ReportsV2Controller {
     );
   }
 
+  @Permiso('reportes.ver')
   @Get('sales-summary')
   @ApiOperation({
     summary: 'Ventas, pedidos y ticket promedio de un período y del anterior',
@@ -148,6 +153,7 @@ export class ReportsV2Controller {
     };
   }
 
+  @Permiso('reportes.ver')
   @Get('unpaid-total')
   @ApiOperation({
     summary: 'Pedidos impagos y lo adeudado en total',
@@ -162,6 +168,7 @@ export class ReportsV2Controller {
   }
 
   @Get('delivery/me/daily-totals')
+  @Permiso('reportes.ver')
   @Auth(RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Lo entregado por el chofer, día por día',

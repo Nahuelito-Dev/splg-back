@@ -54,6 +54,7 @@ import {
   responderFoto,
   SubirFotoInterceptor,
 } from '../s3/photo-http';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Gas Cylinders')
 @ApiBearerAuth()
@@ -76,6 +77,7 @@ export class GasCylinderController {
   }
 
   @Post()
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new gas cylinder type' })
   @ApiCreatedResponse({ type: GasCylinderResponseDto })
@@ -115,6 +117,7 @@ export class GasCylinderController {
 
   // Antes de `:id`, que si no tomaría "inactive" como un uuid.
   @Get('inactive')
+  @Permiso('catalogo.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Productos dados de baja de la distribuidora',
@@ -201,6 +204,7 @@ export class GasCylinderController {
   }
 
   @Patch(':id')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update gas cylinder by ID' })
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })
@@ -225,6 +229,7 @@ export class GasCylinderController {
   }
 
   @Patch(':id/reactivate')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Reactivar un producto dado de baja',
@@ -250,6 +255,7 @@ export class GasCylinderController {
   }
 
   @Put(':id/photo')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiSubirFoto(
     'Subir o reemplazar la imagen del producto',
@@ -269,6 +275,7 @@ export class GasCylinderController {
   }
 
   @Delete(':id/photo')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sacar la imagen del producto',
@@ -312,6 +319,7 @@ export class GasCylinderController {
   }
 
   @Delete(':id')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete (deactivate) gas cylinder by ID' })
   @ApiParam({ name: 'id', description: 'Gas cylinder UUID' })

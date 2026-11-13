@@ -29,6 +29,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Ratings')
 @ApiBearerAuth()
@@ -64,6 +65,7 @@ export class RatingController {
   }
 
   @Get('user/:userId/summary')
+  @Permiso('reclamos.ver')
   @Auth(
     RoleType.CUSTOMER,
     RoleType.DELIVERY,
@@ -85,6 +87,7 @@ export class RatingController {
   }
 
   @Get('user/:userId')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Historial de calificaciones recibidas por un usuario',
@@ -101,6 +104,7 @@ export class RatingController {
   }
 
   @Get(':id')
+  @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Ficha de una calificación (incluye las ocultas)' })
   @ApiParam({ name: 'id', description: 'Rating UUID' })
@@ -119,6 +123,7 @@ export class RatingController {
   }
 
   @Patch(':id/hide')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Ocultar una calificación (moderación), con motivo',
@@ -152,6 +157,7 @@ export class RatingController {
   }
 
   @Patch(':id/unhide')
+  @Permiso('reclamos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Volver a mostrar una calificación oculta, con motivo',

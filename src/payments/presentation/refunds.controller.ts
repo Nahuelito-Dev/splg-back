@@ -29,6 +29,7 @@ import {
   RefundResponseDto,
 } from '../dto/refund-response.dto';
 import { RefundMapper } from '../refund.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -44,6 +45,7 @@ const FALTA_DISTRIBUIDORA =
 export class RefundsController {
   constructor(private readonly refunds: RefundsService) {}
 
+  @Permiso('reintegros.gestionar')
   @Get('refunds')
   @ApiOperation({
     summary: 'Listar las devoluciones de la distribuidora',
@@ -71,6 +73,7 @@ export class RefundsController {
     };
   }
 
+  @Permiso('reintegros.gestionar')
   @Get('orders/:id/refunds')
   @ApiOperation({ summary: 'Devoluciones de un pedido' })
   @ApiParam({ name: 'id', format: 'uuid' })
@@ -87,6 +90,7 @@ export class RefundsController {
     return filas.map((r) => RefundMapper.toDto(r));
   }
 
+  @Permiso('reintegros.gestionar')
   @Post('orders/:id/refunds/retry')
   @Idempotent()
   @HttpCode(200)

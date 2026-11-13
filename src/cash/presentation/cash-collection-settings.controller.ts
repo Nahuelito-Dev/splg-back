@@ -31,6 +31,7 @@ import {
   SettlePendingResponseDto,
   UpdateCashCollectionSettingsDto,
 } from '../dto/cash-collection-settings.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * A qué caja entra lo que se cobra por Mercado Pago y por transferencia, y los
@@ -42,6 +43,7 @@ import {
 export class CashCollectionSettingsController {
   constructor(private readonly configuracion: CashCollectionSettingsService) {}
 
+  @Permiso('finanzas.ver')
   @Get('cash-settings')
   @ApiOperation({
     summary: 'Ver las cajas de cobro',
@@ -55,6 +57,7 @@ export class CashCollectionSettingsController {
     return this.respuesta(distributorId);
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch('cash-settings')
   @Idempotent()
   @ApiOperation({
@@ -78,6 +81,7 @@ export class CashCollectionSettingsController {
     return this.respuesta(distributorId);
   }
 
+  @Permiso('finanzas.ver')
   @Get('cash-settings/pending')
   @ApiOperation({
     summary: 'Cobros de ventas sin asentar',
@@ -92,6 +96,7 @@ export class CashCollectionSettingsController {
     return this.configuracion.pendientes(distributorId, query.from);
   }
 
+  @Permiso('finanzas.gestionar')
   @Post('cash-settings/settle-pending')
   @Idempotent()
   @ApiOperation({
@@ -113,6 +118,7 @@ export class CashCollectionSettingsController {
     );
   }
 
+  @Permiso('finanzas.ver')
   @Get('orders/:orderId/cash-settlement')
   @ApiOperation({
     summary: 'A qué caja entró lo cobrado de un pedido',

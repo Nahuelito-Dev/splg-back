@@ -25,6 +25,7 @@ import { PROCESOS_AUTOMATICOS } from './process-config';
 import { ProcessConfigService } from './process-config.service';
 import { DispatchSettingsService } from './dispatch-settings.service';
 import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)") o cuerpo fuera de los límites (detalle por campo)';
@@ -44,6 +45,7 @@ export class ModuleConfigController {
     private readonly processes: ProcessConfigService,
   ) {}
 
+  @Permiso('configuracion.ver')
   @Get('dispatch')
   @ApiOperation({
     summary: 'Parámetros del despacho de la distribuidora',
@@ -58,6 +60,7 @@ export class ModuleConfigController {
     return this.dispatch.vigentes(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put('dispatch')
   @ApiOperation({
     summary: 'Cambiar los parámetros del despacho',
@@ -74,6 +77,7 @@ export class ModuleConfigController {
     return this.dispatch.guardar(distributorId, dto, actorUserId);
   }
 
+  @Permiso('configuracion.ver')
   @Get('scheduled_tasks')
   @ApiOperation({
     summary: 'Frecuencia de las tareas programadas de la distribuidora',
@@ -88,6 +92,7 @@ export class ModuleConfigController {
     return this.tasks.vigentes(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put('scheduled_tasks')
   @ApiOperation({
     summary: 'Cambiar la frecuencia de las tareas programadas',
@@ -106,6 +111,7 @@ export class ModuleConfigController {
 
   // Las rutas genéricas van DESPUÉS de las fijas (dispatch, scheduled_tasks): Nest
   // resuelve en orden de declaración.
+  @Permiso('configuracion.ver')
   @Get('processes')
   @ApiOperation({
     summary:
@@ -121,6 +127,7 @@ export class ModuleConfigController {
     return this.processes.todos(distributorId);
   }
 
+  @Permiso('configuracion.ver')
   @Get(':process')
   @ApiOperation({
     summary: 'Parámetros vigentes de un proceso automático',
@@ -143,6 +150,7 @@ export class ModuleConfigController {
     );
   }
 
+  @Permiso('configuracion.gestionar')
   @Put(':process')
   @ApiOperation({
     summary: 'Cambiar los parámetros de un proceso automático',

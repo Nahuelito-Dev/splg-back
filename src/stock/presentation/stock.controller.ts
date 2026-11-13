@@ -62,6 +62,7 @@ import {
   StockThresholdDto,
 } from '../dto/stock-response.dto';
 import { UpsertThresholdsDto } from '../dto/stock-threshold.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * Stock físico por ubicación (CU-208 a CU-213 y CU-224): saldos, libro de
@@ -85,6 +86,7 @@ export class StockController {
     private readonly reconciliationAdjustments: ReconciliationAdjustmentUseCase,
   ) {}
 
+  @Permiso('stock.ver')
   @Get()
   @ApiOperation({
     summary: 'Saldos por ubicación, tipo de garrafa y condición (CU-208)',
@@ -100,6 +102,7 @@ export class StockController {
     return this.queries.saldos(distributorId, query);
   }
 
+  @Permiso('stock.ver')
   @Get('summary')
   @ApiOperation({
     summary: 'Resumen galpón vs camiones por tipo de garrafa (CU-208)',
@@ -115,6 +118,7 @@ export class StockController {
     return this.queries.resumen(distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get('locations')
   @ApiOperation({
     summary: 'Ubicaciones de stock: depósitos y vehículos con ubicación',
@@ -127,6 +131,7 @@ export class StockController {
     return this.locations.listar(distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get('movements')
   @ApiOperation({
     summary: 'Libro de movimientos de stock, paginado (CU-209)',
@@ -143,6 +148,7 @@ export class StockController {
     return this.queries.movimientos(distributorId, query);
   }
 
+  @Permiso('stock.gestionar')
   @Post('movements/batches/:batchId/reverse')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -177,6 +183,7 @@ export class StockController {
     return this.resultado(distributorId, nuevo);
   }
 
+  @Permiso('stock.gestionar')
   @Post('transfers')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -208,6 +215,7 @@ export class StockController {
     return this.resultado(distributorId, batchId);
   }
 
+  @Permiso('stock.gestionar')
   @Post('initial-counts')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -241,6 +249,7 @@ export class StockController {
     return this.queries.ajuste(id, distributorId);
   }
 
+  @Permiso('stock.gestionar')
   @Post('adjustments')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -267,6 +276,7 @@ export class StockController {
     return this.queries.ajuste(id, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get('adjustments')
   @ApiOperation({ summary: 'Listar los ajustes de stock, paginado' })
   @ApiOkResponse({ type: StockAdjustmentPageDto })
@@ -280,6 +290,7 @@ export class StockController {
     return this.queries.ajustes(distributorId, query);
   }
 
+  @Permiso('stock.ver')
   @Get('adjustments/:id')
   @ApiOperation({ summary: 'Ver el detalle de un ajuste de stock' })
   @ApiParam({ name: 'id', description: 'Ajuste UUID' })
@@ -295,6 +306,7 @@ export class StockController {
     return this.queries.ajuste(id, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get('thresholds')
   @ApiOperation({ summary: 'Mínimos de llenas por depósito y tipo (CU-210)' })
   @ApiOkResponse({ type: StockThresholdDto, isArray: true })
@@ -305,6 +317,7 @@ export class StockController {
     return this.thresholds.listar(distributorId);
   }
 
+  @Permiso('stock.gestionar')
   @Put('thresholds')
   @ApiOperation({
     summary: 'Configurar mínimos en lote (CU-210)',
@@ -324,6 +337,7 @@ export class StockController {
     return this.thresholds.upsert(dto, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get('reconciliation')
   @ApiOperation({
     summary: 'Conciliar el vendible contra el físico (CU-224)',
@@ -340,6 +354,7 @@ export class StockController {
     return this.reconciliation.conciliar(distributorId);
   }
 
+  @Permiso('stock.gestionar')
   @Post('reconciliation/reapply-deliveries')
   @Idempotent()
   @ApiOperation({
@@ -356,6 +371,7 @@ export class StockController {
     return this.reapply.execute(distributorId);
   }
 
+  @Permiso('stock.gestionar')
   @Post('reconciliation/adjustments')
   @IdempotencyKeyObligatoria()
   @ApiOperation({

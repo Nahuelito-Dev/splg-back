@@ -31,6 +31,7 @@ import {
   SubirFotoInterceptor,
 } from '../s3/photo-http';
 import { CylinderPhotoService } from './cylinder-photo.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Foto principal del envase (API v2). */
 @ApiTags('Cylinders')
@@ -39,6 +40,7 @@ import { CylinderPhotoService } from './cylinder-photo.service';
 export class CylinderPhotoController {
   constructor(private readonly photo: CylinderPhotoService) {}
 
+  @Permiso('stock.gestionar')
   @Put(':id/photo')
   @ApiSubirFoto(
     'Subir o reemplazar la foto principal del envase',
@@ -55,6 +57,7 @@ export class CylinderPhotoController {
     return aFotoVigente(await this.photo.subir(id, distributorId, file));
   }
 
+  @Permiso('stock.gestionar')
   @Delete(':id/photo')
   @ApiOperation({
     summary: 'Sacar la foto del envase',
@@ -73,6 +76,7 @@ export class CylinderPhotoController {
   }
 
   @Get(':id/photo')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiVerFoto('Ver la foto del envase')
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })

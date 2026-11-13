@@ -35,6 +35,7 @@ import {
 } from './dto/traffic-fine.dto';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { TrafficFineService } from './traffic-fine.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Multas de tránsito (CU-198 a CU-200, CU-323 a CU-325). */
 @ApiTags('Fleet · Multas')
@@ -43,6 +44,7 @@ import { TrafficFineService } from './traffic-fine.service';
 export class TrafficFineController {
   constructor(private readonly fines: TrafficFineService) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -68,6 +70,7 @@ export class TrafficFineController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Consultar las multas de tránsito' })
   @ApiOkResponse({ type: TrafficFinePageDto })
@@ -80,6 +83,7 @@ export class TrafficFineController {
     return { data: data.map((m) => FleetExpenseMapper.trafficFine(m)), total };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una multa' })
   @ApiParam({ name: 'id', description: 'Multa UUID' })
@@ -94,6 +98,7 @@ export class TrafficFineController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Modificar una multa o pasarla a apelada',
@@ -121,6 +126,7 @@ export class TrafficFineController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/pay')
   @ApiOperation({
     summary: 'Registrar el pago de una multa',
@@ -151,6 +157,7 @@ export class TrafficFineController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/charge-to-employee')
   @ApiOperation({
     summary: 'Imputar una multa al chofer',
@@ -177,6 +184,7 @@ export class TrafficFineController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/void')
   @ApiOperation({
     summary: 'Anular una multa',

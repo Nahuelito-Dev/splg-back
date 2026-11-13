@@ -15,6 +15,7 @@ import {
   ContainerChargeConfigResponseDto,
 } from './dto/container-charge-config.dto';
 import { ContainerChargeSettingsService } from './container-charge-settings.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Cobro opcional de envases por distribuidora (API v2). */
 @ApiTags('Configuración · Cobro de envases (v2)')
@@ -23,6 +24,7 @@ import { ContainerChargeSettingsService } from './container-charge-settings.serv
 export class ContainerChargeConfigController {
   constructor(private readonly settings: ContainerChargeSettingsService) {}
 
+  @Permiso('configuracion.ver')
   @Get()
   @ApiOperation({
     summary: 'Estado del cobro de envases',
@@ -40,6 +42,7 @@ export class ContainerChargeConfigController {
     return this.settings.vigentes(distributorId);
   }
 
+  @Permiso('configuracion.gestionar')
   @Put()
   @Idempotent()
   @ApiOperation({

@@ -35,6 +35,7 @@ import {
 } from './dto/vehicle-accident.dto';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { VehicleAccidentService } from './vehicle-accident.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Siniestros de la flota (CU-201, CU-202, CU-327, CU-328). */
 @ApiTags('Fleet · Siniestros')
@@ -43,6 +44,7 @@ import { VehicleAccidentService } from './vehicle-accident.service';
 export class VehicleAccidentController {
   constructor(private readonly accidents: VehicleAccidentService) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -67,6 +69,7 @@ export class VehicleAccidentController {
 
   @Post('mine')
   @Idempotent()
+  @Permiso('flota.gestionar')
   @Auth(RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Registrar un siniestro (chofer)',
@@ -87,6 +90,7 @@ export class VehicleAccidentController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Consultar los siniestros' })
   @ApiOkResponse({ type: VehicleAccidentPageDto })
@@ -102,6 +106,7 @@ export class VehicleAccidentController {
     };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un siniestro' })
   @ApiParam({ name: 'id', description: 'Siniestro UUID' })
@@ -116,6 +121,7 @@ export class VehicleAccidentController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Modificar un siniestro o avanzar su estado',
@@ -139,6 +145,7 @@ export class VehicleAccidentController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id/close')
   @ApiOperation({
     summary: 'Cerrar un siniestro',

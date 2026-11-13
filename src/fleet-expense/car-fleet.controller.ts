@@ -17,6 +17,7 @@ import { FleetCostService } from './fleet-cost.service';
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { FuelLoadService } from './fuel-load.service';
 import { TireService } from './tire.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Lo que se consulta desde la ficha de un vehículo: rendimiento, costo y neumáticos. */
 @ApiTags('Fleet · Costos')
@@ -29,6 +30,7 @@ export class CarFleetController {
     private readonly tires: TireService,
   ) {}
 
+  @Permiso('flota.ver')
   @Get('cars/:carId/fuel-efficiency')
   @ApiOperation({
     summary: 'Consumo de combustible de un vehículo',
@@ -49,6 +51,7 @@ export class CarFleetController {
     return this.fuel.consumo(carId, distributorId, query.from, query.to);
   }
 
+  @Permiso('flota.ver')
   @Get('cars/:carId/costs')
   @ApiOperation({
     summary: 'Costo total de un vehículo',
@@ -74,6 +77,7 @@ export class CarFleetController {
     );
   }
 
+  @Permiso('flota.ver')
   @Get('fleet/costs')
   @ApiOperation({
     summary: 'Tablero de costos de la flota',
@@ -91,6 +95,7 @@ export class CarFleetController {
     return this.costs.tablero(distributorId, query.from, query.to);
   }
 
+  @Permiso('flota.ver')
   @Get('cars/:carId/tires')
   @ApiOperation({ summary: 'Neumáticos de un vehículo' })
   @ApiParam({ name: 'carId', description: 'Car UUID' })

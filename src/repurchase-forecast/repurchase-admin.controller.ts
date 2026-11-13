@@ -36,6 +36,7 @@ import {
 import { RepurchaseForecastService } from './repurchase-forecast.service';
 import { RepurchaseMapper } from './repurchase.mapper';
 import { RepurchaseReportService } from './repurchase-report.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -55,6 +56,7 @@ export class RepurchaseAdminController {
     private readonly forecast: RepurchaseForecastService,
   ) {}
 
+  @Permiso('reportes.ver')
   @Get('forecast')
   @ApiOperation({
     summary: 'Clientes a los que se les acaba el gas (CU-146)',
@@ -85,6 +87,7 @@ export class RepurchaseAdminController {
     };
   }
 
+  @Permiso('reportes.ver')
   @Get('forecast/customers/:userId')
   @ApiOperation({
     summary: 'La fecha estimada de recompra de un cliente',
@@ -113,6 +116,7 @@ export class RepurchaseAdminController {
     };
   }
 
+  @Permiso('reportes.ver')
   @Get('invitations')
   @ApiOperation({
     summary: 'Invitaciones de recompra emitidas',
@@ -137,6 +141,7 @@ export class RepurchaseAdminController {
     };
   }
 
+  @Permiso('reportes.ver')
   @Get('stats')
   @ApiOperation({
     summary: 'Cómo le va a la recompra anticipada',
@@ -160,6 +165,7 @@ export class RepurchaseAdminController {
     return RepurchaseMapper.stats(resumen, desde, hasta);
   }
 
+  @Permiso('reportes.ver')
   @Post('run')
   @HttpCode(200)
   @ApiOperation({

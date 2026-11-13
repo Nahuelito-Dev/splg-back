@@ -22,6 +22,7 @@ import { ApiTotal, informarTotal } from '../common/http/total';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Historial de choferes de un vehículo. Vive en `fleet`, no en `car`, igual
@@ -34,6 +35,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 export class CarAssignmentsController {
   constructor(private readonly vehicleAssignments: VehicleAssignmentService) {}
 
+  @Permiso('flota.ver')
   @Get(':id/assignments')
   @ApiOperation({ summary: 'Historial de choferes que usaron un vehículo' })
   @ApiParam({ name: 'id', description: 'Car UUID' })

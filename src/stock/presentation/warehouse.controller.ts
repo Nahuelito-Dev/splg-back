@@ -33,6 +33,7 @@ import {
   WarehouseResponseDto,
 } from '../dto/warehouse.dto';
 import { WarehouseMapper } from './warehouse.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /**
  * Depósitos de la distribuidora (CU-207). Baja lógica: se da de baja sólo sin
@@ -47,6 +48,7 @@ export class WarehouseController {
     private readonly query: StockQueryService,
   ) {}
 
+  @Permiso('stock.ver')
   @Get()
   @ApiOperation({ summary: 'Listar los depósitos de la distribuidora' })
   @ApiOkResponse({ type: WarehouseResponseDto, isArray: true })
@@ -61,6 +63,7 @@ export class WarehouseController {
     return depositos.map((d) => WarehouseMapper.toDto(d));
   }
 
+  @Permiso('stock.gestionar')
   @Post()
   @ApiOperation({ summary: 'Crear un depósito' })
   @ApiCreatedResponse({ type: WarehouseResponseDto })
@@ -77,6 +80,7 @@ export class WarehouseController {
     );
   }
 
+  @Permiso('stock.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver un depósito con sus saldos' })
   @ApiParam({ name: 'id', description: 'Depósito UUID' })
@@ -96,6 +100,7 @@ export class WarehouseController {
     return WarehouseMapper.toDetailDto(deposito, balances);
   }
 
+  @Permiso('stock.gestionar')
   @Patch(':id')
   @ApiOperation({ summary: 'Editar un depósito o cambiar el predeterminado' })
   @ApiParam({ name: 'id', description: 'Depósito UUID' })
@@ -118,6 +123,7 @@ export class WarehouseController {
     );
   }
 
+  @Permiso('stock.gestionar')
   @Delete(':id')
   @ApiOperation({ summary: 'Dar de baja un depósito (baja lógica)' })
   @ApiParam({ name: 'id', description: 'Depósito UUID' })

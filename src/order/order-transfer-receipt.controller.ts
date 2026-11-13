@@ -31,6 +31,7 @@ import { BankDetailsResponseDto } from '../distributor/dto/bank-details.dto';
 import { ArchivoIdempotente } from '../s3/upload-limits';
 import { OrderTransferReceiptService } from './application/order-transfer-receipt.service';
 import { OrderReceiptFileDto } from './dto/transfer-receipt.dto';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Comprobante de transferencia y datos bancarios del pedido (API v2). */
 @ApiTags('Orders')
@@ -82,6 +83,7 @@ export class OrderTransferReceiptController {
   }
 
   @Get(':id/transfer-receipt')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Los comprobantes del pedido con su URL firmada',

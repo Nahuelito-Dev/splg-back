@@ -35,6 +35,7 @@ import {
 } from './dto/route-batch-response.dto';
 import { RouteBatchQueryService } from './route-batch-query.service';
 import { RouteBatchService } from './route-batch.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -54,6 +55,7 @@ export class RouteBatchController {
     private readonly query: RouteBatchQueryService,
   ) {}
 
+  @Permiso('despacho.gestionar')
   @Get()
   @ApiOperation({
     summary: 'Lotes de recorrido',
@@ -73,6 +75,7 @@ export class RouteBatchController {
     });
   }
 
+  @Permiso('despacho.gestionar')
   @Get('settings')
   @ApiOperation({
     summary: 'Parámetros de la agrupación de la distribuidora',
@@ -87,6 +90,7 @@ export class RouteBatchController {
     return this.service.parametrosVigentes(distributorId);
   }
 
+  @Permiso('despacho.gestionar')
   @Patch('settings')
   @ApiOperation({
     summary: 'Cambiar parámetros de la agrupación',
@@ -103,6 +107,7 @@ export class RouteBatchController {
     return this.service.cambiarParametros(distributorId, { ...dto }, userId);
   }
 
+  @Permiso('despacho.gestionar')
   @Post('run')
   @Idempotent({ sinCuerpo: true })
   @ApiOperation({
@@ -122,6 +127,7 @@ export class RouteBatchController {
     return this.service.armarAhora(distributorId);
   }
 
+  @Permiso('despacho.gestionar')
   @Get(':id')
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiOperation({ summary: 'Un lote de recorrido con sus paradas y ofertas' })
@@ -135,6 +141,7 @@ export class RouteBatchController {
     return this.query.detalle(distributorId, id);
   }
 
+  @Permiso('despacho.gestionar')
   @Post(':id/dissolve')
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @Idempotent({ sinCuerpo: true })

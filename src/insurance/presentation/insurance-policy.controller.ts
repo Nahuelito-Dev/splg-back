@@ -35,6 +35,7 @@ import {
   UpdateInsurancePolicyDto,
 } from '../dto/insurance-policy.dto';
 import { InsuranceMapper } from './insurance.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Pólizas de seguro de los vehículos y su plan de cuotas (API v2). */
 @ApiTags('Seguros · Pólizas')
@@ -46,6 +47,7 @@ export class InsurancePolicyController {
     private readonly consultas: InsuranceQueryService,
   ) {}
 
+  @Permiso('flota.ver')
   @Get('cars/:carId/insurance')
   @ApiOperation({
     summary: 'El seguro de un vehículo',
@@ -66,6 +68,7 @@ export class InsurancePolicyController {
     return InsuranceMapper.carInsurance(carId, current, history);
   }
 
+  @Permiso('flota.gestionar')
   @Post('insurance-policies')
   @Idempotent()
   @ApiOperation({
@@ -95,6 +98,7 @@ export class InsurancePolicyController {
     return Object.assign(InsuranceMapper.policy(poliza), { fleet });
   }
 
+  @Permiso('flota.ver')
   @Get('insurance-policies/:id')
   @ApiOperation({ summary: 'Ver una póliza con sus cuotas' })
   @ApiParam({ name: 'id', description: 'Póliza UUID' })
@@ -109,6 +113,7 @@ export class InsurancePolicyController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch('insurance-policies/:id')
   @ApiOperation({
     summary: 'Modificar una póliza',
@@ -136,6 +141,7 @@ export class InsurancePolicyController {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post('insurance-policies/:id/cancel')
   @HttpCode(HttpStatus.OK)
   @Idempotent()

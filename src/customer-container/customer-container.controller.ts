@@ -35,6 +35,7 @@ import {
 import { CustomerContainerMovementsResponseDto } from './dto/customer-container-movements-response.dto';
 import { QueryContainerMovementsDto } from './dto/query-container-movements.dto';
 import { CustomerContainerMovementReason } from './entities/customer-container-movement.entity';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Customer containers')
 @ApiBearerAuth()
@@ -48,6 +49,7 @@ export class CustomerContainerController {
 
   @Get(':id/containers')
   @Version('2')
+  @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Consultar envases propios y prestados de un cliente',
@@ -75,6 +77,7 @@ export class CustomerContainerController {
 
   @Get(':id/containers/movements')
   @Version('2')
+  @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Historial de movimientos de envases del cliente' })
   @ApiOkResponse({ type: CustomerContainerMovementsResponseDto })
@@ -103,6 +106,7 @@ export class CustomerContainerController {
   @Post(':id/containers/adjustments')
   @Version('2')
   @Idempotent()
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Registrar un ajuste manual en la cuenta de envases',

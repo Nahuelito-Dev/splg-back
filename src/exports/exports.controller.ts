@@ -26,6 +26,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 import { CABECERA_TOTAL } from '../common/http/total';
 import { ExportFormat } from './export.types';
 import { ExportsService } from './exports.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Exportes completos (todas las filas que cumplen los filtros) en CSV y Excel. */
 @ApiTags('Exportes')
@@ -36,6 +37,7 @@ export class ExportsController {
 
   constructor(private readonly exportsService: ExportsService) {}
 
+  @Permiso('reportes.ver')
   @Get(':recurso')
   @Version('2')
   @SinTimeout()

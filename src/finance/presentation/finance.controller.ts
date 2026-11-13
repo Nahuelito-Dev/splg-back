@@ -19,6 +19,7 @@ import {
   FinanceDashboardDto,
   QueryFinanceDashboardDto,
 } from '../dto/finance.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Tablero financiero (CU-245). */
 @ApiTags('Finanzas · Tablero')
@@ -30,6 +31,7 @@ export class FinanceController {
     private readonly resultado: CashIncomeStatementService,
   ) {}
 
+  @Permiso('finanzas.ver')
   @Get('dashboard')
   @ApiOperation({
     summary: 'Tablero financiero',
@@ -45,6 +47,7 @@ export class FinanceController {
     return this.finanzas.dashboard(distributorId, query.date);
   }
 
+  @Permiso('finanzas.ver')
   @Get('income-statement')
   @Version('2')
   @ApiOperation({

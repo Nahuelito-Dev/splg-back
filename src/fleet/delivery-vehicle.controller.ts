@@ -36,6 +36,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Qué vehículo usa cada chofer (decisión de nahue del 30/09): vive en
@@ -75,6 +76,7 @@ export class DeliveryVehicleController {
   @ApiBadRequestResponse({
     description: 'El id no es un UUID o super admin sin X-Distributor',
   })
+  @Permiso('flota.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Vehículo en uso de un chofer' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -91,6 +93,7 @@ export class DeliveryVehicleController {
   }
 
   @Put(':id/vehicle')
+  @Permiso('flota.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Poner en uso un vehículo para un chofer',
@@ -143,6 +146,7 @@ export class DeliveryVehicleController {
   @ApiBadRequestResponse({
     description: 'El id no es un UUID o super admin sin X-Distributor',
   })
+  @Permiso('flota.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Liberar el vehículo en uso de un chofer' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })
@@ -167,6 +171,7 @@ export class DeliveryVehicleController {
     description:
       'El id no es un UUID, paginación inválida, o super admin sin X-Distributor',
   })
+  @Permiso('flota.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Historial de vehículos de un chofer' })
   @ApiParam({ name: 'id', description: 'Delivery UUID' })

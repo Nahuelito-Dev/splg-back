@@ -54,6 +54,7 @@ import {
   TruckStockDto,
   UpdateTruckLoadItemsDto,
 } from '../dto/truck-load.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const NO_ENCONTRADA = 'No existe o es de otra distribuidora';
 const ESTADO_INVALIDO =
@@ -82,6 +83,7 @@ export class TruckLoadController {
   ) {}
 
   @Get('mine')
+  @Permiso('stock.ver')
   @Auth(RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Mi carga: la carga abierta del chofer',
@@ -97,6 +99,7 @@ export class TruckLoadController {
     return this.queries.miCarga(distributorId, userId);
   }
 
+  @Permiso('stock.ver')
   @Get('settings')
   @ApiBadRequestResponse({ description: 'Super admin sin X-Distributor' })
   @ApiOperation({
@@ -111,6 +114,7 @@ export class TruckLoadController {
     return this.settings.obtener(distributorId);
   }
 
+  @Permiso('stock.gestionar')
   @Put('settings')
   @ApiBadRequestResponse({ description: 'Campo faltante o inválido' })
   @ApiOperation({
@@ -125,6 +129,7 @@ export class TruckLoadController {
     return this.settings.guardar(distributorId, dto, actorUserId);
   }
 
+  @Permiso('stock.ver')
   @Get('cars/:carId/stock')
   @ApiBadRequestResponse({
     description: 'El id no es un UUID o super admin sin X-Distributor',
@@ -144,6 +149,7 @@ export class TruckLoadController {
     return this.queries.stockDeCamion(distributorId, carId);
   }
 
+  @Permiso('stock.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -172,6 +178,7 @@ export class TruckLoadController {
     return this.queries.detalle(id, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get()
   @ApiBadRequestResponse({ description: 'Filtro o paginación inválidos' })
   @ApiOperation({
@@ -187,6 +194,7 @@ export class TruckLoadController {
 
   @Get(':id')
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary:
@@ -210,6 +218,7 @@ export class TruckLoadController {
     );
   }
 
+  @Permiso('stock.gestionar')
   @Put(':id/items')
   @ApiOperation({
     summary: 'Reemplazar los renglones de una carga que todavía no salió',
@@ -229,6 +238,7 @@ export class TruckLoadController {
   }
 
   @Patch(':id/depart')
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @Idempotent({ sinCuerpo: true })
   @ApiOperation({
@@ -255,6 +265,7 @@ export class TruckLoadController {
     return this.queries.detalle(id, distributorId, alcance);
   }
 
+  @Permiso('stock.gestionar')
   @Patch(':id/reload')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -289,6 +300,7 @@ export class TruckLoadController {
   }
 
   @Patch(':id/return')
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary: 'Declarar lo que vuelve en el camión (on_route -> returned)',
@@ -315,6 +327,7 @@ export class TruckLoadController {
     return this.queries.detalle(id, distributorId, alcance);
   }
 
+  @Permiso('stock.gestionar')
   @Patch(':id/close')
   @Idempotent()
   @ApiOperation({
@@ -343,6 +356,7 @@ export class TruckLoadController {
     return this.queries.detalle(id, distributorId);
   }
 
+  @Permiso('stock.gestionar')
   @Patch(':id/cancel')
   @ApiBadRequestResponse({
     description: 'El id no es un UUID, o motivo inválido',

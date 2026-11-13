@@ -38,6 +38,7 @@ import {
   UpdatePaymentStatusDto,
   VoidPurchaseReceiptDto,
 } from '../dto/purchase-receipt.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const NO_ENCONTRADA = 'No existe o es de otra distribuidora';
 
@@ -53,6 +54,7 @@ export class PurchaseReceiptController {
     private readonly queries: PurchaseQueryService,
   ) {}
 
+  @Permiso('compras.gestionar')
   @Post()
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -85,6 +87,7 @@ export class PurchaseReceiptController {
     return this.queries.recepcion(id, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get()
   @ApiOperation({
     summary:
@@ -98,6 +101,7 @@ export class PurchaseReceiptController {
     return this.queries.recepciones(distributorId, query);
   }
 
+  @Permiso('stock.ver')
   @Get('average-costs')
   @ApiOperation({
     summary: 'Costo promedio ponderado por garrafa',
@@ -111,6 +115,7 @@ export class PurchaseReceiptController {
     return this.queries.costosPromedio(distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una recepción con sus renglones' })
   @ApiParam({ name: 'id', description: 'Recepción UUID' })
@@ -123,6 +128,7 @@ export class PurchaseReceiptController {
     return this.queries.recepcion(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id/void')
   @IdempotencyKeyObligatoria()
   @ApiOperation({
@@ -154,6 +160,7 @@ export class PurchaseReceiptController {
     return this.queries.recepcion(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id/payment-status')
   @ApiOperation({
     summary: 'Marcar la recepción como pagada o impaga',

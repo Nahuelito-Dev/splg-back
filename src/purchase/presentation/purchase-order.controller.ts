@@ -35,6 +35,7 @@ import {
   QueryPurchaseOrderDto,
   UpdatePurchaseOrderDto,
 } from '../dto/purchase-order.dto';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 const NO_ENCONTRADA = 'No existe o es de otra distribuidora';
 
@@ -48,6 +49,7 @@ export class PurchaseOrderController {
     private readonly queries: PurchaseQueryService,
   ) {}
 
+  @Permiso('compras.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -71,6 +73,7 @@ export class PurchaseOrderController {
     return this.queries.orden(id, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar las órdenes de compra por estado, proveedor y fecha',
@@ -83,6 +86,7 @@ export class PurchaseOrderController {
     return this.queries.ordenes(distributorId, query);
   }
 
+  @Permiso('stock.ver')
   @Get(':id')
   @ApiOperation({
     summary: 'Ver una orden con sus renglones, lo pendiente y sus recepciones',
@@ -97,6 +101,7 @@ export class PurchaseOrderController {
     return this.queries.orden(id, distributorId);
   }
 
+  @Permiso('stock.ver')
   @Get(':id/pending')
   @ApiOperation({
     summary: 'Pendiente de recibir de una orden',
@@ -113,6 +118,7 @@ export class PurchaseOrderController {
     return this.queries.pendiente(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Editar una orden (sólo en borrador)',
@@ -134,6 +140,7 @@ export class PurchaseOrderController {
     return this.queries.orden(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id/send')
   @ApiOperation({
     summary: 'Enviar la orden al proveedor (borrador a enviada)',
@@ -150,6 +157,7 @@ export class PurchaseOrderController {
     return this.queries.orden(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id/cancel')
   @ApiOperation({
     summary: 'Cancelar una orden (borrador o enviada) con motivo',
@@ -175,6 +183,7 @@ export class PurchaseOrderController {
     return this.queries.orden(id, distributorId);
   }
 
+  @Permiso('compras.gestionar')
   @Patch(':id/close-short')
   @ApiOperation({
     summary: 'Cerrar con faltante una orden parcialmente recibida',

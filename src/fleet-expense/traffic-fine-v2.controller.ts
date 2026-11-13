@@ -45,6 +45,7 @@ import {
 import { FleetExpenseMapper } from './fleet-expense.mapper';
 import { TrafficFinePaymentService } from './traffic-fine-payment.service';
 import { TrafficFineService } from './traffic-fine.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Multas de tránsito con enlace de pago, comprobante escaneado y egreso de caja
@@ -59,6 +60,7 @@ export class TrafficFineV2Controller {
     private readonly pagos: TrafficFinePaymentService,
   ) {}
 
+  @Permiso('flota.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -84,6 +86,7 @@ export class TrafficFineV2Controller {
     );
   }
 
+  @Permiso('flota.ver')
   @Get()
   @ApiOperation({ summary: 'Consultar las multas de tránsito' })
   @ApiOkResponse({ type: TrafficFineV2PageDto })
@@ -99,6 +102,7 @@ export class TrafficFineV2Controller {
     };
   }
 
+  @Permiso('flota.ver')
   @Get(':id')
   @ApiOperation({ summary: 'Ver una multa' })
   @ApiParam({ name: 'id', description: 'Multa UUID' })
@@ -113,6 +117,7 @@ export class TrafficFineV2Controller {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Patch(':id')
   @ApiOperation({
     summary: 'Modificar una multa o pasarla a apelada',
@@ -140,6 +145,7 @@ export class TrafficFineV2Controller {
     );
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/receipt')
   @ApiOperation({
     summary: 'Subir el comprobante de pago de la multa (se escanea solo)',
@@ -179,6 +185,7 @@ export class TrafficFineV2Controller {
     });
   }
 
+  @Permiso('flota.gestionar')
   @Post(':id/pay')
   @HttpCode(HttpStatus.OK)
   @Idempotent()

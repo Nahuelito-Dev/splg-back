@@ -43,6 +43,7 @@ import { CurrentDistributor } from '../common/decorators/current-distributor.dec
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { alcanceDelDueño, esAdministrador } from '../common/utils/alcance.util';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -60,6 +61,7 @@ export class CustomersController {
   }
 
   @Get()
+  @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
@@ -88,6 +90,7 @@ export class CustomersController {
 
   @Get('removed')
   @Version('2')
+  @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
@@ -209,6 +212,7 @@ export class CustomersController {
   }
 
   @Delete(':id')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Delete customer by ID (soft delete)' })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
@@ -236,6 +240,7 @@ export class CustomersController {
 
   @Delete(':id/distributor')
   @Version('2')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
@@ -265,6 +270,7 @@ export class CustomersController {
 
   @Post(':id/distributor')
   @Version('2')
+  @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Reactivar al cliente dado de baja en la distribuidora',

@@ -54,6 +54,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Cylinders')
 @ApiBearerAuth()
@@ -66,6 +67,7 @@ export class CylinderController {
   ) {}
 
   @Post()
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Dar de alta un envase físico (IN_DEPOT)' })
   @ApiCreatedResponse({ type: CylinderResponseDto })
@@ -89,6 +91,7 @@ export class CylinderController {
 
   @Post('assign')
   @Idempotent()
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary:
@@ -135,6 +138,7 @@ export class CylinderController {
   }
 
   @Get()
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Listar envases (scopeado por distribuidora)',
@@ -165,6 +169,7 @@ export class CylinderController {
   }
 
   @Get('vigencia/proximos-a-vencer')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Envases próximos a vencer (CU-134)',
@@ -195,6 +200,7 @@ export class CylinderController {
   }
 
   @Get('vigencia/serial/:serial')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Vigencia de un envase por número de serie (CU-133)',
@@ -216,6 +222,7 @@ export class CylinderController {
   }
 
   @Get(':id')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({ summary: 'Ver un envase' })
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
@@ -232,6 +239,7 @@ export class CylinderController {
   }
 
   @Get(':id/vigencia')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Vigencia de un envase (CU-133)',
@@ -254,6 +262,7 @@ export class CylinderController {
   }
 
   @Post(':id/inspections')
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Registrar la revisión periódica de un envase (CU-132)',
@@ -289,6 +298,7 @@ export class CylinderController {
   }
 
   @Get(':id/history')
+  @Permiso('stock.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Historial de movimientos/transiciones del envase' })
   @ApiParam({ name: 'id', description: 'Cylinder UUID' })
@@ -307,6 +317,7 @@ export class CylinderController {
   }
 
   @Patch(':id')
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Editar datos maestros del envase (no el estado)',
@@ -332,6 +343,7 @@ export class CylinderController {
   }
 
   @Patch(':id/retire')
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Dar de baja el envase (estado terminal RETIRED), con motivo',
@@ -363,6 +375,7 @@ export class CylinderController {
   }
 
   @Patch(':id/transition')
+  @Permiso('stock.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @ApiOperation({
     summary:

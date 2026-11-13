@@ -30,6 +30,7 @@ import { Idempotent } from '../common/decorators/idempotent.decorator';
 import { OrderFraudHoldService } from './application/order-fraud-hold.service';
 import { ReleaseFraudHoldDto } from './dto/release-fraud-hold.dto';
 import { ApiConflictResponse } from '@nestjs/swagger';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /** Máximo de pedidos por consulta en lote (la lista del panel). */
 const MAXIMO_EN_LOTE = 50;
@@ -45,6 +46,7 @@ export class OrderPaymentV2Controller {
   ) {}
 
   @Get('payments')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Estado del pago de varios pedidos (la lista del panel)',
@@ -91,6 +93,7 @@ export class OrderPaymentV2Controller {
 
   @Patch(':id/payment/fraud-hold/release')
   @Idempotent()
+  @Permiso('pedidos.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Liberar la retención de un pedido por alerta de fraude',
@@ -115,6 +118,7 @@ export class OrderPaymentV2Controller {
   }
 
   @Get(':id/payment')
+  @Permiso('pedidos.ver')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Estado del pago de un pedido',

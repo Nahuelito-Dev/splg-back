@@ -36,6 +36,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 @ApiTags('Time Slots')
 @ApiBearerAuth()
@@ -44,6 +45,7 @@ export class TimeSlotController {
   constructor(private readonly timeSlotService: TimeSlotService) {}
 
   @Post()
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new time slot' })
   @ApiCreatedResponse({ type: TimeSlotResponseDto })
@@ -65,6 +67,7 @@ export class TimeSlotController {
   }
 
   @Get()
+  @Permiso('catalogo.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary:
@@ -126,6 +129,7 @@ export class TimeSlotController {
   }
 
   @Patch(':id')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Editar una franja (parcial); isActive:true la reactiva',
@@ -152,6 +156,7 @@ export class TimeSlotController {
   }
 
   @Delete(':id')
+  @Permiso('catalogo.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Deactivate time slot' })
   @ApiOkResponse({ type: TimeSlotResponseDto })

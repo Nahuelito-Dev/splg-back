@@ -53,6 +53,7 @@ import {
 import { aEnlaceDeDescarga } from '../s3/download-link';
 import { ArchivoIdempotente } from '../s3/upload-limits';
 import { MAX_ATTACHMENT_SIZE_BYTES } from '../common/utils/attachment-rules';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 const OWNER_TYPE_PARAM = {
   name: 'ownerType',
@@ -72,6 +73,7 @@ const OWNER_TYPE_PARAM = {
 export class AttachmentController {
   constructor(private readonly attachmentsService: AttachmentService) {}
 
+  @Permiso('catalogo.gestionar')
   @Post(':ownerType/:ownerId')
   @ApiOperation({
     summary:
@@ -136,6 +138,7 @@ export class AttachmentController {
   }
 
   // Va antes que `:ownerType/:ownerId` para que ".../download" no se lea como un ownerId.
+  @Permiso('catalogo.ver')
   @Get(':attachmentId/download')
   @ApiOperation({
     summary: 'Descargar un adjunto',
@@ -186,6 +189,7 @@ export class AttachmentController {
     res.redirect(HttpStatus.FOUND, url);
   }
 
+  @Permiso('catalogo.ver')
   @Get(':ownerType/:ownerId')
   @ApiOperation({ summary: 'Listar los adjuntos de un dueño' })
   @ApiParam(OWNER_TYPE_PARAM)
@@ -216,6 +220,7 @@ export class AttachmentController {
     return attachments.map((a) => AttachmentMapper.toDto(a));
   }
 
+  @Permiso('catalogo.gestionar')
   @Delete(':attachmentId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Borrar un adjunto' })

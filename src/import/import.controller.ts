@@ -45,6 +45,7 @@ import { ImportHandlerRegistry } from './import-handler.registry';
 import { ImportMapper } from './import.mapper';
 import { ImportService } from './import.service';
 import { ImportTemplateService } from './import-template.service';
+import { Permiso } from '../common/decorators/permiso.decorator';
 
 /**
  * Carga masiva desde Excel o CSV, en tres pasos: plantilla, vista previa (valida
@@ -60,6 +61,7 @@ export class ImportController {
     private readonly plantillas: ImportTemplateService,
   ) {}
 
+  @Permiso('catalogo.ver')
   @Get(':recurso/template')
   @Version('2')
   @ApiOperation({
@@ -91,6 +93,7 @@ export class ImportController {
     return new StreamableFile(plantilla.contenido);
   }
 
+  @Permiso('catalogo.gestionar')
   @Post(':recurso/preview')
   @Version('2')
   @UseInterceptors(archivoConTope(MAX_ARCHIVO_BYTES, 'archivo'))
@@ -135,6 +138,7 @@ export class ImportController {
     return ImportMapper.toPreviewDto(job);
   }
 
+  @Permiso('catalogo.gestionar')
   @Post(':importId/confirm')
   @Version('2')
   @Idempotent()

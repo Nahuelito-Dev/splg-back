@@ -41,6 +41,7 @@ import {
   UpdateCustomerAccountDto,
 } from '../dto/customer-account.dto';
 import { CustomerAccountMapper } from './customer-account.mapper';
+import { Permiso } from '../../common/decorators/permiso.decorator';
 
 /** Cuentas corrientes de clientes (CU-235, 237, 238, 239, 329, 331). */
 @ApiTags('Cuentas corrientes')
@@ -53,6 +54,7 @@ export class CustomerAccountController {
     private readonly ledger: CustomerLedgerService,
   ) {}
 
+  @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({
     summary: 'Listar las cuentas corrientes',
@@ -71,6 +73,7 @@ export class CustomerAccountController {
     return this.consultas.findAll(distributorId, query);
   }
 
+  @Permiso('finanzas.gestionar')
   @Post()
   @Idempotent()
   @ApiOperation({
@@ -94,6 +97,7 @@ export class CustomerAccountController {
     return this.consultas.findOne(cuenta.accountId, distributorId);
   }
 
+  @Permiso('finanzas.ver')
   @Get('aging')
   @ApiOperation({
     summary: 'Antigüedad de la deuda',
@@ -108,6 +112,7 @@ export class CustomerAccountController {
     return this.consultas.aging(distributorId);
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id')
   @ApiOperation({
     summary: 'Ver una cuenta con su crédito disponible y su antigüedad',
@@ -125,6 +130,7 @@ export class CustomerAccountController {
     return this.consultas.findOne(id, distributorId);
   }
 
+  @Permiso('finanzas.gestionar')
   @Patch(':id')
   @Idempotent()
   @ApiOperation({
@@ -149,6 +155,7 @@ export class CustomerAccountController {
     return this.consultas.findOne(id, distributorId);
   }
 
+  @Permiso('finanzas.ver')
   @Get(':id/entries')
   @ApiOperation({
     summary: 'Estado de cuenta',
@@ -168,6 +175,7 @@ export class CustomerAccountController {
   }
 
   @Post(':id/payments')
+  @Permiso('finanzas.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN, RoleType.DELIVERY)
   @Idempotent()
   @ApiOperation({
@@ -202,6 +210,7 @@ export class CustomerAccountController {
     );
   }
 
+  @Permiso('finanzas.gestionar')
   @Post(':id/adjustments')
   @Idempotent()
   @ApiOperation({
