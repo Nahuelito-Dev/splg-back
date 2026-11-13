@@ -11,6 +11,7 @@ describe('DispatchSettingsService (CU-171)', () => {
     radiusStepsKm: [5, 10, 15, 20],
     offerTtlSeconds: 30,
     finishingRadiusMeters: 300,
+    noDriverExpiryMinutes: 120,
   };
 
   beforeEach(() => {
@@ -45,6 +46,7 @@ describe('DispatchSettingsService (CU-171)', () => {
       radiusStepsKm: [2, 4],
       offerTtlSeconds: 60,
       finishingRadiusMeters: 300,
+      noDriverExpiryMinutes: 120,
     });
   });
 
@@ -100,6 +102,7 @@ describe('DispatchSettingsService (CU-171)', () => {
       radiusStepsKm: [3],
       offerTtlSeconds: 90,
       finishingRadiusMeters: 300,
+      noDriverExpiryMinutes: 120,
     });
     // La otra distribuidora conserva su copia: no volvió a la base.
     await service.obtener('d2');
@@ -149,6 +152,18 @@ describe('DispatchSettingsService (CU-171)', () => {
     expect(radio('x')).toBe(300);
   });
 
+  it('noDriverExpiryMinutes: entero de 1 a 1440; fuera de rango o fraccionario cae a 120', () => {
+    const leer = (v: unknown) =>
+      dispatchSettingsDesde({ noDriverExpiryMinutes: v }).noDriverExpiryMinutes;
+    expect(leer(1)).toBe(1);
+    expect(leer(1440)).toBe(1440);
+    expect(leer(45)).toBe(45);
+    expect(leer(0)).toBe(120);
+    expect(leer(1441)).toBe(120);
+    expect(leer(30.5)).toBe(120);
+    expect(leer('45')).toBe(120);
+  });
+
   it('guardar el radio por terminar lo manda a la configuración y deja de ser isDefault', async () => {
     configs.fila.mockResolvedValue({
       params: { finishingRadiusMeters: 0 },
@@ -163,6 +178,22 @@ describe('DispatchSettingsService (CU-171)', () => {
       'u1',
     );
     expect(r).toMatchObject({ finishingRadiusMeters: 0, isDefault: false });
+  });
+
+  it('guardar los minutos sin chofer los manda a la configuración y deja de ser isDefault', async () => {
+    configs.fila.mockResolvedValue({
+      params: { noDriverExpiryMinutes: 45 },
+      updatedAt: null,
+      updatedByUserId: 'u1',
+    });
+    const r = await service.guardar('d1', { noDriverExpiryMinutes: 45 }, 'u1');
+    expect(configs.guardar).toHaveBeenCalledWith(
+      'd1',
+      ConfigurableProcess.DISPATCH,
+      { noDriverExpiryMinutes: 45 },
+      'u1',
+    );
+    expect(r).toMatchObject({ noDriverExpiryMinutes: 45, isDefault: false });
   });
 
   it('PUT parcial: guarda sólo lo que vino y lo que falta se lee con su valor por omisión', async () => {

@@ -518,6 +518,15 @@ export class UsersService {
       [user.userId],
     );
     if (estado.length === 0 || estado[0].blocked) return;
+    // Una distribuidora dada de baja ya no necesita quien la administre: su
+    // último administrador puede irse (lo da de baja el super admin).
+    if (!esSuper && perfil.distributorId) {
+      const distribuidora: { eliminada: boolean }[] = await manager.query(
+        `SELECT "deletedAt" IS NOT NULL AS eliminada FROM distributor WHERE distributor_id = $1`,
+        [perfil.distributorId],
+      );
+      if (distribuidora[0]?.eliminada) return;
+    }
     const filas: { n: string }[] = await manager.query(
       `SELECT count(*) AS n FROM admin a
          JOIN "user" u ON u.user_id = a.user_id AND u."deletedAt" IS NULL AND u.blocked = false

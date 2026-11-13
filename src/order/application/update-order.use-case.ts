@@ -42,6 +42,7 @@ import { marcarRespuestaIncompleta } from '../../common/interceptors/respuesta-i
 import { errorMessage } from '../../common/errors/error-message';
 import { CustomerContainerService } from '../../customer-container/customer-container.service';
 import { cambiaronLosRenglones } from '../domain/renglones-del-pedido';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 
 /** Lo que la transacción de la edición devuelve para los efectos posteriores. */
 type EdicionAplicada = {
@@ -333,6 +334,9 @@ export class UpdateOrderUseCase {
       order.paymentMethod = paymentMethod;
       order.paymentType = paymentTypeDe(paymentMethod);
       if (cambiaNotas) order.notes = dto.notes ?? null;
+      // Con la agenda nueva, la espera de chofer vuelve a contar desde ahora
+      // (y nunca antes del inicio de la franja nueva).
+      if (cambiaAgenda) marcarOfrecible(order);
 
       // Una oferta de despacho viva quedó con datos viejos: se vence en la
       // misma transacción (después se avisa al chofer y se vuelve a ofrecer).

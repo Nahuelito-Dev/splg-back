@@ -96,6 +96,9 @@ export class DispatchSettingsService {
         ...(settings.finishingRadiusMeters != null
           ? { finishingRadiusMeters: settings.finishingRadiusMeters }
           : {}),
+        ...(settings.noDriverExpiryMinutes != null
+          ? { noDriverExpiryMinutes: settings.noDriverExpiryMinutes }
+          : {}),
       },
       actorUserId,
     );
@@ -108,6 +111,7 @@ export class DispatchSettingsService {
       radiusStepsKm: [...settings.radiusStepsKm],
       offerTtlSeconds: settings.offerTtlSeconds,
       finishingRadiusMeters: settings.finishingRadiusMeters,
+      noDriverExpiryMinutes: settings.noDriverExpiryMinutes,
     };
   }
 }

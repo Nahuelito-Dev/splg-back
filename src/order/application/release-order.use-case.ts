@@ -9,6 +9,7 @@ import { Order, OrderStatus } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import { transitionOrder } from '../domain/order-status.machine';
 import { releaseDriverAssignment } from '../domain/release-driver-assignment';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { RealtimeDispatchPort } from '../domain/ports/realtime-dispatch.port';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 
@@ -147,9 +148,13 @@ export class ReleaseOrderUseCase {
   }
 
   applyRelease(order: Order): string | null {
+    // Liberar uno que ya estaba pendiente y sin chofer no reinicia su espera.
+    const yaEsperaba =
+      order.status === OrderStatus.PENDING && !order.deliveryId;
     transitionOrder(order, OrderStatus.PENDING);
     const previousDriverUserId = order.delivery?.userId ?? null;
     releaseDriverAssignment(order);
+    if (!yaEsperaba) marcarOfrecible(order);
     return previousDriverUserId;
   }
 

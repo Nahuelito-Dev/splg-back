@@ -17,6 +17,7 @@ describe('AdminController · distribuidora en las escrituras', () => {
     findDetail: jest.Mock;
     update: jest.Mock;
     remove: jest.Mock;
+    esDeUnaDistribuidoraEliminada: jest.Mock;
   };
   let controller: AdminController;
 
@@ -31,6 +32,7 @@ describe('AdminController · distribuidora en las escrituras', () => {
       findDetail: jest.fn(),
       update: jest.fn().mockResolvedValue({ adminId: 'a1', user: {} }),
       remove: jest.fn().mockResolvedValue({ message: 'ok' }),
+      esDeUnaDistribuidoraEliminada: jest.fn().mockResolvedValue(false),
     };
     controller = new AdminController(service as never);
   });
@@ -45,6 +47,17 @@ describe('AdminController · distribuidora en las escrituras', () => {
     );
     expect(service.update).not.toHaveBeenCalled();
     expect(service.remove).not.toHaveBeenCalled();
+  });
+
+  it('sin distribuidora da de baja (sólo la baja) al admin de una distribuidora eliminada', async () => {
+    destino(RoleType.ADMIN);
+    service.esDeUnaDistribuidoraEliminada.mockResolvedValue(true);
+    await controller.remove('a1', superAdmin, null);
+    expect(service.remove).toHaveBeenCalledWith('a1', null);
+    // Editarlo sigue pidiendo la distribuidora.
+    await expect(
+      controller.update('a1', { fullName: 'Nuevo nombre' }, superAdmin, null),
+    ).rejects.toThrow(new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA));
   });
 
   it('con la distribuidora en contexto sí', async () => {

@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager, IsNull, Not } from 'typeorm';
 import { Admin } from './entities/admin.entity';
+import { Distributor } from '../distributor/entities/distributor.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
 import { isUUID } from 'class-validator';
@@ -185,6 +186,24 @@ export class AdminService {
       throw new NotFoundException('Administrador no encontrado');
     }
     return admin;
+  }
+
+  /**
+   * ¿La distribuidora del administrador está dada de baja? Se lee aparte, con
+   * `withDeleted` sólo sobre la distribuidora: el administrador en sí se sigue
+   * buscando entre los vigentes (uno ya dado de baja es 404).
+   */
+  async esDeUnaDistribuidoraEliminada(admin: Admin): Promise<boolean> {
+    if (!admin.distributorId) return false;
+    const distribuidora = await this.adminRepository.manager.findOne(
+      Distributor,
+      {
+        where: { distributorId: admin.distributorId },
+        withDeleted: true,
+        select: { distributorId: true, deletedAt: true },
+      },
+    );
+    return Boolean(distribuidora?.deletedAt);
   }
 
   async findOneByEmail(email: string): Promise<Admin> {

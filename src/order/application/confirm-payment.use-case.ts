@@ -4,6 +4,8 @@ import { DataSource } from 'typeorm';
 
 import { Order, OrderStatus, PaymentStatus } from '../entities/order.entity';
 import { isTerminal } from '../domain/order-status.machine';
+import { esperaPagoOnline } from '../domain/espera-pago-online';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { DispatchOfferRepositoryPort } from '../domain/ports/dispatch-offer.repository.port';
 import { DispatchOfferStatus } from '../entities/dispatch-offer.entity';
@@ -421,10 +423,20 @@ export class ConfirmPaymentUseCase {
         cobroDuplicado = true;
         await queryRunner.commitTransaction();
       } else {
+        const esperabaElPago = esperaPagoOnline(locked);
         locked.paymentStatus = PaymentStatus.PAID;
         locked.gatewayPaymentId = paymentId;
         // Lo que el remito y el recibo muestran como «Cobrado el».
         locked.paymentConfirmedAt = new Date();
+        // Recién ahora sale al despacho: desde acá corre la espera de chofer.
+        if (
+          esperabaElPago &&
+          !esperaPagoOnline(locked) &&
+          locked.status === OrderStatus.PENDING &&
+          !locked.deliveryId
+        ) {
+          marcarOfrecible(locked, locked.paymentConfirmedAt);
+        }
         await queryRunner.manager.save(locked);
         await queryRunner.commitTransaction();
       }

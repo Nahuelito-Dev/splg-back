@@ -20,6 +20,7 @@ describe('DispatchService', () => {
   };
   let lock: { release: jest.Mock };
   let refunds: { retomarPendientes: jest.Mock };
+  let vencimientos: { vencer: jest.Mock };
   let frecuencias: {
     distribuidorasQueCorren: jest.Mock;
     liberarMarca: jest.Mock;
@@ -44,6 +45,7 @@ describe('DispatchService', () => {
       distribuidorasConOfertasVencidas: jest.fn().mockResolvedValue([]),
     };
     refunds = { retomarPendientes: jest.fn().mockResolvedValue(0) };
+    vencimientos = { vencer: jest.fn().mockResolvedValue(0) };
     frecuencias = {
       distribuidorasQueCorren: jest.fn((_t: string, ids: string[]) =>
         Promise.resolve(new Set(ids)),
@@ -56,6 +58,7 @@ describe('DispatchService', () => {
       orchestrator as unknown as import('./application/dispatch-orchestrator.service').DispatchOrchestratorService,
       frecuencias as unknown as import('../distributor/scheduled-tasks-settings.service').ScheduledTasksSettingsService,
       refunds as unknown as import('../payments/application/refunds.service').RefundsService,
+      vencimientos as unknown as import('./application/vencimiento-sin-chofer.service').VencimientoSinChoferService,
     );
   });
 
@@ -99,6 +102,18 @@ describe('DispatchService', () => {
     });
     await service.tick();
     expect(orchestrator.ensureOffered).not.toHaveBeenCalled();
+  });
+
+  it('vence los pedidos sin chofer de las distribuidoras que corren, antes de volver a ofrecer', async () => {
+    conPendientes('d1');
+    orderService.findAvailableOrders.mockResolvedValue({
+      orders: [makeOrder({ orderId: 'a' })],
+    });
+    await service.tick();
+    expect(vencimientos.vencer).toHaveBeenCalledWith(new Set(['d1']));
+    expect(vencimientos.vencer.mock.invocationCallOrder[0]).toBeLessThan(
+      orchestrator.ensureOffered.mock.invocationCallOrder[0],
+    );
   });
 
   it('libera el lock aunque el orquestador falle', async () => {

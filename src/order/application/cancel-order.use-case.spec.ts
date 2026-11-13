@@ -55,6 +55,7 @@ describe('CancelOrderUseCase', () => {
   };
   let refunds: { reintegrarPorCancelacion: jest.Mock };
   let payments: { cerrarCheckoutsDelPedido: jest.Mock };
+  let offers: { withdrawOtherActiveOffers: jest.Mock };
   let releaseOrder: ReleaseOrderUseCase;
   let lockedOrder: Order;
 
@@ -124,6 +125,7 @@ describe('CancelOrderUseCase', () => {
     payments = {
       cerrarCheckoutsDelPedido: jest.fn().mockResolvedValue(undefined),
     };
+    offers = { withdrawOtherActiveOffers: jest.fn().mockResolvedValue([]) };
 
     useCase = new CancelOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
@@ -133,6 +135,7 @@ describe('CancelOrderUseCase', () => {
       dispatchOrchestrator as unknown as import('./dispatch-orchestrator.service').DispatchOrchestratorService,
       refunds as unknown as import('../../payments/application/refunds.service').RefundsService,
       payments as unknown as import('../../payments/application/payments.service').PaymentsService,
+      offers as unknown as import('../domain/ports/dispatch-offer.repository.port').DispatchOfferRepositoryPort,
     );
   });
 
@@ -445,6 +448,81 @@ describe('CancelOrderUseCase', () => {
       await useCase.execute('ord-1', 'cust-1', 'customer', 'Motivo de prueba');
 
       expect(dispatch.stopTracking).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sistema: cancelación automática (vencimiento sin chofer)', () => {
+    const MOTIVO = 'No hubo choferes disponibles para tu pedido.';
+
+    beforeEach(() => {
+      lockedOrder = makeOrder({
+        status: OrderStatus.PENDING,
+        deliveryId: null,
+        delivery: null,
+        items: [{ gasCylinderId: 'g1', quantity: 2 } as OrderItem],
+      } as Partial<Order>);
+    });
+
+    it('cancela, devuelve stock, retira la oferta viva, pide la devolución y avisa con cancelledBy system', async () => {
+      offers.withdrawOtherActiveOffers.mockResolvedValue(['user-drv-9']);
+
+      const res = await useCase.execute('ord-1', 'system', 'system', MOTIVO);
+
+      expect(res.status).toBe(OrderStatus.CANCELLED);
+      expect(res.cancellationReason).toBe(MOTIVO);
+      expect(stock.restituirStock).toHaveBeenCalled();
+      expect(offers.withdrawOtherActiveOffers).toHaveBeenCalledWith(
+        queryRunner.manager,
+        'ord-1',
+        null,
+        'superseded',
+      );
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
+      expect(dispatch.notifyCustomer).toHaveBeenCalledWith(
+        'cust-1',
+        'order:cancelled',
+        expect.objectContaining({ cancelledBy: 'system', reason: MOTIVO }),
+      );
+      expect(dispatch.notifyDriverOrderCancelled).toHaveBeenCalledWith(
+        'user-drv-9',
+        expect.objectContaining({ orderId: 'ord-1' }),
+      );
+      expect(refunds.reintegrarPorCancelacion).toHaveBeenCalledWith('ord-1');
+    });
+
+    it('si la condición bajo lock ya no se cumple: rollback, sin stock, sin guardar y sin avisos', async () => {
+      const condicion = jest.fn().mockResolvedValue(false);
+
+      const res = await useCase.execute('ord-1', 'system', 'system', MOTIVO, {
+        siSigueCorrespondiendo: condicion,
+      });
+
+      expect(condicion).toHaveBeenCalledWith(lockedOrder, queryRunner.manager);
+      expect(res.status).toBe(OrderStatus.PENDING);
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(queryRunner.manager.save).not.toHaveBeenCalled();
+      expect(stock.restituirStock).not.toHaveBeenCalled();
+      expect(offers.withdrawOtherActiveOffers).not.toHaveBeenCalled();
+      expect(dispatch.notifyCustomer).not.toHaveBeenCalled();
+      expect(dispatch.notifyAdmins).not.toHaveBeenCalled();
+      expect(refunds.reintegrarPorCancelacion).not.toHaveBeenCalled();
+      expect(queryRunner.release).toHaveBeenCalled();
+    });
+
+    it('la condición se evalúa con la fila bloqueada y sus renglones ya leídos', async () => {
+      const condicion = jest.fn((o: Order) =>
+        Promise.resolve(o.items.length === 1),
+      );
+      await useCase.execute('ord-1', 'system', 'system', MOTIVO, {
+        siSigueCorrespondiendo: condicion,
+      });
+      expect(queryBuilder.setLock).toHaveBeenCalledWith(
+        'pessimistic_write',
+        undefined,
+        ['ord'],
+      );
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
     });
   });
 

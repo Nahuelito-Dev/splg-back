@@ -13,6 +13,8 @@ import { EsEstrictamenteCreciente } from '../../common/validators/es-estrictamen
 import {
   DISPATCH_FINISHING_RADIUS_MAX_METERS,
   DISPATCH_FINISHING_RADIUS_MIN_METERS,
+  DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES,
+  DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES,
   DISPATCH_OFFER_TTL_MAX_SECONDS,
   DISPATCH_OFFER_TTL_MIN_SECONDS,
   DISPATCH_RADIUS_MAX_KM,
@@ -65,6 +67,20 @@ export class DispatchConfigDto {
   @Min(DISPATCH_FINISHING_RADIUS_MIN_METERS)
   @Max(DISPATCH_FINISHING_RADIUS_MAX_METERS)
   finishingRadiusMeters?: number;
+
+  @ApiPropertyOptional({
+    description: `Minutos que un pedido pendiente puede esperar chofer antes de que el sistema lo cancele (${DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES} a ${DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES}, entero). Corren desde que el pedido se puede ofrecer (alta, pago aprobado, liberación del chofer, fin de la retención por fraude, cambio de agenda o reserva activada) y, si está agendado, nunca antes del inicio de su franja. No corren mientras espera un pago online ni para los express`,
+    type: 'integer',
+    example: 120,
+    default: 120,
+    minimum: DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES,
+    maximum: DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(DISPATCH_NO_DRIVER_EXPIRY_MIN_MINUTES)
+  @Max(DISPATCH_NO_DRIVER_EXPIRY_MAX_MINUTES)
+  noDriverExpiryMinutes?: number;
 }
 
 /** Respuesta de `GET`/`PUT /module-config/dispatch`. */
@@ -77,6 +93,14 @@ export class DispatchConfigResponseDto {
 
   @ApiProperty({ type: 'integer', example: 300 })
   finishingRadiusMeters!: number;
+
+  @ApiProperty({
+    description:
+      'Minutos que un pedido pendiente puede esperar chofer antes de que el sistema lo cancele',
+    type: 'integer',
+    example: 120,
+  })
+  noDriverExpiryMinutes!: number;
 
   @ApiProperty({
     description:

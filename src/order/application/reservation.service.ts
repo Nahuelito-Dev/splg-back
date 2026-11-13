@@ -21,6 +21,7 @@ import {
 
 import { Order, OrderStatus, PaymentMethod } from '../entities/order.entity';
 import { transitionOrder } from '../domain/order-status.machine';
+import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { OrderRepositoryPort } from '../domain/ports/order.repository.port';
 import { GasCylinderService } from '../../gascylinder/gascylinder.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
@@ -333,6 +334,7 @@ export class ReservationService {
     for (const order of due) {
       try {
         transitionOrder(order, OrderStatus.PENDING);
+        marcarOfrecible(order);
         await this.orderRepository.save(order);
         // Despacho con el pedido completo (coords + items) para armar la oferta.
         const full = await this.orders.findByIdFull(order.orderId);

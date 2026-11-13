@@ -3,7 +3,7 @@ import { OrderFraudHoldService } from './order-fraud-hold.service';
 
 describe('OrderFraudHoldService (M-1)', () => {
   let pedido: Record<string, unknown> | null;
-  let save: jest.Mock;
+  let save: jest.Mock<Promise<unknown>, [unknown]>;
   let where: jest.Mock;
   let service: OrderFraudHoldService;
 
@@ -36,6 +36,42 @@ describe('OrderFraudHoldService (M-1)', () => {
         paymentFraudReleasedAt: expect.any(Date) as Date,
       }),
     );
+  });
+
+  it('un pedido pendiente sin chofer y pago vuelve a contar la espera de chofer desde la liberación', async () => {
+    pedido = {
+      orderId: 'o1',
+      paymentFraudHold: true,
+      status: 'pending',
+      deliveryId: null,
+      paymentMethod: 'mercadopago',
+      paymentStatus: 'paid',
+      availableSince: new Date('2026-01-01T10:00:00Z'),
+    };
+    await service.liberar('o1', 'd1', 'u1', 'motivo suficiente');
+    const guardado = save.mock.calls[0][0] as {
+      availableSince: Date;
+      paymentFraudReleasedAt: Date;
+    };
+    expect(guardado.availableSince).toBe(guardado.paymentFraudReleasedAt);
+  });
+
+  it('una reserva liberada no empieza a contar: lo hará al activarse', async () => {
+    const viejo = new Date('2026-01-01T10:00:00Z');
+    pedido = {
+      orderId: 'o1',
+      paymentFraudHold: true,
+      status: 'reserved',
+      deliveryId: null,
+      paymentMethod: 'mercadopago',
+      paymentStatus: 'pending',
+      depositPaid: true,
+      availableSince: viejo,
+    };
+    await service.liberar('o1', 'd1', 'u1', 'motivo suficiente');
+    expect(
+      (save.mock.calls[0][0] as { availableSince: Date }).availableSince,
+    ).toBe(viejo);
   });
 
   it('lee el pedido bloqueado y dentro de la distribuidora', async () => {

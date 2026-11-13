@@ -193,10 +193,15 @@ export class AdminController {
       'su cuenta de acceso se deshabilita y nada se borra. Mismos permisos ' +
       'que la edición, y nadie se da de baja a sí mismo. No se puede dar de ' +
       'baja al último administrador activo de una distribuidora ni al último ' +
-      'super administrador.',
+      'super administrador. El administrador de una distribuidora dada de ' +
+      'baja lo da de baja el super admin sin `X-Distributor` (con ella en el ' +
+      'header responde 401), y ahí no se exige que quede otro administrador.',
   })
   @ApiOkResponse({ type: MessageResponseDto })
-  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @ApiBadRequestResponse({
+    description:
+      'El id no es un UUID, o super admin sin `X-Distributor` sobre un administrador de una distribuidora vigente',
+  })
   @ApiForbiddenResponse({
     description: 'Se dio de baja a sí mismo (también el super admin)',
   })
@@ -213,7 +218,9 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<MessageResponseDto> {
-    const destino = await this.assertPuedeAdministrar(id, user, distributorId);
+    const destino = await this.assertPuedeAdministrar(id, user, distributorId, {
+      sinDistribuidoraSiEstaEliminada: true,
+    });
     if (esElMismoUsuario(destino.userId, user)) {
       throw new ForbiddenException('No podés darte de baja a vos mismo');
     }
@@ -224,11 +231,16 @@ export class AdminController {
    * El super admin administra a cualquiera. Un admin de empresa sólo a los de
    * su distribuidora (el contexto acota la búsqueda: otra responde 404), nunca
    * a un super admin (404, no se revela) ni a sí mismo (403).
+   *
+   * `sinDistribuidoraSiEstaEliminada` (la baja): el super admin, sin
+   * `X-Distributor`, opera sobre el admin de una distribuidora dada de baja
+   * (con ella en el header el guard ya responde 401).
    */
   private async assertPuedeAdministrar(
     id: string,
     user: AuthenticatedUser,
     distributorId: string | null,
+    opciones: { sinDistribuidoraSiEstaEliminada?: boolean } = {},
   ): Promise<Admin> {
     const destino = await this.adminService.findDetail(id, distributorId);
     if (user.role === RoleType.SUPER_ADMIN) {
@@ -236,7 +248,11 @@ export class AdminController {
       // ninguna); sobre un admin de empresa, por UUID, hay que decir en cuál.
       if (
         !distributorId &&
-        destino.user?.role?.type !== String(RoleType.SUPER_ADMIN)
+        destino.user?.role?.type !== String(RoleType.SUPER_ADMIN) &&
+        !(
+          opciones.sinDistribuidoraSiEstaEliminada &&
+          (await this.adminService.esDeUnaDistribuidoraEliminada(destino))
+        )
       ) {
         throw faltaLaDistribuidora();
       }

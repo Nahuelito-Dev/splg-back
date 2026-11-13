@@ -11,6 +11,7 @@ import {
   registrarErrorAtrapado,
 } from '../process-run/process-run.context';
 import { ProcessName } from '../process-run/domain/process-catalog';
+import { VencimientoSinChoferService } from './application/vencimiento-sin-chofer.service';
 
 /**
  * Motor de tiempo del despacho secuencial. Corre cada 15s y, tomando un lock
@@ -19,7 +20,9 @@ import { ProcessName } from '../process-run/domain/process-catalog';
  *      siguiente chofer más cercano (DispatchOrchestrator.handleExpiredOffers);
  *   2. arranca pedidos pendientes que quedaron sin oferta activa (ej: al crearse
  *      no había choferes cerca) con DispatchOrchestrator.ensureOffered;
- *   3. retoma las devoluciones `pending` viejas (RefundsService.retomarPendientes).
+ *   3. cancela los pedidos que pasaron el plazo sin chofer de su distribuidora
+ *      (VencimientoSinChoferService), antes de volver a ofrecerlos;
+ *   4. retoma las devoluciones `pending` viejas (RefundsService.retomarPendientes).
  *
  * Las ofertas vencidas de un pedido express se procesan en CADA tic, sin esperar
  * el intervalo de la distribuidora.
@@ -44,6 +47,7 @@ export class DispatchService {
     private readonly orchestrator: DispatchOrchestratorService,
     private readonly frecuencias: ScheduledTasksSettingsService,
     private readonly refunds: RefundsService,
+    private readonly vencimientos: VencimientoSinChoferService,
   ) {}
 
   @Cron('*/15 * * * * *') // cada 15 segundos
@@ -70,6 +74,9 @@ export class DispatchService {
         [...candidatas],
       );
       await this.orchestrator.handleExpiredOffers(corren);
+      // Atrapa sus propios errores (por distribuidora y por pedido): un pedido
+      // que no se pudo vencer no deja sin ofrecer a los demás.
+      await this.vencimientos.vencer(corren);
       await this.bootstrapPendingWithoutOffer(corren);
     } catch (err) {
       registrarErrorAtrapado(err, true);

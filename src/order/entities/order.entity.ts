@@ -371,6 +371,16 @@ export class Order {
   @Column({ type: 'timestamptz', nullable: true })
   acceptedAt!: Date | null;
 
+  /**
+   * Desde cuándo el pedido se puede ofrecer a los choferes: el alta, el pago
+   * online aprobado, la liberación del chofer, el fin de la retención por
+   * fraude, el cambio de agenda o la activación de la reserva. De acá (y del
+   * inicio de su agenda) corre el plazo para cancelarlo si nadie lo toma.
+   * `null` en los pedidos que nunca estuvieron pendientes sin chofer.
+   */
+  @Column({ name: 'available_since', type: 'timestamptz', nullable: true })
+  availableSince!: Date | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   onTheWayAt!: Date | null;
 

@@ -95,6 +95,19 @@ describe('ExpressDegradeService (CU-149 pasos 7 y 8)', () => {
     expect(queryRunner.commitTransaction).toHaveBeenCalled();
   });
 
+  it('al pasar al reparto común la espera de chofer cuenta desde el pase, no desde el alta', async () => {
+    const alta = new Date('2026-01-01T10:00:00Z');
+    locked = { ...expressPendiente(), availableSince: alta };
+
+    await service.pasarAlRepartoComun('ord-1');
+
+    const [[guardado]] = queryRunner.manager.save.mock.calls as unknown as [
+      [Order],
+    ];
+    expect(guardado.availableSince).not.toBe(alta);
+    expect(guardado.availableSince).toBe(guardado.expressDegradedAt);
+  });
+
   it('si el cliente pagó en línea registra la solicitud DENTRO de la transacción (outbox) y la ejecuta después del commit', async () => {
     refunds.registrarRecargoExpress.mockResolvedValue(true);
     refunds.reintegrarRecargoExpress.mockResolvedValue([
