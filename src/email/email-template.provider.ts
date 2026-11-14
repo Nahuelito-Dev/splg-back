@@ -51,8 +51,11 @@ export class EmailTemplateProvider {
               </p>
 
               <p class="muted">
-                Si necesitás ayuda, respondé este correo o escribinos a
-                <strong>${data.supportEmail || 'support@wagnerlabs.dev'}</strong>.
+                ${
+                  data.supportEmail
+                    ? `Si necesitás ayuda, escribinos a <strong>${data.supportEmail}</strong>.`
+                    : 'Si necesitás ayuda, contactá a tu distribuidora.'
+                }
               </p>
           </div>
           <div class="footer">
