@@ -75,6 +75,10 @@ import {
   START_CONFLICT,
   STOP_CONFLICT,
 } from './driver-route-sheets.controller';
+import {
+  RequiereModulo,
+  SinModulo,
+} from '../../platform/access/requiere-modulo.decorator';
 
 const BAD =
   'Cuerpo inválido, id que no es UUID o falta la distribuidora (super admin sin X-Distributor)';
@@ -88,6 +92,7 @@ const VERSION =
  * manda `version`; 409 si cambió), confirmación, reapertura y cancelación. Cada
  * operación responde la hoja como quedó, con su versión nueva.
  */
+@RequiereModulo('route_planning')
 @ApiTags('Route sheets (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'route-sheets', version: '2' })
@@ -472,6 +477,8 @@ export class RouteSheetsController {
 
   // ───────────────────────── ejecución (E4) ─────────────────────────
 
+  // Iniciar es empezar algo nuevo: con la hoja de ruta apagada no se inicia
+  // una hoja confirmada; sólo termina la que ya está en curso (§7.3).
   @Permiso('despacho.gestionar')
   @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @Post(':id/start')
@@ -500,6 +507,9 @@ export class RouteSheetsController {
     );
   }
 
+  @SinModulo(
+    'La hoja del día en curso se termina aunque se apague la hoja de ruta',
+  )
   @Permiso('despacho.gestionar')
   @Get(':id/execution')
   @ApiParam({ name: 'id', format: 'uuid' })
@@ -518,6 +528,9 @@ export class RouteSheetsController {
     return this.execution.seguimiento(distributorId, id);
   }
 
+  @SinModulo(
+    'La hoja del día en curso se termina aunque se apague la hoja de ruta',
+  )
   @Permiso('despacho.gestionar')
   @Post(':id/stops/:orderId/failed')
   @HttpCode(200)
@@ -552,6 +565,9 @@ export class RouteSheetsController {
     );
   }
 
+  @SinModulo(
+    'La hoja del día en curso se termina aunque se apague la hoja de ruta',
+  )
   @Permiso('despacho.gestionar')
   @Post(':id/close')
   @HttpCode(200)

@@ -147,6 +147,7 @@ describe('GasCylinderService.catalogoPublico', () => {
       distribuidoras as unknown as DistributorService,
       {} as never,
       {} as never,
+      { habilitado: jest.fn().mockResolvedValue(true) } as never,
     );
   });
 

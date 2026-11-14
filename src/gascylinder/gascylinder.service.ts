@@ -22,6 +22,7 @@ import { CreateGasCylinderDto } from './dto/create-gascylinder.dto';
 import { UpdateGasCylinderDto } from './dto/update-gascylinder.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { DistributorService } from '../distributor/distributor.service';
+import { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.service';
 import { PaymentSurchargeSettingsService } from '../distributor/payment-surcharge-settings.service';
 import {
   Distributor,
@@ -63,6 +64,7 @@ export class GasCylinderService {
     private readonly distributorService: DistributorService,
     private readonly eventos: EventEmitter2,
     private readonly paymentSurcharges: PaymentSurchargeSettingsService,
+    private readonly acceso: AccesoDeLaEmpresa,
   ) {}
 
   /**
@@ -525,24 +527,34 @@ export class GasCylinderService {
     return { distributor, products };
   }
 
-  /** Los medios de pago de la distribuidora con el recargo (%) que rige hoy. */
+  /**
+   * Los medios de pago de la distribuidora con el recargo (%) que rige hoy.
+   * Mercado Pago sólo si la plataforma le habilita el módulo (P1): la app arma
+   * los medios con esta lista, así que deja de ofrecerlo sin cambios.
+   */
   async mediosDePago(
     distributorId: string | null | undefined,
   ): Promise<MedioDePagoDto[]> {
     const recargos = await this.paymentSurcharges.obtener(distributorId);
-    return [
+    const medios: MedioDePagoDto[] = [
       { name: 'Efectivo', key: 'CASH', surcharge: recargos.cashPercentage },
       {
         name: 'Transferencia',
         key: 'TRANSFER',
         surcharge: recargos.transferPercentage,
       },
-      {
+    ];
+    if (
+      !distributorId ||
+      (await this.acceso.habilitado(distributorId, 'mercadopago'))
+    ) {
+      medios.push({
         name: 'Mercado Pago',
         key: 'MERCADOPAGO',
         surcharge: recargos.mercadoPagoPercentage,
-      },
-    ];
+      });
+    }
+    return medios;
   }
 
   /** Lo mismo para un visitante: por slug; 404 si no existe o no está activa. */

@@ -54,6 +54,7 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
   let offerToNextDriver: jest.Mock;
   let crear: CreateOrderUseCase;
   let confirmar: ConfirmPaymentUseCase;
+  const acceso = { habilitado: jest.fn().mockResolvedValue(true) };
 
   const sumaDeRenglones = (items: PaymentCheckoutItem[]): Decimal =>
     items.reduce(
@@ -218,6 +219,7 @@ describe('Checkout de MercadoPago: composición y punta a punta', () => {
       { assertCredito: jest.fn() } as never,
       { porcentaje: jest.fn().mockResolvedValue(10) } as never,
       { envasesACobrar: jest.fn().mockResolvedValue([]) } as never,
+      acceso as never,
     );
 
     confirmar = new ConfirmPaymentUseCase(

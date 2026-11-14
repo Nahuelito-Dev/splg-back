@@ -112,6 +112,8 @@ const PLATAFORMA = [
   'GET /v2/platform/companies',
   'GET /v2/platform/companies/:id',
   'GET /v2/platform/companies/:id/scheduled-tasks',
+  // Módulos por distribuidora (P1).
+  'GET /v2/platform/companies/:id/modules',
   'GET /v2/platform/document-reading-usage',
   'GET /v2/platform/overview',
   'GET /v2/platform/processes',
@@ -132,6 +134,7 @@ const PLATAFORMA = [
   'POST /role/seed',
   'POST /v2/support-sessions',
   'PUT /v2/platform/companies/:id/owned-by-platform',
+  'PUT /v2/platform/companies/:id/modules/:key',
 ];
 
 const AMBOS = [

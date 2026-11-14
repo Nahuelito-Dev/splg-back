@@ -27,6 +27,7 @@ import { ProcessConfigService } from './process-config.service';
 import { DispatchSettingsService } from './dispatch-settings.service';
 import { ScheduledTasksSettingsService } from './scheduled-tasks-settings.service';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { Documenta403DeModuloDinamico } from '../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)") o cuerpo fuera de los límites (detalle por campo)';
@@ -152,6 +153,7 @@ export class ModuleConfigController {
     return this.processes.todos(distributorId);
   }
 
+  @Documenta403DeModuloDinamico()
   @Permiso('configuracion.ver')
   @Get(':process')
   @ApiOperation({
@@ -165,16 +167,17 @@ export class ModuleConfigController {
   @ApiNotFoundResponse({
     description: 'El proceso no es uno de los cinco configurables',
   })
-  getProcess(
+  async getProcess(
     @Param('process') process: string,
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ProcessConfigResponseDto> {
     return this.processes.vigentes(
       distributorId,
-      this.processes.procesoConfigurable(process),
+      await this.processes.procesoHabilitado(process, distributorId),
     );
   }
 
+  @Documenta403DeModuloDinamico()
   @Permiso('configuracion.gestionar')
   @Put(':process')
   @ApiOperation({
@@ -195,7 +198,7 @@ export class ModuleConfigController {
   @ApiNotFoundResponse({
     description: 'El proceso no es uno de los cinco configurables',
   })
-  putProcess(
+  async putProcess(
     @Param('process') process: string,
     @Body() body: Record<string, unknown>,
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -203,7 +206,7 @@ export class ModuleConfigController {
   ): Promise<ProcessConfigResponseDto> {
     return this.processes.guardar(
       distributorId,
-      this.processes.procesoConfigurable(process),
+      await this.processes.procesoHabilitado(process, distributorId),
       body,
       actorUserId,
     );

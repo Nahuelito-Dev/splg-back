@@ -1,6 +1,7 @@
 import { MaintenancePlannerCron } from './maintenance-planner.cron';
 import { MaintenancePlannerService } from './maintenance-planner.service';
 import { RedisService } from '../../redis/redis.service';
+import { empresasDePrueba } from '../../process-run/testing/empresas-de-prueba';
 
 // 03:00 en Argentina.
 const A_LAS_3 = new Date('2026-10-30T06:00:00Z');
@@ -14,6 +15,7 @@ describe('MaintenancePlannerCron', () => {
   };
   let withLock: jest.Mock;
   let cron: MaintenancePlannerCron;
+  let sinPlanificador: Set<string>;
 
   beforeEach(() => {
     planner = {
@@ -34,9 +36,15 @@ describe('MaintenancePlannerCron', () => {
           return { obtenido: true, valor: undefined };
         },
       );
+    sinPlanificador = new Set();
     cron = new MaintenancePlannerCron(
       planner as unknown as MaintenancePlannerService,
       { withLock } as unknown as RedisService,
+      empresasDePrueba({
+        distribuidoras: { findAll: () => Promise.resolve([]) },
+        habilitado: (id, modulo) =>
+          !(modulo === 'fleet_planner' && sinPlanificador.has(id)),
+      }).empresas,
     );
   });
 
@@ -56,6 +64,13 @@ describe('MaintenancePlannerCron', () => {
     );
     expect(n).toBe(0);
     expect(planner.ejecutar).not.toHaveBeenCalled();
+  });
+
+  it('sin el planificador habilitado por la plataforma no propone en esa empresa; en otra sí', async () => {
+    sinPlanificador.add('d2');
+    expect(await cron.planificarLasQueTocan(A_LAS_3)).toBe(1);
+    expect(planner.ejecutar).toHaveBeenCalledTimes(1);
+    expect(planner.ejecutar).toHaveBeenCalledWith('d1', A_LAS_3);
   });
 
   it('si una distribuidora falla sigue con las demás', async () => {
@@ -91,5 +106,15 @@ describe('MaintenancePlannerCron', () => {
   it('un error del cerrojo no se propaga', async () => {
     withLock.mockRejectedValue(new Error('redis caído'));
     await expect(cron.planificar()).resolves.toBeUndefined();
+  });
+
+  it('si el planificador se apaga después de elegir la empresa, no propone (re-consulta sin caché)', async () => {
+    planner.parametros.mockImplementation((id: string) => {
+      if (id === 'd1') sinPlanificador.add(id);
+      return Promise.resolve({ cronHour: 3 });
+    });
+    expect(await cron.planificarLasQueTocan(A_LAS_3)).toBe(1);
+    expect(planner.ejecutar).toHaveBeenCalledTimes(1);
+    expect(planner.ejecutar).toHaveBeenCalledWith('d2', A_LAS_3);
   });
 });

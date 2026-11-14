@@ -9,6 +9,7 @@ import { registrarErrorAtrapado } from '../../process-run/process-run.context';
 import { revisionVencida } from '../domain/confirmacion-automatica';
 import { diaSiguiente } from '../domain/route-sheet-rules';
 import type { RouteSheetViolation } from '../domain/route-sheet-rules';
+import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import { RouteSheetNotifier, diaLegible } from './route-sheet-notifier.service';
 import { ROUTE_PLAN_CODES } from './route-sheet.exceptions';
@@ -60,6 +61,7 @@ export class RoutePlanAutoConfirmService {
     private readonly processConfig: ProcessConfigService,
     private readonly lifecycle: RouteSheetLifecycleService,
     private readonly notifier: RouteSheetNotifier,
+    private readonly acceso: AccesoDeLaEmpresa,
   ) {}
 
   async confirmarLasVencidas(ahora: Date): Promise<ResumenDeConfirmacion> {
@@ -108,6 +110,10 @@ export class RoutePlanAutoConfirmService {
     distributorId: string,
   ): Promise<ValoresDeProceso | null> {
     try {
+      // Con la hoja de ruta deshabilitada por la plataforma (o la empresa
+      // bloqueada) los borradores no se confirman solos. Sin caché (§6.3).
+      const acceso = await this.acceso.calcular(distributorId);
+      if (!acceso.modulos.has('route_planning')) return null;
       return await this.processConfig.obtener(
         distributorId,
         ConfigurableProcess.ROUTE_PLANNING,

@@ -35,9 +35,9 @@ type Caso = [string, () => Promise<unknown>];
 
 const casos = (): Caso[] => {
   const r = sinCerrojo() as never;
-  const recompra = new RepurchaseCron(nada, nada, nada, r);
-  const lotes = new RouteBatchCron(nada, r);
-  const planificador = new MaintenancePlannerCron(nada, r);
+  const recompra = new RepurchaseCron(nada, nada, nada, r, nada);
+  const lotes = new RouteBatchCron(nada, r, nada);
+  const planificador = new MaintenancePlannerCron(nada, r, nada);
   return [
     ['M3 recompra: anticipar', () => recompra.anticipar()],
     ['M3 recompra: vencer', () => recompra.vencer()],
@@ -45,11 +45,11 @@ const casos = (): Caso[] => {
     ['M4 recorridos: vencer', () => lotes.vencer()],
     [
       'M4 hoja de ruta: proponer',
-      () => new RoutePlanningCron(nada, nada, r, nada, nada).proponer(),
+      () => new RoutePlanningCron(nada, nada, r, nada, nada, nada).proponer(),
     ],
     [
       'M4 hoja de ruta: cerrar días',
-      () => new RoutePlanningCron(nada, nada, r, nada, nada).cerrarDias(),
+      () => new RoutePlanningCron(nada, nada, r, nada, nada, nada).cerrarDias(),
     ],
     ['M2 planificador: planificar', () => planificador.planificar()],
     [
@@ -59,7 +59,7 @@ const casos = (): Caso[] => {
     ['M2 uso de vehículos', () => new VehicleUsageCron(nada, r).alimentar()],
     [
       'M5 recupero de envases',
-      () => new CylinderRecoveryCron(nada, r).recuperar(),
+      () => new CylinderRecoveryCron(nada, r, nada).recuperar(),
     ],
     [
       'zonas de cobertura vencidas',

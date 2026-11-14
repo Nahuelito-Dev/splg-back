@@ -7,6 +7,7 @@ import { resolverCierre } from '../../process-run/process-run.recorder';
 import { ProcessRunStatus } from '../../process-run/domain/process-catalog';
 import { ProcessConfigService } from '../../distributor/process-config.service';
 import { RoutePlanAutoConfirmService } from './route-plan-auto-confirm.service';
+import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import { RouteSheetNotifier } from './route-sheet-notifier.service';
 import {
@@ -52,6 +53,7 @@ function armar(
     autoConfirm: 1,
     reviewMinutes: 60,
   },
+  sinHoja: ReadonlySet<string> = new Set(),
 ) {
   const ds = { query: jest.fn().mockResolvedValue(filas) };
   const processConfig = { obtener: jest.fn().mockResolvedValue(params) };
@@ -62,6 +64,12 @@ function armar(
     processConfig as unknown as ProcessConfigService,
     lifecycle as unknown as RouteSheetLifecycleService,
     notifier as unknown as RouteSheetNotifier,
+    {
+      calcular: (id: string) =>
+        Promise.resolve({
+          modulos: new Set(sinHoja.has(id) ? [] : ['route_planning']),
+        }),
+    } as unknown as AccesoDeLaEmpresa,
   );
   return { svc, ds, processConfig, lifecycle, notifier };
 }
@@ -104,6 +112,25 @@ describe('RoutePlanAutoConfirmService', () => {
       });
       await t.svc.confirmarLasVencidas(PROPUESTA);
       expect(t.lifecycle.confirmar).toHaveBeenCalledTimes(1);
+    });
+
+    it('con la hoja de ruta deshabilitada por la plataforma no confirma los borradores de esa empresa; los de otra sí', async () => {
+      const t = armar(
+        [fila(), fila({ batchId: 'hoja-otra', distributorId: 'dist-2' })],
+        { enabled: 1, autoConfirm: 1, reviewMinutes: 0 },
+        new Set([DIST]),
+      );
+      const r = await t.svc.confirmarLasVencidas(PROPUESTA);
+      expect(t.lifecycle.confirmar).toHaveBeenCalledTimes(1);
+      expect(t.processConfig.obtener).not.toHaveBeenCalledWith(
+        DIST,
+        expect.anything(),
+      );
+      expect(r).toEqual({
+        autoConfirmed: 1,
+        autoConfirmFailed: 0,
+        autoConfirmRetry: 0,
+      });
     });
 
     it('con autoConfirm 0 o la hoja apagada no confirma nada', async () => {

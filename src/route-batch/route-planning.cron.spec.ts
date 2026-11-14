@@ -4,6 +4,7 @@ import { RouteSheetWatchService } from './application/route-sheet-watch.service'
 import { RoutePlanService } from './application/route-plan.service';
 import { RoutePlanningCron } from './route-planning.cron';
 import { RedisService } from '../redis/redis.service';
+import { empresasDePrueba } from '../process-run/testing/empresas-de-prueba';
 
 describe('RoutePlanningCron', () => {
   const conCerrojo = {
@@ -29,6 +30,7 @@ describe('RoutePlanningCron', () => {
     para: Array<{ distributorId: string; planDate: string }>,
     proponer: jest.Mock,
     auto = nuevoAuto(),
+    sinHoja: ReadonlySet<string> = new Set(),
   ) {
     const plans = {
       paraProponer: jest.fn().mockResolvedValue(para),
@@ -40,6 +42,11 @@ describe('RoutePlanningCron', () => {
       conCerrojo as unknown as RedisService,
       { vigilar: jest.fn() } as unknown as RouteSheetWatchService,
       auto as unknown as RoutePlanAutoConfirmService,
+      empresasDePrueba({
+        distribuidoras: { findAll: () => Promise.resolve([]) },
+        habilitado: (id, modulo) =>
+          !(modulo === 'route_planning' && sinHoja.has(id)),
+      }).empresas,
     );
     return { cron, plans, auto };
   }
@@ -61,6 +68,24 @@ describe('RoutePlanningCron', () => {
       ...sinConfirmar,
     });
     expect(proponer).toHaveBeenCalledWith('d1', '2026-11-14');
+    expect(proponer).toHaveBeenCalledWith('d2', '2026-11-14');
+  });
+
+  it('sin la hoja de ruta habilitada por la plataforma no planifica mañana en esa empresa; en otra sí', async () => {
+    const proponer = jest
+      .fn()
+      .mockResolvedValue({ sheets: [{}], unassigned: [] });
+    const { cron } = armar(
+      [
+        { distributorId: 'd1', planDate: '2026-11-14' },
+        { distributorId: 'd2', planDate: '2026-11-14' },
+      ],
+      proponer,
+      nuevoAuto(),
+      new Set(['d1']),
+    );
+    await expect(cron.proponer()).resolves.toMatchObject({ proposed: 1 });
+    expect(proponer).toHaveBeenCalledTimes(1);
     expect(proponer).toHaveBeenCalledWith('d2', '2026-11-14');
   });
 
@@ -93,6 +118,7 @@ describe('RoutePlanningCron', () => {
       conCerrojo as unknown as RedisService,
       { vigilar } as unknown as RouteSheetWatchService,
       nuevoAuto() as unknown as RoutePlanAutoConfirmService,
+      {} as never,
     );
     await expect(cron.seguir()).resolves.toMatchObject({ reconciled: 1 });
     expect(vigilar).toHaveBeenCalledTimes(1);
@@ -116,6 +142,7 @@ describe('RoutePlanningCron', () => {
       } as unknown as RedisService,
       { vigilar: jest.fn() } as unknown as RouteSheetWatchService,
       auto as unknown as RoutePlanAutoConfirmService,
+      {} as never,
     );
     await expect(cron.proponer()).resolves.toBeUndefined();
     expect(auto.confirmarLasVencidas).not.toHaveBeenCalled();
@@ -173,5 +200,24 @@ describe('RoutePlanningCron', () => {
       unassigned,
       expect.any(Date),
     );
+  });
+
+  it('si la hoja de ruta se apaga en medio de la propuesta, no propone el día siguiente (re-consulta sin caché)', async () => {
+    const sinHoja = new Set<string>();
+    const proponer = jest.fn((id: string) => {
+      sinHoja.add(id);
+      return Promise.resolve({ sheets: [], unassigned: [] });
+    });
+    const { cron } = armar(
+      [
+        { distributorId: 'd1', planDate: '2026-11-14' },
+        { distributorId: 'd1', planDate: '2026-11-15' },
+      ],
+      proponer,
+      nuevoAuto(),
+      sinHoja,
+    );
+    await expect(cron.proponer()).resolves.toMatchObject({ proposed: 1 });
+    expect(proponer).toHaveBeenCalledTimes(1);
   });
 });

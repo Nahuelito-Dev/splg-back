@@ -5,6 +5,7 @@ import {
   nuevaCorrida,
 } from '../process-run/process-run.context';
 import { DocumentReadingProposalCron } from './document-reading-proposal.cron';
+import { empresasDePrueba } from '../process-run/testing/empresas-de-prueba';
 
 describe('DocumentReadingProposalCron', () => {
   let proposals: {
@@ -15,6 +16,7 @@ describe('DocumentReadingProposalCron', () => {
   let distributors: { findAll: jest.Mock };
   let redis: { withLock: jest.Mock };
   let cron: DocumentReadingProposalCron;
+  let sinLector: Set<string>;
 
   beforeEach(() => {
     proposals = {
@@ -31,11 +33,18 @@ describe('DocumentReadingProposalCron', () => {
         return { obtenido: true };
       }),
     };
+    sinLector = new Set();
+    const kit = empresasDePrueba({
+      distribuidoras: distributors as never,
+      habilitado: (id, modulo) =>
+        !(modulo === 'document_reading' && sinLector.has(id)),
+    });
     cron = new DocumentReadingProposalCron(
       proposals as never,
       settings as never,
-      distributors as never,
       redis as never,
+      kit.empresas,
+      kit.acceso,
     );
   });
 
@@ -113,5 +122,41 @@ describe('DocumentReadingProposalCron', () => {
     const corrida = await correr(() => cron.ejecutar());
     expect(distributors.findAll).not.toHaveBeenCalled();
     expect(corrida.skipped).toBe(true);
+  });
+
+  it('con el lector deshabilitado por la plataforma no arma propuestas nuevas pero vence las que esperan', async () => {
+    distributors.findAll.mockResolvedValue([
+      { distributorId: 'd1', status: DistributorStatus.ACTIVE },
+      { distributorId: 'd2', status: DistributorStatus.ACTIVE },
+    ]);
+    sinLector.add('d1');
+    await cron.ejecutarSinCerrojo();
+    expect(
+      proposals.procesarPendientesDeDistribuidora,
+    ).not.toHaveBeenCalledWith('d1', expect.any(Date));
+    expect(proposals.procesarPendientesDeDistribuidora).toHaveBeenCalledWith(
+      'd2',
+      expect.any(Date),
+    );
+    expect(proposals.vencerDeDistribuidora).toHaveBeenCalledWith(
+      'd1',
+      expect.any(Date),
+    );
+  });
+
+  it('si el lector se apaga después de elegir la empresa, no arma propuestas nuevas (re-consulta sin caché)', async () => {
+    distributors.findAll.mockResolvedValue([
+      { distributorId: 'd1', status: DistributorStatus.ACTIVE },
+    ]);
+    settings.parametros.mockImplementation((id: string) => {
+      sinLector.add(id);
+      return Promise.resolve({ enabled: true });
+    });
+    await cron.ejecutarSinCerrojo();
+    expect(proposals.procesarPendientesDeDistribuidora).not.toHaveBeenCalled();
+    expect(proposals.vencerDeDistribuidora).toHaveBeenCalledWith(
+      'd1',
+      expect.any(Date),
+    );
   });
 });

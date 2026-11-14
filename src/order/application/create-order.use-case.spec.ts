@@ -48,6 +48,7 @@ describe('CreateOrderUseCase', () => {
   let cart: { itemsParaPedido: jest.Mock; vaciarEnTransaccion: jest.Mock };
   let expressAvailability: { evaluar: jest.Mock };
   let customerAccount: { assertCredito: jest.Mock };
+  let acceso: { habilitado: jest.Mock };
 
   const baseDto: CreateOrderDto = {
     customerId: 'cust-1',
@@ -194,6 +195,7 @@ describe('CreateOrderUseCase', () => {
       ),
     };
 
+    acceso = { habilitado: jest.fn().mockResolvedValue(true) };
     useCase = new CreateOrderUseCase(
       dataSource as unknown as import('typeorm').DataSource,
       customers as unknown as import('../../customer/customer.service').CustomersService,
@@ -220,6 +222,7 @@ describe('CreateOrderUseCase', () => {
       customerAccount as unknown as import('../domain/ports/customer-account.port').CustomerAccountPort,
       paymentSurcharges as unknown as import('../../distributor/payment-surcharge-settings.service').PaymentSurchargeSettingsService,
       { envasesACobrar: jest.fn().mockResolvedValue([]) } as never,
+      acceso as never,
     );
   });
 
@@ -640,6 +643,32 @@ describe('CreateOrderUseCase', () => {
   });
 
   describe('MERCADOPAGO', () => {
+    it('sin el módulo de Mercado Pago habilitado responde 403 MODULE_DISABLED y no crea nada', async () => {
+      acceso.habilitado.mockResolvedValue(false);
+      await expect(
+        useCase.execute({
+          ...baseDto,
+          paymentMethod: PaymentMethod.MERCADOPAGO,
+        }),
+      ).rejects.toMatchObject({
+        status: 403,
+        response: { code: 'MODULE_DISABLED' },
+      });
+      expect(acceso.habilitado).toHaveBeenCalledWith(
+        'dist-default',
+        'mercadopago',
+      );
+      expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+      expect(paymentsService.createCheckout).not.toHaveBeenCalled();
+    });
+
+    it('con el módulo apagado, efectivo sigue andando (Mercado Pago no es núcleo, el pedido sí)', async () => {
+      acceso.habilitado.mockResolvedValue(false);
+      await expect(
+        useCase.execute({ ...baseDto, paymentMethod: PaymentMethod.CASH }),
+      ).resolves.toBeDefined();
+    });
+
     it('NO despacha, crea el checkout y devuelve paymentUrl', async () => {
       const result = await useCase.execute({
         ...baseDto,

@@ -37,6 +37,7 @@ import {
   RoutePlanDayDto,
   RoutePlanProposalDto,
 } from './dto/route-sheet-response.dto';
+import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Falta la distribuidora (super admin sin X-Distributor) o la fecha no tiene el formato AAAA-MM-DD';
@@ -45,6 +46,7 @@ const FALTA_DISTRIBUIDORA =
  * Hoja de ruta (F34, CU-107 ampliado): la planificación de un día. El sistema
  * propone las hojas; el administrador las ajusta, confirma y cierra el día.
  */
+@RequiereModulo('route_planning')
 @ApiTags('Route plans (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'route-plans', version: '2' })
@@ -180,6 +182,7 @@ export class RoutePlansController {
 }
 
 /** Parámetros de la hoja de ruta (§3.5): el mismo patrón que `route-batches/settings`. */
+@RequiereModulo('route_planning')
 @ApiTags('Route plans (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'route-planning', version: '2' })

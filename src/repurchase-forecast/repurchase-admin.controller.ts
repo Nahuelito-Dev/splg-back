@@ -37,6 +37,7 @@ import { RepurchaseForecastService } from './repurchase-forecast.service';
 import { RepurchaseMapper } from './repurchase.mapper';
 import { RepurchaseReportService } from './repurchase-report.service';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { RequiereModulo } from '../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -47,6 +48,7 @@ const FALTA_DISTRIBUIDORA =
  * cómo les fue. Los parámetros del proceso son los de
  * `GET|PUT /module-config/repurchase` (CU-172).
  */
+@RequiereModulo('repurchase')
 @ApiTags('Repurchase (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'repurchase', version: '2' })

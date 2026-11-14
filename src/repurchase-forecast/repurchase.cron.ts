@@ -16,6 +16,7 @@ import {
   registrarErrorAtrapado,
 } from '../process-run/process-run.context';
 import { ProcessName } from '../process-run/domain/process-catalog';
+import { EmpresasParaProceso } from '../process-run/empresas-para-proceso';
 
 /**
  * CU-106: el proceso automático de la recompra anticipada.
@@ -44,6 +45,7 @@ export class RepurchaseCron {
     private readonly estimator: RepurchaseEstimatorService,
     private readonly distributors: DistributorService,
     private readonly redis: RedisService,
+    private readonly empresas: EmpresasParaProceso,
   ) {}
 
   @Cron('0 0 * * * *', { timeZone: ZONA_ARGENTINA })
@@ -87,27 +89,30 @@ export class RepurchaseCron {
     });
   }
 
-  /** Corre la anticipación de las distribuidoras activas cuya hora de ejecución es la actual. */
+  /**
+   * Corre la anticipación de las distribuidoras activas con la recompra
+   * habilitada por la plataforma (módulo `repurchase`) cuya hora de ejecución
+   * es la actual. Con el módulo apagado no se crean invitaciones nuevas; las
+   * vigentes vencen solas (`vencer`).
+   */
   async anticiparLasQueTocan(ahora: Date): Promise<number> {
     const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
-    const activas = (await this.distributors.findAll()).filter(
-      (d) => d.status === DistributorStatus.ACTIVE,
-    );
-    let corridas = 0;
-    for (const { distributorId } of activas) {
-      try {
+    const { empresas } = await this.empresas.recorrer(
+      {
+        proceso: ProcessName.REPURCHASE_ANTICIPATE,
+        modulo: 'repurchase',
+        crea: true,
+      },
+      async (distributorId, empresa) => {
         const params = await this.estimator.parametros(distributorId);
-        if (!params.enabled || params.runHour !== hora) continue;
+        if (!params.enabled || params.runHour !== hora) return false;
+        // Sin caché, justo antes de invitar (§6.3).
+        if (!(await empresa.sigueHabilitada())) return false;
         await this.forecast.ejecutar(distributorId, ahora);
-        corridas += 1;
-      } catch (error) {
-        registrarErrorAtrapado(error);
-        this.logger.error(
-          `Recompra ${distributorId}: falló: ${errorMessage(error)}`,
-        );
-      }
-    }
-    return corridas;
+        return true;
+      },
+    );
+    return empresas.filter((e) => e.valor === true).length;
   }
 
   private async conCerrojo<T>(

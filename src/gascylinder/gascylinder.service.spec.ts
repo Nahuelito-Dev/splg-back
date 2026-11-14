@@ -9,6 +9,7 @@ import { GasCylinderService } from './gascylinder.service';
 import { GasCylinder } from './entities/gascylinder.entity';
 import { DistributorService } from '../distributor/distributor.service';
 import { PaymentSurchargeSettingsService } from '../distributor/payment-surcharge-settings.service';
+import { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.service';
 import { GasCylinderPromotion } from './entities/gascylinder-promotion.entity';
 import { GasCylinderNotFoundError } from './domain/errors/gas-cylinder-not-found.error';
 
@@ -35,6 +36,7 @@ describe('GasCylinderService', () => {
   };
   let eventos: { emitAsync: jest.Mock };
   let recargos: { obtener: jest.Mock };
+  let acceso: { habilitado: jest.Mock };
   let distribuidoras: {
     getDefault: jest.Mock;
     findBySlug: jest.Mock;
@@ -90,11 +92,13 @@ describe('GasCylinderService', () => {
       findBySlug: jest.fn().mockResolvedValue({ distributorId: 'd-slug' }),
       assertActive: jest.fn().mockResolvedValue({ distributorId: 'd-uuid' }),
     };
+    acceso = { habilitado: jest.fn().mockResolvedValue(true) };
     service = new GasCylinderService(
       productos as unknown as Repository<GasCylinder>,
       distribuidoras as unknown as DistributorService,
       eventos as unknown as EventEmitter2,
       recargos as unknown as PaymentSurchargeSettingsService,
+      acceso as unknown as AccesoDeLaEmpresa,
     );
   });
 
@@ -416,6 +420,34 @@ describe('GasCylinderService', () => {
       await expect(service.mediosDePagoPublicos('demo')).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it('sin el módulo de Mercado Pago habilitado, Mercado Pago no se ofrece (efectivo y transferencia sí)', async () => {
+      distribuidoras.findBySlug.mockResolvedValue({
+        distributorId: 'd-slug',
+        status: 'active',
+      });
+      acceso.habilitado.mockImplementation((id: string, modulo: string) =>
+        Promise.resolve(!(id === 'd-slug' && modulo === 'mercadopago')),
+      );
+      const medios = await service.mediosDePagoPublicos('demo');
+      expect(acceso.habilitado).toHaveBeenCalledWith('d-slug', 'mercadopago');
+      expect(medios.map((m) => m.key)).toEqual(['CASH', 'TRANSFER']);
+    });
+
+    it('apagarlo en una distribuidora no lo saca de otra', async () => {
+      acceso.habilitado.mockImplementation((id: string) =>
+        Promise.resolve(id !== 'd-a'),
+      );
+      expect((await service.mediosDePago('d-a')).map((m) => m.key)).toEqual([
+        'CASH',
+        'TRANSFER',
+      ]);
+      expect((await service.mediosDePago('d-b')).map((m) => m.key)).toEqual([
+        'CASH',
+        'TRANSFER',
+        'MERCADOPAGO',
+      ]);
     });
   });
 

@@ -17,6 +17,7 @@ describe('ModuleConfigController', () => {
     guardar: jest.Mock;
     todos: jest.Mock;
     procesoConfigurable: jest.Mock;
+    procesoHabilitado: jest.Mock;
   };
 
   beforeEach(() => {
@@ -37,6 +38,7 @@ describe('ModuleConfigController', () => {
       guardar: jest.fn().mockResolvedValue({ process: 'repurchase' }),
       todos: jest.fn().mockResolvedValue([{ process: 'repurchase' }]),
       procesoConfigurable: jest.fn((p: string) => p),
+      procesoHabilitado: jest.fn((p: string) => Promise.resolve(p)),
     };
     controller = new ModuleConfigController(
       dispatch as unknown as DispatchSettingsService,
@@ -83,6 +85,10 @@ describe('ModuleConfigController', () => {
     expect(processes.todos).toHaveBeenCalledWith('d1');
 
     await controller.getProcess('repurchase', 'd1');
+    expect(processes.procesoHabilitado).toHaveBeenCalledWith(
+      'repurchase',
+      'd1',
+    );
     expect(processes.vigentes).toHaveBeenCalledWith('d1', 'repurchase');
 
     const cuerpo = { anticipationDays: 5 };

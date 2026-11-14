@@ -15,11 +15,13 @@ import {
 } from './dto/express-config.dto';
 import { ExpressSettingsService } from './express-settings.service';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { RequiereModulo } from '../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)"), cuerpo fuera de los límites (detalle por campo) o horario que no empieza antes de terminar';
 
 /** Parámetros de la compra express (CU-148, CU-149, CU-172). */
+@RequiereModulo('express')
 @ApiTags('Configuración · Parámetros por distribuidora')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller('module-config/express_dispatch')

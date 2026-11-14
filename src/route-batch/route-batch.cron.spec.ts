@@ -1,6 +1,7 @@
 import { RedisService } from '../redis/redis.service';
 import { RouteBatchCron } from './route-batch.cron';
 import { RouteBatchService } from './route-batch.service';
+import { empresasDePrueba } from '../process-run/testing/empresas-de-prueba';
 
 describe('RouteBatchCron', () => {
   let service: {
@@ -11,6 +12,7 @@ describe('RouteBatchCron', () => {
   };
   let redis: { setIfAbsent: jest.Mock; withLock: jest.Mock; del: jest.Mock };
   let cron: RouteBatchCron;
+  let sinAgrupacion: Set<string>;
   const ahora = new Date('2026-11-01T12:00:00Z');
 
   beforeEach(() => {
@@ -34,9 +36,15 @@ describe('RouteBatchCron', () => {
         return { obtenido: true, valor: undefined };
       }),
     };
+    sinAgrupacion = new Set();
     cron = new RouteBatchCron(
       service as unknown as RouteBatchService,
       redis as unknown as RedisService,
+      empresasDePrueba({
+        distribuidoras: { findAll: () => Promise.resolve([]) },
+        habilitado: (id, modulo) =>
+          !(modulo === 'route_batching' && sinAgrupacion.has(id)),
+      }).empresas,
     );
   });
 
@@ -51,6 +59,14 @@ describe('RouteBatchCron', () => {
       'route-batch:cada:d1',
       15 * 60 - RouteBatchCron.HOLGURA_SEGUNDOS,
     );
+  });
+
+  it('sin la agrupación habilitada por la plataforma no se arma en esa empresa ni se lee su llave; otra sí', async () => {
+    sinAgrupacion.add('d1');
+    expect(await cron.armarLasQueTocan(ahora)).toBe(1);
+    expect(service.parametros).not.toHaveBeenCalledWith('d1');
+    expect(service.evaluar).toHaveBeenCalledTimes(1);
+    expect(service.evaluar).toHaveBeenCalledWith('d2', ahora);
   });
 
   it('una distribuidora con el módulo apagado se saltea: no se arma ni se gasta su marca de frecuencia', async () => {
@@ -149,5 +165,19 @@ describe('RouteBatchCron', () => {
     redis.withLock.mockRejectedValue(new Error('redis caído'));
 
     await expect(cron.vencer()).resolves.toBeUndefined();
+  });
+
+  it('si la agrupación se apaga después de elegir la empresa, no arma ni gasta la marca (re-consulta sin caché)', async () => {
+    service.parametros.mockImplementation((id: string) => {
+      if (id === 'd1') sinAgrupacion.add(id);
+      return Promise.resolve({ enabled: 1, evaluationFrequencyMinutes: 15 });
+    });
+    expect(await cron.armarLasQueTocan(ahora)).toBe(1);
+    expect(service.evaluar).toHaveBeenCalledTimes(1);
+    expect(service.evaluar).toHaveBeenCalledWith('d2', ahora);
+    expect(redis.setIfAbsent).not.toHaveBeenCalledWith(
+      'route-batch:cada:d1',
+      expect.any(Number),
+    );
   });
 });

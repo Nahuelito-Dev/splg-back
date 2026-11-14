@@ -9,6 +9,7 @@ import {
 } from '../../distributor/express-settings';
 import { coordenadasDePunto } from '../../common/geo/punto';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
+import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 
 /** Por qué la modalidad express no se ofrece (CU-148, CU-147). */
 export type MotivoExpressNoDisponible =
@@ -35,7 +36,8 @@ export interface DisponibilidadExpress {
 }
 
 /**
- * Las tres condiciones de la modalidad express (CU-148): dirección dentro de la
+ * La modalidad express sólo si la plataforma le habilitó el módulo `express` a
+ * la distribuidora y ella la encendió; después, las tres condiciones (CU-148): dirección dentro de la
  * cobertura, horario de servicio y un chofer en moto dentro del radio express.
  * Consultar no escribe nada: la vuelve a evaluar el alta del pedido, porque el
  * último chofer pudo ocuparse entre una cosa y la otra.
@@ -46,6 +48,7 @@ export class ExpressAvailabilityService {
     private readonly settings: ExpressSettingsService,
     private readonly coverage: CoverageZoneService,
     private readonly orchestrator: DispatchOrchestratorService,
+    private readonly acceso: AccesoDeLaEmpresa,
   ) {}
 
   async evaluar(
@@ -61,7 +64,13 @@ export class ExpressAvailabilityService {
       settings,
     });
 
-    if (!settings.enabled) return no('disabled');
+    // Dos llaves: la de la empresa (`enabled`) y la de la plataforma (módulo).
+    if (
+      !settings.enabled ||
+      !(await this.acceso.habilitado(distributorId, 'express'))
+    ) {
+      return no('disabled');
+    }
     const punto = coordenadasDePunto(address.location);
     if (!punto) return no('no_location');
 

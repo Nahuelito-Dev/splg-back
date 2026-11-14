@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { errorMessage } from '../common/errors/error-message';
 import { ProcessName } from '../process-run/domain/process-catalog';
+import { EmpresasParaProceso } from '../process-run/empresas-para-proceso';
 import {
   marcarSaltada,
   registrarErrorAtrapado,
@@ -40,6 +41,7 @@ export class RoutePlanningCron {
     private readonly redis: RedisService,
     private readonly watch: RouteSheetWatchService,
     private readonly autoConfirm: RoutePlanAutoConfirmService,
+    private readonly empresas: EmpresasParaProceso,
   ) {}
 
   /**
@@ -85,38 +87,55 @@ export class RoutePlanningCron {
     );
   }
 
-  /** Propone mañana en las distribuidoras cuyo cierre pasó; una que falla no frena a las demás. */
+  /**
+   * Propone mañana en las distribuidoras cuyo cierre pasó y que tienen la hoja
+   * de ruta habilitada por la plataforma (módulo `route_planning`); una que
+   * falla no frena a las demás. Con el módulo apagado no se planifica el día
+   * siguiente; las hojas en curso se terminan (`seguir`, `cerrarDias`).
+   */
   async proponerLasQueTocan(
     ahora: Date,
   ): Promise<{ proposed: number; noVehiclesAlerts: number }> {
-    let proposed = 0;
-    let noVehiclesAlerts = 0;
+    const fechas = new Map<string, string[]>();
     for (const { distributorId, planDate } of await this.plans.paraProponer(
       ahora,
     )) {
-      try {
-        const r = await this.proposal.proponer(distributorId, planDate);
-        proposed += 1;
-        this.logger.log(
-          `Hoja de ruta ${distributorId} ${planDate}: ${r.sheets.length} hoja(s), ${r.unassigned.length} sin asignar`,
-        );
-        if (
-          this.autoConfirm.avisarSinHojaPosible(
-            distributorId,
-            planDate,
-            r.unassigned,
-            ahora,
-          )
-        ) {
-          noVehiclesAlerts += 1;
-        }
-      } catch (error) {
-        registrarErrorAtrapado(error);
-        this.logger.error(
-          `Hoja de ruta ${distributorId} ${planDate}: falló la propuesta: ${errorMessage(error)}`,
-        );
-      }
+      fechas.set(distributorId, [
+        ...(fechas.get(distributorId) ?? []),
+        planDate,
+      ]);
     }
+    let proposed = 0;
+    let noVehiclesAlerts = 0;
+    await this.empresas.recorrer(
+      {
+        proceso: ProcessName.ROUTE_PLANNING_PROPOSE,
+        modulo: 'route_planning',
+        crea: true,
+        entre: [...fechas.keys()],
+      },
+      async (distributorId, empresa) => {
+        for (const planDate of fechas.get(distributorId) ?? []) {
+          // Sin caché, justo antes de proponer cada día (§6.3).
+          if (!(await empresa.sigueHabilitada())) return;
+          const r = await this.proposal.proponer(distributorId, planDate);
+          proposed += 1;
+          this.logger.log(
+            `Hoja de ruta ${distributorId} ${planDate}: ${r.sheets.length} hoja(s), ${r.unassigned.length} sin asignar`,
+          );
+          if (
+            this.autoConfirm.avisarSinHojaPosible(
+              distributorId,
+              planDate,
+              r.unassigned,
+              ahora,
+            )
+          ) {
+            noVehiclesAlerts += 1;
+          }
+        }
+      },
+    );
     return { proposed, noVehiclesAlerts };
   }
 

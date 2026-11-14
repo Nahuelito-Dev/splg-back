@@ -20,6 +20,8 @@ import { PermissionGuard } from './admin/guards/permission.guard';
 import { AlcanceGuard } from './common/guards/alcance.guard';
 import { SupportModule } from './support/support.module';
 import { PlatformModule } from './platform/platform.module';
+import { PlatformAccessModule } from './platform/access/platform-access.module';
+import { ModuloGuard } from './platform/access/modulo.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { RegistroModule } from './registro/registro.module';
@@ -288,6 +290,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     PeoplePhotosModule,
     ImportModule,
     SupportModule,
+    PlatformAccessModule,
     PlatformModule,
   ],
   providers: [
@@ -319,6 +322,12 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
       // una empresa con una sesión de soporte activa, y sólo a leer.
       provide: APP_GUARD,
       useClass: AlcanceGuard,
+    },
+    {
+      // Módulos por distribuidora (último): un endpoint `@RequiereModulo(m)`
+      // de una empresa sin `m` habilitado responde 403 `MODULE_DISABLED`.
+      provide: APP_GUARD,
+      useClass: ModuloGuard,
     },
     {
       // Logging estructurado, PRIMERO en la cadena de interceptors: mide la

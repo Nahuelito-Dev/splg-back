@@ -13,6 +13,7 @@ import {
   registrarErrorAtrapado,
 } from '../../process-run/process-run.context';
 import { ProcessName } from '../../process-run/domain/process-catalog';
+import { EmpresasParaProceso } from '../../process-run/empresas-para-proceso';
 
 /**
  * CU-105: el proceso automático del planificador de flota.
@@ -36,6 +37,7 @@ export class MaintenancePlannerCron {
   constructor(
     private readonly planner: MaintenancePlannerService,
     private readonly redis: RedisService,
+    private readonly empresas: EmpresasParaProceso,
   ) {}
 
   @Cron('0 0 * * * *', { timeZone: ZONA_ARGENTINA })
@@ -60,28 +62,34 @@ export class MaintenancePlannerCron {
     );
   }
 
-  /** Corre la planificación de las distribuidoras cuya hora de ejecución es la actual. */
+  /**
+   * Corre la planificación de las distribuidoras cuya hora de ejecución es la
+   * actual y que tienen el planificador habilitado por la plataforma (módulo
+   * `fleet_planner`). Con el módulo apagado no se generan propuestas nuevas;
+   * las pendientes vencen solas (`vencerPropuestas`).
+   */
   async planificarLasQueTocan(ahora: Date): Promise<number> {
     const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
-    const ids = await this.planner.distribuidorasConTareas();
-    let corridas = 0;
-    for (const distributorId of ids) {
-      try {
+    const { empresas } = await this.empresas.recorrer(
+      {
+        proceso: ProcessName.FLEET_PLANNER_DAILY,
+        modulo: 'fleet_planner',
+        crea: true,
+        entre: await this.planner.distribuidorasConTareas(),
+      },
+      async (distributorId, empresa) => {
         const params = await this.planner.parametros(distributorId);
-        if (params.cronHour !== hora) continue;
+        if (params.cronHour !== hora) return false;
+        // Sin caché, justo antes de proponer (§6.3).
+        if (!(await empresa.sigueHabilitada())) return false;
         const r = await this.planner.ejecutar(distributorId, ahora);
-        corridas += 1;
         this.logger.log(
           `Planificador ${distributorId}: ${r.propuestas} propuesta(s), ${r.escaladas} escalada(s), ${r.vehiculosFueraDeServicio} fuera de servicio`,
         );
-      } catch (error) {
-        registrarErrorAtrapado(error);
-        this.logger.error(
-          `Planificador ${distributorId}: falló: ${errorMessage(error)}`,
-        );
-      }
-    }
-    return corridas;
+        return true;
+      },
+    );
+    return empresas.filter((e) => e.valor === true).length;
   }
 
   private async conCerrojo<T>(

@@ -353,6 +353,18 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   quantityPerMonth: 'Cantidad por mes',
   radiusStepsKm: 'Escalones de radio (km)',
   reason: 'Motivo',
+  expiresAt: 'Vencimiento',
+  // Planes y módulos de la plataforma (auditoría).
+  planCode: 'Plan',
+  planSnapshot: 'Condiciones del plan',
+  isInternal: 'Empresa propia de la plataforma',
+  moduleKey: 'Módulo',
+  updatedBy: 'Modificado por',
+  monthlyPrice: 'Precio mensual',
+  currency: 'Moneda',
+  trialDays: 'Días de prueba',
+  limits: 'Topes del plan',
+  isPublic: 'Se ofrece en el alta',
   // Modo soporte
   autoApprove: 'Aprobación automática',
   emergency: 'Acceso de emergencia',

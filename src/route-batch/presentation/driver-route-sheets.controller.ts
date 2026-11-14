@@ -28,6 +28,7 @@ import { RouteSheetCloseService } from '../application/route-sheet-close.service
 import { RouteSheetExecutionQueryService } from '../application/route-sheet-execution-query.service';
 import { RouteSheetStartService } from '../application/route-sheet-start.service';
 import { RouteSheetStopsService } from '../application/route-sheet-stops.service';
+import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 import {
   CloseRouteSheetDto,
   CloseRouteSheetResponseDto,
@@ -105,6 +106,9 @@ export class DriverRouteSheetsController {
     return this.query.delChofer(distributorId, userId, id);
   }
 
+  // Iniciar es empezar algo nuevo: exige el módulo (§7.3). Lo demás del chofer
+  // opera sobre la hoja ya en curso y sigue con el módulo apagado.
+  @RequiereModulo('route_planning')
   @Post(':id/start')
   @HttpCode(200)
   @ApiParam({ name: 'id', format: 'uuid' })

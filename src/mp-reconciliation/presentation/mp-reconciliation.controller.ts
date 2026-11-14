@@ -43,6 +43,10 @@ import {
 } from '../dto/mp-reconciliation.dto';
 import { MpReconciliationMapper } from '../mp-reconciliation.mapper';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import {
+  RequiereModulo,
+  SinModulo,
+} from '../../platform/access/requiere-modulo.decorator';
 
 /**
  * Conciliación de la caja de Mercado Pago contra el reporte de liberaciones
@@ -51,6 +55,7 @@ import { Permiso } from '../../common/decorators/permiso.decorator';
  * ninguna (retiros, impuestos sueltos, cobros desconocidos) los ve y los
  * asienta únicamente el super admin.
  */
+@RequiereModulo('mercadopago')
 @ApiTags('Finanzas · Conciliación con Mercado Pago (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'mercadopago/reconciliations', version: '2' })
@@ -90,6 +95,9 @@ export class MpReconciliationController {
     );
   }
 
+  @SinModulo(
+    'Con Mercado Pago apagado la conciliación queda en sólo lectura hasta conciliar lo ya cobrado',
+  )
   @Permiso('finanzas.ver')
   @Get()
   @ApiOperation({ summary: 'Corridas de conciliación de la distribuidora' })
@@ -109,6 +117,9 @@ export class MpReconciliationController {
     };
   }
 
+  @SinModulo(
+    'Con Mercado Pago apagado la conciliación queda en sólo lectura hasta conciliar lo ya cobrado',
+  )
   @Permiso('finanzas.ver')
   @Get(':id')
   @ApiOperation({
@@ -129,6 +140,9 @@ export class MpReconciliationController {
     return MpReconciliationMapper.detalle(corrida, items, this.veCuenta(ctx));
   }
 
+  @SinModulo(
+    'Conciliar lo ya cobrado sigue con Mercado Pago apagado: es plata ya movida',
+  )
   @Permiso('finanzas.gestionar')
   @Post(':id/apply')
   @Idempotent()
@@ -159,6 +173,9 @@ export class MpReconciliationController {
     return this.aplicador.aplicar(id, dto, this.contexto(distributorId, user));
   }
 
+  @SinModulo(
+    'Con Mercado Pago apagado la conciliación queda en sólo lectura hasta conciliar lo ya cobrado',
+  )
   @Permiso('finanzas.ver')
   @Get(':id/report')
   @ApiOperation({

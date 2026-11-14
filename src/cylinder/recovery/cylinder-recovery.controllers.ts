@@ -40,6 +40,7 @@ import {
   RecoveryReportDto,
   RecoveryRunResponseDto,
 } from './dto/recovery-response.dto';
+import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -49,6 +50,7 @@ const FALTA_DISTRIBUIDORA =
  * del administrador: los casos con su escalón, el legajo, la decisión que sólo
  * el administrador toma, el reporte de envases perdidos y los parámetros.
  */
+@RequiereModulo('cylinder_recovery')
 @ApiTags('Cylinders · Recovery (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'cylinder-recovery', version: '2' })
