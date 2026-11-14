@@ -269,7 +269,8 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   psychophysical: 'Examen psicofísico',
   route_planning_close_days: 'Cierre de los días de la hoja de ruta',
   route_sheet_watch: 'Seguimiento de las hojas de ruta en curso',
-  route_planning_propose: 'Propuesta de la hoja de ruta del día siguiente',
+  route_planning_propose:
+    'Propuesta y confirmación automática de la hoja de ruta del día siguiente',
   purchase_receipt: 'Recepción de compra',
   ready: 'Lista',
   receiver_retention: 'Retención de datos del receptor',

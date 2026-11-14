@@ -22,6 +22,8 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   cutoffHour: 'Hora de corte',
   cutoffMinute: 'Minuto de corte',
   autoPropose: 'Proponer automáticamente',
+  autoConfirm: 'Confirmar automáticamente',
+  reviewMinutes: 'Minutos de revisión antes de confirmar',
   maxStopsPerSheet: 'Máximo de paradas por hoja',
   serviceMinutes: 'Minutos de servicio por parada',
   trafficFactor: 'Factor de tránsito',

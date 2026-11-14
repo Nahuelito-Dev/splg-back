@@ -117,7 +117,7 @@ export class RouteSheetEditingService {
       // Todos los pedidos bloqueados de una vez, en orden de id.
       await this.data.pedidos(distributorId, [...ids].sort(), manager, true);
       for (const orderId of ids) {
-        await this.assertPlanificable(manager, sheet, orderId);
+        await this.assertPlanificable(manager, sheet, orderId, false);
         await this.writer.activarParada(manager, sheet.batchId, orderId, false);
       }
       await this.writer.escribirOrden(manager, sheet.batchId, ids);
@@ -197,7 +197,9 @@ export class RouteSheetEditingService {
       [{ id, version: body.version }],
       async (manager, [sheet]) => {
         this.assertEditable(sheet);
-        await this.assertPlanificable(manager, sheet, body.orderId);
+        // El pedido nuevo ya viene bloqueado (FOR UPDATE, en orden de id con
+        // los de las paradas): no se lo vuelve a pedir.
+        await this.assertPlanificable(manager, sheet, body.orderId, false);
         const orden = await this.insertar(
           manager,
           sheet,
@@ -218,6 +220,7 @@ export class RouteSheetEditingService {
         sheet.editedAt = new Date();
         await this.writer.recalcular(manager, sheet, params);
       },
+      { pedidosNuevos: [body.orderId] },
     );
   }
 
@@ -404,12 +407,13 @@ export class RouteSheetEditingService {
     manager: EntityManager,
     sheet: RouteBatch,
     orderId: string,
+    bloquear = true,
   ): Promise<void> {
     const [p] = await this.data.pedidos(
       sheet.distributorId,
       [orderId],
       manager,
-      true,
+      bloquear,
     );
     if (!p) throw pedidoNoEncontrado();
     if (p.activeBatchId) throw pedidoYaAgrupado();

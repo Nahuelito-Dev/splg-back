@@ -26,6 +26,7 @@ import {
 } from '../domain/route-sheet-rules';
 import { assertTransition } from '../domain/route-sheet.machine';
 import { esDiaHabil } from '../domain/calendario-laboral';
+import { planificacionAutomatica } from '../domain/planificacion-automatica';
 import { RoutePlanningCalendarService } from './route-planning-calendar.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import {
@@ -219,7 +220,8 @@ export class RoutePlanService {
   }
 
   /**
-   * Distribuidoras con la hoja encendida y la propuesta automática cuyo cierre
+   * Distribuidoras activas con la hoja encendida (por omisión, si no guardaron
+   * otro valor) y la propuesta automática, cuyo cierre
    * de mañana ya pasó y todavía no tienen la propuesta (ni el día cerrado).
    * Mañana tiene que ser un día hábil de la distribuidora: un día que no
    * reparte (`workingDays`) o un feriado no lleva plan.
@@ -228,19 +230,28 @@ export class RoutePlanService {
     ahora: Date,
   ): Promise<Array<{ distributorId: string; planDate: string }>> {
     const manana = diaSiguiente(diaArgentino(ahora));
-    const filas: Array<{ distributorId: string }> = await this.dataSource.query(
-      `SELECT mc."distributor_id" AS "distributorId" FROM "module_config" mc
-        WHERE mc."module"::text = 'route_planning'
-          AND COALESCE((mc."params" ->> 'enabled')::numeric, 0) = 1
-          AND COALESCE((mc."params" ->> 'autoPropose')::numeric, 1) = 1
+    // Todas las distribuidoras (con sus parámetros, si guardaron): decide
+    // `planificacionAutomatica`, el mismo criterio que la retención del
+    // despacho (activa, `enabled` y `autoPropose` efectivos, con sus omisiones).
+    const filas: Array<{
+      distributorId: string;
+      status: string;
+      deletedAt: Date | string | null;
+      params: Record<string, unknown> | null;
+    }> = await this.dataSource.query(
+      `SELECT d."distributor_id" AS "distributorId", d."status"::text AS "status",
+              d."deletedAt" AS "deletedAt", mc."params" AS "params"
+         FROM "distributor" d
+         LEFT JOIN "module_config" mc ON mc."distributor_id" = d."distributor_id"
+                                     AND mc."module"::text = 'route_planning'
+        WHERE d."deletedAt" IS NULL
         ORDER BY 1`,
     );
     const resultado: Array<{ distributorId: string; planDate: string }> = [];
-    for (const { distributorId } of filas) {
-      const v = await this.processConfig.obtener(
-        distributorId,
-        ConfigurableProcess.ROUTE_PLANNING,
-      );
+    for (const fila of filas) {
+      const { distributorId } = fila;
+      const v = planificacionAutomatica(fila);
+      if (!v) continue;
       const cierre = cierreDeLaPlanificacion(
         manana,
         v.cutoffHour,

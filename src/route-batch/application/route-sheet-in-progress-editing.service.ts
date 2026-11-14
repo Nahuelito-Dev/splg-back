@@ -92,6 +92,8 @@ export class RouteSheetInProgressEditingService {
               insertar: { orderId: body.orderId, en: body.position },
             });
           },
+          // El pedido que entra, bloqueado en orden de id con los de la hoja.
+          { pedidosNuevos: [body.orderId] },
         );
       } catch (error) {
         // La parada no entró: el pedido no queda asignado a un chofer sin hoja.

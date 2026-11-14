@@ -156,4 +156,27 @@ describe('DTO de entrada de la hoja de ruta', () => {
       ).toEqual(['workingDays']);
     }
   });
+
+  it('confirmación automática: autoConfirm 0 o 1 y reviewMinutes entero de 0 a 720 (fuera de rango, 400)', async () => {
+    for (const v of [0, 1]) {
+      expect(
+        await errores(PatchRoutePlanningSettingsDto, { autoConfirm: v }),
+      ).toEqual([]);
+    }
+    for (const v of [-1, 2, 0.5]) {
+      expect(
+        await errores(PatchRoutePlanningSettingsDto, { autoConfirm: v }),
+      ).toEqual(['autoConfirm']);
+    }
+    for (const v of [0, 60, 720]) {
+      expect(
+        await errores(PatchRoutePlanningSettingsDto, { reviewMinutes: v }),
+      ).toEqual([]);
+    }
+    for (const v of [-1, 721, 1.5]) {
+      expect(
+        await errores(PatchRoutePlanningSettingsDto, { reviewMinutes: v }),
+      ).toEqual(['reviewMinutes']);
+    }
+  });
 });

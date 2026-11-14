@@ -19,6 +19,7 @@ import { RouteBatchNotifier } from './route-batch.notifier';
 import { RouteBatchService } from './route-batch.service';
 import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
 import { RoutesModule } from '../routes/routes.module';
+import { RoutePlanAutoConfirmService } from './application/route-plan-auto-confirm.service';
 import { RoutePlanProposalService } from './application/route-plan-proposal.service';
 import { RoutePlanService } from './application/route-plan.service';
 import { RouteSheetCalculator } from './application/route-sheet-calculator.service';
@@ -105,6 +106,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     RouteSheetLocks,
     RoutePlanService,
     RoutePlanProposalService,
+    RoutePlanAutoConfirmService, // confirmación automática al vencer la revisión
     RouteSheetEditingService,
     RouteSheetLifecycleService,
     RouteSheetQueryService,

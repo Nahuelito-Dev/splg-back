@@ -19,7 +19,10 @@ function armar(
         ),
     ),
   };
-  const manager = { find: jest.fn().mockResolvedValue(filas) };
+  const manager = {
+    find: jest.fn().mockResolvedValue(filas),
+    query: jest.fn().mockResolvedValue([]),
+  };
   const ds = {
     transaction: jest.fn((fn: (m: EntityManager) => unknown) =>
       fn(manager as unknown as EntityManager),
@@ -100,5 +103,51 @@ describe('RouteSheetLocks.conHojas', () => {
       locks.conHojas(DIST, [{ id: 'a' }, { id: 'c' }], jest.fn()),
     ).rejects.toMatchObject({ response: { code: 'ROUTE_SHEET_BUSY' } });
     expect(redis.withLock).toHaveBeenCalledTimes(2);
+  });
+
+  it('orden hoja → pedidos → paradas: bloquea los pedidos de las paradas activas (FOR KEY SHARE, por id) con la hoja ya bloqueada y antes de la operación', async () => {
+    const { locks, manager } = armar([
+      hoja({ batchId: 'a' }),
+      hoja({ batchId: 'b' }),
+    ]);
+    const fn = jest.fn().mockResolvedValue('ok');
+    await locks.conHojas(DIST, [{ id: 'b' }, { id: 'a' }], fn);
+    const [sql, params] = manager.query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([['a', 'b'], DIST]);
+    expect(sql).toContain('s."batch_id" = ANY($1::uuid[]) AND s."active"');
+    expect(sql).toMatch(/ORDER BY o\."order_id"\s+FOR KEY SHARE OF o/);
+    const hoja_ = manager.find.mock.invocationCallOrder[0];
+    const pedidos = manager.query.mock.invocationCallOrder[0];
+    expect(hoja_).toBeLessThan(pedidos);
+    expect(pedidos).toBeLessThan(fn.mock.invocationCallOrder[0]);
+  });
+
+  it('con pedidos que entran: todos en orden de id, los nuevos FOR UPDATE y los de las paradas FOR KEY SHARE, cada uno una sola vez', async () => {
+    const { locks, manager } = armar([hoja({ batchId: 'a' })]);
+    manager.query.mockResolvedValueOnce([{ orderId: 'o3' }, { orderId: 'o1' }]);
+    await locks.conHojas(DIST, [{ id: 'a' }], () => Promise.resolve(), {
+      pedidosNuevos: ['o2', 'o3'],
+    });
+    const bloqueos = (manager.query.mock.calls as Array<[string, unknown[]]>)
+      .slice(1)
+      .map(([sql, params]) => [
+        params[0],
+        sql.includes('FOR UPDATE OF o') ? 'update' : 'key_share',
+      ]);
+    expect(bloqueos).toEqual([
+      ['o1', 'key_share'],
+      ['o2', 'update'],
+      ['o3', 'update'],
+    ]);
+  });
+
+  it('una versión vieja no llega a bloquear los pedidos', async () => {
+    const { locks, manager } = armar([hoja({ batchId: 'a', version: 4 })]);
+    await expect(
+      locks.conHojas(DIST, [{ id: 'a', version: 3 }], jest.fn()),
+    ).rejects.toMatchObject({
+      response: { code: 'ROUTE_SHEET_VERSION_CONFLICT' },
+    });
+    expect(manager.query).not.toHaveBeenCalled();
   });
 });

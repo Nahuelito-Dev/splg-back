@@ -261,7 +261,9 @@ export class PatchRoutePlanningSettingsDto {
   @ApiPropertyOptional({
     minimum: 0,
     maximum: 1,
-    description: '1 enciende la hoja de ruta',
+    example: 1,
+    description:
+      '1 enciende la hoja de ruta (por omisión, si la distribuidora no guardó otro valor); 0 la apaga',
   })
   @IsOptional()
   @IsInt()
@@ -294,6 +296,30 @@ export class PatchRoutePlanningSettingsDto {
   @Min(0)
   @Max(1)
   autoPropose?: number;
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 1,
+    example: 1,
+    description:
+      'Pasada la ventana de revisión, el sistema confirma solo las hojas propuestas que se pueden confirmar (1, por omisión) o espera al administrador (0)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1)
+  autoConfirm?: number;
+  @ApiPropertyOptional({
+    minimum: 0,
+    maximum: 720,
+    example: 60,
+    description:
+      'Minutos desde la propuesta que tiene el administrador para revisarla antes de que se confirme sola (por omisión 60; 0: se confirma al proponer)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(720)
+  reviewMinutes?: number;
   @ApiPropertyOptional({ minimum: 2, maximum: 40 })
   @IsOptional()
   @IsInt()

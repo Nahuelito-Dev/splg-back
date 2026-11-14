@@ -137,6 +137,8 @@ const RANGOS_DE_LA_HOJA: ReadonlyArray<[string, number, number]> = [
   ['cutoffHour', 0, 23],
   ['cutoffMinute', 0, 59],
   ['autoPropose', 0, 1],
+  ['autoConfirm', 0, 1],
+  ['reviewMinutes', 0, 720],
   ['maxStopsPerSheet', 2, 40],
   ['serviceMinutes', 1, 60],
   ['trafficFactor', 1, 3],

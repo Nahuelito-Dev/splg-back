@@ -156,7 +156,19 @@ describe('Hoja de ruta: planificación y edición (e2e)', () => {
         .expect(404);
       expect((r.body as { code: string }).code).toBe('ROUTE_PLAN_NOT_FOUND');
     });
-    it('409 al proponer con la hoja de ruta apagada', async () => {
+    it('viene encendida, y 409 al proponer con la hoja de ruta apagada', async () => {
+      const antes = await http()
+        .get(v2('/route-planning/settings'))
+        .set(A())
+        .expect(200);
+      expect(
+        (antes.body as { params: Record<string, number> }).params,
+      ).toMatchObject({ enabled: 1, autoConfirm: 1, reviewMinutes: 60 });
+      await http()
+        .patch(v2('/route-planning/settings'))
+        .set(A())
+        .send({ enabled: 0 })
+        .expect(200);
       const r = await http()
         .post(v2(`/route-plans/${manana}/propose`))
         .set(A())
@@ -170,6 +182,18 @@ describe('Hoja de ruta: planificación y edición (e2e)', () => {
         .set(A())
         .send({ maxStopsPerSheet: 99 })
         .expect(400);
+      for (const fuera of [
+        { autoConfirm: 2 },
+        { reviewMinutes: 721 },
+        { reviewMinutes: -1 },
+        { reviewMinutes: 1.5 },
+      ]) {
+        await http()
+          .patch(v2('/route-planning/settings'))
+          .set(A())
+          .send(fuera)
+          .expect(400);
+      }
       const r = await http()
         .patch(v2('/route-planning/settings'))
         .set(A())

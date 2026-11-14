@@ -184,12 +184,12 @@ describe('RouteSheetEditingService', () => {
         carId: 'c1',
       });
       expect(writer.recalcular).toHaveBeenCalled();
-      // El pedido se lee con su fila bloqueada (no se cruza con una asignación manual).
+      // Cada pedido se valida sin volver a bloquearlo: ya está bloqueado arriba.
       expect(data.pedidos).toHaveBeenCalledWith(
         DIST,
         ['o3'],
         expect.anything(),
-        true,
+        false,
       );
       // Antes del alta, todos los pedidos bloqueados de una vez y en orden de id.
       expect(data.pedidos).toHaveBeenCalledWith(
@@ -331,6 +331,29 @@ describe('RouteSheetEditingService', () => {
         position: 0,
       });
       expect(orden.get('hoja-1')?.[0]).toBe('o5');
+    });
+
+    it('el pedido nuevo lo bloquea conHojas (en orden de id con los de la hoja, antes de tocar paradas) y no se vuelve a pedir', async () => {
+      const { svc, locks, data } = armar();
+      await svc.agregar(DIST, 'hoja-1', { version: 3, orderId: 'o3' });
+      expect(locks.conHojas).toHaveBeenCalledWith(
+        DIST,
+        [{ id: 'hoja-1', version: 3 }],
+        expect.any(Function),
+        { pedidosNuevos: ['o3'] },
+      );
+      expect(data.pedidos).toHaveBeenCalledWith(
+        DIST,
+        ['o3'],
+        expect.anything(),
+        false,
+      );
+      expect(data.pedidos).not.toHaveBeenCalledWith(
+        DIST,
+        ['o3'],
+        expect.anything(),
+        true,
+      );
     });
 
     it('sin posición, en la inserción más barata (respeta la capacidad del vehículo)', async () => {

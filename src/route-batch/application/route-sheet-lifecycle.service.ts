@@ -63,11 +63,15 @@ export class RouteSheetLifecycleService {
     private readonly eta: RouteSheetEtaService,
   ) {}
 
+  /**
+   * `userId` nulo: la confirma el sistema (confirmación automática); la
+   * auditoría de la base la asienta como «sistema».
+   */
   async confirmar(
     distributorId: string,
     id: string,
     body: { version: number; acceptLateStops?: boolean },
-    userId: string,
+    userId: string | null,
   ): Promise<void> {
     const params = await this.writer.parametros(distributorId);
     const planDate = await this.locks.conHojas(
