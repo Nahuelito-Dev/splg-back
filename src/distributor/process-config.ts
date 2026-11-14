@@ -543,7 +543,7 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         3,
         1.2,
         null,
-        'Multiplica los tiempos de viaje de OSRM, que son a flujo libre',
+        'Factor de tránsito: multiplica los tiempos de viaje calculados sin tránsito (1 = sin demora)',
       ),
       campo(
         'etaWindowMinutes',
@@ -615,7 +615,7 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         127,
         63,
         null,
-        'Días en que se reparte, como máscara de bits: lunes 1, martes 2, miércoles 4, jueves 8, viernes 16, sábado 32, domingo 64 (se suman). Por omisión 63, de lunes a sábado. La propuesta automática y la reprogramación saltean los otros días y los feriados',
+        'Días en que se reparte (por omisión, de lunes a sábado). La propuesta automática y la reprogramación saltean los otros días y los feriados',
       ),
     ],
   },
@@ -677,7 +677,7 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         255,
         255,
         null,
-        'Dueños de adjunto que se leen, como máscara de bits',
+        'Qué documentos se leen solos (vehículos, personal y demás)',
       ),
       campo(
         'amountTolerancePct',
