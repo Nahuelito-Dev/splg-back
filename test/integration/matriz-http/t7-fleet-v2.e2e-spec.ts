@@ -1,10 +1,107 @@
 import { createTestApp, TestEnv } from '../setup/test-env';
-import { Caso, correrMatriz, endpoint, Metodo } from './matriz';
+import { DataSource } from 'typeorm';
+import {
+  MaintenancePlanningCase,
+  PlanningCaseStatus,
+} from '../../../src/fleet/entities/maintenance-planning-case.entity';
+import { MaintenanceTaskStatus } from '../../../src/fleet/entities/maintenance-task.entity';
+import {
+  MaintenanceWindowProposal,
+  WindowProposalStatus,
+} from '../../../src/fleet/entities/maintenance-window-proposal.entity';
+import { Caso, correrMatriz, endpoint, llamar, Metodo } from './matriz';
 import { EscenarioT7, sembrarBaseT7 } from './t7-base';
 import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT7;
 const ADMIN = 'adminA';
+const HACE_TIEMPO = '2026-01-01T10:00:00-03:00';
+/** El id que prepara cada caso en su `antes`: ningún caso usa lo de otro. */
+const ids = {
+  cerrar: '',
+  yaCerrada: '',
+  pagar: '',
+  yaPagada: '',
+  sinFecha: '',
+  aceptar: '',
+  yaRespondida: '',
+};
+/** Días desde el 04/12/2030: cada tarea y propuesta, con su fecha propia. */
+let dia = 0;
+const tareaAbierta = async (c: C): Promise<string> => {
+  dia += 1;
+  const creada = await llamar(c, 'post', '/fleet/tasks', ADMIN, {
+    planId: c.planA,
+    carId: c.autoA,
+    dueAt: new Date(Date.UTC(2030, 11, 3 + dia)).toISOString(),
+  });
+  expect(creada.status).toBe(201);
+  return (creada.body as { taskId: string }).taskId;
+};
+const tareaHecha = async (c: C): Promise<string> => {
+  const id = await tareaAbierta(c);
+  const cerrada = await llamar(
+    c,
+    'post',
+    `/v2/fleet/tasks/${id}/close`,
+    ADMIN,
+    {
+      performedAt: HACE_TIEMPO,
+      cost: 1000,
+    },
+  );
+  expect(cerrada.status).toBe(201);
+  return id;
+};
+const tareaPaga = async (c: C): Promise<string> => {
+  const id = await tareaHecha(c);
+  const pagada = await llamar(c, 'post', `/v2/fleet/tasks/${id}/pay`, ADMIN, {
+    cashBoxId: c.cajaA,
+    paidAt: HACE_TIEMPO,
+  });
+  expect(pagada.status).toBe(201);
+  return id;
+};
+/** Una tarea propia con su caso en negociación y una ventana pendiente para el chofer. */
+const propuestaPendiente = async (c: C): Promise<string> => {
+  const taskId = await tareaAbierta(c);
+  const ds = c.app.get(DataSource);
+  const caso = await ds.getRepository(MaintenancePlanningCase).save({
+    distributorId: c.distA.id,
+    taskId,
+    carId: c.autoA,
+    deliveryId: c.choferA.deliveryId,
+    status: PlanningCaseStatus.NEGOTIATING,
+    projectedDueAt: new Date(Date.UTC(2030, 11, 3 + dia)),
+    evaluatedWindows: [],
+    escalationReason: null,
+    openedAt: new Date('2026-01-01T00:00:00.000Z'),
+    escalatedAt: null,
+    chosenStart: null,
+    chosenEnd: null,
+    chosenSource: null,
+    resolvedAt: null,
+    resolvedByUserId: null,
+    notes: null,
+  } as Partial<MaintenancePlanningCase>);
+  const inicio = Date.UTC(2030, 10, 4 + dia, 11);
+  const propuesta = await ds.getRepository(MaintenanceWindowProposal).save({
+    taskId,
+    caseId: caso.caseId,
+    distributorId: c.distA.id,
+    deliveryId: c.choferA.deliveryId,
+    windowStart: new Date(inicio),
+    windowEnd: new Date(inicio + 2 * 3600 * 1000),
+    rank: 1,
+    status: WindowProposalStatus.PENDING,
+    expiresAt: new Date('2030-11-03T00:00:00.000Z'),
+    respondedAt: null,
+    rejectionReason: null,
+    altWindowStart: null,
+    altWindowEnd: null,
+  } as Partial<MaintenanceWindowProposal>);
+  return propuesta.proposalId;
+};
 const sinToken = (metodo: Metodo, swagger: string, ruta: string): Caso<C> => ({
   endpoint: `${metodo.toUpperCase()} ${swagger}`,
   caso: 'sin token',
@@ -75,6 +172,152 @@ const casos: Array<Caso<C>> = [
   propuestas('paginación inválida', 'chofer', 400, {
     ruta: '/v2/driver/maintenance-proposals?limit=0',
   }),
+
+  {
+    endpoint: 'POST /v2/fleet/tasks/{id}/close',
+    caso: 'cierra una tarea abierta',
+    metodo: 'post',
+    ruta: () => `/v2/fleet/tasks/${ids.cerrar}/close`,
+    actor: ADMIN,
+    body: { performedAt: HACE_TIEMPO, cost: 1000 },
+    esperado: 201,
+    antes: async (c) => {
+      ids.cerrar = await tareaAbierta(c);
+    },
+    verificar: (b) =>
+      expect(b).toMatchObject({
+        taskId: ids.cerrar,
+        status: MaintenanceTaskStatus.DONE,
+        cost: 1000,
+        isPaid: false,
+        payable: true,
+      }),
+  },
+  {
+    endpoint: 'POST /v2/fleet/tasks/{id}/close',
+    caso: 'tarea ya cerrada',
+    metodo: 'post',
+    ruta: () => `/v2/fleet/tasks/${ids.yaCerrada}/close`,
+    actor: ADMIN,
+    body: { performedAt: HACE_TIEMPO },
+    esperado: 409,
+    mensaje: 'La tarea ya está hecha',
+    antes: async (c) => {
+      ids.yaCerrada = await tareaHecha(c);
+    },
+  },
+  {
+    endpoint: 'POST /v2/fleet/tasks/{id}/pay',
+    caso: 'paga una tarea hecha',
+    metodo: 'post',
+    ruta: () => `/v2/fleet/tasks/${ids.pagar}/pay`,
+    actor: ADMIN,
+    body: (c) => ({ cashBoxId: c.cajaA, paidAt: HACE_TIEMPO }),
+    esperado: 201,
+    antes: async (c) => {
+      ids.pagar = await tareaHecha(c);
+    },
+    verificar: (b) =>
+      expect(b).toMatchObject({
+        taskId: ids.pagar,
+        isPaid: true,
+        payable: false,
+        paidAmount: 1000,
+        cashMovementId: expect.any(String) as unknown,
+      }),
+  },
+  {
+    endpoint: 'POST /v2/fleet/tasks/{id}/pay',
+    caso: 'tarea ya pagada',
+    metodo: 'post',
+    ruta: () => `/v2/fleet/tasks/${ids.yaPagada}/pay`,
+    actor: ADMIN,
+    body: (c) => ({ cashBoxId: c.cajaA, paidAt: HACE_TIEMPO }),
+    esperado: 409,
+    mensaje: 'La tarea ya está paga',
+    antes: async (c) => {
+      ids.yaPagada = await tareaPaga(c);
+    },
+  },
+  {
+    endpoint: 'POST /v2/fleet/tasks/{id}/pay',
+    caso: 'sin paidAt (obligatorio)',
+    metodo: 'post',
+    ruta: () => `/v2/fleet/tasks/${ids.sinFecha}/pay`,
+    actor: ADMIN,
+    body: (c) => ({ cashBoxId: c.cajaA }),
+    esperado: 400,
+    mensaje: 'Fecha de pago',
+    antes: async (c) => {
+      ids.sinFecha = await tareaHecha(c);
+    },
+  },
+  {
+    endpoint: 'PATCH /v2/fleet/maintenance-planner/settings',
+    caso: 'actualiza parámetros',
+    metodo: 'patch',
+    ruta: '/v2/fleet/maintenance-planner/settings',
+    actor: ADMIN,
+    body: { cronHour: 10 },
+    esperado: 200,
+    verificar: (b) =>
+      expect(b).toMatchObject({ params: { cronHour: 10 }, isDefault: false }),
+  },
+  {
+    endpoint: 'POST /v2/fleet/maintenance-planner/run',
+    caso: 'ejecuta el planificador',
+    metodo: 'post',
+    ruta: '/v2/fleet/maintenance-planner/run',
+    actor: ADMIN,
+    esperado: 201,
+    verificar: (b) =>
+      expect(b).toEqual({
+        vehicles: expect.any(Number) as unknown,
+        predictionsUpdated: expect.any(Number) as unknown,
+        proposals: expect.any(Number) as unknown,
+        escalated: expect.any(Number) as unknown,
+        reiterated: expect.any(Number) as unknown,
+        groundedVehicles: expect.any(Number) as unknown,
+        underObservation: expect.any(Number) as unknown,
+      }),
+  },
+  {
+    endpoint: 'POST /v2/driver/maintenance-proposals/{id}/accept',
+    caso: 'chofer acepta una propuesta vigente',
+    metodo: 'post',
+    ruta: () => `/v2/driver/maintenance-proposals/${ids.aceptar}/accept`,
+    actor: 'chofer',
+    esperado: 201,
+    antes: async (c) => {
+      ids.aceptar = await propuestaPendiente(c);
+    },
+    verificar: async (_b, c) => {
+      const fila = await c.app
+        .get(DataSource)
+        .getRepository(MaintenanceWindowProposal)
+        .findOneByOrFail({ proposalId: ids.aceptar });
+      expect(fila.status).toBe(WindowProposalStatus.ACCEPTED);
+      expect(fila.respondedAt).not.toBeNull();
+    },
+  },
+  {
+    endpoint: 'POST /v2/driver/maintenance-proposals/{id}/accept',
+    caso: 'propuesta ya respondida',
+    metodo: 'post',
+    ruta: () => `/v2/driver/maintenance-proposals/${ids.yaRespondida}/accept`,
+    actor: 'chofer',
+    esperado: 409,
+    antes: async (c) => {
+      ids.yaRespondida = await propuestaPendiente(c);
+      const aceptada = await llamar(
+        c,
+        'post',
+        `/v2/driver/maintenance-proposals/${ids.yaRespondida}/accept`,
+        'chofer',
+      );
+      expect(aceptada.status).toBe(201);
+    },
+  },
 
   {
     endpoint: 'POST /v2/fleet/tasks/{id}/close',

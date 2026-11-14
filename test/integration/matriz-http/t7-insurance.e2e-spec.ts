@@ -1,10 +1,95 @@
 import { createTestApp, TestEnv } from '../setup/test-env';
-import { Caso, correrMatriz, endpoint } from './matriz';
+import { DataSource } from 'typeorm';
+import {
+  Attachment,
+  AttachmentOwnerType,
+} from '../../../src/attachment/entities/attachment.entity';
+import { InsuranceInstallment } from '../../../src/insurance/entities/insurance-installment.entity';
+import { InsurancePolicy } from '../../../src/insurance/entities/insurance-policy.entity';
+import { InstallmentStatus } from '../../../src/insurance/domain/insurance.enums';
+import { Caso, correrMatriz, endpoint, llamar } from './matriz';
 import { EscenarioT7, sembrarBaseT7 } from './t7-base';
 import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT7;
 const ADMIN = 'adminA';
+interface CuotaConComprobante {
+  cuota: string;
+  comprobante: string;
+}
+/** El id que prepara cada caso en su `antes`: ningún caso usa lo de otro. */
+const ids = {
+  cancelar: '',
+  yaCancelada: '',
+  pagar: { cuota: '', comprobante: '' } as CuotaConComprobante,
+  yaPagada: { cuota: '', comprobante: '' } as CuotaConComprobante,
+};
+/** Años desde 2032: cada póliza propia, con su vigencia sin solaparse con otra. */
+let anio = 2031;
+const polizaPropia = async (c: C): Promise<string> => {
+  anio += 1;
+  const creada = await c.app
+    .get(DataSource)
+    .getRepository(InsurancePolicy)
+    .save({
+      distributorId: c.distA.id,
+      carId: c.autoA,
+      insurerId: c.aseguradoraPolizaA,
+      policyNumber: `T7-PROPIA-${anio}`,
+      coverage: 'Todo riesgo T7',
+      validFrom: `${anio}-01-01`,
+      validTo: `${anio}-12-31`,
+      paymentCode: null,
+      cancelledAt: null,
+      cancelReason: null,
+      fleetTaskId: null,
+      fleetClosedTasks: [],
+      fleetPending: false,
+    } as Partial<InsurancePolicy>);
+  return creada.policyId;
+};
+/** Una cuota pendiente de una póliza propia, con su comprobante sembrado sólo en la base (sin S3). */
+const cuotaPendiente = async (c: C): Promise<CuotaConComprobante> => {
+  const ds = c.app.get(DataSource);
+  const policyId = await polizaPropia(c);
+  const cuota = await ds.getRepository(InsuranceInstallment).save({
+    distributorId: c.distA.id,
+    policyId,
+    number: 1,
+    total: 1,
+    dueDate: `${anio}-02-01`,
+    graceUntil: `${anio}-02-06`,
+    amount: 1000,
+    status: InstallmentStatus.PENDING,
+    paidAt: null,
+    paidAmount: null,
+    operationNumber: null,
+    paidByUserId: null,
+    cashMovementId: null,
+    receiptAttachmentId: null,
+  } as Partial<InsuranceInstallment>);
+  const comprobante = await ds.getRepository(Attachment).save({
+    distributorId: c.distA.id,
+    ownerType: AttachmentOwnerType.INSURANCE_INSTALLMENT,
+    ownerId: cuota.installmentId,
+    label: null,
+    storageKey: `t7/comprobante-${cuota.installmentId}.pdf`,
+    originalName: 'comprobante.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 1024,
+    uploadedByUserId: c.adminA.userId,
+  } as Partial<Attachment>);
+  return {
+    cuota: cuota.installmentId,
+    comprobante: comprobante.attachmentId,
+  };
+};
+const pagoDe = (c: C, { comprobante }: CuotaConComprobante) => ({
+  attachmentId: comprobante,
+  paidAt: '2026-01-01T10:00:00-03:00',
+  amount: 1000,
+  cashBoxId: c.cajaA,
+});
 const lista = endpoint<C>('get', '/v2/insurers', '/v2/insurers');
 const una = endpoint<C>(
   'get',
@@ -199,6 +284,46 @@ const casosPolizas: Array<Caso<C>> = [
     body: { coverage: 'Otra' },
   }),
   cancelarPoliza('motivo faltante', ADMIN, 400, { body: {} }),
+  {
+    endpoint: 'POST /v2/insurance-policies/{id}/cancel',
+    caso: 'cancela una póliza vigente',
+    metodo: 'post',
+    ruta: () => `/v2/insurance-policies/${ids.cancelar}/cancel`,
+    actor: ADMIN,
+    body: { reason: 'Prueba HTTP T7' },
+    esperado: 200,
+    antes: async (c) => {
+      ids.cancelar = await polizaPropia(c);
+    },
+    verificar: (b) =>
+      expect(b).toMatchObject({
+        policyId: ids.cancelar,
+        status: 'cancelled',
+        cancelReason: 'Prueba HTTP T7',
+        cancelledAt: expect.any(String) as unknown,
+      }),
+  },
+  {
+    endpoint: 'POST /v2/insurance-policies/{id}/cancel',
+    caso: 'póliza ya cancelada',
+    metodo: 'post',
+    ruta: () => `/v2/insurance-policies/${ids.yaCancelada}/cancel`,
+    actor: ADMIN,
+    body: { reason: 'Prueba HTTP T7' },
+    esperado: 409,
+    mensaje: 'La póliza ya está cancelada',
+    antes: async (c) => {
+      ids.yaCancelada = await polizaPropia(c);
+      const cancelada = await llamar(
+        c,
+        'post',
+        `/v2/insurance-policies/${ids.yaCancelada}/cancel`,
+        ADMIN,
+        { reason: 'Prueba HTTP T7' },
+      );
+      expect(cancelada.status).toBe(200);
+    },
+  },
   cancelarPoliza('inexistente', ADMIN, 404, {
     ruta: (c) => `/v2/insurance-policies/${c.inexistente}/cancel`,
     body: { reason: 'Prueba' },
@@ -225,6 +350,14 @@ const casosPolizas: Array<Caso<C>> = [
   cuota('rol sin permiso', 'clienteA', 403),
   editarCuota('corrige importe', ADMIN, 200, { body: { amount: 1100 } }),
   editarCuota('importe inválido', ADMIN, 400, { body: { amount: 0 } }),
+  editarCuota('id inválido', ADMIN, 400, {
+    ruta: '/v2/insurance-installments/no',
+    body: { amount: 1100 },
+  }),
+  editarCuota('inexistente', ADMIN, 404, {
+    ruta: (c) => `/v2/insurance-installments/${c.inexistente}`,
+    body: { amount: 1100 },
+  }),
   editarCuota('de otro tenant', ADMIN, 404, {
     ruta: (c) => `/v2/insurance-installments/${c.cuotaB}`,
     body: { amount: 1100 },
@@ -269,6 +402,47 @@ const casosPolizas: Array<Caso<C>> = [
   }),
   pagarCuota('sin token', undefined, 401, { body: {} }),
   pagarCuota('rol sin permiso', 'clienteA', 403, { body: {} }),
+  {
+    endpoint: 'POST /v2/insurance-installments/{id}/pay',
+    caso: 'paga una cuota pendiente',
+    metodo: 'post',
+    ruta: () => `/v2/insurance-installments/${ids.pagar.cuota}/pay`,
+    actor: ADMIN,
+    body: (c) => pagoDe(c, ids.pagar),
+    esperado: 200,
+    antes: async (c) => {
+      ids.pagar = await cuotaPendiente(c);
+    },
+    verificar: (b) =>
+      expect(b).toMatchObject({
+        installmentId: ids.pagar.cuota,
+        status: 'paid',
+        paidAmount: 1000,
+        receiptAttachmentId: ids.pagar.comprobante,
+        cashMovementId: expect.any(String) as unknown,
+      }),
+  },
+  {
+    endpoint: 'POST /v2/insurance-installments/{id}/pay',
+    caso: 'cuota ya pagada',
+    metodo: 'post',
+    ruta: () => `/v2/insurance-installments/${ids.yaPagada.cuota}/pay`,
+    actor: ADMIN,
+    body: (c) => pagoDe(c, ids.yaPagada),
+    esperado: 409,
+    mensaje: 'La cuota ya está paga',
+    antes: async (c) => {
+      ids.yaPagada = await cuotaPendiente(c);
+      const pagada = await llamar(
+        c,
+        'post',
+        `/v2/insurance-installments/${ids.yaPagada.cuota}/pay`,
+        ADMIN,
+        pagoDe(c, ids.yaPagada),
+      );
+      expect(pagada.status).toBe(200);
+    },
+  },
 ];
 
 describe('Matriz HTTP T7 · seguros', () => {

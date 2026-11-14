@@ -388,6 +388,8 @@ export class FleetTaskService {
     dto: CloseFleetTaskDto,
     distributorId: string,
     pago?: PagoAlCerrar & { userId: string },
+    /** La v2 responde 409 si la tarea ya está hecha o cancelada; la v1, 400. */
+    { cerradaComoConflicto = false }: { cerradaComoConflicto?: boolean } = {},
   ): Promise<MaintenanceTask> {
     const performedAt = new Date(dto.performedAt);
     if (performedAt.getTime() > Date.now() + MARGEN_FECHA_FUTURA_MS) {
@@ -407,7 +409,7 @@ export class FleetTaskService {
     try {
       await this.tasks.manager.transaction(async (manager) => {
         const task = await this.bloquear(manager, id, distributorId);
-        this.assertAbierta(task);
+        this.assertAbierta(task, cerradaComoConflicto);
         propuestasCerradas =
           (await this.casos?.cerrar(
             manager,

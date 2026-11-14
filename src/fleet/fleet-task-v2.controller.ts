@@ -102,6 +102,7 @@ export class FleetTaskV2Controller {
         cierre,
         distributorId,
         payment ? { ...payment, userId } : undefined,
+        { cerradaComoConflicto: true },
       ),
     );
   }

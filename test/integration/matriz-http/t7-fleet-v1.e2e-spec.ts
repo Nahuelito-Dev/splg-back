@@ -1,5 +1,6 @@
+import { MaintenanceTaskStatus } from '../../../src/fleet/entities/maintenance-task.entity';
 import { createTestApp, TestEnv } from '../setup/test-env';
-import { Caso, correrMatriz, endpoint, Metodo } from './matriz';
+import { Caso, correrMatriz, endpoint, llamar, Metodo } from './matriz';
 import { EscenarioT7, sembrarBaseT7 } from './t7-base';
 import { casosEnModoSoporte } from './soporte';
 
@@ -11,6 +12,21 @@ import { casosEnModoSoporte } from './soporte';
 type C = EscenarioT7;
 const ADMIN = 'adminA';
 const uuidAjeno = (c: C) => c.inexistente;
+const HACE_TIEMPO = '2026-01-01T10:00:00-03:00';
+/** El id que prepara cada caso en su `antes`: ningún caso usa lo de otro. */
+const ids = { cerrar: '', yaCerrada: '', cancelar: '' };
+/** Días desde el 02/12/2030: cada tarea con su vencimiento propio. */
+let dia = 0;
+const tareaAbierta = async (c: C): Promise<string> => {
+  dia += 1;
+  const creada = await llamar(c, 'post', '/fleet/tasks', ADMIN, {
+    planId: c.planA,
+    carId: c.autoA,
+    dueAt: new Date(Date.UTC(2030, 11, 1 + dia)).toISOString(),
+  });
+  expect(creada.status).toBe(201);
+  return (creada.body as { taskId: string }).taskId;
+};
 
 const sinToken = (metodo: Metodo, swagger: string, ruta: string): Caso<C> => ({
   endpoint: `${metodo.toUpperCase()} ${swagger}`,
@@ -149,6 +165,182 @@ const casos: Array<Caso<C>> = [
   documentosChofer('rol sin permiso', 'clienteA', 403),
   miVehiculo('chofer consulta su vehículo', 'chofer', 200),
   miVehiculo('otro rol no puede consultar', ADMIN, 403),
+
+  {
+    endpoint: 'POST /fleet/plans',
+    caso: 'crea un plan de vehículo',
+    metodo: 'post',
+    ruta: '/fleet/plans',
+    actor: ADMIN,
+    body: {
+      name: 'Plan HTTP T7',
+      subject: 'vehicle',
+      trigger: 'by_time',
+      intervalMonths: 6,
+      leadTimeDays: 15,
+      criticality: 'non_blocking',
+    },
+    esperado: 201,
+  },
+  {
+    endpoint: 'POST /fleet/plans',
+    caso: 'rol sin permiso',
+    metodo: 'post',
+    ruta: '/fleet/plans',
+    actor: 'clienteA',
+    body: {},
+    esperado: 403,
+  },
+  {
+    endpoint: 'PATCH /fleet/plans/{id}',
+    caso: 'edita un plan propio',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/plans/${c.planA}`,
+    actor: ADMIN,
+    body: { leadTimeDays: 20 },
+    esperado: 200,
+  },
+  {
+    endpoint: 'PATCH /fleet/plans/{id}',
+    caso: 'inexistente',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/plans/${c.inexistente}`,
+    actor: ADMIN,
+    body: { leadTimeDays: 20 },
+    esperado: 404,
+  },
+  {
+    endpoint: 'PATCH /fleet/plans/{id}',
+    caso: 'de otro tenant',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/plans/${c.planB}`,
+    actor: ADMIN,
+    body: { leadTimeDays: 20 },
+    esperado: 404,
+  },
+  {
+    endpoint: 'PATCH /fleet/plans/{id}',
+    caso: 'rol sin permiso',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/plans/${c.planA}`,
+    actor: 'clienteA',
+    body: { leadTimeDays: 20 },
+    esperado: 403,
+  },
+  {
+    endpoint: 'POST /fleet/tasks',
+    caso: 'crea una tarea de vehículo',
+    metodo: 'post',
+    ruta: '/fleet/tasks',
+    actor: ADMIN,
+    body: (c) => ({
+      planId: c.planA,
+      carId: c.autoA,
+      dueAt: '2030-12-01T00:00:00.000Z',
+    }),
+    esperado: 201,
+  },
+  {
+    endpoint: 'POST /fleet/tasks',
+    caso: 'plan inexistente',
+    metodo: 'post',
+    ruta: '/fleet/tasks',
+    actor: ADMIN,
+    body: (c) => ({ planId: c.inexistente, carId: c.autoA }),
+    esperado: 404,
+  },
+  {
+    endpoint: 'POST /fleet/tasks',
+    caso: 'rol sin permiso',
+    metodo: 'post',
+    ruta: '/fleet/tasks',
+    actor: 'clienteA',
+    body: {},
+    esperado: 403,
+  },
+  {
+    endpoint: 'PATCH /fleet/tasks/{id}',
+    caso: 'edita una tarea abierta',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/tasks/${c.tareaA}`,
+    actor: ADMIN,
+    body: { notes: 'Control HTTP T7' },
+    esperado: 200,
+  },
+  {
+    endpoint: 'PATCH /fleet/tasks/{id}',
+    caso: 'inexistente',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/tasks/${c.inexistente}`,
+    actor: ADMIN,
+    body: { notes: 'Control HTTP T7' },
+    esperado: 404,
+  },
+  {
+    endpoint: 'PATCH /fleet/tasks/{id}',
+    caso: 'rol sin permiso',
+    metodo: 'patch',
+    ruta: (c) => `/fleet/tasks/${c.tareaA}`,
+    actor: 'clienteA',
+    body: { notes: 'Control HTTP T7' },
+    esperado: 403,
+  },
+  {
+    endpoint: 'PATCH /fleet/tasks/{id}/close',
+    caso: 'cierra una tarea abierta',
+    metodo: 'patch',
+    ruta: () => `/fleet/tasks/${ids.cerrar}/close`,
+    actor: ADMIN,
+    body: { performedAt: HACE_TIEMPO, cost: 1000 },
+    esperado: 200,
+    antes: async (c) => {
+      ids.cerrar = await tareaAbierta(c);
+    },
+    verificar: (b) =>
+      expect(b).toMatchObject({
+        taskId: ids.cerrar,
+        status: MaintenanceTaskStatus.DONE,
+        cost: 1000,
+      }),
+  },
+  {
+    endpoint: 'PATCH /fleet/tasks/{id}/close',
+    caso: 'ya cerrada',
+    metodo: 'patch',
+    ruta: () => `/fleet/tasks/${ids.yaCerrada}/close`,
+    actor: ADMIN,
+    body: { performedAt: HACE_TIEMPO },
+    esperado: 400,
+    mensaje: 'La tarea ya está hecha',
+    antes: async (c) => {
+      ids.yaCerrada = await tareaAbierta(c);
+      const cerrada = await llamar(
+        c,
+        'patch',
+        `/fleet/tasks/${ids.yaCerrada}/close`,
+        ADMIN,
+        { performedAt: HACE_TIEMPO },
+      );
+      expect(cerrada.status).toBe(200);
+    },
+  },
+  {
+    endpoint: 'PATCH /fleet/tasks/{id}/cancel',
+    caso: 'cancela una tarea abierta',
+    metodo: 'patch',
+    ruta: () => `/fleet/tasks/${ids.cancelar}/cancel`,
+    actor: ADMIN,
+    body: { notes: 'No hace falta' },
+    esperado: 200,
+    antes: async (c) => {
+      ids.cancelar = await tareaAbierta(c);
+    },
+    verificar: (b) =>
+      expect(b).toMatchObject({
+        taskId: ids.cancelar,
+        status: MaintenanceTaskStatus.CANCELLED,
+      }),
+  },
 
   {
     endpoint: 'POST /fleet/plans',

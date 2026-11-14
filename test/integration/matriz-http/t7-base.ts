@@ -1,4 +1,6 @@
 import { DataSource } from 'typeorm';
+import { CashBox } from '../../../src/cash/entities/cash-box.entity';
+import { CashBoxKind } from '../../../src/cash/domain/cash.enums';
 import { Car } from '../../../src/car/entities/car.entity';
 import { Insurer } from '../../../src/insurance/entities/insurer.entity';
 import { InsuranceInstallment } from '../../../src/insurance/entities/insurance-installment.entity';
@@ -35,6 +37,8 @@ export interface EscenarioT7 extends EscenarioT2 {
   polizaB: string;
   cuotaA: string;
   cuotaB: string;
+  /** Caja bancaria de A: admite los egresos de las mutaciones v2. */
+  cajaA: string;
   env: TestEnv;
 }
 
@@ -169,6 +173,15 @@ export async function sembrarBaseT7(env: TestEnv): Promise<EscenarioT7> {
     ).installmentId;
   const cuotaA = await cuota(base.distA.id, polizaA);
   const cuotaB = await cuota(base.distB.id, polizaB);
+  const cajaA = (
+    await ds.getRepository(CashBox).save({
+      distributorId: base.distA.id,
+      name: 'Banco T7 A',
+      kind: CashBoxKind.BANK,
+      requiresSession: false,
+      isActive: true,
+    } as Partial<CashBox>)
+  ).cashBoxId;
 
   return {
     ...base,
@@ -187,6 +200,7 @@ export async function sembrarBaseT7(env: TestEnv): Promise<EscenarioT7> {
     polizaB,
     cuotaA,
     cuotaB,
+    cajaA,
     reiniciarCupos: () => reiniciarCuposDelThrottler(env),
   };
 }
