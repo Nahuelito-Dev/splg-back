@@ -17,7 +17,6 @@ describe('PlatformCompaniesController', () => {
     bankAlias: 'alias.secreto',
   } as unknown as Distributor;
   const servicio = {
-    listarEmpresas: jest.fn().mockResolvedValue({ items: [fila], total: 1 }),
     marcarPropia: jest.fn().mockResolvedValue(fila),
   };
   const controller = new PlatformCompaniesController(
@@ -31,13 +30,6 @@ describe('PlatformCompaniesController', () => {
     ownedByPlatform: true,
     createdAt: '2026-11-14T12:00:00.000Z',
   };
-
-  it('lista con la marca y sin datos bancarios', async () => {
-    await expect(controller.listar({ limit: 50, offset: 0 })).resolves.toEqual({
-      items: [esperado],
-      total: 1,
-    });
-  });
 
   it('marca y devuelve la empresa como la ve la plataforma', async () => {
     await expect(

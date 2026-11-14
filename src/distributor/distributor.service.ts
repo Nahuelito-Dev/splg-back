@@ -163,28 +163,6 @@ export class DistributorService {
   }
 
   /**
-   * Las empresas de la plataforma (vigentes, sin las dadas de baja), para el
-   * panel del super admin: primero las propias, después por nombre.
-   */
-  async listarEmpresas(filtro: {
-    ownedByPlatform?: boolean;
-    status?: DistributorStatus;
-    limit: number;
-    offset: number;
-  }): Promise<{ items: Distributor[]; total: number }> {
-    const [items, total] = await this.repo.findAndCount({
-      where: sinIndefinidos({
-        ownedByPlatform: filtro.ownedByPlatform,
-        status: filtro.status,
-      }),
-      order: { ownedByPlatform: 'DESC', name: 'ASC', distributorId: 'ASC' },
-      take: filtro.limit,
-      skip: filtro.offset,
-    });
-    return { items, total };
-  }
-
-  /**
    * Marca o desmarca una empresa como propia de la plataforma. Idempotente: si
    * ya tiene ese valor no escribe. El cambio lo asienta el trigger de
    * auditoría con el super admin como actor.

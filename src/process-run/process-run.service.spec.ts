@@ -38,6 +38,11 @@ function armar(respuestas: ProcessRun[][]) {
     andWhere: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     skip: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    addSelect: jest.fn().mockReturnThis(),
+    groupBy: jest.fn().mockReturnThis(),
+    addGroupBy: jest.fn().mockReturnThis(),
+    getRawMany: jest.fn().mockResolvedValue([]),
     getMany: jest
       .fn()
       .mockImplementation(() => Promise.resolve(respuestas.shift() ?? [])),
@@ -111,7 +116,7 @@ describe('ProcessRunService', () => {
       startedAt: new Date(Date.now() - 3 * 3600_000),
     });
     const { service } = armar([[colgada], []]);
-    const r = await service.resumen(null, true);
+    const r = await service.resumen();
     const item = r.items.find((i) => i.process === ProcessName.FLEET_ALERTS);
     expect(item?.health).toBe(ProcessHealth.STUCK);
     expect(item?.lastRun?.durationMs).toBeNull();
@@ -119,10 +124,25 @@ describe('ProcessRunService', () => {
     expect(r.alerts).toBe(1);
   });
 
+  it('resumen de una empresa agrega never para los procesos sin corrida propia', async () => {
+    const propia = corrida({ distributorId: 'd1' });
+    const { service } = armar([[propia], [propia]]);
+    const r = await service.resumen('d1');
+    expect(r.items).toHaveLength(Object.values(ProcessName).length);
+    expect(r.items).toContainEqual(
+      expect.objectContaining({
+        process: ProcessName.STOCK_LOW_ALERT,
+        distributorId: 'd1',
+        health: ProcessHealth.NEVER,
+        lastRun: null,
+      }),
+    );
+  });
+
   it('listar rechaza from posterior a to', async () => {
     const { service } = armar([]);
     await expect(
-      service.listar(null, true, {
+      service.listar({
         from: '2026-11-03',
         to: '2026-11-01',
         limit: 20,
@@ -133,7 +153,8 @@ describe('ProcessRunService', () => {
 
   it('listar aplica los filtros y pagina', async () => {
     const { service, qb } = armar([]);
-    const r = await service.listar('d1', false, {
+    const r = await service.listar({
+      distributorId: 'd1',
       process: ProcessName.FLEET_ALERTS,
       status: ProcessRunStatus.FAILED,
       from: '2026-11-01',
@@ -151,13 +172,27 @@ describe('ProcessRunService', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('r.status = :status', {
       status: ProcessRunStatus.FAILED,
     });
+    // Filtra por esa empresa exacta: sin sumar las corridas globales.
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'r.distributorId = :distributorId',
+      { distributorId: 'd1' },
+    );
   });
 
-  it('el admin de una empresa no ve contadores ni errores de una corrida global; el super sí', async () => {
+  it('listar sin empresa no filtra por empresa', async () => {
+    const { service, qb } = armar([]);
+    await service.listar({ limit: 20, offset: 0 });
+    expect(qb.andWhere).not.toHaveBeenCalledWith(
+      'r.distributorId = :distributorId',
+      expect.anything(),
+    );
+  });
+
+  it('la plataforma ve el detalle de todas las corridas; con una empresa, sólo las de ella', async () => {
     const global = corrida({
       status: ProcessRunStatus.FAILED,
       counters: { applied: 42 },
-      error: 'falló en 7 distribuidoras',
+      error: 'falló token=supersecreto en 7 distribuidoras',
     });
     const propia = corrida({
       process: ProcessName.STOCK_LOW_ALERT,
@@ -165,40 +200,63 @@ describe('ProcessRunService', () => {
       counters: { sent: 2 },
       error: 'algo propio',
     });
-    const admin = await armar([[global, propia], []]).service.resumen(
-      'd1',
-      false,
-    );
-    const deAdmin = Object.fromEntries(
-      admin.items.map((i) => [i.process, i.lastRun]),
-    );
-    expect(deAdmin.fleet_alerts).toMatchObject({
-      counters: {},
-      error: null,
-      status: 'failed',
+    const ajena = corrida({
+      process: ProcessName.STOCK_LOW_ALERT,
+      distributorId: 'd2',
     });
-    expect(deAdmin.stock_low_alert).toMatchObject({
-      counters: { sent: 2 },
-      error: 'algo propio',
-    });
-
-    const super_ = await armar([[global], []]).service.resumen(null, true);
+    const todo = await armar([[global, propia, ajena], []]).service.resumen();
     expect(
-      super_.items.find((i) => i.process === ProcessName.FLEET_ALERTS)?.lastRun,
+      todo.items.find((i) => i.process === ProcessName.FLEET_ALERTS)?.lastRun,
     ).toMatchObject({
       counters: { applied: 42 },
-      error: 'falló en 7 distribuidoras',
+      error: 'falló token=[oculto] en 7 distribuidoras',
+    });
+    expect(
+      todo.items
+        .filter((i) => i.process === ProcessName.STOCK_LOW_ALERT)
+        .map((i) => i.distributorId)
+        .sort(),
+    ).toEqual(['d1', 'd2']);
+
+    const deD1 = await armar([[global, propia, ajena], []]).service.resumen(
+      'd1',
+    );
+    expect(deD1.items).toHaveLength(Object.values(ProcessName).length);
+    const stock = deD1.items.find(
+      (item) => item.process === ProcessName.STOCK_LOW_ALERT,
+    );
+    expect(stock).toMatchObject({
+      distributorId: 'd1',
+      lastRun: { counters: { sent: 2 }, error: 'algo propio' },
     });
   });
 
-  it('el historial del admin también oculta el detalle de las globales', async () => {
+  it('fallasDesde agrupa por proceso y empresa en una consulta', async () => {
     const { service, qb } = armar([]);
-    qb.getManyAndCount.mockResolvedValue([
-      [corrida({ counters: { applied: 9 }, error: 'x' })],
-      1,
+    qb.getRawMany.mockResolvedValue([
+      { process: ProcessName.FLEET_ALERTS, distributorId: null, failures: '3' },
+      {
+        process: ProcessName.CYLINDER_RECOVERY,
+        distributorId: 'd1',
+        failures: '1',
+      },
     ]);
-    const r = await service.listar('d1', false, { limit: 20, offset: 0 });
-    expect(r.items[0]).toMatchObject({ counters: {}, error: null });
+    const desde = new Date('2026-11-02T00:00:00Z');
+    const r = await service.fallasDesde(desde);
+    expect(r).toEqual([
+      { process: ProcessName.FLEET_ALERTS, distributorId: null, failures: 3 },
+      {
+        process: ProcessName.CYLINDER_RECOVERY,
+        distributorId: 'd1',
+        failures: 1,
+      },
+    ]);
+    expect(qb.where).toHaveBeenCalledWith(
+      'r.status = :fallida AND r.startedAt >= :desde',
+      { fallida: ProcessRunStatus.FAILED, desde },
+    );
+    expect(qb.groupBy).toHaveBeenCalledWith('r.process');
+    expect(qb.addGroupBy).toHaveBeenCalledWith('r.distributorId');
   });
 
   it('la salud no cuenta las corridas salteadas ni las de webhook (las manuales sí)', async () => {

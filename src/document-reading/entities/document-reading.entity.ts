@@ -156,6 +156,7 @@ const LEIDOS_SQL = ESTADOS_LEIDOS.map((e) => `'${e}'`).join(', ');
 })
 @Index('IDX_document_reading_cola', ['distributorId', 'status', 'createdAt'])
 @Index('IDX_document_reading_huella', ['distributorId', 'fileSha256'])
+@Index('IDX_document_reading_attempted_at', ['attemptedAt'])
 @Entity('document_reading')
 export class DocumentReading {
   @PrimaryGeneratedColumn('uuid', { name: 'reading_id' })

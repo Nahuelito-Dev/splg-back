@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { codigoSqlDelError } from '../common/errors/db-exceptions';
 import { NotificarAdminEvent } from '../common/events/notificar-admin.event';
 import { AdminNotificationMapper } from './admin-notifications.mapper';
@@ -33,9 +33,10 @@ export class AdminNotificationsService {
   ) {}
 
   /**
-   * Guarda el aviso. Devuelve `null` si esa distribuidora ya tiene uno con la
-   * misma `dedupeKey` (no se repite ni se vuelve a avisar). La consulta previa
-   * es el camino normal; el único `(distributor_id, dedupe_key)` de la base
+   * Guarda el aviso. Devuelve `null` si esa distribuidora (o la plataforma, con
+   * `distributorId` nulo) ya tiene uno con la misma `dedupeKey` (no se repite ni
+   * se vuelve a avisar). La consulta previa es el camino normal; el único
+   * `(distributor_id, dedupe_key)` de la base (y el parcial de la plataforma)
    * cubre a dos emisores simultáneos: el segundo `save` falla con 23505 y se
    * toma como repetido. Se usa `save` para que la auditoría de datos lo registre.
    */
@@ -44,7 +45,8 @@ export class AdminNotificationsService {
   ): Promise<AdminNotification | null> {
     const existente = await this.avisos.findOne({
       where: {
-        distributorId: evento.distributorId,
+        // Con `null` TypeORM no filtra la columna: hay que pedir `IS NULL` explícito.
+        distributorId: evento.distributorId ?? IsNull(),
         dedupeKey: evento.dedupeKey,
       },
       select: { notificationId: true },

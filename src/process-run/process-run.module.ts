@@ -17,6 +17,6 @@ import { ProcessRunWatchCron } from './process-run-watch.cron';
   imports: [TypeOrmModule.forFeature([ProcessRun]), DistributorModule],
   controllers: [ProcessRunController],
   providers: [ProcessRunRecorder, ProcessRunService, ProcessRunWatchCron],
-  exports: [ProcessRunRecorder],
+  exports: [ProcessRunRecorder, ProcessRunService],
 })
 export class ProcessRunModule {}

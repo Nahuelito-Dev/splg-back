@@ -65,18 +65,19 @@ describe('ScheduledTasksSettingsService (CU-173)', () => {
   });
   afterEach(() => jest.useRealTimers());
 
-  it('los valores por omisión son los que regían: 15 s, 5 min, 1 h, 30 min y las 8', () => {
+  it('los valores por omisión son los que regían: 60 s, 10 min, 2 h, 1 h y las 8', () => {
     expect(scheduledTasksPorDefecto()).toEqual({
-      dispatchRetrySeconds: 15,
-      reservationActivationSeconds: 300,
-      unpaidReservationExpirySeconds: 3600,
-      unpaidMercadoPagoExpirySeconds: 1800,
+      dispatchRetrySeconds: 60,
+      reservationActivationSeconds: 600,
+      unpaidReservationExpirySeconds: 7200,
+      unpaidMercadoPagoExpirySeconds: 3600,
       fleetAlertHour: 8,
     });
   });
 
   describe('distribuidorasQueCorren', () => {
-    it('con el intervalo igual al tic corre siempre y no usa marcas', async () => {
+    it('con el intervalo configurado igual al tic corre siempre y no usa marcas', async () => {
+      await service.guardar('d1', { dispatchRetrySeconds: 15 }, 'u1');
       const corren = await service.distribuidorasQueCorren(
         'dispatchRetrySeconds',
         ['d1', 'd2'],
@@ -181,7 +182,7 @@ describe('ScheduledTasksSettingsService (CU-173)', () => {
       const a = e.nuevaInstancia();
       const b = e.nuevaInstancia();
       // B carga la configuración vieja (por omisión) en su caché.
-      expect((await b.obtener('d1')).dispatchRetrySeconds).toBe(15);
+      expect((await b.obtener('d1')).dispatchRetrySeconds).toBe(60);
 
       await a.guardar('d1', { dispatchRetrySeconds: 120 }, 'u1');
 
@@ -236,7 +237,7 @@ describe('ScheduledTasksSettingsService (CU-173)', () => {
     it('lo que falta se lee con su valor por omisión', async () => {
       const r = await service.guardar('d1', { fleetAlertHour: 20 }, 'u1');
       expect(r).toMatchObject({
-        dispatchRetrySeconds: 15,
+        dispatchRetrySeconds: 60,
         fleetAlertHour: 20,
         isDefault: false,
       });
@@ -252,10 +253,102 @@ describe('ScheduledTasksSettingsService (CU-173)', () => {
     it('si todo lo guardado coincide con los valores por omisión, isDefault es true', async () => {
       const r = await service.guardar(
         'd1',
-        { dispatchRetrySeconds: 15, fleetAlertHour: 8 },
+        { dispatchRetrySeconds: 60, fleetAlertHour: 8 },
         'u1',
       );
       expect(r.isDefault).toBe(true);
+    });
+  });
+
+  describe('v1 congelada y configuración de plataforma (E3)', () => {
+    it('v1 conserva el contrato: la empresa puede cambiar las frecuencias y la hora', async () => {
+      await service.guardarDeLaPlataforma(
+        'd1',
+        { dispatchRetrySeconds: 60, unpaidMercadoPagoExpirySeconds: 3600 },
+        'super',
+      );
+      const r = await service.guardar(
+        'd1',
+        { dispatchRetrySeconds: 30, fleetAlertHour: 20 },
+        'admin',
+      );
+      expect(e.configs.guardar).toHaveBeenLastCalledWith(
+        'd1',
+        ConfigurableProcess.SCHEDULED_TASKS,
+        {
+          dispatchRetrySeconds: 30,
+          fleetAlertHour: 20,
+        },
+        'admin',
+      );
+      expect(r).toMatchObject({
+        dispatchRetrySeconds: 30,
+        fleetAlertHour: 20,
+      });
+    });
+
+    it('la plataforma actualiza las frecuencias por merge y conserva la hora de la empresa', async () => {
+      await service.guardarDeLaPlataforma(
+        'd1',
+        { reservationActivationSeconds: 900 },
+        'super',
+      );
+      await service.guardarHoraDeLaEmpresa(
+        'd1',
+        { fleetAlertHour: 6 },
+        'admin',
+      );
+      const r = await service.guardarDeLaPlataforma(
+        'd1',
+        { dispatchRetrySeconds: 45 },
+        'super',
+      );
+      expect(e.configs.guardar).toHaveBeenLastCalledWith(
+        'd1',
+        ConfigurableProcess.SCHEDULED_TASKS,
+        {
+          fleetAlertHour: 6,
+          dispatchRetrySeconds: 45,
+          reservationActivationSeconds: 900,
+        },
+        'super',
+      );
+      expect(r.reservationActivationSeconds).toBe(900);
+      expect(r.fleetAlertHour).toBe(6);
+    });
+
+    it('la empresa conserva las frecuencias de plataforma cuando sólo cambia su hora', async () => {
+      await service.guardarDeLaPlataforma(
+        'd1',
+        { reservationActivationSeconds: 900 },
+        'super',
+      );
+
+      const r = await service.guardarHoraDeLaEmpresa(
+        'd1',
+        { fleetAlertHour: 6 },
+        'admin',
+      );
+
+      expect(r).toMatchObject({
+        reservationActivationSeconds: 900,
+        fleetAlertHour: 6,
+      });
+    });
+
+    it('la plataforma no toca la hora del aviso aunque se la pasen', async () => {
+      await service.guardar('d1', { fleetAlertHour: 6 }, 'admin');
+      await service.guardarDeLaPlataforma(
+        'd1',
+        { fleetAlertHour: 22 } as never,
+        'super',
+      );
+      expect(e.configs.guardar).toHaveBeenLastCalledWith(
+        'd1',
+        ConfigurableProcess.SCHEDULED_TASKS,
+        { fleetAlertHour: 6 },
+        'super',
+      );
     });
   });
 

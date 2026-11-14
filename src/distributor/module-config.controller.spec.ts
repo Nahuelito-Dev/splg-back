@@ -6,7 +6,11 @@ import { ProcessConfigService } from './process-config.service';
 describe('ModuleConfigController', () => {
   let controller: ModuleConfigController;
   let dispatch: { vigentes: jest.Mock; guardar: jest.Mock };
-  let tasks: { vigentes: jest.Mock; guardar: jest.Mock };
+  let tasks: {
+    vigentes: jest.Mock;
+    guardar: jest.Mock;
+    guardarHoraDeLaEmpresa: jest.Mock;
+  };
   let processes: {
     vigentes: jest.Mock;
     guardar: jest.Mock;
@@ -22,6 +26,9 @@ describe('ModuleConfigController', () => {
     tasks = {
       vigentes: jest.fn().mockResolvedValue({ fleetAlertHour: 8 }),
       guardar: jest.fn().mockResolvedValue({ fleetAlertHour: 20 }),
+      guardarHoraDeLaEmpresa: jest
+        .fn()
+        .mockResolvedValue({ fleetAlertHour: 20 }),
     };
     processes = {
       vigentes: jest.fn().mockResolvedValue({ process: 'repurchase' }),
@@ -53,17 +60,18 @@ describe('ModuleConfigController', () => {
     });
     expect(tasks.vigentes).toHaveBeenCalledWith('d1');
 
-    const cuerpo = {
-      dispatchRetrySeconds: 15,
-      reservationActivationSeconds: 300,
-      unpaidReservationExpirySeconds: 3600,
-      unpaidMercadoPagoExpirySeconds: 1800,
-      fleetAlertHour: 20,
-    };
+    const cuerpo = { fleetAlertHour: 20, dispatchRetrySeconds: 30 };
     expect(await controller.putScheduledTasks(cuerpo, 'd1', 'u1')).toEqual({
       fleetAlertHour: 20,
     });
     expect(tasks.guardar).toHaveBeenCalledWith('d1', cuerpo, 'u1');
+
+    await controller.putScheduledTasksV2({ fleetAlertHour: 5 }, 'd1', 'u1');
+    expect(tasks.guardarHoraDeLaEmpresa).toHaveBeenCalledWith(
+      'd1',
+      { fleetAlertHour: 5 },
+      'u1',
+    );
   });
 
   it('procesos automáticos: lista, lee y guarda con el usuario que lo pide', async () => {

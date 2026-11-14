@@ -50,12 +50,21 @@ export const MAXIMO_SEGUNDOS: Record<TareaConIntervalo, number> = {
 
 export const HORA_AVISO_FLOTA_POR_DEFECTO = 8;
 
+/**
+ * Frecuencias vigentes cuando la empresa todavía no guardó una configuración.
+ * No son los ciclos del cron: cada ciclo puede correr más seguido para decidir
+ * si a esta empresa ya le corresponde ejecutar la tarea.
+ */
+export const FRECUENCIAS_POR_DEFECTO: Record<TareaConIntervalo, number> = {
+  dispatchRetrySeconds: 60,
+  reservationActivationSeconds: 10 * 60,
+  unpaidReservationExpirySeconds: 2 * 60 * 60,
+  unpaidMercadoPagoExpirySeconds: 60 * 60,
+};
+
 export function scheduledTasksPorDefecto(): ScheduledTasksSettings {
   return {
-    dispatchRetrySeconds: TIC_SEGUNDOS.dispatchRetrySeconds,
-    reservationActivationSeconds: TIC_SEGUNDOS.reservationActivationSeconds,
-    unpaidReservationExpirySeconds: TIC_SEGUNDOS.unpaidReservationExpirySeconds,
-    unpaidMercadoPagoExpirySeconds: TIC_SEGUNDOS.unpaidMercadoPagoExpirySeconds,
+    ...FRECUENCIAS_POR_DEFECTO,
     fleetAlertHour: HORA_AVISO_FLOTA_POR_DEFECTO,
   };
 }

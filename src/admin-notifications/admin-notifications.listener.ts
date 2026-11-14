@@ -63,8 +63,12 @@ export class AdminNotificationsListener {
     }
   }
 
-  /** Un correo por admin activo; si uno falla se registra y no se reintenta. */
+  /**
+   * Un correo por admin activo; si uno falla se registra y no se reintenta. Los
+   * avisos de la plataforma no van por correo: quedan en su bandeja.
+   */
   private async enviarCorreos(aviso: AdminNotification): Promise<void> {
+    if (!aviso.distributorId) return;
     const destinatarios = await this.admins.emailsDeAdminsActivos(
       aviso.distributorId,
     );

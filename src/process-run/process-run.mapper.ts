@@ -1,6 +1,7 @@
 import { CATALOGO } from './domain/process-catalog';
 import { ProcessRunResponseDto } from './dto/process-run-response.dto';
 import { ProcessRun } from './entities/process-run.entity';
+import { sanitizarError } from './domain/sanitizar-error';
 
 export class ProcessRunMapper {
   /**
@@ -23,7 +24,7 @@ export class ProcessRunMapper {
       : null;
     dto.status = run.status;
     dto.counters = oculto ? {} : run.counters;
-    dto.error = oculto ? null : run.error;
+    dto.error = oculto || !run.error ? null : sanitizarError(run.error);
     dto.trigger = run.trigger;
     return dto;
   }

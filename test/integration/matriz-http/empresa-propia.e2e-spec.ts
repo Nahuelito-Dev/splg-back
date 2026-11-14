@@ -298,11 +298,11 @@ describe('Matriz HTTP: empresa propia de la plataforma (e2e)', () => {
     casosMarcar,
   );
 
-  // ============================================ GET /v2/platform/companies
+  // ============== GET /v2/platform/companies (contrato unificado de E3)
   const listar = endpoint<Ctx>(
     'get',
     '/v2/platform/companies',
-    '/v2/platform/companies?limit=200',
+    '/v2/platform/companies?limit=100',
   );
   const casosListar: Array<Caso<Ctx>> = [
     listar('sin token', undefined, 401),
@@ -316,7 +316,7 @@ describe('Matriz HTTP: empresa propia de la plataforma (e2e)', () => {
       ruta: '/v2/platform/companies?limit=0',
     }),
     listar(
-      'super admin: todas, con la marca y sin datos bancarios',
+      'super admin: todas, con la marca, métricas y sin datos bancarios',
       'super',
       200,
       {
@@ -334,10 +334,16 @@ describe('Matriz HTTP: empresa propia de la plataforma (e2e)', () => {
             claves: [
               'createdAt',
               'id',
+              'lastActivityAt',
+              'metrics',
               'name',
               'ownedByPlatform',
+              'plan',
+              'processAlerts',
               'slug',
               'status',
+              'supportRequestsPending',
+              'supportSessionActive',
             ],
           });
         },
@@ -351,6 +357,16 @@ describe('Matriz HTTP: empresa propia de la plataforma (e2e)', () => {
           todasPropias: r.items.every((i) => i.ownedByPlatform === true),
           estaLaPropia: r.items.some((i) => i.id === c.propia.id),
         }).toEqual({ todasPropias: true, estaLaPropia: true });
+      },
+    }),
+    listar('super admin: sólo las de clientes', 'super', 200, {
+      ruta: '/v2/platform/companies?ownedByPlatform=false',
+      verificar: (b, c) => {
+        const r = b as { items: Filas; total: number };
+        expect({
+          ningunaPropia: r.items.every((i) => i.ownedByPlatform === false),
+          estaA: r.items.some((i) => i.id === c.distA.id),
+        }).toEqual({ ningunaPropia: true, estaA: true });
       },
     }),
   ];

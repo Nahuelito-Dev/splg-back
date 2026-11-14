@@ -276,18 +276,5 @@ describe('DistributorService', () => {
         expect.objectContaining({ distributorId: ID }),
       );
     });
-
-    it('el listado filtra lo pedido y pone primero las propias', async () => {
-      repo.findAndCount.mockResolvedValue([[{ distributorId: ID }], 1]);
-      await expect(
-        service.listarEmpresas({ ownedByPlatform: true, limit: 10, offset: 5 }),
-      ).resolves.toEqual({ items: [{ distributorId: ID }], total: 1 });
-      expect(repo.findAndCount).toHaveBeenCalledWith({
-        where: { ownedByPlatform: true },
-        order: { ownedByPlatform: 'DESC', name: 'ASC', distributorId: 'ASC' },
-        take: 10,
-        skip: 5,
-      });
-    });
   });
 });

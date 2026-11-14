@@ -242,7 +242,7 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
 
       const res = await http()
         .get('/v2/process-runs/summary')
-        .set(e.adminA.headers)
+        .set(e.sup)
         .expect(200);
       const por = Object.fromEntries(
         (
@@ -257,7 +257,7 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       expect((res.body as { alerts: number }).alerts).toBe(3);
     });
 
-    it('un admin no ve las corridas de otra distribuidora; el super las ve todas (plataforma) y las de una en modo soporte', async () => {
+    it('es de la plataforma: el admin de una empresa recibe 403; el super ve todas, filtra por empresa y en soporte sigue viendo la plataforma', async () => {
       const e = await escenario();
       await corrida({
         process: ProcessName.CYLINDER_RECOVERY,
@@ -269,49 +269,51 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
         distributorId: e.dB.distributorId,
       });
 
-      const a = await http()
+      await http()
         .get('/v2/process-runs/summary')
         .set(e.adminA.headers)
-        .expect(200);
-      const b = await http()
+        .expect(403);
+      await http()
         .get('/v2/process-runs/summary')
         .set(e.adminB.headers)
-        .expect(200);
+        .expect(403);
       type Item = {
         process: string;
         health: string;
         distributorId: string | null;
       };
       const de = (r: { body: unknown }) =>
-        (r.body as { items: Item[] }).items.filter(
-          (i) => i.process === 'cylinder_recovery',
-        );
-      expect(de(a).map((i) => [i.distributorId, i.health])).toEqual([
-        [e.dA.distributorId, 'failed'],
-      ]);
-      expect(de(b).map((i) => [i.distributorId, i.health])).toEqual([
-        [e.dB.distributorId, 'ok'],
-      ]);
+        (r.body as { items: Item[] }).items
+          .filter((i) => i.process === 'cylinder_recovery')
+          .map((i) => [i.distributorId, i.health]);
 
       const todas = await http()
         .get('/v2/process-runs/summary')
         .set(e.sup)
         .expect(200);
+      expect(de(todas)).toEqual(
+        expect.arrayContaining([
+          [e.dA.distributorId, 'failed'],
+          [e.dB.distributorId, 'ok'],
+        ]),
+      );
       expect(de(todas)).toHaveLength(2);
-      // El X-Distributor ya no filtra para el super admin: la empresa la ve en
-      // modo soporte.
-      const filtrada = await http()
+      const deB = await http()
+        .get(`/v2/process-runs/summary?distributorId=${e.dB.distributorId}`)
+        .set(e.sup)
+        .expect(200);
+      expect(de(deB)).toEqual([[e.dB.distributorId, 'ok']]);
+      // Es de plataforma: una sesión de soporte no lo achica a la empresa.
+      const enSoporte = await http()
         .get('/v2/process-runs/summary')
         .set((await conSesionDeSoporte(env.app, e.dB.distributorId)).cabeceras)
         .expect(200);
-      expect(de(filtrada).map((i) => i.distributorId)).toEqual([
-        e.dB.distributorId,
-      ]);
+      expect(de(enSoporte)).toHaveLength(2);
     });
   });
 
   describe('detalle de las corridas globales', () => {
-    it('el admin de una empresa ve sólo la salud de un proceso global; el super ve contadores y error', async () => {
+    it('el super ve contadores y error de los procesos globales; el admin de una empresa no ve el monitoreo', async () => {
       const e = await escenario();
       await corrida({
         process: ProcessName.MP_PENDING_RECONCILIATION,
@@ -319,54 +321,32 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
         counters: { applied: 42 },
         error: 'falló en 7 distribuidoras',
       });
-      await corrida({
-        process: ProcessName.CYLINDER_RECOVERY,
-        distributorId: e.dA.distributorId,
-        counters: { cases: 3 },
-      });
       type Run = {
         counters: Record<string, number>;
         error: string | null;
         distributorId: string | null;
       };
-      const resumen = async (headers: Headers) =>
-        Object.fromEntries(
-          (
-            (
-              await http()
-                .get('/v2/process-runs/summary')
-                .set(headers)
-                .expect(200)
-            ).body as {
-              items: Array<{ process: string; lastRun: Run | null }>;
-            }
-          ).items.map((i) => [i.process, i.lastRun]),
-        );
-      const admin = await resumen(e.adminA.headers);
-      expect(admin.mp_pending_reconciliation).toMatchObject({
-        counters: {},
-        error: null,
-      });
-      expect(admin.cylinder_recovery).toMatchObject({ counters: { cases: 3 } });
-      const super_ = await resumen(e.sup);
-      expect(super_.mp_pending_reconciliation).toMatchObject({
+      const resumen = Object.fromEntries(
+        (
+          (await http().get('/v2/process-runs/summary').set(e.sup).expect(200))
+            .body as {
+            items: Array<{ process: string; lastRun: Run | null }>;
+          }
+        ).items.map((i) => [i.process, i.lastRun]),
+      );
+      expect(resumen.mp_pending_reconciliation).toMatchObject({
         counters: { applied: 42 },
         error: 'falló en 7 distribuidoras',
       });
-
-      const lista = async (headers: Headers) =>
-        (
-          (await http().get('/v2/process-runs').set(headers).expect(200))
-            .body as { items: Array<Run & { process: string }> }
-        ).items;
-      const delAdmin = (await lista(e.adminA.headers)).find(
-        (r) => r.process === 'mp_pending_reconciliation',
-      );
-      expect(delAdmin).toMatchObject({ counters: {}, error: null });
-      const delSuper = (await lista(e.sup)).find(
-        (r) => r.process === 'mp_pending_reconciliation',
-      );
-      expect(delSuper?.counters).toEqual({ applied: 42 });
+      const lista = (
+        (await http().get('/v2/process-runs').set(e.sup).expect(200)).body as {
+          items: Array<Run & { process: string }>;
+        }
+      ).items;
+      expect(
+        lista.find((r) => r.process === 'mp_pending_reconciliation')?.counters,
+      ).toEqual({ applied: 42 });
+      await http().get('/v2/process-runs').set(e.adminA.headers).expect(403);
     });
   });
 
@@ -396,23 +376,23 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
         total: number;
       };
       const todas = (
-        await http().get('/v2/process-runs').set(e.adminA.headers).expect(200)
+        await http().get('/v2/process-runs').set(e.sup).expect(200)
       ).body as Lista;
-      expect(todas.total).toBe(3);
+      expect(todas.total).toBe(4);
 
       const pag = (
         await http()
           .get('/v2/process-runs?limit=1&offset=1')
-          .set(e.adminA.headers)
+          .set(e.sup)
           .expect(200)
       ).body as Lista;
       expect(pag.items).toHaveLength(1);
-      expect(pag.total).toBe(3);
+      expect(pag.total).toBe(4);
 
       const falladas = (
         await http()
           .get('/v2/process-runs?process=fleet_alerts&status=failed')
-          .set(e.adminA.headers)
+          .set(e.sup)
           .expect(200)
       ).body as Lista;
       expect(falladas.items).toHaveLength(1);
@@ -421,15 +401,19 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       const recientes = (
         await http()
           .get(`/v2/process-runs?from=${encodeURIComponent(desde)}`)
-          .set(e.adminA.headers)
+          .set(e.sup)
           .expect(200)
       ).body as Lista;
-      expect(recientes.total).toBe(1);
+      expect(recientes.total).toBe(2);
 
-      const delSuper = (
-        await http().get('/v2/process-runs').set(e.sup).expect(200)
+      // Filtrado por una empresa: sólo las suyas (sin las globales).
+      const deB = (
+        await http()
+          .get(`/v2/process-runs?distributorId=${e.dB.distributorId}`)
+          .set(e.sup)
+          .expect(200)
       ).body as Lista;
-      expect(delSuper.total).toBe(4);
+      expect(deB.total).toBe(1);
     });
 
     it.each([
@@ -441,18 +425,16 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       'limit=0',
       'limit=101',
       'offset=-1',
+      'distributorId=no-es-uuid',
     ])('el filtro %s es 400', async (filtro) => {
       const e = await escenario();
-      await http()
-        .get(`/v2/process-runs?${filtro}`)
-        .set(e.adminA.headers)
-        .expect(400);
+      await http().get(`/v2/process-runs?${filtro}`).set(e.sup).expect(400);
     });
   });
 
   describe('permisos', () => {
     it.each(['/v2/process-runs', '/v2/process-runs/summary'])(
-      '%s: sin token 401; cliente y chofer 403; admin con el origen de otra app 401',
+      '%s: sin token 401; cliente, chofer y admin de empresa 403; admin con el origen de otra app 401',
       async (ruta) => {
         const e = await escenario();
         await http().get(ruta).expect(401);
@@ -463,6 +445,8 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
           .expect(401);
         await http().get(ruta).set(e.cliente).expect(403);
         await http().get(ruta).set(e.chofer).expect(403);
+        await http().get(ruta).set(e.adminA.headers).expect(403);
+        await http().get(ruta).set(e.sup).expect(200);
         await http()
           .get(ruta)
           .set({ ...e.adminA.headers, 'X-Client-Source': 'customer-app' })
@@ -476,7 +460,7 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
   });
 
   describe('la vigilancia', () => {
-    it('avisa una vez por día: a todas las empresas con texto genérico si el proceso es global, y a la dueña con su detalle si es propio', async () => {
+    it('avisa una vez por día a la bandeja de la plataforma (no a las empresas), con el detalle y el nombre de la empresa', async () => {
       const e = await escenario();
       await corrida(
         {
@@ -519,35 +503,43 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
         .sort();
       expect(fallas).toEqual(
         [
-          [e.dA.distributorId, 'cylinder_recovery'],
-          [e.dA.distributorId, 'fleet_alerts'],
-          [e.dB.distributorId, 'fleet_alerts'],
-          [e.dA.distributorId, 'stock_low_alert'],
-          [e.dB.distributorId, 'stock_low_alert'],
+          [null, 'cylinder_recovery'],
+          [null, 'fleet_alerts'],
+          [null, 'stock_low_alert'],
         ].sort(),
       );
+      // Ninguno a una empresa: el monitoreo es de la plataforma.
+      expect(avisos.filter((a) => a.distributorId !== null)).toEqual([]);
       const global = avisos.find((a) =>
-        a.dedupeKey.startsWith('process-run:fleet_alerts:failed'),
+        a.dedupeKey.startsWith('process-run:fleet_alerts:global:failed'),
       );
       expect(global?.body).toBe(
-        'El proceso «Aviso de vencimientos de flota» terminó con error. El equipo técnico ya fue avisado.',
+        '«Aviso de vencimientos de flota» terminó con error. Último error: caído en 7 distribuidoras',
       );
-      expect(
-        JSON.stringify(
-          avisos.filter((a) => a.dedupeKey.includes('fleet_alerts')),
-        ),
-      ).not.toContain('7 distribuidoras');
       const propio = avisos.find((a) =>
-        a.dedupeKey.startsWith('process-run:cylinder_recovery'),
+        a.dedupeKey.startsWith(
+          `process-run:cylinder_recovery:${e.dA.distributorId}`,
+        ),
+      );
+      expect(propio?.title).toBe(
+        `Proceso automático: Recupero de envases de ${e.dA.name}`,
       );
       expect(propio?.body).toContain('propio');
+      // La bandeja del super (plataforma) lo muestra; la del admin de A, no.
+      const bandeja = async (headers: Headers) =>
+        (
+          (await http().get('/v2/admin-notifications').set(headers).expect(200))
+            .body as { items: Array<{ kind: string }> }
+        ).items.filter((i) => i.kind === 'process_run_alert').length;
+      expect(await bandeja(e.sup)).toBeGreaterThanOrEqual(3);
+      expect(await bandeja(e.adminA.headers)).toBe(0);
       const abandonada = await runs().findOneByOrFail({
         process: ProcessName.STOCK_LOW_ALERT,
       });
       expect(abandonada.status).toBe('failed');
     });
 
-    it('I1 falla y I2 se saltea después: el estado es failed y la empresa recibe el aviso', async () => {
+    it('I1 falla y I2 se saltea después: el estado es failed y la plataforma recibe el aviso', async () => {
       const e = await escenario();
       const registrador = env.app.get(ProcessRunRecorder);
       await expect(
@@ -569,8 +561,8 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       expect(filas.map((f) => f.status)).toEqual(['failed', 'skipped']);
 
       const res = await http()
-        .get('/v2/process-runs/summary')
-        .set(e.adminA.headers)
+        .get(`/v2/process-runs/summary?distributorId=${e.dA.distributorId}`)
+        .set(e.sup)
         .expect(200);
       const item = (
         res.body as { items: Array<{ process: string; health: string }> }
@@ -583,7 +575,8 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
         .getRepository(AdminNotification)
         .find({ where: { kind: 'process_run_alert' } });
       expect(avisos).toHaveLength(1);
-      expect(avisos[0].distributorId).toBe(e.dA.distributorId);
+      expect(avisos[0].distributorId).toBeNull();
+      expect(avisos[0].dedupeKey).toContain(e.dA.distributorId);
     });
 
     it('una corrida manual sí cuenta para la salud', async () => {
@@ -600,7 +593,7 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       );
       const res = await http()
         .get('/v2/process-runs/summary')
-        .set(e.adminA.headers)
+        .set(e.sup)
         .expect(200);
       const item = (
         res.body as { items: Array<{ process: string; health: string }> }
@@ -622,7 +615,7 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       );
       const res = await http()
         .get('/v2/process-runs/summary')
-        .set(e.adminA.headers)
+        .set(e.sup)
         .expect(200);
       const item = (
         res.body as { items: Array<{ process: string; health: string }> }

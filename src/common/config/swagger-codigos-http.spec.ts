@@ -153,9 +153,14 @@ describe('Swagger: códigos HTTP documentados', () => {
   });
 
   it('un endpoint de empresa abierto al super admin documenta los 403 del modo soporte', () => {
-    const r = respuestas('get', '/api/v2/process-runs');
+    const r = respuestas('get', '/api/v1/orders');
     expect(r['403']?.description).toMatch(/SUPPORT_SESSION_REQUIRED/);
     expect(r['403']?.description).toMatch(/SUPPORT_READ_ONLY/);
+  });
+
+  it('el monitoreo de procesos es de la plataforma: su 403 es por rol', () => {
+    const r = respuestas('get', '/api/v2/process-runs');
+    expect(r['403']?.description).toBe('Requiere rol: super_admin');
   });
 
   it('todo endpoint con ParseUUIDPipe de esos controllers declara su 400', () => {

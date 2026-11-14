@@ -28,6 +28,12 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
   `("link_entity" IS NULL) = ("link_id" IS NULL)`,
 )
 @Unique('UQ_admin_notification_dedupe', ['distributorId', 'dedupeKey'])
+// La bandeja de la plataforma (`distributor_id` nulo): el único de arriba no
+// compara nulos, así que la deduplicación de esos avisos va en un único parcial.
+@Index('UQ_admin_notification_dedupe_plataforma', ['dedupeKey'], {
+  unique: true,
+  where: '"distributor_id" IS NULL',
+})
 // El orden DESC no lo modela TypeORM: el índice real se crea en la migración y
 // `synchronize: false` evita que `migration:generate` lo quiera cambiar.
 @Index('IDX_admin_notification_distribuidora', { synchronize: false })
@@ -37,12 +43,13 @@ export class AdminNotification {
   @PrimaryGeneratedColumn('uuid', { name: 'notification_id' })
   notificationId!: string;
 
-  @ManyToOne(() => Distributor, { nullable: false, onDelete: 'RESTRICT' })
+  @ManyToOne(() => Distributor, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ name: 'distributor_id', type: 'uuid' })
-  distributorId!: string;
+  /** `null`: aviso de la plataforma (bandeja del administrador general). */
+  @Column({ name: 'distributor_id', type: 'uuid', nullable: true })
+  distributorId!: string | null;
 
   @Column({ type: 'varchar', length: 60 })
   kind!: string;

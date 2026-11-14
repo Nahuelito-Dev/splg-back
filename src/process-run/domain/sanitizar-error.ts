@@ -1,4 +1,4 @@
-const MAX_ERROR = 500;
+const MAX_ERROR = 300;
 const OCULTO = '[oculto]';
 
 /**
@@ -8,12 +8,23 @@ const OCULTO = '[oculto]';
  */
 export function sanitizarError(mensaje: string): string {
   return mensaje
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s@/]+@[^\s]+/gi, (url) =>
+      url.replace(/:\/\/[^\s/:@]+:[^\s@/]+@/, `://${OCULTO}@`),
+    )
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${OCULTO}`)
+    .replace(/Basic\s+[A-Za-z0-9+/]+={0,2}/gi, `Basic ${OCULTO}`)
     .replace(
-      /\b(token|password|passwd|secret|api[_-]?key|authorization|access_token)(["']?\s*[=:]\s*["']?)[^\s"',;&]+/gi,
+      /(^|[^A-Za-z0-9])(client[_-]?secret|refresh[_-]?token|access[_-]?token|pwd|pass(?:word|wd)?|token|secret|api[_-]?key|authorization|google[_-]?key)(["']?\s*[=:]\s*["']?)[^\s"',;&]+/gi,
+      `$1$2$3${OCULTO}`,
+    )
+    .replace(/AIza[\w-]{20,}/g, OCULTO)
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, OCULTO)
+    .replace(
+      /\b(tel(?:ephone|[ée]fono)?|phone|mobile|celular)(["']?\s*[=:]\s*["']?)[+\d][\d\s().-]{7,}\d/gi,
       `$1$2${OCULTO}`,
     )
-    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, OCULTO)
+    .replace(/\+\d(?:[\d\s().-]*\d){7,}/g, OCULTO)
+    .replace(/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/g, OCULTO)
     .replace(/\b[A-Za-z0-9_-]{32,}\b/g, OCULTO)
     .trim()
     .slice(0, MAX_ERROR);
