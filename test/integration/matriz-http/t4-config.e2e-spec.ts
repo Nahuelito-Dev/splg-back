@@ -175,13 +175,17 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     ),
     tasks('sin token', undefined, 401),
     tasks('cliente', 'clienteA', 403),
-    putTasks('guarda y relee', 'adminA', 200, {
-      body: { dispatchRetrySeconds: 30 },
+    // v1 está congelada: conserva las frecuencias aunque la plataforma tenga su PUT v2.
+    putTasks('guarda frecuencias y hora, y relee', 'adminA', 200, {
+      body: { fleetAlertHour: 7, dispatchRetrySeconds: 30 },
       verificar: async (_b, c) =>
         expect(
           (await llamar(c, 'get', '/module-config/scheduled_tasks', 'adminA'))
             .body,
-        ).toMatchObject({ dispatchRetrySeconds: 30 }),
+        ).toMatchObject({ fleetAlertHour: 7, dispatchRetrySeconds: 30 }),
+    }),
+    putTasks('hora inválida', 'adminA', 400, {
+      body: { fleetAlertHour: 24 },
     }),
     putTasks('intervalo inválido', 'adminA', 400, {
       body: { dispatchRetrySeconds: 17 },

@@ -13,7 +13,8 @@ export function idCortoDePedido(orderId: string): string {
 }
 
 interface AvisoAlAdmin {
-  distributorId: string;
+  /** `null`: aviso de la plataforma, no de una empresa. */
+  distributorId: string | null;
   kind: string;
   title: string;
   body: string;

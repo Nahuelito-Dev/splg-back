@@ -18,7 +18,8 @@ export interface DestinoDelAviso {
 
 export class NotificarAdminEvent {
   constructor(
-    readonly distributorId: string,
+    /** `null`: aviso de la plataforma (bandeja y sala `platform` del administrador general). */
+    readonly distributorId: string | null,
     /** Tipo de aviso, ej.: `fleet_document_due`, `insurance_installment_due`. */
     readonly kind: string,
     readonly title: string,

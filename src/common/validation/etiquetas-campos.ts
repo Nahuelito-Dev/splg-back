@@ -353,6 +353,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   emergency: 'Acceso de emergencia',
   emergencyAllowed: 'Permitir accesos de emergencia',
   minutes: 'Duración (minutos)',
+  month: 'Mes',
   requestedBy: 'Pedido por',
   scope: 'Alcance',
   ticketRef: 'Referencia del pedido de ayuda',

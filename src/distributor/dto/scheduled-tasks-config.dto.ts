@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 import { EsMultiploDe } from '../../common/validators/es-multiplo-de.validator';
 import {
@@ -66,6 +66,12 @@ export class ScheduledTasksConfigDto {
   @Max(23)
   fleetAlertHour?: number;
 }
+
+/** Cuerpo de `PUT /v2/module-config/scheduled_tasks`: sólo la hora de empresa. */
+export class EmpresaScheduledTasksDto extends PickType(
+  ScheduledTasksConfigDto,
+  ['fleetAlertHour'] as const,
+) {}
 
 /** Respuesta de `GET`/`PUT /module-config/scheduled_tasks`. */
 export class ScheduledTasksConfigResponseDto {

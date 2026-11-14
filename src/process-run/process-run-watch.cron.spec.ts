@@ -47,9 +47,26 @@ function armar(
   };
   const distributors = {
     findAll: jest.fn().mockResolvedValue([
-      { distributorId: 'd1', status: DistributorStatus.ACTIVE },
-      { distributorId: 'd2', status: DistributorStatus.ACTIVE },
-      { distributorId: 'd3', status: DistributorStatus.SUSPENDED },
+      {
+        distributorId: 'd1',
+        name: 'Empresa 1',
+        status: DistributorStatus.ACTIVE,
+      },
+      {
+        distributorId: 'd2',
+        name: 'Empresa 2',
+        status: DistributorStatus.ACTIVE,
+      },
+      {
+        distributorId: 'd3',
+        name: 'Empresa 3',
+        status: DistributorStatus.SUSPENDED,
+      },
+      {
+        distributorId: 'd4',
+        name: 'Empresa 4',
+        status: DistributorStatus.ACTIVE,
+      },
     ]),
   };
   const events = { emit: jest.fn() };
@@ -75,13 +92,13 @@ const emitidos = (events: { emit: jest.Mock }) =>
   ]);
 
 describe('ProcessRunWatchCron', () => {
-  it('un proceso global con alerta avisa a todas las empresas activas con un texto genérico, sin contadores ni error', async () => {
+  it('un proceso global con alerta avisa UNA vez a la bandeja de la plataforma, no a las empresas', async () => {
     const { cron, events } = armar([
       {
         proceso: ProcessName.REPURCHASE_ANTICIPATE,
         distributorId: null,
         salud: ProcessHealth.LATE,
-        error: 'connect ECONNREFUSED 10.0.0.1',
+        error: 'El proveedor no respondió',
       },
       {
         proceso: ProcessName.STOCK_LOW_ALERT,
@@ -90,28 +107,40 @@ describe('ProcessRunWatchCron', () => {
       },
     ]);
     const r = await cron.vigilar(AHORA);
-    expect(r.alerts).toBe(2);
+    expect(r.alerts).toBe(1);
     expect(emitidos(events)).toEqual([
       [
         EVENTO_NOTIFICAR_ADMIN,
-        'd1',
-        'process-run:repurchase_anticipate:late:2026-11-03',
-      ],
-      [
-        EVENTO_NOTIFICAR_ADMIN,
-        'd2',
-        'process-run:repurchase_anticipate:late:2026-11-03',
+        null,
+        'process-run:repurchase_anticipate:global:late:2026-11-03',
       ],
     ]);
     const evento = eventoDe(events);
-    expect(evento.body).toBe(
-      'El proceso «Recompra: invitaciones anticipadas» no corrió a tiempo. El equipo técnico ya fue avisado.',
+    expect(evento.title).toBe(
+      'Proceso automático: Recompra: invitaciones anticipadas',
     );
-    expect(evento.body).not.toMatch(/ECONNREFUSED|10\.0\.0\.1/);
+    expect(evento.body).toBe(
+      '«Recompra: invitaciones anticipadas» no corrió a tiempo. Último error: El proveedor no respondió',
+    );
     expect(evento.link).toEqual({
       entity: 'process-run',
       id: 'repurchase_anticipate',
     });
+  });
+
+  it('sanea el error antes de enviarlo en el aviso', async () => {
+    const { cron, events } = armar([
+      {
+        proceso: ProcessName.REPURCHASE_ANTICIPATE,
+        distributorId: null,
+        salud: ProcessHealth.FAILED,
+        error: 'Bearer secreto token=otro email persona@empresa.com',
+      },
+    ]);
+    await cron.vigilar(AHORA);
+    const body = eventoDe(events).body;
+    expect(body).toContain('[oculto]');
+    expect(body).not.toMatch(/secreto|otro|persona@empresa/);
   });
 
   it.each([
@@ -162,7 +191,7 @@ describe('ProcessRunWatchCron', () => {
     expect(vacio.events.emit).not.toHaveBeenCalled();
   });
 
-  it('una corrida de una distribuidora avisa sólo a esa', async () => {
+  it('una corrida de una empresa se avisa a la plataforma, con el nombre de la empresa', async () => {
     const { cron, events } = armar([
       {
         proceso: ProcessName.CYLINDER_RECOVERY,
@@ -174,8 +203,40 @@ describe('ProcessRunWatchCron', () => {
     expect(emitidos(events)).toEqual([
       [
         EVENTO_NOTIFICAR_ADMIN,
-        'd2',
-        'process-run:cylinder_recovery:failed:2026-11-03',
+        null,
+        'process-run:cylinder_recovery:d2:failed:2026-11-03',
+      ],
+    ]);
+    expect(eventoDe(events).title).toBe(
+      'Proceso automático: Recupero de envases de Empresa 2',
+    );
+  });
+
+  it('una empresa activa se vigila; una suspendida o inexistente no', async () => {
+    const { cron, events } = armar([
+      {
+        proceso: ProcessName.CYLINDER_RECOVERY,
+        distributorId: 'd4',
+        salud: ProcessHealth.FAILED,
+      },
+      {
+        proceso: ProcessName.CYLINDER_RECOVERY,
+        distributorId: 'd3',
+        salud: ProcessHealth.FAILED,
+      },
+      {
+        proceso: ProcessName.CYLINDER_RECOVERY,
+        distributorId: 'd9',
+        salud: ProcessHealth.FAILED,
+      },
+    ]);
+    const r = await cron.vigilar(AHORA);
+    expect(r.alerts).toBe(1);
+    expect(emitidos(events)).toEqual([
+      [
+        EVENTO_NOTIFICAR_ADMIN,
+        null,
+        'process-run:cylinder_recovery:d4:failed:2026-11-03',
       ],
     ]);
   });

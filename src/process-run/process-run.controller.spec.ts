@@ -45,7 +45,7 @@ describe('ProcessRunController (API v2)', () => {
 
   beforeEach(() => {
     distributorId = 'd1';
-    role = RoleType.ADMIN;
+    role = RoleType.SUPER_ADMIN;
     service.resumen.mockResolvedValue({
       items: [],
       alerts: 0,
@@ -58,18 +58,25 @@ describe('ProcessRunController (API v2)', () => {
     await app.close();
   });
 
-  it('GET summary usa la distribuidora del contexto', async () => {
+  it('GET summary es de toda la plataforma: no usa el tenant del contexto', async () => {
     await request(app.getHttpServer())
       .get('/api/v2/process-runs/summary')
       .expect(200);
-    expect(service.resumen).toHaveBeenCalledWith('d1', false);
+    expect(service.resumen).toHaveBeenCalledWith(null);
   });
 
-  it('el super admin sin X-Distributor consulta con null', async () => {
-    distributorId = null;
-    role = RoleType.SUPER_ADMIN;
-    await request(app.getHttpServer()).get('/api/v2/process-runs').expect(200);
-    expect(service.listar).toHaveBeenCalledWith(null, true, expect.anything());
+  it('GET summary filtra por la empresa pedida', async () => {
+    await request(app.getHttpServer())
+      .get(
+        '/api/v2/process-runs/summary?distributorId=8c2f5b2e-1d3a-4c5b-9e6f-0a1b2c3d4e5f',
+      )
+      .expect(200);
+    expect(service.resumen).toHaveBeenCalledWith(
+      '8c2f5b2e-1d3a-4c5b-9e6f-0a1b2c3d4e5f',
+    );
+    await request(app.getHttpServer())
+      .get('/api/v2/process-runs/summary?distributorId=nada')
+      .expect(400);
   });
 
   it('el historial pasa los filtros convertidos y los valores por omisión', async () => {
@@ -78,7 +85,7 @@ describe('ProcessRunController (API v2)', () => {
         '/api/v2/process-runs?process=fleet_alerts&status=failed&from=2026-11-01&to=2026-11-03T10:00:00Z&limit=5&offset=10',
       )
       .expect(200);
-    expect(service.listar).toHaveBeenCalledWith('d1', false, {
+    expect(service.listar).toHaveBeenCalledWith({
       process: 'fleet_alerts',
       status: 'failed',
       from: '2026-11-01',
@@ -87,13 +94,14 @@ describe('ProcessRunController (API v2)', () => {
       offset: 10,
     });
     await request(app.getHttpServer()).get('/api/v2/process-runs').expect(200);
-    expect(service.listar).toHaveBeenLastCalledWith('d1', false, {
+    expect(service.listar).toHaveBeenLastCalledWith({
       limit: 20,
       offset: 0,
     });
   });
 
   it.each([
+    'distributorId=no-es-uuid',
     'process=inventado',
     'status=roto',
     'from=ayer',

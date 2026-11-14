@@ -11,6 +11,21 @@ import {
   sonLosDeOmision,
 } from './scheduled-tasks-settings';
 
+/** Las frecuencias (de máquina) que también configura la plataforma en v2. */
+export const TAREAS_CON_INTERVALO = Object.keys(
+  TIC_SEGUNDOS,
+) as TareaConIntervalo[];
+
+/** Lo que fija la empresa: a qué hora se le avisa de sus vencimientos de flota. */
+export const CAMPOS_DE_LA_EMPRESA: readonly (keyof ScheduledTasksSettings)[] = [
+  'fleetAlertHour',
+];
+
+const TODOS_LOS_CAMPOS: readonly (keyof ScheduledTasksSettings)[] = [
+  ...TAREAS_CON_INTERVALO,
+  ...CAMPOS_DE_LA_EMPRESA,
+];
+
 /** Lo que devuelve la API: la frecuencia vigente y quién la modificó. */
 export interface ScheduledTasksVigentes extends ScheduledTasksSettings {
   isDefault: boolean;
@@ -103,6 +118,71 @@ export class ScheduledTasksSettingsService {
       );
     }
     return this.vigentes(distributorId);
+  }
+
+  /**
+   * Lo que cambia la plataforma (`PUT /v2/platform/companies/{id}/scheduled-tasks`):
+   * las cuatro frecuencias, por merge. La hora del aviso de flota de la empresa
+   * se conserva.
+   */
+  guardarDeLaPlataforma(
+    distributorId: string,
+    settings: Partial<Record<TareaConIntervalo, number>>,
+    actorUserId: string,
+  ): Promise<ScheduledTasksVigentes> {
+    return this.guardarParte(
+      distributorId,
+      settings,
+      TAREAS_CON_INTERVALO,
+      actorUserId,
+    );
+  }
+
+  /**
+   * Una escritura de la empresa que sólo trae su hora no debe pisar las
+   * frecuencias que acaba de fijar la plataforma. La ruta v1 conserva su
+   * contrato histórico: si trae una frecuencia, usa `guardar` y la persiste.
+   */
+  guardarHoraDeLaEmpresa(
+    distributorId: string,
+    settings: Pick<Partial<ScheduledTasksSettings>, 'fleetAlertHour'>,
+    actorUserId: string,
+  ): Promise<ScheduledTasksVigentes> {
+    return this.guardarParte(
+      distributorId,
+      settings,
+      CAMPOS_DE_LA_EMPRESA,
+      actorUserId,
+    );
+  }
+
+  /** Actualiza los campos `propios` que llegaron y conserva el resto. */
+  private async guardarParte(
+    distributorId: string,
+    settings: Partial<ScheduledTasksSettings>,
+    propios: readonly (keyof ScheduledTasksSettings)[],
+    actorUserId: string,
+  ): Promise<ScheduledTasksVigentes> {
+    const fila = await this.configs.fila(
+      distributorId,
+      ConfigurableProcess.SCHEDULED_TASKS,
+    );
+    const guardados = (fila?.params ?? {}) as Partial<ScheduledTasksSettings>;
+    const conservados: Partial<ScheduledTasksSettings> = {};
+    for (const campo of TODOS_LOS_CAMPOS) {
+      if (guardados[campo] != null) {
+        conservados[campo] = guardados[campo];
+      }
+    }
+    const nuevos: Partial<ScheduledTasksSettings> = {};
+    for (const campo of propios) {
+      if (settings[campo] != null) nuevos[campo] = settings[campo];
+    }
+    return this.guardar(
+      distributorId,
+      { ...conservados, ...nuevos },
+      actorUserId,
+    );
   }
 
   /**

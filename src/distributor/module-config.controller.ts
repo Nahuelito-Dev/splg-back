@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Version } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -18,6 +18,7 @@ import {
 } from './dto/dispatch-config.dto';
 import {
   ScheduledTasksConfigDto,
+  EmpresaScheduledTasksDto,
   ScheduledTasksConfigResponseDto,
 } from './dto/scheduled-tasks-config.dto';
 import { ProcessConfigResponseDto } from './dto/process-config.dto';
@@ -32,8 +33,9 @@ const FALTA_DISTRIBUIDORA =
 
 /**
  * Parámetros por distribuidora de los procesos configurables: el despacho de
- * pedidos (CU-171) y la frecuencia de las tareas programadas (CU-173). El admin
- * de empresa opera sobre la suya; el super admin elige con `X-Distributor`.
+ * pedidos (CU-171) y las tareas programadas (CU-173). La ruta v1 conserva sus
+ * frecuencias históricas; la escritura nueva de plataforma vive en v2. El admin
+ * de empresa opera sobre la suya; el super admin la lee en modo soporte.
  */
 @ApiTags('Configuración · Parámetros por distribuidora')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
@@ -82,7 +84,7 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Frecuencia de las tareas programadas de la distribuidora',
     description:
-      'Intervalo (s) de cada tarea y hora del aviso de vencimientos de flota. Sin configuración, los valores por omisión (los vigentes antes de CU-173).',
+      'Ruta v1 congelada: intervalos (s) de cada tarea y hora del aviso de vencimientos de flota. Sin configuración, los valores por omisión (los vigentes antes de CU-173). Las frecuencias están deprecadas en v1; la escritura nueva de plataforma vive en v2.',
   })
   @ApiOkResponse({ type: ScheduledTasksConfigResponseDto })
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
@@ -95,18 +97,41 @@ export class ModuleConfigController {
   @Permiso('configuracion.gestionar')
   @Put('scheduled_tasks')
   @ApiOperation({
-    summary: 'Cambiar la frecuencia de las tareas programadas',
+    summary: 'Cambiar las tareas programadas de la distribuidora',
     description:
-      'Reemplaza la configuración. Cada intervalo es un múltiplo entero del ciclo de base de su tarea (15 s, 5 min, 1 h, 30 min) y de hasta 24 h; la hora del aviso de flota va de 0 a 23. Al guardar se borran las marcas de última ejecución de la distribuidora: los intervalos nuevos rigen desde el ciclo siguiente.',
+      'Ruta v1 congelada: conserva el contrato histórico y acepta las cuatro frecuencias y `fleetAlertHour`. Reemplaza toda la configuración: lo omitido vuelve a su valor por omisión. Las frecuencias están deprecadas en v1; los clientes nuevos las administran con `PUT /v2/platform/companies/{id}/scheduled-tasks`.',
   })
   @ApiOkResponse({ type: ScheduledTasksConfigResponseDto })
-  @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })
+  @ApiBadRequestResponse({
+    description: `Intervalo u hora inválidos, o ${FALTA_DISTRIBUIDORA}`,
+  })
   putScheduledTasks(
     @Body() dto: ScheduledTasksConfigDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
   ): Promise<ScheduledTasksConfigResponseDto> {
     return this.tasks.guardar(distributorId, dto, actorUserId);
+  }
+
+  /** La escritura nueva del panel de empresa: sólo su hora, por merge. */
+  @Version('2')
+  @Permiso('configuracion.gestionar')
+  @Put('scheduled_tasks')
+  @ApiOperation({
+    summary: 'Cambiar la hora del aviso de flota de la distribuidora',
+    description:
+      'Ruta v2 para el panel de empresa. Actualiza sólo `fleetAlertHour` y conserva las frecuencias que administra la plataforma en `PUT /v2/platform/companies/{id}/scheduled-tasks`.',
+  })
+  @ApiOkResponse({ type: ScheduledTasksConfigResponseDto })
+  @ApiBadRequestResponse({
+    description: `Hora inválida, frecuencia no permitida o ${FALTA_DISTRIBUIDORA}`,
+  })
+  putScheduledTasksV2(
+    @Body() dto: EmpresaScheduledTasksDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') actorUserId: string,
+  ): Promise<ScheduledTasksConfigResponseDto> {
+    return this.tasks.guardarHoraDeLaEmpresa(distributorId, dto, actorUserId);
   }
 
   // Las rutas genéricas van DESPUÉS de las fijas (dispatch, scheduled_tasks): Nest

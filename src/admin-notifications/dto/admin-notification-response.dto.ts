@@ -45,8 +45,13 @@ export class AdminNotificationResponseDto {
 
 /** Lo que llega al panel por el socket (`admin:notification`): el aviso más su empresa, para que el super admin filtre. */
 export class AdminNotificationLiveDto extends AdminNotificationResponseDto {
-  @ApiPropertyOptional({ format: 'uuid' })
-  distributorId!: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'La empresa del aviso; `null` en un aviso de la plataforma',
+  })
+  distributorId!: string | null;
 }
 
 export class AdminNotificationListResponseDto {

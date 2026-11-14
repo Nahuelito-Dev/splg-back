@@ -28,6 +28,10 @@ export type CambiosAuditados = Record<string, unknown>;
  */
 @Entity('audit_log')
 @Index('IDX_audit_log_created_at', ['createdAt'])
+@Index('IDX_audit_log_distributor_created_at_desc', [
+  'distributorId',
+  'createdAt',
+])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid', { name: 'audit_id' })
   auditId!: string;

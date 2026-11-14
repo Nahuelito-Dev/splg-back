@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Put,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Param, ParseUUIDPipe, Put } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -23,8 +15,6 @@ import { DistributorService } from '../distributor/distributor.service';
 import type { Distributor } from '../distributor/entities/distributor.entity';
 import {
   PlatformCompanyDto,
-  PlatformCompanyListDto,
-  QueryPlatformCompaniesDto,
   SetOwnedByPlatformDto,
 } from './dto/platform-companies.dto';
 
@@ -51,24 +41,6 @@ export function aEmpresaDePlataforma(d: Distributor): PlatformCompanyDto {
 @Controller({ path: 'platform/companies', version: '2' })
 export class PlatformCompaniesController {
   constructor(private readonly distribuidoras: DistributorService) {}
-
-  @Get()
-  @ApiOperation({
-    summary: 'Empresas de la plataforma',
-    description:
-      'Las vigentes (sin las dadas de baja), primero las propias de la plataforma y después por nombre, paginado. `ownedByPlatform` dice si el administrador general la opera directo (con `X-Distributor`, sin sesión de soporte).',
-  })
-  @ApiOkResponse({ type: PlatformCompanyListDto })
-  @ApiBadRequestResponse({
-    description:
-      'Filtro inválido: `ownedByPlatform` que no es true/false, estado desconocido o paginación fuera de rango',
-  })
-  async listar(
-    @Query() query: QueryPlatformCompaniesDto,
-  ): Promise<PlatformCompanyListDto> {
-    const { items, total } = await this.distribuidoras.listarEmpresas(query);
-    return { items: items.map(aEmpresaDePlataforma), total };
-  }
 
   @Put(':id/owned-by-platform')
   @ApiOperation({

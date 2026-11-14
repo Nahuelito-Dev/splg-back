@@ -106,7 +106,17 @@ const PLATAFORMA = [
   'GET /distributor/:id',
   'GET /role',
   'GET /role/:id',
+  // Panel de plataforma (E3) y monitoreo de procesos (pasó de «ambos» a plataforma).
+  'GET /v2/platform/activity',
   'GET /v2/platform/companies',
+  'GET /v2/platform/companies/:id',
+  'GET /v2/platform/companies/:id/scheduled-tasks',
+  'GET /v2/platform/document-reading-usage',
+  'GET /v2/platform/overview',
+  'GET /v2/platform/processes',
+  'GET /v2/process-runs',
+  'GET /v2/process-runs/summary',
+  'PUT /v2/platform/companies/:id/scheduled-tasks',
   'GET /v2/support-sessions',
   'GET /v2/support-sessions/:id',
   'GET /v2/support-sessions/:id/accesses',
@@ -144,8 +154,6 @@ const AMBOS = [
   'GET /v2/audit/entries/:id',
   'GET /v2/me/permissions',
   'GET /v2/permissions',
-  'GET /v2/process-runs',
-  'GET /v2/process-runs/summary',
   'PATCH /admin/:id',
   'PATCH /users/:id',
   'PATCH /users/:id/block',
@@ -200,6 +208,12 @@ describe('alcance de cada ruta para el super admin (modo soporte)', () => {
     const empresa = de('empresa');
     expect(empresa).toContain('GET /user-address');
     expect(empresa).toContain('POST /notifications/order-confirmation');
+  });
+
+  it('la frecuencia de las tareas programadas de la empresa (v1) sigue siendo de empresa: la plataforma la cambia por v2', () => {
+    const empresa = de('empresa');
+    expect(empresa).toContain('GET /module-config/scheduled_tasks');
+    expect(empresa).toContain('PUT /module-config/scheduled_tasks');
   });
 
   it('el lado de la empresa del modo soporte no es del super admin', () => {

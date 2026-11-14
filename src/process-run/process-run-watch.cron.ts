@@ -19,6 +19,7 @@ import { FACTOR_DE_ATRASO, SALUD_CON_ALERTA } from './domain/process-health';
 import { ProcessRun } from './entities/process-run.entity';
 import { ConRegistro } from './process-run.recorder';
 import { ProcessRunService } from './process-run.service';
+import { sanitizarError } from './domain/sanitizar-error';
 
 export const RETENCION_POR_DEFECTO_DIAS = 30;
 /** Una corrida `running` más vieja que esto se cierra como fallida: el proceso murió sin terminarla. */
@@ -32,8 +33,9 @@ const TEXTO: Partial<Record<ProcessHealth, string>> = {
 };
 
 /**
- * Vigila los procesos automáticos (F31): cada cinco minutos avisa a los
- * administradores de los que están atrasados, fallaron o quedaron colgados, y
+ * Vigila los procesos automáticos (F31): cada cinco minutos avisa a la
+ * plataforma (bandeja del administrador general) de los que están atrasados,
+ * fallaron o quedaron colgados, y
  * una vez por día purga el historial viejo sin perder la última corrida de
  * cada proceso. El aviso no se repite en el día (dedupe por proceso, estado y día).
  */
@@ -57,8 +59,9 @@ export class ProcessRunWatchCron {
   ): Promise<{ alerts: number; closed: number }> {
     const closed = await this.cerrarAbandonadas(ahora);
     const estados = await this.service.estados(null, ahora);
-    const activas = (await this.distributors.findAll()).filter(
-      (d) => d.status === DistributorStatus.ACTIVE,
+    // El nombre de cada empresa, para el texto del aviso (una sola consulta).
+    const nombres = new Map(
+      (await this.distributors.findAll()).map((d) => [d.distributorId, d]),
     );
     const dia = diaArgentino(ahora);
     const desde = await this.primeraCorrida();
@@ -67,28 +70,30 @@ export class ProcessRunWatchCron {
       // La vigilancia no se avisa a sí misma: si no corre, nadie la ve.
       if (e.proceso === ProcessName.PROCESS_RUN_WATCH) continue;
       if (!this.merecedoDeAviso(e.salud, e.proceso, desde, ahora)) continue;
-      const titulo = CATALOGO[e.proceso].title;
-      // Una corrida global es de la plataforma: a todas las empresas se les avisa con un texto
-      // genérico, sin contadores ni error (ese detalle es sólo del administrador general, en el
-      // tablero). La corrida de una empresa se avisa a esa empresa, con su detalle.
-      const global = e.distributorId === null;
-      const destinos = global
-        ? activas
-        : activas.filter((d) => d.distributorId === e.distributorId);
-      const cuerpo = global
-        ? `El proceso «${titulo}» ${TEXTO[e.salud]}. El equipo técnico ya fue avisado.`
-        : `«${titulo}» ${TEXTO[e.salud]}.${e.ultima?.error ? ` Último error: ${e.ultima.error}` : ''}`;
-      for (const d of destinos) {
-        pedirAvisoAlAdmin(this.events, this.logger, {
-          distributorId: d.distributorId,
-          kind: 'process_run_alert',
-          title: `Proceso automático: ${titulo}`,
-          body: cuerpo,
-          link: { entity: 'process-run', id: e.proceso },
-          dedupeKey: `process-run:${e.proceso}:${e.salud}:${dia}`,
-        });
-        alerts += 1;
+      // El monitoreo es de la plataforma: un proceso atrasado, fallido o
+      // trabado es un problema técnico, que se avisa a la bandeja de la
+      // plataforma (sala `platform`), no a la empresa. Lo que pide una acción
+      // del negocio (vencimientos de flota, multas, recompra) lo avisa cada
+      // proceso a su empresa, no este monitoreo. De una empresa suspendida o
+      // dada de baja no se avisa: sus procesos no corren a propósito.
+      const empresa = e.distributorId ? nombres.get(e.distributorId) : null;
+      if (
+        e.distributorId &&
+        (!empresa || empresa.status !== DistributorStatus.ACTIVE)
+      ) {
+        continue;
       }
+      const titulo = CATALOGO[e.proceso].title;
+      const deQuien = empresa ? ` de ${empresa.name}` : '';
+      pedirAvisoAlAdmin(this.events, this.logger, {
+        distributorId: null,
+        kind: 'process_run_alert',
+        title: `Proceso automático: ${titulo}${deQuien}`,
+        body: `«${titulo}»${deQuien} ${TEXTO[e.salud]}.${e.ultima?.error ? ` Último error: ${sanitizarError(e.ultima.error)}` : ''}`,
+        link: { entity: 'process-run', id: e.proceso },
+        dedupeKey: `process-run:${e.proceso}:${e.distributorId ?? 'global'}:${e.salud}:${dia}`,
+      });
+      alerts += 1;
     }
     return { alerts, closed };
   }

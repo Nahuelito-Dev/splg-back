@@ -153,12 +153,31 @@ export class ProcessRunService {
     return estados;
   }
 
+  /**
+   * La salud de cada proceso (monitoreo de la plataforma): una fila por
+   * proceso y empresa, más las corridas globales. Con `distributorId`, sólo las
+   * de esa empresa (sin las globales).
+   */
   async resumen(
-    distributorId: string | null,
-    esSuper: boolean,
+    distributorId: string | null = null,
   ): Promise<ProcessSummaryResponseDto> {
     const ahora = new Date();
-    const estados = await this.estados(distributorId, ahora);
+    const estados = (await this.estados(null, ahora)).filter(
+      (e) => !distributorId || e.distributorId === distributorId,
+    );
+    if (distributorId) {
+      const presentes = new Set(estados.map((e) => e.proceso));
+      for (const proceso of Object.values(ProcessName)) {
+        if (presentes.has(proceso)) continue;
+        estados.push({
+          proceso,
+          distributorId,
+          ultima: null,
+          ultimaBuena: null,
+          salud: ProcessHealth.NEVER,
+        });
+      }
+    }
     const items = estados.map((e): ProcessSummaryItemDto => {
       const dto = new ProcessSummaryItemDto();
       dto.process = e.proceso;
@@ -166,7 +185,7 @@ export class ProcessRunService {
       dto.module = CATALOGO[e.proceso].module;
       dto.distributorId = e.distributorId;
       dto.health = e.salud;
-      dto.lastRun = e.ultima ? ProcessRunMapper.toDto(e.ultima, esSuper) : null;
+      dto.lastRun = e.ultima ? ProcessRunMapper.toDto(e.ultima, true) : null;
       dto.lastOkAt = e.ultimaBuena;
       dto.expectedEverySeconds = periodoEsperadoSeg(e.proceso);
       dto.nextExpectedAt = e.ultima
@@ -181,20 +200,52 @@ export class ProcessRunService {
     };
   }
 
-  async listar(
-    distributorId: string | null,
-    esSuper: boolean,
-    query: QueryProcessRunsDto,
-  ): Promise<ProcessRunListResponseDto> {
+  /**
+   * Corridas fallidas desde `desde`, por proceso y empresa (una sola consulta
+   * agrupada; `distributorId` nulo es la corrida global).
+   */
+  async fallasDesde(desde: Date): Promise<
+    Array<{
+      process: ProcessName;
+      distributorId: string | null;
+      failures: number;
+    }>
+  > {
+    const filas = await this.runs
+      .createQueryBuilder('r')
+      .select('r.process', 'process')
+      .addSelect('r.distributorId', 'distributorId')
+      .addSelect('COUNT(*)', 'failures')
+      .where('r.status = :fallida AND r.startedAt >= :desde', {
+        fallida: ProcessRunStatus.FAILED,
+        desde,
+      })
+      .groupBy('r.process')
+      .addGroupBy('r.distributorId')
+      .getRawMany<{
+        process: ProcessName;
+        distributorId: string | null;
+        failures: string;
+      }>();
+    return filas.map((f) => ({
+      process: f.process,
+      distributorId: f.distributorId ?? null,
+      failures: Number(f.failures),
+    }));
+  }
+
+  /** El historial de corridas de todas las empresas (monitoreo de la plataforma). */
+  async listar(query: QueryProcessRunsDto): Promise<ProcessRunListResponseDto> {
     const desde = query.from ? new Date(query.from) : null;
     const hasta = query.to ? new Date(query.to) : null;
     if (desde && hasta && desde > hasta) {
       throw new BadRequestException('from no puede ser posterior a to');
     }
-    const qb = this.delAlcance(
-      this.runs.createQueryBuilder('r'),
-      distributorId,
-    );
+    const qb = this.runs.createQueryBuilder('r');
+    if (query.distributorId)
+      qb.andWhere('r.distributorId = :distributorId', {
+        distributorId: query.distributorId,
+      });
     if (query.process)
       qb.andWhere('r.process = :process', { process: query.process });
     if (query.status)
@@ -208,7 +259,7 @@ export class ProcessRunService {
       .skip(query.offset)
       .getManyAndCount();
     return {
-      items: filas.map((r) => ProcessRunMapper.toDto(r, esSuper)),
+      items: filas.map((r) => ProcessRunMapper.toDto(r, true)),
       total,
     };
   }

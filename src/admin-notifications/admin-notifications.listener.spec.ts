@@ -84,6 +84,22 @@ describe('AdminNotificationsListener', () => {
     );
   });
 
+  it('un aviso de la plataforma va a la sala de la plataforma y no por correo a ninguna empresa', async () => {
+    bandeja.registrar.mockResolvedValue(
+      aviso({ distributorId: null, email: true }),
+    );
+
+    await listener.handle(evento(true));
+
+    expect(gateway.notifyAdmins).toHaveBeenCalledWith(
+      EVENTO_AVISO_EN_VIVO,
+      expect.objectContaining({ distributorId: null }),
+      null,
+    );
+    expect(admins.emailsDeAdminsActivos).not.toHaveBeenCalled();
+    expect(emailSender.send).not.toHaveBeenCalled();
+  });
+
   it('un aviso repetido (misma dedupeKey) no vuelve a emitirse ni a mandar mail', async () => {
     bandeja.registrar.mockResolvedValue(null);
 

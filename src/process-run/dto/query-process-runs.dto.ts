@@ -4,13 +4,25 @@ import {
   IsEnum,
   IsInt,
   IsISO8601,
+  IsUUID,
   IsOptional,
   Max,
   Min,
 } from 'class-validator';
 import { ProcessName, ProcessRunStatus } from '../domain/process-catalog';
 
-export class QueryProcessRunsDto {
+export class QueryProcessSummaryDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Sólo los procesos de esa empresa (sin las corridas globales de la plataforma)',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  distributorId?: string;
+}
+
+export class QueryProcessRunsDto extends QueryProcessSummaryDto {
   @ApiPropertyOptional({ enum: ProcessName, description: 'Un proceso' })
   @IsOptional()
   @IsEnum(ProcessName)

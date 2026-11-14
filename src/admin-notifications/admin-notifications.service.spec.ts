@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { NotificarAdminEvent } from '../common/events/notificar-admin.event';
 import { AdminNotificationsService } from './admin-notifications.service';
 import { AdminNotification } from './entities/admin-notification.entity';
@@ -142,6 +142,19 @@ describe('AdminNotificationsService', () => {
         expect.objectContaining({
           where: { distributorId: 'd1', dedupeKey: 'claim:c-1' },
         }),
+      );
+    });
+
+    it('un aviso de la plataforma (sin distribuidora) busca el repetido con IS NULL, no en todas las empresas', async () => {
+      await service.registrar(evento({ distributorId: null }));
+
+      expect(avisos.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { distributorId: IsNull(), dedupeKey: 'claim:c-1' },
+        }),
+      );
+      expect(avisos.create).toHaveBeenCalledWith(
+        expect.objectContaining({ distributorId: null }),
       );
     });
 

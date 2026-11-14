@@ -151,6 +151,7 @@ export enum PaymentStatus {
   'status',
   'deliveredAt',
 ])
+@Index('IDX_order_distributor_created_at_desc', ['distributorId', 'createdAt'])
 export class Order {
   @PrimaryGeneratedColumn('uuid', { name: 'order_id' })
   orderId!: string;

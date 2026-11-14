@@ -9,14 +9,39 @@ describe('sanitizarError', () => {
     expect(limpio).toContain('[oculto]');
   });
 
+  it('tapa claves de Google, conexiones Postgres y teléfonos', () => {
+    const limpio = sanitizarError(
+      'googleKey=AIzaSyDummY_012345678901234567890123456789 postgres://admin:clave@db.local:5432/splg teléfono=+54 351 555-1234 o 351-555-1234',
+    );
+    expect(limpio).not.toMatch(
+      /AIzaSyDummY|admin:clave|351 555-1234|351-555-1234/,
+    );
+    expect(limpio).toContain('[oculto]');
+  });
+
+  it('tapa Basic, secretos con guiones bajos y conexiones con credenciales', () => {
+    const limpio = sanitizarError(
+      'Authorization: Basic dXNlcjpjbGF2ZQ== client_secret=s1 refresh_token=s2 access_token=s3 pwd=s4 password=s5 redis://cache:clave@redis.local/0 mongodb://mongo:clave@db.local/app',
+    );
+    expect(limpio).not.toMatch(/dXNlcjpjbGF2ZQ|s[1-5]|cache:clave|mongo:clave/);
+    expect(limpio).toContain('redis://[oculto]@redis.local/0');
+    expect(limpio).toContain('mongodb://[oculto]@db.local/app');
+  });
+
+  it('no tapa timestamps ni ids numéricos sin formato telefónico', () => {
+    expect(sanitizarError('timestamp=1731585600000 pedido=123456789012')).toBe(
+      'timestamp=1731585600000 pedido=123456789012',
+    );
+  });
+
   it('tapa las claves largas', () => {
     expect(sanitizarError(`clave ${'a'.repeat(40)} inválida`)).toBe(
       'clave [oculto] inválida',
     );
   });
 
-  it('recorta a 500 caracteres', () => {
-    expect(sanitizarError('x '.repeat(600)).length).toBeLessThanOrEqual(500);
+  it('recorta a 300 caracteres después de tapar secretos', () => {
+    expect(sanitizarError('x '.repeat(600)).length).toBeLessThanOrEqual(300);
   });
 
   it('deja intacto un mensaje común', () => {

@@ -158,6 +158,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       adminA,
       adminB,
       sup: h(sup.email, 'panel-app'),
+      supUserId: sup.user.userId,
       choferH: h(chofer.email, 'driver-app'),
       clienteH: h(cliente.email, 'customer-app'),
     };
@@ -233,11 +234,32 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       .put('/module-config/dispatch')
       .set(e.adminA.headers)
       .send(cuerpo as object);
-  const putTareas = (e: Esc, cuerpo: unknown) =>
+  /**
+   * Las frecuencias las fija la plataforma (E3): el super admin por
+   * `/v2/platform/companies/{id}/scheduled-tasks` sobre A. La hora del aviso de
+   * flota no va por acá (es de la empresa: `putHora`, ruta v2).
+   */
+  const putTareas = (e: Esc, cuerpo: Record<string, unknown>) =>
+    http()
+      .put(`/v2/platform/companies/${e.dA.distributorId}/scheduled-tasks`)
+      .set(e.sup)
+      .send(
+        Object.fromEntries(
+          Object.entries(cuerpo).filter(([k]) => k !== 'fleetAlertHour'),
+        ),
+      );
+  /** La hora del aviso de flota: la cambia el admin de la empresa. */
+  const putHora = (e: Esc, cuerpo: Record<string, unknown>) =>
+    http()
+      .put('/v2/module-config/scheduled_tasks')
+      .set(e.adminA.headers)
+      .send(cuerpo);
+  /** Cliente viejo: v1 reemplaza la configuración completa, sin merge. */
+  const putTareasV1 = (e: Esc, cuerpo: Record<string, unknown>) =>
     http()
       .put('/module-config/scheduled_tasks')
       .set(e.adminA.headers)
-      .send(cuerpo as object);
+      .send(cuerpo);
 
   describe('GET y PUT /module-config/dispatch (CU-171)', () => {
     it('sin configurar devuelve los valores por omisión; PUT válido guarda quién lo hizo y GET lo refleja', async () => {
@@ -606,8 +628,8 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
     });
   });
 
-  describe('GET y PUT /module-config/scheduled_tasks (CU-173)', () => {
-    it('sin configurar devuelve los valores vigentes; PUT válido guarda y GET lo refleja', async () => {
+  describe('GET v1 y PUT v2 /module-config/scheduled_tasks (CU-173)', () => {
+    it('las rutas v2 de empresa y plataforma hacen merge sin pisarse', async () => {
       const e = await escenario();
 
       const inicial = await http()
@@ -615,18 +637,27 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
         .set(e.adminA.headers)
         .expect(200);
       expect(inicial.body).toEqual({
-        dispatchRetrySeconds: 15,
-        reservationActivationSeconds: 300,
-        unpaidReservationExpirySeconds: 3600,
-        unpaidMercadoPagoExpirySeconds: 1800,
+        dispatchRetrySeconds: 60,
+        reservationActivationSeconds: 600,
+        unpaidReservationExpirySeconds: 7200,
+        unpaidMercadoPagoExpirySeconds: 3600,
         fleetAlertHour: 8,
         isDefault: true,
         updatedAt: null,
         updatedByUserId: null,
       });
 
-      const guardado = await putTareas(e, TAREAS_VALIDAS).expect(200);
-      expect(guardado.body).toMatchObject({
+      const frecuencias = await putTareas(e, TAREAS_VALIDAS).expect(200);
+      expect(frecuencias.body).toMatchObject({
+        dispatchRetrySeconds: TAREAS_VALIDAS.dispatchRetrySeconds,
+        reservationActivationSeconds:
+          TAREAS_VALIDAS.reservationActivationSeconds,
+        fleetAlertHour: 8,
+      });
+      const hora = await putHora(e, {
+        fleetAlertHour: TAREAS_VALIDAS.fleetAlertHour,
+      }).expect(200);
+      expect(hora.body).toMatchObject({
         ...TAREAS_VALIDAS,
         isDefault: false,
         updatedByUserId: e.adminA.userId,
@@ -635,7 +666,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
         .get('/module-config/scheduled_tasks')
         .set(e.adminA.headers)
         .expect(200);
-      expect(releido.body).toEqual(guardado.body);
+      expect(releido.body).toEqual(hora.body);
     });
 
     it.each([
@@ -662,9 +693,11 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       ['hora negativa', { fleetAlertHour: -1 }],
     ])('400 con el detalle del campo: %s', async (_caso, cambio) => {
       const e = await escenario();
-      const res = await putTareas(e, { ...TAREAS_VALIDAS, ...cambio }).expect(
-        400,
-      );
+      const res = await (
+        'fleetAlertHour' in cambio
+          ? putHora(e, cambio)
+          : putTareas(e, { ...TAREAS_VALIDAS, ...cambio })
+      ).expect(400);
       const campo = Object.keys(cambio)[0];
       expect(JSON.stringify(res.body)).toContain(etiquetaDeCampo(campo));
       expect(JSON.stringify(res.body)).not.toContain(campo);
@@ -673,10 +706,10 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
     it('PUT parcial: lo que no se manda se lee con su valor por omisión; PUT sin campos restablece (isDefault true)', async () => {
       const e = await escenario();
 
-      const parcial = await putTareas(e, { fleetAlertHour: 20 }).expect(200);
+      const parcial = await putHora(e, { fleetAlertHour: 20 }).expect(200);
       expect(parcial.body).toMatchObject({
-        dispatchRetrySeconds: 15,
-        reservationActivationSeconds: 300,
+        dispatchRetrySeconds: 60,
+        reservationActivationSeconds: 600,
         fleetAlertHour: 20,
         isDefault: false,
       });
@@ -686,7 +719,7 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       );
       expect(fila.params).toEqual({ fleetAlertHour: 20 });
 
-      const restablecida = await putTareas(e, {}).expect(200);
+      const restablecida = await putHora(e, {}).expect(200);
       expect(restablecida.body).toMatchObject({
         fleetAlertHour: 8,
         isDefault: true,
@@ -710,9 +743,20 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       await putTareas(e, {
         ...TAREAS_VALIDAS,
         unpaidReservationExpirySeconds: 86400,
-        fleetAlertHour: 0,
       }).expect(200);
-      await putTareas(e, { ...TAREAS_VALIDAS, fleetAlertHour: 23 }).expect(200);
+      await putHora(e, { fleetAlertHour: 0 }).expect(200);
+      await putHora(e, { fleetAlertHour: 23 }).expect(200);
+    });
+
+    it('v1 histórica reemplaza toda la configuración', async () => {
+      const e = await escenario();
+      await putTareas(e, TAREAS_VALIDAS).expect(200);
+      await putTareasV1(e, { fleetAlertHour: 6 }).expect(200);
+      const filas = await ds.query<Array<{ params: unknown }>>(
+        `SELECT params FROM module_config WHERE distributor_id = $1 AND module = 'scheduled_tasks'`,
+        [e.dA.distributorId],
+      );
+      expect(filas[0].params).toEqual({ fleetAlertHour: 6 });
     });
   });
 
