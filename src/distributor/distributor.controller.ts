@@ -46,6 +46,7 @@ import {
 } from '../s3/photo-http';
 import { Permiso } from '../common/decorators/permiso.decorator';
 import { Alcance } from '../common/decorators/alcance.decorator';
+import { esSuperAdminDePlataforma } from '../common/utils/alcance.util';
 
 /**
  * Gestión de distribuidoras (tenants). Es una operación de PLATAFORMA:
@@ -68,9 +69,13 @@ export class DistributorController {
     return DistributorMapper.toDto(d);
   }
 
-  /** Un admin queda acotado a su distribuidora; el super admin no. */
+  /**
+   * Un admin queda acotado a su distribuidora; el super admin de plataforma
+   * no. En modo soporte o en una empresa propia, el super admin queda acotado a
+   * esa empresa, como un admin de ella.
+   */
   private alcance(user: AuthenticatedUser, distributorId: string | null) {
-    return user.role === RoleType.SUPER_ADMIN ? null : distributorId;
+    return esSuperAdminDePlataforma(user) ? null : distributorId;
   }
 
   @Post()

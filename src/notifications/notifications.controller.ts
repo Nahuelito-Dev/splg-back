@@ -32,6 +32,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { esSuperAdminDePlataforma } from '../common/utils/alcance.util';
 import { Alcance } from '../common/decorators/alcance.decorator';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -61,9 +62,8 @@ export class NotificationsController {
   }
 
   // Interno/soporte: el push de confirmación real lo dispara el use-case de
-  // creación de pedido; este endpoint es el reenvío manual. Sólo el super
-  // administrador: recibe un cliente y un pedido cualquiera, de cualquier
-  // distribuidora, y el panel no lo usa.
+  // creación de pedido; este endpoint es el reenvío manual. En empresa propia
+  // pasa como admin de esa empresa y ambos recursos se acotan al tenant.
   @Post('order-confirmation')
   @Auth(RoleType.SUPER_ADMIN)
   // Un push a un cliente real sobre un pedido de una empresa: escritura sobre
@@ -78,10 +78,12 @@ export class NotificationsController {
   @ApiNotFoundResponse({ description: 'El cliente no existe' })
   async sendOrderConfirmation(
     @Body() dto: SendOrderConfirmationDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ResultadoDeEnvioDto> {
     return await this.notificationService.reenviarConfirmacion(
       dto.customerId,
       dto.orderId,
+      distributorId,
       dto.token,
     );
   }
@@ -121,8 +123,9 @@ export class NotificationsController {
     // Anti-secuestro: cada uno registra SU propio token (se fuerza
     // el userId al del token, ignorando el del body). Así userA no puede setear
     // el token de userB para robarle los push ni para dejarlo sin notificaciones.
-    const userId =
-      user.role === RoleType.SUPER_ADMIN ? dto.userId : user.user_id;
+    // El de otro usuario sólo lo registra el super admin de plataforma (no
+    // operando una empresa propia: ahí es un admin de ella).
+    const userId = esSuperAdminDePlataforma(user) ? dto.userId : user.user_id;
     return await this.notificationService.saveNotificationToken(
       userId,
       dto.token,

@@ -150,26 +150,40 @@ export class AuthGuard implements CanActivate {
 
     // getUser ya pasó por validateUserRoleForApp, que rechaza al usuario sin
     // rol o con un rol que no es de esta app: acá el rol es de RoleType.
+    const actuaComoEmpresaPropia = request.ownedCompanyId !== undefined;
+    // Dentro de una empresa propia el super admin no conserva privilegios de
+    // plataforma: para TODA la autorización posterior es un admin de ese
+    // tenant. El rol real queda separado, exclusivamente para la auditoría.
+    const roleEfectivo = actuaComoEmpresaPropia
+      ? RoleType.ADMIN
+      : (local_user.role?.type as RoleType);
     request.user = {
       email: local_user.email ?? token_user.email,
-      role: local_user.role?.type as RoleType,
+      role: roleEfectivo,
       user_id: local_user.userId,
       distributor_id,
       support_session_id: request.supportSession?.id ?? null,
+      actuaComoEmpresaPropia,
+      actor_real_role: local_user.role?.type as RoleType,
     };
     // Tenant efectivo de la request (lo lee @CurrentDistributor()).
     request.distributorId = distributor_id;
   }
 
   /**
-   * El tenant del super admin (modo soporte). No lee `X-Distributor`: sin
-   * sesión de soporte no tiene empresa (`null`, lo de la plataforma); con
-   * `X-Support-Session` válida, la empresa es la de la sesión y la request
-   * queda marcada (`request.supportSession`) para el `AlcanceGuard` y la base.
+   * El tenant del super admin (modo soporte):
+   *  - con `X-Support-Session` válida, la empresa es la de la sesión y la
+   *    request queda marcada (`request.supportSession`) para el `AlcanceGuard`
+   *    y la base (sólo lectura). El `X-Distributor` no se mira.
+   *  - sin sesión, el `X-Distributor` sólo vale si nombra una empresa propia
+   *    de la plataforma (`ownedByPlatform`, vigente): la request queda marcada
+   *    (`request.ownedCompanyId`) y el super admin opera esa empresa directo.
+   *    El de cualquier otra empresa se ignora: tenant `null`, así que lo de una
+   *    empresa sigue cerrado (403 `SUPPORT_SESSION_REQUIRED`).
    *
-   * Las rutas de plataforma y las `@SinDistribuidora()` no miran la sesión: el
-   * panel puede consultar su sesión, salir o verificar la cuenta aunque mande
-   * el encabezado de una sesión que ya terminó.
+   * Las rutas de plataforma y las `@SinDistribuidora()` no miran ninguno de
+   * los dos: el panel puede consultar su sesión, salir o verificar la cuenta
+   * aunque mande el encabezado de una sesión que ya terminó.
    */
   private async resolverSoporte(
     user: User,
@@ -178,6 +192,7 @@ export class AuthGuard implements CanActivate {
     context: ExecutionContext,
   ): Promise<string | null> {
     request.supportSession = undefined;
+    request.ownedCompanyId = undefined;
     if (sinDistribuidora) return null;
     const alcance = resolverAlcance(this.reflector, [
       context.getHandler(),
@@ -185,11 +200,24 @@ export class AuthGuard implements CanActivate {
     ]);
     if (alcance === null || alcance === 'plataforma') return null;
     const header = request.headers[ENCABEZADO_DE_SOPORTE];
-    if (header === undefined) return null;
+    if (header === undefined) return this.empresaPropia(request);
     const id = Array.isArray(header) ? header[0] : header;
     const sesion = await this.sesionesDeSoporte.vigente(id ?? '', user.userId);
     request.supportSession = sesion;
     return sesion.distributorId;
+  }
+
+  /**
+   * La empresa propia de la plataforma del `X-Distributor`, si lo es (si no,
+   * `null`: el header no abre nada). Se consulta en cada request.
+   */
+  private async empresaPropia(request: Request): Promise<string | null> {
+    const header = request.headers['x-distributor'];
+    if (typeof header !== 'string' || !header) return null;
+    const id = await this.distributorService.empresaPropiaVigente(header);
+    if (id === null) return null;
+    request.ownedCompanyId = id;
+    return id;
   }
 
   /**

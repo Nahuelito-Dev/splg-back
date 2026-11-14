@@ -122,6 +122,22 @@ export class Distributor {
   @Column({ name: 'support_auto_approve', type: 'boolean', default: false })
   supportAutoApprove!: boolean;
 
+  /**
+   * Empresa propia de la plataforma (de prueba): el administrador general la
+   * opera directo, con lectura y escritura, sin sesión de soporte. Sólo él la
+   * marca o la desmarca (`PUT /v2/platform/companies/:id/owned-by-platform`).
+   */
+  @Column({ name: 'owned_by_platform', type: 'boolean', default: false })
+  ownedByPlatform!: boolean;
+
+  /**
+   * Origen inmutable de una empresa de prueba. Sólo la siembra de la
+   * plataforma lo establece al crearla; una empresa de un cliente nunca puede
+   * pasar a ser propia por una acción posterior del super admin.
+   */
+  @Column({ name: 'created_by_platform', type: 'boolean', default: false })
+  createdByPlatform!: boolean;
+
   /** Plan de suscripción SaaS (para facturación futura). */
   @Column({ type: 'varchar', nullable: true })
   plan!: string | null;

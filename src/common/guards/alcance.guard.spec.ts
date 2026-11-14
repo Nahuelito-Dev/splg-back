@@ -174,6 +174,52 @@ describe('AlcanceGuard', () => {
     });
   });
 
+  describe('empresa propia de la plataforma (rol efectivo ADMIN)', () => {
+    const PROPIA = 'empresa-propia';
+    /** La identidad ya transformada por `AuthGuard`, igual a un admin real. */
+    const enPropia = (
+      method: string,
+      o: {
+        tenant?: string | null;
+      } = {},
+    ): Request => {
+      const tenant = o.tenant === undefined ? PROPIA : o.tenant;
+      return {
+        method,
+        path: '/x',
+        user: {
+          role: RoleType.ADMIN,
+          user_id: 'u1',
+          email: 'u@splg.local',
+          distributor_id: tenant,
+          actuaComoEmpresaPropia: true,
+          actor_real_role: RoleType.SUPER_ADMIN,
+        },
+        distributorId: tenant,
+        ownedCompanyId: PROPIA,
+      } as unknown as Request;
+    };
+
+    it.each([
+      ['empresa', 'GET', DeEmpresa],
+      ['empresa', 'POST', DeEmpresa],
+      ['empresa', 'PATCH', DeEmpresa],
+      ['empresa', 'PUT', DeEmpresa],
+      ['empresa', 'DELETE', DeEmpresa],
+      ['sin @Auth (por defecto empresa)', 'DELETE', SinRoles],
+      ['ambos', 'PATCH', DeAmbos],
+      ['archivos (sin alcance de sesión que pedir)', 'GET', DeArchivos],
+    ] as const)('%s · %s → pasa (lectura y escritura)', (_n, m, Clase) => {
+      expect(resultado(guard, enPropia(m), Clase)).toBe(true);
+    });
+
+    it('el guard no concede privilegios de plataforma: es el AuthGuard quien valida y transforma la identidad', () => {
+      expect(
+        resultado(guard, enPropia('POST', { tenant: 'otra' }), DeEmpresa),
+      ).toBe(true);
+    });
+  });
+
   it('fuera de HTTP (sockets, crons) no hace nada', () => {
     const ctx = {
       getType: () => 'ws',

@@ -9,6 +9,7 @@ import {
 } from './dto/notification-response.dto';
 import { FcmPort } from '../firebase/ports/fcm.port';
 import { errorMessage } from '../common/errors/error-message';
+import { OrderLookupService } from '../order/lookup/order-lookup.service';
 
 @Injectable()
 export class NotificationsService {
@@ -18,6 +19,7 @@ export class NotificationsService {
     private readonly customersService: CustomersService,
     private readonly deliveryService: DeliveryService,
     private readonly fcm: FcmPort,
+    private readonly orders: OrderLookupService,
   ) {}
 
   async sendTestNotification(
@@ -56,8 +58,17 @@ export class NotificationsService {
   async reenviarConfirmacion(
     customerId: string,
     orderId: string,
+    distributorId: string,
     token?: string,
   ): Promise<ResultadoDeEnvioDto> {
+    await this.customersService.assertDeLaDistribuidora(
+      { user_id: customerId },
+      distributorId,
+    );
+    const pedido = await this.orders.findRef(orderId, distributorId);
+    if (!pedido || pedido.customerId !== customerId) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
     const cliente =
       await this.customersService.findNotificationToken(customerId);
     if (!cliente.esCliente) {
