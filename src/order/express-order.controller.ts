@@ -37,6 +37,7 @@ import {
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrderMapper } from './order.mapper';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { RequiereModulo } from '../platform/access/requiere-modulo.decorator';
 
 const EXPRESS_NO_DISPONIBLE =
   'La modalidad express dejó de estar disponible (`code: EXPRESS_NOT_AVAILABLE`, con `reason`: disabled, no_location, out_of_coverage, out_of_hours o no_motorcycle_driver): la app ofrece el flujo con franja horaria';
@@ -81,6 +82,7 @@ export class ExpressOrderController {
     });
   }
 
+  @RequiereModulo('express')
   @Post('express/quote')
   @HttpCode(200)
   @Auth(RoleType.CUSTOMER)
@@ -105,6 +107,7 @@ export class ExpressOrderController {
     return this.expressPurchase.preview(dto, user.user_id, distributorId);
   }
 
+  @RequiereModulo('express')
   @Post('express')
   @Auth(RoleType.CUSTOMER)
   @Idempotent()

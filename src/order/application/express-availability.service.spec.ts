@@ -3,12 +3,14 @@ import { ExpressSettingsService } from '../../distributor/express-settings.servi
 import { CoverageZoneService } from '../../coverage-zone/coverage-zone.service';
 import { DispatchOrchestratorService } from './dispatch-orchestrator.service';
 import { expressSettingsPorDefecto } from '../../distributor/express-settings';
+import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 
 describe('ExpressAvailabilityService (CU-148)', () => {
   let service: ExpressAvailabilityService;
   let settings: { obtener: jest.Mock };
   let coverage: { checkCoverage: jest.Mock };
   let orchestrator: { choferesEnMotoCerca: jest.Mock };
+  let acceso: { habilitado: jest.Mock };
 
   const direccion = {
     location: { type: 'Point' as const, coordinates: [-55.9, -27.37] },
@@ -31,10 +33,12 @@ describe('ExpressAvailabilityService (CU-148)', () => {
     orchestrator = {
       choferesEnMotoCerca: jest.fn().mockResolvedValue(['moto-1']),
     };
+    acceso = { habilitado: jest.fn().mockResolvedValue(true) };
     service = new ExpressAvailabilityService(
       settings as unknown as ExpressSettingsService,
       coverage as unknown as CoverageZoneService,
       orchestrator as unknown as DispatchOrchestratorService,
+      acceso as unknown as AccesoDeLaEmpresa,
     );
   });
 
@@ -59,6 +63,16 @@ describe('ExpressAvailabilityService (CU-148)', () => {
     expect(r.reason).toBe('disabled');
     expect(coverage.checkCoverage).not.toHaveBeenCalled();
     expect(orchestrator.choferesEnMotoCerca).not.toHaveBeenCalled();
+  });
+
+  it('sin el módulo express habilitado por la plataforma no se ofrece aunque la empresa la encendió', async () => {
+    acceso.habilitado.mockResolvedValue(false);
+
+    const r = await service.evaluar('d1', direccion, mediodia);
+
+    expect(r).toMatchObject({ available: false, reason: 'disabled' });
+    expect(acceso.habilitado).toHaveBeenCalledWith('d1', 'express');
+    expect(coverage.checkCoverage).not.toHaveBeenCalled();
   });
 
   it('dirección sin ubicación', async () => {

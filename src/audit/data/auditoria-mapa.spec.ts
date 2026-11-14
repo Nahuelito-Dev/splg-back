@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { TABLAS_EXCLUIDAS } from './audit-exclusions';
 import { construirMapa, MapaDeAuditoria } from './auditoria-mapa';
 import mapaGuardado from './auditoria-mapa.datos.json';
-import { MAPA as mapaDeLaMigracion } from '../../migrations/1795000000040-AuditoriaDeLaEjecucionDeLaHoja';
+import { MAPA as mapaDeLaMigracion } from '../../migrations/1795000000043-AuditoriaDeModulosPorDistribuidora';
 
 describe('mapa de la auditoría por triggers', () => {
   let dataSource: DataSource;
@@ -99,11 +99,18 @@ describe('mapa de la auditoría por triggers', () => {
     }
   });
 
-  it('lo de la persona o global sigue sin distribuidora', () => {
+  it('lo de la persona o global (y los planes de la plataforma) sigue sin distribuidora', () => {
     const sin = mapa.entities
       .filter((e) => e.distributorMode === 'none')
       .map((e) => e.table)
       .sort();
-    expect(sin).toEqual(['customer', 'role', 'user', 'user_address']);
+    expect(sin).toEqual([
+      'customer',
+      'platform_plan',
+      'platform_plan_module',
+      'role',
+      'user',
+      'user_address',
+    ]);
   });
 });

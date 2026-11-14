@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
 import { ModuleConfigService } from './module-config.service';
+import { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.service';
+import { moduloDeshabilitado } from '../platform/access/errores';
 import {
   ESQUEMAS,
   PROCESOS_AUTOMATICOS,
@@ -34,7 +36,10 @@ export interface ProcesoVigente {
  */
 @Injectable()
 export class ProcessConfigService {
-  constructor(private readonly configs: ModuleConfigService) {}
+  constructor(
+    private readonly configs: ModuleConfigService,
+    private readonly acceso: AccesoDeLaEmpresa,
+  ) {}
 
   /** El proceso del path, o 404 si no es uno de los cinco configurables. */
   procesoConfigurable(proceso: string): ProcesoAutomatico {
@@ -44,6 +49,23 @@ export class ProcessConfigService {
       );
     }
     return proceso;
+  }
+
+  /**
+   * El proceso del path para la pantalla de la empresa: 404 si no es uno de
+   * los configurables y 403 `MODULE_DISABLED` si es de un módulo que la
+   * plataforma no le habilitó (los seis procesos son módulos con su mismo
+   * nombre). La empresa no ve ni toca el interruptor de lo que no tiene.
+   */
+  async procesoHabilitado(
+    proceso: string,
+    distributorId: string,
+  ): Promise<ProcesoAutomatico> {
+    const configurable = this.procesoConfigurable(proceso);
+    if (!(await this.acceso.habilitado(distributorId, configurable))) {
+      throw moduloDeshabilitado();
+    }
+    return configurable;
   }
 
   /** Los valores que rigen para la distribuidora (los suyos o los de omisión). */

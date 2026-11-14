@@ -41,6 +41,7 @@ import {
 import { MaintenancePlannerMapper } from './maintenance-planner.mapper';
 import { MaintenancePlannerService } from './maintenance-planner.service';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -53,6 +54,7 @@ const FALTA_DISTRIBUIDORA =
  * re-planificar). El gasto se paga con el circuito de F27
  * (`POST /api/v2/fleet/tasks/:id/close` con `payment` o `…/pay`).
  */
+@RequiereModulo('fleet_planner')
 @ApiTags('Fleet · Maintenance planner (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'fleet/maintenance-planner', version: '2' })

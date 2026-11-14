@@ -2,10 +2,12 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProcessConfigService } from './process-config.service';
 import { ModuleConfigService } from './module-config.service';
 import { ConfigurableProcess } from './entities/module-config.entity';
+import { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.service';
 
 describe('ProcessConfigService', () => {
   let service: ProcessConfigService;
   let configs: { parametros: jest.Mock; fila: jest.Mock; guardar: jest.Mock };
+  let acceso: { habilitado: jest.Mock };
 
   beforeEach(() => {
     configs = {
@@ -13,8 +15,10 @@ describe('ProcessConfigService', () => {
       fila: jest.fn().mockResolvedValue(null),
       guardar: jest.fn().mockResolvedValue(undefined),
     };
+    acceso = { habilitado: jest.fn().mockResolvedValue(true) };
     service = new ProcessConfigService(
       configs as unknown as ModuleConfigService,
+      acceso as unknown as AccesoDeLaEmpresa,
     );
   });
 
@@ -26,6 +30,29 @@ describe('ProcessConfigService', () => {
       NotFoundException,
     );
     expect(service.procesoConfigurable('repurchase')).toBe('repurchase');
+  });
+
+  it('un proceso de un módulo que la plataforma no habilitó es 403 MODULE_DISABLED (y el de otra empresa no cambia)', async () => {
+    acceso.habilitado.mockImplementation((id: string) =>
+      Promise.resolve(id !== 'd-a'),
+    );
+    await expect(
+      service.procesoHabilitado('document_reading', 'd-a'),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'MODULE_DISABLED' },
+    });
+    expect(acceso.habilitado).toHaveBeenCalledWith('d-a', 'document_reading');
+    await expect(
+      service.procesoHabilitado('document_reading', 'd-b'),
+    ).resolves.toBe('document_reading');
+  });
+
+  it('el 404 de un proceso que no existe va antes que el módulo', async () => {
+    await expect(
+      service.procesoHabilitado('dispatch', 'd-a'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(acceso.habilitado).not.toHaveBeenCalled();
   });
 
   it('sin configuración rigen los de omisión y isDefault es true', async () => {

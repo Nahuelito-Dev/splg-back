@@ -4,6 +4,7 @@ import { RedisService } from '../redis/redis.service';
 import { RepurchaseCron } from './repurchase.cron';
 import { RepurchaseEstimatorService } from './repurchase-estimator.service';
 import { RepurchaseForecastService } from './repurchase-forecast.service';
+import { empresasDePrueba } from '../process-run/testing/empresas-de-prueba';
 
 // 09:00 en Argentina.
 const A_LAS_9 = new Date('2026-10-31T12:00:00Z');
@@ -18,6 +19,7 @@ describe('RepurchaseCron', () => {
   let distributors: { findAll: jest.Mock };
   let withLock: jest.Mock;
   let cron: RepurchaseCron;
+  let sinRecompra: Set<string>;
 
   beforeEach(() => {
     forecast = {
@@ -43,11 +45,17 @@ describe('RepurchaseCron', () => {
           return { obtenido: true, valor: undefined };
         },
       );
+    sinRecompra = new Set();
     cron = new RepurchaseCron(
       forecast as unknown as RepurchaseForecastService,
       estimator as unknown as RepurchaseEstimatorService,
       distributors as unknown as DistributorService,
       { withLock } as unknown as RedisService,
+      empresasDePrueba({
+        distribuidoras: distributors as never,
+        habilitado: (id, modulo) =>
+          !(modulo === 'repurchase' && sinRecompra.has(id)),
+      }).empresas,
     );
   });
 
@@ -58,6 +66,14 @@ describe('RepurchaseCron', () => {
     expect(await cron.anticiparLasQueTocan(A_LAS_9)).toBe(1);
     expect(forecast.ejecutar).toHaveBeenCalledTimes(1);
     expect(forecast.ejecutar).toHaveBeenCalledWith('d1', A_LAS_9);
+  });
+
+  it('con la recompra deshabilitada por la plataforma no invita en esa empresa y sí en otra', async () => {
+    sinRecompra.add('d1');
+    expect(await cron.anticiparLasQueTocan(A_LAS_9)).toBe(1);
+    expect(forecast.ejecutar).toHaveBeenCalledTimes(1);
+    expect(forecast.ejecutar).toHaveBeenCalledWith('d2', A_LAS_9);
+    expect(estimator.parametros).not.toHaveBeenCalledWith('d1');
   });
 
   it('una distribuidora suspendida no corre', async () => {
@@ -142,5 +158,15 @@ describe('RepurchaseCron', () => {
   it('si la ejecución revienta, lo registra y no propaga', async () => {
     withLock.mockRejectedValue(new Error('redis caído'));
     await expect(cron.anticipar()).resolves.toBeUndefined();
+  });
+
+  it('si la recompra se apaga después de elegir la empresa, no invita (re-consulta sin caché)', async () => {
+    estimator.parametros.mockImplementation((id: string) => {
+      if (id === 'd1') sinRecompra.add(id);
+      return Promise.resolve({ enabled: true, runHour: 9 });
+    });
+    expect(await cron.anticiparLasQueTocan(A_LAS_9)).toBe(1);
+    expect(forecast.ejecutar).toHaveBeenCalledTimes(1);
+    expect(forecast.ejecutar).toHaveBeenCalledWith('d2', A_LAS_9);
   });
 });

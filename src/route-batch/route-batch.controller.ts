@@ -36,6 +36,7 @@ import {
 import { RouteBatchQueryService } from './route-batch-query.service';
 import { RouteBatchService } from './route-batch.service';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { RequiereModulo } from '../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Super admin sin X-Distributor ("Falta la distribuidora: enviá el header X-Distributor (slug o id)")';
@@ -46,6 +47,7 @@ const FALTA_DISTRIBUIDORA =
  * quedaron, los parámetros del proceso y dos acciones: armar lotes ahora y
  * deshacer uno que todavía no tiene chofer.
  */
+@RequiereModulo('route_batching')
 @ApiTags('Route batches (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'route-batches', version: '2' })

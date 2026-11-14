@@ -9,6 +9,10 @@ import {
   registrarErrorAtrapado,
 } from '../process-run/process-run.context';
 import { ProcessName } from '../process-run/domain/process-catalog';
+import {
+  EmpresasParaProceso,
+  type EmpresaEnCurso,
+} from '../process-run/empresas-para-proceso';
 
 /**
  * CU-107: el proceso automático de la agrupación por recorrido.
@@ -35,6 +39,7 @@ export class RouteBatchCron {
   constructor(
     private readonly service: RouteBatchService,
     private readonly redis: RedisService,
+    private readonly empresas: EmpresasParaProceso,
   ) {}
 
   @Cron('0 * * * * *')
@@ -63,41 +68,52 @@ export class RouteBatchCron {
     });
   }
 
-  /** Arma lotes en las distribuidoras a las que les toca; devuelve cuántas corrieron. */
+  /**
+   * Arma lotes en las distribuidoras a las que les toca; devuelve cuántas
+   * corrieron. Sólo las que tienen la agrupación habilitada por la plataforma
+   * (módulo `route_batching`); los lotes ya ofrecidos terminan igual (`vencer`).
+   */
   async armarLasQueTocan(ahora: Date): Promise<number> {
-    const ids = await this.service.distribuidorasConProgramados();
-    let corridas = 0;
-    for (const distributorId of ids) {
-      try {
-        const { enabled, evaluationFrequencyMinutes } =
-          await this.service.parametros(distributorId);
-        // Apagado (por omisión): ni se arma ni se consume la marca de frecuencia.
-        if (enabled !== 1) continue;
-        const segundos =
-          evaluationFrequencyMinutes * 60 - RouteBatchCron.HOLGURA_SEGUNDOS;
-        const clave = `route-batch:cada:${distributorId}`;
-        const leToca = await this.redis.setIfAbsent(clave, segundos);
-        if (!leToca) continue;
-        const r = await this.service.evaluar(distributorId, ahora);
-        if (!r) {
-          // Otra instancia la está armando: la marca no se gasta.
-          await this.redis.del(clave);
-          continue;
-        }
-        corridas += 1;
-        if (r.batches > 0) {
-          this.logger.log(
-            `Recorridos ${distributorId}: ${r.batches} lote(s) con ${r.orders} pedido(s) de ${r.candidates} candidato(s)`,
-          );
-        }
-      } catch (error) {
-        registrarErrorAtrapado(error);
-        this.logger.error(
-          `Recorridos ${distributorId}: falló: ${errorMessage(error)}`,
-        );
-      }
+    const { empresas } = await this.empresas.recorrer(
+      {
+        proceso: ProcessName.ROUTE_BATCH_BUILD,
+        modulo: 'route_batching',
+        crea: true,
+        entre: await this.service.distribuidorasConProgramados(),
+      },
+      (distributorId, empresa) => this.armarUna(distributorId, ahora, empresa),
+    );
+    return empresas.filter((e) => e.valor === true).length;
+  }
+
+  private async armarUna(
+    distributorId: string,
+    ahora: Date,
+    empresa: EmpresaEnCurso,
+  ): Promise<boolean> {
+    const { enabled, evaluationFrequencyMinutes } =
+      await this.service.parametros(distributorId);
+    // Apagado (por omisión): ni se arma ni se consume la marca de frecuencia.
+    if (enabled !== 1) return false;
+    const segundos =
+      evaluationFrequencyMinutes * 60 - RouteBatchCron.HOLGURA_SEGUNDOS;
+    const clave = `route-batch:cada:${distributorId}`;
+    // Sin caché, justo antes de armar (§6.3): sin gastar la marca de frecuencia.
+    if (!(await empresa.sigueHabilitada())) return false;
+    const leToca = await this.redis.setIfAbsent(clave, segundos);
+    if (!leToca) return false;
+    const r = await this.service.evaluar(distributorId, ahora);
+    if (!r) {
+      // Otra instancia la está armando: la marca no se gasta.
+      await this.redis.del(clave);
+      return false;
     }
-    return corridas;
+    if (r.batches > 0) {
+      this.logger.log(
+        `Recorridos ${distributorId}: ${r.batches} lote(s) con ${r.orders} pedido(s) de ${r.candidates} candidato(s)`,
+      );
+    }
+    return true;
   }
 
   private async conCerrojo<T>(

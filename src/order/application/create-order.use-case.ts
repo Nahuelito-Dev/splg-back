@@ -63,6 +63,8 @@ import { DomainError } from '../../common/errors/domain.error';
 import { esTimeoutDeBase } from '../../common/errors/db-exceptions';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 import { CustomerContainerService } from '../../customer-container/customer-container.service';
+import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
+import { moduloDeshabilitado } from '../../platform/access/errores';
 
 /** Tipo de pago del pedido según el medio elegido. */
 export const MENSAJE_CAMBIO_EL_PRECIO =
@@ -130,6 +132,8 @@ export class CreateOrderUseCase {
     private readonly customerAccount: CustomerAccountPort,
     private readonly paymentSurcharges: PaymentSurchargeSettingsService,
     private readonly customerContainers: CustomerContainerService,
+    // Cobro con Mercado Pago es un módulo de la plataforma (P1).
+    private readonly acceso: AccesoDeLaEmpresa,
   ) {}
 
   /**
@@ -168,6 +172,16 @@ export class CreateOrderUseCase {
       throw new BadRequestException(
         'Una reserva no se puede pagar con cuenta corriente',
       );
+    }
+
+    // Checkout de Mercado Pago (también la seña de una reserva): sólo si la
+    // plataforma le habilita el módulo a la distribuidora.
+    if (
+      createOrderDto.paymentMethod === PaymentMethod.MERCADOPAGO &&
+      distributorId &&
+      !(await this.acceso.habilitado(distributorId, 'mercadopago'))
+    ) {
+      throw moduloDeshabilitado();
     }
 
     // Pre-reserva: requiere fecha agendada (se reserva PARA un día futuro).

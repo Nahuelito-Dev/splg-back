@@ -30,6 +30,7 @@ import {
   ListRoutePlanningHolidaysQueryDto,
   RoutePlanningHolidayDto,
 } from './dto/route-planning-holiday.dto';
+import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA =
   'Falta la distribuidora (super admin sin X-Distributor) o un dato no es válido (fecha AAAA-MM-DD, descripción de 2 a 120 caracteres)';
@@ -39,6 +40,7 @@ const FALTA_DISTRIBUIDORA =
  * aunque caigan en un día hábil (`workingDays`). La propuesta automática no
  * arma un plan para un feriado y la reprogramación de un pedido lo saltea.
  */
+@RequiereModulo('route_planning')
 @ApiTags('Route plans (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'route-planning/holidays', version: '2' })

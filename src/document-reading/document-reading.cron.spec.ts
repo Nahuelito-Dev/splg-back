@@ -7,6 +7,8 @@ import {
   DocumentReadingRunResult,
 } from './document-reading-runner.service';
 import { DocumentReadingSettingsService } from './document-reading-settings.service';
+import { empresasDePrueba } from '../process-run/testing/empresas-de-prueba';
+import type { ModuloKey } from '../platform/modules/catalogo-de-modulos';
 
 const result = (
   overrides: Partial<DocumentReadingRunResult> = {},
@@ -34,6 +36,9 @@ describe('DocumentReadingCron', () => {
   let distributors: { findAll: jest.Mock };
   let redis: { get: jest.Mock; setex: jest.Mock; withLock: jest.Mock };
   let cron: DocumentReadingCron;
+  /** Empresas a las que la plataforma les deshabilitó el lector. */
+  let sinLector: Set<string>;
+  let kit: ReturnType<typeof empresasDePrueba>;
 
   beforeEach(() => {
     runner = { disponible: true, run: jest.fn().mockResolvedValue(result()) };
@@ -55,11 +60,19 @@ describe('DocumentReadingCron', () => {
         ) => fn().then((valor) => ({ obtenido: true, valor })),
       ),
     };
+    sinLector = new Set();
     cron = new DocumentReadingCron(
       runner as unknown as DocumentReadingRunnerService,
       params as unknown as DocumentReadingSettingsService,
-      distributors as unknown as DistributorService,
       redis as unknown as RedisService,
+      (kit = empresasDePrueba({
+        distribuidoras: distributors as unknown as Pick<
+          DistributorService,
+          'findAll'
+        >,
+        habilitado: (id: string, modulo: ModuloKey) =>
+          !(modulo === 'document_reading' && sinLector.has(id)),
+      })).empresas,
     );
   });
 
@@ -131,6 +144,45 @@ describe('DocumentReadingCron', () => {
   it('sin cerrojo queda saltada y no procesa', async () => {
     redis.withLock.mockResolvedValue({ obtenido: false });
     await expect(cron.ejecutar()).resolves.toBeUndefined();
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it('con el lector deshabilitado por la plataforma no procesa la cola de esa empresa y sí la de otra', async () => {
+    distributors.findAll.mockResolvedValue([
+      { distributorId: 'd1', status: DistributorStatus.ACTIVE },
+      { distributorId: 'd2', status: DistributorStatus.ACTIVE },
+    ]);
+    sinLector.add('d1');
+    await cron.ejecutarSinCerrojo();
+    expect(runner.run).toHaveBeenCalledTimes(1);
+    expect(runner.run).toHaveBeenCalledWith('d2');
+    // Ni siquiera lee su llave ni gasta la marca de frecuencia.
+    expect(params.parametros).not.toHaveBeenCalledWith('d1');
+    expect(redis.setex).not.toHaveBeenCalledWith(
+      'document-reading:ultima:d1',
+      expect.any(Number),
+      expect.any(String),
+    );
+  });
+
+  it('al volver a habilitarlo retoma la cola en la corrida siguiente', async () => {
+    sinLector.add('d1');
+    await cron.ejecutarSinCerrojo();
+    expect(runner.run).not.toHaveBeenCalled();
+    sinLector.delete('d1');
+    // El PUT de la plataforma invalida la caché del acceso.
+    await kit.acceso.invalidar('d1');
+    await cron.ejecutarSinCerrojo();
+    expect(runner.run).toHaveBeenCalledWith('d1');
+  });
+
+  it('si el lector se apaga después de elegir la empresa, no lee (re-consulta sin caché)', async () => {
+    params.parametros.mockImplementation((id: string) => {
+      sinLector.add(id);
+      return Promise.resolve(settings);
+    });
+    await cron.ejecutarSinCerrojo();
+    expect(params.parametros).toHaveBeenCalledWith('d1');
     expect(runner.run).not.toHaveBeenCalled();
   });
 });

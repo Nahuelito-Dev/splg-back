@@ -18,6 +18,10 @@ const EXENTOS: Readonly<Record<string, string>> = {
     'Marcar como leído un aviso propio no depende de ningún módulo.',
   'admin-notifications/admin-notifications.controller.ts#AdminNotificationsController.marcarTodosLeidos':
     'Marcar como leído un aviso propio no depende de ningún módulo.',
+  'platform/modules/company-modules.controller.ts#CompanyModulesController.list':
+    'Los módulos de su empresa: cualquier administrador los ve (DISENO-PLATAFORMA-ORIXTECH §5.3); con eso el panel arma el menú',
+  'platform/modules/company-modules.controller.ts#MeFeaturesController.features':
+    'Qué módulos están en uso en la distribuidora de la sesión: lo leen el panel y las apps al iniciar (§5.3)',
   'distributor/distributor.controller.ts#DistributorController.findCurrent':
     'La cabecera del panel muestra la distribuidora del admin en todas las pantallas.',
 };

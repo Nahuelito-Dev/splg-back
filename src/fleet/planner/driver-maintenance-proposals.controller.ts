@@ -30,6 +30,7 @@ import {
 } from './dto/planner-response.dto';
 import { MaintenancePlannerMapper } from './maintenance-planner.mapper';
 import { MaintenancePlannerService } from './maintenance-planner.service';
+import { RequiereModulo } from '../../platform/access/requiere-modulo.decorator';
 
 /**
  * Ventanas de taller que el planificador le propone al chofer (CU-105). La
@@ -37,6 +38,7 @@ import { MaintenancePlannerService } from './maintenance-planner.service';
  * correo; la respuesta es aceptar o rechazar con motivo (pudiendo proponer otra
  * ventana). Todo es del chofer autenticado: la propuesta de otro es un 404.
  */
+@RequiereModulo('fleet_planner')
 @ApiTags('Driver · Maintenance proposals (v2)')
 @Auth(RoleType.DELIVERY)
 @Controller({ path: 'driver/maintenance-proposals', version: '2' })

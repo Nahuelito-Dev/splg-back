@@ -451,6 +451,39 @@
       "orderColumn": null
     },
     {
+      "table": "distributor_module",
+      "entity": "DistributorModule",
+      "pk": [
+        "distributor_id",
+        "module_key"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "distributor_subscription",
+      "entity": "DistributorSubscription",
+      "pk": [
+        "distributor_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "document_reading",
       "entity": "DocumentReading",
       "pk": [
@@ -939,6 +972,39 @@
       "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "platform_plan",
+      "entity": "PlatformPlan",
+      "pk": [
+        "plan_code"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "none",
+      "distributorColumn": null,
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "platform_plan_module",
+      "entity": "PlatformPlanModule",
+      "pk": [
+        "plan_code",
+        "module_key"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "none",
+      "distributorColumn": null,
       "parentTable": null,
       "parentFkColumn": null,
       "parentPkColumn": null,
@@ -3578,6 +3644,94 @@
       "property": "verifiedAt",
       "secret": false,
       "kind": "timestamp",
+      "position": 4
+    },
+    {
+      "table": "distributor_module",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "distributor_module",
+      "column": "module_key",
+      "property": "moduleKey",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "distributor_module",
+      "column": "enabled",
+      "property": "enabled",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "distributor_module",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "distributor_module",
+      "column": "expires_at",
+      "property": "expiresAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
+    },
+    {
+      "table": "distributor_module",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "distributor_subscription",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "distributor_subscription",
+      "column": "plan_code",
+      "property": "planCode",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "distributor_subscription",
+      "column": "plan_snapshot",
+      "property": "planSnapshot",
+      "secret": false,
+      "kind": "json",
+      "position": 2
+    },
+    {
+      "table": "distributor_subscription",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "distributor_subscription",
+      "column": "is_internal",
+      "property": "isInternal",
+      "secret": false,
+      "kind": "text",
       "position": 4
     },
     {
@@ -7195,6 +7349,94 @@
       "secret": false,
       "kind": "text",
       "position": 12
+    },
+    {
+      "table": "platform_plan",
+      "column": "plan_code",
+      "property": "planCode",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "platform_plan",
+      "column": "name",
+      "property": "name",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "platform_plan",
+      "column": "monthly_price",
+      "property": "monthlyPrice",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "platform_plan",
+      "column": "currency",
+      "property": "currency",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "platform_plan",
+      "column": "trial_days",
+      "property": "trialDays",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "platform_plan",
+      "column": "limits",
+      "property": "limits",
+      "secret": false,
+      "kind": "json",
+      "position": 5
+    },
+    {
+      "table": "platform_plan",
+      "column": "is_public",
+      "property": "isPublic",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "platform_plan",
+      "column": "version",
+      "property": "version",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "platform_plan",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 8
+    },
+    {
+      "table": "platform_plan_module",
+      "column": "plan_code",
+      "property": "planCode",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "platform_plan_module",
+      "column": "module_key",
+      "property": "moduleKey",
+      "secret": false,
+      "kind": "text",
+      "position": 1
     },
     {
       "table": "purchase_order",

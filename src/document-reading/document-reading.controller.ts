@@ -42,9 +42,11 @@ import {
   RejectDocumentReadingDto,
 } from './dto/document-reading.dto';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { RequiereModulo } from '../platform/access/requiere-modulo.decorator';
 
 const FALTA_DISTRIBUIDORA = 'Falta la distribuidora (`X-Distributor`)';
 
+@RequiereModulo('document_reading')
 @ApiTags('Lecturas de documentos (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @Controller({ path: 'document-readings', version: '2' })

@@ -36,6 +36,10 @@ import {
 import { RepurchaseAcceptService } from './repurchase-accept.service';
 import { RepurchaseCustomerService } from './repurchase-customer.service';
 import { RepurchaseMapper } from './repurchase.mapper';
+import {
+  RequiereModulo,
+  SinModulo,
+} from '../platform/access/requiere-modulo.decorator';
 
 /**
  * Recompra anticipada en la app del cliente (CU-106, CU-145 y CU-146): su fecha
@@ -44,6 +48,7 @@ import { RepurchaseMapper } from './repurchase.mapper';
  * Las invitaciones nuevas llegan por el socket `repurchase:invitation` y por
  * push (`data.event = REPURCHASE_INVITATION`).
  */
+@RequiereModulo('repurchase')
 @ApiTags('Customers · Repurchase (v2)')
 @Auth(RoleType.CUSTOMER)
 @Controller({ path: 'customers/me/repurchase', version: '2' })
@@ -108,6 +113,9 @@ export class RepurchaseCustomerController {
     );
   }
 
+  @SinModulo(
+    'Las invitaciones vigentes se respetan hasta su vencimiento aunque se apague la recompra (§7.3)',
+  )
   @Get('invitations')
   @ApiOperation({
     summary: 'Mis invitaciones de recompra',
@@ -132,6 +140,9 @@ export class RepurchaseCustomerController {
     );
   }
 
+  @SinModulo(
+    'Las invitaciones vigentes se respetan hasta su vencimiento aunque se apague la recompra (§7.3)',
+  )
   @Get('invitations/:id')
   @ApiOperation({ summary: 'Una de mis invitaciones de recompra' })
   @ApiParam({ name: 'id', description: 'Invitation UUID' })
@@ -146,6 +157,9 @@ export class RepurchaseCustomerController {
     return RepurchaseMapper.invitation(v.invitacion, v.detalle);
   }
 
+  @SinModulo(
+    'Las invitaciones vigentes se respetan hasta su vencimiento aunque se apague la recompra (§7.3)',
+  )
   @Post('invitations/:id/accept')
   @Idempotent()
   @ApiOperation({
@@ -185,6 +199,9 @@ export class RepurchaseCustomerController {
     );
   }
 
+  @SinModulo(
+    'Las invitaciones vigentes se respetan hasta su vencimiento aunque se apague la recompra (§7.3)',
+  )
   @Post('invitations/:id/dismiss')
   @HttpCode(200)
   @ApiOperation({

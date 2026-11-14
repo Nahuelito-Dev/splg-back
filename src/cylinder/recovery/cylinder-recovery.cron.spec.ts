@@ -2,6 +2,7 @@ import { RedisService } from '../../redis/redis.service';
 import { CylinderRecoveryCron } from './cylinder-recovery.cron';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
 import { PARAMETROS } from './recovery-test-kit';
+import { empresasDePrueba } from '../../process-run/testing/empresas-de-prueba';
 
 describe('CylinderRecoveryCron', () => {
   let recovery: {
@@ -11,6 +12,7 @@ describe('CylinderRecoveryCron', () => {
   };
   let redis: { withLock: jest.Mock };
   let cron: CylinderRecoveryCron;
+  let sinRecupero: Set<string>;
   // 07:00 UTC = 04:00 en Argentina
   const A_LAS_4 = new Date('2026-10-31T07:00:00Z');
 
@@ -34,9 +36,15 @@ describe('CylinderRecoveryCron', () => {
         fn().then(() => ({ obtenido: true, valor: undefined })),
       ),
     };
+    sinRecupero = new Set();
     cron = new CylinderRecoveryCron(
       recovery as unknown as CylinderRecoveryService,
       redis as unknown as RedisService,
+      empresasDePrueba({
+        distribuidoras: { findAll: () => Promise.resolve([]) },
+        habilitado: (id, modulo) =>
+          !(modulo === 'cylinder_recovery' && sinRecupero.has(id)),
+      }).empresas,
     );
   });
 
@@ -57,6 +65,14 @@ describe('CylinderRecoveryCron', () => {
     });
     expect(await cron.recuperarLasQueTocan(A_LAS_4)).toBe(0);
     expect(recovery.ejecutar).not.toHaveBeenCalled();
+  });
+
+  it('sin el recupero habilitado por la plataforma no corre en esa empresa; en otra sí', async () => {
+    recovery.parametros.mockResolvedValue({ ...PARAMETROS, runHour: 4 });
+    sinRecupero.add('d1');
+    expect(await cron.recuperarLasQueTocan(A_LAS_4)).toBe(1);
+    expect(recovery.ejecutar).toHaveBeenCalledTimes(1);
+    expect(recovery.ejecutar).toHaveBeenCalledWith('d2', A_LAS_4);
   });
 
   it('una distribuidora que falla no frena a la siguiente', async () => {
@@ -84,5 +100,15 @@ describe('CylinderRecoveryCron', () => {
   it('un fallo del cerrojo no se propaga', async () => {
     redis.withLock.mockRejectedValue(new Error('redis caído'));
     await expect(cron.recuperar()).resolves.toBeUndefined();
+  });
+
+  it('si el recupero se apaga después de elegir la empresa, no abre casos (re-consulta sin caché)', async () => {
+    recovery.parametros.mockImplementation((id: string) => {
+      if (id === 'd1') sinRecupero.add(id);
+      return Promise.resolve({ ...PARAMETROS, runHour: 4 });
+    });
+    expect(await cron.recuperarLasQueTocan(A_LAS_4)).toBe(1);
+    expect(recovery.ejecutar).toHaveBeenCalledTimes(1);
+    expect(recovery.ejecutar).toHaveBeenCalledWith('d2', A_LAS_4);
   });
 });

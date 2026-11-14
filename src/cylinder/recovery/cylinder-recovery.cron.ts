@@ -13,6 +13,7 @@ import {
   registrarErrorAtrapado,
 } from '../../process-run/process-run.context';
 import { ProcessName } from '../../process-run/domain/process-catalog';
+import { EmpresasParaProceso } from '../../process-run/empresas-para-proceso';
 
 /**
  * CU-108: el proceso automático de la recuperación de envases. Cada hora
@@ -33,6 +34,7 @@ export class CylinderRecoveryCron {
   constructor(
     private readonly recovery: CylinderRecoveryService,
     private readonly redis: RedisService,
+    private readonly empresas: EmpresasParaProceso,
   ) {}
 
   @Cron('0 0 * * * *', { timeZone: ZONA_ARGENTINA })
@@ -55,27 +57,33 @@ export class CylinderRecoveryCron {
     }
   }
 
-  /** Corre la gestión de las distribuidoras cuya hora de ejecución es la actual. */
+  /**
+   * Corre la gestión de las distribuidoras cuya hora de ejecución es la
+   * actual y que tienen el recupero habilitado por la plataforma (módulo
+   * `cylinder_recovery`). Con el módulo apagado no se abren casos ni se
+   * escalan; las ofertas de retiro vigentes siguen.
+   */
   async recuperarLasQueTocan(ahora: Date): Promise<number> {
     const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
-    const ids = await this.recovery.distribuidorasConEnvasesAfuera();
-    let corridas = 0;
-    for (const distributorId of ids) {
-      try {
+    const { empresas } = await this.empresas.recorrer(
+      {
+        proceso: ProcessName.CYLINDER_RECOVERY,
+        modulo: 'cylinder_recovery',
+        crea: true,
+        entre: await this.recovery.distribuidorasConEnvasesAfuera(),
+      },
+      async (distributorId, empresa) => {
         const params = await this.recovery.parametros(distributorId);
-        if (!params.enabled || params.runHour !== hora) continue;
+        if (!params.enabled || params.runHour !== hora) return false;
+        // Sin caché, justo antes de abrir casos y ofertas (§6.3).
+        if (!(await empresa.sigueHabilitada())) return false;
         const r = await this.recovery.ejecutar(distributorId, ahora);
-        corridas += 1;
         this.logger.log(
           `Recupero ${distributorId}: ${r.abiertos} caso(s) nuevo(s), ${r.avisos} aviso(s), ${r.ofertas} oferta(s), ${r.escalados} escalado(s), ${r.perdidos} perdido(s), ${r.cerradosPorDevolucion} devuelto(s), ${r.cerradosPorCuenta} cubierto(s) por la cuenta, ${r.revisionManual} para revisión manual`,
         );
-      } catch (error) {
-        registrarErrorAtrapado(error);
-        this.logger.error(
-          `Recupero ${distributorId}: falló: ${errorMessage(error)}`,
-        );
-      }
-    }
-    return corridas;
+        return true;
+      },
+    );
+    return empresas.filter((e) => e.valor === true).length;
   }
 }
