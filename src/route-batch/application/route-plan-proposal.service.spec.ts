@@ -217,8 +217,10 @@ describe('RoutePlanProposalService.proponer', () => {
   });
 
   it('crea los borradores del sistema, con sus paradas en orden, y deja el día propuesto con el resumen', async () => {
-    const { svc, manager, writer } = armar();
+    const { svc, manager, writer, data } = armar();
     const r = await svc.proponer(DIST, DIA);
+    expect(data.choferes).toHaveBeenCalledWith(DIST, undefined, DIA);
+    expect(data.vehiculos).toHaveBeenCalledWith(DIST, undefined, DIA);
     expect(r.sheets[0].sheetId).toBe('nueva-1');
     const creada = (manager.save.mock.calls as unknown[][])[0][0];
     expect(creada).toMatchObject({

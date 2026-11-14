@@ -575,7 +575,8 @@ export class OrderController {
       'Aceptar (`accepted`) un pedido de Mercado Pago cuyo pago todavía no está aprobado (salvo una reserva con la seña paga), ' +
       'o, siendo chofer, tener ya otro pedido aceptado esperando (CU-013: nunca dos encolados; repetir la aceptación del mismo pedido no cuenta), ' +
       'o aceptar un pedido que es parada de un recorrido que se está ofreciendo (M4), ' +
-      'o aceptar o asignar un pedido que es parada de una hoja de ruta en borrador o confirmada (`code: ORDER_IN_ROUTE_SHEET`: lo lleva el chofer de la hoja; hay que sacarlo de la hoja primero)',
+      'o aceptar o asignar un pedido que es parada de una hoja de ruta en borrador o confirmada (`code: ORDER_IN_ROUTE_SHEET`: lo lleva el chofer de la hoja; hay que sacarlo de la hoja primero), ' +
+      'o pasar a en camino un pedido de una hoja de ruta en curso mientras el chofer tiene otro en camino (`code: DRIVER_ALREADY_ON_THE_WAY`)',
   })
   @ApiBadRequestResponse({
     description:

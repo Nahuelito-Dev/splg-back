@@ -14,13 +14,22 @@ import { sqlPedidoEnLoteVivo } from '../infrastructure/lote-de-recorrido.sql';
 import { CancelOrderUseCase } from './cancel-order.use-case';
 
 /**
+ * La jornada de la distribuidora: la primera franja activa. Un pedido agendado
+ * sin franja fija (el que reprograma la hoja de ruta) espera desde ahí, no
+ * desde las 00:00.
+ */
+const SQL_INICIO_DE_LA_JORNADA = `(SELECT min(j."startTime") FROM "time_slot" j
+      WHERE j."distributor_id" = o."distributor_id" AND j."isActive")`;
+
+/**
  * Inicio de la espera en SQL, igual que `inicioDeLaEspera`: lo último entre que
- * se pudo ofrecer y el inicio de su agenda (día agendado a la hora de su franja,
- * o 00:00, en hora argentina). `GREATEST` ignora el NULL de un inmediato.
+ * se pudo ofrecer y el inicio de su agenda (día agendado a la hora de su franja;
+ * sin franja, al abrir la jornada, o 00:00, en hora argentina). `GREATEST`
+ * ignora el NULL de un inmediato.
  */
 const SQL_INICIO_DE_LA_ESPERA = `GREATEST(
     COALESCE(o."available_since", o."createdAt"),
-    (o."scheduled_date" + COALESCE(ts."startTime", time '00:00')) AT TIME ZONE '${ZONA_ARGENTINA}'
+    (o."scheduled_date" + COALESCE(ts."startTime", ${SQL_INICIO_DE_LA_JORNADA}, time '00:00')) AT TIME ZONE '${ZONA_ARGENTINA}'
   )`;
 
 /** Cuántos pedidos vence, como máximo, por distribuidora y por tic. */
@@ -137,12 +146,18 @@ export class VencimientoSinChoferService {
     minutos: number,
     ahora: Date,
   ): Promise<boolean> {
-    const franja: Array<{ startTime: string }> = locked.timeSlotId
+    const franja: Array<{ startTime: string | null }> = locked.timeSlotId
       ? await manager.query(
           `SELECT "startTime" FROM "time_slot" WHERE "time_slot_id" = $1`,
           [locked.timeSlotId],
         )
-      : [];
+      : locked.scheduledDate
+        ? await manager.query(
+            `SELECT min(j."startTime") AS "startTime" FROM "time_slot" j
+              WHERE j."distributor_id" = $1 AND j."isActive"`,
+            [locked.distributorId],
+          )
+        : [];
     const vencio = vencioSinChofer(
       {
         status: locked.status,

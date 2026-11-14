@@ -37,6 +37,24 @@ import {
 } from './presentation/route-plans.controller';
 import { RouteSheetsController } from './presentation/route-sheets.controller';
 import { RoutePlanningCron } from './route-planning.cron';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { TruckLoadModule } from '../truck-load/truck-load.module';
+import { RouteSheetAssignmentService } from './application/route-sheet-assignment.service';
+import { RouteSheetCloseService } from './application/route-sheet-close.service';
+import { RouteSheetEtaService } from './application/route-sheet-eta.service';
+import { RouteSheetExecutionQueryService } from './application/route-sheet-execution-query.service';
+import { RouteSheetInProgressEditingService } from './application/route-sheet-in-progress-editing.service';
+import { RouteSheetInProgress } from './application/route-sheet-in-progress.service';
+import { RouteSheetNotifier } from './application/route-sheet-notifier.service';
+import { RouteSheetProgress } from './application/route-sheet-progress.service';
+import { RouteSheetStartService } from './application/route-sheet-start.service';
+import { RouteSheetStopsService } from './application/route-sheet-stops.service';
+import { RouteSheetWatchService } from './application/route-sheet-watch.service';
+import { DriverRouteSheetsController } from './presentation/driver-route-sheets.controller';
+import { OrderEtaController } from './presentation/order-eta.controller';
+import { RoutePlanningHolidaysController } from './presentation/route-planning-holidays.controller';
+import { RoutePlanningCalendarService } from './application/route-planning-calendar.service';
+import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.entity';
 
 /**
  * Agrupación inteligente de pedidos por recorrido (CU-107, módulo M4). Arma
@@ -50,6 +68,7 @@ import { RoutePlanningCron } from './route-planning.cron';
       RouteBatchStop,
       RouteBatchOffer,
       RoutePlan, // la clave compuesta (distribuidora, día) del lote la referencia
+      RoutePlanningHoliday, // feriados de la hoja de ruta
     ]),
     OrderModule, // asignar los pedidos del lote y devolverlos al despacho individual
     DeliveryModule, // el chofer y su pertenencia
@@ -61,6 +80,8 @@ import { RoutePlanningCron } from './route-planning.cron';
     RoutesModule, // matriz de tiempos de la hoja de ruta (OSRM o línea recta)
     DocumentSequenceModule, // número de la hoja al confirmarla
     S3Module, // el logo de la distribuidora en el PDF de la hoja
+    TruckLoadModule, // la carga abierta del chofer al iniciar la hoja (E4)
+    NotificationsModule, // push al cliente con su franja estimada (E5)
   ],
   controllers: [
     RouteBatchController,
@@ -68,6 +89,9 @@ import { RoutePlanningCron } from './route-planning.cron';
     RoutePlansController,
     RouteSheetsController,
     RoutePlanningSettingsController,
+    DriverRouteSheetsController,
+    OrderEtaController,
+    RoutePlanningHolidaysController,
   ],
   providers: [
     RouteBatchService,
@@ -87,6 +111,19 @@ import { RoutePlanningCron } from './route-planning.cron';
     RouteSheetPdfService,
     PdfBrandingService, // membrete del PDF (el de `pdf/`, que no lo exporta)
     RoutePlanningCron,
+    // Hoja de ruta (F34, E4 y E5): ejecución en la calle y hora estimada.
+    RouteSheetNotifier,
+    RouteSheetProgress,
+    RouteSheetEtaService,
+    RouteSheetInProgress,
+    RouteSheetAssignmentService,
+    RouteSheetStartService,
+    RouteSheetStopsService,
+    RouteSheetInProgressEditingService,
+    RouteSheetCloseService,
+    RouteSheetWatchService,
+    RouteSheetExecutionQueryService,
+    RoutePlanningCalendarService, // días hábiles y feriados
   ],
 })
 export class RouteBatchModule {}

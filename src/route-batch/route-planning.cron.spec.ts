@@ -1,4 +1,5 @@
 import { RoutePlanProposalService } from './application/route-plan-proposal.service';
+import { RouteSheetWatchService } from './application/route-sheet-watch.service';
 import { RoutePlanService } from './application/route-plan.service';
 import { RoutePlanningCron } from './route-planning.cron';
 import { RedisService } from '../redis/redis.service';
@@ -25,6 +26,7 @@ describe('RoutePlanningCron', () => {
       plans as unknown as RoutePlanService,
       { proponer } as unknown as RoutePlanProposalService,
       conCerrojo as unknown as RedisService,
+      { vigilar: jest.fn() } as unknown as RouteSheetWatchService,
     );
     return { cron, plans };
   }
@@ -61,6 +63,23 @@ describe('RoutePlanningCron', () => {
     expect(proponer).toHaveBeenCalledTimes(2);
   });
 
+  it('sigue las hojas en curso con el cerrojo', async () => {
+    const vigilar = jest.fn().mockResolvedValue({
+      reconciled: 1,
+      completed: 0,
+      etaRecalculated: 2,
+      notStartedAlerts: 0,
+    });
+    const cron = new RoutePlanningCron(
+      {} as unknown as RoutePlanService,
+      {} as unknown as RoutePlanProposalService,
+      conCerrojo as unknown as RedisService,
+      { vigilar } as unknown as RouteSheetWatchService,
+    );
+    await expect(cron.seguir()).resolves.toMatchObject({ reconciled: 1 });
+    expect(vigilar).toHaveBeenCalledTimes(1);
+  });
+
   it('cierra los días vencidos', async () => {
     const { cron, plans } = armar([], jest.fn());
     await expect(cron.cerrarDias()).resolves.toEqual({ closed: 2 });
@@ -76,6 +95,7 @@ describe('RoutePlanningCron', () => {
       {
         withLock: jest.fn().mockResolvedValue({ obtenido: false }),
       } as unknown as RedisService,
+      { vigilar: jest.fn() } as unknown as RouteSheetWatchService,
     );
     await expect(cron.proponer()).resolves.toBeUndefined();
     await expect(cron.cerrarDias()).resolves.toBeUndefined();

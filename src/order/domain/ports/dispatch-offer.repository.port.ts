@@ -12,6 +12,12 @@ export interface DriverOfferState {
  * interfaz; el adapter TypeORM resuelve el cómo. Aislar la persistencia permite
  * testear la lógica de despacho secuencial con un repo en memoria.
  */
+/** La hoja confirmada que asigna sus paradas al iniciarse, y su chofer. */
+export interface HojaQueAsigna {
+  batchId: string;
+  deliveryId: string;
+}
+
 export abstract class DispatchOfferRepositoryPort {
   /** Crea una oferta OFFERED para un chofer, válida hasta `expiresAt`. */
   abstract create(
@@ -58,11 +64,24 @@ export abstract class DispatchOfferRepositoryPort {
    * así que el despacho automático (ofertas) no lo ofrece suelto, el chofer no
    * lo acepta y el admin no lo asigna por fuera de la hoja. Con `manager`, lee
    * dentro de la transacción de quien llama (con el pedido bloqueado).
+   *
+   * `salvoHoja` es la única excepción, explícita: el inicio de ESA hoja
+   * confirmada por SU chofer (F34 E4) asigna sus propias paradas. Una parada de
+   * otra hoja, o de esa hoja para otro chofer, sigue retenida.
    */
   abstract isInPlannedRouteSheet(
     orderId: string,
     manager?: EntityManager,
+    salvoHoja?: HojaQueAsigna,
   ): Promise<boolean>;
+
+  /**
+   * True si el pedido salió de una hoja de ruta en la calle y espera que el
+   * admin decida (F34: no se entregó en el segundo intento, el admin lo sacó o
+   * quedó pendiente al cerrar la hoja). El despacho automático no lo ofrece:
+   * ningún pedido de una hoja vuelve solo al despacho común.
+   */
+  abstract isAwaitingReschedule(orderId: string): Promise<boolean>;
 
   /**
    * True si el pedido es programado, la agrupación por recorrido (M4) está

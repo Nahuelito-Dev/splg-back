@@ -31,6 +31,33 @@ describe('errores de la hoja de ruta', () => {
     [E.choferNoEncontrado, 404, 'DRIVER_NOT_FOUND'],
     [E.vehiculoNoEncontrado, 404, 'CAR_NOT_FOUND'],
     [E.depositoNoEncontrado, 404, 'WAREHOUSE_NOT_FOUND'],
+    [E.feriadoNoEncontrado, 404, 'ROUTE_HOLIDAY_NOT_FOUND'],
+    [E.feriadoPasado, 409, 'ROUTE_HOLIDAY_DATE_PAST'],
+    [E.feriadoRepetido, 409, 'ROUTE_HOLIDAY_ALREADY_EXISTS'],
+    [E.hojaNoIniciable, 409, 'ROUTE_SHEET_NOT_STARTABLE'],
+    [() => E.hojaNoEsDeHoy('2026-11-15'), 409, 'ROUTE_SHEET_NOT_TODAY'],
+    [
+      () => E.vehiculoNoEnUso('AB123CD', null),
+      409,
+      'ROUTE_SHEET_CAR_NOT_IN_USE',
+    ],
+    [() => E.choferNoHabilitado(['x']), 409, 'ROUTE_SHEET_DRIVER_UNAVAILABLE'],
+    [E.cargaExigida, 409, 'ROUTE_SHEET_TRUCK_LOAD_REQUIRED'],
+    [
+      () => E.cargaNoLista(3, 'loading'),
+      409,
+      'ROUTE_SHEET_TRUCK_LOAD_NOT_READY',
+    ],
+    [
+      () => E.cargaEnOtroVehiculo(3, 'A', 'B'),
+      409,
+      'ROUTE_SHEET_TRUCK_LOAD_OTHER_CAR',
+    ],
+    [() => E.faltaStock([]), 409, 'ROUTE_SHEET_SHORTAGES'],
+    [E.nadaParaIniciar, 409, 'ROUTE_SHEET_NOTHING_TO_START'],
+    [E.hojaNoEnCurso, 409, 'ROUTE_SHEET_NOT_IN_PROGRESS'],
+    [E.otraParadaEnCamino, 409, 'ROUTE_SHEET_STOP_IN_PROGRESS'],
+    [E.paradaNoPendiente, 409, 'ROUTE_STOP_NOT_PENDING'],
   ];
 
   it.each(casos)(
@@ -50,6 +77,50 @@ describe('errores de la hoja de ruta', () => {
     expect(cuerpo(E.pedidoNoPlanificable('ya tiene chofer')).message).toBe(
       'El pedido no se puede planificar: ya tiene chofer',
     );
+  });
+
+  it('los del inicio llevan el detalle para la app, en castellano', () => {
+    expect(cuerpo(E.hojaNoEsDeHoy('2026-11-15')).message).toBe(
+      'La hoja es del 15/11/2026: el viaje sólo se inicia el día del reparto',
+    );
+    expect(E.vehiculoNoEnUso('AB123CD', 'ZZ999ZZ').getResponse()).toMatchObject(
+      {
+        message:
+          'El vehículo en uso del chofer es la patente ZZ999ZZ y la hoja es de la AB123CD: el chofer tiene que tomar el vehículo de la hoja para iniciar el viaje',
+        sheetCarPatent: 'AB123CD',
+        carInUsePatent: 'ZZ999ZZ',
+      },
+    );
+    expect(cuerpo(E.vehiculoNoEnUso(null, null)).message).toBe(
+      'El chofer no tiene un vehículo en uso: tiene que tomar el de la hoja (el de la hoja) para iniciar el viaje',
+    );
+    expect(
+      E.choferNoHabilitado(['licencia vencida', 'de licencia']).getResponse(),
+    ).toMatchObject({
+      message: 'El chofer no puede salir hoy: licencia vencida; de licencia',
+      reasons: ['licencia vencida', 'de licencia'],
+    });
+    expect(cuerpo(E.cargaNoLista(4, 'returned')).message).toBe(
+      'La carga N° 4 ya volvió: no se inicia un viaje hasta cerrar su rendición',
+    );
+    expect(cuerpo(E.cargaEnOtroVehiculo(4, null, null)).message).toBe(
+      'La carga N° 4 del chofer está en la patente ? y la hoja es de la ?',
+    );
+    const faltantes = [
+      {
+        gasCylinderId: 'g',
+        type: '10 kg',
+        required: 3,
+        onTruck: 1,
+        missing: 2,
+      },
+      { gasCylinderId: 'h', type: null, required: 1, onTruck: 0, missing: 1 },
+    ];
+    expect(E.faltaStock(faltantes).getResponse()).toMatchObject({
+      message:
+        'Al camión le faltan garrafas para la hoja. Para salir igual, confirmá que sabés del faltante',
+      shortages: faltantes,
+    });
   });
 
   it('confirmar con violaciones las lista en el cuerpo y en el mensaje', () => {

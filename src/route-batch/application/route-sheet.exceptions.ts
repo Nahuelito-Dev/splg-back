@@ -34,6 +34,9 @@ export const ROUTE_PLAN_CODES = {
   DRIVER_NOT_FOUND: 'DRIVER_NOT_FOUND',
   CAR_NOT_FOUND: 'CAR_NOT_FOUND',
   WAREHOUSE_NOT_FOUND: 'WAREHOUSE_NOT_FOUND',
+  HOLIDAY_NOT_FOUND: 'ROUTE_HOLIDAY_NOT_FOUND',
+  HOLIDAY_DATE_PAST: 'ROUTE_HOLIDAY_DATE_PAST',
+  HOLIDAY_ALREADY_EXISTS: 'ROUTE_HOLIDAY_ALREADY_EXISTS',
 } as const;
 
 const C = ROUTE_PLAN_CODES;
@@ -223,6 +226,30 @@ export const depositoNoEncontrado = () =>
     C.WAREHOUSE_NOT_FOUND,
   );
 
+export const feriadoNoEncontrado = () =>
+  conCodigo(
+    NotFoundException,
+    404,
+    'Feriado no encontrado',
+    C.HOLIDAY_NOT_FOUND,
+  );
+
+export const feriadoPasado = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'No se puede cargar un feriado en un día que ya pasó',
+    C.HOLIDAY_DATE_PAST,
+  );
+
+export const feriadoRepetido = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'Ese día ya está cargado como feriado',
+    C.HOLIDAY_ALREADY_EXISTS,
+  );
+
 /** 409 con la lista de lo que impide confirmar (el panel la muestra). */
 export function noConfirmable(
   violations: readonly RouteSheetViolation[],
@@ -235,3 +262,146 @@ export function noConfirmable(
     violations,
   });
 }
+
+// ───────────────────────── ejecución (E4) ─────────────────────────
+
+export const ROUTE_SHEET_EXECUTION_CODES = {
+  NOT_STARTABLE: 'ROUTE_SHEET_NOT_STARTABLE',
+  NOT_TODAY: 'ROUTE_SHEET_NOT_TODAY',
+  CAR_NOT_IN_USE: 'ROUTE_SHEET_CAR_NOT_IN_USE',
+  DRIVER_UNAVAILABLE: 'ROUTE_SHEET_DRIVER_UNAVAILABLE',
+  TRUCK_LOAD_REQUIRED: 'ROUTE_SHEET_TRUCK_LOAD_REQUIRED',
+  TRUCK_LOAD_NOT_READY: 'ROUTE_SHEET_TRUCK_LOAD_NOT_READY',
+  TRUCK_LOAD_OTHER_CAR: 'ROUTE_SHEET_TRUCK_LOAD_OTHER_CAR',
+  SHORTAGES: 'ROUTE_SHEET_SHORTAGES',
+  NOTHING_TO_START: 'ROUTE_SHEET_NOTHING_TO_START',
+  NOT_IN_PROGRESS: 'ROUTE_SHEET_NOT_IN_PROGRESS',
+  STOP_IN_PROGRESS: 'ROUTE_SHEET_STOP_IN_PROGRESS',
+  STOP_NOT_PENDING: 'ROUTE_STOP_NOT_PENDING',
+} as const;
+
+const E = ROUTE_SHEET_EXECUTION_CODES;
+
+export const hojaNoIniciable = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'Sólo se inicia el viaje de una hoja confirmada que todavía no salió',
+    E.NOT_STARTABLE,
+  );
+
+export const hojaNoEsDeHoy = (fecha: string) =>
+  conCodigo(
+    ConflictException,
+    409,
+    `La hoja es del ${fecha.split('-').reverse().join('/')}: el viaje sólo se inicia el día del reparto`,
+    E.NOT_TODAY,
+  );
+
+export function vehiculoNoEnUso(
+  hojaPatente: string | null,
+  enUsoPatente: string | null,
+): ConflictException {
+  const hoja = hojaPatente ?? 'el de la hoja';
+  return new ConflictException({
+    statusCode: 409,
+    message: enUsoPatente
+      ? `El vehículo en uso del chofer es la patente ${enUsoPatente} y la hoja es de la ${hoja}: el chofer tiene que tomar el vehículo de la hoja para iniciar el viaje`
+      : `El chofer no tiene un vehículo en uso: tiene que tomar el de la hoja (${hoja}) para iniciar el viaje`,
+    error: 'Conflict',
+    code: E.CAR_NOT_IN_USE,
+    sheetCarPatent: hojaPatente,
+    carInUsePatent: enUsoPatente,
+  });
+}
+
+export function choferNoHabilitado(motivos: string[]): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    message: `El chofer no puede salir hoy: ${motivos.join('; ')}`,
+    error: 'Conflict',
+    code: E.DRIVER_UNAVAILABLE,
+    reasons: motivos,
+  });
+}
+
+export const cargaExigida = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'El viaje sale con la carga del camión: falta abrir la carga del chofer en el vehículo de la hoja',
+    E.TRUCK_LOAD_REQUIRED,
+  );
+
+export const cargaNoLista = (numero: number, estado: string) =>
+  conCodigo(
+    ConflictException,
+    409,
+    estado === 'loading'
+      ? `La carga N° ${numero} todavía no salió del depósito: hay que confirmar la salida del camión antes de iniciar el viaje`
+      : `La carga N° ${numero} ya volvió: no se inicia un viaje hasta cerrar su rendición`,
+    E.TRUCK_LOAD_NOT_READY,
+  );
+
+export const cargaEnOtroVehiculo = (
+  numero: number,
+  patenteCarga: string | null,
+  patenteHoja: string | null,
+) =>
+  conCodigo(
+    ConflictException,
+    409,
+    `La carga N° ${numero} del chofer está en la patente ${patenteCarga ?? '?'} y la hoja es de la ${patenteHoja ?? '?'}`,
+    E.TRUCK_LOAD_OTHER_CAR,
+  );
+
+export function faltaStock(
+  shortages: ReadonlyArray<{
+    gasCylinderId: string;
+    type: string | null;
+    required: number;
+    onTruck: number;
+    missing: number;
+  }>,
+): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    message:
+      'Al camión le faltan garrafas para la hoja. Para salir igual, confirmá que sabés del faltante',
+    error: 'Conflict',
+    code: E.SHORTAGES,
+    shortages,
+  });
+}
+
+export const nadaParaIniciar = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'Ningún pedido de la hoja se pudo asignar (se cancelaron, se asignaron aparte o esperan el pago): la hoja sigue confirmada y el viaje no se inicia',
+    E.NOTHING_TO_START,
+  );
+
+export const hojaNoEnCurso = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'La hoja no está en curso',
+    E.NOT_IN_PROGRESS,
+  );
+
+export const otraParadaEnCamino = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'El chofer ya va en camino a otra parada: hay que entregarla o marcarla como no entregada antes de salir a otra',
+    E.STOP_IN_PROGRESS,
+  );
+
+export const paradaNoPendiente = () =>
+  conCodigo(
+    ConflictException,
+    409,
+    'La parada ya se entregó o salió de la hoja',
+    E.STOP_NOT_PENDING,
+  );

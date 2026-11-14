@@ -307,7 +307,31 @@ describe('OrderTypeormRepository · orden estable al paginar', () => {
         `b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed')`,
       );
       expect(sql).toMatch(
-        /AND NOT EXISTS \(SELECT 1 FROM "route_batch_stop" s[\s\S]*'planned'/,
+        /AND NOT \(EXISTS \(SELECT 1 FROM "route_batch_stop" s[\s\S]*'planned'/,
+      );
+      // Lo que salió de una hoja en curso y espera al admin tampoco va al pool.
+      expect(sql).toContain(`AND ba."started_at" IS NOT NULL`);
+    }
+  });
+
+  it('F34: el pool tampoco lista lo que una hoja en la calle reprogramó solo para otro día (espera la planificación de su día o al admin)', async () => {
+    const orderRepo = {
+      findAndCount: jest
+        .fn<Promise<[Order[], number]>, [{ where: unknown }]>()
+        .mockResolvedValue([[], 0]),
+    };
+    const repo = new OrderTypeormRepository(
+      orderRepo as unknown as Repository<Order>,
+    );
+    await repo.findAvailable(20, 0, 'dist-1');
+    const where = orderRepo.findAndCount.mock.calls[0][0].where as Array<{
+      orderId: { getSql: (c: string) => string };
+    }>;
+    for (const w of where) {
+      const sql = w.orderId.getSql('Order.orderId');
+      // Retenido sin importar la fecha nueva (`rescheduled`, `sheet_closed`).
+      expect(sql).toMatch(
+        /AND NOT \(EXISTS[\s\S]*sa\."removed_reason"::text IN \('needs_reschedule', 'rescheduled', 'sheet_closed'\)\s*OR oa\."scheduled_date" = ba\."plan_date"\)/,
       );
     }
   });

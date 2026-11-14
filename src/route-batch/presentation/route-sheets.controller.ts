@@ -26,7 +26,10 @@ import {
 import { RoleType } from '../../common/constants/role-type.enum';
 import { Auth } from '../../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../../common/decorators/current-distributor.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '../../common/decorators/current-user.decorator';
 import { Permiso } from '../../common/decorators/permiso.decorator';
 import { RouteSheetEditingService } from '../application/route-sheet-editing.service';
 import { RouteSheetLifecycleService } from '../application/route-sheet-lifecycle.service';
@@ -53,6 +56,25 @@ import {
   RouteSheetPageDto,
 } from './dto/route-sheet-response.dto';
 import { RequiereAlcanceDeSoporte } from '../../common/decorators/alcance-de-soporte.decorator';
+import { RouteBatchStatus } from '../domain/route-batch.enums';
+import { RouteSheetCloseService } from '../application/route-sheet-close.service';
+import { RouteSheetExecutionQueryService } from '../application/route-sheet-execution-query.service';
+import { RouteSheetInProgressEditingService } from '../application/route-sheet-in-progress-editing.service';
+import { RouteSheetStartService } from '../application/route-sheet-start.service';
+import { RouteSheetStopsService } from '../application/route-sheet-stops.service';
+import {
+  CloseRouteSheetDto,
+  CloseRouteSheetResponseDto,
+  FailedStopDto,
+  RouteSheetExecutionDto,
+  RouteSheetStopActionResponseDto,
+  StartRouteSheetDto,
+  StartRouteSheetResponseDto,
+} from './dto/route-sheet-execution.dto';
+import {
+  START_CONFLICT,
+  STOP_CONFLICT,
+} from './driver-route-sheets.controller';
 
 const BAD =
   'Cuerpo inválido, id que no es UUID o falta la distribuidora (super admin sin X-Distributor)';
@@ -75,6 +97,11 @@ export class RouteSheetsController {
     private readonly lifecycle: RouteSheetLifecycleService,
     private readonly query: RouteSheetQueryService,
     private readonly pdfs: RouteSheetPdfService,
+    private readonly start: RouteSheetStartService,
+    private readonly stops: RouteSheetStopsService,
+    private readonly close: RouteSheetCloseService,
+    private readonly enCurso: RouteSheetInProgressEditingService,
+    private readonly execution: RouteSheetExecutionQueryService,
   ) {}
 
   @Permiso('despacho.gestionar')
@@ -173,7 +200,7 @@ export class RouteSheetsController {
   @ApiOperation({
     summary: 'Agregar una parada',
     description:
-      'En la posición pedida o, sin posición, en la inserción más barata que respeta franjas y capacidad.',
+      'En la posición pedida o, sin posición, en la inserción más barata que respeta franjas y capacidad. Con la hoja EN CURSO (E4): el pedido (del día, pendiente y sin chofer) se le asigna al chofer y entra en la cola de lo que falta (`position` 1 = la próxima después de la parada en camino; sin posición, la que menos atrasa); `lock` y `acceptLateStops` no aplican y al chofer se le avisa (`route-sheet:changed` + push).',
   })
   @ApiOkResponse({ type: RouteSheetDto })
   @ApiBadRequestResponse({ description: BAD })
@@ -181,14 +208,20 @@ export class RouteSheetsController {
     description: `${NOT_FOUND}; o el pedido no existe o es de otra distribuidora (ORDER_NOT_FOUND)`,
   })
   @ApiConflictResponse({
-    description: `${VERSION}; pedido ya en otra hoja o lote, que no es de ese día o no está pendiente, o que no entra (ROUTE_STOP_NOT_FEASIBLE): en la posición pedida o en ninguna, por franja (salvo acceptLateStops), capacidad del vehículo o máximo de paradas`,
+    description: `${VERSION}; pedido ya en otra hoja o lote, que no es de ese día o no está pendiente, o que no entra (ROUTE_STOP_NOT_FEASIBLE): en la posición pedida o en ninguna, por franja (salvo acceptLateStops), capacidad del vehículo o máximo de paradas. En curso: el pedido ya no está disponible (lo tomó otro chofer en el medio)`,
   })
   async agregar(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: AddRouteSheetStopDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<RouteSheetDto> {
-    await this.editing.agregar(distributorId, id, body);
+    const hoja = await this.query.detalleSinMapear(distributorId, id);
+    if (hoja.status === RouteBatchStatus.ASSIGNED) {
+      await this.enCurso.agregarEnCurso(distributorId, id, body, userId);
+    } else {
+      await this.editing.agregar(distributorId, id, body);
+    }
     return this.query.detalle(distributorId, id);
   }
 
@@ -199,21 +232,35 @@ export class RouteSheetsController {
   @ApiOperation({
     summary: 'Quitar una parada',
     description:
-      'Borrado lógico de la parada (motivo `admin`): el pedido vuelve a «Sin asignar».',
+      'Borrado lógico de la parada (motivo `admin`): el pedido vuelve a «Sin asignar». Con la hoja EN CURSO (E4): sólo una parada pendiente (no la que está en camino: 409 ROUTE_STOP_NOT_PENDING); el pedido se le libera al chofer y queda esperando que el admin lo reprograme, lo asigne o lo cancele (no vuelve al despacho común), la cola se reordena y al chofer se le avisa.',
   })
   @ApiOkResponse({ type: RouteSheetDto })
   @ApiBadRequestResponse({ description: BAD })
   @ApiNotFoundResponse({
     description: `${NOT_FOUND}; o el pedido no es parada de la hoja (ROUTE_STOP_NOT_FOUND)`,
   })
-  @ApiConflictResponse({ description: VERSION })
+  @ApiConflictResponse({
+    description: `${VERSION}; en curso, ROUTE_STOP_NOT_PENDING (la parada ya se entregó, está en camino o salió)`,
+  })
   async quitar(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body() body: VersionRouteSheetDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<RouteSheetDto> {
-    await this.editing.quitar(distributorId, id, orderId, body.version);
+    const hoja = await this.query.detalleSinMapear(distributorId, id);
+    if (hoja.status === RouteBatchStatus.ASSIGNED) {
+      await this.enCurso.quitarEnCurso(
+        distributorId,
+        id,
+        orderId,
+        body.version,
+        userId,
+      );
+    } else {
+      await this.editing.quitar(distributorId, id, orderId, body.version);
+    }
     return this.query.detalle(distributorId, id);
   }
 
@@ -302,7 +349,7 @@ export class RouteSheetsController {
   @ApiOperation({
     summary: 'Confirmar la hoja',
     description:
-      'Exige chofer y vehículo habilitados y sin otra hoja ese día, al menos una parada, la carga dentro de la capacidad y las paradas en franja (o `acceptLateStops`). Le da número a la hoja y congela la ETA prometida. NO asigna los pedidos: siguen pendientes y retenidos hasta que el chofer la inicie.',
+      'Exige chofer y vehículo habilitados y sin otra hoja ese día, al menos una parada, la carga dentro de la capacidad y las paradas en franja (o `acceptLateStops`). Le da número a la hoja y congela la ETA prometida. La hoja confirmada es del chofer: si es de hoy, sus pedidos le quedan asignados en el acto (sin que tenga que aceptar nada; `assignedAt`); si es de otro día, quedan retenidos para él y se le asignan al empezar ese día. Un pedido que ya no está libre sale de la hoja.',
   })
   @ApiOkResponse({ type: RouteSheetDto })
   @ApiBadRequestResponse({ description: BAD })
@@ -328,7 +375,7 @@ export class RouteSheetsController {
   @ApiOperation({
     summary: 'Reabrir una hoja confirmada',
     description:
-      'Vuelve a borrador para editarla. Sólo si no se inició y el día no está cerrado.',
+      'Vuelve a borrador para editarla. Sólo si el viaje no se inició y el día no está cerrado. Si los pedidos ya estaban asignados al chofer (hoja de hoy), se le liberan y vuelven a quedar retenidos por la hoja en borrador.',
   })
   @ApiOkResponse({ type: RouteSheetDto })
   @ApiBadRequestResponse({ description: BAD })
@@ -340,8 +387,9 @@ export class RouteSheetsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VersionRouteSheetDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<RouteSheetDto> {
-    await this.lifecycle.reabrir(distributorId, id, body.version);
+    await this.lifecycle.reabrir(distributorId, id, body.version, userId);
     return this.query.detalle(distributorId, id);
   }
 
@@ -352,7 +400,7 @@ export class RouteSheetsController {
   @ApiOperation({
     summary: 'Cancelar la hoja',
     description:
-      'Borrador o confirmada que no se inició: queda `dissolved` (`admin`), las paradas salen y los pedidos vuelven al despacho del día.',
+      'Borrador o confirmada cuyo viaje no se inició: queda `dissolved` (`admin`), las paradas salen y los pedidos (liberados del chofer si ya se le habían asignado) vuelven al despacho del día.',
   })
   @ApiOkResponse({ type: RouteSheetDto })
   @ApiBadRequestResponse({ description: BAD })
@@ -364,8 +412,9 @@ export class RouteSheetsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: VersionRouteSheetDto,
     @CurrentDistributor({ required: true }) distributorId: string,
+    @CurrentUser('user_id') userId: string,
   ): Promise<RouteSheetDto> {
-    await this.lifecycle.cancelar(distributorId, id, body.version);
+    await this.lifecycle.cancelar(distributorId, id, body.version, userId);
     return this.query.detalle(distributorId, id);
   }
 
@@ -419,5 +468,118 @@ export class RouteSheetsController {
       ),
       length: doc.contenido.length,
     });
+  }
+
+  // ───────────────────────── ejecución (E4) ─────────────────────────
+
+  @Permiso('despacho.gestionar')
+  @Auth(RoleType.DELIVERY, RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Post(':id/start')
+  @HttpCode(200)
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Iniciar viaje',
+    description:
+      'Lo inicia el chofer de la hoja (o un admin en su nombre) con la carga del camión hecha: la hoja pasa a en curso (`assigned`) y a todos los clientes se les avisa por push que su pedido está en camino, con la franja estimada. Si los pedidos todavía no se le habían asignado al chofer, se asignan acá (saltando la retención sólo de ESTA hoja y SU chofer; lo que ya no está libre sale). Exige hoja confirmada y del día, el vehículo de la hoja en uso por el chofer, chofer habilitado y la carga obligatoria en ese vehículo, ya salida del depósito y completa (o el faltante aceptado). Idempotente (`alreadyStarted: true`). Para el chofer es lo mismo que `POST /v2/driver/route-sheets/:id/start`; otra hoja que no es suya es 404.',
+  })
+  @ApiOkResponse({ type: StartRouteSheetResponseDto })
+  @ApiBadRequestResponse({ description: BAD })
+  @ApiNotFoundResponse({ description: NOT_FOUND })
+  @ApiConflictResponse({ description: START_CONFLICT })
+  iniciar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: StartRouteSheetDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<StartRouteSheetResponseDto> {
+    return this.start.iniciar(
+      distributorId,
+      id,
+      { userId: user.user_id, esChofer: user.role === RoleType.DELIVERY },
+      body.acknowledgeShortages === true,
+    );
+  }
+
+  @Permiso('despacho.gestionar')
+  @Get(':id/execution')
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Seguimiento de la hoja',
+    description:
+      'La hoja con el avance de cada parada (pendiente, en camino, entregada, no entregada, fuera de la hoja, con motivo y hora), la hora estimada vigente contra la prometida, la franja avisada al cliente, la parada en camino y la última posición del chofer. Sólo lectura (sirve en modo soporte). En vivo: `route-sheet:*` en el socket del panel.',
+  })
+  @ApiOkResponse({ type: RouteSheetExecutionDto })
+  @ApiBadRequestResponse({ description: BAD })
+  @ApiNotFoundResponse({ description: NOT_FOUND })
+  seguimiento(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<RouteSheetExecutionDto> {
+    return this.execution.seguimiento(distributorId, id);
+  }
+
+  @Permiso('despacho.gestionar')
+  @Post(':id/stops/:orderId/failed')
+  @HttpCode(200)
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiOperation({
+    summary: '«No pudo entregar» (en nombre del chofer)',
+    description:
+      'Igual que el chofer: primer intento, la parada pasa al final de la cola; segundo, sale de la hoja y el pedido se reprograma solo para el día hábil siguiente (nunca vuelve al despacho común). Al cliente se le avisa por push y al chofer por socket y push.',
+  })
+  @ApiOkResponse({ type: RouteSheetStopActionResponseDto })
+  @ApiBadRequestResponse({
+    description: `${BAD}; \`reason\` fuera de la lista o \`reason: other\` sin \`note\``,
+  })
+  @ApiNotFoundResponse({
+    description: `${NOT_FOUND}; o el pedido no es parada activa (ROUTE_STOP_NOT_FOUND)`,
+  })
+  @ApiConflictResponse({ description: STOP_CONFLICT })
+  noEntregada(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() body: FailedStopDto,
+    @CurrentUser('user_id') userId: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<RouteSheetStopActionResponseDto> {
+    return this.stops.noEntregada(
+      distributorId,
+      id,
+      orderId,
+      { userId, esChofer: false },
+      body,
+    );
+  }
+
+  @Permiso('despacho.gestionar')
+  @Post(':id/close')
+  @HttpCode(200)
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Cerrar la hoja en curso',
+    description:
+      'Las paradas pendientes salen (`sheet_closed`, con el motivo) y sus pedidos se reprograman solos para el día hábil siguiente (no vuelven al despacho común); la hoja queda cerrada (`completed`, `closeNote`). Idempotente (`alreadyClosed: true`).',
+  })
+  @ApiOkResponse({ type: CloseRouteSheetResponseDto })
+  @ApiBadRequestResponse({
+    description: `${BAD}; \`reason\` de 5 a 280 caracteres`,
+  })
+  @ApiNotFoundResponse({ description: NOT_FOUND })
+  @ApiConflictResponse({
+    description: 'ROUTE_SHEET_NOT_IN_PROGRESS (no se inició), ROUTE_SHEET_BUSY',
+  })
+  cerrar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: CloseRouteSheetDto,
+    @CurrentUser('user_id') userId: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<CloseRouteSheetResponseDto> {
+    return this.close.cerrar(
+      distributorId,
+      id,
+      { userId, esChofer: false },
+      body.reason,
+    );
   }
 }

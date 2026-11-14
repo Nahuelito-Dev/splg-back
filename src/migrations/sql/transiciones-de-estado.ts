@@ -33,7 +33,7 @@ export const MAQUINAS_DE_ESTADO: readonly MaquinaDeEstado[] = [
       reserved: ['pending', 'cancelled'],
       pending: ['accepted', 'cancelled'],
       accepted: ['on_the_way', 'pending', 'cancelled'],
-      on_the_way: ['delivered', 'cancelled', 'pending'],
+      on_the_way: ['delivered', 'cancelled', 'pending', 'accepted'],
       delivered: [],
       cancelled: [],
     },

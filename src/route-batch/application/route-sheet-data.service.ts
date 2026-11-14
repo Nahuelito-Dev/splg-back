@@ -12,9 +12,20 @@ export interface PedidoDeHoja extends PedidoParaPlanificar {
   orderId: string;
   lat: number | null;
   lng: number | null;
+  /**
+   * La franja de la parada en ms: la comprada, o —sin franja fija (un pedido
+   * reprogramado por la hoja, o agendado sólo con fecha)— la jornada de la
+   * distribuidora (de la primera a la última franja activa), así el planificador
+   * calcula la hora dentro del día.
+   */
   slotStartMs: number | null;
   slotEndMs: number | null;
   slotName: string | null;
+  /** Tiene una franja comprada (si no, `slotStartMs`/`slotEndMs` son la jornada). */
+  fixedSlot: boolean;
+  /** La jornada de la distribuidora ese día (null sin franjas activas o sin fecha). */
+  dayStartMs: number | null;
+  dayEndMs: number | null;
   createdAtMs: number;
   customerName: string | null;
   customerPhone: string | null;
@@ -63,6 +74,8 @@ interface FilaPedido {
   slotStart: string | null;
   slotEnd: string | null;
   slotName: string | null;
+  dayStart: string | null;
+  dayEnd: string | null;
   deliveryMode: string;
   depositPaid: boolean;
   fraudHold: boolean;
@@ -84,6 +97,10 @@ const SELECT_PEDIDO = `
   SELECT o."order_id" AS "orderId", o."status"::text AS "status", o."delivery_id" AS "deliveryId",
          to_char(o."scheduled_date", 'YYYY-MM-DD') AS "scheduledDate",
          ts."startTime"::text AS "slotStart", ts."endTime"::text AS "slotEnd", ts."name" AS "slotName",
+         (SELECT min(j."startTime")::text FROM "time_slot" j
+           WHERE j."distributor_id" = o."distributor_id" AND j."isActive") AS "dayStart",
+         (SELECT max(j."endTime")::text FROM "time_slot" j
+           WHERE j."distributor_id" = o."distributor_id" AND j."isActive") AS "dayEnd",
          o."delivery_mode"::text AS "deliveryMode", COALESCE(o."deposit_paid", false) AS "depositPaid",
          COALESCE(o."payment_fraud_hold", false) AS "fraudHold",
          ST_Y(o."deliveryPoint") AS "lat", ST_X(o."deliveryPoint") AS "lng",
@@ -109,22 +126,30 @@ const SELECT_PEDIDO = `
 
 function aPedido(f: FilaPedido): PedidoDeHoja {
   const fecha = f.scheduledDate;
+  const fija = f.slotStart !== null && f.slotEnd !== null;
+  const dayStartMs =
+    fecha && f.dayStart ? instanteDelDia(fecha, f.dayStart) : null;
+  const dayEndMs = fecha && f.dayEnd ? instanteDelDia(fecha, f.dayEnd) : null;
+  const deLaFranja = (hora: string | null): number | null =>
+    fecha && hora ? instanteDelDia(fecha, hora) : null;
   return {
     orderId: f.orderId,
     status: f.status,
     deliveryId: f.deliveryId,
     scheduledDate: fecha,
-    hasSlot: f.slotStart !== null && f.slotEnd !== null,
+    hasSlot: fija || (dayStartMs !== null && dayEndMs !== null),
     deliveryMode: f.deliveryMode,
     depositPaid: f.depositPaid,
     fraudHold: f.fraudHold,
     hasPoint: f.lat !== null && f.lng !== null,
     lat: f.lat === null ? null : Number(f.lat),
     lng: f.lng === null ? null : Number(f.lng),
-    slotStartMs:
-      fecha && f.slotStart ? instanteDelDia(fecha, f.slotStart) : null,
-    slotEndMs: fecha && f.slotEnd ? instanteDelDia(fecha, f.slotEnd) : null,
+    slotStartMs: fija ? deLaFranja(f.slotStart) : dayStartMs,
+    slotEndMs: fija ? deLaFranja(f.slotEnd) : dayEndMs,
     slotName: f.slotName,
+    fixedSlot: fija,
+    dayStartMs,
+    dayEndMs,
     createdAtMs: Number(f.createdAtMs),
     customerName: f.customerName,
     customerPhone: f.customerPhone,
@@ -243,10 +268,16 @@ export class RouteSheetDataService {
     return filas.length > 0;
   }
 
-  /** Los choferes de la distribuidora y si están en condiciones de repartir. */
+  /**
+   * Los choferes de la distribuidora y si están en condiciones de repartir. Con
+   * `fecha` (la del plan), la habilitación se evalúa a ese día (licencias,
+   * vencimientos y legajo; no exige un vehículo en uso porque la hoja trae el
+   * suyo). Sin fecha, la del despacho de ahora.
+   */
   async choferes(
     distributorId: string,
     deliveryIds?: readonly string[],
+    fecha?: string,
   ): Promise<ChoferDelDia[]> {
     const filas: Array<{
       deliveryId: string;
@@ -273,9 +304,20 @@ export class RouteSheetDataService {
     );
     const habilitados = filas.filter((f) => f.enabled).map((f) => f.userId);
     const inhabilitados =
-      habilitados.length > 0
-        ? await this.fleet.choferesInhabilitados(habilitados, distributorId)
-        : new Set<string>();
+      habilitados.length === 0
+        ? new Set<string>()
+        : fecha
+          ? new Set(
+              (
+                await this.fleet.habilitacionAlDia(
+                  habilitados,
+                  [],
+                  distributorId,
+                  fecha,
+                )
+              ).choferes.keys(),
+            )
+          : await this.fleet.choferesInhabilitados(habilitados, distributorId);
     return filas.map((f) => ({
       deliveryId: f.deliveryId,
       userId: f.userId,
@@ -285,10 +327,15 @@ export class RouteSheetDataService {
     }));
   }
 
-  /** Los vehículos vigentes de la distribuidora con su capacidad (D-03). */
+  /**
+   * Los vehículos vigentes de la distribuidora con su capacidad (D-03). Con
+   * `fecha`, además, no está disponible el que ese día tiene un seguro o una
+   * VTV vencidos o el taller programado.
+   */
   async vehiculos(
     distributorId: string,
     carIds?: readonly string[],
+    fecha?: string,
   ): Promise<VehiculoDelDia[]> {
     const filas: Array<{
       carId: string;
@@ -311,6 +358,18 @@ export class RouteSheetDataService {
         ORDER BY c."car_patent" NULLS LAST, c."car_id"`,
       [distributorId, carIds ?? null],
     );
+    const activos = filas.filter((f) => f.available).map((f) => f.carId);
+    const bloqueados =
+      fecha && activos.length > 0
+        ? (
+            await this.fleet.habilitacionAlDia(
+              [],
+              activos,
+              distributorId,
+              fecha,
+            )
+          ).vehiculos
+        : new Map<string, string[]>();
     return filas.map((f) => ({
       carId: f.carId,
       patent: f.patent,
@@ -322,7 +381,7 @@ export class RouteSheetDataService {
             ? Number(f.carCapacity)
             : null,
       capacityUnits: f.maxCylinders,
-      available: f.available,
+      available: f.available && !bloqueados.has(f.carId),
     }));
   }
 

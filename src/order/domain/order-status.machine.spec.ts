@@ -12,6 +12,7 @@ import { InvalidOrderTransitionError } from './errors/invalid-order-transition.e
  *  PENDING    → ACCEPTED | CANCELLED
  *  ACCEPTED   → ON_THE_WAY | PENDING (re-dispatch) | CANCELLED
  *  ON_THE_WAY → DELIVERED | CANCELLED | PENDING (el chofer no puede completar)
+ *              | ACCEPTED (hoja de ruta: vuelve al final de la cola del mismo chofer)
  *  DELIVERED / CANCELLED = terminales.
  */
 describe('order-status.machine', () => {
@@ -25,6 +26,7 @@ describe('order-status.machine', () => {
       [OrderStatus.ON_THE_WAY, OrderStatus.DELIVERED],
       [OrderStatus.ON_THE_WAY, OrderStatus.CANCELLED],
       [OrderStatus.ON_THE_WAY, OrderStatus.PENDING], // chofer no puede completar → re-dispatch
+      [OrderStatus.ON_THE_WAY, OrderStatus.ACCEPTED], // hoja de ruta: primer intento fallido, al final de la cola
     ])('permite %s → %s', (from, to) => {
       expect(canTransition(from, to)).toBe(true);
     });
@@ -51,7 +53,6 @@ describe('order-status.machine', () => {
       [OrderStatus.PENDING, OrderStatus.ON_THE_WAY], // salto de estado
       [OrderStatus.PENDING, OrderStatus.DELIVERED], // salto grande
       [OrderStatus.ACCEPTED, OrderStatus.DELIVERED], // salto (falta ON_THE_WAY)
-      [OrderStatus.ON_THE_WAY, OrderStatus.ACCEPTED], // retroceso ilegal
     ])('rechaza %s → %s', (from, to) => {
       expect(canTransition(from, to)).toBe(false);
     });

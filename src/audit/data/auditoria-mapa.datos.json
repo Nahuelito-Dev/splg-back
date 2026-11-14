@@ -1107,6 +1107,22 @@
       "orderColumn": null
     },
     {
+      "table": "route_planning_holiday",
+      "entity": "RoutePlanningHoliday",
+      "pk": [
+        "holiday_id"
+      ],
+      "deleteColumn": "deletedAt",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "staff_role",
       "entity": "StaffRole",
       "pk": [
@@ -7998,11 +8014,27 @@
     },
     {
       "table": "route_batch",
+      "column": "assigned_at",
+      "property": "assignedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 24
+    },
+    {
+      "table": "route_batch",
       "column": "started_at",
       "property": "startedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 24
+      "position": 25
+    },
+    {
+      "table": "route_batch",
+      "column": "close_note",
+      "property": "closeNote",
+      "secret": false,
+      "kind": "text",
+      "position": 26
     },
     {
       "table": "route_batch_stop",
@@ -8125,6 +8157,54 @@
       "position": 14
     },
     {
+      "table": "route_batch_stop",
+      "column": "removed_note",
+      "property": "removedNote",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "arrived_at",
+      "property": "arrivedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 16
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "wait_alerted_at",
+      "property": "waitAlertedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 17
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "failed_attempts",
+      "property": "failedAttempts",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "last_failed_at",
+      "property": "lastFailedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 19
+    },
+    {
+      "table": "route_batch_stop",
+      "column": "last_failure_note",
+      "property": "lastFailureNote",
+      "secret": false,
+      "kind": "text",
+      "position": 20
+    },
+    {
       "table": "route_plan",
       "column": "plan_id",
       "property": "planId",
@@ -8195,6 +8275,46 @@
       "secret": false,
       "kind": "text",
       "position": 8
+    },
+    {
+      "table": "route_planning_holiday",
+      "column": "holiday_id",
+      "property": "holidayId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "route_planning_holiday",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "route_planning_holiday",
+      "column": "holiday_date",
+      "property": "date",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "route_planning_holiday",
+      "column": "description",
+      "property": "description",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "route_planning_holiday",
+      "column": "deletedAt",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
     },
     {
       "table": "staff_role",

@@ -360,4 +360,27 @@ export class PatchRoutePlanningSettingsDto {
   @Min(0)
   @Max(240)
   notStartedAlertMinutes?: number;
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 60,
+    description:
+      'Minutos que el chofer espera en la puerta desde «Llegué» antes de que el sistema le sugiera marcar «No pude entregar» (por omisión 10)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  arrivalWaitMinutes?: number;
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 127,
+    example: 63,
+    description:
+      'Días en que se reparte, como máscara de bits de los días ISO: lunes 1, martes 2, miércoles 4, jueves 8, viernes 16, sábado 32, domingo 64 (se suman). Por omisión 63 (lunes a sábado). La propuesta automática no arma un plan para un día no hábil y la reprogramación los saltea, igual que los feriados',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(127)
+  workingDays?: number;
 }

@@ -140,6 +140,21 @@ export class RouteSheetDto {
   editedAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   confirmedAt!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo los pedidos quedaron asignados al chofer (al confirmar una hoja de hoy, o al empezar el día del reparto)',
+  })
+  assignedAt!: string | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Cuándo el chofer inició el viaje',
+  })
+  startedAt!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   closedAt!: string | null;
   @ApiProperty({

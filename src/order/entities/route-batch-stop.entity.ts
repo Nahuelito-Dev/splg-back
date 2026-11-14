@@ -20,6 +20,12 @@ export enum RouteStopRemovedReason {
   FAILED_DELIVERY = 'failed_delivery',
   ADMIN = 'admin',
   UNAVAILABLE = 'unavailable',
+  /** Quedó pendiente cuando se cerró a mano la hoja en curso: espera al admin. */
+  SHEET_CLOSED = 'sheet_closed',
+  /** No se entregó en el segundo intento: el sistema lo reprogramó para el día hábil siguiente. */
+  RESCHEDULED = 'rescheduled',
+  /** Salió de la hoja en la calle y espera al admin (se liberó por fuera de la hoja, o no se pudo reprogramar). */
+  NEEDS_RESCHEDULE = 'needs_reschedule',
 }
 
 /**
@@ -40,6 +46,14 @@ export enum RouteStopRemovedReason {
 @Check(
   'CHK_route_batch_stop_tramo_min',
   `"leg_duration_min" IS NULL OR "leg_duration_min" >= 0`,
+)
+@Check(
+  'CHK_route_batch_stop_intentos',
+  `"failed_attempts" BETWEEN 0 AND 2 AND ("failed_attempts" = 0) = ("last_failed_at" IS NULL)`,
+)
+@Check(
+  'CHK_route_batch_stop_nota',
+  `"removed_note" IS NULL OR "removed_reason" IS NOT NULL`,
 )
 @Index('UQ_route_batch_stop_secuencia', ['batchId', 'sequence'], {
   unique: true,
@@ -144,4 +158,42 @@ export class RouteBatchStop {
 
   @Column({ name: 'removed_at', type: 'timestamptz', nullable: true })
   removedAt!: Date | null;
+
+  /** Lo que contó el chofer al no poder entregar (o quien sacó la parada). */
+  @Column({
+    name: 'removed_note',
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+  })
+  removedNote!: string | null;
+
+  /** Cuándo avisó «Llegué» en la hoja en curso (se borra si la parada vuelve a la cola). */
+  @Column({ name: 'arrived_at', type: 'timestamptz', nullable: true })
+  arrivedAt!: Date | null;
+
+  /** Ya se avisó que venció la espera en la puerta (`arrivalWaitMinutes`). */
+  @Column({ name: 'wait_alerted_at', type: 'timestamptz', nullable: true })
+  waitAlertedAt!: Date | null;
+
+  /** Intentos de entrega fallidos (0 a 2): al primero vuelve al final de la cola; al segundo, al admin. */
+  @Column({
+    name: 'failed_attempts',
+    type: 'smallint',
+    nullable: false,
+    default: 0,
+  })
+  failedAttempts!: number;
+
+  @Column({ name: 'last_failed_at', type: 'timestamptz', nullable: true })
+  lastFailedAt!: Date | null;
+
+  /** Lo que contó el chofer en el último intento fallido. */
+  @Column({
+    name: 'last_failure_note',
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+  })
+  lastFailureNote!: string | null;
 }

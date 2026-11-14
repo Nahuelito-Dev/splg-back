@@ -12,6 +12,7 @@ import { OrderStatus } from '../order/entities/order.entity';
 import {
   RouteBatch,
   RouteBatchCloseReason,
+  RouteBatchKind,
   RouteBatchStatus,
 } from '../order/entities/route-batch.entity';
 import { RouteBatchOffer } from '../order/entities/route-batch-offer.entity';
@@ -236,6 +237,9 @@ function crearMundo(opciones: {
             .filter(
               (l) =>
                 l.status === RouteBatchStatus.ASSIGNED &&
+                // La hoja de ruta en curso la cierra su ejecución, no M4.
+                (!sql.includes(`b."kind" = 'offer'`) ||
+                  (l.kind ?? RouteBatchKind.OFFER) === RouteBatchKind.OFFER) &&
                 paradas
                   .filter((s) => s.batchId === l.batchId && s.active)
                   .every((s) =>
@@ -1282,6 +1286,16 @@ describe('RouteBatchService · rechazar y vencer (pasos 9 a 11)', () => {
     expect((await m.service.vencerOfertas(ahora)).completed).toBe(1);
     expect(m.lotes[0].status).toBe(RouteBatchStatus.COMPLETED);
     expect(m.paradas.every((s) => !s.active)).toBe(true);
+  });
+
+  it('una hoja de ruta en curso no la completa M4 (la cierra su ejecución)', async () => {
+    const { m, batchId } = await conLoteOfrecido([chofer(1)]);
+    await m.service.aceptar('u1', batchId);
+    m.lotes[0].kind = RouteBatchKind.PLANNED;
+    m.pedidos.get('p1')!.status = OrderStatus.DELIVERED;
+    m.pedidos.get('p2')!.status = OrderStatus.DELIVERED;
+    expect((await m.service.vencerOfertas(ahora)).completed).toBe(0);
+    expect(m.lotes[0].status).toBe(RouteBatchStatus.ASSIGNED);
   });
 });
 

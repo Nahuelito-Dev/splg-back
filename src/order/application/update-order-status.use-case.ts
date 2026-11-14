@@ -23,7 +23,11 @@ import { User } from '../../users/entities/user.entity';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { NotificationPort } from '../domain/ports/notification.port';
 import { transitionOrder } from '../domain/order-status.machine';
-import { pedidoEnHojaDeRuta } from '../domain/errors/order-in-route-sheet.error';
+import {
+  choferYaEnCamino,
+  pedidoEnHojaDeRuta,
+} from '../domain/errors/order-in-route-sheet.error';
+import { InvalidOrderTransitionError } from '../domain/errors/invalid-order-transition.error';
 import { marcarOfrecible } from '../domain/vencimiento-sin-chofer';
 import { assertReservaActivable } from '../domain/reservation-activation';
 import { generateDeliveryCode } from '../domain/delivery-code.util';
@@ -237,6 +241,22 @@ export class UpdateOrderStatusUseCase {
       // Dominio: valida que la transición sea legal (PENDING→ACCEPTED→ON_THE_WAY
       // →DELIVERED) y la aplica. Rechaza saltos/estados terminales con 400.
       const previousStatus = locked.status;
+      // En camino → aceptado existe sólo para la hoja de ruta (la parada que no
+      // se pudo entregar vuelve al final de la cola del mismo chofer, por
+      // `OrderService.postergarEntrega`); por este endpoint sigue siendo inválida.
+      if (
+        previousStatus === OrderStatus.ON_THE_WAY &&
+        status === OrderStatus.ACCEPTED
+      ) {
+        throw new InvalidOrderTransitionError(previousStatus, status);
+      }
+      if (status === OrderStatus.ON_THE_WAY && locked.deliveryId) {
+        await this.assertUnaParadaEnCamino(
+          queryRunner.manager,
+          locked.orderId,
+          locked.deliveryId,
+        );
+      }
       transitionOrder(locked, status);
       const efectos = await this.applyStatusEffects(
         locked,
@@ -461,6 +481,37 @@ export class UpdateOrderStatusUseCase {
    *    camino ÚNICO de liberación (`ReleaseOrderUseCase`), el mismo que usa
    *    `PATCH /cancel` (chofer).
    */
+  /**
+   * Hoja de ruta en curso (F34): el chofer va a una parada por vez. Se toma un
+   * cerrojo de transacción POR CHOFER (`pg_advisory_xact_lock`, se suelta al
+   * commit) y recién ahí se relee si tiene otro pedido en camino: dos «en
+   * camino» a la vez (el de la hoja y el genérico, o dos pedidos distintos) se
+   * serializan y el segundo ve al primero. La regla aplica sólo a los pedidos
+   * de una hoja en curso: el despacho suelto y por lotes no la tenía y no la
+   * suma (por eso no es un índice único).
+   */
+  private async assertUnaParadaEnCamino(
+    manager: EntityManager,
+    orderId: string,
+    deliveryId: string,
+  ): Promise<void> {
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `chofer-en-camino:${deliveryId}`,
+    ]);
+    const [fila]: Array<{ enHoja: boolean; otro: boolean }> =
+      await manager.query(
+        `SELECT EXISTS (SELECT 1 FROM "route_batch_stop" s
+                          JOIN "route_batch" b ON b."batch_id" = s."batch_id"
+                         WHERE s."order_id" = $1 AND s."active"
+                           AND b."kind" = 'planned' AND b."status" = 'assigned') AS "enHoja",
+                EXISTS (SELECT 1 FROM "order" o
+                         WHERE o."delivery_id" = $2 AND o."status"::text = 'on_the_way'
+                           AND o."order_id" <> $1) AS "otro"`,
+        [orderId, deliveryId],
+      );
+    if (fila?.enHoja && fila.otro) throw choferYaEnCamino();
+  }
+
   private async handlePendingTarget(
     id: string,
     deliveryId?: string,

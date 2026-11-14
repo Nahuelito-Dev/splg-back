@@ -1,4 +1,4 @@
-import { DriversGateway } from './drivers.gateway';
+import { DriversGateway, EVENTO_POSICION_DEL_CHOFER } from './drivers.gateway';
 
 /** Avisos al chofer: van a su sala por id de usuario, con el evento que la app escucha. */
 describe('DriversGateway · avisos de pedido', () => {
@@ -61,5 +61,50 @@ describe('DriversGateway · avisos de pedido', () => {
     gateway.notifyOrderCancelled('u-chofer', { orderId: 'o1' });
     expect(to).toHaveBeenCalledWith('driver_u-chofer');
     expect(emit).toHaveBeenCalledWith('order:cancelled', { orderId: 'o1' });
+  });
+
+  it('cada posición del chofer se emite (la hoja de ruta recalcula su hora estimada) con la identidad del token', async () => {
+    const events = { emit: jest.fn() };
+    const redis = {
+      updateDriverLocation: jest.fn().mockResolvedValue(undefined),
+      getDriverActiveOrder: jest.fn().mockResolvedValue(null),
+    };
+    const g = new DriversGateway(
+      redis as never,
+      { obtener: jest.fn().mockResolvedValue({ userId: 'u-chofer' }) } as never,
+      {} as never,
+      {} as never,
+      events as never,
+    );
+    await g.handleDriverLocation({ lat: -27.4, lng: -55.9 }, {
+      data: {},
+      disconnect: jest.fn(),
+    } as never);
+    expect(events.emit).toHaveBeenCalledWith(EVENTO_POSICION_DEL_CHOFER, {
+      userId: 'u-chofer',
+      lat: -27.4,
+      lng: -55.9,
+    });
+    // Sin emisor (como en los tests viejos) sigue andando.
+    const sinEventos = new DriversGateway(
+      redis as never,
+      { obtener: jest.fn().mockResolvedValue({ userId: 'u' }) } as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(
+      sinEventos.handleDriverLocation({ lat: 0, lng: 0 }, {
+        data: {},
+        disconnect: jest.fn(),
+      } as never),
+    ).resolves.toBeUndefined();
+  });
+
+  it('los eventos de la hoja de ruta van a la sala del chofer', () => {
+    gateway.notifyRouteBatch('u-chofer', 'route-sheet:changed', {
+      sheetId: 'h1',
+    });
+    expect(to).toHaveBeenCalledWith('driver_u-chofer');
+    expect(emit).toHaveBeenCalledWith('route-sheet:changed', { sheetId: 'h1' });
   });
 });

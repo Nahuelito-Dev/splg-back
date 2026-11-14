@@ -25,6 +25,8 @@ import {
   diaSiguiente,
 } from '../domain/route-sheet-rules';
 import { assertTransition } from '../domain/route-sheet.machine';
+import { esDiaHabil } from '../domain/calendario-laboral';
+import { RoutePlanningCalendarService } from './route-planning-calendar.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import {
   fechaPasada,
@@ -53,6 +55,7 @@ export class RoutePlanService {
     @InjectRepository(RoutePlan) private readonly plans: Repository<RoutePlan>,
     private readonly processConfig: ProcessConfigService,
     private readonly lifecycle: RouteSheetLifecycleService,
+    private readonly calendario: RoutePlanningCalendarService,
   ) {}
 
   /** Abre el día (idempotente). 409 si la fecha ya pasó. */
@@ -218,6 +221,8 @@ export class RoutePlanService {
   /**
    * Distribuidoras con la hoja encendida y la propuesta automática cuyo cierre
    * de mañana ya pasó y todavía no tienen la propuesta (ni el día cerrado).
+   * Mañana tiene que ser un día hábil de la distribuidora: un día que no
+   * reparte (`workingDays`) o un feriado no lleva plan.
    */
   async paraProponer(
     ahora: Date,
@@ -242,6 +247,12 @@ export class RoutePlanService {
         v.cutoffMinute,
       );
       if (ahora < cierre) continue;
+      // Un día que la distribuidora no reparte (workingDays) o feriado: sin plan.
+      const cal = await this.calendario.calendario(
+        distributorId,
+        diaArgentino(ahora),
+      );
+      if (!esDiaHabil(manana, cal)) continue;
       const plan = await this.plans.findOne({
         where: { distributorId, planDate: manana },
       });

@@ -3,9 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
 import { ESTADO_ABIERTO } from '../domain/dispatch-offer-status.machine';
 import { Order } from '../entities/order.entity';
+import { condicionEsperandoAlAdmin } from './lote-de-recorrido.sql';
 import {
   DispatchOfferRepositoryPort,
   DriverOfferState,
+  HojaQueAsigna,
 } from '../domain/ports/dispatch-offer.repository.port';
 import {
   DispatchOffer,
@@ -101,13 +103,30 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
   async isInPlannedRouteSheet(
     orderId: string,
     manager?: EntityManager,
+    salvoHoja?: HojaQueAsigna,
   ): Promise<boolean> {
+    // La excepción sólo vale para la hoja confirmada que se está iniciando y
+    // para SU chofer: cualquier otra parada retenida sigue contando.
+    const excepcion = salvoHoja
+      ? `
+          AND NOT (b."batch_id" = $2 AND b."status" = 'confirmed' AND b."delivery_id" = $3)`
+      : '';
     const filas: unknown[] = await (manager ?? this.repo).query(
       `SELECT 1 FROM "route_batch_stop" s
          JOIN "route_batch" b ON b."batch_id" = s."batch_id"
         WHERE s."order_id" = $1 AND s."active"
-          AND b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed')
+          AND b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed')${excepcion}
         LIMIT 1`,
+      salvoHoja
+        ? [orderId, salvoHoja.batchId, salvoHoja.deliveryId]
+        : [orderId],
+    );
+    return filas.length > 0;
+  }
+
+  async isAwaitingReschedule(orderId: string): Promise<boolean> {
+    const filas: unknown[] = await this.repo.query(
+      `SELECT 1 WHERE ${condicionEsperandoAlAdmin('$1::uuid')}`,
       [orderId],
     );
     return filas.length > 0;

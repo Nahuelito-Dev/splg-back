@@ -32,6 +32,8 @@ import { RoleType } from '../../common/constants/role-type.enum';
 const HORA_DE_LA_BASE = new Date('2030-01-01T10:00:00.000Z');
 
 describe('UpdateOrderStatusUseCase', () => {
+  /** Lo que relee el cerrojo del chofer: si el pedido es de una hoja en curso y si tiene otro en camino. */
+  let enCamino: { enHoja: boolean; otro: boolean };
   let useCase: UpdateOrderStatusUseCase;
   let deliveries: {
     buscarPorIdOUsuario: jest.Mock;
@@ -107,6 +109,7 @@ describe('UpdateOrderStatusUseCase', () => {
     }) as Order;
 
   beforeEach(() => {
+    enCamino = { enHoja: false, otro: false };
     deliveries = {
       buscarPorIdOUsuario: jest.fn(),
       // Réplica fiel de DeliveryService.assertElegibleParaAsignacion: la
@@ -177,12 +180,16 @@ describe('UpdateOrderStatusUseCase', () => {
         query: jest.fn((sql: string, params?: [string[]]) =>
           sql.includes('clock_timestamp')
             ? Promise.resolve([{ ahora: HORA_DE_LA_BASE }])
-            : Promise.resolve(
-                (params?.[0] ?? []).map((id) => ({
-                  delivery_id: id,
-                  deleted: false,
-                })),
-              ),
+            : sql.includes('pg_advisory_xact_lock')
+              ? Promise.resolve([{}])
+              : sql.includes('"enHoja"')
+                ? Promise.resolve([enCamino])
+                : Promise.resolve(
+                    (params?.[0] ?? []).map((id) => ({
+                      delivery_id: id,
+                      deleted: false,
+                    })),
+                  ),
         ),
         createQueryBuilder: jest.fn(() => queryBuilder),
         // Los renglones se releen después del lock, aparte del JOIN.
@@ -253,6 +260,16 @@ describe('UpdateOrderStatusUseCase', () => {
     // atrapar ni transformar nada.
     await expect(
       useCase.execute('ord-1', OrderStatus.DELIVERED),
+    ).rejects.toThrow(InvalidOrderTransitionError);
+    expect(orders.save).not.toHaveBeenCalled();
+  });
+
+  it('F34: en camino → aceptado no se pide por este endpoint (sólo la hoja de ruta lo usa)', async () => {
+    orders.findByIdFull.mockResolvedValue(
+      makeOrder({ status: OrderStatus.ON_THE_WAY, deliveryId: 'drv-1' }),
+    );
+    await expect(
+      useCase.execute('ord-1', OrderStatus.ACCEPTED, 'drv-1'),
     ).rejects.toThrow(InvalidOrderTransitionError);
     expect(orders.save).not.toHaveBeenCalled();
   });
@@ -1009,6 +1026,46 @@ describe('UpdateOrderStatusUseCase', () => {
   });
 
   describe('ON_THE_WAY', () => {
+    it('F34: toma el cerrojo del chofer y, con otro pedido de la hoja en camino, 409 DRIVER_ALREADY_ON_THE_WAY sin guardar', async () => {
+      orders.findByIdFull.mockResolvedValue(
+        makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+      );
+      enCamino = { enHoja: true, otro: true };
+      await expect(
+        useCase.execute('ord-1', OrderStatus.ON_THE_WAY),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'DRIVER_ALREADY_ON_THE_WAY' },
+      });
+      const llamadas = queryRunner.manager.query.mock.calls as Array<
+        [string, unknown[]]
+      >;
+      const cerrojo = llamadas.findIndex((c) =>
+        c[0].includes('pg_advisory_xact_lock'),
+      );
+      const relectura = llamadas.findIndex((c) => c[0].includes('"enHoja"'));
+      expect(llamadas[cerrojo][1]).toEqual(['chofer-en-camino:drv-1']);
+      // La relectura va DESPUÉS del cerrojo.
+      expect(relectura).toBeGreaterThan(cerrojo);
+      expect(llamadas[relectura][1]).toEqual(['ord-1', 'drv-1']);
+      expect(orders.save).not.toHaveBeenCalled();
+    });
+
+    it('F34: fuera de una hoja en curso, o sin otro en camino, sale como siempre', async () => {
+      for (const caso of [
+        { enHoja: false, otro: true },
+        { enHoja: true, otro: false },
+      ]) {
+        orders.findByIdFull.mockResolvedValue(
+          makeOrder({ status: OrderStatus.ACCEPTED, deliveryId: 'drv-1' }),
+        );
+        enCamino = caso;
+        await expect(
+          useCase.execute('ord-1', OrderStatus.ON_THE_WAY),
+        ).resolves.toMatchObject({ status: OrderStatus.ON_THE_WAY });
+      }
+    });
+
     it('onTheWayAt sale del reloj de la base, no del de Node', async () => {
       orders.findByIdFull.mockResolvedValue(
         makeOrder({ status: OrderStatus.ACCEPTED }),
