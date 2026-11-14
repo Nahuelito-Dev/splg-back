@@ -4,11 +4,12 @@ import { NotificationsService } from './notifications.service';
 import { CustomersModule } from '../customer/customer.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { OrderLookupModule } from '../order/lookup/order-lookup.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   // Los tokens push son de clientes y choferes: se leen y guardan por sus
   // servicios. FcmPort llega del FirebaseModule, que es global.
-  imports: [CustomersModule, DeliveryModule, OrderLookupModule],
+  imports: [CustomersModule, DeliveryModule, OrderLookupModule, UsersModule],
   controllers: [NotificationsController],
   providers: [NotificationsService],
   exports: [NotificationsService],

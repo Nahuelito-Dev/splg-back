@@ -23,6 +23,7 @@ describe('UsersController — alcance', () => {
   let service: {
     findOne: jest.Mock;
     findOneByEmail: jest.Mock;
+    findOneByPhone: jest.Mock;
     update: jest.Mock;
     remove: jest.Mock;
     toggleBlockUser: jest.Mock;
@@ -41,6 +42,7 @@ describe('UsersController — alcance', () => {
     service = {
       findOne: jest.fn().mockResolvedValue(fila),
       findOneByEmail: jest.fn().mockResolvedValue(fila),
+      findOneByPhone: jest.fn().mockResolvedValue(fila),
       update: jest.fn().mockResolvedValue(fila),
       remove: jest.fn(),
       toggleBlockUser: jest.fn(),
@@ -173,15 +175,43 @@ describe('UsersController — alcance', () => {
     expect(service.update).not.toHaveBeenCalled();
   });
 
-  it('el administrador general sí administra a un cliente', async () => {
+  it('la plataforma no administra a un cliente', async () => {
     service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
-    await controller.blockUser(
-      'otro',
-      { block: true },
-      usuario(RoleType.SUPER_ADMIN),
-      null,
-    );
-    expect(service.toggleBlockUser).toHaveBeenCalledWith('otro', true);
+    await expect(
+      controller.blockUser(
+        'otro',
+        { block: true },
+        usuario(RoleType.SUPER_ADMIN),
+        null,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(service.toggleBlockUser).not.toHaveBeenCalled();
+  });
+
+  it('la plataforma ve por id y teléfono sólo super admins y admins de empresa', async () => {
+    service.findAlcance.mockResolvedValue({ rol: RoleType.ADMIN });
+    await expect(
+      controller.findOne('otro', usuario(RoleType.SUPER_ADMIN), null),
+    ).resolves.toBeDefined();
+    await expect(
+      controller.findOneByPhone(
+        { phoneNumber: '+5493764000000' },
+        usuario(RoleType.SUPER_ADMIN),
+        null,
+      ),
+    ).resolves.toBeDefined();
+
+    service.findAlcance.mockResolvedValue({ rol: RoleType.DELIVERY });
+    await expect(
+      controller.findOne('otro', usuario(RoleType.SUPER_ADMIN), null),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      controller.findOneByPhone(
+        { phoneNumber: '+5493764000000' },
+        usuario(RoleType.SUPER_ADMIN),
+        null,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('quien no es admin no cambia contraseña ni bloqueo', async () => {
@@ -261,15 +291,17 @@ describe('UsersController — alcance', () => {
       expect(photo.subir).not.toHaveBeenCalled();
     });
 
-    it('el administrador general sí sube la foto de un cliente', async () => {
+    it('la plataforma no modifica la foto de un cliente', async () => {
       service.findAlcance.mockResolvedValue({ rol: RoleType.CUSTOMER });
-      await controller.uploadPhoto(
-        'otro',
-        undefined,
-        usuario(RoleType.SUPER_ADMIN),
-        null,
-      );
-      expect(photo.subir).toHaveBeenCalledWith('otro', undefined);
+      await expect(
+        controller.uploadPhoto(
+          'otro',
+          undefined,
+          usuario(RoleType.SUPER_ADMIN),
+          null,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(photo.subir).not.toHaveBeenCalled();
     });
 
     it('un cliente no ve la foto de otro (403)', async () => {

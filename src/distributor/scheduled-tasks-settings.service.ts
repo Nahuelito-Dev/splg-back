@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 import { RedisService } from '../redis/redis.service';
 import { ModuleConfigService } from './module-config.service';
 import { ConfigurableProcess } from './entities/module-config.entity';
@@ -134,6 +135,35 @@ export class ScheduledTasksSettingsService {
       distributorId,
       settings,
       TAREAS_CON_INTERVALO,
+      actorUserId,
+    );
+  }
+
+  /**
+   * La ruta v1 todavía recibe el cuerpo histórico completo. Las frecuencias
+   * que reenvía un cliente viejo se aceptan sólo si ya son las vigentes; la
+   * empresa conserva la facultad de cambiar su hora de aviso.
+   */
+  async guardarDeLaEmpresaV1(
+    distributorId: string,
+    settings: Partial<ScheduledTasksSettings>,
+    actorUserId: string,
+  ): Promise<ScheduledTasksVigentes> {
+    const vigentes = await this.vigentes(distributorId);
+    for (const tarea of TAREAS_CON_INTERVALO) {
+      if (settings[tarea] != null && settings[tarea] !== vigentes[tarea]) {
+        throw conCodigo(
+          BadRequestException,
+          400,
+          'Las frecuencias de las tareas programadas las fija la plataforma',
+          CODIGOS_DE_ERROR.SCHEDULED_TASKS_PLATFORM_OWNED,
+        );
+      }
+    }
+    return this.guardarParte(
+      distributorId,
+      settings,
+      CAMPOS_DE_LA_EMPRESA,
       actorUserId,
     );
   }

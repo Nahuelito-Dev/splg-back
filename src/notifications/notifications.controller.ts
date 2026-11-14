@@ -3,6 +3,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -33,12 +34,16 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 import { esSuperAdminDePlataforma } from '../common/utils/alcance.util';
 import { Alcance } from '../common/decorators/alcance.decorator';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { UsersService } from '../users/users.service';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationService: NotificationsService) {}
+  constructor(
+    private readonly notificationService: NotificationsService,
+    private readonly users: UsersService,
+  ) {}
 
   // Endpoint de debug: mandar un push arbitrario. Sólo el super administrador,
   // como POST /email/test (H-58): un admin de empresa podía mandar pushes con
@@ -89,7 +94,12 @@ export class NotificationsController {
   }
 
   @Get('user/:userId')
-  @ApiOperation({ summary: 'Get notification tokens for user (self o admin)' })
+  @Alcance('plataforma')
+  @ApiOperation({
+    summary: 'Get notification tokens for user (self o admin)',
+    description:
+      'La plataforma sólo consulta tokens de super admins y admins de empresa; clientes y choferes responden 404.',
+  })
   @ApiOkResponse({ type: TokensDeUsuarioDto })
   @ApiForbiddenResponse({ description: 'Tokens de otro usuario' })
   @ApiUnauthorizedResponse({ description: 'Sin token o token inválido' })
@@ -104,6 +114,12 @@ export class NotificationsController {
       throw new ForbiddenException(
         'No autorizado a ver tokens de otro usuario',
       );
+    }
+    if (esSuperAdminDePlataforma(user) && userId !== user.user_id) {
+      const { rol } = await this.users.findAlcance(userId);
+      if (rol !== RoleType.ADMIN && rol !== RoleType.SUPER_ADMIN) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
     }
     return await this.notificationService.getUserNotificationTokens(userId);
   }

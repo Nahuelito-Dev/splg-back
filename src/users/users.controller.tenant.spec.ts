@@ -1,7 +1,6 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 import { RoleType } from '../common/constants/role-type.enum';
-import { MENSAJE_FALTA_DISTRIBUIDORA } from '../common/decorators/current-distributor.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 /**
@@ -37,22 +36,25 @@ describe('UsersController · distribuidora en las escrituras sobre otra cuenta',
     controller = new UsersController(users as never, {} as never);
   });
 
-  it.each([RoleType.ADMIN, RoleType.DELIVERY])(
-    'super admin sin distribuidora no da de baja a un %s por UUID: 400 y no se toca',
-    async (rol) => {
-      alcance(rol);
-      await expect(controller.remove('x', superAdmin, null)).rejects.toThrow(
-        new BadRequestException(MENSAJE_FALTA_DISTRIBUIDORA),
-      );
-      expect(users.remove).not.toHaveBeenCalled();
-    },
-  );
+  it('super admin sin distribuidora da de baja a un admin de empresa', async () => {
+    alcance(RoleType.ADMIN);
+    await controller.remove('x', superAdmin, null);
+    expect(users.remove).toHaveBeenCalledWith('x');
+  });
 
-  it('ni lo bloquea', async () => {
+  it('super admin sin distribuidora no da de baja a un chofer', async () => {
+    alcance(RoleType.DELIVERY);
+    await expect(
+      controller.remove('x', superAdmin, null),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(users.remove).not.toHaveBeenCalled();
+  });
+
+  it('ni bloquea a un chofer', async () => {
     alcance(RoleType.DELIVERY);
     await expect(
       controller.blockUser('x', { block: true }, superAdmin, null),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(NotFoundException);
     expect(users.toggleBlockUser).not.toHaveBeenCalled();
   });
 
@@ -70,14 +72,19 @@ describe('UsersController · distribuidora en las escrituras sobre otra cuenta',
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it.each([RoleType.SUPER_ADMIN, RoleType.CUSTOMER])(
-    'sobre un %s no hace falta distribuidora (la cuenta no es de ninguna)',
-    async (rol) => {
-      alcance(rol);
-      await controller.remove('otra-cuenta', superAdmin, null);
-      expect(users.remove).toHaveBeenCalledWith('otra-cuenta');
-    },
-  );
+  it('sobre otro super admin no hace falta distribuidora', async () => {
+    alcance(RoleType.SUPER_ADMIN);
+    await controller.remove('otra-cuenta', superAdmin, null);
+    expect(users.remove).toHaveBeenCalledWith('otra-cuenta');
+  });
+
+  it('un cliente no existe para las mutaciones de la plataforma', async () => {
+    alcance(RoleType.CUSTOMER);
+    await expect(
+      controller.remove('otra-cuenta', superAdmin, null),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(users.remove).not.toHaveBeenCalled();
+  });
 
   it('el admin de empresa trae siempre su distribuidora: no cambia', async () => {
     alcance(RoleType.DELIVERY);

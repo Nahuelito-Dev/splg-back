@@ -24,7 +24,7 @@ import { Alcance } from '../../common/decorators/alcance.decorator';
  * (`GET /audit`, CU-152): acá se ve qué registro y qué campos cambiaron.
  */
 @ApiTags('Audit')
-@Alcance('ambos')
+@Alcance('empresa')
 @Controller('audit')
 export class DataAuditController {
   constructor(private readonly service: DataAuditService) {}
@@ -38,8 +38,8 @@ export class DataAuditController {
       'Una Auditoria por registro afectado (tipo de acción, usuario, ' +
       'entidadAfectada, idRegistro, ipUsuario, fechaHora) con sus ' +
       'DetalleAuditoria (campo, valorAnterior, valorNuevo). Un admin de ' +
-      'empresa ve sólo lo de su distribuidora; el super admin ve todo o la ' +
-      'que elige con X-Distributor.',
+      'empresa ve sólo lo de su distribuidora; el super admin la consulta ' +
+      'únicamente en modo soporte o dentro de una empresa propia.',
   })
   @ApiOkResponse({ type: AuditEntriesPageDto })
   findAll(

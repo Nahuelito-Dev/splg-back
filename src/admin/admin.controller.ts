@@ -81,6 +81,7 @@ export class AdminController {
   }
 
   @Get('/term/:term')
+  @Alcance('ambos')
   @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({ summary: 'Find admin by term (id o correo)' })
