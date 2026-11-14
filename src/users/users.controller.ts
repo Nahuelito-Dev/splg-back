@@ -56,10 +56,7 @@ import {
   esElMismoUsuario,
   esSuperAdminDePlataforma,
 } from '../common/utils/alcance.util';
-import {
-  CurrentDistributor,
-  faltaLaDistribuidora,
-} from '../common/decorators/current-distributor.decorator';
+import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { UserMapper } from './user.mapper';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -310,7 +307,12 @@ export class UsersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get user by ID' })
+  @Alcance('ambos')
+  @ApiOperation({
+    summary: 'Get user by ID',
+    description:
+      'En plataforma, sólo devuelve super admins y admins de empresa; clientes y choferes responden 404. Dentro de una empresa conserva el alcance habitual de esa empresa.',
+  })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiForbiddenResponse({ description: 'No es su cuenta' })
@@ -326,15 +328,20 @@ export class UsersController {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
     if (esAdministrador(user) && !esElMismoUsuario(id, user)) {
-      await this.assertDeSuDistribuidora(id, distributorId);
+      await this.assertPuedeVer(id, user, distributorId);
     }
     return this.toDto(await this.usersService.findOne(id));
   }
 
   @Get('phone/:phoneNumber')
+  @Alcance('ambos')
   @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get user by phone number' })
+  @ApiOperation({
+    summary: 'Get user by phone number',
+    description:
+      'En plataforma, sólo busca super admins y admins de empresa; clientes y choferes responden 404. Dentro de una empresa conserva el alcance habitual de esa empresa.',
+  })
   @ApiOkResponse({
     type: UserResponseDto,
     description: 'El usuario, o vacío si nadie tiene ese teléfono',
@@ -343,11 +350,12 @@ export class UsersController {
   @ApiNotFoundResponse({ description: 'Es de otra distribuidora' })
   async findOneByPhone(
     @Param() { phoneNumber }: TelefonoParamDto,
+    @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<UserResponseDto | null> {
     const encontrado = await this.usersService.findOneByPhone(phoneNumber);
     if (!encontrado) return null;
-    await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
+    await this.assertPuedeVer(encontrado.userId, user, distributorId);
     return this.toDto(encontrado);
   }
 
@@ -454,6 +462,24 @@ export class UsersController {
   }
 
   /**
+   * Fuera de soporte, la plataforma sólo conoce sus super admins y admins de
+   * empresa. El resto de las cuentas pertenece a la operación.
+   */
+  private async assertPuedeVer(
+    userId: string,
+    user: AuthenticatedUser,
+    distributorId: string | null,
+  ): Promise<void> {
+    if (esSuperAdminDePlataforma(user)) {
+      const { rol } = await this.usersService.findAlcance(userId);
+      if (rol !== RoleType.ADMIN && rol !== RoleType.SUPER_ADMIN) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+    }
+    await this.assertDeSuDistribuidora(userId, distributorId);
+  }
+
+  /**
    * Modificar, bloquear o borrar una cuenta. Además de ser de su
    * distribuidora, un admin de empresa sólo administra a su personal
    * (choferes y admins). Un cliente puede comprarle a varias distribuidoras:
@@ -465,17 +491,15 @@ export class UsersController {
     user: AuthenticatedUser,
     distributorId: string | null,
   ): Promise<void> {
-    // El super admin sin distribuidora sólo opera sobre cuentas que no son de
-    // ninguna: otro super admin o un cliente (que puede comprarle a varias,
-    // H-66, H-73). Sobre el personal de una distribuidora, por UUID, tiene que
-    // decir en cuál actúa.
+    // Fuera de soporte, la plataforma sólo administra cuentas de plataforma y
+    // admins de empresa. Clientes y choferes son datos operativos.
     if (user.role === RoleType.SUPER_ADMIN && !distributorId) {
       const { rol } = await this.usersService.findAlcance(userId);
       if (
         rol !== String(RoleType.SUPER_ADMIN) &&
-        rol !== String(RoleType.CUSTOMER)
+        rol !== String(RoleType.ADMIN)
       ) {
-        throw faltaLaDistribuidora();
+        throw new NotFoundException('Usuario no encontrado');
       }
     }
     await this.assertDeSuDistribuidora(userId, distributorId);

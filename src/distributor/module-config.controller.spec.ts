@@ -9,6 +9,7 @@ describe('ModuleConfigController', () => {
   let tasks: {
     vigentes: jest.Mock;
     guardar: jest.Mock;
+    guardarDeLaEmpresaV1: jest.Mock;
     guardarHoraDeLaEmpresa: jest.Mock;
   };
   let processes: {
@@ -26,6 +27,7 @@ describe('ModuleConfigController', () => {
     tasks = {
       vigentes: jest.fn().mockResolvedValue({ fleetAlertHour: 8 }),
       guardar: jest.fn().mockResolvedValue({ fleetAlertHour: 20 }),
+      guardarDeLaEmpresaV1: jest.fn().mockResolvedValue({ fleetAlertHour: 20 }),
       guardarHoraDeLaEmpresa: jest
         .fn()
         .mockResolvedValue({ fleetAlertHour: 20 }),
@@ -64,7 +66,7 @@ describe('ModuleConfigController', () => {
     expect(await controller.putScheduledTasks(cuerpo, 'd1', 'u1')).toEqual({
       fleetAlertHour: 20,
     });
-    expect(tasks.guardar).toHaveBeenCalledWith('d1', cuerpo, 'u1');
+    expect(tasks.guardarDeLaEmpresaV1).toHaveBeenCalledWith('d1', cuerpo, 'u1');
 
     await controller.putScheduledTasksV2({ fleetAlertHour: 5 }, 'd1', 'u1');
     expect(tasks.guardarHoraDeLaEmpresa).toHaveBeenCalledWith(

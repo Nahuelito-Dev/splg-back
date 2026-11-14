@@ -261,30 +261,55 @@ describe('ScheduledTasksSettingsService (CU-173)', () => {
   });
 
   describe('v1 congelada y configuración de plataforma (E3)', () => {
-    it('v1 conserva el contrato: la empresa puede cambiar las frecuencias y la hora', async () => {
+    it('v1 acepta las frecuencias vigentes y conserva la hora de la empresa', async () => {
       await service.guardarDeLaPlataforma(
         'd1',
         { dispatchRetrySeconds: 60, unpaidMercadoPagoExpirySeconds: 3600 },
         'super',
       );
-      const r = await service.guardar(
+      const r = await service.guardarDeLaEmpresaV1(
         'd1',
-        { dispatchRetrySeconds: 30, fleetAlertHour: 20 },
+        { dispatchRetrySeconds: 60, fleetAlertHour: 20 },
         'admin',
       );
       expect(e.configs.guardar).toHaveBeenLastCalledWith(
         'd1',
         ConfigurableProcess.SCHEDULED_TASKS,
         {
-          dispatchRetrySeconds: 30,
+          dispatchRetrySeconds: 60,
+          unpaidMercadoPagoExpirySeconds: 3600,
           fleetAlertHour: 20,
         },
         'admin',
       );
       expect(r).toMatchObject({
-        dispatchRetrySeconds: 30,
+        dispatchRetrySeconds: 60,
         fleetAlertHour: 20,
       });
+    });
+
+    it('v1 rechaza una frecuencia distinta de la vigente con un código estable', async () => {
+      await service.guardarDeLaPlataforma(
+        'd1',
+        { dispatchRetrySeconds: 60 },
+        'super',
+      );
+
+      await expect(
+        service.guardarDeLaEmpresaV1(
+          'd1',
+          { dispatchRetrySeconds: 30, fleetAlertHour: 20 },
+          'admin',
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          message:
+            'Las frecuencias de las tareas programadas las fija la plataforma',
+          code: 'SCHEDULED_TASKS_PLATFORM_OWNED',
+        },
+      });
+      expect(e.configs.guardar).toHaveBeenCalledTimes(1);
     });
 
     it('la plataforma actualiza las frecuencias por merge y conserva la hora de la empresa', async () => {

@@ -24,7 +24,7 @@ import { Alcance } from '../../common/decorators/alcance.decorator';
  * La v1 conserva su respuesta.
  */
 @ApiTags('Audit')
-@Alcance('ambos')
+@Alcance('empresa')
 @Controller({ path: 'audit', version: '2' })
 export class DataAuditV2Controller {
   constructor(private readonly service: DataAuditService) {}
@@ -39,8 +39,8 @@ export class DataAuditV2Controller {
       'lo hecho por un usuario, por la propia API sin usuario (crons, procesos) ' +
       'y lo escrito directo en la base (SQL a mano, scripts), y en cada asiento ' +
       '`source`, `tableName`, `dbUser` y `appName`. Un admin de empresa ve sólo ' +
-      'lo de su distribuidora; el super admin ve todo o la que elige con ' +
-      'X-Distributor.',
+      'lo de su distribuidora; el super admin la consulta únicamente en modo ' +
+      'soporte o dentro de una empresa propia.',
   })
   @ApiOkResponse({ type: AuditEntriesPageV2Dto })
   findAll(

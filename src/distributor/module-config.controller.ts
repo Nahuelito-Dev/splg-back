@@ -99,18 +99,18 @@ export class ModuleConfigController {
   @ApiOperation({
     summary: 'Cambiar las tareas programadas de la distribuidora',
     description:
-      'Ruta v1 congelada: conserva el contrato histórico y acepta las cuatro frecuencias y `fleetAlertHour`. Reemplaza toda la configuración: lo omitido vuelve a su valor por omisión. Las frecuencias están deprecadas en v1; los clientes nuevos las administran con `PUT /v2/platform/companies/{id}/scheduled-tasks`.',
+      'Ruta v1 congelada: conserva el contrato histórico. `fleetAlertHour` sigue siendo de la distribuidora. Las cuatro frecuencias se aceptan sólo si coinciden con las vigentes (para clientes viejos que reenvían el cuerpo completo); si difieren responde 400 con `SCHEDULED_TASKS_PLATFORM_OWNED`, porque las fija la plataforma.',
   })
   @ApiOkResponse({ type: ScheduledTasksConfigResponseDto })
   @ApiBadRequestResponse({
-    description: `Intervalo u hora inválidos, o ${FALTA_DISTRIBUIDORA}`,
+    description: `Intervalo u hora inválidos, ${FALTA_DISTRIBUIDORA}, o una frecuencia distinta de la vigente (code: SCHEDULED_TASKS_PLATFORM_OWNED).`,
   })
   putScheduledTasks(
     @Body() dto: ScheduledTasksConfigDto,
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') actorUserId: string,
   ): Promise<ScheduledTasksConfigResponseDto> {
-    return this.tasks.guardar(distributorId, dto, actorUserId);
+    return this.tasks.guardarDeLaEmpresaV1(distributorId, dto, actorUserId);
   }
 
   /** La escritura nueva del panel de empresa: sólo su hora, por merge. */
