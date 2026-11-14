@@ -8,6 +8,7 @@ import { Warehouse } from '../entities/warehouse.entity';
 import { StockLocation } from '../entities/stock-location.entity';
 import { StockThreshold } from '../entities/stock-threshold.entity';
 import { WarehouseService } from './warehouse.service';
+import { UbicacionDeDepositoInvalidaError } from '../domain/errors/stock.errors';
 
 const DIST = 'dddddddd-0000-4000-8000-000000000001';
 
@@ -87,7 +88,7 @@ function armar(
     dataSource,
     warehouseRepo as unknown as Repository<Warehouse>,
   );
-  return { service, borrar, warehouseRepo, locationRepo, query };
+  return { service, borrar, warehouseRepo, locationRepo, query, transaction };
 }
 
 describe('WarehouseService', () => {
@@ -314,6 +315,103 @@ describe('WarehouseService', () => {
       });
       expect(locationRepo.save).toHaveBeenCalled();
       expect(r.locationId).toBe('loc-nueva');
+    });
+  });
+
+  describe('ubicación (v2)', () => {
+    const POSADAS = { type: 'Point', coordinates: [-55.8961, -27.3671] };
+
+    it('el alta con latitud y longitud guarda el punto (GeoJSON va lng, lat)', async () => {
+      const { service, warehouseRepo } = armar({ defaults: [] });
+      await service.create(
+        {
+          name: 'Galpón',
+          code: 'GAL',
+          latitude: -27.3671,
+          longitude: -55.8961,
+        },
+        DIST,
+      );
+      expect(warehouseRepo.save.mock.calls[0][0]).toMatchObject({
+        location: POSADAS,
+      });
+    });
+
+    it('el alta sin coordenadas queda sin ubicación', async () => {
+      const { service, warehouseRepo } = armar({ defaults: [] });
+      await service.create({ name: 'Galpón', code: 'GAL' }, DIST);
+      expect(warehouseRepo.save.mock.calls[0][0]).toMatchObject({
+        location: null,
+      });
+    });
+
+    it('una sola coordenada es 400 y no abre la transacción', async () => {
+      const { service, warehouseRepo, transaction } = armar({ defaults: [] });
+      await expect(
+        service.create({ name: 'G', code: 'G', latitude: -27.3 }, DIST),
+      ).rejects.toThrow(UbicacionDeDepositoInvalidaError);
+      expect(transaction).not.toHaveBeenCalled();
+      expect(warehouseRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('el alta con las dos en null es 400: borrar es de la edición', async () => {
+      const { service, warehouseRepo } = armar({ defaults: [] });
+      await expect(
+        service.create(
+          { name: 'G', code: 'G', latitude: null, longitude: null },
+          DIST,
+        ),
+      ).rejects.toThrow(UbicacionDeDepositoInvalidaError);
+      expect(warehouseRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('una coordenada fuera de rango en la edición es 400 y no guarda', async () => {
+      const { service, warehouseRepo } = armar({ warehouse: deposito() });
+      await expect(
+        service.update('w1', { latitude: 91, longitude: 0 }, DIST),
+      ).rejects.toThrow(UbicacionDeDepositoInvalidaError);
+      expect(warehouseRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('la edición fija la ubicación', async () => {
+      const { service, warehouseRepo } = armar({ warehouse: deposito() });
+      await service.update(
+        'w1',
+        { latitude: -27.3671, longitude: -55.8961 },
+        DIST,
+      );
+      expect(warehouseRepo.save.mock.calls[0][0]).toMatchObject({
+        location: POSADAS,
+      });
+    });
+
+    it('la edición con las dos en null borra la ubicación', async () => {
+      const { service, warehouseRepo } = armar({
+        warehouse: deposito({ location: POSADAS as Warehouse['location'] }),
+      });
+      await service.update('w1', { latitude: null, longitude: null }, DIST);
+      expect(warehouseRepo.save.mock.calls[0][0]).toMatchObject({
+        location: null,
+      });
+    });
+
+    it('la edición sin coordenadas no toca la ubicación', async () => {
+      const { service, warehouseRepo } = armar({
+        warehouse: deposito({ location: POSADAS as Warehouse['location'] }),
+      });
+      await service.update('w1', { name: 'Otro nombre' }, DIST);
+      expect(warehouseRepo.save.mock.calls[0][0]).toMatchObject({
+        name: 'Otro nombre',
+        location: POSADAS,
+      });
+    });
+
+    it('el predeterminado que se crea solo nace sin ubicación', async () => {
+      const { service, warehouseRepo } = armar({ warehouse: null });
+      await service.asegurarPredeterminado(DIST);
+      expect(warehouseRepo.save.mock.calls[0][0]).toMatchObject({
+        location: null,
+      });
     });
   });
 });

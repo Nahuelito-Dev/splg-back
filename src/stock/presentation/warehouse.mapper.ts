@@ -1,6 +1,12 @@
 import { DepositoConUbicacion } from '../application/warehouse.service';
-import { WarehouseDetailDto, WarehouseResponseDto } from '../dto/warehouse.dto';
+import {
+  WarehouseDetailDto,
+  WarehouseResponseDto,
+  WarehouseV2DetailDto,
+  WarehouseV2ResponseDto,
+} from '../dto/warehouse.dto';
 import { StockBalanceDto } from '../dto/stock-response.dto';
+import { coordenadasDePunto } from '../../common/geo/punto';
 
 export class WarehouseMapper {
   static toDto({
@@ -31,6 +37,27 @@ export class WarehouseMapper {
       {
         balances,
       },
+    );
+  }
+
+  /** v2: lo mismo más la ubicación del depósito (null si no está ubicado). */
+  static toV2Dto(deposito: DepositoConUbicacion): WarehouseV2ResponseDto {
+    const punto = coordenadasDePunto(deposito.warehouse.location);
+    return Object.assign(
+      new WarehouseV2ResponseDto(),
+      WarehouseMapper.toDto(deposito),
+      { latitude: punto?.lat ?? null, longitude: punto?.lng ?? null },
+    );
+  }
+
+  static toV2DetailDto(
+    deposito: DepositoConUbicacion,
+    balances: StockBalanceDto[],
+  ): WarehouseV2DetailDto {
+    return Object.assign(
+      new WarehouseV2DetailDto(),
+      WarehouseMapper.toV2Dto(deposito),
+      { balances },
     );
   }
 }

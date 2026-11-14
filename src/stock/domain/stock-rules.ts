@@ -1,5 +1,8 @@
 import { ExtremoDeStock, MovimientoDeStock } from './ports/stock-ledger.port';
-import { OperacionDeStockInvalidaError } from './errors/stock.errors';
+import {
+  OperacionDeStockInvalidaError,
+  UbicacionDeDepositoInvalidaError,
+} from './errors/stock.errors';
 import {
   StockAdjustmentReason,
   StockCondition,
@@ -300,4 +303,50 @@ export function variacionesDeConteo(
     }
   }
   return items;
+}
+
+/** Punto de salida de un depósito, en grados (WGS 84). */
+export interface CoordenadasDeDeposito {
+  lat: number;
+  lng: number;
+}
+
+const enRango = (v: number, tope: number): boolean =>
+  Number.isFinite(v) && Math.abs(v) <= tope;
+
+/**
+ * La ubicación que pide el alta o la edición de un depósito: `undefined` si no
+ * se mandó (no se toca), `null` si se mandaron las dos vacías (se borra; sólo
+ * en la edición: `permitirBorrar`) y las
+ * coordenadas si vinieron las dos y están en rango. Una sola de las dos, o una
+ * fuera de rango, es inválida.
+ */
+export function ubicacionDelDeposito(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+  { permitirBorrar = true }: { permitirBorrar?: boolean } = {},
+): CoordenadasDeDeposito | null | undefined {
+  if (latitude === undefined && longitude === undefined) return undefined;
+  if (latitude === null && longitude === null) {
+    if (permitirBorrar) return null;
+    throw new UbicacionDeDepositoInvalidaError(
+      'En el alta la ubicación del depósito va con latitud y longitud, o no va',
+    );
+  }
+  if (latitude == null || longitude == null) {
+    throw new UbicacionDeDepositoInvalidaError(
+      'La ubicación del depósito lleva latitud y longitud juntas, o ninguna de las dos',
+    );
+  }
+  if (!enRango(latitude, 90)) {
+    throw new UbicacionDeDepositoInvalidaError(
+      'La latitud del depósito tiene que estar entre -90 y 90',
+    );
+  }
+  if (!enRango(longitude, 180)) {
+    throw new UbicacionDeDepositoInvalidaError(
+      'La longitud del depósito tiene que estar entre -180 y 180',
+    );
+  }
+  return { lat: latitude, lng: longitude };
 }

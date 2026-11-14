@@ -75,12 +75,22 @@ export const ETIQUETAS_POR_CLASE: Readonly<Record<string, string>> = {
   ...paraClases(['CreateTimeSlotDto', 'UpdateTimeSlotDto'], {
     name: 'Nombre de la franja',
   }),
-  ...paraClases(['CreateWarehouseDto', 'UpdateWarehouseDto'], {
-    name: 'Nombre del depósito',
-    code: 'Código del depósito',
-    kind: 'Tipo de depósito',
-    address: 'Dirección del depósito',
-  }),
+  ...paraClases(
+    [
+      'CreateWarehouseDto',
+      'UpdateWarehouseDto',
+      'CreateWarehouseV2Dto',
+      'UpdateWarehouseV2Dto',
+    ],
+    {
+      name: 'Nombre del depósito',
+      code: 'Código del depósito',
+      kind: 'Tipo de depósito',
+      address: 'Dirección del depósito',
+      latitude: 'Latitud del depósito',
+      longitude: 'Longitud del depósito',
+    },
+  ),
   ...paraClases(
     ['CreateSupplierDto', 'UpdateSupplierDto', 'QuerySupplierDto'],
     {

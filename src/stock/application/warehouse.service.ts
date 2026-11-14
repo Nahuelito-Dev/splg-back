@@ -10,12 +10,15 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
 import { traducirErrorDeBase } from '../../common/errors/db-exceptions';
 import { StockLocationKind, WarehouseKind } from '../domain/stock.enums';
+import { ubicacionDelDeposito } from '../domain/stock-rules';
+import { puntoDesdeCoordenadas } from '../../common/geo/punto';
 import { StockLocation } from '../entities/stock-location.entity';
 import { StockThreshold } from '../entities/stock-threshold.entity';
 import { Warehouse } from '../entities/warehouse.entity';
 import {
   CreateWarehouseDto,
   QueryWarehouseDto,
+  UbicacionDeDepositoDto,
   UpdateWarehouseDto,
 } from '../dto/warehouse.dto';
 
@@ -38,10 +41,18 @@ export class WarehouseService {
     private readonly warehouses: Repository<Warehouse>,
   ) {}
 
+  /**
+   * Alta. Con `latitude` y `longitude` (v2) queda ubicado: es la salida de las
+   * hojas de ruta. No se geocodifica la dirección: el proyecto no tiene un
+   * geocodificador del lado del back.
+   */
   async create(
-    dto: CreateWarehouseDto,
+    dto: CreateWarehouseDto & UbicacionDeDepositoDto,
     distributorId: string,
   ): Promise<DepositoConUbicacion> {
+    const ubicacion = ubicacionDelDeposito(dto.latitude, dto.longitude, {
+      permitirBorrar: false,
+    });
     try {
       return await withTransactionRetry(
         () =>
@@ -61,6 +72,9 @@ export class WarehouseService {
               code: dto.code,
               kind: dto.kind ?? WarehouseKind.DEPOT,
               address: dto.address ?? null,
+              location: ubicacion
+                ? puntoDesdeCoordenadas(ubicacion.lat, ubicacion.lng)
+                : null,
               isDefault: esPredeterminado,
             });
           }),
@@ -75,10 +89,11 @@ export class WarehouseService {
     distributorId: string,
     query: QueryWarehouseDto = {},
   ): Promise<DepositoConUbicacion[]> {
+    // La ubicación de stock va en otra propiedad: `location` es el punto.
     const qb = this.warehouses
       .createQueryBuilder('w')
       .innerJoinAndMapOne(
-        'w.location',
+        'w.stockLocation',
         StockLocation,
         'l',
         'l.warehouseId = w.warehouseId',
@@ -90,8 +105,8 @@ export class WarehouseService {
     const filas = await qb.getMany();
     return filas.map((w) => ({
       warehouse: w,
-      locationId: (w as Warehouse & { location: StockLocation }).location
-        .locationId,
+      locationId: (w as Warehouse & { stockLocation: StockLocation })
+        .stockLocation.locationId,
     }));
   }
 
@@ -113,9 +128,10 @@ export class WarehouseService {
 
   async update(
     warehouseId: string,
-    dto: UpdateWarehouseDto,
+    dto: UpdateWarehouseDto & UbicacionDeDepositoDto,
     distributorId: string,
   ): Promise<DepositoConUbicacion> {
+    const ubicacion = ubicacionDelDeposito(dto.latitude, dto.longitude);
     try {
       await withTransactionRetry(
         () =>
@@ -173,6 +189,11 @@ export class WarehouseService {
             if (dto.kind !== undefined) warehouse.kind = dto.kind;
             if (dto.address !== undefined) warehouse.address = dto.address;
             if (dto.isActive !== undefined) warehouse.isActive = dto.isActive;
+            if (ubicacion !== undefined) {
+              warehouse.location = ubicacion
+                ? puntoDesdeCoordenadas(ubicacion.lat, ubicacion.lng)
+                : null;
+            }
             await repo.save(warehouse);
           }),
         { context: 'edición de depósito' },
@@ -276,6 +297,7 @@ export class WarehouseService {
           code: CODIGO_DEPOSITO_CENTRAL,
           kind: WarehouseKind.DEPOT,
           address: null,
+          location: null,
           isDefault: true,
         }),
       );
@@ -305,7 +327,10 @@ export class WarehouseService {
   private async insertar(
     manager: EntityManager,
     distributorId: string,
-    datos: Pick<Warehouse, 'name' | 'code' | 'kind' | 'address' | 'isDefault'>,
+    datos: Pick<
+      Warehouse,
+      'name' | 'code' | 'kind' | 'address' | 'location' | 'isDefault'
+    >,
   ): Promise<DepositoConUbicacion> {
     const warehouse = await manager.getRepository(Warehouse).save(
       manager.getRepository(Warehouse).create({
