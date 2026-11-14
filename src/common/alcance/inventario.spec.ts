@@ -112,6 +112,7 @@ const PLATAFORMA = [
   'GET /v2/platform/companies',
   'GET /v2/platform/companies/:id',
   'GET /v2/platform/companies/:id/scheduled-tasks',
+  'GET /v2/platform/companies/:id/theme',
   // Módulos por distribuidora (P1).
   'GET /v2/platform/companies/:id/modules',
   'GET /v2/platform/document-reading-usage',
