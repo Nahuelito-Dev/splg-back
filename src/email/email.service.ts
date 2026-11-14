@@ -4,6 +4,7 @@ import {
   HttpException,
   Logger,
 } from '@nestjs/common';
+import { leerConfiguracionDePlataforma } from '../common/config/plataforma.config';
 import { auth } from 'firebase-admin';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { UsersService } from '../users/users.service';
@@ -288,7 +289,9 @@ export class EmailService {
         data: {
           displayName,
           appName: MARCA_DE_LOS_MAILS,
-          supportEmail: 'support@wagnerlabs.dev',
+          supportEmail:
+            leerConfiguracionDePlataforma(process.env).supportEmail ??
+            undefined,
         },
       });
     } catch (error) {
