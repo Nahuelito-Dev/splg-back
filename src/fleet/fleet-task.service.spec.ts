@@ -966,6 +966,22 @@ describe('FleetTaskService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it.each([MaintenanceTaskStatus.DONE, MaintenanceTaskStatus.CANCELLED])(
+      'por la v2, cerrar una tarea %s es un conflicto (409)',
+      async (status) => {
+        enLaBase({ ...abierta(), status });
+        await expect(
+          service.close(
+            't1',
+            { performedAt: '2026-09-26T00:00:00.000Z' },
+            'd1',
+            undefined,
+            { cerradaComoConflicto: true },
+          ),
+        ).rejects.toBeInstanceOf(ConflictException);
+      },
+    );
+
     it('cancelar agrega el motivo a las notas', async () => {
       enLaBase(abierta());
       const cancelada = await service.cancel(
