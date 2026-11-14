@@ -15,12 +15,16 @@ import type { Point } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { WarehouseKind } from '../domain/stock.enums';
 
+/** La ubicación, si está, con la latitud y la longitud en rango. */
+export const CONDICION_UBICACION_DEPOSITO = `"location" IS NULL OR (ST_Y("location") BETWEEN -90 AND 90 AND ST_X("location") BETWEEN -180 AND 180)`;
+
 /**
  * Depósito de una distribuidora (galpón, sucursal). Baja lógica: sólo se da de
  * baja sin saldo y si no es el predeterminado. Los índices únicos son los
  * "vigentes": un depósito dado de baja no bloquea reutilizar su código.
  */
 @Check('CHK_warehouse_codigo', `"code" ~ '^[A-Z0-9_-]{1,12}$'`)
+@Check('CHK_warehouse_ubicacion', CONDICION_UBICACION_DEPOSITO)
 @Unique('UQ_warehouse_id_distribuidora', ['warehouseId', 'distributorId'])
 @Entity('warehouse')
 @Index('UQ_warehouse_code_vigente', ['distributorId', 'code'], {
@@ -55,7 +59,11 @@ export class Warehouse {
   @Column({ type: 'text', nullable: true })
   address!: string | null;
 
-  /** Punto de salida del recorrido de las hojas de ruta. */
+  /**
+   * Punto de salida del recorrido de las hojas de ruta. Lo carga el admin en
+   * el alta o la edición (v2); sin ubicación, la hoja sale del centro de las
+   * paradas y avisa `no_warehouse`.
+   */
   @Column({
     name: 'location',
     type: 'geometry',

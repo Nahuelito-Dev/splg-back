@@ -3,6 +3,7 @@ import {
   conciliarVendible,
   movimientosDeAjuste,
   netearSaldos,
+  ubicacionDelDeposito,
   validarItemsDeAjuste,
   validarMovimiento,
   variacionesDeConteo,
@@ -13,7 +14,10 @@ import {
   StockCondition as Cond,
   StockMovementReason as Razon,
 } from './stock.enums';
-import { OperacionDeStockInvalidaError } from './errors/stock.errors';
+import {
+  OperacionDeStockInvalidaError,
+  UbicacionDeDepositoInvalidaError,
+} from './errors/stock.errors';
 
 const L1 = '00000000-0000-4000-8000-000000000001';
 const L2 = '00000000-0000-4000-8000-000000000002';
@@ -331,4 +335,57 @@ describe('variacionesDeConteo', () => {
       { gasCylinderId: G2, condition: Cond.FULL, quantityDelta: 7 },
     ]);
   });
+});
+
+describe('ubicacionDelDeposito', () => {
+  it('sin coordenadas no toca la ubicación', () => {
+    expect(ubicacionDelDeposito(undefined, undefined)).toBeUndefined();
+  });
+
+  it('las dos en null la borran (en la edición)', () => {
+    expect(ubicacionDelDeposito(null, null)).toBeNull();
+  });
+
+  it('en el alta las dos en null no valen', () => {
+    expect(() =>
+      ubicacionDelDeposito(null, null, { permitirBorrar: false }),
+    ).toThrow(UbicacionDeDepositoInvalidaError);
+  });
+
+  it('las dos en rango la fijan (Posadas)', () => {
+    expect(ubicacionDelDeposito(-27.3671, -55.8961)).toEqual({
+      lat: -27.3671,
+      lng: -55.8961,
+    });
+    expect(ubicacionDelDeposito(-90, 180)).toEqual({ lat: -90, lng: 180 });
+  });
+
+  it.each([
+    [-27.3671, undefined],
+    [undefined, -55.8961],
+    [-27.3671, null],
+    [null, -55.8961],
+    [null, undefined],
+    [undefined, null],
+  ])('una sola coordenada es inválida (%p, %p)', (lat, lng) => {
+    expect(() => ubicacionDelDeposito(lat, lng)).toThrow(
+      new UbicacionDeDepositoInvalidaError(
+        'La ubicación del depósito lleva latitud y longitud juntas, o ninguna de las dos',
+      ),
+    );
+  });
+
+  it.each([90.0001, -90.0001, Number.NaN, Number.POSITIVE_INFINITY])(
+    'latitud fuera de rango (%p)',
+    (lat) => {
+      expect(() => ubicacionDelDeposito(lat, 0)).toThrow(/latitud/);
+    },
+  );
+
+  it.each([180.0001, -180.0001, Number.NaN])(
+    'longitud fuera de rango (%p)',
+    (lng) => {
+      expect(() => ubicacionDelDeposito(0, lng)).toThrow(/longitud/);
+    },
+  );
 });

@@ -82,3 +82,13 @@ export class GarrafaNoEncontradaEnStockError extends NotFoundDomainError {
     );
   }
 }
+
+/**
+ * La ubicación de un depósito va completa (latitud y longitud) o no va, y cada
+ * coordenada dentro de su rango. Se mapea a 400.
+ */
+export class UbicacionDeDepositoInvalidaError extends BadRequestDomainError {
+  constructor(motivo: string) {
+    super(motivo);
+  }
+}

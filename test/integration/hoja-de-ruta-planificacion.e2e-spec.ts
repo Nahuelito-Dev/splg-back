@@ -774,10 +774,12 @@ describe('Hoja de ruta: planificación y edición (e2e)', () => {
         .set(c.actores.adminB)
         .expect(404);
       // Un pedido que entró después del cierre: aparece con la sugerencia de dónde insertarlo.
+      // Un minuto después del corte del plan, no `now()`: antes de las 18 el
+      // corte de mañana todavía no pasó y el pedido no sería tardío.
       const tardio = await pedidoPara(manana);
       await ds.query(
-        `UPDATE "order" SET "createdAt" = now() WHERE "order_id" = $1`,
-        [tardio],
+        `UPDATE "order" SET "createdAt" = $2::timestamptz + interval '1 minute' WHERE "order_id" = $1`,
+        [tardio, dia.plan.cutoffAt],
       );
       const tardios = (
         await http()

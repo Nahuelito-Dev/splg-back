@@ -306,6 +306,8 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El titular de la cuenta de la distribuidora tiene que tener al menos 2 caracteres',
   CHK_warehouse_codigo:
     'El código del depósito admite hasta 12 caracteres: mayúsculas, números, guion y guion bajo',
+  CHK_warehouse_ubicacion:
+    'La ubicación del depósito tiene que tener la latitud entre -90 y 90 y la longitud entre -180 y 180',
   CHK_claims_textos:
     'El motivo y la descripción del reclamo no pueden estar vacíos',
   CHK_incident_descripcion: 'La descripción del incidente no puede estar vacía',
