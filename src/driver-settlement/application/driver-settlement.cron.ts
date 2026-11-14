@@ -9,6 +9,12 @@ import {
   ZONA_ARGENTINA,
 } from '../../common/utils/dias-argentina';
 import { EmailSenderPort } from '../../email/ports/email-sender.port';
+import { armarCorreo } from '../../email/layout/correo';
+import {
+  marcaDeDistribuidora,
+  nombreDeDistribuidoraDeAdmins,
+} from '../../email/layout/marca-de-correo';
+import { mensajeDeRendicionesSinCerrar } from './correo-rendiciones-sin-cerrar';
 import { RedisService } from '../../redis/redis.service';
 import { ESTADOS_SIN_CERRAR } from '../domain/driver-settlement.enums';
 import { DriverSettlementService } from './driver-settlement.service';
@@ -18,13 +24,6 @@ import {
   registrarErrorAtrapado,
 } from '../../process-run/process-run.context';
 import { ProcessName } from '../../process-run/domain/process-catalog';
-
-const escaparHtml = (texto: string): string =>
-  texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 
 interface FilaSinCerrar {
   settlement_id: string;
@@ -126,17 +125,23 @@ export class DriverSettlementCron {
     const destinatarios = admins
       .map((a) => a.user?.email)
       .filter((email): email is string => Boolean(email));
-    const items = lista
-      .map(
-        (f) =>
-          `<li>N° ${f.number} del ${f.business_date} · ${escaparHtml(f.driver_name ?? 'chofer')} · ${f.status === 'open' ? 'sin presentar' : 'presentada, sin aprobar'}</li>`,
-      )
-      .join('');
+    const correo = armarCorreo(
+      marcaDeDistribuidora(nombreDeDistribuidoraDeAdmins(admins)),
+      mensajeDeRendicionesSinCerrar(
+        lista.map((f) => ({
+          numero: f.number,
+          dia: f.business_date,
+          chofer: f.driver_name,
+          presentada: f.status !== 'open',
+        })),
+      ),
+    );
     for (const to of destinatarios) {
       await this.emailSender.send({
         to,
-        subject: `Rendiciones sin cerrar: ${lista.length}`,
-        html: `<p>Estas rendiciones de días anteriores siguen sin cerrarse:</p><ul>${items}</ul>`,
+        subject: correo.asunto,
+        html: correo.html,
+        text: correo.text,
       });
     }
     // Sin administradores con correo no hay a quién avisarle dos veces: se marca igual.

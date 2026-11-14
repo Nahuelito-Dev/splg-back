@@ -14,6 +14,8 @@ import {
   textoDeEscalamiento,
 } from './maintenance-planner-notifier';
 import { EVENTO_NOTIFICAR_ADMIN } from '../../common/events/notificar-admin.event';
+import { marcaDeDistribuidora } from '../../email/layout/marca-de-correo';
+import { MarcasDeCorreo } from '../../email/marcas-de-correo.service';
 
 const CTX = {
   planName: 'VTV <b>',
@@ -63,6 +65,11 @@ describe('MaintenancePlannerNotifier', () => {
       fcm as unknown as FcmPort,
       email as unknown as EmailSenderPort,
       events as unknown as EventEmitter2,
+      {
+        deDistribuidora: jest
+          .fn()
+          .mockResolvedValue(marcaDeDistribuidora('Gas del Sur', {})),
+      } as unknown as MarcasDeCorreo,
     );
   });
 

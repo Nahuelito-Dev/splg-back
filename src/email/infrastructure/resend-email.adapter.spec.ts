@@ -56,4 +56,50 @@ describe('ResendEmailAdapter', () => {
       }),
     ).rejects.toThrow('API key is invalid');
   });
+
+  it('manda el texto plano cuando viene', async () => {
+    await adaptador({ RESEND_API_KEY: 'k' }).send({
+      to: 'a@b.com',
+      subject: 's',
+      html: 'h',
+      text: 't',
+    });
+    expect(enviar).toHaveBeenCalledWith(
+      expect.objectContaining({ html: 'h', text: 't' }),
+    );
+  });
+
+  it('con EMAIL_REDIRECT_TO manda todo a esa dirección, marcado con el destinatario original', async () => {
+    await adaptador({
+      RESEND_API_KEY: 'k',
+      NODE_ENV: 'development',
+      EMAIL_REDIRECT_TO: 'nahue@test.com',
+    }).send({
+      to: 'cliente@b.com',
+      subject: 'Hola',
+      html: '<body><p>x</p></body>',
+      text: 'x',
+    });
+    const [[enviado]] = enviar.mock.calls as [
+      [{ to: string; subject: string; html: string; text: string }],
+    ];
+    expect(enviado.to).toBe('nahue@test.com');
+    expect(enviado.subject).toBe('[para: cliente@b.com] Hola');
+    expect(enviado.html).toContain('Correo de prueba: era para');
+    expect(enviado.text).toContain('era para cliente@b.com');
+  });
+
+  it('en producción ignora EMAIL_REDIRECT_TO', async () => {
+    await adaptador({
+      RESEND_API_KEY: 'k',
+      NODE_ENV: 'production',
+      EMAIL_REDIRECT_TO: 'nahue@test.com',
+    }).send({ to: 'cliente@b.com', subject: 'Hola', html: 'h' });
+    expect(enviar).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'cliente@b.com', subject: 'Hola' }),
+    );
+    expect(enviar).toHaveBeenCalledWith(
+      expect.not.objectContaining({ text: expect.anything() as unknown }),
+    );
+  });
 });

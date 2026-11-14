@@ -5,10 +5,8 @@ import { DataSource } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
 import { RedisService } from '../../redis/redis.service';
 import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
-import {
-  escaparHtml,
-  StockAdminNotifier,
-} from './stock-admin-notifier.service';
+import { StockAdminNotifier } from './stock-admin-notifier.service';
+import { mensajeDeStockBajo } from './correos-de-stock';
 import { ConRegistro } from '../../process-run/process-run.recorder';
 import {
   marcarSaltada,
@@ -95,16 +93,16 @@ export class StockLowCron {
     umbrales: FilaDeUmbral[],
   ): Promise<void> {
     try {
-      const items = umbrales
-        .map(
-          (u) =>
-            `<li>${escaparHtml(u.warehouse_name)}: ${escaparHtml(u.type)} — ${u.current_full} llenas (mínimo ${u.min_full})</li>`,
-        )
-        .join('');
       await this.notifier.avisar(
         distributorId,
-        `Stock bajo: ${umbrales.length} garrafa(s) por debajo del mínimo`,
-        `<p>Estos depósitos quedaron por debajo del mínimo de garrafas llenas:</p><ul>${items}</ul>`,
+        mensajeDeStockBajo(
+          umbrales.map((u) => ({
+            deposito: u.warehouse_name,
+            garrafa: u.type,
+            llenas: u.current_full,
+            minimo: u.min_full,
+          })),
+        ),
       );
       // Sin administradores con email no hay a quién avisarle dos veces: se
       // marca igual, como en el aviso de flota.

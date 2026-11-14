@@ -8,10 +8,11 @@ import {
 } from '../common/events/notificar-admin.event';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
 import { EnlacesDeLaApp } from '../email/enlaces-de-la-app';
+import { MarcasDeCorreo } from '../email/marcas-de-correo.service';
 import { AdminGateway } from '../gateways/admin.gateway';
 import { AdminNotificationMapper } from './admin-notifications.mapper';
 import { AdminNotificationsService } from './admin-notifications.service';
-import { htmlDelAviso, rutaDelPanelDelAviso } from './aviso-por-correo';
+import { correoDelAviso, rutaDelPanelDelAviso } from './aviso-por-correo';
 import { AdminNotification } from './entities/admin-notification.entity';
 
 /** Evento del socket del panel con cada aviso nuevo de la bandeja. */
@@ -32,6 +33,7 @@ export class AdminNotificationsListener {
     private readonly admins: AdminService,
     private readonly emailSender: EmailSenderPort,
     private readonly enlaces: EnlacesDeLaApp,
+    private readonly marcas: MarcasDeCorreo,
   ) {}
 
   @OnEvent(EVENTO_NOTIFICAR_ADMIN, { async: true })
@@ -75,17 +77,19 @@ export class AdminNotificationsListener {
     if (destinatarios.length === 0) return;
 
     const ruta = rutaDelPanelDelAviso(aviso);
-    const html = htmlDelAviso(
+    // El asunto sale en una sola línea (lo asegura el layout): un salto no se cuela como cabecera.
+    const correo = correoDelAviso(
       aviso,
       ruta === null ? null : this.enlaces.panel(ruta),
+      await this.marcas.deDistribuidora(aviso.distributorId),
     );
     const resultados = await Promise.allSettled(
       destinatarios.map((to) =>
         this.emailSender.send({
           to,
-          // Una sola línea: un salto en el asunto no se cuela como cabecera.
-          subject: aviso.title.replace(/\s+/g, ' ').trim(),
-          html,
+          subject: correo.asunto,
+          html: correo.html,
+          text: correo.text,
         }),
       ),
     );
