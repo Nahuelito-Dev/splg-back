@@ -40,8 +40,14 @@ export class StaffPermissionsService {
     userId: string,
     role: RoleType,
     manager: EntityManager = this.dataSource.manager,
+    actuaComoEmpresaPropia = false,
   ): Promise<PermisosDelUsuario> {
-    if (role === RoleType.SUPER_ADMIN) {
+    // El super admin dentro de una empresa propia de la plataforma es un admin
+    // de esa empresa con todos los permisos (no tiene fila en `admin`).
+    if (
+      role === RoleType.SUPER_ADMIN ||
+      (role === RoleType.ADMIN && actuaComoEmpresaPropia)
+    ) {
       return { todos: true, rol: null, permisos: [...PERMISOS] };
     }
     if (role !== RoleType.ADMIN) return SIN_PERMISOS;

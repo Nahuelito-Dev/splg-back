@@ -46,7 +46,12 @@ export class PermissionGuard implements CanActivate {
     }
     if (user.role !== RoleType.ADMIN) return true;
 
-    const { permisos } = await this.permisos.deUsuario(user.user_id, user.role);
+    const { permisos } = await this.permisos.deUsuario(
+      user.user_id,
+      user.role,
+      undefined,
+      user.actuaComoEmpresaPropia === true,
+    );
     if (requeridos.some((p) => permisos.includes(p))) return true;
 
     throw conCodigo(

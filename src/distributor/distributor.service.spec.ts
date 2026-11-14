@@ -126,6 +126,45 @@ describe('DistributorService', () => {
       );
     });
 
+    it.each([
+      ['un admin real', 'sin_admins_ajenos'],
+      ['un cliente real', 'sin_clientes_ajenos'],
+      ['un pedido de un cliente real', 'sin_pedidos'],
+    ])(
+      'con %s el acceso directo se corta en la request siguiente',
+      async (_caso, condicion) => {
+        repo.findOne.mockResolvedValue({ distributorId: ID });
+        repo.query.mockResolvedValue([
+          {
+            sin_admins_ajenos: true,
+            sin_clientes_ajenos: true,
+            sin_pedidos: true,
+            [condicion]: false,
+          },
+        ]);
+        await expect(service.empresaPropiaVigente(ID)).resolves.toBe(null);
+      },
+    );
+
+    it('en cada request sólo cuentan los pedidos de cuentas reales; al marcar, todos', async () => {
+      repo.findOne.mockResolvedValue({ distributorId: ID });
+      await service.empresaPropiaVigente(ID);
+      expect(repo.query).toHaveBeenLastCalledWith(expect.any(String), [
+        ID,
+        false,
+      ]);
+      repo.findOne.mockResolvedValue({
+        distributorId: ID,
+        ownedByPlatform: false,
+        createdByPlatform: true,
+      });
+      await service.marcarPropia(ID, true);
+      expect(repo.query).toHaveBeenLastCalledWith(expect.any(String), [
+        ID,
+        true,
+      ]);
+    });
+
     it('un header vacío ni consulta', async () => {
       await expect(service.empresaPropiaVigente('  ')).resolves.toBe(null);
       expect(repo.findOne).not.toHaveBeenCalled();

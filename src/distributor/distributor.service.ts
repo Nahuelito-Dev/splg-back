@@ -152,7 +152,14 @@ export class DistributorService {
         status: DistributorStatus.ACTIVE,
       },
     });
-    return fila?.distributorId ?? null;
+    if (!fila) return null;
+    // La condición de «sólo datos de la plataforma» se revisa en cada request,
+    // no sólo al marcarla: si entró un admin, un cliente o un pedido de una
+    // cuenta real, el acceso directo se corta y vuelve a hacer falta el modo
+    // soporte (con el consentimiento de la empresa).
+    return (await this.soloDatosDePlataforma(fila.distributorId, false))
+      ? fila.distributorId
+      : null;
   }
 
   /**
@@ -235,6 +242,18 @@ export class DistributorService {
     ) {
       return false;
     }
+    return this.soloDatosDePlataforma(id, true);
+  }
+
+  /**
+   * Sin admins ni clientes vigentes que no sean cuentas de la siembra, y sin
+   * pedidos (`sinPedidos`, al marcar) o sin pedidos de clientes que no sean de
+   * la siembra (en cada request: los de prueba de la plataforma sí valen).
+   */
+  private async soloDatosDePlataforma(
+    id: string,
+    sinPedidos: boolean,
+  ): Promise<boolean> {
     const [fila] = await this.repo.query<
       Array<{
         sin_admins_ajenos: boolean;
@@ -258,9 +277,12 @@ export class DistributorService {
              AND u.created_by_platform IS NOT TRUE
          ) AS sin_clientes_ajenos,
          NOT EXISTS (
-           SELECT 1 FROM "order" o WHERE o.distributor_id = $1
+           SELECT 1 FROM "order" o
+           LEFT JOIN "user" u ON u.user_id = o.customer_id
+           WHERE o.distributor_id = $1
+             AND ($2::boolean OR u.created_by_platform IS NOT TRUE)
          ) AS sin_pedidos`,
-      [id],
+      [id, sinPedidos],
     );
     return Boolean(
       fila?.sin_admins_ajenos && fila.sin_clientes_ajenos && fila.sin_pedidos,

@@ -53,7 +53,12 @@ export class MyPermissionsController {
   ): Promise<MyPermissionsResponseDto> {
     return StaffRoleMapper.toMisPermisos(
       user.role,
-      await this.permisos.deUsuario(user.user_id, user.role),
+      await this.permisos.deUsuario(
+        user.user_id,
+        user.role,
+        undefined,
+        user.actuaComoEmpresaPropia === true,
+      ),
     );
   }
 }
