@@ -93,7 +93,30 @@ describe('PermissionGuard', () => {
     await expect(
       guard.canActivate(contexto(proto.pedidos, PruebaController, admin)),
     ).resolves.toBe(true);
-    expect(deUsuario).toHaveBeenCalledWith('u-1', RoleType.ADMIN);
+    expect(deUsuario).toHaveBeenCalledWith(
+      'u-1',
+      RoleType.ADMIN,
+      undefined,
+      false,
+    );
+  });
+
+  it('el super admin dentro de la empresa propia pide los permisos como tal', async () => {
+    conPermisos(['pedidos.gestionar']);
+    await expect(
+      guard.canActivate(
+        contexto(proto.pedidos, PruebaController, {
+          ...admin,
+          actuaComoEmpresaPropia: true,
+        }),
+      ),
+    ).resolves.toBe(true);
+    expect(deUsuario).toHaveBeenCalledWith(
+      'u-1',
+      RoleType.ADMIN,
+      undefined,
+      true,
+    );
   });
 
   it('el admin sin el permiso recibe 403 con la etiqueta y el code', async () => {

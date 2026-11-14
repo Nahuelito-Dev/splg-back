@@ -36,6 +36,13 @@ describe('StaffPermissionsService', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it('el super admin dentro de la empresa propia: admin con todos, sin ir a la base', async () => {
+    await expect(
+      service.deUsuario('s', RoleType.ADMIN, undefined, true),
+    ).resolves.toEqual({ todos: true, rol: null, permisos: [...PERMISOS] });
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('una cuenta de las apps no tiene permisos de personal', async () => {
     await expect(
       service.deUsuario('c', RoleType.CUSTOMER),

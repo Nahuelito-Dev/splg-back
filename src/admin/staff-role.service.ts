@@ -31,7 +31,10 @@ import {
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 /** Quién pide el cambio (sale de `@CurrentUser()`). */
-export type Actor = Pick<AuthenticatedUser, 'user_id' | 'role'>;
+export type Actor = Pick<
+  AuthenticatedUser,
+  'user_id' | 'role' | 'actuaComoEmpresaPropia'
+>;
 
 export interface RolConConteo {
   rol: StaffRole;
@@ -245,6 +248,7 @@ export class StaffRoleService {
       actor.user_id,
       actor.role,
       manager,
+      actor.actuaComoEmpresaPropia === true,
     );
     if (propios.todos) return;
     const faltan =
@@ -273,6 +277,7 @@ export class StaffRoleService {
       actor.user_id,
       actor.role,
       manager,
+      actor.actuaComoEmpresaPropia === true,
     );
     if (propios.rol?.staffRoleId === rol.staffRoleId) {
       throw conCodigo(
