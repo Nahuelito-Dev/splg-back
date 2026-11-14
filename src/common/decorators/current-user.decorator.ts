@@ -21,8 +21,9 @@ export interface AuthenticatedUser {
    * Tenant (distribuidora) efectivo de la request. Multi-tenant:
    *  - admin/delivery: su distribuidora, derivada del perfil (server-trusted).
    *  - customer: la del header `X-Distributor` si se envió.
-   *  - super_admin: la de su sesión de soporte (`X-Support-Session`); sin
-   *    sesión, `null` (plataforma). El `X-Distributor` no se lee.
+   *  - super_admin: la de su sesión de soporte (`X-Support-Session`), o la
+   *    del `X-Distributor` sólo si es una empresa propia de la plataforma; si
+   *    no, `null` (plataforma).
    * Lo resuelve `AuthGuard`; nunca se lee del body.
    */
   distributor_id?: string | null;
@@ -31,6 +32,10 @@ export interface AuthenticatedUser {
    * ella ve la empresa como la ve un admin, en sólo lectura.
    */
   support_session_id?: string | null;
+  /** El super admin opera una empresa propia con el rol efectivo ADMIN. */
+  actuaComoEmpresaPropia?: boolean;
+  /** Rol autenticado original; se usa para no perder el actor de auditoría. */
+  actor_real_role?: RoleType;
 }
 
 /**

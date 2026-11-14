@@ -106,6 +106,7 @@ const PLATAFORMA = [
   'GET /distributor/:id',
   'GET /role',
   'GET /role/:id',
+  'GET /v2/platform/companies',
   'GET /v2/support-sessions',
   'GET /v2/support-sessions/:id',
   'GET /v2/support-sessions/:id/accesses',
@@ -119,6 +120,7 @@ const PLATAFORMA = [
   'POST /role',
   'POST /role/seed',
   'POST /v2/support-sessions',
+  'PUT /v2/platform/companies/:id/owned-by-platform',
 ];
 
 const AMBOS = [

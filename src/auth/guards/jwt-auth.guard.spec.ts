@@ -79,7 +79,11 @@ describe('AuthGuard — @SinDistribuidora() ignora el header, no el tenant', () 
   const reflector = new Reflector();
   let authService: { decodeToken: jest.Mock };
   let usersService: { findOneByEmail: jest.Mock };
-  let distributorService: { findBySlug: jest.Mock; assertActive: jest.Mock };
+  let distributorService: {
+    findBySlug: jest.Mock;
+    assertActive: jest.Mock;
+    empresaPropiaVigente: jest.Mock;
+  };
   let guard: AuthGuard;
 
   const superAdmin = {
@@ -105,7 +109,11 @@ describe('AuthGuard — @SinDistribuidora() ignora el header, no el tenant', () 
   beforeEach(() => {
     authService = { decodeToken: jest.fn() };
     usersService = { findOneByEmail: jest.fn() };
-    distributorService = { findBySlug: jest.fn(), assertActive: jest.fn() };
+    distributorService = {
+      findBySlug: jest.fn(),
+      assertActive: jest.fn(),
+      empresaPropiaVigente: jest.fn().mockResolvedValue(null),
+    };
     guard = new AuthGuard(
       reflector,
       authService as unknown as AuthService,
@@ -135,6 +143,7 @@ describe('AuthGuard — @SinDistribuidora() ignora el header, no el tenant', () 
     expect(request.distributorId).toBeNull();
     expect(distributorService.findBySlug).not.toHaveBeenCalled();
     expect(distributorService.assertActive).not.toHaveBeenCalled();
+    expect(distributorService.empresaPropiaVigente).not.toHaveBeenCalled();
   });
 
   it('super admin SIN la marca: el X-Distributor ya no se lee (modo soporte): queda null', async () => {
@@ -146,7 +155,12 @@ describe('AuthGuard — @SinDistribuidora() ignora el header, no el tenant', () 
       guard.canActivate(contextoCon(request, ControladorSinMarca)),
     ).resolves.toBe(true);
     expect(request.distributorId).toBeNull();
+    expect(request.ownedCompanyId).toBeUndefined();
     expect(distributorService.findBySlug).not.toHaveBeenCalled();
+    // Sólo se pregunta si es una empresa propia de la plataforma (no lo es).
+    expect(distributorService.empresaPropiaVigente).toHaveBeenCalledWith(
+      'distribuidora-que-no-existe',
+    );
   });
 
   it('cliente SIN la marca: el mismo header inexistente sigue rompiendo la request', async () => {
@@ -195,7 +209,11 @@ describe('AuthGuard — @PublicIdentificable()', () => {
   const reflector = new Reflector();
   let authService: { decodeToken: jest.Mock };
   let usersService: { findOneByEmail: jest.Mock };
-  let distributorService: { findBySlug: jest.Mock; assertActive: jest.Mock };
+  let distributorService: {
+    findBySlug: jest.Mock;
+    assertActive: jest.Mock;
+    empresaPropiaVigente: jest.Mock;
+  };
   let guard: AuthGuard;
 
   const admin = {
@@ -208,7 +226,11 @@ describe('AuthGuard — @PublicIdentificable()', () => {
   beforeEach(() => {
     authService = { decodeToken: jest.fn() };
     usersService = { findOneByEmail: jest.fn() };
-    distributorService = { findBySlug: jest.fn(), assertActive: jest.fn() };
+    distributorService = {
+      findBySlug: jest.fn(),
+      assertActive: jest.fn(),
+      empresaPropiaVigente: jest.fn().mockResolvedValue(null),
+    };
     guard = new AuthGuard(
       reflector,
       authService as unknown as AuthService,
@@ -381,7 +403,11 @@ describe('AuthGuard — modo soporte del super admin', () => {
   const reflector = new Reflector();
   let authService: { decodeToken: jest.Mock };
   let usersService: { findOneByEmail: jest.Mock };
-  let distributorService: { findBySlug: jest.Mock; assertActive: jest.Mock };
+  let distributorService: {
+    findBySlug: jest.Mock;
+    assertActive: jest.Mock;
+    empresaPropiaVigente: jest.Mock;
+  };
   let soporte: { vigente: jest.Mock };
   let guard: AuthGuard;
 
@@ -407,7 +433,11 @@ describe('AuthGuard — modo soporte del super admin', () => {
   beforeEach(() => {
     authService = { decodeToken: jest.fn() };
     usersService = { findOneByEmail: jest.fn() };
-    distributorService = { findBySlug: jest.fn(), assertActive: jest.fn() };
+    distributorService = {
+      findBySlug: jest.fn(),
+      assertActive: jest.fn(),
+      empresaPropiaVigente: jest.fn().mockResolvedValue(null),
+    };
     soporte = { vigente: jest.fn().mockResolvedValue(sesion) };
     guard = new AuthGuard(
       reflector,
@@ -508,5 +538,181 @@ describe('AuthGuard — modo soporte del super admin', () => {
     expect(soporte.vigente).not.toHaveBeenCalled();
     expect(request.distributorId).toBe('distribuidora-del-admin');
     expect(request.supportSession).toBeUndefined();
+  });
+});
+
+describe('AuthGuard — empresa propia de la plataforma', () => {
+  const reflector = new Reflector();
+  let authService: { decodeToken: jest.Mock };
+  let usersService: { findOneByEmail: jest.Mock };
+  let distributorService: {
+    findBySlug: jest.Mock;
+    assertActive: jest.Mock;
+    empresaPropiaVigente: jest.Mock;
+  };
+  let soporte: { vigente: jest.Mock };
+  let guard: AuthGuard;
+
+  const superAdmin = {
+    userId: 'super-1',
+    email: 'super@splg.com',
+    blocked: false,
+    role: { type: RoleType.SUPER_ADMIN },
+  } as unknown as User;
+  const PROPIA = 'id-de-la-propia';
+  const conHeader = (xDistributor: string, extra: object = {}) => ({
+    authorization: 'Bearer token-valido',
+    'x-client-source': 'panel-app',
+    'x-distributor': xDistributor,
+    ...extra,
+  });
+
+  beforeEach(() => {
+    authService = { decodeToken: jest.fn() };
+    usersService = { findOneByEmail: jest.fn() };
+    distributorService = {
+      findBySlug: jest.fn(),
+      assertActive: jest.fn(),
+      // Sólo `prueba-orixtech` es propia (vigente); el resto no.
+      empresaPropiaVigente: jest.fn((ref: string) =>
+        Promise.resolve(ref === 'prueba-orixtech' ? PROPIA : null),
+      ),
+    };
+    soporte = {
+      vigente: jest.fn().mockResolvedValue({
+        id: '11111111-1111-4111-8111-111111111111',
+        distributorId: 'empresa-de-la-sesion',
+        scope: [],
+        expiresAt: new Date('2099-01-01T00:00:00Z'),
+      }),
+    };
+    guard = new AuthGuard(
+      reflector,
+      authService as unknown as AuthService,
+      usersService as unknown as UsersService,
+      distributorService as unknown as DistributorService,
+      soporte as unknown as SupportSessionResolver,
+    );
+  });
+
+  function loguearComo(usuario: User): void {
+    authService.decodeToken.mockResolvedValue({ email: usuario.email });
+    usersService.findOneByEmail.mockResolvedValue(usuario);
+  }
+
+  it('el X-Distributor de una propia fija el tenant y marca la request', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conHeader('prueba-orixtech'));
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBe(PROPIA);
+    expect(request.ownedCompanyId).toBe(PROPIA);
+    expect(request.supportSession).toBeUndefined();
+    expect(request.user).toMatchObject({
+      role: RoleType.ADMIN,
+      distributor_id: PROPIA,
+      actuaComoEmpresaPropia: true,
+      actor_real_role: RoleType.SUPER_ADMIN,
+      support_session_id: null,
+    });
+  });
+
+  it('el X-Distributor de una empresa que no es propia no abre nada', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conHeader('gas-andino'));
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBeNull();
+    expect(request.ownedCompanyId).toBeUndefined();
+    expect(request.user).toMatchObject({
+      distributor_id: null,
+      actuaComoEmpresaPropia: false,
+    });
+    // Ni siquiera se valida como lo haría un cliente.
+    expect(distributorService.findBySlug).not.toHaveBeenCalled();
+    expect(distributorService.assertActive).not.toHaveBeenCalled();
+  });
+
+  it('con X-Support-Session manda la sesión: el X-Distributor de la propia no se mira', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(
+      conHeader('prueba-orixtech', {
+        'x-support-session': '11111111-1111-4111-8111-111111111111',
+      }),
+    );
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBe('empresa-de-la-sesion');
+    expect(request.ownedCompanyId).toBeUndefined();
+    expect(request.user?.actuaComoEmpresaPropia).toBe(false);
+    expect(distributorService.empresaPropiaVigente).not.toHaveBeenCalled();
+  });
+
+  it('una ruta de plataforma no mira el X-Distributor (tenant null)', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conHeader('prueba-orixtech'));
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorDePlataforma)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBeNull();
+    expect(request.ownedCompanyId).toBeUndefined();
+    expect(distributorService.empresaPropiaVigente).not.toHaveBeenCalled();
+  });
+
+  it('una ruta @SinDistribuidora tampoco', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conHeader('prueba-orixtech'));
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorMarcadoEnClase)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBeNull();
+    expect(distributorService.empresaPropiaVigente).not.toHaveBeenCalled();
+  });
+
+  it('un admin de otra empresa con el X-Distributor de la propia sigue en la suya', async () => {
+    loguearComo({
+      userId: 'admin-1',
+      email: 'admin@splg.com',
+      blocked: false,
+      role: { type: RoleType.ADMIN },
+      admins: [{ distributorId: 'distribuidora-del-admin' }],
+    } as unknown as User);
+    const request = requestCon(conHeader('prueba-orixtech'));
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBe('distribuidora-del-admin');
+    expect(request.ownedCompanyId).toBeUndefined();
+    expect(distributorService.empresaPropiaVigente).not.toHaveBeenCalled();
+  });
+
+  it('un cliente con el X-Distributor de la propia la elige como cliente, sin marca', async () => {
+    loguearComo({
+      userId: 'cliente-1',
+      email: 'cliente@splg.com',
+      blocked: false,
+      role: { type: RoleType.CUSTOMER },
+    } as unknown as User);
+    distributorService.findBySlug.mockResolvedValue({ distributorId: PROPIA });
+    const request = requestCon({
+      ...conHeader('prueba-orixtech'),
+      'x-client-source': 'customer-app',
+    });
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBe(PROPIA);
+    expect(request.ownedCompanyId).toBeUndefined();
+    expect(request.user?.actuaComoEmpresaPropia).toBe(false);
   });
 });

@@ -44,5 +44,5 @@ function descripcionDel403(roles: RoleType[]): string {
   const soloPlataforma =
     roles.length === 1 && roles[0] === RoleType.SUPER_ADMIN;
   if (!roles.includes(RoleType.SUPER_ADMIN) || soloPlataforma) return porRol;
-  return `${porRol}. Super admin: sin sesión de soporte en lo de una empresa (\`SUPPORT_SESSION_REQUIRED\`), escribiendo en modo soporte (\`SUPPORT_READ_ONLY\`) o con una sesión pendiente, vencida o revocada en \`X-Support-Session\` (\`SUPPORT_SESSION_ENDED\`), o un archivo o exporte sin ese alcance en la sesión (\`SUPPORT_SCOPE_REQUIRED\`)`;
+  return `${porRol}. Super admin: sin sesión de soporte en lo de una empresa (\`SUPPORT_SESSION_REQUIRED\`), escribiendo en modo soporte (\`SUPPORT_READ_ONLY\`) o con una sesión pendiente, vencida o revocada en \`X-Support-Session\` (\`SUPPORT_SESSION_ENDED\`), o un archivo o exporte sin ese alcance en la sesión (\`SUPPORT_SCOPE_REQUIRED\`). En una empresa propia de la plataforma (\`X-Distributor\`) opera sin sesión, como un admin`;
 }

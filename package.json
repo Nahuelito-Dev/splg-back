@@ -15,6 +15,7 @@
     "seed": "ts-node --files scripts/seed.ts",
     "auditoria:mapa": "ts-node --files scripts/auditoria-mapa.ts",
     "seed:demo": "ts-node --files scripts/seed-demo.ts",
+    "seed:empresa-propia": "ts-node --files scripts/seed-empresa-propia.ts",
     "cuentas:demo": "ts-node --files scripts/cuentas-demo.ts",
     "envases:saldo-inicial": "ts-node --files scripts/cuenta-de-envases-inicial.ts",
     "s3:diagnostico": "ts-node --files scripts/diagnostico-bucket.ts",

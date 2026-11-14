@@ -356,6 +356,8 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   requestedBy: 'Pedido por',
   scope: 'Alcance',
   ticketRef: 'Referencia del pedido de ayuda',
+  // Empresa propia de la plataforma
+  ownedByPlatform: 'Empresa propia de la plataforma',
   receiptNumber: 'Número de comprobante',
   received: 'Recibidos',
   receivedAt: 'Fecha de recepción',

@@ -39,6 +39,10 @@ export const METODOS_DE_LECTURA: ReadonlySet<string> = new Set([
  * Sólo lectura: con sesión pasan `GET`, `HEAD`, `OPTIONS` y los `POST` marcados
  * `@SoloLectura()`; cualquier otra cosa es 403 `SUPPORT_READ_ONLY`. La segunda
  * capa (la transacción de la base en sólo lectura) la pone `ActorEnLaBase`.
+ *
+ * Empresa propia de la plataforma: `AuthGuard` cambia el rol efectivo del
+ * super admin a `ADMIN`, por lo que este guard no le aplica. Así todos los
+ * controles posteriores comparten exactamente la semántica de un admin.
  */
 @Injectable()
 export class AlcanceGuard implements CanActivate {

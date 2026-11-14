@@ -101,6 +101,10 @@ export class User {
   @Column({ type: 'boolean', default: false })
   blocked!: boolean;
 
+  /** Cuenta creada por la siembra controlada de la plataforma. */
+  @Column({ name: 'created_by_platform', type: 'boolean', default: false })
+  createdByPlatform!: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

@@ -3,6 +3,7 @@ import { NotificationsService } from './notifications.service';
 import { FcmPort } from '../firebase/ports/fcm.port';
 import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { OrderLookupService } from '../order/lookup/order-lookup.service';
 
 /**
  * El servicio de notificaciones arma los mensajes y los manda por FcmPort. Los
@@ -15,28 +16,33 @@ describe('NotificationsService', () => {
   let customers: {
     findNotificationToken: jest.Mock;
     saveNotificationToken: jest.Mock;
+    assertDeLaDistribuidora: jest.Mock;
   };
   let deliveries: {
     findNotificationToken: jest.Mock;
     saveNotificationToken: jest.Mock;
   };
   let sendToToken: jest.Mock;
+  let orders: { findRef: jest.Mock };
 
   beforeEach(() => {
     customers = {
       findNotificationToken: jest.fn(),
       saveNotificationToken: jest.fn(),
+      assertDeLaDistribuidora: jest.fn().mockResolvedValue(undefined),
     };
     deliveries = {
       findNotificationToken: jest.fn(),
       saveNotificationToken: jest.fn(),
     };
     sendToToken = jest.fn().mockResolvedValue('msg-1');
+    orders = { findRef: jest.fn().mockResolvedValue({ customerId: 'c1' }) };
 
     service = new NotificationsService(
       customers as unknown as CustomersService,
       deliveries as unknown as DeliveryService,
       { sendToToken } as unknown as FcmPort,
+      orders as unknown as OrderLookupService,
     );
   });
 
@@ -123,12 +129,13 @@ describe('NotificationsService', () => {
 
   describe('reenviarConfirmacion (super admin)', () => {
     it('un cliente que no existe es 404 y no manda nada', async () => {
+      orders.findRef.mockResolvedValue({ customerId: 'u9' });
       customers.findNotificationToken.mockResolvedValue({
         esCliente: false,
         token: null,
       });
       await expect(
-        service.reenviarConfirmacion('u9', 'order-1'),
+        service.reenviarConfirmacion('u9', 'order-1', 'd1'),
       ).rejects.toThrow(new NotFoundException('Cliente no encontrado'));
       expect(sendToToken).not.toHaveBeenCalled();
     });
@@ -139,8 +146,28 @@ describe('NotificationsService', () => {
         token: 'fcm-token-customer',
       });
       await expect(
-        service.reenviarConfirmacion('c1', 'order-abcdef123'),
+        service.reenviarConfirmacion('c1', 'order-abcdef123', 'd1'),
       ).resolves.toEqual({ success: true, messageId: 'msg-1' });
+    });
+
+    it.each([
+      [
+        'cliente de otra distribuidora',
+        () =>
+          customers.assertDeLaDistribuidora.mockRejectedValue(
+            new NotFoundException('Cliente no encontrado'),
+          ),
+      ],
+      [
+        'pedido de otra distribuidora',
+        () => orders.findRef.mockResolvedValue(null),
+      ],
+    ])('%s da 404 y no manda el push', async (_caso, preparar) => {
+      preparar();
+      await expect(
+        service.reenviarConfirmacion('c1', 'order-abcdef123', 'd1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(sendToToken).not.toHaveBeenCalled();
     });
   });
 

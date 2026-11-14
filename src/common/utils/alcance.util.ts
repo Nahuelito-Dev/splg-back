@@ -7,10 +7,11 @@ export function esAdministrador(user: AuthenticatedUser): boolean {
 }
 
 /**
- * Si es el administrador general fuera del modo soporte: el único que ve lo de
- * la plataforma. En una sesión de soporte ve la empresa como un admin de ella,
- * así que los privilegios de plataforma (ver otras empresas, el reporte de la
- * cuenta entera) no le corren.
+ * Si es el administrador general fuera del modo soporte y fuera de una empresa
+ * propia: el único que ve lo de la plataforma. En una sesión de soporte o
+ * operando una empresa propia ve la empresa como un admin de ella, así que los
+ * privilegios de plataforma (ver otras empresas, el reporte de la cuenta
+ * entera, registrar tokens de otro) no le corren.
  */
 export function esSuperAdminDePlataforma(user: AuthenticatedUser): boolean {
   return user.role === RoleType.SUPER_ADMIN && !user.support_session_id;

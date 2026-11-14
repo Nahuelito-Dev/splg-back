@@ -79,7 +79,7 @@ export class AuditInterceptor implements NestInterceptor {
     return {
       distributorId: request.distributorId ?? null,
       actorUserId: request.user?.user_id ?? null,
-      actorRole: request.user?.role ?? null,
+      actorRole: request.user?.actor_real_role ?? request.user?.role ?? null,
       httpMethod: request.method,
       resource: recursoDe(patron),
       resourceId: idDelRecurso(request.params),

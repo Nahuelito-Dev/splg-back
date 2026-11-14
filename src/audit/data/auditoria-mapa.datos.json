@@ -3494,11 +3494,27 @@
     },
     {
       "table": "distributor",
+      "column": "owned_by_platform",
+      "property": "ownedByPlatform",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "distributor",
+      "column": "created_by_platform",
+      "property": "createdByPlatform",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "distributor",
       "column": "plan",
       "property": "plan",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 17
     },
     {
       "table": "distributor",
@@ -3506,7 +3522,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 16
+      "position": 18
     },
     {
       "table": "distributor_mercadopago_credentials",
@@ -9406,11 +9422,19 @@
     },
     {
       "table": "user",
+      "column": "created_by_platform",
+      "property": "createdByPlatform",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "user",
       "column": "deletedAt",
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 11
+      "position": 12
     },
     {
       "table": "user_address",
