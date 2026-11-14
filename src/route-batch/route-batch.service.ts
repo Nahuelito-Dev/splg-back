@@ -1276,11 +1276,16 @@ export class RouteBatchService {
     return resumen;
   }
 
-  /** Un recorrido asignado se completa cuando ninguno de sus pedidos sigue en curso. */
+  /**
+   * Un recorrido asignado se completa cuando ninguno de sus pedidos sigue en
+   * curso. Sólo los lotes ofrecidos: la hoja de ruta en curso la cierra su
+   * ejecución (`RouteSheetCloseService`), que revisa las paradas con la fila
+   * tomada (una parada agregada en el medio la mantiene abierta).
+   */
   private async completarEntregados(ahora: Date): Promise<number> {
     const filas: Array<{ batchId: string }> = await this.dataSource.query(
       `SELECT b."batch_id" AS "batchId" FROM "route_batch" b
-        WHERE b."status" = 'assigned'
+        WHERE b."status" = 'assigned' AND b."kind" = 'offer'
           AND NOT EXISTS (SELECT 1 FROM "route_batch_stop" s
                             JOIN "order" o ON o."order_id" = s."order_id"
                            WHERE s."batch_id" = b."batch_id" AND s."active"

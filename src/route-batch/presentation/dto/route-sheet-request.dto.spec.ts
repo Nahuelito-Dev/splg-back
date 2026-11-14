@@ -143,4 +143,17 @@ describe('DTO de entrada de la hoja de ruta', () => {
       }),
     ).toEqual(['maxStopsPerSheet', 'trafficFactor']);
   });
+
+  it('workingDays: máscara de días ISO entera de 1 a 127', async () => {
+    for (const v of [1, 31, 63, 127]) {
+      expect(
+        await errores(PatchRoutePlanningSettingsDto, { workingDays: v }),
+      ).toEqual([]);
+    }
+    for (const v of [0, 128, 2.5]) {
+      expect(
+        await errores(PatchRoutePlanningSettingsDto, { workingDays: v }),
+      ).toEqual(['workingDays']);
+    }
+  });
 });

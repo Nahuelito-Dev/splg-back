@@ -146,6 +146,8 @@ const RANGOS_DE_LA_HOJA: ReadonlyArray<[string, number, number]> = [
   ['etaNotifyShiftMinutes', 5, 120],
   ['lateOrderPolicy', 0, 1],
   ['notStartedAlertMinutes', 0, 240],
+  ['arrivalWaitMinutes', 1, 60],
+  ['workingDays', 1, 127],
 ];
 
 const CHECK_HOJA = RANGOS_DE_LA_HOJA.map(

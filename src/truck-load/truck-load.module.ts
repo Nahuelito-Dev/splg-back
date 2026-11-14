@@ -17,6 +17,7 @@ import { ReturnTruckLoadUseCase } from './application/return-truck-load.use-case
 import { StockControlSettingsService } from './application/stock-control-settings.service';
 import { TruckLoadAccessService } from './application/truck-load-access.service';
 import { TruckLoadGateService } from './application/truck-load-gate.service';
+import { TruckLoadLookupService } from './application/truck-load-lookup.service';
 import { TruckLoadPhotoService } from './application/truck-load-photo.service';
 import { TruckLoadQueryService } from './application/truck-load-query.service';
 import { UpdateTruckLoadItemsUseCase } from './application/update-truck-load-items.use-case';
@@ -56,8 +57,10 @@ import { TruckLoadPhotoController } from './presentation/truck-load-photo.contro
     CloseTruckLoadUseCase,
     CancelTruckLoadUseCase,
     TruckLoadGateService,
+    TruckLoadLookupService,
     { provide: TruckLoadGatePort, useExisting: TruckLoadGateService },
   ],
-  exports: [TruckLoadGatePort],
+  // La hoja de ruta lee la carga abierta del chofer al iniciar (F34).
+  exports: [TruckLoadGatePort, TruckLoadLookupService],
 })
 export class TruckLoadModule {}

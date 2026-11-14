@@ -73,7 +73,10 @@ import {
 } from './domain/delivery-code.util';
 import { bloquearChoferVigente } from '../common/locks/chofer-lock';
 import { pedidoEnHojaDeRuta } from './domain/errors/order-in-route-sheet.error';
-import { FleetDispatchLockService } from '../fleet/fleet-dispatch-lock.service';
+import {
+  FleetDispatchLockService,
+  type VehiculoEnUsoSnapshot,
+} from '../fleet/fleet-dispatch-lock.service';
 import { RedisService } from '../redis/redis.service';
 import type { PushDeLlegada } from './domain/ports/notification.port';
 
@@ -812,7 +815,23 @@ export class OrderService {
     orderId: string,
     deliveryId: string,
     distributorId?: string | null,
-    opciones: { soloSiLibre?: boolean } = {},
+    opciones: {
+      soloSiLibre?: boolean;
+      /**
+       * El inicio de la hoja de ruta confirmada `hojaDeRuta` por su chofer (F34
+       * E4): sus propias paradas no dan 409 `ORDER_IN_ROUTE_SHEET`. Las de otra
+       * hoja, o para otro chofer, sí.
+       */
+      hojaDeRuta?: string;
+      /**
+       * La hoja de ruta le entrega sus pedidos a su chofer (F34): se asignan
+       * con el vehículo de la hoja, sin los controles de la jornada (carga del
+       * camión y vehículo en uso), que se validan al iniciar el viaje; la
+       * habilitación del chofer para ese día se validó al confirmar la hoja.
+       * Tampoco se le manda un aviso por pedido: le llega la hoja.
+       */
+      vehiculoDeLaHoja?: VehiculoEnUsoSnapshot;
+    } = {},
   ) {
     const delivery = await this.deliveries.findById(deliveryId);
     if (!delivery) {
@@ -863,13 +882,19 @@ export class OrderService {
       }
       // Una parada de una hoja de ruta en borrador o confirmada (F34) no se
       // asigna ni se reasigna por fuera de la hoja. Se lee con el pedido
-      // bloqueado: el alta de la parada bloquea la misma fila.
-      if (
-        await this.dispatchOffers.isInPlannedRouteSheet(
-          locked.orderId,
-          queryRunner.manager,
-        )
-      ) {
+      // bloqueado: el alta de la parada bloquea la misma fila. La única
+      // excepción es el inicio de la hoja por su chofer (`hojaDeRuta`).
+      const retenido = opciones.hojaDeRuta
+        ? await this.dispatchOffers.isInPlannedRouteSheet(
+            locked.orderId,
+            queryRunner.manager,
+            { batchId: opciones.hojaDeRuta, deliveryId: delivery.deliveryId },
+          )
+        : await this.dispatchOffers.isInPlannedRouteSheet(
+            locked.orderId,
+            queryRunner.manager,
+          );
+      if (retenido) {
         throw pedidoEnHojaDeRuta();
       }
       // Con `soloSiLibre` (el lote de recorrido, M4) la asignación no le saca el
@@ -917,31 +942,36 @@ export class OrderService {
       ) {
         throw new NotFoundException('Repartidor no encontrado');
       }
-      await this.truckLoadGate.assertPuedeAsignar(
-        locked.distributorId,
-        delivery.deliveryId,
-        queryRunner.manager,
-      );
-      // CU-136 a CU-138: mismo gate que usan `UpdateOrderStatusUseCase` y el
-      // despacho automático. Si algo está vencido, 400 con el detalle.
-      await this.fleetGate.assertChoferHabilitado(
-        delivery.userId,
-        locked.distributorId,
-      );
-      // Un pedido express (CU-149) sólo lo lleva un chofer con una moto en uso.
-      if (locked.deliveryMode === OrderDeliveryMode.EXPRESS) {
-        await this.fleetGate.assertEnMoto(
+      const deLaHoja = opciones.vehiculoDeLaHoja;
+      if (!deLaHoja) {
+        await this.truckLoadGate.assertPuedeAsignar(
+          locked.distributorId,
+          delivery.deliveryId,
+          queryRunner.manager,
+        );
+        // CU-136 a CU-138: mismo gate que usan `UpdateOrderStatusUseCase` y el
+        // despacho automático. Si algo está vencido, 400 con el detalle.
+        await this.fleetGate.assertChoferHabilitado(
           delivery.userId,
           locked.distributorId,
         );
+        // Un pedido express (CU-149) sólo lo lleva un chofer con una moto en uso.
+        if (locked.deliveryMode === OrderDeliveryMode.EXPRESS) {
+          await this.fleetGate.assertEnMoto(
+            delivery.userId,
+            locked.distributorId,
+          );
+        }
       }
       // Snapshot del vehículo en uso (decisión de nahue del 30/09): a esta
       // altura el chofer ya pasó el gate, así que si tiene vehículo, no viene
-      // inhabilitado.
-      const vehiculo = await this.fleetGate.vehiculoEnUsoDelChofer(
-        delivery.userId,
-        locked.distributorId,
-      );
+      // inhabilitado. En la hoja de ruta, el vehículo de la hoja.
+      const vehiculo =
+        deLaHoja ??
+        (await this.fleetGate.vehiculoEnUsoDelChofer(
+          delivery.userId,
+          locked.distributorId,
+        ));
       locked.vehicleCarId = vehiculo?.carId ?? null;
       locked.vehiclePatent = vehiculo?.patent ?? null;
       locked.vehicleBrand = vehiculo?.brand ?? null;
@@ -1033,6 +1063,8 @@ export class OrderService {
       // o deja vencer el aviso, el pedido NO se libera solo: queda igual
       // asignado y se avisa a los admins para que decidan (segunda revisión,
       // punto 1 — ver `OrderService.rejectOffer`).
+      // La hoja de ruta le avisa la hoja entera al chofer, no pedido por pedido.
+      if (opciones.vehiculoDeLaHoja) return await this.releerAsignado(order);
       const { offerTtlSeconds } = await this.dispatchSettings.obtener(
         order.distributorId,
       );
@@ -1054,6 +1086,84 @@ export class OrderService {
     }
     // Se relee para que la respuesta traiga el chofer nuevo, no el anterior.
     return this.releerAsignado(order);
+  }
+
+  /**
+   * Hoja de ruta (F34): el chofer no pudo entregar en su primer intento y la
+   * parada vuelve al final de su cola. El pedido pasa de en camino a aceptado
+   * con el MISMO chofer (no vuelve al despacho), se corta el seguimiento en
+   * vivo del cliente y el panel se entera. Sólo lo llama la ejecución de la
+   * hoja; un pedido que ya está aceptado por ese chofer queda igual
+   * (idempotente). Otro estado, u otro chofer: 409.
+   */
+  async postergarEntrega(orderId: string, deliveryId: string): Promise<Order> {
+    const order = await this.dataSource.transaction(async (manager) => {
+      const locked = await manager
+        .createQueryBuilder(Order, 'ord')
+        .setLock('pessimistic_write', undefined, ['ord'])
+        .where('ord.orderId = :id', { id: orderId })
+        .getOne();
+      if (!locked) throw new NotFoundException('Pedido no encontrado');
+      if (locked.deliveryId !== deliveryId) {
+        throw new ConflictException('El pedido ya no es de este chofer');
+      }
+      if (locked.status === OrderStatus.ACCEPTED) return locked;
+      if (locked.status !== OrderStatus.ON_THE_WAY) {
+        throw new ConflictException('El pedido ya no está en camino');
+      }
+      locked.items = await manager.find(OrderItem, {
+        where: { orderId: locked.orderId },
+      });
+      transitionOrder(locked, OrderStatus.ACCEPTED);
+      return manager.save(locked);
+    });
+    try {
+      const chofer = await this.deliveries.findById(deliveryId);
+      if (chofer) this.dispatch.stopTracking(chofer.userId);
+      this.dispatch.notifyAdmins(
+        'order:accepted',
+        { orderId: order.orderId, status: order.status },
+        order.distributorId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Pedido ${orderId} postergado, pero falló un aviso: ${errorMessage(error)}`,
+      );
+    }
+    return order;
+  }
+
+  /**
+   * Hoja de ruta (F34): el pedido no se pudo entregar en el segundo intento (o
+   * quedó pendiente al cerrar la hoja a mano) y el sistema lo reprograma solo
+   * para `fecha`, SIN franja fija (no conserva la que tenía): entra a la
+   * planificación de ese día y la hora la calcula el planificador dentro de la
+   * jornada de la distribuidora. Sólo un pedido pendiente y sin chofer (ya
+   * liberado de la hoja); si no, 409. La auditoría de la base registra el
+   * cambio de fecha y de franja con el actor de la transacción.
+   */
+  async reprogramarEntrega(orderId: string, fecha: string): Promise<Order> {
+    return this.dataSource.transaction(async (manager) => {
+      const locked = await manager
+        .createQueryBuilder(Order, 'ord')
+        .setLock('pessimistic_write', undefined, ['ord'])
+        .where('ord.orderId = :id', { id: orderId })
+        .getOne();
+      if (!locked) throw new NotFoundException('Pedido no encontrado');
+      if (locked.status !== OrderStatus.PENDING || locked.deliveryId) {
+        throw new ConflictException(
+          'El pedido ya no está pendiente sin chofer: no se reprograma',
+        );
+      }
+      await manager.update(
+        Order,
+        { orderId },
+        { scheduledDate: fecha, timeSlotId: null },
+      );
+      locked.scheduledDate = fecha;
+      locked.timeSlotId = null;
+      return locked;
+    });
   }
 
   /** El pedido releído; si la relectura falla, el recién asignado (ya confirmado). */

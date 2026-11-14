@@ -9,13 +9,26 @@ import {
 } from '@nestjs/websockets';
 import type { Namespace } from 'socket.io';
 import { RedisService } from '../redis/redis.service';
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RoleType } from '../common/constants/role-type.enum';
 import { SocketIdentityService } from './socket-identity.service';
 import { CustomersGateway } from './customers.gateway';
 import { AdminGateway } from './admin.gateway';
 import { errorMessage } from '../common/errors/error-message';
 import { salaDeUsuario, type SocketDeSplg } from './socket-data';
+
+/**
+ * Posición nueva de un chofer (después de guardarla en el radar). La escucha
+ * la hoja de ruta en curso para recalcular la hora estimada (F34 E5); el
+ * gateway no conoce la hoja.
+ */
+export const EVENTO_POSICION_DEL_CHOFER = 'chofer.posicion';
+export interface PosicionDelChofer {
+  userId: string;
+  lat: number;
+  lng: number;
+}
 
 @WebSocketGateway({
   namespace: 'drivers',
@@ -32,6 +45,7 @@ export class DriversGateway
     private readonly identidades: SocketIdentityService,
     private readonly customersGateway: CustomersGateway,
     private readonly adminGateway: AdminGateway,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   async handleConnection(client: SocketDeSplg): Promise<void> {
@@ -132,6 +146,12 @@ export class DriversGateway
     client.data.choferId = userId;
 
     await this.redisService.updateDriverLocation(userId, data.lat, data.lng);
+    const posicion: PosicionDelChofer = {
+      userId,
+      lat: Number(data.lat),
+      lng: Number(data.lng),
+    };
+    this.events?.emit(EVENTO_POSICION_DEL_CHOFER, posicion);
 
     // Tracking en vivo: si el chofer está entregando un pedido, reenviamos su
     // posición al cliente de ESE pedido y al panel admin. El mapping chofer→pedido
@@ -187,13 +207,22 @@ export class DriversGateway
     this.server.to(`driver_${driverId}`).emit(evento, payload);
   }
 
-  /** Eventos del recorrido agrupado (CU-107): oferta del lote, oferta cerrada y lote asignado. */
+  /**
+   * Eventos del recorrido agrupado (CU-107): oferta del lote, oferta cerrada y
+   * lote asignado; y de la hoja de ruta en curso (F34): iniciada, cambió (cayó o
+   * se agregó una parada, se reordenó) y cerrada.
+   */
   notifyRouteBatch(
     driverId: string,
     evento:
       | 'route-batch:offer'
       | 'route-batch:offer-closed'
-      | 'route-batch:assigned',
+      | 'route-batch:assigned'
+      | 'route-sheet:assigned'
+      | 'route-sheet:started'
+      | 'route-sheet:changed'
+      | 'route-sheet:wait-expired'
+      | 'route-sheet:closed',
     payload: unknown,
   ): void {
     this.logger.log(`🧭 ${evento} para el chofer ${driverId}`);

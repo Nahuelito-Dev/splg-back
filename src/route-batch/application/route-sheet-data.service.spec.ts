@@ -12,6 +12,8 @@ const fila = (over: Record<string, unknown> = {}) => ({
   slotStart: '09:00:00',
   slotEnd: '13:00:00',
   slotName: 'Mañana',
+  dayStart: '08:00:00',
+  dayEnd: '20:00:00',
   deliveryMode: 'standard',
   depositPaid: false,
   fraudHold: false,
@@ -35,6 +37,10 @@ function armar(filas: unknown[] = [], inhabilitados = new Set<string>()) {
   ds.manager = { query: ds.query };
   const fleet = {
     choferesInhabilitados: jest.fn().mockResolvedValue(inhabilitados),
+    habilitacionAlDia: jest.fn().mockResolvedValue({
+      choferes: new Map([...inhabilitados].map((u) => [u, ['de licencia']])),
+      vehiculos: new Map([...inhabilitados].map((c) => [c, ['VTV vencida']])),
+    }),
   };
   return {
     ds,
@@ -85,9 +91,42 @@ describe('RouteSheetDataService', () => {
     });
     expect(sinPunto).toMatchObject({
       hasPoint: false,
+      // Sin fecha no hay jornada que aplicar.
       hasSlot: false,
       lat: null,
       lng: null,
+      slotStartMs: null,
+      slotEndMs: null,
+    });
+  });
+
+  it('pedidos SIN franja fija (reprogramado o sólo con fecha): la franja es la jornada de la distribuidora', async () => {
+    const { svc, ds } = armar([
+      fila({ slotStart: null, slotEnd: null, slotName: null }),
+      fila({
+        orderId: 'o2',
+        slotStart: null,
+        slotEnd: null,
+        dayStart: null,
+        dayEnd: null,
+      }),
+    ]);
+    const [p, sinJornada] = await svc.pedidos(DIST, ['o1', 'o2']);
+    expect((ds.query.mock.calls as unknown[][])[0][0]).toContain(
+      'min(j."startTime")',
+    );
+    expect(p).toMatchObject({
+      hasSlot: true,
+      fixedSlot: false,
+      slotStartMs: instanteDelDia(DIA, '08:00:00'),
+      slotEndMs: instanteDelDia(DIA, '20:00:00'),
+      dayStartMs: instanteDelDia(DIA, '08:00:00'),
+      dayEndMs: instanteDelDia(DIA, '20:00:00'),
+    });
+    // La distribuidora sin franjas activas: no se puede planificar.
+    expect(sinJornada).toMatchObject({
+      hasSlot: false,
+      fixedSlot: false,
       slotStartMs: null,
       slotEndMs: null,
     });
@@ -245,6 +284,94 @@ describe('RouteSheetDataService', () => {
     expect((ds.query.mock.calls as unknown[][])[0][1]).toEqual([DIST, null]);
     await svc.vehiculos(DIST, ['c1']);
     expect((ds.query.mock.calls as unknown[][])[1][1]).toEqual([DIST, ['c1']]);
+  });
+
+  it('choferes a la fecha del plan: la habilitación de ese día, no la de ahora (y sin exigir vehículo en uso)', async () => {
+    const { svc, fleet } = armar(
+      [
+        {
+          deliveryId: 'd1',
+          userId: 'u1',
+          name: 'A',
+          enabled: true,
+          usualCarId: null,
+        },
+        {
+          deliveryId: 'd2',
+          userId: 'u2',
+          name: 'B',
+          enabled: true,
+          usualCarId: null,
+        },
+      ],
+      new Set(['u2']),
+    );
+    const r = await svc.choferes(DIST, undefined, '2026-11-20');
+    expect(fleet.habilitacionAlDia).toHaveBeenCalledWith(
+      ['u1', 'u2'],
+      [],
+      DIST,
+      '2026-11-20',
+    );
+    expect(fleet.choferesInhabilitados).not.toHaveBeenCalled();
+    expect(r.map((c) => c.available)).toEqual([true, false]);
+  });
+
+  it('vehiculos a la fecha del plan: los activos con algo vencido o en taller ese día no están disponibles', async () => {
+    const { svc, fleet } = armar(
+      [
+        {
+          carId: 'c1',
+          patent: 'A',
+          description: null,
+          maxLoadKg: null,
+          carCapacity: null,
+          maxCylinders: null,
+          available: true,
+        },
+        {
+          carId: 'c2',
+          patent: 'B',
+          description: null,
+          maxLoadKg: null,
+          carCapacity: null,
+          maxCylinders: null,
+          available: true,
+        },
+        {
+          carId: 'c3',
+          patent: 'C',
+          description: null,
+          maxLoadKg: null,
+          carCapacity: null,
+          maxCylinders: null,
+          available: false,
+        },
+      ],
+      new Set(['c2']),
+    );
+    const r = await svc.vehiculos(DIST, undefined, '2026-11-20');
+    expect(fleet.habilitacionAlDia).toHaveBeenCalledWith(
+      [],
+      ['c1', 'c2'],
+      DIST,
+      '2026-11-20',
+    );
+    expect(r.map((v) => v.available)).toEqual([true, false, false]);
+    // Sin activos no consulta la flota.
+    const vacio = armar([
+      {
+        carId: 'c3',
+        patent: 'C',
+        description: null,
+        maxLoadKg: null,
+        carCapacity: null,
+        maxCylinders: null,
+        available: false,
+      },
+    ]);
+    await vacio.svc.vehiculos(DIST, undefined, '2026-11-20');
+    expect(vacio.fleet.habilitacionAlDia).not.toHaveBeenCalled();
   });
 
   it('ocupadosDelDia: choferes y vehículos de las hojas confirmadas o en curso, salvo la propia', async () => {

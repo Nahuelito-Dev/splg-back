@@ -146,6 +146,33 @@ describe('VencimientoSinChoferService', () => {
       // 09:30 AR = 12:30 UTC: a las 13:00 UTC lleva 30 min, menos que 120.
     });
 
+    it('agendado SIN franja fija (reprogramado por la hoja): la espera arranca al abrir la jornada, no a las 00:00', async () => {
+      const jornada = (sql: string) =>
+        sql.includes('min(j."startTime")') ? [{ startTime: '09:30:00' }] : [];
+      expect(
+        await condicion(
+          bloqueado({ scheduledDate: '2026-11-13', timeSlotId: null }),
+          jornada,
+        ),
+      ).toBe(false);
+      // Sin franjas activas, desde las 00:00: ya venció.
+      expect(
+        await condicion(
+          bloqueado({ scheduledDate: '2026-11-13', timeSlotId: null }),
+          (sql) =>
+            sql.includes('min(j."startTime")') ? [{ startTime: null }] : [],
+        ),
+      ).toBe(true);
+    });
+
+    it('la consulta de candidatos usa la jornada para los agendados sin franja', async () => {
+      query.mockResolvedValue([]);
+      await service.vencer(['d1'], () => AHORA);
+      expect((query.mock.calls as unknown[][])[0][0]).toContain(
+        'COALESCE(ts."startTime", (SELECT min(j."startTime")',
+      );
+    });
+
     it('entró a un lote de recorrido vivo: no se cancela', async () => {
       expect(
         await condicion(bloqueado(), (sql) =>

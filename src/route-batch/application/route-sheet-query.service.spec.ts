@@ -359,7 +359,7 @@ describe('RouteSheetQueryService', () => {
 
   it('dia: plan, hojas, «sin asignar» con su motivo y recursos con la hoja confirmada que ya tengan', async () => {
     const confirmada = hoja({ status: RouteBatchStatus.CONFIRMED });
-    const { svc, plans } = armar({
+    const { svc, plans, data } = armar({
       hojas: [confirmada],
       sinHoja: [
         pedido('o3'),
@@ -369,6 +369,9 @@ describe('RouteSheetQueryService', () => {
     });
     const d = await svc.dia(DIST, DIA);
     expect(plans.buscar).toHaveBeenCalledWith(DIST, DIA);
+    // Los recursos, disponibles el día del plan.
+    expect(data.choferes).toHaveBeenCalledWith(DIST, undefined, DIA);
+    expect(data.vehiculos).toHaveBeenCalledWith(DIST, undefined, DIA);
     expect(d.plan).toEqual({
       date: DIA,
       status: 'open',
@@ -482,6 +485,32 @@ describe('RouteSheetQueryService', () => {
       blockedReason: null,
     });
     expect(stops.find).not.toHaveBeenCalled();
+  });
+
+  it('una hoja confirmada cuyos pedidos ya se le asignaron a SU chofer no avisa stops_not_plannable; uno de otro chofer sí', async () => {
+    const { svc } = armar({
+      hojas: [
+        hoja({
+          status: RouteBatchStatus.CONFIRMED,
+          assignedAt: new Date('2026-11-14T10:00:00Z'),
+        }),
+      ],
+      paradas: [parada('o1', 1), parada('o2', 2)],
+      pedidos: [
+        pedido('o1', { status: 'accepted', deliveryId: 'chofer-1' }),
+        pedido('o2', { status: 'accepted', deliveryId: 'chofer-1' }),
+      ],
+    });
+    const [h] = (await svc.listar(DIST, { limit: 10, offset: 0 })).items;
+    expect(h.warnings.map((w) => w.code)).not.toContain('stops_not_plannable');
+    expect(h.assignedAt).toBe('2026-11-14T10:00:00.000Z');
+    const otro = armar({
+      hojas: [hoja({ status: RouteBatchStatus.CONFIRMED })],
+      paradas: [parada('o1', 1)],
+      pedidos: [pedido('o1', { status: 'accepted', deliveryId: 'chofer-9' })],
+    });
+    const [h2] = (await otro.svc.listar(DIST, { limit: 10, offset: 0 })).items;
+    expect(h2.warnings.map((w) => w.code)).toContain('stops_not_plannable');
   });
 
   it('advertencia stops_not_plannable: una parada viva cuyo pedido se canceló; en una hoja cancelada no se avisa', async () => {

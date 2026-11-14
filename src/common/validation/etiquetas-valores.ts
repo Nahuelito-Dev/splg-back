@@ -18,6 +18,12 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'documentType:seguro': 'Seguro',
   'documentType:cedula': 'Cédula del vehículo',
   'rol:delivery': 'Chofer',
+  // Por qué no se entregó una parada de la hoja de ruta (F34).
+  'reason:customer_absent': 'El cliente no estaba',
+  'reason:rejected': 'El cliente rechazó el pedido',
+  'reason:wrong_address': 'La dirección no es correcta',
+  'reason:no_access': 'No se pudo llegar al domicilio',
+  'reason:other': 'Otro motivo',
   'role:delivery': 'Chofer',
   // La cuenta corriente es femenina: «una cuenta activa / bloqueada / cerrada».
   'accountStatus:active': 'Activa',
@@ -262,6 +268,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   process_run_watch: 'Control de procesos',
   psychophysical: 'Examen psicofísico',
   route_planning_close_days: 'Cierre de los días de la hoja de ruta',
+  route_sheet_watch: 'Seguimiento de las hojas de ruta en curso',
   route_planning_propose: 'Propuesta de la hoja de ruta del día siguiente',
   purchase_receipt: 'Recepción de compra',
   ready: 'Lista',

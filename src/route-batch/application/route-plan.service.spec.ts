@@ -10,6 +10,11 @@ import { RoutePlanService } from './route-plan.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import { noConfirmable, versionVieja } from './route-sheet.exceptions';
 import { DIA, DIST, hoja, plan } from './route-sheet.fixtures';
+import {
+  CALENDARIO_POR_OMISION,
+  diasDeLaMascara,
+} from '../domain/calendario-laboral';
+import { RoutePlanningCalendarService } from './route-planning-calendar.service';
 
 function armar() {
   const insert = {
@@ -43,11 +48,15 @@ function armar() {
     obtener: jest.fn().mockResolvedValue({ cutoffHour: 18, cutoffMinute: 30 }),
   };
   const lifecycle = { confirmar: jest.fn().mockResolvedValue(undefined) };
+  const calendario = {
+    calendario: jest.fn().mockResolvedValue(CALENDARIO_POR_OMISION),
+  };
   const svc = new RoutePlanService(
     ds as unknown as DataSource,
     plans as unknown as Repository<RoutePlan>,
     processConfig as unknown as ProcessConfigService,
     lifecycle as unknown as RouteSheetLifecycleService,
+    calendario as unknown as RoutePlanningCalendarService,
   );
   return {
     svc,
@@ -58,6 +67,7 @@ function armar() {
     borradores,
     lifecycle,
     processConfig,
+    calendario,
   };
 }
 
@@ -258,6 +268,23 @@ describe('RoutePlanService', () => {
       expect((ds.query.mock.calls as unknown[][])[0][0]).toContain(
         `'autoPropose'`,
       );
+    });
+
+    it('mañana feriado o día que no se reparte: no propone (el sábado 14/11)', async () => {
+      const { svc, ds, plans, calendario } = armar();
+      ds.query.mockResolvedValue([{ distributorId: 'd' }]);
+      calendario.calendario.mockResolvedValueOnce({
+        diasHabiles: diasDeLaMascara(63),
+        feriados: new Set([DIA]),
+      });
+      expect(await svc.paraProponer(despuesDelCierre)).toEqual([]);
+      calendario.calendario.mockResolvedValueOnce({
+        diasHabiles: diasDeLaMascara(31),
+        feriados: new Set(),
+      });
+      expect(await svc.paraProponer(despuesDelCierre)).toEqual([]);
+      expect(plans.findOne).not.toHaveBeenCalled();
+      expect(calendario.calendario).toHaveBeenCalledWith('d', '2026-11-13');
     });
 
     it('antes del cierre no propone', async () => {

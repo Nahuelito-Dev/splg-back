@@ -19,3 +19,19 @@ export const pedidoEnHojaDeRuta = (): ConflictException =>
     MENSAJE_PEDIDO_EN_HOJA_DE_RUTA,
     ORDER_IN_ROUTE_SHEET,
   );
+
+/** `code` del 409 de salir hacia una parada de la hoja con otra ya en camino. */
+export const DRIVER_ALREADY_ON_THE_WAY = 'DRIVER_ALREADY_ON_THE_WAY';
+
+/**
+ * Un chofer con hoja de ruta en curso va a una parada por vez: no sale hacia un
+ * pedido de la hoja mientras tiene otro en camino. 409 con `code`
+ * DRIVER_ALREADY_ON_THE_WAY (lo valida el caso de uso con el cerrojo del chofer).
+ */
+export const choferYaEnCamino = (): ConflictException =>
+  conCodigo(
+    ConflictException,
+    409,
+    'El chofer ya va en camino a otra parada: hay que entregarla o marcarla como no entregada antes de salir a otra',
+    DRIVER_ALREADY_ON_THE_WAY,
+  );

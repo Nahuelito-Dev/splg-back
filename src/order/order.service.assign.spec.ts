@@ -57,7 +57,7 @@ describe('OrderService · asignación manual', () => {
   };
   let orchestrator: { onOrderAssigned: jest.Mock };
   let dispatchSettings: { obtener: jest.Mock };
-  let dataSource: { createQueryRunner: jest.Mock };
+  let dataSource: { createQueryRunner: jest.Mock; transaction: jest.Mock };
   let queryRunner: {
     connect: jest.Mock;
     startTransaction: jest.Mock;
@@ -152,7 +152,12 @@ describe('OrderService · asignación manual', () => {
         save: jest.fn((o: Order) => Promise.resolve(o)),
       },
     };
-    dataSource = { createQueryRunner: jest.fn().mockReturnValue(queryRunner) };
+    dataSource = {
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+      transaction: jest.fn((fn: (m: unknown) => unknown) =>
+        fn({ ...queryRunner.manager, update: jest.fn().mockResolvedValue({}) }),
+      ),
+    };
     dispatch = {
       notifyAdmins: jest.fn(),
       notifyDriverNewOrder: jest.fn(),
@@ -465,6 +470,134 @@ describe('OrderService · asignación manual', () => {
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+  });
+
+  it('F34 E4: el inicio de la hoja pide la excepción explícita para ESA hoja y SU chofer; si igual está retenido (otra hoja u otro chofer), 409', async () => {
+    dispatchOffers.isInPlannedRouteSheet.mockResolvedValue(false);
+    await service.assignDelivery(PEDIDO, CHOFER, 'dist-1', {
+      soloSiLibre: true,
+      hojaDeRuta: 'hoja-1',
+    });
+    expect(dispatchOffers.isInPlannedRouteSheet).toHaveBeenCalledWith(
+      PEDIDO,
+      queryRunner.manager,
+      { batchId: 'hoja-1', deliveryId: CHOFER },
+    );
+    dispatchOffers.isInPlannedRouteSheet.mockResolvedValue(true);
+    await expect(
+      service.assignDelivery(PEDIDO, CHOFER, 'dist-1', {
+        soloSiLibre: true,
+        hojaDeRuta: 'otra-hoja',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'ORDER_IN_ROUTE_SHEET' },
+    });
+  });
+
+  describe('hoja de ruta (F34)', () => {
+    const DE_LA_HOJA = {
+      carId: 'auto-hoja',
+      patent: 'HOJ123',
+      brand: 'Ford',
+      model: 'F-100',
+    };
+
+    it('la hoja le entrega sus pedidos al chofer: sin los controles de la jornada, con el vehículo de la hoja y sin aviso por pedido', async () => {
+      const r = await service.assignDelivery(PEDIDO, CHOFER, 'dist-1', {
+        soloSiLibre: true,
+        hojaDeRuta: 'hoja-1',
+        vehiculoDeLaHoja: DE_LA_HOJA,
+      });
+      expect(truckGate.assertPuedeAsignar).not.toHaveBeenCalled();
+      expect(fleetGate.assertChoferHabilitado).not.toHaveBeenCalled();
+      expect(fleetGate.vehiculoEnUsoDelChofer).not.toHaveBeenCalled();
+      expect(r).toMatchObject({
+        status: OrderStatus.ACCEPTED,
+        vehicleCarId: 'auto-hoja',
+        vehiclePatent: 'HOJ123',
+      });
+      expect(dispatch.notifyDriverNewOrder).not.toHaveBeenCalled();
+    });
+
+    it('postergarEntrega: en camino → aceptado con el mismo chofer, corta el seguimiento y avisa al panel', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({ status: OrderStatus.ON_THE_WAY, deliveryId: CHOFER }),
+      );
+      const r = await service.postergarEntrega(PEDIDO, CHOFER);
+      expect(r.status).toBe(OrderStatus.ACCEPTED);
+      expect(r.deliveryId).toBe(CHOFER);
+      expect(dispatch.stopTracking).toHaveBeenCalledWith(CHOFER_USER_ID);
+      expect(dispatch.notifyAdmins).toHaveBeenCalledWith(
+        'order:accepted',
+        { orderId: PEDIDO, status: OrderStatus.ACCEPTED },
+        'dist',
+      );
+    });
+
+    it('postergarEntrega: ya aceptado es idempotente; de otro chofer o en otro estado, 409; inexistente, 404', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({ status: OrderStatus.ACCEPTED, deliveryId: CHOFER }),
+      );
+      expect((await service.postergarEntrega(PEDIDO, CHOFER)).status).toBe(
+        OrderStatus.ACCEPTED,
+      );
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({
+          status: OrderStatus.ON_THE_WAY,
+          deliveryId: CHOFER_B,
+        }),
+      );
+      await expect(
+        service.postergarEntrega(PEDIDO, CHOFER),
+      ).rejects.toMatchObject({
+        status: 409,
+      });
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({ status: OrderStatus.DELIVERED, deliveryId: CHOFER }),
+      );
+      await expect(
+        service.postergarEntrega(PEDIDO, CHOFER),
+      ).rejects.toMatchObject({
+        status: 409,
+      });
+      queryBuilder.getOne.mockResolvedValue(null);
+      await expect(service.postergarEntrega(PEDIDO, CHOFER)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('reprogramarEntrega: un pendiente sin chofer pasa a la fecha nueva SIN franja fija; otro estado o con chofer, 409', async () => {
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({
+          status: OrderStatus.PENDING,
+          deliveryId: null,
+          timeSlotId: 'franja-1',
+        }),
+      );
+      const update = jest.fn().mockResolvedValue({});
+      dataSource.transaction.mockImplementationOnce(
+        (fn: (m: unknown) => unknown) => fn({ ...queryRunner.manager, update }),
+      );
+      const r = await service.reprogramarEntrega(PEDIDO, '2026-11-16');
+      expect(r.scheduledDate).toBe('2026-11-16');
+      expect(r.timeSlotId).toBeNull();
+      expect(update).toHaveBeenCalledWith(
+        Order,
+        { orderId: PEDIDO },
+        { scheduledDate: '2026-11-16', timeSlotId: null },
+      );
+      queryBuilder.getOne.mockResolvedValue(
+        makeLockedOrder({ status: OrderStatus.ACCEPTED, deliveryId: CHOFER }),
+      );
+      await expect(
+        service.reprogramarEntrega(PEDIDO, '2026-11-16'),
+      ).rejects.toMatchObject({ status: 409 });
+      queryBuilder.getOne.mockResolvedValue(null);
+      await expect(
+        service.reprogramarEntrega(PEDIDO, '2026-11-16'),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   it('pedido inexistente: 404 dentro de la transacción', async () => {

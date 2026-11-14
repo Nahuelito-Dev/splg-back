@@ -1,14 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { condicionEsperandoAlAdmin } from '../../order/infrastructure/lote-de-recorrido.sql';
 
 /**
  * Retención de la hoja de ruta frente al despacho individual (M1, §7.4). Un
  * pedido está retenido si:
- *  - es parada activa de una hoja en borrador o confirmada (todavía no se
- *    asignó: lo asigna el chofer al iniciar la hoja, ADR-03), o
+ *  - es parada activa de una hoja en borrador o confirmada (la lleva el chofer
+ *    de la hoja), o
+ *  - salió de una hoja en la calle y espera que el admin decida (no se entregó
+ *    en el segundo intento, el admin la sacó o quedó pendiente al cerrar), o
  *  - con `route_planning.enabled`, está programado para un día cuya
  *    planificación no se cerró y se creó antes de su cierre (el sistema lo va a
- *    proponer en una hoja).
+ *    proponer en una hoja), tenga franja o no (sin franja fija la hora la
+ *    calcula el planificador).
  *
  * Vive aparte (sin dependencias de módulo) para que `OrderModule` la importe sin
  * ciclo con `RouteBatchModule`.
@@ -24,13 +28,15 @@ export class RoutePlanningHoldService {
          FROM "order" o
         WHERE o."order_id" = ANY($1::uuid[])
           AND (
-            EXISTS (SELECT 1 FROM "route_batch_stop" s
+            ${condicionEsperandoAlAdmin('o."order_id"')}
+            OR EXISTS (SELECT 1 FROM "route_batch_stop" s
                       JOIN "route_batch" b ON b."batch_id" = s."batch_id"
                      WHERE s."order_id" = o."order_id" AND s."active"
                        AND b."kind" = 'planned' AND b."status" IN ('draft', 'confirmed'))
             OR (
               o."scheduled_date" IS NOT NULL
-              AND o."time_slot_id" IS NOT NULL
+              -- Con o sin franja: sin franja fija (reprogramado por la hoja, o
+              -- agendado sólo con fecha) el planificador le calcula la hora.
               AND o."delivery_mode"::text = 'standard'
               AND o."scheduled_date" > (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
               AND EXISTS (SELECT 1 FROM "module_config" mc

@@ -11,7 +11,11 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { EmployeeService } from '../employee/employee.service';
 import { EmployeeStatus } from '../employee/entities/employee.entity';
 import { LeaveService } from '../leave/leave.service';
-import { diaArgentino } from '../common/utils/dias-argentina';
+import {
+  diaArgentino,
+  finDelDiaArgentino,
+  inicioDelDiaArgentino,
+} from '../common/utils/dias-argentina';
 import {
   describirVencimiento,
   tareasQueInhabilitan,
@@ -43,6 +47,19 @@ export const MOTIVO_DE_LICENCIA =
 interface TareaConEstado extends HabilitacionRelevante {
   task: MaintenanceTask;
 }
+
+/** Por qué un chofer o un vehículo no puede salir un día dado (la hoja de ruta de ese día). */
+export interface HabilitacionDelDia {
+  /** `user_id` del chofer → motivos. Sólo los que no pueden. */
+  choferes: Map<string, string[]>;
+  /** `car_id` → motivos. Sólo los que no pueden. */
+  vehiculos: Map<string, string[]>;
+}
+
+export const MOTIVO_VEHICULO_TALLER_EL_DIA =
+  'tiene el taller programado ese día';
+export const MOTIVO_LICENCIA_EL_DIA =
+  'tiene una licencia aprobada que cubre ese día';
 
 /** Snapshot del vehículo en uso de un chofer, para guardar en el pedido al aceptarlo. */
 export interface VehiculoEnUsoSnapshot {
@@ -191,6 +208,95 @@ export class FleetDispatchLockService {
         `No se puede asignar: ${motivos.join('; ')}.`,
       );
     }
+  }
+
+  /**
+   * Habilitación de choferes y vehículos para un DÍA (la hoja de ruta de ese
+   * día, F34), en vez de «ahora» como el despacho:
+   *  - chofer: legajo egresado, licencia aprobada que cubre ese día, y sus
+   *    habilitaciones bloqueantes (licencia de conducir) vencidas a ese día;
+   *  - vehículo: sus habilitaciones bloqueantes (seguro, VTV) vencidas a ese
+   *    día y una ventana de taller confirmada que se cruza con ese día.
+   * No exige «vehículo en uso»: la hoja trae el suyo. El vencimiento se mide al
+   * empezar el día (o ahora, si el día ya empezó): lo que vence durante el día
+   * todavía vale ese día. El despacho en vivo sigue usando
+   * `choferesInhabilitados` / `assertChoferHabilitado` (sin cambios).
+   */
+  async habilitacionAlDia(
+    driverUserIds: string[],
+    carIds: string[],
+    distributorId: string,
+    fecha: string,
+  ): Promise<HabilitacionDelDia> {
+    const choferes = new Map<string, string[]>();
+    const vehiculos = new Map<string, string[]>();
+    const inicio = inicioDelDiaArgentino(fecha);
+    const fin = finDelDiaArgentino(fecha);
+    if (!inicio || !fin) return { choferes, vehiculos };
+    const ahora = new Date();
+    const referencia = ahora > inicio ? ahora : inicio;
+    const agregar = (m: Map<string, string[]>, id: string, motivo: string) =>
+      m.set(id, [...(m.get(id) ?? []), motivo]);
+
+    const deliveries =
+      driverUserIds.length > 0
+        ? await this.deliveryService.findDeliveryIdsByUserIds(
+            driverUserIds,
+            distributorId,
+          )
+        : [];
+    const legajos =
+      deliveries.length > 0
+        ? await this.employees.findByUserIds(
+            deliveries.map((d) => d.userId),
+            distributorId,
+          )
+        : [];
+    const deLicencia = await this.leaves.empleadosDeLicenciaEn(
+      legajos.map((l) => l.employeeId),
+      fecha,
+    );
+    const tareas = await this.tareasAbiertasDe(
+      deliveries.map((d) => d.deliveryId),
+      carIds,
+      legajos.map((l) => l.employeeId),
+      distributorId,
+    );
+    const { porDelivery, porCar, porEmployee } = this.agruparPorSujeto(tareas);
+    const vencidas = (lista: MaintenanceTask[]) =>
+      this.filtrarInhabilitantes(lista, referencia).map((t) =>
+        describirVencimiento(t.plan.name, t.dueAt),
+      );
+
+    const legajoPorCuenta = new Map(
+      legajos.flatMap((l) => (l.userId ? [[l.userId, l] as const] : [])),
+    );
+    for (const d of deliveries) {
+      const legajo = legajoPorCuenta.get(d.userId);
+      if (legajo && legajo.status !== EmployeeStatus.ACTIVE) {
+        agregar(choferes, d.userId, MOTIVO_LEGAJO_EGRESADO);
+      }
+      if (legajo && deLicencia.has(legajo.employeeId)) {
+        agregar(choferes, d.userId, MOTIVO_LICENCIA_EL_DIA);
+      }
+      for (const m of [
+        ...vencidas(porDelivery.get(d.deliveryId) ?? []),
+        ...vencidas(legajo ? (porEmployee.get(legajo.employeeId) ?? []) : []),
+      ]) {
+        agregar(choferes, d.userId, m);
+      }
+    }
+
+    const enTaller = await this.carIdsEnTallerEntre(carIds, inicio, fin);
+    for (const carId of carIds) {
+      for (const m of vencidas(porCar.get(carId) ?? [])) {
+        agregar(vehiculos, carId, m);
+      }
+      if (enTaller.has(carId)) {
+        agregar(vehiculos, carId, MOTIVO_VEHICULO_TALLER_EL_DIA);
+      }
+    }
+    return { choferes, vehiculos };
   }
 
   /**
@@ -367,6 +473,32 @@ export class FleetDispatchLockService {
     return new Set(filas.map((f) => f.carId));
   }
 
+  /** Los vehículos con una ventana de taller confirmada que se cruza con `[desde, hasta)`. */
+  private async carIdsEnTallerEntre(
+    carIds: string[],
+    desde: Date,
+    hasta: Date,
+  ): Promise<Set<string>> {
+    if (!this.cases || carIds.length === 0) return new Set();
+    const filas = await this.cases
+      .createQueryBuilder('c')
+      .innerJoin(MaintenanceTask, 't', 't.task_id = c.task_id')
+      .select('c.car_id', 'carId')
+      .where('c.status = :confirmado', {
+        confirmado: PlanningCaseStatus.CONFIRMED,
+      })
+      .andWhere('c.car_id IN (:...carIds)', { carIds })
+      .andWhere('c.chosen_start < :hasta AND c.chosen_end > :desde', {
+        desde,
+        hasta,
+      })
+      .andWhere('t.status NOT IN (:...cerrados)', {
+        cerrados: ESTADOS_CERRADOS,
+      })
+      .getRawMany<{ carId: string }>();
+    return new Set(filas.map((f) => f.carId));
+  }
+
   /** Las tareas abiertas (no `done` ni `cancelled`) de esas deliveries, autos y/o legajos, en una sola consulta. */
   private async tareasAbiertasDe(
     deliveryIds: string[],
@@ -434,13 +566,17 @@ export class FleetDispatchLockService {
   }
 
   /** De esas tareas, las que efectivamente inhabilitan (bloqueante + vencida). */
-  private filtrarInhabilitantes(tareas: MaintenanceTask[]): MaintenanceTask[] {
+  private filtrarInhabilitantes(
+    tareas: MaintenanceTask[],
+    referencia?: Date,
+  ): MaintenanceTask[] {
     const conEstado: TareaConEstado[] = tareas.map((t) => ({
       task: t,
       criticality: t.plan.criticality,
       expirationStatus: calcularEstadoDeVencimiento(
         t.dueAt,
         t.plan.leadTimeDays,
+        referencia,
       ),
     }));
     return tareasQueInhabilitan(conEstado).map((c) => c.task);

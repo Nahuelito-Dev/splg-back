@@ -45,11 +45,11 @@ const casos = (): Caso[] => {
     ['M4 recorridos: vencer', () => lotes.vencer()],
     [
       'M4 hoja de ruta: proponer',
-      () => new RoutePlanningCron(nada, nada, r).proponer(),
+      () => new RoutePlanningCron(nada, nada, r, nada).proponer(),
     ],
     [
       'M4 hoja de ruta: cerrar días',
-      () => new RoutePlanningCron(nada, nada, r).cerrarDias(),
+      () => new RoutePlanningCron(nada, nada, r, nada).cerrarDias(),
     ],
     ['M2 planificador: planificar', () => planificador.planificar()],
     [

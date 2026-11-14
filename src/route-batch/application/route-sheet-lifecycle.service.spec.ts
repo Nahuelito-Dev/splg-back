@@ -9,6 +9,9 @@ import {
   PedidoDeHoja,
   RouteSheetDataService,
 } from './route-sheet-data.service';
+import { diaArgentino } from '../../common/utils/dias-argentina';
+import { RouteSheetAssignmentService } from './route-sheet-assignment.service';
+import { RouteSheetEtaService } from './route-sheet-eta.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import { RouteSheetLocks } from './route-sheet-locks.service';
 import { RouteSheetWriter } from './route-sheet-writer.service';
@@ -67,6 +70,9 @@ function armar(o: Opciones = {}) {
       ),
     })),
     apagarTodas: jest.fn().mockResolvedValue(undefined),
+    paradasActivas: jest
+      .fn()
+      .mockResolvedValue([{ orderId: 'o1' }, { orderId: 'o2' }]),
   };
   const data = {
     choferes: jest
@@ -95,20 +101,40 @@ function armar(o: Opciones = {}) {
     }),
   };
   const sequence = { siguienteNumero: jest.fn().mockResolvedValue(41) };
+  const asignacion = {
+    asignarHoja: jest.fn().mockResolvedValue({ skipped: false }),
+    liberar: jest.fn().mockResolvedValue([]),
+  };
+  const eta = { avisarHorarioSinFranja: jest.fn().mockResolvedValue(0) };
   const svc = new RouteSheetLifecycleService(
     locks as unknown as RouteSheetLocks,
     writer as unknown as RouteSheetWriter,
     data as unknown as RouteSheetDataService,
     sequence as unknown as DocumentSequenceService,
+    asignacion as unknown as RouteSheetAssignmentService,
+    eta as unknown as RouteSheetEtaService,
   );
-  return { svc, sheet, manager, locks, writer, data, sequence };
+  return {
+    svc,
+    sheet,
+    manager,
+    locks,
+    writer,
+    data,
+    sequence,
+    asignacion,
+    eta,
+  };
 }
 
 describe('RouteSheetLifecycleService', () => {
   describe('confirmar', () => {
     it('numera, congela la ETA prometida y deja quién confirmó; no asigna los pedidos', async () => {
-      const { svc, sheet, manager, locks, sequence } = armar();
+      const { svc, sheet, manager, locks, sequence, data } = armar();
       await svc.confirmar(DIST, 'hoja-1', { version: 3 }, 'u1');
+      // Chofer y vehículo disponibles el día del plan, no hoy.
+      expect(data.choferes).toHaveBeenCalledWith(DIST, ['chofer-1'], DIA);
+      expect(data.vehiculos).toHaveBeenCalledWith(DIST, ['auto-1'], DIA);
       expect((locks.conHojas.mock.calls as unknown[][])[0][1]).toEqual([
         { id: 'hoja-1', version: 3 },
       ]);
@@ -129,6 +155,19 @@ describe('RouteSheetLifecycleService', () => {
       expect((manager.query.mock.calls as unknown[][])[0][1]).toEqual([
         'hoja-1',
       ]);
+    });
+
+    it('a los pedidos sin franja fija (reprogramados) se les avisa el horario al confirmar; un aviso que falla no deshace la confirmación', async () => {
+      const { svc, sheet, eta } = armar();
+      await svc.confirmar(DIST, 'hoja-1', { version: 3 }, 'u1');
+      expect(eta.avisarHorarioSinFranja).toHaveBeenCalledWith(DIST, 'hoja-1');
+      const t = armar();
+      t.eta.avisarHorarioSinFranja.mockRejectedValue(new Error('fcm'));
+      await expect(
+        t.svc.confirmar(DIST, 'hoja-1', { version: 3 }, 'u1'),
+      ).resolves.toBeUndefined();
+      expect(t.sheet.status).toBe('confirmed');
+      expect(sheet.status).toBe('confirmed');
     });
 
     it('una hoja que ya tenía número (reabierta) lo conserva', async () => {
@@ -281,6 +320,98 @@ describe('RouteSheetLifecycleService', () => {
     });
   });
 
+  describe('la hoja confirmada es del chofer (asignación)', () => {
+    it('una hoja de otro día queda confirmada sin asignar (se asigna al empezar ese día)', async () => {
+      const otroDia = '2099-01-01';
+      const { svc, asignacion, sheet } = armar({
+        sheet: hoja({ planDate: otroDia }),
+        pedidos: [pedido('o1', { scheduledDate: otroDia })],
+      });
+      await svc.confirmar(
+        DIST,
+        'hoja-1',
+        { version: 3, acceptLateStops: true },
+        'u1',
+      );
+      expect(sheet.status).toBe('confirmed');
+      expect(asignacion.asignarHoja).not.toHaveBeenCalled();
+    });
+
+    it('una hoja de hoy le queda asignada al chofer al confirmarla; si la asignación falla, la confirmación queda', async () => {
+      const hoy = diaArgentino();
+      const t = armar({
+        sheet: hoja({ planDate: hoy }),
+        pedidos: [pedido('o1', { scheduledDate: hoy })],
+      });
+      await t.svc.confirmar(
+        DIST,
+        'hoja-1',
+        { version: 3, acceptLateStops: true },
+        'u1',
+      );
+      expect(t.asignacion.asignarHoja).toHaveBeenCalledWith(
+        DIST,
+        'hoja-1',
+        'u1',
+      );
+      const falla = armar({
+        sheet: hoja({ planDate: hoy }),
+        pedidos: [pedido('o1', { scheduledDate: hoy })],
+      });
+      falla.asignacion.asignarHoja.mockRejectedValue(new Error('x'));
+      await expect(
+        falla.svc.confirmar(
+          DIST,
+          'hoja-1',
+          { version: 3, acceptLateStops: true },
+          'u1',
+        ),
+      ).resolves.toBeUndefined();
+      expect(falla.sheet.status).toBe('confirmed');
+    });
+
+    it('reabrir una hoja ya asignada le libera los pedidos al chofer y borra la asignación', async () => {
+      const t = armar({
+        sheet: hoja({
+          status: RouteBatchStatus.CONFIRMED,
+          assignedAt: new Date(),
+        }),
+      });
+      await t.svc.reabrir(DIST, 'hoja-1', 4, 'u-admin');
+      expect(t.sheet.assignedAt).toBeNull();
+      expect(t.asignacion.liberar).toHaveBeenCalledWith(
+        'chofer-1',
+        ['o1', 'o2'],
+        'u-admin',
+      );
+    });
+
+    it('reabrir o cancelar una que todavía no se asignó no libera nada', async () => {
+      const t = armar({
+        sheet: hoja({ status: RouteBatchStatus.CONFIRMED, assignedAt: null }),
+      });
+      await t.svc.reabrir(DIST, 'hoja-1', 4, 'u-admin');
+      expect(t.asignacion.liberar).toHaveBeenCalledWith(null, [], 'u-admin');
+      expect(t.writer.paradasActivas).not.toHaveBeenCalled();
+    });
+
+    it('cancelar una hoja ya asignada le libera los pedidos al chofer', async () => {
+      const t = armar({
+        sheet: hoja({
+          status: RouteBatchStatus.CONFIRMED,
+          assignedAt: new Date(),
+        }),
+      });
+      await t.svc.cancelar(DIST, 'hoja-1', 3, 'u-admin');
+      expect(t.asignacion.liberar).toHaveBeenCalledWith(
+        'chofer-1',
+        ['o1', 'o2'],
+        'u-admin',
+      );
+      expect(t.sheet.assignedAt).toBeNull();
+    });
+  });
+
   describe('reabrir', () => {
     it('vuelve a borrador, borra la confirmación y la ETA prometida', async () => {
       const { svc, sheet, manager } = armar({
@@ -290,7 +421,7 @@ describe('RouteSheetLifecycleService', () => {
           confirmedByUserId: 'u1',
         }),
       });
-      await svc.reabrir(DIST, 'hoja-1', 4);
+      await svc.reabrir(DIST, 'hoja-1', 4, 'u1');
       expect(sheet).toMatchObject({
         status: 'draft',
         confirmedAt: null,
@@ -306,7 +437,7 @@ describe('RouteSheetLifecycleService', () => {
 
     it('409 si no está confirmada y 409 ROUTE_PLAN_CLOSED si el día ya cerró', async () => {
       await expect(
-        armar().svc.reabrir(DIST, 'hoja-1', 4),
+        armar().svc.reabrir(DIST, 'hoja-1', 4, 'u1'),
       ).rejects.toMatchObject({
         response: { code: 'ROUTE_SHEET_NOT_EDITABLE' },
       });
@@ -317,7 +448,7 @@ describe('RouteSheetLifecycleService', () => {
         plan({ status: RoutePlanStatus.CLOSED }),
       );
       await expect(
-        cerrado.svc.reabrir(DIST, 'hoja-1', 4),
+        cerrado.svc.reabrir(DIST, 'hoja-1', 4, 'u1'),
       ).rejects.toMatchObject({
         response: { code: 'ROUTE_PLAN_CLOSED' },
       });
@@ -332,7 +463,7 @@ describe('RouteSheetLifecycleService', () => {
         const { svc, sheet, writer, manager } = armar({
           sheet: hoja({ status }),
         });
-        await svc.cancelar(DIST, 'hoja-1', 3);
+        await svc.cancelar(DIST, 'hoja-1', 3, 'u1');
         expect(writer.apagarTodas).toHaveBeenCalledWith(
           manager,
           'hoja-1',
@@ -349,9 +480,11 @@ describe('RouteSheetLifecycleService', () => {
       const { svc, writer } = armar({
         sheet: hoja({ status: RouteBatchStatus.DISSOLVED }),
       });
-      await expect(svc.cancelar(DIST, 'hoja-1', 3)).rejects.toMatchObject({
-        response: { code: 'ROUTE_SHEET_NOT_EDITABLE' },
-      });
+      await expect(svc.cancelar(DIST, 'hoja-1', 3, 'u1')).rejects.toMatchObject(
+        {
+          response: { code: 'ROUTE_SHEET_NOT_EDITABLE' },
+        },
+      );
       expect(writer.apagarTodas).not.toHaveBeenCalled();
     });
   });

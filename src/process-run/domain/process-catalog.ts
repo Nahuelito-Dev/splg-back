@@ -40,6 +40,7 @@ export enum ProcessName {
   DOCUMENT_READING_PROPOSALS = 'document_reading_proposals',
   ROUTE_PLANNING_PROPOSE = 'route_planning_propose',
   ROUTE_PLANNING_CLOSE_DAYS = 'route_planning_close_days',
+  ROUTE_SHEET_WATCH = 'route_sheet_watch',
   SUPPORT_SESSION_EXPIRY = 'support_session_expiry',
 }
 
@@ -146,6 +147,12 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
     module: 'M4',
     title: 'Hoja de ruta: cierre de los días',
     periodSeconds: 5 * MIN,
+  },
+  [ProcessName.ROUTE_SHEET_WATCH]: {
+    module: 'M4',
+    title: 'Hoja de ruta: seguimiento de las hojas en curso',
+    periodSeconds: MIN,
+    recordEverySeconds: 5 * MIN,
   },
   [ProcessName.ROUTE_BATCH_EXPIRY]: {
     module: 'M4',

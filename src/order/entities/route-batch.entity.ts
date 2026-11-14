@@ -120,6 +120,14 @@ export enum RouteProposedBy {
   'CHK_route_batch_propuesta_por',
   `"proposed_by" IS NULL OR "proposed_by" IN ('system', 'admin')`,
 )
+@Check(
+  'CHK_route_batch_hoja_entregada',
+  `"assigned_at" IS NULL OR ("kind" = 'planned' AND "delivery_id" IS NOT NULL)`,
+)
+@Check(
+  'CHK_route_batch_nota_cierre',
+  `"close_note" IS NULL OR "status" = 'completed'`,
+)
 @ForeignKey(
   () => RoutePlan,
   ['distributor_id', 'plan_date'],
@@ -318,8 +326,17 @@ export class RouteBatch {
   @Column({ name: 'confirmed_by_user_id', type: 'uuid', nullable: true })
   confirmedByUserId!: string | null;
 
+  /** Cuándo los pedidos de la hoja quedaron asignados a su chofer (al confirmar, o al empezar el día). */
+  @Column({ name: 'assigned_at', type: 'timestamptz', nullable: true })
+  assignedAt!: Date | null;
+
+  /** Cuándo empezó el viaje («Iniciar viaje»). */
   @Column({ name: 'started_at', type: 'timestamptz', nullable: true })
   startedAt!: Date | null;
+
+  /** Por qué se cerró a mano una hoja en curso con paradas pendientes. */
+  @Column({ name: 'close_note', type: 'varchar', length: 300, nullable: true })
+  closeNote!: string | null;
 
   /** Concurrencia optimista: toda edición manda la versión que vio. */
   @VersionColumn({ name: 'version', default: 1 })

@@ -51,6 +51,9 @@ describe('controladores de la hoja de ruta', () => {
       ),
       listar: jest.fn().mockResolvedValue({ items: [], total: 0 }),
       cargaSugerida: jest.fn().mockResolvedValue({ sheetId: ID, items: [] }),
+      detalleSinMapear: jest
+        .fn()
+        .mockResolvedValue({ status: RouteBatchStatus.DRAFT }),
     };
     editing = {
       crear: jest.fn().mockResolvedValue(ID),
@@ -90,6 +93,13 @@ describe('controladores de la hoja de ruta', () => {
       lifecycle as unknown as RouteSheetLifecycleService,
       query as unknown as RouteSheetQueryService,
       pdfs as unknown as RouteSheetPdfService,
+      ...([{}, {}, {}, {}, {}] as unknown as [
+        never,
+        never,
+        never,
+        never,
+        never,
+      ]),
     );
     ajustes = new RoutePlanningSettingsController(
       processConfig as unknown as ProcessConfigService,
@@ -160,12 +170,12 @@ describe('controladores de la hoja de ruta', () => {
       version: 1,
       carId: 'c1',
     });
-    await hojas.agregar(ID, { version: 1, orderId: PEDIDO }, DIST);
+    await hojas.agregar(ID, { version: 1, orderId: PEDIDO }, DIST, USUARIO);
     expect(editing.agregar).toHaveBeenCalledWith(DIST, ID, {
       version: 1,
       orderId: PEDIDO,
     });
-    await hojas.quitar(ID, PEDIDO, { version: 2 }, DIST);
+    await hojas.quitar(ID, PEDIDO, { version: 2 }, DIST, USUARIO);
     expect(editing.quitar).toHaveBeenCalledWith(DIST, ID, PEDIDO, 2);
     const movida = await hojas.mover(
       ID,
@@ -206,10 +216,10 @@ describe('controladores de la hoja de ruta', () => {
       { version: 3, acceptLateStops: true },
       USUARIO,
     );
-    await hojas.reabrir(ID, { version: 4 }, DIST);
-    expect(lifecycle.reabrir).toHaveBeenCalledWith(DIST, ID, 4);
-    await hojas.cancelar(ID, { version: 5 }, DIST);
-    expect(lifecycle.cancelar).toHaveBeenCalledWith(DIST, ID, 5);
+    await hojas.reabrir(ID, { version: 4 }, DIST, USUARIO);
+    expect(lifecycle.reabrir).toHaveBeenCalledWith(DIST, ID, 4, USUARIO);
+    await hojas.cancelar(ID, { version: 5 }, DIST, USUARIO);
+    expect(lifecycle.cancelar).toHaveBeenCalledWith(DIST, ID, 5, USUARIO);
     await hojas.cargaSugerida(ID, DIST);
     expect(query.cargaSugerida).toHaveBeenCalledWith(DIST, ID);
     const archivo = await hojas.pdf(ID, DIST);

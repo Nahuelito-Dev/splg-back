@@ -101,8 +101,17 @@ export class RouteSheetQueryService {
       order: { createdAt: 'ASC', batchId: 'ASC' },
     });
     const sinHoja = await this.data.pedidosSinHoja(distributorId, planDate);
-    const choferes = await this.data.choferes(distributorId);
-    const vehiculos = await this.data.vehiculos(distributorId);
+    // Disponibles el día del plan, no hoy (licencias, vencimientos, taller).
+    const choferes = await this.data.choferes(
+      distributorId,
+      undefined,
+      planDate,
+    );
+    const vehiculos = await this.data.vehiculos(
+      distributorId,
+      undefined,
+      planDate,
+    );
     const vivas = hojas.filter((h) =>
       [RouteBatchStatus.CONFIRMED, RouteBatchStatus.ASSIGNED].includes(
         h.status,
@@ -392,7 +401,10 @@ export class RouteSheetQueryService {
       });
       const noPlanificables = propias.filter((s) => {
         const p = pedidos.get(s.orderId);
-        return !p || motivoNoPlanificable(p, h.planDate as string) !== null;
+        if (!p) return true;
+        // Ya asignado a SU chofer (la hoja confirmada es suya): está bien.
+        if (esDelChoferDeLaHoja(p, h)) return false;
+        return motivoNoPlanificable(p, h.planDate as string) !== null;
       }).length;
       const capacidad = {
         kg: auto?.capacityKg ?? null,
@@ -424,6 +436,8 @@ export class RouteSheetQueryService {
         matrixSource: h.matrixSource,
         editedAt: iso(h.editedAt),
         confirmedAt: iso(h.confirmedAt),
+        assignedAt: iso(h.assignedAt),
+        startedAt: iso(h.startedAt),
         closedAt: iso(h.closedAt),
         closeReason: h.closeReason,
         totals,
@@ -566,4 +580,13 @@ function totalesViejos(
     return t + (enRecorrido ? p.units : 0);
   }, 0);
   return unidades !== (h.totalUnits ?? 0);
+}
+
+/** El pedido ya está asignado al chofer de la hoja (la hoja confirmada de hoy le entregó sus pedidos). */
+function esDelChoferDeLaHoja(p: PedidoDeHoja, h: RouteBatch): boolean {
+  return (
+    !!h.deliveryId &&
+    p.deliveryId === h.deliveryId &&
+    (p.status === 'accepted' || p.status === 'on_the_way')
+  );
 }

@@ -394,6 +394,47 @@ describe('DispatchOfferTypeormRepository.isInPlannedRouteSheet', () => {
     const { repo } = repoCon([]);
     expect(await repo.isInPlannedRouteSheet('ord-1')).toBe(false);
   });
+
+  it('salvo ESA hoja confirmada y SU chofer (el inicio de la hoja, F34 E4): la excepción va en la consulta', async () => {
+    const { repo, orm } = repoCon([]);
+    expect(
+      await repo.isInPlannedRouteSheet('ord-1', undefined, {
+        batchId: 'hoja-1',
+        deliveryId: 'chofer-1',
+      }),
+    ).toBe(false);
+    const [sql, params] = orm.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain(
+      `AND NOT (b."batch_id" = $2 AND b."status" = 'confirmed' AND b."delivery_id" = $3)`,
+    );
+    expect(params).toEqual(['ord-1', 'hoja-1', 'chofer-1']);
+  });
+});
+
+describe('DispatchOfferTypeormRepository.isAwaitingReschedule', () => {
+  it('mira las paradas que salieron en la calle por segundo intento, el admin o el cierre, con el pedido sin chofer y de ese día', async () => {
+    const orm = { query: jest.fn().mockResolvedValue([{ '?column?': 1 }]) };
+    const repo = new DispatchOfferTypeormRepository(
+      orm as unknown as Repository<DispatchOffer>,
+    );
+    expect(await repo.isAwaitingReschedule('ord-1')).toBe(true);
+    const [sql, params] = orm.query.mock.calls[0] as [string, string[]];
+    expect(params).toEqual(['ord-1']);
+    expect(sql).toContain(
+      `IN ('rescheduled', 'needs_reschedule', 'admin', 'sheet_closed')`,
+    );
+    // Lo que el sistema reprogramó solo (o espera al admin) sigue retenido
+    // aunque haya cambiado de fecha; lo que sacó el admin, sólo ese día.
+    expect(sql).toContain(
+      `(sa."removed_reason"::text IN ('needs_reschedule', 'rescheduled', 'sheet_closed')
+                  OR oa."scheduled_date" = ba."plan_date")`,
+    );
+    expect(sql).toContain('sa."removed_at" >= ba."started_at"');
+    expect(sql).toContain(`oa."delivery_id" IS NULL`);
+    expect(sql).toContain('oa."scheduled_date" = ba."plan_date"');
+    orm.query.mockResolvedValueOnce([]);
+    expect(await repo.isAwaitingReschedule('ord-2')).toBe(false);
+  });
 });
 
 describe('DispatchOfferTypeormRepository.isHeldForBatching', () => {

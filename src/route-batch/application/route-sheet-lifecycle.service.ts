@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
+import { errorMessage } from '../../common/errors/error-message';
+import { diaArgentino } from '../../common/utils/dias-argentina';
 import {
   DocumentSequenceService,
   DocType,
@@ -26,6 +28,8 @@ import {
   violacionesParaConfirmar,
 } from '../domain/route-sheet-rules';
 import { assertTransition } from '../domain/route-sheet.machine';
+import { RouteSheetAssignmentService } from './route-sheet-assignment.service';
+import { RouteSheetEtaService } from './route-sheet-eta.service';
 import { RouteSheetDataService } from './route-sheet-data.service';
 import { RouteSheetLocks } from './route-sheet-locks.service';
 import { RouteSheetWriter } from './route-sheet-writer.service';
@@ -40,16 +44,23 @@ import {
 /**
  * Ciclo de vida de la hoja que decide el administrador (§5): confirmar
  * (`draft → confirmed`), reabrir (`confirmed → draft`) y cancelar (→
- * `dissolved`). Confirmar NO asigna los pedidos (ADR-03): siguen pendientes y
- * retenidos por la hoja hasta que el chofer la inicie (E4).
+ * `dissolved`). La hoja confirmada es del chofer (rediseño del 14/11): si es
+ * de hoy, sus pedidos le quedan asignados al confirmarla; si es de otro día,
+ * quedan retenidos y se le asignan al empezar ese día (asignarlos la víspera lo
+ * dejaría ocupado para el despacho del día anterior). Reabrir o cancelar antes
+ * del viaje le libera lo asignado.
  */
 @Injectable()
 export class RouteSheetLifecycleService {
+  private readonly logger = new Logger(RouteSheetLifecycleService.name);
+
   constructor(
     private readonly locks: RouteSheetLocks,
     private readonly writer: RouteSheetWriter,
     private readonly data: RouteSheetDataService,
     private readonly sequence: DocumentSequenceService,
+    private readonly asignacion: RouteSheetAssignmentService,
+    private readonly eta: RouteSheetEtaService,
   ) {}
 
   async confirmar(
@@ -59,7 +70,7 @@ export class RouteSheetLifecycleService {
     userId: string,
   ): Promise<void> {
     const params = await this.writer.parametros(distributorId);
-    await this.locks.conHojas(
+    const planDate = await this.locks.conHojas(
       distributorId,
       [{ id, version: body.version }],
       async (manager, [sheet]) => {
@@ -87,8 +98,29 @@ export class RouteSheetLifecycleService {
             WHERE "batch_id" = $1 AND "active"`,
           [sheet.batchId],
         );
+        return sheet.planDate;
       },
     );
+    // Los pedidos sin franja fija (reprogramados por la hoja) se enteran ahora
+    // de su horario: la hora prometida al confirmar.
+    await this.eta
+      .avisarHorarioSinFranja(distributorId, id)
+      .catch((e: unknown) =>
+        this.logger.warn(
+          `Hoja ${id} confirmada, pero no se avisó el horario a los pedidos sin franja: ${errorMessage(e)}`,
+        ),
+      );
+    // La hoja de hoy le queda asignada al chofer en el acto (fuera de la
+    // transacción y del cerrojo de la confirmación: la asignación toma el suyo).
+    if (planDate === diaArgentino()) {
+      await this.asignacion
+        .asignarHoja(distributorId, id, userId)
+        .catch((e: unknown) =>
+          this.logger.warn(
+            `Hoja ${id} confirmada, pero no se pudo asignar: ${errorMessage(e)}`,
+          ),
+        );
+    }
   }
 
   /** Lo que impide confirmar la hoja, con las horas y la carga recalculadas. */
@@ -105,10 +137,18 @@ export class RouteSheetLifecycleService {
       e.escenario.loads,
     );
     const [chofer] = sheet.deliveryId
-      ? await this.data.choferes(distributorId(sheet), [sheet.deliveryId])
+      ? await this.data.choferes(
+          distributorId(sheet),
+          [sheet.deliveryId],
+          sheet.planDate as string,
+        )
       : [];
     const [vehiculo] = sheet.carId
-      ? await this.data.vehiculos(distributorId(sheet), [sheet.carId])
+      ? await this.data.vehiculos(
+          distributorId(sheet),
+          [sheet.carId],
+          sheet.planDate as string,
+        )
       : [];
     const ocupados = await this.data.ocupadosDelDia(
       sheet.distributorId,
@@ -143,8 +183,9 @@ export class RouteSheetLifecycleService {
     distributorId: string,
     id: string,
     version: number,
+    actorUserId: string,
   ): Promise<void> {
-    await this.locks.conHojas(
+    const asignada = await this.locks.conHojas(
       distributorId,
       [{ id, version }],
       async (manager, [sheet]) => {
@@ -152,9 +193,11 @@ export class RouteSheetLifecycleService {
           throw hojaNoReabrible();
         await this.assertDiaAbierto(manager, sheet);
         assertTransition(sheet.kind, sheet.status, RouteBatchStatus.DRAFT);
+        const lo = await this.loAsignado(manager, sheet);
         sheet.status = RouteBatchStatus.DRAFT;
         sheet.confirmedAt = null;
         sheet.confirmedByUserId = null;
+        sheet.assignedAt = null;
         sheet.editedAt = new Date();
         await manager.save(sheet);
         await manager.update(
@@ -162,7 +205,15 @@ export class RouteSheetLifecycleService {
           { batchId: sheet.batchId, active: true },
           { plannedEtaAt: null },
         );
+        return lo;
       },
+    );
+    // En borrador nadie lleva los pedidos: se le liberan al chofer y quedan
+    // retenidos por la hoja (siguen siendo sus paradas).
+    await this.asignacion.liberar(
+      asignada.deliveryId,
+      asignada.orderIds,
+      actorUserId,
     );
   }
 
@@ -171,13 +222,15 @@ export class RouteSheetLifecycleService {
     distributorId: string,
     id: string,
     version: number,
+    actorUserId: string,
   ): Promise<void> {
-    await this.locks.conHojas(
+    const asignada = await this.locks.conHojas(
       distributorId,
       [{ id, version }],
       async (manager, [sheet]) => {
         if (!esCancelable(sheet.status)) throw hojaNoCancelable();
         assertTransition(sheet.kind, sheet.status, RouteBatchStatus.DISSOLVED);
+        const lo = await this.loAsignado(manager, sheet);
         await this.writer.apagarTodas(
           manager,
           sheet.batchId,
@@ -186,9 +239,35 @@ export class RouteSheetLifecycleService {
         sheet.status = RouteBatchStatus.DISSOLVED;
         sheet.closeReason = RouteBatchCloseReason.ADMIN;
         sheet.closedAt = new Date();
+        sheet.assignedAt = null;
         await manager.save(sheet);
+        return lo;
       },
     );
+    // Lo que ya se le había asignado al chofer (hoja de hoy) se le libera y
+    // vuelve al despacho del día, como el resto de la hoja cancelada.
+    await this.asignacion.liberar(
+      asignada.deliveryId,
+      asignada.orderIds,
+      actorUserId,
+    );
+  }
+
+  /** Los pedidos que la hoja le asignó a su chofer (para liberarlos al sacarle la hoja). */
+  private async loAsignado(
+    manager: EntityManager,
+    sheet: RouteBatch,
+  ): Promise<{ deliveryId: string | null; orderIds: string[] }> {
+    if (!sheet.assignedAt) return { deliveryId: null, orderIds: [] };
+    const paradas = await this.writer.paradasActivas(
+      manager,
+      sheet.batchId,
+      false,
+    );
+    return {
+      deliveryId: sheet.deliveryId,
+      orderIds: paradas.map((p) => p.orderId),
+    };
   }
 
   /** Una hoja no vuelve a borrador en un día cerrado (el cierre ya descartó los borradores). */

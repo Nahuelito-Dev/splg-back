@@ -10,16 +10,21 @@ import { ConRegistro } from '../process-run/process-run.recorder';
 import { RedisService } from '../redis/redis.service';
 import { RoutePlanProposalService } from './application/route-plan-proposal.service';
 import { RoutePlanService } from './application/route-plan.service';
+import {
+  ResumenDeSeguimiento,
+  RouteSheetWatchService,
+} from './application/route-sheet-watch.service';
 
 /**
  * Hoja de ruta (F34, §10): la propuesta automática de mañana al cierre (18:00
- * por omisión, `route_planning.cutoffHour`) y el cierre solo de los días que
- * llegaron (00:00 de D). Con varias instancias corre una sola (cerrojo).
+ * por omisión, `route_planning.cutoffHour`), el cierre solo de los días que
+ * llegaron (00:00 de D) y el seguimiento de las hojas en curso. Con varias instancias corre una sola (cerrojo).
  */
 @Injectable()
 export class RoutePlanningCron {
   static readonly CERROJO_PROPONER = 'cron:route-planning:propose';
   static readonly CERROJO_CERRAR = 'cron:route-planning:close-days';
+  static readonly CERROJO_SEGUIR = 'cron:route-planning:watch';
   static readonly CERROJO_TTL_MS = 10 * 60_000;
 
   private readonly logger = new Logger(RoutePlanningCron.name);
@@ -28,6 +33,7 @@ export class RoutePlanningCron {
     private readonly plans: RoutePlanService,
     private readonly proposal: RoutePlanProposalService,
     private readonly redis: RedisService,
+    private readonly watch: RouteSheetWatchService,
   ) {}
 
   @Cron('0 * * * * *')
@@ -44,6 +50,19 @@ export class RoutePlanningCron {
     return this.conCerrojo(RoutePlanningCron.CERROJO_CERRAR, async () => ({
       closed: await this.plans.cerrarDiasVencidos(new Date()),
     }));
+  }
+
+  /**
+   * Hojas en curso (E4/E5): saca las paradas cuyo pedido ya no es del chofer,
+   * cierra las terminadas, recalcula la hora estimada por reloj y avisa las
+   * confirmadas de hoy que no arrancaron.
+   */
+  @Cron('30 * * * * *')
+  @ConRegistro(ProcessName.ROUTE_SHEET_WATCH)
+  seguir(): Promise<ResumenDeSeguimiento | undefined> {
+    return this.conCerrojo(RoutePlanningCron.CERROJO_SEGUIR, () =>
+      this.watch.vigilar(Date.now()),
+    );
   }
 
   /** Propone mañana en las distribuidoras cuyo cierre pasó; una que falla no frena a las demás. */

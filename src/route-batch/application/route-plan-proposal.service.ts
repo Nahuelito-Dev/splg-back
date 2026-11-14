@@ -161,10 +161,10 @@ export class RoutePlanProposalService {
     });
 
     const pares = emparejar(
-      (await this.data.choferes(distributorId)).filter(
+      (await this.data.choferes(distributorId, undefined, planDate)).filter(
         (c) => c.available && !ocupados.choferes.has(c.deliveryId),
       ),
-      (await this.data.vehiculos(distributorId)).filter(
+      (await this.data.vehiculos(distributorId, undefined, planDate)).filter(
         (c) => c.available && !ocupados.vehiculos.has(c.carId),
       ),
     );
