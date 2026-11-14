@@ -568,10 +568,23 @@ describe('UsersService', () => {
       expect(qb.addOrderBy).toHaveBeenCalledWith('user.userId', 'ASC');
     });
 
-    it('sin role no filtra por rol', async () => {
+    it('sin role ni distribuidora (plataforma) lista sólo las cuentas del panel', async () => {
       const qb = armarQb();
       await service.findAll({});
-      expect(qb.andWhere).not.toHaveBeenCalled();
+      expect(qb.andWhere).toHaveBeenCalledTimes(1);
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'role.type IN (:...cuentasDePlataforma)',
+        { cuentasDePlataforma: [RoleType.SUPER_ADMIN, RoleType.ADMIN] },
+      );
+    });
+
+    it('con distribuidora no se limita a las cuentas del panel', async () => {
+      const qb = armarQb();
+      await service.findAll({}, 'd1');
+      expect(qb.andWhere).not.toHaveBeenCalledWith(
+        'role.type IN (:...cuentasDePlataforma)',
+        expect.anything(),
+      );
     });
 
     it('filtra por el tipo de rol y acota por distribuidora', async () => {

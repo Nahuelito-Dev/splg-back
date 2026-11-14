@@ -7,6 +7,7 @@ import {
   reiniciarCuposDelThrottler,
 } from './matriz';
 import { EscenarioT4, sembrarBaseT4 } from './t4-base';
+import { casosEnModoSoporte } from './soporte';
 
 describe('Matriz HTTP T4: configuración (e2e)', () => {
   let env: TestEnv;
@@ -59,8 +60,8 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     dispatch('administrador', 'adminA', 200),
     dispatch('sin token', undefined, 401),
     dispatch('cliente', 'clienteA', 403),
-    dispatch('super sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
+    dispatch('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     putDispatch('guarda y relee', 'adminA', 200, {
       body: { radiusStepsKm: [2, 4], offerTtlSeconds: 20 },
@@ -79,8 +80,8 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     express('administrador', 'adminA', 200),
     express('sin token', undefined, 401),
     express('chofer', 'chofer', 403),
-    express('super sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
+    express('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     (() => {
       let anterior: Record<string, unknown> = {};
@@ -122,15 +123,20 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     putExpress('sin token', undefined, 401),
     putExpress('cliente', 'clienteA', 403),
     putExpress('chofer', 'chofer', 403),
-    putExpress('super sin distribuidora', 'super', 400, {
-      body: {},
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    putExpress(
+      'super sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        body: {},
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
     processes('administrador', 'adminA', 200),
     processes('sin token', undefined, 401),
     processes('cliente', 'clienteA', 403),
-    processes('super sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
+    processes('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     getProcess('proceso válido', 'adminA', 200),
     getProcess('proceso inexistente', 'adminA', 404, {
@@ -139,9 +145,12 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     getProcess('sin token', undefined, 401),
     getProcess('cliente', 'clienteA', 403),
     getProcess('chofer', 'chofer', 403),
-    getProcess('super sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    getProcess(
+      'super sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     putProcess('actualiza y relee', 'adminA', 200, {
       body: { enabled: 1 },
       verificar: async (_b, c) =>
@@ -158,9 +167,12 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     putProcess('cliente', 'clienteA', 403),
     putProcess('chofer', 'chofer', 403),
     tasks('administrador', 'adminA', 200),
-    tasks('super admin sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    tasks(
+      'super admin sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     tasks('sin token', undefined, 401),
     tasks('cliente', 'clienteA', 403),
     putTasks('guarda y relee', 'adminA', 200, {
@@ -180,8 +192,8 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     surcharge('administrador', 'adminA', 200),
     surcharge('sin token', undefined, 401),
     surcharge('chofer', 'chofer', 403),
-    surcharge('super sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
+    surcharge('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     putSurcharge('guarda y relee', 'adminA', 200, {
       body: {
@@ -208,5 +220,11 @@ describe('Matriz HTTP T4: configuración (e2e)', () => {
     putSurcharge('cliente', 'clienteA', 403),
     putSurcharge('chofer', 'chofer', 403),
   ];
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(surcharge, putSurcharge),
+  );
   correrMatriz('configuración por tenant', ver, casos);
 });

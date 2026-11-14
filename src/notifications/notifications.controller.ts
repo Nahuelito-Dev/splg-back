@@ -30,6 +30,8 @@ import { SaveNotificationTokenDto } from './dto/save-notification-token.dto';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { esSuperAdminDePlataforma } from '../common/utils/alcance.util';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -64,6 +66,9 @@ export class NotificationsController {
   // distribuidora, y el panel no lo usa.
   @Post('order-confirmation')
   @Auth(RoleType.SUPER_ADMIN)
+  // Un push a un cliente real sobre un pedido de una empresa: escritura sobre
+  // la operación (D6), no de plataforma.
+  @Alcance('empresa')
   @ApiOperation({ summary: 'Send order confirmation notification (admin)' })
   @ApiCreatedResponse({ type: ResultadoDeEnvioDto })
   @ApiBadRequestResponse({
@@ -90,9 +95,10 @@ export class NotificationsController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<TokensDeUsuarioDto> {
-    // Los tokens de otro usuario sólo los ve el super administrador: un admin
-    // de empresa no tiene por qué leer los de usuarios de otra distribuidora.
-    if (user.role !== RoleType.SUPER_ADMIN && userId !== user.user_id) {
+    // Los tokens de otro usuario sólo los ve el super administrador fuera de
+    // soporte: un admin de empresa (y el super admin en una sesión de soporte)
+    // no tiene por qué leer los de usuarios de otra distribuidora.
+    if (!esSuperAdminDePlataforma(user) && userId !== user.user_id) {
       throw new ForbiddenException(
         'No autorizado a ver tokens de otro usuario',
       );

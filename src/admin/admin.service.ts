@@ -1,4 +1,3 @@
-import { faltaLaDistribuidora } from '../common/decorators/current-distributor.decorator';
 import {
   BadRequestException,
   ConflictException,
@@ -83,14 +82,19 @@ export class AdminService {
         'Un admin de empresa lleva distribuidora y el super administrador no',
       );
     }
-    // Como el resto de las escrituras del super administrador sobre cuentas de
-    // una empresa: la distribuidora sale del contexto elegido (X-Distributor), no
-    // sólo del cuerpo.
+    // Alta de plataforma (el super admin fuera de soporte no tiene empresa en
+    // contexto: el modo soporte es de sólo lectura): la empresa es la del
+    // cuerpo, y tiene que existir y estar vigente. Con una empresa en contexto,
+    // tiene que coincidir con ella.
     if (esAdminDeEmpresa) {
       if (!distribuidoraElegida) {
-        throw faltaLaDistribuidora();
-      }
-      if (distributor_id !== distribuidoraElegida) {
+        const existe = await this.adminRepository.manager.exists(Distributor, {
+          where: { distributorId: distributor_id },
+        });
+        if (!existe) {
+          throw new NotFoundException('Distribuidora no encontrada');
+        }
+      } else if (distributor_id !== distribuidoraElegida) {
         throw new BadRequestException(
           'La distribuidora del perfil no coincide con la elegida (X-Distributor)',
         );

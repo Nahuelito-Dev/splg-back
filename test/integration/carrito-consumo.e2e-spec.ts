@@ -32,6 +32,7 @@ import { Role } from '../../src/role/entities/role.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Headers = Record<string, string>;
 interface CarritoJson {
@@ -976,25 +977,27 @@ describe('Carrito y consumo declarado (HTTP e2e)', () => {
   });
 
   describe('ficha del cliente en el panel', () => {
-    it('el super admin ve el consumo declarado, el tipo habitual y la recompra estimada', async () => {
+    it('el super admin en modo soporte ve el consumo declarado, el tipo habitual y la recompra estimada', async () => {
       const e = await escenario();
       await http()
         .patch('/customers/me/consumption')
         .set(e.c1)
         .send({ cylinderTypeId: e.g10.gasCylinderId, quantityPerMonth: 2 })
         .expect(200);
-      const sa = await usuario('super_admin', 'Super');
-      await ds.getRepository(Admin).save({
-        userId: sa.user.userId,
-        distributorId: null,
-      } as Partial<Admin>);
+      // La ficha del cliente es de la empresa: el super admin la ve en modo soporte,
+      // sobre una empresa de la que el cliente es cliente.
+      for (const c of [e.cli1, e.cli2]) {
+        await ds.query(
+          `INSERT INTO customer_distributor (user_id, distributor_id) VALUES ($1, $2)`,
+          [c.user.userId, e.distA.distributorId],
+        );
+      }
+      const soporte = await conSesionDeSoporte(env.app, e.distA.distributorId);
 
-      const lista = await http()
-        .get('/customers')
-        .set(h(sa.email, {}, 'panel-app'));
+      const lista = await http().get('/customers').set(soporte.cabeceras);
       const uno = await http()
         .get(`/customers/user/${e.cli1.user.userId}`)
-        .set(h(sa.email, {}, 'panel-app'));
+        .set(soporte.cabeceras);
 
       const sinDeclarar = (lista.body as { user_id: string }[]).find(
         (c) => c.user_id === e.cli2.user.userId,

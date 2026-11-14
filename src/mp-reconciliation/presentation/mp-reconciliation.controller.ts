@@ -23,6 +23,7 @@ import { Auth } from '../../common/decorators/auth.decorator';
 import { CurrentDistributor } from '../../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { esSuperAdminDePlataforma } from '../../common/utils/alcance.util';
 import { Idempotent } from '../../common/decorators/idempotent.decorator';
 import { DownloadLinkResponseDto } from '../../s3/dto/download-link.dto';
 import { aEnlaceDeDescarga } from '../../s3/download-link';
@@ -183,8 +184,19 @@ export class MpReconciliationController {
     );
   }
 
+  /**
+   * En modo soporte el super admin ve la conciliación como un admin de la
+   * empresa: sin los movimientos de la cuenta entera ni su reporte completo.
+   */
   private contexto(distributorId: string, user: AuthenticatedUser): MpContexto {
-    return { distributorId, userId: user.user_id, role: user.role };
+    return {
+      distributorId,
+      userId: user.user_id,
+      role:
+        user.role === RoleType.SUPER_ADMIN && !esSuperAdminDePlataforma(user)
+          ? RoleType.ADMIN
+          : user.role,
+    };
   }
 
   private veCuenta(ctx: MpContexto): boolean {

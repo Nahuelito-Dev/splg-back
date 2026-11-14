@@ -16,6 +16,7 @@ import {
 } from './matriz';
 import { EscenarioT3, sembrarBaseT3 } from './t3-base';
 import { usarClave } from './t2-base';
+import { casosEnModoSoporte } from './soporte';
 
 describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
   let env: TestEnv;
@@ -50,14 +51,6 @@ describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
     ctx = {
       ...(await sembrarBaseT3(env.app)),
       reiniciarCupos: () => reiniciarCuposDelThrottler(env),
-    };
-    ctx.actores.superEnA = {
-      ...ctx.actores.super,
-      'X-Distributor': ctx.distA.slug,
-    };
-    ctx.actores.superEnB = {
-      ...ctx.actores.super,
-      'X-Distributor': ctx.distB.slug,
     };
   }, 240000);
   afterAll(async () => env.cleanup());
@@ -113,7 +106,9 @@ describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
     listCustomers('sin token', undefined, 401),
     listCustomers('cliente', 'clienteA', 403),
     listCustomers('chofer', 'chofer', 403),
-    listCustomers('super admin', 'super', 200),
+    listCustomers('super admin (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     listCustomers('límite no entero', 'adminA', 400, {
       ruta: '/customers?limit=uno',
     }),
@@ -162,22 +157,33 @@ describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
       ruta: (c) => `/customers/user/${c.clienteB.userId}`,
     }),
     customerByUser('tenant ajeno', 'adminB', 404),
-    listAddresses('administrador general', 'super', 200),
+    listAddresses(
+      'administrador general (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     listAddresses('sin token', undefined, 401),
     listAddresses('cliente', 'clienteA', 403),
     listAddresses('administrador', 'adminA', 403),
     listAddresses('chofer', 'chofer', 403),
-    listAddresses('límite inválido', 'super', 400, {
+    listAddresses('límite inválido (sin sesión de soporte)', 'super', 403, {
       ruta: '/user-address?limit=0',
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
-    listAddresses('límite máximo excedido', 'super', 400, {
-      ruta: '/user-address?limit=101',
-    }),
-    listAddresses('offset negativo', 'super', 400, {
+    listAddresses(
+      'límite máximo excedido (sin sesión de soporte)',
+      'super',
+      403,
+      { ruta: '/user-address?limit=101', code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
+    listAddresses('offset negativo (sin sesión de soporte)', 'super', 403, {
       ruta: '/user-address?offset=-1',
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
-    listAddresses('página no entera', 'super', 400, {
+    listAddresses('página no entera (sin sesión de soporte)', 'super', 403, {
       ruta: '/user-address?page=uno',
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     address('dueño', 'clienteA', 200),
     address('id mal formado', 'clienteA', 400, {
@@ -456,15 +462,21 @@ describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
       },
       code: 'IDEMPOTENCY_KEY_REUSED',
     }),
-    crearDireccion('usuario inexistente', 'super', 404, {
-      body: (c) => ({
-        user_id: c.inexistente,
-        street: 'Nueva',
-        city: 'Córdoba',
-        latitude: '-31.4',
-        longitude: '-64.2',
-      }),
-    }),
+    crearDireccion(
+      'usuario inexistente (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        body: (c) => ({
+          user_id: c.inexistente,
+          street: 'Nueva',
+          city: 'Córdoba',
+          latitude: '-31.4',
+          longitude: '-64.2',
+        }),
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
     editarDireccion('cambia ciudad', 'clienteA', 200, {
       body: { city: 'Villa Carlos Paz' },
       verificar: async (_b, c) => {
@@ -655,13 +667,16 @@ describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
       ruta: (c) => `/customers/${c.inexistente}/location`,
       body: { latLng: '-31.4,-64.2' },
     }),
-    bajaCliente('id mal formado', 'superEnA', 400, {
+    bajaCliente('id mal formado (en modo soporte)', 'soporteA', 403, {
       ruta: '/customers/xx',
-      code: 'INVALID_ID',
+      code: 'SUPPORT_READ_ONLY',
     }),
-    bajaCliente('super admin sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    bajaCliente(
+      'super admin sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     bajaCliente('sin token', undefined, 401),
     bajaCliente('cliente', 'clienteA', 403),
     bajaCliente('admin no puede borrar globalmente', 'adminA', 403),
@@ -739,21 +754,17 @@ describe('Matriz HTTP T3: clientes y direcciones (e2e)', () => {
       },
     ),
     bajaCliente(
-      'super administrador da de baja lógicamente al cliente',
-      'superEnA',
-      200,
-      {
-        verificar: async (_b, c) => {
-          const r = await llamar(
-            c,
-            'get',
-            `/customers/${c.customerA}`,
-            'superEnA',
-          );
-          expect(r.status).toBe(404);
-        },
-      },
+      'super administrador da de baja lógicamente al cliente (en modo soporte)',
+      'soporteA',
+      403,
+      { code: 'SUPPORT_READ_ONLY' },
     ),
   ];
   correrMatriz('mutaciones de direcciones', ver, mutaciones);
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(listCustomers, crearDireccion),
+  );
 });

@@ -7,6 +7,16 @@ export function esAdministrador(user: AuthenticatedUser): boolean {
 }
 
 /**
+ * Si es el administrador general fuera del modo soporte: el único que ve lo de
+ * la plataforma. En una sesión de soporte ve la empresa como un admin de ella,
+ * así que los privilegios de plataforma (ver otras empresas, el reporte de la
+ * cuenta entera) no le corren.
+ */
+export function esSuperAdminDePlataforma(user: AuthenticatedUser): boolean {
+  return user.role === RoleType.SUPER_ADMIN && !user.support_session_id;
+}
+
+/**
  * Propiedad del dato (anti-IDOR): el `user_id` contra el que un servicio tiene
  * que controlar que el recurso sea de quien pide, o `undefined` si pide un
  * administrador, que accede a cualquiera.

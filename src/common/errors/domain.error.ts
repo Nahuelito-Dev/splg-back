@@ -22,6 +22,12 @@ export abstract class DomainError extends Error {
    */
   readonly detalle?: string;
 
+  /**
+   * `code` estable (en inglés) que el filtro agrega a la respuesta, para los
+   * errores que el panel o una app tienen que reconocer.
+   */
+  readonly code?: string;
+
   protected constructor(message: string, detalle?: string) {
     super(message);
     this.detalle = detalle;

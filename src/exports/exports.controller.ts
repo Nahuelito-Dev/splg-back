@@ -27,10 +27,13 @@ import { CABECERA_TOTAL } from '../common/http/total';
 import { ExportFormat } from './export.types';
 import { ExportsService } from './exports.service';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { RequiereAlcanceDeSoporte } from '../common/decorators/alcance-de-soporte.decorator';
 
 /** Exportes completos (todas las filas que cumplen los filtros) en CSV y Excel. */
 @ApiTags('Exportes')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+// Modo soporte: un exporte saca la base en bloque: pide `exports`.
+@RequiereAlcanceDeSoporte('exports')
 @Controller({ path: 'exports', version: '2' })
 export class ExportsController {
   private readonly logger = new Logger(ExportsController.name);

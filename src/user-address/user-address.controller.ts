@@ -41,6 +41,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { alcanceDelDueño, esAdministrador } from '../common/utils/alcance.util';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 /**
  * Propiedad del dato (anti-IDOR): un cliente o chofer sólo accede a SUS
@@ -95,13 +96,24 @@ export class UserAddressController {
 
   @Get()
   @Auth(RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Listar todas las direcciones (paginado)' })
+  // Direcciones de personas: es operación, no plataforma. Sólo en modo soporte,
+  // y sólo las de la empresa de la sesión.
+  @Alcance('empresa')
+  @ApiOperation({
+    summary: 'Listar las direcciones de la empresa (paginado)',
+    description:
+      'Sólo para el super admin en modo soporte: las direcciones de los usuarios de la empresa de la sesión (sus clientes, choferes y admins). Sin sesión de soporte, 403.',
+  })
   @ApiOkResponse({ type: ListadoDeDireccionesDto })
   @ApiBadRequestResponse({ description: 'Parámetros de paginación inválidos' })
   async findAll(
     @Query() paginationDto: PaginationDto,
+    @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ListadoDeDireccionesDto> {
-    const r = await this.userAddressService.findAll(paginationDto);
+    const r = await this.userAddressService.findAll(
+      paginationDto,
+      distributorId,
+    );
     return {
       ...r,
       addresses: r.addresses.map((a) => UserAddressMapper.toDtoConUsuario(a)),

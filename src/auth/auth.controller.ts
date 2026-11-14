@@ -29,6 +29,7 @@ import {
   SesionAuditService,
 } from '../audit/data/sesion-audit.service';
 import { errorCode } from '../common/errors/error-message';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -39,6 +40,7 @@ export class AuthController {
   ) {}
 
   @Post()
+  @Alcance('ambos')
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Validar el token de sesión',

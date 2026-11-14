@@ -11,6 +11,7 @@ import { DataSource, EntityTarget, ObjectLiteral } from 'typeorm';
 import { S3Service, SignedDownload } from './s3.service';
 import { MAX_FOTO_BYTES } from './upload-limits';
 import { S3CleanupService } from './s3-cleanup.service';
+import { esRechazoDeSoporte } from '../common/errors/soporte';
 import { errorMessage } from '../common/errors/error-message';
 import { limpiarMetadatosDeImagen } from './limpiar-imagen';
 import {
@@ -181,7 +182,10 @@ export class EntityPhotoService {
     try {
       return (await this.storage.getSignedDownload(key)).url;
     } catch (error) {
-      this.logger.warn(`No se pudo firmar ${key}: ${errorMessage(error)}`);
+      // Modo soporte sin el alcance `files`: la foto sale `null` (no es una falla).
+      if (!esRechazoDeSoporte(error)) {
+        this.logger.warn(`No se pudo firmar ${key}: ${errorMessage(error)}`);
+      }
       return null;
     }
   }
@@ -197,7 +201,10 @@ export class EntityPhotoService {
     try {
       return await this.storage.getSignedDownload(key);
     } catch (error) {
-      this.logger.warn(`No se pudo firmar ${key}: ${errorMessage(error)}`);
+      // Modo soporte sin el alcance `files`: la foto sale `null` (no es una falla).
+      if (!esRechazoDeSoporte(error)) {
+        this.logger.warn(`No se pudo firmar ${key}: ${errorMessage(error)}`);
+      }
       return null;
     }
   }

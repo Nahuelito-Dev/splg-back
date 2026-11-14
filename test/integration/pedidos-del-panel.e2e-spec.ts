@@ -33,6 +33,8 @@ import {
 import { UsersService } from '../../src/users/users.service';
 import { FirebaseAuthPort } from '../../src/firebase/ports/firebase-auth.port';
 import { forzarEstado } from './setup/bypass';
+import { conSesionDeSoporte } from './matriz-http/soporte';
+import { AdminService } from '../../src/admin/admin.service';
 
 interface Quien {
   user: User;
@@ -145,6 +147,15 @@ describe('Pedidos del panel (e2e)', () => {
   const patch = (q: Quien, url: string, body: object = {}) =>
     http().patch(url).set(q.headers).send(body);
   const del = (q: Quien, url: string) => http().delete(url).set(q.headers);
+  /** El super admin en modo soporte sobre una distribuidora (sólo lectura). */
+  const soporteEn = async (distributorId: string) =>
+    (await conSesionDeSoporte(env.app, distributorId)).cabeceras;
+  /** El código con que termina una llamada a un servicio (200 si anduvo). */
+  const estadoDe = (p: Promise<unknown>) =>
+    p.then(
+      () => 200,
+      (e: { status?: number }) => e.status,
+    );
   const json = <T>(r: request.Response): T => r.body as T;
   const perfilDe = (q: Quien) =>
     ds.getRepository(Admin).findOneByOrFail({ userId: q.user.userId });
@@ -239,7 +250,8 @@ describe('Pedidos del panel (e2e)', () => {
         endTime: '10:00',
         capacity: 5,
       } as Partial<TimeSlot>);
-      const deB = await repo.save({
+      // Una franja de B: nadie de A la ve (ni el soporte en A).
+      await repo.save({
         distributorId: b.distributorId,
         name: 'B',
         startTime: '09:00',
@@ -251,11 +263,17 @@ describe('Pedidos del panel (e2e)', () => {
       expect(
         ids(await get(adminA, `/time-slot?distributor=${b.slug}`).expect(200)),
       ).toEqual([deA.timeSlotId]);
+      // El super admin: sin sesión de soporte 403; en modo soporte sobre A,
+      // `?distributor=` de otra empresa se ignora (queda en la de la sesión).
+      await get(superAdmin, `/time-slot?distributor=${b.slug}`).expect(403);
       expect(
         ids(
-          await get(superAdmin, `/time-slot?distributor=${b.slug}`).expect(200),
+          await http()
+            .get(`/time-slot?distributor=${b.slug}`)
+            .set(await soporteEn(a.distributorId))
+            .expect(200),
         ),
-      ).toEqual([deB.timeSlotId]);
+      ).toEqual([deA.timeSlotId]);
     }, 30000);
   });
 
@@ -377,16 +395,26 @@ describe('Pedidos del panel (e2e)', () => {
         await get(adminB, `/audit/entries?orderId=${id}`).expect(200),
       );
       expect(ajena).toEqual({ data: [], total: 0 });
+      // Super admin sin sesión: la auditoría de plataforma (el historial de un
+      // pedido es de una empresa: vacío); en modo soporte, la de esa empresa.
       const sa = json<Pagina>(
         await get(superAdmin, `/audit/entries?orderId=${id}`).expect(200),
       );
-      expect(sa.total).toBe(r.total);
-      const saComoB = json<Pagina>(
-        await get(superAdmin, `/audit/entries?orderId=${id}`, {
-          'X-Distributor': b.slug,
-        }).expect(200),
+      expect(sa.total).toBe(0);
+      const saEnA = json<Pagina>(
+        await http()
+          .get(`/audit/entries?orderId=${id}`)
+          .set(await soporteEn(a.distributorId))
+          .expect(200),
       );
-      expect(saComoB.total).toBe(0);
+      expect(saEnA.total).toBe(r.total);
+      const saEnB = json<Pagina>(
+        await http()
+          .get(`/audit/entries?orderId=${id}`)
+          .set(await soporteEn(b.distributorId))
+          .expect(200),
+      );
+      expect(saEnB.total).toBe(0);
 
       await get(adminA, '/audit/entries?orderId=no-es-uuid').expect(400);
       await get(cliente, `/audit/entries?orderId=${id}`).expect(403);
@@ -684,12 +712,18 @@ describe('Pedidos del panel (e2e)', () => {
         fullName: 'Intruso',
       }).expect(404);
 
-      // el super admin llega a cualquiera
-      // Sobre el personal de una distribuidora, el super admin dice en cuál actúa.
+      // El super admin: desde plataforma no edita al personal de una empresa
+      // vigente (400, el X-Distributor ya no lo habilita: E3) y en modo soporte
+      // es sólo lectura.
       await patch(superAdmin, url, { fullName: 'Por el super' }).expect(400);
       await patch(superAdmin, url, { fullName: 'Por el super' })
         .set('X-Distributor', a.slug)
-        .expect(200);
+        .expect(400);
+      await http()
+        .patch(url)
+        .set(await soporteEn(a.distributorId))
+        .send({ fullName: 'Por el super' })
+        .expect(403);
     }, 60000);
 
     it('DELETE es baja lógica: deslogea, deshabilita Firebase, conserva la fila y sale del listado', async () => {
@@ -740,14 +774,21 @@ describe('Pedidos del panel (e2e)', () => {
       const pA = await perfilDe(adminA);
       const pSegundo = await perfilDe(segundo);
 
-      // el super admin da de baja al segundo; el primero queda solo
+      // La regla vive en el servicio. Por la API sólo llegaba el super admin con
+      // X-Distributor, que ya no opera empresas (desde plataforma es 400).
       await del(superAdmin, `/admin/${pSegundo.adminId}`)
         .set('X-Distributor', a.slug)
-        .expect(200);
-      const r = await del(superAdmin, `/admin/${pA.adminId}`)
-        .set('X-Distributor', a.slug)
-        .expect(409);
-      expect(json<{ message: string }>(r).message).toMatch(/último/);
+        .expect(400);
+      const admins = env.app.get(AdminService);
+      await admins.remove(pSegundo.adminId, a.distributorId);
+      const r = await admins.remove(pA.adminId, a.distributorId).then(
+        () => null,
+        (e: { status?: number; message?: string }) => e,
+      );
+      expect(r).toMatchObject({
+        status: 409,
+        message: expect.stringMatching(/último/) as unknown,
+      });
       expect(
         await ds
           .getRepository(User)
@@ -758,15 +799,15 @@ describe('Pedidos del panel (e2e)', () => {
       const tercero = await usuario(RoleType.ADMIN, a.distributorId, {
         blocked: true,
       } as Partial<User>);
-      await del(superAdmin, `/admin/${pA.adminId}`)
-        .set('X-Distributor', a.slug)
-        .expect(409);
+      expect(await estadoDe(admins.remove(pA.adminId, a.distributorId))).toBe(
+        409,
+      );
       await ds
         .getRepository(User)
         .update({ userId: tercero.user.userId }, { blocked: false });
-      await del(superAdmin, `/admin/${pA.adminId}`)
-        .set('X-Distributor', a.slug)
-        .expect(200);
+      expect(await estadoDe(admins.remove(pA.adminId, a.distributorId))).toBe(
+        200,
+      );
     }, 60000);
 
     it('dos bajas simultáneas de los dos últimos administradores: una sola pasa', async () => {
@@ -774,11 +815,13 @@ describe('Pedidos del panel (e2e)', () => {
       const segundo = await usuario(RoleType.ADMIN, a.distributorId);
       const pA = await perfilDe(adminA);
       const pS = await perfilDe(segundo);
+      const admins = env.app.get(AdminService);
       const [x, y] = await Promise.all([
-        del(superAdmin, `/admin/${pA.adminId}`).set('X-Distributor', a.slug),
-        del(superAdmin, `/admin/${pS.adminId}`).set('X-Distributor', a.slug),
+        estadoDe(admins.remove(pA.adminId, a.distributorId)),
+        estadoDe(admins.remove(pS.adminId, a.distributorId)),
       ]);
-      expect([x.status, y.status].sort()).toEqual([200, 409]);
+      expect([x, y].sort()).toEqual([200, 409]);
+      void superAdmin;
     }, 60000);
     it('super admin: no se da de baja a sí mismo (403, por /admin y por /users) y no se baja al último (409)', async () => {
       const { superAdmin } = await escenario();
@@ -818,9 +861,13 @@ describe('Pedidos del panel (e2e)', () => {
 
     it('por DELETE /users/:id tampoco se salta la regla del último admin', async () => {
       const { a, adminA, superAdmin } = await escenario();
+      // Desde plataforma no hay camino (400); la regla, en el servicio.
       await del(superAdmin, `/users/${adminA.user.userId}`)
         .set('X-Distributor', a.slug)
-        .expect(409);
+        .expect(400);
+      expect(
+        await estadoDe(env.app.get(UsersService).remove(adminA.user.userId)),
+      ).toBe(409);
       expect(
         await ds
           .getRepository(User)
@@ -854,32 +901,29 @@ describe('Pedidos del panel (e2e)', () => {
           .getRepository(User)
           .findOneByOrFail({ userId: adminA.user.userId })
           .then((u) => u.blocked);
+      // Desde plataforma el bloqueo del personal de una empresa no tiene camino
+      // (400); la regla se prueba en el servicio.
       await patch(superAdmin, `/users/${adminA.user.userId}/block`, {
         block: true,
       })
         .set('X-Distributor', a.slug)
-        .expect(409);
-      await patch(superAdmin, `/users/${adminA.user.userId}`, { blocked: true })
-        .set('X-Distributor', a.slug)
-        .expect(409);
+        .expect(400);
+      const usuarios = env.app.get(UsersService);
+      expect(
+        await estadoDe(usuarios.toggleBlockUser(adminA.user.userId, true)),
+      ).toBe(409);
       expect(await bloqueado()).toBe(false);
 
       const segundo = await usuario(RoleType.ADMIN, a.distributorId);
-      await patch(superAdmin, `/users/${adminA.user.userId}/block`, {
-        block: true,
-      })
-        .set('X-Distributor', a.slug)
-        .expect(200);
+      expect(
+        await estadoDe(usuarios.toggleBlockUser(adminA.user.userId, true)),
+      ).toBe(200);
       expect(await bloqueado()).toBe(true);
       // y ahora el segundo es el último activo: ni baja ni bloqueo
-      await patch(superAdmin, `/users/${segundo.user.userId}/block`, {
-        block: true,
-      })
-        .set('X-Distributor', a.slug)
-        .expect(409);
-      await del(superAdmin, `/users/${segundo.user.userId}`)
-        .set('X-Distributor', a.slug)
-        .expect(409);
+      expect(
+        await estadoDe(usuarios.toggleBlockUser(segundo.user.userId, true)),
+      ).toBe(409);
+      expect(await estadoDe(usuarios.remove(segundo.user.userId))).toBe(409);
     }, 60000);
 
     it('bloquear al último super admin es 409; dos bloqueos cruzados a la vez: uno solo pasa', async () => {

@@ -37,6 +37,7 @@ import {
 import { Role } from '../../src/role/entities/role.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { User } from '../../src/users/entities/user.entity';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 const DIA = 86400000;
 const enDias = (n: number) => new Date(Date.now() + n * DIA).toISOString();
@@ -878,7 +879,7 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
       ).toEqual(['SIN', 'VIG']);
     });
 
-    it('el serial por vigencia exige distribuidora al super admin', async () => {
+    it('el serial por vigencia: el super admin lo ve sólo en modo soporte', async () => {
       const d = await distribuidora();
       const r = await rol(RoleType.SUPER_ADMIN);
       const sup = await ds.getRepository(User).save({
@@ -891,13 +892,18 @@ describe('Vigencia de envases (CU-132 a CU-135, e2e)', () => {
         .save({ userId: sup.userId, distributorId: null } as Partial<Admin>);
       await envase(d.distributorId, 'SN-1');
 
-      await get(sup, '/cylinders/vigencia/serial/SN-1').expect(400);
+      // Sin sesión de soporte 403 (también con X-Distributor); en modo soporte, 200.
+      await get(sup, '/cylinders/vigencia/serial/SN-1').expect(403);
       await como(
         sup,
         request(servidor())
           .get('/cylinders/vigencia/serial/SN-1')
           .set('X-Distributor', d.distributorId),
-      ).expect(200);
+      ).expect(403);
+      await request(servidor())
+        .get('/cylinders/vigencia/serial/SN-1')
+        .set((await conSesionDeSoporte(env.app, d.distributorId)).cabeceras)
+        .expect(200);
     });
 
     it('proximos-a-vencer pagina cada grupo y informa los totales', async () => {

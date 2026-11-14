@@ -26,6 +26,7 @@ import { contentDisposition } from '../s3/content-disposition';
 import { DownloadDisposition } from '../s3/dto/download-link.dto';
 import { PdfQueryDto, ReporteDeVentasPdfQueryDto } from './dto/pdf-query.dto';
 import { DocumentoPdf, PdfDocumentsService } from './pdf-documents.service';
+import { RequiereAlcanceDeSoporte } from '../common/decorators/alcance-de-soporte.decorator';
 
 const TIPO_PDF = 'application/pdf';
 
@@ -51,6 +52,8 @@ function enviar(
  * que documenta y respeta su regla de acceso.
  */
 @ApiTags('Documentos PDF')
+// Modo soporte: un PDF es un archivo (con datos personales): pide `files`.
+@RequiereAlcanceDeSoporte('files')
 @Controller({ version: '2' })
 export class PdfController {
   constructor(private readonly documentos: PdfDocumentsService) {}

@@ -10,6 +10,7 @@ import type { AddressInfo } from 'net';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 import {
   TestEnv,
   createTestApp,
@@ -290,8 +291,8 @@ describe('Blindaje (e2e)', () => {
     });
   });
 
-  describe('el super admin sin distribuidora no muta', () => {
-    it('resolve-unpaid, cancelar, asignar y los cobros manuales dan 400 sin X-Distributor', async () => {
+  describe('el super admin sin sesión de soporte no muta (modo soporte)', () => {
+    it('resolve-unpaid, cancelar, asignar y los cobros manuales dan 403 sin sesión de soporte', async () => {
       const e = await escenario();
       const p = await pedido(e, {
         status: OrderStatus.DELIVERED,
@@ -299,8 +300,7 @@ describe('Blindaje (e2e)', () => {
         deliveryId: e.del1.deliveryId,
         deliveredAt: new Date(),
       });
-      const mensaje =
-        'Falta la distribuidora: enviá el header X-Distributor (slug o id)';
+      const mensaje = 'Para ver datos de una empresa entrá en modo soporte';
       const sup = e.supSinHeader;
       const id = p.orderId;
       const razon = { reason: 'motivo de prueba suficiente' };
@@ -327,8 +327,11 @@ describe('Blindaje (e2e)', () => {
         http().patch(`/orders/${id}/confirm-deposit`).set(sup),
       ];
       for (const res of await Promise.all(llamadas)) {
-        expect(res.status).toBe(400);
-        expect((res.body as { message: string }).message).toBe(mensaje);
+        expect(res.status).toBe(403);
+        expect(res.body).toMatchObject({
+          message: mensaje,
+          code: 'SUPPORT_SESSION_REQUIRED',
+        });
       }
       const intacto = await ds
         .getRepository(Order)
@@ -336,7 +339,7 @@ describe('Blindaje (e2e)', () => {
       expect(intacto.paymentStatus).toBe(PaymentStatus.UNPAID);
     });
 
-    it('las demás escrituras por UUID (chofer, cliente, usuario, auto, admin) también dan 400 sin X-Distributor y no tocan nada', async () => {
+    it('las demás escrituras por UUID (chofer, cliente, auto) dan 403 sin sesión de soporte; las cuentas del personal desde plataforma, 400; y no tocan nada', async () => {
       const e = await escenario();
       const sup = e.supSinHeader;
       const adminDeA = await ds
@@ -345,22 +348,33 @@ describe('Blindaje (e2e)', () => {
       const clienteDeA = await ds
         .getRepository(Customer)
         .findOneByOrFail({ userId: e.cli.userId });
-      const mensaje =
-        'Falta la distribuidora: enviá el header X-Distributor (slug o id)';
+      const mensaje = 'Para ver datos de una empresa entrá en modo soporte';
       const llamadas = [
         http().delete(`/delivery/${e.del1.deliveryId}`).set(sup),
         http().delete(`/customers/${clienteDeA.customerId}`).set(sup),
+        http().delete(`/car/${e.carId}/photo`).set(sup),
+      ];
+      for (const res of await Promise.all(llamadas)) {
+        expect(res.status).toBe(403);
+        expect(res.body).toMatchObject({
+          message: mensaje,
+          code: 'SUPPORT_SESSION_REQUIRED',
+        });
+      }
+      // Las cuentas (admin, usuario) son de las dos versiones: desde plataforma,
+      // sobre el personal de una empresa vigente, no hay camino (400).
+      for (const res of await Promise.all([
+        http().delete(`/admin/${adminDeA.adminId}`).set(sup),
         http().delete(`/users/${e.chofer1UserId}`).set(sup),
         http()
           .patch(`/users/${e.chofer1UserId}/block`)
           .set(sup)
           .send({ block: true }),
-        http().delete(`/car/${e.carId}/photo`).set(sup),
-        http().delete(`/admin/${adminDeA.adminId}`).set(sup),
-      ];
-      for (const res of await Promise.all(llamadas)) {
-        expect(res.status).toBe(400);
-        expect((res.body as { message: string }).message).toBe(mensaje);
+      ])) {
+        expect(res.body).toMatchObject({
+          statusCode: 400,
+          code: 'MISSING_DISTRIBUTOR',
+        });
       }
       const chofer = await ds
         .getRepository(User)
@@ -371,15 +385,31 @@ describe('Blindaje (e2e)', () => {
           where: { deliveryId: e.del1.deliveryId },
         }),
       ).toBe(1);
-      // Con la distribuidora en contexto, el bloqueo sí pasa.
+      // El X-Distributor ya no lo habilita, y en modo soporte es sólo lectura.
       await http()
         .patch(`/users/${e.chofer1UserId}/block`)
         .set(e.supEnA)
         .send({ block: true })
-        .expect(200);
+        .expect(400);
+      const soporte = await conSesionDeSoporte(env.app, e.dA.distributorId);
+      const enSoporte = await http()
+        .patch(`/users/${e.chofer1UserId}/block`)
+        .set(soporte.cabeceras)
+        .send({ block: true });
+      expect(enSoporte.body).toMatchObject({
+        statusCode: 403,
+        code: 'SUPPORT_READ_ONLY',
+      });
+      expect(
+        (
+          await ds
+            .getRepository(User)
+            .findOneByOrFail({ userId: e.chofer1UserId })
+        ).blocked,
+      ).toBe(false);
     });
 
-    it('con el X-Distributor de OTRA distribuidora el pedido es 404 y no se toca', async () => {
+    it('en modo soporte: el pedido de otra distribuidora es 404, el propio se ve y no se escribe', async () => {
       const e = await escenario();
       const p = await pedido(e, {
         status: OrderStatus.DELIVERED,
@@ -387,16 +417,19 @@ describe('Blindaje (e2e)', () => {
         deliveryId: e.del1.deliveryId,
         deliveredAt: new Date(),
       });
+      const enB = await conSesionDeSoporte(env.app, e.dB.distributorId);
+      const enA = await conSesionDeSoporte(env.app, e.dA.distributorId);
+      await http().get(`/orders/${p.orderId}`).set(enB.cabeceras).expect(404);
+      await http().get(`/orders/${p.orderId}`).set(enA.cabeceras).expect(200);
       await http()
         .patch(`/orders/${p.orderId}/payment/resolve-unpaid`)
-        .set(e.supEnB)
-        .send({ resolution: 'paid', note: 'Cobrado en el local' })
-        .expect(404);
-      await http()
-        .patch(`/orders/${p.orderId}/payment/resolve-unpaid`)
-        .set(e.supEnA)
+        .set(enA.cabeceras)
         .send({ resolution: 'paid', note: 'cobrado después' })
-        .expect(200);
+        .expect(403);
+      const intacto = await ds
+        .getRepository(Order)
+        .findOneByOrFail({ orderId: p.orderId });
+      expect(intacto.paymentStatus).toBe(PaymentStatus.UNPAID);
     });
 
     it('un cliente sin X-Distributor sigue pudiendo cancelar lo suyo', async () => {
@@ -557,21 +590,31 @@ describe('Blindaje (e2e)', () => {
         status: OrderStatus.ACCEPTED,
         deliveryId: delB.deliveryId,
       });
-      // El super admin cambia de distribuidora con la MISMA clave y la misma ruta.
-      const a = await http()
-        .patch(`/orders/${pA.orderId}/cancel`)
-        .set(e.supEnA)
-        .set('Idempotency-Key', clave)
-        .send({ reason: 'cancelo A' })
-        .expect(200);
-      const b = await http()
-        .patch(`/orders/${pB.orderId}/cancel`)
-        .set(e.supEnB)
-        .set('Idempotency-Key', clave)
-        .send({ reason: 'cancelo A' });
-      expect(b.status).toBe(200);
-      expect((b.body as { order_id: string }).order_id).toBe(pB.orderId);
-      expect((a.body as { order_id: string }).order_id).toBe(pA.orderId);
+      // Antes el super admin cambiaba de distribuidora con la MISMA clave. Con el
+      // modo soporte nadie escribe en dos distribuidoras: el super admin no
+      // escribe en ninguna (sin sesión 403; con sesión, sólo lectura), así que
+      // la clave no puede cruzar de una a otra.
+      for (const [pedidoId, cab] of [
+        [pA.orderId, e.supEnA],
+        [pB.orderId, e.supEnB],
+      ] as const) {
+        const r = await http()
+          .patch(`/orders/${pedidoId}/cancel`)
+          .set(cab)
+          .set('Idempotency-Key', clave)
+          .send({ reason: 'cancelo A' });
+        expect(r.body).toMatchObject({
+          statusCode: 403,
+          code: 'SUPPORT_SESSION_REQUIRED',
+        });
+      }
+      const estados = await ds.getRepository(Order).find({
+        where: [{ orderId: pA.orderId }, { orderId: pB.orderId }],
+      });
+      expect(estados.map((o) => o.status)).toEqual([
+        OrderStatus.ACCEPTED,
+        OrderStatus.ACCEPTED,
+      ]);
     });
   });
 
@@ -1402,13 +1445,16 @@ describe('Blindaje (e2e)', () => {
         .expect(404);
     });
 
-    it('el reenvío manual de la confirmación a un cliente inexistente es 404', async () => {
+    it('el reenvío manual de la confirmación ya no es del super admin sin sesión (D6: escribe sobre la operación)', async () => {
       const e = await escenario();
-      await http()
+      const r = await http()
         .post('/notifications/order-confirmation')
         .set(e.supSinHeader)
-        .send({ customerId: randomUUID(), orderId: randomUUID() })
-        .expect(404);
+        .send({ customerId: randomUUID(), orderId: randomUUID() });
+      expect(r.body).toMatchObject({
+        statusCode: 403,
+        code: 'SUPPORT_SESSION_REQUIRED',
+      });
     });
 
     it('POST /user-address: el cliente crea con su token; el user_id de otro es 403', async () => {

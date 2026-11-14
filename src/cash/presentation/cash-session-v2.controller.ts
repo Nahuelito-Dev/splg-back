@@ -25,6 +25,7 @@ import {
   PreviewCloseCashSessionDto,
 } from '../dto/cash-session.dto';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import { SoloLectura } from '../../audit/solo-lectura.decorator';
 
 /** Vista previa del cierre de caja (API v2; ver y cerrar siguen en `/cash-sessions` v1). */
 @ApiTags('Finanzas · Cajas (v2)')
@@ -35,6 +36,8 @@ export class CashSessionV2Controller {
 
   @Permiso('finanzas.gestionar')
   @Post(':id/close-preview')
+  // Sólo calcula (no escribe): pasa en modo soporte y no va al registro de escrituras.
+  @SoloLectura()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Vista previa de la diferencia antes de cerrar la caja',

@@ -52,6 +52,7 @@ import {
   RouteSheetOptimizeResponseDto,
   RouteSheetPageDto,
 } from './dto/route-sheet-response.dto';
+import { RequiereAlcanceDeSoporte } from '../../common/decorators/alcance-de-soporte.decorator';
 
 const BAD =
   'Cuerpo inválido, id que no es UUID o falta la distribuidora (super admin sin X-Distributor)';
@@ -394,6 +395,8 @@ export class RouteSheetsController {
     description:
       'Número, fecha, chofer, patente, salida, paradas en orden (cliente, dirección, teléfono, franja, llegada, garrafas), totales y firma. Un borrador sale marcado como tal.',
   })
+  // Modo soporte: el PDF lleva nombres, direcciones y teléfonos: pide `files`.
+  @RequiereAlcanceDeSoporte('files')
   @ApiProduces('application/pdf')
   @ApiOkResponse({
     description: 'El PDF (A4)',

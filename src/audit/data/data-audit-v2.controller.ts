@@ -16,6 +16,7 @@ import {
 } from './data-audit.dto';
 import { DataAuditService } from './data-audit.service';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import { Alcance } from '../../common/decorators/alcance.decorator';
 
 /**
  * Auditoría de datos, v2: lo mismo que la v1 más de dónde salió cada asiento
@@ -23,6 +24,7 @@ import { Permiso } from '../../common/decorators/permiso.decorator';
  * La v1 conserva su respuesta.
  */
 @ApiTags('Audit')
+@Alcance('ambos')
 @Controller({ path: 'audit', version: '2' })
 export class DataAuditV2Controller {
   constructor(private readonly service: DataAuditService) {}

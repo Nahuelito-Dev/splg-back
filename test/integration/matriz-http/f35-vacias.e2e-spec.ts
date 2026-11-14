@@ -10,6 +10,7 @@ import {
   sembrarPedido,
   usarClave,
 } from './t2-base';
+import { casosEnModoSoporte } from './soporte';
 
 /** Matriz HTTP F35 E4: declaración de vacías durante una entrega. */
 describe('Matriz HTTP F35: PATCH /v2/orders/:id/empties (e2e)', () => {
@@ -190,6 +191,19 @@ describe('Matriz HTTP F35: PATCH /v2/orders/:id/empties (e2e)', () => {
     'patch',
     '/orders/{id}/cancel',
     (c) => `/orders/${c.p.vacias}/cancel`,
+  );
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(
+      endpoint<EscenarioT2>('get', '/orders', '/orders'),
+      endpoint<EscenarioT2>(
+        'patch',
+        '/orders/{id}',
+        (c) => `/orders/${c.inexistente}`,
+      ),
+    ),
   );
   correrMatriz('F35 E4 · cancelar borra lo declarado', ver, [
     cancelar('admin cancela un pedido en camino con vacías', 'adminA', 200, {

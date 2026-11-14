@@ -7,7 +7,11 @@ import {
 } from '@nestjs/swagger';
 import { RoleType } from '../common/constants/role-type.enum';
 import { Auth } from '../common/decorators/auth.decorator';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '../common/decorators/current-user.decorator';
+import { esSuperAdminDePlataforma } from '../common/utils/alcance.util';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import {
   ProcessRunListResponseDto,
@@ -16,6 +20,7 @@ import {
 import { QueryProcessRunsDto } from './dto/query-process-runs.dto';
 import { ProcessRunService } from './process-run.service';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 /**
  * Monitoreo de los procesos automáticos (API v2). El admin ve las corridas de
@@ -25,6 +30,7 @@ import { Permiso } from '../common/decorators/permiso.decorator';
  */
 @ApiTags('Procesos automáticos · Monitoreo')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+@Alcance('ambos')
 @Controller({ path: 'process-runs', version: '2' })
 export class ProcessRunController {
   constructor(private readonly service: ProcessRunService) {}
@@ -39,9 +45,9 @@ export class ProcessRunController {
   @ApiOkResponse({ type: ProcessSummaryResponseDto })
   resumen(
     @CurrentDistributor() distributorId: string | null,
-    @CurrentUser('role') role: RoleType,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ProcessSummaryResponseDto> {
-    return this.service.resumen(distributorId, role === RoleType.SUPER_ADMIN);
+    return this.service.resumen(distributorId, esSuperAdminDePlataforma(user));
   }
 
   @Permiso('configuracion.ver')
@@ -59,11 +65,11 @@ export class ProcessRunController {
   listar(
     @Query() query: QueryProcessRunsDto,
     @CurrentDistributor() distributorId: string | null,
-    @CurrentUser('role') role: RoleType,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ProcessRunListResponseDto> {
     return this.service.listar(
       distributorId,
-      role === RoleType.SUPER_ADMIN,
+      esSuperAdminDePlataforma(user),
       query,
     );
   }

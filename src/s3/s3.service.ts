@@ -1,3 +1,5 @@
+import { auditContext } from '../audit/data/audit-context';
+import { soporteSinAlcance, soporteTerminado } from '../common/errors/soporte';
 import {
   contentDisposition,
   Disposicion,
@@ -112,14 +114,40 @@ export class S3Service {
         ? { ResponseContentType: options.contentType.split(';')[0].trim() }
         : {}),
     });
-    let expiresAt = new Date(Date.now() + this.signedUrlTtlSeconds * 1000);
+    const expiresIn = segundosDeLaFirma(this.signedUrlTtlSeconds);
+    let expiresAt = new Date(Date.now() + expiresIn * 1000);
     // Con credenciales temporales (rol IAM) la URL deja de servir cuando vence
     // la sesión, aunque el TTL sea mayor: `expiresAt` toma el menor de los dos.
     const { expiration } = await this.client.config.credentials();
     if (expiration && expiration < expiresAt) expiresAt = expiration;
-    const url = await getSignedUrl(this.client, command, {
-      expiresIn: this.signedUrlTtlSeconds,
-    });
+    const url = await getSignedUrl(this.client, command, { expiresIn });
     return { url, expiresAt };
   }
+}
+
+/**
+ * Tope de una URL firmada en modo soporte. S3 no revoca una firma ya emitida:
+ * si la sesión se revoca o termina, la URL sigue sirviendo hasta vencer. Con
+ * 60 s esa ventana queda acotada (riesgo aceptado, MODO-SOPORTE.md §9).
+ */
+export const FIRMA_MAXIMA_EN_SOPORTE_SEGUNDOS = 60;
+
+/**
+ * Cuánto dura una URL firmada. En modo soporte (§4.7): sin el alcance `files`
+ * no se firma nada (403 `SUPPORT_SCOPE_REQUIRED`; quien firma una foto para un
+ * listado lo atrapa y deja `null`), y con él dura lo menor entre el TTL, 60 s
+ * y lo que le queda a la sesión.
+ */
+export function segundosDeLaFirma(
+  ttlSegundos: number,
+  ahora: Date = new Date(),
+): number {
+  const soporte = auditContext.getStore()?.soporte;
+  if (!soporte) return ttlSegundos;
+  if (!soporte.alcance.includes('files')) throw soporteSinAlcance('files');
+  const restante = Math.floor(
+    (soporte.vence.getTime() - ahora.getTime()) / 1000,
+  );
+  if (restante < 1) throw soporteTerminado();
+  return Math.min(ttlSegundos, FIRMA_MAXIMA_EN_SOPORTE_SEGUNDOS, restante);
 }

@@ -26,6 +26,7 @@ import { Role } from '../../../src/role/entities/role.entity';
 import { User } from '../../../src/users/entities/user.entity';
 import { Redis } from 'ioredis';
 import { TestApp, TestEnv, telefonoDePrueba } from '../setup/test-env';
+import { conSesionDeSoporte } from './soporte';
 
 export type Cabeceras = Record<string, string>;
 export type Metodo = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -455,6 +456,9 @@ export async function sembrarEscenario(app: TestApp): Promise<Escenario> {
   };
   const clienteA = await cliente('cliente-a', distA.id);
   const clienteB = await cliente('cliente-b', distB.id);
+  // Modo soporte: un super admin con sesión activa sobre cada empresa.
+  const soporteA = await conSesionDeSoporte(app, distA.id, 'soporte-a');
+  const soporteB = await conSesionDeSoporte(app, distB.id, 'soporte-b');
 
   return {
     app,
@@ -472,9 +476,13 @@ export async function sembrarEscenario(app: TestApp): Promise<Escenario> {
       adminA: cabecerasDe_(adminA.email, 'panel-app'),
       adminA2: cabecerasDe_(adminA2.email, 'panel-app'),
       adminB: cabecerasDe_(adminB.email, 'panel-app'),
-      // El super admin sin distribuidora (cross-tenant) y "viendo como" A.
+      // El super admin sin sesión de soporte (plataforma) y en modo soporte
+      // sobre A o B (sólo lectura). `superEnA` es el «ver como» viejo: el
+      // X-Distributor ya no se lee para él.
       super: cabecerasDe_(superAdmin.email, 'panel-app'),
       superEnA: cabecerasDe_(superAdmin.email, 'panel-app', distA.slug),
+      soporteA: soporteA.cabeceras,
+      soporteB: soporteB.cabeceras,
       chofer: cabecerasDe_(chofer.email, 'driver-app'),
       clienteA: cabecerasDe_(clienteA.email, 'customer-app', distA.slug),
       clienteB: cabecerasDe_(clienteB.email, 'customer-app', distB.slug),

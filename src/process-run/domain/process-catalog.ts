@@ -40,6 +40,7 @@ export enum ProcessName {
   DOCUMENT_READING_PROPOSALS = 'document_reading_proposals',
   ROUTE_PLANNING_PROPOSE = 'route_planning_propose',
   ROUTE_PLANNING_CLOSE_DAYS = 'route_planning_close_days',
+  SUPPORT_SESSION_EXPIRY = 'support_session_expiry',
 }
 
 export enum ProcessRunStatus {
@@ -266,6 +267,11 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
   [ProcessName.PROCESS_RUN_WATCH]: {
     module: null,
     title: 'Vigilancia de los procesos automáticos',
+    periodSeconds: 5 * MIN,
+  },
+  [ProcessName.SUPPORT_SESSION_EXPIRY]: {
+    module: null,
+    title: 'Modo soporte: vencimiento de sesiones y pedidos',
     periodSeconds: 5 * MIN,
   },
   [ProcessName.PROCESS_RUN_PURGE]: {

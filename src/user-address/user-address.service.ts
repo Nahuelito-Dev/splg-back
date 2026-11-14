@@ -12,6 +12,7 @@ import { UpdateUserAddressDto } from './dto/update-user-address.dto';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { UsersService } from '../users/users.service';
 import { puntoDesdeCoordenadas } from '../common/geo/punto';
+import { usuarioDeLaDistribuidora } from '../common/tenancy/pertenencia';
 import { DireccionBorradaDto } from './dto/user-address-listado.dto';
 
 @Injectable()
@@ -83,7 +84,15 @@ export class UserAddressService {
     return await this.userAddressRepository.save(address);
   }
 
-  async findAll(paginationDto: PaginationDto): Promise<{
+  /**
+   * Las direcciones de los usuarios de UNA distribuidora (sus clientes, choferes
+   * y admins: la pertenencia de siempre, `usuarioDeLaDistribuidora`). Lo usa el
+   * super admin en modo soporte: nunca el listado de todas las empresas.
+   */
+  async findAll(
+    paginationDto: PaginationDto,
+    distributorId: string,
+  ): Promise<{
     addresses: UserAddress[];
     total: number;
     limit: number;
@@ -91,12 +100,16 @@ export class UserAddressService {
   }> {
     const { limit = 10, offset = 0 } = paginationDto;
 
-    const [addresses, total] = await this.userAddressRepository.findAndCount({
-      take: limit,
-      skip: offset,
-      relations: ['user'],
-      order: { isDefault: 'DESC', createdAt: 'DESC' },
-    });
+    const [addresses, total] = await this.userAddressRepository
+      .createQueryBuilder('address')
+      .leftJoinAndSelect('address.user', 'user')
+      .where(usuarioDeLaDistribuidora('address.userId'), { distributorId })
+      .orderBy('address.isDefault', 'DESC')
+      .addOrderBy('address.createdAt', 'DESC')
+      .addOrderBy('address.addressId', 'ASC')
+      .take(limit)
+      .skip(offset)
+      .getManyAndCount();
 
     return {
       addresses,

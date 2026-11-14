@@ -348,11 +348,10 @@ const casos: Array<Caso<Ctx>> = [
         issueDate: '2026-03-01',
       }),
   }),
-  subirDoc('super admin viendo como A', 'superEnA', 201, {
+  subirDoc('super admin en modo soporte sobre A', 'soporteA', 403, {
     antes: prep(),
     adjunto: doc('cedula'),
-    verificar: (cuerpo, c) =>
-      expect((cuerpo as Respuesta).attachment.ownerId).toBe(c.autoA),
+    code: 'SUPPORT_READ_ONLY',
   }),
   subirDoc('lector no disponible: la subida vale igual', 'adminA', 201, {
     antes: prep({ disponible: false }),
@@ -402,10 +401,12 @@ const casos: Array<Caso<Ctx>> = [
     ruta: '/v2/cars/no-es-uuid/documents',
     adjunto: doc('vtv'),
   }),
-  subirDoc('super admin sin distribuidora', 'super', 400, {
-    antes: prep(),
-    adjunto: doc('vtv'),
-  }),
+  subirDoc(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: prep(), adjunto: doc('vtv'), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   subirDoc('sin token', undefined, 401, {
     antes: prep(),
     adjunto: doc('vtv'),
@@ -537,10 +538,16 @@ const casos: Array<Caso<Ctx>> = [
     ruta: '/v2/cars/no-es-uuid/documents/patent-photo',
     adjunto: foto(),
   }),
-  subirFoto('super admin sin distribuidora', 'super', 400, {
-    antes: prep({ pdf: false }),
-    adjunto: foto(),
-  }),
+  subirFoto(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: prep({ pdf: false }),
+      adjunto: foto(),
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   subirFoto('sin token', undefined, 401, {
     antes: prep({ pdf: false }),
     adjunto: foto(),
@@ -586,12 +593,17 @@ const casos: Array<Caso<Ctx>> = [
     antes: conAdjunto,
     verificar: verificarListado,
   }),
-  listar('super admin viendo como A', 'superEnA', 200),
+  listar('super admin en modo soporte sobre A', 'soporteA', 200),
   listar('rol con flota.ver (sin catálogo)', 'rolFlota', 200),
   listar('id mal formado', 'adminA', 400, {
     ruta: '/v2/cars/no-es-uuid/documents',
   }),
-  listar('super admin sin distribuidora', 'super', 400),
+  listar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   listar('sin token', undefined, 401),
   listar('rol no permitido: chofer', 'chofer', 403),
   listar('rol no permitido: cliente', 'clienteA', 403),
@@ -655,7 +667,10 @@ const casos: Array<Caso<Ctx>> = [
     antes: conAdjunto,
     verificar: verificarBaja,
   }),
-  borrar('super admin viendo como A', 'superEnA', 204, { antes: conAdjunto }),
+  borrar('super admin en modo soporte sobre A', 'soporteA', 403, {
+    antes: conAdjunto,
+    code: 'SUPPORT_READ_ONLY',
+  }),
   borrar('ya dado de baja', 'adminA', 404, {
     antes: async (c) => {
       await conAdjunto(c);
@@ -673,7 +688,12 @@ const casos: Array<Caso<Ctx>> = [
     antes: conAdjunto,
     ruta: (c) => `/v2/cars/no-es-uuid/documents/${c.adjunto}`,
   }),
-  borrar('super admin sin distribuidora', 'super', 400, { antes: conAdjunto }),
+  borrar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: conAdjunto, code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   borrar('sin token', undefined, 401, { antes: conAdjunto }),
   borrar('rol no permitido: chofer', 'chofer', 403, { antes: conAdjunto }),
   borrar('rol del personal sin flota.gestionar', 'rolFlota', 403, {

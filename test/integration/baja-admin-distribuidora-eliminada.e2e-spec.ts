@@ -128,21 +128,21 @@ describe('Baja del administrador de una distribuidora eliminada (e2e)', () => {
     expect(await usuarioDadoDeBaja(admin.userId)).toBe(false);
   });
 
-  it('con X-Distributor de la distribuidora eliminada el guard responde 401', async () => {
+  it('el X-Distributor ya no se lee para el super admin: con el de la distribuidora eliminada la baja de plataforma pasa igual', async () => {
     const { distributorId, admin } = await distribuidoraEliminadaConSuAdmin();
     await http()
       .delete(`/admin/${admin.adminId}`)
       .set({ ...e.actores.super, 'X-Distributor': distributorId })
-      .expect(401);
-    expect(await usuarioDadoDeBaja(admin.userId)).toBe(false);
+      .expect(200);
+    expect(await usuarioDadoDeBaja(admin.userId)).toBe(true);
   });
 
-  it('el admin de una distribuidora eliminada visto desde otra distribuidora: 404', async () => {
+  it('el admin de una distribuidora eliminada visto desde otra: el admin 404, el super admin en modo soporte no escribe', async () => {
     const { admin } = await distribuidoraEliminadaConSuAdmin();
     await http()
       .delete(`/admin/${admin.adminId}`)
-      .set(e.actores.superEnA)
-      .expect(404);
+      .set(e.actores.soporteA)
+      .expect(403);
     await http()
       .delete(`/admin/${admin.adminId}`)
       .set(e.actores.adminA)
@@ -150,18 +150,18 @@ describe('Baja del administrador de una distribuidora eliminada (e2e)', () => {
     expect(await usuarioDadoDeBaja(admin.userId)).toBe(false);
   });
 
-  it('un admin de otra distribuidora (vigente) sigue con 404', async () => {
+  it('un admin de otra distribuidora (vigente): 404 para el admin; el super admin en modo soporte no escribe', async () => {
     await http()
       .delete(`/admin/${e.adminB.adminId}`)
-      .set(e.actores.superEnA)
-      .expect(404);
+      .set(e.actores.soporteA)
+      .expect(403);
     await http()
       .delete(`/admin/${e.adminB.adminId}`)
       .set(e.actores.adminA)
       .expect(404);
   });
 
-  it('distribuidora vigente: sin X-Distributor es 400 y con ella el último admin sigue protegido (409)', async () => {
+  it('distribuidora vigente: desde plataforma no hay camino para dar de baja a su admin (400, con o sin X-Distributor)', async () => {
     const res = await http()
       .delete(`/admin/${e.adminB.adminId}`)
       .set(e.actores.super)
@@ -169,10 +169,11 @@ describe('Baja del administrador de una distribuidora eliminada (e2e)', () => {
     expect((res.body as { message: string }).message).toBe(
       MENSAJE_FALTA_DISTRIBUIDORA,
     );
+    // El X-Distributor ya no lo habilita (cuentas de empresa desde plataforma: E3).
     await http()
       .delete(`/admin/${e.adminB.adminId}`)
       .set({ ...e.actores.super, 'X-Distributor': e.distB.slug })
-      .expect(409);
+      .expect(400);
     expect(await usuarioDadoDeBaja(e.adminB.userId)).toBe(false);
   });
 });

@@ -28,6 +28,7 @@ import {
   tomarCerrojo,
   vencerDocumento,
 } from './t5-base';
+import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT5;
 const ADMIN = 'adminA';
@@ -150,14 +151,15 @@ const casosAbrir: Array<Caso<C>> = [
     body: abrirBody,
     mensaje: /ya tiene la rendición/,
   }),
-  abrir('super admin viendo como la distribuidora', 'superEnA', 201, {
-    verificar: (b) => expect(b).toMatchObject({ status: 'open' }),
+  abrir('super admin en modo soporte sobre la distribuidora', 'soporteA', 403, {
     antes: chofer(),
     body: abrirBody,
+    code: 'SUPPORT_READ_ONLY',
   }),
-  abrir('super admin sin distribuidora', 'super', 400, {
+  abrir('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
     antes: chofer(),
     body: abrirBody,
+    code: 'SUPPORT_SESSION_REQUIRED',
   }),
   ...bordes(abrir, { prohibidos: SOLO_ADMIN, body: {} }),
 ];
@@ -198,7 +200,12 @@ const casosLecturas: Array<Caso<C>> = [
   ).map(([nombre, q]) =>
     listar(nombre, ADMIN, 400, { ruta: `/driver-settlements?${q}` }),
   ),
-  listar('super admin sin distribuidora', 'super', 400),
+  listar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(listar, { prohibidos: SOLO_ADMIN }),
 
   mia('la abre si no existe', undefined, 200, {
@@ -254,7 +261,10 @@ const casosLecturas: Array<Caso<C>> = [
     ruta: (c) => `/driver-settlements/${c.inexistente}`,
   }),
   una('de otra distribuidora', ADMIN, 404, { antes: rendicion('open', 'B') }),
-  una('super admin sin distribuidora', 'super', 400, { antes: rendicion() }),
+  una('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    antes: rendicion(),
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...bordes(una, {
     prohibidos: ADMIN_O_CHOFER,
     idMalo: '/driver-settlements/no',
@@ -405,10 +415,16 @@ const casosPresentar: Array<Caso<C>> = [
     ),
     body: { declaredCash: 10 },
   }),
-  presentar('super admin sin distribuidora', 'super', 400, {
-    antes: rendicion(),
-    body: { declaredCash: 10 },
-  }),
+  presentar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: rendicion(),
+      body: { declaredCash: 10 },
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   presentar('ya presentada', ADMIN, 409, {
     antes: rendicion('submitted'),
     body: { declaredCash: 10 },
@@ -543,10 +559,16 @@ const casosAprobar: Array<Caso<C>> = [
     ),
     body: aprobarBody,
   }),
-  aprobar('super admin sin distribuidora', 'super', 400, {
-    antes: rendicion('submitted'),
-    body: aprobarBody,
-  }),
+  aprobar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: rendicion('submitted'),
+      body: aprobarBody,
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   aprobar('todavía abierta', ADMIN, 409, {
     antes: rendicion(),
     body: aprobarBody,
@@ -609,9 +631,12 @@ const casosReabrir: Array<Caso<C>> = [
       rendicion('submitted', 'B'),
     ),
   }),
-  reabrir('super admin sin distribuidora', 'super', 400, {
-    antes: rendicion('submitted'),
-  }),
+  reabrir(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: rendicion('submitted'), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   reabrir('abierta', ADMIN, 409, {
     antes: rendicion(),
     mensaje: /sólo se reabre una presentada/,
@@ -688,10 +713,16 @@ const casosPrevia: Array<Caso<C>> = [
     antes: rendicion('open', 'B'),
     body: { declaredCash: 1 },
   }),
-  previa('super admin sin distribuidora', 'super', 400, {
-    antes: rendicion(),
-    body: { declaredCash: 1 },
-  }),
+  previa(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: rendicion(),
+      body: { declaredCash: 1 },
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   previa('presentada', ADMIN, 409, {
     antes: rendicion('submitted'),
     body: { declaredCash: 1 },
@@ -876,13 +907,20 @@ const casosRecorridosAdmin: Array<Caso<C>> = [
   ).map(([nombre, q]) =>
     lotes(nombre, ADMIN, 400, { ruta: `/v2/route-batches?${q}` }),
   ),
-  lotes('super admin sin distribuidora', 'super', 400),
+  lotes('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...bordes(lotes, { prohibidos: SOLO_ADMIN }),
 
   ajustes('consulta', ADMIN, 200, {
     verificar: (b) => expect(b).toHaveProperty('params.maxBatchSize'),
   }),
-  ajustes('super admin sin distribuidora', 'super', 400),
+  ajustes(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(ajustes, { prohibidos: SOLO_ADMIN }),
 
   cambiar('cambia todos los que vienen', ADMIN, 200, {
@@ -927,7 +965,12 @@ const casosRecorridosAdmin: Array<Caso<C>> = [
   ...reglaInt('batchingHoldMinutes', -1, 1.5),
   ...reglaInt('batchingHoldMinutes', 721),
   cambiar('campo extra', ADMIN, 400, { body: { ajeno: 1 } }),
-  cambiar('super admin sin distribuidora', 'super', 400, { body: {} }),
+  cambiar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { body: {}, code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(cambiar, { prohibidos: SOLO_ADMIN, body: {} }),
 
   armar('módulo apagado', ADMIN, 409, {
@@ -955,7 +998,9 @@ const casosRecorridosAdmin: Array<Caso<C>> = [
       await parametros(c, 0);
     },
   }),
-  armar('super admin sin distribuidora', 'super', 400),
+  armar('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...bordes(armar, { prohibidos: SOLO_ADMIN }),
 
   unLote('administrador', ADMIN, 200, {
@@ -971,7 +1016,12 @@ const casosRecorridosAdmin: Array<Caso<C>> = [
       c.p.lote = (await sembrarLote(c, { dist: 'B' })).batchId;
     },
   }),
-  unLote('super admin sin distribuidora', 'super', 400, { antes: ofrecido() }),
+  unLote(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: ofrecido(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(unLote, { prohibidos: SOLO_ADMIN, idMalo: '/v2/route-batches/no' }),
 
   deshacer('ofrecido', ADMIN, 201, {
@@ -994,9 +1044,12 @@ const casosRecorridosAdmin: Array<Caso<C>> = [
       },
     ),
   }),
-  deshacer('super admin sin distribuidora', 'super', 400, {
-    antes: ofrecido(),
-  }),
+  deshacer(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: ofrecido(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   deshacer('ya tiene chofer', ADMIN, 409, {
     antes: asignado(RouteBatchStatus.ASSIGNED),
     mensaje: /todavía no tiene chofer/,
@@ -1299,6 +1352,12 @@ describe('Matriz HTTP T5: rendiciones y recorridos (e2e)', () => {
   afterAll(async () => env.cleanup());
   const ver = () => ctx;
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(listar, abrir),
+  );
   correrMatriz('abrir rendición', ver, casosAbrir);
   correrMatriz('lecturas de rendiciones', ver, casosLecturas);
   correrMatriz('presentar', ver, casosPresentar);

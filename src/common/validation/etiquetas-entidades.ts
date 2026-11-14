@@ -32,6 +32,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   Incident: 'Incidencia',
   JobPosition: 'Puesto de trabajo',
   StaffRole: 'Rol del personal',
+  SupportSession: 'Sesión de soporte',
   MaintenancePlan: 'Plan de flota',
   MaintenanceTask: 'Tarea de flota',
   MaintenanceTaskAttachment: 'Adjunto de tarea',

@@ -84,6 +84,9 @@ async function bootstrap() {
       // Multi-tenant: el panel super_admin y las apps eligen distribuidora con
       // este header; sin permitirlo, el preflight CORS bloquea la request.
       'X-Distributor',
+      // Modo soporte: el super admin manda su sesión de soporte en cada
+      // consulta a una empresa.
+      'X-Support-Session',
       // Observabilidad: si el front propaga un request-id propio (ej. para
       // correlacionar con Sentry/logs propios), el preflight debe permitirlo.
       'X-Request-Id',

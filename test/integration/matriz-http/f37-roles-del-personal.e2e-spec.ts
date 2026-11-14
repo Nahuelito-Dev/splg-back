@@ -18,13 +18,13 @@ import { Permiso } from '../../../src/common/decorators/permiso.decorator';
 import { RoleType } from '../../../src/common/constants/role-type.enum';
 import { Distributor } from '../../../src/distributor/entities/distributor.entity';
 import { PERMISOS } from '../../../src/common/permisos/catalogo';
+import { conSesionDeSoporte } from './soporte';
 import { TestEnv, createTestApp } from '../setup/test-env';
 import {
   Cabeceras,
   Caso,
   Escenario,
   Persona,
-  cabecerasDe_,
   correrMatriz,
   endpoint,
   llamar,
@@ -74,6 +74,8 @@ interface Ctx extends Escenario {
   /** La D: `adminD1` (sistema, el único que gestiona roles) y `adminD2` (sin roles.gestionar). */
   distD: { id: string; slug: string };
   adminD1: ConAdmin;
+  /** Admin de la D que gestiona administradores y clientes, pero no roles. */
+  adminD3: ConAdmin;
   adminD2: ConAdmin;
 }
 
@@ -164,6 +166,7 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       distD,
       adminD1: await persona('admin-d1', distD.id),
       adminD2: await persona('admin-d2', distD.id),
+      adminD3: await persona('admin-d3', distD.id),
       rolSistemaA: '',
       rolSistemaB: '',
       rolSistemaC: '',
@@ -181,16 +184,15 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     ctx.actores.adminNada = ctx.adminNada.cabeceras;
     ctx.actores.adminC = ctx.adminC.cabeceras;
     ctx.actores.adminRoles = ctx.adminRoles.cabeceras;
-    ctx.actores.superEnD = cabecerasDe_(
-      e.superAdmin.email,
-      'panel-app',
-      distD.slug,
-    );
-    ctx.actores.superEnC = cabecerasDe_(
-      e.superAdmin.email,
-      'panel-app',
-      distC.slug,
-    );
+    ctx.actores.adminD1 = ctx.adminD1.cabeceras;
+    ctx.actores.adminD3 = ctx.adminD3.cabeceras;
+    // Modo soporte sobre C y D (las de A y B vienen del escenario).
+    ctx.actores.soporteC = (
+      await conSesionDeSoporte(env.app, distC.id, 'soporte-c')
+    ).cabeceras;
+    ctx.actores.soporteD = (
+      await conSesionDeSoporte(env.app, distD.id, 'soporte-d')
+    ).cabeceras;
 
     const sistema = async (actor: string) =>
       id(
@@ -208,12 +210,14 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     ctx.rolNada = await crearRol('adminA', [], 'Sin permisos');
     ctx.rolEditar = await crearRol('adminA', ['flota.ver'], 'Para editar');
     ctx.rolB = await crearRol('adminB', ['stock.ver'], 'De la B');
+    // La preparación de C y D la hace su admin (de sistema): el super admin ya
+    // no opera una empresa con X-Distributor (modo soporte, sólo lectura).
     ctx.rolGestorDeRolesC = await crearRol(
-      'superEnC',
+      'adminC',
       ['roles.gestionar', 'administradores.gestionar'],
       'Gestor de roles',
     );
-    ctx.rolSinRolesC = await crearRol('superEnC', ['pedidos.ver'], 'Ventas');
+    ctx.rolSinRolesC = await crearRol('adminC', ['pedidos.ver'], 'Ventas');
     const asignar = (actor: string, admin: ConAdmin, rol: string) =>
       pedir('put', `/v2/admins/${admin.adminId}/staff-role`, actor, 200, {
         staffRoleId: rol,
@@ -221,8 +225,12 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     await asignar('adminA', ctx.adminLector, ctx.rolLector);
     await asignar('adminA', ctx.adminGestor, ctx.rolGestor);
     await asignar('adminA', ctx.adminNada, ctx.rolNada);
-    // La C queda con su único admin en un rol propio que gestiona roles.
-    await asignar('superEnC', ctx.adminC, ctx.rolGestorDeRolesC);
+    // La C queda con su único admin en un rol propio que gestiona roles (nadie
+    // se asigna a sí mismo por la API: se deja en la base del contenedor).
+    await ds.query(`UPDATE admin SET staff_role_id = $1 WHERE admin_id = $2`, [
+      ctx.rolGestorDeRolesC,
+      ctx.adminC.adminId,
+    ]);
     ctx.rolDeRolesA = await crearRol(
       'adminA',
       ['roles.gestionar', 'administradores.gestionar', 'pedidos.ver'],
@@ -231,9 +239,20 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     await asignar('adminA', ctx.adminRoles, ctx.rolDeRolesA);
     // En la D sólo `adminD1` (sistema) gestiona roles.
     await asignar(
-      'superEnD',
+      'adminD1',
       ctx.adminD2,
-      await crearRol('superEnD', ['pedidos.ver'], 'Ventas D'),
+      await crearRol('adminD1', ['pedidos.ver'], 'Ventas D'),
+    );
+    // Gestiona administradores y clientes de la D, pero no roles: con él se prueba
+    // que la D no se queda sin nadie que gestione roles.
+    await asignar(
+      'adminD1',
+      ctx.adminD3,
+      await crearRol(
+        'adminD1',
+        ['administradores.gestionar', 'clientes.gestionar'],
+        'Administración D',
+      ),
     );
   }, 300000);
 
@@ -412,10 +431,13 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     listar('admin de la B no ve los de la A', 'adminB', 200, {
       verificar: (c, x) => expect(JSON.stringify(c)).not.toContain(x.rolLector),
     }),
-    listar('super admin sin X-Distributor', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
-    }),
-    listar('super admin viendo la A', 'superEnA', 200, {
+    listar(
+      'super admin sin X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
+    listar('super admin viendo la A (en modo soporte)', 'soporteA', 200, {
       verificar: (c, x) => expect(JSON.stringify(c)).toContain(x.rolLector),
     }),
     // -------------------------------------------------------------- crear rol
@@ -443,10 +465,15 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       code: 'UNKNOWN_PERMISSION',
       mensaje: '«pedidos.borrar»',
     }),
-    crear('super admin sin X-Distributor', 'super', 400, {
-      body: { name: nombre(), permissions: [] },
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    crear(
+      'super admin sin X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        body: { name: nombre(), permissions: [] },
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
     crear(
       'nombre del rol de sistema (sin distinguir mayúsculas)',
       'adminA',
@@ -481,8 +508,9 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     crear('el mismo nombre en otra distribuidora sí', 'adminB', 201, {
       body: { name: 'Lector', permissions: [] },
     }),
-    crear('super admin viendo la A', 'superEnA', 201, {
+    crear('super admin viendo la A (en modo soporte)', 'soporteA', 403, {
       body: { name: nombre(), permissions: ['reportes.ver'] },
+      code: 'SUPPORT_READ_ONLY',
     }),
     crear('Idempotency-Key repetida con otro cuerpo', 'adminA', 422, {
       body: { name: nombre(), permissions: [] },
@@ -506,7 +534,12 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       ruta: (c) => `/v2/staff-roles/${c.inexistente}`,
     }),
     ficha('rol de otra distribuidora', 'adminB', 404),
-    ficha('super admin sin X-Distributor', 'super', 400),
+    ficha(
+      'super admin sin X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     ficha('admin de la A', 'adminA', 200, {
       verificar: (c, x) =>
         expect(c).toMatchObject({
@@ -515,14 +548,19 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
           adminCount: 1,
         }),
     }),
-    ficha('el de sistema lista el catálogo entero', 'superEnA', 200, {
-      ruta: (c) => `/v2/staff-roles/${c.rolSistemaA}`,
-      verificar: (c) =>
-        expect(c).toMatchObject({
-          isSystem: true,
-          permissions: [...PERMISOS],
-        }),
-    }),
+    ficha(
+      'el de sistema lista el catálogo entero (en modo soporte)',
+      'soporteA',
+      200,
+      {
+        ruta: (c) => `/v2/staff-roles/${c.rolSistemaA}`,
+        verificar: (c) =>
+          expect(c).toMatchObject({
+            isSystem: true,
+            permissions: [...PERMISOS],
+          }),
+      },
+    ),
     // --------------------------------------------------------------- editar
     editar('sin token', undefined, 401, { ...sinToken, body: {} }),
     ...cuentasDeLasApps(editar, { body: {} }),
@@ -571,13 +609,13 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       body: { permissions: ['pedidos.ver'] },
     }),
     editar(
-      'quitarle roles.gestionar al último que lo tiene (C)',
-      'superEnC',
-      409,
+      'quitarle roles.gestionar al último que lo tiene (C) (en modo soporte)',
+      'soporteC',
+      403,
       {
         ruta: (c) => `/v2/staff-roles/${c.rolGestorDeRolesC}`,
         body: { permissions: ['administradores.gestionar'] },
-        code: 'LAST_ROLES_MANAGER',
+        code: 'SUPPORT_READ_ONLY',
       },
     ),
     editar('admin de la A', 'adminA', 200, {
@@ -639,18 +677,24 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       ruta: (c) => `/v2/admins/${c.adminB.adminId}/staff-role`,
       body: (c) => ({ staffRoleId: c.rolGestor }),
     }),
-    asignar('a un super admin', 'superEnA', 404, {
+    asignar('a un super admin (en modo soporte)', 'soporteA', 403, {
       ruta: (c) => `/v2/admins/${c.superAdmin.adminId}/staff-role`,
       body: (c) => ({ staffRoleId: c.rolGestor }),
+      code: 'SUPPORT_READ_ONLY',
     }),
     asignar('rol de otra distribuidora', 'adminA', 404, {
       body: (c) => ({ staffRoleId: c.rolB }),
       mensaje: 'Rol no encontrado',
     }),
-    asignar('super admin sin X-Distributor', 'super', 400, {
-      body: (c) => ({ staffRoleId: c.rolGestor }),
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    asignar(
+      'super admin sin X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        body: (c) => ({ staffRoleId: c.rolGestor }),
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
     asignar('cambiarse el propio rol', 'adminC', 403, {
       ruta: (c) => `/v2/admins/${c.adminC.adminId}/staff-role`,
       body: (c) => ({ staffRoleId: c.rolSistemaC }),
@@ -674,13 +718,13 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       body: (c) => ({ staffRoleId: c.rolLector }),
     }),
     asignar(
-      'sacarle el último roles.gestionar a la C (super admin)',
-      'superEnC',
-      409,
+      'sacarle el último roles.gestionar a la C (super admin) (en modo soporte)',
+      'soporteC',
+      403,
       {
         ruta: (c) => `/v2/admins/${c.adminC.adminId}/staff-role`,
         body: (c) => ({ staffRoleId: c.rolSinRolesC }),
-        code: 'LAST_ROLES_MANAGER',
+        code: 'SUPPORT_READ_ONLY',
       },
     ),
     asignar('admin de la A', 'adminA', 200, {
@@ -696,8 +740,9 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
           },
         }),
     }),
-    asignar('super admin viendo la A', 'superEnA', 200, {
+    asignar('super admin viendo la A (en modo soporte)', 'soporteA', 403, {
       body: (c) => ({ staffRoleId: c.rolSistemaA }),
+      code: 'SUPPORT_READ_ONLY',
     }),
     asignar('Idempotency-Key repetida con otro cuerpo', 'adminA', 422, {
       body: (c) => ({ staffRoleId: c.rolLector }),
@@ -717,26 +762,59 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
       code: 'PERMISSION_DENIED',
       mensajeExacto: 'No tenés permiso para ver los pedidos',
     }),
-    prueba('super admin', 'super', 200),
+    prueba('super admin (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     pruebaGestionar('ver no implica gestionar', 'adminLector', 403, {
       code: 'PERMISSION_DENIED',
       mensajeExacto: 'No tenés permiso para gestionar los pedidos',
     }),
     pruebaGestionar('rol con pedidos.gestionar', 'adminGestor', 200),
     // ----------------------------- bajas y bloqueos: el último gestor de roles
-    bajaAdmin('el único que gestiona los roles de la D', 'superEnD', 409, {
+    bajaAdmin('el único que gestiona los roles de la D', 'adminD3', 409, {
       code: 'LAST_ROLES_MANAGER',
       mensajeExacto:
         'Tiene que quedar al menos un administrador activo con permiso para gestionar los roles y permisos: asigná ese permiso a otro antes',
     }),
-    bajaUsuario('el único que gestiona los roles de la D', 'superEnD', 409, {
+    bajaAdmin(
+      'el único que gestiona los roles de la D (en modo soporte)',
+      'soporteD',
+      403,
+      { code: 'SUPPORT_READ_ONLY' },
+    ),
+    bajaAdmin('super admin sin sesión de soporte (plataforma)', 'super', 400, {
+      code: 'MISSING_DISTRIBUTOR',
+    }),
+    bajaUsuario('el único que gestiona los roles de la D', 'adminD3', 409, {
       code: 'LAST_ROLES_MANAGER',
     }),
-    bloquear('el único que gestiona los roles de la D', 'superEnD', 409, {
+    bajaUsuario(
+      'el único que gestiona los roles de la D (en modo soporte)',
+      'soporteD',
+      403,
+      { code: 'SUPPORT_READ_ONLY' },
+    ),
+    bloquear('el único que gestiona los roles de la D', 'adminD3', 409, {
       body: { block: true },
       code: 'LAST_ROLES_MANAGER',
     }),
-    bloquear('otro admin de la D que no gestiona roles', 'superEnD', 200, {
+    bloquear(
+      'el único que gestiona los roles de la D (en modo soporte)',
+      'soporteD',
+      403,
+      { body: { block: true }, code: 'SUPPORT_READ_ONLY' },
+    ),
+    bloquear(
+      'otro admin de la D que no gestiona roles (en modo soporte)',
+      'soporteD',
+      403,
+      {
+        ruta: (c) => `/users/${c.adminD2.userId}/block`,
+        body: { block: true },
+        code: 'SUPPORT_READ_ONLY',
+      },
+    ),
+    bloquear('otro admin de la D que no gestiona roles', 'adminD3', 200, {
       ruta: (c) => `/users/${c.adminD2.userId}/block`,
       body: { block: true },
     }),
@@ -819,12 +897,19 @@ describe('Matriz HTTP F37: roles y permisos del personal (e2e)', () => {
     });
 
     it('con otro admin con roles.gestionar, quitárselo al rol propio de la C pasa', async () => {
-      // Un segundo admin de la C queda con «Administrador» (alta sin rol).
-      await sembrarPersona(env.app, 'admin', 'admin-c2', ctx.distC.id);
+      // Un segundo admin de la C queda con «Administrador» (alta sin rol), y es
+      // él quien le saca roles.gestionar al rol propio del primero.
+      const adminC2 = await sembrarPersona(
+        env.app,
+        'admin',
+        'admin-c2',
+        ctx.distC.id,
+      );
+      ctx.actores.adminC2 = adminC2.cabeceras;
       const editado = await pedir(
         'patch',
         `/v2/staff-roles/${ctx.rolGestorDeRolesC}`,
-        'superEnC',
+        'adminC2',
         200,
         { permissions: ['administradores.gestionar'] },
       );

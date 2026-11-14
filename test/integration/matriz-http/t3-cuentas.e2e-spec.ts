@@ -17,6 +17,7 @@ import {
 } from './matriz';
 import { EscenarioT3, sembrarBaseT3 } from './t3-base';
 import { usarClave } from './t2-base';
+import { casosEnModoSoporte } from './soporte';
 
 describe('Matriz HTTP T3: cuentas corrientes (e2e)', () => {
   let env: TestEnv;
@@ -138,9 +139,12 @@ describe('Matriz HTTP T3: cuentas corrientes (e2e)', () => {
     aging('sin token', undefined, 401),
     aging('cliente', 'clienteA', 403),
     aging('chofer', 'chofer', 403),
-    aging('super admin sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    aging(
+      'super admin sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     una('administrador de A', 'adminAConTenant', 200),
     una('id mal formado', 'adminAConTenant', 400, {
       ruta: '/customer-accounts/xx',
@@ -614,4 +618,10 @@ describe('Matriz HTTP T3: cuentas corrientes (e2e)', () => {
     }),
   ];
   correrMatriz('escrituras de cuenta', ver, escrituras);
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(listar, crear),
+  );
 });

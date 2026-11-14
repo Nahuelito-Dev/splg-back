@@ -36,6 +36,7 @@ import {
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Headers = Record<string, string>;
 
@@ -196,11 +197,12 @@ describe('Comprobante de transferencia y datos bancarios (e2e, API v2)', () => {
         .set(e.adminA)
         .send({ alias: 'corto' })
         .expect(400);
+      // El super admin no carga datos bancarios de una empresa (sin sesión 403).
       await http()
         .put('/v2/distributor/bank-details')
         .set(e.supSinHeader)
         .send({ alias: 'garrafas.splg' })
-        .expect(400);
+        .expect(403);
 
       const guardado = await http()
         .put('/v2/distributor/bank-details')
@@ -331,19 +333,39 @@ describe('Comprobante de transferencia y datos bancarios (e2e, API v2)', () => {
       expect(bajado.status).toBe(200);
       expect(Buffer.from(await bajado.arrayBuffer()).length).toBeGreaterThan(0);
 
-      // Lo ve el cliente dueño y el super admin con X-Distributor.
+      // Lo ve el cliente dueño. El super admin: sin sesión 403; en modo soporte con
+      // el alcance «Archivos», con la URL; sin él, la lista con la URL en null.
       await http()
         .get(`/v2/orders/${p.orderId}/transfer-receipt`)
         .set(e.cliente)
         .expect(200);
       await http()
         .get(`/v2/orders/${p.orderId}/transfer-receipt`)
-        .set(e.supEnA)
-        .expect(200);
-      await http()
-        .get(`/v2/orders/${p.orderId}/transfer-receipt`)
         .set(e.supSinHeader)
-        .expect(400);
+        .expect(403);
+      const conArchivos = await conSesionDeSoporte(
+        env.app,
+        e.dA.distributorId,
+        'sop',
+        ['files'],
+      );
+      const sinArchivos = await conSesionDeSoporte(
+        env.app,
+        e.dA.distributorId,
+        'sop2',
+      );
+      const vistaCon = await http()
+        .get(`/v2/orders/${p.orderId}/transfer-receipt`)
+        .set(conArchivos.cabeceras)
+        .expect(200);
+      const vistaSin = await http()
+        .get(`/v2/orders/${p.orderId}/transfer-receipt`)
+        .set(sinArchivos.cabeceras)
+        .expect(200);
+      expect([
+        typeof (vistaCon.body as Array<{ url: unknown }>)[0].url,
+        (vistaSin.body as Array<{ url: unknown }>)[0].url,
+      ]).toEqual(['string', null]);
     });
 
     it('aislamiento: otro cliente y otra distribuidora no suben ni ven el comprobante (404)', async () => {

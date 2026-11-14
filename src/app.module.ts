@@ -17,6 +17,9 @@ import {
 } from './common/guards/app-throttler.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionGuard } from './admin/guards/permission.guard';
+import { AlcanceGuard } from './common/guards/alcance.guard';
+import { SupportModule } from './support/support.module';
+import { PlatformModule } from './platform/platform.module';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { RegistroModule } from './registro/registro.module';
@@ -69,6 +72,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { enteroPositivoDeEnv } from './common/config/entero-positivo';
 import { EnvConfiguration } from './common/config/env.config';
+import { plataformaConfig } from './common/config/plataforma.config';
 import { JoiValidationSchema } from './common/config/joi.validation';
 import { RedisModule } from './redis/redis.module';
 import { ImportModule } from './import/import.module';
@@ -90,7 +94,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      load: [EnvConfiguration],
+      load: [EnvConfiguration, plataformaConfig],
       validationSchema: JoiValidationSchema,
       isGlobal: true,
       // Los tests de integración reciben el entorno de sus contenedores: el
@@ -283,6 +287,8 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     ExportsModule,
     PeoplePhotosModule,
     ImportModule,
+    SupportModule,
+    PlatformModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,
@@ -307,6 +313,12 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
       // para los endpoints con @Permiso y sólo restringe a los admin.
       provide: APP_GUARD,
       useClass: PermissionGuard,
+    },
+    {
+      // Modo soporte (después de los permisos): el super admin sólo ve lo de
+      // una empresa con una sesión de soporte activa, y sólo a leer.
+      provide: APP_GUARD,
+      useClass: AlcanceGuard,
     },
     {
       // Logging estructurado, PRIMERO en la cadena de interceptors: mide la

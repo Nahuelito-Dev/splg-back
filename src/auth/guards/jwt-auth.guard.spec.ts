@@ -13,6 +13,18 @@ import {
   PublicIdentificable,
 } from '../../common/decorators/isPublic.decorator';
 import { SinDistribuidora } from '../../common/decorators/sin-distribuidora.decorator';
+import { Auth } from '../../common/decorators/auth.decorator';
+import { soporteTerminado } from '../../common/errors/soporte';
+import { SupportSessionResolver } from '../../support/application/support-session.resolver';
+
+/** Un resolvedor de sesiones de soporte que falla si alguien lo llama. */
+function soporteNoUsado(): SupportSessionResolver {
+  return {
+    vigente: jest.fn(() => {
+      throw new Error('no debería consultar la sesión de soporte');
+    }),
+  } as unknown as SupportSessionResolver;
+}
 
 /** La marca va en la CLASE, no en el método: así la prueba exige que el guard
  * la busque con `getAllAndOverride` sobre handler Y clase (si sólo mirara el
@@ -99,6 +111,7 @@ describe('AuthGuard — @SinDistribuidora() ignora el header, no el tenant', () 
       authService as unknown as AuthService,
       usersService as unknown as UsersService,
       distributorService as unknown as DistributorService,
+      soporteNoUsado(),
     );
   });
 
@@ -124,10 +137,29 @@ describe('AuthGuard — @SinDistribuidora() ignora el header, no el tenant', () 
     expect(distributorService.assertActive).not.toHaveBeenCalled();
   });
 
-  it('super admin SIN la marca: el mismo header inexistente sigue rompiendo la request', async () => {
+  it('super admin SIN la marca: el X-Distributor ya no se lee (modo soporte): queda null', async () => {
     loguearComo(superAdmin);
     distributorService.findBySlug.mockRejectedValue(new NotFoundException());
     const request = requestCon(headerConDistribuidoraInexistente);
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBeNull();
+    expect(distributorService.findBySlug).not.toHaveBeenCalled();
+  });
+
+  it('cliente SIN la marca: el mismo header inexistente sigue rompiendo la request', async () => {
+    loguearComo({
+      email: 'cliente@splg.com',
+      blocked: false,
+      role: { type: RoleType.CUSTOMER },
+    } as unknown as User);
+    distributorService.findBySlug.mockRejectedValue(new NotFoundException());
+    const request = requestCon({
+      ...headerConDistribuidoraInexistente,
+      'x-client-source': 'customer-app',
+    });
 
     await expect(
       guard.canActivate(contextoCon(request, ControladorSinMarca)),
@@ -182,6 +214,7 @@ describe('AuthGuard — @PublicIdentificable()', () => {
       authService as unknown as AuthService,
       usersService as unknown as UsersService,
       distributorService as unknown as DistributorService,
+      soporteNoUsado(),
     );
   });
 
@@ -283,6 +316,7 @@ describe('AuthGuard — mensajes del 401', () => {
       authService as unknown as AuthService,
       usersService as unknown as UsersService,
       {} as unknown as DistributorService,
+      soporteNoUsado(),
     );
   });
 
@@ -331,5 +365,148 @@ describe('AuthGuard — mensajes del 401', () => {
     ).rejects.toThrow(
       'Usuario inexistente o sin un rol válido para esta aplicación',
     );
+  });
+});
+
+@Auth(RoleType.SUPER_ADMIN)
+class ControladorDePlataforma {
+  metodo(): void {}
+}
+
+/**
+ * Modo soporte: el super admin no lee `X-Distributor`; con `X-Support-Session`
+ * en una ruta de empresa o de las dos, el tenant es el de la sesión.
+ */
+describe('AuthGuard — modo soporte del super admin', () => {
+  const reflector = new Reflector();
+  let authService: { decodeToken: jest.Mock };
+  let usersService: { findOneByEmail: jest.Mock };
+  let distributorService: { findBySlug: jest.Mock; assertActive: jest.Mock };
+  let soporte: { vigente: jest.Mock };
+  let guard: AuthGuard;
+
+  const superAdmin = {
+    userId: 'super-1',
+    email: 'super@splg.com',
+    blocked: false,
+    role: { type: RoleType.SUPER_ADMIN },
+  } as unknown as User;
+  const sesion = {
+    id: '11111111-1111-4111-8111-111111111111',
+    distributorId: 'empresa-de-la-sesion',
+    scope: [],
+    expiresAt: new Date('2026-11-13T20:00:00Z'),
+  };
+  const conSesion = {
+    authorization: 'Bearer token-valido',
+    'x-client-source': 'panel-app',
+    'x-distributor': 'otra-empresa',
+    'x-support-session': sesion.id,
+  };
+
+  beforeEach(() => {
+    authService = { decodeToken: jest.fn() };
+    usersService = { findOneByEmail: jest.fn() };
+    distributorService = { findBySlug: jest.fn(), assertActive: jest.fn() };
+    soporte = { vigente: jest.fn().mockResolvedValue(sesion) };
+    guard = new AuthGuard(
+      reflector,
+      authService as unknown as AuthService,
+      usersService as unknown as UsersService,
+      distributorService as unknown as DistributorService,
+      soporte as unknown as SupportSessionResolver,
+    );
+  });
+
+  function loguearComo(usuario: User): void {
+    authService.decodeToken.mockResolvedValue({ email: usuario.email });
+    usersService.findOneByEmail.mockResolvedValue(usuario);
+  }
+
+  it('ruta de empresa con sesión: el tenant es el de la sesión, no el del X-Distributor', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conSesion);
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+
+    expect(soporte.vigente).toHaveBeenCalledWith(sesion.id, 'super-1');
+    expect(request.distributorId).toBe('empresa-de-la-sesion');
+    expect(request.supportSession).toEqual(sesion);
+    expect(request.user?.distributor_id).toBe('empresa-de-la-sesion');
+    expect(request.user?.support_session_id).toBe(sesion.id);
+    expect(distributorService.findBySlug).not.toHaveBeenCalled();
+  });
+
+  it('sin el encabezado de soporte: sin tenant ni sesión', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon({
+      authorization: 'Bearer token-valido',
+      'x-client-source': 'panel-app',
+      'x-distributor': 'otra-empresa',
+    });
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(request.distributorId).toBeNull();
+    expect(request.supportSession).toBeUndefined();
+    expect(request.user?.support_session_id).toBeNull();
+    expect(soporte.vigente).not.toHaveBeenCalled();
+  });
+
+  it('ruta de plataforma: la sesión no se mira (tenant null)', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conSesion);
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorDePlataforma)),
+    ).resolves.toBe(true);
+    expect(soporte.vigente).not.toHaveBeenCalled();
+    expect(request.distributorId).toBeNull();
+    expect(request.supportSession).toBeUndefined();
+  });
+
+  it('ruta @SinDistribuidora: la sesión tampoco se mira', async () => {
+    loguearComo(superAdmin);
+    const request = requestCon(conSesion);
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorMarcadoEnClase)),
+    ).resolves.toBe(true);
+    expect(soporte.vigente).not.toHaveBeenCalled();
+    expect(request.distributorId).toBeNull();
+  });
+
+  it('una sesión terminada corta la request con el 403 del resolvedor', async () => {
+    loguearComo(superAdmin);
+    soporte.vigente.mockRejectedValue(soporteTerminado());
+    const request = requestCon(conSesion);
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).rejects.toMatchObject({
+      response: { statusCode: 403, code: 'SUPPORT_SESSION_ENDED' },
+    });
+    expect(request.supportSession).toBeUndefined();
+  });
+
+  it('un admin que manda X-Support-Session: se ignora, sigue en su distribuidora', async () => {
+    loguearComo({
+      userId: 'admin-1',
+      email: 'admin@splg.com',
+      blocked: false,
+      role: { type: RoleType.ADMIN },
+      admins: [{ distributorId: 'distribuidora-del-admin' }],
+    } as unknown as User);
+    const request = requestCon(conSesion);
+
+    await expect(
+      guard.canActivate(contextoCon(request, ControladorSinMarca)),
+    ).resolves.toBe(true);
+    expect(soporte.vigente).not.toHaveBeenCalled();
+    expect(request.distributorId).toBe('distribuidora-del-admin');
+    expect(request.supportSession).toBeUndefined();
   });
 });

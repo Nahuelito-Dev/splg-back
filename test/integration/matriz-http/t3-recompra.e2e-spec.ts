@@ -17,6 +17,7 @@ import {
 import { Order, PaymentMethod } from '../../../src/order/entities/order.entity';
 import { UserAddress } from '../../../src/user-address/entities/user-address.entity';
 import { usarClave } from './t2-base';
+import { casosEnModoSoporte } from './soporte';
 
 describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
   let env: TestEnv;
@@ -232,9 +233,12 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
     forecast('admin usa la distribuidora de su perfil', 'adminA', 200, {
       cabeceras: { 'X-Distributor': null },
     }),
-    forecast('super admin sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
-    }),
+    forecast(
+      'super admin sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     customerForecast('admin de A', 'adminAConTenant', 200),
     customerForecast('id mal formado', 'adminAConTenant', 400, {
       ruta: '/v2/repurchase/forecast/customers/xx',
@@ -604,9 +608,9 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
     run('sin token', undefined, 401, { body: { dryRun: true } }),
     run('cliente', 'clienteA', 403, { body: { dryRun: true } }),
     run('chofer', 'chofer', 403, { body: { dryRun: true } }),
-    run('super admin sin distribuidora', 'super', 400, {
+    run('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
       body: { dryRun: true },
-      code: 'MISSING_DISTRIBUTOR',
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     run('admin usa la distribuidora de su perfil', 'adminA', 200, {
       body: { dryRun: true },
@@ -614,4 +618,10 @@ describe('Matriz HTTP T3: recompra v2 (e2e)', () => {
     }),
   ];
   correrMatriz('escrituras de recompra', ver, writes);
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(adminInvitations, run),
+  );
 });

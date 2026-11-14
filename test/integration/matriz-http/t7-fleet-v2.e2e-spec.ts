@@ -1,6 +1,7 @@
 import { createTestApp, TestEnv } from '../setup/test-env';
 import { Caso, correrMatriz, endpoint, Metodo } from './matriz';
 import { EscenarioT7, sembrarBaseT7 } from './t7-base';
+import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT7;
 const ADMIN = 'adminA';
@@ -302,5 +303,14 @@ describe('Matriz HTTP T7 · flota v2', () => {
     ctx = await sembrarBaseT7(env);
   });
   afterAll(async () => env?.cleanup());
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    () => ctx,
+    casosEnModoSoporte(
+      tareas,
+      endpoint<C>('patch', '/orders/{id}', (c) => `/orders/${c.inexistente}`),
+    ),
+  );
   correrMatriz('Fleet v2', () => ctx, casos);
 });

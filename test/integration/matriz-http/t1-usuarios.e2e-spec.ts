@@ -23,6 +23,7 @@ import {
   reiniciarCuposDelThrottler,
   verificarCastellano,
 } from './matriz';
+import { casosEnModoSoporte } from './soporte';
 
 interface Ctx extends Escenario {
   /** Choferes de A para operaciones de a una (cada caso destructivo, el suyo). */
@@ -156,16 +157,19 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
         expect(correos).not.toContain(x.clienteB.email);
       },
     }),
-    listar('super admin sin distribuidora ve todo', 'super', 200, {
+    // Sin sesión de soporte: la versión de plataforma (sólo cuentas del panel),
+    // aunque mande X-Distributor.
+    listar('super admin sin sesión: sólo cuentas del panel', 'super', 200, {
+      cabeceras: (x) => ({ 'X-Distributor': x.distB.slug }),
       ruta: '/users?limit=100',
       verificar: (c, x) => {
         const correos = JSON.stringify(c);
-        expect(correos).toContain(x.clienteA.email);
-        expect(correos).toContain(x.clienteB.email);
+        expect(correos).toContain(x.adminA.email);
+        expect(correos).not.toContain(x.clienteA.email);
+        expect(correos).not.toContain(x.clienteB.email);
       },
     }),
-    listar('super admin "viendo como" B', 'super', 200, {
-      cabeceras: (x) => ({ 'X-Distributor': x.distB.slug }),
+    listar('super admin en modo soporte sobre B', 'soporteB', 200, {
       ruta: '/users?limit=100',
       verificar: (c, x) => {
         const correos = JSON.stringify(c);
@@ -210,7 +214,19 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
   );
   const casosPorEmail: Array<Caso<Ctx>> = [
     porEmail('admin de la empresa', 'adminA', 200),
-    porEmail('super admin', 'super', 200),
+    // Plataforma: la cuenta por correo exacto (D7), sin las direcciones del cliente.
+    porEmail(
+      'super admin sin sesión: el cliente, sin sus direcciones',
+      'super',
+      200,
+      {
+        verificar: (b, c) =>
+          expect(b).toMatchObject({
+            user_id: c.clienteFicha.userId,
+            addresses: [],
+          }),
+      },
+    ),
     porEmail('el cliente a sí mismo', 'clienteA', 200, {
       ruta: (c) => `/users/email/${c.clienteA.email}`,
     }),
@@ -239,7 +255,12 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
       verificar: (c, x) =>
         expect((c as { email: string }).email).toBe(x.clienteFicha.email),
     }),
-    porId('super admin sin distribuidora', 'super', 200),
+    porId(
+      'super admin sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     porId('el cliente a sí mismo', 'clienteA', 200, {
       ruta: (c) => `/users/${c.clienteA.userId}`,
     }),
@@ -256,12 +277,24 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
       ruta: (c) => `/users/${c.inexistente}`,
     }),
     porId('de otra distribuidora', 'adminB', 404),
-    porId('super admin "viendo como" otra distribuidora', 'super', 404, {
-      cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
-    }),
-    porId('distribuidora del header que no existe', 'super', 401, {
-      cabeceras: { 'X-Distributor': 'no-existe' },
-    }),
+    porId(
+      'super admin "viendo como" otra distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
+    porId(
+      'distribuidora del header que no existe (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        cabeceras: { 'X-Distributor': 'no-existe' },
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
   ];
 
   // ============================================================ por teléfono
@@ -275,7 +308,9 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
       verificar: (c, x) =>
         expect((c as { email: string }).email).toBe(x.clienteFicha.email),
     }),
-    porTelefono('super admin', 'super', 200),
+    porTelefono('super admin (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     porTelefono('nadie tiene ese teléfono (200 vacío)', 'adminA', 200, {
       ruta: '/users/phone/%2B5491100000000',
     }),
@@ -441,14 +476,29 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
       body: { block: true },
     }),
     bloquear('de otra distribuidora', 'adminB', 404, { body: { block: true } }),
-    bloquear('último administrador de la empresa', 'super', 409, {
-      ruta: (c) => `/users/${c.adminB.userId}/block`,
-      cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
+    // Desde plataforma sólo se bloquean super admins y clientes (identidad, D7):
+    // el personal de una empresa vigente no tiene camino (400), aunque mande
+    // X-Distributor; en modo soporte, sólo lectura.
+    bloquear(
+      'super admin sobre el personal de una empresa (plataforma)',
+      'super',
+      400,
+      {
+        ruta: (c) => `/users/${c.adminB.userId}/block`,
+        cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
+        body: { block: true },
+        code: 'MISSING_DISTRIBUTOR',
+      },
+    ),
+    bloquear(
+      'super admin sobre un chofer sin sesión (plataforma)',
+      'super',
+      400,
+      { body: { block: true }, code: 'MISSING_DISTRIBUTOR' },
+    ),
+    bloquear('super admin en modo soporte', 'soporteA', 403, {
       body: { block: true },
-    }),
-    bloquear('super admin sin decir en qué distribuidora actúa', 'super', 400, {
-      body: { block: true },
-      code: 'MISSING_DISTRIBUTOR',
+      code: 'SUPPORT_READ_ONLY',
     }),
   ];
 
@@ -478,9 +528,18 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
       ruta: (c) => `/users/${c.inexistente}`,
     }),
     baja('de otra distribuidora', 'adminB', 404),
-    baja('último administrador de la empresa', 'super', 409, {
-      ruta: (c) => `/users/${c.adminB.userId}`,
-      cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
+    baja(
+      'super admin sobre el personal de una empresa (plataforma)',
+      'super',
+      400,
+      {
+        ruta: (c) => `/users/${c.adminB.userId}`,
+        cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
+        code: 'MISSING_DISTRIBUTOR',
+      },
+    ),
+    baja('super admin en modo soporte', 'soporteA', 403, {
+      code: 'SUPPORT_READ_ONLY',
     }),
     baja('chofer del admin', 'adminA', 200, {
       verificar: (c) =>
@@ -773,16 +832,34 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
         body: (c) => nuevo({ rol: 'delivery', distributorId: c.distA.id })(),
       },
     ),
-    alta('super admin da de alta un super admin', 'super', 201, {
-      body: cuerpoCon({ rol: 'super_admin' }),
-    }),
-    alta('super admin da de alta un chofer con X-Distributor', 'super', 201, {
-      cabeceras: (c) => ({ 'X-Distributor': c.distA.slug }),
-      body: cuerpoCon({ rol: 'delivery' }),
-    }),
-    alta('super admin da de alta un admin con distributorId', 'super', 201, {
-      body: (c) => nuevo({ rol: 'admin', distributorId: c.distA.id })(),
-    }),
+    alta(
+      'super admin da de alta un super admin (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        body: cuerpoCon({ rol: 'super_admin' }),
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
+    alta(
+      'super admin da de alta un chofer con X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        cabeceras: (c) => ({ 'X-Distributor': c.distA.slug }),
+        body: cuerpoCon({ rol: 'delivery' }),
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
+    alta(
+      'super admin da de alta un admin con distributorId (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        body: (c) => nuevo({ rol: 'admin', distributorId: c.distA.id })(),
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
     alta('sin rol', 'adminA', 400, { body: cuerpoCon({ rol: undefined }) }),
     alta('rol que no se puede crear', 'adminA', 400, {
       body: cuerpoCon({ rol: 'qa_pruebas' }),
@@ -832,12 +909,12 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
     }),
     alta('campo de más', 'adminA', 400, { body: cuerpoCon({ isAdmin: true }) }),
     alta(
-      'super admin crea un chofer sin decir la distribuidora',
+      'super admin crea un chofer sin decir la distribuidora (sin sesión de soporte)',
       'super',
-      400,
+      403,
       {
         body: cuerpoCon({ rol: 'delivery' }),
-        code: 'MISSING_DISTRIBUTOR',
+        code: 'SUPPORT_SESSION_REQUIRED',
       },
     ),
     alta('sin token', undefined, 401, {
@@ -887,16 +964,12 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
       },
     }),
     fotos(
-      'super admin ve las fotos de todas las distribuidoras',
+      'super admin ve las fotos de todas las distribuidoras (sin sesión de soporte)',
       'super',
-      200,
+      403,
       {
         body: (c) => ({ userIds: [c.clienteFicha.userId, c.clienteB.userId] }),
-        verificar: (r, c) => {
-          const u = (r as { users: Record<string, unknown> }).users;
-          expect(u[c.clienteFicha.userId]).not.toBeNull();
-          expect(u[c.clienteB.userId]).not.toBeNull();
-        },
+        code: 'SUPPORT_SESSION_REQUIRED',
       },
     ),
     fotos('admin de B ve la foto de su gente y no la de A', 'adminB', 200, {
@@ -942,6 +1015,12 @@ describe('Matriz HTTP T1: Users, alta del panel y People (e2e)', () => {
     fotos('chofer', 'chofer', 403, { body: { userIds: [] } }),
   ];
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(porId, bloquear),
+  );
   correrMatriz('GET /users', ver, casosListado);
   correrMatriz('GET /users/email/{email}', ver, casosPorEmail);
   correrMatriz('GET /users/{id}', ver, casosPorId);

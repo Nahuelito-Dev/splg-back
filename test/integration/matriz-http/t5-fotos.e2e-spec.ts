@@ -15,6 +15,7 @@ import {
   sembrarCarga,
   sinCambios,
 } from './t5-base';
+import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT5;
 const ADMIN = 'adminA';
@@ -115,9 +116,10 @@ const casos: Array<Caso<C>> = [
     ...sinCambios('truck_load', 'load_id', (c) => c.p.carga, carga('B')),
     adjunto: adjunto(),
   }),
-  subir('super admin sin distribuidora', 'super', 400, {
+  subir('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
     antes: carga(),
     adjunto: adjunto(),
+    code: 'SUPPORT_SESSION_REQUIRED',
   }),
   subir('rol no permitido: chofer', 'chofer', 403, {
     antes: carga(),
@@ -168,7 +170,10 @@ const casos: Array<Caso<C>> = [
     antes: conFoto('B'),
     ruta: (c) => `${ruta(c)}?modo=url`,
   }),
-  ver('super admin sin distribuidora', 'super', 400, { antes: carga() }),
+  ver('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    antes: carga(),
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...bordes(ver, {
     prohibidos: ADMIN_O_CHOFER,
     idMalo: '/v2/truck-loads/no/photo',
@@ -189,7 +194,12 @@ const casos: Array<Caso<C>> = [
   quitar('de otra distribuidora no cambia nada', ADMIN, 404, {
     ...sinCambios('truck_load', 'load_id', (c) => c.p.carga, conFoto('B')),
   }),
-  quitar('super admin sin distribuidora', 'super', 400, { antes: carga() }),
+  quitar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: carga(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(quitar, {
     prohibidos: SOLO_ADMIN,
     idMalo: '/v2/truck-loads/no/photo',
@@ -211,6 +221,15 @@ describe('Matriz HTTP T5: foto de la carga (e2e)', () => {
     await minio.stop();
   });
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    () => ctx,
+    casosEnModoSoporte(
+      endpoint<C>('get', '/orders', '/orders'),
+      endpoint<C>('patch', '/orders/{id}', (c) => `/orders/${c.inexistente}`),
+    ),
+  );
   correrMatriz('foto', () => ctx, casos);
 
   it('GET /v2/truck-loads/{id}/photo · 302 a la URL firmada de esa foto', async () => {

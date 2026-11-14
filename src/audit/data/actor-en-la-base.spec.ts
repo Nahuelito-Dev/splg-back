@@ -114,6 +114,59 @@ describe('ActorEnLaBase', () => {
     expect(creado.sentencias).toEqual(['UPDATE']);
   });
 
+  describe('modo soporte (segunda capa de sólo lectura)', () => {
+    const SOPORTE = {
+      ...ACTOR,
+      soporte: { alcance: [], vence: new Date(Date.now() + 60_000) },
+    };
+
+    it('la transacción arranca en sólo lectura antes de fijar el actor', async () => {
+      await auditContext.run(SOPORTE, () => nuevoRunner().startTransaction());
+      expect(creado.sentencias).toEqual(['START', 'SET', 'SELECT']);
+      expect(creado.parametros[1]).toEqual([]);
+    });
+
+    it('una escritura suelta se rechaza con 403 sin llegar a la base', async () => {
+      await expect(
+        auditContext.run(SOPORTE, () =>
+          nuevoRunner().query('UPDATE "car" SET "x" = 1'),
+        ),
+      ).rejects.toMatchObject({
+        response: { statusCode: 403, code: 'SUPPORT_READ_ONLY' },
+      });
+      expect(creado.sentencias).toEqual([]);
+    });
+
+    it('las lecturas pasan igual', async () => {
+      await auditContext.run(SOPORTE, () =>
+        nuevoRunner().query('SELECT * FROM "car"'),
+      );
+      expect(creado.sentencias).toEqual(['SELECT']);
+    });
+
+    it('fuera del modo soporte la transacción no es de sólo lectura', async () => {
+      await auditContext.run(ACTOR, () => nuevoRunner().startTransaction());
+      expect(creado.sentencias).not.toContain('SET');
+    });
+
+    it('el contexto no se filtra: una request normal después de una de soporte escribe', async () => {
+      await expect(
+        auditContext.run(SOPORTE, () =>
+          nuevoRunner().query('UPDATE "car" SET "x" = 1'),
+        ),
+      ).rejects.toBeDefined();
+      await auditContext.run(ACTOR, () =>
+        nuevoRunner().query('UPDATE "car" SET "x" = 1'),
+      );
+      expect(creado.sentencias).toEqual([
+        'START',
+        'SELECT',
+        'UPDATE',
+        'COMMIT',
+      ]);
+    });
+  });
+
   it('una escritura sin contexto (cron, script) va como está', async () => {
     await nuevoRunner().query('UPDATE "car" SET "x" = 1');
     expect(creado.sentencias).toEqual(['UPDATE']);

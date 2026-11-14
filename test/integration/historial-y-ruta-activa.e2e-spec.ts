@@ -15,7 +15,6 @@ import {
   truncateAllTables,
   cuitDePrueba,
 } from './setup/test-env';
-import { MENSAJE_FALTA_DISTRIBUIDORA } from '../../src/common/decorators/current-distributor.decorator';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Customer } from '../../src/customer/entities/customer.entity';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
@@ -30,6 +29,7 @@ import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { fechasSegunEstado } from './setup/pedido-valido';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Headers = Record<string, string>;
 
@@ -155,17 +155,22 @@ describe('Historial de estados y pedido activo del chofer (HTTP e2e)', () => {
   }
 
   describe('GET /orders/:id/status-history', () => {
-    it('el super admin sin X-Distributor recibe 400; con la distribuidora del pedido, 200', async () => {
+    it('el super admin sin sesión de soporte recibe 403 (también con X-Distributor); en modo soporte sobre la empresa del pedido, 200', async () => {
       const e = await escenario();
       const p = await e.pedido({});
       const url = `/orders/${p.orderId}/status-history`;
 
       const sin = await http().get(url).set(e.supSinHeader);
-      expect(sin.status).toBe(400);
-      expect(sin.body).toMatchObject({ message: MENSAJE_FALTA_DISTRIBUIDORA });
+      expect(sin.body).toMatchObject({
+        statusCode: 403,
+        code: 'SUPPORT_SESSION_REQUIRED',
+      });
       expect(sin.body).not.toHaveProperty('changedBy');
+      expect((await http().get(url).set(e.supEnA)).status).toBe(403);
 
-      const con = await http().get(url).set(e.supEnA);
+      const con = await http()
+        .get(url)
+        .set((await conSesionDeSoporte(env.app, e.dA.distributorId)).cabeceras);
       expect(con.status).toBe(200);
       expect(Array.isArray(con.body)).toBe(true);
     });

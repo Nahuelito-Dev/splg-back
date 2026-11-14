@@ -14,7 +14,6 @@ import {
   truncateAllTables,
   cuitDePrueba,
 } from './setup/test-env';
-import { MENSAJE_FALTA_DISTRIBUIDORA } from '../../src/common/decorators/current-distributor.decorator';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { AdminGateway } from '../../src/gateways/admin.gateway';
 import {
@@ -33,6 +32,7 @@ import { RedisService } from '../../src/redis/redis.service';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
 import { etiquetaDeCampo } from '../../src/common/validation/etiquetas';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Headers = Record<string, string>;
 
@@ -314,28 +314,31 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
       expect(filas).toEqual([{ distributor_id: e.dA.distributorId }]);
     });
 
-    it('el super admin necesita X-Distributor; chofer y cliente reciben 403', async () => {
+    it('el super admin sin sesión de soporte recibe 403; en modo soporte lee y no escribe; chofer y cliente reciben 403', async () => {
       const e = await escenario();
-      const sin = await http()
-        .get('/module-config/repurchase')
-        .set(e.sup)
-        .expect(400);
-      expect(JSON.stringify(sin.body)).toContain(MENSAJE_FALTA_DISTRIBUIDORA);
-      await http()
-        .put('/module-config/repurchase')
-        .set(e.sup)
-        .send({ minOrders: 4 })
-        .expect(400);
+      const sin = await http().get('/module-config/repurchase').set(e.sup);
+      expect(sin.body).toMatchObject({
+        statusCode: 403,
+        code: 'SUPPORT_SESSION_REQUIRED',
+      });
       await http()
         .put('/module-config/repurchase')
         .set({ ...e.sup, 'X-Distributor': e.dB.slug })
         .send({ minOrders: 4 })
-        .expect(200);
+        .expect(403);
+      const soporte = (await conSesionDeSoporte(env.app, e.dB.distributorId))
+        .cabeceras;
+      await http().get('/module-config/repurchase').set(soporte).expect(200);
+      await http()
+        .put('/module-config/repurchase')
+        .set(soporte)
+        .send({ minOrders: 4 })
+        .expect(403);
       expect(
         await env.app
           .get(ProcessConfigService)
           .obtener(e.dB.distributorId, ConfigurableProcess.REPURCHASE),
-      ).toMatchObject({ minOrders: 4 });
+      ).not.toMatchObject({ minOrders: 4 });
       await http().get('/module-config/repurchase').set(e.chofer).expect(403);
       await http().get('/module-config/processes').set(e.cliente).expect(403);
       await http()
@@ -737,22 +740,25 @@ describe('Procesos automáticos, zonas vencidas y productos inactivos (C-07, e2e
       ).toEqual(['45kg']);
     });
 
-    it('el super admin necesita X-Distributor; el cliente y el chofer reciben 403', async () => {
+    it('el super admin sin sesión de soporte recibe 403; en modo soporte ve y no reactiva; el cliente y el chofer reciben 403', async () => {
       const e = await escenario();
       const p = await producto(e.dA, '10kg');
-      const sin = await http()
-        .get('/gascylinder/inactive')
-        .set(e.sup)
-        .expect(400);
-      expect(JSON.stringify(sin.body)).toContain(MENSAJE_FALTA_DISTRIBUIDORA);
+      const sin = await http().get('/gascylinder/inactive').set(e.sup);
+      expect(sin.body).toMatchObject({
+        statusCode: 403,
+        code: 'SUPPORT_SESSION_REQUIRED',
+      });
       await http()
         .patch(`/gascylinder/${p.gasCylinderId}/reactivate`)
         .set(e.sup)
-        .expect(400);
+        .expect(403);
+      const soporte = (await conSesionDeSoporte(env.app, e.dA.distributorId))
+        .cabeceras;
+      await http().get('/gascylinder/inactive').set(soporte).expect(200);
       await http()
-        .get('/gascylinder/inactive')
-        .set({ ...e.sup, 'X-Distributor': e.dA.slug })
-        .expect(200);
+        .patch(`/gascylinder/${p.gasCylinderId}/reactivate`)
+        .set(soporte)
+        .expect(403);
       await http().get('/gascylinder/inactive').set(e.cliente).expect(403);
       await http()
         .patch(`/gascylinder/${p.gasCylinderId}/reactivate`)

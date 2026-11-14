@@ -13,6 +13,7 @@ import {
   sembrarBaseT4,
   zonaValida,
 } from './t4-base';
+import { casosEnModoSoporte } from './soporte';
 
 describe('Matriz HTTP T4: zonas y franjas (e2e)', () => {
   let env: TestEnv;
@@ -196,6 +197,12 @@ describe('Matriz HTTP T4: zonas y franjas (e2e)', () => {
         ).toBe(404),
     }),
   ];
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(zones, createZone),
+  );
   correrMatriz('coverage zones', ver, zoneCases);
 
   const slots = endpoint<EscenarioT4>('get', '/time-slot', '/time-slot');

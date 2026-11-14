@@ -27,6 +27,7 @@ import {
   ubicarChofer,
   usarClave,
 } from './t2-base';
+import { casosEnModoSoporte } from './soporte';
 
 interface Ctx extends EscenarioT2 {
   /** Clientes de A que no comparten carrito ni dirección con clienteA. */
@@ -482,7 +483,7 @@ describe('Matriz HTTP T2: express y carrito (e2e)', () => {
       ruta: (c) =>
         `/orders/delivery-options?addressId=${c.dirCentro}&customerId=${c.clienteA.userId}`,
     }),
-    opciones('super administrador viendo como A', 'superEnA', 200, {
+    opciones('super administrador viendo como A', 'soporteA', 200, {
       ruta: (c) =>
         `/orders/delivery-options?addressId=${c.dirCentro}&customerId=${c.clienteA.userId}`,
     }),
@@ -667,6 +668,21 @@ describe('Matriz HTTP T2: express y carrito (e2e)', () => {
     }),
   ];
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(
+      opciones,
+      endpoint<Ctx>('patch', '/orders/{id}', (c) => `/orders/${c.inexistente}`),
+      {
+        lectura: {
+          ruta: (c) =>
+            `/orders/delivery-options?addressId=${c.dirCentro}&customerId=${c.clienteA.userId}`,
+        },
+      },
+    ),
+  );
   correrMatriz('GET /cart', ver, casosConsultar);
   correrMatriz('POST /cart/items', ver, casosAgregar);
   correrMatriz('PATCH /cart/items/{itemId}', ver, casosCambiar);

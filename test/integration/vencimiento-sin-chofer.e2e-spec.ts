@@ -8,7 +8,8 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { TestEnv, createTestApp, telefonoDePrueba } from './setup/test-env';
-import { Escenario, sembrarEscenario } from './matriz-http/matriz';
+import { sembrarEscenario, sembrarPersona } from './matriz-http/matriz';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 import { Customer } from '../../src/customer/entities/customer.entity';
 import { Delivery } from '../../src/delivery/entities/delivery.entity';
 import { Distributor } from '../../src/distributor/entities/distributor.entity';
@@ -43,14 +44,13 @@ const hace = (min: number) => new Date(Date.now() - min * MIN);
 describe('Vencimiento de pedidos sin chofer (e2e)', () => {
   let env: TestEnv;
   let ds: DataSource;
-  let e: Escenario;
   let vencimientos: VencimientoSinChoferService;
   let realtime: RealtimeDispatchPort;
 
   beforeAll(async () => {
     env = await createTestApp();
     ds = env.app.get(DataSource);
-    e = await sembrarEscenario(env.app);
+    await sembrarEscenario(env.app);
     vencimientos = env.app.get(VencimientoSinChoferService);
     realtime = env.app.get(RealtimeDispatchPort);
   }, 240000);
@@ -146,10 +146,14 @@ describe('Vencimiento de pedidos sin chofer (e2e)', () => {
   const estado = async (orderId: string) =>
     (await ds.getRepository(Order).findOneByOrFail({ orderId })).status;
 
-  const ponerMinutos = (d: Dist, minutos: number) =>
+  // El plazo lo fija el admin de la distribuidora (el super admin ya no opera
+  // una empresa con X-Distributor).
+  const ponerMinutos = async (d: Dist, minutos: number) =>
     http()
       .put('/module-config/dispatch')
-      .set({ ...e.actores.super, 'X-Distributor': d.slug })
+      .set(
+        (await sembrarPersona(env.app, 'admin', 'admin-venc', d.id)).cabeceras,
+      )
       .send({ noDriverExpiryMinutes: minutos })
       .expect(200);
 
@@ -196,7 +200,7 @@ describe('Vencimiento de pedidos sin chofer (e2e)', () => {
 
     const res = await http()
       .get(`/orders/${vencido.orderId}`)
-      .set({ ...e.actores.super, 'X-Distributor': d.slug })
+      .set((await conSesionDeSoporte(env.app, d.id)).cabeceras)
       .expect(200);
     expect((res.body as { cancelledBy: string }).cancelledBy).toBe('system');
   });
@@ -303,7 +307,7 @@ describe('Vencimiento de pedidos sin chofer (e2e)', () => {
     await ponerMinutos(corta, 30);
     const res = await http()
       .get('/module-config/dispatch')
-      .set({ ...e.actores.super, 'X-Distributor': corta.slug })
+      .set((await conSesionDeSoporte(env.app, corta.id)).cabeceras)
       .expect(200);
     expect(
       (res.body as { noDriverExpiryMinutes: number }).noDriverExpiryMinutes,

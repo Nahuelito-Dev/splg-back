@@ -111,9 +111,11 @@ export class UsersService {
   }
 
   /**
-   * Lista usuarios. Con `distributorId` (admin de empresa, o super admin con
-   * "ver como") sólo los de esa distribuidora: sus choferes, sus admins y los
-   * clientes que le compraron (H-66). Sin él, todos.
+   * Lista usuarios. Con `distributorId` (admin de empresa, o super admin en
+   * modo soporte) sólo los de esa distribuidora: sus choferes, sus admins y los
+   * clientes que le compraron (H-66). Sin él (el super admin fuera de soporte),
+   * la versión de plataforma: sólo las cuentas del panel (super admins y admins
+   * de empresa), nunca clientes ni choferes (D7).
    */
   async findAll(
     paginationDto: QueryUsersDto,
@@ -139,6 +141,10 @@ export class UsersService {
     if (distributorId) {
       queryBuilder.andWhere(usuarioDeLaDistribuidora('user.userId'), {
         distributorId,
+      });
+    } else {
+      queryBuilder.andWhere('role.type IN (:...cuentasDePlataforma)', {
+        cuentasDePlataforma: [RoleType.SUPER_ADMIN, RoleType.ADMIN],
       });
     }
 

@@ -25,6 +25,7 @@ import {
   UnreadCountResponseDto,
 } from './dto/admin-notification-response.dto';
 import { QueryAdminNotificationsDto } from './dto/query-admin-notifications.dto';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 /**
  * Bandeja de avisos del panel (API v2). El admin ve la de su distribuidora; el
@@ -33,6 +34,7 @@ import { QueryAdminNotificationsDto } from './dto/query-admin-notifications.dto'
  */
 @ApiTags('Admin notifications')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+@Alcance('ambos')
 @Controller({ path: 'admin-notifications', version: '2' })
 export class AdminNotificationsController {
   constructor(private readonly service: AdminNotificationsService) {}

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
   FindOptionsWhere,
+  IsNull,
   LessThanOrEqual,
   MoreThanOrEqual,
   Repository,
@@ -44,15 +45,16 @@ export class AuditService {
 
   /**
    * Consulta del registro (CU-152), del más reciente al más viejo. Con una
-   * distribuidora en contexto sólo ve lo de ella; sin contexto (super admin
-   * sin "ver como"), todo.
+   * distribuidora en contexto sólo ve lo de ella; sin contexto (el super admin
+   * fuera de soporte) la auditoría de plataforma: los asientos sin
+   * distribuidora, nunca los de una empresa.
    */
   async consultar(
     filtros: ConsultarAuditoriaDto,
     distributorId: string | null,
   ): Promise<{ items: AuditLog[]; total: number }> {
     const where: FindOptionsWhere<AuditLog> = {};
-    if (distributorId) where.distributorId = distributorId;
+    where.distributorId = distributorId ?? IsNull();
     if (filtros.actorUserId) where.actorUserId = filtros.actorUserId;
     if (filtros.resource) where.resource = filtros.resource;
     if (filtros.resourceId) where.resourceId = filtros.resourceId;

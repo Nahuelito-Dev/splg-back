@@ -35,6 +35,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { esSuperAdminDePlataforma } from '../common/utils/alcance.util';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { Permiso } from '../common/decorators/permiso.decorator';
 
@@ -85,9 +86,10 @@ export class TimeSlotController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() { distributor, includeInactive }: ListarFranjasQueryDto,
   ): Promise<TimeSlotResponseDto[]> {
-    // `?distributor=` es sólo del super admin: un admin queda en su tenant.
+    // `?distributor=` es sólo del super admin fuera de soporte: un admin (y el
+    // super admin en una sesión de soporte) queda en su tenant.
     const slots = await this.timeSlotService.findAll(
-      user.role === RoleType.SUPER_ADMIN ? distributor : undefined,
+      esSuperAdminDePlataforma(user) ? distributor : undefined,
       distributorId,
       includeInactive,
     );

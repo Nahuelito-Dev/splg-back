@@ -7,6 +7,7 @@
 import { randomUUID } from 'crypto';
 import { HeadObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import request from 'supertest';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 import { DataSource } from 'typeorm';
 import {
   TestEnv,
@@ -737,16 +738,23 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       }
     });
 
-    it('el admin de empresa no toca la foto de un cliente (403); el super admin sí', async () => {
+    it('el admin de empresa no toca la foto de un cliente (403); el super admin tampoco (modo soporte)', async () => {
       const { d1, admin1, superAdmin } = await escenario();
       const cliente = await seedCliente(d1);
       await seedPedido(d1.distributorId, cliente.user.userId);
       const ruta = `/users/${cliente.user.userId}/photo`;
       await subir(ruta, admin1.headers).expect(403);
-      await subir(ruta, {
+      // Sin sesión de soporte no entra; con sesión es sólo lectura.
+      const sinSesion = await subir(ruta, {
         ...superAdmin.headers,
         'X-Distributor': d1.slug,
-      }).expect(200);
+      });
+      const soporte = await conSesionDeSoporte(env.app, d1.distributorId);
+      const enSoporte = await subir(ruta, soporte.cabeceras);
+      expect([sinSesion.body, enSoporte.body]).toMatchObject([
+        { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+        { statusCode: 403, code: 'SUPPORT_READ_ONLY' },
+      ]);
     });
 
     it('el admin no ve al super admin: 404', async () => {
@@ -767,10 +775,8 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       await subir(`/users/${chofer.user.userId}/photo`, admin1.headers).expect(
         200,
       );
-      await subir(`/users/${cliente.user.userId}/photo`, {
-        ...(await seedAdmin(null)).headers,
-        'X-Distributor': d1.slug,
-      }).expect(200);
+      // La del cliente la sube él mismo (nadie del panel toca la foto de un cliente).
+      await subir('/users/me/photo', cliente.headers).expect(200);
 
       type ConUsuario = { user?: { photoUrl: string | null; user_id: string } };
       const fotoDe = (fila: ConUsuario | undefined) => fila?.user?.photoUrl;
@@ -842,10 +848,11 @@ describe('Fotos de entidades en S3 (e2e)', () => {
         .expect(404);
     });
 
-    it('el super admin en "ver como" sube, ve y saca su propia foto', async () => {
+    it('el super admin (plataforma) sube, ve y saca su propia foto', async () => {
       const { d1, superAdmin } = await escenario();
+      // El X-Distributor se ignora: la foto propia es de las dos versiones.
       const headers = { ...superAdmin.headers, 'X-Distributor': d1.slug };
-      const ruta = `/users/${superAdmin.user.userId}/photo`;
+      const ruta = '/users/me/photo';
       await subir(ruta, headers).expect(200);
       await http().get(`${ruta}?modo=url`).set(headers).expect(200);
       await http().delete(ruta).set(headers).expect(200);
@@ -1124,7 +1131,7 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       await http().get(`${ruta}?modo=url`).set(admin1.headers).expect(200);
     });
 
-    it('el super admin necesita elegir la distribuidora (X-Distributor)', async () => {
+    it('el super admin no sube la foto de un producto: sin sesión de soporte no entra y con sesión es sólo lectura', async () => {
       const { d1, superAdmin } = await escenario();
       const producto = await dataSource.getRepository(GasCylinder).save({
         type: '5kg',
@@ -1135,11 +1142,22 @@ describe('Fotos de entidades en S3 (e2e)', () => {
         distributorId: d1.distributorId,
       } as Partial<GasCylinder>);
       const ruta = `/gascylinder/${producto.gasCylinderId}/photo`;
-      await subir(ruta, superAdmin.headers).expect(400);
-      await subir(ruta, {
+      const sinSesion = await subir(ruta, superAdmin.headers);
+      const conXDistributor = await subir(ruta, {
         ...superAdmin.headers,
         'X-Distributor': d1.slug,
-      }).expect(200);
+      });
+      const soporte = await conSesionDeSoporte(env.app, d1.distributorId);
+      const enSoporte = await subir(ruta, soporte.cabeceras);
+      expect([
+        sinSesion.body,
+        conXDistributor.body,
+        enSoporte.body,
+      ]).toMatchObject([
+        { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+        { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+        { statusCode: 403, code: 'SUPPORT_READ_ONLY' },
+      ]);
     });
   });
 
@@ -1368,15 +1386,23 @@ describe('Fotos de entidades en S3 (e2e)', () => {
       ).toBeNull();
     });
 
-    it('el super admin sube el de cualquiera, sin elegir distribuidora, y lo ve en el listado', async () => {
-      const { d1, d2, superAdmin } = await escenario();
-      await subir(
+    it('el logo lo sube cada empresa (el super admin sin sesión no) y la plataforma lo ve en el listado', async () => {
+      const { d1, d2, admin1, admin2, superAdmin } = await escenario();
+      const sinSesion = await subir(
         `/distributor/${d1.distributorId}/logo`,
         superAdmin.headers,
+      );
+      expect(sinSesion.body).toMatchObject({
+        statusCode: 403,
+        code: 'SUPPORT_SESSION_REQUIRED',
+      });
+      await subir(
+        `/distributor/${d1.distributorId}/logo`,
+        admin1.headers,
       ).expect(200);
       await subir(
         `/distributor/${d2.distributorId}/logo`,
-        superAdmin.headers,
+        admin2.headers,
       ).expect(200);
       const lista = await http()
         .get('/distributor')

@@ -19,6 +19,7 @@ import { User } from '../../src/users/entities/user.entity';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { CustomerDistributor } from '../../src/customer/entities/customer-distributor.entity';
 import { CustomersService } from '../../src/customer/customer.service';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Cuerpo = Record<string, unknown>;
 type Headers = Record<string, string>;
@@ -125,11 +126,9 @@ describe('Alta de cliente desde el panel (e2e)', () => {
       .set(admin1.headers)
       .expect(200);
 
-    // La baja de un cliente la hace el administrador general.
-    await http()
-      .delete(`/customers/${customerId}`)
-      .set({ ...superAdmin.headers, 'X-Distributor': d1.slug })
-      .expect(200);
+    // La baja de la cuenta de un cliente la hace el administrador general desde
+    // plataforma (identidad, D7), por /users.
+    await http().delete(`/users/${userId}`).set(superAdmin.headers).expect(200);
     await http()
       .get('/customers')
       .set(admin1.headers)
@@ -164,27 +163,25 @@ describe('Alta de cliente desde el panel (e2e)', () => {
       .expect((r) => expect(r.status).toBeGreaterThanOrEqual(403));
   }, 60000);
 
-  it('un super admin con X-Distributor lo vincula con esa distribuidora', async () => {
+  it('el super admin no da de alta clientes de una empresa: sin sesión 403, en modo soporte sólo lectura', async () => {
     const d1 = await seedDistribuidora();
-    const d2 = await seedDistribuidora();
-    const admin2 = await seedAdmin('admin', d2.distributorId);
     const superAdmin = await seedAdmin('super_admin', null);
+    const soporte = await conSesionDeSoporte(env.app, d1.distributorId);
 
-    const alta = await altaDeCliente({
+    const sinSesion = await altaDeCliente({
       ...superAdmin.headers,
       'X-Distributor': d1.slug,
-    }).expect(201);
-    const userId = cuerpoDe<{ user_id: string }>(alta).user_id;
-
-    const vinculos = await dataSource
-      .getRepository(CustomerDistributor)
-      .find({ where: { userId } });
-    expect(vinculos.map((v) => v.distributorId)).toEqual([d1.distributorId]);
-    await http()
-      .get('/customers')
-      .set(admin2.headers)
-      .expect(200)
-      .expect((r) => expect(cuerpoDe<unknown[]>(r)).toHaveLength(0));
+    });
+    const enSoporte = await altaDeCliente(soporte.cabeceras);
+    expect([sinSesion.body, enSoporte.body]).toMatchObject([
+      { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+      { statusCode: 403, code: 'SUPPORT_READ_ONLY' },
+    ]);
+    expect(
+      await dataSource
+        .getRepository(CustomerDistributor)
+        .count({ where: { distributorId: d1.distributorId } }),
+    ).toBe(0);
   }, 60000);
 
   it('el vínculo es idempotente y la base impide duplicarlo', async () => {

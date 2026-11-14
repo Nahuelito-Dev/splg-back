@@ -4,6 +4,7 @@ import {
   Between,
   FindOptionsWhere,
   In,
+  IsNull,
   LessThanOrEqual,
   MoreThanOrEqual,
   Raw,
@@ -96,8 +97,15 @@ export class DataAuditService {
     detalles: Map<string, AuditDetail[]>;
     total: number;
   }> {
+    // Sin distribuidora (el super admin fuera de soporte) la versión de
+    // plataforma: sólo los asientos sin distribuidora. El historial de un
+    // pedido es siempre de una empresa: ahí no hay nada que ver.
+    if (!distributorId && filtros.orderId) {
+      return { filas: [], detalles: new Map(), total: 0 };
+    }
     const where: FindOptionsWhere<Audit> = {};
-    if (distributorId && !filtros.orderId) where.distributorId = distributorId;
+    if (!distributorId) where.distributorId = IsNull();
+    else if (!filtros.orderId) where.distributorId = distributorId;
     if (filtros.entity) where.entity = filtros.entity;
     if (filtros.recordId) where.recordId = filtros.recordId;
     if (filtros.userId) where.userId = filtros.userId;
@@ -193,8 +201,10 @@ export class DataAuditService {
     auditId: string,
     distributorId: string | null,
   ): Promise<{ fila: Audit; detalles: AuditDetail[] }> {
-    const where: FindOptionsWhere<Audit> = { auditId };
-    if (distributorId) where.distributorId = distributorId;
+    const where: FindOptionsWhere<Audit> = {
+      auditId,
+      distributorId: distributorId ?? IsNull(),
+    };
     const fila = await this.audits.findOne({
       where,
       relations: { actionType: true, user: true },

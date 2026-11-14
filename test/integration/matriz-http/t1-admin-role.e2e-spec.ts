@@ -21,6 +21,7 @@ import {
   llamar,
   reiniciarCuposDelThrottler,
 } from './matriz';
+import { casosEnModoSoporte } from './soporte';
 
 interface Ctx extends Escenario {
   adminEditar: Persona & { adminId: string };
@@ -125,7 +126,7 @@ describe('Matriz HTTP T1: Admin y Role (e2e)', () => {
   const crear = endpoint<Ctx>('post', '/admin', '/admin');
   const casosCrear: Array<Caso<Ctx>> = [
     crear(
-      'admin de empresa con X-Distributor y su distribuidora',
+      'admin de empresa con X-Distributor (se ignora: manda el cuerpo)',
       'super',
       201,
       {
@@ -154,20 +155,26 @@ describe('Matriz HTTP T1: Admin y Role (e2e)', () => {
       cabeceras: (c) => ({ 'X-Distributor': c.distA.slug }),
       body: (c) => ({ user_id: c.sinPerfilAdmin2.userId }),
     }),
-    crear('admin de empresa sin X-Distributor', 'super', 400, {
+    crear('empresa del cuerpo inexistente', 'super', 404, {
       body: (c) => ({
         user_id: c.sinPerfilAdmin2.userId,
-        distributor_id: c.distA.id,
-      }),
-      code: 'MISSING_DISTRIBUTOR',
-    }),
-    crear('X-Distributor distinta a la del cuerpo', 'super', 400, {
-      cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
-      body: (c) => ({
-        user_id: c.sinPerfilAdmin2.userId,
-        distributor_id: c.distA.id,
+        distributor_id: c.inexistente,
       }),
     }),
+    crear(
+      'admin de empresa desde plataforma, sin X-Distributor',
+      'super',
+      201,
+      {
+        body: (c) => ({
+          user_id: c.sinPerfilAdmin2.userId,
+          distributor_id: c.distA.id,
+        }),
+        verificar: (b, c) =>
+          expect(b).toMatchObject({ distributor_id: c.distA.id }),
+      },
+    ),
+
     crear('sin token', undefined, 401, { ...sinToken, body: {} }),
     crear('admin de empresa', 'adminA', 403, {
       body: {},
@@ -239,7 +246,9 @@ describe('Matriz HTTP T1: Admin y Role (e2e)', () => {
       ruta: (c) => `/admin/term/${c.adminA.adminId}`,
       verificar: (c, x) => expect(JSON.stringify(c)).toContain(x.adminA.email),
     }),
-    porTermino('super admin', 'super', 200),
+    porTermino('super admin (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     porTermino('sin token', undefined, 401, sinToken),
     ...sinPermiso(porTermino),
     porTermino('no existe', 'adminA', 404, {
@@ -277,9 +286,16 @@ describe('Matriz HTTP T1: Admin y Role (e2e)', () => {
     editar('admin edita nombre y teléfono', 'adminA', 200, {
       body: { fullName: 'Nombre Nuevo', phoneNumber: '+5493764999001' },
     }),
-    editar('super admin con X-Distributor', 'super', 200, {
+    // Desde plataforma no hay camino para editar un admin de una empresa vigente
+    // (cuentas de plataforma: E3); el X-Distributor ya no lo habilita.
+    editar('super admin con X-Distributor (plataforma)', 'super', 400, {
       cabeceras: (c) => ({ 'X-Distributor': c.distA.slug }),
       body: { fullName: 'Otro Nombre' },
+      code: 'MISSING_DISTRIBUTOR',
+    }),
+    editar('super admin en modo soporte', 'soporteA', 403, {
+      body: { fullName: 'Otro Nombre' },
+      code: 'SUPPORT_READ_ONLY',
     }),
     editar('cuerpo vacío', 'adminA', 200, { body: {} }),
     editar('fullName de 1 letra', 'adminA', 400, { body: { fullName: 'A' } }),
@@ -344,9 +360,14 @@ describe('Matriz HTTP T1: Admin y Role (e2e)', () => {
       ruta: (c) => `/admin/${c.inexistente}`,
     }),
     baja('de otra empresa', 'adminB', 404),
-    baja('último administrador de la empresa', 'super', 409, {
+    baja('super admin con X-Distributor (plataforma)', 'super', 400, {
       ruta: (c) => `/admin/${c.adminB.adminId}`,
       cabeceras: (c) => ({ 'X-Distributor': c.distB.slug }),
+      code: 'MISSING_DISTRIBUTOR',
+    }),
+    baja('super admin en modo soporte', 'soporteB', 403, {
+      ruta: (c) => `/admin/${c.adminB.adminId}`,
+      code: 'SUPPORT_READ_ONLY',
     }),
     baja('admin da de baja a su par', 'adminA', 200, {
       verificar: (c) =>
@@ -490,6 +511,12 @@ describe('Matriz HTTP T1: Admin y Role (e2e)', () => {
     ...sinPermiso(seed),
   ];
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(porTermino, editar),
+  );
   correrMatriz('POST /admin', ver, casosCrear);
   correrMatriz('GET /admin', ver, casosListar);
   correrMatriz('GET /admin/term/{term}', ver, casosPorTermino);

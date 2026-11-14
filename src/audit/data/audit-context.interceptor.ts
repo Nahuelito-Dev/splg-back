@@ -24,6 +24,12 @@ export class AuditContextInterceptor implements NestInterceptor {
       userId: request.user?.user_id ?? null,
       ip: typeof ip === 'string' && ip ? ip.slice(0, 45) : null,
       distributorId: request.distributorId ?? null,
+      soporte: request.supportSession
+        ? {
+            alcance: request.supportSession.scope,
+            vence: request.supportSession.expiresAt,
+          }
+        : undefined,
     };
     return new Observable((subscriber) =>
       auditContext.run(store, () => next.handle().subscribe(subscriber)),

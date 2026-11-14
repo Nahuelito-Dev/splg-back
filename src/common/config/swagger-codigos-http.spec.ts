@@ -15,6 +15,8 @@ import { RepurchaseAdminController } from '../../repurchase-forecast/repurchase-
 import { RepurchaseCustomerController } from '../../repurchase-forecast/repurchase-customer.controller';
 import { UsersController } from '../../users/users.controller';
 import { soloRutasVersionadas } from './documentacion';
+import { SupportAccessController } from '../../support/presentation/support-access.controller';
+import { SupportSessionsController } from '../../support/presentation/support-sessions.controller';
 
 /**
  * Los códigos HTTP que la API devuelve de verdad (matriz del 03/11) tienen que
@@ -32,6 +34,8 @@ const CONTROLLERS: Type<unknown>[] = [
   EmployeeController,
   CoverageZoneController,
   ProcessRunController,
+  SupportSessionsController,
+  SupportAccessController,
 ];
 
 type Operacion = { responses?: Record<string, { description?: string }> };
@@ -117,6 +121,41 @@ describe('Swagger: códigos HTTP documentados', () => {
     expect(r['400']?.description).toMatch(/status/);
     expect(r['400']?.description).toMatch(/from/);
     expect(r['400']?.description).toMatch(/limit/);
+  });
+
+  it('modo soporte: POST /support-sessions declara todos sus códigos', () => {
+    const r = respuestas('post', '/api/v2/support-sessions');
+    expect(Object.keys(r).sort()).toEqual(
+      ['201', '400', '401', '403', '404', '409'].sort(),
+    );
+    expect(r['403']?.description).toMatch(/SUPPORT_EMERGENCY_DISABLED/);
+    expect(r['409']?.description).toMatch(/SUPPORT_SESSION_ALREADY_ACTIVE/);
+    expect(r['409']?.description).toMatch(/SUPPORT_REQUEST_ALREADY_PENDING/);
+    expect(r['409']?.description).toMatch(/SUPPORT_COMPANY_SUSPENDED/);
+  });
+
+  it('modo soporte: DELETE /support-sessions/{id} declara 204, 400, 404 y 409', () => {
+    const r = respuestas('delete', '/api/v2/support-sessions/{id}');
+    expect(r['204']).toBeDefined();
+    expect(r['400']).toBeDefined();
+    expect(r['404']).toBeDefined();
+    expect(r['409']?.description).toMatch(/SUPPORT_SESSION_ALREADY_ENDED/);
+  });
+
+  it('modo soporte: aprobar declara 400, 403, 404 y 409 con sus code', () => {
+    const r = respuestas('post', '/api/v2/support-access/{id}/approve');
+    expect(r['200']).toBeDefined();
+    expect(r['400']?.description).toMatch(/SUPPORT_APPROVAL_EXCEEDS_REQUEST/);
+    expect(r['403']).toBeDefined();
+    expect(r['404']?.description).toMatch(/otra empresa/);
+    expect(r['409']?.description).toMatch(/SUPPORT_SESSION_NOT_PENDING/);
+    expect(r['409']?.description).toMatch(/SUPPORT_REQUEST_EXPIRED/);
+  });
+
+  it('un endpoint de empresa abierto al super admin documenta los 403 del modo soporte', () => {
+    const r = respuestas('get', '/api/v2/process-runs');
+    expect(r['403']?.description).toMatch(/SUPPORT_SESSION_REQUIRED/);
+    expect(r['403']?.description).toMatch(/SUPPORT_READ_ONLY/);
   });
 
   it('todo endpoint con ParseUUIDPipe de esos controllers declara su 400', () => {

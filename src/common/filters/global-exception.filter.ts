@@ -13,9 +13,13 @@ import {
   BadRequestDomainError,
   ConflictDomainError,
   detalleDe,
+  DomainError,
   NotFoundDomainError,
 } from '../errors/domain.error';
+import { conCodigo } from '../errors/con-codigo';
+import { soloLecturaDeSoporte } from '../errors/soporte';
 import {
+  codigoSqlDelError,
   MENSAJE_SISTEMA_OCUPADO,
   MENSAJE_TEXTO_INVALIDO,
   esTextoInvalidoDeBase,
@@ -24,6 +28,20 @@ import {
 } from '../errors/db-exceptions';
 import { traducirExcepcion } from '../validation/traducir-excepcion';
 import type { Request } from 'express';
+
+/** `read_only_sql_transaction`: una escritura en una transacción de sólo lectura. */
+const TRANSACCION_DE_SOLO_LECTURA = '25006';
+
+/** La excepción HTTP de un error de dominio, con su `code` si lo trae. */
+function conCodigoSiTiene<T extends HttpException>(
+  Clase: new (respuesta: object | string) => T,
+  status: number,
+  error: DomainError,
+): T {
+  return error.code
+    ? conCodigo(Clase, status, error.message, error.code)
+    : new Clase(error.message);
+}
 
 /**
  * Exception filter GLOBAL (observabilidad, C4): loguea toda excepción no
@@ -99,13 +117,21 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
    */
   private mapDomainError(exception: unknown): unknown {
     if (exception instanceof NotFoundDomainError) {
-      return new NotFoundException(exception.message);
+      return conCodigoSiTiene(NotFoundException, 404, exception);
     }
     if (exception instanceof BadRequestDomainError) {
-      return new BadRequestException(exception.message);
+      return conCodigoSiTiene(BadRequestException, 400, exception);
     }
     if (exception instanceof ConflictDomainError) {
-      return new ConflictException(exception.message);
+      return conCodigoSiTiene(ConflictException, 409, exception);
+    }
+    // Una escritura dentro de una transacción de sólo lectura: sólo la abre el
+    // modo soporte (`ActorEnLaBase`), así que es un 403 del modo, no un 500.
+    if (
+      !(exception instanceof HttpException) &&
+      codigoSqlDelError(exception) === TRANSACCION_DE_SOLO_LECTURA
+    ) {
+      return soloLecturaDeSoporte();
     }
     // lock_timeout / statement_timeout de Postgres: la base está ocupada, no
     // rota. 503 con mensaje claro en vez de un 500 genérico.

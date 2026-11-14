@@ -15,6 +15,7 @@ import { Admin } from '../../src/admin/entities/admin.entity';
 import { randomUUID } from 'crypto';
 import { forzarEstado } from './setup/bypass';
 import { telefonoDePrueba } from './setup/test-env';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 describe('Baja del cliente en la distribuidora (e2e)', () => {
   let env: TestEnv;
@@ -178,18 +179,30 @@ describe('Baja del cliente en la distribuidora (e2e)', () => {
     expect((await vinculo(c.userId, d1.distributorId)).removed_at).toBeNull();
   }, 60000);
 
-  it('el super admin con X-Distributor también la hace; sin él es 400; la baja global sigue igual', async () => {
+  it('el super admin no la hace (sin sesión 403, en modo soporte sólo lectura); la baja global de la cuenta es de plataforma', async () => {
     const d1 = await f.distribuidora();
     const c = await f.cliente();
     await f.pedidoEntregado(d1, { chofer: null, cliente: c });
     const customerId = await customerIdDe(c.userId);
     const sa = await superAdmin();
 
-    await bajaEn(d1, customerId, sa).expect(400);
-    await bajaEn(d1, customerId, { ...sa, 'X-Distributor': d1.slug }).expect(
-      200,
-    );
-    expect(await listado(d1)).toHaveLength(0);
+    const soporte = await conSesionDeSoporte(env.app, d1.distributorId);
+    const sinSesion = await bajaEn(d1, customerId, sa);
+    const conXDistributor = await bajaEn(d1, customerId, {
+      ...sa,
+      'X-Distributor': d1.slug,
+    });
+    const enSoporte = await bajaEn(d1, customerId, soporte.cabeceras);
+    expect([
+      sinSesion.body,
+      conXDistributor.body,
+      enSoporte.body,
+    ]).toMatchObject([
+      { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+      { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+      { statusCode: 403, code: 'SUPPORT_READ_ONLY' },
+    ]);
+    expect(await listado(d1)).toHaveLength(1);
 
     // La baja de la cuenta (global) sigue siendo del super admin; al admin le da 403.
     const c2 = await f.cliente();
@@ -199,9 +212,10 @@ describe('Baja del cliente en la distribuidora (e2e)', () => {
       .delete(`/customers/${customerId2}`)
       .set(d1.headers)
       .expect(403);
+    // Desde plataforma, la baja de la cuenta va por /users (identidad, D7).
     await request(env.app.getHttpServer())
-      .delete(`/customers/${customerId2}`)
-      .set({ ...sa, 'X-Distributor': d1.slug })
+      .delete(`/users/${c2.userId}`)
+      .set(sa)
       .expect(200);
   }, 60000);
 
@@ -294,7 +308,7 @@ describe('Baja del cliente en la distribuidora (e2e)', () => {
         .expect((r) => expect(cuerpo<unknown[]>(r)).toHaveLength(0));
     }, 60000);
 
-    it('el super admin necesita X-Distributor y las rutas v2 no existen en v1', async () => {
+    it('el super admin no ve ni reactiva sin sesión de soporte, en soporte ve y no escribe; las rutas v2 no existen en v1', async () => {
       const d1 = await f.distribuidora();
       const c = await f.cliente();
       await f.pedidoEntregado(d1, { chofer: null, cliente: c });
@@ -302,11 +316,13 @@ describe('Baja del cliente en la distribuidora (e2e)', () => {
       const sa = await superAdmin();
       await bajaEn(d1, customerId).expect(200);
 
-      await removidos(sa).expect(400);
-      await reactivar(sa, customerId).expect(400);
-      await reactivar({ ...sa, 'X-Distributor': d1.slug }, customerId).expect(
-        200,
-      );
+      await removidos(sa).expect(403);
+      await reactivar(sa, customerId).expect(403);
+      const soporte = await conSesionDeSoporte(env.app, d1.distributorId);
+      await removidos(soporte.cabeceras)
+        .expect(200)
+        .expect((r) => expect(cuerpo<unknown[]>(r)).toHaveLength(1));
+      await reactivar(soporte.cabeceras, customerId).expect(403);
       await request(env.app.getHttpServer())
         .post(`/v1/customers/${customerId}/distributor`)
         .set(d1.headers)

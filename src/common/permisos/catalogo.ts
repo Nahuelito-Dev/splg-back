@@ -223,6 +223,18 @@ export const CATALOGO_DE_PERMISOS = [
         etiqueta: 'gestionar los roles y permisos',
         descripcion: 'Crear, editar y dar de baja los roles del personal.',
       },
+      {
+        clave: 'soporte.ver',
+        etiqueta: 'ver los accesos de soporte',
+        descripcion:
+          'Pedidos y sesiones del soporte de la plataforma, y qué miró cada una.',
+      },
+      {
+        clave: 'soporte.gestionar',
+        etiqueta: 'gestionar los accesos de soporte',
+        descripcion:
+          'Aprobar, rechazar y revocar accesos de soporte, y fijar la política de la empresa.',
+      },
     ],
   },
 ] as const;

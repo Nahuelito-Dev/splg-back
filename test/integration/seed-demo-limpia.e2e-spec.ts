@@ -215,7 +215,9 @@ describe('seed:demo en contenedores (e2e)', () => {
     const columnas = (await qr.query(
       `SELECT column_name, data_type, udt_name FROM information_schema.columns
         WHERE table_name = $1 AND table_schema = 'public'
-          AND is_nullable = 'NO' AND column_default IS NULL`,
+          AND is_nullable = 'NO' AND column_default IS NULL
+          -- Una identidad (GENERATED ALWAYS) la pone la base: no se le pasa valor.
+          AND is_identity = 'NO'`,
       [tabla],
     )) as Array<{ column_name: string; data_type: string; udt_name: string }>;
     const fila: Record<string, unknown> = { ...valores };
@@ -489,6 +491,21 @@ describe('seed:demo en contenedores (e2e)', () => {
           payment_method: 'cash',
         },
         supplier: { cuit: '20123456786' },
+        support_session: {
+          requested_by: randomUUID(),
+          kind: 'consented',
+          status: 'pending',
+          reason: 'Motivo de prueba de la purga de la demo',
+          requested_minutes: 60,
+          request_expires_at: new Date(Date.now() + 86_400_000),
+        },
+        support_access: {
+          support_session_id: randomUUID(),
+          user_id: randomUUID(),
+          http_method: 'GET',
+          path: '/orders',
+          status_code: 200,
+        },
         time_slot: { startTime: '08:00:00', endTime: '12:00:00' },
         warehouse: { code: 'DEP-PRUEBA' },
       };
@@ -1050,9 +1067,9 @@ describe('seed:demo en contenedores (e2e)', () => {
   it('con triggers de sólo escritura intactos tras la purga', async () => {
     const triggers = await consultar<{ t: string; e: string }>(
       `SELECT tgname AS t, tgenabled AS e FROM pg_trigger WHERE tgname IN
-         ('stock_movement_inmutable', 'audit_log_inmutable', 'audit_inmutable', 'audit_detail_inmutable')`,
+         ('stock_movement_inmutable', 'audit_log_inmutable', 'audit_inmutable', 'audit_detail_inmutable', 'support_access_inmutable')`,
     );
-    expect(triggers).toHaveLength(4);
+    expect(triggers).toHaveLength(5);
     expect(triggers.every((t) => t.e === 'O')).toBe(true);
   });
 

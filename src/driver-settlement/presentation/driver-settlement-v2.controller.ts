@@ -27,6 +27,7 @@ import {
   SettlementPreviewDto,
 } from '../dto/driver-settlement.dto';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import { SoloLectura } from '../../audit/solo-lectura.decorator';
 
 /** Vista previa de la rendición del chofer (API v2). */
 @ApiTags('Rendiciones del chofer (v2)')
@@ -37,6 +38,8 @@ export class DriverSettlementV2Controller {
 
   @Permiso('finanzas.gestionar')
   @Post(':id/preview')
+  // Sólo calcula (no escribe): pasa en modo soporte y no va al registro de escrituras.
+  @SoloLectura()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Vista previa de la diferencia antes de presentar la rendición',

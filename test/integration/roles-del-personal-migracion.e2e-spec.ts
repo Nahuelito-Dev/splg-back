@@ -237,9 +237,10 @@ describe('Migración RolesDelPersonal (e2e)', () => {
   });
 
   it('se deshace y se vuelve a aplicar', async () => {
-    await ds.undoLastMigration();
-    await ds.undoLastMigration();
-    await ds.undoLastMigration();
+    // Hasta RolesDelPersonal inclusive, con las que vinieron después.
+    for (let i = indice; i < todas.length; i++) {
+      await ds.undoLastMigration();
+    }
     const [tabla] = await ds.query<Array<{ existe: string | null }>>(
       `SELECT to_regclass('public.staff_role')::text AS existe`,
     );

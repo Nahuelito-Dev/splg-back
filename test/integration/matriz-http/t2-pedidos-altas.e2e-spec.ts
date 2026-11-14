@@ -267,7 +267,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
     crear('administrador carga el pedido a nombre del cliente', 'adminA', 201, {
       body: alta(),
     }),
-    crear('super viendo como A', 'superEnA', 201, { body: alta() }),
+    crear('super en modo soporte sobre A', 'soporteA', 403, {
+      body: alta(),
+      code: 'SUPPORT_READ_ONLY',
+    }),
     crear('chofer carga el pedido a nombre del cliente', 'chofer', 201, {
       body: alta(),
     }),
@@ -594,7 +597,8 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       body: (c) =>
         cotiza({ addressId: c.dirCentro, customerId: c.clienteA.userId })(c),
     }),
-    cotizar('super viendo como A', 'superEnA', 200, {
+    // Cotizar sólo calcula (`@SoloLectura`): en modo soporte anda.
+    cotizar('super en modo soporte sobre A', 'soporteA', 200, {
       body: (c) =>
         cotiza({ addressId: c.dirCentro, customerId: c.clienteA.userId })(c),
     }),
@@ -724,9 +728,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('e'),
       body: { notes: 'Llamar antes' },
     }),
-    editar('super viendo como A', 'superEnA', 200, {
+    editar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: nuevo('e'),
       body: { notes: 'Llamar antes' },
+      code: 'SUPPORT_READ_ONLY',
     }),
     editar('sin token', undefined, 401, {
       ...sinTokenCliente,
@@ -794,9 +799,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('e'),
       body: (c) => ({ items: [{ gasCylinderId: c.garrafaPoca, quantity: 3 }] }),
     }),
-    editar('super sin X-Distributor', 'super', 400, {
+    editar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: nuevo('e'),
       body: { notes: 'x' },
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     editar('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_EDIT),
@@ -814,9 +820,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         expect(r.body).toMatchObject({ customer_notes: null });
       },
     }),
-    editar('super viendo como B', 'superEnB', 404, {
+    editar('super en modo soporte sobre B', 'soporteB', 403, {
       antes: nuevo('e'),
       body: { notes: 'x' },
+      code: 'SUPPORT_READ_ONLY',
     }),
     editar('pedido que ya tiene chofer', 'clienteA', 409, {
       antes: nuevo('e', { estado: E.ACCEPTED }),
@@ -1095,9 +1102,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
           cancelledBy: 'admin',
         }),
     }),
-    cancelar('super viendo como A', 'superEnA', 200, {
+    cancelar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: nuevo('k'),
       ...motivo,
+      code: 'SUPPORT_READ_ONLY',
     }),
     cancelar('devuelve el stock', 'adminA', 200, {
       antes: nuevo('k', { cantidad: 2 }),
@@ -1170,9 +1178,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('k'),
       body: { reason: 'x', foo: 1 },
     }),
-    cancelar('super sin X-Distributor', 'super', 400, {
+    cancelar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: nuevo('k'),
       ...motivo,
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     cancelar('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_CAN),
@@ -1190,9 +1199,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         expect(r.body).toMatchObject({ status: 'pending' });
       },
     }),
-    cancelar('super viendo como B', 'superEnB', 404, {
+    cancelar('super en modo soporte sobre B', 'soporteB', 403, {
       antes: nuevo('k'),
       ...motivo,
+      code: 'SUPPORT_READ_ONLY',
     }),
     cancelar('chofer de otra distribuidora', 'choferB', 404, {
       antes: nuevo('k', { estado: E.ACCEPTED }),
@@ -1238,7 +1248,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
     borrar('pedido aceptado', 'adminA', 200, {
       antes: nuevo('b', { estado: E.ACCEPTED }),
     }),
-    borrar('super viendo como A', 'superEnA', 200, { antes: nuevo('b') }),
+    borrar('super en modo soporte sobre A', 'soporteA', 403, {
+      antes: nuevo('b'),
+      code: 'SUPPORT_READ_ONLY',
+    }),
     borrar('sin token', undefined, 401, {
       ...sinToken,
       ruta: idInexistente(SW_DEL),
@@ -1246,7 +1259,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
     borrar('cliente', 'clienteA', 403, { antes: nuevo('b') }),
     borrar('chofer', 'chofer', 403, { antes: nuevo('b') }),
     borrar('id mal formado', 'adminA', 400, { ruta: idMalo(SW_DEL) }),
-    borrar('super sin X-Distributor', 'super', 400, { antes: nuevo('b') }),
+    borrar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      antes: nuevo('b'),
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     borrar('pedido entregado', 'adminA', 400, {
       antes: nuevo('b', { estado: E.DELIVERED }),
     }),
@@ -1261,7 +1277,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         expect(r.body).toMatchObject({ status: 'pending' });
       },
     }),
-    borrar('super viendo como B', 'superEnB', 404, { antes: nuevo('b') }),
+    borrar('super en modo soporte sobre B', 'soporteB', 403, {
+      antes: nuevo('b'),
+      code: 'SUPPORT_READ_ONLY',
+    }),
   ];
 
   // ============================================ PATCH /orders/{id}/status
@@ -1319,9 +1338,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       verificar: (cuerpo) =>
         expect(cuerpo).toMatchObject({ status: 'cancelled' }),
     }),
-    estado('super viendo como A', 'superEnA', 200, {
+    estado('super en modo soporte sobre A', 'soporteA', 403, {
       antes: nuevo('s', { estado: E.ACCEPTED }),
       body: { status: 'pending' },
+      code: 'SUPPORT_READ_ONLY',
     }),
     estado('sin token', undefined, 401, {
       ...sinTokenChofer,
@@ -1402,9 +1422,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('s'),
       body: { status: 'accepted' },
     }),
-    estado('super sin X-Distributor', 'super', 400, {
+    estado('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: nuevo('s'),
       body: { status: 'pending' },
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     estado('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_EST),
@@ -1422,9 +1443,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('s'),
       body: { status: 'accepted' },
     }),
-    estado('super viendo como B', 'superEnB', 404, {
+    estado('super en modo soporte sobre B', 'soporteB', 403, {
       antes: nuevo('s'),
       body: { status: 'pending' },
+      code: 'SUPPORT_READ_ONLY',
     }),
     estado('aceptar un pedido de Mercado Pago sin pagar', 'choferA2', 409, {
       antes: nuevoMercadoPago('s'),
@@ -1476,7 +1498,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         expect((await pedidoDe(c, 'a')).deliveryId).toBe(c.choferA2.deliveryId);
       },
     }),
-    asignar('super viendo como A', 'superEnA', 200, { antes: nuevo('a') }),
+    asignar('super en modo soporte sobre A', 'soporteA', 403, {
+      antes: nuevo('a'),
+      code: 'SUPPORT_READ_ONLY',
+    }),
     asignar('sin token', undefined, 401, {
       ...sinToken,
       ruta: (c) => `/orders/${c.inexistente}/assign/${c.inexistente}`,
@@ -1498,7 +1523,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('a'),
       ruta: (c) => `/orders/${c.p.a}/assign/${c.choferSinValidar.deliveryId}`,
     }),
-    asignar('super sin X-Distributor', 'super', 400, { antes: nuevo('a') }),
+    asignar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      antes: nuevo('a'),
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     asignar('pedido inexistente', 'adminA', 404, {
       ruta: (c) => `/orders/${c.inexistente}/assign/${c.choferA2.deliveryId}`,
     }),
@@ -1522,7 +1550,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         expect(r.body).toMatchObject({ status: 'pending', driver: null });
       },
     }),
-    asignar('super viendo como B', 'superEnB', 404, { antes: nuevo('a') }),
+    asignar('super en modo soporte sobre B', 'soporteB', 403, {
+      antes: nuevo('a'),
+      code: 'SUPPORT_READ_ONLY',
+    }),
     asignar('pedido de Mercado Pago sin pagar', 'adminA', 409, {
       antes: nuevoMercadoPago('a'),
     }),
@@ -1580,8 +1611,9 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
     llego('administrador', 'adminA', 200, {
       antes: nuevo('l', { estado: E.ON_THE_WAY }),
     }),
-    llego('super viendo como A', 'superEnA', 200, {
+    llego('super en modo soporte sobre A', 'soporteA', 403, {
       antes: nuevo('l', { estado: E.ON_THE_WAY }),
+      code: 'SUPPORT_READ_ONLY',
     }),
     llego('sin token', undefined, 401, {
       ...sinTokenChofer,
@@ -1716,12 +1748,13 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
         reason: 'El cliente no tiene celular: confirmó por teléfono',
       },
     }),
-    confirmar('super viendo como A', 'superEnA', 201, {
+    confirmar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: nuevo('f', { estado: E.ON_THE_WAY }),
       body: {
         code: '123456',
         reason: 'El cliente no tiene celular: confirmó por teléfono',
       },
+      code: 'SUPPORT_READ_ONLY',
     }),
     confirmar('sin token', undefined, 401, {
       ...sinTokenCliente,
@@ -1794,9 +1827,10 @@ describe('Matriz HTTP T2: pedidos, altas y cambios (e2e)', () => {
       antes: nuevo('f', { estado: E.ON_THE_WAY }),
       body: { code: '123456', reason: 'corto' },
     }),
-    confirmar('super sin X-Distributor', 'super', 400, {
+    confirmar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: nuevo('f', { estado: E.ON_THE_WAY }),
       body: { code: '123456', reason: 'El cliente no tiene celular' },
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     confirmar('inexistente', 'clienteA', 404, {
       ruta: idInexistente(SW_CONF),
