@@ -1120,9 +1120,13 @@ describe('Decisión de lecturas M6 E4b (e2e)', () => {
         lecturaDeFactura({ numero: 'M-T', total: '90.00' }, diferenciaDeTotal),
       ),
     }),
-    confirm('super sin distribuidora', 'super', 400, {
+    confirm('super sin sesión de soporte', 'super', 403, {
       ruta: inexistente('confirm'),
-      code: 'MISSING_DISTRIBUTOR',
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
+    confirm('super en modo soporte (sólo lectura)', 'soporteA', 403, {
+      ruta: inexistente('confirm'),
+      code: 'SUPPORT_READ_ONLY',
     }),
     confirm('sin token', undefined, 401, { ruta: inexistente('confirm') }),
     confirm('cliente', 'clienteA', 403, { ruta: inexistente('confirm') }),
@@ -1163,10 +1167,10 @@ describe('Decisión de lecturas M6 E4b (e2e)', () => {
       ),
       body: { fields: { total: '95.00' } },
     }),
-    correct('super sin distribuidora', 'super', 400, {
+    correct('super sin sesión de soporte', 'super', 403, {
       ruta: inexistente('correct'),
       body: { fields: { total: '100.00' } },
-      code: 'MISSING_DISTRIBUTOR',
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     correct('sin token', undefined, 401, {
       ruta: inexistente('correct'),

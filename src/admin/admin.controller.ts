@@ -38,7 +38,10 @@ import {
 } from './dto/admin-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
-import { esElMismoUsuario } from '../common/utils/alcance.util';
+import {
+  esElMismoUsuario,
+  esSuperAdminDePlataforma,
+} from '../common/utils/alcance.util';
 import {
   CurrentDistributor,
   faltaLaDistribuidora,
@@ -46,6 +49,7 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -59,9 +63,11 @@ export class AdminController {
   @ApiCreatedResponse({ type: AdminResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · el perfil de un admin de empresa exige X-Distributor y que coincida con distributor_id · Se envió un dato que no corresponde: Rol; Usuario: no es válido',
+      'Sólo un usuario con rol admin o super_admin tiene perfil de administrador · un admin de empresa lleva distributor_id y un super admin no · Se envió un dato que no corresponde: Rol; Usuario: no es válido',
   })
-  @ApiNotFoundResponse({ description: 'El usuario no existe' })
+  @ApiNotFoundResponse({
+    description: 'El usuario o la distribuidora (distributor_id) no existe',
+  })
   @ApiConflictResponse({
     description: 'El usuario ya tiene perfil de administrador',
   })
@@ -90,14 +96,16 @@ export class AdminController {
   }
 
   @Get()
+  @Alcance('ambos')
   @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all admins (scopeado por distribuidora)',
     description:
-      'Un admin de empresa ve los de la suya. El super admin ve los de la ' +
-      'distribuidora que elija con `?distributorId=` (aunque esté "viendo ' +
-      'como" otra), o los de la distribuidora en contexto, o todos si no hay.',
+      'Un admin de empresa ve los de la suya. El super admin fuera de soporte ' +
+      've los de la distribuidora que elija con `?distributorId=`, o todos si ' +
+      'no elige; en modo soporte, sólo los de la empresa de la sesión (como ' +
+      'un admin de ella).',
   })
   @ApiOkResponse({ type: AdminResponseDto, isArray: true })
   @ApiBadRequestResponse({ description: 'distributorId no es un UUID' })
@@ -111,8 +119,8 @@ export class AdminController {
     @CurrentDistributor() contexto: string | null,
   ): Promise<AdminResponseDto[]> {
     let distributorId = contexto;
-    if (user.role === RoleType.SUPER_ADMIN) {
-      distributorId = pedida ?? contexto;
+    if (esSuperAdminDePlataforma(user)) {
+      distributorId = pedida ?? null;
     } else if (pedida && pedida !== contexto) {
       throw new ForbiddenException(
         'No podés ver los administradores de otra distribuidora',
@@ -123,6 +131,7 @@ export class AdminController {
   }
 
   @Get(':id')
+  @Alcance('ambos')
   @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
@@ -146,6 +155,7 @@ export class AdminController {
   }
 
   @Patch(':id')
+  @Alcance('ambos')
   @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
@@ -183,6 +193,7 @@ export class AdminController {
   }
 
   @Delete(':id')
+  @Alcance('ambos')
   @Permiso('administradores.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)

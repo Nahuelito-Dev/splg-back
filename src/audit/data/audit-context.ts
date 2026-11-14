@@ -5,6 +5,13 @@ export interface AuditContext {
   userId: string | null;
   ip: string | null;
   distributorId: string | null;
+  /**
+   * La request es del modo soporte: `ActorEnLaBase` abre cada transacción en
+   * sólo lectura y rechaza las escrituras sueltas (segunda capa, después del
+   * `AlcanceGuard`); `S3Service` no firma sin el alcance `files` y nunca más
+   * allá del fin de la sesión.
+   */
+  soporte?: { alcance: readonly string[]; vence: Date };
 }
 
 /**

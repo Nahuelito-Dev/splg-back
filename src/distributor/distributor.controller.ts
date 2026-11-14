@@ -45,6 +45,7 @@ import {
   SubirFotoInterceptor,
 } from '../s3/photo-http';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 /**
  * Gestión de distribuidoras (tenants). Es una operación de PLATAFORMA:
@@ -97,6 +98,7 @@ export class DistributorController {
 
   @Get('current')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
+  @Alcance('ambos')
   @ApiOperation({
     summary: 'La distribuidora de la sesión',
     description:

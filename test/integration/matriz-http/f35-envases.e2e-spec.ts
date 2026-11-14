@@ -13,6 +13,7 @@ import {
 } from './matriz';
 import { EscenarioT2, sembrarBaseT2 } from './t2-base';
 import { sembrarEscenario } from './matriz';
+import { casosEnModoSoporte } from './soporte';
 
 interface Ctx extends EscenarioT2 {
   customerA: string;
@@ -112,6 +113,12 @@ describe('Matriz HTTP F35: cobro de envases (e2e)', () => {
     '/v2/container-charge',
   );
   let claveInterruptor = '';
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(getInterruptor, putInterruptor),
+  );
   correrMatriz('interruptor de cobro', ver, [
     getInterruptor('apagado por omisión', 'adminA', 200, {
       verificar: (b) => expect(b).toMatchObject({ enabled: false }),
@@ -119,8 +126,8 @@ describe('Matriz HTTP F35: cobro de envases (e2e)', () => {
     getInterruptor('sin token', undefined, 401),
     getInterruptor('cliente', 'clienteA', 403),
     getInterruptor('chofer', 'chofer', 403),
-    getInterruptor('super admin sin distribuidora', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
+    getInterruptor('super admin sin sesión de soporte', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     putInterruptor('lo enciende y relee', 'adminA', 200, {
       body: { enabled: true },

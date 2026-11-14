@@ -60,6 +60,7 @@ import {
 } from '../../../src/audit/entities/audit-action-type.entity';
 import { crearValidationPipe } from '../../../src/common/validation/validation-pipe';
 import { sentenciasDeRolesDelPersonal } from '../../../src/migrations/sql/roles-del-personal';
+import { sentenciasDeSoporte } from '../../../src/migrations/sql/sesiones-de-soporte';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
  * devuelva algo que `supertest` acepta sin pasar por `any`. */
@@ -319,6 +320,8 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     // Roles del personal (F37): únicos parciales, rol de sistema por
     // distribuidora y rol de personal de cada admin.
     ...sentenciasDeRolesDelPersonal(),
+    // Modo soporte: únicos parciales de las sesiones y registro de sólo agregar.
+    ...sentenciasDeSoporte(),
   ]) {
     await dataSource.query(sql);
   }

@@ -42,6 +42,11 @@ export const JoiValidationSchema = Joi.object({
   FIREBASE_PROJECT_ID: Joi.string().required(),
   FIREBASE_CLIENT_EMAIL: Joi.string().required(),
   FIREBASE_PRIVATE_KEY: Joi.string().required(),
+  // La plataforma (dueña del sistema): nombre, razón social y correo del soporte.
+  // Sin ellas, el nombre neutro «SPLG» (ver plataforma.config.ts).
+  PLATFORM_NAME: Joi.string().trim().max(80).empty('').optional(),
+  PLATFORM_LEGAL_NAME: Joi.string().trim().max(160).empty('').optional(),
+  PLATFORM_SUPPORT_EMAIL: Joi.string().trim().email().empty('').optional(),
   // SDK de cliente, para el acceso con email y contraseña.
   FIREBASE_APP_API_KEY: Joi.string().optional(),
   // Dominio de la app en los links de los correos; por defecto, el del

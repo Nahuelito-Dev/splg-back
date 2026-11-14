@@ -13,7 +13,12 @@ import { User } from '../../users/entities/user.entity';
 import { DistributorService } from '../../distributor/distributor.service';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { SIN_DISTRIBUIDORA_KEY } from '../../common/decorators/sin-distribuidora.decorator';
+import { resolverAlcance } from '../../common/alcance/resolver-alcance';
+import { SupportSessionResolver } from '../../support/application/support-session.resolver';
 import type { Request } from 'express';
+
+/** Encabezado con el que el super admin hace una consulta de soporte. */
+export const ENCABEZADO_DE_SOPORTE = 'x-support-session';
 
 /** Un uuid v4 canónico (para distinguir header X-Distributor id vs slug). */
 const UUID_RE =
@@ -26,6 +31,7 @@ export class AuthGuard implements CanActivate {
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
     private readonly distributorService: DistributorService,
+    private readonly sesionesDeSoporte: SupportSessionResolver,
   ) {}
 
   public async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -132,11 +138,15 @@ export class AuthGuard implements CanActivate {
     const sinDistribuidora = this.reflector.getAllAndOverride<
       boolean | undefined
     >(SIN_DISTRIBUIDORA_KEY, [context.getHandler(), context.getClass()]);
-    const distributor_id = await this.resolveDistributor(
-      local_user,
-      request,
-      sinDistribuidora,
-    );
+    const distributor_id =
+      local_user.role?.type === RoleType.SUPER_ADMIN
+        ? await this.resolverSoporte(
+            local_user,
+            request,
+            Boolean(sinDistribuidora),
+            context,
+          )
+        : await this.resolveDistributor(local_user, request, sinDistribuidora);
 
     // getUser ya pasó por validateUserRoleForApp, que rechaza al usuario sin
     // rol o con un rol que no es de esta app: acá el rol es de RoleType.
@@ -145,9 +155,41 @@ export class AuthGuard implements CanActivate {
       role: local_user.role?.type as RoleType,
       user_id: local_user.userId,
       distributor_id,
+      support_session_id: request.supportSession?.id ?? null,
     };
     // Tenant efectivo de la request (lo lee @CurrentDistributor()).
     request.distributorId = distributor_id;
+  }
+
+  /**
+   * El tenant del super admin (modo soporte). No lee `X-Distributor`: sin
+   * sesión de soporte no tiene empresa (`null`, lo de la plataforma); con
+   * `X-Support-Session` válida, la empresa es la de la sesión y la request
+   * queda marcada (`request.supportSession`) para el `AlcanceGuard` y la base.
+   *
+   * Las rutas de plataforma y las `@SinDistribuidora()` no miran la sesión: el
+   * panel puede consultar su sesión, salir o verificar la cuenta aunque mande
+   * el encabezado de una sesión que ya terminó.
+   */
+  private async resolverSoporte(
+    user: User,
+    request: Request,
+    sinDistribuidora: boolean,
+    context: ExecutionContext,
+  ): Promise<string | null> {
+    request.supportSession = undefined;
+    if (sinDistribuidora) return null;
+    const alcance = resolverAlcance(this.reflector, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (alcance === null || alcance === 'plataforma') return null;
+    const header = request.headers[ENCABEZADO_DE_SOPORTE];
+    if (header === undefined) return null;
+    const id = Array.isArray(header) ? header[0] : header;
+    const sesion = await this.sesionesDeSoporte.vigente(id ?? '', user.userId);
+    request.supportSession = sesion;
+    return sesion.distributorId;
   }
 
   /**
@@ -156,12 +198,12 @@ export class AuthGuard implements CanActivate {
    *    cualquier header X-Distributor → un staff no puede operar otro tenant.
    *    Esto NO cambia con `ignorarHeader`: el staff nunca lee el header, así
    *    que no hay nada que "ignorar" de más.
-   *  - customer/super_admin: del header `X-Distributor` (slug o uuid), validado
+   *  - customer: del header `X-Distributor` (slug o uuid), validado
    *    contra una distribuidora activa. Sin header → null. Con
    *    `ignorarHeader` (ruta `@SinDistribuidora()`), se comporta como si el
    *    header no hubiese llegado: no lo lee, no lo valida, no puede romper.
-   * Devuelve null si no hay tenant en contexto (super_admin cross-tenant, o
-   * customer que aún no eligió distribuidora).
+   * Devuelve null si el customer aún no eligió distribuidora. El super_admin
+   * no pasa por acá: lo resuelve `resolverSoporte`.
    */
   private async resolveDistributor(
     user: User,
@@ -192,8 +234,8 @@ export class AuthGuard implements CanActivate {
       return id;
     }
 
-    // customer / super_admin → header opcional, salvo que la ruta ya haya
-    // dicho que no lo necesita: en ese caso ni se lee.
+    // customer → header opcional, salvo que la ruta ya haya dicho que no lo
+    // necesita: en ese caso ni se lee.
     if (ignorarHeader) {
       return null;
     }

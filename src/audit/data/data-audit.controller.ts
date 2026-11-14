@@ -16,6 +16,7 @@ import {
 } from './data-audit.dto';
 import { DataAuditService } from './data-audit.service';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import { Alcance } from '../../common/decorators/alcance.decorator';
 
 /**
  * Auditoría de datos según el modelo de la cátedra: Auditoria,
@@ -23,6 +24,7 @@ import { Permiso } from '../../common/decorators/permiso.decorator';
  * (`GET /audit`, CU-152): acá se ve qué registro y qué campos cambiaron.
  */
 @ApiTags('Audit')
+@Alcance('ambos')
 @Controller('audit')
 export class DataAuditController {
   constructor(private readonly service: DataAuditService) {}

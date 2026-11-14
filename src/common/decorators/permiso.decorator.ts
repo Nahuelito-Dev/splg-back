@@ -25,7 +25,9 @@ export function Permiso(
     ApiForbiddenResponse({
       description: `La cuenta no tiene el rol que pide el endpoint, o es un administrador cuyo rol de personal no tiene permiso para ${permisos
         .map((p) => `${etiquetaDelPermiso(p)} (\`${p}\`)`)
-        .join(' ni para ')}`,
+        .join(
+          ' ni para ',
+        )}. Super admin: los del modo soporte (\`SUPPORT_SESSION_REQUIRED\`, \`SUPPORT_READ_ONLY\`, \`SUPPORT_SESSION_ENDED\`, \`SUPPORT_SCOPE_REQUIRED\`)`,
     }),
   );
 }

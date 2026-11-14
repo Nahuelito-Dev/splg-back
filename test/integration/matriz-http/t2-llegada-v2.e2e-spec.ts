@@ -25,6 +25,7 @@ import {
   sembrarBaseT2,
   sembrarPedido,
 } from './t2-base';
+import { casosEnModoSoporte } from './soporte';
 
 type Ctx = EscenarioT2;
 
@@ -330,6 +331,12 @@ describe('Matriz HTTP: «Llegué» con control de distancia (e2e)', () => {
     }),
   ];
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(endpoint<Ctx>('get', '/orders', '/orders'), v1),
+  );
   correrMatriz(
     'PATCH /v2/orders/{id}/arrived',
     ver,

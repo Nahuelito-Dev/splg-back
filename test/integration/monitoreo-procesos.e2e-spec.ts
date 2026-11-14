@@ -29,6 +29,7 @@ import { ProcessRunRecorder } from '../../src/process-run/process-run.recorder';
 import { ProcessRunWatchCron } from '../../src/process-run/process-run-watch.cron';
 import { Role } from '../../src/role/entities/role.entity';
 import { User } from '../../src/users/entities/user.entity';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Headers = Record<string, string>;
 
@@ -256,7 +257,7 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
       expect((res.body as { alerts: number }).alerts).toBe(3);
     });
 
-    it('un admin no ve las corridas de otra distribuidora; el super las ve y las filtra con X-Distributor', async () => {
+    it('un admin no ve las corridas de otra distribuidora; el super las ve todas (plataforma) y las de una en modo soporte', async () => {
       const e = await escenario();
       await corrida({
         process: ProcessName.CYLINDER_RECOVERY,
@@ -297,9 +298,11 @@ describe('Monitoreo de procesos automáticos (F31, e2e)', () => {
         .set(e.sup)
         .expect(200);
       expect(de(todas)).toHaveLength(2);
+      // El X-Distributor ya no filtra para el super admin: la empresa la ve en
+      // modo soporte.
       const filtrada = await http()
         .get('/v2/process-runs/summary')
-        .set({ ...e.sup, 'X-Distributor': e.dB.distributorId })
+        .set((await conSesionDeSoporte(env.app, e.dB.distributorId)).cabeceras)
         .expect(200);
       expect(de(filtrada).map((i) => i.distributorId)).toEqual([
         e.dB.distributorId,

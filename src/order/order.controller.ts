@@ -95,6 +95,7 @@ import { ArrivedDto } from './dto/arrived.dto';
 import { ClassSerializerInterceptor, UseInterceptors } from '@nestjs/common';
 import { marcarRespuestaIncompleta } from '../common/interceptors/respuesta-incompleta';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { SoloLectura } from '../audit/solo-lectura.decorator';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -200,6 +201,8 @@ export class OrderController {
   }
 
   @Post('quote')
+  // Sólo calcula (no escribe): pasa en modo soporte y no va al registro de escrituras.
+  @SoloLectura()
   @Permiso('pedidos.gestionar')
   @Auth(RoleType.CUSTOMER, RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({

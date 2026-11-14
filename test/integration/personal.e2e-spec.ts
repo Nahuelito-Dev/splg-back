@@ -6,6 +6,7 @@
  */
 import { randomUUID } from 'crypto';
 import request from 'supertest';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 import { DataSource, IsNull, Not } from 'typeorm';
 import {
   TestEnv,
@@ -1835,7 +1836,7 @@ describe('Personal: puestos y legajos (e2e)', () => {
       expect(await dataSource.getRepository(User).count()).toBe(cuentas);
     });
 
-    it('el super admin sin distribuidora en contexto recibe 400 en vez de ver todo', async () => {
+    it('el super admin sin sesión de soporte no ve legajos (403) y en modo soporte ve sólo los de esa empresa', async () => {
       const { d1 } = await escenario();
       const sufijo = randomUUID().slice(0, 8);
       const email = `super.${sufijo}@splg.local`;
@@ -1853,12 +1854,20 @@ describe('Personal: puestos y legajos (e2e)', () => {
         'X-Client-Source': 'panel-app',
       };
 
-      await http().get('/employees').set(headers).expect(400);
-      const conContexto = await http()
+      const sinSesion = await http().get('/employees').set(headers);
+      const conXDistributor = await http()
         .get('/employees')
-        .set({ ...headers, 'X-Distributor': d1.slug })
+        .set({ ...headers, 'X-Distributor': d1.slug });
+      expect([sinSesion.body, conXDistributor.body]).toMatchObject([
+        { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+        { statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED' },
+      ]);
+      const soporte = await conSesionDeSoporte(env.app, d1.distributorId);
+      const enSoporte = await http()
+        .get('/employees')
+        .set(soporte.cabeceras)
         .expect(200);
-      expect(cuerpoDe<{ total: number }>(conContexto).total).toBe(0);
+      expect(cuerpoDe<{ total: number }>(enSoporte).total).toBe(0);
     });
   });
 

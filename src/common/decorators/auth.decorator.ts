@@ -29,8 +29,20 @@ export function Auth(...roles: RoleType[]): MethodDecorator & ClassDecorator {
       ? []
       : [
           ApiForbiddenResponse({
-            description: `Requiere rol: ${roles.join(', ')}`,
+            description: descripcionDel403(roles),
           }),
         ]),
   );
+}
+
+/**
+ * El 403 por rol y, si el super admin entra, los del modo soporte: en lo de una
+ * empresa sin sesión de soporte, o escribiendo con una (sólo lectura).
+ */
+function descripcionDel403(roles: RoleType[]): string {
+  const porRol = `Requiere rol: ${roles.join(', ')}`;
+  const soloPlataforma =
+    roles.length === 1 && roles[0] === RoleType.SUPER_ADMIN;
+  if (!roles.includes(RoleType.SUPER_ADMIN) || soloPlataforma) return porRol;
+  return `${porRol}. Super admin: sin sesión de soporte en lo de una empresa (\`SUPPORT_SESSION_REQUIRED\`), escribiendo en modo soporte (\`SUPPORT_READ_ONLY\`) o con una sesión pendiente, vencida o revocada en \`X-Support-Session\` (\`SUPPORT_SESSION_ENDED\`), o un archivo o exporte sin ese alcance en la sesión (\`SUPPORT_SCOPE_REQUIRED\`)`;
 }

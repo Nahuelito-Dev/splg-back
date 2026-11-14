@@ -25,6 +25,7 @@ import {
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { RoleType } from '../../src/common/constants/role-type.enum';
 import { fechasDeEntrega, sembrarChoferDeFixture } from './setup/pedido-valido';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 describe('Filtros del panel (e2e)', () => {
   let env: TestEnv;
@@ -126,6 +127,12 @@ describe('Filtros del panel (e2e)', () => {
   }
 
   /** GET como el panel: el token de prueba es el correo. */
+  /** El super admin en modo soporte sobre una distribuidora (sólo lectura). */
+  const enSoporte = async (url: string, distributorId: string) =>
+    request(env.app.getHttpServer())
+      .get(url)
+      .set((await conSesionDeSoporte(env.app, distributorId)).cabeceras);
+
   const get = (
     quien: User,
     url: string,
@@ -177,16 +184,11 @@ describe('Filtros del panel (e2e)', () => {
       const todos = await get(adminA, '/customers').expect(200);
       expect(todos.headers['x-total-count']).toBe('2');
 
-      // Super admin: sin header ve las dos distribuidoras; con header, una.
-      const global = await get(superAdmin, '/customers?status=blocked').expect(
-        200,
-      );
-      expect(global.headers['x-total-count']).toBe('2');
-      const deB = await get(
-        superAdmin,
-        '/customers?status=blocked',
-        b.slug,
-      ).expect(200);
+      // Super admin: sin sesión de soporte no ve clientes (403); en modo soporte,
+      // los de esa empresa.
+      await get(superAdmin, '/customers?status=blocked').expect(403);
+      const deB = await enSoporte('/customers?status=blocked', b.distributorId);
+      expect(deB.status).toBe(200);
       expect(deB.headers['x-total-count']).toBe('1');
     }, 30000);
 
@@ -226,11 +228,14 @@ describe('Filtros del panel (e2e)', () => {
       const todos = await get(adminA, '/users').expect(200);
       expect(todos.headers['x-total-count']).toBe('3');
 
-      const global = await get(superAdmin, '/users?role=delivery').expect(200);
-      expect(global.headers['x-total-count']).toBe('2');
-      const deB = await get(superAdmin, '/users?role=delivery', b.slug).expect(
+      // Sin sesión, la versión de plataforma (sólo cuentas del panel): ningún
+      // chofer; en modo soporte, los de esa empresa.
+      const plataforma = await get(superAdmin, '/users?role=delivery').expect(
         200,
       );
+      expect(plataforma.headers['x-total-count']).toBe('0');
+      const deB = await enSoporte('/users?role=delivery', b.distributorId);
+      expect(deB.status).toBe(200);
       expect(deB.headers['x-total-count']).toBe('1');
     }, 30000);
 
@@ -380,24 +385,18 @@ describe('Filtros del panel (e2e)', () => {
         `/cylinders?orderId=${pedB.orderId}`,
       ).expect(200);
       expect(cuerpo<Envase[]>(ajeno)).toEqual([]);
-      // Super admin sin header ve los de A; con el header de B, el pedido de A
-      // no le trae nada y el de B, su envase.
-      const global = await get(
-        superAdmin,
+      // Super admin: sin sesión de soporte 403; en modo soporte sobre B, el pedido
+      // de A no le trae nada y el de B, su envase.
+      await get(superAdmin, `/cylinders?orderId=${ped.orderId}`).expect(403);
+      const deAConB = await enSoporte(
         `/cylinders?orderId=${ped.orderId}`,
-      ).expect(200);
-      expect(global.headers['x-total-count']).toBe('3');
-      const deAConB = await get(
-        superAdmin,
-        `/cylinders?orderId=${ped.orderId}`,
-        b.slug,
-      ).expect(200);
+        b.distributorId,
+      );
       expect(cuerpo<Envase[]>(deAConB)).toEqual([]);
-      const soloB = await get(
-        superAdmin,
+      const soloB = await enSoporte(
         `/cylinders?orderId=${pedB.orderId}`,
-        b.slug,
-      ).expect(200);
+        b.distributorId,
+      );
       expect(cuerpo<Envase[]>(soloB).map((c) => c.cylinder_id)).toEqual([
         deB.cylinderId,
       ]);

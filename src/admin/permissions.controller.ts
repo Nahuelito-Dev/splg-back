@@ -11,11 +11,13 @@ import {
   MyPermissionsResponseDto,
   PermissionModuleResponseDto,
 } from './dto/staff-role.dto';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 /** Catálogo de permisos del personal del panel (F37, API v2). */
 @ApiTags('Administración · Roles del personal (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @SinDistribuidora()
+@Alcance('ambos')
 @Controller({ path: 'permissions', version: '2' })
 export class PermissionsController {
   @Get()
@@ -34,6 +36,7 @@ export class PermissionsController {
 @ApiTags('Administración · Roles del personal (v2)')
 @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
 @SinDistribuidora()
+@Alcance('ambos')
 @Controller({ path: 'me', version: '2' })
 export class MyPermissionsController {
   constructor(private readonly permisos: StaffPermissionsService) {}

@@ -139,11 +139,15 @@ describe('Hoja de ruta: planificación y edición (e2e)', () => {
       await http().get(v2('/route-plans/14-11-2026')).set(A()).expect(400);
       await http().get(v2('/route-plans/2026-02-30')).set(A()).expect(400);
     });
-    it('400 si el super admin no manda la distribuidora', async () => {
+    it('el super admin: sin sesión de soporte 403; en modo soporte lee y no escribe', async () => {
       await http()
         .get(v2(`/route-plans/${manana}`))
         .set(c.actores.super)
-        .expect(400);
+        .expect(403);
+      await http()
+        .post(v2(`/route-plans/${manana}/open`))
+        .set(c.actores.soporteA)
+        .expect(403);
     });
     it('404 antes de abrir el día', async () => {
       const r = await http()

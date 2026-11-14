@@ -13,9 +13,11 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Audit')
 @ApiBearerAuth()
+@Alcance('ambos')
 @Controller('audit')
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}

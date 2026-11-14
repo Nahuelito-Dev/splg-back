@@ -226,13 +226,13 @@ describe('AdminNotificationsService', () => {
       });
     });
 
-    it('el super admin sin distribuidora ve todas: no filtra por empresa', async () => {
+    it('el super admin fuera de soporte ve la bandeja de plataforma: nunca la de una empresa', async () => {
       const qb = qbFalso({});
       avisos.createQueryBuilder.mockReturnValue(qb);
 
       await service.listar('u1', null, { limit: 20, offset: 0 });
 
-      expect(qb.where).toHaveBeenCalledWith('1 = 1');
+      expect(qb.where).toHaveBeenCalledWith('n.distributorId IS NULL');
     });
 
     it('unread=true filtra los que el usuario no leyó; unread=false, los que sí', async () => {

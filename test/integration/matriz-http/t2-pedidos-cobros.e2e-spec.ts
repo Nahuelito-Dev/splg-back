@@ -223,9 +223,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       },
       ...motivoCobro,
     }),
-    registrar('super viendo como A', 'superEnA', 200, {
+    registrar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: entregadoEfectivo('r'),
       ...motivoCobro,
+      code: 'SUPPORT_READ_ONLY',
     }),
     registrar('sin token', undefined, 401, {
       ...sinToken,
@@ -276,9 +277,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       antes: entregadoTransfer('r'),
       ...motivoCobro,
     }),
-    registrar('super sin X-Distributor', 'super', 400, {
+    registrar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: entregadoEfectivo('r'),
       ...motivoCobro,
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     registrar('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_REG),
@@ -292,9 +294,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
           PaymentStatus.PENDING,
         ),
     }),
-    registrar('super viendo como B', 'superEnB', 404, {
+    registrar('super en modo soporte sobre B', 'soporteB', 403, {
       antes: entregadoEfectivo('r'),
       ...motivoCobro,
+      code: 'SUPPORT_READ_ONLY',
     }),
     registrar('el pago ya se informó como impago', 'adminA', 409, {
       antes: impago('r'),
@@ -358,9 +361,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       verificar: (cuerpo) =>
         expect(cuerpo).toMatchObject({ alreadyResolved: true }),
     }),
-    resolver('super viendo como A', 'superEnA', 200, {
+    resolver('super en modo soporte sobre A', 'soporteA', 403, {
       antes: impago('u'),
       ...paga,
+      code: 'SUPPORT_READ_ONLY',
     }),
     resolver('sin token', undefined, 401, {
       ...sinToken,
@@ -397,9 +401,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       antes: impago('u'),
       body: { ...paga.body, cashBoxId: 'xx' },
     }),
-    resolver('super sin X-Distributor', 'super', 400, {
+    resolver('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: impago('u'),
       ...paga,
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     resolver('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_RES),
@@ -413,9 +418,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
           PaymentStatus.UNPAID,
         ),
     }),
-    resolver('super viendo como B', 'superEnB', 404, {
+    resolver('super en modo soporte sobre B', 'soporteB', 403, {
       antes: impago('u'),
       ...paga,
+      code: 'SUPPORT_READ_ONLY',
     }),
     resolver('el pedido no tiene el pago como impago', 'adminA', 409, {
       antes: entregadoEfectivo('u'),
@@ -486,9 +492,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       antes: nuevo('t', { metodo: PaymentMethod.TRANSFER }),
       ...recibida,
     }),
-    transferir('super viendo como A', 'superEnA', 200, {
+    transferir('super en modo soporte sobre A', 'soporteA', 403, {
       antes: entregadoTransfer('t'),
       ...recibida,
+      code: 'SUPPORT_READ_ONLY',
     }),
     transferir('sin token', undefined, 401, {
       ...sinToken,
@@ -542,10 +549,16 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       }),
       ...recibida,
     }),
-    transferir('super sin X-Distributor', 'super', 400, {
-      antes: entregadoTransfer('t'),
-      ...recibida,
-    }),
+    transferir(
+      'super sin X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      {
+        antes: entregadoTransfer('t'),
+        ...recibida,
+        code: 'SUPPORT_SESSION_REQUIRED',
+      },
+    ),
     transferir('inexistente', 'adminA', 404, {
       ruta: idInexistente(SW_TRF),
       ...recibida,
@@ -558,9 +571,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
           PaymentStatus.PENDING,
         ),
     }),
-    transferir('super viendo como B', 'superEnB', 404, {
+    transferir('super en modo soporte sobre B', 'soporteB', 403, {
       antes: entregadoTransfer('t'),
       ...recibida,
+      code: 'SUPPORT_READ_ONLY',
     }),
     transferir('la decisión contraria sobre algo ya decidido', 'adminA', 409, {
       antes: async (c) => {
@@ -617,9 +631,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
         );
       },
     }),
-    liberar('super viendo como A', 'superEnA', 200, {
+    liberar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: retenido('h'),
       ...liberacion,
+      code: 'SUPPORT_READ_ONLY',
     }),
     liberar('sin token', undefined, 401, {
       ...sinToken,
@@ -644,9 +659,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       antes: retenido('h'),
       body: { reason: 'a'.repeat(501) },
     }),
-    liberar('super sin X-Distributor', 'super', 400, {
+    liberar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: retenido('h'),
       ...liberacion,
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     liberar('inexistente', 'adminA', 404, {
       ruta: (c) => `/v2/orders/${c.inexistente}/payment/fraud-hold/release`,
@@ -658,9 +674,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       verificar: async (_cuerpo, c) =>
         expect((await pedidoDe(c, 'h')).paymentFraudHold).toBe(true),
     }),
-    liberar('super viendo como B', 'superEnB', 404, {
+    liberar('super en modo soporte sobre B', 'soporteB', 403, {
       antes: retenido('h'),
       ...liberacion,
+      code: 'SUPPORT_READ_ONLY',
     }),
     liberar('el pedido no está retenido', 'adminA', 409, {
       antes: nuevo('h'),
@@ -699,7 +716,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
     sena('seña por transferencia', 'adminA', 200, {
       antes: reserva('d', { metodo: PaymentMethod.TRANSFER }),
     }),
-    sena('super viendo como A', 'superEnA', 200, { antes: reserva('d') }),
+    sena('super en modo soporte sobre A', 'soporteA', 403, {
+      antes: reserva('d'),
+      code: 'SUPPORT_READ_ONLY',
+    }),
     sena('sin token', undefined, 401, {
       ...sinToken,
       ruta: idInexistente(SW_SENA),
@@ -708,14 +728,20 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
     sena('chofer', 'chofer', 403, { antes: reserva('d') }),
     sena('id mal formado', 'adminA', 400, { ruta: idMalo(SW_SENA) }),
     sena('pedido que no es una reserva', 'adminA', 400, { antes: nuevo('d') }),
-    sena('super sin X-Distributor', 'super', 400, { antes: reserva('d') }),
+    sena('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      antes: reserva('d'),
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     sena('inexistente', 'adminA', 404, { ruta: idInexistente(SW_SENA) }),
     sena('administrador de otra distribuidora', 'adminB', 404, {
       antes: reserva('d'),
       verificar: async (_cuerpo, c) =>
         expect((await pedidoDe(c, 'd')).depositPaid).toBe(false),
     }),
-    sena('super viendo como B', 'superEnB', 404, { antes: reserva('d') }),
+    sena('super en modo soporte sobre B', 'soporteB', 403, {
+      antes: reserva('d'),
+      code: 'SUPPORT_READ_ONLY',
+    }),
   ];
   const SW_SENA2 = '/orders/{id}/confirm-deposit';
   const sena2 = endpoint<Ctx>(
@@ -749,9 +775,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       },
       body: {},
     }),
-    sena2('super viendo como A', 'superEnA', 200, {
+    sena2('super en modo soporte sobre A', 'soporteA', 403, {
       antes: reserva('d'),
       body: {},
+      code: 'SUPPORT_READ_ONLY',
     }),
     sena2('sin token', undefined, 401, {
       ...sinToken,
@@ -776,9 +803,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       antes: nuevo('d'),
       body: {},
     }),
-    sena2('super sin X-Distributor', 'super', 400, {
+    sena2('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: reserva('d'),
       body: {},
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     sena2('inexistente', 'adminA', 404, {
       ruta: (c) => `/v2/orders/${c.inexistente}/confirm-deposit`,
@@ -824,9 +852,10 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
       verificar: async (_cuerpo, c) =>
         expect((await pedidoDe(c, 'd')).depositPaid).toBe(false),
     }),
-    sena2('super viendo como B', 'superEnB', 404, {
+    sena2('super en modo soporte sobre B', 'soporteB', 403, {
       antes: reserva('d'),
       body: {},
+      code: 'SUPPORT_READ_ONLY',
     }),
   ];
 
@@ -1026,9 +1055,19 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
         expect(lista[0].uploadedByUserId).toBe(c.clienteA.userId);
       },
     }),
-    listar('super viendo como A', 'superEnA', 200, {
-      antes: conComprobante('w'),
-    }),
+    // Sin el alcance «Archivos» el listado sale, con el enlace en null.
+    listar(
+      'super en modo soporte sobre A, sin el alcance archivos',
+      'soporteA',
+      200,
+      {
+        antes: conComprobante('w'),
+        verificar: (cuerpo) =>
+          expect(cuerpo).toEqual([
+            expect.objectContaining({ url: null, expiresAt: null }),
+          ]),
+      },
+    ),
     listar('sin comprobantes', 'clienteA', 200, {
       antes: transferencia('w'),
       verificar: (cuerpo) => expect(cuerpo).toEqual([]),
@@ -1041,8 +1080,9 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
     listar('id mal formado', 'adminA', 400, {
       ruta: '/v2/orders/xx/transfer-receipt',
     }),
-    listar('super sin X-Distributor', 'super', 400, {
+    listar('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
       antes: conComprobante('w'),
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     listar('inexistente', 'adminA', 404, {
       ruta: (c) => `/v2/orders/${c.inexistente}/transfer-receipt`,
@@ -1053,7 +1093,7 @@ describe('Matriz HTTP T2: pedidos, cobros y comprobantes (e2e)', () => {
     listar('administrador de otra distribuidora', 'adminB', 404, {
       antes: conComprobante('w'),
     }),
-    listar('super viendo como B', 'superEnB', 404, {
+    listar('super en modo soporte sobre B', 'soporteB', 404, {
       antes: conComprobante('w'),
     }),
   ];

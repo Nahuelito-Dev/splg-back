@@ -9,8 +9,9 @@
  * recupero...) se borra por la tabla de la que cuelga.
  *
  * Varias tablas son de sólo escritura para la aplicación (un trigger rechaza
- * UPDATE y DELETE): `stock_movement`, `audit_log`, `audit`/`audit_detail` y los libros
- * de caja, de cuentas corrientes y de comisiones. La
+ * UPDATE y DELETE): `stock_movement`, `audit_log`, `audit`/`audit_detail`, el registro
+ * del modo soporte (`support_access`) y los libros de caja, de cuentas corrientes y de
+ * comisiones. La
  * purga del seed sí las vacía, porque reconstruye la demo desde cero; para eso
  * desactiva esos triggers dentro de SU transacción y los reactiva antes de
  * confirmar (el DDL de Postgres es transaccional: si algo falla, el rollback los
@@ -36,6 +37,7 @@ export const TRIGGERS_DE_SOLO_ESCRITURA: ReadonlyArray<
   ['cash_movement', 'cash_movement_solo_agregar'],
   ['customer_account_entry', 'customer_account_entry_solo_agregar'],
   ['commission_entry', 'commission_entry_solo_agregar'],
+  ['support_access', 'support_access_inmutable'],
 ];
 
 /** Tablas con `distributor_id` que se vacían, en orden (cada una ya sin hijos). */
@@ -90,6 +92,10 @@ const TABLAS_DE_GESTION: readonly string[] = [
   'import_job',
   'mp_reconciliation_item',
   'mp_reconciliation',
+  // Modo soporte: lo que se miró, antes que la sesión (que apunta a la
+  // distribuidora y a usuarios con RESTRICT).
+  'support_access',
+  'support_session',
 ];
 
 export interface ResumenDePurga {

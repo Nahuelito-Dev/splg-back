@@ -20,7 +20,8 @@ const TITULO_MAX = 160;
 /**
  * La bandeja de avisos de los administradores. Los avisos son de la
  * distribuidora; la lectura es de cada admin. `distributorId` `null` es el
- * super admin sin `X-Distributor`: ve las bandejas de todas las empresas.
+ * super admin fuera del modo soporte: la bandeja de plataforma (avisos sin
+ * distribuidora), nunca las de las empresas.
  */
 @Injectable()
 export class AdminNotificationsService {
@@ -180,7 +181,7 @@ export class AdminNotificationsService {
     if (distributorId) {
       qb.where('n.distributorId = :distributorId', { distributorId });
     } else {
-      qb.where('1 = 1');
+      qb.where('n.distributorId IS NULL');
     }
     return qb;
   }

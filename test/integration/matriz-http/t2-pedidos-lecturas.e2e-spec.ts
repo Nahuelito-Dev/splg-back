@@ -108,14 +108,13 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
         expect(cuerpo).toMatchObject({ total: 2 });
       },
     }),
-    listar('super sin distribuidora: todos', 'super', 200, {
-      ruta: '/orders?limit=100',
-      verificar: (cuerpo, c) =>
-        expect(idsDe(cuerpo)).toEqual(
-          expect.arrayContaining([c.p.pend, c.p.pendB]),
-        ),
-    }),
-    listar('super viendo como B', 'superEnB', 200, {
+    listar(
+      'super sin distribuidora: todos (sin sesión de soporte)',
+      'super',
+      403,
+      { ruta: '/orders?limit=100', code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
+    listar('super en modo soporte sobre B', 'soporteB', 200, {
       ruta: '/orders?limit=100',
       verificar: (cuerpo, c) => {
         expect(idsDe(cuerpo)).toContain(c.p.pendB);
@@ -225,13 +224,13 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
         }),
     }),
     uno('administrador', 'adminA', 200),
-    uno('super viendo como A', 'superEnA', 200),
+    uno('super en modo soporte sobre A', 'soporteA', 200),
     uno('chofer: un pedido del pool de su distribuidora', 'chofer', 200),
     uno('chofer: el que tiene asignado', 'chofer', 200, de('acc')),
     uno('sin token', undefined, 401, sinToken),
     uno('id mal formado', 'adminA', 400, { ruta: '/orders/xx' }),
-    uno('super sin X-Distributor', 'super', 400, {
-      mensaje: 'Falta la distribuidora',
+    uno('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
     uno('inexistente', 'adminA', 404, {
       ruta: (c) => `/orders/${c.inexistente}`,
@@ -241,7 +240,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
       mensaje: 'Pedido no encontrado',
     }),
     uno('administrador de otra distribuidora', 'adminB', 404),
-    uno('super viendo como B el pedido de A', 'superEnB', 404),
+    uno('super en modo soporte sobre B el pedido de A', 'soporteB', 404),
     uno('chofer de otra distribuidora', 'choferB', 404),
     uno('chofer: el pedido asignado a otro', 'choferA2', 404, de('acc')),
     uno(
@@ -278,19 +277,21 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
       verificar: (cuerpo) => expect(Array.isArray(cuerpo)).toBe(true),
     }),
     historial('administrador', 'adminA', 200),
-    historial('super viendo como A', 'superEnA', 200),
+    historial('super en modo soporte sobre A', 'soporteA', 200),
     historial('chofer asignado', 'chofer', 200),
     historial('sin token', undefined, 401, sinToken),
     historial('id mal formado', 'adminA', 400, {
       ruta: '/orders/xx/status-history',
     }),
-    historial('super sin X-Distributor', 'super', 400),
+    historial('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     historial('inexistente', 'adminA', 404, {
       ruta: (c) => `/orders/${c.inexistente}/status-history`,
     }),
     historial('cliente de otro pedido', 'clienteB', 404),
     historial('administrador de otra distribuidora', 'adminB', 404),
-    historial('super viendo como B', 'superEnB', 404),
+    historial('super en modo soporte sobre B', 'soporteB', 404),
     historial('chofer de otra distribuidora', 'choferB', 404),
     historial(
       'chofer: pedido que tuvo y ya no es suyo',
@@ -320,7 +321,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
         }),
     }),
     codigo('administrador', 'adminA', 200),
-    codigo('super viendo como A', 'superEnA', 200),
+    codigo('super en modo soporte sobre A', 'soporteA', 200),
     codigo('sin token', undefined, 401, sinToken),
     codigo('cliente', 'clienteA', 403),
     codigo('chofer: pedido de otro chofer', 'choferA2', 403, {
@@ -349,7 +350,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
     }),
     foto('chofer asignado', 'chofer', 200),
     foto('administrador', 'adminA', 200),
-    foto('super viendo como A', 'superEnA', 200),
+    foto('super en modo soporte sobre A', 'soporteA', 200),
     foto('en camino', 'clienteA', 200, {
       ruta: (c) => `/orders/${c.p.otw}/driver-photo?modo=url`,
     }),
@@ -399,7 +400,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
       ruta: (c) => `/orders/customer/${c.clienteA.userId}?limit=100`,
       verificar: (cuerpo, c) => expect(idsDe(cuerpo)).toContain(c.p.pend),
     }),
-    porCliente('super viendo como A', 'superEnA', 200),
+    porCliente('super en modo soporte sobre A', 'soporteA', 200),
     porCliente(
       'administrador de B no ve los pedidos de un cliente de A',
       'adminB',
@@ -448,7 +449,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
     porChofer('administrador', 'adminA', 200, {
       verificar: (cuerpo, c) => expect(idsDe(cuerpo)).toContain(c.p.acc),
     }),
-    porChofer('super viendo como A', 'superEnA', 200),
+    porChofer('super en modo soporte sobre A', 'soporteA', 200),
     porChofer(
       'administrador de B no ve los pedidos de un chofer de A',
       'adminB',
@@ -531,7 +532,12 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
         expect(idsDe(cuerpo)).not.toContain(c.p.pendB);
       },
     }),
-    disponibles('super sin distribuidora', 'super', 200),
+    disponibles(
+      'super sin distribuidora (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     disponibles('sin token', undefined, 401, {
       cabeceras: { 'X-Client-Source': 'driver-app' },
     }),
@@ -559,12 +565,12 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
     reservas('administrador de B no ve las de A', 'adminB', 200, {
       verificar: (cuerpo) => expect(cuerpo).toEqual([]),
     }),
-    reservas('super viendo como A', 'superEnA', 200),
+    reservas('super en modo soporte sobre A', 'soporteA', 200),
     reservas('sin token', undefined, 401, sinToken),
     reservas('cliente', 'clienteA', 403),
     reservas('chofer', 'chofer', 403),
-    reservas('super sin X-Distributor', 'super', 400, {
-      mensaje: 'Falta la distribuidora',
+    reservas('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
   ];
 
@@ -595,7 +601,9 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
           ordersSummary: { pending: 1, accepted: 0, onTheWay: 0 },
         }),
     }),
-    resumen('super sin distribuidora', 'super', 200),
+    resumen('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     resumen('sin token', undefined, 401, sinToken),
     resumen('cliente', 'clienteA', 403),
     resumen('chofer', 'chofer', 403),
@@ -610,7 +618,9 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
       verificar: (cuerpo) => expect(Array.isArray(cuerpo)).toBe(true),
     }),
     grafico('administrador de B', 'adminB', 200),
-    grafico('super sin distribuidora', 'super', 200),
+    grafico('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     grafico('sin token', undefined, 401, sinToken),
     grafico('cliente', 'clienteA', 403),
     grafico('chofer', 'chofer', 403),
@@ -645,7 +655,9 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
       ruta: (c) => `/v2/orders/payments?ids=${c.inexistente}`,
       verificar: (cuerpo) => expect(cuerpo).toEqual([]),
     }),
-    pagos('super viendo como A', 'superEnA', 200, { ruta: ids('pend') }),
+    pagos('super en modo soporte sobre A', 'soporteA', 200, {
+      ruta: ids('pend'),
+    }),
     pagos('sin token', undefined, 401, { ...sinToken, ruta: ids('pend') }),
     pagos('cliente', 'clienteA', 403, { ruta: ids('pend') }),
     pagos('chofer', 'chofer', 403, { ruta: ids('pend') }),
@@ -660,7 +672,10 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
         `/v2/orders/payments?ids=${Array.from({ length: 51 }, () => randomUUID()).join(',')}`,
       mensaje: 'entre 1 y 50',
     }),
-    pagos('super sin X-Distributor', 'super', 400, { ruta: ids('pend') }),
+    pagos('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      ruta: ids('pend'),
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
   ];
 
   const pago = endpoint<Ctx>(
@@ -678,17 +693,19 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
     pago('administrador: con historial', 'adminA', 200, {
       verificar: (cuerpo) => expect(cuerpo).toHaveProperty('history'),
     }),
-    pago('super viendo como A', 'superEnA', 200),
+    pago('super en modo soporte sobre A', 'soporteA', 200),
     pago('sin token', undefined, 401, sinTokenCliente),
     pago('chofer', 'chofer', 403),
     pago('id mal formado', 'adminA', 400, { ruta: '/v2/orders/xx/payment' }),
-    pago('super sin X-Distributor', 'super', 400),
+    pago('super sin X-Distributor (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     pago('inexistente', 'adminA', 404, {
       ruta: (c) => `/v2/orders/${c.inexistente}/payment`,
     }),
     pago('cliente de otro pedido', 'clienteB', 404),
     pago('administrador de otra distribuidora', 'adminB', 404),
-    pago('super viendo como B', 'superEnB', 404),
+    pago('super en modo soporte sobre B', 'soporteB', 404),
   ];
 
   // ==================================== v2 estadísticas del cliente
@@ -705,7 +722,7 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
         expect(r.deliveredCount).toBe(1);
       },
     }),
-    estadisticas('super viendo como A', 'superEnA', 200),
+    estadisticas('super en modo soporte sobre A', 'soporteA', 200),
     estadisticas('administrador de B: ceros', 'adminB', 200, {
       verificar: (cuerpo) =>
         expect(cuerpo).toMatchObject({
@@ -722,7 +739,12 @@ describe('Matriz HTTP T2: pedidos, lecturas (e2e)', () => {
     estadisticas('id mal formado', 'adminA', 400, {
       ruta: '/v2/orders/customer/xx/stats',
     }),
-    estadisticas('super sin X-Distributor', 'super', 400),
+    estadisticas(
+      'super sin X-Distributor (sin sesión de soporte)',
+      'super',
+      403,
+      { code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
   ];
 
   correrMatriz('GET /orders', ver, conMismaDistribuidora(casosListar));

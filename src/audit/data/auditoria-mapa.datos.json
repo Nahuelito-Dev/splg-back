@@ -1187,6 +1187,22 @@
       "orderColumn": null
     },
     {
+      "table": "support_session",
+      "entity": "SupportSession",
+      "pk": [
+        "support_session_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "time_slot",
       "entity": "TimeSlot",
       "pk": [
@@ -3462,11 +3478,27 @@
     },
     {
       "table": "distributor",
+      "column": "support_emergency_allowed",
+      "property": "supportEmergencyAllowed",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "distributor",
+      "column": "support_auto_approve",
+      "property": "supportAutoApprove",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "distributor",
       "column": "plan",
       "property": "plan",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 15
     },
     {
       "table": "distributor",
@@ -3474,7 +3506,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 14
+      "position": 16
     },
     {
       "table": "distributor_mercadopago_credentials",
@@ -8459,6 +8491,150 @@
       "secret": false,
       "kind": "timestamp",
       "position": 12
+    },
+    {
+      "table": "support_session",
+      "column": "support_session_id",
+      "property": "supportSessionId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "support_session",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "support_session",
+      "column": "requested_by",
+      "property": "requestedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "support_session",
+      "column": "kind",
+      "property": "kind",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "support_session",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "support_session",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "support_session",
+      "column": "ticket_ref",
+      "property": "ticketRef",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "support_session",
+      "column": "scope",
+      "property": "scope",
+      "secret": false,
+      "kind": "json",
+      "position": 7
+    },
+    {
+      "table": "support_session",
+      "column": "requested_minutes",
+      "property": "requestedMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "support_session",
+      "column": "request_expires_at",
+      "property": "requestExpiresAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 9
+    },
+    {
+      "table": "support_session",
+      "column": "decided_by",
+      "property": "decidedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "support_session",
+      "column": "decided_at",
+      "property": "decidedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "support_session",
+      "column": "decision_note",
+      "property": "decisionNote",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "support_session",
+      "column": "started_at",
+      "property": "startedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "support_session",
+      "column": "expires_at",
+      "property": "expiresAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 14
+    },
+    {
+      "table": "support_session",
+      "column": "ended_at",
+      "property": "endedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 15
+    },
+    {
+      "table": "support_session",
+      "column": "ended_by",
+      "property": "endedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "support_session",
+      "column": "end_reason",
+      "property": "endReason",
+      "secret": false,
+      "kind": "text",
+      "position": 17
     },
     {
       "table": "time_slot",

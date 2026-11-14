@@ -12,9 +12,9 @@ const EMPRESA_A = '3f1c5a52-6a3e-4d6c-9a0e-2f7b6a1d9c11';
 const EMPRESA_B = '9d8e7f60-1b2c-4d3e-8f4a-5b6c7d8e9f01';
 
 /**
- * `GET /admin?distributorId=`: el super admin lista los admins de UNA
- * empresa aunque esté "viendo como" otra; un admin de empresa nunca ve los
- * de otra. El guard global no corre acá: un middleware deja en la request el
+ * `GET /admin?distributorId=`: el super admin fuera de soporte lista los
+ * admins de UNA empresa (o todos); en modo soporte queda en la empresa de la
+ * sesión, como un admin de ella; un admin de empresa nunca ve los de otra. El guard global no corre acá: un middleware deja en la request el
  * usuario y la distribuidora que el guard dejaría.
  */
 describe('AdminController · GET /admin', () => {
@@ -36,6 +36,9 @@ describe('AdminController · GET /admin', () => {
         role: rol,
         user_id: 'u1',
         distributor_id: contexto,
+        // Con empresa en contexto, el super admin sólo puede estar en soporte.
+        support_session_id:
+          rol === RoleType.SUPER_ADMIN && contexto ? 'sesion-1' : null,
       };
       req.distributorId = contexto;
       next();
@@ -53,18 +56,26 @@ describe('AdminController · GET /admin', () => {
       rol = RoleType.SUPER_ADMIN;
     });
 
-    it('con ?distributorId= lista los de esa empresa aunque esté viendo como otra', async () => {
-      contexto = EMPRESA_A;
+    it('fuera de soporte, con ?distributorId= lista los de esa empresa', async () => {
+      contexto = null;
       await request(app.getHttpServer())
         .get(`/admin?distributorId=${EMPRESA_B}`)
         .expect(200);
       expect(admins.findAll).toHaveBeenCalledWith(EMPRESA_B);
     });
 
-    it('sin el parámetro usa la distribuidora en contexto', async () => {
+    it('en modo soporte, sin el parámetro usa la empresa de la sesión', async () => {
       contexto = EMPRESA_A;
       await request(app.getHttpServer()).get('/admin').expect(200);
       expect(admins.findAll).toHaveBeenCalledWith(EMPRESA_A);
+    });
+
+    it('en modo soporte, pedir los de OTRA empresa es 403 y no consulta nada', async () => {
+      contexto = EMPRESA_A;
+      await request(app.getHttpServer())
+        .get(`/admin?distributorId=${EMPRESA_B}`)
+        .expect(403);
+      expect(admins.findAll).not.toHaveBeenCalled();
     });
 
     it('sin parámetro ni contexto lista todos', async () => {

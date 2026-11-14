@@ -12,7 +12,7 @@ import {
 
 describe('catálogo de permisos del personal', () => {
   it('trae los permisos del diseño, con clave modulo.accion y sin repetidos', () => {
-    expect(PERMISOS).toHaveLength(28);
+    expect(PERMISOS).toHaveLength(30);
     expect(new Set(PERMISOS).size).toBe(PERMISOS.length);
     for (const p of PERMISOS) {
       expect(p).toMatch(/^[a-z]+\.[a-z]+$/);
@@ -25,6 +25,8 @@ describe('catálogo de permisos del personal', () => {
         'lectura.decidir',
         'administradores.gestionar',
         'roles.gestionar',
+        'soporte.ver',
+        'soporte.gestionar',
       ]),
     );
     expect(PERMISO_ROLES).toBe('roles.gestionar');

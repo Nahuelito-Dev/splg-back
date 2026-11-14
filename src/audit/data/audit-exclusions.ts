@@ -10,6 +10,9 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   'audit_action_type',
   // Bitácora de requests (CU-153): otra cosa, ya inmutable.
   'audit_log',
+  // Registro de lo que miró el soporte (modo soporte): ya es un registro de sólo
+  // agregar, como `audit_log`; auditarlo sería auditar la auditoría.
+  'support_access',
   // Contador de numeración con bloqueo de fila: una escritura por documento
   // emitido, sin valor de negocio propio (el documento ya se audita).
   'document_sequence',

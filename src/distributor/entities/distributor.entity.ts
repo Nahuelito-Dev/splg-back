@@ -107,6 +107,21 @@ export class Distributor {
   })
   status!: DistributorStatus;
 
+  /**
+   * Política de soporte de la empresa (modo soporte, D1): si el administrador
+   * general puede abrir un acceso de emergencia sin aprobación previa.
+   */
+  @Column({
+    name: 'support_emergency_allowed',
+    type: 'boolean',
+    default: true,
+  })
+  supportEmergencyAllowed!: boolean;
+
+  /** Si los pedidos de acceso de soporte se aprueban solos (apagado por defecto). */
+  @Column({ name: 'support_auto_approve', type: 'boolean', default: false })
+  supportAutoApprove!: boolean;
+
   /** Plan de suscripción SaaS (para facturación futura). */
   @Column({ type: 'varchar', nullable: true })
   plan!: string | null;

@@ -18,7 +18,6 @@ import {
   patenteDePrueba,
   cuitDePrueba,
 } from './setup/test-env';
-import { MENSAJE_FALTA_DISTRIBUIDORA } from '../../src/common/decorators/current-distributor.decorator';
 import { Admin } from '../../src/admin/entities/admin.entity';
 import { Car } from '../../src/car/entities/car.entity';
 import { Customer } from '../../src/customer/entities/customer.entity';
@@ -46,6 +45,7 @@ import { User } from '../../src/users/entities/user.entity';
 import { UserAddress } from '../../src/user-address/entities/user-address.entity';
 import { VehicleAssignment } from '../../src/car/entities/vehicle-assignment.entity';
 import { etiquetaDeCampo } from '../../src/common/validation/etiquetas';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 type Headers = Record<string, string>;
 
@@ -440,41 +440,51 @@ describe('Parámetros del despacho y frecuencia de tareas (CU-171, CU-173, e2e)'
       expect(parcial.body).toMatchObject({ arrivalRadiusMeters: 150 });
     });
 
-    it('super admin sin X-Distributor: 400 con el mensaje de siempre; con X-Distributor opera esa distribuidora', async () => {
+    it('super admin: sin sesión de soporte 403 (también con X-Distributor); en modo soporte lee y no escribe', async () => {
       const e = await escenario();
+      const soporte = (await conSesionDeSoporte(env.app, e.dB.distributorId))
+        .cabeceras;
 
-      for (const llamada of [
-        () => http().get('/module-config/dispatch').set(e.sup),
-        () =>
-          http()
-            .put('/module-config/dispatch')
-            .set(e.sup)
-            .send(DESPACHO_VALIDO),
-        () => http().get('/module-config/scheduled_tasks').set(e.sup),
-        () =>
-          http()
-            .put('/module-config/scheduled_tasks')
-            .set(e.sup)
-            .send(TAREAS_VALIDAS),
+      for (const cabeceras of [
+        e.sup,
+        { ...e.sup, 'X-Distributor': e.dB.distributorId },
       ]) {
-        const res = await llamada().expect(400);
-        expect((res.body as { message: string }).message).toBe(
-          MENSAJE_FALTA_DISTRIBUIDORA,
-        );
+        for (const llamada of [
+          () => http().get('/module-config/dispatch').set(cabeceras),
+          () =>
+            http()
+              .put('/module-config/dispatch')
+              .set(cabeceras)
+              .send(DESPACHO_VALIDO),
+          () => http().get('/module-config/scheduled_tasks').set(cabeceras),
+          () =>
+            http()
+              .put('/module-config/scheduled_tasks')
+              .set(cabeceras)
+              .send(TAREAS_VALIDAS),
+        ]) {
+          const res = await llamada();
+          expect(res.body).toMatchObject({
+            statusCode: 403,
+            code: 'SUPPORT_SESSION_REQUIRED',
+          });
+        }
       }
 
+      const antes = await http()
+        .get('/module-config/dispatch')
+        .set(soporte)
+        .expect(200);
       await http()
         .put('/module-config/dispatch')
-        .set({ ...e.sup, 'X-Distributor': e.dB.distributorId })
-        .send(DESPACHO_VALIDO)
-        .expect(200);
-      const deB = await http()
+        .set(soporte)
+        .send({ ...DESPACHO_VALIDO, offerTtlSeconds: 77 })
+        .expect(403);
+      const despues = await http()
         .get('/module-config/dispatch')
         .set(e.adminB.headers)
         .expect(200);
-      expect((deB.body as { offerTtlSeconds: number }).offerTtlSeconds).toBe(
-        90,
-      );
+      expect(despues.body).toEqual(antes.body);
     });
 
     it('chofer y cliente: 403; sin token: 401', async () => {

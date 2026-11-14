@@ -20,6 +20,7 @@ import {
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Email')
 @Controller('email')
@@ -42,6 +43,7 @@ export class EmailController {
   }
 
   @Post('change-email')
+  @Alcance('ambos')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Change user email' })
   @ApiCreatedResponse({ type: EmailCambiadoResponseDto })

@@ -13,6 +13,7 @@ import {
   PurchaseTotalPreviewDto,
 } from '../dto/purchase-total-preview.dto';
 import { Permiso } from '../../common/decorators/permiso.decorator';
+import { SoloLectura } from '../../audit/solo-lectura.decorator';
 
 /** El total de una compra tal como lo guarda el back (API v2). No escribe nada. */
 @ApiTags('Compras · Total (v2)')
@@ -21,6 +22,8 @@ import { Permiso } from '../../common/decorators/permiso.decorator';
 export class PurchaseTotalV2Controller {
   @Permiso('compras.gestionar')
   @Post('preview-total')
+  // Sólo calcula (no escribe): pasa en modo soporte y no va al registro de escrituras.
+  @SoloLectura()
   @HttpCode(200)
   @ApiOperation({
     summary: 'Calcular el total de una orden o remito de compra',

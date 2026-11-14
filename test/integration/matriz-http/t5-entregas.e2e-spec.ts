@@ -22,6 +22,7 @@ import {
   sinCambiosEn,
   vencerDocumento,
 } from './t5-base';
+import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT5;
 const ADMIN = 'adminA';
@@ -134,15 +135,15 @@ const documentos = endpoint<C>(
   (c) => `/delivery/${chId(c)}/documents`,
 );
 
-/** Para los que escriben con `required: 'staff'`: el super admin sin tenant. */
+/** Las escrituras del chofer: el super admin sin sesión de soporte no entra (modo soporte). */
 const superSinTenant = (
   ep: ReturnType<typeof endpoint<C>>,
   body?: object,
 ): Caso<C> =>
-  ep('super admin sin distribuidora', 'super', 400, {
+  ep('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
     antes: chofer(),
     body,
-    mensaje: /X-Distributor/,
+    code: 'SUPPORT_SESSION_REQUIRED',
   });
 const inexistente = (
   ep: ReturnType<typeof endpoint<C>>,
@@ -165,11 +166,16 @@ const casosLecturas: Array<Caso<C>> = [
       expect(JSON.stringify(b)).not.toContain(c.ch.c.deliveryId);
     },
   }),
-  lista('super admin sin distribuidora ve todas', 'super', 200, {
-    antes: conAjeno,
-    ruta: '/delivery?limit=100',
-    verificar: (b, c) => expect(JSON.stringify(b)).toContain(c.ch.c.deliveryId),
-  }),
+  lista(
+    'super admin sin distribuidora ve todas (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: conAjeno,
+      ruta: '/delivery?limit=100',
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   ...(['enabled', 'disabled', 'online', 'unvalidated'] as const).map((s) =>
     lista(`filtra por ${s}`, ADMIN, 200, {
       antes: async (c) => {
@@ -241,11 +247,12 @@ const casosLecturas: Array<Caso<C>> = [
     cabeceras: comoChofer,
   }),
   uno('otro chofer', 'choferA2', 403, { antes: chofer() }),
-  uno('super admin sin distribuidora ve cualquiera', 'super', 200, {
-    verificar: (b, c) =>
-      expect(b).toMatchObject({ delivery_id: c.ch.c.deliveryId }),
-    antes: conAjeno,
-  }),
+  uno(
+    'super admin sin distribuidora ve cualquiera (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: conAjeno, code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   inexistente(uno, ''),
   uno('de otra distribuidora', ADMIN, 404, { antes: conAjeno }),
   ...bordes(uno, { prohibidos: ADMIN_O_CHOFER, idMalo: '/delivery/no' }),
@@ -260,10 +267,12 @@ const casosLecturas: Array<Caso<C>> = [
     cabeceras: comoChofer,
   }),
   porUsuario('otro chofer', 'choferA2', 403, { antes: chofer() }),
-  porUsuario('super admin sin distribuidora ve cualquiera', 'super', 200, {
-    verificar: (b, c) => expect(b).toMatchObject({ user_id: c.ch.c.userId }),
-    antes: conAjeno,
-  }),
+  porUsuario(
+    'super admin sin distribuidora ve cualquiera (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: conAjeno, code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   porUsuario('inexistente', ADMIN, 404, {
     ruta: (c) => `/delivery/user/${c.inexistente}`,
   }),
@@ -605,10 +614,16 @@ const casosEscritura: Array<Caso<C>> = [
     ...noCambiaElChofer(),
     body: { available: true },
   }),
-  disponibilidad('super admin sin distribuidora', 'super', 400, {
-    antes: chofer(),
-    body: { available: false },
-  }),
+  disponibilidad(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: chofer(),
+      body: { available: false },
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   ...bordes(disponibilidad, {
     prohibidos: ADMIN_O_CHOFER,
     body: {},
@@ -632,7 +647,12 @@ const casosVehiculo: Array<Caso<C>> = [
   }),
   inexistente(vehiculo, '/vehicle'),
   vehiculo('de otra distribuidora', ADMIN, 404, { antes: conAjeno }),
-  vehiculo('super admin sin distribuidora', 'super', 400, { antes: chofer() }),
+  vehiculo(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: chofer(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(vehiculo, {
     prohibidos: SOLO_ADMIN,
     idMalo: '/delivery/no/vehicle',
@@ -714,10 +734,16 @@ const casosVehiculo: Array<Caso<C>> = [
     ...noCambiaLaAsignacion(),
     body: (c) => ({ carId: c.autoA }),
   }),
-  asignar('super admin sin distribuidora', 'super', 400, {
-    antes: chofer(),
-    body: (c) => ({ carId: c.autoA }),
-  }),
+  asignar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: chofer(),
+      body: (c) => ({ carId: c.autoA }),
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   asignar('el chofer tiene un pedido en curso', ADMIN, 409, {
     antes: async (c) => {
       await chofer()(c);
@@ -776,7 +802,12 @@ const casosVehiculo: Array<Caso<C>> = [
   liberar('chofer de otra distribuidora no cambia nada', ADMIN, 404, {
     ...noCambiaLaAsignacion(),
   }),
-  liberar('super admin sin distribuidora', 'super', 400, { antes: chofer() }),
+  liberar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: chofer(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   liberar('tiene un pedido en curso', ADMIN, 409, {
     antes: async (c) => {
       await chofer()(c);
@@ -813,9 +844,12 @@ const casosVehiculo: Array<Caso<C>> = [
   }),
   inexistente(historial, '/vehicle-history'),
   historial('de otra distribuidora', ADMIN, 404, { antes: conAjeno }),
-  historial('super admin sin distribuidora', 'super', 400, {
-    antes: chofer(),
-  }),
+  historial(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: chofer(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(historial, {
     prohibidos: SOLO_ADMIN,
     idMalo: '/delivery/no/vehicle-history',
@@ -834,9 +868,12 @@ const casosVehiculo: Array<Caso<C>> = [
   }),
   inexistente(documentos, '/documents'),
   documentos('de otra distribuidora', ADMIN, 404, { antes: conAjeno }),
-  documentos('super admin sin distribuidora', 'super', 400, {
-    antes: chofer(),
-  }),
+  documentos(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: chofer(), code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(documentos, {
     prohibidos: SOLO_ADMIN,
     idMalo: '/delivery/no/documents',
@@ -854,6 +891,19 @@ describe('Matriz HTTP T5: entregas (e2e)', () => {
   afterAll(async () => env.cleanup());
   const ver = () => ctx;
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(
+      lista,
+      endpoint<C>(
+        'patch',
+        '/delivery/{id}',
+        (c) => `/delivery/${c.inexistente}`,
+      ),
+    ),
+  );
   correrMatriz('lecturas', ver, casosLecturas);
   correrMatriz('escrituras', ver, casosEscritura);
   correrMatriz('vehículo y documentos', ver, casosVehiculo);

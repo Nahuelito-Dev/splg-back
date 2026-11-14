@@ -31,6 +31,7 @@ import {
   sinCambios,
   sinCambiosEn,
 } from './t5-base';
+import { casosEnModoSoporte } from './soporte';
 
 type C = EscenarioT5;
 const ADMIN = 'adminA';
@@ -352,14 +353,15 @@ const casosApertura: Array<Caso<C>> = [
     body: (c) => abrirBody(c, { deliveryId: c.ch.segundo.deliveryId }),
     mensaje: /camión .* ya tiene abierta/,
   }),
-  crear('super admin viendo como la distribuidora', 'superEnA', 201, {
-    verificar: (b) => expect(b).toMatchObject({ status: 'loading' }),
+  crear('super admin en modo soporte sobre la distribuidora', 'soporteA', 403, {
     antes: chofer(),
     body: (c) => abrirBody(c),
+    code: 'SUPPORT_READ_ONLY',
   }),
-  crear('super admin sin distribuidora', 'super', 400, {
+  crear('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
     antes: chofer(),
     body: (c) => abrirBody(c),
+    code: 'SUPPORT_SESSION_REQUIRED',
   }),
   ...bordes(crear, { prohibidos: SOLO_ADMIN, body: {} }),
 ];
@@ -385,7 +387,12 @@ const casosLecturas: Array<Caso<C>> = [
   settings('valor por defecto', ADMIN, 200, {
     verificar: (b) => expect(b).toEqual({ requireOpenTruckLoad: false }),
   }),
-  settings('super admin sin distribuidora', 'super', 400),
+  settings(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(settings, { prohibidos: SOLO_ADMIN }),
 
   settingsPut('cambia y se relee', ADMIN, 200, {
@@ -405,9 +412,12 @@ const casosLecturas: Array<Caso<C>> = [
   settingsPut('campo extra', ADMIN, 400, {
     body: { requireOpenTruckLoad: false, ajeno: true },
   }),
-  settingsPut('super admin sin distribuidora', 'super', 400, {
-    body: { requireOpenTruckLoad: false },
-  }),
+  settingsPut(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { body: { requireOpenTruckLoad: false }, code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(settingsPut, { prohibidos: SOLO_ADMIN, body: {} }),
 
   stock('camión sin stock', ADMIN, 200, {
@@ -428,7 +438,9 @@ const casosLecturas: Array<Caso<C>> = [
   stock('de otra distribuidora', ADMIN, 404, {
     ruta: (c) => `/truck-loads/cars/${c.autoB}/stock`,
   }),
-  stock('super admin sin distribuidora', 'super', 400),
+  stock('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...bordes(stock, {
     prohibidos: SOLO_ADMIN,
     idMalo: '/truck-loads/cars/no/stock',
@@ -468,7 +480,12 @@ const casosLecturas: Array<Caso<C>> = [
   ).map(([nombre, q]) =>
     listar(nombre, ADMIN, 400, { ruta: `/truck-loads?${q}` }),
   ),
-  listar('super admin sin distribuidora', 'super', 400),
+  listar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...bordes(listar, { prohibidos: SOLO_ADMIN }),
 
   una('administrador', ADMIN, 200, {
@@ -487,7 +504,10 @@ const casosLecturas: Array<Caso<C>> = [
     ruta: (c) => `/truck-loads/${c.inexistente}`,
   }),
   una('de otra distribuidora', ADMIN, 404, { antes: carga('loading', 'B') }),
-  una('super admin sin distribuidora', 'super', 400, { antes: carga() }),
+  una('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    antes: carga(),
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...bordes(una, { prohibidos: ADMIN_O_CHOFER, idMalo: '/truck-loads/no' }),
 ];
 
@@ -539,9 +559,10 @@ const casosItems: Array<Caso<C>> = [
     ),
     body: (c) => nuevos(c),
   }),
-  items('super admin sin distribuidora', 'super', 400, {
+  items('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
     antes: carga(),
     body: (c) => nuevos(c),
+    code: 'SUPPORT_SESSION_REQUIRED',
   }),
   ...OTROS_ESTADOS(['loading']).map((e) =>
     items(`carga ${e}`, ADMIN, 409, {
@@ -629,7 +650,10 @@ const casosSalida: Array<Caso<C>> = [
       carga('loading', 'B'),
     ),
   }),
-  salir('super admin sin distribuidora', 'super', 400, { antes: carga() }),
+  salir('super admin sin distribuidora (sin sesión de soporte)', 'super', 403, {
+    antes: carga(),
+    code: 'SUPPORT_SESSION_REQUIRED',
+  }),
   ...OTROS_ESTADOS(['loading']).map((e) =>
     salir(`carga ${e}`, ADMIN, 409, {
       antes: carga(e),
@@ -853,10 +877,16 @@ const casosVuelta: Array<Caso<C>> = [
     ),
     body: devuelta,
   }),
-  volver('super admin sin distribuidora', 'super', 400, {
-    antes: carga('on_route'),
-    body: devuelta,
-  }),
+  volver(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: carga('on_route'),
+      body: devuelta,
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   volver('el chofer tiene pedidos en curso', ADMIN, 409, {
     antes: async (c) => {
       await carga('on_route')(c);
@@ -969,10 +999,12 @@ const casosCierre: Array<Caso<C>> = [
     ),
     body: {},
   }),
-  cerrar('super admin sin distribuidora', 'super', 400, {
-    antes: carga('returned'),
-    body: {},
-  }),
+  cerrar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    { antes: carga('returned'), body: {}, code: 'SUPPORT_SESSION_REQUIRED' },
+  ),
   ...OTROS_ESTADOS(['returned']).map((e) =>
     cerrar(`carga ${e}`, ADMIN, 409, {
       antes: carga(e),
@@ -1027,10 +1059,16 @@ const casosCancelar: Array<Caso<C>> = [
     ),
     body: { reason: 'Prueba' },
   }),
-  cancelar('super admin sin distribuidora', 'super', 400, {
-    antes: carga(),
-    body: { reason: 'Prueba' },
-  }),
+  cancelar(
+    'super admin sin distribuidora (sin sesión de soporte)',
+    'super',
+    403,
+    {
+      antes: carga(),
+      body: { reason: 'Prueba' },
+      code: 'SUPPORT_SESSION_REQUIRED',
+    },
+  ),
   ...OTROS_ESTADOS(['loading']).map((e) =>
     cancelar(`carga ${e}`, ADMIN, 409, {
       antes: carga(e),
@@ -1056,6 +1094,12 @@ describe('Matriz HTTP T5: cargas del camión (e2e)', () => {
   afterAll(async () => env.cleanup());
   const ver = () => ctx;
 
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(listar, crear),
+  );
   correrMatriz('abrir', ver, casosApertura);
   correrMatriz('lecturas y parámetros', ver, casosLecturas);
   correrMatriz('renglones', ver, casosItems);

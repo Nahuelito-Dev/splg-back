@@ -34,6 +34,7 @@ import { GasCylinderPromotion } from '../../src/gascylinder/entities/gascylinder
 import { DeliveryService } from '../../src/delivery/delivery.service';
 import { auditContext } from '../../src/audit/data/audit-context';
 import { AuditoriaDeDatos } from '../../src/audit/data/auditoria-de-datos';
+import { conSesionDeSoporte } from './matriz-http/soporte';
 
 interface Entrada {
   auditId: string;
@@ -122,6 +123,11 @@ describe('Auditoría de datos (e2e)', () => {
       .set('X-Client-Source', 'panel-app');
     return tenant ? req.set('X-Distributor', tenant) : req;
   };
+  /** El super admin en modo soporte sobre una distribuidora (sólo lectura). */
+  const enSoporte = async (url: string, distributorId: string) =>
+    request(env.app.getHttpServer())
+      .get(url)
+      .set((await conSesionDeSoporte(env.app, distributorId)).cabeceras);
 
   it('el alta deja una Auditoria Alta con el id del registro y un detalle por campo con valor', async () => {
     const d = await distribuidora();
@@ -494,17 +500,18 @@ describe('Auditoría de datos (e2e)', () => {
   it('la consulta muestra al usuario aunque esté dado de baja, con la marca', async () => {
     const d = await distribuidora();
     const admin = await seedAdmin(RoleType.ADMIN, d.distributorId);
-    const sup = await seedAdmin(RoleType.SUPER_ADMIN, null);
     await auditContext.run(
       { userId: admin.userId, ip: '10.0.0.1', distributorId: d.distributorId },
       () => garrafa(d.distributorId),
     );
     await ds.getRepository(User).softRemove(admin);
 
-    const res = await get(
-      sup,
+    // La auditoría de una empresa la ve el super admin en modo soporte.
+    const res = await enSoporte(
       `/audit/entries?entity=GasCylinder&userId=${admin.userId}`,
-    ).expect(200);
+      d.distributorId,
+    );
+    expect(res.status).toBe(200);
     const [e] = (res.body as Pagina).data as Array<
       Entrada & { userId: string | null; user: { deleted: boolean } | null }
     >;
@@ -785,13 +792,17 @@ describe('Auditoría de datos (e2e)', () => {
         .expect(200)
         .expect((r) => expect((r.body as Pagina).total).toBe(0));
 
-      // el super admin ve todo, o la que elige
-      const todo = await get(superAdmin, '/audit/entries?entity=GasCylinder');
-      expect((todo.body as Pagina).total).toBe(2);
-      const soloB = await get(
+      // El super admin sin sesión ve la auditoría de plataforma (nada de las
+      // empresas, aunque mande X-Distributor); en modo soporte, sólo esa empresa.
+      const plataforma = await get(
         superAdmin,
         '/audit/entries?entity=GasCylinder',
         dB.slug,
+      );
+      expect((plataforma.body as Pagina).total).toBe(0);
+      const soloB = await enSoporte(
+        '/audit/entries?entity=GasCylinder',
+        dB.distributorId,
       );
       expect((soloB.body as Pagina).data.map((e) => e.recordId)).toEqual([
         gB.gasCylinderId,

@@ -54,6 +54,7 @@ import type { AuthenticatedUser } from '../common/decorators/current-user.decora
 import {
   esAdministrador,
   esElMismoUsuario,
+  esSuperAdminDePlataforma,
 } from '../common/utils/alcance.util';
 import {
   CurrentDistributor,
@@ -69,6 +70,7 @@ import {
   UsuarioExisteDto,
 } from './dto/usuarios-response.dto';
 import { Permiso } from '../common/decorators/permiso.decorator';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -86,6 +88,10 @@ export class UsersController {
   }
 
   @Get('email/:email')
+  // La cuenta propia (login y «mi cuenta» del panel); desde plataforma, la
+  // cuenta buscada por correo exacto para las operaciones de identidad (D7), sin
+  // direcciones de clientes ni choferes; con sesión de soporte, las de la empresa.
+  @Alcance('ambos')
   @ApiOperation({
     summary: 'Get user by email',
     description:
@@ -113,13 +119,26 @@ export class UsersController {
       throw new ForbiddenException('No podés ver a otro usuario');
     }
     const encontrado = await this.usersService.findOneByEmail(email);
-    if (esAdministrador(user) && !esElMismoUsuario(encontrado.userId, user)) {
+    const propia = esElMismoUsuario(encontrado.userId, user);
+    if (esSuperAdminDePlataforma(user) && !propia) {
+      // Plataforma: la cuenta por correo exacto (bloqueo, baja por pedido del
+      // titular, D7), pero las direcciones de un cliente o un chofer son de la
+      // operación de las empresas: no salen.
+      const rol = encontrado.role?.type;
+      if (
+        rol !== String(RoleType.ADMIN) &&
+        rol !== String(RoleType.SUPER_ADMIN)
+      ) {
+        encontrado.addresses = [];
+      }
+    } else if (esAdministrador(user) && !propia) {
       await this.assertDeSuDistribuidora(encontrado.userId, distributorId);
     }
     return this.toDto(encontrado);
   }
 
   @Get()
+  @Alcance('ambos')
   @Permiso('clientes.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
@@ -149,6 +168,7 @@ export class UsersController {
   }
 
   @Put('me/photo')
+  @Alcance('ambos')
   @ApiSubirFoto(
     'Subir o reemplazar mi foto de perfil',
     UserResponseDto,
@@ -164,6 +184,7 @@ export class UsersController {
   }
 
   @Delete('me/photo')
+  @Alcance('ambos')
   @ApiOperation({
     summary: 'Sacar mi foto de perfil',
     description:
@@ -179,6 +200,7 @@ export class UsersController {
   }
 
   @Get('me/photo')
+  @Alcance('ambos')
   @ApiVerFoto('Ver mi foto de perfil')
   async getMyPhoto(
     @Query() query: DownloadQueryDto,
@@ -350,6 +372,9 @@ export class UsersController {
   }
 
   @Patch(':id')
+  // Identidad de plataforma (D7): sin sesión, sólo super admins y clientes
+  // (`assertPuedeAdministrar`); con sesión de soporte, sólo lectura.
+  @Alcance('ambos')
   @ApiOperation({ summary: 'Update user by ID' })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: UserResponseDto })
@@ -477,6 +502,9 @@ export class UsersController {
   }
 
   @Delete(':id')
+  // Identidad de plataforma (D7): sin sesión, sólo super admins y clientes
+  // (`assertPuedeAdministrar`); con sesión de soporte, sólo lectura.
+  @Alcance('ambos')
   @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
@@ -512,6 +540,9 @@ export class UsersController {
   }
 
   @Patch(':id/block')
+  // Identidad de plataforma (D7): sin sesión, sólo super admins y clientes
+  // (`assertPuedeAdministrar`); con sesión de soporte, sólo lectura.
+  @Alcance('ambos')
   @Permiso('clientes.gestionar')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({

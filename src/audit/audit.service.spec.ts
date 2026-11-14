@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { AuditService, NuevoAsiento } from './audit.service';
 import { AuditLog, AuditResult } from './entities/audit-log.entity';
 
@@ -35,10 +35,10 @@ describe('AuditService', () => {
     );
   });
 
-  it('el super admin sin "ver como" consulta todo', async () => {
+  it('el super admin fuera de soporte ve la auditoría de plataforma: sólo asientos sin distribuidora', async () => {
     await service.consultar({ limit: 50, offset: 0 }, null);
     expect(repo.findAndCount).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} }),
+      expect.objectContaining({ where: { distributorId: IsNull() } }),
     );
   });
 });

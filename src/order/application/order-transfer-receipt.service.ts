@@ -35,6 +35,7 @@ import {
   PaymentMethod,
   PaymentStatus,
 } from '../entities/order.entity';
+import { esRechazoDeSoporte } from '../../common/errors/soporte';
 
 /** Evento que recibe el panel cuando el cliente sube su comprobante. */
 export const EVENTO_COMPROBANTE_SUBIDO = 'order:transfer-receipt-uploaded';
@@ -154,12 +155,19 @@ export class OrderTransferReceiptService {
     );
     return Promise.all(
       adjuntos.map(async (adjunto) => {
-        const firmado = await this.attachments.getSignedDownload(
-          adjunto.attachmentId,
-          order.distributorId,
-          actor,
-          'inline',
-        );
+        // En modo soporte sin el alcance «Archivos» el listado igual sale, con
+        // el enlace en `null` (la descarga directa sí es 403).
+        const firmado = await this.attachments
+          .getSignedDownload(
+            adjunto.attachmentId,
+            order.distributorId,
+            actor,
+            'inline',
+          )
+          .catch((error: unknown) => {
+            if (esRechazoDeSoporte(error)) return null;
+            throw error;
+          });
         const dto = new OrderReceiptFileDto();
         dto.attachmentId = adjunto.attachmentId;
         dto.ownerType = adjunto.ownerType;
@@ -170,8 +178,8 @@ export class OrderTransferReceiptService {
         dto.sizeBytes = adjunto.sizeBytes;
         dto.uploadedAt = adjunto.uploadedAt;
         if (!esCliente) dto.uploadedByUserId = adjunto.uploadedByUserId;
-        dto.url = firmado.url;
-        dto.expiresAt = firmado.expiresAt;
+        dto.url = firmado?.url ?? null;
+        dto.expiresAt = firmado?.expiresAt ?? null;
         return dto;
       }),
     );

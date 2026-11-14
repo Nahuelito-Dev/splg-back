@@ -29,11 +29,13 @@ export class OrderReceiptFileDto {
   uploadedByUserId?: string;
 
   @ApiProperty({
+    type: String,
+    nullable: true,
     description:
-      'URL firmada de S3, se abre sin token. Los PDF y las imágenes se muestran en el navegador; cualquier otro tipo se descarga.',
+      'URL firmada de S3, se abre sin token. Los PDF y las imágenes se muestran en el navegador; cualquier otro tipo se descarga. `null` en modo soporte sin el alcance «Archivos».',
   })
-  url!: string;
+  url!: string | null;
 
-  @ApiProperty({ type: String, format: 'date-time' })
-  expiresAt!: Date;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  expiresAt!: Date | null;
 }

@@ -22,12 +22,15 @@ describe('AdminService', () => {
     save: jest.Mock;
     exists: jest.Mock;
     findOne: jest.Mock;
+    manager: { exists: jest.Mock };
   };
   let users: { findById: jest.Mock; update: jest.Mock; remove: jest.Mock };
   let roles: { findOne: jest.Mock };
   let qb: { leftJoinAndSelect: jest.Mock; where: jest.Mock; getOne: jest.Mock };
+  let existeDistribuidora: jest.Mock;
 
   beforeEach(() => {
+    existeDistribuidora = jest.fn().mockResolvedValue(true);
     qb = {
       leftJoinAndSelect: jest.fn(() => qb),
       where: jest.fn(() => qb),
@@ -41,6 +44,7 @@ describe('AdminService', () => {
       save: jest.fn((a: Admin) => Promise.resolve(a)),
       exists: jest.fn().mockResolvedValue(false),
       findOne: jest.fn(),
+      manager: { exists: existeDistribuidora },
     };
     users = { findById: jest.fn(), update: jest.fn(), remove: jest.fn() };
     roles = { findOne: jest.fn() };
@@ -195,12 +199,22 @@ describe('AdminService', () => {
     });
   });
 
-  it('el perfil de un admin de empresa exige X-Distributor y que coincida con el cuerpo', async () => {
+  it('alta de plataforma (sin empresa en contexto): la del cuerpo tiene que existir', async () => {
     users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
     roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
+    existeDistribuidora.mockResolvedValueOnce(false);
     await expect(
       service.create({ user_id: 'u1', distributor_id: 'd1' }),
-    ).rejects.toThrow(/X-Distributor/);
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(existeDistribuidora).toHaveBeenCalledWith(expect.anything(), {
+      where: { distributorId: 'd1' },
+    });
+    expect(admins.save).not.toHaveBeenCalled();
+  });
+
+  it('con empresa en contexto, el perfil de un admin de empresa tiene que coincidir con el cuerpo', async () => {
+    users.findById.mockResolvedValue({ userId: 'u1', roleId: 'r-admin' });
+    roles.findOne.mockResolvedValue({ roleId: 'r-admin', type: 'admin' });
     await expect(
       service.create({ user_id: 'u1', distributor_id: 'd1' }, 'd2'),
     ).rejects.toThrow(/no coincide/);

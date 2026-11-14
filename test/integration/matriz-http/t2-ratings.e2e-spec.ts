@@ -221,12 +221,15 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
           comment: 'Buen servicio',
         }),
     }),
-    ficha('super administrador viendo como A', 'superEnA', 200, {
+    ficha('super administrador viendo como A', 'soporteA', 200, {
       antes: calificado('f'),
     }),
-    ficha('super administrador sin distribuidora ve todas', 'super', 200, {
-      antes: calificado('f'),
-    }),
+    ficha(
+      'super administrador sin distribuidora ve todas (sin sesión de soporte)',
+      'super',
+      403,
+      { antes: calificado('f'), code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
     ficha('una oculta también la ve el administrador', 'adminA', 200, {
       antes: calificado('f', true),
       verificar: (cuerpo) =>
@@ -250,7 +253,7 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
       antes: calificado('f'),
       mensaje: 'Calificación no encontrada',
     }),
-    ficha('super viendo como B la de A', 'superEnB', 404, {
+    ficha('super en modo soporte sobre B la de A', 'soporteB', 404, {
       antes: calificado('f'),
     }),
   ];
@@ -282,14 +285,13 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
       antes: calificado('h'),
       verificar: (cuerpo) => expect(cuerpo).toEqual([]),
     }),
-    historial('super sin distribuidora las ve todas', 'super', 200, {
-      antes: calificado('h'),
-      verificar: (cuerpo, c) =>
-        expect(
-          (cuerpo as Array<{ rating_id: string }>).map((r) => r.rating_id),
-        ).toContain(c.p.h),
-    }),
-    historial('super viendo como B no ve las de A', 'superEnB', 200, {
+    historial(
+      'super sin distribuidora las ve todas (sin sesión de soporte)',
+      'super',
+      403,
+      { antes: calificado('h'), code: 'SUPPORT_SESSION_REQUIRED' },
+    ),
+    historial('super en modo soporte sobre B no ve las de A', 'soporteB', 200, {
       antes: calificado('h'),
       verificar: (cuerpo) => expect(cuerpo).toEqual([]),
     }),
@@ -340,7 +342,9 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
     }),
     resumen('cliente', 'clienteA', 200),
     resumen('chofer', 'chofer', 200),
-    resumen('super sin distribuidora', 'super', 200),
+    resumen('super sin distribuidora (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     resumen('sin token', undefined, 401, sinToken),
     resumen('id mal formado', 'adminA', 400, {
       ruta: '/ratings/user/xx/summary',
@@ -366,9 +370,10 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
           hiddenByUserId: c.adminA.userId,
         }),
     }),
-    ocultar('super viendo como A', 'superEnA', 200, {
+    ocultar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: calificado('o'),
       ...motivo,
+      code: 'SUPPORT_READ_ONLY',
     }),
     ocultar('sin token', undefined, 401, {
       ...sinToken,
@@ -408,9 +413,10 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
         expect(r.body).toMatchObject({ hidden: false });
       },
     }),
-    ocultar('super viendo como B la de A', 'superEnB', 404, {
+    ocultar('super en modo soporte sobre B la de A', 'soporteB', 403, {
       antes: calificado('o'),
       ...motivo,
+      code: 'SUPPORT_READ_ONLY',
     }),
     ocultar('ya está oculta', 'adminA', 409, {
       antes: calificado('o', true),
@@ -437,9 +443,10 @@ describe('Matriz HTTP T2: Ratings (e2e)', () => {
           hiddenByUserId: null,
         }),
     }),
-    mostrar('super viendo como A', 'superEnA', 200, {
+    mostrar('super en modo soporte sobre A', 'soporteA', 403, {
       antes: calificado('u', true),
       ...motivoMostrar,
+      code: 'SUPPORT_READ_ONLY',
     }),
     mostrar('sin token', undefined, 401, {
       ...sinToken,

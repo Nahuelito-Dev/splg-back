@@ -122,6 +122,36 @@ export class DistributorService {
     return distributor;
   }
 
+  /** La política de soporte de la empresa (modo soporte, D1). */
+  async politicaDeSoporte(
+    id: string,
+  ): Promise<{ emergencyAllowed: boolean; autoApprove: boolean }> {
+    const d = await this.findOne(id);
+    return {
+      emergencyAllowed: d.supportEmergencyAllowed,
+      autoApprove: d.supportAutoApprove,
+    };
+  }
+
+  /** Cambia la política de soporte; lo que no viene queda como estaba. */
+  async actualizarPoliticaDeSoporte(
+    id: string,
+    cambios: { emergencyAllowed?: boolean; autoApprove?: boolean },
+  ): Promise<{ emergencyAllowed: boolean; autoApprove: boolean }> {
+    const d = await this.findOne(id);
+    if (cambios.emergencyAllowed !== undefined) {
+      d.supportEmergencyAllowed = cambios.emergencyAllowed;
+    }
+    if (cambios.autoApprove !== undefined) {
+      d.supportAutoApprove = cambios.autoApprove;
+    }
+    const guardada = await this.repo.save(d);
+    return {
+      emergencyAllowed: guardada.supportEmergencyAllowed,
+      autoApprove: guardada.supportAutoApprove,
+    };
+  }
+
   async update(id: string, dto: UpdateDistributorDto): Promise<Distributor> {
     const distributor = await this.findOne(id);
     Object.assign(distributor, columnasDeLaDistribuidora(dto));

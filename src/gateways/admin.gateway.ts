@@ -16,9 +16,11 @@ import { SocketDeSplg, salaDeUsuario } from './socket-data';
  * (aislamiento entre tenants, H-77..H-84 también en vivo) y reciben los eventos
  * del ciclo de vida de los pedidos (creado/aceptado/en camino/entregado/
  * cancelado) DE SU distribuidora, para el dashboard y la campana de
- * notificaciones. El super admin no tiene una sola distribuidora (el socket no
- * soporta "ver como", a diferencia del header `X-Distributor` en HTTP): se une
- * a una sala aparte que recibe todo.
+ * notificaciones. El super admin es de la plataforma (modo soporte, §4.8 y D5):
+ * entra sólo a la sala `platform`, que recibe los eventos de plataforma, nunca
+ * los de una empresa — ni siquiera en una sesión de soporte (sin tiempo real
+ * de empresa en soporte: el panel consulta por sondeo). Al terminar su sesión de
+ * soporte recibe `support:ended` en su sala personal.
  *
  * Eventos del despacho (además de los `order:*` del ciclo de vida):
  *  - `order:no-drivers` `{ orderId, distributorId, reason, at }`: un pedido
@@ -31,6 +33,9 @@ import { SocketDeSplg, salaDeUsuario } from './socket-data';
  * (`SocketIdentityService`), nunca el cliente: el panel no manda nada especial
  * al conectar, sigue siendo `io(url + '/admin', { auth: { token } })`.
  */
+/** Evento del socket del panel cuando termina la sesión de soporte del super admin. */
+export const EVENTO_FIN_DE_SOPORTE = 'support:ended';
+
 @WebSocketGateway({
   namespace: 'admin',
 })
@@ -39,8 +44,8 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server!: Namespace;
   private readonly logger = new Logger('AdminGateway');
 
-  /** Sala de los super admin: ven TODO, sin importar la distribuidora. */
-  private static readonly SALA_SUPER_ADMIN = 'admins:super';
+  /** Sala de los super admin: sólo eventos de plataforma (no de una empresa). */
+  static readonly SALA_PLATAFORMA = 'platform';
 
   constructor(private readonly identidades: SocketIdentityService) {}
 
@@ -80,9 +85,8 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
         AdminGateway.salaDeDistribuidora(identidad.distributorId),
       );
     } else {
-      // super_admin: no tiene una sola distribuidora (el socket no soporta
-      // "ver como"), ve todas.
-      await client.join(AdminGateway.SALA_SUPER_ADMIN);
+      // super_admin: la plataforma. Nada de una empresa por el socket.
+      await client.join(AdminGateway.SALA_PLATAFORMA);
     }
 
     await client.join(salaDeUsuario(identidad.userId));
@@ -95,10 +99,9 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * Emite un evento del ciclo de vida del pedido a los admins DE esa
-   * distribuidora + a los super admin (que ven todas). Sin `distributorId`
-   * (evento que no es de un tenant en particular) sólo llega a los super
-   * admin.
+   * Emite un evento a los admins DE esa distribuidora (y sólo a ellos: el super
+   * admin no recibe la operación de las empresas). Sin `distributorId` (evento
+   * que no es de un tenant en particular) va a la sala de plataforma.
    */
   notifyAdmins(
     event: string,
@@ -109,8 +112,25 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server
         .to(AdminGateway.salaDeDistribuidora(distributorId))
         .emit(event, payload);
+      return;
     }
-    this.server.to(AdminGateway.SALA_SUPER_ADMIN).emit(event, payload);
+    this.notifyPlatform(event, payload);
+  }
+
+  /** Un evento de plataforma: sólo a los super admin. */
+  notifyPlatform(event: string, payload: unknown): void {
+    this.server.to(AdminGateway.SALA_PLATAFORMA).emit(event, payload);
+  }
+
+  /**
+   * La sesión de soporte del super admin terminó (revocada, vencida, finalizada):
+   * el panel sale del modo al instante (el sondeo de `current` cubre si no llega).
+   */
+  avisarFinDeSoporte(
+    userId: string,
+    payload: { sessionId: string; status: string; endReason: string | null },
+  ): void {
+    this.server.to(salaDeUsuario(userId)).emit(EVENTO_FIN_DE_SOPORTE, payload);
   }
 
   private static salaDeDistribuidora(distributorId: string): string {

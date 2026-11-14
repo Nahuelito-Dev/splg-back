@@ -6,6 +6,7 @@ import {
   QueryRunner,
   TransactionStartEvent,
 } from 'typeorm';
+import { soloLecturaDeSoporte } from '../../common/errors/soporte';
 import { auditContext } from './audit-context';
 
 /** Lo que antecede a la sentencia y no la cambia: espacios, paréntesis y comentarios. */
@@ -39,6 +40,12 @@ export function esEscritura(sql: string): boolean {
  *
  * Fuera de un request (crons, seeds, scripts) no hay contexto y no se fija
  * nada: el trigger asienta usuario nulo, o sea «sistema».
+ *
+ * Modo soporte (`contexto.soporte`): toda transacción arranca en sólo lectura
+ * (`SET TRANSACTION READ ONLY`; una escritura adentro falla con 25006 y el
+ * filtro la responde 403 `SUPPORT_READ_ONLY`) y una escritura suelta se
+ * rechaza antes de mandarla. Es la segunda capa: frena un `GET` que escribe
+ * de costado, que el `AlcanceGuard` deja pasar.
  */
 @Injectable()
 export class ActorEnLaBase implements EntitySubscriberInterface {
@@ -61,13 +68,11 @@ export class ActorEnLaBase implements EntitySubscriberInterface {
         ...args: Parameters<QueryRunner['query']>
       ): Promise<unknown> => {
         const [sql] = args;
-        if (
-          runner.isTransactionActive ||
-          !esEscritura(sql) ||
-          !auditContext.getStore()
-        ) {
+        const contexto = auditContext.getStore();
+        if (runner.isTransactionActive || !esEscritura(sql) || !contexto) {
           return query(...args);
         }
+        if (contexto.soporte) throw soloLecturaDeSoporte();
         try {
           await runner.startTransaction();
           const resultado: unknown = await query(...args);
@@ -88,6 +93,7 @@ export class ActorEnLaBase implements EntitySubscriberInterface {
 async function fijarActor(runner: QueryRunner): Promise<void> {
   const contexto = auditContext.getStore();
   if (!contexto) return;
+  if (contexto.soporte) await runner.query('SET TRANSACTION READ ONLY');
   await runner.query(
     `SELECT set_config('splg.user_id', $1, true),
             set_config('splg.ip', $2, true),

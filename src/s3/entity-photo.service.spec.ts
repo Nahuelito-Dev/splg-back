@@ -13,6 +13,7 @@ import {
 import type { S3Service } from './s3.service';
 import type { S3CleanupService } from './s3-cleanup.service';
 import { imagenesDePrueba, tieneExif } from './imagenes-de-prueba';
+import { soporteSinAlcance } from '../common/errors/soporte';
 
 const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -281,6 +282,15 @@ describe('EntityPhotoService', () => {
     it('sin key es null y no firma', async () => {
       expect(await servicio.urlDe(null)).toBeNull();
       expect(storage.getSignedDownload).not.toHaveBeenCalled();
+    });
+
+    it('en modo soporte sin el alcance files: la foto embebida sale null; la descarga directa es 403', async () => {
+      storage.getSignedDownload.mockRejectedValue(soporteSinAlcance('files'));
+      expect(await servicio.urlDe('k')).toBeNull();
+      expect(await servicio.firmadaDe('k')).toBeNull();
+      await expect(servicio.enlace('k')).rejects.toMatchObject({
+        response: { statusCode: 403, code: 'SUPPORT_SCOPE_REQUIRED' },
+      });
     });
 
     it('si la firma falla, no rompe la respuesta', async () => {

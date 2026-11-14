@@ -414,6 +414,29 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_staff_role_nombre: 'El nombre del rol tiene que tener al menos 2 letras',
   CHK_staff_role_sistema_sin_lista:
     'El rol de sistema tiene todos los permisos: no lleva una lista propia',
+  // Modo soporte del administrador general
+  UQ_support_session_activa:
+    'Ya tenés una sesión de soporte activa: salí de esa antes de abrir otra',
+  UQ_support_session_pendiente:
+    'Ya hay un pedido de soporte pendiente para esa empresa',
+  CHK_support_session_motivo:
+    'El motivo del acceso de soporte tiene que tener entre 20 y 1000 caracteres',
+  CHK_support_session_alcance:
+    'El alcance del soporte sólo admite datos personales, archivos y exportes',
+  CHK_support_session_minutos:
+    'La duración del soporte tiene que ser de 15, 30, 60 o 120 minutos',
+  CHK_support_session_pendiente:
+    'Un pedido de soporte pendiente necesita su plazo de respuesta',
+  CHK_support_session_activa:
+    'Una sesión de soporte que empezó necesita su inicio y su vencimiento',
+  CHK_support_session_duracion:
+    'Una sesión de soporte dura como máximo 120 minutos (60 en emergencia)',
+  CHK_support_session_emergencia:
+    'Un acceso de emergencia no lleva aprobación de la empresa',
+  CHK_support_session_fin:
+    'Una sesión de soporte terminada necesita cuándo y por qué terminó',
+  CHK_support_session_motivo_de_fin:
+    'El motivo de fin de la sesión de soporte no es válido',
   CHK_admin_rol_de_personal:
     'Todo administrador de una distribuidora tiene que tener un rol de personal (y el super administrador, ninguno)',
 };

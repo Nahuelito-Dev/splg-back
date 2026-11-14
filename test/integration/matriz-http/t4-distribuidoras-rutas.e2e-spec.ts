@@ -14,6 +14,7 @@ import {
   MERCADOPAGO_FETCH,
   MercadoPagoFetch,
 } from '../../../src/distributor/mercadopago-credentials.service';
+import { casosEnModoSoporte } from './soporte';
 
 describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
   let env: TestEnv;
@@ -114,8 +115,9 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
       verificar: (b, c) =>
         expect(b).toMatchObject({ distributor_id: c.distA.id }),
     }),
-    current('super sin tenant', 'super', 404),
-    current('super ve A', 'superEnA', 200, {
+    current('super sin sesión de soporte (plataforma)', 'super', 404),
+    current('super con X-Distributor (ya no se lee)', 'superEnA', 404),
+    current('super en modo soporte sobre A', 'soporteA', 200, {
       verificar: (b, c) =>
         expect(b).toMatchObject({ distributor_id: c.distA.id }),
     }),
@@ -287,7 +289,9 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
     bank('admin', 'adminA', 200),
     bank('sin token', undefined, 401),
     bank('cliente', 'clienteA', 403),
-    bank('super sin tenant', 'super', 400, { code: 'MISSING_DISTRIBUTOR' }),
+    bank('super sin tenant (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     putBank('guarda y relee', 'adminA', 200, {
       body: { alias: 'garrafas.t4', holder: 'Distribuidora T4' },
       verificar: async (_b, c) =>
@@ -306,11 +310,15 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
     putBank('sin token', undefined, 401),
     putBank('cliente', 'clienteA', 403),
     putBank('chofer', 'chofer', 403),
-    putBank('super sin tenant', 'super', 400, { code: 'MISSING_DISTRIBUTOR' }),
+    putBank('super sin tenant (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     mp('admin', 'adminA', 200),
     mp('sin token', undefined, 401),
     mp('cliente', 'clienteA', 403),
-    mp('super sin tenant', 'super', 400, { code: 'MISSING_DISTRIBUTOR' }),
+    mp('super sin tenant (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     putMp('requeridos', 'adminA', 400, { body: { accessToken: '' } }),
     putMp('tipos inválidos', 'adminA', 400, {
       body: { accessToken: 1, publicKey: 2, webhookSecret: 3 },
@@ -366,7 +374,9 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
     putMp('sin token', undefined, 401),
     putMp('cliente', 'clienteA', 403),
     putMp('chofer', 'chofer', 403),
-    putMp('super sin tenant', 'super', 400, { code: 'MISSING_DISTRIBUTOR' }),
+    putMp('super sin tenant (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
+    }),
     deactivate('baja lógica y relee sistema', 'adminA', 200, {
       verificar: async (b, c) => {
         expect(b).toMatchObject({ source: 'system', active: false });
@@ -386,8 +396,8 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
     deactivate('sin token', undefined, 401),
     deactivate('cliente', 'clienteA', 403),
     deactivate('chofer', 'chofer', 403),
-    deactivate('super sin tenant', 'super', 400, {
-      code: 'MISSING_DISTRIBUTOR',
+    deactivate('super sin tenant (sin sesión de soporte)', 'super', 403, {
+      code: 'SUPPORT_SESSION_REQUIRED',
     }),
   ]);
 
@@ -410,4 +420,10 @@ describe('Matriz HTTP T4: distribuidoras y rutas (e2e)', () => {
       ruta: (c) => `/routes/driving?orderId=${c.inexistente}&from=no`,
     }),
   ]);
+  // Modo soporte: con sesión lee lo de su empresa y no escribe; sin sesión, nada.
+  correrMatriz(
+    'super admin en modo soporte',
+    ver,
+    casosEnModoSoporte(bank, putBank),
+  );
 });

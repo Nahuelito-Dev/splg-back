@@ -16,6 +16,10 @@ import {
 } from '../../route-batch/domain/errors/route-sheet.errors';
 import { OrderStatus } from '../../order/entities/order.entity';
 import { CylinderState } from '../../cylinder/entities/cylinder.entity';
+import {
+  SesionNoPendienteError,
+  DuracionInvalidaError,
+} from '../../support/domain/support-session.errors';
 
 /**
  * P2-9: las state machines/stock ya NO lanzan `BadRequestException`/
@@ -220,6 +224,51 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
         message: 'Garrafa no encontrada',
       }),
       404,
+    );
+  });
+
+  it('un error de dominio con code lo lleva a la respuesta (409)', () => {
+    filter.catch(new SesionNoPendienteError(), host);
+    expect(applicationRef.reply).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        statusCode: 409,
+        message: 'La solicitud de soporte ya no está pendiente',
+        error: 'Conflicto',
+        code: 'SUPPORT_SESSION_NOT_PENDING',
+      },
+      409,
+    );
+  });
+
+  it('un error de dominio sin code sale como siempre (sin code)', () => {
+    filter.catch(new DuracionInvalidaError('Duración mal'), host);
+    const [, cuerpo] = applicationRef.reply.mock.calls[0] as [
+      unknown,
+      Record<string, unknown>,
+    ];
+    expect(cuerpo).toMatchObject({ statusCode: 400, message: 'Duración mal' });
+    expect(cuerpo).not.toHaveProperty('code');
+  });
+
+  it('una escritura en una transacción de sólo lectura (25006, modo soporte) es 403 SUPPORT_READ_ONLY', () => {
+    filter.catch(
+      Object.assign(
+        new Error('cannot execute UPDATE in a read-only transaction'),
+        {
+          driverError: { code: '25006' },
+        },
+      ),
+      host,
+    );
+    expect(applicationRef.reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        statusCode: 403,
+        code: 'SUPPORT_READ_ONLY',
+        message: 'Estás en modo soporte: es sólo lectura',
+      }),
+      403,
     );
   });
 
