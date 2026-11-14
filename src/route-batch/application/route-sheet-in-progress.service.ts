@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { errorMessage } from '../../common/errors/error-message';
 import { Delivery } from '../../delivery/entities/delivery.entity';
+import { HOJA_DE_RUTA_ENCENDIDA_POR_OMISION } from '../../distributor/process-config';
 import { DeliveryService } from '../../delivery/delivery.service';
 import { OrderStatus } from '../../order/entities/order.entity';
 import { RouteBatch } from '../../order/entities/route-batch.entity';
@@ -246,12 +247,13 @@ export class RouteSheetInProgress {
   private async planificacionEncendida(
     distributorId: string,
   ): Promise<boolean> {
+    // Sin fila de parámetros, o sin `enabled` guardado, viene encendida.
     const [f]: Array<{ enabled: number }> = await this.dataSource.query(
-      `SELECT COALESCE(("params" ->> 'enabled')::int, 0) AS "enabled" FROM "module_config"
+      `SELECT COALESCE(("params" ->> 'enabled')::int, ${HOJA_DE_RUTA_ENCENDIDA_POR_OMISION}) AS "enabled" FROM "module_config"
         WHERE "distributor_id" = $1 AND "module"::text = 'route_planning'`,
       [distributorId],
     );
-    return Number(f?.enabled ?? 0) === 1;
+    return Number(f?.enabled ?? HOJA_DE_RUTA_ENCENDIDA_POR_OMISION) === 1;
   }
 
   /** Las planificaciones de los días siguientes a la hoja (para elegir el primero abierto). */

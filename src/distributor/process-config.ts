@@ -54,6 +54,13 @@ export function esProcesoAutomatico(valor: string): valor is ProcesoAutomatico {
   return (PROCESOS_AUTOMATICOS as readonly string[]).includes(valor);
 }
 
+/**
+ * La hoja de ruta viene encendida: una distribuidora que no guardó `enabled`
+ * la tiene prendida. Lo leen también las consultas SQL que no pasan por el
+ * esquema (retención del despacho, propuesta automática, reprogramación).
+ */
+export const HOJA_DE_RUTA_ENCENDIDA_POR_OMISION = 1;
+
 const campo = (
   key: string,
   type: TipoDeCampo,
@@ -455,16 +462,16 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
     process: ConfigurableProcess.ROUTE_PLANNING,
     title: 'Hoja de ruta',
     description:
-      'Arma la hoja de ruta de cada chofer para el día siguiente: reparte los pedidos entre los vehículos, ordena las paradas y estima la hora de llegada; el administrador ajusta y confirma (CU-107).',
+      'Arma la hoja de ruta de cada chofer para el día siguiente: reparte los pedidos entre los vehículos, ordena las paradas y estima la hora de llegada; pasada la ventana de revisión la confirma sola, y el administrador sólo la mira o la corrige (CU-107).',
     fields: [
       campo(
         'enabled',
         'integer',
         0,
         1,
-        0,
+        HOJA_DE_RUTA_ENCENDIDA_POR_OMISION,
         null,
-        '1 enciende la hoja de ruta (propuesta automática y retención de los pedidos del día siguiente); 0 la apaga. Viene apagada',
+        '1 enciende la hoja de ruta (propuesta automática, confirmación automática y retención de los pedidos del día siguiente); 0 la apaga. Viene encendida',
       ),
       campo(
         'cutoffHour',
@@ -492,6 +499,24 @@ export const ESQUEMAS: Record<ProcesoAutomatico, EsquemaDeProceso> = {
         1,
         null,
         'Al cierre, el sistema arma la propuesta solo (1) o espera al administrador (0)',
+      ),
+      campo(
+        'autoConfirm',
+        'integer',
+        0,
+        1,
+        1,
+        null,
+        'Pasada la ventana de revisión, el sistema confirma solo las hojas propuestas que se pueden confirmar (1) o espera al administrador (0)',
+      ),
+      campo(
+        'reviewMinutes',
+        'integer',
+        0,
+        720,
+        60,
+        'min',
+        'Minutos que tiene el administrador para revisar la propuesta antes de que se confirme sola (0: se confirma al proponer)',
       ),
       campo(
         'maxStopsPerSheet',

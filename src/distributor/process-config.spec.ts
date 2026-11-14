@@ -24,13 +24,15 @@ describe('process-config', () => {
   describe('hoja de ruta (route_planning)', () => {
     const HOJA = ESQUEMAS[ConfigurableProcess.ROUTE_PLANNING];
 
-    it('viene apagada, cierra a las 18:00 y propone sola', () => {
+    it('viene encendida, cierra a las 18:00, propone sola y confirma sola a la hora', () => {
       const v = valoresPorOmision(HOJA);
       expect(v).toMatchObject({
-        enabled: 0,
+        enabled: 1,
         cutoffHour: 18,
         cutoffMinute: 0,
         autoPropose: 1,
+        autoConfirm: 1,
+        reviewMinutes: 60,
         maxStopsPerSheet: 20,
         serviceMinutes: 10,
         trafficFactor: 1.2,
@@ -38,6 +40,23 @@ describe('process-config', () => {
         lateOrderPolicy: 1,
         notStartedAlertMinutes: 30,
       });
+    });
+
+    it('la distribuidora que guardó enabled conserva su valor; la que no lo guardó la tiene encendida', () => {
+      expect(valoresDesde(HOJA, { enabled: 0 }).enabled).toBe(0);
+      expect(valoresDesde(HOJA, { cutoffHour: 20 }).enabled).toBe(1);
+      expect(valoresDesde(HOJA, null).enabled).toBe(1);
+    });
+
+    it('autoConfirm 0–1 y reviewMinutes 0–720 enteros', () => {
+      expect(
+        validarParametros(HOJA, { autoConfirm: 0, reviewMinutes: 0 }),
+      ).toEqual([]);
+      expect(validarParametros(HOJA, { reviewMinutes: 720 })).toEqual([]);
+      expect(validarParametros(HOJA, { reviewMinutes: 721 })).toHaveLength(1);
+      expect(validarParametros(HOJA, { reviewMinutes: -1 })).toHaveLength(1);
+      expect(validarParametros(HOJA, { reviewMinutes: 1.5 })).toHaveLength(1);
+      expect(validarParametros(HOJA, { autoConfirm: 2 })).toHaveLength(1);
     });
 
     it('el factor de tránsito admite decimales; el resto son enteros', () => {

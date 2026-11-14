@@ -157,6 +157,16 @@ describe('RouteSheetLifecycleService', () => {
       ]);
     });
 
+    it('confirmada por el sistema (confirmación automática): sin usuario, con la misma validación', async () => {
+      const { svc, sheet, data } = armar();
+      await svc.confirmar(DIST, 'hoja-1', { version: 3 }, null);
+      expect(data.choferes).toHaveBeenCalled();
+      expect(sheet).toMatchObject({
+        status: 'confirmed',
+        confirmedByUserId: null,
+      });
+    });
+
     it('a los pedidos sin franja fija (reprogramados) se les avisa el horario al confirmar; un aviso que falla no deshace la confirmación', async () => {
       const { svc, sheet, eta } = armar();
       await svc.confirmar(DIST, 'hoja-1', { version: 3 }, 'u1');

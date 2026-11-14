@@ -581,6 +581,37 @@ describe('RouteSheetInProgress', () => {
       ).toBe('2026-11-17');
     });
 
+    it('una distribuidora que nunca guardó los parámetros tiene la hoja encendida: no queda esperando al admin', async () => {
+      const t = armar();
+      t.ds.query.mockImplementation((sql: string) =>
+        Promise.resolve(
+          sql.includes('"module_config"')
+            ? [] // sin fila de parámetros
+            : sql.includes('"time_slot"')
+              ? [{ hay: true }]
+              : [],
+        ),
+      );
+      const fecha = await t.svc.reprogramar(
+        hoja({ planDate: '2026-11-14' }),
+        'o1',
+      );
+      expect(fecha).toBe('2026-11-16');
+      expect(t.ds.manager.update).not.toHaveBeenCalledWith(
+        RouteBatchStop,
+        expect.anything(),
+        { removedReason: RouteStopRemovedReason.NEEDS_RESCHEDULE },
+      );
+      expect(t.notifier.aLaBandeja).not.toHaveBeenCalledWith(
+        DIST,
+        expect.objectContaining({ kind: 'route_sheet_reschedule_needs_admin' }),
+      );
+      const sqlConfig = (t.ds.query.mock.calls as unknown[][])
+        .map((c) => c[0] as string)
+        .find((q) => q.includes('"module_config"'));
+      expect(sqlConfig).toContain(`COALESCE(("params" ->> 'enabled')::int, 1)`);
+    });
+
     it('con la hoja de ruta apagada: el día hábil siguiente y queda esperando al admin (nadie lo despacha solo)', async () => {
       const t = armar();
       encendida(t, [], 0);

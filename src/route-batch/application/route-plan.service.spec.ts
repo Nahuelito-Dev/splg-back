@@ -45,7 +45,12 @@ function armar() {
     query: jest.fn().mockResolvedValue([]),
   };
   const processConfig = {
-    obtener: jest.fn().mockResolvedValue({ cutoffHour: 18, cutoffMinute: 30 }),
+    obtener: jest.fn().mockResolvedValue({
+      cutoffHour: 18,
+      cutoffMinute: 30,
+      enabled: 1,
+      autoPropose: 1,
+    }),
   };
   const lifecycle = { confirmar: jest.fn().mockResolvedValue(undefined) };
   const calendario = {
@@ -250,12 +255,18 @@ describe('RoutePlanService', () => {
     // 13/11 a las 21:00 UTC = 18:00 en Argentina.
     const despuesDelCierre = new Date('2026-11-13T21:45:00Z');
 
+    const activa = (
+      distributorId: string,
+      params: Record<string, unknown> | null = null,
+      status = 'active',
+    ) => ({ distributorId, status, deletedAt: null, params });
+
     it('sólo las distribuidoras cuyo cierre de mañana pasó y que no se propusieron ni cerraron', async () => {
       const { svc, ds, plans } = armar();
       ds.query.mockResolvedValueOnce([
-        { distributorId: 'sin-plan' },
-        { distributorId: 'abierta' },
-        { distributorId: 'propuesta' },
+        activa('sin-plan'),
+        activa('abierta'),
+        activa('propuesta'),
       ]);
       plans.findOne
         .mockResolvedValueOnce(null)
@@ -265,14 +276,35 @@ describe('RoutePlanService', () => {
         { distributorId: 'sin-plan', planDate: DIA },
         { distributorId: 'abierta', planDate: DIA },
       ]);
-      expect((ds.query.mock.calls as unknown[][])[0][0]).toContain(
-        `'autoPropose'`,
-      );
+      // Recorre todas las distribuidoras, también las que nunca guardaron parámetros.
+      const sql = (ds.query.mock.calls as unknown[][])[0][0] as string;
+      expect(sql).toContain('FROM "distributor" d');
+      expect(sql).toContain('LEFT JOIN "module_config" mc');
+    });
+
+    it('decide con el mismo predicado que la retención: sin parámetros propone; enabled 0, autoPropose 0 o suspendida no', async () => {
+      const { svc, ds, plans } = armar();
+      ds.query.mockResolvedValueOnce([
+        activa('por-omision'),
+        activa('apagada', { enabled: 0 }),
+        activa('a-mano', { autoPropose: 0 }),
+        activa('suspendida', null, 'suspended'),
+      ]);
+      expect(await svc.paraProponer(despuesDelCierre)).toEqual([
+        { distributorId: 'por-omision', planDate: DIA },
+      ]);
+      expect(plans.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('el cierre sale de los parámetros guardados (cierre 20:00: a las 18:45 todavía no)', async () => {
+      const { svc, ds } = armar();
+      ds.query.mockResolvedValueOnce([activa('d', { cutoffHour: 20 })]);
+      expect(await svc.paraProponer(despuesDelCierre)).toEqual([]);
     });
 
     it('mañana feriado o día que no se reparte: no propone (el sábado 14/11)', async () => {
       const { svc, ds, plans, calendario } = armar();
-      ds.query.mockResolvedValue([{ distributorId: 'd' }]);
+      ds.query.mockResolvedValue([activa('d')]);
       calendario.calendario.mockResolvedValueOnce({
         diasHabiles: diasDeLaMascara(63),
         feriados: new Set([DIA]),
@@ -289,7 +321,7 @@ describe('RoutePlanService', () => {
 
     it('antes del cierre no propone', async () => {
       const { svc, ds, plans } = armar();
-      ds.query.mockResolvedValueOnce([{ distributorId: 'd' }]);
+      ds.query.mockResolvedValueOnce([activa('d')]);
       expect(await svc.paraProponer(new Date('2026-11-13T20:00:00Z'))).toEqual(
         [],
       );

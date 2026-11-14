@@ -139,7 +139,7 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
   },
   [ProcessName.ROUTE_PLANNING_PROPOSE]: {
     module: 'M4',
-    title: 'Hoja de ruta: propuesta del día siguiente',
+    title: 'Hoja de ruta: propuesta y confirmación del día siguiente',
     periodSeconds: MIN,
     recordEverySeconds: 5 * MIN,
   },
