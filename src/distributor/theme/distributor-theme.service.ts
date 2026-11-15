@@ -91,13 +91,18 @@ export class DistributorThemeService {
         updatedAt: borrada?.updatedAt.toISOString() ?? null,
       };
     }
+    // Los tokens se recalculan con la versión actual del generador (es puro y
+    // determinista): un tema guardado antes de que se sumaran roles los recibe
+    // igual, sin migrar la tabla. Lo guardado queda como registro de lo que se
+    // validó al guardar.
+    const tema = generarTema(fila.primaryColor, fila.accentColor);
     return {
       primaryColor: fila.primaryColor,
       accentColor: fila.accentColor,
       displayName: fila.displayName,
       ...base,
-      tokens: fila.tokens,
-      contrast: fila.contrast,
+      tokens: tema.tokens,
+      contrast: tema.contrast,
       version: fila.version,
       isDefault: false,
       updatedAt: fila.updatedAt.toISOString(),
@@ -201,7 +206,11 @@ export class DistributorThemeService {
     | 'contrast'
     | 'isDefault'
   > {
-    const tema = generarTema(PRINCIPAL_POR_OMISION);
+    // Con los oscuros de Brasa: sin tema propio el panel pinta sus variables,
+    // y lo que devuelve la API tiene que ser lo que se ve.
+    const tema = generarTema(PRINCIPAL_POR_OMISION, null, {
+      oscurosDeBrasa: true,
+    });
     return {
       primaryColor: PRINCIPAL_POR_OMISION,
       accentColor: null,

@@ -6,12 +6,19 @@ import {
   redondearRelacion,
 } from './color';
 import {
+  ACENTO_DEL_MENU_DE_BRASA,
   BLANCO,
+  BRILLO_DEL_MENU,
+  CROMA_CASI_GRIS,
+  FONDO_DEL_ITEM_ACTIVO,
+  mezclar,
   generarTema,
+  MENU_NEUTRO,
   MINIMO_TEXTO,
   MINIMO_UI,
   PRINCIPAL_POR_OMISION,
   SUPERFICIES,
+  SUPERFICIES_NEUTRAS,
   sugerir,
   textoSobre,
   TINTA,
@@ -78,7 +85,7 @@ describe('generarTema', () => {
     }
     expect(tema.tokens.light.primary).toBe(color);
     expect(tema.contrast.filter((c) => !c.ok)).toEqual([]);
-    expect(tema.contrast).toHaveLength(12);
+    expect(tema.contrast).toHaveLength(28);
   });
 
   it('#FEC84B (amarillo) → falla contra el blanco con una sugerencia que sí cumple', () => {
@@ -191,5 +198,214 @@ describe('tema por omisión', () => {
 describe('sugerir', () => {
   it('si nada cumple devuelve la tinta', () => {
     expect(sugerir('#1D4ED8', () => false)).toBe(TINTA);
+  });
+});
+
+/** Las paletas preestablecidas del panel (`themePresets.ts`) y un color libre. */
+const PALETAS: Array<[string, string, string | null]> = [
+  ['Naranja SPLG', '#CD4B00', '#A86A00'],
+  ['Amarillo gas', '#B58700', '#A87900'],
+  ['Amarillo anaranjado', '#A85B00', '#A96A00'],
+  ['Violeta', '#6D28D9', '#7B43C5'],
+  ['Verde', '#0B6E3D', '#247A48'],
+  ['Celeste', '#006C82', '#087B94'],
+  ['Azul petróleo', '#075A6A', '#087287'],
+  ['libre (frambuesa)', '#C2185B', null],
+];
+
+const ROLES_DEL_MENU = [
+  'side',
+  'sideRaised',
+  'sideLine',
+  'sideText',
+  'sideMuted',
+  'sideAccent',
+] as const;
+const ROLES_DE_SUPERFICIE = [
+  'canvas',
+  'surface',
+  'surfaceHover',
+  'surfaceSunken',
+  'surfaceMuted',
+  'outline',
+  'outlineSoft',
+] as const;
+
+/** Distancia angular entre dos tonos (0 a 180). */
+const distanciaDeTono = (a: number, b: number) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+describe('menú lateral y oscuros del tono', () => {
+  describe.each(PALETAS)('%s (%s)', (_, principal, acento) => {
+    const tema = generarTema(principal, acento);
+    const { light, dark } = tema.tokens;
+    const tono = hexAOklch(principal).h;
+
+    it('cumple todo el contraste, también el del menú', () => {
+      expect(tema.failures).toEqual([]);
+      expect(tema.contrast.filter((c) => !c.ok)).toEqual([]);
+      for (const modo of ['light', 'dark'] as const) {
+        const t = tema.tokens[modo];
+        for (const texto of ['sideText', 'sideMuted', 'sideAccent'] as const) {
+          for (const fondo of ['side', 'sideRaised'] as const) {
+            expect(contraste(t[texto], t[fondo])).toBeGreaterThanOrEqual(
+              MINIMO_TEXTO,
+            );
+          }
+        }
+      }
+    });
+
+    it('el texto del menú se lee bajo el brillo de arriba (el principal de cada modo al 22 %)', () => {
+      for (const p of [light.primary, dark.primary]) {
+        const brillo = mezclar(dark.side, p, BRILLO_DEL_MENU);
+        expect(contraste(dark.sideText, brillo)).toBeGreaterThanOrEqual(
+          MINIMO_TEXTO,
+        );
+        expect(contraste(dark.sideMuted, brillo)).toBeGreaterThanOrEqual(
+          MINIMO_TEXTO,
+        );
+      }
+    });
+
+    it('el acento del menú: iniciales sobre el borde (4,5) e ícono sobre el ítem activo (3)', () => {
+      expect(contraste(dark.sideAccent, dark.sideLine)).toBeGreaterThanOrEqual(
+        MINIMO_TEXTO,
+      );
+      for (const p of [light.primary, dark.primary]) {
+        expect(
+          contraste(
+            dark.sideAccent,
+            mezclar(dark.side, p, FONDO_DEL_ITEM_ACTIVO),
+          ),
+        ).toBeGreaterThanOrEqual(MINIMO_UI);
+      }
+    });
+
+    it('el menú es igual en claro y en oscuro', () => {
+      for (const rol of ROLES_DEL_MENU) expect(light[rol]).toBe(dark[rol]);
+    });
+
+    it('el menú y las superficies oscuras toman el tono del principal y siguen siendo oscuros', () => {
+      for (const rol of ['side', 'sideRaised', 'sideLine'] as const) {
+        expect(dark[rol]).not.toBe(MENU_NEUTRO[rol]);
+        expect(luminancia(dark[rol])).toBeLessThanOrEqual(
+          luminancia(MENU_NEUTRO[rol]),
+        );
+        expect(
+          distanciaDeTono(hexAOklch(dark[rol]).h, tono),
+        ).toBeLessThanOrEqual(12);
+      }
+      for (const rol of ROLES_DE_SUPERFICIE) {
+        expect(dark[rol]).not.toBe(SUPERFICIES_NEUTRAS.dark[rol]);
+        // Nunca más claro que el neutro: todo texto claro que hoy cumple sigue cumpliendo.
+        expect(luminancia(dark[rol])).toBeLessThanOrEqual(
+          luminancia(SUPERFICIES_NEUTRAS.dark[rol]),
+        );
+        expect(hexAOklch(dark[rol]).c).toBeLessThanOrEqual(0.03);
+      }
+    });
+
+    it('las superficies claras no cambian', () => {
+      for (const rol of ROLES_DE_SUPERFICIE) {
+        expect(light[rol]).toBe(SUPERFICIES_NEUTRAS.light[rol]);
+      }
+    });
+
+    it('el principal oscuro se destaca sobre la superficie teñida', () => {
+      expect(contraste(dark.primary, dark.surface)).toBeGreaterThanOrEqual(
+        MINIMO_UI,
+      );
+      expect(
+        contraste(dark.primaryStrong, dark.surface),
+      ).toBeGreaterThanOrEqual(MINIMO_TEXTO);
+    });
+  });
+
+  it.each([
+    ['gris pizarra', '#4B5563'],
+    ['gris puro', '#5A5A5A'],
+    ['negro', '#000000'],
+  ])(
+    'un principal casi gris (%s, %s) deja los oscuros neutros de hoy',
+    (_, principal) => {
+      expect(hexAOklch(principal).c).toBeLessThan(CROMA_CASI_GRIS);
+      const tema = generarTema(principal);
+      expect(tema.contrast.filter((c) => !c.ok)).toEqual([]);
+      for (const modo of ['light', 'dark'] as const) {
+        expect(tema.tokens[modo]).toMatchObject(SUPERFICIES_NEUTRAS[modo]);
+        expect(tema.tokens[modo]).toMatchObject(MENU_NEUTRO);
+      }
+    },
+  );
+
+  it('un principal apagado (#6B6B7F) da oscuros apagados: la croma no supera la del principal', () => {
+    const principal = '#6B6B7F';
+    const c = hexAOklch(principal).c;
+    expect(c).toBeGreaterThanOrEqual(CROMA_CASI_GRIS);
+    expect(c).toBeLessThan(0.045);
+    const tema = generarTema(principal);
+    expect(tema.contrast.filter((m) => !m.ok)).toEqual([]);
+    const { dark } = tema.tokens;
+    for (const rol of [...ROLES_DEL_MENU, ...ROLES_DE_SUPERFICIE]) {
+      if (rol === 'sideAccent') continue;
+      expect(hexAOklch(dark[rol]).c).toBeLessThanOrEqual(c + 0.005);
+    }
+  });
+
+  it('el tema por omisión (oscuros de Brasa) da exactamente el menú y las superficies de Brasa', () => {
+    const tema = generarTema(PRINCIPAL_POR_OMISION, null, {
+      oscurosDeBrasa: true,
+    });
+    expect(tema.contrast.filter((m) => !m.ok)).toEqual([]);
+    for (const modo of ['light', 'dark'] as const) {
+      expect(tema.tokens[modo]).toMatchObject({
+        ...SUPERFICIES_NEUTRAS[modo],
+        ...MENU_NEUTRO,
+        sideAccent: ACENTO_DEL_MENU_DE_BRASA,
+      });
+    }
+    // Sin la opción, el mismo naranja tiñe los oscuros.
+    expect(generarTema(PRINCIPAL_POR_OMISION).tokens.dark.side).not.toBe(
+      MENU_NEUTRO.side,
+    );
+  });
+
+  it('el menú neutro cumple 4,5:1, también bajo el brillo de Brasa', () => {
+    for (const p of ['#D9530E', PRINCIPAL_POR_OMISION]) {
+      const brillo = mezclar(MENU_NEUTRO.side, p, BRILLO_DEL_MENU);
+      expect(contraste(MENU_NEUTRO.sideMuted, brillo)).toBeGreaterThanOrEqual(
+        MINIMO_TEXTO,
+      );
+    }
+    for (const texto of ['sideText', 'sideMuted'] as const) {
+      for (const fondo of ['side', 'sideRaised'] as const) {
+        expect(
+          contraste(MENU_NEUTRO[texto], MENU_NEUTRO[fondo]),
+        ).toBeGreaterThanOrEqual(MINIMO_TEXTO);
+      }
+    }
+  });
+
+  it('mide los pares del menú en los dos modos', () => {
+    const pares = generarTema('#0B6E3D').contrast.map(
+      (c) => `${c.mode}:${c.pair}`,
+    );
+    for (const modo of ['light', 'dark']) {
+      for (const par of [
+        'sideText/side',
+        'sideText/sideRaised',
+        'sideMuted/side',
+        'sideMuted/sideRaised',
+        'sideAccent/side',
+        'sideAccent/sideRaised',
+        'sideAccent/sideLine',
+        'sideAccent/sideActive',
+      ]) {
+        expect(pares).toContain(`${modo}:${par}`);
+      }
+    }
   });
 });

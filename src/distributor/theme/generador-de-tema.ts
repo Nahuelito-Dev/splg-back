@@ -1,7 +1,10 @@
 import {
   contraste,
   hexAOklch,
+  hexARgb,
+  luminancia,
   oklchAHex,
+  rgbAHex,
   redondearRelacion,
   type Oklch,
 } from './color';
@@ -18,8 +21,12 @@ import {
  * fuerte sobre el suave, el acento que no se eligió) se corrige solo hasta
  * cumplir.
  *
- * No se tematizan la tinta, las superficies, los colores de estado ni el menú
- * lateral: una empresa cambia su identidad, no la semántica del sistema.
+ * Los oscuros también toman el tono de la marca: el menú lateral (siempre
+ * oscuro) y las superficies del modo oscuro son un oscuro del mismo tono que el
+ * principal, con croma baja para que se sigan leyendo como «oscuro». Si el
+ * principal es casi gris quedan los oscuros neutros del panel. Las superficies
+ * claras, la tinta y los colores de estado no se tematizan: una empresa cambia
+ * su identidad, no la semántica del sistema.
  */
 
 /** Los roles tematizables, iguales en claro y en oscuro. */
@@ -34,6 +41,27 @@ export interface TokensDeModo {
   gradientFrom: string;
   gradientTo: string;
   gradientEdge: string;
+  /** Fondo del panel. */
+  canvas: string;
+  /** Tarjetas, tablas y diálogos. */
+  surface: string;
+  surfaceHover: string;
+  surfaceSunken: string;
+  surfaceMuted: string;
+  outline: string;
+  outlineSoft: string;
+  /** Menú lateral: siempre oscuro, igual en los dos modos. */
+  side: string;
+  /** Tarjetas y realces dentro del menú. */
+  sideRaised: string;
+  /** Divisores y bordes del menú. */
+  sideLine: string;
+  /** Texto de los ítems del menú. */
+  sideText: string;
+  /** Títulos de sección y texto secundario del menú. */
+  sideMuted: string;
+  /** Íconos activos, iniciales y foco dentro del menú. */
+  sideAccent: string;
 }
 
 export interface TokensDelTema {
@@ -67,13 +95,107 @@ export interface TemaGenerado {
   failures: FallaDeContraste[];
 }
 
-/** Superficies fijas del panel (`brand.json`): contra ellas se mide. */
+/** Superficies fijas del modo claro (`brand.json`): contra ellas se valida lo elegido. */
 export const SUPERFICIES = {
   surface: '#FFFFFF',
   canvas: '#F5F6F8',
   darkSurface: '#131A25',
   darkCanvas: '#0B0F16',
 } as const;
+
+type RolDeSuperficie =
+  | 'canvas'
+  | 'surface'
+  | 'surfaceHover'
+  | 'surfaceSunken'
+  | 'surfaceMuted'
+  | 'outline'
+  | 'outlineSoft';
+
+type RolDelMenu =
+  | 'side'
+  | 'sideRaised'
+  | 'sideLine'
+  | 'sideText'
+  | 'sideMuted'
+  | 'sideAccent';
+
+export type SuperficiesDeModo = Record<RolDeSuperficie, string>;
+export type ColoresDelMenu = Record<RolDelMenu, string>;
+
+/** Las superficies neutras del panel (Brasa, `brand.json`), en claro y en oscuro. */
+export const SUPERFICIES_NEUTRAS: Record<ModoDelTema, SuperficiesDeModo> = {
+  light: {
+    canvas: '#F5F6F8',
+    surface: '#FFFFFF',
+    surfaceHover: '#F5F6F8',
+    surfaceSunken: '#FAFBFC',
+    surfaceMuted: '#F0F2F5',
+    outline: '#E7EAEE',
+    outlineSoft: '#F0F2F5',
+  },
+  dark: {
+    canvas: '#0B0F16',
+    surface: '#131A25',
+    surfaceHover: '#1B2330',
+    surfaceSunken: '#171E29',
+    surfaceMuted: '#212A38',
+    outline: '#2E3847',
+    outlineSoft: '#202836',
+  },
+};
+
+/**
+ * El menú neutro del panel: fondo, realce y borde de Brasa (el borde es el
+ * blanco al 6 % sobre el fondo, ya compuesto) y el texto gris de siempre. El
+ * secundario es el más oscuro que llega a 4,5:1 también bajo el brillo de Brasa.
+ */
+export const MENU_NEUTRO: Omit<ColoresDelMenu, 'sideAccent'> = {
+  side: '#0B0F16',
+  sideRaised: '#121824',
+  sideLine: '#1A1E25',
+  sideText: '#98A2B3',
+  sideMuted: '#848C9D',
+};
+
+/**
+ * Debajo de esta croma (OKLCH) el principal se ve gris: los oscuros quedan
+ * neutros en vez de tomar un tono que nadie eligió.
+ */
+export const CROMA_CASI_GRIS = 0.03;
+
+/**
+ * Cuánto tono llevan los oscuros: poca croma, para que sigan siendo «oscuro», y
+ * nunca más que la del principal (un principal apagado da oscuros apagados).
+ */
+const CROMA_DEL_MENU = 0.045;
+const CROMA_DEL_TEXTO_DEL_MENU = 0.025;
+const CROMA_DE_LAS_SUPERFICIES = 0.022;
+
+/**
+ * El acento del menú de Brasa (`llama-400`): el del tema por omisión, que el
+ * panel muestra con sus propias variables.
+ */
+export const ACENTO_DEL_MENU_DE_BRASA = '#FF8A3D';
+
+/**
+ * Lo que el principal tiñe el fondo del menú, como lo pinta el panel: el brillo
+ * de arriba (`.side-glow`, el principal al 22 % en su centro) y el ítem activo
+ * (el principal al 16 %). Sobre esas mezclas también se mide.
+ */
+export const BRILLO_DEL_MENU = 0.22;
+export const FONDO_DEL_ITEM_ACTIVO = 0.16;
+
+/** `a` con `b` encima al `alfa` (0 a 1), compuesto en sRGB como lo hace el navegador. */
+export function mezclar(a: string, b: string, alfa: number): string {
+  const x = hexARgb(a);
+  const y = hexARgb(b);
+  return rgbAHex({
+    r: x.r * (1 - alfa) + y.r * alfa,
+    g: x.g * (1 - alfa) + y.g * alfa,
+    b: x.b * (1 - alfa) + y.b * alfa,
+  });
+}
 
 /** Texto sobre el principal: blanco o la tinta del panel. */
 export const BLANCO = '#FFFFFF';
@@ -164,6 +286,8 @@ function derivarModo(
   primary: string,
   accent: string,
   modo: ModoDelTema,
+  superficies: SuperficiesDeModo,
+  menu: ColoresDelMenu,
 ): TokensDeModo {
   const p = hexAOklch(primary);
   const a = hexAOklch(accent);
@@ -184,10 +308,7 @@ function derivarModo(
     modo === 'light' ? -1 : 1,
     (hex) =>
       contraste(hex, primarySoft) >= MINIMO_TEXTO &&
-      contraste(
-        hex,
-        modo === 'light' ? SUPERFICIES.surface : SUPERFICIES.darkSurface,
-      ) >= MINIMO_TEXTO,
+      contraste(hex, superficies.surface) >= MINIMO_TEXTO,
   );
 
   const accentSoft =
@@ -206,6 +327,8 @@ function derivarModo(
     gradientFrom: primary,
     gradientTo: alejarDelTexto(p, onPrimary, 0.06),
     gradientEdge: alejarDelTexto(p, onPrimary, 0.1),
+    ...superficies,
+    ...menu,
   };
 }
 
@@ -217,22 +340,128 @@ function acentoDerivado(primary: string): string {
 }
 
 /** En oscuro, el principal sube hasta destacarse sobre la superficie oscura con texto legible. */
-function principalOscuro(primary: string): string {
+function principalOscuro(primary: string, superficie: string): string {
   return ajustarHasta(
     hexAOklch(primary),
     1,
     (hex) =>
-      contraste(hex, SUPERFICIES.darkSurface) >= MINIMO_UI &&
+      contraste(hex, superficie) >= MINIMO_UI &&
       contraste(textoSobre(hex), hex) >= MINIMO_TEXTO,
   );
 }
 
-function acentoOscuro(accent: string): string {
+function acentoOscuro(accent: string, superficie: string): string {
   return ajustarHasta(
     hexAOklch(accent),
     1,
-    (hex) => contraste(hex, SUPERFICIES.darkSurface) >= MINIMO_UI,
+    (hex) => contraste(hex, superficie) >= MINIMO_UI,
   );
+}
+
+/** El matiz del principal (tono y croma OKLCH), o `null` si es casi gris. */
+export interface Matiz {
+  h: number;
+  c: number;
+}
+
+export function matizDe(primary: string): Matiz | null {
+  const p = hexAOklch(primary);
+  return p.c < CROMA_CASI_GRIS ? null : { h: p.h, c: p.c };
+}
+
+/**
+ * El oscuro neutro llevado al tono: misma luminosidad OKLCH, croma baja. Nunca
+ * queda más claro (en luminancia WCAG) que el neutro: así todo texto claro que
+ * hoy cumple sobre ese fondo sigue cumpliendo.
+ */
+function oscuroDelTono(neutro: string, tono: number, croma: number): string {
+  const tope = luminancia(neutro);
+  return ajustarHasta(
+    { l: hexAOklch(neutro).l, c: croma, h: tono },
+    -1,
+    (hex) => luminancia(hex) <= tope,
+  );
+}
+
+/** Las superficies del modo: neutras en claro (y sin tono); teñidas en oscuro. */
+function superficiesDelModo(
+  modo: ModoDelTema,
+  matiz: Matiz | null,
+): SuperficiesDeModo {
+  const neutras = SUPERFICIES_NEUTRAS[modo];
+  if (modo === 'light' || matiz === null) return { ...neutras };
+  const croma = Math.min(CROMA_DE_LAS_SUPERFICIES, matiz.c);
+  const alTono = (hex: string) => oscuroDelTono(hex, matiz.h, croma);
+  return {
+    canvas: alTono(neutras.canvas),
+    surface: alTono(neutras.surface),
+    surfaceHover: alTono(neutras.surfaceHover),
+    surfaceSunken: alTono(neutras.surfaceSunken),
+    surfaceMuted: alTono(neutras.surfaceMuted),
+    outline: alTono(neutras.outline),
+    outlineSoft: alTono(neutras.outlineSoft),
+  };
+}
+
+/** Un color claro que se lee (≥ `minimo`) sobre cada uno de los fondos. */
+const legibleSobre = (fondos: string[], minimo: number) => (hex: string) =>
+  fondos.every((fondo) => contraste(hex, fondo) >= minimo);
+
+/**
+ * El menú lateral: el oscuro del tono del principal (o el neutro si es casi
+ * gris o si es el tema por omisión), con croma acotada a la del principal.
+ *
+ * - Texto y secundario: 4,5:1 sobre el fondo, el realce y el fondo bajo el
+ *   brillo de arriba (el principal de cada modo al 22 %).
+ * - Acento (íconos activos, iniciales chicas, foco): 4,5:1 sobre el fondo, el
+ *   realce y el borde (donde van las iniciales), y 3:1 sobre el ítem activo
+ *   (el principal de cada modo al 16 %), donde pinta el ícono.
+ */
+function menuDelTema(
+  matiz: Matiz | null,
+  principales: string[],
+  principalEnOscuro: string,
+  acentoFijo: string | null,
+): ColoresDelMenu {
+  let base: Omit<ColoresDelMenu, 'sideAccent'> = { ...MENU_NEUTRO };
+  if (matiz !== null) {
+    const croma = Math.min(CROMA_DEL_MENU, matiz.c);
+    const cromaDelTexto = Math.min(CROMA_DEL_TEXTO_DEL_MENU, matiz.c);
+    const texto = (hex: string) => {
+      const o = hexAOklch(hex);
+      return conL({ ...o, c: cromaDelTexto, h: matiz.h }, o.l);
+    };
+    base = {
+      side: oscuroDelTono(MENU_NEUTRO.side, matiz.h, croma),
+      sideRaised: oscuroDelTono(MENU_NEUTRO.sideRaised, matiz.h, croma),
+      sideLine: oscuroDelTono(MENU_NEUTRO.sideLine, matiz.h, croma),
+      sideText: texto(MENU_NEUTRO.sideText),
+      sideMuted: texto(MENU_NEUTRO.sideMuted),
+    };
+  }
+  const bajoElBrillo = principales.map((p) =>
+    mezclar(base.side, p, BRILLO_DEL_MENU),
+  );
+  const itemActivo = principales.map((p) =>
+    mezclar(base.side, p, FONDO_DEL_ITEM_ACTIVO),
+  );
+  const textoLegible = legibleSobre(
+    [base.side, base.sideRaised, ...bajoElBrillo],
+    MINIMO_TEXTO,
+  );
+  const acentoLegible = (hex: string) =>
+    legibleSobre(
+      [base.side, base.sideRaised, base.sideLine],
+      MINIMO_TEXTO,
+    )(hex) && legibleSobre(itemActivo, MINIMO_UI)(hex);
+  const subir = (hex: string, cumple: (hex: string) => boolean) =>
+    cumple(hex) ? hex : ajustarHasta(hexAOklch(hex), 1, cumple);
+  return {
+    ...base,
+    sideText: subir(base.sideText, textoLegible),
+    sideMuted: subir(base.sideMuted, textoLegible),
+    sideAccent: subir(acentoFijo ?? principalEnOscuro, acentoLegible),
+  };
 }
 
 function medir(
@@ -240,16 +469,26 @@ function medir(
   modo: ModoDelTema,
 ): MedicionDeContraste[] {
   const t = tokens[modo];
-  const superficie =
-    modo === 'light' ? SUPERFICIES.surface : SUPERFICIES.darkSurface;
-  const lienzo = modo === 'light' ? SUPERFICIES.canvas : SUPERFICIES.darkCanvas;
   const pares: Array<[string, string, string, number]> = [
     ['onPrimary/primary', t.onPrimary, t.primary, MINIMO_TEXTO],
     ['onPrimary/gradientTo', t.onPrimary, t.gradientTo, MINIMO_TEXTO],
-    ['primary/surface', t.primary, superficie, MINIMO_UI],
-    ['primary/canvas', t.primary, lienzo, MINIMO_UI],
-    ['accent/surface', t.accent, superficie, MINIMO_UI],
+    ['primary/surface', t.primary, t.surface, MINIMO_UI],
+    ['primary/canvas', t.primary, t.canvas, MINIMO_UI],
+    ['accent/surface', t.accent, t.surface, MINIMO_UI],
     ['primaryStrong/primarySoft', t.primaryStrong, t.primarySoft, MINIMO_TEXTO],
+    ['sideText/side', t.sideText, t.side, MINIMO_TEXTO],
+    ['sideText/sideRaised', t.sideText, t.sideRaised, MINIMO_TEXTO],
+    ['sideMuted/side', t.sideMuted, t.side, MINIMO_TEXTO],
+    ['sideMuted/sideRaised', t.sideMuted, t.sideRaised, MINIMO_TEXTO],
+    ['sideAccent/side', t.sideAccent, t.side, MINIMO_TEXTO],
+    ['sideAccent/sideRaised', t.sideAccent, t.sideRaised, MINIMO_TEXTO],
+    ['sideAccent/sideLine', t.sideAccent, t.sideLine, MINIMO_TEXTO],
+    [
+      'sideAccent/sideActive',
+      t.sideAccent,
+      mezclar(t.side, t.primary, FONDO_DEL_ITEM_ACTIVO),
+      MINIMO_UI,
+    ],
   ];
   return pares.map(([pair, frente, fondo, required]) => {
     const ratio = contraste(frente, fondo);
@@ -268,9 +507,20 @@ function medir(
  * normalizados (`#RRGGBB` en mayúsculas). Si `failures` no está vacío, el tema
  * no se guarda: el servicio responde 400 con la primera falla.
  */
+/** Opciones de `generarTema`. */
+export interface OpcionesDelTema {
+  /**
+   * Menú y superficies exactamente los de Brasa (y su acento del menú): para el
+   * tema por omisión, que el panel pinta con sus propias variables. Así lo que
+   * devuelve la API es lo que se ve.
+   */
+  oscurosDeBrasa?: boolean;
+}
+
 export function generarTema(
   primaryColor: string,
   accentColor: string | null = null,
+  opciones: OpcionesDelTema = {},
 ): TemaGenerado {
   const failures: FallaDeContraste[] = [];
 
@@ -304,12 +554,24 @@ export function generarTema(
   }
 
   const accent = accentColor ?? acentoDerivado(primaryColor);
+  const matiz = opciones.oscurosDeBrasa ? null : matizDe(primaryColor);
+  const claras = superficiesDelModo('light', matiz);
+  const oscuras = superficiesDelModo('dark', matiz);
+  const primaryOscuro = principalOscuro(primaryColor, oscuras.surface);
+  const menu = menuDelTema(
+    matiz,
+    [primaryColor, primaryOscuro],
+    primaryOscuro,
+    opciones.oscurosDeBrasa ? ACENTO_DEL_MENU_DE_BRASA : null,
+  );
   const tokens: TokensDelTema = {
-    light: derivarModo(primaryColor, accent, 'light'),
+    light: derivarModo(primaryColor, accent, 'light', claras, menu),
     dark: derivarModo(
-      principalOscuro(primaryColor),
-      acentoOscuro(accent),
+      primaryOscuro,
+      acentoOscuro(accent, oscuras.surface),
       'dark',
+      oscuras,
+      menu,
     ),
   };
   return {
