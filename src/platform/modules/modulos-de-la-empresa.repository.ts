@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import type { ModuloKey } from './catalogo-de-modulos';
 
 export interface FotoDeModulos {
@@ -22,6 +22,13 @@ export interface CambioDeExcepcion {
   reason: string;
   expiresAt: Date | null;
   actorUserId: string;
+  /**
+   * Quitar el asistente con IA (`assistant`): en la misma transacción se apaga
+   * el interruptor de la empresa (`chat_company_settings.assistant_ai_enabled`,
+   * auditado por el trigger), para que al volver a habilitarlo no se ponga a
+   * contestar solo sin que el admin lo prenda.
+   */
+  apagarAsistente?: boolean;
 }
 
 /**
@@ -94,7 +101,23 @@ export class ModulosDeLaEmpresaRepository {
    * El actor de la auditoría lo fija `ActorEnLaBase`.
    */
   async guardarExcepcion(c: CambioDeExcepcion): Promise<void> {
-    await this.dataSource.query(
+    if (!c.apagarAsistente) return this.guardar(this.dataSource.manager, c);
+    await this.dataSource.transaction(async (manager) => {
+      await this.guardar(manager, c);
+      await manager.query(
+        `UPDATE "chat_company_settings"
+            SET "assistant_ai_enabled" = false, "updated_at" = now(), "updated_by_user_id" = $2
+          WHERE "distributor_id" = $1 AND "assistant_ai_enabled"`,
+        [c.distributorId, c.actorUserId],
+      );
+    });
+  }
+
+  private async guardar(
+    manager: EntityManager,
+    c: CambioDeExcepcion,
+  ): Promise<void> {
+    await manager.query(
       `INSERT INTO "distributor_module" ("distributor_id", "module_key", "enabled", "reason", "expires_at", "updated_by", "updated_at")
        VALUES ($1, $2, $3, $4, $5, $6, now())
        ON CONFLICT ("distributor_id", "module_key") DO UPDATE

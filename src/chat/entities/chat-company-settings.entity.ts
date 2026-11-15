@@ -95,6 +95,14 @@ export class ChatCompanySettings {
   assistantName!: string | null;
 
   /**
+   * El asistente con IA contesta a los clientes (DISENO-CH-BOT B3). Además
+   * hace falta que la plataforma le haya habilitado la función. Apagado por
+   * omisión.
+   */
+  @Column({ name: 'assistant_ai_enabled', type: 'boolean', default: false })
+  assistantAiEnabled!: boolean;
+
+  /**
    * Lo que dice el asistente al pasar la conversación a una persona (D-B8),
    * con variables; nulo: «Te paso con alguien del equipo de {{empresa.nombre}}…».
    */

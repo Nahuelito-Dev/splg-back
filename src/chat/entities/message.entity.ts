@@ -32,7 +32,19 @@ export type PayloadDelMensaje =
   /** Respuesta del asistente (fuera de horario, aviso de recibido): `senderLabel` es su firma al mandarla. */
   | { until: string; senderLabel?: string }
   | { senderLabel: string }
+  /**
+   * Respuesta del asistente con IA (B3): `ai.model` el modelo que la escribió
+   * (nulo si derivó sin consultarlo) y `ai.handoff` si es el aviso de que pasa
+   * la conversación a una persona.
+   */
+  | { senderLabel: string; ai: PayloadDeLaIa }
   | Record<string, never>;
+
+export interface PayloadDeLaIa {
+  model: string | null;
+  confidence?: 'alta' | 'media' | 'baja';
+  handoff?: boolean;
+}
 
 /**
  * Un mensaje (diseño §6.5). `seq` lo asigna el envío con la conversación

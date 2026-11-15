@@ -54,6 +54,7 @@ export const MODELO_DEL_LECTOR = 'claude-opus-5-5';
           : new LectorDeDocumentosNulo(),
     },
   ],
-  exports: [DocumentReaderPort],
+  // El cliente también lo usa el asistente con IA (B3), con su propio timeout por consulta.
+  exports: [DocumentReaderPort, CLIENTE_ANTHROPIC],
 })
 export class DocumentReaderModule {}

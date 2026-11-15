@@ -16,6 +16,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -72,9 +73,12 @@ function estado(a: ChatCompanySettings): {
 function ajustesADto(
   a: ChatCompanySettings,
   empresa: string,
+  asistenteDisponible: boolean,
 ): ChatSettingsResponseDto {
   return {
     customerChatEnabled: a.customerChatEnabled,
+    assistantAiEnabled: a.assistantAiEnabled,
+    assistantAiAvailable: asistenteDisponible,
     assistantName: a.assistantName,
     effectiveAssistantName: nombreDelAsistente(a.assistantName, empresa),
     handoffMessage: a.handoffMessage,
@@ -137,11 +141,12 @@ export class CompanyChatConfigController {
   async leer(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ChatSettingsResponseDto> {
-    const [ajustes, empresa] = await Promise.all([
+    const [ajustes, empresa, disponible] = await Promise.all([
       this.ajustes.leer(distributorId),
       this.ajustes.nombreDeLaEmpresa(distributorId),
+      this.ajustes.asistenteConIaDisponible(distributorId),
     ]);
-    return ajustesADto(ajustes, empresa);
+    return ajustesADto(ajustes, empresa, disponible);
   }
 
   @Put('settings')
@@ -149,12 +154,16 @@ export class CompanyChatConfigController {
   @ApiOperation({
     summary: 'Cambiar los parámetros de la bandeja',
     description:
-      'Lo que no viene queda como estaba; `null` en un texto o en el nombre del asistente vuelve al de omisión. Queda en la auditoría.',
+      'Lo que no viene queda como estaba; `null` en un texto o en el nombre del asistente vuelve al de omisión. `assistantAiEnabled` prende o apaga el asistente con IA. Queda en la auditoría.',
   })
   @ApiOkResponse({ type: ChatSettingsResponseDto })
   @ApiBadRequestResponse({
     description:
       'Valor fuera de rango, texto vacío o de más de 500, nombre del asistente de menos de 2 o más de 60 caracteres o en más de una línea, o variable desconocida o que no corresponde (`TEMPLATE_VARIABLE_UNKNOWN`)',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Sin `mensajes.configurar`, o `assistantAiEnabled: true` sin la función del asistente habilitada para la empresa (`MODULE_DISABLED`)',
   })
   async actualizar(
     @CurrentDistributor({ required: true }) distributorId: string,
@@ -162,10 +171,11 @@ export class CompanyChatConfigController {
     @Body() dto: UpdateChatSettingsDto,
   ): Promise<ChatSettingsResponseDto> {
     const ajustes = await this.ajustes.actualizar(distributorId, userId, dto);
-    return ajustesADto(
-      ajustes,
-      await this.ajustes.nombreDeLaEmpresa(distributorId),
-    );
+    const [empresa, disponible] = await Promise.all([
+      this.ajustes.nombreDeLaEmpresa(distributorId),
+      this.ajustes.asistenteConIaDisponible(distributorId),
+    ]);
+    return ajustesADto(ajustes, empresa, disponible);
   }
 
   @Get('business-hours')

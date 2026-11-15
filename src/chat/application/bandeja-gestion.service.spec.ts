@@ -62,6 +62,8 @@ function armar(
     claimPrevio?: Record<string, unknown> | null;
     /** El envío falla (para ver que el reclamo no se avisa). */
     escribirFalla?: boolean;
+    /** El query builder del listado (para ver el filtro y el orden). */
+    qb?: unknown;
   } = {},
 ) {
   const guardados: Conversation[] = [];
@@ -88,6 +90,7 @@ function armar(
     manager,
     query,
     transaction,
+    getRepository: () => ({ createQueryBuilder: () => opciones.qb }),
   } as unknown as DataSource;
   const acceso = new BandejaAcceso(
     dataSource,
@@ -173,6 +176,72 @@ describe('BandejaGestionService: listar (§14.3)', () => {
   });
 });
 
+describe('BandejaGestionService: la cola de las que esperan a una persona (B3)', () => {
+  const qbQueAnota = () => {
+    const llamadas: unknown[][] = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const m of [
+      'where',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+      'take',
+      'skip',
+    ]) {
+      qb[m] = jest.fn((...args: unknown[]) => {
+        llamadas.push([m, ...args]);
+        return qb;
+      });
+    }
+    qb.getManyAndCount = jest.fn(() => Promise.resolve([[], 0]));
+    return { qb, llamadas };
+  };
+  const pagina = { limit: 20, offset: 0 };
+
+  it('«sin asignar»: primero las que esperan (la más vieja primero), después el orden de siempre', async () => {
+    const { qb, llamadas } = qbQueAnota();
+    await armar({ qb }).servicio.listar(personal, {
+      ...pagina,
+      assigned: 'none',
+    });
+    const orden = llamadas.filter(([m]) => String(m).endsWith('rderBy'));
+    expect(orden).toEqual([
+      ['orderBy', 'c.awaitingHumanSince', 'ASC', 'NULLS LAST'],
+      ['addOrderBy', 'c.lastMessageAt', 'DESC', 'NULLS LAST'],
+      ['addOrderBy', 'c.createdAt', 'DESC'],
+      ['addOrderBy', 'c.conversationId', 'ASC'],
+    ]);
+  });
+
+  it('sin «sin asignar», el orden de hoy (el último mensaje primero)', async () => {
+    const { qb, llamadas } = qbQueAnota();
+    await armar({ qb }).servicio.listar(personal, {
+      ...pagina,
+      assigned: 'me',
+    });
+    expect(llamadas.find(([m]) => String(m).endsWith('rderBy'))).toEqual([
+      'addOrderBy',
+      'c.lastMessageAt',
+      'DESC',
+      'NULLS LAST',
+    ]);
+    expect(
+      llamadas.some((l) => String(l[1]).includes('awaitingHumanSince')),
+    ).toBe(false);
+  });
+
+  it('`awaiting`: true, sólo las que esperan; false, sólo las que no', async () => {
+    for (const [awaiting, condicion] of [
+      [true, 'c.awaitingHumanSince IS NOT NULL'],
+      [false, 'c.awaitingHumanSince IS NULL'],
+    ] as const) {
+      const { qb, llamadas } = qbQueAnota();
+      await armar({ qb }).servicio.listar(personal, { ...pagina, awaiting });
+      expect(llamadas).toContainEqual(['andWhere', condicion]);
+    }
+  });
+});
+
 describe('BandejaGestionService: asignar', () => {
   it('a un admin de otra empresa → 404 (no se confirma que exista)', async () => {
     const { servicio, guardados } = armar({ esAdminDeLaEmpresa: false });
@@ -199,6 +268,23 @@ describe('BandejaGestionService: asignar', () => {
     });
     await otro.servicio.asignar(personal, 'conv-1', null);
     expect(otro.guardados[0].assignedToUserId).toBeNull();
+  });
+
+  it('tomar una que el asistente con IA derivó deja de esperar a una persona; devolverla a la cola no la marca', async () => {
+    const derivada = new Date('2026-11-15T12:00:00Z');
+    const { servicio, guardados } = armar({
+      conversacion: conversacion({ awaitingHumanSince: derivada }),
+    });
+    await servicio.asignar(personal, 'conv-1', 'adm-3');
+    expect(guardados[0].awaitingHumanSince).toBeNull();
+    const cola = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        awaitingHumanSince: derivada,
+      }),
+    });
+    await cola.servicio.asignar(personal, 'conv-1', null);
+    expect(cola.guardados[0].awaitingHumanSince).toBe(derivada);
   });
 
   it('una cerrada → 409', async () => {
@@ -405,6 +491,29 @@ describe('BandejaGestionService: cerrar y reabrir', () => {
     expect(await codigo(servicio.reabrir(personal, 'conv-1'))).toBe(
       'CONVERSATION_NOT_REOPENABLE',
     );
+  });
+
+  it('cerrar y reabrir dejan de esperar a una persona (el asistente con IA la había derivado)', async () => {
+    const derivada = new Date('2026-11-15T12:00:00Z');
+    const cerrar = armar({
+      conversacion: conversacion({ awaitingHumanSince: derivada }),
+    });
+    await cerrar.servicio.cerrar(personal, 'conv-1');
+    expect(cerrar.guardados[0]).toMatchObject({
+      status: ConversationStatus.CLOSED,
+      awaitingHumanSince: null,
+    });
+    const reabrir = armar({
+      conversacion: conversacion({
+        status: ConversationStatus.CLOSED,
+        awaitingHumanSince: derivada,
+      }),
+    });
+    await reabrir.servicio.reabrir(personal, 'conv-1');
+    expect(reabrir.guardados[0]).toMatchObject({
+      status: ConversationStatus.OPEN,
+      awaitingHumanSince: null,
+    });
   });
 
   it('reabrir una abierta la deja igual', async () => {

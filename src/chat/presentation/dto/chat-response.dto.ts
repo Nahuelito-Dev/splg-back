@@ -139,6 +139,14 @@ export class ConversationDto {
   })
   assignedTo?: AssignedToDto | null;
   @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Sólo para la plataforma, en el chat: desde cuándo espera a una persona porque el asistente con IA se lo pasó; `null` si no espera. Se limpia cuando alguien lo toma.',
+  })
+  awaitingHumanSince?: string | null;
+  @ApiPropertyOptional({
     type: AttendedByDto,
     nullable: true,
     description: 'Sólo para la empresa: quién de la plataforma la atiende',

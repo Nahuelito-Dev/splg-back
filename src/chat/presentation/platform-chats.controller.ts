@@ -73,12 +73,12 @@ export class PlatformChatsController {
   @ApiOperation({
     summary: 'Chats con las empresas',
     description:
-      'Por defecto los abiertos, con el último mensaje más reciente primero. Filtros: `status`, `assigned` (`me`, `none` o el id de un miembro) y `distributorId`. `counts`: abiertos sin atender y los que atiendo.',
+      'Por defecto los abiertos, con el último mensaje más reciente primero. Filtros: `status`, `assigned` (`me`, `none` o el id de un miembro), `distributorId` y `awaiting` (`true`: sólo los que el asistente con IA pasó a una persona; `false`: los demás). Con `assigned=none`, primero los que esperan a una persona (el que espera hace más, primero). `counts`: abiertos sin atender y los que atiendo.',
   })
   @ApiOkResponse({ type: PlatformChatListResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Estado desconocido, `assigned` o `distributorId` mal formados, paginación fuera de rango',
+      'Estado desconocido, `assigned` o `distributorId` mal formados, `awaiting` que no es `true`/`false`, paginación fuera de rango',
   })
   async listar(
     @CurrentUser('user_id') userId: string,

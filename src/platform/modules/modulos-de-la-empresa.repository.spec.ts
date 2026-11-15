@@ -8,7 +8,10 @@ describe('ModulosDeLaEmpresaRepository', () => {
 
   beforeEach(() => {
     query = jest.fn();
-    repo = new ModulosDeLaEmpresaRepository({ query } as unknown as DataSource);
+    repo = new ModulosDeLaEmpresaRepository({
+      query,
+      manager: { query },
+    } as unknown as DataSource);
   });
 
   it('la foto del plan: su código y sus módulos (sólo textos); sin suscripción, null', async () => {
@@ -85,6 +88,37 @@ describe('ModulosDeLaEmpresaRepository', () => {
       vence,
       'super-1',
     ]);
+  });
+
+  it('quitar el asistente: la excepción y el interruptor apagado en UNA transacción (con quién lo hizo)', async () => {
+    const enLaTransaccion = jest.fn().mockResolvedValue([]);
+    const transaction = jest.fn(
+      (fn: (m: { query: jest.Mock }) => Promise<unknown>) =>
+        fn({ query: enLaTransaccion }),
+    );
+    const conTx = new ModulosDeLaEmpresaRepository({
+      query,
+      transaction,
+      manager: { query },
+    } as unknown as DataSource);
+    await conTx.guardarExcepcion({
+      distributorId: 'A',
+      moduleKey: 'assistant',
+      enabled: false,
+      reason: 'Dejó de pagar el asistente',
+      expiresAt: null,
+      actorUserId: 'super-1',
+      apagarAsistente: true,
+    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(query).not.toHaveBeenCalled();
+    const [[insert], [update, params]] = enLaTransaccion.mock.calls as Array<
+      [string, unknown[]]
+    >;
+    expect(insert).toMatch(/INSERT INTO "distributor_module"/);
+    expect(update).toMatch(/UPDATE "chat_company_settings"/);
+    expect(update).toMatch(/"assistant_ai_enabled" = false/);
+    expect(params).toEqual(['A', 'super-1']);
   });
 
   it('M7 todavía no tiene código: nada pendiente y no consulta', async () => {

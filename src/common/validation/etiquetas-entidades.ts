@@ -55,6 +55,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   AssistantKnowledgeBase: 'Base de conocimiento del asistente',
   AssistantFaq: 'Pregunta frecuente del asistente',
   AssistantFaqTemplate: 'Pregunta de ejemplo para distribuidoras',
+  AssistantTrace: 'Respuesta del asistente con IA',
   Order: 'Pedido',
   OrderAddressChange: 'Cambio de dirección del pedido',
   OrderItem: 'Renglón de pedido',

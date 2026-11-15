@@ -146,6 +146,7 @@ export class ChatMapper {
         dto.assignedTo = c.assignedToUserId
           ? { userId: c.assignedToUserId, fullName: asignado ?? '' }
           : null;
+        dto.awaitingHumanSince = c.awaitingHumanSince?.toISOString() ?? null;
       } else {
         dto.attendedBy = asignado
           ? { displayName: nombreDePila(asignado) }

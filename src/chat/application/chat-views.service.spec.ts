@@ -1,10 +1,12 @@
 import type { ConfigService } from '@nestjs/config';
 import {
+  Channel,
   MessageKind,
   Party,
   TicketPriority,
   TicketStatus,
 } from '../domain/chat.enums';
+import type { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
 import type { SupportTicket } from '../entities/support-ticket.entity';
 import type { ChatReadModel } from '../infrastructure/chat-read-model';
@@ -150,5 +152,59 @@ describe('resumen de ticket con no leídos y último mensaje (relevamiento B3)',
       counterpartLastReadSeq: 0,
       lastReadSeq: 0,
     });
+  });
+});
+
+describe('chat con la plataforma: esperando persona (asistente con IA, B3)', () => {
+  const vacio = () => Promise.resolve(new Map());
+  const lectura = {
+    noLeidos: vacio,
+    ultimosVisibles: vacio,
+    lecturaDeLaOtraParte: vacio,
+    lecturaPropia: vacio,
+    citadosEn: vacio,
+    ticketsDesde: vacio,
+    ticketsDeLosHilos: vacio,
+    nombres: vacio,
+    empresas: vacio,
+    sesionesDeSoporte: vacio,
+  } as unknown as ChatReadModel;
+  const vistas = new ChatViewsService(lectura, {
+    get: () => undefined,
+  } as unknown as ConfigService);
+  const chat = {
+    conversationId: 'chat-1',
+    distributorId: 'dist-a',
+    channel: Channel.PLATFORM_CHAT,
+    subjectType: 'general',
+    status: 'open',
+    assignedToUserId: null,
+    awaitingHumanSince: new Date('2026-11-15T12:00:00Z'),
+    closedReason: null,
+    createdAt: new Date('2026-11-15T11:00:00Z'),
+    updatedAt: new Date('2026-11-15T12:00:00Z'),
+  } as unknown as Conversation;
+
+  it('la plataforma ve desde cuándo espera; la empresa no', async () => {
+    const plataforma = await vistas.contexto(
+      { party: Party.PLATFORM, userId: 'p' },
+      { conversaciones: [chat] },
+    );
+    expect(ChatMapper.conversacion(chat, plataforma).awaitingHumanSince).toBe(
+      '2026-11-15T12:00:00.000Z',
+    );
+    expect(
+      ChatMapper.conversacion(
+        { ...chat, awaitingHumanSince: null } as Conversation,
+        plataforma,
+      ).awaitingHumanSince,
+    ).toBeNull();
+    const empresa = await vistas.contexto(
+      { party: Party.COMPANY, userId: 'a' },
+      { conversaciones: [chat] },
+    );
+    expect(ChatMapper.conversacion(chat, empresa)).not.toHaveProperty(
+      'awaitingHumanSince',
+    );
   });
 });

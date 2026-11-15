@@ -89,12 +89,12 @@ export class CompanyInboxController {
   @ApiOperation({
     summary: 'La bandeja: conversaciones con clientes y choferes',
     description:
-      'Sólo los canales que atiende quien pide. Ordenadas por el último mensaje. `counts` son las abiertas de esos canales: sin asignar, asignadas a quien pide y todas.',
+      'Sólo los canales que atiende quien pide. Ordenadas por el último mensaje; con `assigned=none`, primero las que esperan a una persona (el asistente con IA las derivó; la que espera hace más, primero). `awaiting=true` deja sólo las que esperan. `counts` son las abiertas de esos canales: sin asignar, asignadas a quien pide y todas.',
   })
   @ApiOkResponse({ type: InboxListResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Filtro inválido: canal, estado, `assigned` (`me`, `none` o uuid), ids, `q` de menos de 3 caracteres, fecha o paginación',
+      'Filtro inválido: canal, estado, `assigned` (`me`, `none` o uuid), ids, `awaiting` que no es `true`/`false`, `q` de menos de 3 caracteres, fecha o paginación',
   })
   @ApiForbiddenResponse({ description: SIN_CANAL })
   async listar(

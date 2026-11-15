@@ -22,6 +22,9 @@ export function configuracionPorDefecto(): PlatformSupportSettings {
     chatHours: [],
     chatAckEnabled: true,
     chatAckMessage: null,
+    assistantAiEnabled: false,
+    assistantRepliesPerConversation: 10,
+    assistantMonthlyTokenLimit: 2_000_000,
     chatInactivityHours: 24,
     resolvedCloseDays: 7,
     waitingCloseDays: 7,
@@ -50,6 +53,9 @@ export function plazosDe(c: PlatformSupportSettings): PlazosDelTicket {
     resolvedCloseDays: c.resolvedCloseDays,
   };
 }
+
+const enRango = (n: number, min: number, max: number): boolean =>
+  Number.isInteger(n) && n >= min && n <= max;
 
 function zonaValida(zona: string): boolean {
   try {
@@ -94,7 +100,21 @@ export class SupportSettingsService {
           where: { settingsId: ID_DE_LA_CONFIGURACION },
           lock: { mode: 'pessimistic_write' },
         })) ?? configuracionPorDefecto();
-      const nueva = Object.assign(actual, dto, { updatedByUserId: userId });
+      // Sólo lo que vino: el DTO trae como `undefined` los campos que no se
+      // mandaron (campos de clase de ES2022) y pisarían los guardados.
+      const cambios = Object.fromEntries(
+        Object.entries(dto).filter(([, valor]) => valor !== undefined),
+      );
+      const nueva = Object.assign(actual, cambios, { updatedByUserId: userId });
+      // Segunda capa de los topes del asistente (la tercera es el CHECK de la base).
+      if (
+        !enRango(nueva.assistantRepliesPerConversation, 1, 50) ||
+        !enRango(nueva.assistantMonthlyTokenLimit, 10_000, 1_000_000_000)
+      ) {
+        throw new BadRequestException(
+          'Los topes del asistente están fuera de rango: de 1 a 50 respuestas por conversación y de 10.000 a 1.000.000.000 tokens por mes',
+        );
+      }
       if (nueva.waitingWarnDays >= nueva.waitingCloseDays) {
         throw new BadRequestException(
           'El aviso de un ticket sin respuesta tiene que llegar antes de cerrarlo',

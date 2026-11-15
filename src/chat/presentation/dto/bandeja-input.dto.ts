@@ -315,6 +315,16 @@ export class QueryInboxDto extends ChatPaginationDto {
   @Matches(ASIGNADO)
   assigned?: string;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '`true`: sólo las que esperan a una persona (el asistente con IA las derivó); `false`: sólo las que no. Con `assigned=none`, las que esperan van primero (la que espera hace más, primero).',
+  })
+  @IsOptional()
+  @ABooleano()
+  @IsBoolean()
+  awaiting?: boolean;
+
   @ApiPropertyOptional({ format: 'uuid', description: 'Usuario del cliente' })
   @IsOptional()
   @IsUUID('4')
@@ -399,6 +409,15 @@ export class UpdateChatSettingsDto {
     },
   })
   assistantName?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'El asistente con IA contesta a los clientes en el chat (y pasa la conversación a una persona cuando no puede resolver). Prenderlo sin la función habilitada para la empresa → 403 `MODULE_DISABLED`; apagarlo siempre se puede.',
+  })
+  // `null` no es «no cambiar»: es inválido (la columna no admite nulo).
+  @ValidateIf((o: UpdateChatSettingsDto) => o.assistantAiEnabled !== undefined)
+  @IsBoolean()
+  assistantAiEnabled?: boolean;
 
   @ApiPropertyOptional({
     type: String,

@@ -13,6 +13,7 @@ import {
   type QueryPlatformTicketsDto,
 } from '../presentation/dto/chat-input.dto';
 import { Conversation } from '../entities/conversation.entity';
+import { filtrarPorEspera, primeroLasQueEsperan } from './cola-de-espera';
 import { Channel, ConversationStatus, Party } from '../domain/chat.enums';
 
 /** Conteos de la cola de tickets de la plataforma. */
@@ -116,8 +117,10 @@ export class TicketQueriesService {
       qb.andWhere('c.distributorId = :dist', { dist: query.distributorId });
     }
     filtrarAsignado(qb, 'c.assignedToUserId', query.assigned, userId);
+    filtrarPorEspera(qb, query.awaiting);
+    primeroLasQueEsperan(qb, query.assigned === SIN_ASIGNAR);
     const [items, total] = await qb
-      .orderBy('c.lastMessageAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('c.lastMessageAt', 'DESC', 'NULLS LAST')
       .addOrderBy('c.conversationId')
       .take(query.limit)
       .skip(query.offset)

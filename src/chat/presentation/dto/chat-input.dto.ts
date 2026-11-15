@@ -419,6 +419,16 @@ export class QueryPlatformChatsDto extends ChatPaginationDto {
   @IsOptional()
   @IsUUID('4')
   distributorId?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '`true`: sólo los que esperan a una persona (el asistente con IA los derivó); `false`: sólo los que no. Con `assigned=none`, los que esperan van primero (el que espera hace más, primero).',
+  })
+  @IsOptional()
+  @ABooleano()
+  @IsBoolean()
+  awaiting?: boolean;
 }
 
 /** Escribirle a una empresa (crea su chat o usa el abierto). */

@@ -9,8 +9,6 @@ import {
   type AtadurasDelMensaje,
   type CanalDeLaBandeja,
   completarPlantilla,
-  nombreDelAsistente,
-  respuestaAutomaticaDeLaEmpresa,
 } from '../domain/bandeja';
 import {
   Channel,
@@ -19,16 +17,11 @@ import {
   MessageVisibility,
   Party,
   SubjectType,
-  SystemCode,
 } from '../domain/chat.enums';
 import {
   ConversacionCerradaError,
   PedidoSinChoferError,
 } from '../domain/chat.errors';
-import {
-  atiendeLaEmpresa,
-  proximaAtencion,
-} from '../domain/horario-de-la-empresa';
 import { vistaPrevia } from '../domain/reglas-del-mensaje';
 import { Conversation } from '../entities/conversation.entity';
 import { MessageEdit } from '../entities/message-edit.entity';
@@ -56,15 +49,12 @@ import {
   noExisteElPedido,
   sinRelacionConLaEmpresa,
 } from './bandeja.errors';
+import { AsistenteDelChat, dejaDeEsperarPersona } from './asistente-del-chat';
 import { ChatEvents, Efectos } from './chat.events';
+import { RespuestasFijas } from './respuestas-fijas';
 import { ChatRateLimit } from './chat-rate-limit';
 import { ChatThreadsService } from './chat-threads.service';
-import {
-  CompanyChatSettingsService,
-  horarioDe,
-  textoDeRecibido,
-  textoFueraDeHorario,
-} from './company-chat-settings.service';
+import { CompanyChatSettingsService } from './company-chat-settings.service';
 import { CompanyTemplatesService } from './company-templates.service';
 import { ConversationFactory } from './conversation-factory';
 import { ConversacionVigente } from './conversacion-vigente';
@@ -119,6 +109,8 @@ export class BandejaService {
     private readonly cupos: ChatRateLimit,
     private readonly eventos: ChatEvents,
     private readonly vigente: ConversacionVigente,
+    private readonly fijas: RespuestasFijas,
+    private readonly asistente: AsistenteDelChat,
   ) {}
 
   /** El cliente o el chofer abre (o sigue) una conversación con la empresa. */
@@ -442,10 +434,12 @@ export class BandejaService {
     efectos.mensaje(r.conversation, r.message);
     if (actor.party === Party.COMPANY) {
       await this.registrarPrimeraRespuesta(manager, r.conversation);
+      await dejaDeEsperarPersona(manager, r.conversation);
     } else if (actor.party === Party.CUSTOMER) {
       await this.responderAutomaticamente(
         manager,
         r.conversation,
+        r.message,
         efectos,
         ahora,
       );
@@ -513,72 +507,20 @@ export class BandejaService {
   }
 
   /**
-   * Respuesta automática al mensaje del cliente (§8.4, D-C29): fuera de
-   * horario, una sola por período cerrado (el período lo identifica su fin, la
-   * próxima apertura, guardado en el mensaje); en horario, el aviso de
-   * recibido una vez por conversación si nadie de la empresa escribió. La
-   * conversación está bloqueada por el envío: dos mensajes simultáneos no
-   * disparan dos respuestas.
+   * Respuesta automática al mensaje del cliente (§8.4, D-C29): la de la IA
+   * si el asistente con IA se encarga de este mensaje (corre después del
+   * commit y reemplaza a las fijas); si no, las fijas de siempre (fuera de
+   * horario, aviso de recibido). La conversación está bloqueada por el envío.
    */
   private async responderAutomaticamente(
     manager: EntityManager,
     c: Conversation,
+    m: Message,
     efectos: Efectos,
     ahora: Date,
   ): Promise<void> {
-    const ajustes = await this.ajustes.leer(c.distributorId, manager);
-    const h = horarioDe(ajustes);
-    const enHorario = atiendeLaEmpresa(h, ahora);
-    const abre = enHorario ? null : proximaAtencion(h, ahora);
-    const periodo = abre ? abre.toISOString() : 'sin-apertura';
-    const [estado]: Array<{
-      fuera: boolean;
-      recibido: boolean;
-      empresa: boolean;
-    }> = await manager.query(
-      `SELECT EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
-                         AND "kind" = 'auto_reply' AND "template_key" = 'fuera_de_horario'
-                         AND "payload" ->> 'until' = $2) AS fuera,
-              EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
-                         AND "kind" = 'system' AND "system_code" = '${SystemCode.RECEIVED_ACK}') AS recibido,
-              EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
-                         AND "sender_party" = 'company') AS empresa`,
-      [c.conversationId, periodo],
-    );
-    const cual = respuestaAutomaticaDeLaEmpresa({
-      enHorario,
-      fueraDeHorarioHabilitado: ajustes.outOfHoursEnabled,
-      yaSeRespondioEnEstePeriodo: estado?.fuera ?? false,
-      avisoDeRecibidoHabilitado: ajustes.ackEnabled,
-      yaSeAvisoRecibido: estado?.recibido ?? false,
-      empresaYaEscribio: estado?.empresa ?? false,
-    });
-    if (cual === null) return;
-    const valores = await valoresDePlantilla(manager, c, ajustes, ahora);
-    const fuera = cual === 'fuera_de_horario';
-    // La firma queda con el mensaje: cambiar después el nombre del asistente
-    // no reescribe el historial.
-    const senderLabel = nombreDelAsistente(
-      ajustes.assistantName,
-      valores['empresa.nombre'] ?? '',
-    );
-    const r = await this.writer.escribir(manager, {
-      conversationId: c.conversationId,
-      distributorId: c.distributorId,
-      senderParty: Party.SYSTEM,
-      senderUserId: null,
-      clientMessageId: null,
-      kind: fuera ? MessageKind.AUTO_REPLY : MessageKind.SYSTEM,
-      visibility: MessageVisibility.ALL,
-      body: completarPlantilla(
-        fuera ? textoFueraDeHorario(ajustes) : textoDeRecibido(ajustes),
-        valores,
-      ),
-      payload: fuera ? { until: periodo, senderLabel } : { senderLabel },
-      systemCode: fuera ? null : SystemCode.RECEIVED_ACK,
-      templateKey: fuera ? 'fuera_de_horario' : 'recibido',
-    });
-    efectos.mensaje(r.conversation, r.message);
+    if (await this.asistente.seEncarga(manager, c, m, ahora)) return;
+    await this.fijas.deLaEmpresa(manager, c, efectos, ahora);
   }
 
   /** El mensaje de ese autor con ese `clientMessageId` en alguna conversación del mismo canal de la empresa. */

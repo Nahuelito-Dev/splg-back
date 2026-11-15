@@ -125,6 +125,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       .fn()
       .mockResolvedValue(ajustesDeLaBandejaPorDefecto('dist-a')),
     nombreDeLaEmpresa: jest.fn().mockResolvedValue('Gas del Sur'),
+    asistenteConIaDisponible: jest.fn().mockResolvedValue(false),
   };
   const sugerencias = { sugerir: jest.fn() };
   const plantilla = {
@@ -241,6 +242,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       ],
     });
     ajustes.nombreDeLaEmpresa.mockResolvedValue('Gas del Sur');
+    ajustes.asistenteConIaDisponible.mockResolvedValue(false);
   });
 
   type Metodo = 'get' | 'post' | 'patch' | 'put' | 'delete';
@@ -287,6 +289,32 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       expect(
         await resultado(llamar('get', '/conversations?assigned=yo', ADMIN)),
       ).toEqual([400, null]);
+      // `awaiting` (B3): booleano; con «sin asignar», primero las que esperan (lo ordena el servicio).
+      expect(
+        await resultado(
+          llamar('get', '/conversations?awaiting=true&assigned=none', ADMIN),
+        ),
+      ).toEqual([200, null]);
+      expect(gestion.listar).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ awaiting: true, assigned: 'none' }),
+      );
+      expect(
+        await resultado(llamar('get', '/conversations?awaiting=false', ADMIN)),
+      ).toEqual([200, null]);
+      expect(gestion.listar).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ awaiting: false }),
+      );
+      for (const v of ['sí', '1', '']) {
+        expect(
+          (
+            await resultado(
+              llamar('get', `/conversations?awaiting=${v}`, ADMIN),
+            )
+          )[0],
+        ).toBe(400);
+      }
       expect(await resultado(llamar('get', '/conversations', null))).toEqual([
         401,
         null,

@@ -15,8 +15,10 @@ import {
 } from '../domain/horario-de-la-empresa';
 import { ChatCompanySettings } from '../entities/chat-company-settings.entity';
 import { nombreVisibleDeLaEmpresa } from '../infrastructure/nombre-visible-de-la-empresa';
-import type {
-  UpdateChatBusinessHoursDto,
+import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
+import { moduloDeshabilitado } from '../../platform/access/errores';
+import {
+  type UpdateChatBusinessHoursDto,
   UpdateChatSettingsDto,
 } from '../presentation/dto/bandeja-input.dto';
 
@@ -31,6 +33,7 @@ export function ajustesDeLaBandejaPorDefecto(
     holidays: [],
     customerChatEnabled: true,
     assistantName: null,
+    assistantAiEnabled: false,
     handoffMessage: null,
     outOfHoursEnabled: true,
     outOfHoursMessage: null,
@@ -76,7 +79,15 @@ export function zonaValida(zona: string): boolean {
  */
 @Injectable()
 export class CompanyChatSettingsService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly acceso: AccesoDeLaEmpresa,
+  ) {}
+
+  /** La plataforma le habilitó a la empresa el asistente con IA (módulo `assistant`). */
+  asistenteConIaDisponible(distributorId: string): Promise<boolean> {
+    return this.acceso.habilitado(distributorId, 'assistant');
+  }
 
   async leer(
     distributorId: string,
@@ -105,7 +116,22 @@ export class CompanyChatSettingsService {
     if (typeof dto.assistantName === 'string') {
       assertNombreDelAsistente(dto.assistantName);
     }
-    return this.guardar(distributorId, userId, dto);
+    // Prenderlo sin la función habilitada: 403, sin hablar de módulos ni
+    // planes. Si ya estaba prendido, no es un cambio: se ignora el campo y el
+    // resto del PUT sigue. Apagarlo siempre se puede.
+    let cambios: UpdateChatSettingsDto = dto;
+    if (
+      dto.assistantAiEnabled === true &&
+      !(await this.asistenteConIaDisponible(distributorId))
+    ) {
+      if (!(await this.leer(distributorId)).assistantAiEnabled) {
+        throw moduloDeshabilitado();
+      }
+      cambios = Object.assign(new UpdateChatSettingsDto(), dto, {
+        assistantAiEnabled: undefined,
+      });
+    }
+    return this.guardar(distributorId, userId, cambios);
   }
 
   /** El nombre con que la conocen sus clientes (el de su marca, si lo tiene), para firmar con el nombre del asistente. */
@@ -170,8 +196,13 @@ export class CompanyChatSettingsService {
         where: { distributorId },
         lock: { mode: 'pessimistic_write' },
       });
+      // Sólo lo que vino: el DTO trae como `undefined` los campos que no se
+      // mandaron (campos de clase de ES2022) y la respuesta saldría sin ellos.
+      const vinieron = Object.fromEntries(
+        Object.entries(cambios).filter(([, valor]) => valor !== undefined),
+      );
       return repo.save(
-        Object.assign(actual, cambios, { updatedByUserId: userId }),
+        Object.assign(actual, vinieron, { updatedByUserId: userId }),
       );
     });
   }

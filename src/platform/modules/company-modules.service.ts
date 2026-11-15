@@ -138,6 +138,8 @@ export class CompanyModulesService {
       );
     }
     const antes = await this.estadoDe(empresa, clave, ahora);
+    // Habilitado después: la excepción nueva (vigente: el vencimiento es futuro) o lo del plan.
+    const habilitadoDespues = dto.enabled ?? antes.inPlan;
     await this.repo.guardarExcepcion({
       distributorId,
       moduleKey: clave,
@@ -145,6 +147,9 @@ export class CompanyModulesService {
       reason: dto.reason,
       expiresAt,
       actorUserId,
+      ...(clave === 'assistant' && !habilitadoDespues
+        ? { apagarAsistente: true }
+        : {}),
     });
     await this.acceso.invalidar(distributorId);
     const despues = await this.estadoDe(empresa, clave, ahora);

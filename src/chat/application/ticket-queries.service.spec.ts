@@ -6,6 +6,7 @@ import { Party, TicketStatus } from '../domain/chat.enums';
 import type { SupportTicket } from '../entities/support-ticket.entity';
 import {
   QueryCompanyTicketsDto,
+  QueryPlatformChatsDto,
   QueryPlatformTicketsDto,
 } from '../presentation/dto/chat-input.dto';
 import {
@@ -182,5 +183,70 @@ describe('validación de la consulta de tickets', () => {
       sort: 'updatedAt',
       order: 'desc',
     });
+  });
+});
+
+describe('chats de la plataforma: la cola de los que esperan a una persona (B3)', () => {
+  const armarQb = () => {
+    const llamadas: unknown[][] = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const m of [
+      'where',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+      'take',
+      'skip',
+    ]) {
+      qb[m] = jest.fn((...args: unknown[]) => {
+        llamadas.push([m, ...args]);
+        return qb;
+      });
+    }
+    qb.getManyAndCount = jest.fn(() => Promise.resolve([[], 0]));
+    const ds = {
+      getRepository: () => ({ createQueryBuilder: () => qb }),
+      query: () => Promise.resolve([{ waiting: '1', mine: '0' }]),
+    } as unknown as DataSource;
+    return { servicio: new TicketQueriesService(ds), llamadas };
+  };
+  const consultaDeChats = (extra: object) =>
+    plainToInstance(QueryPlatformChatsDto, { ...extra });
+
+  it('«sin atender»: primero los que esperan (el más viejo primero) y `awaiting=true` filtra', async () => {
+    const { servicio, llamadas } = armarQb();
+    await servicio.chats(
+      'p1',
+      consultaDeChats({ assigned: 'none', awaiting: 'true' }),
+    );
+    expect(llamadas).toContainEqual([
+      'andWhere',
+      'c.awaitingHumanSince IS NOT NULL',
+    ]);
+    expect(llamadas.filter(([m]) => String(m).endsWith('rderBy'))).toEqual([
+      ['orderBy', 'c.awaitingHumanSince', 'ASC', 'NULLS LAST'],
+      ['addOrderBy', 'c.lastMessageAt', 'DESC', 'NULLS LAST'],
+      ['addOrderBy', 'c.conversationId'],
+    ]);
+  });
+
+  it('sin filtros, el orden de hoy', async () => {
+    const { servicio, llamadas } = armarQb();
+    await servicio.chats('p1', consultaDeChats({}));
+    expect(llamadas.filter(([m]) => String(m).endsWith('rderBy'))).toEqual([
+      ['addOrderBy', 'c.lastMessageAt', 'DESC', 'NULLS LAST'],
+      ['addOrderBy', 'c.conversationId'],
+    ]);
+  });
+
+  it('`awaiting` sólo acepta true/false', async () => {
+    const errores = async (q: object) =>
+      (await validate(plainToInstance(QueryPlatformChatsDto, q))).map(
+        (e) => e.property,
+      );
+    expect(await errores({ awaiting: 'true' })).toEqual([]);
+    expect(await errores({ awaiting: 'false' })).toEqual([]);
+    expect(await errores({ awaiting: 'sí' })).toEqual(['awaiting']);
+    expect(await errores({ awaiting: '1' })).toEqual(['awaiting']);
   });
 });

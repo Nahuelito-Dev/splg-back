@@ -1,3 +1,4 @@
+import { costoMensualEstimadoUsd } from '../../assistant-ai/precio-del-modelo';
 import { estaAbierto } from '../domain/horario';
 import type { MessageTemplate } from '../entities/message-template.entity';
 import type { PlatformSupportSettings } from '../entities/platform-support-settings.entity';
@@ -31,6 +32,12 @@ export function ajustesADto(
     })),
     chatAckEnabled: a.chatAckEnabled,
     chatAckMessage: a.chatAckMessage,
+    assistantAiEnabled: a.assistantAiEnabled,
+    assistantRepliesPerConversation: a.assistantRepliesPerConversation,
+    assistantMonthlyTokenLimit: a.assistantMonthlyTokenLimit,
+    assistantMonthlyCostEstimateUsd: costoMensualEstimadoUsd(
+      a.assistantMonthlyTokenLimit,
+    ),
     chatInactivityHours: a.chatInactivityHours,
     resolvedCloseDays: a.resolvedCloseDays,
     waitingCloseDays: a.waitingCloseDays,

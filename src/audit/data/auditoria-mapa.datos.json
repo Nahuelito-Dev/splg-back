@@ -98,6 +98,22 @@
       "orderColumn": null
     },
     {
+      "table": "assistant_trace",
+      "entity": "AssistantTrace",
+      "pk": [
+        "trace_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "attachment",
       "entity": "Attachment",
       "pk": [
@@ -1985,6 +2001,126 @@
       "position": 3
     },
     {
+      "table": "assistant_trace",
+      "column": "trace_id",
+      "property": "traceId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_trace",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_trace",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_trace",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_trace",
+      "column": "trigger_message_id",
+      "property": "triggerMessageId",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_trace",
+      "column": "reply_message_id",
+      "property": "replyMessageId",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_trace",
+      "column": "outcome",
+      "property": "outcome",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_trace",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "assistant_trace",
+      "column": "model",
+      "property": "model",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "assistant_trace",
+      "column": "input_tokens",
+      "property": "inputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "assistant_trace",
+      "column": "output_tokens",
+      "property": "outputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "assistant_trace",
+      "column": "cache_read_tokens",
+      "property": "cacheReadTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "assistant_trace",
+      "column": "cache_creation_tokens",
+      "property": "cacheCreationTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "assistant_trace",
+      "column": "tools_used",
+      "property": "toolsUsed",
+      "secret": false,
+      "kind": "json",
+      "position": 13
+    },
+    {
+      "table": "assistant_trace",
+      "column": "latency_ms",
+      "property": "latencyMs",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
       "table": "attachment",
       "column": "attachment_id",
       "property": "attachmentId",
@@ -2642,11 +2778,19 @@
     },
     {
       "table": "chat_company_settings",
+      "column": "assistant_ai_enabled",
+      "property": "assistantAiEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "chat_company_settings",
       "column": "handoff_message",
       "property": "handoffMessage",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 7
     },
     {
       "table": "chat_company_settings",
@@ -2654,7 +2798,7 @@
       "property": "outOfHoursEnabled",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 8
     },
     {
       "table": "chat_company_settings",
@@ -2662,7 +2806,7 @@
       "property": "outOfHoursMessage",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "chat_company_settings",
@@ -2670,7 +2814,7 @@
       "property": "ackEnabled",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "chat_company_settings",
@@ -2678,7 +2822,7 @@
       "property": "ackMessage",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "chat_company_settings",
@@ -2686,7 +2830,7 @@
       "property": "firstResponseTargetMinutes",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 12
     },
     {
       "table": "chat_company_settings",
@@ -2694,7 +2838,7 @@
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 13
     },
     {
       "table": "claims",
@@ -3058,11 +3202,19 @@
     },
     {
       "table": "conversation",
+      "column": "awaiting_human_since",
+      "property": "awaitingHumanSince",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "conversation",
       "column": "closed_at",
       "property": "closedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 13
     },
     {
       "table": "conversation",
@@ -3070,7 +3222,7 @@
       "property": "closedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 14
     },
     {
       "table": "conversation",
@@ -3078,7 +3230,7 @@
       "property": "closedReason",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
     },
     {
       "table": "conversation",
@@ -3086,7 +3238,7 @@
       "property": "createdByUserId",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 16
     },
     {
       "table": "conversation",
@@ -3094,7 +3246,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 16
+      "position": 17
     },
     {
       "table": "conversation_party",
@@ -8506,11 +8658,35 @@
     },
     {
       "table": "platform_support_settings",
+      "column": "assistant_ai_enabled",
+      "property": "assistantAiEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "assistant_replies_per_conversation",
+      "property": "assistantRepliesPerConversation",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "assistant_monthly_token_limit",
+      "property": "assistantMonthlyTokenLimit",
+      "secret": true,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "platform_support_settings",
       "column": "chat_inactivity_hours",
       "property": "chatInactivityHours",
       "secret": false,
       "kind": "text",
-      "position": 5
+      "position": 8
     },
     {
       "table": "platform_support_settings",
@@ -8518,7 +8694,7 @@
       "property": "resolvedCloseDays",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 9
     },
     {
       "table": "platform_support_settings",
@@ -8526,7 +8702,7 @@
       "property": "waitingCloseDays",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 10
     },
     {
       "table": "platform_support_settings",
@@ -8534,7 +8710,7 @@
       "property": "waitingWarnDays",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 11
     },
     {
       "table": "platform_support_settings",
@@ -8542,7 +8718,7 @@
       "property": "targetUrgentMinutes",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 12
     },
     {
       "table": "platform_support_settings",
@@ -8550,7 +8726,7 @@
       "property": "targetHighMinutes",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 13
     },
     {
       "table": "platform_support_settings",
@@ -8558,7 +8734,7 @@
       "property": "targetNormalMinutes",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 14
     },
     {
       "table": "platform_support_settings",
@@ -8566,7 +8742,7 @@
       "property": "targetLowMinutes",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 15
     },
     {
       "table": "platform_support_settings",
@@ -8574,7 +8750,7 @@
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 16
     },
     {
       "table": "purchase_order",

@@ -17,6 +17,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { MessageTemplateScope } from '../../domain/chat.enums';
@@ -87,6 +88,50 @@ export class UpdateSupportSettingsDto {
   @IsString()
   @Length(1, 500)
   chatAckMessage?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'El asistente con IA contesta a las empresas en el chat del soporte, con la base de conocimiento de la plataforma',
+  })
+  // `null` no es «no cambiar»: es inválido (la columna no admite nulo).
+  @ValidateIf(
+    (o: UpdateSupportSettingsDto) => o.assistantAiEnabled !== undefined,
+  )
+  @IsBoolean()
+  assistantAiEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 50,
+    description:
+      'Tope de respuestas del asistente con IA por conversación (en el soporte y en el chat de cada empresa con sus clientes); al llegar, pasa la conversación a una persona',
+  })
+  // `null` no es «no cambiar»: es inválido (la columna no admite nulo).
+  @ValidateIf(
+    (o: UpdateSupportSettingsDto) =>
+      o.assistantRepliesPerConversation !== undefined,
+  )
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  assistantRepliesPerConversation?: number;
+
+  @ApiPropertyOptional({
+    minimum: 10000,
+    maximum: 1000000000,
+    description:
+      'Tope de tokens por mes del asistente con IA, para cada empresa y para el soporte (entrada, salida y caché). Al llegar, sólo las respuestas automáticas fijas y pasar a una persona.',
+  })
+  // `null` no es «no cambiar»: es inválido (la columna no admite nulo).
+  @ValidateIf(
+    (o: UpdateSupportSettingsDto) => o.assistantMonthlyTokenLimit !== undefined,
+  )
+  @Type(() => Number)
+  @IsInt()
+  @Min(10000)
+  @Max(1000000000)
+  assistantMonthlyTokenLimit?: number;
 
   @ApiPropertyOptional({
     minimum: 1,
@@ -161,6 +206,18 @@ export class UpdateSupportSettingsDto {
   targetLowMinutes?: number;
 }
 
+/** Gasto mensual estimado del asistente con IA si se consume todo el tope de tokens (US$). */
+export class AssistantCostEstimateDto {
+  @ApiProperty({
+    example: 0.24,
+    description:
+      'Con el reparto de un chat (95 % entrada, 5 % salida), a los precios de Claude Haiku 5.5. La caché lo puede bajar.',
+  })
+  min!: number;
+  @ApiProperty({ example: 1, description: 'Si todo fuera salida (peor caso)' })
+  max!: number;
+}
+
 export class SupportSettingsResponseDto {
   @ApiProperty() timezone!: string;
   @ApiProperty({ type: [ChatHoursDto] }) chatHours!: ChatHoursDto[];
@@ -171,6 +228,29 @@ export class SupportSettingsResponseDto {
     description: 'Nulo: el texto de siempre',
   })
   chatAckMessage!: string | null;
+  @ApiProperty({
+    description: 'El asistente con IA contesta en el chat del soporte',
+  })
+  assistantAiEnabled!: boolean;
+  @ApiProperty({
+    minimum: 1,
+    maximum: 50,
+    description: 'Tope de respuestas del asistente con IA por conversación',
+  })
+  assistantRepliesPerConversation!: number;
+  @ApiProperty({
+    minimum: 10000,
+    maximum: 1000000000,
+    description:
+      'Tope de tokens por mes del asistente con IA, por empresa y para el soporte',
+  })
+  assistantMonthlyTokenLimit!: number;
+  @ApiProperty({
+    type: AssistantCostEstimateDto,
+    description:
+      'Lo que costaría por mes (por empresa, y el soporte aparte) consumir todo `assistantMonthlyTokenLimit`, en dólares. Lo calcula el back; el panel lo muestra tal cual.',
+  })
+  assistantMonthlyCostEstimateUsd!: AssistantCostEstimateDto;
   @ApiProperty() chatInactivityHours!: number;
   @ApiProperty() resolvedCloseDays!: number;
   @ApiProperty() waitingCloseDays!: number;

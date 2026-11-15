@@ -43,6 +43,7 @@ export enum ProcessName {
   ROUTE_SHEET_WATCH = 'route_sheet_watch',
   SUPPORT_SESSION_EXPIRY = 'support_session_expiry',
   SUPPORT_HOUSEKEEPING = 'support_housekeeping',
+  ASSISTANT_AI_SWEEP = 'assistant_ai_sweep',
 }
 
 export enum ProcessRunStatus {
@@ -286,6 +287,11 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
     module: null,
     title: 'Soporte: cierre de chats inactivos y de tickets vencidos',
     periodSeconds: 10 * MIN,
+  },
+  [ProcessName.ASSISTANT_AI_SWEEP]: {
+    module: null,
+    title: 'Asistente con IA: mensajes que quedaron sin atender',
+    periodSeconds: MIN,
   },
   [ProcessName.PROCESS_RUN_PURGE]: {
     module: null,

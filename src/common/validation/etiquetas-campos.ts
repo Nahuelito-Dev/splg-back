@@ -43,6 +43,11 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   ackEnabled: 'Aviso automático de recibido',
   ackMessage: 'Texto del aviso automático de recibido',
   assistantName: 'Nombre del asistente',
+  assistantAiEnabled: 'Asistente con IA',
+  awaiting: 'Esperando a una persona',
+  assistantRepliesPerConversation:
+    'Respuestas del asistente con IA por conversación',
+  assistantMonthlyTokenLimit: 'Tokens por mes del asistente con IA',
   channel: 'Canal',
   clientBatchId: 'Identificador del envío',
   customerChatEnabled: 'Chat con los clientes',

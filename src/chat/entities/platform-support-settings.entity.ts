@@ -42,6 +42,10 @@ import type { FranjaDeAtencion } from '../domain/horario';
   'CHK_platform_support_settings_objetivos',
   `"target_urgent_minutes" BETWEEN 5 AND 43200 AND "target_high_minutes" BETWEEN 5 AND 43200 AND "target_normal_minutes" BETWEEN 5 AND 43200 AND "target_low_minutes" BETWEEN 5 AND 43200`,
 )
+@Check(
+  'CHK_platform_support_settings_asistente',
+  `"assistant_replies_per_conversation" BETWEEN 1 AND 50 AND "assistant_monthly_token_limit" BETWEEN 10000 AND 1000000000`,
+)
 export class PlatformSupportSettings {
   @PrimaryColumn({
     name: 'settings_id',
@@ -73,6 +77,30 @@ export class PlatformSupportSettings {
     nullable: true,
   })
   chatAckMessage!: string | null;
+
+  /** El asistente con IA contesta a las empresas en el chat del soporte (C1, DISENO-CH-BOT B3). */
+  @Column({ name: 'assistant_ai_enabled', type: 'boolean', default: false })
+  assistantAiEnabled!: boolean;
+
+  /** Tope de respuestas del asistente con IA por conversación, en C1 y en C3 (§6). */
+  @Column({
+    name: 'assistant_replies_per_conversation',
+    type: 'smallint',
+    default: 10,
+  })
+  assistantRepliesPerConversation!: number;
+
+  /**
+   * Tope mensual de tokens del asistente con IA (§6): para cada empresa (C3,
+   * sus clientes) y para el soporte de la plataforma (C1). Al pasarlo, sólo
+   * la capa fija y derivar.
+   */
+  @Column({
+    name: 'assistant_monthly_token_limit',
+    type: 'integer',
+    default: 2000000,
+  })
+  assistantMonthlyTokenLimit!: number;
 
   @Column({ name: 'chat_inactivity_hours', type: 'smallint', default: 24 })
   chatInactivityHours!: number;

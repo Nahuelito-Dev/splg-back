@@ -182,6 +182,26 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
     expect(conReclamo.lastMessage?.preview).toBeNull();
   });
 
+  it('si el asistente con IA la derivó, el personal ve desde cuándo espera a una persona; el cliente no', async () => {
+    const derivada = new Date('2026-11-15T12:00:00Z');
+    const p = presentador();
+    const personal = await p.conversacion(
+      conversacion({ awaitingHumanSince: derivada }),
+      { party: Party.COMPANY, userId: 'adm-1' },
+    );
+    expect(personal.awaitingHumanSince).toBe('2026-11-15T12:00:00.000Z');
+    const sinDerivar = await p.conversacion(conversacion(), {
+      party: Party.COMPANY,
+      userId: 'adm-1',
+    });
+    expect(sinDerivar.awaitingHumanSince).toBeNull();
+    const cliente = await p.conversacion(
+      conversacion({ awaitingHumanSince: derivada }),
+      { party: Party.CUSTOMER, userId: 'cli-1' },
+    );
+    expect(cliente).not.toHaveProperty('awaitingHumanSince');
+  });
+
   it('el personal ve al cliente, quién atiende y el TPR en minutos hábiles', async () => {
     const c = await presentador().conversacion(conversacion(), {
       party: Party.COMPANY,

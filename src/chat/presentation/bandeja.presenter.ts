@@ -242,6 +242,7 @@ export class BandejaPresenter {
         : null;
       dto.linkedClaimId = c.linkedClaimId;
       dto.firstResponseAt = c.firstResponseAt?.toISOString() ?? null;
+      dto.awaitingHumanSince = c.awaitingHumanSince?.toISOString() ?? null;
       const entrante = ctx.primerEntrante.get(c.conversationId);
       dto.firstResponseBusinessMinutes =
         entrante && c.firstResponseAt && ajustes

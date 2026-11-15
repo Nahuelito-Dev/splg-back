@@ -120,6 +120,10 @@ import {
   `"assigned_to_user_id" IS NULL OR "channel" IN ('platform_chat', 'staff_customer', 'staff_driver')`,
 )
 @Check('CHK_conversation_secuencia', `"last_message_seq" >= 0`)
+@Check(
+  'CHK_conversation_esperando_persona',
+  `"awaiting_human_since" IS NULL OR "channel" IN ('platform_chat', 'staff_customer')`,
+)
 export class Conversation {
   @PrimaryGeneratedColumn('uuid', {
     name: 'conversation_id',
@@ -223,6 +227,14 @@ export class Conversation {
    */
   @Column({ name: 'first_response_at', type: 'timestamptz', nullable: true })
   firstResponseAt!: Date | null;
+
+  /**
+   * El asistente con IA la pasó a una persona (DISENO-CH-BOT §4.1.4): desde
+   * cuándo espera que alguien del equipo la tome. Mientras tanto el asistente
+   * no vuelve a contestar. Se limpia cuando alguien la toma. Sólo C3 y C1.
+   */
+  @Column({ name: 'awaiting_human_since', type: 'timestamptz', nullable: true })
+  awaitingHumanSince!: Date | null;
 
   @Column({ name: 'closed_at', type: 'timestamptz', nullable: true })
   closedAt!: Date | null;

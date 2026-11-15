@@ -5,7 +5,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
 import { ClaimsModule } from '../claims/claims.module';
 import { EmailModule } from '../email/email.module';
+import { AsistenteDelChat } from './application/asistente-del-chat';
 import { BandejaAcceso } from './application/bandeja-acceso';
+import { RespuestasFijas } from './application/respuestas-fijas';
 import { BandejaGestionService } from './application/bandeja-gestion.service';
 import { BandejaSugerenciasService } from './application/bandeja-sugerencias.service';
 import { BandejaService } from './application/bandeja.service';
@@ -143,6 +145,18 @@ import {
     CompanyTemplatesService,
     BandejaRealtimeListener,
     ConversacionVigente,
+    RespuestasFijas,
+    AsistenteDelChat,
+  ],
+  // El asistente con IA (`assistant-ai`) escribe y avisa por los mismos caminos.
+  exports: [
+    MessageWriter,
+    ChatEvents,
+    ChatViewsService,
+    CompanyChatSettingsService,
+    SupportSettingsService,
+    RespuestasFijas,
+    AsistenteDelChat,
   ],
 })
 export class ChatModule {}

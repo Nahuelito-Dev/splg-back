@@ -164,6 +164,10 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     // Asistente del chat: base de conocimiento (CH-BOT B2). Las de la
     // plataforma (`distributor_id` nulo) las cubre la FK simple a la base.
     ['assistant_faq', 'knowledge_base_id', 'assistant_knowledge_base'],
+    // Trazas del asistente con IA (CH-BOT B3)
+    ['assistant_trace', 'conversation_id', 'conversation'],
+    ['assistant_trace', 'trigger_message_id', 'message'],
+    ['assistant_trace', 'reply_message_id', 'message'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

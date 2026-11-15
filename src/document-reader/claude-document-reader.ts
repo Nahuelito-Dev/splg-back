@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { PRECIO_HAIKU_5_5_USD_POR_MILLON } from '../assistant-ai/precio-del-modelo';
 
 import {
   ArchivoDeDocumento,
@@ -55,7 +56,7 @@ const PRECIOS: Record<string, Precio> = {
   'claude-opus-4-8': { entrada: 5, salida: 25 },
   'claude-sonnet-5-5': { entrada: 2, salida: 10, lecturaDeCache: 0.2 },
   'claude-sonnet-5': { entrada: 2, salida: 10 },
-  'claude-haiku-5-5': { entrada: 0.1, salida: 0.5 },
+  'claude-haiku-5-5': { ...PRECIO_HAIKU_5_5_USD_POR_MILLON },
   'claude-fable-5-1': { entrada: 10, salida: 50, lecturaDeCache: 0.25 },
 };
 const PRECIO_DESCONOCIDO: Precio = { entrada: 10, salida: 50 };

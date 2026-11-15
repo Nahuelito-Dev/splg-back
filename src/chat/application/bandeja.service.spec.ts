@@ -14,7 +14,15 @@ import { Conversation } from '../entities/conversation.entity';
 import { MessageEdit } from '../entities/message-edit.entity';
 import { Message } from '../entities/message.entity';
 import { type ActorDeLaBandeja, BandejaAcceso } from './bandeja-acceso';
+import type { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
+import { AsistenteDelChat } from './asistente-del-chat';
 import { BandejaService } from './bandeja.service';
+import type { ChatViewsService } from './chat-views.service';
+import { RespuestasFijas } from './respuestas-fijas';
+import {
+  configuracionPorDefecto,
+  type SupportSettingsService,
+} from './support-settings.service';
 import type { ChatEvents, Efectos } from './chat.events';
 import type { ChatRateLimit } from './chat-rate-limit';
 import type { ChatThreadsService } from './chat-threads.service';
@@ -116,6 +124,8 @@ function armar(opciones: {
   noEscribible?: Error;
   /** La que encuentra «la abierta del tema» al abrir. */
   abiertaDelTema?: Conversation | null;
+  /** El asistente con IA prendido para la empresa (interruptor y función). */
+  ia?: boolean;
 }) {
   const escritos: Array<{ entidad: string; datos: unknown }> = [];
   const repos = new Map<unknown, Record<string, jest.Mock>>([
@@ -214,6 +224,33 @@ function armar(opciones: {
   const crear = jest.fn((_m: EntityManager, nueva: Partial<Conversation>) =>
     Promise.resolve(conversacion({ ...nueva, conversationId: 'conv-nueva' })),
   );
+  const soporte = {
+    leer: jest.fn(() => Promise.resolve(configuracionPorDefecto())),
+  };
+  const leerAjustes = ajustes.leer as () => Promise<ChatCompanySettings>;
+  const ajustesConIa = {
+    ...ajustes,
+    leer: jest.fn(async () =>
+      Object.assign(await leerAjustes(), {
+        assistantAiEnabled: opciones.ia ?? false,
+      }),
+    ),
+  };
+
+  // Las reales, sobre los mismos dobles: la regla de «la IA se encarga» y las fijas.
+  const asistente = new AsistenteDelChat(
+    {
+      habilitado: jest.fn(() => Promise.resolve(opciones.ia ?? false)),
+    } as unknown as AccesoDeLaEmpresa,
+    ajustesConIa as unknown as CompanyChatSettingsService,
+    soporte as unknown as SupportSettingsService,
+  );
+  const fijas = new RespuestasFijas(
+    { escribir } as unknown as MessageWriter,
+    ajustesConIa as unknown as CompanyChatSettingsService,
+    soporte as unknown as SupportSettingsService,
+    {} as ChatViewsService,
+  );
   const servicio = new BandejaService(
     dataSource,
     acceso,
@@ -227,6 +264,8 @@ function armar(opciones: {
       publicar: (e: Efectos) => publicados.push(e),
     } as unknown as ChatEvents,
     vigente as unknown as ConversacionVigente,
+    fijas,
+    asistente,
   );
   return {
     servicio,
@@ -444,6 +483,126 @@ describe('BandejaService: responder automáticamente al cliente (§8.4)', () => 
     expect(
       consultasDeLaEmpresa.every((q) => q.includes('"distributor_theme"')),
     ).toBe(true);
+  });
+
+  describe('con el asistente con IA prendido (B3): la IA reemplaza a las fijas', () => {
+    /** Una fila del hilo como la devuelve la consulta de `AsistenteDelChat`. */
+    const fila = (
+      seq: number,
+      sender_party: Party,
+      creado: Date,
+      extra: Record<string, unknown> = {},
+    ) => ({
+      seq: String(seq),
+      message_id: `m-${seq}`,
+      sender_party,
+      kind: 'text',
+      de_la_ia: false,
+      created_at: creado.toISOString(),
+      retirado: false,
+      ...extra,
+    });
+    /** El hilo real: el mensaje del cliente que se acaba de escribir (seq 9) y lo que haya antes. */
+    const conHilo =
+      (previas: Array<ReturnType<typeof fila>>) => (sql: string) => {
+        if (sql.includes('"de_la_ia"')) {
+          return [
+            ...previas,
+            fila(9, Party.CUSTOMER, ahora, { message_id: 'msg-1' }),
+          ];
+        }
+        if (sql.includes('AS fuera')) {
+          return [{ fuera: false, recibido: false, empresa: false }];
+        }
+        return [{ persona: 'Ana', empresa: 'Gas Norte' }];
+      };
+    const enviar = (servicio: BandejaService) =>
+      servicio.enviar(
+        cliente,
+        'conv-1',
+        { clientMessageId: 'c', body: 'Hola' },
+        ahora,
+      );
+
+    it('fuera de horario y en horario con aviso: no sale ninguna fija (la contesta la IA después)', async () => {
+      for (const ajustes of [cerrada, { ackEnabled: true }]) {
+        const { servicio, escribir } = armar({
+          conversacion: conversacion(),
+          ajustes,
+          ia: true,
+          consultas: conHilo([fila(2, Party.CUSTOMER, hace(300))]),
+        });
+        await enviar(servicio);
+        expect(escribir).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it('salen las fijas como siempre si la IA no se encarga: apagada, asignada, esperando persona o alguien del equipo escribió hace menos de 2 h', async () => {
+      const casos: Array<Parameters<typeof armar>[0]> = [
+        { conversacion: conversacion(), consultas: conHilo([]), ia: false },
+        {
+          conversacion: conversacion({ assignedToUserId: 'adm-1' }),
+          consultas: conHilo([]),
+          ia: true,
+        },
+        {
+          conversacion: conversacion({ awaitingHumanSince: hace(10) }),
+          consultas: conHilo([]),
+          ia: true,
+        },
+        {
+          conversacion: conversacion(),
+          consultas: conHilo([fila(7, Party.COMPANY, hace(119))]),
+          ia: true,
+        },
+      ];
+      for (const caso of casos) {
+        const { servicio, escribir } = armar({ ...caso, ajustes: cerrada });
+        await enviar(servicio);
+        expect(escribir).toHaveBeenCalledTimes(2);
+        expect(
+          (escribir.mock.calls[1][1] as unknown as { kind: MessageKind }).kind,
+        ).toBe(MessageKind.AUTO_REPLY);
+      }
+    });
+
+    it('si el equipo escribió hace más de 2 h, la IA vuelve a encargarse', async () => {
+      const { servicio, escribir } = armar({
+        conversacion: conversacion(),
+        ajustes: cerrada,
+        ia: true,
+        consultas: conHilo([fila(7, Party.COMPANY, hace(121))]),
+      });
+      await enviar(servicio);
+      expect(escribir).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('alguien del equipo escribe: la conversación deja de esperar a una persona', async () => {
+    const c = conversacion({ awaitingHumanSince: hace(30) });
+    const { servicio, consultas, parametros } = armar({ conversacion: c });
+    await servicio.enviar(
+      personal,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola, te atiendo yo' },
+      ahora,
+    );
+    const i = consultas.findIndex((q) =>
+      q.includes('SET "awaiting_human_since" = NULL'),
+    );
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(parametros[i]).toEqual(['conv-1']);
+    // Sin espera, no escribe de más.
+    const sin = armar({ conversacion: conversacion() });
+    await sin.servicio.enviar(
+      personal,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(
+      sin.consultas.some((q) => q.includes('"awaiting_human_since" = NULL')),
+    ).toBe(false);
   });
 
   it('al chofer no le responde el sistema (C2 no tiene automáticas)', async () => {

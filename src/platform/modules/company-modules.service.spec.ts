@@ -207,6 +207,63 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
   describe('cambiar un módulo', () => {
     const motivo = 'La empresa pidió dejar de usar el lector';
 
+    describe('quitar el asistente con IA apaga el interruptor de la empresa en la misma operación (B3)', () => {
+      const razon = 'La empresa dejó de pagar el asistente';
+      const flag = () =>
+        (guardar.mock.calls.at(-1) as [{ apagarAsistente?: boolean }])[0]
+          .apagarAsistente;
+
+      it('deshabilitarlo, o volver a lo del plan si el plan no lo trae: apaga', async () => {
+        await service.cambiar(
+          'A',
+          'assistant',
+          { enabled: false, reason: razon },
+          's',
+          AHORA,
+        );
+        expect(flag()).toBe(true);
+        await service.cambiar(
+          'A',
+          'assistant',
+          { enabled: null, reason: razon },
+          's',
+          AHORA,
+        );
+        expect(flag()).toBe(true);
+      });
+
+      it('habilitarlo, o volver a lo del plan si el plan lo trae: no toca el interruptor', async () => {
+        await service.cambiar(
+          'A',
+          'assistant',
+          { enabled: true, reason: razon, expiresAt: '2026-12-01T00:00:00Z' },
+          's',
+          AHORA,
+        );
+        expect(flag()).toBeUndefined();
+        fotos.A = [...MODULOS_POR_PLAN.full, 'assistant'];
+        await service.cambiar(
+          'A',
+          'assistant',
+          { enabled: null, reason: razon },
+          's',
+          AHORA,
+        );
+        expect(flag()).toBeUndefined();
+      });
+
+      it('otro módulo no toca el asistente', async () => {
+        await service.cambiar(
+          'A',
+          'express',
+          { enabled: false, reason: razon },
+          's',
+          AHORA,
+        );
+        expect(flag()).toBeUndefined();
+      });
+    });
+
     it('deshabilita aunque el plan lo traiga, invalida la caché y avisa a la empresa', async () => {
       const r = await service.cambiar(
         'A',

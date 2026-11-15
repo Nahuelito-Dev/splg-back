@@ -391,6 +391,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'minutes:120': '120 minutos',
   support_session_expiry: 'Vencimiento de sesiones de soporte',
   support_housekeeping: 'Mantenimiento del soporte (chats y tickets)',
+  assistant_ai_sweep: 'Asistente con IA: mensajes sin atender',
   'scope:personal_data': 'Datos personales',
   'scope:files': 'Archivos',
   'scope:exports': 'Exportes',

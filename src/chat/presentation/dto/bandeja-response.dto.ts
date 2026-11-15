@@ -98,6 +98,14 @@ export class InboxConversationDto {
   })
   firstResponseAt?: string | null;
   @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Sólo para el personal: desde cuándo espera a una persona porque el asistente con IA se la pasó (C3); `null` si no espera. Se limpia cuando alguien la toma.',
+  })
+  awaitingHumanSince?: string | null;
+  @ApiPropertyOptional({
     type: Number,
     nullable: true,
     description:
@@ -277,6 +285,16 @@ export class ClaimFromConversationResponseDto {
 
 export class ChatSettingsResponseDto {
   @ApiProperty() customerChatEnabled!: boolean;
+  @ApiProperty({
+    description:
+      'El asistente con IA contesta a los clientes (interruptor de la empresa, apagado por omisión)',
+  })
+  assistantAiEnabled!: boolean;
+  @ApiProperty({
+    description:
+      'La empresa puede prender el asistente con IA (la plataforma le habilitó la función). Si es `false`, el asistente no contesta aunque `assistantAiEnabled` esté prendido.',
+  })
+  assistantAiAvailable!: boolean;
   @ApiProperty({
     type: String,
     nullable: true,

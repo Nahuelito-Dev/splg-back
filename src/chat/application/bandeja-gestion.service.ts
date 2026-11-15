@@ -40,6 +40,7 @@ import {
 } from './bandeja.errors';
 import { bloquearElTema, type DestinoDeLaBandeja } from './bandeja.service';
 import { ChatEvents, Efectos } from './chat.events';
+import { filtrarPorEspera, primeroLasQueEsperan } from './cola-de-espera';
 import { ChatRateLimit } from './chat-rate-limit';
 import { ConversationFactory } from './conversation-factory';
 import { MessageWriter } from './message-writer';
@@ -122,8 +123,10 @@ export class BandejaGestionService {
         { q: `%${escaparLike(query.q)}%` },
       );
     }
+    filtrarPorEspera(qb, query.awaiting);
+    primeroLasQueEsperan(qb, query.assigned === 'none');
     const [items, total] = await qb
-      .orderBy('c.lastMessageAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('c.lastMessageAt', 'DESC', 'NULLS LAST')
       .addOrderBy('c.createdAt', 'DESC')
       .addOrderBy('c.conversationId', 'ASC')
       .take(query.limit)
@@ -209,6 +212,8 @@ export class BandejaGestionService {
       }
       if (c.assignedToUserId === userId) return c;
       c.assignedToUserId = userId;
+      // Alguien la tomó: deja de esperar a una persona (el asistente con IA la derivó).
+      if (userId !== null) c.awaitingHumanSince = null;
       const guardada = await manager.getRepository(Conversation).save(c);
       efectos.conversacion(guardada, 'assigned');
       return guardada;
@@ -243,6 +248,8 @@ export class BandejaGestionService {
       actual.closedAt = new Date();
       actual.closedReason = ConversationClosedReason.MANUAL;
       actual.closedByUserId = actor.userId;
+      // Cerrada, ya no espera a una persona (el asistente con IA la había derivado).
+      actual.awaitingHumanSince = null;
       const cerrada = await repo.save(actual);
       efectos.conversacion(cerrada, 'closed');
       return cerrada;
@@ -271,6 +278,8 @@ export class BandejaGestionService {
       c.closedAt = null;
       c.closedReason = null;
       c.closedByUserId = null;
+      // Reabierta por alguien del equipo: no arrastra una espera vieja.
+      c.awaitingHumanSince = null;
       let abierta: Conversation;
       try {
         abierta = await repo.save(c);

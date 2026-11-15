@@ -21,6 +21,7 @@ import { AlcanceGuard } from './common/guards/alcance.guard';
 import { SupportModule } from './support/support.module';
 import { ChatModule } from './chat/chat.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { AsistenteIaModule } from './assistant-ai/asistente-ia.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformAccessModule } from './platform/access/platform-access.module';
@@ -298,6 +299,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     PlatformModule,
     ObservabilityModule,
     AssistantModule,
+    AsistenteIaModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,

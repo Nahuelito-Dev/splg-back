@@ -180,6 +180,12 @@
         "functions": 100,
         "lines": 100
       },
+      "./src/assistant-ai/": {
+        "statements": 99,
+        "branches": 90,
+        "functions": 98,
+        "lines": 99
+      },
       "./src/attachment/": {
         "statements": 58,
         "branches": 53,
