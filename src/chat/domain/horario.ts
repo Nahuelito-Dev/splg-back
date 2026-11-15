@@ -87,3 +87,49 @@ export function estaAbierto(
       minuto < minutos(f.closesAt),
   );
 }
+
+const MINUTOS_DE_LA_SEMANA = 7 * 24 * 60;
+
+/** Minuto de la semana (0 = domingo 00:00) de `ahora` en la zona dada. */
+function minutoDeLaSemana(ahora: Date, zona: string): number {
+  const { weekday, minuto } = horaLocal(ahora, zona);
+  return weekday * 24 * 60 + minuto;
+}
+
+/**
+ * Cuándo vuelve a abrir la atención, o `null` si está abierta ahora o si no
+ * hay franjas (atiende siempre). Se busca la apertura más cercana hacia
+ * adelante en la semana; si la zona tiene cambio de hora entre medio, se
+ * corrige con la hora local del resultado.
+ */
+export function proximaApertura(
+  franjas: readonly FranjaDeAtencion[],
+  zona: string,
+  ahora: Date,
+): Date | null {
+  if (franjas.length === 0 || estaAbierto(franjas, zona, ahora)) return null;
+  const actual = minutoDeLaSemana(ahora, zona);
+  let falta = Infinity;
+  let destino = 0;
+  for (const f of franjas) {
+    const abre = f.weekday * 24 * 60 + minutos(f.opensAt);
+    const d =
+      (((abre - actual) % MINUTOS_DE_LA_SEMANA) + MINUTOS_DE_LA_SEMANA) %
+      MINUTOS_DE_LA_SEMANA;
+    // `d === 0` sería «abre en este minuto», pero entonces estaría abierta.
+    const espera = d === 0 ? MINUTOS_DE_LA_SEMANA : d;
+    if (espera < falta) {
+      falta = espera;
+      destino = abre;
+    }
+  }
+  const inicioDelMinuto = Math.floor(ahora.getTime() / 60_000) * 60_000;
+  const candidato = new Date(inicioDelMinuto + falta * 60_000);
+  let corrimiento =
+    (destino - minutoDeLaSemana(candidato, zona)) % MINUTOS_DE_LA_SEMANA;
+  if (corrimiento > MINUTOS_DE_LA_SEMANA / 2)
+    corrimiento -= MINUTOS_DE_LA_SEMANA;
+  if (corrimiento < -MINUTOS_DE_LA_SEMANA / 2)
+    corrimiento += MINUTOS_DE_LA_SEMANA;
+  return new Date(candidato.getTime() + corrimiento * 60_000);
+}

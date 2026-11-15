@@ -16,6 +16,8 @@ export interface ContextoDeVista {
   empresas: Map<string, string>;
   noLeidos: Map<string, number>;
   lecturaDeLaOtraParte: Map<string, number>;
+  /** Hasta dónde leyó quien mira, por conversación (sólo la de los hilos de los tickets). */
+  lecturaPropia: Map<string, number>;
   ultimos: Map<string, Message>;
   citados: Map<string, Array<{ ticketId: string; number: string }>>;
   ticketsDesde: Map<string, SupportTicket[]>;
@@ -90,6 +92,16 @@ export class ChatViewsService {
           .filter((id) => !convIds.includes(id)),
       ),
     ];
+    // El «leído» de las fichas de ticket: el de la otra punta y el propio.
+    const hilosDeLasFichas = [...new Set(tickets.map((t) => t.conversationId))];
+    const [lecturaPropia] = await Promise.all([
+      this.lectura.lecturaPropia(hilosDeLasFichas, observador.userId),
+      this.completarLecturaDeLaOtraParte(
+        hilosDeLasFichas.filter((id) => !convIds.includes(id)),
+        otra,
+        lecturaDeLaOtraParte,
+      ),
+    ]);
     if (hilosDeTickets.length > 0) {
       const [masNoLeidos, masUltimos] = await Promise.all([
         this.lectura.noLeidos(hilosDeTickets, observador),
@@ -123,11 +135,22 @@ export class ChatViewsService {
       empresas,
       noLeidos,
       lecturaDeLaOtraParte,
+      lecturaPropia,
       ultimos,
       citados,
       ticketsDesde,
       ticketDelHilo,
       sesiones,
     };
+  }
+
+  private async completarLecturaDeLaOtraParte(
+    conversationIds: string[],
+    otra: Party.COMPANY | Party.PLATFORM,
+    destino: Map<string, number>,
+  ): Promise<void> {
+    if (conversationIds.length === 0) return;
+    const mas = await this.lectura.lecturaDeLaOtraParte(conversationIds, otra);
+    for (const [k, v] of mas) destino.set(k, v);
   }
 }

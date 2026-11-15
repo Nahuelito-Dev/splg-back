@@ -97,6 +97,23 @@ export class ChatReadModel {
     );
   }
 
+  /** Hasta dónde leyó esa persona en cada conversación (0 si nunca abrió el hilo). */
+  async lecturaPropia(
+    conversationIds: string[],
+    userId: string,
+  ): Promise<Map<string, number>> {
+    if (conversationIds.length === 0) return new Map();
+    const filas: Array<{ conversation_id: string; last_read_seq: string }> =
+      await this.dataSource.query(
+        `SELECT "conversation_id", "last_read_seq" FROM "conversation_read_state"
+          WHERE "conversation_id" = ANY($1::uuid[]) AND "user_id" = $2`,
+        [conversationIds, userId],
+      );
+    return new Map(
+      filas.map((f) => [f.conversation_id, Number(f.last_read_seq)]),
+    );
+  }
+
   /** El último mensaje que esa punta puede ver de cada conversación. */
   async ultimosVisibles(
     conversationIds: string[],

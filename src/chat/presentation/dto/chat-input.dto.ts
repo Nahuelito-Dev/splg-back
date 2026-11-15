@@ -1,8 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -32,6 +35,30 @@ const ABooleano = () =>
   Transform(({ value }: { value: unknown }) =>
     value === 'true' ? true : value === 'false' ? false : value,
   );
+
+/**
+ * Una lista de la query: `a,b` o el parámetro repetido (`?x=a&x=b`). Sin
+ * espacios, sin vacíos y sin repetidos; lo que no es texto pasa tal cual
+ * para que la validación lo rechace.
+ */
+const ALista = () =>
+  Transform(({ value }: { value: unknown }) => {
+    const partes: unknown[] | null = Array.isArray(value)
+      ? value.flatMap((v: unknown) =>
+          typeof v === 'string' ? v.split(',') : [v],
+        )
+      : typeof value === 'string'
+        ? value.split(',')
+        : null;
+    if (!partes) return value;
+    return [
+      ...new Set(
+        partes
+          .map((v) => (typeof v === 'string' ? v.trim() : v))
+          .filter((v) => v !== ''),
+      ),
+    ];
+  });
 
 /** Enviar un mensaje (§14.1). Reintentar con el mismo `clientMessageId` no lo duplica. */
 export class SendMessageDto {
@@ -252,7 +279,7 @@ export class UpdateTicketDto {
   @ApiPropertyOptional({
     enum: TicketStatus,
     description:
-      'Según la máquina del ticket; una transición inválida es 400 `TICKET_INVALID_TRANSITION`.',
+      'Según la máquina del ticket; una transición inválida es 400 `TICKET_INVALID_TRANSITION`. `closed` nunca se acepta a mano (400 `TICKET_INVALID_TRANSITION`): el ticket se cierra solo a los 7 días (plazo configurable, resuelto o esperando a la empresa) o cuando la empresa confirma la resolución.',
   })
   @IsOptional()
   @IsEnum(TicketStatus)
@@ -264,6 +291,7 @@ export class UpdateTicketDto {
   priority?: TicketPriority;
 
   @ApiPropertyOptional({
+    type: String,
     format: 'uuid',
     nullable: true,
     description: 'Un administrador general activo; `null` lo desasigna.',
@@ -278,11 +306,59 @@ export class UpdateTicketDto {
   category?: TicketCategory;
 }
 
+/** Por qué se puede ordenar un listado de tickets. */
+export const ORDEN_DE_TICKETS = [
+  'createdAt',
+  'updatedAt',
+  'lastMessageAt',
+] as const;
+export type OrdenDeTickets = (typeof ORDEN_DE_TICKETS)[number];
+export const SENTIDO_DE_TICKETS = ['asc', 'desc'] as const;
+export type SentidoDeTickets = (typeof SENTIDO_DE_TICKETS)[number];
+
 export class QueryCompanyTicketsDto extends ChatPaginationDto {
-  @ApiPropertyOptional({ enum: TicketStatus })
+  @ApiPropertyOptional({
+    enum: TicketStatus,
+    isArray: true,
+    example: 'new,open,waiting_company',
+    description:
+      'Uno o varios estados, separados por coma (`new,open,waiting_company`) o repitiendo el parámetro (`status=new&status=open`). Sin él, todos.',
+  })
   @IsOptional()
-  @IsEnum(TicketStatus)
-  status?: TicketStatus;
+  @ALista()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsEnum(TicketStatus, { each: true })
+  status?: TicketStatus[];
+
+  @ApiPropertyOptional({
+    maxLength: 120,
+    description: 'Número (`T-000123` o `123`) o parte del asunto',
+  })
+  @IsOptional()
+  @Recortar()
+  @IsString()
+  @Length(1, 120)
+  q?: string;
+
+  @ApiPropertyOptional({
+    enum: ORDEN_DE_TICKETS,
+    default: 'updatedAt',
+    description:
+      'Campo por el que se ordena: alta, último movimiento del ticket o último mensaje del hilo que quien pide puede ver (la empresa no cuenta las notas internas). Empate: por número.',
+  })
+  @IsOptional()
+  @IsIn(ORDEN_DE_TICKETS)
+  sort: OrdenDeTickets = 'updatedAt';
+
+  @ApiPropertyOptional({
+    enum: SENTIDO_DE_TICKETS,
+    default: 'desc',
+    description: 'Sentido del orden: `desc`, los más recientes primero',
+  })
+  @IsOptional()
+  @IsIn(SENTIDO_DE_TICKETS)
+  order: SentidoDeTickets = 'desc';
 }
 
 /** `me`, `none` o el id de un administrador general. */
@@ -321,16 +397,6 @@ export class QueryPlatformTicketsDto extends QueryCompanyTicketsDto {
   @ABooleano()
   @IsBoolean()
   fromChat?: boolean;
-
-  @ApiPropertyOptional({
-    maxLength: 120,
-    description: 'Número (`T-000123` o `123`) o parte del asunto',
-  })
-  @IsOptional()
-  @Recortar()
-  @IsString()
-  @Length(1, 120)
-  q?: string;
 }
 
 export class QueryPlatformChatsDto extends ChatPaginationDto {

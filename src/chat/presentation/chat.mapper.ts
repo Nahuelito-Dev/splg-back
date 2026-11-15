@@ -88,6 +88,9 @@ export class ChatMapper {
       closedAt: t.closedAt?.toISOString() ?? null,
       satisfaction: t.satisfaction,
       supportSessions: ctx.sesiones.get(t.ticketId) ?? [],
+      counterpartLastReadSeq:
+        ctx.lecturaDeLaOtraParte.get(t.conversationId) ?? 0,
+      lastReadSeq: ctx.lecturaPropia.get(t.conversationId) ?? 0,
       createdAt: t.createdAt.toISOString(),
     };
     if (esPlataforma(ctx)) {

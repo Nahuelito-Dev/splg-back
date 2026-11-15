@@ -7,12 +7,13 @@ import { SupportTicket } from '../entities/support-ticket.entity';
 import {
   ASIGNADO_A_MI,
   SIN_ASIGNAR,
+  type OrdenDeTickets,
   type QueryCompanyTicketsDto,
   type QueryPlatformChatsDto,
   type QueryPlatformTicketsDto,
 } from '../presentation/dto/chat-input.dto';
 import { Conversation } from '../entities/conversation.entity';
-import { Channel, ConversationStatus } from '../domain/chat.enums';
+import { Channel, ConversationStatus, Party } from '../domain/chat.enums';
 
 /** Conteos de la cola de tickets de la plataforma. */
 export interface ConteosDeTickets {
@@ -39,20 +40,20 @@ export class TicketQueriesService {
     return t;
   }
 
+  /** Los tickets de una empresa, con filtros, búsqueda y orden. */
   async deLaEmpresa(
     distributorId: string,
     query: QueryCompanyTicketsDto,
   ): Promise<{ items: SupportTicket[]; total: number }> {
-    const [items, total] = await this.dataSource
+    const qb = this.dataSource
       .getRepository(SupportTicket)
-      .findAndCount({
-        where: query.status
-          ? { distributorId, status: query.status }
-          : { distributorId },
-        order: { updatedAt: 'DESC', number: 'DESC' },
-        take: query.limit,
-        skip: query.offset,
-      });
+      .createQueryBuilder('t')
+      .where('t.distributorId = :dist', { dist: distributorId });
+    filtrarEstadoYTexto(qb, query);
+    const [items, total] = await ordenar(qb, query, Party.COMPANY)
+      .limit(query.limit)
+      .offset(query.offset)
+      .getManyAndCount();
     return { items, total };
   }
 
@@ -69,8 +70,7 @@ export class TicketQueriesService {
     const qb = this.dataSource
       .getRepository(SupportTicket)
       .createQueryBuilder('t');
-    if (query.status)
-      qb.andWhere('t.status = :status', { status: query.status });
+    filtrarEstadoYTexto(qb, query);
     if (query.priority) {
       qb.andWhere('t.priority = :priority', { priority: query.priority });
     }
@@ -91,23 +91,9 @@ export class TicketQueriesService {
           : 't.originConversationId IS NULL',
       );
     }
-    if (query.q) {
-      const numero = /^(?:t-)?0*(\d{1,9})$/i.exec(query.q);
-      qb.andWhere(
-        new Brackets((w) => {
-          w.where('t.subject ILIKE :texto', {
-            texto: `%${query.q?.replace(/[%_\\]/g, '\\$&')}%`,
-          });
-          if (numero)
-            w.orWhere('t.number = :numero', { numero: Number(numero[1]) });
-        }),
-      );
-    }
-    const [items, total] = await qb
-      .orderBy('t.updatedAt', 'DESC')
-      .addOrderBy('t.number', 'DESC')
-      .take(query.limit)
-      .skip(query.offset)
+    const [items, total] = await ordenar(qb, query, Party.PLATFORM)
+      .limit(query.limit)
+      .offset(query.offset)
       .getManyAndCount();
     return { items, total, counts: await this.conteos(userId, ahora) };
   }
@@ -174,6 +160,60 @@ export class TicketQueriesService {
       overdue: Number(fila.overdue),
     };
   }
+}
+
+/** Estados (uno o varios) y búsqueda por número (`T-000123`, `123`) o parte del asunto. */
+export function filtrarEstadoYTexto(
+  qb: SelectQueryBuilder<SupportTicket>,
+  query: QueryCompanyTicketsDto,
+): void {
+  if (query.status?.length) {
+    qb.andWhere('t.status IN (:...estados)', { estados: query.status });
+  }
+  if (!query.q) return;
+  const texto = query.q;
+  const numero = /^(?:t-)?0*(\d{1,9})$/i.exec(texto);
+  qb.andWhere(
+    new Brackets((w) => {
+      w.where('t.subject ILIKE :texto', {
+        texto: `%${texto.replace(/[%_\\]/g, '\\$&')}%`,
+      });
+      if (numero) {
+        w.orWhere('t.number = :numero', { numero: Number(numero[1]) });
+      }
+    }),
+  );
+}
+
+/** Columna (o expresión) de cada orden. */
+const COLUMNA_DEL_ORDEN: Readonly<Record<OrdenDeTickets, string>> = {
+  createdAt: 't.createdAt',
+  updatedAt: 't.updatedAt',
+  lastMessageAt: 'ultimo_mensaje',
+};
+
+/**
+ * Ordena por el campo pedido y desempata por número en el mismo sentido.
+ * `lastMessageAt` es el último mensaje del hilo que esa punta puede ver: la
+ * empresa no cuenta las notas internas (no se le filtra cuándo hubo una).
+ */
+export function ordenar(
+  qb: SelectQueryBuilder<SupportTicket>,
+  query: Pick<QueryCompanyTicketsDto, 'sort' | 'order'>,
+  punta: Party.COMPANY | Party.PLATFORM,
+): SelectQueryBuilder<SupportTicket> {
+  const sentido = query.order === 'asc' ? 'ASC' : 'DESC';
+  if (query.sort === 'lastMessageAt') {
+    qb.addSelect(
+      `(SELECT max(m."created_at") FROM "message" m
+         WHERE m."conversation_id" = t."conversation_id" AND m."deleted_at" IS NULL
+           ${punta === Party.COMPANY ? `AND m."visibility" = 'all'` : ''})`,
+      'ultimo_mensaje',
+    );
+  }
+  return qb
+    .orderBy(COLUMNA_DEL_ORDEN[query.sort], sentido, 'NULLS LAST')
+    .addOrderBy('t.number', sentido);
 }
 
 function filtrarAsignado<T extends object>(

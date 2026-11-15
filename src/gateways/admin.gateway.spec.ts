@@ -1,4 +1,9 @@
-import { AdminGateway, EVENTO_ESCRIBIENDO_DEL_PANEL } from './admin.gateway';
+import {
+  AdminGateway,
+  EVENTO_ESCRIBIENDO_DEL_PANEL,
+  EVENTO_SOPORTE_CONECTADO,
+  EVENTO_SOPORTE_DESCONECTADO,
+} from './admin.gateway';
 import type { StaffPermissionsService } from '../admin/staff-permissions.service';
 import type { PermisosDePlataformaService } from '../common/permisos/catalogo-de-plataforma';
 import type { EventEmitter2 } from '@nestjs/event-emitter';
@@ -482,6 +487,86 @@ describe('AdminGateway', () => {
       permisos.deUsuario.mockRejectedValueOnce(new Error('caído'));
       await gateway.reevaluarSalas({ userIds: ['u-1'] });
       expect([...c.rooms]).toEqual([]);
+    });
+  });
+
+  describe('presencia del equipo de soporte (D-C26)', () => {
+    const superAdmin = {
+      userId: 's1',
+      email: 'super@splg.com',
+      role: RoleType.SUPER_ADMIN,
+      distributorId: null,
+    };
+
+    it('al conectarse alguien con `plataforma.tickets.ver` avisa su conexión; sin el permiso, no', async () => {
+      identidades.identificar.mockResolvedValue(superAdmin);
+      await gateway.handleConnection(client() as unknown as SocketDeSplg);
+      permisosDePlataforma.deUsuario.mockResolvedValue([]);
+      await gateway.handleConnection(client() as unknown as SocketDeSplg);
+      const avisos = events.emit.mock.calls.filter(
+        ([e]) => e === EVENTO_SOPORTE_CONECTADO,
+      );
+      expect(avisos).toEqual([
+        [EVENTO_SOPORTE_CONECTADO, { userId: 's1', socketId: 'sock-1' }],
+      ]);
+    });
+
+    it('un admin de empresa no entra a la presencia', async () => {
+      identidades.identificar.mockResolvedValue({
+        userId: 'u1',
+        email: 'admin@splg.com',
+        role: RoleType.ADMIN,
+        distributorId: 'dist-1',
+      });
+      await gateway.handleConnection(client() as unknown as SocketDeSplg);
+      const c = client();
+      Object.assign(c.data, {
+        identidad: { ...superAdmin, role: RoleType.ADMIN },
+      });
+      gateway.handleDisconnect(c as unknown as SocketDeSplg);
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('al desconectarse alguien de la plataforma avisa; sin identidad, nada', () => {
+      const c = client();
+      Object.assign(c.data, { identidad: superAdmin });
+      gateway.handleDisconnect(c as unknown as SocketDeSplg);
+      gateway.handleDisconnect(client() as unknown as SocketDeSplg);
+      expect(events.emit.mock.calls).toEqual([
+        [EVENTO_SOPORTE_DESCONECTADO, { userId: 's1', socketId: 'sock-1' }],
+      ]);
+    });
+
+    it('las conexiones locales del soporte salen de la sala `chat:plataforma` de esta instancia', () => {
+      const sockets = new Map([
+        ['a', { data: { identidad: superAdmin } }],
+        ['b', { data: {} }],
+      ]);
+      gateway.server = {
+        adapter: {
+          rooms: new Map([['chat:plataforma', new Set(['a', 'b', 'c'])]]),
+        },
+        sockets,
+      } as unknown as import('socket.io').Namespace;
+      expect(gateway.conexionesLocalesDelSoporte()).toEqual([
+        { userId: 's1', socketId: 'a' },
+      ]);
+      gateway.server = {
+        adapter: { rooms: new Map() },
+        sockets,
+      } as unknown as import('socket.io').Namespace;
+      expect(gateway.conexionesLocalesDelSoporte()).toEqual([]);
+    });
+
+    it('un mismo evento a las salas de soporte de varias empresas en una sola emisión; sin empresas, nada', () => {
+      gateway.emitirAlSoporteDeEmpresas(['d1', 'd2'], 'support:status', {
+        teamOnline: true,
+      });
+      gateway.emitirAlSoporteDeEmpresas([], 'support:status', {});
+      expect(server.to.mock.calls).toEqual([
+        [['chat:soporte:d1', 'chat:soporte:d2']],
+      ]);
+      expect(emit).toHaveBeenCalledWith('support:status', { teamOnline: true });
     });
   });
 });

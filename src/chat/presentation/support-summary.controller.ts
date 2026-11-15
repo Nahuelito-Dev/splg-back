@@ -8,8 +8,10 @@ import { Permiso } from '../../common/decorators/permiso.decorator';
 import { SinControlDeAcceso } from '../../common/decorators/sin-control-de-acceso.decorator';
 import { SinDistribuidora } from '../../common/decorators/sin-distribuidora.decorator';
 import { PermisoDePlataforma } from '../../common/permisos/catalogo-de-plataforma';
+import { SupportStatusService } from '../application/support-status.service';
 import { SupportSummaryService } from '../application/support-summary.service';
 import {
+  CompanySupportStatusDto,
   CompanySupportSummaryDto,
   PlatformSupportSummaryDto,
 } from './dto/chat-response.dto';
@@ -20,7 +22,10 @@ import {
 @SinControlDeAcceso()
 @Controller({ path: 'company/support', version: '2' })
 export class CompanySupportSummaryController {
-  constructor(private readonly resumen: SupportSummaryService) {}
+  constructor(
+    private readonly resumen: SupportSummaryService,
+    private readonly estadoDelSoporte: SupportStatusService,
+  ) {}
 
   @Get('summary')
   @Permiso('soporte.ver')
@@ -35,6 +40,18 @@ export class CompanySupportSummaryController {
     @CurrentUser('user_id') userId: string,
   ): Promise<CompanySupportSummaryDto> {
     return this.resumen.deLaEmpresa(distributorId, userId);
+  }
+
+  @Get('status')
+  @Permiso('soporte.ver')
+  @ApiOperation({
+    summary: 'Estado del soporte de la plataforma',
+    description:
+      'Si se atiende ahora según el horario, cuándo vuelve a abrir y si hay alguien del equipo conectado (D-C26). Es el mismo para todas las empresas y no dice quién está. Cuando cambia llega `support:status` con este mismo cuerpo por el socket del panel.',
+  })
+  @ApiOkResponse({ type: CompanySupportStatusDto })
+  estado(): Promise<CompanySupportStatusDto> {
+    return this.estadoDelSoporte.estado();
   }
 }
 

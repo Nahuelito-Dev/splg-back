@@ -74,6 +74,7 @@ function contexto(observador: Observador): ContextoDeVista {
     empresas: new Map([['dist-a', 'Gas Norte']]),
     noLeidos: new Map(),
     lecturaDeLaOtraParte: new Map(),
+    lecturaPropia: new Map(),
     ultimos: new Map(),
     citados: new Map(),
     ticketsDesde: new Map(),
@@ -84,6 +85,7 @@ function contexto(observador: Observador): ContextoDeVista {
 
 describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
   let gateway: {
+    emitirAlSoporteDeEmpresas: jest.Mock;
     emitirAlSoporteDeEmpresa: jest.Mock;
     emitirAlSoporteDePlataforma: jest.Mock;
     emitirAUsuario: jest.Mock;
@@ -94,6 +96,7 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
 
   beforeEach(() => {
     gateway = {
+      emitirAlSoporteDeEmpresas: jest.fn(),
       emitirAlSoporteDeEmpresa: jest.fn(),
       emitirAlSoporteDePlataforma: jest.fn(),
       emitirAUsuario: jest.fn(),
@@ -106,6 +109,11 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
         contexto: (o: Observador) => Promise.resolve(contexto(o)),
       } as unknown as ChatViewsService,
       {
+        query: () =>
+          Promise.resolve([
+            { distributor_id: 'dist-a' },
+            { distributor_id: 'dist-b' },
+          ]),
         getRepository: () => ({
           findOne: ({ where }: { where: { conversationId: string } }) =>
             Promise.resolve(
@@ -284,6 +292,21 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
     });
     // Sólo el de A, sólo a la mitad de la plataforma de esa conversación.
     expect(aConversacion()).toEqual([['chat-1', 'platform', 'chat:typing']]);
+    expect(gateway.emitirAlSoporteDePlataforma).not.toHaveBeenCalled();
+  });
+
+  it('D-C26: `support:status` va a la sala de soporte de cada empresa dada de alta, sin datos del equipo', async () => {
+    const estado = {
+      openNow: false,
+      nextOpenAt: '2026-11-16T12:00:00.000Z',
+      teamOnline: true,
+    };
+    await listener.estadoDelSoporte(estado);
+    expect(gateway.emitirAlSoporteDeEmpresas).toHaveBeenCalledWith(
+      ['dist-a', 'dist-b'],
+      'support:status',
+      estado,
+    );
     expect(gateway.emitirAlSoporteDePlataforma).not.toHaveBeenCalled();
   });
 });

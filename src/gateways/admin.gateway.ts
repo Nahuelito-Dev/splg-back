@@ -64,6 +64,19 @@ export const EVENTO_FIN_DE_SOPORTE = 'support:ended';
 /** Pedido de «escribiendo…» del panel, para que el chat lo valide y lo reenvíe. */
 export const EVENTO_ESCRIBIENDO_DEL_PANEL = 'panel.escribiendo';
 
+/**
+ * Una conexión del equipo de soporte de la plataforma (`plataforma.tickets.ver`)
+ * entró o salió: el chat lleva la presencia del equipo (D-C26).
+ */
+export const EVENTO_SOPORTE_CONECTADO = 'panel.soporte.conectado';
+export const EVENTO_SOPORTE_DESCONECTADO = 'panel.soporte.desconectado';
+
+/** Una conexión del panel del equipo de la plataforma: quién y cuál. */
+export interface ConexionDelSoporte {
+  userId: string;
+  socketId: string;
+}
+
 /** Un «escribiendo…» cada 3 segundos por conexión, como mucho. */
 export const ESCRIBIENDO_CADA_MS = 3000;
 
@@ -167,6 +180,11 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await client.join(AdminGateway.SALA_PLATAFORMA);
       if (await this.veTicketsDePlataforma(identidad.userId)) {
         await client.join(AdminGateway.SALA_CHAT_PLATAFORMA);
+        const conexion: ConexionDelSoporte = {
+          userId: identidad.userId,
+          socketId: client.id,
+        };
+        this.events.emit(EVENTO_SOPORTE_CONECTADO, conexion);
       }
     }
 
@@ -175,8 +193,50 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('server:ack', { message: 'Conectado al panel en vivo' });
   }
 
-  handleDisconnect(): void {
-    // sin estado por-cliente que limpiar (la sala se libera sola)
+  /**
+   * Las salas se liberan solas. Si era alguien de la plataforma, el chat saca
+   * su conexión de la presencia del equipo (sacar una que no estaba no hace nada).
+   */
+  handleDisconnect(client: SocketDeSplg): void {
+    const identidad = client.data?.identidad;
+    if (identidad?.role !== RoleType.SUPER_ADMIN) return;
+    const conexion: ConexionDelSoporte = {
+      userId: identidad.userId,
+      socketId: client.id,
+    };
+    this.events.emit(EVENTO_SOPORTE_DESCONECTADO, conexion);
+  }
+
+  /**
+   * Las conexiones del equipo de la plataforma que atiende ESTA instancia (cada
+   * una renueva las suyas en la presencia; las de una instancia caída vencen).
+   */
+  conexionesLocalesDelSoporte(): ConexionDelSoporte[] {
+    const ids = this.server?.adapter?.rooms.get(
+      AdminGateway.SALA_CHAT_PLATAFORMA,
+    );
+    if (!ids) return [];
+    const conexiones: ConexionDelSoporte[] = [];
+    for (const socketId of ids) {
+      const socket = this.server.sockets.get(socketId) as
+        | SocketDeSplg
+        | undefined;
+      const userId = socket?.data.identidad?.userId;
+      if (userId) conexiones.push({ userId, socketId });
+    }
+    return conexiones;
+  }
+
+  /** Un mismo evento a la sala de soporte de cada una de esas empresas, en una sola emisión. */
+  emitirAlSoporteDeEmpresas(
+    distributorIds: readonly string[],
+    event: string,
+    payload: unknown,
+  ): void {
+    if (distributorIds.length === 0) return;
+    this.server
+      .to(distributorIds.map((id) => AdminGateway.salaDeSoporteDeEmpresa(id)))
+      .emit(event, payload);
   }
 
   /**
