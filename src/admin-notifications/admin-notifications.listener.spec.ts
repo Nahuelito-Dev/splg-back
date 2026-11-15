@@ -1,6 +1,8 @@
 import { AdminService } from '../admin/admin.service';
 import { NotificarAdminEvent } from '../common/events/notificar-admin.event';
 import { EnlacesDeLaApp } from '../email/enlaces-de-la-app';
+import { marcaDeDistribuidora } from '../email/layout/marca-de-correo';
+import { MarcasDeCorreo } from '../email/marcas-de-correo.service';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
 import { AdminGateway } from '../gateways/admin.gateway';
 import {
@@ -44,6 +46,7 @@ describe('AdminNotificationsListener', () => {
   let gateway: { notifyAdmins: jest.Mock };
   let admins: { emailsDeAdminsActivos: jest.Mock };
   let emailSender: { send: jest.Mock };
+  let marcas: { deDistribuidora: jest.Mock };
   let listener: AdminNotificationsListener;
 
   beforeEach(() => {
@@ -56,6 +59,11 @@ describe('AdminNotificationsListener', () => {
       emailsDeAdminsActivos: jest.fn().mockResolvedValue(['a@x.com']),
     };
     emailSender = { send: jest.fn().mockResolvedValue(undefined) };
+    marcas = {
+      deDistribuidora: jest
+        .fn()
+        .mockResolvedValue(marcaDeDistribuidora('Gas del Sur', {})),
+    };
     listener = new AdminNotificationsListener(
       bandeja as unknown as AdminNotificationsService,
       gateway as unknown as AdminGateway,
@@ -64,6 +72,7 @@ describe('AdminNotificationsListener', () => {
       {
         panel: (ruta: string) => `https://panel.test/${ruta}`,
       } as unknown as EnlacesDeLaApp,
+      marcas as unknown as MarcasDeCorreo,
     );
   });
 
@@ -141,6 +150,9 @@ describe('AdminNotificationsListener', () => {
       to: 'a@x.com',
       subject: 'Nuevo reclamo',
       html: expect.stringContaining('https://panel.test/orders/o-1') as string,
+      text: expect.stringContaining(
+        'Ver en el panel: https://panel.test/orders/o-1',
+      ) as string,
     });
     expect(bandeja.marcarCorreoEnviado).toHaveBeenCalledTimes(1);
   });
@@ -171,7 +183,18 @@ describe('AdminNotificationsListener', () => {
     await listener.handle(evento(true));
 
     const [{ html }] = emailSender.send.mock.calls[0] as [{ html: string }];
-    expect(html).not.toContain('href');
+    expect(html).not.toContain('Ver en el panel');
+    expect(html).not.toContain('panel.test');
+  });
+
+  it('el correo sale con el nombre de la distribuidora del aviso', async () => {
+    bandeja.registrar.mockResolvedValue(aviso({ email: true }));
+
+    await listener.handle(evento(true));
+
+    expect(marcas.deDistribuidora).toHaveBeenCalledWith('d1');
+    const [{ html }] = emailSender.send.mock.calls[0] as [{ html: string }];
+    expect(html).toContain('Gas del Sur');
   });
 
   it('un fallo de envío no rompe: se registra, el resto sale y no se reintenta', async () => {

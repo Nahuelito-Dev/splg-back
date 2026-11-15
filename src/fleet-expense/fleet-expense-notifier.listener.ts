@@ -1,9 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { AdminService } from '../admin/admin.service';
-import { escaparHtml } from '../common/utils/html.util';
 import { errorMessage } from '../common/errors/error-message';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
+import { armarCorreo, MensajeDeCorreo } from '../email/layout/correo';
+import {
+  marcaDeDistribuidora,
+  nombreDeDistribuidoraDeAdmins,
+} from '../email/layout/marca-de-correo';
+import {
+  mensajeDeAsignacionPendiente,
+  mensajeDeCargaAnomala,
+  mensajeDeDerrame,
+} from './correos-de-gastos-de-flota';
 import { CarService } from '../car/car.service';
 import {
   CargaDeCombustibleAnomalaEvent,
@@ -34,8 +43,7 @@ export class FleetExpenseNotifierListener {
     const patente = await this.patente(evento.carId, evento.distributorId);
     await this.avisar(
       evento.distributorId,
-      `Consumo de combustible anómalo: ${patente}`,
-      `<p>La última carga de combustible del vehículo ${escaparHtml(patente)} tiene un consumo que se aparta más de un 25 % del habitual. Revisala en el panel de flota (carga ${escaparHtml(evento.fuelLoadId)}).</p>`,
+      mensajeDeCargaAnomala(patente, evento.fuelLoadId),
     );
   }
 
@@ -44,8 +52,7 @@ export class FleetExpenseNotifierListener {
     const patente = await this.patente(evento.carId, evento.distributorId);
     await this.avisar(
       evento.distributorId,
-      `URGENTE: derrame de gas en un siniestro (${patente})`,
-      `<p>Se registró un siniestro con fuga o derrame de gas del vehículo ${escaparHtml(patente)} (siniestro ${escaparHtml(evento.accidentId)}). Es un incidente de seguridad: revisalo ahora en el panel de flota.</p>`,
+      mensajeDeDerrame(patente, evento.accidentId),
     );
   }
 
@@ -56,8 +63,7 @@ export class FleetExpenseNotifierListener {
     const patente = await this.patente(evento.carId, evento.distributorId);
     await this.avisar(
       evento.distributorId,
-      `Vehículo fuera de servicio con el chofer en entrega (${patente})`,
-      `<p>El vehículo ${escaparHtml(patente)} quedó fuera de servicio por un siniestro (${escaparHtml(evento.accidentId)}), pero sigue asignado a su chofer: ${escaparHtml(evento.motivo)}.</p>`,
+      mensajeDeAsignacionPendiente(patente, evento.accidentId, evento.motivo),
     );
   }
 
@@ -72,20 +78,25 @@ export class FleetExpenseNotifierListener {
 
   private async avisar(
     distributorId: string,
-    subject: string,
-    html: string,
+    mensaje: MensajeDeCorreo,
   ): Promise<void> {
     try {
       const admins = await this.admins.findAll(distributorId);
       const destinatarios = admins
         .map((a) => a.user?.email)
         .filter((email): email is string => Boolean(email));
+      const { asunto, html, text } = armarCorreo(
+        marcaDeDistribuidora(nombreDeDistribuidoraDeAdmins(admins)),
+        mensaje,
+      );
       await Promise.all(
-        destinatarios.map((to) => this.emailSender.send({ to, subject, html })),
+        destinatarios.map((to) =>
+          this.emailSender.send({ to, subject: asunto, html, text }),
+        ),
       );
     } catch (error) {
       this.logger.error(
-        `No se pudo enviar el aviso "${subject}" a la distribuidora ${distributorId}: ${errorMessage(error)}`,
+        `No se pudo enviar el aviso "${mensaje.asunto}" a la distribuidora ${distributorId}: ${errorMessage(error)}`,
       );
     }
   }

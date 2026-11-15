@@ -1,4 +1,5 @@
-import { htmlDelAviso, rutaDelPanelDelAviso } from './aviso-por-correo';
+import { marcaDeDistribuidora } from '../email/layout/marca-de-correo';
+import { correoDelAviso, rutaDelPanelDelAviso } from './aviso-por-correo';
 import { AdminNotification } from './entities/admin-notification.entity';
 
 function aviso(parcial: Partial<AdminNotification>): AdminNotification {
@@ -65,15 +66,29 @@ describe('aviso por correo', () => {
   });
 
   it('escapa también la URL y respeta los saltos de línea del cuerpo', () => {
-    const html = htmlDelAviso(
+    const { html } = correoDelAviso(
       aviso({ title: 'a&b', body: 'uno\ndos' }),
       'https://panel.test/x?a=1&b="2"',
+      marcaDeDistribuidora('Gas del Sur', {}),
     );
 
-    expect(html).toContain('<h2>a&amp;b</h2>');
+    expect(html).toContain('>a&amp;b</h1>');
     expect(html).toContain('uno<br>dos');
     expect(html).toContain(
       'href="https://panel.test/x?a=1&amp;b=&quot;2&quot;"',
     );
+  });
+
+  it('asunto en una línea, preheader del cuerpo y texto plano con el enlace', () => {
+    const correo = correoDelAviso(
+      aviso({ title: 'Vence\r\nla VTV', body: 'x'.repeat(200) }),
+      'https://panel.test/fleet',
+      marcaDeDistribuidora('Gas del Sur', {}),
+    );
+
+    expect(correo.asunto).toBe('Vence la VTV');
+    expect(correo.html).toContain(`${'x'.repeat(139)}…`);
+    expect(correo.text).toContain('Ver en el panel: https://panel.test/fleet');
+    expect(correo.text).toContain('Gas del Sur');
   });
 });

@@ -28,7 +28,7 @@ describe('EmailService', () => {
     setex: jest.Mock;
   };
   let emailSender: { send: jest.Mock };
-  let templates: { render: jest.Mock };
+  let templates: { renderCorreo: jest.Mock };
 
   beforeEach(() => {
     usersService = {
@@ -46,7 +46,13 @@ describe('EmailService', () => {
       setex: jest.fn().mockResolvedValue(undefined),
     };
     emailSender = { send: jest.fn().mockResolvedValue(undefined) };
-    templates = { render: jest.fn().mockReturnValue('<p>html</p>') };
+    templates = {
+      renderCorreo: jest.fn().mockReturnValue({
+        asunto: 'Asunto de la plantilla',
+        html: '<p>html</p>',
+        text: 'html',
+      }),
+    };
 
     service = new EmailService(
       usersService as unknown as UsersService,
@@ -187,13 +193,16 @@ describe('EmailService', () => {
     it('saluda con el nombre que trae el alta', async () => {
       await service.sendWelcomeEmail('nuevo@test.com', 'Ana');
 
-      expect(templates.render).toHaveBeenCalledWith(
+      expect(templates.renderCorreo).toHaveBeenCalledWith(
         'welcome',
         expect.objectContaining({ displayName: 'Ana' }),
       );
-      expect(emailSender.send).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'nuevo@test.com' }),
-      );
+      expect(emailSender.send).toHaveBeenCalledWith({
+        to: 'nuevo@test.com',
+        subject: 'Asunto de la plantilla',
+        html: '<p>html</p>',
+        text: 'html',
+      });
     });
 
     it('best-effort: si el sender falla, no propaga la excepción', async () => {

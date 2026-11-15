@@ -5,10 +5,8 @@ import { DataSource } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
 import { RedisService } from '../../redis/redis.service';
 import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
-import {
-  escaparHtml,
-  StockAdminNotifier,
-} from './stock-admin-notifier.service';
+import { StockAdminNotifier } from './stock-admin-notifier.service';
+import { mensajeDeConciliacion } from './correos-de-stock';
 import { ConRegistro } from '../../process-run/process-run.recorder';
 import {
   marcarSaltada,
@@ -101,28 +99,22 @@ export class StockReconciliationCron {
         return;
       const resultado = fila.p_resultado;
       const firma = fila.p_firma;
-      const diferencias = resultado.cylinders
-        .filter(conProblema)
-        .map(
-          (c) =>
-            `<li>${escaparHtml(c.gasCylinderType)}: vendible ${c.sellable}, esperado ${c.expected} (llenas ${c.physicalFull} − reservadas ${c.reserved}); diferencia ${c.difference}` +
-            (c.overReserved > 0
-              ? `; ${c.overReserved} reservada(s) de más que el físico no cubre: hay que cancelar pedidos o reponer stock`
-              : '') +
-            '</li>',
-        )
-        .join('');
+      const diferencias = resultado.cylinders.filter(conProblema).map((c) => ({
+        garrafa: c.gasCylinderType,
+        vendible: c.sellable,
+        esperado: c.expected,
+        llenas: c.physicalFull,
+        reservadas: c.reserved,
+        diferencia: c.difference,
+        reservadasDeMas: c.overReserved,
+      }));
       const sinMovimiento = resultado.deliveriesWithoutMovement.length;
       this.logger.warn(
         `Conciliación de stock de ${distributorId}: ${resultado.cylinders.filter(conProblema).length} garrafa(s) con diferencia y ${sinMovimiento} renglón(es) entregado(s) sin movimiento`,
       );
       await this.notifier.avisar(
         distributorId,
-        'Conciliación de stock: hay diferencias',
-        `<p>El stock vendible no coincide con el físico:</p><ul>${diferencias}</ul>` +
-          (sinMovimiento > 0
-            ? `<p>${sinMovimiento} renglón(es) de pedidos entregados no descontaron el stock físico.</p>`
-            : ''),
+        mensajeDeConciliacion(diferencias, sinMovimiento),
       );
       await this.dataSource.query(
         `INSERT INTO "stock_reconciliation_alert" ("distributor_id", "signature")

@@ -1,6 +1,7 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { StockAdminNotifier } from './stock-admin-notifier.service';
+import { MensajeDeCorreo } from '../../email/layout/correo';
 import { StockReconciliationCron } from './stock-reconciliation.cron';
 import { StockReconciliationService } from './stock-reconciliation.service';
 import { StockLowCron } from './stock-low.cron';
@@ -300,7 +301,7 @@ describe('StockReconciliationCron', () => {
       return Promise.resolve([]);
     });
     const avisar = jest
-      .fn<Promise<boolean>, [string, string, string]>()
+      .fn<Promise<boolean>, [string, MensajeDeCorreo]>()
       .mockResolvedValue(true);
     const cron = new StockReconciliationCron(
       { query } as unknown as DataSource,
@@ -324,9 +325,11 @@ describe('StockReconciliationCron', () => {
     await cron.conciliar(DIST);
     expect(avisar).toHaveBeenCalledWith(
       DIST,
-      expect.stringContaining('diferencias') as string,
-      expect.stringContaining('10kg') as string,
+      expect.objectContaining({
+        asunto: expect.stringContaining('diferencias') as string,
+      }),
     );
+    expect(JSON.stringify(avisar.mock.calls[0][1])).toContain('10kg');
     // Lo único que escribe el cron es la huella del aviso.
     const escrituras = query.mock.calls
       .map(([sql]) => String(sql))
@@ -422,7 +425,7 @@ describe('StockReconciliationCron', () => {
       ]),
     ]);
     await cron.conciliar(DIST);
-    expect(avisar.mock.calls[0]?.[2]).toMatch(
+    expect(JSON.stringify(avisar.mock.calls[0]?.[1])).toMatch(
       /2 reservada\(s\) de más que el físico no cubre/,
     );
   });
@@ -444,7 +447,7 @@ describe('StockLowCron (alerted_at)', () => {
     const query = jest.fn<Promise<unknown[]>, [string, unknown[]?]>((sql) =>
       sql.includes('SELECT') ? Promise.resolve(filas) : Promise.resolve([]),
     );
-    const avisar = jest.fn<Promise<boolean>, [string, string, string]>();
+    const avisar = jest.fn<Promise<boolean>, [string, MensajeDeCorreo]>();
     if (emailFalla) avisar.mockRejectedValue(new Error('smtp'));
     else avisar.mockResolvedValue(true);
     const cron = new StockLowCron(
@@ -462,7 +465,7 @@ describe('StockLowCron (alerted_at)', () => {
     const { cron, avisar, query } = armar([fila({})]);
     await cron.avisarStockBajo();
     expect(avisar).toHaveBeenCalledTimes(1);
-    expect(avisar.mock.calls[0][2]).toContain('Central');
+    expect(JSON.stringify(avisar.mock.calls[0][1])).toContain('Central');
     expect(escrituras(query)[0][0]).toContain('"alerted_at" = now()');
     expect(escrituras(query)[0][1]).toEqual([['t1']]);
   });

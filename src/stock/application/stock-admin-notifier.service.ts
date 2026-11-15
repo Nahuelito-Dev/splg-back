@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { AdminService } from '../../admin/admin.service';
 import { EmailSenderPort } from '../../email/ports/email-sender.port';
+import { armarCorreo, MensajeDeCorreo } from '../../email/layout/correo';
+import {
+  marcaDeDistribuidora,
+  nombreDeDistribuidoraDeAdmins,
+} from '../../email/layout/marca-de-correo';
 
 /** Avisos por email a los administradores de una distribuidora. */
 @Injectable()
@@ -17,25 +22,22 @@ export class StockAdminNotifier {
    */
   async avisar(
     distributorId: string,
-    subject: string,
-    html: string,
+    mensaje: MensajeDeCorreo,
   ): Promise<boolean> {
     const admins = await this.admins.findAll(distributorId);
     const destinatarios = admins
       .map((a) => a.user?.email)
       .filter((email): email is string => Boolean(email));
     if (destinatarios.length === 0) return false;
+    const { asunto, html, text } = armarCorreo(
+      marcaDeDistribuidora(nombreDeDistribuidoraDeAdmins(admins)),
+      mensaje,
+    );
     await Promise.all(
-      destinatarios.map((to) => this.emailSender.send({ to, subject, html })),
+      destinatarios.map((to) =>
+        this.emailSender.send({ to, subject: asunto, html, text }),
+      ),
     );
     return true;
   }
-}
-
-export function escaparHtml(texto: string): string {
-  return texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

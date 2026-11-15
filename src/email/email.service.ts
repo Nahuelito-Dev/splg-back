@@ -24,7 +24,7 @@ import {
   errorStatus,
 } from '../common/errors/error-message';
 import { EnlacesDeLaApp } from './enlaces-de-la-app';
-import { MARCA_DE_LOS_MAILS } from './marca';
+import { marcaDePlataforma } from './layout/marca-de-correo';
 
 /** Respuesta del pedido de reseteo, exista o no la cuenta. */
 const MENSAJE_DE_RESETEO =
@@ -154,12 +154,10 @@ export class EmailService {
 
       await this.sendEmail({
         to: email,
-        subject: `Restablecé tu contraseña de ${MARCA_DE_LOS_MAILS}`,
         template: 'password-reset',
         data: {
           resetLink,
           email,
-          appName: MARCA_DE_LOS_MAILS,
         },
       });
 
@@ -237,45 +235,47 @@ export class EmailService {
   ): Promise<void> {
     await this.sendEmail({
       to: newEmail,
-      subject: `Verificá tu correo de ${MARCA_DE_LOS_MAILS}`,
       template: 'email-verification',
       data: {
         displayName: displayName || 'Usuario',
-        appName: MARCA_DE_LOS_MAILS,
       },
     });
 
     await this.sendEmail({
       to: oldEmail,
-      subject: `Cambió el correo de ingreso a ${MARCA_DE_LOS_MAILS}`,
       template: 'email-change-notification',
       data: {
         displayName: displayName || 'Usuario',
         newEmail,
-        appName: MARCA_DE_LOS_MAILS,
       },
     });
   }
 
+  /** El asunto, el HTML y el texto plano los arma la plantilla con la marca de la plataforma. */
   private async sendEmail(emailData: {
     to: string;
-    subject: string;
     template: string;
     data: DatosDePlantilla;
+    /** Sólo si el asunto no es el de la plantilla (la prueba del servicio). */
+    subject?: string;
   }): Promise<void> {
     try {
-      const html = this.templates.render(emailData.template, emailData.data);
+      const correo = this.templates.renderCorreo(
+        emailData.template,
+        emailData.data,
+      );
 
       await this.emailSender.send({
         to: emailData.to,
-        subject: emailData.subject,
-        html,
+        subject: emailData.subject ?? correo.asunto,
+        html: correo.html,
+        text: correo.text,
       });
     } catch (error) {
       // Best-effort: el envío de email nunca debe tumbar el flujo que lo
       // dispara (registro, cambio de contraseña, etc). Solo dejamos rastro.
       this.logger.warn(
-        `No se pudo enviar el email "${emailData.subject}" a ${emailData.to}: ${errorMessage(error)}`,
+        `No se pudo enviar el correo "${emailData.template}" a ${emailData.to}: ${errorMessage(error)}`,
       );
     }
   }
@@ -284,11 +284,9 @@ export class EmailService {
     try {
       await this.sendEmail({
         to: email,
-        subject: `Te damos la bienvenida a ${MARCA_DE_LOS_MAILS}`,
         template: 'welcome',
         data: {
           displayName,
-          appName: MARCA_DE_LOS_MAILS,
           supportEmail:
             leerConfiguracionDePlataforma(process.env).supportEmail ??
             undefined,
@@ -314,11 +312,10 @@ export class EmailService {
       try {
         await this.sendEmail({
           to: email,
-          subject: `Correo de prueba de ${MARCA_DE_LOS_MAILS}`,
+          subject: `Correo de prueba de ${marcaDePlataforma().nombre}`,
           template: 'email-verification',
           data: {
             displayName: 'Usuario de prueba',
-            appName: MARCA_DE_LOS_MAILS,
           },
         });
 
