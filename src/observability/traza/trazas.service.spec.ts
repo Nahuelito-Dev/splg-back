@@ -160,6 +160,35 @@ describe('TrazasService (DISENO-OBSERVABILIDAD §7.5)', () => {
     expect(b.items.every((i) => i.distributorId !== 'A')).toBe(true);
   });
 
+  it('un id elegido por quien llama (c-<id>) no se mezcla con la traza del server de ese id', async () => {
+    const run = '6f1d2c3b-aaaa-4bbb-8ccc-0d1e2f3a4b5c';
+    const service = trazasEnMemoria({
+      asientos: [
+        asiento({
+          auditId: 'a-falso',
+          requestId: `c-${run}`,
+          distributorId: 'B',
+        }),
+      ],
+      corridas: [corrida({ runId: run, traceId: run, distributorId: 'A' })],
+      avisos: [],
+    });
+    const delServer = await service.traza(run);
+    expect(delServer.traceId).toBe(run);
+    expect(delServer.items.map((i) => i.distributorId)).toEqual(['A']);
+  });
+
+  it('se busca con el X-Request-Id tal como se mandó: cae en su c-<id>', async () => {
+    const service = trazasEnMemoria({
+      asientos: [asiento({ auditId: 'a-1', requestId: 'c-prueba-o1' })],
+      corridas: [],
+      avisos: [],
+    });
+    const r = await service.traza('prueba-o1');
+    expect(r.traceId).toBe('c-prueba-o1');
+    expect(r.items).toHaveLength(1);
+  });
+
   it('una corrida en curso no muestra duración', async () => {
     const service = trazasEnMemoria({
       asientos: [],

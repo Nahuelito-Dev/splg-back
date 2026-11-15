@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import {
   ContextoDeTraza,
   nuevoTraceId,
-  sanearTraceId,
+  traceIdDelCliente,
 } from '../traza/contexto-de-traza';
 
 /**
@@ -10,8 +10,9 @@ import {
  * con él la traza del request (`ContextoDeTraza`, `traceId = requestId`).
  *
  * Si el caller (front, otro servicio, un LB, Mercado Pago) ya manda
- * `X-Request-Id`, se respeta siempre que sea un id razonable: de 1 a 64
- * caracteres con letras, dígitos, `-` o `_` (`sanearTraceId`). Cualquier otra
+ * `X-Request-Id`, se usa con el prefijo `c-` (`traceIdDelCliente`) si es un id
+ * razonable: de 1 a 62 caracteres con letras, dígitos, `-` o `_`. El prefijo
+ * evita que un id elegido afuera coincida con uno del server. Cualquier otra
  * cosa (vacío, muy largo, con espacios o saltos de línea que ensuciarían el
  * log o la base) se reemplaza por uno nuevo (uuid v4 nativo de Node).
  *
@@ -37,7 +38,7 @@ export function requestIdMiddleware(
   next: NextFunction,
 ): void {
   const requestId =
-    sanearTraceId(req.headers['x-request-id']) ?? nuevoTraceId();
+    traceIdDelCliente(req.headers['x-request-id']) ?? nuevoTraceId();
 
   req.requestId = requestId;
   req.startTime = Date.now();
