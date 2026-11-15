@@ -269,6 +269,27 @@ describe('ClaimsService', () => {
     });
   });
 
+  describe('listado del panel', () => {
+    it('acota por distribuidora y, con orderId, por pedido', async () => {
+      claims.find.mockResolvedValue([]);
+      await service.findAll('d1', { orderId: 'o1' });
+      expect(claims.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { distributorId: 'd1', orderId: 'o1' },
+          order: { createdAt: 'DESC' },
+        }),
+      );
+    });
+
+    it('sin orderId trae todos los de la distribuidora', async () => {
+      claims.find.mockResolvedValue([]);
+      await service.findAll('d1');
+      expect(claims.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { distributorId: 'd1' } }),
+      );
+    });
+  });
+
   describe('ficha y edición', () => {
     it('la ficha trae pedido y cliente y acota por distribuidora', async () => {
       claims.findOne.mockResolvedValue({ claimId: 'c1' });

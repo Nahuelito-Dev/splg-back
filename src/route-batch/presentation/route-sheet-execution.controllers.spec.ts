@@ -6,6 +6,7 @@ import { RouteSheetEditingService } from '../application/route-sheet-editing.ser
 import { RouteSheetExecutionQueryService } from '../application/route-sheet-execution-query.service';
 import { RouteSheetInProgressEditingService } from '../application/route-sheet-in-progress-editing.service';
 import { RouteSheetLifecycleService } from '../application/route-sheet-lifecycle.service';
+import { RouteSheetPathService } from '../application/route-sheet-path.service';
 import { RouteSheetPdfService } from '../application/route-sheet-pdf.service';
 import { RouteSheetQueryService } from '../application/route-sheet-query.service';
 import { RouteSheetStartService } from '../application/route-sheet-start.service';
@@ -67,6 +68,7 @@ function armar() {
     close as unknown as RouteSheetCloseService,
     enCurso as unknown as RouteSheetInProgressEditingService,
     query as unknown as RouteSheetExecutionQueryService,
+    {} as unknown as RouteSheetPathService,
   );
   const cliente = new OrderEtaController(
     query as unknown as RouteSheetExecutionQueryService,

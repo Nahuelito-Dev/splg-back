@@ -49,6 +49,12 @@ export class RouteSheetStopDto {
   @ApiProperty({ description: 'Llegaría después de que cierra su franja' })
   late!: boolean;
   @ApiProperty({ description: 'Garrafas llenas a entregar' }) units!: number;
+  @ApiProperty({
+    example: 1,
+    description:
+      'Envases vacíos a retirar en la parada: por renglón, cantidad menos los envases cobrados (el mismo `emptiesExpected` del pedido)',
+  })
+  emptiesExpected!: number;
   @ApiProperty({ description: 'Kilos de gas a entregar' }) weightKg!: number;
   @ApiProperty({
     description: 'Mercado Pago todavía sin pagar (entra con advertencia)',
@@ -79,6 +85,12 @@ export class RouteSheetTotalsDto {
   @ApiProperty({ description: 'Garrafas llenas a cargar' }) units!: number;
   @ApiProperty({ description: 'Pico de envases a bordo' }) peakUnits!: number;
   @ApiProperty({ description: 'Kilos de gas a cargar' }) weightKg!: number;
+  @ApiProperty({
+    example: 4,
+    description:
+      'Envases vacíos a retirar en toda la hoja (suma de `emptiesExpected` de las paradas activas)',
+  })
+  emptiesExpected!: number;
 }
 
 export class RouteSheetCapacityDto {
@@ -318,6 +330,12 @@ export class RoutePlanDayDto {
   unassigned!: UnassignedOrderDto[];
   @ApiProperty({ type: RoutePlanResourcesDto })
   resources!: RoutePlanResourcesDto;
+  @ApiProperty({
+    example: 12,
+    description:
+      'Envases vacíos a retirar en el día: suma de `totals.emptiesExpected` de las hojas de `sheets`',
+  })
+  emptiesExpected!: number;
 }
 
 export class ProposedSheetDto {

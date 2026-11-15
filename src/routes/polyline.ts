@@ -33,3 +33,27 @@ export function decodificarPolilinea(codificada: string): PuntoDeRuta[] {
   }
   return puntos;
 }
+
+/** Codifica puntos en el formato de Google (precisión 5): la inversa de `decodificarPolilinea`. */
+export function codificarPolilinea(puntos: readonly PuntoDeRuta[]): string {
+  let salida = '';
+  let latAnterior = 0;
+  let lngAnterior = 0;
+  const valor = (delta: number): string => {
+    let v = delta < 0 ? ~(delta << 1) : delta << 1;
+    let texto = '';
+    while (v >= 0x20) {
+      texto += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+      v >>= 5;
+    }
+    return texto + String.fromCharCode(v + 63);
+  };
+  for (const p of puntos) {
+    const lat = Math.round(p.lat * 1e5);
+    const lng = Math.round(p.lng * 1e5);
+    salida += valor(lat - latAnterior) + valor(lng - lngAnterior);
+    latAnterior = lat;
+    lngAnterior = lng;
+  }
+  return salida;
+}

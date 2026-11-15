@@ -310,6 +310,12 @@ export class RouteSheetExecutionStopDto {
   })
   late!: boolean;
   @ApiProperty() units!: number;
+  @ApiProperty({
+    example: 1,
+    description:
+      'Envases vacíos a retirar en la parada: por renglón, cantidad menos los envases cobrados (el mismo `emptiesExpected` del pedido)',
+  })
+  emptiesExpected!: number;
   @ApiProperty() weightKg!: number;
   @ApiProperty() unpaidOnline!: boolean;
   @ApiProperty({ type: [RouteSheetItemDto] }) items!: RouteSheetItemDto[];

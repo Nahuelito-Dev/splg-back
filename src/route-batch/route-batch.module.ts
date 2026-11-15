@@ -28,6 +28,7 @@ import { RouteSheetEditingService } from './application/route-sheet-editing.serv
 import { RouteSheetLifecycleService } from './application/route-sheet-lifecycle.service';
 import { RouteSheetLocks } from './application/route-sheet-locks.service';
 import { RouteSheetQueryService } from './application/route-sheet-query.service';
+import { RouteSheetPathService } from './application/route-sheet-path.service';
 import { RouteSheetPdfService } from './application/route-sheet-pdf.service';
 import { PdfBrandingService } from '../pdf/pdf-branding.service';
 import { S3Module } from '../s3/s3.module';
@@ -78,7 +79,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     DistributorModule, // los parámetros de la agrupación
     GatewaysModule, // la oferta le llega al chofer por el socket
     RedisModule, // cerrojos del proceso y de cada lote
-    RoutesModule, // matriz de tiempos de la hoja de ruta (OSRM o línea recta)
+    RoutesModule, // matriz de tiempos y recorrido por calles de la hoja de ruta
     DocumentSequenceModule, // número de la hoja al confirmarla
     S3Module, // el logo de la distribuidora en el PDF de la hoja
     TruckLoadModule, // la carga abierta del chofer al iniciar la hoja (E4)
@@ -111,6 +112,7 @@ import { RoutePlanningHoliday } from '../order/entities/route-planning-holiday.e
     RouteSheetLifecycleService,
     RouteSheetQueryService,
     RouteSheetPdfService,
+    RouteSheetPathService, // recorrido por calles para el mapa del panel
     PdfBrandingService, // membrete del PDF (el de `pdf/`, que no lo exporta)
     RoutePlanningCron,
     // Hoja de ruta (F34, E4 y E5): ejecución en la calle y hora estimada.

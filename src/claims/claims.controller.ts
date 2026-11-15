@@ -35,6 +35,7 @@ import {
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { QueryMyClaimsDto } from './dto/query-my-claims.dto';
+import { QueryClaimsDto } from './dto/query-claims.dto';
 import { MyClaimResponseDto } from './dto/my-claim-response.dto';
 import { CABECERA_TOTAL, informarTotal } from '../common/http/total';
 import { ClaimResponseDto } from './dto/claim-response.dto';
@@ -98,12 +99,20 @@ export class ClaimsController {
   @Get()
   @Permiso('reclamos.ver')
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Admin ve todos los reclamos' })
+  @ApiOperation({
+    summary: 'Admin ve todos los reclamos',
+    description:
+      'De la distribuidora del que pregunta, del más nuevo al más viejo. `orderId` filtra los de un pedido (uno de otra distribuidora da la lista vacía).',
+  })
   @ApiOkResponse({ type: ClaimResponseDto, isArray: true })
+  @ApiBadRequestResponse({ description: '`orderId` no es un UUID' })
   async findAll(
+    @Query() query: QueryClaimsDto,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<ClaimResponseDto[]> {
-    const claims = await this.claimsService.findAll(distributorId);
+    const claims = await this.claimsService.findAll(distributorId, {
+      orderId: query.orderId,
+    });
     return Promise.all(claims.map((c) => this.toDto(c)));
   }
 

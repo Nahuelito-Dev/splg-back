@@ -61,6 +61,39 @@ function mensajeDelProveedor(cuerpo: unknown): string | null {
   return c.error_message ?? c.message ?? null;
 }
 
+export interface OpcionesDePedido {
+  method?: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+/**
+ * Un pedido JSON a un proveedor de mapas con tope de tiempo. Una respuesta no
+ * 2xx es un error con el estado y el mensaje del proveedor (nunca la clave, que
+ * va en un header).
+ */
+export async function pedirAlProveedor<T>(
+  http: FetchFn,
+  url: string,
+  opciones: OpcionesDePedido = {},
+): Promise<T> {
+  const control = new AbortController();
+  const timer = setTimeout(() => control.abort(), TIMEOUT_PROVEEDOR_MS);
+  try {
+    const res = await http(url, { ...opciones, signal: control.signal });
+    if (!res.ok) {
+      const detalle = await res
+        .json()
+        .then((cuerpo) => mensajeDelProveedor(cuerpo))
+        .catch(() => null);
+      throw new Error(`HTTP ${res.status}${detalle ? `: ${detalle}` : ''}`);
+    }
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Distancia entre dos puntos sobre la esfera (haversine), en metros. */
 export function distanciaEnMetros(a: PuntoDeRuta, b: PuntoDeRuta): number {
   const rad = (g: number) => (g * Math.PI) / 180;
@@ -349,29 +382,8 @@ export class RoutesService {
     }
   }
 
-  private async pedir<T>(
-    url: string,
-    opciones: {
-      method?: 'GET' | 'POST';
-      headers?: Record<string, string>;
-      body?: string;
-    } = {},
-  ): Promise<T> {
-    const control = new AbortController();
-    const timer = setTimeout(() => control.abort(), TIMEOUT_PROVEEDOR_MS);
-    try {
-      const res = await this.http(url, { ...opciones, signal: control.signal });
-      if (!res.ok) {
-        const detalle = await res
-          .json()
-          .then((cuerpo) => mensajeDelProveedor(cuerpo))
-          .catch(() => null);
-        throw new Error(`HTTP ${res.status}${detalle ? `: ${detalle}` : ''}`);
-      }
-      return (await res.json()) as T;
-    } finally {
-      clearTimeout(timer);
-    }
+  private pedir<T>(url: string, opciones: OpcionesDePedido = {}): Promise<T> {
+    return pedirAlProveedor<T>(this.http, url, opciones);
   }
 
   private async conGoogle(

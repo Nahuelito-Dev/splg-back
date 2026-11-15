@@ -119,9 +119,14 @@ export class RouteSheetQueryService {
     );
     const hojaDeChofer = new Map(vivas.map((h) => [h.deliveryId, h.batchId]));
     const hojaDeAuto = new Map(vivas.map((h) => [h.carId, h.batchId]));
+    const mapeadas = await this.mapear(distributorId, hojas);
     return {
       plan: planDto(plan),
-      sheets: await this.mapear(distributorId, hojas),
+      sheets: mapeadas,
+      emptiesExpected: mapeadas.reduce(
+        (s, h) => s + h.totals.emptiesExpected,
+        0,
+      ),
       unassigned: sinHoja.map((p) => sinAsignar(p, planDate)),
       resources: {
         drivers: choferes.map((c) => ({
@@ -395,6 +400,7 @@ export class RouteSheetQueryService {
             p?.slotEndMs !== undefined &&
             s.etaAt.getTime() > p.slotEndMs,
           units: p?.units ?? 0,
+          emptiesExpected: p?.collectUnits ?? 0,
           weightKg: p?.weightKg ?? 0,
           unpaidOnline: p?.unpaidOnline ?? false,
         };
@@ -416,6 +422,7 @@ export class RouteSheetQueryService {
         units: h.totalUnits ?? 0,
         peakUnits: h.peakUnits ?? 0,
         weightKg: h.totalWeightKg,
+        emptiesExpected: stops.reduce((s, x) => s + x.emptiesExpected, 0),
       };
       return {
         id: h.batchId,

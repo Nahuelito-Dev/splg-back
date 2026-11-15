@@ -93,7 +93,8 @@ describe('controladores de la hoja de ruta', () => {
       lifecycle as unknown as RouteSheetLifecycleService,
       query as unknown as RouteSheetQueryService,
       pdfs as unknown as RouteSheetPdfService,
-      ...([{}, {}, {}, {}, {}] as unknown as [
+      ...([{}, {}, {}, {}, {}, {}] as unknown as [
+        never,
         never,
         never,
         never,

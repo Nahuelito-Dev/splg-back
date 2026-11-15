@@ -170,6 +170,7 @@ const ATADAS: Record<string, string> = {
   'POST /v2/route-sheets/:id/reopen': 'route_planning',
   'POST /v2/route-sheets/:id/cancel': 'route_planning',
   'GET /v2/route-sheets/:id/load-suggestion': 'route_planning',
+  'GET /v2/route-sheets/:id/path': 'route_planning',
   'GET /v2/route-sheets/:id/pdf': 'route_planning',
   // Iniciar una hoja es empezar algo nuevo (§7.3): exige el módulo.
   'POST /v2/route-sheets/:id/start': 'route_planning',

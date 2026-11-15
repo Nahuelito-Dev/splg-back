@@ -260,6 +260,7 @@ export class RouteSheetExecutionQueryService {
           p?.slotEndMs != null &&
           s.etaAt.getTime() > p.slotEndMs,
         units: p?.units ?? 0,
+        emptiesExpected: p?.collectUnits ?? 0,
         weightKg: p?.weightKg ?? 0,
         unpaidOnline: p?.unpaidOnline ?? false,
         items: renglones.get(s.orderId) ?? [],

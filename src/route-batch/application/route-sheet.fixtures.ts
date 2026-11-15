@@ -171,6 +171,7 @@ export function hojaDto(over: Partial<RouteSheetDto> = {}): RouteSheetDto {
       units: 3,
       peakUnits: 3,
       weightKg: 30,
+      emptiesExpected: 2,
     },
     capacity: { kg: 500, units: 20 },
     stops: [
@@ -192,6 +193,7 @@ export function hojaDto(over: Partial<RouteSheetDto> = {}): RouteSheetDto {
         legDurationMin: 6,
         late: false,
         units: 2,
+        emptiesExpected: 2,
         weightKg: 20,
         unpaidOnline: false,
       },

@@ -21,6 +21,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiProduces,
+  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { RoleType } from '../../common/constants/role-type.enum';
@@ -34,7 +35,9 @@ import { Permiso } from '../../common/decorators/permiso.decorator';
 import { RouteSheetEditingService } from '../application/route-sheet-editing.service';
 import { RouteSheetLifecycleService } from '../application/route-sheet-lifecycle.service';
 import { RouteSheetQueryService } from '../application/route-sheet-query.service';
+import { RouteSheetPathService } from '../application/route-sheet-path.service';
 import { RouteSheetPdfService } from '../application/route-sheet-pdf.service';
+import { RouteSheetPathDto } from './dto/route-sheet-path.dto';
 import { contentDisposition } from '../../s3/content-disposition';
 import { DownloadDisposition } from '../../s3/dto/download-link.dto';
 import {
@@ -107,6 +110,7 @@ export class RouteSheetsController {
     private readonly close: RouteSheetCloseService,
     private readonly enCurso: RouteSheetInProgressEditingService,
     private readonly execution: RouteSheetExecutionQueryService,
+    private readonly paths: RouteSheetPathService,
   ) {}
 
   @Permiso('despacho.gestionar')
@@ -421,6 +425,38 @@ export class RouteSheetsController {
   ): Promise<RouteSheetDto> {
     await this.lifecycle.cancelar(distributorId, id, body.version, userId);
     return this.query.detalle(distributorId, id);
+  }
+
+  @Permiso('despacho.gestionar')
+  @Get(':id/path')
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Recorrido por calles de la hoja',
+    description:
+      'Para el mapa del detalle: depósito → paradas activas en el orden vigente → depósito, por calles, con la polilínea codificada y un tramo por parada (más la vuelta). Las paradas sin coordenadas se saltean y vienen en `skippedOrderIds`; sin paradas con coordenadas (o sin depósito ubicado y con una sola parada) responde 200 con el recorrido vacío (`provider: null`). El depósito es el mismo que usa el cálculo de horarios de la hoja: el de la hoja; si la hoja no tiene, el predeterminado de la distribuidora. Si el de la hoja está dado de baja o sin ubicación no se reemplaza por otro (los horarios tampoco salen de otro depósito): `warehouse: null` y el recorrido va de la primera a la última parada. Lo calcula el servidor con la Routes API de Google y su propia clave (de a 25 paradas intermedias por consulta, unidas), y si Google falla o no hay clave, con OSRM. Se guarda por hoja y firma de sus paradas y coordenadas: mientras la hoja no cambie no se vuelve a consultar al proveedor (un día; el de OSRM, 10 minutos, para volver a Google en cuanto responda). Cada consulta a Google cuenta contra un cupo diario por distribuidora (500, `ROUTE_SHEET_PATH_DAILY_LIMIT_PER_DISTRIBUTOR`); OSRM y lo guardado no cuentan.',
+  })
+  @ApiOkResponse({ type: RouteSheetPathDto })
+  @ApiBadRequestResponse({ description: BAD })
+  @ApiNotFoundResponse({ description: NOT_FOUND })
+  @ApiResponse({
+    status: 429,
+    description:
+      'La distribuidora llegó al máximo de recorridos del día (ROUTE_PATH_DAILY_LIMIT)',
+  })
+  @ApiResponse({
+    status: 502,
+    description: 'Ningún servicio de mapas respondió (ROUTE_PROVIDER_FAILED)',
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'No hay servicio de mapas configurado (ROUTE_PROVIDER_UNAVAILABLE)',
+  })
+  recorrido(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<RouteSheetPathDto> {
+    return this.paths.recorrido(distributorId, id);
   }
 
   @Permiso('despacho.gestionar')

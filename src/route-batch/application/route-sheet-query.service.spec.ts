@@ -407,6 +407,51 @@ describe('RouteSheetQueryService', () => {
     });
   });
 
+  it('envases a retirar: por parada (cantidad menos envases cobrados) y su suma en la hoja, con una sola consulta de pedidos', async () => {
+    const { svc, data } = armar({
+      // Totales al día: no se recalcula (la lectura es una sola pasada).
+      hojas: [hoja({ totalUnits: 2 })],
+      pedidos: [
+        pedido('o1', { collectUnits: 2 }),
+        pedido('o2', { collectUnits: 0 }),
+      ],
+    });
+    const d = await svc.detalle(DIST, 'hoja-1');
+    expect(d.stops.map((x) => [x.orderId, x.emptiesExpected])).toEqual([
+      ['o1', 2],
+      ['o2', 0],
+    ]);
+    expect(d.totals.emptiesExpected).toBe(2);
+    // Sin N+1: los pedidos de todas las paradas salen de una sola consulta.
+    expect(data.pedidos).toHaveBeenCalledTimes(1);
+    expect(data.pedidos).toHaveBeenCalledWith(DIST, ['o1', 'o2']);
+  });
+
+  it('dia: envases a retirar por hoja y en total (sólo paradas activas de las hojas vivas)', async () => {
+    const { svc } = armar({
+      hojas: [
+        hoja(),
+        hoja({ batchId: 'hoja-2', deliveryId: null, carId: null }),
+      ],
+      paradas: [
+        parada('o1', 1),
+        parada('o2', 2),
+        parada('o3', 1, { batchId: 'hoja-2' }),
+      ],
+      pedidos: [
+        pedido('o1', { collectUnits: 1 }),
+        pedido('o2', { collectUnits: 3 }),
+        pedido('o3', { collectUnits: 2 }),
+      ],
+    });
+    const d = await svc.dia(DIST, DIA);
+    expect(d.sheets.map((h) => [h.id, h.totals.emptiesExpected])).toEqual([
+      ['hoja-1', 4],
+      ['hoja-2', 2],
+    ]);
+    expect(d.emptiesExpected).toBe(6);
+  });
+
   it('dia: un borrador no ocupa al chofer ni al vehículo', async () => {
     const { svc } = armar();
     const d = await svc.dia(DIST, DIA);

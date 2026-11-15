@@ -153,9 +153,17 @@ export class ClaimsService {
     });
   }
 
-  async findAll(distributorId?: string | null): Promise<Claim[]> {
+  /**
+   * Los reclamos del panel, del más nuevo al más viejo. Con distribuidora en
+   * contexto, sólo los de ella (un `orderId` ajeno da la lista vacía).
+   */
+  async findAll(
+    distributorId?: string | null,
+    filtros: { orderId?: string } = {},
+  ): Promise<Claim[]> {
     const where: FindOptionsWhere<Claim> = {};
     if (distributorId) where.distributorId = distributorId;
+    if (filtros.orderId) where.orderId = filtros.orderId;
 
     return await this.claimRepo.find({
       where,

@@ -165,6 +165,23 @@ describe('RouteSheetExecutionQueryService', () => {
       });
     });
 
+    it('envases a retirar por parada, de una sola consulta de pedidos para todas', async () => {
+      const t = armar({ stops: stops() });
+      t.data.pedidos.mockImplementation((_d: string, ids: string[]) =>
+        Promise.resolve(
+          ids.map((id) => pedido(id, { collectUnits: id === 'o2' ? 3 : 0 })),
+        ),
+      );
+      const r = await t.svc.seguimiento(DIST, 'hoja-1');
+      expect(r.stops.map((x) => [x.orderId, x.emptiesExpected])).toEqual([
+        ['o2', 3],
+        ['o3', 0],
+        ['o1', 0],
+        ['o4', 0],
+      ]);
+      expect(t.data.pedidos).toHaveBeenCalledTimes(1);
+    });
+
     it('antes de iniciar sólo las activas y sin siguiente; sin posición fuera del seguimiento', async () => {
       const t = armar({
         sheet: hoja({ status: RouteBatchStatus.CONFIRMED }),
