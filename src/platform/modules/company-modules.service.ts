@@ -51,6 +51,7 @@ const UNIDAD_PENDIENTE: Readonly<Record<ModuloKey, string>> = {
   chat: 'conversación(es) abierta(s) con clientes o choferes',
   mercadopago: 'pedido(s) con Mercado Pago sin pagar',
   express: 'compra(s) express en curso',
+  assistant: 'conversación(es) con el asistente',
 };
 
 /** Una excepción que rige ahora (con valor y sin vencer). */

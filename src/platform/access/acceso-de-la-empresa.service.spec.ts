@@ -1,6 +1,6 @@
 import type { DataSource } from 'typeorm';
 import type { RedisService } from '../../redis/redis.service';
-import { MODULOS } from '../modules/catalogo-de-modulos';
+import { MODULOS_POR_PLAN } from '../modules/catalogo-de-modulos';
 import { RedisEnMemoria } from '../../process-run/testing/empresas-de-prueba';
 import {
   AccesoDeLaEmpresa,
@@ -130,7 +130,9 @@ describe('AccesoDeLaEmpresa (§6.1)', () => {
     empresas.A.plan_code = null;
     const v = await acceso.vigente('A');
     expect(v.nivel).toBe('full');
-    expect([...v.modulos].sort()).toEqual([...MODULOS].sort());
+    expect([...v.modulos].sort()).toEqual([...MODULOS_POR_PLAN.full].sort());
+    // Lo apagado por omisión (M8) tampoco se prende por falta de la fila.
+    expect(v.modulos.has('assistant')).toBe(false);
     expect(v.limites.maxDrivers).toBeNull();
   });
 

@@ -92,7 +92,12 @@ describe('ModulosDeLaEmpresaRepository', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it.each(MODULOS.filter((m) => m !== 'whatsapp'))(
+  it('M8 no deja nada en curso al apagarse: nada pendiente y no consulta', async () => {
+    expect(await repo.pendientes('A', 'assistant')).toBe(0);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it.each(MODULOS.filter((m) => m !== 'whatsapp' && m !== 'assistant'))(
     'lo pendiente de %s se cuenta filtrando por la empresa',
     async (modulo) => {
       query.mockResolvedValueOnce([{ n: 3 }]);

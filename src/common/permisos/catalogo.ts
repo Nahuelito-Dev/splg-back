@@ -178,6 +178,24 @@ export const CATALOGO_DE_PERMISOS = [
     ],
   },
   {
+    clave: 'asistente',
+    etiqueta: 'Asistente del chat',
+    permisos: [
+      {
+        clave: 'asistente.ver',
+        etiqueta: 'ver la base de conocimiento del asistente',
+        descripcion:
+          'Preguntas frecuentes con las que responde el asistente del chat.',
+      },
+      {
+        clave: 'asistente.gestionar',
+        etiqueta: 'gestionar la base de conocimiento del asistente',
+        descripcion:
+          'Alta, edición y baja de las preguntas frecuentes del asistente, y copia de las plantillas.',
+      },
+    ],
+  },
+  {
     clave: 'reclamos',
     etiqueta: 'Reclamos e incidencias',
     permisos: [

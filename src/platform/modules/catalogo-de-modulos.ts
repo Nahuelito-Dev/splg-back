@@ -21,6 +21,7 @@ export const MODULOS = [
   'mercadopago',
   'express',
   'chat',
+  'assistant',
 ] as const;
 
 export type ModuloKey = (typeof MODULOS)[number];
@@ -140,6 +141,13 @@ export const CATALOGO_DE_MODULOS: Readonly<
     alApagar:
       'La bandeja de mensajes con clientes y choferes deja de estar disponible; el chat con la plataforma y los tickets siguen.',
   },
+  assistant: {
+    key: 'assistant',
+    label: 'Asistente del chat',
+    llaveDeEmpresa: null,
+    alApagar:
+      'El asistente deja de responder y su base de conocimiento queda guardada pero no se puede consultar ni editar; el chat sigue con el equipo.',
+  },
 };
 
 export function esModulo(valor: string): valor is ModuloKey {
@@ -151,11 +159,22 @@ export function checkModuloConocido(columna: string): string {
   return `"${columna}" IN (${MODULOS.map((m) => `'${m}'`).join(', ')})`;
 }
 
+/**
+ * Módulos que ningún plan trae (apagados por omisión): la plataforma los
+ * habilita empresa por empresa con una excepción (`distributor_module`).
+ * El asistente del chat (M8, DISENO-CH-BOT §9 D-B3) es el primero.
+ */
+export const MODULOS_APAGADOS_POR_OMISION: readonly ModuloKey[] = ['assistant'];
+
+const EN_LOS_PLANES = MODULOS.filter(
+  (m) => !MODULOS_APAGADOS_POR_OMISION.includes(m),
+);
+
 /** Los planes sembrados (D-P1; `chat` en Completo y Prueba, D-C16): sus módulos. */
 export const MODULOS_POR_PLAN: Readonly<
   Record<'trial' | 'basic' | 'full', readonly ModuloKey[]>
 > = {
-  trial: MODULOS,
+  trial: EN_LOS_PLANES,
   basic: ['mercadopago', 'express'],
-  full: MODULOS,
+  full: EN_LOS_PLANES,
 };

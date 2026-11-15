@@ -116,6 +116,7 @@ const CARPETAS_DE_MODULOS = [
   'fleet/planner/',
   'mp-reconciliation/',
   'chat/presentation/bandeja/',
+  'assistant/',
 ];
 
 /** Qué ruta va con qué módulo. Cambiarlo es una decisión de producto (§3.5). */
@@ -200,6 +201,12 @@ const ATADAS: Record<string, string> = {
   'POST /v2/driver/maintenance-proposals/:id/reject': 'fleet_planner',
   // Cobro con Mercado Pago: abrir una conciliación nueva.
   'POST /v2/mercadopago/reconciliations': 'mercadopago',
+  // M8 asistente del chat: la base de conocimiento de la empresa.
+  'GET /v2/company/assistant/faqs': 'assistant',
+  'POST /v2/company/assistant/faqs': 'assistant',
+  'POST /v2/company/assistant/faqs/from-templates': 'assistant',
+  'PATCH /v2/company/assistant/faqs/:id': 'assistant',
+  'DELETE /v2/company/assistant/faqs/:id': 'assistant',
   // Compra express (fuera de las carpetas de módulos).
   'GET /module-config/express_dispatch': 'express',
   'PUT /module-config/express_dispatch': 'express',
@@ -296,6 +303,14 @@ const EXCEPCIONES: Record<string, string> = {
     'Con Mercado Pago apagado la conciliación queda en sólo lectura hasta conciliar lo ya cobrado',
   'POST /v2/mercadopago/reconciliations/:id/apply':
     'Conciliar lo ya cobrado sigue con Mercado Pago apagado: es plata ya movida',
+  'GET /v2/platform/assistant/faqs':
+    'La base del asistente de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'POST /v2/platform/assistant/faqs':
+    'La base del asistente de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'PATCH /v2/platform/assistant/faqs/:id':
+    'La base del asistente de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'DELETE /v2/platform/assistant/faqs/:id':
+    'La base del asistente de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
 };
 
 /** Deciden el módulo en el servicio (el proceso viene en la ruta) y documentan su 403. */

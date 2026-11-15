@@ -37,6 +37,20 @@ describe('traducirErrorDeBase', () => {
     },
   );
 
+  it('un texto más largo que su columna (22001, p. ej. emojis con selector de variación) sale como 400 en castellano', () => {
+    const llamar = () =>
+      traducirErrorDeBase(
+        {
+          code: '22001',
+          message: 'value too long for type character varying(200)',
+        },
+        logger,
+        'pregunta',
+      );
+    expect(llamar).toThrow(BadRequestException);
+    expect(llamar).toThrow(/supera el largo permitido/);
+  });
+
   it('un dato obligatorio vacío (23502) nombra el campo con su etiqueta, no con la columna', () => {
     const llamar = () =>
       traducirErrorDeBase(

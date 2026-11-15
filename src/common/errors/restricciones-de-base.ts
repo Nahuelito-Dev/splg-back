@@ -441,6 +441,32 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El motivo de fin de la sesión de soporte no es válido',
   CHK_admin_rol_de_personal:
     'Todo administrador de una distribuidora tiene que tener un rol de personal (y el super administrador, ninguno)',
+  // Asistente del chat: base de conocimiento (CH-BOT B2)
+  UQ_assistant_knowledge_base_id_distribuidora:
+    'La base de conocimiento ya existe en la empresa',
+  UQ_assistant_knowledge_base_distribuidora:
+    'La distribuidora ya tiene su base de conocimiento',
+  UQ_assistant_knowledge_base_plataforma:
+    'La plataforma ya tiene su base de conocimiento',
+  CHK_assistant_knowledge_base_version:
+    'La versión de la base de conocimiento no puede ser negativa',
+  UQ_assistant_faq_clave_vigente: 'Ya hay una pregunta frecuente con esa clave',
+  UQ_assistant_faq_pregunta_vigente:
+    'Ya hay una pregunta frecuente igual en la base',
+  CHK_assistant_faq_pregunta:
+    'La pregunta tiene que tener entre 5 y 200 caracteres',
+  CHK_assistant_faq_respuesta:
+    'La respuesta tiene que tener entre 1 y 1500 caracteres',
+  CHK_assistant_faq_posicion:
+    'La posición de la pregunta frecuente empieza en 1',
+  CHK_assistant_faq_sin_html:
+    'La pregunta y la respuesta van en texto plano, sin HTML',
+  CHK_assistant_faq_clave:
+    'La clave va en minúsculas, con números y guiones bajos',
+  CHK_assistant_faq_clave_de_plataforma:
+    'Las preguntas de la plataforma tienen que tener su clave',
+  CHK_assistant_faq_plantilla:
+    'Sólo las preguntas de la plataforma se ofrecen como plantilla',
   // Mensajería: chat con la plataforma y tickets (CH1)
   UQ_conversation_general_abierta:
     'Ya hay una conversación general abierta con esa persona (o un chat abierto con la plataforma)',

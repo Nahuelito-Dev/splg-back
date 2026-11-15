@@ -61,6 +61,10 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   displayName: 'Nombre para mostrar',
   permissions: 'Permisos',
   staffRoleId: 'Rol de personal',
+  // Asistente del chat: base de conocimiento (CH-BOT B2).
+  question: 'Pregunta',
+  answer: 'Respuesta',
+  useAsTemplate: 'Usar como plantilla',
   // Parámetros de los procesos automáticos (no son campos de un DTO).
   minOrders: 'Mínimo de pedidos',
   anticipationDays: 'Días de anticipación',
