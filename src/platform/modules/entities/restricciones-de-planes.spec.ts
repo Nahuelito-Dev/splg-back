@@ -1,5 +1,6 @@
 import type { QueryRunner } from 'typeorm';
 import { ModulosPorDistribuidora1795000000042 } from '../../../migrations/1795000000042-ModulosPorDistribuidora';
+import { CHECKS_DE_LA_BANDEJA } from '../../../migrations/1795000000100-BandejaDeLaEmpresa';
 import { checkModuloConocido } from '../catalogo-de-modulos';
 import { CHECK_FOTO_DEL_PLAN } from './distributor-subscription.entity';
 import {
@@ -48,9 +49,25 @@ describe('restricciones de planes y suscripciones (migración 042 y entidades)',
     expect(suscripcion).toContain(
       `CONSTRAINT "CHK_distributor_subscription_foto" CHECK (${CHECK_FOTO_DEL_PLAN})`,
     );
+    // La 042 fija el catálogo de entonces; la 100 lo amplía con `chat`.
     expect(excepcion).toContain(
-      `CONSTRAINT "CHK_distributor_module_clave" CHECK (${checkModuloConocido('module_key')})`,
+      `CONSTRAINT "CHK_distributor_module_clave" CHECK ("module_key" IN ('document_reading', 'route_planning', 'route_batching', 'repurchase', 'cylinder_recovery', 'fleet_planner', 'whatsapp', 'mercadopago', 'express'))`,
     );
+    const ampliados = CHECKS_DE_LA_BANDEJA.filter(([, nombre]) =>
+      nombre.endsWith('_module_clave'),
+    ).map(([tabla, nombre, nueva]) => [tabla, nombre, nueva]);
+    expect(ampliados).toEqual([
+      [
+        'distributor_module',
+        'CHK_distributor_module_clave',
+        checkModuloConocido('module_key'),
+      ],
+      [
+        'platform_plan_module',
+        'CHK_platform_plan_module_clave',
+        checkModuloConocido('module_key'),
+      ],
+    ]);
   });
 
   it('los planes sembrados traen las cuatro claves de topes', async () => {

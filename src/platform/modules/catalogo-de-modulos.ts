@@ -20,6 +20,7 @@ export const MODULOS = [
   'whatsapp',
   'mercadopago',
   'express',
+  'chat',
 ] as const;
 
 export type ModuloKey = (typeof MODULOS)[number];
@@ -132,6 +133,13 @@ export const CATALOGO_DE_MODULOS: Readonly<
     llaveDeEmpresa: { tipo: 'express' },
     alApagar: 'Deja de ofrecerse; las compras express en curso terminan.',
   },
+  chat: {
+    key: 'chat',
+    label: 'Mensajes con clientes y choferes',
+    llaveDeEmpresa: null,
+    alApagar:
+      'La bandeja de mensajes con clientes y choferes deja de estar disponible; el chat con la plataforma y los tickets siguen.',
+  },
 };
 
 export function esModulo(valor: string): valor is ModuloKey {
@@ -143,7 +151,7 @@ export function checkModuloConocido(columna: string): string {
   return `"${columna}" IN (${MODULOS.map((m) => `'${m}'`).join(', ')})`;
 }
 
-/** Los planes sembrados (D-P1): sus módulos. */
+/** Los planes sembrados (D-P1; `chat` en Completo y Prueba, D-C16): sus módulos. */
 export const MODULOS_POR_PLAN: Readonly<
   Record<'trial' | 'basic' | 'full', readonly ModuloKey[]>
 > = {

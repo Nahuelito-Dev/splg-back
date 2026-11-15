@@ -443,11 +443,11 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Todo administrador de una distribuidora tiene que tener un rol de personal (y el super administrador, ninguno)',
   // Mensajería: chat con la plataforma y tickets (CH1)
   UQ_conversation_general_abierta:
-    'La empresa ya tiene un chat abierto con la plataforma',
+    'Ya hay una conversación general abierta con esa persona (o un chat abierto con la plataforma)',
   UQ_conversation_id_distribuidora: 'La conversación ya existe en la empresa',
   CHK_conversation_canal: 'El canal de la conversación no es válido',
   CHK_conversation_ambito:
-    'El hilo de un ticket es de ese ticket y el chat es general',
+    'El hilo de un ticket es de ese ticket, el chat es general y sólo la bandeja tiene conversaciones por pedido',
   CHK_conversation_estado: 'Una conversación está abierta o cerrada',
   CHK_conversation_cierre:
     'Una conversación cerrada necesita cuándo y por qué se cerró',
@@ -455,13 +455,13 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El motivo de cierre de la conversación no es válido',
   CHK_conversation_asunto:
     'El hilo de un ticket lleva el asunto (entre 5 y 120 caracteres) y el chat no',
-  CHK_conversation_asignado: 'Sólo el chat con la plataforma se asigna',
+  CHK_conversation_asignado:
+    'Sólo el chat con la plataforma y las conversaciones de la bandeja se asignan',
   CHK_conversation_secuencia: 'El número de mensajes no puede ser negativo',
-  CHK_conversation_partes:
-    'La conversación tiene que tener a la plataforma y a la empresa',
+  CHK_conversation_partes: 'La conversación no tiene las partes de su canal',
   CHK_conversation_party_parte: 'La parte de la conversación no es válida',
   CHK_conversation_party_equipo_sin_usuario:
-    'Los equipos de una conversación no llevan una persona',
+    'Los equipos de una conversación no llevan una persona; el cliente y el chofer, sí',
   CHK_conversation_party_lecturas: 'La lectura no puede ser negativa',
   UQ_message_id_distribuidora: 'El mensaje ya existe en la empresa',
   UQ_message_conversation_seq:
@@ -479,9 +479,39 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_message_cita: 'La cita del chat está incompleta',
   CHK_message_payload_texto: 'Un mensaje de texto no lleva datos adjuntos',
   CHK_message_inmutable:
-    'Un mensaje no se edita ni se borra: sólo se redacta o se da de baja',
+    'Un mensaje no se edita ni se borra: sólo su autor lo edita o lo retira en la bandeja; si no, se redacta o se da de baja',
   CHK_message_canal:
-    'Las notas internas y las citas sólo van en el hilo de un ticket',
+    'Ese mensaje no va en este canal (notas internas y citas, sólo en un ticket; responder a un mensaje, sólo en la bandeja)',
+  // Mensajería: bandeja de la empresa (CH3)
+  UQ_conversation_pedido_abierta:
+    'Ya hay una conversación abierta por ese pedido (con ese chofer)',
+  CHK_message_respuesta_vista:
+    'La vista previa de la cita va sólo en una respuesta a otro mensaje',
+  CHK_conversation_pedido:
+    'Una conversación por pedido lleva el pedido; una general, no',
+  CHK_conversation_personas:
+    'Una conversación con un cliente lleva al cliente y una con un chofer, al chofer',
+  CHK_conversation_reclamo:
+    'Sólo una conversación con un cliente tiene un reclamo vinculado',
+  CHK_conversation_personas_de_la_empresa:
+    'El cliente, el chofer y quien atiende tienen que ser de la empresa de la conversación',
+  CHK_message_respuesta:
+    'Se responde a un mensaje anterior de la misma conversación',
+  CHK_message_editado: 'Sólo se edita un mensaje de texto de una persona',
+  CHK_message_retirado: 'Sólo el cliente retira su propio mensaje de texto',
+  CHK_message_edit_texto:
+    'El texto anterior tiene que tener entre 1 y 2000 caracteres',
+  CHK_message_edit_inmutable:
+    'El historial de ediciones no se edita ni se borra: sólo se redacta',
+  CHK_message_template_canal:
+    'El canal de una respuesta guardada es el de los clientes o el de los choferes',
+  CHK_chat_company_settings_horario:
+    'El horario y los días sin atención tienen que ser listas',
+  CHK_chat_company_settings_textos:
+    'Las respuestas automáticas tienen que tener entre 1 y 500 caracteres',
+  CHK_chat_company_settings_objetivo:
+    'El objetivo de primera respuesta va de 5 a 1440 minutos',
+  UQ_claims_id_distribuidora: 'El reclamo ya existe en la empresa',
   UQ_support_ticket_id_distribuidora: 'El ticket ya existe en la empresa',
   UQ_support_ticket_conversation: 'Ese hilo ya es de otro ticket',
   UQ_support_ticket_number: 'Ese número de ticket ya se usó',
@@ -504,7 +534,7 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   UQ_message_template_clave_vigente:
     'Ya hay una respuesta guardada con esa clave',
   CHK_message_template_alcance:
-    'Las respuestas guardadas de esta etapa son sólo de la plataforma',
+    'Una respuesta guardada es de la plataforma o, si es rápida de una empresa, de esa empresa',
   CHK_message_template_clave:
     'La clave va en minúsculas, con números y guiones bajos',
   CHK_message_template_titulo:

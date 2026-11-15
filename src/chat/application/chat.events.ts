@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { errorMessage } from '../../common/errors/error-message';
-import type { Party } from '../domain/chat.enums';
+import type { Channel, PartyQueHabla } from '../domain/chat.enums';
 import type { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
 import type { SupportTicket } from '../entities/support-ticket.entity';
@@ -11,6 +11,8 @@ export const EVENTO_MENSAJE_CREADO = 'chat.mensaje.creado';
 export const EVENTO_CONVERSACION_CAMBIO = 'chat.conversacion.cambio';
 export const EVENTO_LECTURA = 'chat.lectura';
 export const EVENTO_TICKET = 'chat.ticket';
+export const EVENTO_MENSAJE_EDITADO = 'chat.mensaje.editado';
+export const EVENTO_MENSAJE_BORRADO = 'chat.mensaje.borrado';
 
 export type CambioDeConversacion =
   | 'created'
@@ -32,7 +34,8 @@ export interface ConversacionCambiada {
 export interface LecturaRegistrada {
   conversationId: string;
   distributorId: string;
-  party: Party.COMPANY | Party.PLATFORM;
+  channel: Channel;
+  party: PartyQueHabla;
   lastReadSeq: number;
   /** Quién leyó: sus otras pestañas apagan el contador. */
   userId: string;
@@ -40,6 +43,12 @@ export interface LecturaRegistrada {
   personal: boolean;
   /** Subió la de su punta (lo que la otra ve como «leído»). */
   deLaParte: boolean;
+}
+
+/** Un mensaje propio editado (D-C22): la otra punta lo actualiza en vivo. */
+export interface MensajeEditado {
+  conversation: Conversation;
+  message: Message;
 }
 
 export interface TicketCambiado {
@@ -56,6 +65,8 @@ export class Efectos {
   readonly mensajes: MensajeCreado[] = [];
   readonly conversaciones: ConversacionCambiada[] = [];
   readonly tickets: TicketCambiado[] = [];
+  readonly ediciones: MensajeEditado[] = [];
+  readonly borrados: MensajeEditado[] = [];
 
   mensaje(conversation: Conversation, message: Message): this {
     this.mensajes.push({ conversation, message });
@@ -64,6 +75,17 @@ export class Efectos {
 
   conversacion(conversation: Conversation, change: CambioDeConversacion): this {
     this.conversaciones.push({ conversation, change });
+    return this;
+  }
+
+  edicion(conversation: Conversation, message: Message): this {
+    this.ediciones.push({ conversation, message });
+    return this;
+  }
+
+  /** Un mensaje que su autor borró (D-C23): las dos puntas lo muestran borrado. */
+  borrado(conversation: Conversation, message: Message): this {
+    this.borrados.push({ conversation, message });
     return this;
   }
 
@@ -86,6 +108,8 @@ export class ChatEvents {
     }
     for (const m of efectos.mensajes) this.emitir(EVENTO_MENSAJE_CREADO, m);
     for (const t of efectos.tickets) this.emitir(EVENTO_TICKET, t);
+    for (const e of efectos.ediciones) this.emitir(EVENTO_MENSAJE_EDITADO, e);
+    for (const b of efectos.borrados) this.emitir(EVENTO_MENSAJE_BORRADO, b);
   }
 
   lectura(evento: LecturaRegistrada): void {

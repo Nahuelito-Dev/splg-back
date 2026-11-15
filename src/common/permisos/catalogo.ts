@@ -194,6 +194,30 @@ export const CATALOGO_DE_PERMISOS = [
     ],
   },
   {
+    clave: 'mensajes',
+    etiqueta: 'Mensajes',
+    permisos: [
+      {
+        clave: 'mensajes.clientes',
+        etiqueta: 'atender los mensajes de los clientes',
+        descripcion:
+          'Ver la cola y las conversaciones con los clientes, tomarlas, asignarlas, responder, cerrarlas y crear reclamos desde el hilo.',
+      },
+      {
+        clave: 'mensajes.choferes',
+        etiqueta: 'atender los mensajes de los choferes',
+        descripcion:
+          'Ver la cola y las conversaciones con los choferes, tomarlas, asignarlas, responder, cerrarlas y mandar un mensaje a varios choferes.',
+      },
+      {
+        clave: 'mensajes.configurar',
+        etiqueta: 'configurar los mensajes',
+        descripcion:
+          'Horario de atención, respuestas automáticas y respuestas rápidas de la empresa.',
+      },
+    ],
+  },
+  {
     clave: 'auditoria',
     etiqueta: 'Auditoría y reportes',
     permisos: [

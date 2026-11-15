@@ -24,6 +24,12 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'status:waiting_company': 'Esperando a la empresa',
   'scope:platform_reply': 'Respuesta rápida del soporte',
   'scope:auto_reply': 'Respuesta automática',
+  // Bandeja de la empresa (CH3).
+  'scope:staff_reply': 'Respuesta rápida de la empresa',
+  'channel:staff_customer': 'Con clientes',
+  'channel:staff_driver': 'Con choferes',
+  'subjectType:general': 'General',
+  'subjectType:order': 'Por un pedido',
   'visibility:all': 'Visible para la empresa',
   'visibility:internal': 'Nota interna',
   // El estado de la documentación se nombra en un solo lugar: el dominio.

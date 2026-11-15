@@ -62,6 +62,9 @@ import { crearValidationPipe } from '../../../src/common/validation/validation-p
 import { sentenciasDeRolesDelPersonal } from '../../../src/migrations/sql/roles-del-personal';
 import { sentenciasDeSoporte } from '../../../src/migrations/sql/sesiones-de-soporte';
 import { sentenciasDeMensajeria } from '../../../src/migrations/sql/mensajeria';
+import { sentenciasDeLaBandeja } from '../../../src/migrations/sql/bandeja-de-la-empresa';
+import { sentenciasDeMensajesRetirados } from '../../../src/migrations/sql/mensajes-retirados';
+import { sentenciasDelPedidoPorChofer } from '../../../src/migrations/sql/conversacion-del-chofer-por-pedido';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
  * devuelva algo que `supertest` acepta sin pasar por `any`. */
@@ -326,6 +329,9 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     // Mensajería (CH1): únicos parciales, secuencia de tickets, partes,
     // mensajes inmutables, canales y transiciones del ticket.
     ...sentenciasDeMensajeria(),
+    ...sentenciasDeLaBandeja(),
+    ...sentenciasDeMensajesRetirados(),
+    ...sentenciasDelPedidoPorChofer(),
   ]) {
     await dataSource.query(sql);
   }

@@ -1,3 +1,8 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  type ChoferDelPedidoCambiado,
+  EVENTO_CHOFER_DEL_PEDIDO_CAMBIADO,
+} from './domain/events/chofer-del-pedido-cambiado.event';
 import { esperaPagoOnline, mensajeDeEspera } from './domain/espera-pago-online';
 import { OrderItem } from './entities/order-item.entity';
 import { TruckLoadGatePort } from './domain/ports/truck-load-gate.port';
@@ -9,6 +14,7 @@ import {
   ConflictException,
   ForbiddenException,
   GoneException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -145,6 +151,9 @@ export class OrderService {
     private readonly dispatchSettings: DispatchSettingsService,
     // «Llegué» v2: marca de aviso ya enviado (un segundo toque no re-notifica).
     private readonly redis: RedisService,
+    // Reasignar avisa a la mensajería (cierra la conversación del pedido con
+    // el chofer anterior).
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   /**
@@ -1037,6 +1046,13 @@ export class OrderService {
       // `user_id`, nunca por `deliveryId`: son ids distintos — ver
       // `DriversGateway.handleDriverJoin`).
       if (previousDriverUserId && previousDriverUserId !== delivery.userId) {
+        const cambio: ChoferDelPedidoCambiado = {
+          orderId: order.orderId,
+          distributorId: order.distributorId,
+          anterior: previousDriverUserId,
+          nuevo: delivery.userId,
+        };
+        this.events?.emit(EVENTO_CHOFER_DEL_PEDIDO_CAMBIADO, cambio);
         this.dispatch.stopTracking(previousDriverUserId);
         this.dispatch.notifyDriverOrderCancelled(previousDriverUserId, {
           orderId: order.orderId,

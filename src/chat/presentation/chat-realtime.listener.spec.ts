@@ -211,6 +211,7 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
     await listener.lectura({
       conversationId: 'chat-1',
       distributorId: 'dist-a',
+      channel: Channel.PLATFORM_CHAT,
       party: Party.COMPANY,
       lastReadSeq: 7,
       userId: 'admin-a',
@@ -230,6 +231,7 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
     await listener.lectura({
       conversationId: 'chat-1',
       distributorId: 'dist-a',
+      channel: Channel.PLATFORM_CHAT,
       party: Party.COMPANY,
       lastReadSeq: 7,
       userId: 'admin-a',

@@ -8,9 +8,18 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import type { Namespace } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SocketIdentityService } from './socket-identity.service';
 import { salaDeUsuario, type SocketDeSplg } from './socket-data';
+import { ParticipacionEnConversaciones } from './participacion-en-conversaciones.service';
+import {
+  pedirEscribiendo,
+  type RespuestaDeSalaDeLaApp,
+  salaDeConversacionDeLaApp,
+  salirDeLaConversacion,
+  unirseALaConversacion,
+} from './salas-de-las-apps';
 
 @WebSocketGateway({
   namespace: 'customers',
@@ -22,7 +31,11 @@ export class CustomersGateway
   server!: Namespace;
   private readonly logger = new Logger('CustomersGateway');
 
-  constructor(private readonly identidades: SocketIdentityService) {}
+  constructor(
+    private readonly identidades: SocketIdentityService,
+    @Optional() private readonly participacion?: ParticipacionEnConversaciones,
+    @Optional() private readonly events?: EventEmitter2,
+  ) {}
 
   async handleConnection(client: SocketDeSplg): Promise<void> {
     const identidad = await this.identidades.identificar(client);
@@ -67,6 +80,69 @@ export class CustomersGateway
     client.emit('server:ack', {
       message: 'Conectado a actualizaciones de pedidos',
     });
+  }
+
+  /**
+   * Entrar a la sala de una conversación propia con la empresa (C3, D-C28):
+   * el servidor valida contra la base que sea del cliente. Si no, el ack es
+   * `CHAT_JOIN_DENIED` sin decir si existe.
+   */
+  @SubscribeMessage('chat:join')
+  async handleChatJoin(
+    @MessageBody() cuerpo: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
+  ): Promise<RespuestaDeSalaDeLaApp> {
+    const identidad = await this.identidades.obtener(client);
+    if (!identidad) {
+      return {
+        ok: false,
+        code: 'CHAT_JOIN_DENIED',
+        message: 'No existe esa conversación',
+      };
+    }
+    return unirseALaConversacion(
+      client,
+      cuerpo,
+      identidad.userId,
+      'customer',
+      this.participacion,
+      this.logger,
+    );
+  }
+
+  @SubscribeMessage('chat:leave')
+  handleChatLeave(
+    @MessageBody() cuerpo: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
+  ): Promise<RespuestaDeSalaDeLaApp> {
+    return salirDeLaConversacion(client, cuerpo, 'customer');
+  }
+
+  /** «Escribiendo…» del cliente: sólo desde una conversación en la que entró. */
+  @SubscribeMessage('chat:typing')
+  async handleChatTyping(
+    @MessageBody() cuerpo: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
+  ): Promise<void> {
+    const identidad = await this.identidades.obtener(client);
+    if (!identidad) return;
+    pedirEscribiendo(client, cuerpo, identidad.userId, 'customer', this.events);
+  }
+
+  /** Un evento del chat a la sala de una conversación del cliente. */
+  emitirAConversacion(
+    conversationId: string,
+    event: string,
+    payload: unknown,
+  ): void {
+    this.server
+      .to(salaDeConversacionDeLaApp(conversationId, 'customer'))
+      .emit(event, payload);
+  }
+
+  /** Un aviso a todas las conexiones de la app de esa persona. */
+  emitirAUsuario(userId: string, event: string, payload: unknown): void {
+    this.server.to(salaDeUsuario(userId)).emit(event, payload);
   }
 
   // Método para enviar alertas al cliente

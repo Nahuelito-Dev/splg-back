@@ -39,6 +39,7 @@ const PENDIENTES: Readonly<Record<ModuloKey, string | null>> = {
   express: `SELECT count(*)::int AS n FROM "order" WHERE "distributor_id" = $1 AND "delivery_mode" = 'express' AND "status" IN ('pending', 'accepted', 'on_the_way')`,
   // M7 todavía no tiene código: no hay conversaciones que contar.
   whatsapp: null,
+  chat: `SELECT count(*)::int AS n FROM "conversation" WHERE "distributor_id" = $1 AND "channel" IN ('staff_customer', 'staff_driver') AND "status" = 'open' AND "deleted_at" IS NULL`,
 };
 
 /** Lecturas y escrituras de la plataforma sobre los módulos de una empresa. */

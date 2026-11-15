@@ -3,7 +3,9 @@ import type { EntityManager } from 'typeorm';
 import {
   Channel,
   ConversationStatus,
+  esCanalDeLaBandeja,
   Party,
+  type PartyQueHabla,
   SubjectType,
 } from '../domain/chat.enums';
 import { ConversationParty } from '../entities/conversation-party.entity';
@@ -15,14 +17,43 @@ export interface NuevaConversacion {
   /** Asunto del ticket (sólo en su hilo). */
   subject: string | null;
   createdByUserId: string | null;
-  /** Quién de la plataforma la atiende (sólo el chat). */
+  /** Quién la atiende (el chat con la plataforma y la bandeja). */
   assignedToUserId?: string | null;
+  /** Bandeja: general o por pedido (con `orderId`). Por omisión, general. */
+  subjectType?: SubjectType.GENERAL | SubjectType.ORDER;
+  orderId?: string | null;
+  /** La persona de la bandeja: el cliente (C3) o el chofer (C2). */
+  customerUserId?: string | null;
+  driverUserId?: string | null;
+}
+
+/** Las partes de cada canal: los dos equipos en C1; la empresa y la persona en la bandeja. */
+function partesDe(
+  nueva: NuevaConversacion,
+): Array<{ party: PartyQueHabla; userId: string | null }> {
+  switch (nueva.channel) {
+    case Channel.STAFF_CUSTOMER:
+      return [
+        { party: Party.COMPANY, userId: null },
+        { party: Party.CUSTOMER, userId: nueva.customerUserId ?? null },
+      ];
+    case Channel.STAFF_DRIVER:
+      return [
+        { party: Party.COMPANY, userId: null },
+        { party: Party.DRIVER, userId: nueva.driverUserId ?? null },
+      ];
+    default:
+      return [
+        { party: Party.PLATFORM, userId: null },
+        { party: Party.COMPANY, userId: null },
+      ];
+  }
 }
 
 /**
  * Crea una conversación con sus partes, dentro de la transacción de quien
- * llama. En C1 las partes son siempre los dos equipos (la base lo controla al
- * confirmar con `TRG_conversation_partes`).
+ * llama. En C1 las partes son los dos equipos; en la bandeja, la empresa y la
+ * persona (la base lo controla al confirmar con `TRG_conversation_partes`).
  */
 @Injectable()
 export class ConversationFactory {
@@ -38,11 +69,16 @@ export class ConversationFactory {
         subjectType:
           nueva.channel === Channel.PLATFORM_TICKET
             ? SubjectType.TICKET
-            : SubjectType.GENERAL,
+            : (nueva.subjectType ?? SubjectType.GENERAL),
         status: ConversationStatus.OPEN,
         subject: nueva.subject,
+        orderId: nueva.orderId ?? null,
+        customerUserId: nueva.customerUserId ?? null,
+        driverUserId: nueva.driverUserId ?? null,
+        linkedClaimId: null,
         assignedToUserId:
-          nueva.channel === Channel.PLATFORM_CHAT
+          nueva.channel === Channel.PLATFORM_CHAT ||
+          esCanalDeLaBandeja(nueva.channel)
             ? (nueva.assignedToUserId ?? null)
             : null,
         lastMessageSeq: 0,
@@ -57,12 +93,12 @@ export class ConversationFactory {
     );
     const partes = manager.getRepository(ConversationParty);
     await partes.save(
-      [Party.PLATFORM, Party.COMPANY].map((party) =>
+      partesDe(nueva).map(({ party, userId }) =>
         partes.create({
           conversationId: conversacion.conversationId,
-          party: party as Party.PLATFORM | Party.COMPANY,
+          party,
           distributorId: nueva.distributorId,
-          userId: null,
+          userId,
           lastReadSeq: 0,
           lastDeliveredSeq: 0,
           mutedUntil: null,

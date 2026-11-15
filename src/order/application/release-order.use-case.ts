@@ -1,7 +1,13 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  type ChoferDelPedidoCambiado,
+  EVENTO_CHOFER_DEL_PEDIDO_CAMBIADO,
+} from '../domain/events/chofer-del-pedido-cambiado.event';
 import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
@@ -37,6 +43,8 @@ export class ReleaseOrderUseCase {
     private readonly dataSource: DataSource,
     private readonly dispatch: RealtimeDispatchPort,
     private readonly dispatchOrchestrator: DispatchOrchestratorService,
+    // La mensajería cierra la conversación del pedido con el chofer anterior.
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   /**
@@ -171,6 +179,13 @@ export class ReleaseOrderUseCase {
     previousDriverUserId: string | null,
   ): Promise<void> {
     if (previousDriverUserId) {
+      const cambio: ChoferDelPedidoCambiado = {
+        orderId: order.orderId,
+        distributorId: order.distributorId,
+        anterior: previousDriverUserId,
+        nuevo: null,
+      };
+      this.events?.emit(EVENTO_CHOFER_DEL_PEDIDO_CAMBIADO, cambio);
       this.dispatch.stopTracking(previousDriverUserId);
       await this.dispatchOrchestrator
         .releaseOffer(order.orderId, previousDriverUserId)

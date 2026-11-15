@@ -48,6 +48,7 @@ const UNIDAD_PENDIENTE: Readonly<Record<ModuloKey, string>> = {
   cylinder_recovery: 'oferta(s) de retiro vigente(s)',
   fleet_planner: 'caso(s) de taller abierto(s)',
   whatsapp: 'conversación(es) abierta(s)',
+  chat: 'conversación(es) abierta(s) con clientes o choferes',
   mercadopago: 'pedido(s) con Mercado Pago sin pagar',
   express: 'compra(s) express en curso',
 };

@@ -69,6 +69,18 @@ class BaseEnMemoria extends MensajesRepositorio {
     return { ...c };
   }
 
+  mensajePorSeq(
+    _m: EntityManager,
+    conversationId: string,
+    seq: number,
+  ): Promise<Message | null> {
+    return Promise.resolve(
+      this.mensajes.find(
+        (m) => m.conversationId === conversationId && m.seq === seq,
+      ) ?? null,
+    );
+  }
+
   async buscarPorClientId(
     _m: EntityManager,
     conversationId: string,

@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
-import { MessageVisibility, Party } from '../domain/chat.enums';
+import {
+  MessageVisibility,
+  Party,
+  type PartyQueHabla,
+} from '../domain/chat.enums';
 import { numeroDeTicket } from '../domain/support-ticket.machine';
 import { Message } from '../entities/message.entity';
 import { SupportTicket } from '../entities/support-ticket.entity';
@@ -25,6 +29,12 @@ export function condicionDeNoLeido(parametroDeLaPunta: string): string {
 /** Quién mira: su punta y su usuario (la lectura es por persona). */
 export interface Observador {
   party: Party.COMPANY | Party.PLATFORM;
+  userId: string;
+}
+
+/** Quién lee un hilo: cualquier punta que habla (también el cliente y el chofer de la bandeja). */
+export interface Lector {
+  party: PartyQueHabla;
   userId: string;
 }
 
