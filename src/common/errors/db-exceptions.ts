@@ -36,6 +36,9 @@ const CODIGOS = {
   // `\u0000` entre ellos) o escape Unicode no soportado (NUL en jsonb).
   TEXTO_INVALIDO: '22021',
   ESCAPE_UNICODE_NO_SOPORTADO: '22P05',
+  // Texto más largo que la columna (`varchar(n)`): Postgres cuenta caracteres
+  // (puntos de código), y un emoji con selector de variación («✔️») son dos.
+  TEXTO_DEMASIADO_LARGO: '22001',
   VALOR_FUERA_DE_RANGO: '22003',
   EXCLUSION_VIOLADA: '23P01',
   DEADLOCK: '40P01',
@@ -151,6 +154,10 @@ export function traducirErrorDeBase(
       logger.warn(`Texto con caracteres no válidos${donde}: ${e.message}`);
       throw new BadRequestException(MENSAJE_TEXTO_INVALIDO);
 
+    case CODIGOS.TEXTO_DEMASIADO_LARGO:
+      logger.warn(`Texto más largo que la columna${donde}: ${e.message}`);
+      throw new BadRequestException(MENSAJE_TEXTO_DEMASIADO_LARGO);
+
     case CODIGOS.VALOR_FUERA_DE_RANGO:
       logger.warn(`Valor numérico fuera de rango${donde}: ${e.message}`);
       throw new BadRequestException(
@@ -186,6 +193,9 @@ export function traducirErrorDeBase(
 
 export const MENSAJE_TEXTO_INVALIDO =
   'Alguno de los textos enviados tiene caracteres no válidos (por ejemplo el carácter nulo)';
+
+export const MENSAJE_TEXTO_DEMASIADO_LARGO =
+  'Alguno de los textos enviados supera el largo permitido (los emojis pueden contar como más de un carácter)';
 
 export const MENSAJE_SISTEMA_OCUPADO =
   'El sistema está ocupado, reintentá en unos segundos';
@@ -252,6 +262,15 @@ export function esTextoInvalidoDeBase(error: unknown): boolean {
     code === CODIGOS.TEXTO_INVALIDO ||
     code === CODIGOS.ESCAPE_UNICODE_NO_SOPORTADO
   );
+}
+
+/**
+ * `true` si la base rechazó un texto por ser más largo que su columna (22001):
+ * es un dato inválido del cliente (p. ej. emojis que el validador contó de
+ * menos), no una falla del servidor.
+ */
+export function esTextoDemasiadoLargoDeBase(error: unknown): boolean {
+  return codigoSqlDelError(error) === CODIGOS.TEXTO_DEMASIADO_LARGO;
 }
 
 /** SQLSTATE del error, esté en el error o en el `driverError` de TypeORM. */

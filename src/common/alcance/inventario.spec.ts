@@ -99,6 +99,11 @@ function inventario(): Ruta[] {
  * sólo marcado a mano con `@Alcance(...)` o con `@Auth(RoleType.SUPER_ADMIN)`.
  */
 const PLATAFORMA = [
+  // Base de conocimiento del asistente de OrixTech (CH-BOT B2).
+  'GET /v2/platform/assistant/faqs',
+  'POST /v2/platform/assistant/faqs',
+  'PATCH /v2/platform/assistant/faqs/:id',
+  'DELETE /v2/platform/assistant/faqs/:id',
   'DELETE /distributor/:id',
   'DELETE /role/:id',
   'DELETE /v2/support-sessions/:id',

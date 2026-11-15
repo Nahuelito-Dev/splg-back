@@ -6,7 +6,7 @@ import { DistributorStatus } from '../../distributor/entities/distributor.entity
 import type { ExpressSettingsService } from '../../distributor/express-settings.service';
 import type { ProcessConfigService } from '../../distributor/process-config.service';
 import type { AccesoDeLaEmpresa } from '../access/acceso-de-la-empresa.service';
-import { MODULOS } from './catalogo-de-modulos';
+import { MODULOS, MODULOS_POR_PLAN } from './catalogo-de-modulos';
 import { CompanyModulesService } from './company-modules.service';
 import type {
   ExcepcionDeModulo,
@@ -32,7 +32,7 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
       A: { distributorId: 'A', status: DistributorStatus.ACTIVE },
       B: { distributorId: 'B', status: DistributorStatus.ACTIVE },
     };
-    fotos = { A: [...MODULOS], B: [...MODULOS] };
+    fotos = { A: [...MODULOS_POR_PLAN.full], B: [...MODULOS_POR_PLAN.full] };
     excepciones = { A: [], B: [] };
     llaves = {};
     express = {};
@@ -134,10 +134,12 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
       });
     });
 
-    it('sin suscripción rige el plan completo', async () => {
+    it('sin suscripción rige el plan completo (que no trae lo apagado por omisión)', async () => {
       fotos.A = null;
       const lista = await service.deLaPlataforma('A');
-      expect(lista.every((m) => m.inPlan)).toBe(true);
+      expect(lista.filter((m) => !m.inPlan).map((m) => m.key)).toEqual([
+        'assistant',
+      ]);
     });
 
     it('una excepción vencida no rige y una nula vuelve a lo del plan', async () => {
@@ -394,6 +396,19 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
         modules: [],
         access: 'blocked',
       });
+    });
+
+    it('el asistente del chat (M8) no está por omisión: entra con una excepción de la plataforma', async () => {
+      expect((await service.features('A')).modules).not.toContain('assistant');
+      excepciones.A = [
+        {
+          moduleKey: 'assistant',
+          enabled: true,
+          reason: 'Prueba del asistente',
+          expiresAt: null,
+        },
+      ];
+      expect((await service.features('A')).modules).toContain('assistant');
     });
 
     it('features públicas: por slug; una suspendida no toma pedidos y no lista módulos', async () => {

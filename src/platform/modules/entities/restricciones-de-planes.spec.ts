@@ -1,7 +1,8 @@
 import type { QueryRunner } from 'typeorm';
 import { ModulosPorDistribuidora1795000000042 } from '../../../migrations/1795000000042-ModulosPorDistribuidora';
 import { CHECKS_DE_LA_BANDEJA } from '../../../migrations/1795000000100-BandejaDeLaEmpresa';
-import { checkModuloConocido } from '../catalogo-de-modulos';
+import { BaseDeConocimientoDelAsistente1795000000110 } from '../../../migrations/1795000000110-BaseDeConocimientoDelAsistente';
+import { checkModuloConocido, MODULOS } from '../catalogo-de-modulos';
 import { CHECK_FOTO_DEL_PLAN } from './distributor-subscription.entity';
 import {
   CHECK_LIMITES_DEL_PLAN,
@@ -68,6 +69,37 @@ describe('restricciones de planes y suscripciones (migración 042 y entidades)',
         checkModuloConocido('module_key'),
       ],
     ]);
+  });
+
+  it('la migración del asistente (110) deja los CHECK de clave de módulo igual que el catálogo, y su down los vuelve atrás', async () => {
+    const corridas: string[] = [];
+    const runner = {
+      query: (sql: string) => {
+        corridas.push(sql);
+        return Promise.resolve([{ id: 'base-plataforma' }]);
+      },
+    } as unknown as QueryRunner;
+    const migracion = new BaseDeConocimientoDelAsistente1795000000110();
+    await migracion.up(runner);
+    for (const [tabla, restriccion] of [
+      ['distributor_module', 'CHK_distributor_module_clave'],
+      ['platform_plan_module', 'CHK_platform_plan_module_clave'],
+    ]) {
+      expect(corridas).toContain(
+        `ALTER TABLE "${tabla}" ADD CONSTRAINT "${restriccion}" CHECK (${checkModuloConocido('module_key')})`,
+      );
+    }
+    corridas.length = 0;
+    await migracion.down(runner);
+    expect(corridas.at(-1)).toBe(
+      `ALTER TABLE "platform_plan_module" ADD CONSTRAINT "CHK_platform_plan_module_clave" CHECK ("module_key" IN (${MODULOS.filter(
+        (m) => m !== 'assistant',
+      )
+        .map((m) => `'${m}'`)
+        .join(', ')}))`,
+    );
+    expect(corridas).toContain('DROP TABLE "assistant_faq"');
+    expect(corridas).toContain('DROP TABLE "assistant_knowledge_base"');
   });
 
   it('los planes sembrados traen las cuatro claves de topes', async () => {

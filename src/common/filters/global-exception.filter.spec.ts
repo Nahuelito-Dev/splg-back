@@ -104,6 +104,26 @@ describe('GlobalExceptionFilter — mapeo de errores de dominio (P2-9)', () => {
     },
   );
 
+  it('un texto más largo que su columna (22001) responde 400 en castellano y no 500', () => {
+    filter.catch(
+      Object.assign(
+        new Error('value too long for type character varying(200)'),
+        { driverError: { code: '22001' } },
+      ),
+      host,
+    );
+
+    expect(applicationRef.reply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        statusCode: 400,
+        message:
+          'Alguno de los textos enviados supera el largo permitido (los emojis pueden contar como más de un carácter)',
+      }),
+      400,
+    );
+  });
+
   it.each(['22021', '22P05'])(
     'un texto que la base no puede guardar (%s, p. ej. NUL) responde 400 en castellano',
     (code) => {

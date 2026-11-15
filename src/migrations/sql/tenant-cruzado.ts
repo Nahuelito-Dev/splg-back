@@ -48,6 +48,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   mp_reconciliation: 'reconciliation_id',
   staff_role: 'staff_role_id',
   claims: 'claim_id',
+  assistant_knowledge_base: 'knowledge_base_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -160,6 +161,9 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['conversation', 'order_id', 'order'],
     ['conversation', 'linked_claim_id', 'claims'],
     ['message_edit', 'message_id', 'message'],
+    // Asistente del chat: base de conocimiento (CH-BOT B2). Las de la
+    // plataforma (`distributor_id` nulo) las cubre la FK simple a la base.
+    ['assistant_faq', 'knowledge_base_id', 'assistant_knowledge_base'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

@@ -40,6 +40,8 @@ const PENDIENTES: Readonly<Record<ModuloKey, string | null>> = {
   // M7 todavía no tiene código: no hay conversaciones que contar.
   whatsapp: null,
   chat: `SELECT count(*)::int AS n FROM "conversation" WHERE "distributor_id" = $1 AND "channel" IN ('staff_customer', 'staff_driver') AND "status" = 'open' AND "deleted_at" IS NULL`,
+  // M8: el asistente no deja nada en curso (responde y listo; B3 todavía no existe).
+  assistant: null,
 };
 
 /** Lecturas y escrituras de la plataforma sobre los módulos de una empresa. */

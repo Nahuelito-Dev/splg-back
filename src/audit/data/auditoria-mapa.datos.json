@@ -50,6 +50,38 @@
       "orderColumn": null
     },
     {
+      "table": "assistant_faq",
+      "entity": "AssistantFaq",
+      "pk": [
+        "faq_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_knowledge_base",
+      "entity": "AssistantKnowledgeBase",
+      "pk": [
+        "knowledge_base_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "attachment",
       "entity": "Attachment",
       "pk": [
@@ -1767,6 +1799,126 @@
       "secret": false,
       "kind": "timestamp",
       "position": 2
+    },
+    {
+      "table": "assistant_faq",
+      "column": "faq_id",
+      "property": "faqId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_faq",
+      "column": "knowledge_base_id",
+      "property": "knowledgeBaseId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_faq",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_faq",
+      "column": "key",
+      "property": "key",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_faq",
+      "column": "question",
+      "property": "question",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_faq",
+      "column": "answer",
+      "property": "answer",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_faq",
+      "column": "position",
+      "property": "position",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_faq",
+      "column": "use_as_template",
+      "property": "useAsTemplate",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "assistant_faq",
+      "column": "created_by",
+      "property": "createdBy",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "assistant_faq",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "assistant_faq",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 10
+    },
+    {
+      "table": "assistant_knowledge_base",
+      "column": "knowledge_base_id",
+      "property": "knowledgeBaseId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_knowledge_base",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_knowledge_base",
+      "column": "version",
+      "property": "version",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_knowledge_base",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 3
     },
     {
       "table": "attachment",

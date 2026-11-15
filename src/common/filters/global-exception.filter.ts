@@ -21,7 +21,9 @@ import { soloLecturaDeSoporte } from '../errors/soporte';
 import {
   codigoSqlDelError,
   MENSAJE_SISTEMA_OCUPADO,
+  MENSAJE_TEXTO_DEMASIADO_LARGO,
   MENSAJE_TEXTO_INVALIDO,
+  esTextoDemasiadoLargoDeBase,
   esTextoInvalidoDeBase,
   esTimeoutDeBase,
   traducirRestriccionConocida,
@@ -151,6 +153,16 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         `Texto con caracteres no válidos: ${exception instanceof Error ? exception.message : 'sin mensaje'}`,
       );
       return new BadRequestException(MENSAJE_TEXTO_INVALIDO);
+    }
+    // Un texto más largo que su columna (22001): dato inválido del cliente.
+    if (
+      !(exception instanceof HttpException) &&
+      esTextoDemasiadoLargoDeBase(exception)
+    ) {
+      this.logger.warn(
+        `Texto más largo que la columna: ${exception instanceof Error ? exception.message : 'sin mensaje'}`,
+      );
+      return new BadRequestException(MENSAJE_TEXTO_DEMASIADO_LARGO);
     }
     // Una regla de la base (CHECK, único, exclusión) que ningún servicio
     // alcanzó a traducir: 400/409 con el motivo en castellano.

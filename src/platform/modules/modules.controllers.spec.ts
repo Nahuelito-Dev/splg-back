@@ -8,6 +8,7 @@ import {
   checkModuloConocido,
   esModulo,
   MODULOS,
+  MODULOS_APAGADOS_POR_OMISION,
   MODULOS_POR_PLAN,
 } from './catalogo-de-modulos';
 import {
@@ -115,10 +116,19 @@ describe('catálogo de módulos', () => {
     expect(esModulo('dispatch')).toBe(false);
   });
 
-  it('los planes sembrados: Completo y Prueba traen todo; Básico, Mercado Pago y express (D-P1)', () => {
-    expect(MODULOS_POR_PLAN.full).toEqual(MODULOS);
-    expect(MODULOS_POR_PLAN.trial).toEqual(MODULOS);
+  it('los planes sembrados: Completo y Prueba traen todo menos lo apagado por omisión; Básico, Mercado Pago y express (D-P1)', () => {
+    const enLosPlanes = MODULOS.filter((m) => m !== 'assistant');
+    expect(MODULOS_POR_PLAN.full).toEqual(enLosPlanes);
+    expect(MODULOS_POR_PLAN.trial).toEqual(enLosPlanes);
     expect(MODULOS_POR_PLAN.basic).toEqual(['mercadopago', 'express']);
+  });
+
+  it('el asistente del chat (M8) no viene en ningún plan: se habilita empresa por empresa (D-B3)', () => {
+    expect(MODULOS_APAGADOS_POR_OMISION).toEqual(['assistant']);
+    for (const plan of Object.values(MODULOS_POR_PLAN)) {
+      expect(plan).not.toContain('assistant');
+    }
+    expect(CATALOGO_DE_MODULOS.assistant.label).toBe('Asistente del chat');
   });
 
   it('el CHECK de la base es la lista del catálogo', () => {
