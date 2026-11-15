@@ -11,6 +11,10 @@ function redisFalso() {
       contadores.set(clave, n);
       return Promise.resolve(n);
     }),
+    del: jest.fn((clave: string) => {
+      claves.delete(clave);
+      return Promise.resolve();
+    }),
     setIfAbsent: jest.fn((clave: string) => {
       if (claves.has(clave)) return Promise.resolve(false);
       claves.add(clave);
@@ -43,5 +47,18 @@ describe('ChatRateLimit', () => {
       await cupos.mensaje('u-1', `cmid-${i}`);
     }
     await expect(cupos.mensaje('u-2', 'cmid-0')).resolves.toBeUndefined();
+  });
+
+  it('reintentar un mensaje que dio 429 vuelve a contar: no esquiva el tope', async () => {
+    const cupos = new ChatRateLimit(redisFalso() as unknown as RedisService);
+    for (let i = 0; i < MENSAJES_POR_MINUTO; i++) {
+      await cupos.mensaje('u-1', `cmid-${i}`);
+    }
+    await expect(cupos.mensaje('u-1', 'cmid-extra')).rejects.toMatchObject({
+      status: 429,
+    });
+    await expect(cupos.mensaje('u-1', 'cmid-extra')).rejects.toMatchObject({
+      status: 429,
+    });
   });
 });
