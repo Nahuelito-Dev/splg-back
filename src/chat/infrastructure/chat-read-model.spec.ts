@@ -59,4 +59,17 @@ describe('ChatReadModel: qué cuenta como «sin leer» (relevamiento B2)', () =>
       vacio: { chatUnread: 0, ticketsUnread: 0 },
     });
   });
+
+  it('la lectura propia es de esa persona y vacía sin conversaciones', async () => {
+    const { sql, lectura } = base([
+      { conversation_id: 'c1', last_read_seq: '5' },
+    ]);
+    expect(await lectura.lecturaPropia([], 'a')).toEqual(new Map());
+    expect(await lectura.lecturaPropia(['c1'], 'a')).toEqual(
+      new Map([['c1', 5]]),
+    );
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toContain('"conversation_read_state"');
+    expect(sql[0]).toContain('"user_id" = $2');
+  });
 });

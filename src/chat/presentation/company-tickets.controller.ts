@@ -73,11 +73,13 @@ export class CompanyTicketsController {
   @Permiso('soporte.ver')
   @ApiOperation({
     summary: 'Tickets de mi empresa',
-    description: 'Los movidos más recientemente primero. Filtro `status`.',
+    description:
+      'Por defecto, los movidos más recientemente primero. Filtros: `status` (uno o varios, separados por coma) y `q` (número `T-000123`/`123` o parte del asunto). Orden: `sort` (`createdAt`, `updatedAt`, `lastMessageAt`) y `order` (`asc`, `desc`). Sólo los de mi empresa.',
   })
   @ApiOkResponse({ type: TicketListResponseDto })
   @ApiBadRequestResponse({
-    description: 'Estado desconocido o paginación fuera de rango',
+    description:
+      'Estado desconocido o vacío, `q` de más de 120 caracteres, `sort`/`order` desconocidos o paginación fuera de rango',
   })
   async listar(
     @CurrentDistributor({ required: true }) distributorId: string,

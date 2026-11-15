@@ -74,6 +74,14 @@ const sistemasDe = (b: unknown): unknown[] =>
     .map((m) => m.systemCode);
 const numerosDe = (b: unknown): unknown[] => items(b).map((t) => t.number);
 const ultimo = (b: unknown): Cuerpo | undefined => items(b).at(-1);
+const estadosDe = (b: unknown): string[] => [
+  ...new Set(items(b).map((t) => t.status as string)),
+];
+const asuntosDe = (b: unknown): string[] =>
+  items(b).map((t) => t.subject as string);
+const numerosEnterosDe = (b: unknown): number[] =>
+  items(b).map((t) => Number(String(t.number).slice(2)));
+const ascendente = (xs: number[]): number[] => [...xs].sort((x, y) => x - y);
 
 describe('Matriz HTTP: chat con la plataforma y tickets (CH1, e2e)', () => {
   let env: TestEnv;
@@ -736,6 +744,200 @@ describe('Matriz HTTP: chat con la plataforma y tickets (CH1, e2e)', () => {
     ),
   ];
   correrMatriz('Contadores del soporte', ver, casosResumen);
+
+  // ======================================== CH2: lo que piden las pantallas
+  const estadoDelSoporte = endpoint<Ctx>(
+    'get',
+    '/v2/company/support/status',
+    '/v2/company/support/status',
+  );
+  const casosCh2: Array<Caso<Ctx>> = [
+    estadoDelSoporte('sin token', undefined, 401),
+    estadoDelSoporte('cliente', 'clienteA', 403),
+    estadoDelSoporte('super admin (es de la empresa)', 'super', 403),
+    estadoDelSoporte(
+      'admin de A: abierto, próxima apertura y presencia, sin datos del equipo',
+      'adminA',
+      200,
+      {
+        verificar: (b) => {
+          expect(Object.keys(b as Cuerpo).sort()).toEqual([
+            'nextOpenAt',
+            'openNow',
+            'teamOnline',
+          ]);
+          // Sin horario cargado atiende siempre; nadie del equipo tiene el socket abierto.
+          expect(b).toEqual({
+            openNow: true,
+            nextOpenAt: null,
+            teamOnline: false,
+          });
+        },
+      },
+    ),
+    estadoDelSoporte('admin de B: el mismo estado', 'adminB', 200, {
+      verificar: (b) => {
+        expect(b).toMatchObject({ openNow: true, teamOnline: false });
+      },
+    }),
+    listarTickets('varios estados separados por coma', 'adminA', 200, {
+      antes: async (c) => {
+        c.p.resueltoLista = await ticketEn('resolved');
+      },
+      ruta: '/v2/company/tickets?status=new,open,waiting_company&limit=100',
+      verificar: (b, c) => {
+        expect(estadosDe(b)).not.toContain('resolved');
+        expect(idsDe(b)).toContain(c.ticketA);
+        expect(idsDe(b)).not.toContain(c.p.resueltoLista);
+      },
+    }),
+    listarTickets('el estado repetido también vale', 'adminA', 200, {
+      ruta: '/v2/company/tickets?status=resolved&status=closed&limit=100',
+      verificar: (b) => {
+        expect(['resolved', 'closed']).toEqual(
+          expect.arrayContaining(estadosDe(b)),
+        );
+      },
+    }),
+    listarTickets('un estado desconocido entre varios', 'adminA', 400, {
+      ruta: '/v2/company/tickets?status=new,todo',
+      mensaje: 'Estado',
+    }),
+    listarTickets('lista de estados vacía', 'adminA', 400, {
+      ruta: '/v2/company/tickets?status=,',
+    }),
+    listarTickets('sort desconocido', 'adminA', 400, {
+      ruta: '/v2/company/tickets?sort=subject',
+      mensaje: 'Ordenar por',
+    }),
+    listarTickets('order desconocido', 'adminA', 400, {
+      ruta: '/v2/company/tickets?order=arriba',
+      mensaje: 'Orden',
+    }),
+    listarTickets('q de más de 120 caracteres', 'adminA', 400, {
+      ruta: `/v2/company/tickets?q=${'x'.repeat(121)}`,
+    }),
+    listarTickets('q por número: el suyo', 'adminA', 200, {
+      antes: async (c) => {
+        c.p.numeroA = (
+          await ok('get', `/v2/company/tickets/${c.ticketA}`, 'adminA')
+        ).number as string;
+      },
+      ruta: (c) => `/v2/company/tickets?q=${c.p.numeroA}`,
+      verificar: (b, c) => {
+        expect(idsDe(b)).toEqual([c.ticketA]);
+      },
+    }),
+    listarTickets(
+      'q con el número de un ticket de A, pedido por B: nada',
+      'adminB',
+      200,
+      {
+        ruta: (c) => `/v2/company/tickets?q=${c.p.numeroA}`,
+        verificar: (b, c) => {
+          expect(idsDe(b)).not.toContain(c.ticketA);
+          expect((b as Cuerpo).total).toBe(0);
+        },
+      },
+    ),
+    listarTickets('q por asunto', 'adminA', 200, {
+      ruta: '/v2/company/tickets?q=factura&limit=100',
+      verificar: (b) => {
+        for (const asunto of asuntosDe(b)) expect(asunto).toMatch(/factura/i);
+      },
+    }),
+    listarTickets(
+      'sort=createdAt&order=asc: del más viejo al más nuevo',
+      'adminA',
+      200,
+      {
+        ruta: '/v2/company/tickets?sort=createdAt&order=asc&limit=100',
+        verificar: (b) => {
+          expect(numerosEnterosDe(b)).toEqual(ascendente(numerosEnterosDe(b)));
+        },
+      },
+    ),
+    listarTickets(
+      'sort=lastMessageAt: una nota interna no adelanta el ticket para la empresa',
+      'adminA',
+      200,
+      {
+        antes: async (c) => {
+          const t = await ok(
+            'post',
+            '/v2/company/tickets',
+            'adminA',
+            ticketNuevo(),
+          );
+          c.p.conNota = t.id as string;
+          // Otro ticket con un mensaje público posterior al alta del primero.
+          const otro = await ok(
+            'post',
+            '/v2/company/tickets',
+            'adminA',
+            ticketNuevo(),
+          );
+          c.p.publico = otro.id as string;
+          await ok(
+            'post',
+            `/v2/platform/tickets/${c.p.conNota}/messages`,
+            'super',
+            {
+              ...mensaje('Nota interna nueva'),
+              visibility: 'internal',
+            },
+          );
+        },
+        ruta: '/v2/company/tickets?sort=lastMessageAt&order=desc&limit=100',
+        verificar: (b, c) => {
+          const ids = idsDe(b);
+          expect(ids.indexOf(c.p.publico)).toBeLessThan(
+            ids.indexOf(c.p.conNota),
+          );
+        },
+      },
+    ),
+    fichaTicket('el «leído» de la otra punta y el propio', 'adminA', 200, {
+      antes: async (c) => {
+        const hilo = await ok(
+          'get',
+          `/v2/platform/tickets/${c.ticketA}/messages?limit=100`,
+          'super',
+        );
+        c.p.ultimoSeq = String(ultimo(hilo)?.seq);
+        await ok('post', `/v2/platform/tickets/${c.ticketA}/read`, 'super', {
+          seq: Number(c.p.ultimoSeq),
+        });
+        await ok('post', `/v2/company/tickets/${c.ticketA}/read`, 'adminA', {
+          seq: 1,
+        });
+      },
+      verificar: (b, c) => {
+        expect(b).toMatchObject({
+          counterpartLastReadSeq: Number(c.p.ultimoSeq),
+          lastReadSeq: expect.any(Number) as unknown,
+        });
+        expect((b as Cuerpo).lastReadSeq as number).toBeGreaterThanOrEqual(1);
+      },
+    }),
+    tickets('plataforma: varios estados y orden por alta', 'super', 200, {
+      ruta: '/v2/platform/tickets?status=new,waiting_company&sort=createdAt&order=asc&limit=100',
+      verificar: (b) => {
+        expect(['new', 'waiting_company']).toEqual(
+          expect.arrayContaining(estadosDe(b)),
+        );
+        expect(items(b)[0]).toHaveProperty('counterpartLastReadSeq');
+      },
+    }),
+    tickets('plataforma: sort desconocido', 'super', 400, {
+      ruta: '/v2/platform/tickets?sort=priority',
+    }),
+    tickets('plataforma: estado desconocido entre varios', 'super', 400, {
+      ruta: '/v2/platform/tickets?status=open,x',
+    }),
+    tickets('plataforma: sin token', undefined, 401),
+  ];
+  correrMatriz('CH2: estado del soporte, filtros y leído', ver, casosCh2);
 
   // ============================================ Recorridos de la aceptación
   describe('aceptación CH1', () => {

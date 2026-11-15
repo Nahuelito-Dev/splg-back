@@ -74,11 +74,12 @@ export class PlatformTicketsController {
   @ApiOperation({
     summary: 'Cola de tickets',
     description:
-      'Los movidos más recientemente primero. Filtros: `status`, `priority`, `distributorId`, `assigned` (`me`, `none` o un id), `overdue` (objetivo de primera respuesta vencido), `fromChat` y `q` (número o asunto). `counts` no depende de los filtros.',
+      'Por defecto, los movidos más recientemente primero (`sort` y `order` lo cambian). Filtros: `status` (uno o varios, separados por coma), `priority`, `distributorId`, `assigned` (`me`, `none` o un id), `overdue` (objetivo de primera respuesta vencido), `fromChat` y `q` (número o asunto). `counts` no depende de los filtros.',
   })
   @ApiOkResponse({ type: PlatformTicketListResponseDto })
   @ApiBadRequestResponse({
-    description: 'Filtro inválido o paginación fuera de rango',
+    description:
+      'Filtro inválido (estado, prioridad, `assigned`, `q` de más de 120 caracteres), `sort`/`order` desconocidos o paginación fuera de rango',
   })
   async listar(
     @CurrentUser('user_id') userId: string,
@@ -257,12 +258,12 @@ export class PlatformTicketsController {
   @ApiOperation({
     summary: 'Cambiar estado, prioridad, asignación o categoría',
     description:
-      'El estado sigue la máquina del ticket (`new → open | waiting_company`, `open → waiting_company | resolved`, `waiting_company → open | resolved | closed`, `resolved → open | closed`). Asignar un ticket nuevo lo pasa a `open`. Cambiar la prioridad sin primera respuesta recalcula el vencimiento.',
+      'El estado sigue la máquina del ticket (`new → open | waiting_company`, `open → waiting_company | resolved`, `waiting_company → open | resolved`, `resolved → open`). `closed` no se acepta a mano (400 `TICKET_INVALID_TRANSITION`): el ticket se cierra solo a los 7 días (plazo configurable) o cuando la empresa confirma la resolución. Asignar un ticket nuevo lo pasa a `open`. Cambiar la prioridad sin primera respuesta recalcula el vencimiento.',
   })
   @ApiOkResponse({ type: TicketDto })
   @ApiBadRequestResponse({
     description:
-      'Sin cambios, valor desconocido, transición inválida (`TICKET_INVALID_TRANSITION`) o asignado que no es del equipo de la plataforma (`TICKET_ASSIGNEE_INVALID`)',
+      'Sin cambios, valor desconocido, transición inválida o pedido de `closed` (`TICKET_INVALID_TRANSITION`) o asignado que no es del equipo de la plataforma (`TICKET_ASSIGNEE_INVALID`)',
   })
   @ApiNotFoundResponse({ description: 'No existe ese ticket' })
   @ApiConflictResponse({

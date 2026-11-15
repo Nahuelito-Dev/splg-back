@@ -106,6 +106,16 @@ export class TicketDto extends TicketSummaryDto {
     description: 'Sesiones de soporte pedidas con este número de ticket',
   })
   supportSessions!: SupportSessionRefDto[];
+  @ApiProperty({
+    description:
+      'Hasta qué mensaje del hilo leyó la otra punta (el «leído», como en `ConversationDto`); 0 si todavía nada',
+  })
+  counterpartLastReadSeq!: number;
+  @ApiProperty({
+    description:
+      'Hasta qué mensaje del hilo leyó quien pide (para el separador «sin leer»); 0 si nunca lo abrió',
+  })
+  lastReadSeq!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
 }
 
@@ -313,4 +323,26 @@ export class PlatformSupportSummaryDto {
     description: 'Lo que muestra la insignia: `chatsUnread + ticketsUnread`',
   })
   total!: number;
+}
+
+/** Estado del soporte de la plataforma para la empresa (D-C26). Sin datos del equipo. */
+export class CompanySupportStatusDto {
+  @ApiProperty({
+    description:
+      'Si ahora es horario de atención (sin horario cargado, siempre `true`)',
+  })
+  openNow!: boolean;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Cuándo vuelve a abrir; `null` si está abierto o si no hay horario cargado',
+  })
+  nextOpenAt!: string | null;
+  @ApiProperty({
+    description:
+      'Si hay al menos una persona del equipo de soporte conectada al panel. El panel muestra «En línea» con `openNow && teamOnline`',
+  })
+  teamOnline!: boolean;
 }

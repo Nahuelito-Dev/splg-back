@@ -23,6 +23,10 @@ import {
   type TicketCambiado,
 } from '../application/chat.events';
 import {
+  EVENTO_ESTADO_DEL_SOPORTE,
+  type EstadoDelSoporte,
+} from '../application/support-status.service';
+import {
   Channel,
   ConversationStatus,
   MessageVisibility,
@@ -44,6 +48,8 @@ export const EVENTO_SOCKET_BANDEJA = 'chat:inbox';
 export const EVENTO_SOCKET_ESCRIBIENDO = 'chat:typing';
 export const EVENTO_SOCKET_TICKET_CREADO = 'ticket:created';
 export const EVENTO_SOCKET_TICKET_ACTUALIZADO = 'ticket:updated';
+/** Estado del soporte de la plataforma para las empresas (D-C26). */
+export const EVENTO_SOCKET_ESTADO_DEL_SOPORTE = 'support:status';
 
 /** Cuánto dura un «escribiendo…» si no llega otro. */
 export const ESCRIBIENDO_DURA_MS = 5000;
@@ -220,6 +226,26 @@ export class ChatRealtimeListener {
       });
       this.gateway.emitirAlSoporteDeEmpresa(ticket.distributorId, evento, base);
       return Promise.resolve();
+    });
+  }
+
+  /**
+   * `support:status`: el estado del soporte es el mismo para todas las
+   * empresas (no lleva nada de una en particular ni del equipo), y va a la
+   * sala de soporte de cada una de las que siguen dadas de alta.
+   */
+  @OnEvent(EVENTO_ESTADO_DEL_SOPORTE, { async: true })
+  async estadoDelSoporte(estado: EstadoDelSoporte): Promise<void> {
+    await this.seguro(EVENTO_SOCKET_ESTADO_DEL_SOPORTE, async () => {
+      const filas: Array<{ distributor_id: string }> =
+        await this.dataSource.query(
+          `SELECT "distributor_id" FROM "distributor" WHERE "deletedAt" IS NULL`,
+        );
+      this.gateway.emitirAlSoporteDeEmpresas(
+        filas.map((f) => f.distributor_id),
+        EVENTO_SOCKET_ESTADO_DEL_SOPORTE,
+        estado,
+      );
     });
   }
 

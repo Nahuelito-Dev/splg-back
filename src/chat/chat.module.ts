@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { Redis } from 'ioredis';
+import { redisConnectionOptions } from '../common/redis/redis-connection';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmailModule } from '../email/email.module';
 import { GatewaysModule } from '../gateways/gateways.module';
@@ -14,6 +16,7 @@ import { MessageWriter } from './application/message-writer';
 import { PlatformChatService } from './application/platform-chat.service';
 import { SupportHousekeepingCron } from './application/support-housekeeping.cron';
 import { SupportSettingsService } from './application/support-settings.service';
+import { SupportStatusService } from './application/support-status.service';
 import { SupportSummaryService } from './application/support-summary.service';
 import { SupportTicketsService } from './application/support-tickets.service';
 import { TicketActivityService } from './application/ticket-activity.service';
@@ -28,6 +31,10 @@ import { PlatformSupportSettings } from './entities/platform-support-settings.en
 import { SupportTicketMessageLink } from './entities/support-ticket-message-link.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
 import { ChatReadModel } from './infrastructure/chat-read-model';
+import {
+  PresenciaDelEquipo,
+  REDIS_DE_PRESENCIA,
+} from './infrastructure/presencia-del-equipo';
 import { TypeormMensajesRepository } from './infrastructure/typeorm-mensajes.repository';
 import { ChatRealtimeListener } from './presentation/chat-realtime.listener';
 import { ChatPresenter } from './presentation/chat.presenter';
@@ -84,6 +91,14 @@ import {
     ChatRateLimit,
     SupportSettingsService,
     SupportSummaryService,
+    SupportStatusService,
+    {
+      provide: REDIS_DE_PRESENCIA,
+      // Conexión perezosa: se abre con el primer uso (un seed no la abre).
+      useFactory: () =>
+        new Redis({ ...redisConnectionOptions(), lazyConnect: true }),
+    },
+    PresenciaDelEquipo,
     MessageTemplatesService,
     PlatformChatService,
     SupportTicketsService,
