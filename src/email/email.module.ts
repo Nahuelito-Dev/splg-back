@@ -9,6 +9,7 @@ import { ResendEmailAdapter } from './infrastructure/resend-email.adapter';
 import { EmailTemplateProvider } from './email-template.provider';
 import { EnlacesDeLaApp } from './enlaces-de-la-app';
 import { BienvenidaListener } from './bienvenida.listener';
+import { MarcasDeCorreo } from './marcas-de-correo.service';
 
 @Module({
   imports: [
@@ -22,11 +23,13 @@ import { BienvenidaListener } from './bienvenida.listener';
     EmailTemplateProvider,
     EnlacesDeLaApp,
     BienvenidaListener,
+    MarcasDeCorreo,
     { provide: EmailSenderPort, useClass: ResendEmailAdapter },
   ],
   // EmailSenderPort también se exporta: lo usa `fleet` para el aviso de
   // vencimientos a los admins (FleetAlertsCronService), sin pasar por los
   // flujos transaccionales de EmailService (reset, bienvenida).
-  exports: [EmailService, EmailSenderPort, EnlacesDeLaApp],
+  // MarcasDeCorreo: el nombre de la distribuidora para los correos operativos.
+  exports: [EmailService, EmailSenderPort, EnlacesDeLaApp, MarcasDeCorreo],
 })
 export class EmailModule {}

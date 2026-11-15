@@ -19,6 +19,8 @@
     "cuentas:demo": "ts-node --files scripts/cuentas-demo.ts",
     "envases:saldo-inicial": "ts-node --files scripts/cuenta-de-envases-inicial.ts",
     "s3:diagnostico": "ts-node --files scripts/diagnostico-bucket.ts",
+    "email:preview": "ts-node --files scripts/email-preview.ts",
+    "email:muestras": "ts-node --files scripts/email-muestras.ts",
     "fotos:demo": "ts-node --files scripts/completar-fotos-demo.ts",
     "fotos:reales": "ts-node --files scripts/fotos-reales-demo.ts",
     "crear-superadmin": "node dist/cli/crear-superadmin.js",

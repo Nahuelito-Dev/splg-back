@@ -57,6 +57,8 @@ serviceAccountKey.json
 # --- OTROS ---
 .temp/
 .tmp/
+# Vista previa de los correos (npm run email:preview)
+/tmp/
 pids
 *.pid
 *.seed

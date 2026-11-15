@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EmailSenderPort } from '../../email/ports/email-sender.port';
+import { armarCorreo } from '../../email/layout/correo';
+import { MarcasDeCorreo } from '../../email/marcas-de-correo.service';
+import { mensajeDePropuestaDeTaller } from './correo-propuesta-de-taller';
 import { FcmPort } from '../../firebase/ports/fcm.port';
 import { DriversGateway } from '../../gateways/drivers.gateway';
 import { pedirAvisoAlAdmin } from '../../common/events/aviso-al-admin';
 import { errorMessage } from '../../common/errors/error-message';
-import { escaparHtml } from '../../common/utils/html.util';
 import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import { Delivery } from '../../delivery/entities/delivery.entity';
 import {
@@ -62,6 +64,7 @@ export class MaintenancePlannerNotifier {
     private readonly fcm: FcmPort,
     private readonly emailSender: EmailSenderPort,
     private readonly events: EventEmitter2,
+    private readonly marcas: MarcasDeCorreo,
   ) {}
 
   /** Propuesta nueva: socket, push y correo al chofer. */
@@ -108,13 +111,27 @@ export class MaintenancePlannerNotifier {
     // El correo al chofer es opcional por distribuidora (`driverEmail`): nunca por omisión.
     const email = conCorreo ? delivery.user?.email : undefined;
     if (email) {
-      await this.seguro('correo', () =>
-        this.emailSender.send({
+      await this.seguro('correo', async () => {
+        const marca = await this.marcas.deDistribuidora(delivery.distributorId);
+        const correo = armarCorreo(
+          marca,
+          mensajeDePropuestaDeTaller(
+            {
+              patente: ctx.patent,
+              tarea: ctx.planName,
+              cuando: cuando(proposal.windowStart),
+              responderAntes: cuando(proposal.expiresAt),
+            },
+            marca.nombre,
+          ),
+        );
+        await this.emailSender.send({
           to: email,
-          subject: titulo,
-          html: `<p>${escaparHtml(detalle)}.</p><p>Respondé desde la app del chofer antes de ${escaparHtml(cuando(proposal.expiresAt))}; si no podés, rechazala o proponé otro horario.</p>`,
-        }),
-      );
+          subject: correo.asunto,
+          html: correo.html,
+          text: correo.text,
+        });
+      });
     }
   }
 

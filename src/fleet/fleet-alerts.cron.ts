@@ -10,12 +10,17 @@ import {
 } from './entities/maintenance-task.entity';
 import { AdminService } from '../admin/admin.service';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
+import { armarCorreo } from '../email/layout/correo';
+import {
+  marcaDeDistribuidora,
+  nombreDeDistribuidoraDeAdmins,
+} from '../email/layout/marca-de-correo';
+import { mensajeDeVencimientos } from './correo-vencimientos';
 import {
   calcularEstadoDeVencimiento,
   ExpirationStatus,
 } from './domain/expiration-status';
 import { errorMessage } from '../common/errors/error-message';
-import { escaparHtml } from '../common/utils/html.util';
 import {
   minutosDelDiaArgentino,
   ZONA_ARGENTINA,
@@ -169,13 +174,17 @@ export class FleetAlertsCron {
         .filter((email): email is string => Boolean(email));
 
       if (destinatarios.length > 0) {
-        const html = this.armarHtml(tareas, faltantes);
+        const correo = armarCorreo(
+          marcaDeDistribuidora(nombreDeDistribuidoraDeAdmins(admins)),
+          this.mensaje(tareas, faltantes),
+        );
         await Promise.all(
           destinatarios.map((to) =>
             this.emailSender.send({
               to,
-              subject: this.asunto(tareas, faltantes),
-              html,
+              subject: correo.asunto,
+              html: correo.html,
+              text: correo.text,
             }),
           ),
         );
@@ -245,43 +254,18 @@ export class FleetAlertsCron {
     }
   }
 
-  private asunto(
-    tareas: MaintenanceTask[],
-    faltantes: FaltanteDeChofer[],
-  ): string {
-    const partes: string[] = [];
-    if (tareas.length > 0) partes.push(`${tareas.length} pendiente(s)`);
-    if (faltantes.length > 0) {
-      partes.push(`${faltantes.length} chofer(es) con documentos sin cargar`);
-    }
-    return `Vencimientos de flota y personal: ${partes.join(', ')}`;
-  }
-
-  private armarHtml(
-    tareas: MaintenanceTask[],
-    faltantes: FaltanteDeChofer[],
-  ): string {
-    const filas = tareas
-      .map((t) => {
-        const fecha = t.dueAt ? t.dueAt.toLocaleDateString('es-AR') : '-';
-        return `<li>${escaparHtml(t.plan.name)} — ${escaparHtml(this.sujeto(t))} — vence ${fecha}</li>`;
-      })
-      .join('');
-    const vencimientos =
-      tareas.length > 0
-        ? `<p>Estos vencimientos necesitan atención:</p><ul>${filas}</ul>`
-        : '';
-    const sinCargar = faltantes
-      .map(
-        ({ empleado, planes }) =>
-          `<li>${escaparHtml(`${empleado.firstName} ${empleado.lastName}`)} — falta: ${escaparHtml(planes.map((p) => p.name).join(', '))}</li>`,
-      )
-      .join('');
-    const faltan =
-      faltantes.length > 0
-        ? `<p>Estos choferes no tienen cargada documentación que bloquea el despacho:</p><ul>${sinCargar}</ul>`
-        : '';
-    return `${vencimientos}${faltan}`;
+  private mensaje(tareas: MaintenanceTask[], faltantes: FaltanteDeChofer[]) {
+    return mensajeDeVencimientos(
+      tareas.map((t) => ({
+        que: t.plan.name,
+        sujeto: this.sujeto(t),
+        vence: t.dueAt ? t.dueAt.toLocaleDateString('es-AR') : '-',
+      })),
+      faltantes.map(({ empleado, planes }) => ({
+        chofer: `${empleado.firstName} ${empleado.lastName}`,
+        faltan: planes.map((p) => p.name),
+      })),
+    );
   }
 
   private sujeto(t: MaintenanceTask): string {

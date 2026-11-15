@@ -5,7 +5,12 @@ import { AdminService } from '../admin/admin.service';
 import { EmailSenderPort } from '../email/ports/email-sender.port';
 import { EmployeeAttendance } from './entities/employee-attendance.entity';
 import { errorMessage } from '../common/errors/error-message';
-import { escaparHtml } from '../common/utils/html.util';
+import { armarCorreo } from '../email/layout/correo';
+import {
+  marcaDeDistribuidora,
+  nombreDeDistribuidoraDeAdmins,
+} from '../email/layout/marca-de-correo';
+import { mensajeDeJornadasSinCerrar } from './correo-jornadas-sin-cerrar';
 import { ZONA_ARGENTINA, diaArgentino } from '../common/utils/dias-argentina';
 import { ConRegistro } from '../process-run/process-run.recorder';
 import { registrarErrorAtrapado } from '../process-run/process-run.context';
@@ -48,13 +53,17 @@ export class AttendanceOpenAlertCron {
         const destinatarios = admins
           .map((a) => a.user?.email)
           .filter((email): email is string => Boolean(email));
-        const html = this.armarHtml(jornadas);
+        const correo = armarCorreo(
+          marcaDeDistribuidora(nombreDeDistribuidoraDeAdmins(admins)),
+          this.mensaje(jornadas),
+        );
         await Promise.all(
           destinatarios.map((to) =>
             this.emailSender.send({
               to,
-              subject: `Jornadas sin cerrar: ${jornadas.length}`,
-              html,
+              subject: correo.asunto,
+              html: correo.html,
+              text: correo.text,
             }),
           ),
         );
@@ -67,21 +76,20 @@ export class AttendanceOpenAlertCron {
     }
   }
 
-  private armarHtml(jornadas: EmployeeAttendance[]): string {
-    const filas = jornadas
-      .map((j) => {
+  private mensaje(jornadas: EmployeeAttendance[]) {
+    return mensajeDeJornadasSinCerrar(
+      jornadas.map((j) => {
         const e = j.employee;
-        const nombre = escaparHtml(
-          e ? `${e.firstName} ${e.lastName}` : j.employeeId,
-        );
-        const hora = j.checkInAt.toLocaleTimeString('es-AR', {
-          timeZone: ZONA_ARGENTINA,
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        return `<li>${nombre} — ${j.workDate}, ingresó ${hora}</li>`;
-      })
-      .join('');
-    return `<p>Estas jornadas de días anteriores siguen sin cerrar. Corregilas desde la grilla de asistencia:</p><ul>${filas}</ul>`;
+        return {
+          persona: e ? `${e.firstName} ${e.lastName}` : j.employeeId,
+          dia: j.workDate,
+          ingreso: j.checkInAt.toLocaleTimeString('es-AR', {
+            timeZone: ZONA_ARGENTINA,
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        };
+      }),
+    );
   }
 }
