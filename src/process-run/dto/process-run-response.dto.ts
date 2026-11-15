@@ -127,3 +127,90 @@ export class ProcessSummaryResponseDto {
   @ApiProperty()
   generatedAt!: Date;
 }
+
+/** Un aviso de la bandeja que salió de la misma traza que la corrida. */
+export class ProcessRunNotificationDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ example: 'process_circuit_open' })
+  kind!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: '`null`: aviso a la bandeja de la plataforma',
+  })
+  distributorId!: string | null;
+
+  @ApiProperty()
+  createdAt!: Date;
+}
+
+/** Detalle de una corrida (DISENO-OBSERVABILIDAD §7.1). */
+export class ProcessRunDetailResponseDto extends ProcessRunResponseDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'],
+    description: 'Módulo inteligente; `null` si es una tarea programada común',
+  })
+  module!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Quién la pidió; sólo en las corridas `manual`',
+  })
+  requestedBy!: string | null;
+
+  @ApiProperty({
+    example: 'orix:4121',
+    description: '`host:pid` de la instancia que la corrió',
+  })
+  instance!: string;
+
+  @ApiProperty({
+    type: 'object',
+    nullable: true,
+    additionalProperties: { type: 'number' },
+    example: {
+      ok: 7,
+      failed: 1,
+      timeout: 0,
+      locked: 0,
+      circuit_open: 0,
+      paused: 0,
+      skipped: 3,
+    },
+    description:
+      'Cuántas empresas terminaron en cada estado; `null` si el proceso no recorre empresas',
+  })
+  companies!: Record<string, number> | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'a91f03c2d4e5b6f7',
+    description:
+      'Huella del error (16 hexadecimales): la misma para el mismo error en otras corridas',
+  })
+  errorFingerprint!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'prueba-o1',
+    description:
+      'Traza de la corrida: el `X-Request-Id` del request que la disparó o su propio id si nació del cron. Se abre con `GET /v2/platform/traces/{traceId}`',
+  })
+  traceId!: string | null;
+
+  @ApiProperty({
+    type: [ProcessRunNotificationDto],
+    description: 'Avisos de la bandeja con la misma traza',
+  })
+  notifications!: ProcessRunNotificationDto[];
+}

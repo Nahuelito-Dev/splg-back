@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
@@ -16,6 +20,7 @@ import {
   SALUD_CON_ALERTA,
 } from './domain/process-health';
 import {
+  ProcessRunDetailResponseDto,
   ProcessRunListResponseDto,
   ProcessSummaryItemDto,
   ProcessSummaryResponseDto,
@@ -23,6 +28,11 @@ import {
 import { QueryProcessRunsDto } from './dto/query-process-runs.dto';
 import { ProcessRun } from './entities/process-run.entity';
 import { ProcessRunMapper } from './process-run.mapper';
+import { AdminNotification } from '../admin-notifications/entities/admin-notification.entity';
+import { conCodigo } from '../common/errors/con-codigo';
+
+/** Cuántos avisos de la misma traza trae el detalle de una corrida. */
+export const AVISOS_DEL_DETALLE = 50;
 
 export const CUELGA_POR_DEFECTO_MIN = 30;
 
@@ -41,6 +51,8 @@ export class ProcessRunService {
     @InjectRepository(ProcessRun)
     private readonly runs: Repository<ProcessRun>,
     private readonly config: ConfigService,
+    @InjectRepository(AdminNotification)
+    private readonly avisos: Repository<AdminNotification>,
   ) {}
 
   get cuelgaMinutos(): number {
@@ -262,5 +274,30 @@ export class ProcessRunService {
       items: filas.map((r) => ProcessRunMapper.toDto(r, true)),
       total,
     };
+  }
+
+  /**
+   * Una corrida con todo su detalle (DISENO-OBSERVABILIDAD §7.1) y los avisos
+   * de la bandeja que salieron de su misma traza. 404 `PROCESS_RUN_NOT_FOUND`
+   * si no existe (o ya se purgó).
+   */
+  async detalle(runId: string): Promise<ProcessRunDetailResponseDto> {
+    const run = await this.runs.findOne({ where: { runId } });
+    if (!run) {
+      throw conCodigo(
+        NotFoundException,
+        404,
+        'No existe esa corrida (o ya se depuró por antigüedad)',
+        'PROCESS_RUN_NOT_FOUND',
+      );
+    }
+    const avisos = run.traceId
+      ? await this.avisos.find({
+          where: { traceId: run.traceId },
+          order: { createdAt: 'ASC', notificationId: 'ASC' },
+          take: AVISOS_DEL_DETALLE,
+        })
+      : [];
+    return ProcessRunMapper.toDetailDto(run, avisos);
   }
 }

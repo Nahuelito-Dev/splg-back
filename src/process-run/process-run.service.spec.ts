@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import {
@@ -9,6 +9,7 @@ import {
 } from './domain/process-catalog';
 import { ProcessRun } from './entities/process-run.entity';
 import { ProcessRunService } from './process-run.service';
+import type { AdminNotification } from '../admin-notifications/entities/admin-notification.entity';
 
 const AHORA = new Date('2026-11-03T12:00:00Z');
 
@@ -24,6 +25,11 @@ function corrida(p: Partial<ProcessRun>): ProcessRun {
     error: null,
     trigger: RunTrigger.CRON,
     instance: 'h:1',
+    traceId: null,
+    requestedBy: null,
+    durationMs: null,
+    errorFingerprint: null,
+    companies: null,
     ...p,
   };
 }
@@ -53,6 +59,7 @@ function armar(respuestas: ProcessRun[][]) {
   const service = new ProcessRunService(
     repo as unknown as Repository<ProcessRun>,
     config as unknown as ConfigService,
+    {} as Repository<AdminNotification>,
   );
   return { service, qb };
 }
@@ -266,5 +273,90 @@ describe('ProcessRunService', () => {
       expect.stringContaining('r.status <> :saltada AND r.trigger <> :webhook'),
       { saltada: ProcessRunStatus.SKIPPED, webhook: RunTrigger.WEBHOOK },
     );
+  });
+});
+
+describe('ProcessRunService.detalle (monitor O1)', () => {
+  const RUN = '6b1e2a40-9c3d-4e5f-8a7b-1c2d3e4f5a6b';
+
+  function conDetalle(run: ProcessRun | null, avisos: AdminNotification[]) {
+    const runs = { findOne: jest.fn().mockResolvedValue(run) };
+    const repoAvisos = { find: jest.fn().mockResolvedValue(avisos) };
+    const service = new ProcessRunService(
+      runs as unknown as Repository<ProcessRun>,
+      { get: jest.fn() } as unknown as ConfigService,
+      repoAvisos as unknown as Repository<AdminNotification>,
+    );
+    return { service, runs, repoAvisos };
+  }
+
+  it('devuelve la corrida completa con los avisos de su traza', async () => {
+    const run = corrida({
+      runId: RUN,
+      process: ProcessName.PAYMENT_INBOX_PROCESS,
+      status: ProcessRunStatus.PARTIAL,
+      counters: { processed: 2, errors: 1 },
+      error: 'No se pudo leer el pago',
+      errorFingerprint: 'a91f03c2d4e5b6f7',
+      trigger: RunTrigger.WEBHOOK,
+      traceId: 'prueba-o1',
+      durationMs: 1000,
+      companies: { ok: 1, failed: 1 },
+    });
+    const aviso = {
+      notificationId: 'n1',
+      kind: 'payment_inbox_failed',
+      distributorId: null,
+      title: 'Con datos de Juan',
+      createdAt: new Date('2026-11-14T12:00:01Z'),
+    } as AdminNotification;
+    const { service, runs, repoAvisos } = conDetalle(run, [aviso]);
+    const dto = await service.detalle(RUN);
+    expect(runs.findOne).toHaveBeenCalledWith({ where: { runId: RUN } });
+    expect(repoAvisos.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { traceId: 'prueba-o1' } }),
+    );
+    expect(dto).toMatchObject({
+      id: RUN,
+      process: 'payment_inbox_process',
+      title: 'Bandeja de avisos de pago: procesamiento',
+      module: null,
+      status: 'partial',
+      trigger: 'webhook',
+      requestedBy: null,
+      instance: 'h:1',
+      durationMs: 1000,
+      counters: { processed: 2, errors: 1 },
+      companies: { ok: 1, failed: 1 },
+      error: 'No se pudo leer el pago',
+      errorFingerprint: 'a91f03c2d4e5b6f7',
+      traceId: 'prueba-o1',
+      notifications: [
+        {
+          id: 'n1',
+          kind: 'payment_inbox_failed',
+          distributorId: null,
+          createdAt: new Date('2026-11-14T12:00:01Z'),
+        },
+      ],
+    });
+    expect(JSON.stringify(dto)).not.toContain('Juan');
+  });
+
+  it('sin traza (corrida vieja) no busca avisos', async () => {
+    const { service, repoAvisos } = conDetalle(corrida({ runId: RUN }), []);
+    const dto = await service.detalle(RUN);
+    expect(dto.notifications).toEqual([]);
+    expect(dto.traceId).toBeNull();
+    expect(repoAvisos.find).not.toHaveBeenCalled();
+  });
+
+  it('404 PROCESS_RUN_NOT_FOUND si no existe', async () => {
+    const { service } = conDetalle(null, []);
+    const error = await service.detalle(RUN).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect((error as NotFoundException).getResponse()).toMatchObject({
+      code: 'PROCESS_RUN_NOT_FOUND',
+    });
   });
 });

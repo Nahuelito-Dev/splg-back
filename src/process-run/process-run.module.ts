@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DistributorModule } from '../distributor/distributor.module';
+import { AdminNotification } from '../admin-notifications/entities/admin-notification.entity';
 import { ProcessRun } from './entities/process-run.entity';
 import { ProcessRunController } from './process-run.controller';
 import { ProcessRunRecorder } from './process-run.recorder';
@@ -16,7 +17,10 @@ import { EmpresasParaProceso } from './empresas-para-proceso';
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([ProcessRun]), DistributorModule],
+  imports: [
+    TypeOrmModule.forFeature([ProcessRun, AdminNotification]),
+    DistributorModule,
+  ],
   controllers: [ProcessRunController],
   providers: [
     ProcessRunRecorder,

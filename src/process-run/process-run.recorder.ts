@@ -1,8 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'node:crypto';
 import { hostname } from 'os';
 import { Repository } from 'typeorm';
 import { errorMessage } from '../common/errors/error-message';
+import { ContextoDeTraza, type Traza } from '../common/traza/contexto-de-traza';
+import { huellaDeError } from '../observability/errores/huella-de-error';
 import {
   CATALOGO,
   ProcessName,
@@ -50,6 +53,17 @@ export function resultadoDeCorrida(valor: unknown): ResultadoDeCorrida {
     counters,
     status: conErrores ? ProcessRunStatus.PARTIAL : ProcessRunStatus.OK,
   };
+}
+
+/** Lo que se guarda al abrir una corrida. */
+interface Apertura {
+  runId: string;
+  proceso: ProcessName;
+  distributorId: string | null;
+  inicio: Date;
+  disparo: RunTrigger;
+  traceId: string;
+  requestedBy: string | null;
 }
 
 export interface CierreDeCorrida {
@@ -125,65 +139,85 @@ export class ProcessRunRecorder implements OnModuleInit {
     ProcessRunRecorder.activo = this;
   }
 
+  /**
+   * Corre `fn` registrando la corrida. La corrida abre su traza
+   * (`ContextoDeTraza`): hereda la del request que la disparó (webhook, pedido
+   * manual) o, si nace del cron, usa su propio `run_id`. Todo lo que pase
+   * adentro (log, avisos, auditoría) lleva ese `traceId`.
+   *
+   * Una corrida disparada desde un request se registra siempre, aun en los
+   * procesos con muestreo: es la que alguien va a buscar por su traza.
+   */
   async ejecutar<T>(
     proceso: ProcessName,
     distributorId: string | null,
     fn: () => Promise<T>,
     disparo: RunTrigger = disparoActual(),
+    requestedBy: string | null = null,
   ): Promise<T> {
     const clave = `${proceso}:${distributorId ?? ''}:${disparo}`;
     const cadaMs = (CATALOGO[proceso].recordEverySeconds ?? 0) * 1000;
     const inicio = new Date();
     const ultima = this.ultimaApertura.get(clave);
     const estado = nuevaCorrida();
+    const heredada = ContextoDeTraza.actual();
+    const runId = randomUUID();
+    const traza: Traza = {
+      traceId: heredada?.traceId ?? runId,
+      origen: disparo,
+      requestId: heredada?.requestId,
+      runId,
+    };
+    const apertura: Apertura = {
+      runId,
+      proceso,
+      distributorId,
+      inicio,
+      disparo,
+      traceId: traza.traceId,
+      requestedBy: disparo === RunTrigger.MANUAL ? requestedBy : null,
+    };
+    const correr = () =>
+      ContextoDeTraza.abrir(traza, () => dentroDeCorrida(estado, fn));
     if (
+      !heredada &&
       cadaMs > 0 &&
       ultima !== undefined &&
       inicio.getTime() - ultima < cadaMs
     ) {
       // Proceso de alta frecuencia: no se registra cada tic, pero un error sí.
       try {
-        const valor = await dentroDeCorrida(estado, fn);
+        const valor = await correr();
         if (estado.fatal) {
-          await this.registrarFalloSuelto(
-            clave,
-            proceso,
-            distributorId,
-            inicio,
-            estado.fatal,
-            disparo,
-          );
+          await this.registrarFalloSuelto(clave, apertura, estado.fatal);
         }
         return valor;
       } catch (error) {
-        await this.registrarFalloSuelto(
-          clave,
-          proceso,
-          distributorId,
-          inicio,
-          error,
-          disparo,
-        );
+        await this.registrarFalloSuelto(clave, apertura, error);
         throw error;
       }
     }
     this.ultimaApertura.set(clave, inicio.getTime());
 
-    const runId = await this.abrir(proceso, distributorId, inicio, disparo);
+    const registrada = await this.abrir(apertura);
     try {
-      const valor = await dentroDeCorrida(estado, fn);
+      const valor = await correr();
       const cierre = resolverCierre(valor, estado);
-      await this.cerrar(runId, cierre.status, cierre.counters, cierre.error);
+      await this.cerrar(registrada, proceso, cierre, estado.companies);
       if (cierre.status === ProcessRunStatus.SKIPPED && cadaMs > 0) {
-        await this.soltarMuestreo(clave, ultima, runId, inicio, cadaMs);
+        await this.soltarMuestreo(clave, ultima, registrada, inicio, cadaMs);
       }
       return valor;
     } catch (error) {
       await this.cerrar(
-        runId,
-        ProcessRunStatus.FAILED,
-        {},
-        sanitizarError(errorMessage(error)),
+        registrada,
+        proceso,
+        {
+          status: ProcessRunStatus.FAILED,
+          counters: {},
+          error: sanitizarError(errorMessage(error)),
+        },
+        estado.companies,
       );
       throw error;
     }
@@ -224,30 +258,29 @@ export class ProcessRunRecorder implements OnModuleInit {
     }
   }
 
-  private async abrir(
-    proceso: ProcessName,
-    distributorId: string | null,
-    inicio: Date,
-    disparo: RunTrigger,
-  ): Promise<string | null> {
+  private async abrir(apertura: Apertura): Promise<string | null> {
     try {
-      const { identifiers } = await this.runs
+      await this.runs
         .createQueryBuilder()
         .insert()
         .values({
-          process: proceso,
-          distributorId,
-          startedAt: inicio,
+          runId: apertura.runId,
+          process: apertura.proceso,
+          distributorId: apertura.distributorId,
+          startedAt: apertura.inicio,
           status: ProcessRunStatus.RUNNING,
           counters: {},
-          trigger: disparo,
+          trigger: apertura.disparo,
           instance: this.instance,
+          traceId: apertura.traceId,
+          requestedBy: apertura.requestedBy,
         })
         .execute();
-      return (identifiers[0] as { runId: string }).runId;
+      return apertura.runId;
     } catch (error) {
-      this.logger.warn(
-        `No se pudo abrir el registro de ${proceso}: ${errorMessage(error)}`,
+      // No poder registrar no es un detalle: la pantalla diría que todo anda bien.
+      this.logger.error(
+        `No se pudo abrir el registro de ${apertura.proceso}: ${errorMessage(error)}`,
       );
       return null;
     }
@@ -255,9 +288,9 @@ export class ProcessRunRecorder implements OnModuleInit {
 
   private async cerrar(
     runId: string | null,
-    status: ProcessRunStatus,
-    counters: Record<string, number>,
-    error: string | null,
+    proceso: ProcessName,
+    cierre: CierreDeCorrida,
+    companies: Record<string, number> | null,
   ): Promise<void> {
     if (!runId) return;
     try {
@@ -265,15 +298,23 @@ export class ProcessRunRecorder implements OnModuleInit {
         .createQueryBuilder()
         .update()
         .set({
-          status,
-          counters,
-          error,
+          status: cierre.status,
+          counters: cierre.counters,
+          error: cierre.error,
+          errorFingerprint: cierre.error
+            ? huellaDeError({
+                origen: 'process',
+                donde: proceso,
+                mensaje: cierre.error,
+              })
+            : null,
+          companies,
           finishedAt: () => 'GREATEST(now(), "started_at")',
         })
         .where('run_id = :runId', { runId })
         .execute();
     } catch (e) {
-      this.logger.warn(
+      this.logger.error(
         `No se pudo cerrar el registro ${runId}: ${errorMessage(e)}`,
       );
     }
@@ -281,22 +322,25 @@ export class ProcessRunRecorder implements OnModuleInit {
 
   private async registrarFalloSuelto(
     clave: string,
-    proceso: ProcessName,
-    distributorId: string | null,
-    inicio: Date,
+    apertura: Apertura,
     error: unknown,
-    disparo: RunTrigger,
   ): Promise<void> {
-    const cadaMs = (CATALOGO[proceso].recordEverySeconds ?? 0) * 1000;
+    const cadaMs = (CATALOGO[apertura.proceso].recordEverySeconds ?? 0) * 1000;
     const previo = this.ultimoFallo.get(clave);
-    if (previo !== undefined && inicio.getTime() - previo < cadaMs) return;
-    this.ultimoFallo.set(clave, inicio.getTime());
-    const runId = await this.abrir(proceso, distributorId, inicio, disparo);
+    if (previo !== undefined && apertura.inicio.getTime() - previo < cadaMs) {
+      return;
+    }
+    this.ultimoFallo.set(clave, apertura.inicio.getTime());
+    const runId = await this.abrir(apertura);
     await this.cerrar(
       runId,
-      ProcessRunStatus.FAILED,
-      {},
-      sanitizarError(errorMessage(error)),
+      apertura.proceso,
+      {
+        status: ProcessRunStatus.FAILED,
+        counters: {},
+        error: sanitizarError(errorMessage(error)),
+      },
+      null,
     );
   }
 }

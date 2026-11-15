@@ -1,6 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -9,6 +10,7 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { Auth } from '../common/decorators/auth.decorator';
 import { SinDistribuidora } from '../common/decorators/sin-distribuidora.decorator';
 import {
+  ProcessRunDetailResponseDto,
   ProcessRunListResponseDto,
   ProcessSummaryResponseDto,
 } from './dto/process-run-response.dto';
@@ -64,5 +66,26 @@ export class ProcessRunController {
     @Query() query: QueryProcessRunsDto,
   ): Promise<ProcessRunListResponseDto> {
     return this.service.listar(query);
+  }
+
+  // Va después de `summary`: si no, `/process-runs/summary` caería acá como id.
+  @Get(':runId')
+  @ApiOperation({
+    summary: 'Detalle de una corrida',
+    description:
+      'Tiempos, disparo y quién la pidió, instancia, contadores, resumen por empresa (`companies`), error saneado con su huella (`errorFingerprint`), la traza (`traceId`, para abrir `GET /v2/platform/traces/{traceId}`) y los avisos de la bandeja que salieron de esa misma traza. Sólo el administrador general.',
+  })
+  @ApiOkResponse({ type: ProcessRunDetailResponseDto })
+  @ApiBadRequestResponse({
+    description: '`runId` que no es un UUID (`INVALID_ID`)',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'No existe esa corrida o ya se depuró por antigüedad (`PROCESS_RUN_NOT_FOUND`)',
+  })
+  detalle(
+    @Param('runId', ParseUUIDPipe) runId: string,
+  ): Promise<ProcessRunDetailResponseDto> {
+    return this.service.detalle(runId);
   }
 }

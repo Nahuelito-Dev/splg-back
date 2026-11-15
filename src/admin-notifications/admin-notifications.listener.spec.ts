@@ -25,6 +25,7 @@ function aviso(parcial: Partial<AdminNotification> = {}): AdminNotification {
     email: false,
     emailedAt: null,
     createdAt: new Date('2026-10-28T12:00:00Z'),
+    traceId: null,
     ...parcial,
   };
 }

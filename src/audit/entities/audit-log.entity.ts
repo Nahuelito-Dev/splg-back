@@ -94,6 +94,11 @@ export class AuditLog {
   @Column({ name: 'error_message', type: 'text', nullable: true })
   errorMessage!: string | null;
 
+  /** El `X-Request-Id` del pedido: une el asiento con su traza (`/v2/platform/traces/:traceId`). */
+  @Index('IDX_audit_log_request')
+  @Column({ name: 'request_id', type: 'varchar', length: 64, nullable: true })
+  requestId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

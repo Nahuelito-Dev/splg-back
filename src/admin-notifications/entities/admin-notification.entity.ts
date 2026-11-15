@@ -76,6 +76,11 @@ export class AdminNotification {
   @Column({ name: 'emailed_at', type: 'timestamptz', nullable: true })
   emailedAt!: Date | null;
 
+  /** La traza de la que salió el aviso (request, corrida o webhook). */
+  @Index('IDX_admin_notification_traza')
+  @Column({ name: 'trace_id', type: 'varchar', length: 64, nullable: true })
+  traceId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

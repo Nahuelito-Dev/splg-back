@@ -105,6 +105,21 @@ describe('AuditInterceptor (CU-153)', () => {
     });
   });
 
+  it('guarda el request id del pedido para unirlo con su traza (monitor O1)', async () => {
+    await lastValueFrom(
+      interceptor.intercept(
+        contexto('PATCH', { requestId: 'prueba-o1' }),
+        handler({}),
+      ),
+    );
+    expect(asiento().requestId).toBe('prueba-o1');
+  });
+
+  it('sin request id (fuera del middleware) el asiento queda sin traza', async () => {
+    await lastValueFrom(interceptor.intercept(contexto('PATCH'), handler({})));
+    expect(asiento().requestId).toBeNull();
+  });
+
   it.each([
     ['/api/v1/orders/:id/status', 'orders'],
     ['/api/v2/insurance-policies/:id/cancel', 'insurance-policies'],

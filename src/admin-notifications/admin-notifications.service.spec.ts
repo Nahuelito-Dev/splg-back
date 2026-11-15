@@ -1,3 +1,4 @@
+import { ContextoDeTraza } from '../common/traza/contexto-de-traza';
 import { NotFoundException } from '@nestjs/common';
 import { IsNull, Repository } from 'typeorm';
 import { NotificarAdminEvent } from '../common/events/notificar-admin.event';
@@ -40,6 +41,7 @@ function fila(
     email: false,
     emailedAt: null,
     createdAt: new Date(createdAt),
+    traceId: null,
   };
 }
 
@@ -126,6 +128,26 @@ describe('AdminNotificationsService', () => {
         }),
       );
       expect(guardado?.notificationId).toBe('n-1');
+    });
+
+    it('guarda la traza de quien pidió el aviso, capturada al crear el evento (monitor O1)', async () => {
+      const conTraza = ContextoDeTraza.abrir(
+        { traceId: 'prueba-o1', origen: 'webhook' },
+        () => evento(),
+      );
+      // El listener corre fuera de la traza: lo que vale es lo que trae el evento.
+      expect(ContextoDeTraza.traceIdActual()).toBeNull();
+      await service.registrar(conTraza);
+      expect(avisos.save).toHaveBeenCalledWith(
+        expect.objectContaining({ traceId: 'prueba-o1' }),
+      );
+    });
+
+    it('un aviso pedido fuera de una traza queda sin traza', async () => {
+      await service.registrar(evento());
+      expect(avisos.save).toHaveBeenCalledWith(
+        expect.objectContaining({ traceId: null }),
+      );
     });
 
     it('si esa distribuidora ya tiene la dedupeKey, no guarda y devuelve null', async () => {

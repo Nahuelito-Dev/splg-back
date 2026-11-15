@@ -17,6 +17,7 @@ import { UsersController } from '../../users/users.controller';
 import { soloRutasVersionadas } from './documentacion';
 import { SupportAccessController } from '../../support/presentation/support-access.controller';
 import { SupportSessionsController } from '../../support/presentation/support-sessions.controller';
+import { TrazasController } from '../../observability/traza/trazas.controller';
 
 /**
  * Los códigos HTTP que la API devuelve de verdad (matriz del 03/11) tienen que
@@ -36,6 +37,7 @@ const CONTROLLERS: Type<unknown>[] = [
   ProcessRunController,
   SupportSessionsController,
   SupportAccessController,
+  TrazasController,
 ];
 
 type Operacion = { responses?: Record<string, { description?: string }> };
@@ -162,6 +164,30 @@ describe('Swagger: códigos HTTP documentados', () => {
     const r = respuestas('get', '/api/v2/process-runs');
     expect(r['403']?.description).toBe('Requiere rol: super_admin');
   });
+
+  it.each([
+    ['/api/v2/process-runs/{runId}', /UUID/, /PROCESS_RUN_NOT_FOUND/],
+    [
+      '/api/v2/platform/traces/{traceId}',
+      /INVALID_TRACE_ID/,
+      /TRACE_NOT_FOUND/,
+    ],
+  ])(
+    'monitor O1: GET %s declara 200, 400, 401, 403 y 404',
+    (ruta, de400, de404) => {
+      const r = respuestas('get', ruta);
+      expect(Object.keys(r).sort()).toEqual([
+        '200',
+        '400',
+        '401',
+        '403',
+        '404',
+      ]);
+      expect(r['400']?.description).toMatch(de400);
+      expect(r['403']?.description).toBe('Requiere rol: super_admin');
+      expect(r['404']?.description).toMatch(de404);
+    },
+  );
 
   it('todo endpoint con ParseUUIDPipe de esos controllers declara su 400', () => {
     const sinBadRequest: string[] = [];
