@@ -76,7 +76,13 @@ describe('resumen de ticket con no leídos y último mensaje (relevamiento B3)',
         party: Party.PLATFORM,
         at: '2026-11-14T11:00:00.000Z',
       },
-    });
+    }); // Cerrado: no marca novedades aunque haya algo sin leer.
+    expect(
+      ChatMapper.ticketResumen(
+        { ...ticket, status: TicketStatus.CLOSED } as typeof ticket,
+        ctx,
+      ).unreadCount,
+    ).toBe(0);
   });
 
   it('la ficha del ticket trae el «leído» de la otra punta y el propio, del hilo del ticket', async () => {

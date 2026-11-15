@@ -43,7 +43,11 @@ export class ChatMapper {
       status: t.status,
       priority: t.priority,
       updatedAt: t.updatedAt.toISOString(),
-      unreadCount: ctx.noLeidos.get(t.conversationId) ?? 0,
+      // Un ticket cerrado ya no pide atención: no marca novedades aunque quede algo sin leer.
+      unreadCount:
+        t.status === TicketStatus.CLOSED
+          ? 0
+          : (ctx.noLeidos.get(t.conversationId) ?? 0),
       lastMessage: ChatMapper.ultimoMensaje(ctx.ultimos.get(t.conversationId)),
     };
   }

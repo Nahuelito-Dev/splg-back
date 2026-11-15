@@ -241,9 +241,10 @@ export class ChatReadModel {
       await this.dataSource.query(
         `WITH conv AS (
            SELECT c."conversation_id", c."channel" FROM "conversation" c
+             LEFT JOIN "support_ticket" t ON t."conversation_id" = c."conversation_id"
             WHERE c."distributor_id" = $1 AND c."deleted_at" IS NULL
               AND ((c."channel" = 'platform_chat' AND c."status" = 'open')
-                   OR c."channel" = 'platform_ticket')
+                   OR (c."channel" = 'platform_ticket' AND t."status" <> 'closed'))
          ), sin_leer AS (
            SELECT conv."conversation_id", conv."channel", count(*) AS n
              FROM conv

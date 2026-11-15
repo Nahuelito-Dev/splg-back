@@ -33,6 +33,17 @@ describe('ChatReadModel: qué cuenta como «sin leer» (relevamiento B2)', () =>
     ]);
   });
 
+  it('un ticket cerrado no cuenta en el contador de la empresa ni en el de la plataforma', async () => {
+    const { sql, lectura } = base([{ chat: '0', tickets: '0' }]);
+    await lectura.resumenDeLaEmpresa('dist-a', 'a');
+    await lectura.resumenDeLaPlataforma('s');
+    for (const q of sql) {
+      expect(q).toContain(
+        `(c."channel" = 'platform_ticket' AND t."status" <> 'closed')`,
+      );
+    }
+  });
+
   it('los resúmenes leen los números de la base (o cero si no hay nada)', async () => {
     const empresa = base([{ chat: '3', tickets: '2' }]);
     const plataforma = base([
