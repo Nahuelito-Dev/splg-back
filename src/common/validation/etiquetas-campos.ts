@@ -7,6 +7,10 @@
  */
 export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   fields: 'Campos corregidos',
+  // Tema por distribuidora (Configuración → Apariencia).
+  primaryColor: 'Color principal',
+  accentColor: 'Color de acento',
+  displayName: 'Nombre para mostrar',
   permissions: 'Permisos',
   staffRoleId: 'Rol de personal',
   // Parámetros de los procesos automáticos (no son campos de un DTO).

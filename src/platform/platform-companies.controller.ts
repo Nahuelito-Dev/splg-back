@@ -1,4 +1,11 @@
-import { Body, Controller, Param, ParseUUIDPipe, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Put,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -13,6 +20,8 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { SinDistribuidora } from '../common/decorators/sin-distribuidora.decorator';
 import { DistributorService } from '../distributor/distributor.service';
 import type { Distributor } from '../distributor/entities/distributor.entity';
+import { DistributorThemeService } from '../distributor/theme/distributor-theme.service';
+import { CompanyThemeResponseDto } from '../distributor/dto/company-theme.dto';
 import {
   PlatformCompanyDto,
   SetOwnedByPlatformDto,
@@ -40,7 +49,28 @@ export function aEmpresaDePlataforma(d: Distributor): PlatformCompanyDto {
 @SinDistribuidora()
 @Controller({ path: 'platform/companies', version: '2' })
 export class PlatformCompaniesController {
-  constructor(private readonly distribuidoras: DistributorService) {}
+  constructor(
+    private readonly distribuidoras: DistributorService,
+    private readonly temas: DistributorThemeService,
+  ) {}
+
+  @Get(':id/theme')
+  @ApiOperation({
+    summary: 'El tema de una empresa (sólo lectura)',
+    description:
+      'El mismo contenido que `GET /v2/company/theme` de esa empresa: colores, nombre para mostrar, logo firmado, tokens, contraste y versión (o el tema por omisión con `isDefault: true`). La plataforma no edita el tema de una empresa: lo cambia la empresa desde Configuración → Apariencia.',
+  })
+  @ApiParam({ name: 'id', description: 'Distributor UUID' })
+  @ApiOkResponse({ type: CompanyThemeResponseDto })
+  @ApiBadRequestResponse({ description: 'El id no es un UUID' })
+  @ApiNotFoundResponse({
+    description: 'La empresa no existe o está dada de baja',
+  })
+  tema(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CompanyThemeResponseDto> {
+    return this.temas.vigente(id);
+  }
 
   @Put(':id/owned-by-platform')
   @ApiOperation({
