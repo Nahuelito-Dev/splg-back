@@ -56,12 +56,34 @@ export function sanearTraceId(valor: unknown): string | null {
   return TRACE_ID_VALIDO.test(limpio) ? limpio : null;
 }
 
+/**
+ * Prefijo de los ids que manda quien llama (`X-Request-Id`). Los que genera el
+ * server son uuid sin prefijo (requests sin id y corridas de cron, cuya traza
+ * es su `run_id`), así un id elegido afuera nunca cae en la traza de otro.
+ */
+export const PREFIJO_DEL_CLIENTE = 'c-';
+
+/** El id de traza para un `X-Request-Id` que manda quien llama: saneado y con prefijo. */
+export function traceIdDelCliente(valor: unknown): string | null {
+  const limpio = sanearTraceId(valor);
+  if (!limpio || limpio.length > TRACE_ID_MAX - PREFIJO_DEL_CLIENTE.length) {
+    return null;
+  }
+  return `${PREFIJO_DEL_CLIENTE}${limpio}`;
+}
+
 /** Un id de traza nuevo (uuid v4). */
 export function nuevoTraceId(): string {
   return randomUUID();
 }
 
-/** Los primeros 8 caracteres del id: lo que se antepone a cada línea del log. */
+/**
+ * Lo que se antepone a cada línea del log: los primeros 8 caracteres del id
+ * (sin el prefijo `c-` de los que manda quien llama, que no distingue nada).
+ */
 export function prefijoDeTraza(traceId: string): string {
-  return `[t:${traceId.slice(0, 8)}]`;
+  const id = traceId.startsWith(PREFIJO_DEL_CLIENTE)
+    ? traceId.slice(PREFIJO_DEL_CLIENTE.length)
+    : traceId;
+  return `[t:${id.slice(0, 8)}]`;
 }

@@ -3,6 +3,7 @@ import {
   nuevoTraceId,
   prefijoDeTraza,
   sanearTraceId,
+  traceIdDelCliente,
 } from './contexto-de-traza';
 
 describe('sanearTraceId', () => {
@@ -70,5 +71,26 @@ describe('ContextoDeTraza', () => {
     expect(sanearTraceId(id)).toBe(id);
     expect(prefijoDeTraza(id)).toBe(`[t:${id.slice(0, 8)}]`);
     expect(prefijoDeTraza('corto')).toBe('[t:corto]');
+  });
+});
+
+describe('traceIdDelCliente', () => {
+  it('le pone el prefijo c- al id que manda quien llama', () => {
+    expect(traceIdDelCliente('prueba-o1')).toBe('c-prueba-o1');
+  });
+
+  it('un uuid elegido afuera nunca queda igual a uno del server', () => {
+    const uuid = nuevoTraceId();
+    expect(traceIdDelCliente(uuid)).toBe(`c-${uuid}`);
+  });
+
+  it('sin lugar para el prefijo (63 o 64 caracteres) o inválido, no se usa', () => {
+    expect(traceIdDelCliente('x'.repeat(62))).toHaveLength(64);
+    expect(traceIdDelCliente('x'.repeat(63))).toBeNull();
+    expect(traceIdDelCliente('con espacio')).toBeNull();
+  });
+
+  it('el prefijo del log no muestra la c-', () => {
+    expect(prefijoDeTraza('c-prueba-o1')).toBe('[t:prueba-o]');
   });
 });

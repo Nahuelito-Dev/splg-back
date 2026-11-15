@@ -1,3 +1,7 @@
+import {
+  PREFIJO_DEL_CLIENTE,
+  TRACE_ID_MAX,
+} from '../../common/traza/contexto-de-traza';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -39,7 +43,28 @@ export class TrazasService {
     private readonly avisos: Repository<AdminNotification>,
   ) {}
 
+  /**
+   * La traza con ese id; si no hay nada, la del mismo id mandado por quien
+   * llamó (`c-<id>`), así se busca con el `X-Request-Id` tal como se envió.
+   */
   async traza(traceId: string): Promise<TraceResponseDto> {
+    const exacta = await this.items(traceId);
+    if (exacta.length > 0) return { traceId, items: exacta };
+    const delCliente = `${PREFIJO_DEL_CLIENTE}${traceId}`;
+    const items =
+      delCliente.length <= TRACE_ID_MAX ? await this.items(delCliente) : [];
+    if (items.length === 0) {
+      throw conCodigo(
+        NotFoundException,
+        404,
+        'No hay nada registrado con esa traza (o ya se depuró por antigüedad)',
+        'TRACE_NOT_FOUND',
+      );
+    }
+    return { traceId: delCliente, items };
+  }
+
+  private async items(traceId: string): Promise<TraceItemDto[]> {
     const [asientos, corridas, avisos] = await Promise.all([
       this.asientos.find({
         where: { requestId: traceId },
@@ -62,15 +87,7 @@ export class TrazasService {
       ...corridas.map(itemDeCorrida),
       ...avisos.map(itemDeAviso),
     ].sort((a, b) => a.at.getTime() - b.at.getTime());
-    if (items.length === 0) {
-      throw conCodigo(
-        NotFoundException,
-        404,
-        'No hay nada registrado con esa traza (o ya se depuró por antigüedad)',
-        'TRACE_NOT_FOUND',
-      );
-    }
-    return { traceId, items };
+    return items;
   }
 }
 

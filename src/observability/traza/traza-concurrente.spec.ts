@@ -190,7 +190,7 @@ describe('Traza de punta a punta con requests concurrentes', () => {
     ]);
     expect(a.status).toBe(200);
     expect(b.status).toBe(200);
-    expect(a.headers['x-request-id']).toBe('traza-a');
+    expect(a.headers['x-request-id']).toBe('c-traza-a');
     await new Promise((r) => setTimeout(r, 30)); // el aviso es asincrónico
 
     const service = trazasEnMemoria({ asientos, corridas, avisos });
@@ -198,7 +198,9 @@ describe('Traza de punta a punta con requests concurrentes', () => {
       ['traza-a', 'A', 'B'],
       ['traza-b', 'B', 'A'],
     ] as const) {
+      // Se busca con el id tal como lo mandó quien llamó.
       const r = await service.traza(traza);
+      expect(r.traceId).toBe(`c-${traza}`);
       expect(r.items.map((i) => i.kind).sort()).toEqual(
         [
           TraceItemKind.AUDIT,
@@ -210,7 +212,7 @@ describe('Traza de punta a punta con requests concurrentes', () => {
       expect(conEmpresa.every((i) => i.distributorId === propia)).toBe(true);
       expect(JSON.stringify(r)).not.toContain(`"distributorId":"${ajena}"`);
     }
-    const corridaA = corridas.find((c) => c.traceId === 'traza-a');
+    const corridaA = corridas.find((c) => c.traceId === 'c-traza-a');
     expect(corridaA).toMatchObject({
       trigger: RunTrigger.WEBHOOK,
       status: ProcessRunStatus.OK,
