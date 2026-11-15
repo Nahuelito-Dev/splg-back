@@ -6,8 +6,16 @@ import { DistributorStatus } from '../../distributor/entities/distributor.entity
 import type { ExpressSettingsService } from '../../distributor/express-settings.service';
 import type { ProcessConfigService } from '../../distributor/process-config.service';
 import type { AccesoDeLaEmpresa } from '../access/acceso-de-la-empresa.service';
-import { MODULOS, MODULOS_POR_PLAN } from './catalogo-de-modulos';
-import { CompanyModulesService } from './company-modules.service';
+import {
+  CATALOGO_DE_MODULOS,
+  MODULOS,
+  MODULOS_POR_PLAN,
+  type ModuloKey,
+} from './catalogo-de-modulos';
+import {
+  CompanyModulesService,
+  textoDelAviso,
+} from './company-modules.service';
 import type {
   ExcepcionDeModulo,
   ModulosDeLaEmpresaRepository,
@@ -232,7 +240,7 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
       expect(aviso).toMatchObject({
         distributorId: 'A',
         kind: 'platform_module_changed',
-        title: 'La plataforma deshabilitó «Lector de documentos»',
+        title: '«Lector de documentos» ya no está disponible',
       });
     });
 
@@ -254,8 +262,37 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
         enabled: true,
         override: { enabled: true, expiresAt: '2026-11-29T12:00:00.000Z' },
       });
-      const [[, aviso]] = emit.mock.calls as Array<[string, { title: string }]>;
-      expect(aviso.title).toBe('La plataforma habilitó «Recompra anticipada»');
+      const [[, aviso]] = emit.mock.calls as Array<
+        [string, { title: string; body: string }]
+      >;
+      expect(aviso.title).toBe('«Recompra anticipada» está disponible');
+      // La empresa no sabe que existe la habilitación: ni plataforma, ni planes, ni módulos.
+      expect(`${aviso.title} ${aviso.body}`).not.toMatch(
+        /plataforma|\bplan\b|m[óo]dulo|habilit/i,
+      );
+    });
+
+    it('los avisos a la empresa nunca hablan de plataforma, planes, módulos ni habilitación', () => {
+      const prohibido = /plataforma|\bplan\b|m[óo]dulo|habilit|nueva funci/i;
+      for (const key of Object.keys(CATALOGO_DE_MODULOS) as ModuloKey[]) {
+        expect(CATALOGO_DE_MODULOS[key].label).not.toMatch(prohibido);
+        for (const enabled of [true, false]) {
+          for (const effective of [true, false]) {
+            expect(textoDelAviso({ key, enabled, effective })).not.toMatch(
+              prohibido,
+            );
+          }
+        }
+      }
+    });
+
+    it('con llave propia apagada dice dónde encenderla; sin llave, que ya se puede usar', () => {
+      expect(
+        textoDelAviso({ key: 'repurchase', enabled: true, effective: false }),
+      ).toMatch(/encendela desde la configuración/);
+      expect(
+        textoDelAviso({ key: 'assistant', enabled: true, effective: true }),
+      ).toBe('Ya la pueden usar.');
     });
 
     it('idempotente: repetir el mismo cambio no vuelve a avisar', async () => {

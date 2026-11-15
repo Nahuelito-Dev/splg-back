@@ -64,6 +64,23 @@ function vigente(
   return { ...e, enabled: e.enabled };
 }
 
+/**
+ * Cuerpo del aviso a la empresa: qué pasa con la función, sin hablar de quién la
+ * habilitó. Con llave propia apagada, dice dónde encenderla.
+ */
+export const textoDelAviso = (e: {
+  key: ModuloKey;
+  enabled: boolean;
+  effective: boolean;
+}): string => {
+  const { alApagar, llaveDeEmpresa } = CATALOGO_DE_MODULOS[e.key];
+  if (!e.enabled) return alApagar;
+  if (llaveDeEmpresa && !e.effective) {
+    return 'Para empezar a usarla, encendela desde la configuración de la empresa.';
+  }
+  return 'Ya la pueden usar.';
+};
+
 interface EstadoDelModulo {
   key: ModuloKey;
   inPlan: boolean;
@@ -294,7 +311,11 @@ export class CompanyModulesService {
     };
   }
 
-  /** Aviso a la bandeja de la empresa: la plataforma cambió uno de sus módulos. */
+  /**
+   * Aviso a la bandeja de la empresa cuando cambia una de sus funciones. Habla de
+   * la función y de qué hace, nunca de planes, módulos ni de quién la habilitó:
+   * la empresa no sabe que existe esa habilitación (D-B6, nahue 15/11).
+   */
   private avisarALaEmpresa(
     empresa: Distributor,
     e: EstadoDelModulo,
@@ -305,11 +326,9 @@ export class CompanyModulesService {
       distributorId: empresa.distributorId,
       kind: 'platform_module_changed',
       title: e.enabled
-        ? `La plataforma habilitó «${label}»`
-        : `La plataforma deshabilitó «${label}»`,
-      body: e.enabled
-        ? `Ya pueden usar «${label}». Si tiene interruptor propio, se enciende desde la configuración de la empresa.`
-        : `«${label}» ya no está disponible para la empresa. ${CATALOGO_DE_MODULOS[e.key].alApagar}`,
+        ? `«${label}» está disponible`
+        : `«${label}» ya no está disponible`,
+      body: textoDelAviso(e),
       link: null,
       dedupeKey: `platform-module:${e.key}:${e.enabled ? 'on' : 'off'}:${ahora.getTime()}`,
     });

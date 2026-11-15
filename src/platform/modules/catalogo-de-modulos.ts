@@ -139,7 +139,7 @@ export const CATALOGO_DE_MODULOS: Readonly<
     label: 'Mensajes con clientes y choferes',
     llaveDeEmpresa: null,
     alApagar:
-      'La bandeja de mensajes con clientes y choferes deja de estar disponible; el chat con la plataforma y los tickets siguen.',
+      'La bandeja de mensajes con clientes y choferes deja de estar disponible; el chat de ayuda y los tickets siguen.',
   },
   assistant: {
     key: 'assistant',
