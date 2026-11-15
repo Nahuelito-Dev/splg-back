@@ -66,6 +66,22 @@
       "orderColumn": null
     },
     {
+      "table": "assistant_faq_template",
+      "entity": "AssistantFaqTemplate",
+      "pk": [
+        "template_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "none",
+      "distributorColumn": null,
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "assistant_knowledge_base",
       "entity": "AssistantKnowledgeBase",
       "pk": [
@@ -1858,19 +1874,11 @@
     },
     {
       "table": "assistant_faq",
-      "column": "use_as_template",
-      "property": "useAsTemplate",
-      "secret": false,
-      "kind": "text",
-      "position": 7
-    },
-    {
-      "table": "assistant_faq",
       "column": "created_by",
       "property": "createdBy",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 7
     },
     {
       "table": "assistant_faq",
@@ -1878,7 +1886,7 @@
       "property": "updatedBy",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 8
     },
     {
       "table": "assistant_faq",
@@ -1886,7 +1894,63 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 10
+      "position": 9
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "template_id",
+      "property": "templateId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "key",
+      "property": "key",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "question",
+      "property": "question",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "answer",
+      "property": "answer",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "position",
+      "property": "position",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_faq_template",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
     },
     {
       "table": "assistant_knowledge_base",

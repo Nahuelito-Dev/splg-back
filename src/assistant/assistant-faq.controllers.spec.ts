@@ -23,22 +23,29 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { crearValidationPipe } from '../common/validation/validation-pipe';
 import { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.service';
 import { ModuloGuard } from '../platform/access/modulo.guard';
+import { AssistantFaqTemplateService } from './assistant-faq-template.service';
 import { AssistantFaqMapper } from './assistant-faq.mapper';
 import { AssistantFaqService } from './assistant-faq.service';
 import {
+  claveDeEjemploOcupada,
   claveOcupada,
+  ejemploInexistente,
+  ejemploRepetido,
   preguntaInexistente,
   preguntaRepetida,
   topeAlcanzado,
+  topeDelCatalogo,
 } from './assistant.errors';
 import { CompanyAssistantFaqController } from './company-assistant-faq.controller';
+import { CompanyAssistantTemplateController } from './company-assistant-template.controller';
 import {
-  CreatePlatformAssistantFaqDto,
   UpdateAssistantFaqDto,
   UpdatePlatformAssistantFaqDto,
 } from './dto/assistant-faq.dto';
+import type { AssistantFaqTemplate } from './entities/assistant-faq-template.entity';
 import type { AssistantFaq } from './entities/assistant-faq.entity';
 import { PlatformAssistantFaqController } from './platform-assistant-faq.controller';
+import { PlatformAssistantTemplateController } from './platform-assistant-template.controller';
 
 const EMPRESA_A = '11111111-1111-4111-8111-111111111111';
 const SIN_M8 = '33333333-3333-4333-8333-333333333333';
@@ -78,6 +85,24 @@ class AuthDePrueba implements CanActivate {
   }
 }
 
+const EJEMPLO = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+const ejemplo = (
+  extra: Partial<AssistantFaqTemplate> = {},
+): AssistantFaqTemplate =>
+  ({
+    templateId: EJEMPLO,
+    key: 'medios_de_pago',
+    question: '¿Qué medios de pago aceptan?',
+    answer: 'Los que muestra la app.',
+    position: 1,
+    updatedBy: 'u1',
+    createdAt: new Date('2026-11-15T12:00:00Z'),
+    updatedAt: new Date('2026-11-15T12:30:00Z'),
+    deletedAt: null,
+    ...extra,
+  }) as AssistantFaqTemplate;
+
 const fila = (extra: Partial<AssistantFaq> = {}): AssistantFaq =>
   ({
     faqId: FAQ,
@@ -86,7 +111,7 @@ const fila = (extra: Partial<AssistantFaq> = {}): AssistantFaq =>
     key: null,
     question: '¿Hasta qué hora abren?',
     answer: 'Hasta las 20.',
-    useAsTemplate: false,
+    position: 1,
     createdBy: 'u1',
     updatedBy: 'u1',
     createdAt: new Date('2026-11-15T12:00:00Z'),
@@ -110,6 +135,13 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
     darDeBaja: jest.fn(),
     copiarPlantillas: jest.fn(),
   };
+  const catalogo = {
+    listar: jest.fn(),
+    listarParaEmpresa: jest.fn(),
+    crear: jest.fn(),
+    actualizar: jest.fn(),
+    darDeBaja: jest.fn(),
+  };
   /** Permisos del rol de personal del admin de prueba. */
   let permisos: string[];
   const acceso = { habilitado: jest.fn() };
@@ -118,10 +150,13 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
     const modulo = await Test.createTestingModule({
       controllers: [
         CompanyAssistantFaqController,
+        CompanyAssistantTemplateController,
         PlatformAssistantFaqController,
+        PlatformAssistantTemplateController,
       ],
       providers: [
         { provide: AssistantFaqService, useValue: servicio },
+        { provide: AssistantFaqTemplateService, useValue: catalogo },
         {
           provide: StaffPermissionsService,
           useValue: {
@@ -168,6 +203,17 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
       skipped: 0,
       version: 4,
     });
+    catalogo.listar.mockResolvedValue([ejemplo()]);
+    catalogo.listarParaEmpresa.mockResolvedValue([
+      { ejemplo: ejemplo(), yaEnLaBase: true },
+      {
+        ejemplo: ejemplo({ key: 'zonas', question: '¿Llegan?', position: 2 }),
+        yaEnLaBase: false,
+      },
+    ]);
+    catalogo.crear.mockResolvedValue(ejemplo());
+    catalogo.actualizar.mockResolvedValue(ejemplo({ answer: 'Otra.' }));
+    catalogo.darDeBaja.mockResolvedValue(undefined);
   });
 
   type Verbo = 'get' | 'post' | 'patch' | 'delete';
@@ -217,6 +263,7 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
             key: null,
             question: '¿Hasta qué hora abren?',
             answer: 'Hasta las 20.',
+            position: 1,
             createdAt: '2026-11-15T12:00:00.000Z',
             updatedAt: '2026-11-15T12:30:00.000Z',
           },
@@ -500,18 +547,25 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
       const dePlataforma = fila({
         distributorId: null,
         key: 'horario',
-        useAsTemplate: true,
       });
       servicio.listar.mockResolvedValue({ items: [dePlataforma], version: 1 });
       servicio.crear.mockResolvedValue(dePlataforma);
       servicio.actualizar.mockResolvedValue(dePlataforma);
     });
 
-    it('200 GET: la base de OrixTech, con clave y si es plantilla; no depende de ningún módulo', async () => {
+    it('200 GET: la base de OrixTech, con clave y sin marca de plantilla; no depende de ningún módulo', async () => {
       const r = await pedir('get', PLATAFORMA, SUPER).expect(200);
       expect(r.body).toEqual({
         items: [
-          expect.objectContaining({ key: 'horario', useAsTemplate: true }),
+          {
+            id: FAQ,
+            key: 'horario',
+            question: '¿Hasta qué hora abren?',
+            answer: 'Hasta las 20.',
+            position: 1,
+            createdAt: '2026-11-15T12:00:00.000Z',
+            updatedAt: '2026-11-15T12:30:00.000Z',
+          },
         ],
         version: 1,
         limit: 200,
@@ -520,23 +574,20 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
       expect(acceso.habilitado).not.toHaveBeenCalled();
     });
 
-    it('201 POST: crea en la base de la plataforma; por omisión es plantilla', async () => {
-      await pedir('post', PLATAFORMA, SUPER, PLANTILLA).expect(201);
-      expect(servicio.crear).toHaveBeenCalledWith(
-        null,
-        { ...PLANTILLA, useAsTemplate: true },
-        'u1',
-      );
+    it('201 POST: crea en la base de la plataforma con su clave (sin marca de plantilla)', async () => {
+      const r = await pedir('post', PLATAFORMA, SUPER, PLANTILLA).expect(201);
+      expect(servicio.crear).toHaveBeenCalledWith(null, PLANTILLA, 'u1');
+      expect(r.body).not.toHaveProperty('useAsTemplate');
     });
 
     it('200 PATCH y 204 DELETE en la base de la plataforma', async () => {
       await pedir('patch', `${PLATAFORMA}/${FAQ}`, SUPER, {
-        useAsTemplate: false,
+        answer: 'Hasta las 21.',
       }).expect(200);
       expect(servicio.actualizar).toHaveBeenCalledWith(
         null,
         FAQ,
-        { useAsTemplate: false },
+        { answer: 'Hasta las 21.' },
         'u1',
       );
       await pedir('delete', `${PLATAFORMA}/${FAQ}`, SUPER).expect(204);
@@ -555,7 +606,11 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
       ['clave con mayúsculas', { ...PLANTILLA, key: 'Horario' }],
       ['clave con espacios internos', { ...PLANTILLA, key: 'mi clave' }],
       ['clave de una letra', { ...PLANTILLA, key: 'h' }],
-      ['plantilla que no es sí/no', { ...PLANTILLA, useAsTemplate: 'si' }],
+      [
+        'marca de plantilla (ya no existe en la base de OrixTech)',
+        { ...PLANTILLA, useAsTemplate: true },
+      ],
+      ['marca de plantilla en falso', { ...PLANTILLA, useAsTemplate: false }],
       ['pregunta con HTML', { ...PLANTILLA, question: '¿<i>Abren</i>?' }],
       ['respuesta larga', { ...PLANTILLA, answer: 'a'.repeat(1501) }],
     ])('400 POST: %s', async (_caso, cuerpo) => {
@@ -563,10 +618,16 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
       expect(servicio.crear).not.toHaveBeenCalled();
     });
 
-    it('400 PATCH: la clave no se cambia; 400 PATCH/DELETE con id que no es UUID', async () => {
+    it('400 PATCH: la clave no se cambia ni se manda la marca de plantilla; 400 PATCH/DELETE con id que no es UUID', async () => {
       await pedir('patch', `${PLATAFORMA}/${FAQ}`, SUPER, {
         key: 'otra',
       }).expect(400);
+      const marca = await pedir('patch', `${PLATAFORMA}/${FAQ}`, SUPER, {
+        useAsTemplate: false,
+      }).expect(400);
+      expect((marca.body as { message: string[] }).message).toEqual([
+        expect.stringMatching(/plantilla/),
+      ]);
       await pedir('patch', `${PLATAFORMA}/x`, SUPER, { answer: 'x' }).expect(
         400,
       );
@@ -645,30 +706,25 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
 
     beforeEach(() => {
       servicio.actualizar.mockResolvedValue(
-        fila({ distributorId: null, key: 'horario', useAsTemplate: false }),
+        fila({ distributorId: null, key: 'horario' }),
       );
     });
 
-    it('el DTO de edición de la plataforma no trae useAsTemplate si no vino', () => {
+    it('los DTO de edición no traen valores por omisión', () => {
       expect(
-        plainToInstance(UpdatePlatformAssistantFaqDto, { answer: 'x' })
-          .useAsTemplate,
-      ).toBeUndefined();
+        Object.keys(
+          plainToInstance(UpdatePlatformAssistantFaqDto, { answer: 'x' }),
+        ),
+      ).toEqual(['answer']);
       expect(
-        plainToInstance(UpdateAssistantFaqDto, { answer: 'x' }),
-      ).toMatchObject({ answer: 'x' });
-      // El alta sí lo trae por omisión.
-      expect(
-        plainToInstance(CreatePlatformAssistantFaqDto, { answer: 'x' })
-          .useAsTemplate,
-      ).toBe(true);
+        Object.keys(plainToInstance(UpdateAssistantFaqDto, { answer: 'x' })),
+      ).toEqual(['answer']);
     });
 
     it('PATCH de la plataforma con sólo la respuesta: al servicio llega sólo la respuesta', async () => {
-      const r = await pedir('patch', `${PLATAFORMA}/${FAQ}`, SUPER, {
+      await pedir('patch', `${PLATAFORMA}/${FAQ}`, SUPER, {
         answer: 'Hasta las 21.',
       }).expect(200);
-      expect(r.body).toMatchObject({ useAsTemplate: false });
       expect(camposCon(servicio.actualizar)).toEqual(['answer']);
     });
 
@@ -726,6 +782,267 @@ describe('Base de conocimiento del asistente: /v2/company/assistant/faqs y /v2/p
         question: '¿Abren &amp cierran?',
       }).expect(400);
       expect(servicio.actualizar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('catálogo de preguntas de ejemplo · plataforma (/v2/platform/assistant/templates)', () => {
+    const SUPER: Quien = { rol: RoleType.SUPER_ADMIN };
+    const CATALOGO = '/platform/assistant/templates';
+    const NUEVO = {
+      key: 'medios_de_pago',
+      question: '¿Qué medios de pago aceptan?',
+      answer: 'Los que muestra la app.',
+    };
+    const RUTAS: Array<[Verbo, string, object | undefined]> = [
+      ['get', CATALOGO, undefined],
+      ['post', CATALOGO, NUEVO],
+      ['patch', `${CATALOGO}/${EJEMPLO}`, { answer: 'Otra.' }],
+      ['delete', `${CATALOGO}/${EJEMPLO}`, undefined],
+    ];
+
+    it('200 GET: el catálogo en su orden, con el tope; no depende de ningún módulo', async () => {
+      const r = await pedir('get', CATALOGO, SUPER).expect(200);
+      expect(r.body).toEqual({
+        items: [
+          {
+            id: EJEMPLO,
+            key: 'medios_de_pago',
+            question: '¿Qué medios de pago aceptan?',
+            answer: 'Los que muestra la app.',
+            position: 1,
+            createdAt: '2026-11-15T12:00:00.000Z',
+            updatedAt: '2026-11-15T12:30:00.000Z',
+          },
+        ],
+        limit: 200,
+      });
+      expect(catalogo.listar).toHaveBeenCalledWith();
+      expect(servicio.listar).not.toHaveBeenCalled();
+      expect(acceso.habilitado).not.toHaveBeenCalled();
+    });
+
+    it('201 POST: crea con el texto recortado y el usuario que la carga', async () => {
+      const r = await pedir('post', CATALOGO, SUPER, {
+        key: ' medios_de_pago ',
+        question: '  ¿Qué medios de pago aceptan?  ',
+        answer: ' Los que muestra la app. ',
+      }).expect(201);
+      expect(r.body).toMatchObject({ id: EJEMPLO, key: 'medios_de_pago' });
+      expect(catalogo.crear).toHaveBeenCalledWith(NUEVO, 'u1');
+      expect(servicio.crear).not.toHaveBeenCalled();
+    });
+
+    it('200 PATCH: al servicio llega sólo lo que vino', async () => {
+      const r = await pedir('patch', `${CATALOGO}/${EJEMPLO}`, SUPER, {
+        answer: 'Otra.',
+      }).expect(200);
+      expect(r.body).toMatchObject({ answer: 'Otra.' });
+      expect(catalogo.actualizar).toHaveBeenCalledWith(
+        EJEMPLO,
+        { answer: 'Otra.' },
+        'u1',
+      );
+      expect(
+        Object.keys(
+          (catalogo.actualizar.mock.calls[0] as unknown[])[1] as object,
+        ),
+      ).toEqual(['answer']);
+    });
+
+    it('204 DELETE: baja lógica', async () => {
+      await pedir('delete', `${CATALOGO}/${EJEMPLO}`, SUPER).expect(204);
+      expect(catalogo.darDeBaja).toHaveBeenCalledWith(EJEMPLO, 'u1');
+    });
+
+    it('el header de una empresa no cambia nada: el catálogo es uno solo', async () => {
+      await pedir('get', CATALOGO, { ...SUPER, tenant: EMPRESA_A }).expect(200);
+      expect(catalogo.listar).toHaveBeenCalledWith();
+    });
+
+    it.each([
+      [
+        'sin clave',
+        { question: NUEVO.question, answer: NUEVO.answer },
+        /^Clave:/,
+      ],
+      ['clave con mayúsculas', { ...NUEVO, key: 'Medios' }, /^Clave:/],
+      ['clave de una letra', { ...NUEVO, key: 'm' }, /^Clave:/],
+      ['clave larga', { ...NUEVO, key: 'a'.repeat(61) }, /^Clave:/],
+      ['sin pregunta', { key: 'k_1', answer: 'x' }, /^Pregunta:/],
+      ['pregunta corta', { ...NUEVO, question: '¿Ya?' }, /^Pregunta:/],
+      [
+        'pregunta con HTML',
+        { ...NUEVO, question: '¿<i>Pagan</i>?' },
+        /^Pregunta: no puede llevar HTML/,
+      ],
+      [
+        'respuesta larga',
+        { ...NUEVO, answer: 'a'.repeat(1501) },
+        /^Respuesta:/,
+      ],
+      [
+        'respuesta con entidad HTML',
+        { ...NUEVO, answer: 'Sí &amp no' },
+        /^Respuesta: no puede llevar HTML/,
+      ],
+      ['un campo que no corresponde', { ...NUEVO, position: 3 }, /Posición/],
+    ])('400 POST: %s', async (_caso, cuerpo, mensaje) => {
+      const r = await pedir('post', CATALOGO, SUPER, cuerpo).expect(400);
+      expect((r.body as { message: string[] }).message).toEqual(
+        expect.arrayContaining([expect.stringMatching(mensaje)]),
+      );
+      expect(catalogo.crear).not.toHaveBeenCalled();
+    });
+
+    it('400 PATCH: la clave no cambia, texto inválido; PATCH/DELETE con id que no es UUID (INVALID_ID)', async () => {
+      for (const cuerpo of [
+        { key: 'otra' },
+        { question: '<p>¿Pagan?</p>' },
+        { answer: '' },
+      ]) {
+        await pedir('patch', `${CATALOGO}/${EJEMPLO}`, SUPER, cuerpo).expect(
+          400,
+        );
+      }
+      for (const verbo of ['patch', 'delete'] as const) {
+        const r = await pedir(verbo, `${CATALOGO}/x`, SUPER, {
+          answer: 'x',
+        }).expect(400);
+        expect(r.body).toMatchObject({ code: 'INVALID_ID' });
+      }
+      expect(catalogo.actualizar).not.toHaveBeenCalled();
+      expect(catalogo.darDeBaja).not.toHaveBeenCalled();
+    });
+
+    it.each(RUTAS)('401 %s %s sin token', async (verbo, ruta, cuerpo) => {
+      await pedir(verbo, ruta, { rol: null }, cuerpo).expect(401);
+    });
+
+    it.each(RUTAS)(
+      '403 %s %s: un admin de empresa, un chofer o un cliente no entran',
+      async (verbo, ruta, cuerpo) => {
+        for (const rol of [
+          RoleType.ADMIN,
+          RoleType.DELIVERY,
+          RoleType.CUSTOMER,
+        ]) {
+          await pedir(verbo, ruta, { rol, tenant: EMPRESA_A }, cuerpo).expect(
+            403,
+          );
+        }
+        expect(catalogo.listar).not.toHaveBeenCalled();
+        expect(catalogo.crear).not.toHaveBeenCalled();
+      },
+    );
+
+    it('404 PATCH y DELETE: no existe o está dada de baja (ASSISTANT_TEMPLATE_NOT_FOUND)', async () => {
+      catalogo.actualizar.mockRejectedValueOnce(ejemploInexistente());
+      catalogo.darDeBaja.mockRejectedValueOnce(ejemploInexistente());
+      for (const verbo of ['patch', 'delete'] as const) {
+        const r = await pedir(verbo, `${CATALOGO}/${EJEMPLO}`, SUPER, {
+          answer: 'x',
+        }).expect(404);
+        expect(r.body).toMatchObject({
+          code: 'ASSISTANT_TEMPLATE_NOT_FOUND',
+          message: 'No existe esa pregunta de ejemplo',
+        });
+      }
+    });
+
+    it('409 POST: clave ocupada, pregunta repetida y tope; 409 PATCH: pregunta repetida', async () => {
+      catalogo.crear
+        .mockRejectedValueOnce(claveDeEjemploOcupada())
+        .mockRejectedValueOnce(ejemploRepetido())
+        .mockRejectedValueOnce(topeDelCatalogo());
+      for (const [code, mensaje] of [
+        ['ASSISTANT_TEMPLATE_KEY_TAKEN', /con esa clave/],
+        ['ASSISTANT_TEMPLATE_DUPLICATE', /igual en el catálogo/],
+        ['ASSISTANT_TEMPLATE_LIMIT_REACHED', /200 preguntas de ejemplo/],
+      ] as const) {
+        const r = await pedir('post', CATALOGO, SUPER, NUEVO).expect(409);
+        expect(r.body).toMatchObject({ code });
+        expect((r.body as { message: string }).message).toMatch(mensaje);
+      }
+      catalogo.actualizar.mockRejectedValueOnce(ejemploRepetido());
+      const r = await pedir('patch', `${CATALOGO}/${EJEMPLO}`, SUPER, {
+        question: '¿Otra pregunta?',
+      }).expect(409);
+      expect(r.body).toMatchObject({ code: 'ASSISTANT_TEMPLATE_DUPLICATE' });
+    });
+  });
+
+  describe('catálogo de preguntas de ejemplo · empresa (GET /v2/company/assistant/templates)', () => {
+    const EJEMPLOS = '/company/assistant/templates';
+
+    it('200: el catálogo con si la base de la empresa del contexto ya las tiene, sin ids ni fechas', async () => {
+      const r = await pedir('get', EJEMPLOS).expect(200);
+      expect(r.body).toEqual({
+        items: [
+          {
+            key: 'medios_de_pago',
+            question: '¿Qué medios de pago aceptan?',
+            answer: 'Los que muestra la app.',
+            position: 1,
+            alreadyInBase: true,
+          },
+          {
+            key: 'zonas',
+            question: '¿Llegan?',
+            answer: 'Los que muestra la app.',
+            position: 2,
+            alreadyInBase: false,
+          },
+        ],
+      });
+      expect(catalogo.listarParaEmpresa).toHaveBeenCalledWith(EMPRESA_A);
+      expect(servicio.listar).not.toHaveBeenCalled();
+    });
+
+    it('200 con sólo asistente.ver, y en modo soporte (es lectura)', async () => {
+      permisos = ['asistente.ver'];
+      await pedir('get', EJEMPLOS).expect(200);
+      await pedir('get', EJEMPLOS, {
+        rol: RoleType.SUPER_ADMIN,
+        tenant: EMPRESA_A,
+        sesion: SESION,
+      }).expect(200);
+      expect(catalogo.listarParaEmpresa).toHaveBeenLastCalledWith(EMPRESA_A);
+    });
+
+    it('400: admin sin distribuidora en el contexto (MISSING_DISTRIBUTOR)', async () => {
+      const r = await pedir('get', EJEMPLOS, { rol: RoleType.ADMIN }).expect(
+        400,
+      );
+      expect(r.body).toMatchObject({ code: 'MISSING_DISTRIBUTOR' });
+    });
+
+    it('401 sin token', async () => {
+      await pedir('get', EJEMPLOS, { rol: null }).expect(401);
+    });
+
+    it('403: chofer, cliente, admin sin permiso, empresa sin M8 y super admin sin sesión', async () => {
+      for (const rol of [RoleType.DELIVERY, RoleType.CUSTOMER]) {
+        await pedir('get', EJEMPLOS, { rol, tenant: EMPRESA_A }).expect(403);
+      }
+      permisos = ['pedidos.ver'];
+      const sinPermiso = await pedir('get', EJEMPLOS).expect(403);
+      expect(sinPermiso.body).toMatchObject({ code: 'PERMISSION_DENIED' });
+      permisos = ['asistente.ver'];
+      const sinModulo = await pedir('get', EJEMPLOS, {
+        rol: RoleType.ADMIN,
+        tenant: SIN_M8,
+      }).expect(403);
+      expect(sinModulo.body).toMatchObject({ code: 'MODULE_DISABLED' });
+      expect((sinModulo.body as { message: string }).message).not.toMatch(
+        /módulo|plan/i,
+      );
+      const sinSesion = await pedir('get', EJEMPLOS, {
+        rol: RoleType.SUPER_ADMIN,
+      }).expect(403);
+      expect(sinSesion.body).toMatchObject({
+        code: 'SUPPORT_SESSION_REQUIRED',
+      });
+      expect(catalogo.listarParaEmpresa).not.toHaveBeenCalled();
     });
   });
 });

@@ -48,9 +48,11 @@ const REPETIDA =
 
 /**
  * Base de conocimiento del asistente de la plataforma (DISENO-CH-BOT §4.3):
- * la del soporte de OrixTech (C1) y, las marcadas `useAsTemplate`, las
- * plantillas que copia cada distribuidora (§9 D-B4). Sólo administrador
- * general, alcance `plataforma` (no depende del módulo de ninguna empresa).
+ * la del soporte de OrixTech (C1), sólo de OrixTech (D-B6): nunca se copia ni
+ * se muestra a una distribuidora. Las preguntas de ejemplo que copian las
+ * distribuidoras son otro catálogo (`/platform/assistant/templates`, D-B7).
+ * Sólo administrador general, alcance `plataforma` (no depende del módulo de
+ * ninguna empresa).
  */
 @ApiTags('Asistente del chat (plataforma)')
 @Auth(RoleType.SUPER_ADMIN)
@@ -64,7 +66,7 @@ export class PlatformAssistantFaqController {
   @ApiOperation({
     summary: 'Preguntas frecuentes de la plataforma',
     description:
-      'Las vigentes, con su clave y si se ofrecen como plantilla, la versión de la base y el tope de preguntas.',
+      'Las vigentes, con su clave, la versión de la base y el tope de preguntas.',
   })
   @ApiOkResponse({ type: PlatformAssistantFaqListResponseDto })
   async listar(): Promise<PlatformAssistantFaqListResponseDto> {
@@ -77,7 +79,7 @@ export class PlatformAssistantFaqController {
   @PermisoDePlataforma('plataforma.tickets.configurar')
   @ApiOperation({
     summary: 'Nueva pregunta frecuente de la plataforma',
-    description: `Texto plano, con su clave. Por omisión se ofrece como plantilla a las distribuidoras. Sube la versión de la base. Máximo ${TOPE_DE_PREGUNTAS}.`,
+    description: `Texto plano, con su clave. Sólo para el soporte de OrixTech: no se copia a las distribuidoras. Sube la versión de la base. Máximo ${TOPE_DE_PREGUNTAS}.`,
   })
   @ApiCreatedResponse({ type: PlatformAssistantFaqResponseDto })
   @ApiBadRequestResponse({ description: DATOS_INVALIDOS })
@@ -98,7 +100,7 @@ export class PlatformAssistantFaqController {
   @ApiOperation({
     summary: 'Editar una pregunta frecuente de la plataforma',
     description:
-      'Lo que no viene queda como estaba; la clave no cambia. Lo ya copiado a las distribuidoras no se toca: cada una ajusta la suya. Si cambia algo, sube la versión de la base.',
+      'Lo que no viene queda como estaba; la clave no cambia. Si cambia algo, sube la versión de la base.',
   })
   @ApiOkResponse({ type: PlatformAssistantFaqResponseDto })
   @ApiBadRequestResponse({ description: `${ID_INVALIDO}. ${DATOS_INVALIDOS}` })
@@ -120,7 +122,7 @@ export class PlatformAssistantFaqController {
   @ApiOperation({
     summary: 'Dar de baja una pregunta frecuente de la plataforma',
     description:
-      'Baja lógica: deja de usarse y de ofrecerse como plantilla; su clave queda libre. Lo ya copiado a las distribuidoras sigue. Sube la versión de la base.',
+      'Baja lógica: deja de usarse; su clave y su pregunta quedan libres. Sube la versión de la base.',
   })
   @ApiNoContentResponse({ description: 'Dada de baja' })
   @ApiBadRequestResponse({ description: ID_INVALIDO })

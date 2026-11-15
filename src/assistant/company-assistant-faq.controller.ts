@@ -108,9 +108,9 @@ export class CompanyAssistantFaqController {
   @HttpCode(HttpStatus.OK)
   @Permiso('asistente.gestionar')
   @ApiOperation({
-    summary: 'Copiar las plantillas de OrixTech',
+    summary: 'Copiar las preguntas de ejemplo de OrixTech',
     description:
-      'Copia a la base las plantillas vigentes de la plataforma que todavía no tiene (por su clave o porque ya hay una pregunta igual), para ajustarlas después. Idempotente: repetirlo no duplica nada ni sube la versión. Todo o nada: si no entran todas bajo el tope, no copia ninguna (409). En modo soporte, 403 `SUPPORT_READ_ONLY`.',
+      'Copia a la base las preguntas de ejemplo vigentes del catálogo de OrixTech (`GET /company/assistant/templates`) que todavía no tiene (por su clave o porque ya hay una pregunta igual), al final y en el orden del catálogo, para ajustarlas después: desde ahí son de la distribuidora. Idempotente: repetirlo no duplica nada ni sube la versión. Todo o nada: si no entran todas bajo el tope, no copia ninguna (409). En modo soporte, 403 `SUPPORT_READ_ONLY`.',
   })
   @ApiOkResponse({ type: CopyAssistantTemplatesResponseDto })
   @ApiBadRequestResponse({ description: FALTA_DISTRIBUIDORA })

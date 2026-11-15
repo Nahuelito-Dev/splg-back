@@ -104,6 +104,11 @@ const PLATAFORMA = [
   'POST /v2/platform/assistant/faqs',
   'PATCH /v2/platform/assistant/faqs/:id',
   'DELETE /v2/platform/assistant/faqs/:id',
+  // Catálogo de preguntas de ejemplo para distribuidoras (CH-BOT D-B7).
+  'GET /v2/platform/assistant/templates',
+  'POST /v2/platform/assistant/templates',
+  'PATCH /v2/platform/assistant/templates/:id',
+  'DELETE /v2/platform/assistant/templates/:id',
   'DELETE /distributor/:id',
   'DELETE /role/:id',
   'DELETE /v2/support-sessions/:id',

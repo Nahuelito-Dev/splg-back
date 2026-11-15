@@ -1,18 +1,13 @@
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-  OmitType,
-  PartialType,
-} from '@nestjs/swagger';
+import { ApiProperty, OmitType, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
+import { IsString, Length, Matches } from 'class-validator';
 import {
-  IsBoolean,
-  IsOptional,
-  IsString,
-  Length,
-  Matches,
-} from 'class-validator';
-import { HTML, LARGOS, LargoEnLaBase } from '../texto-plano';
+  CLAVE,
+  HTML,
+  LARGO_DE_LA_CLAVE,
+  LARGOS,
+  LargoEnLaBase,
+} from '../texto-plano';
 
 const Recortar = () =>
   Transform(({ value }: { value: unknown }) =>
@@ -58,52 +53,42 @@ export class CreateAssistantFaqDto {
   answer!: string;
 }
 
-/**
- * Edición: lo que no viene queda como estaba. Los DTO de edición no tienen
- * valores por omisión (un `PartialType` copiaría el de `useAsTemplate` y un
- * PATCH de otra cosa lo pisaría).
- */
+/** Edición: lo que no viene queda como estaba. */
 export class UpdateAssistantFaqDto extends PartialType(CreateAssistantFaqDto) {}
 
-/** Alta de una pregunta de la base de la plataforma (OrixTech). */
-export class CreatePlatformAssistantFaqDto extends CreateAssistantFaqDto {
+/** La clave de una pregunta de OrixTech o de una pregunta de ejemplo. */
+class ConClave extends CreateAssistantFaqDto {
   @ApiProperty({
     example: 'medios_de_pago',
-    maxLength: 60,
+    minLength: LARGO_DE_LA_CLAVE.min,
+    maxLength: LARGO_DE_LA_CLAVE.max,
     description:
-      'Clave de la pregunta: minúsculas, números y guiones bajos. Única entre las vigentes y no cambia (para cambiarla, se da de baja y se crea otra). Es la que evita duplicar la plantilla al copiarla a una distribuidora.',
+      'Clave de la pregunta: minúsculas, números y guiones bajos. Única entre las vigentes y no cambia (para cambiarla, se da de baja y se crea otra).',
   })
   @Recortar()
   @IsString()
-  @Length(2, 60)
-  @Matches(/^[a-z0-9]+(_[a-z0-9]+)*$/)
+  @Length(LARGO_DE_LA_CLAVE.min, LARGO_DE_LA_CLAVE.max)
+  @Matches(CLAVE)
   key!: string;
-
-  @ApiPropertyOptional({
-    default: true,
-    description:
-      'Si se ofrece como plantilla a las distribuidoras (`from-templates`). Con `false` queda sólo en la base del soporte de la plataforma.',
-  })
-  @IsOptional()
-  @IsBoolean()
-  useAsTemplate: boolean = true;
 }
 
 /**
- * La clave no cambia. Se arma sobre la edición de la empresa (sin
- * inicializadores) y no sobre el alta de la plataforma: `PartialType` y
- * `OmitType` heredan el `= true` de `useAsTemplate`, y con `transform` del
- * pipe un PATCH de la respuesta volvía a marcarla como plantilla.
+ * Alta de una pregunta de la base de la plataforma (OrixTech): contesta a las
+ * distribuidoras en el soporte y nunca se copia a una (D-B6).
  */
-export class UpdatePlatformAssistantFaqDto extends UpdateAssistantFaqDto {
-  @ApiPropertyOptional({
-    description:
-      'Si se ofrece como plantilla a las distribuidoras. Si no viene, queda como estaba.',
-  })
-  @IsOptional()
-  @IsBoolean()
-  useAsTemplate?: boolean;
-}
+export class CreatePlatformAssistantFaqDto extends ConClave {}
+
+/** La clave no cambia. */
+export class UpdatePlatformAssistantFaqDto extends UpdateAssistantFaqDto {}
+
+/**
+ * Alta de una pregunta de ejemplo para distribuidoras (D-B7). La clave es la
+ * que evita duplicarla al copiarla a una distribuidora.
+ */
+export class CreateAssistantFaqTemplateDto extends ConClave {}
+
+/** La clave no cambia; el orden es el de alta. */
+export class UpdateAssistantFaqTemplateDto extends UpdateAssistantFaqDto {}
 
 export class AssistantFaqResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -113,7 +98,7 @@ export class AssistantFaqResponseDto {
     nullable: true,
     example: 'medios_de_pago',
     description:
-      'Clave de la plantilla de OrixTech de la que salió; nula si la escribió la distribuidora.',
+      'Clave de la pregunta de ejemplo de la que salió; nula si la escribió la distribuidora.',
   })
   key!: string | null;
 
@@ -135,12 +120,7 @@ export class PlatformAssistantFaqResponseDto extends OmitType(
   AssistantFaqResponseDto,
   ['key'] as const,
 ) {
-  @ApiProperty({ example: 'medios_de_pago' }) key!: string;
-
-  @ApiProperty({
-    description: 'Si se ofrece como plantilla a las distribuidoras',
-  })
-  useAsTemplate!: boolean;
+  @ApiProperty({ example: 'soporte_facturacion' }) key!: string;
 }
 
 export class AssistantFaqListResponseDto {
@@ -167,13 +147,16 @@ export class PlatformAssistantFaqListResponseDto extends OmitType(
 }
 
 export class CopyAssistantTemplatesResponseDto {
-  @ApiProperty({ example: 5, description: 'Plantillas copiadas ahora' })
+  @ApiProperty({
+    example: 5,
+    description: 'Preguntas de ejemplo copiadas ahora',
+  })
   copied!: number;
 
   @ApiProperty({
     example: 0,
     description:
-      'Plantillas que no se copiaron porque la base ya tiene esa clave o esa misma pregunta',
+      'Preguntas de ejemplo que no se copiaron porque la base ya tiene esa clave o esa misma pregunta',
   })
   skipped!: number;
 
@@ -182,4 +165,55 @@ export class CopyAssistantTemplatesResponseDto {
     description: 'Versión de la base después de copiar',
   })
   version!: number;
+}
+
+/** Pregunta de ejemplo, como la administra la plataforma. */
+export class PlatformAssistantFaqTemplateResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ example: 'medios_de_pago' }) key!: string;
+  @ApiProperty({ example: '¿Qué medios de pago aceptan?' }) question!: string;
+  @ApiProperty() answer!: string;
+
+  @ApiProperty({
+    example: 1,
+    description:
+      'Orden en el catálogo (1 es la primera); la lista y la copia salen ordenadas por él',
+  })
+  position!: number;
+
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class PlatformAssistantFaqTemplateListResponseDto {
+  @ApiProperty({ type: [PlatformAssistantFaqTemplateResponseDto] })
+  items!: PlatformAssistantFaqTemplateResponseDto[];
+
+  @ApiProperty({
+    example: 200,
+    description: 'Tope de preguntas de ejemplo del catálogo',
+  })
+  limit!: number;
+}
+
+/** Pregunta de ejemplo, como la ve una distribuidora antes de copiarla. */
+export class AssistantFaqTemplateResponseDto {
+  @ApiProperty({ example: 'medios_de_pago' }) key!: string;
+  @ApiProperty({ example: '¿Qué medios de pago aceptan?' }) question!: string;
+  @ApiProperty() answer!: string;
+
+  @ApiProperty({ example: 1, description: 'Orden en el catálogo' })
+  position!: number;
+
+  @ApiProperty({
+    example: false,
+    description:
+      'Si la base de la distribuidora ya tiene esa clave o esa misma pregunta: `from-templates` no la copia',
+  })
+  alreadyInBase!: boolean;
+}
+
+export class AssistantFaqTemplateListResponseDto {
+  @ApiProperty({ type: [AssistantFaqTemplateResponseDto] })
+  items!: AssistantFaqTemplateResponseDto[];
 }

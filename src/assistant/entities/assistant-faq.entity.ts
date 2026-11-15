@@ -12,29 +12,29 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
-import { HTML_EN_LA_BASE } from '../texto-plano';
+import { CLAVE_EN_LA_BASE, sinHtmlEnLaBase as sinHtml } from '../texto-plano';
 import { AssistantKnowledgeBase } from './assistant-knowledge-base.entity';
-
-const sinHtml = (columna: string): string =>
-  `"${columna}" !~ '${HTML_EN_LA_BASE.etiqueta}' AND "${columna}" !~ '${HTML_EN_LA_BASE.entidad}'`;
 
 /**
  * Pregunta frecuente de la base de conocimiento del asistente del chat
- * (DISENO-CH-BOT §4.3). Las de una distribuidora llevan su `distributor_id`;
- * las de la plataforma (OrixTech) lo tienen nulo y, si `use_as_template`, son
- * las plantillas que cada distribuidora copia y ajusta (§9 D-B4).
+ * (DISENO-CH-BOT §4.3). Las de una distribuidora llevan su `distributor_id`
+ * y contestan a sus clientes; las de la plataforma (OrixTech) lo tienen nulo
+ * y contestan a las distribuidoras en el soporte. Son dos bases ajenas
+ * (D-B6): nada de la de OrixTech llega a una distribuidora. Las preguntas de
+ * ejemplo que copia cada distribuidora son otro catálogo
+ * (`AssistantFaqTemplate`, D-B7).
  *
  * `key`: en la plataforma, la clave de la pregunta (obligatoria, no cambia);
- * en una distribuidora, la de la plantilla de la que salió (nula si la
- * escribió la empresa). Por esa clave la copia de plantillas no duplica.
+ * en una distribuidora, la de la pregunta de ejemplo de la que salió (nula si
+ * la escribió la empresa). Por esa clave la copia de ejemplos no duplica.
  *
  * Únicos parciales entre las vigentes (de la migración): una clave y una
  * pregunta (sin mayúsculas ni espacios de los bordes) por base. Texto plano:
  * sin etiquetas ni entidades HTML (§5), también en la base.
  *
  * `position`: el orden en la base (la lista y el contexto del asistente salen
- * ordenados por ella). Una pregunta nueva va al final; las plantillas copiadas
- * conservan el orden que tienen en la base de la plataforma.
+ * ordenados por ella). Una pregunta nueva va al final; las preguntas de
+ * ejemplo copiadas conservan el orden que tienen en el catálogo.
  */
 @Entity('assistant_faq')
 @ForeignKey(
@@ -64,15 +64,11 @@ const sinHtml = (columna: string): string =>
 @Check('CHK_assistant_faq_posicion', `"position" >= 1`)
 @Check(
   'CHK_assistant_faq_clave',
-  `"key" IS NULL OR "key" ~ '^[a-z0-9]+(_[a-z0-9]+)*$'`,
+  `"key" IS NULL OR "key" ~ '${CLAVE_EN_LA_BASE}'`,
 )
 @Check(
   'CHK_assistant_faq_clave_de_plataforma',
   `"distributor_id" IS NOT NULL OR "key" IS NOT NULL`,
-)
-@Check(
-  'CHK_assistant_faq_plantilla',
-  `"distributor_id" IS NULL OR NOT "use_as_template"`,
 )
 export class AssistantFaq {
   @PrimaryGeneratedColumn('uuid', {
@@ -117,10 +113,6 @@ export class AssistantFaq {
   /** Orden dentro de la base (1 es la primera). */
   @Column({ type: 'integer' })
   position!: number;
-
-  /** Sólo en la plataforma: la ofrece como plantilla a las distribuidoras. */
-  @Column({ name: 'use_as_template', type: 'boolean', default: false })
-  useAsTemplate!: boolean;
 
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy!: string | null;

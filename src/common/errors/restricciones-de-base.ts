@@ -467,6 +467,23 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Las preguntas de la plataforma tienen que tener su clave',
   CHK_assistant_faq_plantilla:
     'Sólo las preguntas de la plataforma se ofrecen como plantilla',
+  // Catálogo de preguntas de ejemplo para distribuidoras (CH-BOT D-B7)
+  UQ_assistant_faq_template_clave_vigente:
+    'Ya hay una pregunta de ejemplo con esa clave',
+  UQ_assistant_faq_template_pregunta_vigente:
+    'Ya hay una pregunta de ejemplo igual en el catálogo',
+  UQ_assistant_faq_template_posicion_vigente:
+    'Ya hay una pregunta de ejemplo en esa posición del catálogo',
+  CHK_assistant_faq_template_pregunta:
+    'La pregunta de ejemplo tiene que tener entre 5 y 200 caracteres',
+  CHK_assistant_faq_template_respuesta:
+    'La respuesta de la pregunta de ejemplo tiene que tener entre 1 y 1500 caracteres',
+  CHK_assistant_faq_template_sin_html:
+    'La pregunta de ejemplo y su respuesta van en texto plano, sin HTML',
+  CHK_assistant_faq_template_posicion:
+    'La posición de la pregunta de ejemplo empieza en 1',
+  CHK_assistant_faq_template_clave:
+    'La clave de la pregunta de ejemplo va en minúsculas, con números y guiones bajos',
   // Mensajería: chat con la plataforma y tickets (CH1)
   UQ_conversation_general_abierta:
     'Ya hay una conversación general abierta con esa persona (o un chat abierto con la plataforma)',

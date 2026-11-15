@@ -1,10 +1,15 @@
 import type {
+  AssistantFaqTemplateListResponseDto,
   AssistantFaqListResponseDto,
   AssistantFaqResponseDto,
   PlatformAssistantFaqListResponseDto,
   PlatformAssistantFaqResponseDto,
+  PlatformAssistantFaqTemplateListResponseDto,
+  PlatformAssistantFaqTemplateResponseDto,
 } from './dto/assistant-faq.dto';
+import type { EjemploParaLaEmpresa } from './assistant-faq-template.service';
 import type { BaseDeConocimiento } from './assistant-faq.service';
+import type { AssistantFaqTemplate } from './entities/assistant-faq-template.entity';
 import { TOPE_DE_PREGUNTAS } from './assistant.errors';
 import type { AssistantFaq } from './entities/assistant-faq.entity';
 
@@ -30,7 +35,6 @@ export const AssistantFaqMapper = {
       question: fila.question,
       answer: fila.answer,
       position: fila.position,
-      useAsTemplate: fila.useAsTemplate,
       createdAt: fila.createdAt.toISOString(),
       updatedAt: fila.updatedAt.toISOString(),
     };
@@ -51,6 +55,44 @@ export const AssistantFaqMapper = {
       items: base.items.map((f) => AssistantFaqMapper.toPlatformDto(f)),
       version: base.version,
       limit: TOPE_DE_PREGUNTAS,
+    };
+  },
+
+  toPlatformTemplateDto(
+    fila: AssistantFaqTemplate,
+  ): PlatformAssistantFaqTemplateResponseDto {
+    return {
+      id: fila.templateId,
+      key: fila.key,
+      question: fila.question,
+      answer: fila.answer,
+      position: fila.position,
+      createdAt: fila.createdAt.toISOString(),
+      updatedAt: fila.updatedAt.toISOString(),
+    };
+  },
+
+  toPlatformTemplateListDto(
+    filas: AssistantFaqTemplate[],
+  ): PlatformAssistantFaqTemplateListResponseDto {
+    return {
+      items: filas.map((f) => AssistantFaqMapper.toPlatformTemplateDto(f)),
+      limit: TOPE_DE_PREGUNTAS,
+    };
+  },
+
+  /** Lo que ve una distribuidora: sin ids, autores ni fechas del catálogo. */
+  toTemplateListDto(
+    filas: EjemploParaLaEmpresa[],
+  ): AssistantFaqTemplateListResponseDto {
+    return {
+      items: filas.map(({ ejemplo, yaEnLaBase }) => ({
+        key: ejemplo.key,
+        question: ejemplo.question,
+        answer: ejemplo.answer,
+        position: ejemplo.position,
+        alreadyInBase: yaEnLaBase,
+      })),
     };
   },
 };

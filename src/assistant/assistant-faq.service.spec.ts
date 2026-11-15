@@ -7,6 +7,7 @@ import {
   normalizarPregunta,
 } from './assistant-faq.service';
 import { TOPE_DE_PREGUNTAS } from './assistant.errors';
+import { AssistantFaqTemplate } from './entities/assistant-faq-template.entity';
 import { AssistantFaq } from './entities/assistant-faq.entity';
 import { AssistantKnowledgeBase } from './entities/assistant-knowledge-base.entity';
 
@@ -27,6 +28,8 @@ interface Base {
 function baseEnMemoria() {
   const bases: Base[] = [];
   const faqs: AssistantFaq[] = [];
+  /** El catálogo de preguntas de ejemplo (D-B7), cargado a mano por cada test. */
+  const ejemplos: AssistantFaqTemplate[] = [];
   const llamadas: string[] = [];
   let reloj = Date.parse('2026-11-15T12:00:00Z');
   let secuencia = 0;
@@ -165,8 +168,41 @@ function baseEnMemoria() {
     return Promise.reject(new Error(`SQL inesperado: ${sql}`));
   });
 
+  const repoDeEjemplos = {
+    find: jest.fn(
+      (opciones: {
+        order?: Record<string, 'ASC' | 'DESC'>;
+      }): Promise<AssistantFaqTemplate[]> => {
+        llamadas.push('ejemplos');
+        const campos = Object.keys(opciones.order ?? {});
+        return Promise.resolve(
+          ejemplos
+            .filter((e) => e.deletedAt === null)
+            .sort((x, y) => {
+              for (const campo of campos) {
+                const a = (x as unknown as Record<string, number | Date>)[
+                  campo
+                ];
+                const b = (y as unknown as Record<string, number | Date>)[
+                  campo
+                ];
+                const dif = Number(a) - Number(b);
+                if (dif !== 0) return dif;
+              }
+              return 0;
+            })
+            .map((e) => ({ ...e })),
+        );
+      },
+    ),
+  };
+
   const getRepository = (entidad: unknown) =>
-    entidad === AssistantKnowledgeBase ? repoDeBases : repoDePreguntas;
+    entidad === AssistantKnowledgeBase
+      ? repoDeBases
+      : entidad === AssistantFaqTemplate
+        ? repoDeEjemplos
+        : repoDePreguntas;
   const manager = { query, getRepository };
   type Trabajo = (m: typeof manager) => Promise<unknown>;
   const dataSource = {
@@ -179,9 +215,34 @@ function baseEnMemoria() {
     ),
   };
 
+  /** Carga una pregunta de ejemplo en el catálogo (vigente, al final). */
+  const ejemplo = (
+    key: string,
+    question: string,
+    answer = 'Respuesta de ejemplo',
+    position = ejemplos.length + 1,
+  ): AssistantFaqTemplate => {
+    const fila = Object.assign(new AssistantFaqTemplate(), {
+      templateId: `ejemplo-${key}`,
+      key,
+      question,
+      answer,
+      position,
+      updatedBy: 's',
+      createdAt: new Date(reloj),
+      updatedAt: new Date(reloj),
+      deletedAt: null,
+    });
+    ejemplos.push(fila);
+    return fila;
+  };
+
   return {
     bases,
     faqs,
+    ejemplos,
+    ejemplo,
+    repoDeEjemplos,
     llamadas,
     query,
     repoDePreguntas,
@@ -221,7 +282,6 @@ describe('AssistantFaqService', () => {
         distributorId: A,
         knowledgeBaseId: `base-${A}`,
         key: null,
-        useAsTemplate: false,
         createdBy: 'admin-a',
         updatedBy: 'admin-a',
       });
@@ -267,36 +327,6 @@ describe('AssistantFaqService', () => {
       expect((await m.service.listar(null)).items.map((f) => f.key)).toEqual([
         'tres',
       ]);
-    });
-
-    it('en la plataforma la pregunta lleva su clave y por omisión se ofrece como plantilla', async () => {
-      const m = baseEnMemoria();
-      const ofrecida = await m.service.crear(
-        null,
-        { ...pregunta(1), key: 'uno' },
-        's',
-      );
-      const soloSoporte = await m.service.crear(
-        null,
-        { ...pregunta(2), key: 'dos', useAsTemplate: false },
-        's',
-      );
-      expect(ofrecida).toMatchObject({
-        distributorId: null,
-        key: 'uno',
-        useAsTemplate: true,
-      });
-      expect(soloSoporte.useAsTemplate).toBe(false);
-    });
-
-    it('una empresa nunca ofrece plantillas aunque lo pida', async () => {
-      const m = baseEnMemoria();
-      const fila = await m.service.crear(
-        A,
-        { ...pregunta(1), useAsTemplate: true },
-        'a',
-      );
-      expect(fila.useAsTemplate).toBe(false);
     });
   });
 
@@ -461,28 +491,6 @@ describe('AssistantFaqService', () => {
         ),
       ).resolves.toMatchObject({ question: '¿Pregunta número 3?' });
     });
-
-    it('la plataforma puede dejar de ofrecerla como plantilla; una empresa no puede prenderlo', async () => {
-      const m = baseEnMemoria();
-      const plantilla = await m.service.crear(
-        null,
-        { ...pregunta(1), key: 'uno' },
-        's',
-      );
-      await expect(
-        m.service.actualizar(
-          null,
-          plantilla.faqId,
-          { useAsTemplate: false },
-          's',
-        ),
-      ).resolves.toMatchObject({ useAsTemplate: false });
-      const propia = await m.service.crear(A, pregunta(2), 'a');
-      await m.service.actualizar(A, propia.faqId, { useAsTemplate: true }, 'a');
-      expect(m.faqs.find((f) => f.faqId === propia.faqId)?.useAsTemplate).toBe(
-        false,
-      );
-    });
   });
 
   describe('404: lo de otra base no existe', () => {
@@ -513,13 +521,13 @@ describe('AssistantFaqService', () => {
 
     it('una empresa no toca las de la plataforma', async () => {
       const m = baseEnMemoria();
-      const plantilla = await m.service.crear(
+      const deOrixTech = await m.service.crear(
         null,
         { ...pregunta(1), key: 'uno' },
         's',
       );
       await expect(
-        m.service.actualizar(A, plantilla.faqId, { answer: 'x' }, 'a'),
+        m.service.actualizar(A, deOrixTech.faqId, { answer: 'x' }, 'a'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
@@ -543,44 +551,39 @@ describe('AssistantFaqService', () => {
     });
   });
 
-  describe('copia de plantillas', () => {
-    async function conPlantillas() {
+  describe('copia de preguntas de ejemplo (D-B7)', () => {
+    /**
+     * El catálogo con dos ejemplos y uno dado de baja, y la base de OrixTech
+     * con preguntas propias (una con la misma clave que un ejemplo).
+     */
+    async function conEjemplos() {
       const m = baseEnMemoria();
-      await m.service.crear(
-        null,
-        { question: '¿Cómo pido?', answer: 'Desde la app', key: 'como_pedir' },
-        's',
-      );
-      await m.service.crear(
-        null,
-        {
-          question: '¿Cómo pago?',
-          answer: 'Como diga la app',
-          key: 'medios_de_pago',
-        },
-        's',
-      );
+      m.ejemplo('como_pedir', '¿Cómo pido?', 'Desde la app');
+      m.ejemplo('medios_de_pago', '¿Cómo pago?', 'Como diga la app');
+      m.ejemplo('vieja', '¿Vieja?', 'x').deletedAt = new Date();
       await m.service.crear(
         null,
         {
           question: '¿Cómo uso el panel?',
           answer: 'Sólo para el soporte',
           key: 'panel',
-          useAsTemplate: false,
         },
         's',
       );
-      const dadaDeBaja = await m.service.crear(
+      await m.service.crear(
         null,
-        { question: '¿Vieja?', answer: 'x', key: 'vieja' },
+        {
+          question: '¿Cómo pido soporte a OrixTech?',
+          answer: 'Interno de OrixTech',
+          key: 'como_pedir',
+        },
         's',
       );
-      await m.service.darDeBaja(null, dadaDeBaja.faqId, 's');
       return m;
     }
 
-    it('copia las plantillas vigentes ofrecidas, con su clave, como preguntas de la empresa', async () => {
-      const m = await conPlantillas();
+    it('copia las preguntas de ejemplo vigentes del catálogo, con su clave, como preguntas de la empresa', async () => {
+      const m = await conEjemplos();
       await expect(m.service.copiarPlantillas(A, 'a')).resolves.toEqual({
         copied: 2,
         skipped: 0,
@@ -590,18 +593,81 @@ describe('AssistantFaqService', () => {
       expect(
         base.items.map((f) => [
           f.key,
+          f.question,
+          f.answer,
           f.distributorId,
-          f.useAsTemplate,
           f.createdBy,
         ]),
       ).toEqual([
-        ['como_pedir', A, false, 'a'],
-        ['medios_de_pago', A, false, 'a'],
+        ['como_pedir', '¿Cómo pido?', 'Desde la app', A, 'a'],
+        ['medios_de_pago', '¿Cómo pago?', 'Como diga la app', A, 'a'],
+      ]);
+      expect(m.repoDeEjemplos.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('con la misma clave en OrixTech y en el catálogo, la copia trae el texto del catálogo y nunca el de OrixTech', async () => {
+      const m = await conEjemplos();
+      expect(
+        (await m.service.listar(null)).items.find(
+          (f) => f.key === 'como_pedir',
+        ),
+      ).toMatchObject({ answer: 'Interno de OrixTech' });
+      await m.service.copiarPlantillas(A, 'a');
+      const copia = (await m.service.listar(A)).items.find(
+        (f) => f.key === 'como_pedir',
+      );
+      expect(copia).toMatchObject({
+        question: '¿Cómo pido?',
+        answer: 'Desde la app',
+        distributorId: A,
+      });
+      const textos = m.faqs
+        .filter((f) => f.distributorId === A)
+        .flatMap((f) => [f.question, f.answer]);
+      expect(textos).not.toContain('¿Cómo pido soporte a OrixTech?');
+      expect(textos).not.toContain('Interno de OrixTech');
+    });
+
+    it('una pregunta de la base de OrixTech nunca llega a una distribuidora (D-B6)', async () => {
+      const m = baseEnMemoria();
+      await m.service.crear(
+        null,
+        { question: '¿Cómo pido?', answer: 'Interno', key: 'como_pedir' },
+        's',
+      );
+      await expect(m.service.copiarPlantillas(A, 'a')).resolves.toEqual({
+        copied: 0,
+        skipped: 0,
+        version: 0,
+      });
+      expect(m.faqs.filter((f) => f.distributorId === A)).toEqual([]);
+      // Y con catálogo, sólo llega lo del catálogo.
+      const conCatalogo = await conEjemplos();
+      await conCatalogo.service.copiarPlantillas(A, 'a');
+      const copiadas = conCatalogo.faqs.filter((f) => f.distributorId === A);
+      expect(copiadas.map((f) => f.answer)).not.toContain(
+        'Interno de OrixTech',
+      );
+      expect(copiadas.map((f) => f.answer)).not.toContain(
+        'Sólo para el soporte',
+      );
+    });
+
+    it('la copia es de la empresa: editarla o darla de baja no toca el catálogo', async () => {
+      const m = await conEjemplos();
+      await m.service.copiarPlantillas(A, 'a');
+      const [copia, otra] = (await m.service.listar(A)).items;
+      await m.service.actualizar(A, copia.faqId, { answer: 'Llamanos' }, 'a');
+      await m.service.darDeBaja(A, otra.faqId, 'a');
+      expect(m.ejemplos.map((e) => [e.answer, e.deletedAt === null])).toEqual([
+        ['Desde la app', true],
+        ['Como diga la app', true],
+        ['x', false],
       ]);
     });
 
     it('es idempotente: la segunda vez no copia nada ni sube la versión, aunque la empresa haya editado la copia', async () => {
-      const m = await conPlantillas();
+      const m = await conEjemplos();
       await m.service.copiarPlantillas(A, 'a');
       const copia = (await m.service.listar(A)).items[0];
       await m.service.actualizar(
@@ -619,7 +685,7 @@ describe('AssistantFaqService', () => {
     });
 
     it('no duplica una pregunta que la empresa ya escribió (misma pregunta, sin clave)', async () => {
-      const m = await conPlantillas();
+      const m = await conEjemplos();
       await m.service.crear(
         A,
         { question: '¿cómo PAGO?', answer: 'Efectivo' },
@@ -632,8 +698,8 @@ describe('AssistantFaqService', () => {
       });
     });
 
-    it('una copia dada de baja vuelve a copiarse si se piden las plantillas de nuevo', async () => {
-      const m = await conPlantillas();
+    it('una copia dada de baja vuelve a copiarse si se piden los ejemplos de nuevo', async () => {
+      const m = await conEjemplos();
       await m.service.copiarPlantillas(A, 'a');
       const copia = (await m.service.listar(A)).items[0];
       await m.service.darDeBaja(A, copia.faqId, 'a');
@@ -644,7 +710,7 @@ describe('AssistantFaqService', () => {
     });
 
     it('todo o nada: si no entran bajo el tope no copia ninguna (409 con cuántas sobran)', async () => {
-      const m = await conPlantillas();
+      const m = await conEjemplos();
       for (let i = 0; i < TOPE_DE_PREGUNTAS - 1; i += 1) {
         await m.service.crear(A, pregunta(i), 'a');
       }
@@ -653,13 +719,13 @@ describe('AssistantFaqService', () => {
         status: 409,
         code: 'ASSISTANT_FAQ_LIMIT_REACHED',
       });
-      expect(error.message).toMatch(/al menos 1/);
+      expect(error.message).toMatch(/preguntas de ejemplo.*al menos 1/);
       expect((await m.service.listar(A)).items).toHaveLength(
         TOPE_DE_PREGUNTAS - 1,
       );
     });
 
-    it('sin plantillas no copia nada y la versión no cambia', async () => {
+    it('sin preguntas de ejemplo no copia nada y la versión no cambia', async () => {
       const m = baseEnMemoria();
       await expect(m.service.copiarPlantillas(A, 'a')).resolves.toEqual({
         copied: 0,
@@ -669,12 +735,24 @@ describe('AssistantFaqService', () => {
     });
 
     it('cada empresa copia a su base: lo de A no cuenta para B', async () => {
-      const m = await conPlantillas();
+      const m = await conEjemplos();
       await m.service.copiarPlantillas(A, 'a');
       await expect(m.service.copiarPlantillas(B, 'b')).resolves.toMatchObject({
         copied: 2,
       });
       expect(m.faqs.filter((f) => f.distributorId === B)).toHaveLength(2);
+    });
+
+    it('bloquea la base de la empresa antes de leer el catálogo', async () => {
+      const m = await conEjemplos();
+      m.llamadas.length = 0;
+      await m.service.copiarPlantillas(A, 'a');
+      expect(m.llamadas.slice(0, 4)).toEqual([
+        'crearBase',
+        'bloquear',
+        'find',
+        'ejemplos',
+      ]);
     });
   });
 
@@ -692,22 +770,6 @@ describe('AssistantFaqService', () => {
 });
 
 describe('AssistantFaqService · corrección 1', () => {
-  it('un PATCH de la plataforma con sólo la respuesta no vuelve a marcarla como plantilla', async () => {
-    const m = baseEnMemoria();
-    const soloSoporte = await m.service.crear(
-      null,
-      { ...pregunta(1), key: 'uno', useAsTemplate: false },
-      's',
-    );
-    await m.service.actualizar(
-      null,
-      soloSoporte.faqId,
-      { answer: 'Otra' },
-      's',
-    );
-    expect(m.faqs[0]).toMatchObject({ answer: 'Otra', useAsTemplate: false });
-  });
-
   it('un PATCH de la plataforma sin cambios no escribe ni sube la versión', async () => {
     const m = baseEnMemoria();
     const fila = await m.service.crear(
@@ -716,15 +778,20 @@ describe('AssistantFaqService · corrección 1', () => {
       's',
     );
     m.repoDePreguntas.save.mockClear();
-    await m.service.actualizar(
-      null,
-      fila.faqId,
-      { answer: fila.answer, useAsTemplate: true },
-      's',
-    );
+    await m.service.actualizar(null, fila.faqId, { answer: fila.answer }, 's');
     await m.service.actualizar(null, fila.faqId, {}, 's');
     expect(m.repoDePreguntas.save).not.toHaveBeenCalled();
     expect((await m.service.listar(null)).version).toBe(1);
+  });
+
+  it('la base de la plataforma ya no guarda la marca de plantilla', async () => {
+    const m = baseEnMemoria();
+    const fila = await m.service.crear(
+      null,
+      { ...pregunta(1), key: 'uno' },
+      's',
+    );
+    expect(fila).not.toHaveProperty('useAsTemplate');
   });
 
   it('listar lee preguntas y versión en una misma transacción REPEATABLE READ', async () => {
@@ -829,20 +896,12 @@ describe('AssistantFaqService · corrección 1', () => {
       ]);
     });
 
-    it('las plantillas copiadas (todas con la misma fecha) conservan el orden de la plataforma y van después de lo propio', async () => {
+    it('las preguntas de ejemplo copiadas (todas con la misma fecha) conservan el orden del catálogo y van después de lo propio', async () => {
       const m = baseEnMemoria();
-      for (const [i, clave] of ['a', 'b', 'c'].entries()) {
-        await m.service.crear(
-          null,
-          { question: `¿Plantilla ${clave}?`, answer: 'x', key: clave },
-          's',
-        );
-        expect(m.faqs[i].key).toBe(clave);
-      }
-      // La plataforma las reordenó: c, a, b.
-      m.faqs[2].position = 1;
-      m.faqs[0].position = 2;
-      m.faqs[1].position = 3;
+      // El catálogo ordenado c, a, b (la posición manda, no el alta).
+      m.ejemplo('a', '¿Ejemplo a?', 'x', 2);
+      m.ejemplo('b', '¿Ejemplo b?', 'x', 3);
+      m.ejemplo('c', '¿Ejemplo c?', 'x', 1);
       await m.service.crear(A, pregunta(1), 'a');
       await m.service.crear(A, pregunta(2), 'a');
       await m.service.copiarPlantillas(A, 'a');

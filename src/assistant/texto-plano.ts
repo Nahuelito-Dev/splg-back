@@ -21,6 +21,19 @@ export const HTML_EN_LA_BASE = {
 
 export const tieneHtml = (texto: string): boolean => HTML.test(texto);
 
+/** El CHECK de texto plano de una columna (mismo patrón que `HTML`). */
+export const sinHtmlEnLaBase = (columna: string): string =>
+  `"${columna}" !~ '${HTML_EN_LA_BASE.etiqueta}' AND "${columna}" !~ '${HTML_EN_LA_BASE.entidad}'`;
+
+/**
+ * Clave de una pregunta (de la base de OrixTech o del catálogo de ejemplos):
+ * minúsculas, números y guiones bajos, sin guiones bajos en los bordes ni
+ * dobles. El mismo patrón está en los CHECK de la base.
+ */
+export const CLAVE = /^[a-z0-9]+(_[a-z0-9]+)*$/;
+export const CLAVE_EN_LA_BASE = '^[a-z0-9]+(_[a-z0-9]+)*$';
+export const LARGO_DE_LA_CLAVE = { min: 2, max: 60 } as const;
+
 /**
  * El largo como lo cuenta Postgres (`char_length`, `varchar(n)`): puntos de
  * código. `class-validator` (`@Length`) no cuenta los selectores de variación
@@ -84,5 +97,15 @@ export function assertTextoValido(
         `${nombre} no puede llevar HTML: escribí texto plano`,
       );
     }
+  }
+}
+
+/** La segunda capa de la clave: el mismo control que el DTO. */
+export function assertClaveValida(clave: string): void {
+  const { min, max } = LARGO_DE_LA_CLAVE;
+  if (clave.length < min || clave.length > max || !CLAVE.test(clave)) {
+    throw new BadRequestException(
+      `La clave tiene que tener entre ${min} y ${max} caracteres: minúsculas, números y guiones bajos`,
+    );
   }
 }

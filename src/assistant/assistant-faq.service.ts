@@ -9,6 +9,7 @@ import {
   TOPE_DE_PREGUNTAS,
   topeAlcanzado,
 } from './assistant.errors';
+import { AssistantFaqTemplate } from './entities/assistant-faq-template.entity';
 import { AssistantFaq } from './entities/assistant-faq.entity';
 import { AssistantKnowledgeBase } from './entities/assistant-knowledge-base.entity';
 import { assertTextoValido } from './texto-plano';
@@ -23,14 +24,12 @@ export type DuenioDeLaBase = string | null;
 export interface DatosDePregunta {
   question: string;
   answer: string;
-  /** Sólo la plataforma la elige; en una empresa la pone la copia de plantillas. */
+  /** Sólo la plataforma la elige; en una empresa la pone la copia de ejemplos. */
   key?: string;
-  /** Sólo en la plataforma. */
-  useAsTemplate?: boolean;
 }
 
 export type CambiosDePregunta = Partial<
-  Pick<DatosDePregunta, 'question' | 'answer' | 'useAsTemplate'>
+  Pick<DatosDePregunta, 'question' | 'answer'>
 >;
 
 export interface BaseDeConocimiento {
@@ -58,13 +57,37 @@ export const normalizarPregunta = (texto: string): string =>
   texto.trim().toLowerCase();
 
 /**
+ * Las preguntas de ejemplo que la base todavía no tiene (por clave o por la
+ * misma pregunta), en el orden del catálogo. Es la regla de la copia
+ * (`from-templates`) y la que muestra `GET /company/assistant/templates`.
+ */
+export function ejemplosQueFaltan<
+  T extends Pick<AssistantFaqTemplate, 'key' | 'question'>,
+>(
+  ejemplos: ReadonlyArray<T>,
+  vigentes: ReadonlyArray<Pick<AssistantFaq, 'key' | 'question'>>,
+): T[] {
+  const claves = new Set(vigentes.map((v) => v.key));
+  const preguntas = new Set(
+    vigentes.map((v) => normalizarPregunta(v.question)),
+  );
+  return ejemplos.filter((e) => {
+    const pregunta = normalizarPregunta(e.question);
+    if (claves.has(e.key) || preguntas.has(pregunta)) return false;
+    claves.add(e.key);
+    preguntas.add(pregunta);
+    return true;
+  });
+}
+
+/**
  * Base de conocimiento del asistente del chat (DISENO-CH-BOT §4.3): preguntas
  * frecuentes de cada distribuidora y de la plataforma, con su versión.
  *
  * Toda escritura corre en una transacción que primero bloquea la cabecera de
  * la base (`FOR UPDATE`, la crea si no existía): las escrituras de una misma
  * base quedan en fila, así el tope de preguntas, las repetidas y la copia de
- * plantillas se controlan sin carreras. La versión sube en la misma
+ * preguntas de ejemplo se controlan sin carreras. La versión sube en la misma
  * transacción que el cambio.
  */
 @Injectable()
@@ -116,7 +139,6 @@ export class AssistantFaqService {
           question: datos.question,
           answer: datos.answer,
           position: ultimaPosicion(vigentes) + 1,
-          useAsTemplate: duenio === null && (datos.useAsTemplate ?? true),
           createdBy: actorUserId,
           updatedBy: actorUserId,
         }),
@@ -140,15 +162,9 @@ export class AssistantFaqService {
       const nuevos = {
         question: cambios.question ?? fila.question,
         answer: cambios.answer ?? fila.answer,
-        useAsTemplate:
-          duenio === null
-            ? (cambios.useAsTemplate ?? fila.useAsTemplate)
-            : false,
       };
       const cambia =
-        nuevos.question !== fila.question ||
-        nuevos.answer !== fila.answer ||
-        nuevos.useAsTemplate !== fila.useAsTemplate;
+        nuevos.question !== fila.question || nuevos.answer !== fila.answer;
       if (!cambia) return fila;
       if (
         normalizarPregunta(nuevos.question) !==
@@ -190,10 +206,12 @@ export class AssistantFaqService {
   }
 
   /**
-   * Copia a la base de la distribuidora las plantillas vigentes de la
-   * plataforma que todavía no tiene (por clave o por la misma pregunta).
-   * Idempotente: la segunda vez no copia nada ni sube la versión. Todo o
-   * nada: si no entran todas bajo el tope, no copia ninguna.
+   * Copia a la base de la distribuidora las preguntas de ejemplo vigentes del
+   * catálogo (D-B7) que todavía no tiene (por clave o por la misma pregunta).
+   * Nunca lee la base de OrixTech (D-B6). Idempotente: la segunda vez no
+   * copia nada ni sube la versión. Todo o nada: si no entran todas bajo el
+   * tope, no copia ninguna. Las copias son de la distribuidora: no quedan
+   * atadas al catálogo.
    */
   async copiarPlantillas(
     distributorId: string,
@@ -202,43 +220,31 @@ export class AssistantFaqService {
     return this.escribir(async (manager) => {
       const base = await this.bloquearBase(manager, distributorId);
       const vigentes = await this.vigentes(manager, base.id);
-      const repo = manager.getRepository(AssistantFaq);
-      const plantillas = await repo.find({
-        where: { distributorId: IsNull(), useAsTemplate: true },
+      const ejemplos = await manager.getRepository(AssistantFaqTemplate).find({
         order: { position: 'ASC', createdAt: 'ASC' },
       });
-      const claves = new Set(vigentes.map((v) => v.key));
-      const preguntas = new Set(
-        vigentes.map((v) => normalizarPregunta(v.question)),
-      );
-      const nuevas = plantillas.filter((p) => {
-        const pregunta = normalizarPregunta(p.question);
-        if (claves.has(p.key) || preguntas.has(pregunta)) return false;
-        claves.add(p.key);
-        preguntas.add(pregunta);
-        return true;
-      });
+      const nuevas = ejemplosQueFaltan(ejemplos, vigentes);
       const sobran = vigentes.length + nuevas.length - TOPE_DE_PREGUNTAS;
       if (sobran > 0) throw topeAlcanzado(sobran);
       if (nuevas.length === 0) {
         return {
           copied: 0,
-          skipped: plantillas.length,
+          skipped: ejemplos.length,
           version: base.version,
         };
       }
-      // Van al final de la base, en el orden de las plantillas.
+      // Van al final de la base, en el orden del catálogo.
       const desde = ultimaPosicion(vigentes);
+      const repo = manager.getRepository(AssistantFaq);
       await repo.save(
-        nuevas.map((p, i) =>
+        nuevas.map((e, i) =>
           repo.create({
             position: desde + i + 1,
             knowledgeBaseId: base.id,
             distributorId,
-            key: p.key,
-            question: p.question,
-            answer: p.answer,
-            useAsTemplate: false,
+            key: e.key,
+            question: e.question,
+            answer: e.answer,
             createdBy: actorUserId,
             updatedBy: actorUserId,
           }),
@@ -246,7 +252,7 @@ export class AssistantFaqService {
       );
       return {
         copied: nuevas.length,
-        skipped: plantillas.length - nuevas.length,
+        skipped: ejemplos.length - nuevas.length,
         version: await this.subirVersion(manager, base, actorUserId),
       };
     });

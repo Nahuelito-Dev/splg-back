@@ -207,6 +207,7 @@ const ATADAS: Record<string, string> = {
   'POST /v2/company/assistant/faqs/from-templates': 'assistant',
   'PATCH /v2/company/assistant/faqs/:id': 'assistant',
   'DELETE /v2/company/assistant/faqs/:id': 'assistant',
+  'GET /v2/company/assistant/templates': 'assistant',
   // Compra express (fuera de las carpetas de módulos).
   'GET /module-config/express_dispatch': 'express',
   'PUT /module-config/express_dispatch': 'express',
@@ -311,6 +312,14 @@ const EXCEPCIONES: Record<string, string> = {
     'La base del asistente de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
   'DELETE /v2/platform/assistant/faqs/:id':
     'La base del asistente de OrixTech es de la plataforma: no depende del módulo de ninguna empresa',
+  'GET /v2/platform/assistant/templates':
+    'El catálogo de preguntas de ejemplo lo administra la plataforma: no depende del módulo de ninguna empresa',
+  'POST /v2/platform/assistant/templates':
+    'El catálogo de preguntas de ejemplo lo administra la plataforma: no depende del módulo de ninguna empresa',
+  'PATCH /v2/platform/assistant/templates/:id':
+    'El catálogo de preguntas de ejemplo lo administra la plataforma: no depende del módulo de ninguna empresa',
+  'DELETE /v2/platform/assistant/templates/:id':
+    'El catálogo de preguntas de ejemplo lo administra la plataforma: no depende del módulo de ninguna empresa',
 };
 
 /** Deciden el módulo en el servicio (el proceso viene en la ruta) y documentan su 403. */
