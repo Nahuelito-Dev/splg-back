@@ -66,4 +66,34 @@ describe('depurarCambios (CU-153: las credenciales nunca se guardan)', () => {
     expect(depurarCambios(undefined)).toBeNull();
     expect(depurarCambios({})).toBeNull();
   });
+
+  it('en las rutas de mensajes no guarda el texto ni el asunto (D-C11), también el del primer mensaje de un ticket', () => {
+    const cuerpo = {
+      clientMessageId: 'c1',
+      body: 'Mi teléfono es 11 4567-8901',
+      subject: 'Factura duplicada',
+      firstMessage: { clientMessageId: 'c2', body: 'Hola' },
+      note: 'Contexto',
+    };
+    expect(
+      depurarCambios(cuerpo, '/api/v:version/company/tickets/:id/messages'),
+    ).toEqual({
+      clientMessageId: 'c1',
+      body: '[depurado]',
+      subject: '[depurado]',
+      firstMessage: { clientMessageId: 'c2', body: '[depurado]' },
+      note: '[depurado]',
+    });
+    expect(
+      depurarCambios({ body: 'x' }, '/api/v:version/platform/chats'),
+    ).toEqual({
+      body: '[depurado]',
+    });
+    // En otras rutas `body` es un dato común (el texto de un aviso de prueba).
+    expect(
+      depurarCambios({ body: 'x' }, '/api/notifications/send-test'),
+    ).toEqual({
+      body: 'x',
+    });
+  });
 });

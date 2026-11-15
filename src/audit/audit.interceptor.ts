@@ -88,7 +88,7 @@ export class AuditInterceptor implements NestInterceptor {
       ip: ipDe(request),
       result,
       statusCode,
-      changes: depurarCambios(request.body),
+      changes: depurarCambios(request.body, patron),
       errorMessage: errorMsg,
     };
   }

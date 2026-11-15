@@ -52,6 +52,9 @@ export const TABLAS_EXCLUIDAS: ReadonlySet<string> = new Set([
   // que vale es el pedido que sale de ahí.
   'cart',
   'cart_item',
+  // Lectura por persona de las conversaciones (mensajería, §6.4): cambia con
+  // cada lectura, igual que la lectura de los avisos.
+  'conversation_read_state',
 ]);
 
 /**
@@ -77,6 +80,24 @@ export const PROPIEDADES_EXCLUIDAS: Readonly<
   // `alertedAt`: marca interna del cron de avisos de vencimientos. `details`:
   // datos personales de la documentación del personal (psicofísico, ART).
   MaintenanceTask: ['alertedAt', 'details'],
+  // Mensajería: el contador, la hora y la vista previa del último mensaje
+  // cambian con cada mensaje (que ya tiene su asiento); la vista previa además
+  // es texto de un mensaje (D-C11). Las marcas de lectura cambian con cada
+  // lectura (§10.3).
+  Conversation: ['lastMessageSeq', 'lastMessageAt', 'lastMessagePreview'],
+  ConversationParty: ['lastReadSeq', 'lastDeliveredSeq'],
+};
+
+/**
+ * Campos que se auditan como `[oculto]` aunque no sean credenciales, por
+ * entidad: el texto de los mensajes y la copia de mensajes de una cita (D-C11).
+ * La auditoría es inmutable: copiar ahí cada mensaje impediría cumplir la
+ * retención y la supresión. Queda asentado quién escribió, cuándo y dónde.
+ */
+export const CAMPOS_OCULTOS: Readonly<Record<string, readonly string[]>> = {
+  Message: ['body', 'payload'],
+  // El asunto lo escribe la empresa y puede traer datos personales (D-C11).
+  SupportTicket: ['subject'],
 };
 
 /** Campos que se guardan como `[oculto]`: credenciales y claves de acceso. */
@@ -85,7 +106,8 @@ const PATRON_SECRETO =
 
 export const VALOR_OCULTO = '[oculto]';
 
-export function esSecreto(propiedad: string): boolean {
+export function esSecreto(propiedad: string, entidad?: string): boolean {
+  if (entidad && CAMPOS_OCULTOS[entidad]?.includes(propiedad)) return true;
   return PATRON_SECRETO.test(propiedad);
 }
 

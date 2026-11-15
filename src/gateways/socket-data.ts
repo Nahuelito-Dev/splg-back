@@ -14,6 +14,8 @@ export interface DatosDeSocket {
   admin?: TokenDecodificado;
   /** Chofer que hay que sacar del radar GEO al desconectarse. */
   choferId?: string;
+  /** Último «escribiendo…» que mandó el panel (ms), para no reenviar más de uno cada 3 s. */
+  ultimoEscribiendo?: number;
 }
 
 // Los mapas de eventos por defecto de socket.io, sacados del propio tipo: el

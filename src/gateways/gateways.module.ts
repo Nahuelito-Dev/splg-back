@@ -7,11 +7,16 @@ import { SocketSesionesService } from './socket-sesiones.service';
 import { RedisModule } from '../redis/redis.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { AdminModule } from '../admin/admin.module';
+import { PermisosDePlataformaService } from '../common/permisos/catalogo-de-plataforma';
+import { ParticipacionEnConversaciones } from './participacion-en-conversaciones.service';
 
 @Module({
-  imports: [RedisModule, AuthModule, UsersModule],
+  imports: [RedisModule, AuthModule, UsersModule, AdminModule],
   providers: [
     SocketIdentityService,
+    PermisosDePlataformaService,
+    ParticipacionEnConversaciones,
     DriversGateway,
     CustomersGateway,
     AdminGateway,

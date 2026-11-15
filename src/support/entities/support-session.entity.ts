@@ -34,6 +34,10 @@ import {
 @Index('UQ_support_session_activa', { synchronize: false })
 @Index('UQ_support_session_pendiente', { synchronize: false })
 @Index('IDX_support_session_historial', ['distributorId', 'createdAt'])
+// Las sesiones pedidas desde un ticket de soporte (`ticketRef = 'T-000123'`).
+@Index('IDX_support_session_ticket', ['ticketRef'], {
+  where: `"ticket_ref" IS NOT NULL`,
+})
 @Check(
   'CHK_support_session_motivo',
   `char_length(btrim("reason")) BETWEEN 20 AND 1000`,

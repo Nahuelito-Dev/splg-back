@@ -42,6 +42,7 @@ export enum ProcessName {
   ROUTE_PLANNING_CLOSE_DAYS = 'route_planning_close_days',
   ROUTE_SHEET_WATCH = 'route_sheet_watch',
   SUPPORT_SESSION_EXPIRY = 'support_session_expiry',
+  SUPPORT_HOUSEKEEPING = 'support_housekeeping',
 }
 
 export enum ProcessRunStatus {
@@ -280,6 +281,11 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
     module: null,
     title: 'Modo soporte: vencimiento de sesiones y pedidos',
     periodSeconds: 5 * MIN,
+  },
+  [ProcessName.SUPPORT_HOUSEKEEPING]: {
+    module: null,
+    title: 'Soporte: cierre de chats inactivos y de tickets vencidos',
+    periodSeconds: 10 * MIN,
   },
   [ProcessName.PROCESS_RUN_PURGE]: {
     module: null,

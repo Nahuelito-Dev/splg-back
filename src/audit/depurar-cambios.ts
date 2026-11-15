@@ -40,25 +40,54 @@ const PROFUNDIDAD_MAXIMA = 4;
  * textos largos recortados y sin anidar más de cuatro niveles. `null` si no
  * hay cuerpo.
  */
-export function depurarCambios(cuerpo: unknown): CambiosAuditados | null {
+export function depurarCambios(
+  cuerpo: unknown,
+  ruta?: string,
+): CambiosAuditados | null {
   if (!esObjeto(cuerpo) || Object.keys(cuerpo).length === 0) return null;
-  return depurarObjeto(cuerpo, 0);
+  const extra =
+    ruta !== undefined && RUTAS_DE_MENSAJES.test(ruta)
+      ? TEXTO_DE_LOS_MENSAJES
+      : SIN_EXTRA;
+  return depurarObjeto(cuerpo, 0, extra);
 }
+
+/**
+ * Rutas de la mensajería (chat con la plataforma y tickets): el texto de los
+ * mensajes no entra a la bitácora, que es inmutable (D-C11, §10.3): no se
+ * podría cumplir la retención. Queda que se escribió, quién y dónde.
+ */
+const RUTAS_DE_MENSAJES =
+  /\/(company\/platform-chat|company\/tickets|platform\/chats|platform\/tickets)(\/|$)/;
+const TEXTO_DE_LOS_MENSAJES: ReadonlySet<string> = new Set([
+  'body',
+  'note',
+  'caption',
+  'subject',
+]);
+const SIN_EXTRA: ReadonlySet<string> = new Set();
 
 function depurarObjeto(
   objeto: Record<string, unknown>,
   profundidad: number,
+  extra: ReadonlySet<string> = SIN_EXTRA,
 ): CambiosAuditados {
   const limpio: CambiosAuditados = {};
   for (const [clave, valor] of Object.entries(objeto)) {
-    limpio[clave] = SENSIBLES.has(clave.toLowerCase())
-      ? '[depurado]'
-      : depurarValor(valor, profundidad + 1);
+    const minuscula = clave.toLowerCase();
+    limpio[clave] =
+      SENSIBLES.has(minuscula) || extra.has(minuscula)
+        ? '[depurado]'
+        : depurarValor(valor, profundidad + 1, extra);
   }
   return limpio;
 }
 
-function depurarValor(valor: unknown, profundidad: number): unknown {
+function depurarValor(
+  valor: unknown,
+  profundidad: number,
+  extra: ReadonlySet<string>,
+): unknown {
   if (typeof valor === 'string') {
     return valor.length > LARGO_MAXIMO
       ? `${valor.slice(0, LARGO_MAXIMO)}…`
@@ -66,9 +95,9 @@ function depurarValor(valor: unknown, profundidad: number): unknown {
   }
   if (profundidad > PROFUNDIDAD_MAXIMA) return '[recortado]';
   if (Array.isArray(valor)) {
-    return valor.map((v) => depurarValor(v, profundidad + 1));
+    return valor.map((v) => depurarValor(v, profundidad + 1, extra));
   }
-  if (esObjeto(valor)) return depurarObjeto(valor, profundidad);
+  if (esObjeto(valor)) return depurarObjeto(valor, profundidad, extra);
   return valor;
 }
 

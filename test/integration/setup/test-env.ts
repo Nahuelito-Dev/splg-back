@@ -61,6 +61,7 @@ import {
 import { crearValidationPipe } from '../../../src/common/validation/validation-pipe';
 import { sentenciasDeRolesDelPersonal } from '../../../src/migrations/sql/roles-del-personal';
 import { sentenciasDeSoporte } from '../../../src/migrations/sql/sesiones-de-soporte';
+import { sentenciasDeMensajeria } from '../../../src/migrations/sql/mensajeria';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
  * devuelva algo que `supertest` acepta sin pasar por `any`. */
@@ -322,6 +323,9 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     ...sentenciasDeRolesDelPersonal(),
     // Modo soporte: únicos parciales de las sesiones y registro de sólo agregar.
     ...sentenciasDeSoporte(),
+    // Mensajería (CH1): únicos parciales, secuencia de tickets, partes,
+    // mensajes inmutables, canales y transiciones del ticket.
+    ...sentenciasDeMensajeria(),
   ]) {
     await dataSource.query(sql);
   }

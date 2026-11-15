@@ -9,6 +9,23 @@ import {
  * ya se muestra ahí. Una clave `campo:valor` pisa a la del valor suelto.
  */
 export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
+  // Mensajería: tickets de soporte (CH1).
+  'category:billing': 'Facturación',
+  'category:technical': 'Técnico',
+  'category:module': 'Módulos',
+  'category:data': 'Datos',
+  'category:account': 'Cuenta',
+  'category:other': 'Otro',
+  'priority:low': 'Baja',
+  'priority:normal': 'Normal',
+  'priority:high': 'Alta',
+  'priority:urgent': 'Urgente',
+  'status:new': 'Nuevo',
+  'status:waiting_company': 'Esperando a la empresa',
+  'scope:platform_reply': 'Respuesta rápida del soporte',
+  'scope:auto_reply': 'Respuesta automática',
+  'visibility:all': 'Visible para la empresa',
+  'visibility:internal': 'Nota interna',
   // El estado de la documentación se nombra en un solo lugar: el dominio.
   up_to_date: ETIQUETA_DE_DOCUMENTACION[EmployeeDocumentStatus.UP_TO_DATE],
   due_soon: ETIQUETA_DE_DOCUMENTACION[EmployeeDocumentStatus.DUE_SOON],
@@ -365,6 +382,7 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'minutes:60': '60 minutos',
   'minutes:120': '120 minutos',
   support_session_expiry: 'Vencimiento de sesiones de soporte',
+  support_housekeeping: 'Mantenimiento del soporte (chats y tickets)',
   'scope:personal_data': 'Datos personales',
   'scope:files': 'Archivos',
   'scope:exports': 'Exportes',

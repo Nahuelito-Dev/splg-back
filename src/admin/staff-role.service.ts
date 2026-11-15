@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { StaffRole } from './entities/staff-role.entity';
@@ -17,6 +18,10 @@ import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { withTransactionRetry } from '../common/utils/with-transaction-retry';
+import {
+  EVENTO_PERMISOS_CAMBIADOS,
+  PermisosCambiadosEvent,
+} from '../common/events/permisos-cambiados.event';
 import {
   esPermiso,
   ordenarPermisos,
@@ -81,6 +86,7 @@ export class StaffRoleService {
     private readonly roles: Repository<StaffRole>,
     private readonly dataSource: DataSource,
     private readonly permisos: StaffPermissionsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async findAll(distributorId: string): Promise<RolConConteo[]> {
@@ -134,7 +140,7 @@ export class StaffRoleService {
   ): Promise<RolConConteo> {
     const permisos =
       dto.permissions !== undefined ? validarPermisos(dto.permissions) : null;
-    return this.enTransaccion(async (manager) => {
+    const resultado = await this.enTransaccion(async (manager) => {
       await this.bloquear(manager, distributorId);
       const rol = await this.vigente(manager, id, distributorId);
       this.assertNoEsDeSistema(rol, 'editar');
@@ -155,8 +161,17 @@ export class StaffRoleService {
         await contarGestoresDeRoles(manager, distributorId),
       );
       const conteo = await this.contarAdminsPorRol(manager, [id]);
-      return { rol, adminCount: conteo.get(id) ?? 0 };
+      const afectados = permisos
+        ? (
+            await manager
+              .getRepository(Admin)
+              .find({ select: { userId: true }, where: { staffRoleId: id } })
+          ).map((a) => a.userId)
+        : [];
+      return { rol, adminCount: conteo.get(id) ?? 0, afectados };
     });
+    this.avisarPermisosCambiados(resultado.afectados);
+    return { rol: resultado.rol, adminCount: resultado.adminCount };
   }
 
   /** Baja lógica. El de sistema y uno con admins asignados no se dan de baja (409). */
@@ -191,7 +206,7 @@ export class StaffRoleService {
     distributorId: string,
     actor: Actor,
   ): Promise<AsignacionDeRol> {
-    return this.enTransaccion(async (manager) => {
+    const asignacion = await this.enTransaccion(async (manager) => {
       await this.bloquear(manager, distributorId);
       const admin = await manager
         .getRepository(Admin)
@@ -232,6 +247,17 @@ export class StaffRoleService {
       }
       return { adminId: admin.adminId, userId: admin.userId, rol };
     });
+    this.avisarPermisosCambiados([asignacion.userId]);
+    return asignacion;
+  }
+
+  /** Después del commit: las conexiones en vivo de esas personas reevalúan sus salas. */
+  private avisarPermisosCambiados(userIds: readonly string[]): void {
+    if (userIds.length === 0) return;
+    this.events.emit(
+      EVENTO_PERMISOS_CAMBIADOS,
+      new PermisosCambiadosEvent(userIds),
+    );
   }
 
   /**
