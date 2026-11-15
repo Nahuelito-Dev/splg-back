@@ -5,7 +5,7 @@ import {
   Channel,
   MessageVisibility,
   Party,
-  type PartyQueHabla,
+  type PartyDeC1,
 } from '../domain/chat.enums';
 import { TicketNoEncontradoError } from '../domain/chat.errors';
 import type { MensajeACitar } from '../domain/cita';
@@ -16,7 +16,7 @@ import { SupportTicket } from '../entities/support-ticket.entity';
 
 /** Quién opera sobre un ticket: su punta, su usuario y, si es la empresa, cuál. */
 export interface ActorDeTicket {
-  party: PartyQueHabla;
+  party: PartyDeC1;
   userId: string;
   /** La empresa de quien pide; nula para la plataforma (ve todas). */
   distributorId: string | null;

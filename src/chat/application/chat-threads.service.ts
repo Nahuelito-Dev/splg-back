@@ -5,7 +5,7 @@ import { Channel, MessageVisibility, Party } from '../domain/chat.enums';
 import { ConversacionNoEncontradaError } from '../domain/chat.errors';
 import { Conversation } from '../entities/conversation.entity';
 import { Message } from '../entities/message.entity';
-import type { Observador } from '../infrastructure/chat-read-model';
+import type { Lector } from '../infrastructure/chat-read-model';
 import type { MessagesQueryDto } from '../presentation/dto/chat-input.dto';
 import { ChatEvents } from './chat.events';
 
@@ -46,7 +46,7 @@ export class ChatThreadsService {
 
   async mensajes(
     conversation: Conversation,
-    quien: Observador,
+    quien: Lector,
     query: MessagesQueryDto,
   ): Promise<{ items: Message[]; hasMore: boolean }> {
     if (query.afterSeq !== undefined && query.beforeSeq !== undefined) {
@@ -94,7 +94,7 @@ export class ChatThreadsService {
    */
   async leer(
     conversation: Conversation,
-    quien: Observador,
+    quien: Lector,
     seq: number,
   ): Promise<void> {
     const hasta = Math.min(seq, conversation.lastMessageSeq);
@@ -125,6 +125,7 @@ export class ChatThreadsService {
       this.eventos.lectura({
         conversationId: conversation.conversationId,
         distributorId: conversation.distributorId,
+        channel: conversation.channel,
         party: quien.party,
         lastReadSeq: hasta,
         userId: quien.userId,

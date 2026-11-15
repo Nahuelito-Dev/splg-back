@@ -70,3 +70,137 @@ export class ConversacionYaTomadaError extends ConflictDomainError {
     super('Otra persona del soporte ya está atendiendo este chat.');
   }
 }
+
+/** Reabrir: hay otra abierta del mismo tema, o el canal no se reabre. */
+export class ConversacionNoReabribleError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.CONVERSATION_NOT_REOPENABLE;
+  constructor() {
+    super(
+      'Esta conversación no se puede reabrir: ya hay otra abierta sobre el mismo tema.',
+    );
+  }
+}
+
+export class ConversacionConReclamoError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.CONVERSATION_ALREADY_HAS_CLAIM;
+  constructor() {
+    super('Esta conversación ya tiene un reclamo.');
+  }
+}
+
+/** Abrir una conversación por un pedido entregado o cancelado hace más de 30 días. */
+export class PlazoDelPedidoVencidoError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ORDER_CHAT_WINDOW_CLOSED;
+  constructor() {
+    super(
+      'Pasó el plazo para consultar por este pedido. Escribinos por el chat general.',
+    );
+  }
+}
+
+/** Asignar a alguien del personal que no atiende ese canal. */
+export class AsignadoSinPermisoError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ASSIGNEE_WITHOUT_PERMISSION;
+  constructor() {
+    super('Esa persona no atiende este tipo de mensajes.');
+  }
+}
+
+/** Editar un mensaje de sistema, una respuesta automática o uno ya redactado. */
+export class MensajeNoEditableError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MESSAGE_NOT_EDITABLE;
+  constructor() {
+    super('Este mensaje no se puede editar.');
+  }
+}
+
+export class VentanaDeEdicionVencidaError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MESSAGE_EDIT_WINDOW_CLOSED;
+  constructor(minutos: number) {
+    super(
+      `Ya no se puede editar: los mensajes se editan hasta ${minutos} minutos después de enviarlos.`,
+    );
+  }
+}
+
+/** Responder a un mensaje que no existe en esa conversación. */
+export class RespuestaInvalidaError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.REPLY_TO_INVALID;
+  constructor() {
+    super('El mensaje al que respondés no existe en esta conversación.');
+  }
+}
+
+/** Una plantilla con una variable fuera de la lista cerrada. */
+export class VariableDePlantillaDesconocidaError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.TEMPLATE_VARIABLE_UNKNOWN;
+  constructor(variables: readonly string[]) {
+    super(
+      `La respuesta usa variables que no existen: ${variables.join(', ')}. Usá ${'{{cliente.nombre}}'}, ${'{{pedido.numero}}'}, ${'{{empresa.nombre}}'} o ${'{{horario.proximo}}'}.`,
+    );
+  }
+}
+
+/** Una punta escribiendo en un canal que no es suyo (no debería llegar: lo cubre la búsqueda). */
+export class PuntaFueraDeSuCanalError extends ConflictDomainError {
+  constructor() {
+    super('No podés escribir en esta conversación.');
+  }
+}
+
+/** Abrir con el chofer de un pedido que todavía no tiene chofer. */
+export class PedidoSinChoferError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ORDER_WITHOUT_DRIVER;
+  constructor() {
+    super('El pedido todavía no tiene chofer asignado.');
+  }
+}
+
+/** Borrar un mensaje después de los 15 minutos (D-C23). */
+export class VentanaDeBorradoVencidaError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MESSAGE_DELETE_WINDOW_CLOSED;
+  constructor(minutos: number) {
+    super(
+      `Ya no se puede borrar: los mensajes se borran hasta ${minutos} minutos después de enviarlos.`,
+    );
+  }
+}
+
+/** El mensaje dio pie a un reclamo o está citado en un reclamo o un ticket. */
+export class MensajeConReclamoError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MESSAGE_LINKED_TO_CLAIM;
+  constructor(accion: AccionSobreElMensaje = 'borrar') {
+    super(
+      `No se puede ${accion}: el mensaje forma parte de un reclamo o de un ticket.`,
+    );
+  }
+}
+
+/** Editar o borrar: los dos tienen las mismas excepciones (D-C22, D-C23). */
+export type AccionSobreElMensaje = 'borrar' | 'editar';
+
+/** Los mensajes de una conversación por un pedido no se borran (son parte del pedido). */
+export class MensajeDeUnPedidoError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MESSAGE_IN_ORDER_CONVERSATION;
+  constructor(accion: AccionSobreElMensaje = 'borrar') {
+    super(
+      `No se puede ${accion}: los mensajes de una conversación por un pedido quedan como constancia del pedido.`,
+    );
+  }
+}
+
+/** Alguien ya respondió citando el mensaje. */
+export class MensajeYaCitadoError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MESSAGE_ALREADY_QUOTED;
+  constructor(accion: AccionSobreElMensaje = 'borrar') {
+    super(`No se puede ${accion}: ya respondieron citando este mensaje.`);
+  }
+}
+
+/** La persona ya no es de la empresa (chofer dado de baja, cliente sin vínculo ni pedidos). */
+export class ChatNoEscribibleError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.CHAT_NOT_WRITABLE;
+  constructor() {
+    super('Ya no se puede escribir en este chat.');
+  }
+}

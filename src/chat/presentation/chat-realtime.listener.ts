@@ -29,6 +29,7 @@ import {
 import {
   Channel,
   ConversationStatus,
+  esCanalDeLaBandeja,
   MessageVisibility,
   Party,
 } from '../domain/chat.enums';
@@ -100,6 +101,8 @@ export class ChatRealtimeListener {
    */
   @OnEvent(EVENTO_MENSAJE_CREADO, { async: true })
   async mensaje({ conversation, message }: MensajeCreado): Promise<void> {
+    // La bandeja de la empresa tiene su propio aviso (`BandejaRealtimeListener`).
+    if (esCanalDeLaBandeja(conversation.channel)) return;
     await this.seguro(EVENTO_SOCKET_MENSAJE, async () => {
       const base = {
         conversationId: conversation.conversationId,
@@ -136,6 +139,7 @@ export class ChatRealtimeListener {
     conversation,
     change,
   }: ConversacionCambiada): Promise<void> {
+    if (esCanalDeLaBandeja(conversation.channel)) return;
     await this.seguro(EVENTO_SOCKET_CONVERSACION, async () => {
       const base = {
         conversationId: conversation.conversationId,
@@ -177,6 +181,7 @@ export class ChatRealtimeListener {
    */
   @OnEvent(EVENTO_LECTURA, { async: true })
   async lectura(evento: LecturaRegistrada): Promise<void> {
+    if (esCanalDeLaBandeja(evento.channel)) return;
     await this.seguro(EVENTO_SOCKET_LEIDO, () => {
       const payload = {
         conversationId: evento.conversationId,

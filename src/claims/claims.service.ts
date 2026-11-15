@@ -65,6 +65,34 @@ export class ClaimsService {
     createClaimDto: CreateClaimDto,
     distributorId: string | null = null,
   ): Promise<Claim> {
+    const guardado = await this.claimRepo.save(
+      await this.armar(createClaimDto, distributorId),
+    );
+    this.avisarAAdmins(guardado);
+    return guardado;
+  }
+
+  /**
+   * Crea el reclamo dentro de la transacción de quien llama (`manager`), sin
+   * avisar: quien llama avisa con `avisarCreado` después del commit. Lo usa la
+   * mensajería para crear el reclamo desde una conversación de forma atómica
+   * (si la conversación falla, el reclamo no queda).
+   */
+  async crearDentro(
+    manager: EntityManager,
+    createClaimDto: CreateClaimDto,
+    distributorId: string | null,
+  ): Promise<Claim> {
+    return manager
+      .getRepository(Claim)
+      .save(await this.armar(createClaimDto, distributorId));
+  }
+
+  /** Valida el pedido (de la empresa y del cliente) y arma el reclamo, sin guardarlo. */
+  private async armar(
+    createClaimDto: CreateClaimDto,
+    distributorId: string | null,
+  ): Promise<Claim> {
     // Con distribuidora en contexto, el pedido de otra no existe.
     await this.orderService.assertDeLaDistribuidora(
       createClaimDto.orderId,
@@ -88,9 +116,12 @@ export class ClaimsService {
       description: createClaimDto.description,
     });
 
-    const guardado = await this.claimRepo.save(claim);
-    this.avisarAAdmins(guardado);
-    return guardado;
+    return claim;
+  }
+
+  /** El aviso de un reclamo nuevo a los admins (después del commit de quien lo creó). */
+  avisarCreado(claim: Claim): void {
+    this.avisarAAdmins(claim);
   }
 
   /** Best-effort: el reclamo ya está guardado. */

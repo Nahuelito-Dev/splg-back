@@ -115,6 +115,7 @@ const CARPETAS_DE_MODULOS = [
   'cylinder/recovery/',
   'fleet/planner/',
   'mp-reconciliation/',
+  'chat/presentation/bandeja/',
 ];
 
 /** Qué ruta va con qué módulo. Cambiarlo es una decisión de producto (§3.5). */
@@ -204,6 +205,36 @@ const ATADAS: Record<string, string> = {
   'PUT /module-config/express_dispatch': 'express',
   'POST /orders/express': 'express',
   'POST /orders/express/quote': 'express',
+  // Bandeja de la empresa: clientes y choferes (CH3). El chat con la
+  // plataforma y los tickets (C1) son núcleo y quedan fuera.
+  'GET /v2/conversations': 'chat',
+  'POST /v2/conversations': 'chat',
+  'POST /v2/conversations/broadcast-drivers': 'chat',
+  'GET /v2/conversations/:id': 'chat',
+  'GET /v2/conversations/:id/messages': 'chat',
+  'POST /v2/conversations/:id/messages': 'chat',
+  'PATCH /v2/conversations/:id/messages/:messageId': 'chat',
+  'POST /v2/conversations/:id/assign': 'chat',
+  'POST /v2/conversations/:id/close': 'chat',
+  'POST /v2/conversations/:id/reopen': 'chat',
+  'POST /v2/conversations/:id/read': 'chat',
+  'POST /v2/conversations/:id/claim': 'chat',
+  'GET /v2/chat/settings': 'chat',
+  'PUT /v2/chat/settings': 'chat',
+  'GET /v2/chat/business-hours': 'chat',
+  'PUT /v2/chat/business-hours': 'chat',
+  'GET /v2/chat/templates': 'chat',
+  'POST /v2/chat/templates': 'chat',
+  'PATCH /v2/chat/templates/:id': 'chat',
+  'DELETE /v2/chat/templates/:id': 'chat',
+  'GET /v2/me/conversations': 'chat',
+  'POST /v2/me/conversations': 'chat',
+  'GET /v2/me/conversations/:id': 'chat',
+  'GET /v2/me/conversations/:id/messages': 'chat',
+  'POST /v2/me/conversations/:id/messages': 'chat',
+  'PATCH /v2/me/conversations/:id/messages/:messageId': 'chat',
+  'DELETE /v2/me/conversations/:id/messages/:messageId': 'chat',
+  'POST /v2/me/conversations/:id/read': 'chat',
 };
 
 /**

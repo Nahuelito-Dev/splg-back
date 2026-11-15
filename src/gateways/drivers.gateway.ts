@@ -17,6 +17,14 @@ import { CustomersGateway } from './customers.gateway';
 import { AdminGateway } from './admin.gateway';
 import { errorMessage } from '../common/errors/error-message';
 import { salaDeUsuario, type SocketDeSplg } from './socket-data';
+import { ParticipacionEnConversaciones } from './participacion-en-conversaciones.service';
+import {
+  pedirEscribiendo,
+  type RespuestaDeSalaDeLaApp,
+  salaDeConversacionDeLaApp,
+  salirDeLaConversacion,
+  unirseALaConversacion,
+} from './salas-de-las-apps';
 
 /**
  * Posición nueva de un chofer (después de guardarla en el radar). La escucha
@@ -46,6 +54,7 @@ export class DriversGateway
     private readonly customersGateway: CustomersGateway,
     private readonly adminGateway: AdminGateway,
     @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly participacion?: ParticipacionEnConversaciones,
   ) {}
 
   async handleConnection(client: SocketDeSplg): Promise<void> {
@@ -176,6 +185,68 @@ export class DriversGateway
         active.distributorId,
       );
     }
+  }
+
+  /**
+   * Entrar a la sala de una conversación propia con la empresa (C2, D-C28):
+   * sólo un chofer y sólo las suyas (validado contra la base).
+   */
+  @SubscribeMessage('chat:join')
+  async handleChatJoin(
+    @MessageBody() cuerpo: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
+  ): Promise<RespuestaDeSalaDeLaApp> {
+    const identidad = await this.identidades.obtener(client);
+    if (!identidad || identidad.role !== RoleType.DELIVERY) {
+      return {
+        ok: false,
+        code: 'CHAT_JOIN_DENIED',
+        message: 'No existe esa conversación',
+      };
+    }
+    return unirseALaConversacion(
+      client,
+      cuerpo,
+      identidad.userId,
+      'driver',
+      this.participacion,
+      this.logger,
+    );
+  }
+
+  @SubscribeMessage('chat:leave')
+  handleChatLeave(
+    @MessageBody() cuerpo: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
+  ): Promise<RespuestaDeSalaDeLaApp> {
+    return salirDeLaConversacion(client, cuerpo, 'driver');
+  }
+
+  /** «Escribiendo…» del chofer: sólo desde una conversación en la que entró. */
+  @SubscribeMessage('chat:typing')
+  async handleChatTyping(
+    @MessageBody() cuerpo: unknown,
+    @ConnectedSocket() client: SocketDeSplg,
+  ): Promise<void> {
+    const identidad = await this.identidades.obtener(client);
+    if (!identidad || identidad.role !== RoleType.DELIVERY) return;
+    pedirEscribiendo(client, cuerpo, identidad.userId, 'driver', this.events);
+  }
+
+  /** Un evento del chat a la sala de una conversación del chofer. */
+  emitirAConversacion(
+    conversationId: string,
+    event: string,
+    payload: unknown,
+  ): void {
+    this.server
+      .to(salaDeConversacionDeLaApp(conversationId, 'driver'))
+      .emit(event, payload);
+  }
+
+  /** Un aviso a todas las conexiones de la app de ese chofer. */
+  emitirAUsuario(userId: string, event: string, payload: unknown): void {
+    this.server.to(salaDeUsuario(userId)).emit(event, payload);
   }
 
   notifyNewOrder(driverId: string, orderPayload: unknown): boolean {

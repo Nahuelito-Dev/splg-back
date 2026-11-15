@@ -135,6 +135,7 @@ describe('ChatThreadsService', () => {
         {
           conversationId: 'hilo-1',
           distributorId: 'dist-a',
+          channel: Channel.PLATFORM_TICKET,
           party: Party.COMPANY,
           lastReadSeq: 10,
           userId: 'a',
@@ -146,6 +147,7 @@ describe('ChatThreadsService', () => {
         {
           conversationId: 'hilo-1',
           distributorId: 'dist-a',
+          channel: Channel.PLATFORM_TICKET,
           party: Party.COMPANY,
           lastReadSeq: 10,
           userId: 'a2',

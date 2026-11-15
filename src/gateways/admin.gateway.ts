@@ -19,9 +19,12 @@ import { RoleType } from '../common/constants/role-type.enum';
 import { errorMessage } from '../common/errors/error-message';
 import { PermisosDePlataformaService } from '../common/permisos/catalogo-de-plataforma';
 import { SocketIdentityService } from './socket-identity.service';
+import type { Permiso } from '../common/permisos/catalogo';
 import {
-  CANALES_CON_SALA,
+  esCanalConSala,
   ParticipacionEnConversaciones,
+  PERMISO_DE_LA_SALA,
+  PERMISO_PARA_ESCRIBIR,
 } from './participacion-en-conversaciones.service';
 import {
   salaDeUsuario,
@@ -52,7 +55,11 @@ import {
  * con `soporte.ver` entra además a `chat:soporte:<distributorId>` (su chat con
  * la plataforma y sus tickets); el super admin, a `chat:plataforma` (los de
  * todas las empresas: es su lado de C1). Nunca a la sala de chat de una
- * empresa. La única emisión del panel al servidor es `chat:typing`.
+ * empresa. Bandeja de la empresa (CH3): el admin con `mensajes.clientes` entra
+ * a `chat:clientes:<distributorId>` y con `mensajes.choferes` a
+ * `chat:choferes:<distributorId>` (listas y contadores); el super admin nunca.
+ * Las emisiones del panel al servidor son `chat:join`, `chat:leave` y
+ * `chat:typing`.
  *
  * El join lo decide el SERVIDOR a partir de la identidad resuelta del token
  * (`SocketIdentityService`), nunca el cliente: el panel no manda nada especial
@@ -89,6 +96,12 @@ export type PuntaDelPanel = 'company' | 'platform';
 export type RespuestaDeSala =
   | { ok: true }
   | { ok: false; code: string; message: string };
+
+/** Los canales en que la plataforma tiene lado (C1). */
+const CANALES_DE_LA_PLATAFORMA: ReadonlySet<string> = new Set([
+  'platform_chat',
+  'platform_ticket',
+]);
 
 const SALA_DENEGADA: RespuestaDeSala = {
   ok: false,
@@ -170,10 +183,11 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await client.join(
         AdminGateway.salaDeDistribuidora(identidad.distributorId),
       );
-      if (await this.veSoporte(identidad.userId)) {
-        await client.join(
-          AdminGateway.salaDeSoporteDeEmpresa(identidad.distributorId),
-        );
+      for (const sala of AdminGateway.salasDeListas(
+        identidad.distributorId,
+        await this.permisosDelPersonal(identidad.userId),
+      )) {
+        await client.join(sala);
       }
     } else {
       // super_admin: la plataforma. Nada de una empresa por el socket.
@@ -318,13 +332,6 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (esPlataforma && !(await this.veTicketsDePlataforma(identidad.userId))) {
       return;
     }
-    // Quien no puede escribir en el chat con la plataforma no «escribe».
-    if (
-      !esPlataforma &&
-      !(await this.tienePermiso(identidad.userId, 'soporte.gestionar'))
-    ) {
-      return;
-    }
     // Sólo desde la sala de esa conversación (D-C28): quien no entró por
     // `chat:join` (validado contra la base) no «escribe» en ella.
     const punta: PuntaDelPanel = esPlataforma ? 'platform' : 'company';
@@ -332,6 +339,20 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       !client.rooms.has(AdminGateway.salaDeConversacion(conversationId, punta))
     ) {
       return;
+    }
+    // Quien no puede escribir en esa conversación no «escribe»: el chat con
+    // la plataforma pide `soporte.gestionar`; la bandeja, el permiso del canal.
+    if (!esPlataforma) {
+      const c = await this.participacion.deConversacion(conversationId);
+      if (!c || !esCanalConSala(c.channel)) return;
+      if (
+        !(await this.tienePermiso(
+          identidad.userId,
+          PERMISO_PARA_ESCRIBIR[c.channel],
+        ))
+      ) {
+        return;
+      }
     }
     const pedido: EscribiendoDelPanel = {
       conversationId,
@@ -394,15 +415,27 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const identidad = await this.identidades.obtener(client);
       if (!identidad) return null;
       const c = await this.participacion.deConversacion(conversationId);
-      if (!c || !CANALES_CON_SALA.has(c.channel)) return null;
+      if (!c || !esCanalConSala(c.channel)) return null;
       if (identidad.role === RoleType.SUPER_ADMIN) {
+        // La plataforma sólo tiene lado en C1: nunca en la bandeja de una empresa.
+        if (!CANALES_DE_LA_PLATAFORMA.has(c.channel)) return null;
         return (await this.veTicketsDePlataforma(identidad.userId))
           ? 'platform'
           : null;
       }
       if (identidad.role !== RoleType.ADMIN) return null;
       if (c.distributorId !== identidad.distributorId) return null;
-      return (await this.tienePermiso(identidad.userId, 'soporte.ver'))
+      // La bandeja es del módulo `chat`: apagado, nadie entra a sus salas.
+      if (
+        !CANALES_DE_LA_PLATAFORMA.has(c.channel) &&
+        !(await this.participacion.chatHabilitado(c.distributorId))
+      ) {
+        return null;
+      }
+      return (await this.tienePermiso(
+        identidad.userId,
+        PERMISO_DE_LA_SALA[c.channel],
+      ))
         ? 'company'
         : null;
     } catch (error) {
@@ -434,15 +467,16 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /**
    * Cambiaron los permisos de estas personas: sus conexiones abiertas vuelven a
-   * evaluar la sala de soporte de la empresa. Quien perdió `soporte.ver` sale de
-   * ella y de las salas de conversación de la empresa; quien lo ganó entra. No
-   * se corta la conexión: el resto del panel sigue en vivo.
+   * evaluar las salas de lista de la empresa (soporte, clientes, choferes):
+   * entran a las que ganaron y salen de las que perdieron, y de las salas de
+   * conversación de la empresa cuyo canal ya no atienden. No se corta la
+   * conexión: el resto del panel sigue en vivo.
    */
   @OnEvent(EVENTO_PERMISOS_CAMBIADOS)
   async reevaluarSalas({ userIds }: PermisosCambiadosEvent): Promise<void> {
     if (!this.server) return;
     for (const userId of userIds) {
-      const ve = await this.veSoporte(userId);
+      const permisos = await this.permisosDelPersonal(userId);
       const conexiones = await this.server
         .in(salaDeUsuario(userId))
         .fetchSockets();
@@ -451,35 +485,93 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (identidad?.role !== RoleType.ADMIN || !identidad.distributorId) {
           continue;
         }
-        const sala = AdminGateway.salaDeSoporteDeEmpresa(
-          identidad.distributorId,
-        );
-        if (ve) {
-          conexion.join(sala);
-          continue;
+        const d = identidad.distributorId;
+        const debe = new Set(AdminGateway.salasDeListas(d, permisos));
+        for (const sala of AdminGateway.salasDeListas(d, [
+          'soporte.ver',
+          'mensajes.clientes',
+          'mensajes.choferes',
+        ])) {
+          if (debe.has(sala)) conexion.join(sala);
+          else conexion.leave(sala);
         }
-        conexion.leave(sala);
         for (const otra of conexion.rooms) {
-          if (otra.startsWith('conv:') && otra.endsWith(':company')) {
-            conexion.leave(otra);
-          }
+          if (!otra.startsWith('conv:') || !otra.endsWith(':company')) continue;
+          const id = otra.slice('conv:'.length, -':company'.length);
+          const c = await this.participacion.deConversacion(id);
+          const sigue =
+            !!c &&
+            esCanalConSala(c.channel) &&
+            permisos.includes(PERMISO_DE_LA_SALA[c.channel]);
+          if (!sigue) conexion.leave(otra);
         }
       }
       this.logger.log(
-        `🔁 Salas de soporte reevaluadas para ${userId} (${ve ? 've' : 'no ve'} soporte)`,
+        `🔁 Salas del panel reevaluadas para ${userId} (${[...permisos].filter((p) => p.startsWith('soporte.') || p.startsWith('mensajes.')).join(', ') || 'sin soporte ni mensajes'})`,
       );
     }
   }
 
-  /** Si el admin puede ver el chat con la plataforma y los tickets (se decide al conectar). */
-  private veSoporte(userId: string): Promise<boolean> {
-    return this.tienePermiso(userId, 'soporte.ver');
+  /**
+   * Las salas de lista de la empresa que corresponden a esos permisos: el chat
+   * con la plataforma y los tickets (`soporte.ver`), y la bandeja de clientes y
+   * de choferes (`mensajes.clientes`, `mensajes.choferes`).
+   */
+  static salasDeListas(
+    distributorId: string,
+    permisos: readonly string[],
+  ): string[] {
+    const salas: string[] = [];
+    if (permisos.includes('soporte.ver')) {
+      salas.push(AdminGateway.salaDeSoporteDeEmpresa(distributorId));
+    }
+    if (permisos.includes('mensajes.clientes')) {
+      salas.push(AdminGateway.salaDeLaBandeja(distributorId, 'staff_customer'));
+    }
+    if (permisos.includes('mensajes.choferes')) {
+      salas.push(AdminGateway.salaDeLaBandeja(distributorId, 'staff_driver'));
+    }
+    return salas;
+  }
+
+  /** Sala de lista de la bandeja de la empresa, por canal. */
+  static salaDeLaBandeja(
+    distributorId: string,
+    canal: 'staff_customer' | 'staff_driver',
+  ): string {
+    return canal === 'staff_customer'
+      ? `chat:clientes:${distributorId}`
+      : `chat:choferes:${distributorId}`;
+  }
+
+  /** Un aviso de la bandeja a quienes atienden ese canal en esa empresa. */
+  emitirALaBandeja(
+    distributorId: string,
+    canal: 'staff_customer' | 'staff_driver',
+    event: string,
+    payload: unknown,
+  ): void {
+    this.server
+      .to(AdminGateway.salaDeLaBandeja(distributorId, canal))
+      .emit(event, payload);
+  }
+
+  /** Los permisos del personal. Falla cerrado: sin permisos. */
+  private async permisosDelPersonal(userId: string): Promise<Permiso[]> {
+    try {
+      return (await this.permisos.deUsuario(userId, RoleType.ADMIN)).permisos;
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron leer los permisos de ${userId}: ${errorMessage(error)}`,
+      );
+      return [];
+    }
   }
 
   /** Un permiso del personal de la empresa. Falla cerrado. */
   private async tienePermiso(
     userId: string,
-    permiso: 'soporte.ver' | 'soporte.gestionar',
+    permiso: Permiso,
   ): Promise<boolean> {
     try {
       const { permisos } = await this.permisos.deUsuario(

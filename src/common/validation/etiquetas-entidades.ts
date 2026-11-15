@@ -37,6 +37,8 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   ConversationParty: 'Parte de la conversación',
   Message: 'Mensaje',
   MessageTemplate: 'Respuesta guardada',
+  MessageEdit: 'Edición de un mensaje',
+  ChatCompanySettings: 'Configuración de los mensajes de la empresa',
   PlatformSupportSettings: 'Configuración del soporte de la plataforma',
   SupportTicket: 'Ticket de soporte',
   SupportTicketMessageLink: 'Mensaje citado en un ticket',

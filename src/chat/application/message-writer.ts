@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { ConversationStatus } from '../domain/chat.enums';
+import { ConversationStatus, esCanalDeLaBandeja } from '../domain/chat.enums';
 import {
   ConversacionCerradaError,
   ConversacionNoEncontradaError,
+  RespuestaInvalidaError,
 } from '../domain/chat.errors';
 import {
   assertMensajeAdmitido,
@@ -29,7 +30,8 @@ export interface MensajeEscrito {
  *  2. Si ese autor ya mandó ese `clientMessageId`, devuelve el mismo mensaje
  *     sin gastar un número (también si la conversación ya se cerró).
  *  3. Conversación cerrada → 409.
- *  4. Suma uno al contador y escribe el mensaje con ese número. Si la
+ *  4. Si responde a otro mensaje, que sea de esta conversación (D-C25).
+ *  5. Suma uno al contador y escribe el mensaje con ese número. Si la
  *     transacción se revierte, el contador vuelve atrás con ella: no quedan
  *     huecos.
  *
@@ -70,13 +72,38 @@ export class MessageWriter {
       kind: nuevo.kind,
       visibility: nuevo.visibility,
     });
+    // Los números no tienen huecos: hasta el último, todos existen.
+    if (
+      nuevo.replyToSeq != null &&
+      (!esCanalDeLaBandeja(conversation.channel) ||
+        nuevo.replyToSeq > conversation.lastMessageSeq)
+    ) {
+      throw new RespuestaInvalidaError();
+    }
+    // La cita congela la vista previa del citado (no cambia si se redacta).
+    let replyToPreview: string | null = null;
+    if (nuevo.replyToSeq != null) {
+      const citado = await this.repo.mensajePorSeq(
+        manager,
+        conversation.conversationId,
+        nuevo.replyToSeq,
+      );
+      replyToPreview =
+        citado && !citado.withdrawnAt && !citado.redactedAt
+          ? vistaPrevia(citado.body, citado.visibility)
+          : null;
+    }
 
     const seq = await this.repo.siguienteSeq(
       manager,
       conversation,
       vistaPrevia(nuevo.body, nuevo.visibility),
     );
-    const message = await this.repo.insertar(manager, { ...nuevo, seq });
+    const message = await this.repo.insertar(manager, {
+      ...nuevo,
+      replyToPreview,
+      seq,
+    });
     conversation.lastMessageSeq = seq;
     conversation.lastMessageAt = message.createdAt;
     return { message, created: true, conversation };

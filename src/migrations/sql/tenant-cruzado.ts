@@ -47,6 +47,7 @@ export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   customer_container_account: 'account_id',
   mp_reconciliation: 'reconciliation_id',
   staff_role: 'staff_role_id',
+  claims: 'claim_id',
 };
 
 export const CLAVES_CRUZADAS: readonly ClaveForaneaDeDistribuidora[] = [
@@ -155,6 +156,10 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['support_ticket_message_link', 'ticket_id', 'support_ticket'],
     ['support_ticket_message_link', 'message_id', 'message'],
     ['support_ticket_message_link', 'quoted_in_message_id', 'message'],
+    // Mensajería: bandeja de la empresa (CH3)
+    ['conversation', 'order_id', 'order'],
+    ['conversation', 'linked_claim_id', 'claims'],
+    ['message_edit', 'message_id', 'message'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

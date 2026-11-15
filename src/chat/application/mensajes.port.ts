@@ -23,6 +23,10 @@ export interface NuevoMensaje {
   payload: PayloadDelMensaje | null;
   systemCode: SystemCode | null;
   templateKey: string | null;
+  /** Responde a otro mensaje de la misma conversación (D-C25; sólo en la bandeja). */
+  replyToSeq?: number | null;
+  /** La vista previa del citado, congelada al citarlo (la completa el envío). */
+  replyToPreview?: string | null;
 }
 
 /**
@@ -54,6 +58,13 @@ export abstract class MensajesRepositorio {
     conversation: Conversation,
     vistaPrevia: string | null,
   ): Promise<number>;
+
+  /** Un mensaje de la conversación por su número (para la vista previa de la cita). */
+  abstract mensajePorSeq(
+    manager: EntityManager,
+    conversationId: string,
+    seq: number,
+  ): Promise<Message | null>;
 
   abstract insertar(
     manager: EntityManager,

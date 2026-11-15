@@ -5,6 +5,8 @@ import { RedisService } from '../../redis/redis.service';
 
 /** Mensajes por minuto y por persona (§7.7). */
 export const MENSAJES_POR_MINUTO = 30;
+/** Mensajes por minuto de un cliente o un chofer en una misma conversación (§7.7). */
+export const MENSAJES_POR_MINUTO_EN_UNA_CONVERSACION = 10;
 /** Tickets por hora y por empresa (§14.4). */
 export const TICKETS_POR_HORA = 5;
 
@@ -32,7 +34,11 @@ export class ChatRateLimit {
    * Un mensaje nuevo consume cupo; el reintento del mismo `clientMessageId`
    * (que el envío idempotente devuelve sin crear otro) no lo vuelve a consumir.
    */
-  async mensaje(userId: string, clientMessageId?: string): Promise<void> {
+  async mensaje(
+    userId: string,
+    clientMessageId?: string,
+    conversacion?: string,
+  ): Promise<void> {
     if (clientMessageId) {
       const primero = await this.redis.setIfAbsent(
         `chat:cupo:cmid:${userId}:${clientMessageId}`,
@@ -46,6 +52,20 @@ export class ChatRateLimit {
         'Estás mandando mensajes muy rápido. Esperá un momento.',
         CODIGOS_DE_ERROR.CHAT_RATE_LIMITED,
       );
+    }
+    // El cliente y el chofer, además, por conversación (la clave lleva la
+    // conversación o el tema: el abuso en una no gasta el cupo de otra).
+    if (conversacion) {
+      const enEsta = await this.redis.incrWithExpire(
+        `chat:cupo:conv:${conversacion}:${userId}`,
+        60,
+      );
+      if (enEsta > MENSAJES_POR_MINUTO_EN_UNA_CONVERSACION) {
+        throw demasiados(
+          'Estás mandando mensajes muy rápido. Esperá un momento.',
+          CODIGOS_DE_ERROR.CHAT_RATE_LIMITED,
+        );
+      }
     }
   }
 

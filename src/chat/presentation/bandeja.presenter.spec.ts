@@ -1,0 +1,226 @@
+import { ajustesDeLaBandejaPorDefecto } from '../application/company-chat-settings.service';
+import type { CompanyChatSettingsService } from '../application/company-chat-settings.service';
+import {
+  Channel,
+  ConversationStatus,
+  MessageKind,
+  MessageVisibility,
+  Party,
+  SubjectType,
+} from '../domain/chat.enums';
+import { Conversation } from '../entities/conversation.entity';
+import { Message } from '../entities/message.entity';
+import type { BandejaReadModel } from '../infrastructure/bandeja-read-model';
+import { BandejaPresenter } from './bandeja.presenter';
+
+const D = 'dist-a';
+
+function conversacion(cambios: Partial<Conversation> = {}): Conversation {
+  return Object.assign(new Conversation(), {
+    conversationId: 'conv-1',
+    distributorId: D,
+    channel: Channel.STAFF_CUSTOMER,
+    subjectType: SubjectType.GENERAL,
+    status: ConversationStatus.OPEN,
+    orderId: null,
+    customerUserId: 'cli-1',
+    driverUserId: null,
+    linkedClaimId: null,
+    assignedToUserId: 'adm-1',
+    firstResponseAt: new Date('2026-11-16T12:20:00Z'),
+    closedReason: null,
+    lastMessageSeq: 3,
+    createdAt: new Date('2026-11-16T12:00:00Z'),
+    updatedAt: new Date('2026-11-16T12:20:00Z'),
+    ...cambios,
+  });
+}
+
+function mensaje(cambios: Partial<Message> = {}): Message {
+  return Object.assign(new Message(), {
+    messageId: 'm-2',
+    conversationId: 'conv-1',
+    distributorId: D,
+    seq: 2,
+    clientMessageId: 'cm-2',
+    senderParty: Party.COMPANY,
+    senderUserId: 'adm-1',
+    kind: MessageKind.TEXT,
+    visibility: MessageVisibility.ALL,
+    body: 'Te respondo',
+    payload: null,
+    templateKey: null,
+    systemCode: null,
+    replyToSeq: 1,
+    editedAt: null,
+    withdrawnAt: null,
+    withdrawnByUserId: null,
+    redactedAt: null,
+    createdAt: new Date(),
+    ...cambios,
+  });
+}
+
+const respondido = mensaje({
+  messageId: 'm-1',
+  seq: 1,
+  senderParty: Party.CUSTOMER,
+  senderUserId: 'cli-1',
+  body: 'Hola, ¿a qué hora reparten?',
+  replyToSeq: null,
+});
+
+function presentador() {
+  const lectura = {
+    noLeidos: jest.fn().mockResolvedValue(new Map([['conv-1', 2]])),
+    lecturaPropia: jest.fn().mockResolvedValue(new Map([['conv-1', 1]])),
+    lecturaDeLaOtraParte: jest.fn().mockResolvedValue(new Map([['conv-1', 2]])),
+    ultimos: jest.fn().mockResolvedValue(new Map([['conv-1', mensaje()]])),
+    respondidos: jest
+      .fn()
+      .mockResolvedValue(new Map([['conv-1:1', respondido]])),
+    primerMensajeEntrante: jest
+      .fn()
+      .mockResolvedValue(
+        new Map([['conv-1', new Date('2026-11-16T12:05:00Z')]]),
+      ),
+    pedidos: jest.fn().mockResolvedValue(new Map()),
+    nombres: jest.fn().mockResolvedValue(
+      new Map([
+        ['cli-1', 'Ana Pérez'],
+        ['adm-1', 'Lucía Gómez'],
+      ]),
+    ),
+    empresas: jest.fn().mockResolvedValue(new Map([[D, 'Gas Norte']])),
+  };
+  const ajustes = {
+    leer: jest.fn().mockResolvedValue({
+      ...ajustesDeLaBandejaPorDefecto(D),
+      // Lunes de 9 a 9:10 (Buenos Aires): de 9:05 a 9:20 sólo cuentan 5 minutos.
+      businessHours: [{ weekday: 1, opensAt: '09:00', closesAt: '09:10' }],
+    }),
+  };
+  return new BandejaPresenter(
+    lectura as unknown as BandejaReadModel,
+    ajustes as unknown as CompanyChatSettingsService,
+  );
+}
+
+describe('BandejaPresenter: lo que ve cada punta', () => {
+  it('el cliente ve la marca de la empresa, nunca al operador (D-C5)', async () => {
+    const p = presentador();
+    const c = await p.conversacion(conversacion(), {
+      party: Party.CUSTOMER,
+      userId: 'cli-1',
+    });
+    expect(c.counterpart).toEqual({
+      party: Party.COMPANY,
+      displayName: 'Gas Norte',
+    });
+    expect(c).not.toHaveProperty('assignedTo');
+    expect(c).not.toHaveProperty('customer');
+    expect(c).not.toHaveProperty('firstResponseBusinessMinutes');
+    const m = await p.mensaje(mensaje(), {
+      party: Party.CUSTOMER,
+      userId: 'cli-1',
+    });
+    expect(m.sender).toEqual({ displayName: 'Gas Norte' });
+    expect(m.isMine).toBe(false);
+    expect(m.clientMessageId).toBeNull();
+  });
+
+  it('el personal ve al cliente, quién atiende y el TPR en minutos hábiles', async () => {
+    const c = await presentador().conversacion(conversacion(), {
+      party: Party.COMPANY,
+      userId: 'adm-1',
+    });
+    expect(c.counterpart).toEqual({
+      party: Party.CUSTOMER,
+      displayName: 'Ana Pérez',
+    });
+    expect(c.customer).toEqual({ id: 'cli-1', displayName: 'Ana Pérez' });
+    expect(c.assignedTo).toEqual({ userId: 'adm-1', fullName: 'Lucía Gómez' });
+    expect(c.firstResponseBusinessMinutes).toBe(5);
+    expect(c.unreadCount).toBe(2);
+    expect(c.lastReadSeq).toBe(1);
+  });
+
+  it('respuesta con cita y edición: lo que cita y la marca; el autor puede editar en los 15 minutos', async () => {
+    const m = await presentador().mensaje(mensaje({ editedAt: new Date() }), {
+      party: Party.COMPANY,
+      userId: 'adm-1',
+    });
+    expect(m.replyTo).toEqual({
+      seq: 1,
+      party: Party.CUSTOMER,
+      preview: 'Hola, ¿a qué hora reparten?',
+    });
+    expect(m.editedAt).not.toBeNull();
+    expect(m.canEdit).toBe(true);
+    const deOtro = await presentador().mensaje(mensaje(), {
+      party: Party.COMPANY,
+      userId: 'adm-9',
+    });
+    expect(deOtro.canEdit).toBe(false);
+    expect(deOtro.isMine).toBe(true);
+  });
+
+  it('un mensaje borrado por su autor (D-C23) no lleva el texto, para nadie', async () => {
+    const borrado = mensaje({
+      senderParty: Party.CUSTOMER,
+      senderUserId: 'cli-1',
+      body: 'Esto no se ve',
+      withdrawnAt: new Date(),
+      withdrawnByUserId: 'cli-1',
+    });
+    for (const quien of [
+      { party: Party.COMPANY, userId: 'adm-1' } as const,
+      { party: Party.CUSTOMER, userId: 'cli-1' } as const,
+    ]) {
+      const m = await presentador().mensaje(borrado, quien);
+      expect(m.deleted).toBe(true);
+      expect(m.body).toBeNull();
+      expect(m.canEdit).toBe(false);
+      expect(JSON.stringify(m)).not.toContain('Esto no se ve');
+    }
+  });
+
+  it('con el chat de clientes apagado, el cliente no puede escribir y el personal sí', async () => {
+    const lectura = {
+      noLeidos: jest.fn().mockResolvedValue(new Map()),
+      lecturaPropia: jest.fn().mockResolvedValue(new Map()),
+      lecturaDeLaOtraParte: jest.fn().mockResolvedValue(new Map()),
+      ultimos: jest.fn().mockResolvedValue(new Map()),
+      respondidos: jest.fn().mockResolvedValue(new Map()),
+      primerMensajeEntrante: jest.fn().mockResolvedValue(new Map()),
+      pedidos: jest.fn().mockResolvedValue(new Map()),
+      nombres: jest.fn().mockResolvedValue(new Map()),
+      empresas: jest.fn().mockResolvedValue(new Map()),
+    };
+    const p = new BandejaPresenter(
+      lectura as unknown as BandejaReadModel,
+      {
+        leer: jest.fn().mockResolvedValue({
+          ...ajustesDeLaBandejaPorDefecto(D),
+          customerChatEnabled: false,
+        }),
+      } as unknown as CompanyChatSettingsService,
+    );
+    expect(
+      (
+        await p.conversacion(conversacion(), {
+          party: Party.CUSTOMER,
+          userId: 'cli-1',
+        })
+      ).canWrite,
+    ).toBe(false);
+    expect(
+      (
+        await p.conversacion(conversacion(), {
+          party: Party.COMPANY,
+          userId: 'adm-1',
+        })
+      ).canWrite,
+    ).toBe(true);
+  });
+});

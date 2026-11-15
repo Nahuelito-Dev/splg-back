@@ -55,6 +55,16 @@ export class TypeormMensajesRepository extends MensajesRepositorio {
     return Number(primeraFila(filas).seq);
   }
 
+  mensajePorSeq(
+    manager: EntityManager,
+    conversationId: string,
+    seq: number,
+  ): Promise<Message | null> {
+    return manager
+      .getRepository(Message)
+      .findOne({ where: { conversationId, seq } });
+  }
+
   insertar(
     manager: EntityManager,
     mensaje: NuevoMensaje & { seq: number },
@@ -75,6 +85,11 @@ export class TypeormMensajesRepository extends MensajesRepositorio {
         bodyFiltered: false,
         templateKey: mensaje.templateKey,
         systemCode: mensaje.systemCode,
+        replyToSeq: mensaje.replyToSeq ?? null,
+        replyToPreview: mensaje.replyToPreview ?? null,
+        editedAt: null,
+        withdrawnAt: null,
+        withdrawnByUserId: null,
         redactedAt: null,
       }),
     );

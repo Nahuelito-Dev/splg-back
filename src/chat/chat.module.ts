@@ -2,7 +2,23 @@ import { Module } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { redisConnectionOptions } from '../common/redis/redis-connection';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminModule } from '../admin/admin.module';
+import { ClaimsModule } from '../claims/claims.module';
 import { EmailModule } from '../email/email.module';
+import { BandejaAcceso } from './application/bandeja-acceso';
+import { BandejaGestionService } from './application/bandeja-gestion.service';
+import { BandejaService } from './application/bandeja.service';
+import { ConversacionVigente } from './application/conversacion-vigente';
+import { CompanyChatSettingsService } from './application/company-chat-settings.service';
+import { CompanyTemplatesService } from './application/company-templates.service';
+import { ChatCompanySettings } from './entities/chat-company-settings.entity';
+import { MessageEdit } from './entities/message-edit.entity';
+import { BandejaReadModel } from './infrastructure/bandeja-read-model';
+import { BandejaPresenter } from './presentation/bandeja.presenter';
+import { BandejaRealtimeListener } from './presentation/bandeja-realtime.listener';
+import { CompanyChatConfigController } from './presentation/bandeja/company-chat-config.controller';
+import { CompanyInboxController } from './presentation/bandeja/company-inbox.controller';
+import { MyConversationsController } from './presentation/bandeja/my-conversations.controller';
 import { GatewaysModule } from '../gateways/gateways.module';
 import { ChatEvents } from './application/chat.events';
 import { ChatNotices } from './application/chat-notices';
@@ -49,10 +65,11 @@ import {
 } from './presentation/support-summary.controller';
 
 /**
- * Mensajería (diseño `DISENO-COMUNICACION.md`). Etapa CH1: el núcleo (envío
- * con número por conversación e idempotencia, lectura, tiempo real) y C1, el
- * chat con la plataforma y los tickets de soporte. Núcleo: no depende de un
- * módulo contratado.
+ * Mensajería (diseño `DISENO-COMUNICACION.md`). CH1: el núcleo (envío con
+ * número por conversación e idempotencia, lectura, tiempo real) y C1, el chat
+ * con la plataforma y los tickets de soporte (núcleo: no depende de un módulo
+ * contratado). CH3: la bandeja de la empresa con sus clientes (C3) y sus
+ * choferes (C2), atada al módulo `chat`.
  */
 @Module({
   imports: [
@@ -65,9 +82,14 @@ import {
       SupportTicketMessageLink,
       MessageTemplate,
       PlatformSupportSettings,
+      MessageEdit,
+      ChatCompanySettings,
     ]),
     GatewaysModule,
     EmailModule,
+    AdminModule,
+    // Crear un reclamo desde una conversación con un cliente (C3).
+    ClaimsModule,
   ],
   controllers: [
     CompanyPlatformChatController,
@@ -77,6 +99,9 @@ import {
     PlatformSupportConfigController,
     CompanySupportSummaryController,
     PlatformSupportSummaryController,
+    CompanyInboxController,
+    CompanyChatConfigController,
+    MyConversationsController,
   ],
   providers: [
     { provide: MensajesRepositorio, useClass: TypeormMensajesRepository },
@@ -107,6 +132,15 @@ import {
     TicketState,
     SupportHousekeepingCron,
     ChatRealtimeListener,
+    BandejaAcceso,
+    BandejaReadModel,
+    BandejaPresenter,
+    BandejaService,
+    BandejaGestionService,
+    CompanyChatSettingsService,
+    CompanyTemplatesService,
+    BandejaRealtimeListener,
+    ConversacionVigente,
   ],
 })
 export class ChatModule {}

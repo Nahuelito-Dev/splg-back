@@ -95,7 +95,9 @@ export const PROPIEDADES_EXCLUIDAS: Readonly<
  * retención y la supresión. Queda asentado quién escribió, cuándo y dónde.
  */
 export const CAMPOS_OCULTOS: Readonly<Record<string, readonly string[]>> = {
-  Message: ['body', 'payload'],
+  Message: ['body', 'payload', 'replyToPreview'],
+  // El texto anterior de un mensaje editado (D-C22): es texto de un mensaje.
+  MessageEdit: ['previousBody'],
   // El asunto lo escribe la empresa y puede traer datos personales (D-C11).
   SupportTicket: ['subject'],
 };

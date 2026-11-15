@@ -1,5 +1,9 @@
 import { Channel, MessageKind, MessageVisibility, Party } from './chat.enums';
-import { CitaInvalidaError, NotaInternaNoPermitidaError } from './chat.errors';
+import {
+  CitaInvalidaError,
+  NotaInternaNoPermitidaError,
+  PuntaFueraDeSuCanalError,
+} from './chat.errors';
 
 /** Lo que importa de un mensaje para decidir si el canal lo admite. */
 export interface MensajeAValidar {
@@ -17,6 +21,9 @@ export function assertMensajeAdmitido(
   canal: Channel,
   mensaje: MensajeAValidar,
 ): void {
+  if (!puntaEscribeEnElCanal(canal, mensaje.party)) {
+    throw new PuntaFueraDeSuCanalError();
+  }
   if (mensaje.visibility === MessageVisibility.INTERNAL) {
     const admitida =
       canal === Channel.PLATFORM_TICKET && mensaje.party === Party.PLATFORM;
@@ -27,6 +34,27 @@ export function assertMensajeAdmitido(
     canal !== Channel.PLATFORM_TICKET
   ) {
     throw new CitaInvalidaError();
+  }
+}
+
+/**
+ * Quién escribe en cada canal (también el trigger `TRG_message_canal`): la
+ * empresa y el sistema en todos; la plataforma sólo en C1; el cliente sólo con
+ * la empresa (C3) y el chofer sólo con la empresa (C2).
+ */
+export function puntaEscribeEnElCanal(canal: Channel, party: Party): boolean {
+  switch (party) {
+    case Party.COMPANY:
+    case Party.SYSTEM:
+      return true;
+    case Party.PLATFORM:
+      return (
+        canal === Channel.PLATFORM_CHAT || canal === Channel.PLATFORM_TICKET
+      );
+    case Party.CUSTOMER:
+      return canal === Channel.STAFF_CUSTOMER;
+    case Party.DRIVER:
+      return canal === Channel.STAFF_DRIVER;
   }
 }
 

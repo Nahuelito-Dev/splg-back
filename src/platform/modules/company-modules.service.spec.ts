@@ -382,11 +382,11 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
       ];
       express.A = true;
       expect(await service.features('A')).toEqual({
-        modules: ['fleet_planner', 'whatsapp', 'express'],
+        modules: ['fleet_planner', 'whatsapp', 'express', 'chat'],
         access: 'full',
       });
       expect(await service.features('B')).toEqual({
-        modules: ['fleet_planner', 'whatsapp', 'mercadopago'],
+        modules: ['fleet_planner', 'whatsapp', 'mercadopago', 'chat'],
         access: 'full',
       });
       empresas.A.status = DistributorStatus.SUSPENDED;
@@ -398,7 +398,7 @@ describe('CompanyModulesService (§5.2–§5.3)', () => {
 
     it('features públicas: por slug; una suspendida no toma pedidos y no lista módulos', async () => {
       expect(await service.featuresPublicas('A')).toEqual({
-        modules: ['fleet_planner', 'whatsapp', 'mercadopago'],
+        modules: ['fleet_planner', 'whatsapp', 'mercadopago', 'chat'],
         acceptingOrders: true,
         message: null,
       });

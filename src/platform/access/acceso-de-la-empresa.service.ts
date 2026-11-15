@@ -3,8 +3,10 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { errorMessage } from '../../common/errors/error-message';
 import { RedisService } from '../../redis/redis.service';
+import { createHash } from 'crypto';
 import {
   esModulo,
+  MODULOS,
   MODULOS_POR_PLAN,
   type ModuloKey,
 } from '../modules/catalogo-de-modulos';
@@ -59,9 +61,20 @@ export const MOTIVO_NO_DISPONIBLE =
 export const claveDeVersion = (distributorId: string): string =>
   `acceso:version:${distributorId}`;
 
-/** Clave de la caché por empresa y versión (incluye su id, §9). */
+/**
+ * Huella del catálogo de módulos: dos versiones del back con catálogos
+ * distintos (un despliegue escalonado, o el back de desarrollo y uno de
+ * prueba sobre el mismo Redis) no comparten lo calculado. Si no, el que no
+ * conoce un módulo nuevo lo guarda sin él y el otro lo lee apagado.
+ */
+export const HUELLA_DEL_CATALOGO = createHash('sha256')
+  .update(MODULOS.join(','))
+  .digest('hex')
+  .slice(0, 8);
+
+/** Clave de la caché por empresa, versión y catálogo (incluye su id, §9). */
 export const claveDeAcceso = (distributorId: string, version: string): string =>
-  `acceso:${distributorId}:${version}`;
+  `acceso:${distributorId}:${version}:${HUELLA_DEL_CATALOGO}`;
 
 /**
  * La pieza única que responde «¿qué puede usar esta empresa ahora?» desde el

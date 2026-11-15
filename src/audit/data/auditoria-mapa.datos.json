@@ -162,6 +162,22 @@
       "orderColumn": null
     },
     {
+      "table": "chat_company_settings",
+      "entity": "ChatCompanySettings",
+      "pk": [
+        "distributor_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "claims",
       "entity": "Claim",
       "pk": [
@@ -907,6 +923,22 @@
         "message_id"
       ],
       "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "message_edit",
+      "entity": "MessageEdit",
+      "pk": [
+        "edit_id"
+      ],
+      "deleteColumn": null,
       "distributorMode": "column",
       "distributorColumn": "distributor_id",
       "parentTable": null,
@@ -2345,6 +2377,94 @@
       "position": 12
     },
     {
+      "table": "chat_company_settings",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "timezone",
+      "property": "timezone",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "business_hours",
+      "property": "businessHours",
+      "secret": false,
+      "kind": "json",
+      "position": 2
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "holidays",
+      "property": "holidays",
+      "secret": false,
+      "kind": "json",
+      "position": 3
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "customer_chat_enabled",
+      "property": "customerChatEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "out_of_hours_enabled",
+      "property": "outOfHoursEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "out_of_hours_message",
+      "property": "outOfHoursMessage",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "ack_enabled",
+      "property": "ackEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "ack_message",
+      "property": "ackMessage",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "first_response_target_minutes",
+      "property": "firstResponseTargetMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "updated_by_user_id",
+      "property": "updatedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
       "table": "claims",
       "column": "claim_id",
       "property": "claimId",
@@ -2658,11 +2778,43 @@
     },
     {
       "table": "conversation",
+      "column": "order_id",
+      "property": "orderId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "conversation",
+      "column": "customer_user_id",
+      "property": "customerUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "conversation",
+      "column": "driver_user_id",
+      "property": "driverUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "conversation",
+      "column": "linked_claim_id",
+      "property": "linkedClaimId",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "conversation",
       "column": "subject",
       "property": "subject",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 10
     },
     {
       "table": "conversation",
@@ -2670,7 +2822,7 @@
       "property": "firstResponseAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 7
+      "position": 11
     },
     {
       "table": "conversation",
@@ -2678,7 +2830,7 @@
       "property": "closedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 8
+      "position": 12
     },
     {
       "table": "conversation",
@@ -2686,7 +2838,7 @@
       "property": "closedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 13
     },
     {
       "table": "conversation",
@@ -2694,7 +2846,7 @@
       "property": "closedReason",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 14
     },
     {
       "table": "conversation",
@@ -2702,7 +2854,7 @@
       "property": "createdByUserId",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 15
     },
     {
       "table": "conversation",
@@ -2710,7 +2862,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 12
+      "position": 16
     },
     {
       "table": "conversation_party",
@@ -6698,11 +6850,51 @@
     },
     {
       "table": "message",
+      "column": "reply_to_seq",
+      "property": "replyToSeq",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "message",
+      "column": "reply_to_preview",
+      "property": "replyToPreview",
+      "secret": true,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "message",
+      "column": "edited_at",
+      "property": "editedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 16
+    },
+    {
+      "table": "message",
+      "column": "withdrawn_at",
+      "property": "withdrawnAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 17
+    },
+    {
+      "table": "message",
+      "column": "withdrawn_by_user_id",
+      "property": "withdrawnByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "message",
       "column": "redacted_at",
       "property": "redactedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 14
+      "position": 19
     },
     {
       "table": "message",
@@ -6710,7 +6902,47 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 15
+      "position": 20
+    },
+    {
+      "table": "message_edit",
+      "column": "edit_id",
+      "property": "editId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "message_edit",
+      "column": "message_id",
+      "property": "messageId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "message_edit",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "message_edit",
+      "column": "previous_body",
+      "property": "previousBody",
+      "secret": true,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "message_edit",
+      "column": "edited_by_user_id",
+      "property": "editedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 4
     },
     {
       "table": "message_template",
@@ -6738,11 +6970,19 @@
     },
     {
       "table": "message_template",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "message_template",
       "column": "key",
       "property": "key",
       "secret": false,
       "kind": "text",
-      "position": 3
+      "position": 4
     },
     {
       "table": "message_template",
@@ -6750,7 +6990,7 @@
       "property": "title",
       "secret": false,
       "kind": "text",
-      "position": 4
+      "position": 5
     },
     {
       "table": "message_template",
@@ -6758,7 +6998,7 @@
       "property": "body",
       "secret": false,
       "kind": "text",
-      "position": 5
+      "position": 6
     },
     {
       "table": "message_template",
@@ -6766,7 +7006,7 @@
       "property": "active",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 7
     },
     {
       "table": "message_template",
@@ -6774,7 +7014,7 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 7
+      "position": 8
     },
     {
       "table": "module_config",

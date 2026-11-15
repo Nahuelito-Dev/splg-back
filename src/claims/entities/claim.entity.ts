@@ -8,6 +8,7 @@ import {
   Index,
   Check,
   ForeignKey,
+  Unique,
 } from 'typeorm';
 import { Order } from '../../order/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -35,6 +36,9 @@ export enum ClaimStatus {
   `char_length("reason") <= 120 AND char_length("description") <= 1000 AND ("resolutionNote" IS NULL OR char_length("resolutionNote") <= 1000)`,
 )
 @Entity('claims')
+// Para que una conversación de la bandeja apunte a un reclamo de su misma
+// empresa (FK compuesta `FK_conversation_linked_claim_distribuidora`).
+@Unique('UQ_claims_id_distribuidora', ['claimId', 'distributorId'])
 export class Claim {
   @PrimaryGeneratedColumn('uuid', { name: 'claim_id' })
   claimId!: string;
