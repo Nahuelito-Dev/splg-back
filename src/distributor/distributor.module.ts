@@ -26,6 +26,9 @@ import {
   MercadoPagoCredentialsService,
 } from './mercadopago-credentials.service';
 import { MercadoPagoCredentialsController } from './mercadopago-credentials.controller';
+import { DistributorTheme } from './entities/distributor-theme.entity';
+import { DistributorThemeService } from './theme/distributor-theme.service';
+import { CompanyThemeController } from './theme/company-theme.controller';
 
 /**
  * Global: `DistributorService` es transversal (lo consumen AuthGuard y el
@@ -40,6 +43,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
       Distributor,
       ModuleConfig,
       MercadoPagoCredentials,
+      DistributorTheme,
     ]),
     S3Module, // logo
   ],
@@ -53,6 +57,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     ContainerChargeConfigController,
     ModuleConfigController,
     MercadoPagoCredentialsController,
+    CompanyThemeController,
   ],
   providers: [
     DistributorService,
@@ -68,6 +73,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     CredentialsEncryptionService,
     { provide: MERCADOPAGO_FETCH, useValue: fetch },
     MercadoPagoCredentialsService,
+    DistributorThemeService,
   ],
   exports: [
     DistributorService,
@@ -80,6 +86,7 @@ import { MercadoPagoCredentialsController } from './mercadopago-credentials.cont
     PaymentSurchargeSettingsService,
     ContainerChargeSettingsService,
     MercadoPagoCredentialsService,
+    DistributorThemeService,
   ],
 })
 export class DistributorModule {}

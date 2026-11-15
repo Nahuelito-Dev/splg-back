@@ -24,6 +24,8 @@ const EXENTOS: Readonly<Record<string, string>> = {
     'Qué módulos están en uso en la distribuidora de la sesión: lo leen el panel y las apps al iniciar (§5.3)',
   'distributor/distributor.controller.ts#DistributorController.findCurrent':
     'La cabecera del panel muestra la distribuidora del admin en todas las pantallas.',
+  'distributor/theme/company-theme.controller.ts#CompanyThemeController.obtener':
+    'El encabezado y los colores del panel salen del tema de la empresa en todas las pantallas.',
 };
 
 function decoradores(nodo: ts.Node): readonly ts.Decorator[] {

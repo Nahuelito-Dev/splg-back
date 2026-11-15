@@ -1,4 +1,5 @@
 import { DistributorService } from '../distributor/distributor.service';
+import type { DistributorThemeService } from '../distributor/theme/distributor-theme.service';
 import {
   Distributor,
   DistributorStatus,
@@ -19,8 +20,10 @@ describe('PlatformCompaniesController', () => {
   const servicio = {
     marcarPropia: jest.fn().mockResolvedValue(fila),
   };
+  const temas = { vigente: jest.fn().mockResolvedValue({ version: 2 }) };
   const controller = new PlatformCompaniesController(
     servicio as unknown as DistributorService,
+    temas as unknown as DistributorThemeService,
   );
   const esperado = {
     id: 'd1',
@@ -36,5 +39,10 @@ describe('PlatformCompaniesController', () => {
       controller.marcar('d1', { ownedByPlatform: true }),
     ).resolves.toEqual(esperado);
     expect(servicio.marcarPropia).toHaveBeenCalledWith('d1', true);
+  });
+
+  it('lee el tema de la empresa pedida, sin editarlo', async () => {
+    await expect(controller.tema('d1')).resolves.toEqual({ version: 2 });
+    expect(temas.vigente).toHaveBeenCalledWith('d1');
   });
 });

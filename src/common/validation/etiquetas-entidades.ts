@@ -42,6 +42,7 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   PlatformPlanModule: 'Módulo de un plan',
   DistributorSubscription: 'Suscripción de la distribuidora',
   DistributorModule: 'Módulo habilitado a la distribuidora',
+  DistributorTheme: 'Apariencia de la distribuidora',
   Order: 'Pedido',
   OrderAddressChange: 'Cambio de dirección del pedido',
   OrderItem: 'Renglón de pedido',

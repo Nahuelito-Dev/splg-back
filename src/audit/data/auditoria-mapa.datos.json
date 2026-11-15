@@ -484,6 +484,22 @@
       "orderColumn": null
     },
     {
+      "table": "distributor_theme",
+      "entity": "DistributorTheme",
+      "pk": [
+        "distributor_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "document_reading",
       "entity": "DocumentReading",
       "pk": [
@@ -3733,6 +3749,78 @@
       "secret": false,
       "kind": "text",
       "position": 4
+    },
+    {
+      "table": "distributor_theme",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "distributor_theme",
+      "column": "primary_color",
+      "property": "primaryColor",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "distributor_theme",
+      "column": "accent_color",
+      "property": "accentColor",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "distributor_theme",
+      "column": "display_name",
+      "property": "displayName",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "distributor_theme",
+      "column": "tokens",
+      "property": "tokens",
+      "secret": true,
+      "kind": "json",
+      "position": 4
+    },
+    {
+      "table": "distributor_theme",
+      "column": "contrast",
+      "property": "contrast",
+      "secret": false,
+      "kind": "json",
+      "position": 5
+    },
+    {
+      "table": "distributor_theme",
+      "column": "version",
+      "property": "version",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "distributor_theme",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "distributor_theme",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 8
     },
     {
       "table": "document_reading",
