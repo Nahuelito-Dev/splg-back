@@ -13,6 +13,44 @@ export interface PedidoDeLaConversacion {
   status: string;
 }
 
+/** Las insignias de la bandeja (de las abiertas de los canales que atiende quien pide). */
+export interface ResumenDeLaBandeja {
+  unassigned: number;
+  mine: number;
+  awaitingHuman: number;
+  unread: number;
+}
+
+/** Alguien del personal vigente de la empresa, con lo que dice su rol. */
+export interface PersonaDelPersonal {
+  userId: string;
+  fullName: string;
+  photoKey: string | null;
+  /** Rol de sistema: tiene todos los permisos. */
+  todos: boolean;
+  /** Los permisos guardados en el rol (sin los implicados). */
+  permisos: string[];
+}
+
+/**
+ * Sin leer en la bandeja, para quien está en la punta `$p` (alias `m` del
+ * mensaje y `r` de su lectura): lo de la otra punta posterior a su lectura,
+ * sin los avisos del sistema ni los borrados; para la empresa tampoco las
+ * respuestas automáticas (las mandó el sistema en su nombre). La comparten el
+ * contador de cada conversación y el resumen de la bandeja.
+ */
+export function condicionDeNoLeidoEnLaBandeja(
+  parametroDeLaPunta: string,
+): string {
+  const p = parametroDeLaPunta;
+  return `m."deleted_at" IS NULL
+            AND m."withdrawn_at" IS NULL
+            AND m."seq" > COALESCE(r."last_read_seq", 0)
+            AND m."sender_party" <> ${p}
+            AND m."kind" <> 'system'
+            AND NOT (${p} = 'company' AND m."kind" = 'auto_reply')`;
+}
+
 /**
  * Consultas de sólo lectura para armar las respuestas de la bandeja (nombres,
  * pedidos, sin leer, «leído» de la otra punta, últimos mensajes, mensajes
@@ -97,12 +135,7 @@ export class BandejaReadModel {
            LEFT JOIN "conversation_read_state" r
              ON r."conversation_id" = m."conversation_id" AND r."user_id" = $2
           WHERE m."conversation_id" = ANY($1::uuid[])
-            AND m."deleted_at" IS NULL
-            AND m."withdrawn_at" IS NULL
-            AND m."seq" > COALESCE(r."last_read_seq", 0)
-            AND m."sender_party" <> $3
-            AND m."kind" <> 'system'
-            AND NOT ($3 = 'company' AND m."kind" = 'auto_reply')
+            AND ${condicionDeNoLeidoEnLaBandeja('$3')}
           GROUP BY m."conversation_id"`,
         [conversationIds, quien.userId, quien.party],
       );
@@ -192,6 +225,102 @@ export class BandejaReadModel {
         [conversationIds],
       );
     return new Map(filas.map((f) => [f.conversation_id, new Date(f.at)]));
+  }
+
+  /**
+   * De esos mensajes, los que quedaron atados (D-C22, D-C23): conversación por
+   * un pedido, anteriores al reclamo creado desde el hilo, citados en un
+   * reclamo o un ticket, o citados en una respuesta. La misma regla que
+   * `BandejaService.ataduras` (la del PATCH), para todos de una vez: el `canEdit`
+   * no promete lo que el PATCH va a rechazar.
+   */
+  async atados(messageIds: readonly string[]): Promise<Set<string>> {
+    const ids = [...new Set(messageIds)];
+    if (ids.length === 0) return new Set();
+    const filas: Array<{ message_id: string }> = await this.dataSource.query(
+      `SELECT m."message_id"
+         FROM "message" m
+         JOIN "conversation" c ON c."conversation_id" = m."conversation_id"
+        WHERE m."message_id" = ANY($1::uuid[])
+          AND (c."subject_type" = 'order'
+               OR EXISTS (SELECT 1 FROM "claims" cl
+                           WHERE cl."claim_id" = c."linked_claim_id"
+                             AND cl."createdAt" >= m."created_at")
+               OR EXISTS (SELECT 1 FROM "support_ticket_message_link" l
+                           WHERE l."message_id" = m."message_id")
+               OR EXISTS (SELECT 1 FROM "message" r
+                           WHERE r."conversation_id" = m."conversation_id"
+                             AND r."reply_to_seq" = m."seq"))`,
+      [ids],
+    );
+    return new Set(filas.map((f) => f.message_id));
+  }
+
+  /**
+   * El resumen de la bandeja para las insignias, en una sola consulta: de las
+   * abiertas de esos canales de la empresa, sin asignar, asignadas a quien
+   * pide, esperando a una persona (el asistente las derivó) y con algo sin leer
+   * para quien pide (la misma regla que `noLeidos`).
+   */
+  async resumen(
+    distributorId: string,
+    canales: readonly string[],
+    quien: Lector,
+  ): Promise<ResumenDeLaBandeja> {
+    const [fila]: Array<Record<string, string>> = await this.dataSource.query(
+      `SELECT count(*) FILTER (WHERE c."assigned_to_user_id" IS NULL) AS unassigned,
+              count(*) FILTER (WHERE c."assigned_to_user_id" = $3) AS mine,
+              count(*) FILTER (WHERE c."awaiting_human_since" IS NOT NULL) AS awaiting,
+              count(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM "message" m
+                 WHERE m."conversation_id" = c."conversation_id"
+                   AND ${condicionDeNoLeidoEnLaBandeja('$4')})) AS unread
+         FROM "conversation" c
+         LEFT JOIN "conversation_read_state" r
+           ON r."conversation_id" = c."conversation_id" AND r."user_id" = $3
+        WHERE c."distributor_id" = $1 AND c."channel" = ANY($2::text[])
+          AND c."status" = 'open' AND c."deleted_at" IS NULL`,
+      [distributorId, [...canales], quien.userId, quien.party],
+    );
+    return {
+      unassigned: Number(fila?.unassigned ?? 0),
+      mine: Number(fila?.mine ?? 0),
+      awaitingHuman: Number(fila?.awaiting ?? 0),
+      unread: Number(fila?.unread ?? 0),
+    };
+  }
+
+  /**
+   * El personal vigente de la empresa (usuario sin baja ni bloqueo) con su rol
+   * de personal vigente: lo que hace falta para saber quién atiende un canal.
+   * Sólo de esa empresa.
+   */
+  async personalDeLaEmpresa(
+    distributorId: string,
+  ): Promise<PersonaDelPersonal[]> {
+    const filas: Array<{
+      user_id: string;
+      full_name: string | null;
+      photo_key: string | null;
+      is_system: boolean;
+      permissions: string[] | null;
+    }> = await this.dataSource.query(
+      `SELECT u."user_id", u."full_name", u."photo_key", sr."is_system", sr."permissions"
+         FROM "admin" a
+         JOIN "user" u ON u."user_id" = a."user_id"
+         JOIN "staff_role" sr ON sr."staff_role_id" = a."staff_role_id" AND sr."deletedAt" IS NULL
+        WHERE a."distributor_id" = $1
+          AND u."deletedAt" IS NULL AND u."blocked" = false
+        ORDER BY u."full_name" ASC NULLS LAST, u."user_id" ASC`,
+      [distributorId],
+    );
+    return filas.map((f) => ({
+      userId: f.user_id,
+      fullName: f.full_name ?? 'Sin nombre',
+      photoKey: f.photo_key,
+      todos: f.is_system,
+      permisos: f.permissions ?? [],
+    }));
   }
 
   /** El personal de la empresa con su rol (para asignar): `null` si no es de esa empresa. */

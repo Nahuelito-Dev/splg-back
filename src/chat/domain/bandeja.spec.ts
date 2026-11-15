@@ -1,4 +1,5 @@
 import {
+  atiendeElCanal,
   ambitoValido,
   assertSePuedeBorrar,
   assertSePuedeConsultarPorElPedido,
@@ -339,5 +340,33 @@ describe('bandeja: el asistente de la empresa (D-B5, D-B8)', () => {
     expect(() => assertNombreDelAsistente('Hola {{cliente.nombre}}')).toThrow(
       VariableDelNombreDelAsistenteError,
     );
+  });
+});
+
+describe('bandeja: quién atiende un canal (asignar)', () => {
+  const rol = (todos: boolean, permisos: string[]) => ({
+    todos,
+    permisos: new Set(permisos),
+  });
+
+  it('con el permiso del canal, sí; con el del otro canal, no', () => {
+    const clientes = rol(false, ['mensajes.clientes']);
+    expect(atiendeElCanal(clientes, Channel.STAFF_CUSTOMER)).toBe(true);
+    expect(atiendeElCanal(clientes, Channel.STAFF_DRIVER)).toBe(false);
+    const choferes = rol(false, ['mensajes.choferes']);
+    expect(atiendeElCanal(choferes, Channel.STAFF_DRIVER)).toBe(true);
+    expect(atiendeElCanal(choferes, Channel.STAFF_CUSTOMER)).toBe(false);
+  });
+
+  it('el rol de sistema atiende los dos; uno sin permisos de mensajes, ninguno', () => {
+    for (const canal of [
+      Channel.STAFF_CUSTOMER,
+      Channel.STAFF_DRIVER,
+    ] as const) {
+      expect(atiendeElCanal(rol(true, []), canal)).toBe(true);
+      expect(atiendeElCanal(rol(false, ['mensajes.configurar']), canal)).toBe(
+        false,
+      );
+    }
   });
 });

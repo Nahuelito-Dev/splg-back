@@ -35,6 +35,7 @@ import {
 import { Permiso } from '../../../common/decorators/permiso.decorator';
 import { RequiereModulo } from '../../../platform/access/requiere-modulo.decorator';
 import { BandejaAcceso, lectorDe } from '../../application/bandeja-acceso';
+import { BandejaEquipoService } from '../../application/bandeja-equipo.service';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
 import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
@@ -51,11 +52,13 @@ import {
 import {
   BroadcastResponseDto,
   ClaimFromConversationResponseDto,
+  InboxAssigneeListResponseDto,
   InboxConversationDto,
   InboxListResponseDto,
   InboxMessageDto,
   InboxMessageListResponseDto,
   InboxSuggestionsResponseDto,
+  InboxSummaryDto,
   OpenConversationResponseDto,
 } from '../dto/bandeja-response.dto';
 import { MessagesQueryDto, ReadUpToDto } from '../dto/chat-input.dto';
@@ -64,6 +67,8 @@ const NO_EXISTE =
   'No existe, es de otra empresa o de un canal que quien pide no atiende';
 const SIN_CANAL =
   'El rol de personal no atiende ese canal (`PERMISSION_DENIED`: los clientes piden `mensajes.clientes`, los choferes `mensajes.choferes`)';
+const SIN_CANAL_NI_MODULO =
+  'La cuenta no es del personal de una empresa; el rol no atiende ningún canal de mensajes (`PERMISSION_DENIED`); o la empresa no tiene habilitados los mensajes (`MODULE_DISABLED`)';
 
 /**
  * Bandeja de la empresa (C3 clientes y C2 choferes, diseño §14.3). Del
@@ -83,6 +88,7 @@ export class CompanyInboxController {
     private readonly gestion: BandejaGestionService,
     private readonly presentar: BandejaPresenter,
     private readonly sugerencias: BandejaSugerenciasService,
+    private readonly equipo: BandejaEquipoService,
   ) {}
 
   @Get()
@@ -185,6 +191,22 @@ export class CompanyInboxController {
     return this.gestion.difundir(actor, dto);
   }
 
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Resumen de la bandeja (insignias)',
+    description:
+      'Para la insignia del menú «Mensajes» y las pestañas: de las conversaciones abiertas de los canales que atiende quien pide (`mensajes.clientes`, `mensajes.choferes`), cuántas están sin asignar, cuántas son suyas, cuántas esperan a una persona y cuántas tienen algo sin leer para quien pide. Sólo de su empresa.',
+  })
+  @ApiOkResponse({ type: InboxSummaryDto })
+  @ApiForbiddenResponse({ description: SIN_CANAL_NI_MODULO })
+  async resumen(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<InboxSummaryDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    return this.equipo.resumen(actor);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Una conversación de la bandeja' })
   @ApiOkResponse({ type: InboxConversationDto })
@@ -217,6 +239,25 @@ export class CompanyInboxController {
     const actor = await this.acceso.delPersonal(user, distributorId);
     const r = await this.sugerencias.sugerir(actor, id);
     return { basedOnSeq: r.basadoEnSeq, items: r.items };
+  }
+
+  @Get(':id/assignees')
+  @ApiOperation({
+    summary: 'A quién se le puede asignar',
+    description:
+      'El personal vigente de la empresa (sin baja ni bloqueo, con un rol vigente) que atiende el canal de la conversación: `mensajes.clientes` para las de clientes, `mensajes.choferes` para las de choferes (un rol de sistema atiende los dos). Es la misma regla con que `assign` valida. Ordenado por nombre; nadie de otra empresa.',
+  })
+  @ApiOkResponse({ type: InboxAssigneeListResponseDto })
+  @ApiBadRequestResponse({ description: 'Id que no es uuid (`INVALID_ID`)' })
+  @ApiForbiddenResponse({ description: SIN_CANAL_NI_MODULO })
+  @ApiNotFoundResponse({ description: NO_EXISTE })
+  async personasParaAsignar(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<InboxAssigneeListResponseDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    return { items: await this.equipo.paraAsignar(actor, id) };
   }
 
   @Get(':id/messages')
@@ -283,7 +324,7 @@ export class CompanyInboxController {
   @ApiOperation({
     summary: 'Editar un mensaje propio',
     description:
-      'Sólo quien lo escribió (no un compañero), sólo texto y hasta 15 minutos después de enviarlo, con la conversación abierta. Queda la marca `editedAt` y el texto anterior en el historial. La otra punta lo recibe por el socket (`chat:message-edited`).',
+      'Sólo quien lo escribió (no un compañero), sólo texto y hasta 15 minutos después de enviarlo, con la conversación abierta. No se edita lo que quedó como constancia: una conversación por un pedido, un mensaje que forma parte de un reclamo o un ticket, o uno que ya citaron (`canEdit` lo anticipa con la misma regla). Queda la marca `editedAt` y el texto anterior en el historial. La otra punta lo recibe por el socket (`chat:message-edited`).',
   })
   @ApiOkResponse({ type: InboxMessageDto })
   @ApiBadRequestResponse({
@@ -297,7 +338,7 @@ export class CompanyInboxController {
   })
   @ApiConflictResponse({
     description:
-      'Pasaron los 15 minutos (`MESSAGE_EDIT_WINDOW_CLOSED`), no es un texto (`MESSAGE_NOT_EDITABLE`) o la conversación está cerrada (`CONVERSATION_CLOSED`)',
+      'Pasaron los 15 minutos (`MESSAGE_EDIT_WINDOW_CLOSED`), no es un texto (`MESSAGE_NOT_EDITABLE`), la conversación es por un pedido (`MESSAGE_IN_ORDER_CONVERSATION`), forma parte de un reclamo o un ticket (`MESSAGE_LINKED_TO_CLAIM`), ya lo citaron en una respuesta (`MESSAGE_ALREADY_QUOTED`) o la conversación está cerrada (`CONVERSATION_CLOSED`)',
   })
   async editar(
     @CurrentUser() user: AuthenticatedUser,

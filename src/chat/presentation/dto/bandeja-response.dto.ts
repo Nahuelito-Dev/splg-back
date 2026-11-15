@@ -18,7 +18,7 @@ export class InboxCounterpartDto {
   @ApiProperty({
     example: 'Gas Norte',
     description:
-      'Para el cliente y el chofer, el nombre de la empresa; para el personal, el del cliente o el chofer',
+      'Para el cliente y el chofer, el nombre de la empresa como la conocen (el de su marca si lo cargó; si no, el legal); para el personal, el del cliente o el chofer',
   })
   displayName!: string;
 }
@@ -143,7 +143,7 @@ export class InboxReplyToDto {
 export class InboxSenderDto {
   @ApiProperty({
     description:
-      'Para el personal, el nombre de quien escribió; para el cliente y el chofer, el de la empresa en los mensajes de la empresa (D-C5)',
+      'Para el personal, el nombre de quien escribió; para el cliente y el chofer, el de la empresa en los mensajes de la empresa (el de su marca si lo cargó; si no, el legal; D-C5)',
   })
   displayName!: string;
 
@@ -172,7 +172,7 @@ export class InboxMessageDto {
   isMine!: boolean;
   @ApiProperty({
     description:
-      'Lo escribió quien pide (la persona, no su equipo) y está en los 15 minutos: se puede editar (por el socket llega siempre `false`: es de la sala, no de una persona)',
+      'Lo escribió quien pide (la persona, no su equipo), es un texto, está en los 15 minutos y no quedó atado (conversación por un pedido, parte de un reclamo o un ticket, o ya citado en una respuesta): se puede editar. La misma regla que el PATCH. Por el socket llega siempre `false`: es de la sala, no de una persona',
   })
   canEdit!: boolean;
   @ApiProperty({ enum: MessageKind }) kind!: MessageKind;
@@ -246,6 +246,51 @@ export class InboxCountsDto {
   @ApiProperty({ description: 'Abiertas asignadas a quien pide' })
   mine!: number;
   @ApiProperty({ description: 'Abiertas' }) open!: number;
+}
+
+/** Las insignias del menú «Mensajes» y de las pestañas de la bandeja. */
+export class InboxSummaryDto {
+  @ApiProperty({
+    example: 3,
+    description: 'Abiertas sin asignar (pestaña «Sin asignar»)',
+  })
+  unassigned!: number;
+  @ApiProperty({
+    example: 2,
+    description: 'Abiertas asignadas a quien pide (pestaña «Mías»)',
+  })
+  mine!: number;
+  @ApiProperty({
+    example: 1,
+    description:
+      'Abiertas que esperan a una persona: el asistente con IA las derivó y nadie las tomó todavía',
+  })
+  awaitingHuman!: number;
+  @ApiProperty({
+    example: 4,
+    description:
+      'Abiertas con algún mensaje sin leer para quien pide (cuenta conversaciones, no mensajes): lo del cliente o el chofer posterior a su lectura, sin avisos del sistema, respuestas automáticas ni mensajes borrados',
+  })
+  unread!: number;
+}
+
+/** Alguien del personal a quien se le puede asignar la conversación. */
+export class InboxAssigneeOptionDto {
+  @ApiProperty({ format: 'uuid' }) userId!: string;
+  @ApiProperty({ example: 'Lucía Gómez' }) fullName!: string;
+  @ApiPropertyOptional({
+    description:
+      'Foto de perfil (URL firmada, vence): no viene si no tiene foto',
+  })
+  photoUrl?: string;
+}
+
+export class InboxAssigneeListResponseDto {
+  @ApiProperty({
+    type: [InboxAssigneeOptionDto],
+    description: 'Ordenadas por nombre',
+  })
+  items!: InboxAssigneeOptionDto[];
 }
 
 export class InboxListResponseDto {

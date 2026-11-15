@@ -222,7 +222,7 @@ export class MyConversationsController {
   @ApiOperation({
     summary: 'Editar un mensaje mío',
     description:
-      'Sólo texto propio, hasta 15 minutos después de enviarlo y con la conversación abierta. Queda la marca `editedAt`; la empresa lo recibe en vivo.',
+      'Sólo texto propio, hasta 15 minutos después de enviarlo y con la conversación abierta. No se edita si la conversación es por un pedido, si el mensaje forma parte de un reclamo o de un ticket, o si ya respondieron citándolo (`canEdit` lo anticipa con la misma regla). Queda la marca `editedAt`; la empresa lo recibe en vivo.',
   })
   @ApiOkResponse({ type: InboxMessageDto })
   @ApiBadRequestResponse({
@@ -237,7 +237,7 @@ export class MyConversationsController {
   })
   @ApiConflictResponse({
     description:
-      'Pasaron los 15 minutos (`MESSAGE_EDIT_WINDOW_CLOSED`), no es un texto (`MESSAGE_NOT_EDITABLE`) o la conversación está cerrada (`CONVERSATION_CLOSED`)',
+      'Pasaron los 15 minutos (`MESSAGE_EDIT_WINDOW_CLOSED`), no es un texto (`MESSAGE_NOT_EDITABLE`), la conversación es por un pedido (`MESSAGE_IN_ORDER_CONVERSATION`), forma parte de un reclamo o un ticket (`MESSAGE_LINKED_TO_CLAIM`), ya lo citaron en una respuesta (`MESSAGE_ALREADY_QUOTED`) o la conversación está cerrada (`CONVERSATION_CLOSED`)',
   })
   async editar(
     @CurrentUser() user: AuthenticatedUser,

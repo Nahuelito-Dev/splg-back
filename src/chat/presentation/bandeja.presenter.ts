@@ -34,8 +34,12 @@ export interface ContextoDeLaBandeja {
   quien: Lector;
   ahora: Date;
   nombres: Map<string, string>;
+  /**
+   * El nombre de cada empresa como lo ve quien mira: para el cliente y el
+   * chofer, el de marca (o el legal si no tiene); para el personal, el legal.
+   */
   empresas: Map<string, string>;
-  /** Nombre de marca de las empresas con mensajes del asistente sin firma guardada. */
+  /** Nombre de marca de las empresas (para la firma del asistente en los mensajes sin firma guardada). */
   marcas: Map<string, string>;
   pedidos: Map<string, PedidoDeLaConversacion>;
   noLeidos: Map<string, number>;
@@ -45,6 +49,8 @@ export interface ContextoDeLaBandeja {
   respondidos: Map<string, Message>;
   primerEntrante: Map<string, Date>;
   ajustes: Map<string, ChatCompanySettings>;
+  /** De los mensajes que quien mira podría editar, los que quedaron atados (pedido, reclamo, ticket o citados). */
+  atados: Set<string>;
 }
 
 /** La firma con que se mandó el mensaje del asistente (`payload.senderLabel`); nula en los anteriores. */
@@ -57,6 +63,22 @@ function firmaGuardada(m: Message): string | null {
 
 const esPersonal = (ctx: ContextoDeLaBandeja) =>
   ctx.quien.party === Party.COMPANY;
+
+/**
+ * Lo escribió quien mira (la persona, no su equipo), es un texto que se ve y
+ * está en los 15 minutos: falta saber si quedó atado a algo.
+ */
+function editablePorPlazo(m: Message, quien: Lector, ahora: Date): boolean {
+  return (
+    m.senderUserId !== null &&
+    m.senderUserId === quien.userId &&
+    m.kind === MessageKind.TEXT &&
+    m.redactedAt === null &&
+    m.withdrawnAt === null &&
+    ahora.getTime() - m.createdAt.getTime() <=
+      VENTANA_DE_EDICION_MINUTOS * 60_000
+  );
+}
 
 /**
  * Arma las conversaciones y los mensajes de la bandeja tal como los ve quien
@@ -77,6 +99,7 @@ export class BandejaPresenter {
     mensajes: readonly Message[] = [],
   ): Promise<ContextoDeLaBandeja> {
     const ids = conversaciones.map((c) => c.conversationId);
+    const ahora = new Date();
     const [
       noLeidos,
       lecturaPropia,
@@ -85,6 +108,7 @@ export class BandejaPresenter {
       respondidos,
       primerEntrante,
       pedidos,
+      atados,
     ] = await Promise.all([
       this.lectura.noLeidos(ids, quien),
       this.lectura.lecturaPropia(ids, quien.userId),
@@ -96,6 +120,12 @@ export class BandejaPresenter {
         : Promise.resolve(new Map<string, Date>()),
       this.lectura.pedidos(
         conversaciones.flatMap((c) => (c.orderId ? [c.orderId] : [])),
+      ),
+      // Sólo los que pasarían el plazo: el resto ya no se edita.
+      this.lectura.atados(
+        mensajes
+          .filter((m) => editablePorPlazo(m, quien, ahora))
+          .map((m) => m.messageId),
       ),
     ]);
     const usuarios = new Set<string>();
@@ -116,10 +146,15 @@ export class BandejaPresenter {
         .filter((m) => esRespuestaAutomatica(m) && firmaGuardada(m) === null)
         .map((m) => m.distributorId),
     );
+    // El cliente y el chofer conocen a la empresa por su marca: la misma
+    // consulta da el nombre que ven y la firma del asistente.
+    const delPersonal = quien.party === Party.COMPANY;
     const [nombres, nombresDeEmpresas, marcas, ajustes] = await Promise.all([
       this.lectura.nombres(usuarios),
-      this.lectura.empresas(empresas),
-      this.lectura.marcas(sinFirma),
+      delPersonal
+        ? this.lectura.empresas(empresas)
+        : Promise.resolve(new Map<string, string>()),
+      this.lectura.marcas(delPersonal ? sinFirma : empresas),
       Promise.all(
         [...empresas].map(
           async (id) => [id, await this.ajustes.leer(id)] as const,
@@ -128,9 +163,9 @@ export class BandejaPresenter {
     ]);
     return {
       quien,
-      ahora: new Date(),
+      ahora,
       nombres,
-      empresas: nombresDeEmpresas,
+      empresas: delPersonal ? nombresDeEmpresas : marcas,
       marcas,
       pedidos,
       noLeidos,
@@ -140,6 +175,7 @@ export class BandejaPresenter {
       respondidos,
       primerEntrante,
       ajustes: new Map(ajustes),
+      atados,
     };
   }
 
@@ -257,8 +293,6 @@ export class BandejaPresenter {
     // Borrado por su autor (D-C23): el texto no sale nunca, para nadie.
     const borrado = m.withdrawnAt !== null;
     const sinTexto = redactado || borrado;
-    const propio =
-      m.senderUserId !== null && m.senderUserId === ctx.quien.userId;
     const respondido =
       m.replyToSeq !== null
         ? ctx.respondidos.get(`${m.conversationId}:${m.replyToSeq}`)
@@ -273,12 +307,10 @@ export class BandejaPresenter {
       party: m.senderParty,
       sender: this.autor(m, ctx),
       isMine: m.senderParty === ctx.quien.party,
+      // La misma regla que el PATCH (D-C22): si quedó atado, no se ofrece.
       canEdit:
-        propio &&
-        m.kind === MessageKind.TEXT &&
-        !sinTexto &&
-        ctx.ahora.getTime() - m.createdAt.getTime() <=
-          VENTANA_DE_EDICION_MINUTOS * 60_000,
+        editablePorPlazo(m, ctx.quien, ctx.ahora) &&
+        !ctx.atados.has(m.messageId),
       kind: m.kind,
       body: sinTexto ? null : m.body,
       templateKey: m.templateKey,

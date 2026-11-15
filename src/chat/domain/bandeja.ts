@@ -49,6 +49,20 @@ export function canalesQueAtiende(
   return canales;
 }
 
+/** Lo que dice el rol de personal de alguien: todos los permisos (rol de sistema) o los efectivos. */
+export interface PermisosDelRol {
+  todos: boolean;
+  permisos: ReadonlySet<string>;
+}
+
+/** Atiende ese canal: el rol de sistema, todos; los demás, con el permiso del canal. */
+export function atiendeElCanal(
+  rol: PermisosDelRol,
+  canal: CanalDeLaBandeja,
+): boolean {
+  return rol.todos || rol.permisos.has(permisoDelCanal(canal));
+}
+
 /** Días después de entregado o cancelado en que todavía se abre una conversación por el pedido (§4.3). */
 export const DIAS_PARA_CONSULTAR_UN_PEDIDO = 30;
 

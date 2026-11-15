@@ -76,6 +76,8 @@ const respondido = mensaje({
 function presentador(
   extra: Partial<ChatCompanySettings> = {},
   ultimo: Message = mensaje(),
+  /** Los mensajes atados (pedido, reclamo, ticket o citados) según la base. */
+  atados: readonly string[] = [],
 ) {
   const lectura = {
     noLeidos: jest.fn().mockResolvedValue(new Map([['conv-1', 2]])),
@@ -103,6 +105,9 @@ function presentador(
         new Map([...ids].map((id) => [id, 'Florchi Gas'] as [string, string])),
       ),
     ),
+    atados: jest.fn((ids: readonly string[]) =>
+      Promise.resolve(new Set(ids.filter((id) => atados.includes(id)))),
+    ),
   };
   const ajustes = {
     leer: jest.fn().mockResolvedValue({
@@ -112,9 +117,12 @@ function presentador(
       ...extra,
     }),
   };
-  return new BandejaPresenter(
-    lectura as unknown as BandejaReadModel,
-    ajustes as unknown as CompanyChatSettingsService,
+  return Object.assign(
+    new BandejaPresenter(
+      lectura as unknown as BandejaReadModel,
+      ajustes as unknown as CompanyChatSettingsService,
+    ),
+    { base: lectura },
   );
 }
 
@@ -127,7 +135,7 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
     });
     expect(c.counterpart).toEqual({
       party: Party.COMPANY,
-      displayName: 'Gas Norte',
+      displayName: 'Florchi Gas',
     });
     expect(c).not.toHaveProperty('assignedTo');
     expect(c).not.toHaveProperty('customer');
@@ -136,9 +144,43 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       party: Party.CUSTOMER,
       userId: 'cli-1',
     });
-    expect(m.sender).toEqual({ displayName: 'Gas Norte' });
+    expect(m.sender).toEqual({ displayName: 'Florchi Gas' });
     expect(m.isMine).toBe(false);
     expect(m.clientMessageId).toBeNull();
+  });
+
+  it('el cliente y el chofer ven el nombre de marca (el mismo de la firma del asistente), no el legal', async () => {
+    const p = presentador();
+    const chofer = { party: Party.DRIVER, userId: 'cho-1' } as const;
+    const c = await p.conversacion(
+      conversacion({
+        channel: Channel.STAFF_DRIVER,
+        customerUserId: null,
+        driverUserId: 'cho-1',
+      }),
+      chofer,
+    );
+    expect(c.counterpart.displayName).toBe('Florchi Gas');
+    expect((await p.mensaje(mensaje(), chofer)).sender).toEqual({
+      displayName: 'Florchi Gas',
+    });
+    // El nombre de la empresa sale de la marca (o del legal si no tiene): no se pide el legal.
+    expect(p.base.marcas).toHaveBeenCalledWith(new Set([D]));
+    expect(p.base.empresas).not.toHaveBeenCalled();
+  });
+
+  it('el personal sigue viendo lo de hoy: al cliente o al chofer, y a quien escribió por su nombre', async () => {
+    const p = presentador();
+    const personal = { party: Party.COMPANY, userId: 'adm-2' } as const;
+    const c = await p.conversacion(conversacion(), personal);
+    expect(c.counterpart).toEqual({
+      party: Party.CUSTOMER,
+      displayName: 'Ana Pérez',
+    });
+    expect((await p.mensaje(mensaje(), personal)).sender).toEqual({
+      displayName: 'Lucía Gómez',
+      userId: 'adm-1',
+    });
   });
 
   it('el id de quien escribió (para la foto) sólo le llega al personal', async () => {
@@ -238,6 +280,45 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
     expect(deOtro.isMine).toBe(true);
   });
 
+  it('canEdit: lo que quedó atado (pedido, reclamo, ticket o citado) no se ofrece editar, como en el PATCH', async () => {
+    const autor = { party: Party.COMPANY, userId: 'adm-1' } as const;
+    const libre = mensaje({ messageId: 'm-libre' });
+    const atado = mensaje({ messageId: 'm-atado' });
+    const p = presentador({}, mensaje(), ['m-atado']);
+    const [a, b] = await p.mensajes([libre, atado], autor);
+    expect(a.canEdit).toBe(true);
+    expect(b.canEdit).toBe(false);
+    // También el cliente con su mensaje.
+    const delCliente = mensaje({
+      messageId: 'm-atado',
+      senderParty: Party.CUSTOMER,
+      senderUserId: 'cli-1',
+    });
+    expect(
+      (
+        await p.mensaje(delCliente, {
+          party: Party.CUSTOMER,
+          userId: 'cli-1',
+        })
+      ).canEdit,
+    ).toBe(false);
+  });
+
+  it('canEdit: a la base sólo se le preguntan los que pasarían el plazo y son de quien mira', async () => {
+    const p = presentador();
+    await p.mensajes(
+      [
+        mensaje({ messageId: 'm-propio' }),
+        mensaje({ messageId: 'm-viejo', createdAt: new Date(0) }),
+        mensaje({ messageId: 'm-ajeno', senderUserId: 'adm-9' }),
+        mensaje({ messageId: 'm-borrado', withdrawnAt: new Date() }),
+        mensaje({ messageId: 'm-aviso', kind: MessageKind.SYSTEM }),
+      ],
+      { party: Party.COMPANY, userId: 'adm-1' },
+    );
+    expect(p.base.atados).toHaveBeenCalledWith(['m-propio']);
+  });
+
   it('un mensaje borrado por su autor (D-C23) no lleva el texto, para nadie', async () => {
     const borrado = mensaje({
       senderParty: Party.CUSTOMER,
@@ -270,6 +351,7 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       nombres: jest.fn().mockResolvedValue(new Map()),
       empresas: jest.fn().mockResolvedValue(new Map()),
       marcas: jest.fn().mockResolvedValue(new Map()),
+      atados: jest.fn().mockResolvedValue(new Set()),
     };
     const p = new BandejaPresenter(
       lectura as unknown as BandejaReadModel,

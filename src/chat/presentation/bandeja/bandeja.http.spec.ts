@@ -23,6 +23,7 @@ import { crearValidationPipe } from '../../../common/validation/validation-pipe'
 import { AccesoDeLaEmpresa } from '../../../platform/access/acceso-de-la-empresa.service';
 import { ModuloGuard } from '../../../platform/access/modulo.guard';
 import { BandejaAcceso } from '../../application/bandeja-acceso';
+import { BandejaEquipoService } from '../../application/bandeja-equipo.service';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
 import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
@@ -45,6 +46,7 @@ import {
   ConversacionConReclamoError,
   ConversacionNoEncontradaError,
   ConversacionNoReabribleError,
+  MensajeConReclamoError,
   MensajeDeUnPedidoError,
   MensajeYaCitadoError,
   PedidoSinChoferError,
@@ -128,6 +130,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
     asistenteConIaDisponible: jest.fn().mockResolvedValue(false),
   };
   const sugerencias = { sugerir: jest.fn() };
+  const equipo = { resumen: jest.fn(), paraAsignar: jest.fn() };
   const plantilla = {
     templateId: ID,
     channel: null,
@@ -170,6 +173,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         { provide: BandejaGestionService, useValue: gestion },
         { provide: BandejaPresenter, useValue: presentar },
         { provide: BandejaSugerenciasService, useValue: sugerencias },
+        { provide: BandejaEquipoService, useValue: equipo },
         { provide: CompanyChatSettingsService, useValue: ajustes },
         { provide: CompanyTemplatesService, useValue: plantillas },
         Reflector,
@@ -243,6 +247,16 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
     });
     ajustes.nombreDeLaEmpresa.mockResolvedValue('Gas del Sur');
     ajustes.asistenteConIaDisponible.mockResolvedValue(false);
+    equipo.resumen.mockResolvedValue({
+      unassigned: 3,
+      mine: 2,
+      awaitingHuman: 1,
+      unread: 4,
+    });
+    equipo.paraAsignar.mockResolvedValue([
+      { userId: UUID, fullName: 'Lucía Gómez', photoUrl: 'https://f/1' },
+      { userId: ID, fullName: 'Pablo Díaz' },
+    ]);
   });
 
   type Metodo = 'get' | 'post' | 'patch' | 'put' | 'delete';
@@ -452,6 +466,94 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       ).toEqual([401, null]);
     });
 
+    it('GET /conversations/summary: 200 (no la toma `:id`), 401, 403 (rol, sin permisos de mensajes, módulo apagado)', async () => {
+      const ok = await llamar('get', '/conversations/summary', ADMIN);
+      expect([ok.status, ok.body]).toEqual([
+        200,
+        { unassigned: 3, mine: 2, awaitingHuman: 1, unread: 4 },
+      ]);
+      expect(equipo.resumen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          party: Party.COMPANY,
+          userId: 'u1',
+          distributorId: 'dist-a',
+          canales: [Channel.STAFF_CUSTOMER, Channel.STAFF_DRIVER],
+        }),
+      );
+      expect(bandeja.conversacion).not.toHaveBeenCalled();
+      // Sólo los canales que atiende.
+      permisos = ['mensajes.choferes'];
+      expect(
+        await resultado(llamar('get', '/conversations/summary', ADMIN)),
+      ).toEqual([200, null]);
+      expect(equipo.resumen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ canales: [Channel.STAFF_DRIVER] }),
+      );
+      expect(
+        await resultado(llamar('get', '/conversations/summary', null)),
+      ).toEqual([401, null]);
+      for (const rol of [CLIENTE, CHOFER, SUPER]) {
+        expect(
+          await resultado(llamar('get', '/conversations/summary', rol)),
+        ).toEqual([403, null]);
+      }
+      permisos = ['mensajes.configurar'];
+      expect(
+        await resultado(llamar('get', '/conversations/summary', ADMIN)),
+      ).toEqual([403, 'PERMISSION_DENIED']);
+      permisos = ['mensajes.clientes'];
+      chatHabilitado = false;
+      expect(
+        await resultado(llamar('get', '/conversations/summary', ADMIN)),
+      ).toEqual([403, 'MODULE_DISABLED']);
+    });
+
+    it('GET /conversations/:id/assignees: 200, 400, 401, 403 (rol, permiso, módulo), 404', async () => {
+      const ruta = `/conversations/${ID}/assignees`;
+      const ok = await llamar('get', ruta, ADMIN);
+      expect([ok.status, ok.body]).toEqual([
+        200,
+        {
+          items: [
+            { userId: UUID, fullName: 'Lucía Gómez', photoUrl: 'https://f/1' },
+            { userId: ID, fullName: 'Pablo Díaz' },
+          ],
+        },
+      ]);
+      expect(equipo.paraAsignar).toHaveBeenCalledWith(
+        expect.objectContaining({
+          party: Party.COMPANY,
+          distributorId: 'dist-a',
+        }),
+        ID,
+      );
+      equipo.paraAsignar.mockResolvedValueOnce([]);
+      const vacia = await llamar('get', ruta, ADMIN);
+      expect([vacia.status, vacia.body]).toEqual([200, { items: [] }]);
+      expect(
+        await resultado(llamar('get', '/conversations/abc/assignees', ADMIN)),
+      ).toEqual([400, 'INVALID_ID']);
+      equipo.paraAsignar.mockRejectedValueOnce(
+        new ConversacionNoEncontradaError(),
+      );
+      expect(await resultado(llamar('get', ruta, ADMIN))).toEqual([404, null]);
+      expect(await resultado(llamar('get', ruta, null))).toEqual([401, null]);
+      for (const rol of [CLIENTE, CHOFER, SUPER]) {
+        expect(await resultado(llamar('get', ruta, rol))).toEqual([403, null]);
+      }
+      permisos = ['mensajes.configurar'];
+      expect(await resultado(llamar('get', ruta, ADMIN))).toEqual([
+        403,
+        'PERMISSION_DENIED',
+      ]);
+      permisos = ['mensajes.clientes'];
+      chatHabilitado = false;
+      expect(await resultado(llamar('get', ruta, ADMIN))).toEqual([
+        403,
+        'MODULE_DISABLED',
+      ]);
+    });
+
     it('GET /conversations/:id y /messages: 200, 400, 404', async () => {
       expect(
         await resultado(llamar('get', `/conversations/${ID}`, ADMIN)),
@@ -607,12 +709,31 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
           'MESSAGE_EDIT_WINDOW_CLOSED',
         ],
         [new ConversacionCerradaError(), 409, 'CONVERSATION_CLOSED'],
+        [
+          new MensajeDeUnPedidoError('editar'),
+          409,
+          'MESSAGE_IN_ORDER_CONVERSATION',
+        ],
+        [new MensajeConReclamoError('editar'), 409, 'MESSAGE_LINKED_TO_CLAIM'],
+        [new MensajeYaCitadoError('editar'), 409, 'MESSAGE_ALREADY_QUOTED'],
       ] as Array<[unknown, number, string | null]>) {
         bandeja.editar.mockRejectedValueOnce(error);
         expect(
           await resultado(llamar('patch', ruta, ADMIN, { body: 'a' })),
         ).toEqual([status, code]);
       }
+      // El mensaje en castellano, con la acción.
+      bandeja.editar.mockRejectedValueOnce(new MensajeYaCitadoError('editar'));
+      const citado = await llamar('patch', ruta, ADMIN, { body: 'a' });
+      expect((citado.body as { message: string }).message).toBe(
+        'No se puede editar: ya respondieron citando este mensaje.',
+      );
+      expect(
+        await resultado(llamar('patch', ruta, null, { body: 'a' })),
+      ).toEqual([401, null]);
+      expect(
+        await resultado(llamar('patch', ruta, CLIENTE, { body: 'a' })),
+      ).toEqual([403, null]);
     });
 
     it('assign / close / reopen / read / claim: 200/201/204, 400, 403, 404, 409', async () => {
@@ -1052,6 +1173,19 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
           llamar('patch', `${r}/messages/${MSG}`, CLIENTE, { body: 'x' }),
         ),
       ).toEqual([403, 'MESSAGE_NOT_OWN']);
+      for (const [error, code] of [
+        [new MensajeDeUnPedidoError('editar'), 'MESSAGE_IN_ORDER_CONVERSATION'],
+        [new MensajeConReclamoError('editar'), 'MESSAGE_LINKED_TO_CLAIM'],
+        [new MensajeYaCitadoError('editar'), 'MESSAGE_ALREADY_QUOTED'],
+        [new VentanaDeEdicionVencidaError(15), 'MESSAGE_EDIT_WINDOW_CLOSED'],
+      ] as Array<[unknown, string]>) {
+        bandeja.editar.mockRejectedValueOnce(error);
+        expect(
+          await resultado(
+            llamar('patch', `${r}/messages/${MSG}`, CHOFER, { body: 'x' }),
+          ),
+        ).toEqual([409, code]);
+      }
       expect(
         await resultado(llamar('post', `${r}/read`, CLIENTE, { seq: 2 })),
       ).toEqual([204, null]);

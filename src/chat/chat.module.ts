@@ -3,11 +3,13 @@ import { Redis } from 'ioredis';
 import { redisConnectionOptions } from '../common/redis/redis-connection';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
+import { S3Module } from '../s3/s3.module';
 import { ClaimsModule } from '../claims/claims.module';
 import { EmailModule } from '../email/email.module';
 import { AsistenteDelChat } from './application/asistente-del-chat';
 import { BandejaAcceso } from './application/bandeja-acceso';
 import { RespuestasFijas } from './application/respuestas-fijas';
+import { BandejaEquipoService } from './application/bandeja-equipo.service';
 import { BandejaGestionService } from './application/bandeja-gestion.service';
 import { BandejaSugerenciasService } from './application/bandeja-sugerencias.service';
 import { BandejaService } from './application/bandeja.service';
@@ -93,6 +95,8 @@ import {
     AdminModule,
     // Crear un reclamo desde una conversación con un cliente (C3).
     ClaimsModule,
+    // Las fotos de perfil del personal para asignar (URL firmada).
+    S3Module,
   ],
   controllers: [
     CompanyPlatformChatController,
@@ -140,6 +144,7 @@ import {
     BandejaPresenter,
     BandejaService,
     BandejaGestionService,
+    BandejaEquipoService,
     BandejaSugerenciasService,
     CompanyChatSettingsService,
     CompanyTemplatesService,

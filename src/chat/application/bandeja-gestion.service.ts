@@ -7,7 +7,7 @@ import { ClaimsService } from '../../claims/claims.service';
 import { Claim } from '../../claims/entities/claim.entity';
 import { RoleType } from '../../common/constants/role-type.enum';
 import { codigoSqlDelError } from '../../common/errors/db-exceptions';
-import { permisoDelCanal, type CanalDeLaBandeja } from '../domain/bandeja';
+import { atiendeElCanal, type CanalDeLaBandeja } from '../domain/bandeja';
 import {
   Channel,
   ConversationClosedReason,
@@ -485,8 +485,11 @@ export class BandejaGestionService {
     if (!(await this.lectura.adminDeLaEmpresa(userId, distributorId))) {
       throw noExisteLaPersonaDelPersonal();
     }
-    const { permisos } = await this.permisos.deUsuario(userId, RoleType.ADMIN);
-    if (!permisos.includes(permisoDelCanal(canal))) {
+    const { todos, permisos } = await this.permisos.deUsuario(
+      userId,
+      RoleType.ADMIN,
+    );
+    if (!atiendeElCanal({ todos, permisos: new Set(permisos) }, canal)) {
       throw new AsignadoSinPermisoError();
     }
   }
