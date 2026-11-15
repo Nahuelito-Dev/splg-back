@@ -4,7 +4,14 @@ import type { DistributorService } from '../distributor.service';
 import type { DistributorLogoService } from '../distributor-logo.service';
 import type { DistributorTheme } from '../entities/distributor-theme.entity';
 import type { Distributor } from '../entities/distributor.entity';
-import { generarTema, PRINCIPAL_POR_OMISION } from './generador-de-tema';
+import {
+  ACENTO_DEL_MENU_DE_BRASA,
+  generarTema,
+  MENU_NEUTRO,
+  PRINCIPAL_POR_OMISION,
+  SUPERFICIES_NEUTRAS,
+  type TokensDelTema,
+} from './generador-de-tema';
 import {
   contrasteInsuficiente,
   DistributorThemeService,
@@ -67,7 +74,18 @@ describe('DistributorThemeService', () => {
         version: 0,
         updatedAt: null,
       });
-      expect(tema.tokens).toEqual(generarTema(PRINCIPAL_POR_OMISION).tokens);
+      expect(tema.tokens).toEqual(
+        generarTema(PRINCIPAL_POR_OMISION, null, { oscurosDeBrasa: true })
+          .tokens,
+      );
+      // Lo que devuelve es lo que pinta el panel sin tema: menú y superficies de Brasa.
+      for (const modo of ['light', 'dark'] as const) {
+        expect(tema.tokens[modo]).toMatchObject({
+          ...SUPERFICIES_NEUTRAS[modo],
+          ...MENU_NEUTRO,
+          sideAccent: ACENTO_DEL_MENU_DE_BRASA,
+        });
+      }
     });
 
     it('restablecido: el por omisión, pero conserva la versión que siguió subiendo', async () => {
@@ -102,6 +120,54 @@ describe('DistributorThemeService', () => {
         version: 2,
         tokens: t.tokens,
       });
+    });
+
+    it('un tema guardado con tokens de una versión anterior del generador se devuelve con los tokens actuales', async () => {
+      const actual = generarTema('#6D28D9', '#7B43C5');
+      const { light, dark } = actual.tokens;
+      const recortar = ({
+        primary,
+        primaryHover,
+        primaryStrong,
+        primarySoft,
+        onPrimary,
+        accent,
+        accentSoft,
+        gradientFrom,
+        gradientTo,
+        gradientEdge,
+      }: typeof light) => ({
+        primary,
+        primaryHover,
+        primaryStrong,
+        primarySoft,
+        onPrimary,
+        accent,
+        accentSoft,
+        gradientFrom,
+        gradientTo,
+        gradientEdge,
+      });
+      const { servicio } = armar({
+        activa: {
+          primaryColor: '#6D28D9',
+          accentColor: '#7B43C5',
+          displayName: null,
+          // Lo que quedó en el jsonb antes de que se sumaran los roles: no cumple el tipo actual.
+          tokens: {
+            light: recortar(light),
+            dark: recortar(dark),
+          } as unknown as TokensDelTema,
+          contrast: actual.contrast.slice(0, 12),
+          version: 3,
+          updatedAt: new Date('2026-11-14T12:00:00Z'),
+        },
+      });
+      const tema = await servicio.vigente(A);
+      expect(tema.tokens).toEqual(actual.tokens);
+      expect(tema.contrast).toEqual(actual.contrast);
+      expect(tema.tokens.dark.side).toMatch(/^#[0-9A-F]{6}$/);
+      expect(tema.version).toBe(3);
     });
 
     it('otra distribuidora (o dada de baja) → 404', async () => {

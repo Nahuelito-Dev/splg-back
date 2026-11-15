@@ -87,6 +87,54 @@ export class ThemeModeTokensDto {
   @ApiProperty({ example: '#1D4ED8' }) gradientFrom!: string;
   @ApiProperty({ example: '#0D39C3' }) gradientTo!: string;
   @ApiProperty({ example: '#052AB6' }) gradientEdge!: string;
+  @ApiProperty({
+    example: '#0B0F16',
+    description:
+      'Fondo del panel. En claro, el neutro; en oscuro, un oscuro del tono del principal (neutro si el principal es casi gris)',
+  })
+  canvas!: string;
+  @ApiProperty({
+    example: '#131A25',
+    description:
+      'Tarjetas, tablas y diálogos. En oscuro, del tono del principal y nunca más claro que el neutro',
+  })
+  surface!: string;
+  @ApiProperty({ example: '#1B2330' }) surfaceHover!: string;
+  @ApiProperty({ example: '#171E29' }) surfaceSunken!: string;
+  @ApiProperty({ example: '#212A38' }) surfaceMuted!: string;
+  @ApiProperty({ example: '#2E3847', description: 'Bordes' }) outline!: string;
+  @ApiProperty({ example: '#202836', description: 'Bordes suaves' })
+  outlineSoft!: string;
+  @ApiProperty({
+    example: '#100A20',
+    description:
+      'Fondo del menú lateral: siempre oscuro (igual en los dos modos), del tono del principal',
+  })
+  side!: string;
+  @ApiProperty({
+    example: '#19142B',
+    description: 'Tarjetas y realces dentro del menú',
+  })
+  sideRaised!: string;
+  @ApiProperty({ example: '#1F1931', description: 'Divisores del menú' })
+  sideLine!: string;
+  @ApiProperty({
+    example: '#A19FB0',
+    description: 'Texto del menú: 4,5:1 sobre `side` y `sideRaised`',
+  })
+  sideText!: string;
+  @ApiProperty({
+    example: '#858293',
+    description:
+      'Títulos de sección y texto secundario del menú: 4,5:1 sobre `side` y `sideRaised`',
+  })
+  sideMuted!: string;
+  @ApiProperty({
+    example: '#9162FF',
+    description:
+      'Íconos activos, iniciales y foco del menú: 4,5:1 sobre `side` y `sideRaised`',
+  })
+  sideAccent!: string;
 }
 
 export class ThemeTokensDto {
