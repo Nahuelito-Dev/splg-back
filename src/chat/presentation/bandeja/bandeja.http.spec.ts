@@ -941,6 +941,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
   it('el cupo del chat responde 429 con su código (ChatRateLimit real)', async () => {
     const redis = {
       setIfAbsent: jest.fn().mockResolvedValue(true),
+      del: jest.fn().mockResolvedValue(undefined),
       incrWithExpire: jest
         .fn()
         .mockResolvedValueOnce(1)
@@ -950,5 +951,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
     await expect(cupos.mensaje('u1', UUID, 'conv-1')).rejects.toMatchObject({
       status: 429,
     });
+    // El id no queda marcado: el reintento vuelve a contar.
+    expect(redis.del).toHaveBeenCalledWith(`chat:cupo:cmid:u1:${UUID}`);
   });
 });
