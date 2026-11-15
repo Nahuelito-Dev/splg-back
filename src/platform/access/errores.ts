@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CODIGOS_DE_ERROR, conCodigo } from '../../common/errors/con-codigo';
 
 export const MENSAJE_MODULO_DESHABILITADO =
-  'Esta función no está incluida en el plan de la distribuidora';
+  'Esta función no está disponible para la distribuidora';
 
 /** 403 de un endpoint o proceso de un módulo que la empresa no tiene habilitado. */
 export function moduloDeshabilitado(): ForbiddenException {

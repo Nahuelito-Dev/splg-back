@@ -98,6 +98,12 @@ describe('ModuloGuard y @RequiereModulo (§6.2)', () => {
     expect(habilitado).toHaveBeenCalledWith('A', 'repurchase');
   });
 
+  it('el mensaje no le habla a la distribuidora de planes ni de módulos', () => {
+    expect(MENSAJE_MODULO_DESHABILITADO).not.toMatch(
+      /plan|m[óo]dulo|habilitad/i,
+    );
+  });
+
   it('otra empresa con el módulo habilitado pasa', async () => {
     await expect(
       guard.canActivate(contexto(AtadoController, 'atado', 'B')),
