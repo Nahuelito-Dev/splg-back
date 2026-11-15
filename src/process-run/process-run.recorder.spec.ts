@@ -5,7 +5,9 @@ import {
   RunTrigger,
 } from './domain/process-catalog';
 import { ProcessRun } from './entities/process-run.entity';
+import { ContextoDeTraza } from '../common/traza/contexto-de-traza';
 import {
+  anotarEmpresas,
   conDisparo,
   marcarSaltada,
   registrarErrorAtrapado,
@@ -357,5 +359,179 @@ describe('dos instancias que se turnan el cerrojo (muestreo de alta frecuencia)'
     expect(
       filas.filter((f) => f.status === 'skipped').length,
     ).toBeLessThanOrEqual(2 * 7);
+  });
+});
+
+describe('ProcessRunRecorder · traza (monitor O1)', () => {
+  const UUID =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('una corrida del cron es su propia traza: trace_id = run_id, y adentro se ve', async () => {
+    const { recorder, insertados } = armar();
+    let adentro: ReturnType<typeof ContextoDeTraza.actual>;
+    await recorder.ejecutar(ProcessName.FLEET_ALERTS, null, () => {
+      adentro = ContextoDeTraza.actual();
+      return Promise.resolve(1);
+    });
+    const runId = insertados[0].runId as string;
+    expect(runId).toMatch(UUID);
+    expect(insertados[0].traceId).toBe(runId);
+    expect(adentro).toEqual({
+      traceId: runId,
+      origen: 'cron',
+      requestId: undefined,
+      runId,
+    });
+    expect(ContextoDeTraza.actual()).toBeUndefined();
+  });
+
+  it('una corrida disparada desde un request hereda su traza (el X-Request-Id)', async () => {
+    const { recorder, insertados } = armar();
+    let adentro: ReturnType<typeof ContextoDeTraza.actual>;
+    await ContextoDeTraza.abrir(
+      { traceId: 'prueba-o1', origen: 'http', requestId: 'prueba-o1' },
+      () =>
+        conDisparo(RunTrigger.WEBHOOK, () =>
+          recorder.ejecutar(ProcessName.PAYMENT_INBOX_PROCESS, null, () => {
+            adentro = ContextoDeTraza.actual();
+            return Promise.resolve(0);
+          }),
+        ),
+    );
+    expect(insertados[0]).toMatchObject({
+      traceId: 'prueba-o1',
+      trigger: RunTrigger.WEBHOOK,
+      requestedBy: null,
+    });
+    expect(adentro).toMatchObject({
+      traceId: 'prueba-o1',
+      origen: 'webhook',
+      requestId: 'prueba-o1',
+      runId: insertados[0].runId,
+    });
+  });
+
+  it('con muestreo, la corrida de un request se registra siempre (es la que se busca por su traza)', async () => {
+    const { recorder, insertados } = armar();
+    const desdeRequest = (id: string) =>
+      ContextoDeTraza.abrir(
+        { traceId: id, origen: 'http', requestId: id },
+        () =>
+          conDisparo(RunTrigger.WEBHOOK, () =>
+            recorder.ejecutar(ProcessName.PAYMENT_INBOX_PROCESS, null, () =>
+              Promise.resolve(0),
+            ),
+          ),
+      );
+    await desdeRequest('req-a');
+    await desdeRequest('req-b');
+    expect(insertados.map((i) => i.traceId)).toEqual(['req-a', 'req-b']);
+    // El cron sigue muestreando: dos tics seguidos, una sola fila.
+    await recorder.ejecutar(ProcessName.PAYMENT_INBOX_PROCESS, null, () =>
+      Promise.resolve(0),
+    );
+    await recorder.ejecutar(ProcessName.PAYMENT_INBOX_PROCESS, null, () =>
+      Promise.resolve(0),
+    );
+    expect(insertados).toHaveLength(3);
+  });
+
+  it('el tic de alta frecuencia que no se registra igual corre con traza, y su error queda con esa traza', async () => {
+    const { recorder, insertados } = armar();
+    await recorder.ejecutar(ProcessName.DISPATCH_TICK, null, () =>
+      Promise.resolve(0),
+    );
+    let traceDelTic: string | null = null;
+    await expect(
+      recorder.ejecutar(ProcessName.DISPATCH_TICK, null, () => {
+        traceDelTic = ContextoDeTraza.traceIdActual();
+        return Promise.reject(new Error('cayó'));
+      }),
+    ).rejects.toThrow('cayó');
+    expect(traceDelTic).toMatch(UUID);
+    expect(insertados[1]).toMatchObject({
+      traceId: traceDelTic,
+      runId: traceDelTic,
+    });
+  });
+
+  it('una corrida con error guarda la huella; la misma falla con otros datos da la misma huella', async () => {
+    const { recorder, cierres } = armar();
+    for (const id of [
+      '0b8e6c1a-1111-4a2b-9c3d-4e5f6a7b8c9d',
+      '9f1e2d3c-2222-4b5a-8c7d-6e5f4a3b2c1d',
+    ]) {
+      await expect(
+        recorder.ejecutar(ProcessName.STOCK_RECONCILIATION, null, () =>
+          Promise.reject(new Error(`No se pudo leer el pedido ${id}`)),
+        ),
+      ).rejects.toThrow();
+    }
+    expect(cierres[0].errorFingerprint).toMatch(/^[0-9a-f]{16}$/);
+    expect(cierres[1].errorFingerprint).toBe(cierres[0].errorFingerprint);
+  });
+
+  it('una corrida sin error no tiene huella', async () => {
+    const { recorder, cierres } = armar();
+    await recorder.ejecutar(ProcessName.FLEET_ALERTS, null, () =>
+      Promise.resolve(1),
+    );
+    expect(cierres[0].errorFingerprint).toBeNull();
+    expect(cierres[0].companies).toBeNull();
+  });
+
+  it('guarda el resumen por empresa que anota el recorrido', async () => {
+    const { recorder, cierres } = armar();
+    await recorder.ejecutar(ProcessName.FLEET_ALERTS, null, () => {
+      anotarEmpresas({ ok: 2, failed: 1, skipped: 3 });
+      anotarEmpresas({ ok: 1 });
+      return Promise.resolve(1);
+    });
+    expect(cierres[0].companies).toEqual({
+      ok: 3,
+      failed: 1,
+      timeout: 0,
+      locked: 0,
+      circuit_open: 0,
+      paused: 0,
+      skipped: 3,
+    });
+  });
+
+  it('requested_by sólo en las corridas manuales', async () => {
+    const { recorder, insertados } = armar();
+    await recorder.ejecutar(
+      ProcessName.FLEET_ALERTS,
+      null,
+      () => Promise.resolve(1),
+      RunTrigger.MANUAL,
+      'u-super',
+    );
+    await recorder.ejecutar(
+      ProcessName.FLEET_ALERTS,
+      null,
+      () => Promise.resolve(1),
+      RunTrigger.CRON,
+      'u-super',
+    );
+    expect(insertados[0].requestedBy).toBe('u-super');
+    expect(insertados[1].requestedBy).toBeNull();
+  });
+
+  it('dos corridas a la vez no se mezclan la traza', async () => {
+    const { recorder } = armar();
+    const vistas: string[] = [];
+    const corrida = (id: string, ms: number) =>
+      ContextoDeTraza.abrir(
+        { traceId: id, origen: 'http', requestId: id },
+        () =>
+          recorder.ejecutar(ProcessName.FLEET_ALERTS, null, async () => {
+            await new Promise((r) => setTimeout(r, ms));
+            vistas.push(`${id}=${ContextoDeTraza.traceIdActual()}`);
+            return 1;
+          }),
+      );
+    await Promise.all([corrida('lento', 30), corrida('rapido', 5)]);
+    expect(vistas).toEqual(['rapido=rapido', 'lento=lento']);
   });
 });

@@ -63,6 +63,7 @@ export class AdminNotificationsService {
       dedupeKey: evento.dedupeKey,
       email: evento.email,
       emailedAt: null,
+      traceId: evento.traceId,
     });
     try {
       return await this.avisos.save(aviso);

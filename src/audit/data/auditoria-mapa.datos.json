@@ -1705,6 +1705,14 @@
       "position": 9
     },
     {
+      "table": "admin_notification",
+      "column": "trace_id",
+      "property": "traceId",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
       "table": "admin_notification_read",
       "column": "notification_id",
       "property": "notificationId",

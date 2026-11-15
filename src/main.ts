@@ -9,13 +9,18 @@ import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { origenesPermitidos } from './common/config/cors-origins';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
+import { LoggerConTraza } from './common/traza/logger-con-traza';
 
 import morgan from 'morgan';
 import { cuerpoParaLog } from './common/utils/cuerpo-para-log';
 import type { Request, Response } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // El logger antepone la traza en curso (`[t:<8>]`) a cada línea: los logs de
+  // un request y de la corrida que dispara se encuentran por el mismo id.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: new LoggerConTraza(),
+  });
   const logger = new Logger('Bootstrap');
 
   // SIGTERM/SIGINT cierran la app ordenadamente: se deja de aceptar conexiones, se

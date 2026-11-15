@@ -155,6 +155,25 @@ describe('EmpresasParaProceso (DISENO-PLATAFORMA-ORIXTECH §6.3 y §9)', () => {
       expect(corrida.errors).toBe(1);
       expect(corrida.fatal).toBeNull();
       expect(corrida.lastError).toMatch(/la base de A/);
+      // Monitor O1: el resumen por empresa queda en la corrida (`process_run.companies`).
+      expect(corrida.companies).toEqual({
+        ok: 1,
+        failed: 1,
+        timeout: 0,
+        locked: 0,
+        circuit_open: 0,
+        paused: 0,
+        skipped: 0,
+      });
+    });
+
+    it('una empresa sin el módulo suma en skipped, no como corrida', async () => {
+      sinModulo.set('A', 'repurchase');
+      const corrida = nuevaCorrida();
+      await dentroDeCorrida(corrida, () =>
+        empresas.recorrer(opciones, () => Promise.resolve(1)),
+      );
+      expect(corrida.companies).toMatchObject({ ok: 1, skipped: 1 });
     });
 
     it('A tarda 10 veces su presupuesto → B termina dentro del tic y A queda cortada', async () => {

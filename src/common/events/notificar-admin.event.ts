@@ -1,3 +1,5 @@
+import { ContextoDeTraza } from '../traza/contexto-de-traza';
+
 /**
  * Pedido de aviso a los administradores de una distribuidora. Cualquier módulo
  * lo emite con `EventEmitter2` y no sabe cómo se entrega: el módulo de
@@ -28,5 +30,11 @@ export class NotificarAdminEvent {
     readonly link: DestinoDelAviso | null,
     readonly email: boolean,
     readonly dedupeKey: string,
+    /**
+     * La traza de quien pidió el aviso. Se captura al crear el evento: el
+     * listener corre en otro contexto (`EventEmitter2` asincrónico) y ahí la
+     * traza ya no es la de quien lo emitió.
+     */
+    readonly traceId: string | null = ContextoDeTraza.traceIdActual(),
   ) {}
 }

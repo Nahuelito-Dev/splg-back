@@ -238,7 +238,8 @@ describe('PlatformConsoleController (API v2)', () => {
           ([metodo, op]) => [`${metodo} ${ruta}`, Object.keys(op.responses)],
         ),
       );
-      expect(operaciones.length).toBe(10);
+      // 11 con el detalle de una corrida (`GET /v2/process-runs/{runId}`, monitor O1).
+      expect(operaciones.length).toBe(11);
       for (const [, codigos] of operaciones) {
         expect(codigos).toEqual(expect.arrayContaining(['200', '401', '403']));
       }

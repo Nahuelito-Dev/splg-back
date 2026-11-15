@@ -8,7 +8,7 @@ import { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.servi
 import type { ModuloKey } from '../platform/modules/catalogo-de-modulos';
 import { RedisService } from '../redis/redis.service';
 import { CATALOGO, ProcessName } from './domain/process-catalog';
-import { registrarErrorAtrapado } from './process-run.context';
+import { anotarEmpresas, registrarErrorAtrapado } from './process-run.context';
 
 export interface OpcionesDelRecorrido {
   proceso: ProcessName;
@@ -62,6 +62,18 @@ export interface EmpresaEnCurso {
    * elegir la empresa (§6.3).
    */
   sigueHabilitada(): Promise<boolean>;
+}
+
+/** Cuántas empresas quedaron en cada estado; lo guarda la corrida en `process_run.companies`. */
+export function resumenDelRecorrido(
+  empresas: ReadonlyArray<{ estado: EstadoPorEmpresa }>,
+  salteadas: number,
+): Record<string, number> {
+  const resumen: Record<string, number> = { skipped: salteadas };
+  for (const { estado } of empresas) {
+    resumen[estado] = (resumen[estado] ?? 0) + 1;
+  }
+  return resumen;
 }
 
 /** La empresa no corrió por módulo o estado (no es falla ni corrida). */
@@ -152,6 +164,7 @@ export class EmpresasParaProceso {
       ),
     );
     await Promise.all(Array.from({ length: lugares }, () => trabajador()));
+    anotarEmpresas(resumenDelRecorrido(empresas, salteadas));
     return { empresas, salteadas };
   }
 

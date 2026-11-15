@@ -90,6 +90,7 @@ export class AuditInterceptor implements NestInterceptor {
       statusCode,
       changes: depurarCambios(request.body, patron),
       errorMessage: errorMsg,
+      requestId: request.requestId?.slice(0, 64) ?? null,
     };
   }
 }
