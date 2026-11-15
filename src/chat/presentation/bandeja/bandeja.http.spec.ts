@@ -942,6 +942,8 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
     const redis = {
       setIfAbsent: jest.fn().mockResolvedValue(true),
       del: jest.fn().mockResolvedValue(undefined),
+      get: jest.fn().mockResolvedValue(null),
+      setex: jest.fn().mockResolvedValue(undefined),
       incrWithExpire: jest
         .fn()
         .mockResolvedValueOnce(1)
