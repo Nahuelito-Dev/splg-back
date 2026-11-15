@@ -3,6 +3,9 @@ import { STATUS_CODES } from 'http';
 import { CODIGOS_DE_ERROR } from '../../common/errors/con-codigo';
 import { RedisService } from '../../redis/redis.service';
 
+/** Valor de la marca de un `clientMessageId` que ya entró en el cupo. */
+const MARCA_ACEPTADA = 'ok';
+
 /** Mensajes por minuto y por persona (§7.7). */
 export const MENSAJES_POR_MINUTO = 30;
 /** Mensajes por minuto de un cliente o un chofer en una misma conversación (§7.7). */
@@ -46,8 +49,17 @@ export class ChatRateLimit {
       ? `chat:cupo:cmid:${userId}:${clientMessageId}`
       : null;
     if (marca) {
+      // La marca tiene dos estados: «1» (en curso: otro pedido con el mismo id
+      // está mirando el cupo) y «ok» (ya entró). Sólo «ok» saltea el cupo; un
+      // reintento simultáneo con la marca en curso no pasa sin contar.
       const primero = await this.redis.setIfAbsent(marca, 24 * 60 * 60);
-      if (!primero) return;
+      if (!primero) {
+        if ((await this.redis.get(marca)) === MARCA_ACEPTADA) return;
+        throw demasiados(
+          'Ese mensaje ya se está enviando. Esperá un momento.',
+          CODIGOS_DE_ERROR.CHAT_RATE_LIMITED,
+        );
+      }
     }
     try {
       const n = await this.redis.incrWithExpire(`chat:cupo:msg:${userId}`, 60);
@@ -75,6 +87,7 @@ export class ChatRateLimit {
       if (marca) await this.redis.del(marca);
       throw error;
     }
+    if (marca) await this.redis.setex(marca, 24 * 60 * 60, MARCA_ACEPTADA);
   }
 
   async ticket(distributorId: string): Promise<void> {

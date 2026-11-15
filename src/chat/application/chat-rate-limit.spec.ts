@@ -4,12 +4,17 @@ import { ChatRateLimit, MENSAJES_POR_MINUTO } from './chat-rate-limit';
 /** Redis en memoria: contadores y claves «una sola vez». */
 function redisFalso() {
   const contadores = new Map<string, number>();
-  const claves = new Set<string>();
+  const claves = new Map<string, string>();
   return {
     incrWithExpire: jest.fn((clave: string) => {
       const n = (contadores.get(clave) ?? 0) + 1;
       contadores.set(clave, n);
       return Promise.resolve(n);
+    }),
+    get: jest.fn((clave: string) => Promise.resolve(claves.get(clave) ?? null)),
+    setex: jest.fn((clave: string, _ttl: number, valor: string) => {
+      claves.set(clave, valor);
+      return Promise.resolve();
     }),
     del: jest.fn((clave: string) => {
       claves.delete(clave);
@@ -17,7 +22,7 @@ function redisFalso() {
     }),
     setIfAbsent: jest.fn((clave: string) => {
       if (claves.has(clave)) return Promise.resolve(false);
-      claves.add(clave);
+      claves.set(clave, '1');
       return Promise.resolve(true);
     }),
   };
@@ -60,5 +65,25 @@ describe('ChatRateLimit', () => {
     await expect(cupos.mensaje('u-1', 'cmid-extra')).rejects.toMatchObject({
       status: 429,
     });
+  });
+
+  it('dos pedidos simultáneos con el mismo id: el segundo no pasa sin contar', async () => {
+    const redis = redisFalso();
+    const cupos = new ChatRateLimit(redis as unknown as RedisService);
+    // El primero quedó «en curso» (marcado y todavía sin confirmar).
+    await redis.setIfAbsent('chat:cupo:cmid:u-1:cmid-x');
+    await expect(cupos.mensaje('u-1', 'cmid-x')).rejects.toMatchObject({
+      status: 429,
+    });
+  });
+
+  it('con la marca aceptada, el reintento pasa sin consumir cupo', async () => {
+    const redis = redisFalso();
+    const cupos = new ChatRateLimit(redis as unknown as RedisService);
+    await cupos.mensaje('u-1', 'cmid-y');
+    expect(await redis.get('chat:cupo:cmid:u-1:cmid-y')).toBe('ok');
+    const antes = redis.incrWithExpire.mock.calls.length;
+    await cupos.mensaje('u-1', 'cmid-y');
+    expect(redis.incrWithExpire.mock.calls.length).toBe(antes);
   });
 });
