@@ -129,6 +129,22 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
     expect(m.clientMessageId).toBeNull();
   });
 
+  it('el id de quien escribió (para la foto) sólo le llega al personal', async () => {
+    const p = presentador();
+    const personal = await p.mensaje(mensaje(), {
+      party: Party.COMPANY,
+      userId: 'adm-2',
+    });
+    expect(personal.sender).toEqual(
+      expect.objectContaining({ userId: 'adm-1' }),
+    );
+    const cliente = await p.mensaje(mensaje(), {
+      party: Party.CUSTOMER,
+      userId: 'cli-1',
+    });
+    expect(cliente.sender).not.toHaveProperty('userId');
+  });
+
   it('el personal ve al cliente, quién atiende y el TPR en minutos hábiles', async () => {
     const c = await presentador().conversacion(conversacion(), {
       party: Party.COMPANY,

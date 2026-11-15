@@ -138,6 +138,13 @@ export class InboxSenderDto {
       'Para el personal, el nombre de quien escribió; para el cliente y el chofer, el de la empresa en los mensajes de la empresa (D-C5)',
   })
   displayName!: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Id de usuario de quien escribió, sólo para el personal (para su foto de perfil); al cliente y al chofer nunca les llega (D-C5)',
+  })
+  userId?: string;
 }
 
 export class InboxMessageDto {

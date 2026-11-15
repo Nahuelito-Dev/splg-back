@@ -278,11 +278,16 @@ export class BandejaPresenter {
   private autor(
     m: Message,
     ctx: ContextoDeLaBandeja,
-  ): { displayName: string } | null {
+  ): { displayName: string; userId?: string } | null {
     if (!m.senderUserId) return null;
     if (!esPersonal(ctx) && m.senderParty === Party.COMPANY) {
       return { displayName: ctx.empresas.get(m.distributorId) ?? '' };
     }
-    return { displayName: ctx.nombres.get(m.senderUserId) ?? 'Sin nombre' };
+    const displayName = ctx.nombres.get(m.senderUserId) ?? 'Sin nombre';
+    // Sólo el personal recibe el id (para la foto de perfil); el cliente y el
+    // chofer ven a la empresa como una sola voz (D-C5).
+    return esPersonal(ctx)
+      ? { displayName, userId: m.senderUserId }
+      : { displayName };
   }
 }
