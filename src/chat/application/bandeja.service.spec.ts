@@ -406,6 +406,46 @@ describe('BandejaService: responder automáticamente al cliente (§8.4)', () => 
     expect(aviso.body).toContain('Gas Norte');
   });
 
+  it('la respuesta automática guarda la firma del asistente con el nombre de marca (no se recalcula al leer)', async () => {
+    const consultasDeLaEmpresa: string[] = [];
+    const casos: Array<[Partial<ChatCompanySettings>, string]> = [
+      [cerrada, 'Asistente de Florchi Gas'],
+      [
+        { ...cerrada, assistantName: 'Gasito de {{empresa.nombre}}' },
+        'Gasito de Florchi Gas',
+      ],
+      [{ ackEnabled: true }, 'Asistente de Florchi Gas'],
+    ];
+    for (const [ajustes, firma] of casos) {
+      const { servicio, escribir } = armar({
+        conversacion: conversacion(),
+        ajustes,
+        consultas: (sql) => {
+          if (sql.includes('AS fuera')) {
+            return [{ fuera: false, recibido: false, empresa: false }];
+          }
+          consultasDeLaEmpresa.push(sql);
+          return [{ persona: 'Ana Pérez', empresa: 'Florchi Gas' }];
+        },
+      });
+      await servicio.enviar(
+        cliente,
+        'conv-1',
+        { clientMessageId: 'c', body: 'Hola' },
+        ahora,
+      );
+      const auto = escribir.mock.calls[1][1] as unknown as {
+        payload: { senderLabel?: string; until?: string };
+        body: string;
+      };
+      expect(auto.payload.senderLabel).toBe(firma);
+    }
+    // `{{empresa.nombre}}` sale del nombre de marca (si lo hay), no del legal.
+    expect(
+      consultasDeLaEmpresa.every((q) => q.includes('"distributor_theme"')),
+    ).toBe(true);
+  });
+
   it('al chofer no le responde el sistema (C2 no tiene automáticas)', async () => {
     const { servicio, escribir } = armar({
       conversacion: conversacion({

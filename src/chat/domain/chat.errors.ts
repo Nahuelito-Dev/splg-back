@@ -141,6 +141,26 @@ export class VariableDePlantillaDesconocidaError extends BadRequestDomainError {
   }
 }
 
+/** El nombre del asistente es una firma: sólo admite `{{empresa.nombre}}`. */
+export class VariableDelNombreDelAsistenteError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.TEMPLATE_VARIABLE_UNKNOWN;
+  constructor(variables: readonly string[]) {
+    super(
+      `El nombre del asistente no puede usar ${variables.map((v) => `{{${v}}}`).join(', ')}. Sólo admite ${'{{empresa.nombre}}'}.`,
+    );
+  }
+}
+
+/** El nombre del asistente fuera de largo o en más de una línea (la misma regla que el DTO y la base). */
+export class NombreDelAsistenteInvalidoError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ASSISTANT_NAME_INVALID;
+  constructor() {
+    super(
+      'El nombre del asistente tiene que tener entre 2 y 60 caracteres, en una sola línea.',
+    );
+  }
+}
+
 /** Una punta escribiendo en un canal que no es suyo (no debería llegar: lo cubre la búsqueda). */
 export class PuntaFueraDeSuCanalError extends ConflictDomainError {
   constructor() {

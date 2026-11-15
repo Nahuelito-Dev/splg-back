@@ -36,6 +36,7 @@ import { Permiso } from '../../../common/decorators/permiso.decorator';
 import { RequiereModulo } from '../../../platform/access/requiere-modulo.decorator';
 import { BandejaAcceso, lectorDe } from '../../application/bandeja-acceso';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
+import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
 import { BandejaPresenter } from '../bandeja.presenter';
 import {
@@ -54,6 +55,7 @@ import {
   InboxListResponseDto,
   InboxMessageDto,
   InboxMessageListResponseDto,
+  InboxSuggestionsResponseDto,
   OpenConversationResponseDto,
 } from '../dto/bandeja-response.dto';
 import { MessagesQueryDto, ReadUpToDto } from '../dto/chat-input.dto';
@@ -80,6 +82,7 @@ export class CompanyInboxController {
     private readonly bandeja: BandejaService,
     private readonly gestion: BandejaGestionService,
     private readonly presentar: BandejaPresenter,
+    private readonly sugerencias: BandejaSugerenciasService,
   ) {}
 
   @Get()
@@ -195,6 +198,25 @@ export class CompanyInboxController {
     const actor = await this.acceso.delPersonal(user, distributorId);
     const c = await this.bandeja.conversacion(actor, id);
     return this.presentar.conversacion(c, lectorDe(actor));
+  }
+
+  @Get(':id/suggestions')
+  @ApiOperation({
+    summary: 'Sugerencias de respuesta',
+    description:
+      'Hasta 3 respuestas guardadas de la empresa (activas y de este canal) parecidas al último mensaje del cliente o del chofer, sin IA: búsqueda de texto en castellano, sin tildes. Con las variables ya completadas para esta conversación. No manda nada: el panel las ofrece para pegar y editar. Lista vacía si nada se parece o si la persona todavía no escribió.',
+  })
+  @ApiOkResponse({ type: InboxSuggestionsResponseDto })
+  @ApiBadRequestResponse({ description: 'Id que no es uuid' })
+  @ApiNotFoundResponse({ description: NO_EXISTE })
+  async sugerir(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<InboxSuggestionsResponseDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    const r = await this.sugerencias.sugerir(actor, id);
+    return { basedOnSeq: r.basadoEnSeq, items: r.items };
   }
 
   @Get(':id/messages')

@@ -23,6 +23,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateBy,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
@@ -31,7 +32,10 @@ import {
   LARGO_MOTIVO_DE_RECLAMO,
 } from '../../../common/constants/largos-de-texto';
 import { TextoNoVacio } from '../../../common/decorators/texto-no-vacio.decorator';
-import { TOPE_DE_CHOFERES_POR_ENVIO } from '../../domain/bandeja';
+import {
+  nombreDelAsistenteValido,
+  TOPE_DE_CHOFERES_POR_ENVIO,
+} from '../../domain/bandeja';
 import {
   Channel,
   ConversationStatus,
@@ -371,6 +375,44 @@ export class UpdateChatSettingsDto {
   @IsOptional()
   @IsBoolean()
   customerChatEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    minLength: 2,
+    maxLength: 60,
+    example: 'Asistente de {{empresa.nombre}}',
+    description:
+      'Nombre del asistente, con el que se firman las respuestas automáticas: de 2 a 60 caracteres (contados como letras, no en UTF-16) en una sola línea (sin saltos ni separadores de línea, U+2028/U+2029). Sólo admite `{{empresa.nombre}}` (otra → 400 `TEMPLATE_VARIABLE_UNKNOWN`); `null`: «Asistente de {{empresa.nombre}}».',
+  })
+  @IsOptional()
+  @Recortar()
+  @ValidateIf((o: UpdateChatSettingsDto) => o.assistantName !== null)
+  @IsString()
+  @ValidateBy({
+    name: 'nombreDelAsistente',
+    validator: {
+      validate: (v: unknown) =>
+        typeof v === 'string' && nombreDelAsistenteValido(v),
+      defaultMessage: () =>
+        'El nombre del asistente tiene que tener entre 2 y 60 caracteres, en una sola línea',
+    },
+  })
+  assistantName?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    description:
+      'Lo que dice el asistente al pasar la conversación a una persona, con variables; `null`: «Te paso con alguien del equipo de {{empresa.nombre}}. Te va a responder a la brevedad.»',
+  })
+  @IsOptional()
+  @Recortar()
+  @ValidateIf((o: UpdateChatSettingsDto) => o.handoffMessage !== null)
+  @IsString()
+  @Length(1, 500)
+  handoffMessage?: string | null;
 
   @ApiPropertyOptional({
     description:

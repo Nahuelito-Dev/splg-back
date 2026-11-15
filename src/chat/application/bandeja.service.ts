@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { idCortoDePedido } from '../../common/events/aviso-al-admin';
 import {
   ambitoValido,
   assertSePuedeBorrar,
@@ -10,8 +9,8 @@ import {
   type AtadurasDelMensaje,
   type CanalDeLaBandeja,
   completarPlantilla,
+  nombreDelAsistente,
   respuestaAutomaticaDeLaEmpresa,
-  type VariableDePlantilla,
 } from '../domain/bandeja';
 import {
   Channel,
@@ -29,10 +28,8 @@ import {
 import {
   atiendeLaEmpresa,
   proximaAtencion,
-  textoDeLaProximaAtencion,
 } from '../domain/horario-de-la-empresa';
 import { vistaPrevia } from '../domain/reglas-del-mensaje';
-import type { ChatCompanySettings } from '../entities/chat-company-settings.entity';
 import { Conversation } from '../entities/conversation.entity';
 import { MessageEdit } from '../entities/message-edit.entity';
 import { Message } from '../entities/message.entity';
@@ -73,6 +70,7 @@ import { ConversationFactory } from './conversation-factory';
 import { ConversacionVigente } from './conversacion-vigente';
 import { choferDeLaEmpresa, clienteDeLaEmpresa } from './bandeja-personas';
 import { MensajeEscrito, MessageWriter } from './message-writer';
+import { valoresDePlantilla } from './valores-de-plantilla';
 
 /** Con quién y de qué es la conversación que se abre o se sigue. */
 export interface DestinoDeLaBandeja {
@@ -99,8 +97,6 @@ export interface ConversacionAbierta extends MensajeEscrito {
   /** Se creó la conversación (201); si ya estaba abierta, 200. */
   conversationCreated: boolean;
 }
-
-const UUID_NULO = '00000000-0000-0000-0000-000000000000';
 
 /**
  * La bandeja de la empresa (C3 con clientes, C2 con choferes; diseño §4.3,
@@ -488,7 +484,7 @@ export class BandejaService {
     const ajustes = await this.ajustes.leer(c.distributorId, manager);
     const body = completarPlantilla(
       plantilla.body,
-      await this.valoresDePlantilla(manager, c, ajustes, ahora),
+      await valoresDePlantilla(manager, c, ajustes, ahora),
     );
     if (body.length === 0) {
       throw new BadRequestException(
@@ -496,31 +492,6 @@ export class BandejaService {
       );
     }
     return { body: body.slice(0, 2000), templateKey: plantilla.key };
-  }
-
-  private async valoresDePlantilla(
-    manager: EntityManager,
-    c: Conversation,
-    ajustes: ChatCompanySettings,
-    ahora: Date,
-  ): Promise<Partial<Record<VariableDePlantilla, string>>> {
-    const persona = c.customerUserId ?? c.driverUserId;
-    const [fila]: Array<{ persona: string | null; empresa: string | null }> =
-      await manager.query(
-        `SELECT (SELECT "full_name" FROM "user" WHERE "user_id" = $1) AS persona,
-                (SELECT "name" FROM "distributor" WHERE "distributor_id" = $2) AS empresa`,
-        [persona ?? UUID_NULO, c.distributorId],
-      );
-    const h = horarioDe(ajustes);
-    const abre = proximaAtencion(h, ahora);
-    return {
-      'cliente.nombre': (fila?.persona ?? '').trim().split(/\s+/)[0] ?? '',
-      'pedido.numero': c.orderId ? idCortoDePedido(c.orderId) : '',
-      'empresa.nombre': fila?.empresa ?? '',
-      'horario.proximo': abre
-        ? textoDeLaProximaAtencion(abre, h.zona, ahora)
-        : 'ahora',
-    };
   }
 
   /**
@@ -583,8 +554,14 @@ export class BandejaService {
       empresaYaEscribio: estado?.empresa ?? false,
     });
     if (cual === null) return;
-    const valores = await this.valoresDePlantilla(manager, c, ajustes, ahora);
+    const valores = await valoresDePlantilla(manager, c, ajustes, ahora);
     const fuera = cual === 'fuera_de_horario';
+    // La firma queda con el mensaje: cambiar después el nombre del asistente
+    // no reescribe el historial.
+    const senderLabel = nombreDelAsistente(
+      ajustes.assistantName,
+      valores['empresa.nombre'] ?? '',
+    );
     const r = await this.writer.escribir(manager, {
       conversationId: c.conversationId,
       distributorId: c.distributorId,
@@ -597,7 +574,7 @@ export class BandejaService {
         fuera ? textoFueraDeHorario(ajustes) : textoDeRecibido(ajustes),
         valores,
       ),
-      payload: fuera ? { until: periodo } : null,
+      payload: fuera ? { until: periodo, senderLabel } : { senderLabel },
       systemCode: fuera ? null : SystemCode.RECEIVED_ACK,
       templateKey: fuera ? 'fuera_de_horario' : 'recibido',
     });

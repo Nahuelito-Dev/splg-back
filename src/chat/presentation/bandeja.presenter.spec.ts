@@ -7,10 +7,13 @@ import {
   MessageVisibility,
   Party,
   SubjectType,
+  SystemCode,
 } from '../domain/chat.enums';
+import type { ChatCompanySettings } from '../entities/chat-company-settings.entity';
 import { Conversation } from '../entities/conversation.entity';
 import { Message } from '../entities/message.entity';
 import type { BandejaReadModel } from '../infrastructure/bandeja-read-model';
+import type { Lector } from '../infrastructure/chat-read-model';
 import { BandejaPresenter } from './bandeja.presenter';
 
 const D = 'dist-a';
@@ -70,12 +73,15 @@ const respondido = mensaje({
   replyToSeq: null,
 });
 
-function presentador() {
+function presentador(
+  extra: Partial<ChatCompanySettings> = {},
+  ultimo: Message = mensaje(),
+) {
   const lectura = {
     noLeidos: jest.fn().mockResolvedValue(new Map([['conv-1', 2]])),
     lecturaPropia: jest.fn().mockResolvedValue(new Map([['conv-1', 1]])),
     lecturaDeLaOtraParte: jest.fn().mockResolvedValue(new Map([['conv-1', 2]])),
-    ultimos: jest.fn().mockResolvedValue(new Map([['conv-1', mensaje()]])),
+    ultimos: jest.fn().mockResolvedValue(new Map([['conv-1', ultimo]])),
     respondidos: jest
       .fn()
       .mockResolvedValue(new Map([['conv-1:1', respondido]])),
@@ -92,12 +98,18 @@ function presentador() {
       ]),
     ),
     empresas: jest.fn().mockResolvedValue(new Map([[D, 'Gas Norte']])),
+    marcas: jest.fn((ids: Iterable<string>) =>
+      Promise.resolve(
+        new Map([...ids].map((id) => [id, 'Florchi Gas'] as [string, string])),
+      ),
+    ),
   };
   const ajustes = {
     leer: jest.fn().mockResolvedValue({
       ...ajustesDeLaBandejaPorDefecto(D),
       // Lunes de 9 a 9:10 (Buenos Aires): de 9:05 a 9:20 sólo cuentan 5 minutos.
       businessHours: [{ weekday: 1, opensAt: '09:00', closesAt: '09:10' }],
+      ...extra,
     }),
   };
   return new BandejaPresenter(
@@ -143,6 +155,31 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       userId: 'cli-1',
     });
     expect(cliente.sender).not.toHaveProperty('userId');
+  });
+
+  it('en la lista, el aviso de recibido se lee con su texto; otro aviso del sistema, sin texto', async () => {
+    const recibido = mensaje({
+      senderParty: Party.SYSTEM,
+      senderUserId: null,
+      kind: MessageKind.SYSTEM,
+      systemCode: SystemCode.RECEIVED_ACK,
+      body: 'Recibimos tu mensaje.',
+    });
+    const personal = { party: Party.COMPANY, userId: 'adm-1' } as const;
+    const conAviso = await presentador({}, recibido).conversacion(
+      conversacion(),
+      personal,
+    );
+    expect(conAviso.lastMessage?.preview).toBe('Recibimos tu mensaje.');
+    const reclamo = mensaje({
+      ...recibido,
+      systemCode: SystemCode.CLAIM_CREATED,
+    });
+    const conReclamo = await presentador({}, reclamo).conversacion(
+      conversacion(),
+      personal,
+    );
+    expect(conReclamo.lastMessage?.preview).toBeNull();
   });
 
   it('el personal ve al cliente, quién atiende y el TPR en minutos hábiles', async () => {
@@ -212,6 +249,7 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       pedidos: jest.fn().mockResolvedValue(new Map()),
       nombres: jest.fn().mockResolvedValue(new Map()),
       empresas: jest.fn().mockResolvedValue(new Map()),
+      marcas: jest.fn().mockResolvedValue(new Map()),
     };
     const p = new BandejaPresenter(
       lectura as unknown as BandejaReadModel,
@@ -238,5 +276,90 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
         })
       ).canWrite,
     ).toBe(true);
+  });
+
+  it('lo que manda el asistente lleva la marca y su nombre, para el cliente y para el personal (D-B5, D-B8)', async () => {
+    const fuera = mensaje({
+      senderParty: Party.SYSTEM,
+      senderUserId: null,
+      clientMessageId: null,
+      kind: MessageKind.AUTO_REPLY,
+      body: 'Ahora estamos fuera de horario.',
+      templateKey: 'fuera_de_horario',
+      payload: { until: '2026-11-17T12:00:00.000Z' },
+      replyToSeq: null,
+    });
+    const recibido = mensaje({
+      ...fuera,
+      kind: MessageKind.SYSTEM,
+      systemCode: SystemCode.RECEIVED_ACK,
+      templateKey: 'recibido',
+      payload: null,
+    });
+    const reclamo = mensaje({
+      ...recibido,
+      systemCode: SystemCode.CLAIM_CREATED,
+      templateKey: null,
+    });
+    const lectores: Lector[] = [
+      { party: Party.CUSTOMER, userId: 'cli-1' },
+      { party: Party.COMPANY, userId: 'adm-1' },
+    ];
+    for (const quien of lectores) {
+      const [a, b, c, d] = await presentador().mensajes(
+        [fuera, recibido, reclamo, mensaje()],
+        quien,
+      );
+      // Sin firma guardada (anteriores a B1): el nombre vigente, con la marca.
+      expect([a.automated, a.senderLabel]).toEqual([
+        true,
+        'Asistente de Florchi Gas',
+      ]);
+      expect([b.automated, b.senderLabel]).toEqual([
+        true,
+        'Asistente de Florchi Gas',
+      ]);
+      expect([c.automated, c.senderLabel]).toEqual([false, null]);
+      expect([d.automated, d.senderLabel]).toEqual([false, null]);
+    }
+    const propio = await presentador({
+      assistantName: 'Gasito de {{empresa.nombre}}',
+    }).mensaje(fuera, { party: Party.CUSTOMER, userId: 'cli-1' });
+    expect(propio.senderLabel).toBe('Gasito de Florchi Gas');
+  });
+
+  it('la firma guardada al mandarlo manda: cambiar el nombre del asistente no reescribe el historial', async () => {
+    const firmado = mensaje({
+      senderParty: Party.SYSTEM,
+      senderUserId: null,
+      clientMessageId: null,
+      kind: MessageKind.AUTO_REPLY,
+      body: 'Ahora estamos fuera de horario.',
+      templateKey: 'fuera_de_horario',
+      payload: {
+        until: '2026-11-17T12:00:00.000Z',
+        senderLabel: 'Asistente de Florchi Gas',
+      },
+      replyToSeq: null,
+    });
+    const p = presentador({ assistantName: 'Gasito' });
+    const m = await p.mensaje(firmado, {
+      party: Party.CUSTOMER,
+      userId: 'cli-1',
+    });
+    expect([m.automated, m.senderLabel]).toEqual([
+      true,
+      'Asistente de Florchi Gas',
+    ]);
+    const recibido = await p.mensaje(
+      mensaje({
+        ...firmado,
+        kind: MessageKind.SYSTEM,
+        systemCode: SystemCode.RECEIVED_ACK,
+        payload: { senderLabel: 'Asistente de Florchi Gas' },
+      }),
+      { party: Party.COMPANY, userId: 'adm-1' },
+    );
+    expect(recibido.senderLabel).toBe('Asistente de Florchi Gas');
   });
 });

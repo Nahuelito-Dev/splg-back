@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   assertVariablesConocidas,
+  assertNombreDelAsistente,
+  DERIVACION_POR_DEFECTO,
   FUERA_DE_HORARIO_POR_DEFECTO,
   RECIBIDO_POR_DEFECTO,
 } from '../domain/bandeja';
@@ -12,6 +14,7 @@ import {
   type HorarioDeLaEmpresa,
 } from '../domain/horario-de-la-empresa';
 import { ChatCompanySettings } from '../entities/chat-company-settings.entity';
+import { nombreVisibleDeLaEmpresa } from '../infrastructure/nombre-visible-de-la-empresa';
 import type {
   UpdateChatBusinessHoursDto,
   UpdateChatSettingsDto,
@@ -27,6 +30,8 @@ export function ajustesDeLaBandejaPorDefecto(
     businessHours: [],
     holidays: [],
     customerChatEnabled: true,
+    assistantName: null,
+    handoffMessage: null,
     outOfHoursEnabled: true,
     outOfHoursMessage: null,
     ackEnabled: false,
@@ -49,6 +54,11 @@ export function textoDeRecibido(a: ChatCompanySettings): string {
   return a.ackMessage ?? RECIBIDO_POR_DEFECTO;
 }
 
+/** Lo que dice el asistente al pasar la conversación a una persona: el de la empresa o el de omisión. */
+export function textoDeDerivacion(a: ChatCompanySettings): string {
+  return a.handoffMessage ?? DERIVACION_POR_DEFECTO;
+}
+
 export function zonaValida(zona: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: zona });
@@ -60,8 +70,9 @@ export function zonaValida(zona: string): boolean {
 
 /**
  * Configuración de la bandeja de cada empresa (§6.9): horario de atención,
- * días sin atención, si atiende a los clientes por chat y las respuestas
- * automáticas. Lo que no viene queda como estaba.
+ * días sin atención, si atiende a los clientes por chat, el asistente (nombre
+ * y mensaje de derivación, D-B8) y las respuestas automáticas. Lo que no viene
+ * queda como estaba.
  */
 @Injectable()
 export class CompanyChatSettingsService {
@@ -84,10 +95,30 @@ export class CompanyChatSettingsService {
     userId: string,
     dto: UpdateChatSettingsDto,
   ): Promise<ChatCompanySettings> {
-    for (const texto of [dto.outOfHoursMessage, dto.ackMessage]) {
+    for (const texto of [
+      dto.outOfHoursMessage,
+      dto.ackMessage,
+      dto.handoffMessage,
+    ]) {
       if (typeof texto === 'string') assertVariablesConocidas(texto);
     }
+    if (typeof dto.assistantName === 'string') {
+      assertNombreDelAsistente(dto.assistantName);
+    }
     return this.guardar(distributorId, userId, dto);
+  }
+
+  /** El nombre con que la conocen sus clientes (el de su marca, si lo tiene), para firmar con el nombre del asistente. */
+  async nombreDeLaEmpresa(
+    distributorId: string,
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<string> {
+    const [fila]: Array<{ name: string | null }> = await manager.query(
+      `SELECT ${nombreVisibleDeLaEmpresa('d')} AS "name"
+         FROM "distributor" d WHERE d."distributor_id" = $1`,
+      [distributorId],
+    );
+    return fila?.name ?? '';
   }
 
   async actualizarHorario(

@@ -2634,11 +2634,27 @@
     },
     {
       "table": "chat_company_settings",
+      "column": "assistant_name",
+      "property": "assistantName",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "handoff_message",
+      "property": "handoffMessage",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "chat_company_settings",
       "column": "out_of_hours_enabled",
       "property": "outOfHoursEnabled",
       "secret": false,
       "kind": "text",
-      "position": 5
+      "position": 7
     },
     {
       "table": "chat_company_settings",
@@ -2646,7 +2662,7 @@
       "property": "outOfHoursMessage",
       "secret": false,
       "kind": "text",
-      "position": 6
+      "position": 8
     },
     {
       "table": "chat_company_settings",
@@ -2654,7 +2670,7 @@
       "property": "ackEnabled",
       "secret": false,
       "kind": "text",
-      "position": 7
+      "position": 9
     },
     {
       "table": "chat_company_settings",
@@ -2662,7 +2678,7 @@
       "property": "ackMessage",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 10
     },
     {
       "table": "chat_company_settings",
@@ -2670,7 +2686,7 @@
       "property": "firstResponseTargetMinutes",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 11
     },
     {
       "table": "chat_company_settings",
@@ -2678,7 +2694,7 @@
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 12
     },
     {
       "table": "claims",

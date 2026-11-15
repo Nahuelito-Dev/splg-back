@@ -4,6 +4,7 @@ import { DataSource, In } from 'typeorm';
 import { idCortoDePedido } from '../../common/events/aviso-al-admin';
 import { Message } from '../entities/message.entity';
 import type { Lector } from './chat-read-model';
+import { nombreVisibleDeLaEmpresa } from './nombre-visible-de-la-empresa';
 
 /** El pedido de una conversación, como lo muestra la bandeja. */
 export interface PedidoDeLaConversacion {
@@ -42,6 +43,19 @@ export class BandejaReadModel {
         [lista],
       );
     return new Map(filas.map((f) => [f.distributor_id, f.name]));
+  }
+
+  /** El nombre de marca de cada empresa (o el legal si no tiene), para firmar al asistente. */
+  async marcas(ids: Iterable<string>): Promise<Map<string, string>> {
+    const lista = [...new Set(ids)];
+    if (lista.length === 0) return new Map();
+    const filas: Array<{ distributor_id: string; nombre: string }> =
+      await this.dataSource.query(
+        `SELECT d."distributor_id", ${nombreVisibleDeLaEmpresa('d')} AS "nombre"
+           FROM "distributor" d WHERE d."distributor_id" = ANY($1::uuid[])`,
+        [lista],
+      );
+    return new Map(filas.map((f) => [f.distributor_id, f.nombre]));
   }
 
   async pedidos(

@@ -1,4 +1,10 @@
-import { Channel, MessageKind, SubjectType } from './chat.enums';
+import {
+  Channel,
+  MessageKind,
+  Party,
+  SubjectType,
+  SystemCode,
+} from './chat.enums';
 import {
   type AccionSobreElMensaje,
   MensajeConReclamoError,
@@ -6,6 +12,8 @@ import {
   MensajeNoEditableError,
   MensajeYaCitadoError,
   PlazoDelPedidoVencidoError,
+  NombreDelAsistenteInvalidoError,
+  VariableDelNombreDelAsistenteError,
   VariableDePlantillaDesconocidaError,
   VentanaDeBorradoVencidaError,
   VentanaDeEdicionVencidaError,
@@ -223,6 +231,88 @@ export const FUERA_DE_HORARIO_POR_DEFECTO =
   'Ahora estamos fuera de horario. Te respondemos {{horario.proximo}}.';
 export const RECIBIDO_POR_DEFECTO =
   'Recibimos tu mensaje. Alguien del equipo de {{empresa.nombre}} te va a atender a la brevedad.';
+
+/** El nombre del asistente por omisión (D-B8). */
+export const ASISTENTE_POR_DEFECTO = 'Asistente de {{empresa.nombre}}';
+
+/** Lo que dice el asistente al pasar la conversación a una persona, por omisión (D-B8). */
+export const DERIVACION_POR_DEFECTO =
+  'Te paso con alguien del equipo de {{empresa.nombre}}. Te va a responder a la brevedad.';
+
+/** La única variable que admite el nombre del asistente: es una firma, no depende de la conversación. */
+export const VARIABLES_DEL_NOMBRE_DEL_ASISTENTE: readonly VariableDePlantilla[] =
+  ['empresa.nombre'];
+
+/** Largo del nombre del asistente, en caracteres (code points, como `char_length` de la base). */
+export const LARGO_DEL_NOMBRE_DEL_ASISTENTE = { min: 2, max: 60 } as const;
+
+/** Controles (C0, C1) y separadores de línea y de párrafo (U+2028, U+2029). */
+const CORTE_DE_LINEA_O_CONTROL = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+
+/** Largo en caracteres: un emoji o una tilde combinada cuentan como en la base, no como en UTF-16. */
+export function largoEnCaracteres(texto: string): number {
+  return [...texto].length;
+}
+
+/**
+ * El nombre del asistente (ya recortado) tiene entre 2 y 60 caracteres y va en
+ * una sola línea. La misma cuenta que el DTO y `CHK_chat_company_settings_asistente`.
+ */
+export function nombreDelAsistenteValido(nombre: string): boolean {
+  const largo = largoEnCaracteres(nombre);
+  return (
+    largo >= LARGO_DEL_NOMBRE_DEL_ASISTENTE.min &&
+    largo <= LARGO_DEL_NOMBRE_DEL_ASISTENTE.max &&
+    !CORTE_DE_LINEA_O_CONTROL.test(nombre)
+  );
+}
+
+/** 400 si el nombre del asistente no cumple el largo, no va en una línea o usa una variable que no corresponde. */
+export function assertNombreDelAsistente(nombre: string): void {
+  if (!nombreDelAsistenteValido(nombre)) {
+    throw new NombreDelAsistenteInvalidoError();
+  }
+  assertVariablesDelNombreDelAsistente(nombre);
+}
+
+/** 400 si el nombre del asistente usa otra variable que `{{empresa.nombre}}`. */
+export function assertVariablesDelNombreDelAsistente(nombre: string): void {
+  const otras = variablesDe(nombre).filter(
+    (v) =>
+      !(VARIABLES_DEL_NOMBRE_DEL_ASISTENTE as readonly string[]).includes(v),
+  );
+  if (otras.length > 0) throw new VariableDelNombreDelAsistenteError(otras);
+}
+
+/** El nombre del asistente con el nombre de la empresa puesto. */
+export function nombreDelAsistente(
+  nombre: string | null,
+  empresa: string,
+): string {
+  return completarPlantilla(nombre ?? ASISTENTE_POR_DEFECTO, {
+    'empresa.nombre': empresa,
+  });
+}
+
+/** Lo que importa de un mensaje para saber si lo mandó el asistente. */
+export interface MensajeDelSistema {
+  senderParty: Party;
+  kind: MessageKind;
+  systemCode: SystemCode | null;
+}
+
+/**
+ * Lo mandó el asistente (D-B5: se identifica siempre): la respuesta fuera de
+ * horario y el aviso de recibido (y, con B3, sus respuestas). Los avisos del
+ * sistema que no le hablan a la persona (reclamo creado, asignación…) no.
+ */
+export function esRespuestaAutomatica(m: MensajeDelSistema): boolean {
+  if (m.senderParty !== Party.SYSTEM) return false;
+  return (
+    m.kind === MessageKind.AUTO_REPLY ||
+    m.systemCode === SystemCode.RECEIVED_ACK
+  );
+}
 
 /** Tope de destinatarios de un mensaje a varios choferes (§4.4). */
 export const TOPE_DE_CHOFERES_POR_ENVIO = 50;

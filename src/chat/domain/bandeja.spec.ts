@@ -4,15 +4,30 @@ import {
   assertSePuedeConsultarPorElPedido,
   assertSePuedeEditar,
   assertVariablesConocidas,
+  assertNombreDelAsistente,
+  assertVariablesDelNombreDelAsistente,
   canalesQueAtiende,
   completarPlantilla,
+  esRespuestaAutomatica,
   type MensajeABorrar,
+  nombreDelAsistente,
+  nombreDelAsistenteValido,
   permisoDelCanal,
   respuestaAutomaticaDeLaEmpresa,
   type SituacionDeLaBandeja,
   variablesDe,
 } from './bandeja';
-import { Channel, MessageKind, SubjectType } from './chat.enums';
+import {
+  Channel,
+  MessageKind,
+  Party,
+  SubjectType,
+  SystemCode,
+} from './chat.enums';
+import {
+  NombreDelAsistenteInvalidoError,
+  VariableDelNombreDelAsistenteError,
+} from './chat.errors';
 
 const ahora = new Date('2026-11-14T15:00:00Z');
 const hace = (min: number) => new Date(ahora.getTime() - min * 60_000);
@@ -223,5 +238,106 @@ describe('bandeja: respuesta automática al cliente (§8.4, D-C29)', () => {
         avisoDeRecibidoHabilitado: false,
       }),
     ).toBeNull();
+  });
+});
+
+describe('bandeja: el asistente de la empresa (D-B5, D-B8)', () => {
+  it('se firma con su nombre o con «Asistente de» la empresa', () => {
+    expect(nombreDelAsistente(null, 'Gas Norte')).toBe(
+      'Asistente de Gas Norte',
+    );
+    expect(
+      nombreDelAsistente('Gasito de {{ empresa.nombre }}', 'Gas Norte'),
+    ).toBe('Gasito de Gas Norte');
+    expect(nombreDelAsistente('Gasito', 'Gas Norte')).toBe('Gasito');
+  });
+
+  it('el nombre sólo admite {{empresa.nombre}}: es una firma (400 TEMPLATE_VARIABLE_UNKNOWN)', () => {
+    expect(() =>
+      assertVariablesDelNombreDelAsistente('Asistente de {{empresa.nombre}}'),
+    ).not.toThrow();
+    const error = (nombre: string): unknown => {
+      try {
+        assertVariablesDelNombreDelAsistente(nombre);
+      } catch (e) {
+        return e;
+      }
+      return null;
+    };
+    const conCliente = error('Hola {{cliente.nombre}}');
+    expect(conCliente).toBeInstanceOf(VariableDelNombreDelAsistenteError);
+    expect(conCliente).toMatchObject({ code: 'TEMPLATE_VARIABLE_UNKNOWN' });
+    expect((conCliente as Error).message).toContain('{{cliente.nombre}}');
+    expect(error('{{x}}')).toMatchObject({
+      code: 'TEMPLATE_VARIABLE_UNKNOWN',
+    });
+  });
+
+  it('es respuesta automática la de fuera de horario y el aviso de recibido; no los demás avisos ni las personas', () => {
+    const sistema = { senderParty: Party.SYSTEM, systemCode: null };
+    expect(
+      esRespuestaAutomatica({ ...sistema, kind: MessageKind.AUTO_REPLY }),
+    ).toBe(true);
+    expect(
+      esRespuestaAutomatica({
+        ...sistema,
+        kind: MessageKind.SYSTEM,
+        systemCode: SystemCode.RECEIVED_ACK,
+      }),
+    ).toBe(true);
+    expect(
+      esRespuestaAutomatica({
+        ...sistema,
+        kind: MessageKind.SYSTEM,
+        systemCode: SystemCode.CLAIM_CREATED,
+      }),
+    ).toBe(false);
+    expect(
+      esRespuestaAutomatica({
+        senderParty: Party.COMPANY,
+        kind: MessageKind.TEXT,
+        systemCode: null,
+      }),
+    ).toBe(false);
+  });
+
+  it('el nombre tiene de 2 a 60 caracteres contados como la base (code points) y va en una sola línea', () => {
+    expect(nombreDelAsistenteValido('Gasito')).toBe(true);
+    expect(nombreDelAsistenteValido('Ñandú')).toBe(true);
+    expect(nombreDelAsistenteValido('G')).toBe(false);
+    expect(nombreDelAsistenteValido('x'.repeat(60))).toBe(true);
+    expect(nombreDelAsistenteValido('x'.repeat(61))).toBe(false);
+    // «❤️» son dos caracteres para la base (U+2764 + U+FE0F); `@Length` de
+    // class-validator no cuenta el U+FE0F y lo dejaría pasar con 61.
+    expect(nombreDelAsistenteValido(`${'x'.repeat(58)}❤️`)).toBe(true);
+    expect(nombreDelAsistenteValido(`${'x'.repeat(59)}❤️`)).toBe(false);
+    // Un emoji fuera del plano básico es un solo carácter, no dos de UTF-16.
+    expect(nombreDelAsistenteValido(`${'x'.repeat(59)}🔥`)).toBe(true);
+    for (const corte of [
+      '\n',
+      '\r',
+      '\t',
+      '\u0085',
+      '\u2028',
+      '\u2029',
+      '\u0007',
+    ]) {
+      expect(nombreDelAsistenteValido(`Gas${corte}ito`)).toBe(false);
+    }
+  });
+
+  it('assertNombreDelAsistente: 400 ASSISTANT_NAME_INVALID por largo o línea, y TEMPLATE_VARIABLE_UNKNOWN por variable', () => {
+    expect(() =>
+      assertNombreDelAsistente('Gasito de {{empresa.nombre}}'),
+    ).not.toThrow();
+    expect(() => assertNombreDelAsistente('Gas\u2028ito')).toThrow(
+      NombreDelAsistenteInvalidoError,
+    );
+    expect(() => assertNombreDelAsistente('G')).toThrow(
+      NombreDelAsistenteInvalidoError,
+    );
+    expect(() => assertNombreDelAsistente('Hola {{cliente.nombre}}')).toThrow(
+      VariableDelNombreDelAsistenteError,
+    );
   });
 });

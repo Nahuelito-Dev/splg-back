@@ -42,6 +42,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   // Mensajería: bandeja de la empresa, clientes y choferes (CH3).
   ackEnabled: 'Aviso automático de recibido',
   ackMessage: 'Texto del aviso automático de recibido',
+  assistantName: 'Nombre del asistente',
   channel: 'Canal',
   clientBatchId: 'Identificador del envío',
   customerChatEnabled: 'Chat con los clientes',
@@ -49,6 +50,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   driverIds: 'Choferes',
   firstResponseTargetMinutes: 'Objetivo de primera respuesta (minutos)',
   holidays: 'Días sin atención',
+  handoffMessage: 'Mensaje al pasar a una persona',
   outOfHoursEnabled: 'Respuesta automática fuera de horario',
   outOfHoursMessage: 'Texto de la respuesta fuera de horario',
   replyToSeq: 'Mensaje al que respondés',

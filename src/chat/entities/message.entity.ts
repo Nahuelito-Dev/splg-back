@@ -29,7 +29,9 @@ export type PayloadDelMensaje =
   | { ticketId: string; number: string; from: string; to: string }
   | { userId: string | null }
   | { claimId: string }
-  | { until: string }
+  /** Respuesta del asistente (fuera de horario, aviso de recibido): `senderLabel` es su firma al mandarla. */
+  | { until: string; senderLabel?: string }
+  | { senderLabel: string }
   | Record<string, never>;
 
 /**

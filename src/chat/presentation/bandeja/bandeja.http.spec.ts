@@ -24,6 +24,7 @@ import { AccesoDeLaEmpresa } from '../../../platform/access/acceso-de-la-empresa
 import { ModuloGuard } from '../../../platform/access/modulo.guard';
 import { BandejaAcceso } from '../../application/bandeja-acceso';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
+import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
 import {
   chatDeClientesApagado,
@@ -49,6 +50,8 @@ import {
   PedidoSinChoferError,
   PlazoDelPedidoVencidoError,
   RespuestaInvalidaError,
+  NombreDelAsistenteInvalidoError,
+  VariableDelNombreDelAsistenteError,
   VariableDePlantillaDesconocidaError,
   VentanaDeBorradoVencidaError,
   VentanaDeEdicionVencidaError,
@@ -121,7 +124,9 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
     actualizarHorario: jest
       .fn()
       .mockResolvedValue(ajustesDeLaBandejaPorDefecto('dist-a')),
+    nombreDeLaEmpresa: jest.fn().mockResolvedValue('Gas del Sur'),
   };
+  const sugerencias = { sugerir: jest.fn() };
   const plantilla = {
     templateId: ID,
     channel: null,
@@ -163,6 +168,7 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         { provide: BandejaService, useValue: bandeja },
         { provide: BandejaGestionService, useValue: gestion },
         { provide: BandejaPresenter, useValue: presentar },
+        { provide: BandejaSugerenciasService, useValue: sugerencias },
         { provide: CompanyChatSettingsService, useValue: ajustes },
         { provide: CompanyTemplatesService, useValue: plantillas },
         Reflector,
@@ -228,6 +234,13 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       created: true,
     });
     gestion.difundir.mockResolvedValue({ sent: 1, conversationIds: [ID] });
+    sugerencias.sugerir.mockResolvedValue({
+      basadoEnSeq: 4,
+      items: [
+        { templateId: ID, key: 'pagos', title: 'Pagos', body: 'Hola Ana' },
+      ],
+    });
+    ajustes.nombreDeLaEmpresa.mockResolvedValue('Gas del Sur');
   });
 
   type Metodo = 'get' | 'post' | 'patch' | 'put' | 'delete';
@@ -444,6 +457,58 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
           await resultado(llamar('get', `/conversations/${ID}/messages`, ADMIN))
         )[0],
       ).toBe(404);
+    });
+
+    it('GET /conversations/:id/suggestions: 200 (con y sin sugerencias), 400, 401, 403 (rol, permiso, módulo), 404', async () => {
+      const ruta = `/conversations/${ID}/suggestions`;
+      const ok = await llamar('get', ruta, ADMIN);
+      expect(ok.status).toBe(200);
+      expect(ok.body).toEqual({
+        basedOnSeq: 4,
+        items: [
+          { templateId: ID, key: 'pagos', title: 'Pagos', body: 'Hola Ana' },
+        ],
+      });
+      expect(sugerencias.sugerir).toHaveBeenCalledWith(
+        expect.objectContaining({
+          party: Party.COMPANY,
+          distributorId: 'dist-a',
+        }),
+        ID,
+      );
+      sugerencias.sugerir.mockResolvedValueOnce({
+        basadoEnSeq: null,
+        items: [],
+      });
+      const vacia = await llamar('get', ruta, ADMIN);
+      expect([vacia.status, vacia.body]).toEqual([
+        200,
+        { basedOnSeq: null, items: [] },
+      ]);
+      expect(
+        await resultado(llamar('get', '/conversations/abc/suggestions', ADMIN)),
+      ).toEqual([400, 'INVALID_ID']);
+      sugerencias.sugerir.mockRejectedValueOnce(
+        new ConversacionNoEncontradaError(),
+      );
+      expect(await resultado(llamar('get', ruta, ADMIN))).toEqual([404, null]);
+      expect(await resultado(llamar('get', ruta, null))).toEqual([401, null]);
+      expect(await resultado(llamar('get', ruta, CLIENTE))).toEqual([
+        403,
+        null,
+      ]);
+      expect(await resultado(llamar('get', ruta, SUPER))).toEqual([403, null]);
+      permisos = ['mensajes.configurar'];
+      expect(await resultado(llamar('get', ruta, ADMIN))).toEqual([
+        403,
+        'PERMISSION_DENIED',
+      ]);
+      permisos = ['mensajes.clientes'];
+      chatHabilitado = false;
+      expect(await resultado(llamar('get', ruta, ADMIN))).toEqual([
+        403,
+        'MODULE_DISABLED',
+      ]);
     });
 
     it('POST /conversations/:id/messages: 201, 200 reintento, 400, 404, 409, 429', async () => {
@@ -695,6 +760,105 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         403,
         'MODULE_DISABLED',
       ]);
+    });
+
+    it('settings: asistente (nombre y derivación) con los textos efectivos, 400 por cada regla', async () => {
+      const leido = await llamar('get', '/chat/settings', ADMIN);
+      expect(leido.status).toBe(200);
+      expect(leido.body).toEqual(
+        expect.objectContaining({
+          assistantName: null,
+          effectiveAssistantName: 'Asistente de Gas del Sur',
+          handoffMessage: null,
+          effectiveHandoffMessage:
+            'Te paso con alguien del equipo de {{empresa.nombre}}. Te va a responder a la brevedad.',
+        }),
+      );
+      ajustes.actualizar.mockResolvedValueOnce(
+        Object.assign(ajustesDeLaBandejaPorDefecto('dist-a'), {
+          assistantName: 'Gasito de {{empresa.nombre}}',
+          handoffMessage: 'Ya te atiende una persona, {{cliente.nombre}}.',
+        }),
+      );
+      const cambio = {
+        assistantName: '  Gasito de {{empresa.nombre}} ',
+        handoffMessage: 'Ya te atiende una persona, {{cliente.nombre}}.',
+      };
+      const guardado = await llamar('put', '/chat/settings', ADMIN, cambio);
+      expect(guardado.status).toBe(200);
+      expect(guardado.body).toEqual(
+        expect.objectContaining({
+          assistantName: 'Gasito de {{empresa.nombre}}',
+          effectiveAssistantName: 'Gasito de Gas del Sur',
+          effectiveHandoffMessage:
+            'Ya te atiende una persona, {{cliente.nombre}}.',
+        }),
+      );
+      expect(ajustes.actualizar).toHaveBeenLastCalledWith(
+        'dist-a',
+        'u1',
+        expect.objectContaining({
+          assistantName: 'Gasito de {{empresa.nombre}}',
+        }),
+      );
+      expect(
+        await resultado(
+          llamar('put', '/chat/settings', ADMIN, {
+            assistantName: null,
+            handoffMessage: null,
+          }),
+        ),
+      ).toEqual([200, null]);
+      for (const malo of [
+        { assistantName: 'A' },
+        { assistantName: '   ' },
+        { assistantName: 'x'.repeat(61) },
+        { assistantName: 'Línea\nOtra' },
+        { assistantName: 'Línea\u2028Otra' },
+        { assistantName: 'Línea\u2029Otra' },
+        { assistantName: 'Línea\u0085Otra' },
+        // 61 caracteres para la base: «❤️» es U+2764 + U+FE0F (`@Length` lo contaría como 60).
+        { assistantName: `${'x'.repeat(59)}❤️` },
+        { assistantName: 7 },
+        { handoffMessage: '' },
+        { handoffMessage: '  ' },
+        { handoffMessage: 'x'.repeat(501) },
+      ]) {
+        expect(
+          (await resultado(llamar('put', '/chat/settings', ADMIN, malo)))[0],
+        ).toBe(400);
+      }
+      expect(
+        await resultado(
+          llamar('put', '/chat/settings', ADMIN, {
+            assistantName: `${'x'.repeat(58)}❤️`,
+          }),
+        ),
+      ).toEqual([200, null]);
+      ajustes.actualizar.mockRejectedValueOnce(
+        new NombreDelAsistenteInvalidoError(),
+      );
+      expect(
+        await resultado(
+          llamar('put', '/chat/settings', ADMIN, { assistantName: 'Gasito' }),
+        ),
+      ).toEqual([400, 'ASSISTANT_NAME_INVALID']);
+      ajustes.actualizar.mockRejectedValueOnce(
+        new VariableDelNombreDelAsistenteError(['cliente.nombre']),
+      );
+      expect(
+        await resultado(
+          llamar('put', '/chat/settings', ADMIN, {
+            assistantName: 'Hola {{cliente.nombre}}',
+          }),
+        ),
+      ).toEqual([400, 'TEMPLATE_VARIABLE_UNKNOWN']);
+      permisos = ['mensajes.clientes'];
+      expect(
+        await resultado(
+          llamar('put', '/chat/settings', ADMIN, { assistantName: 'Gasito' }),
+        ),
+      ).toEqual([403, 'PERMISSION_DENIED']);
     });
 
     it('templates: 200, 201, 204, 400, 403, 404, 409', async () => {

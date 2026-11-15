@@ -31,9 +31,11 @@ import { RequiereModulo } from '../../../platform/access/requiere-modulo.decorat
 import {
   CompanyChatSettingsService,
   horarioDe,
+  textoDeDerivacion,
   textoDeRecibido,
   textoFueraDeHorario,
 } from '../../application/company-chat-settings.service';
+import { nombreDelAsistente } from '../../domain/bandeja';
 import { CompanyTemplatesService } from '../../application/company-templates.service';
 import {
   atiendeLaEmpresa,
@@ -67,9 +69,16 @@ function estado(a: ChatCompanySettings): {
   };
 }
 
-function ajustesADto(a: ChatCompanySettings): ChatSettingsResponseDto {
+function ajustesADto(
+  a: ChatCompanySettings,
+  empresa: string,
+): ChatSettingsResponseDto {
   return {
     customerChatEnabled: a.customerChatEnabled,
+    assistantName: a.assistantName,
+    effectiveAssistantName: nombreDelAsistente(a.assistantName, empresa),
+    handoffMessage: a.handoffMessage,
+    effectiveHandoffMessage: textoDeDerivacion(a),
     outOfHoursEnabled: a.outOfHoursEnabled,
     outOfHoursMessage: a.outOfHoursMessage,
     effectiveOutOfHoursMessage: textoFueraDeHorario(a),
@@ -122,33 +131,40 @@ export class CompanyChatConfigController {
   @ApiOperation({
     summary: 'Parámetros de la bandeja',
     description:
-      'Con los textos que se mandan de verdad (`effective*`) y si la empresa atiende ahora.',
+      'Con los textos que se mandan de verdad (`effective*`), el nombre del asistente con el de la empresa puesto y si la empresa atiende ahora.',
   })
   @ApiOkResponse({ type: ChatSettingsResponseDto })
   async leer(
     @CurrentDistributor({ required: true }) distributorId: string,
   ): Promise<ChatSettingsResponseDto> {
-    return ajustesADto(await this.ajustes.leer(distributorId));
+    const [ajustes, empresa] = await Promise.all([
+      this.ajustes.leer(distributorId),
+      this.ajustes.nombreDeLaEmpresa(distributorId),
+    ]);
+    return ajustesADto(ajustes, empresa);
   }
 
   @Put('settings')
   @Permiso('mensajes.configurar')
   @ApiOperation({
     summary: 'Cambiar los parámetros de la bandeja',
-    description: 'Lo que no viene queda como estaba.',
+    description:
+      'Lo que no viene queda como estaba; `null` en un texto o en el nombre del asistente vuelve al de omisión. Queda en la auditoría.',
   })
   @ApiOkResponse({ type: ChatSettingsResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Valor fuera de rango, texto vacío o de más de 500, o variable desconocida (`TEMPLATE_VARIABLE_UNKNOWN`)',
+      'Valor fuera de rango, texto vacío o de más de 500, nombre del asistente de menos de 2 o más de 60 caracteres o en más de una línea, o variable desconocida o que no corresponde (`TEMPLATE_VARIABLE_UNKNOWN`)',
   })
   async actualizar(
     @CurrentDistributor({ required: true }) distributorId: string,
     @CurrentUser('user_id') userId: string,
     @Body() dto: UpdateChatSettingsDto,
   ): Promise<ChatSettingsResponseDto> {
+    const ajustes = await this.ajustes.actualizar(distributorId, userId, dto);
     return ajustesADto(
-      await this.ajustes.actualizar(distributorId, userId, dto),
+      ajustes,
+      await this.ajustes.nombreDeLaEmpresa(distributorId),
     );
   }
 

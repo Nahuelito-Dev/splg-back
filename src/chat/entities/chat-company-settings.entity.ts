@@ -16,8 +16,10 @@ import type { FranjaDeAtencion } from '../domain/horario';
 /**
  * Configuración de la bandeja de una empresa (diseño §6.9 y §8.4): su horario
  * de atención (franjas por día y días sin atención, en su zona horaria), si
- * atiende a los clientes por chat, las respuestas automáticas (fuera de horario
- * y aviso de recibido) y el objetivo de primera respuesta. Una fila por
+ * atiende a los clientes por chat, el asistente (su nombre, con el que se
+ * firman las respuestas automáticas, y lo que dice al pasar la conversación a
+ * una persona), las respuestas automáticas (fuera de horario y aviso de
+ * recibido) y el objetivo de primera respuesta. Una fila por
  * empresa; si no existe, valen los valores por defecto.
  *
  * El horario va en listas (como el de la plataforma, `platform_support_settings`)
@@ -32,6 +34,14 @@ import type { FranjaDeAtencion } from '../domain/horario';
 @Check(
   'CHK_chat_company_settings_textos',
   `("out_of_hours_message" IS NULL OR char_length(btrim("out_of_hours_message")) BETWEEN 1 AND 500) AND ("ack_message" IS NULL OR char_length(btrim("ack_message")) BETWEEN 1 AND 500)`,
+)
+@Check(
+  'CHK_chat_company_settings_derivacion',
+  `"handoff_message" IS NULL OR char_length(btrim("handoff_message")) BETWEEN 1 AND 500`,
+)
+@Check(
+  'CHK_chat_company_settings_asistente',
+  `"assistant_name" IS NULL OR (char_length(btrim("assistant_name")) BETWEEN 2 AND 60 AND "assistant_name" !~ '[\\u0001-\\u001F\\u007F-\\u009F\\u2028\\u2029]')`,
 )
 @Check(
   'CHK_chat_company_settings_objetivo',
@@ -71,6 +81,30 @@ export class ChatCompanySettings {
   /** Apagado: los clientes no pueden escribir (C3); los choferes sí (C2). */
   @Column({ name: 'customer_chat_enabled', type: 'boolean', default: true })
   customerChatEnabled!: boolean;
+
+  /**
+   * Nombre del asistente, con el que se firman las respuestas automáticas
+   * (D-B8). Admite `{{empresa.nombre}}`; nulo: «Asistente de {{empresa.nombre}}».
+   */
+  @Column({
+    name: 'assistant_name',
+    type: 'varchar',
+    length: 60,
+    nullable: true,
+  })
+  assistantName!: string | null;
+
+  /**
+   * Lo que dice el asistente al pasar la conversación a una persona (D-B8),
+   * con variables; nulo: «Te paso con alguien del equipo de {{empresa.nombre}}…».
+   */
+  @Column({
+    name: 'handoff_message',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  handoffMessage!: string | null;
 
   /** Respuesta automática al cliente fuera de horario, una por período cerrado. */
   @Column({ name: 'out_of_hours_enabled', type: 'boolean', default: true })

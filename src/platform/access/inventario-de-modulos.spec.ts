@@ -221,6 +221,7 @@ const ATADAS: Record<string, string> = {
   'POST /v2/conversations/broadcast-drivers': 'chat',
   'GET /v2/conversations/:id': 'chat',
   'GET /v2/conversations/:id/messages': 'chat',
+  'GET /v2/conversations/:id/suggestions': 'chat',
   'POST /v2/conversations/:id/messages': 'chat',
   'PATCH /v2/conversations/:id/messages/:messageId': 'chat',
   'POST /v2/conversations/:id/assign': 'chat',

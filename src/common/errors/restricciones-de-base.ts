@@ -552,6 +552,10 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El horario y los días sin atención tienen que ser listas',
   CHK_chat_company_settings_textos:
     'Las respuestas automáticas tienen que tener entre 1 y 500 caracteres',
+  CHK_chat_company_settings_asistente:
+    'El nombre del asistente tiene que tener entre 2 y 60 caracteres, en una sola línea',
+  CHK_chat_company_settings_derivacion:
+    'El mensaje al pasar a una persona tiene que tener entre 1 y 500 caracteres',
   CHK_chat_company_settings_objetivo:
     'El objetivo de primera respuesta va de 5 a 1440 minutos',
   UQ_claims_id_distribuidora: 'El reclamo ya existe en la empresa',

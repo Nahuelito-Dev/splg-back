@@ -183,11 +183,24 @@ export class InboxMessageDto {
   @ApiProperty({ enum: SystemCode, nullable: true })
   systemCode!: SystemCode | null;
   @ApiProperty({
+    description:
+      'Lo mandó el asistente (fuera de horario, aviso de recibido): mostrarlo con la marca «Respuesta automática»',
+  })
+  automated!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Asistente de Gas del Sur',
+    description:
+      'Con `automated`, el nombre con que firmó el asistente al mandarlo (cambiarlo después no reescribe el historial; los anteriores a guardarlo, el vigente); `null` en los demás',
+  })
+  senderLabel!: string | null;
+  @ApiProperty({
     type: 'object',
     additionalProperties: true,
     nullable: true,
     description:
-      '`claim_created`: `{ claimId }`; respuesta fuera de horario: `{ until }` (fin del período cerrado)',
+      '`claim_created`: `{ claimId }`; respuesta fuera de horario: `{ until, senderLabel }` (fin del período cerrado y firma); aviso de recibido: `{ senderLabel }`',
   })
   payload!: Record<string, unknown> | null;
   @ApiProperty({ type: InboxReplyToDto, nullable: true })
@@ -264,6 +277,31 @@ export class ClaimFromConversationResponseDto {
 
 export class ChatSettingsResponseDto {
   @ApiProperty() customerChatEnabled!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Nombre del asistente tal como se guardó (puede tener `{{empresa.nombre}}`); `null`: el de omisión',
+  })
+  assistantName!: string | null;
+  @ApiProperty({
+    example: 'Asistente de Gas del Sur',
+    description:
+      'El nombre con que se firman las respuestas automáticas, con el nombre de la empresa puesto (`senderLabel` de los mensajes)',
+  })
+  effectiveAssistantName!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Lo que dice el asistente al pasar la conversación a una persona; `null`: el de omisión',
+  })
+  handoffMessage!: string | null;
+  @ApiProperty({
+    description:
+      'El texto de derivación que se usa (el propio o el de omisión), con sus variables sin completar',
+  })
+  effectiveHandoffMessage!: string;
   @ApiProperty() outOfHoursEnabled!: boolean;
   @ApiProperty({ type: String, nullable: true }) outOfHoursMessage!:
     | string
@@ -287,6 +325,36 @@ export class ChatSettingsResponseDto {
     description: 'Cuándo vuelve a atender; `null` si atiende ahora',
   })
   nextOpenAt!: string | null;
+}
+
+/** Una respuesta guardada sugerida, con sus variables ya completadas para la conversación. */
+export class InboxSuggestionDto {
+  @ApiProperty({ format: 'uuid' }) templateId!: string;
+  @ApiProperty({ example: 'medios_de_pago' }) key!: string;
+  @ApiProperty({ example: 'Medios de pago' }) title!: string;
+  @ApiProperty({
+    example: 'Hola Ana, podés pagar en efectivo o con Mercado Pago.',
+    description:
+      'El texto listo para editar en el compositor (no se manda solo)',
+  })
+  body!: string;
+}
+
+export class InboxSuggestionsResponseDto {
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'El `seq` del mensaje del cliente o del chofer con que se buscó; `null` si todavía no escribió nada',
+  })
+  basedOnSeq!: number | null;
+  @ApiProperty({
+    type: [InboxSuggestionDto],
+    maxItems: 3,
+    description:
+      'Hasta 3, de la más parecida a la menos. Vacía si ninguna se parece.',
+  })
+  items!: InboxSuggestionDto[];
 }
 
 export class ChatHolidayResponseDto {

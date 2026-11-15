@@ -3,7 +3,11 @@ import {
   CompanyChatSettingsService,
   horarioDe,
 } from '../application/company-chat-settings.service';
-import { VENTANA_DE_EDICION_MINUTOS } from '../domain/bandeja';
+import {
+  esRespuestaAutomatica,
+  nombreDelAsistente,
+  VENTANA_DE_EDICION_MINUTOS,
+} from '../domain/bandeja';
 import {
   Channel,
   ConversationStatus,
@@ -31,6 +35,8 @@ export interface ContextoDeLaBandeja {
   ahora: Date;
   nombres: Map<string, string>;
   empresas: Map<string, string>;
+  /** Nombre de marca de las empresas con mensajes del asistente sin firma guardada. */
+  marcas: Map<string, string>;
   pedidos: Map<string, PedidoDeLaConversacion>;
   noLeidos: Map<string, number>;
   lecturaPropia: Map<string, number>;
@@ -39,6 +45,14 @@ export interface ContextoDeLaBandeja {
   respondidos: Map<string, Message>;
   primerEntrante: Map<string, Date>;
   ajustes: Map<string, ChatCompanySettings>;
+}
+
+/** La firma con que se mandó el mensaje del asistente (`payload.senderLabel`); nula en los anteriores. */
+function firmaGuardada(m: Message): string | null {
+  const firma: unknown = m.payload
+    ? (m.payload as Record<string, unknown>).senderLabel
+    : undefined;
+  return typeof firma === 'string' && firma.length > 0 ? firma : null;
 }
 
 const esPersonal = (ctx: ContextoDeLaBandeja) =>
@@ -95,9 +109,17 @@ export class BandejaPresenter {
       ...conversaciones.map((c) => c.distributorId),
       ...mensajes.map((m) => m.distributorId),
     ]);
-    const [nombres, nombresDeEmpresas, ajustes] = await Promise.all([
+    // Los mensajes del asistente anteriores a guardar la firma se firman con
+    // el nombre vigente: hace falta la marca de su empresa.
+    const sinFirma = new Set(
+      mensajes
+        .filter((m) => esRespuestaAutomatica(m) && firmaGuardada(m) === null)
+        .map((m) => m.distributorId),
+    );
+    const [nombres, nombresDeEmpresas, marcas, ajustes] = await Promise.all([
       this.lectura.nombres(usuarios),
       this.lectura.empresas(empresas),
+      this.lectura.marcas(sinFirma),
       Promise.all(
         [...empresas].map(
           async (id) => [id, await this.ajustes.leer(id)] as const,
@@ -109,6 +131,7 @@ export class BandejaPresenter {
       ahora: new Date(),
       nombres,
       empresas: nombresDeEmpresas,
+      marcas,
       pedidos,
       noLeidos,
       lecturaPropia,
@@ -190,7 +213,10 @@ export class BandejaPresenter {
             preview:
               ultimo.redactedAt ||
               ultimo.withdrawnAt ||
-              ultimo.kind === MessageKind.SYSTEM
+              // Los avisos del sistema no muestran texto, salvo las respuestas
+              // automáticas (aviso de recibido): ésas se leen como del asistente.
+              (ultimo.kind === MessageKind.SYSTEM &&
+                !esRespuestaAutomatica(ultimo))
                 ? null
                 : vistaPrevia(ultimo.body, ultimo.visibility),
             at: ultimo.createdAt.toISOString(),
@@ -236,6 +262,7 @@ export class BandejaPresenter {
       m.replyToSeq !== null
         ? ctx.respondidos.get(`${m.conversationId}:${m.replyToSeq}`)
         : undefined;
+    const automatico = esRespuestaAutomatica(m);
     return {
       id: m.messageId,
       conversationId: m.conversationId,
@@ -255,6 +282,14 @@ export class BandejaPresenter {
       body: sinTexto ? null : m.body,
       templateKey: m.templateKey,
       systemCode: m.systemCode,
+      automated: automatico,
+      senderLabel: automatico
+        ? (firmaGuardada(m) ??
+          nombreDelAsistente(
+            ctx.ajustes.get(m.distributorId)?.assistantName ?? null,
+            ctx.marcas.get(m.distributorId) ?? '',
+          ))
+        : null,
       payload: sinTexto ? null : (m.payload as Record<string, unknown> | null),
       replyTo: respondido
         ? {

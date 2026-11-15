@@ -7,6 +7,7 @@ import { ClaimsModule } from '../claims/claims.module';
 import { EmailModule } from '../email/email.module';
 import { BandejaAcceso } from './application/bandeja-acceso';
 import { BandejaGestionService } from './application/bandeja-gestion.service';
+import { BandejaSugerenciasService } from './application/bandeja-sugerencias.service';
 import { BandejaService } from './application/bandeja.service';
 import { ConversacionVigente } from './application/conversacion-vigente';
 import { CompanyChatSettingsService } from './application/company-chat-settings.service';
@@ -137,6 +138,7 @@ import {
     BandejaPresenter,
     BandejaService,
     BandejaGestionService,
+    BandejaSugerenciasService,
     CompanyChatSettingsService,
     CompanyTemplatesService,
     BandejaRealtimeListener,
