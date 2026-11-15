@@ -210,6 +210,39 @@
       "orderColumn": null
     },
     {
+      "table": "conversation",
+      "entity": "Conversation",
+      "pk": [
+        "conversation_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "conversation_party",
+      "entity": "ConversationParty",
+      "pk": [
+        "conversation_id",
+        "party"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "coverage_zone",
       "entity": "CoverageZone",
       "pk": [
@@ -868,6 +901,38 @@
       "orderColumn": null
     },
     {
+      "table": "message",
+      "entity": "Message",
+      "pk": [
+        "message_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "message_template",
+      "entity": "MessageTemplate",
+      "pk": [
+        "template_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "module_config",
       "entity": "ModuleConfig",
       "pk": [
@@ -1017,6 +1082,22 @@
       "pk": [
         "plan_code",
         "module_key"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "none",
+      "distributorColumn": null,
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "platform_support_settings",
+      "entity": "PlatformSupportSettings",
+      "pk": [
+        "settings_id"
       ],
       "deleteColumn": null,
       "distributorMode": "none",
@@ -1289,6 +1370,39 @@
       "entity": "SupportSession",
       "pk": [
         "support_session_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "support_ticket",
+      "entity": "SupportTicket",
+      "pk": [
+        "ticket_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "support_ticket_message_link",
+      "entity": "SupportTicketMessageLink",
+      "pk": [
+        "ticket_id",
+        "message_id"
       ],
       "deleteColumn": null,
       "distributorMode": "column",
@@ -2485,6 +2599,158 @@
       "secret": false,
       "kind": "text",
       "position": 8
+    },
+    {
+      "table": "conversation",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "conversation",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "conversation",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "conversation",
+      "column": "subject_type",
+      "property": "subjectType",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "conversation",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "conversation",
+      "column": "assigned_to_user_id",
+      "property": "assignedToUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "conversation",
+      "column": "subject",
+      "property": "subject",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "conversation",
+      "column": "first_response_at",
+      "property": "firstResponseAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "conversation",
+      "column": "closed_at",
+      "property": "closedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 8
+    },
+    {
+      "table": "conversation",
+      "column": "closed_by_user_id",
+      "property": "closedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "conversation",
+      "column": "closed_reason",
+      "property": "closedReason",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "conversation",
+      "column": "created_by_user_id",
+      "property": "createdByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "conversation",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 12
+    },
+    {
+      "table": "conversation_party",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "conversation_party",
+      "column": "party",
+      "property": "party",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "conversation_party",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "conversation_party",
+      "column": "user_id",
+      "property": "userId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "conversation_party",
+      "column": "muted_until",
+      "property": "mutedUntil",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
+    },
+    {
+      "table": "conversation_party",
+      "column": "restricted_at",
+      "property": "restrictedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
     },
     {
       "table": "coverage_zone",
@@ -6311,6 +6577,198 @@
       "position": 13
     },
     {
+      "table": "message",
+      "column": "message_id",
+      "property": "messageId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "message",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "message",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "message",
+      "column": "seq",
+      "property": "seq",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "message",
+      "column": "client_message_id",
+      "property": "clientMessageId",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "message",
+      "column": "sender_party",
+      "property": "senderParty",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "message",
+      "column": "sender_user_id",
+      "property": "senderUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "message",
+      "column": "kind",
+      "property": "kind",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "message",
+      "column": "visibility",
+      "property": "visibility",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "message",
+      "column": "payload",
+      "property": "payload",
+      "secret": true,
+      "kind": "json",
+      "position": 9
+    },
+    {
+      "table": "message",
+      "column": "body",
+      "property": "body",
+      "secret": true,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "message",
+      "column": "body_filtered",
+      "property": "bodyFiltered",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "message",
+      "column": "template_key",
+      "property": "templateKey",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "message",
+      "column": "system_code",
+      "property": "systemCode",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "message",
+      "column": "redacted_at",
+      "property": "redactedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 14
+    },
+    {
+      "table": "message",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 15
+    },
+    {
+      "table": "message_template",
+      "column": "template_id",
+      "property": "templateId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "message_template",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "message_template",
+      "column": "scope",
+      "property": "scope",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "message_template",
+      "column": "key",
+      "property": "key",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "message_template",
+      "column": "title",
+      "property": "title",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "message_template",
+      "column": "body",
+      "property": "body",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "message_template",
+      "column": "active",
+      "property": "active",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "message_template",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
       "table": "module_config",
       "column": "config_id",
       "property": "configId",
@@ -7525,6 +7983,118 @@
       "secret": false,
       "kind": "text",
       "position": 1
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "settings_id",
+      "property": "settingsId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "timezone",
+      "property": "timezone",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "chat_hours",
+      "property": "chatHours",
+      "secret": false,
+      "kind": "json",
+      "position": 2
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "chat_ack_enabled",
+      "property": "chatAckEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "chat_ack_message",
+      "property": "chatAckMessage",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "chat_inactivity_hours",
+      "property": "chatInactivityHours",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "resolved_close_days",
+      "property": "resolvedCloseDays",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "waiting_close_days",
+      "property": "waitingCloseDays",
+      "secret": false,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "waiting_warn_days",
+      "property": "waitingWarnDays",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "target_urgent_minutes",
+      "property": "targetUrgentMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "target_high_minutes",
+      "property": "targetHighMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "target_normal_minutes",
+      "property": "targetNormalMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "target_low_minutes",
+      "property": "targetLowMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "platform_support_settings",
+      "column": "updated_by_user_id",
+      "property": "updatedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 13
     },
     {
       "table": "purchase_order",
@@ -9101,6 +9671,214 @@
       "secret": false,
       "kind": "text",
       "position": 17
+    },
+    {
+      "table": "support_ticket",
+      "column": "ticket_id",
+      "property": "ticketId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "support_ticket",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "support_ticket",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "support_ticket",
+      "column": "origin_conversation_id",
+      "property": "originConversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "support_ticket",
+      "column": "origin_from_seq",
+      "property": "originFromSeq",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "support_ticket",
+      "column": "origin_to_seq",
+      "property": "originToSeq",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "support_ticket",
+      "column": "number",
+      "property": "number",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "support_ticket",
+      "column": "subject",
+      "property": "subject",
+      "secret": true,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "support_ticket",
+      "column": "category",
+      "property": "category",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "support_ticket",
+      "column": "priority",
+      "property": "priority",
+      "secret": false,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "support_ticket",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "support_ticket",
+      "column": "status_changed_at",
+      "property": "statusChangedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 11
+    },
+    {
+      "table": "support_ticket",
+      "column": "opened_by_party",
+      "property": "openedByParty",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "support_ticket",
+      "column": "opened_by_user_id",
+      "property": "openedByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "support_ticket",
+      "column": "assigned_member_user_id",
+      "property": "assignedMemberUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "support_ticket",
+      "column": "first_response_due_at",
+      "property": "firstResponseDueAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 15
+    },
+    {
+      "table": "support_ticket",
+      "column": "first_response_at",
+      "property": "firstResponseAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 16
+    },
+    {
+      "table": "support_ticket",
+      "column": "resolved_at",
+      "property": "resolvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 17
+    },
+    {
+      "table": "support_ticket",
+      "column": "closed_at",
+      "property": "closedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 18
+    },
+    {
+      "table": "support_ticket",
+      "column": "satisfaction",
+      "property": "satisfaction",
+      "secret": false,
+      "kind": "text",
+      "position": 19
+    },
+    {
+      "table": "support_ticket",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 20
+    },
+    {
+      "table": "support_ticket_message_link",
+      "column": "ticket_id",
+      "property": "ticketId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "support_ticket_message_link",
+      "column": "message_id",
+      "property": "messageId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "support_ticket_message_link",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "support_ticket_message_link",
+      "column": "quoted_in_message_id",
+      "property": "quotedInMessageId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "support_ticket_message_link",
+      "column": "created_by_user_id",
+      "property": "createdByUserId",
+      "secret": false,
+      "kind": "text",
+      "position": 4
     },
     {
       "table": "time_slot",

@@ -441,6 +441,87 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El motivo de fin de la sesión de soporte no es válido',
   CHK_admin_rol_de_personal:
     'Todo administrador de una distribuidora tiene que tener un rol de personal (y el super administrador, ninguno)',
+  // Mensajería: chat con la plataforma y tickets (CH1)
+  UQ_conversation_general_abierta:
+    'La empresa ya tiene un chat abierto con la plataforma',
+  UQ_conversation_id_distribuidora: 'La conversación ya existe en la empresa',
+  CHK_conversation_canal: 'El canal de la conversación no es válido',
+  CHK_conversation_ambito:
+    'El hilo de un ticket es de ese ticket y el chat es general',
+  CHK_conversation_estado: 'Una conversación está abierta o cerrada',
+  CHK_conversation_cierre:
+    'Una conversación cerrada necesita cuándo y por qué se cerró',
+  CHK_conversation_motivo_de_cierre:
+    'El motivo de cierre de la conversación no es válido',
+  CHK_conversation_asunto:
+    'El hilo de un ticket lleva el asunto (entre 5 y 120 caracteres) y el chat no',
+  CHK_conversation_asignado: 'Sólo el chat con la plataforma se asigna',
+  CHK_conversation_secuencia: 'El número de mensajes no puede ser negativo',
+  CHK_conversation_partes:
+    'La conversación tiene que tener a la plataforma y a la empresa',
+  CHK_conversation_party_parte: 'La parte de la conversación no es válida',
+  CHK_conversation_party_equipo_sin_usuario:
+    'Los equipos de una conversación no llevan una persona',
+  CHK_conversation_party_lecturas: 'La lectura no puede ser negativa',
+  UQ_message_id_distribuidora: 'El mensaje ya existe en la empresa',
+  UQ_message_conversation_seq:
+    'Ese número de mensaje ya se usó en la conversación',
+  UQ_message_idempotencia: 'Ese mensaje ya se envió',
+  CHK_message_seq: 'El número de mensaje tiene que ser positivo',
+  CHK_message_parte: 'Quién escribe el mensaje no es válido',
+  CHK_message_autor: 'Un mensaje lo escribe una persona, salvo los del sistema',
+  CHK_message_tipo: 'El tipo de mensaje no es válido para quien lo escribe',
+  CHK_message_visibilidad:
+    'Sólo la plataforma deja notas internas, y sólo de texto',
+  CHK_message_texto: 'El mensaje tiene que tener entre 1 y 2000 caracteres',
+  CHK_message_texto_obligatorio: 'El mensaje no puede estar vacío',
+  CHK_message_sistema: 'Un mensaje del sistema necesita su código',
+  CHK_message_cita: 'La cita del chat está incompleta',
+  CHK_message_payload_texto: 'Un mensaje de texto no lleva datos adjuntos',
+  CHK_message_inmutable:
+    'Un mensaje no se edita ni se borra: sólo se redacta o se da de baja',
+  CHK_message_canal:
+    'Las notas internas y las citas sólo van en el hilo de un ticket',
+  UQ_support_ticket_id_distribuidora: 'El ticket ya existe en la empresa',
+  UQ_support_ticket_conversation: 'Ese hilo ya es de otro ticket',
+  UQ_support_ticket_number: 'Ese número de ticket ya se usó',
+  CHK_support_ticket_asunto:
+    'El asunto del ticket tiene que tener entre 5 y 120 caracteres',
+  CHK_support_ticket_categoria: 'La categoría del ticket no es válida',
+  CHK_support_ticket_prioridad: 'La prioridad del ticket no es válida',
+  CHK_support_ticket_estado: 'El estado del ticket no es válido',
+  CHK_support_ticket_quien_abre: 'Un ticket lo abre la empresa o la plataforma',
+  CHK_support_ticket_rango: 'Elegí entre 1 y 200 mensajes del chat, en orden',
+  CHK_support_ticket_numero: 'El número de ticket tiene que ser positivo',
+  CHK_support_ticket_resuelto: 'Un ticket resuelto necesita cuándo se resolvió',
+  CHK_support_ticket_cerrado: 'Un ticket cerrado necesita cuándo se cerró',
+  CHK_support_ticket_satisfaccion:
+    'La calificación va de 1 a 5 y sólo en un ticket resuelto o cerrado',
+  CHK_support_ticket_canales:
+    'El hilo de un ticket es un hilo de ticket y su origen, el chat con la plataforma',
+  CHK_support_ticket_transicion_de_estado:
+    'El ticket no puede pasar a ese estado',
+  UQ_message_template_clave_vigente:
+    'Ya hay una respuesta guardada con esa clave',
+  CHK_message_template_alcance:
+    'Las respuestas guardadas de esta etapa son sólo de la plataforma',
+  CHK_message_template_clave:
+    'La clave va en minúsculas, con números y guiones bajos',
+  CHK_message_template_titulo:
+    'El título tiene que tener entre 2 y 60 caracteres',
+  CHK_message_template_texto:
+    'El texto tiene que tener entre 1 y 1000 caracteres',
+  CHK_platform_support_settings_unica:
+    'La configuración del soporte es una sola',
+  CHK_platform_support_settings_horario: 'El horario tiene que ser una lista',
+  CHK_platform_support_settings_aviso:
+    'El aviso automático tiene que tener entre 1 y 500 caracteres',
+  CHK_platform_support_settings_inactividad:
+    'Las horas sin mensajes para cerrar el chat van de 1 a 168',
+  CHK_platform_support_settings_plazos:
+    'Los plazos de cierre de los tickets no son válidos',
+  CHK_platform_support_settings_objetivos:
+    'Los objetivos de respuesta van de 5 minutos a 30 días',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

@@ -19,6 +19,11 @@ import type {
 import { RoleType } from '../common/constants/role-type.enum';
 import type { Actor } from './staff-role.service';
 import type { Permiso } from '../common/permisos/catalogo';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  EVENTO_PERMISOS_CAMBIADOS,
+  PermisosCambiadosEvent,
+} from '../common/events/permisos-cambiados.event';
 
 /** Quien pide: por defecto el super admin (tiene todo). */
 const SUPER: Actor = { user_id: 'su', role: RoleType.SUPER_ADMIN };
@@ -90,6 +95,7 @@ describe('StaffRoleService', () => {
   let guardados: StaffRole[];
   let bajas: StaffRole[];
   let actualizaciones: unknown[];
+  let emitidos: [string, unknown][];
   let deUsuario: jest.Mock<Promise<PermisosDelUsuario>, [string, RoleType]>;
   /** Los permisos del actor admin (ADMIN) y el id de su rol. */
   let delActor: { permisos: Permiso[]; todos: boolean; rolId: string };
@@ -107,6 +113,7 @@ describe('StaffRoleService', () => {
     guardados = [];
     bajas = [];
     actualizaciones = [];
+    emitidos = [];
     delActor = { permisos: [], todos: true, rolId: 'r-actor' };
     deUsuario = jest.fn((userId: string, role: RoleType) =>
       Promise.resolve(
@@ -147,6 +154,9 @@ describe('StaffRoleService', () => {
     };
     const repoAdmin = {
       createQueryBuilder: jest.fn(() => qbAdmin),
+      find: jest.fn(() =>
+        Promise.resolve([{ userId: 'u-7' }, { userId: 'u-8' }]),
+      ),
       update: jest.fn((criterio: unknown, cambios: unknown) => {
         actualizaciones.push([criterio, cambios]);
         return Promise.resolve();
@@ -185,6 +195,12 @@ describe('StaffRoleService', () => {
       repoRol as unknown as Repository<StaffRole>,
       dataSource,
       { deUsuario } as unknown as StaffPermissionsService,
+      {
+        emit: (evento: string, cuerpo: unknown) => {
+          emitidos.push([evento, cuerpo]);
+          return true;
+        },
+      } as unknown as EventEmitter2,
     );
   });
 
@@ -285,6 +301,23 @@ describe('StaffRoleService', () => {
       ]);
     });
 
+    it('cambiar los permisos avisa a todos los que tienen ese rol', async () => {
+      await service.update(
+        'r-1',
+        { permissions: ['stock.gestionar'] },
+        D,
+        SUPER,
+      );
+      expect(emitidos).toEqual([
+        [EVENTO_PERMISOS_CAMBIADOS, new PermisosCambiadosEvent(['u-7', 'u-8'])],
+      ]);
+    });
+
+    it('cambiar sólo el nombre no avisa', async () => {
+      await service.update('r-1', { name: 'Otro nombre' }, D, SUPER);
+      expect(emitidos).toEqual([]);
+    });
+
     it('sin permisos en el cuerpo no toca la lista', async () => {
       const { rol: editado } = await service.update(
         'r-1',
@@ -365,6 +398,19 @@ describe('StaffRoleService', () => {
       expect(actualizaciones).toEqual([
         [{ adminId: 'a-1' }, { staffRoleId: 'r-1' }],
       ]);
+    });
+
+    it('avisa el cambio de permisos de esa persona (el socket reevalúa sus salas)', async () => {
+      await service.asignar('a-1', 'r-1', D, SUPER);
+      expect(emitidos).toEqual([
+        [EVENTO_PERMISOS_CAMBIADOS, new PermisosCambiadosEvent(['u-9'])],
+      ]);
+    });
+
+    it('si falla no avisa nada', async () => {
+      estado.admin = null;
+      await service.asignar('a-x', 'r-1', D, SUPER).catch(() => undefined);
+      expect(emitidos).toEqual([]);
     });
 
     it('repetir la misma asignación no escribe', async () => {

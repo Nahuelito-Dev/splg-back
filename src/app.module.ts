@@ -19,6 +19,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionGuard } from './admin/guards/permission.guard';
 import { AlcanceGuard } from './common/guards/alcance.guard';
 import { SupportModule } from './support/support.module';
+import { ChatModule } from './chat/chat.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformAccessModule } from './platform/access/platform-access.module';
 import { ModuloGuard } from './platform/access/modulo.guard';
@@ -291,6 +292,7 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     ImportModule,
     SupportModule,
     PlatformAccessModule,
+    ChatModule,
     PlatformModule,
   ],
   providers: [

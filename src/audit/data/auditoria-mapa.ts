@@ -156,7 +156,7 @@ export function construirMapa(metadatas: EntityMetadata[]): MapaDeAuditoria {
         table: m.tableName,
         column: c.databaseName,
         property: c.propertyName.slice(0, 80),
-        secret: esSecreto(c.propertyName),
+        secret: esSecreto(c.propertyName, m.name),
         kind: tipoDeValor(c),
         position: position++,
       });
