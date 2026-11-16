@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+postgres
+storage-local
+test
+postman
+.git
+.github
+.env*
+*adminsdk*.json
+ormlogs.log
