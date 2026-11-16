@@ -215,6 +215,13 @@ export class CompanyChatConfigController {
   }
 
   @Get('templates')
+  // Quien supervisa las lee para ver sus nombres en las métricas (sólo lectura).
+  @Permiso(
+    'mensajes.clientes',
+    'mensajes.choferes',
+    'mensajes.configurar',
+    'mensajes.supervisar',
+  )
   @ApiOperation({
     summary: 'Respuestas guardadas de la empresa',
     description: 'Con `channel`, las de ese canal y las de los dos.',
