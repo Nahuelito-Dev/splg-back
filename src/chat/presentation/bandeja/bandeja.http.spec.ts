@@ -25,12 +25,15 @@ import { ModuloGuard } from '../../../platform/access/modulo.guard';
 import { BandejaAcceso } from '../../application/bandeja-acceso';
 import { BandejaEquipoService } from '../../application/bandeja-equipo.service';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
+import { BandejaNotasService } from '../../application/bandeja-notas.service';
+import { BandejaEncuestaService } from '../../application/bandeja-encuesta.service';
 import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
 import {
   chatDeClientesApagado,
   mensajeAjeno,
   borradoNoPermitido,
+  soloDelCliente,
 } from '../../application/bandeja.errors';
 import { ChatRateLimit } from '../../application/chat-rate-limit';
 import {
@@ -40,12 +43,19 @@ import {
 import { CompanyTemplatesService } from '../../application/company-templates.service';
 import { Channel, Party } from '../../domain/chat.enums';
 import {
+  AccionNoDisponibleError,
+  AccionSoloDeLaAppError,
   AsignadoSinPermisoError,
+  CalificacionAnuladaError,
+  CalificacionNoDisponibleError,
+  CalificacionVencidaError,
+  CalificacionYaRespondidaError,
   ChatNoEscribibleError,
   ConversacionCerradaError,
   ConversacionConReclamoError,
   ConversacionNoEncontradaError,
   ConversacionNoReabribleError,
+  MencionNoPermitidaError,
   MensajeConReclamoError,
   MensajeDeUnPedidoError,
   MensajeYaCitadoError,
@@ -95,6 +105,8 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
   let chatHabilitado: boolean;
   const bandeja = {
     abrirDeLaPersona: jest.fn(),
+    acciones: jest.fn(),
+    accion: jest.fn(),
     abrirDelPersonal: jest.fn(),
     enviar: jest.fn(),
     editar: jest.fn(),
@@ -131,6 +143,8 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
   };
   const sugerencias = { sugerir: jest.fn() };
   const equipo = { resumen: jest.fn(), paraAsignar: jest.fn() };
+  const notas = { escribir: jest.fn(), marcarLeidas: jest.fn() };
+  const encuesta = { responder: jest.fn(), resumen: jest.fn() };
   const plantilla = {
     templateId: ID,
     channel: null,
@@ -174,6 +188,8 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         { provide: BandejaPresenter, useValue: presentar },
         { provide: BandejaSugerenciasService, useValue: sugerencias },
         { provide: BandejaEquipoService, useValue: equipo },
+        { provide: BandejaNotasService, useValue: notas },
+        { provide: BandejaEncuestaService, useValue: encuesta },
         { provide: CompanyChatSettingsService, useValue: ajustes },
         { provide: CompanyTemplatesService, useValue: plantillas },
         Reflector,
@@ -252,7 +268,11 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       mine: 2,
       awaitingHuman: 1,
       unread: 4,
+      attention: 5,
+      mentions: 1,
     });
+    notas.escribir.mockResolvedValue({ message: {}, created: true });
+    notas.marcarLeidas.mockResolvedValue(2);
     equipo.paraAsignar.mockResolvedValue([
       { userId: UUID, fullName: 'Lucía Gómez', photoUrl: 'https://f/1' },
       { userId: ID, fullName: 'Pablo Díaz' },
@@ -470,7 +490,14 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
       const ok = await llamar('get', '/conversations/summary', ADMIN);
       expect([ok.status, ok.body]).toEqual([
         200,
-        { unassigned: 3, mine: 2, awaitingHuman: 1, unread: 4 },
+        {
+          unassigned: 3,
+          mine: 2,
+          awaitingHuman: 1,
+          unread: 4,
+          attention: 5,
+          mentions: 1,
+        },
       ]);
       expect(equipo.resumen).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -680,6 +707,178 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
           status,
           code,
         ]);
+      }
+    });
+
+    it('POST /conversations/:id/notes (nota interna, 4a): 201, 200 reintento, 400 (validación y `MENTION_NOT_ALLOWED`), 401, 403 (rol, permiso, módulo), 404, 409, 429', async () => {
+      const ruta = `/conversations/${ID}/notes`;
+      const nota = {
+        clientMessageId: UUID,
+        body: '@Juan mirá esto',
+        mentions: [ID],
+      };
+      expect(await resultado(llamar('post', ruta, ADMIN, nota))).toEqual([
+        201,
+        null,
+      ]);
+      expect(notas.escribir).toHaveBeenCalledWith(
+        expect.objectContaining({
+          party: Party.COMPANY,
+          distributorId: 'dist-a',
+        }),
+        ID,
+        expect.objectContaining({ body: '@Juan mirá esto', mentions: [ID] }),
+      );
+      notas.escribir.mockResolvedValueOnce({ message: {}, created: false });
+      expect(await resultado(llamar('post', ruta, ADMIN, nota))).toEqual([
+        200,
+        null,
+      ]);
+      for (const malo of [
+        { clientMessageId: UUID },
+        { clientMessageId: UUID, body: '   ' },
+        { clientMessageId: UUID, body: 'x'.repeat(2001) },
+        { body: 'x' },
+        { clientMessageId: UUID, body: 'x', mentions: ['no'] },
+        { clientMessageId: UUID, body: 'x', mentions: [ID, ID] },
+        { clientMessageId: UUID, body: 'x', mentions: ID },
+        {
+          clientMessageId: UUID,
+          body: 'x',
+          mentions: Array.from(
+            { length: 11 },
+            (_, i) =>
+              `0d6f0c34-8b7e-4c1a-9f3b-5a2e7d9c1b${String(i).padStart(2, '0')}`,
+          ),
+        },
+      ]) {
+        expect((await resultado(llamar('post', ruta, ADMIN, malo)))[0]).toBe(
+          400,
+        );
+      }
+      expect(
+        (
+          await resultado(
+            llamar('post', `/conversations/no/notes`, ADMIN, nota),
+          )
+        )[0],
+      ).toBe(400);
+      for (const [error, status, code] of [
+        [new MencionNoPermitidaError(), 400, 'MENTION_NOT_ALLOWED'],
+        [new ConversacionNoEncontradaError(), 404, null],
+        [new ConversacionCerradaError(), 409, 'CONVERSATION_CLOSED'],
+        [
+          new HttpException(
+            { statusCode: 429, message: 'rápido', code: 'CHAT_RATE_LIMITED' },
+            429,
+          ),
+          429,
+          'CHAT_RATE_LIMITED',
+        ],
+      ] as Array<[unknown, number, string | null]>) {
+        notas.escribir.mockRejectedValueOnce(error);
+        expect(await resultado(llamar('post', ruta, ADMIN, nota))).toEqual([
+          status,
+          code,
+        ]);
+      }
+      expect(await resultado(llamar('post', ruta, null, nota))).toEqual([
+        401,
+        null,
+      ]);
+      // El cliente y el chofer nunca dejan notas (la ruta es del panel).
+      for (const rol of [CLIENTE, CHOFER, SUPER]) {
+        expect((await resultado(llamar('post', ruta, rol, nota)))[0]).toBe(403);
+      }
+      permisos = ['mensajes.configurar'];
+      expect(await resultado(llamar('post', ruta, ADMIN, nota))).toEqual([
+        403,
+        'PERMISSION_DENIED',
+      ]);
+      permisos = ['mensajes.clientes'];
+      chatHabilitado = false;
+      expect(await resultado(llamar('post', ruta, ADMIN, nota))).toEqual([
+        403,
+        'MODULE_DISABLED',
+      ]);
+    });
+
+    it('POST /conversations/:id/mentions/read: 200 con lo marcado, 400, 401, 403 (rol, permiso, módulo), 404', async () => {
+      const ruta = `/conversations/${ID}/mentions/read`;
+      const ok = await llamar('post', ruta, ADMIN, {});
+      expect([ok.status, ok.body]).toEqual([200, { updated: 2 }]);
+      expect(notas.marcarLeidas).toHaveBeenLastCalledWith(
+        expect.objectContaining({ userId: 'u1' }),
+        ID,
+        undefined,
+      );
+      expect(
+        await resultado(llamar('post', ruta, ADMIN, { upToSeq: 7 })),
+      ).toEqual([200, null]);
+      expect(notas.marcarLeidas).toHaveBeenLastCalledWith(
+        expect.anything(),
+        ID,
+        7,
+      );
+      for (const malo of [{ upToSeq: 0 }, { upToSeq: 'x' }, { upToSeq: 1.5 }]) {
+        expect((await resultado(llamar('post', ruta, ADMIN, malo)))[0]).toBe(
+          400,
+        );
+      }
+      expect(
+        (
+          await resultado(
+            llamar('post', '/conversations/no/mentions/read', ADMIN, {}),
+          )
+        )[0],
+      ).toBe(400);
+      notas.marcarLeidas.mockRejectedValueOnce(
+        new ConversacionNoEncontradaError(),
+      );
+      expect(await resultado(llamar('post', ruta, ADMIN, {}))).toEqual([
+        404,
+        null,
+      ]);
+      expect(await resultado(llamar('post', ruta, null, {}))).toEqual([
+        401,
+        null,
+      ]);
+      for (const rol of [CLIENTE, CHOFER, SUPER]) {
+        expect((await resultado(llamar('post', ruta, rol, {})))[0]).toBe(403);
+      }
+      permisos = ['mensajes.configurar'];
+      expect(await resultado(llamar('post', ruta, ADMIN, {}))).toEqual([
+        403,
+        'PERMISSION_DENIED',
+      ]);
+      permisos = ['mensajes.clientes'];
+      chatHabilitado = false;
+      expect(await resultado(llamar('post', ruta, ADMIN, {}))).toEqual([
+        403,
+        'MODULE_DISABLED',
+      ]);
+    });
+
+    it('GET /conversations?mentioned (vista «Me mencionaron»): `me` y `unread` llegan al servicio; otro valor → 400', async () => {
+      for (const v of ['me', 'unread'] as const) {
+        expect(
+          await resultado(
+            llamar('get', `/conversations?mentioned=${v}`, ADMIN),
+          ),
+        ).toEqual([200, null]);
+        expect(gestion.listar).toHaveBeenLastCalledWith(
+          expect.anything(),
+          expect.objectContaining({ mentioned: v }),
+        );
+      }
+      for (const v of ['yo', 'true', '']) {
+        expect(
+          (
+            await resultado(
+              llamar('get', `/conversations?mentioned=${v}`, ADMIN),
+            )
+          )[0],
+        ).toBe(400);
       }
     });
 
@@ -1253,6 +1452,361 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         403,
         'MODULE_DISABLED',
       ]);
+    });
+  });
+
+  describe('encuesta (4b) y botones de acción (4e)', () => {
+    const accion = { clientMessageId: UUID, key: 'where_is_my_order' };
+
+    it('GET /me/conversations/actions: 200 con la lista (no la toma `:id`), 401, 403 (chofer CUSTOMER_ONLY, panel, módulo)', async () => {
+      bandeja.acciones.mockResolvedValueOnce([
+        {
+          key: 'where_is_my_order',
+          label: '¿Dónde está mi pedido?',
+          kind: 'message',
+          text: '¿Dónde está mi pedido?',
+        },
+      ]);
+      const ok = await llamar('get', '/me/conversations/actions', CLIENTE);
+      expect([ok.status, ok.body]).toEqual([
+        200,
+        {
+          items: [
+            {
+              key: 'where_is_my_order',
+              label: '¿Dónde está mi pedido?',
+              kind: 'message',
+              text: '¿Dónde está mi pedido?',
+            },
+          ],
+        },
+      ]);
+      expect(bandeja.conversacion).not.toHaveBeenCalled();
+      bandeja.acciones.mockRejectedValueOnce(soloDelCliente());
+      expect(
+        await resultado(llamar('get', '/me/conversations/actions', CHOFER)),
+      ).toEqual([403, 'CUSTOMER_ONLY']);
+      expect(
+        await resultado(llamar('get', '/me/conversations/actions', null)),
+      ).toEqual([401, null]);
+      expect(
+        (await resultado(llamar('get', '/me/conversations/actions', ADMIN)))[0],
+      ).toBe(403);
+      chatHabilitado = false;
+      expect(
+        await resultado(llamar('get', '/me/conversations/actions', CLIENTE)),
+      ).toEqual([403, 'MODULE_DISABLED']);
+    });
+
+    it('POST /me/conversations/:id/actions: 201, 200 reintento, 400 (validación, ACTION_NOT_AVAILABLE, ACTION_IS_APP_ONLY), 401, 403 (CUSTOMER_ONLY, CUSTOMER_CHAT_DISABLED, panel, módulo), 404, 409, 429', async () => {
+      const ruta = `/me/conversations/${ID}/actions`;
+      bandeja.accion.mockResolvedValue({ message: {}, created: true });
+      expect(await resultado(llamar('post', ruta, CLIENTE, accion))).toEqual([
+        201,
+        null,
+      ]);
+      expect(bandeja.accion).toHaveBeenLastCalledWith(
+        expect.objectContaining({ party: Party.CUSTOMER }),
+        ID,
+        expect.objectContaining({ key: 'where_is_my_order' }),
+      );
+      bandeja.accion.mockResolvedValueOnce({ message: {}, created: false });
+      expect(await resultado(llamar('post', ruta, CLIENTE, accion))).toEqual([
+        200,
+        null,
+      ]);
+      for (const malo of [
+        { clientMessageId: UUID },
+        { clientMessageId: UUID, key: 'pedir_pizza' },
+        { key: 'where_is_my_order' },
+        { clientMessageId: 'x', key: 'where_is_my_order' },
+      ]) {
+        expect((await resultado(llamar('post', ruta, CLIENTE, malo)))[0]).toBe(
+          400,
+        );
+      }
+      expect(
+        (
+          await resultado(
+            llamar('post', '/me/conversations/no/actions', CLIENTE, accion),
+          )
+        )[0],
+      ).toBe(400);
+      for (const [error, status, code] of [
+        [new AccionNoDisponibleError(), 400, 'ACTION_NOT_AVAILABLE'],
+        [new AccionSoloDeLaAppError(), 400, 'ACTION_IS_APP_ONLY'],
+        [soloDelCliente(), 403, 'CUSTOMER_ONLY'],
+        [chatDeClientesApagado(), 403, 'CUSTOMER_CHAT_DISABLED'],
+        [new ConversacionNoEncontradaError(), 404, null],
+        [new ConversacionCerradaError(), 409, 'CONVERSATION_CLOSED'],
+        [
+          new HttpException(
+            { statusCode: 429, message: 'rápido', code: 'CHAT_RATE_LIMITED' },
+            429,
+          ),
+          429,
+          'CHAT_RATE_LIMITED',
+        ],
+      ] as Array<[unknown, number, string | null]>) {
+        bandeja.accion.mockRejectedValueOnce(error);
+        expect(await resultado(llamar('post', ruta, CLIENTE, accion))).toEqual([
+          status,
+          code,
+        ]);
+      }
+      expect(await resultado(llamar('post', ruta, null, accion))).toEqual([
+        401,
+        null,
+      ]);
+      expect((await resultado(llamar('post', ruta, ADMIN, accion)))[0]).toBe(
+        403,
+      );
+      chatHabilitado = false;
+      expect(await resultado(llamar('post', ruta, CLIENTE, accion))).toEqual([
+        403,
+        'MODULE_DISABLED',
+      ]);
+    });
+
+    it('POST /me/conversations/:id/rating: 201, 200 reintento, 400, 401, 403 (CUSTOMER_ONLY, panel, módulo), 404 (otra / sin encuesta), 409 (respondida, anulada, vencida)', async () => {
+      const ruta = `/me/conversations/${ID}/rating`;
+      const voto = { ratingId: UUID, score: 5, comment: 'Gracias' };
+      const rating = {
+        ratingId: UUID,
+        conversationId: ID,
+        servedBy: 'team',
+        score: 5,
+        comment: 'Gracias',
+        requestedAt: new Date('2026-11-15T12:00:00Z'),
+        expiresAt: new Date('2099-11-17T12:00:00Z'),
+        answeredAt: new Date('2026-11-15T13:00:00Z'),
+        cancelledAt: null,
+      };
+      encuesta.responder.mockResolvedValue({ rating, created: true });
+      const ok = await llamar('post', ruta, CLIENTE, voto);
+      // Al cliente no le llega quién atendió.
+      expect([ok.status, ok.body]).toEqual([
+        201,
+        {
+          conversationId: ID,
+          ratingId: UUID,
+          status: 'answered',
+          score: 5,
+          comment: 'Gracias',
+          requestedAt: '2026-11-15T12:00:00.000Z',
+          expiresAt: '2099-11-17T12:00:00.000Z',
+          answeredAt: '2026-11-15T13:00:00.000Z',
+        },
+      ]);
+      expect(encuesta.responder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ party: Party.CUSTOMER }),
+        ID,
+        expect.objectContaining({ ratingId: UUID, score: 5 }),
+      );
+      encuesta.responder.mockResolvedValueOnce({ rating, created: false });
+      expect(await resultado(llamar('post', ruta, CLIENTE, voto))).toEqual([
+        200,
+        null,
+      ]);
+      for (const malo of [
+        {},
+        { score: 5 },
+        { ratingId: 'no', score: 5 },
+        { ratingId: UUID, score: 0 },
+        { ratingId: UUID, score: 6 },
+        { ratingId: UUID, score: 4.5 },
+        { ratingId: UUID, score: '5' },
+        { ratingId: UUID, score: 5, comment: '   ' },
+        { ratingId: UUID, score: 5, comment: 'x'.repeat(281) },
+      ]) {
+        expect((await resultado(llamar('post', ruta, CLIENTE, malo)))[0]).toBe(
+          400,
+        );
+      }
+      expect(
+        (
+          await resultado(
+            llamar('post', '/me/conversations/no/rating', CLIENTE, voto),
+          )
+        )[0],
+      ).toBe(400);
+      for (const [error, status, code] of [
+        [soloDelCliente(), 403, 'CUSTOMER_ONLY'],
+        [new ConversacionNoEncontradaError(), 404, null],
+        [new CalificacionNoDisponibleError(), 404, 'RATING_NOT_FOUND'],
+        [new CalificacionYaRespondidaError(), 409, 'RATING_ALREADY_ANSWERED'],
+        [new CalificacionAnuladaError(), 409, 'RATING_CANCELLED'],
+        [new CalificacionVencidaError(48), 409, 'RATING_EXPIRED'],
+      ] as Array<[unknown, number, string | null]>) {
+        encuesta.responder.mockRejectedValueOnce(error);
+        expect(await resultado(llamar('post', ruta, CLIENTE, voto))).toEqual([
+          status,
+          code,
+        ]);
+      }
+      expect(await resultado(llamar('post', ruta, null, voto))).toEqual([
+        401,
+        null,
+      ]);
+      expect((await resultado(llamar('post', ruta, ADMIN, voto)))[0]).toBe(403);
+      chatHabilitado = false;
+      expect(await resultado(llamar('post', ruta, CLIENTE, voto))).toEqual([
+        403,
+        'MODULE_DISABLED',
+      ]);
+    });
+
+    it('POST /me/conversations con `firstAction` (4e): 201, 400 (los dos, ninguno, clave desconocida, ACTION_IS_APP_ONLY, ACTION_NOT_AVAILABLE), 403 CUSTOMER_ONLY', async () => {
+      const abrir = (cuerpo: object) =>
+        llamar('post', '/me/conversations', CLIENTE, {
+          subjectType: 'general',
+          ...cuerpo,
+        });
+      const accionInicial = { clientMessageId: UUID, key: 'talk_to_person' };
+      expect(await resultado(abrir({ firstAction: accionInicial }))).toEqual([
+        201,
+        null,
+      ]);
+      expect(bandeja.abrirDeLaPersona).toHaveBeenLastCalledWith(
+        expect.objectContaining({ party: Party.CUSTOMER }),
+        expect.objectContaining({ firstAction: accionInicial }),
+      );
+      for (const malo of [
+        {},
+        { firstMessage: cuerpo, firstAction: accionInicial },
+        { firstAction: { clientMessageId: UUID, key: 'pedir_pizza' } },
+        { firstAction: { key: 'talk_to_person' } },
+      ]) {
+        expect((await resultado(abrir(malo)))[0]).toBe(400);
+      }
+      for (const [error, status, code] of [
+        [new AccionSoloDeLaAppError(), 400, 'ACTION_IS_APP_ONLY'],
+        [new AccionNoDisponibleError(), 400, 'ACTION_NOT_AVAILABLE'],
+        [soloDelCliente(), 403, 'CUSTOMER_ONLY'],
+      ] as Array<[unknown, number, string | null]>) {
+        bandeja.abrirDeLaPersona.mockRejectedValueOnce(error);
+        expect(await resultado(abrir({ firstAction: accionInicial }))).toEqual([
+          status,
+          code,
+        ]);
+      }
+    });
+
+    it('GET /conversations/csat: 200 (no la toma `:id`), 400, 401, 403 (rol, sin `mensajes.clientes`, módulo)', async () => {
+      encuesta.resumen.mockResolvedValue({
+        from: new Date('2026-10-16T00:00:00Z'),
+        to: new Date('2026-11-15T00:00:00Z'),
+        requested: 3,
+        answered: 2,
+        expired: 1,
+        average: 4.5,
+        csat: 1,
+        byScore: { '1': 0, '2': 0, '3': 0, '4': 1, '5': 1 },
+        assistant: { answered: 1, average: 5, csat: 1 },
+        team: { answered: 1, average: 4, csat: 1 },
+      });
+      const ok = await llamar(
+        'get',
+        '/conversations/csat?from=2026-10-16T00:00:00Z',
+        ADMIN,
+      );
+      expect(ok.status).toBe(200);
+      expect(ok.body).toMatchObject({
+        from: '2026-10-16T00:00:00.000Z',
+        requested: 3,
+        average: 4.5,
+      });
+      expect(encuesta.resumen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ distributorId: 'dist-a' }),
+        expect.objectContaining({ from: new Date('2026-10-16T00:00:00Z') }),
+      );
+      expect(bandeja.conversacion).not.toHaveBeenCalled();
+      expect(
+        (
+          await resultado(llamar('get', '/conversations/csat?from=ayer', ADMIN))
+        )[0],
+      ).toBe(400);
+      // `from` posterior a `to` → 400; iguales vale.
+      expect(
+        (
+          await resultado(
+            llamar(
+              'get',
+              '/conversations/csat?from=2026-11-15T00:00:00Z&to=2026-11-01T00:00:00Z',
+              ADMIN,
+            ),
+          )
+        )[0],
+      ).toBe(400);
+      expect(
+        (
+          await resultado(
+            llamar(
+              'get',
+              '/conversations/csat?from=2026-11-15T00:00:00Z&to=2026-11-15T00:00:00Z',
+              ADMIN,
+            ),
+          )
+        )[0],
+      ).toBe(200);
+      expect(
+        await resultado(llamar('get', '/conversations/csat', null)),
+      ).toEqual([401, null]);
+      for (const rol of [CLIENTE, CHOFER, SUPER]) {
+        expect(
+          (await resultado(llamar('get', '/conversations/csat', rol)))[0],
+        ).toBe(403);
+      }
+      permisos = ['mensajes.choferes'];
+      expect(
+        await resultado(llamar('get', '/conversations/csat', ADMIN)),
+      ).toEqual([403, 'PERMISSION_DENIED']);
+      permisos = ['mensajes.clientes'];
+      chatHabilitado = false;
+      expect(
+        await resultado(llamar('get', '/conversations/csat', ADMIN)),
+      ).toEqual([403, 'MODULE_DISABLED']);
+    });
+
+    it('settings: encuesta y botones del chat con 400 por cada regla', async () => {
+      for (const bueno of [
+        { csatEnabled: false },
+        { csatMessage: '¿Qué tal te atendimos, {{cliente.nombre}}?' },
+        { csatMessage: null },
+        { customerActions: [] },
+        { customerActions: ['talk_to_person', 'where_is_my_order'] },
+      ]) {
+        expect(
+          await resultado(llamar('put', '/chat/settings', ADMIN, bueno)),
+        ).toEqual([200, null]);
+      }
+      for (const malo of [
+        { csatEnabled: 'sí' },
+        { csatEnabled: null },
+        { csatMessage: '' },
+        { csatMessage: 'x'.repeat(501) },
+        { customerActions: ['pedir_pizza'] },
+        { customerActions: ['talk_to_person', 'talk_to_person'] },
+        { customerActions: 'talk_to_person' },
+        { customerActions: null },
+      ]) {
+        expect(
+          (await resultado(llamar('put', '/chat/settings', ADMIN, malo)))[0],
+        ).toBe(400);
+      }
+      const ok = await llamar('get', '/chat/settings', ADMIN);
+      expect(ok.body).toMatchObject({
+        csatEnabled: true,
+        csatMessage: null,
+        effectiveCsatMessage:
+          '¿Cómo te atendimos en {{empresa.nombre}}? Tocá de 1 a 5 para calificar la conversación.',
+        customerActions: [
+          'where_is_my_order',
+          'repeat_last_order',
+          'payment_methods',
+          'talk_to_person',
+        ],
+      });
     });
   });
 

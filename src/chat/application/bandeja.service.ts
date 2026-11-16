@@ -30,6 +30,7 @@ import type { MessagesQueryDto } from '../presentation/dto/chat-input.dto';
 import type {
   OpenMyConversationDto,
   OpenStaffConversationDto,
+  SendCustomerActionDto,
   SendInboxMessageDto,
   SendStaffMessageDto,
 } from '../presentation/dto/bandeja-input.dto';
@@ -40,7 +41,13 @@ import {
   lectorDe,
 } from './bandeja-acceso';
 import {
+  accionesHabilitadas,
+  accionParaMandar,
+  type AccionDelCliente,
+} from '../domain/acciones-del-cliente';
+import {
   borradoNoPermitido,
+  soloDelCliente,
   chatDeClientesApagado,
   mensajeAjeno,
   noExisteElChofer,
@@ -50,6 +57,7 @@ import {
   sinRelacionConLaEmpresa,
 } from './bandeja.errors';
 import { AsistenteDelChat, dejaDeEsperarPersona } from './asistente-del-chat';
+import { marcarMencionesLeidas } from './bandeja-notas.service';
 import { ChatEvents, Efectos } from './chat.events';
 import { RespuestasFijas } from './respuestas-fijas';
 import { ChatRateLimit } from './chat-rate-limit';
@@ -61,6 +69,35 @@ import { ConversacionVigente } from './conversacion-vigente';
 import { choferDeLaEmpresa, clienteDeLaEmpresa } from './bandeja-personas';
 import { MensajeEscrito, MessageWriter } from './message-writer';
 import { valoresDePlantilla } from './valores-de-plantilla';
+
+/** Lo que cambia un envío del cliente: con «hablar con una persona» (4e), la pasa a una persona. */
+export interface OpcionesDelEnvio {
+  pedirPersona?: boolean;
+}
+
+/**
+ * El cliente pidió hablar con una persona (4e): si nadie la atiende, queda
+ * «esperando persona» (como cuando deriva el asistente) y el equipo se entera
+ * por el aviso de la bandeja. Con la conversación bloqueada por el envío, y
+ * antes de decidir la respuesta automática: así el asistente con IA no la
+ * toma y salen las fijas (recibido, fuera de horario).
+ */
+export async function pedirUnaPersona(
+  manager: EntityManager,
+  c: Conversation,
+  efectos: Efectos,
+  ahora: Date,
+): Promise<void> {
+  if (c.assignedToUserId || c.awaitingHumanSince) return;
+  await manager.query(
+    `UPDATE "conversation" SET "awaiting_human_since" = $2
+      WHERE "conversation_id" = $1 AND "awaiting_human_since" IS NULL
+        AND "assigned_to_user_id" IS NULL`,
+    [c.conversationId, ahora],
+  );
+  c.awaitingHumanSince = ahora;
+  efectos.conversacion(c, 'status');
+}
 
 /** Con quién y de qué es la conversación que se abre o se sigue. */
 export interface DestinoDeLaBandeja {
@@ -113,24 +150,58 @@ export class BandejaService {
     private readonly asistente: AsistenteDelChat,
   ) {}
 
-  /** El cliente o el chofer abre (o sigue) una conversación con la empresa. */
+  /**
+   * El cliente o el chofer abre (o sigue) una conversación con la empresa,
+   * con un primer mensaje o (sólo el cliente, 4e) tocando un botón de acción:
+   * se manda su texto y `talk_to_person` además la deja esperando a una
+   * persona.
+   */
   async abrirDeLaPersona(
     actor: ActorDeLaBandeja,
     dto: OpenMyConversationDto,
     ahora: Date = new Date(),
   ): Promise<ConversacionAbierta> {
+    if ((dto.firstMessage === undefined) === (dto.firstAction === undefined)) {
+      throw new BadRequestException(
+        'Escribí el primer mensaje o tocá una opción, una de las dos cosas',
+      );
+    }
     if (!ambitoValido(dto.subjectType, dto.orderId)) {
       throw new BadRequestException(
         'Una conversación general no lleva pedido; una por pedido, sí',
       );
     }
+    if (dto.firstAction && actor.party !== Party.CUSTOMER) {
+      throw soloDelCliente();
+    }
     const canal = actor.canales[0];
-    if (canal === Channel.STAFF_CUSTOMER)
-      await this.assertClientesPrendido(actor);
+    let primer = dto.firstMessage;
+    let opciones: OpcionesDelEnvio = {};
+    if (canal === Channel.STAFF_CUSTOMER) {
+      const ajustes = await this.ajustes.leer(actor.distributorId);
+      if (!ajustes.customerChatEnabled) throw chatDeClientesApagado();
+      if (dto.firstAction) {
+        const accion = accionParaMandar(
+          dto.firstAction.key,
+          ajustes.customerActions,
+        );
+        primer = {
+          clientMessageId: dto.firstAction.clientMessageId,
+          body: accion.text,
+        };
+        opciones = { pedirPersona: accion.kind === 'handoff' };
+      }
+    }
     const destino = await this.dataSource.transaction((manager) =>
       this.destinoDeLaPersona(manager, actor, canal, dto, ahora),
     );
-    return this.abrir(actor, destino, dto.firstMessage, ahora);
+    return this.abrir(
+      actor,
+      destino,
+      primer as MensajeEntrante,
+      ahora,
+      opciones,
+    );
   }
 
   /** El personal abre (o sigue) una conversación con un cliente o un chofer. */
@@ -154,12 +225,51 @@ export class BandejaService {
     return this.abrir(actor, destino, dto.firstMessage, ahora);
   }
 
+  /**
+   * Los botones de acción que la empresa muestra en el chat (4e), para abrir
+   * un chat nuevo. Sólo el cliente (chofer → 403); si la empresa no atiende
+   * por chat, ninguno.
+   */
+  async acciones(actor: ActorDeLaBandeja): Promise<AccionDelCliente[]> {
+    if (actor.party !== Party.CUSTOMER) throw soloDelCliente();
+    const a = await this.ajustes.leer(actor.distributorId);
+    return a.customerChatEnabled ? accionesHabilitadas(a.customerActions) : [];
+  }
+
+  /**
+   * El cliente toca un botón de acción (4e): se manda el mensaje
+   * predefinido como cualquier mensaje suyo (idempotente por
+   * `clientMessageId`; lo atiende el asistente o el equipo). «Hablar con una
+   * persona» además pasa la conversación a «esperando persona» (el asistente
+   * no contesta). Chofer → 403; una acción que la empresa no muestra o que es
+   * de la app → 400.
+   */
+  async accion(
+    actor: ActorDeLaBandeja,
+    conversationId: string,
+    dto: SendCustomerActionDto,
+    ahora: Date = new Date(),
+  ): Promise<MensajeEscrito> {
+    if (actor.party !== Party.CUSTOMER) throw soloDelCliente();
+    const ajustes = await this.ajustes.leer(actor.distributorId);
+    if (!ajustes.customerChatEnabled) throw chatDeClientesApagado();
+    const accion = accionParaMandar(dto.key, ajustes.customerActions);
+    return this.enviar(
+      actor,
+      conversationId,
+      { clientMessageId: dto.clientMessageId, body: accion.text },
+      ahora,
+      { pedirPersona: accion.kind === 'handoff' },
+    );
+  }
+
   /** Escribir en una conversación abierta. */
   async enviar(
     actor: ActorDeLaBandeja,
     conversationId: string,
     dto: MensajeEntrante,
     ahora: Date = new Date(),
+    opciones: OpcionesDelEnvio = {},
   ): Promise<MensajeEscrito> {
     const conversacion = await this.acceso.buscar(actor, conversationId);
     if (actor.party === Party.CUSTOMER)
@@ -175,7 +285,15 @@ export class BandejaService {
     });
     const efectos = new Efectos();
     const escrito = await this.dataSource.transaction((manager) =>
-      this.escribirDentro(manager, actor, conversacion, dto, efectos, ahora),
+      this.escribirDentro(
+        manager,
+        actor,
+        conversacion,
+        dto,
+        efectos,
+        ahora,
+        opciones,
+      ),
     );
     this.eventos.publicar(efectos);
     return escrito;
@@ -309,6 +427,16 @@ export class BandejaService {
   ): Promise<void> {
     const c = await this.acceso.buscar(actor, conversationId);
     await this.hilos.leer(c, lectorDe(actor), seq);
+    // Leer hasta una nota es haberla visto: sus menciones a quien lee, leídas.
+    if (esDelPersonal(actor)) {
+      await marcarMencionesLeidas(
+        this.dataSource,
+        c.conversationId,
+        actor.userId,
+        actor.distributorId,
+        seq,
+      );
+    }
   }
 
   private async assertClientesPrendido(actor: ActorDeLaBandeja): Promise<void> {
@@ -354,6 +482,7 @@ export class BandejaService {
     destino: DestinoDeLaBandeja,
     primer: MensajeEntrante,
     ahora: Date,
+    opciones: OpcionesDelEnvio = {},
   ): Promise<ConversacionAbierta> {
     if (esDelPersonal(actor)) {
       await this.cupos.mensaje({
@@ -401,6 +530,7 @@ export class BandejaService {
         primer,
         efectos,
         ahora,
+        opciones,
       );
       return { ...escrito, conversationCreated: creada };
     });
@@ -416,6 +546,7 @@ export class BandejaService {
     dto: MensajeEntrante,
     efectos: Efectos,
     ahora: Date,
+    opciones: OpcionesDelEnvio = {},
   ): Promise<MensajeEscrito> {
     const { body, templateKey } = await this.textoDelMensaje(
       manager,
@@ -444,6 +575,9 @@ export class BandejaService {
       await this.registrarPrimeraRespuesta(manager, r.conversation);
       await dejaDeEsperarPersona(manager, r.conversation);
     } else if (actor.party === Party.CUSTOMER) {
+      if (opciones.pedirPersona) {
+        await pedirUnaPersona(manager, r.conversation, efectos, ahora);
+      }
       await this.responderAutomaticamente(
         manager,
         r.conversation,
@@ -756,7 +890,7 @@ export async function recalcularVistaPrevia(
   const [ultimo]: Array<{ body: string; visibility: MessageVisibility }> =
     await manager.query(
       `SELECT "body", "visibility" FROM "message"
-        WHERE "conversation_id" = $1 AND "body" IS NOT NULL
+        WHERE "conversation_id" = $1 AND "body" IS NOT NULL AND "visibility" = 'all'
           AND "withdrawn_at" IS NULL AND "redacted_at" IS NULL AND "deleted_at" IS NULL
         ORDER BY "seq" DESC LIMIT 1`,
       [conversationId],

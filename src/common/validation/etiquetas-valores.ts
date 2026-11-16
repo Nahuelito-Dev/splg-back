@@ -28,6 +28,13 @@ export const ETIQUETAS_VALORES: Readonly<Record<string, string>> = {
   'scope:staff_reply': 'Respuesta rápida de la empresa',
   'channel:staff_customer': 'Con clientes',
   'channel:staff_driver': 'Con choferes',
+  'mentioned:me': 'Me mencionaron',
+  'mentioned:unread': 'Menciones sin leer',
+  // Botones de acción del chat para el cliente (4e).
+  where_is_my_order: '¿Dónde está mi pedido?',
+  repeat_last_order: 'Repetir mi último pedido',
+  payment_methods: 'Medios de pago',
+  talk_to_person: 'Hablar con una persona',
   'subjectType:general': 'General',
   'subjectType:order': 'Por un pedido',
   'visibility:all': 'Visible para la empresa',

@@ -87,7 +87,11 @@ export enum MessageKind {
 
 export enum MessageVisibility {
   ALL = 'all',
-  /** Nota interna de la plataforma: sólo en el hilo de un ticket (D-C8). */
+  /**
+   * Nota interna: la de la plataforma en el hilo de un ticket (D-C8) y la del
+   * personal de la empresa en la bandeja (C3, C2), con su nota de derivación
+   * del asistente con IA. Nunca la ve la otra punta.
+   */
   INTERNAL = 'internal',
 }
 
@@ -111,6 +115,16 @@ export enum SystemCode {
   DRIVER_CHANGED = 'driver_changed',
   /** Se creó un reclamo desde la conversación (C3). */
   CLAIM_CREATED = 'claim_created',
+  /**
+   * Nota interna del asistente con IA al pasar la conversación a una persona
+   * (C3): resumen y motivo, sólo para el equipo. El texto va en `body`.
+   */
+  HANDOFF_NOTE = 'handoff_note',
+  /**
+   * Encuesta de satisfacción al cerrar una conversación con un cliente (4b):
+   * el texto en `body` y `{ ratingId, expiresAt, scale }` en `payload`.
+   */
+  CSAT_REQUEST = 'csat_request',
 }
 
 export enum TicketStatus {
@@ -149,6 +163,9 @@ export enum MessageTemplateScope {
 
 /** Clave de la respuesta automática del chat fuera del horario de la plataforma. */
 export const PLANTILLA_FUERA_DE_HORARIO = 'fuera_de_horario';
+
+/** Clave (`template_key`) de las respuestas del asistente con IA (B3). */
+export const PLANTILLA_DEL_ASISTENTE_IA = 'asistente_ia';
 
 /** Clave del aviso automático de recibido en horario (D-C29). */
 export const PLANTILLA_RECIBIDO = 'recibido';

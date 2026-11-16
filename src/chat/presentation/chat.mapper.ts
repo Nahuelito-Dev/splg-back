@@ -1,3 +1,4 @@
+import { payloadPara } from './payload-del-mensaje';
 import type { ContextoDeVista } from '../application/chat-views.service';
 import {
   Channel,
@@ -172,7 +173,12 @@ export class ChatMapper {
       sender: ChatMapper.autor(m, ctx),
       isMine: mio,
       kind: m.kind,
-      payload: redactado ? null : (m.payload as Record<string, unknown> | null),
+      payload: redactado
+        ? null
+        : payloadPara(
+            m.payload as Record<string, unknown> | null,
+            esPlataforma(ctx),
+          ),
       citedInTickets: ctx.citados.get(m.messageId) ?? [],
       body: redactado ? null : m.body,
       bodyFiltered: m.bodyFiltered,

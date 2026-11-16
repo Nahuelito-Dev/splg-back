@@ -64,7 +64,8 @@ export function avisoDeRecibido(chat: Conversation, body: string) {
  * soporte de la plataforma a la empresa (C1). Las manda el envío cuando la IA
  * no se encarga, y el asistente cuando la IA no corre (tope o falla). La
  * conversación está bloqueada por quien llama: dos mensajes simultáneos no
- * disparan dos respuestas. `true` si escribió una.
+ * disparan dos respuestas. `true` si escribió una. Las notas internas (4a) no
+ * cuentan como que el equipo escribió: el cliente no las ve.
  */
 @Injectable()
 export class RespuestasFijas {
@@ -103,7 +104,7 @@ export class RespuestasFijas {
               EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
                          AND "kind" = 'system' AND "system_code" = '${SystemCode.RECEIVED_ACK}') AS recibido,
               EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
-                         AND "sender_party" = 'company') AS empresa`,
+                         AND "sender_party" = 'company' AND "visibility" = 'all') AS empresa`,
       [c.conversationId, periodo],
     );
     const cual = respuestaAutomaticaDeLaEmpresa({
@@ -165,12 +166,13 @@ export class RespuestasFijas {
       `SELECT EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
                          AND "kind" = 'system' AND "system_code" = '${SystemCode.RECEIVED_ACK}') AS recibido,
               EXISTS (SELECT 1 FROM "message" WHERE "conversation_id" = $1
-                         AND "sender_party" = 'platform') AS plataforma,
+                         AND "sender_party" = 'platform' AND "visibility" = 'all') AS plataforma,
               EXISTS (
                 SELECT 1 FROM "message" a
                  WHERE a."conversation_id" = $1 AND a."kind" = 'auto_reply'
                    AND a."seq" > COALESCE((SELECT max(p."seq") FROM "message" p
-                                            WHERE p."conversation_id" = $1 AND p."sender_party" = 'platform'), 0)
+                                            WHERE p."conversation_id" = $1 AND p."sender_party" = 'platform'
+                                              AND p."visibility" = 'all'), 0)
               ) AS fuera`,
       [chat.conversationId],
     );

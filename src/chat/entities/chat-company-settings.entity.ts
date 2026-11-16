@@ -44,6 +44,14 @@ import type { FranjaDeAtencion } from '../domain/horario';
   `"assistant_name" IS NULL OR (char_length(btrim("assistant_name")) BETWEEN 2 AND 60 AND "assistant_name" !~ '[\\u0001-\\u001F\\u007F-\\u009F\\u2028\\u2029]')`,
 )
 @Check(
+  'CHK_chat_company_settings_encuesta',
+  `"csat_message" IS NULL OR char_length(btrim("csat_message")) BETWEEN 1 AND 500`,
+)
+@Check(
+  'CHK_chat_company_settings_acciones',
+  `jsonb_typeof("customer_actions") = 'array' AND "customer_actions" <@ '["where_is_my_order", "repeat_last_order", "payment_methods", "talk_to_person"]'::jsonb`,
+)
+@Check(
   'CHK_chat_company_settings_objetivo',
   `"first_response_target_minutes" BETWEEN 5 AND 1440`,
 )
@@ -139,6 +147,31 @@ export class ChatCompanySettings {
     nullable: true,
   })
   ackMessage!: string | null;
+
+  /** Encuesta de satisfacción al cerrar una conversación con un cliente (4b). Prendida por omisión. */
+  @Column({ name: 'csat_enabled', type: 'boolean', default: true })
+  csatEnabled!: boolean;
+
+  /** Texto (con variables) del pedido de calificación; nulo: el de omisión (`ENCUESTA_POR_DEFECTO`). */
+  @Column({
+    name: 'csat_message',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  csatMessage!: string | null;
+
+  /**
+   * Los botones de acción que ve el cliente en el chat (4e), del catálogo
+   * `ACCIONES_DEL_CLIENTE`. Por omisión, todos; vacía: ninguno.
+   */
+  @Column({
+    name: 'customer_actions',
+    type: 'jsonb',
+    default: () =>
+      `'["where_is_my_order", "repeat_last_order", "payment_methods", "talk_to_person"]'`,
+  })
+  customerActions!: string[];
 
   /** Objetivo propio de primera respuesta, en minutos hábiles (para su tablero). */
   @Column({

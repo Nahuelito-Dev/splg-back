@@ -10,6 +10,7 @@ import {
   Unique,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { User } from '../../users/entities/user.entity';
 
 /**
  * Un aviso de la bandeja de los administradores de una distribuidora. Es de la
@@ -18,6 +19,10 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
  *
  * `dedupeKey` identifica el hecho que se avisa: dentro de una distribuidora no
  * se repite, así un cron que corre cada hora no llena la bandeja.
+ *
+ * `recipient_user_id`: un aviso para una sola persona de la empresa (la
+ * mención en una nota interna del chat, 4a). Los demás admins no lo ven ni lo
+ * reciben por el socket; sin destinatario, es de todos.
  */
 @Check(
   'CHK_admin_notification_texto',
@@ -26,6 +31,10 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
 @Check(
   'CHK_admin_notification_destino',
   `("link_entity" IS NULL) = ("link_id" IS NULL)`,
+)
+@Check(
+  'CHK_admin_notification_destinatario',
+  `"recipient_user_id" IS NULL OR "distributor_id" IS NOT NULL`,
 )
 @Unique('UQ_admin_notification_dedupe', ['distributorId', 'dedupeKey'])
 // La bandeja de la plataforma (`distributor_id` nulo): el único de arriba no
@@ -68,6 +77,17 @@ export class AdminNotification {
 
   @Column({ name: 'dedupe_key', type: 'varchar', length: 200 })
   dedupeKey!: string;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'recipient_user_id',
+    foreignKeyConstraintName: 'FK_admin_notification_recipient',
+  })
+  recipient?: User | null;
+
+  /** Sólo para esa persona del personal; nulo: para todos los admins de la empresa. */
+  @Column({ name: 'recipient_user_id', type: 'uuid', nullable: true })
+  recipientUserId!: string | null;
 
   /** Si el aviso pidió además el correo a los admins. */
   @Column({ type: 'boolean', default: false })

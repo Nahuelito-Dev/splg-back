@@ -37,6 +37,8 @@ import { RequiereModulo } from '../../../platform/access/requiere-modulo.decorat
 import { BandejaAcceso, lectorDe } from '../../application/bandeja-acceso';
 import { BandejaEquipoService } from '../../application/bandeja-equipo.service';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
+import { BandejaNotasService } from '../../application/bandeja-notas.service';
+import { BandejaEncuestaService } from '../../application/bandeja-encuesta.service';
 import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
 import { BandejaPresenter } from '../bandeja.presenter';
@@ -45,12 +47,16 @@ import {
   BroadcastDriversDto,
   CreateClaimFromConversationDto,
   EditMessageDto,
+  MarkMentionsReadDto,
   OpenStaffConversationDto,
+  QueryCsatDto,
   QueryInboxDto,
+  SendInternalNoteDto,
   SendStaffMessageDto,
 } from '../dto/bandeja-input.dto';
 import {
   BroadcastResponseDto,
+  CsatSummaryResponseDto,
   ClaimFromConversationResponseDto,
   InboxAssigneeListResponseDto,
   InboxConversationDto,
@@ -59,6 +65,7 @@ import {
   InboxMessageListResponseDto,
   InboxSuggestionsResponseDto,
   InboxSummaryDto,
+  MentionsReadResponseDto,
   OpenConversationResponseDto,
 } from '../dto/bandeja-response.dto';
 import { MessagesQueryDto, ReadUpToDto } from '../dto/chat-input.dto';
@@ -89,18 +96,20 @@ export class CompanyInboxController {
     private readonly presentar: BandejaPresenter,
     private readonly sugerencias: BandejaSugerenciasService,
     private readonly equipo: BandejaEquipoService,
+    private readonly notas: BandejaNotasService,
+    private readonly encuesta: BandejaEncuestaService,
   ) {}
 
   @Get()
   @ApiOperation({
     summary: 'La bandeja: conversaciones con clientes y choferes',
     description:
-      'Sólo los canales que atiende quien pide. Ordenadas por el último mensaje; con `assigned=none`, primero las que esperan a una persona (el asistente con IA las derivó; la que espera hace más, primero). `awaiting=true` deja sólo las que esperan. `counts` son las abiertas de esos canales: sin asignar, asignadas a quien pide y todas.',
+      'Sólo los canales que atiende quien pide. Ordenadas por el último mensaje; con `assigned=none`, primero las que esperan a una persona (el asistente con IA las derivó; la que espera hace más, primero). `awaiting=true` deja sólo las que esperan. `mentioned=me` es la vista «Me mencionaron» (con alguna nota que menciona a quien pide; `mentioned=unread`, sólo con menciones sin leer). `counts` son las abiertas de esos canales: sin asignar, asignadas a quien pide y todas.',
   })
   @ApiOkResponse({ type: InboxListResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Filtro inválido: canal, estado, `assigned` (`me`, `none` o uuid), ids, `awaiting` que no es `true`/`false`, `q` de menos de 3 caracteres, fecha o paginación',
+      'Filtro inválido: canal, estado, `assigned` (`me`, `none` o uuid), ids, `awaiting` que no es `true`/`false`, `mentioned` que no es `me`/`unread`, `q` de menos de 3 caracteres, fecha o paginación',
   })
   @ApiForbiddenResponse({ description: SIN_CANAL })
   async listar(
@@ -195,7 +204,7 @@ export class CompanyInboxController {
   @ApiOperation({
     summary: 'Resumen de la bandeja (insignias)',
     description:
-      'Para la insignia del menú «Mensajes» y las pestañas: de las conversaciones abiertas de los canales que atiende quien pide (`mensajes.clientes`, `mensajes.choferes`), cuántas están sin asignar, cuántas son suyas, cuántas esperan a una persona y cuántas tienen algo sin leer para quien pide. Sólo de su empresa.',
+      'Para la insignia del menú «Mensajes» y las pestañas: de las conversaciones abiertas de los canales que atiende quien pide (`mensajes.clientes`, `mensajes.choferes`), cuántas están sin asignar, cuántas son suyas, cuántas esperan a una persona, cuántas tienen algo sin leer para quien pide (sin las asignadas a otra persona), cuántas piden atención (sin asignar ∪ esperando persona ∪ sin leer, sin duplicar) y cuántas menciones sin leer tiene en notas internas. Sólo de su empresa.',
   })
   @ApiOkResponse({ type: InboxSummaryDto })
   @ApiForbiddenResponse({ description: SIN_CANAL_NI_MODULO })
@@ -205,6 +214,29 @@ export class CompanyInboxController {
   ): Promise<InboxSummaryDto> {
     const actor = await this.acceso.delPersonal(user, distributorId);
     return this.equipo.resumen(actor);
+  }
+
+  @Get('csat')
+  @Permiso('mensajes.clientes')
+  @ApiOperation({
+    summary: 'Resumen de la encuesta de satisfacción',
+    description:
+      'De las encuestas pedidas al cerrar conversaciones con clientes en el período (por cuándo se pidieron; sin `from`, los últimos 30 días): pedidas, respondidas, vencidas, promedio (1 a 5), CSAT (proporción de 4 y 5) y lo mismo de las atendidas sólo por el asistente con IA y de las atendidas por el equipo. Sólo de la empresa de quien pide. Es lo que lee el tablero (B4).',
+  })
+  @ApiOkResponse({ type: CsatSummaryResponseDto })
+  @ApiBadRequestResponse({ description: 'Fecha inválida' })
+  @ApiForbiddenResponse({
+    description:
+      'Sin `mensajes.clientes` (`PERMISSION_DENIED`), la cuenta no es del personal o la empresa no tiene habilitados los mensajes (`MODULE_DISABLED`)',
+  })
+  async csat(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Query() query: QueryCsatDto,
+  ): Promise<CsatSummaryResponseDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    const r = await this.encuesta.resumen(actor, query);
+    return { ...r, from: r.from.toISOString(), to: r.to.toISOString() };
   }
 
   @Get(':id')
@@ -320,6 +352,62 @@ export class CompanyInboxController {
     return this.presentar.mensaje(r.message, lectorDe(actor));
   }
 
+  @Post(':id/notes')
+  @ApiOperation({
+    summary: 'Dejar una nota interna (con @menciones)',
+    description:
+      'Sólo la ve el personal de la empresa: nunca le llega al cliente ni al chofer (ni por HTTP ni por el socket), ni al asistente con IA. No cuenta como primera respuesta, no saca a la conversación de «esperando persona» ni cambia su vista previa. `mentions` avisa a cada persona mencionada (aviso del panel sólo para ella) y la nota queda en su «Me mencionaron» hasta que la lee. Se edita como un mensaje propio (`PATCH :id/messages/:messageId`, sólo su autor, 15 minutos). Reintentar con el mismo `clientMessageId` devuelve la nota ya guardada (200) sin volver a avisar.',
+  })
+  @ApiCreatedResponse({ type: InboxMessageDto })
+  @ApiOkResponse({ type: InboxMessageDto, description: 'Reintento: ya estaba' })
+  @ApiBadRequestResponse({
+    description:
+      'Id que no es uuid, texto vacío o de más de 2000, `mentions` que no es una lista de uuid sin repetir de hasta 10, o menciona a alguien que no atiende este canal (`MENTION_NOT_ALLOWED`)',
+  })
+  @ApiForbiddenResponse({ description: SIN_CANAL_NI_MODULO })
+  @ApiNotFoundResponse({ description: NO_EXISTE })
+  @ApiConflictResponse({
+    description: 'La conversación está cerrada (`CONVERSATION_CLOSED`)',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Más de 30 mensajes por minuto (`CHAT_RATE_LIMITED`)',
+  })
+  async nota(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendInternalNoteDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<InboxMessageDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    const r = await this.notas.escribir(actor, id, dto);
+    res.status(r.created ? HttpStatus.CREATED : HttpStatus.OK);
+    return this.presentar.mensaje(r.message, lectorDe(actor));
+  }
+
+  @Post(':id/mentions/read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Marcar leídas mis menciones en la conversación',
+    description:
+      'Las menciones a quien pide en las notas internas de la conversación (todas, o hasta la nota `upToSeq`). Leer la conversación (`POST :id/read`) también las marca hasta ese mensaje. Idempotente: las ya leídas no cuentan.',
+  })
+  @ApiOkResponse({ type: MentionsReadResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Id que no es uuid o `upToSeq` que no es un entero positivo',
+  })
+  @ApiForbiddenResponse({ description: SIN_CANAL_NI_MODULO })
+  @ApiNotFoundResponse({ description: NO_EXISTE })
+  async leerMenciones(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MarkMentionsReadDto,
+  ): Promise<MentionsReadResponseDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    return { updated: await this.notas.marcarLeidas(actor, id, dto.upToSeq) };
+  }
+
   @Patch(':id/messages/:messageId')
   @ApiOperation({
     summary: 'Editar un mensaje propio',
@@ -386,7 +474,7 @@ export class CompanyInboxController {
   @ApiOperation({
     summary: 'Cerrar',
     description:
-      'Queda en lectura. El cliente o el chofer que vuelva a escribir abre otra; la empresa la puede reabrir.',
+      'Queda en lectura. El cliente o el chofer que vuelva a escribir abre otra; la empresa la puede reabrir. Con un cliente, si la empresa tiene prendida la encuesta, sale el mensaje `csat_request` para que califique (1 a 5, hasta 48 h).',
   })
   @ApiOkResponse({ type: InboxConversationDto })
   @ApiBadRequestResponse({ description: 'Id que no es uuid' })

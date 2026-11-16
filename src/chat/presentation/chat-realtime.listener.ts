@@ -37,6 +37,7 @@ import { numeroDeTicket } from '../domain/support-ticket.machine';
 import { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
 import { vistaPrevia } from '../domain/reglas-del-mensaje';
+import { seqVisibleHasta } from '../infrastructure/bandeja-read-model';
 import type { Observador } from '../infrastructure/chat-read-model';
 import { ChatMapper } from './chat.mapper';
 
@@ -182,7 +183,7 @@ export class ChatRealtimeListener {
   @OnEvent(EVENTO_LECTURA, { async: true })
   async lectura(evento: LecturaRegistrada): Promise<void> {
     if (esCanalDeLaBandeja(evento.channel)) return;
-    await this.seguro(EVENTO_SOCKET_LEIDO, () => {
+    await this.seguro(EVENTO_SOCKET_LEIDO, async () => {
       const payload = {
         conversationId: evento.conversationId,
         party: evento.party,
@@ -196,14 +197,25 @@ export class ChatRealtimeListener {
         );
       }
       if (evento.deLaParte) {
+        const deLaPlataforma = evento.party === Party.PLATFORM;
         this.gateway.emitirAConversacion(
           evento.conversationId,
-          evento.party === Party.COMPANY ? 'platform' : 'company',
+          deLaPlataforma ? 'company' : 'platform',
           EVENTO_SOCKET_LEIDO,
-          payload,
+          // A la empresa, el «leído» de la plataforma sobre lo que ella ve
+          // (sin las notas internas de un ticket).
+          deLaPlataforma
+            ? {
+                ...payload,
+                lastReadSeq: await seqVisibleHasta(
+                  this.dataSource,
+                  evento.conversationId,
+                  evento.lastReadSeq,
+                ),
+              }
+            : payload,
         );
       }
-      return Promise.resolve();
     });
   }
 
@@ -257,9 +269,11 @@ export class ChatRealtimeListener {
   /**
    * «Escribiendo…»: sólo si la conversación es de quien escribe (la de otra
    * empresa no se reenvía a nadie). Le llega a la otra punta, sin decir quién.
+   * Una nota interna (`internal`: la plataforma en un ticket) no se reenvía.
    */
   @OnEvent(EVENTO_ESCRIBIENDO_DEL_PANEL, { async: true })
   async escribiendo(pedido: EscribiendoDelPanel): Promise<void> {
+    if (pedido.internal) return;
     await this.seguro(EVENTO_SOCKET_ESCRIBIENDO, async () => {
       const c = await this.dataSource.getRepository(Conversation).findOne({
         where: { conversationId: pedido.conversationId },

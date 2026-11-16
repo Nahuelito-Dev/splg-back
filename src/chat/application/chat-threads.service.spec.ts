@@ -51,6 +51,48 @@ describe('ChatThreadsService', () => {
     expect(plataforma.condiciones).not.toContain('m.visibility = :todos');
   });
 
+  const condicionesAlLeer = async (channel: Channel, party: Party) => {
+    const { qb, condiciones } = qbFalso([]);
+    const ds = {
+      getRepository: () => ({ createQueryBuilder: () => qb }),
+    } as unknown as DataSource;
+    await new ChatThreadsService(ds, {} as ChatEvents).mensajes(
+      { ...conv, channel } as Conversation,
+      { party, userId: 'x' } as never,
+      { limit: 50 },
+    );
+    return condiciones;
+  };
+
+  it.each<[string, Channel]>([
+    ['con clientes', Channel.STAFF_CUSTOMER],
+    ['con choferes', Channel.STAFF_DRIVER],
+  ])(
+    'notas internas (4a): el personal las ve en su bandeja %s',
+    async (_caso, channel) => {
+      expect(await condicionesAlLeer(channel, Party.COMPANY)).not.toContain(
+        'm.visibility = :todos',
+      );
+    },
+  );
+
+  it.each<[string, Channel, Party]>([
+    ['el cliente', Channel.STAFF_CUSTOMER, Party.CUSTOMER],
+    ['el chofer', Channel.STAFF_DRIVER, Party.DRIVER],
+    [
+      'la empresa en su chat con la plataforma',
+      Channel.PLATFORM_CHAT,
+      Party.COMPANY,
+    ],
+  ])(
+    'notas internas (4a): %s nunca las recibe',
+    async (_caso, channel, party) => {
+      expect(await condicionesAlLeer(channel, party)).toContain(
+        'm.visibility = :todos',
+      );
+    },
+  );
+
   it('pagina hacia atrás y devuelve en orden de seq, con hasMore', async () => {
     const filas = [5, 4, 3].map((seq) => ({ seq }));
     const { qb } = qbFalso(filas);

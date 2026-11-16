@@ -8,6 +8,8 @@ import {
   FUERA_DE_HORARIO_POR_DEFECTO,
   RECIBIDO_POR_DEFECTO,
 } from '../domain/bandeja';
+import { ACCIONES_POR_DEFECTO } from '../domain/acciones-del-cliente';
+import { ENCUESTA_POR_DEFECTO } from '../domain/encuesta';
 import { franjasValidas } from '../domain/horario';
 import {
   feriadosValidos,
@@ -40,6 +42,9 @@ export function ajustesDeLaBandejaPorDefecto(
     ackEnabled: false,
     ackMessage: null,
     firstResponseTargetMinutes: 30,
+    csatEnabled: true,
+    csatMessage: null,
+    customerActions: [...ACCIONES_POR_DEFECTO],
     updatedByUserId: null,
   });
 }
@@ -55,6 +60,11 @@ export function textoFueraDeHorario(a: ChatCompanySettings): string {
 
 export function textoDeRecibido(a: ChatCompanySettings): string {
   return a.ackMessage ?? RECIBIDO_POR_DEFECTO;
+}
+
+/** El pedido de calificación al cerrar (4b): el de la empresa o el de omisión. */
+export function textoDeLaEncuesta(a: ChatCompanySettings): string {
+  return a.csatMessage ?? ENCUESTA_POR_DEFECTO;
 }
 
 /** Lo que dice el asistente al pasar la conversación a una persona: el de la empresa o el de omisión. */
@@ -110,6 +120,7 @@ export class CompanyChatSettingsService {
       dto.outOfHoursMessage,
       dto.ackMessage,
       dto.handoffMessage,
+      dto.csatMessage,
     ]) {
       if (typeof texto === 'string') assertVariablesConocidas(texto);
     }

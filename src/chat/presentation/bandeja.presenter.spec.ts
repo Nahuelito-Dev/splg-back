@@ -14,7 +14,7 @@ import { Conversation } from '../entities/conversation.entity';
 import { Message } from '../entities/message.entity';
 import type { BandejaReadModel } from '../infrastructure/bandeja-read-model';
 import type { Lector } from '../infrastructure/chat-read-model';
-import { BandejaPresenter } from './bandeja.presenter';
+import { BandejaPresenter, payloadPara } from './bandeja.presenter';
 
 const D = 'dist-a';
 
@@ -108,6 +108,16 @@ function presentador(
     atados: jest.fn((ids: readonly string[]) =>
       Promise.resolve(new Set(ids.filter((id) => atados.includes(id)))),
     ),
+    menciones: jest.fn((ids: readonly string[]) =>
+      Promise.resolve(
+        new Map(
+          ids.map((id) => [id, [{ userId: 'adm-2', fullName: 'Juan Ruiz' }]]),
+        ),
+      ),
+    ),
+    mencionesSinLeer: jest.fn().mockResolvedValue(new Map([['conv-1', 1]])),
+    encuestas: jest.fn().mockResolvedValue(new Map()),
+    primerMensajeDelAsistente: jest.fn().mockResolvedValue(new Map()),
   };
   const ajustes = {
     leer: jest.fn().mockResolvedValue({
@@ -352,6 +362,10 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       empresas: jest.fn().mockResolvedValue(new Map()),
       marcas: jest.fn().mockResolvedValue(new Map()),
       atados: jest.fn().mockResolvedValue(new Set()),
+      menciones: jest.fn().mockResolvedValue(new Map()),
+      mencionesSinLeer: jest.fn().mockResolvedValue(new Map()),
+      encuestas: jest.fn().mockResolvedValue(new Map()),
+      primerMensajeDelAsistente: jest.fn().mockResolvedValue(new Map()),
     };
     const p = new BandejaPresenter(
       lectura as unknown as BandejaReadModel,
@@ -463,5 +477,256 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       { party: Party.COMPANY, userId: 'adm-1' },
     );
     expect(recibido.senderLabel).toBe('Asistente de Florchi Gas');
+  });
+
+  describe('notas internas (4a), nota de derivación (4c) y fuentes (4d)', () => {
+    const notaInterna = mensaje({
+      messageId: 'm-9',
+      seq: 9,
+      visibility: MessageVisibility.INTERNAL,
+      body: '@Juan fijate',
+      replyToSeq: null,
+    });
+    const personal = { party: Party.COMPANY, userId: 'adm-1' } as const;
+
+    it('el personal ve la nota marcada interna, con a quiénes menciona', async () => {
+      const p = presentador();
+      const m = await p.mensaje(notaInterna, personal);
+      expect(m).toMatchObject({
+        internal: true,
+        body: '@Juan fijate',
+        mentions: [{ userId: 'adm-2', fullName: 'Juan Ruiz' }],
+      });
+      expect(p.base.menciones).toHaveBeenCalledWith(['m-9']);
+    });
+
+    it('un mensaje visible no lleva menciones y a la base sólo se le preguntan las notas', async () => {
+      const p = presentador();
+      const m = await p.mensaje(mensaje(), personal);
+      expect(m.internal).toBe(false);
+      expect(m).not.toHaveProperty('mentions');
+      expect(p.base.menciones).toHaveBeenCalledWith([]);
+    });
+
+    it('al cliente y al chofer no se les arman las menciones ni las sin leer', async () => {
+      const p = presentador();
+      for (const quien of [
+        { party: Party.CUSTOMER, userId: 'cli-1' },
+        { party: Party.DRIVER, userId: 'cho-1' },
+      ] as const) {
+        const c = await p.conversacion(conversacion(), quien);
+        expect(c).not.toHaveProperty('unreadMentions');
+        expect(await p.mensaje(mensaje(), quien)).not.toHaveProperty(
+          'mentions',
+        );
+      }
+      expect(p.base.menciones).not.toHaveBeenCalled();
+      expect(p.base.mencionesSinLeer).not.toHaveBeenCalled();
+    });
+
+    it('el personal ve sus menciones sin leer en cada conversación', async () => {
+      const p = presentador();
+      const c = await p.conversacion(conversacion(), personal);
+      expect(c.unreadMentions).toBe(1);
+      expect(p.base.mencionesSinLeer).toHaveBeenCalledWith(['conv-1'], 'adm-1');
+    });
+
+    it('las fuentes de la respuesta del asistente (ai.sources) le llegan al personal y nunca al cliente', async () => {
+      const fuentes = [
+        { type: 'faq', faqId: 'faq-1', question: '¿Horario?' },
+        { type: 'tool', tool: 'estado_de_mi_pedido', orderNumber: 'A1B2C3' },
+      ];
+      const respuesta = mensaje({
+        senderParty: Party.SYSTEM,
+        senderUserId: null,
+        clientMessageId: null,
+        kind: MessageKind.AUTO_REPLY,
+        body: 'Tu pedido está en camino.',
+        payload: {
+          senderLabel: 'Gasito',
+          ai: {
+            model: 'claude-haiku-5-5',
+            sources: fuentes as never,
+          },
+        },
+        replyToSeq: null,
+      });
+      const p = presentador();
+      expect((await p.mensaje(respuesta, personal)).payload).toEqual({
+        senderLabel: 'Gasito',
+        ai: { model: 'claude-haiku-5-5', sources: fuentes },
+      });
+      expect(
+        (await p.mensaje(respuesta, { party: Party.CUSTOMER, userId: 'cli-1' }))
+          .payload,
+      ).toEqual({ senderLabel: 'Gasito', ai: { model: 'claude-haiku-5-5' } });
+    });
+
+    it('payloadPara deja igual lo que no trae fuentes', () => {
+      expect(payloadPara(null, false)).toBeNull();
+      expect(payloadPara({ claimId: 'c' }, false)).toEqual({ claimId: 'c' });
+      expect(payloadPara({ ai: { model: 'x' } }, false)).toEqual({
+        ai: { model: 'x' },
+      });
+    });
+
+    it('la nota de derivación del asistente: interna, del sistema, sin marca de respuesta automática', async () => {
+      const p = presentador();
+      const m = await p.mensaje(
+        mensaje({
+          senderParty: Party.SYSTEM,
+          senderUserId: null,
+          clientMessageId: null,
+          kind: MessageKind.SYSTEM,
+          systemCode: SystemCode.HANDOFF_NOTE,
+          visibility: MessageVisibility.INTERNAL,
+          body: 'Motivo: El asistente tardó demasiado en responder',
+          replyToSeq: null,
+        }),
+        personal,
+      );
+      expect(m).toMatchObject({
+        internal: true,
+        automated: false,
+        senderLabel: null,
+        systemCode: 'handoff_note',
+        body: 'Motivo: El asistente tardó demasiado en responder',
+        mentions: [{ userId: 'adm-2', fullName: 'Juan Ruiz' }],
+      });
+    });
+  });
+
+  describe('encuesta (4b) y botones de acción (4e)', () => {
+    const cliente = { party: Party.CUSTOMER, userId: 'cli-1' } as const;
+    const encuesta = {
+      ratingId: 'r-1',
+      conversationId: 'conv-1',
+      distributorId: D,
+      requestMessageId: 'm-8',
+      customerUserId: 'cli-1',
+      servedBy: 'assistant' as const,
+      score: null,
+      comment: null,
+      requestedAt: new Date('2026-11-15T12:00:00Z'),
+      expiresAt: new Date('2099-11-17T12:00:00Z'),
+      answeredAt: null,
+      cancelledAt: null,
+    };
+
+    it('la conversación con un cliente lleva la encuesta del último cierre; quién atendió, sólo para el personal', async () => {
+      const p = presentador();
+      p.base.encuestas.mockResolvedValue(new Map([['conv-1', encuesta]]));
+      const base = {
+        ratingId: 'r-1',
+        status: 'pending',
+        score: null,
+        comment: null,
+        requestedAt: '2026-11-15T12:00:00.000Z',
+        expiresAt: '2099-11-17T12:00:00.000Z',
+        answeredAt: null,
+      };
+      expect(
+        (
+          await p.conversacion(conversacion(), {
+            party: Party.COMPANY,
+            userId: 'adm-1',
+          })
+        ).csat,
+      ).toEqual({ ...base, servedBy: 'assistant' });
+      expect((await p.conversacion(conversacion(), cliente)).csat).toEqual(
+        base,
+      );
+    });
+
+    it('una encuesta anulada al reabrir se ve como `cancelled`', async () => {
+      const p = presentador();
+      p.base.encuestas.mockResolvedValue(
+        new Map([
+          [
+            'conv-1',
+            { ...encuesta, cancelledAt: new Date('2026-11-15T13:00:00Z') },
+          ],
+        ]),
+      );
+      expect((await p.conversacion(conversacion(), cliente)).csat?.status).toBe(
+        'cancelled',
+      );
+    });
+
+    it('sin encuesta, `csat: null`; con un chofer (C2) no hay encuesta ni se consulta', async () => {
+      const p = presentador();
+      expect((await p.conversacion(conversacion(), cliente)).csat).toBeNull();
+      const c2 = await p.conversacion(
+        conversacion({
+          channel: Channel.STAFF_DRIVER,
+          customerUserId: null,
+          driverUserId: 'cho-1',
+        }),
+        { party: Party.DRIVER, userId: 'cho-1' },
+      );
+      expect(c2).not.toHaveProperty('csat');
+    });
+
+    const recibido = (seq: number) =>
+      mensaje({
+        messageId: `m-${seq}`,
+        seq,
+        senderParty: Party.SYSTEM,
+        senderUserId: null,
+        clientMessageId: null,
+        kind: MessageKind.SYSTEM,
+        systemCode: SystemCode.RECEIVED_ACK,
+        body: 'Recibimos tu mensaje',
+        replyToSeq: null,
+      });
+
+    it('al cliente, los botones que muestra la empresa van en el primer mensaje del asistente (en el orden del catálogo) y en ningún otro', async () => {
+      const p = presentador({
+        customerActions: ['talk_to_person', 'where_is_my_order'],
+      });
+      p.base.primerMensajeDelAsistente.mockResolvedValue(
+        new Map([['conv-1', 2]]),
+      );
+      const [primero, otro] = await p.mensajes(
+        [recibido(2), recibido(5)],
+        cliente,
+      );
+      expect(primero.actions).toEqual([
+        {
+          key: 'where_is_my_order',
+          label: '¿Dónde está mi pedido?',
+          kind: 'message',
+          text: '¿Dónde está mi pedido?',
+        },
+        {
+          key: 'talk_to_person',
+          label: 'Hablar con una persona',
+          kind: 'handoff',
+          text: 'Quiero hablar con una persona.',
+        },
+      ]);
+      expect(otro).not.toHaveProperty('actions');
+    });
+
+    it('al personal no le llegan botones; al cliente, tampoco en un mensaje de la empresa ni con el chat apagado', async () => {
+      const p = presentador();
+      p.base.primerMensajeDelAsistente.mockResolvedValue(
+        new Map([['conv-1', 2]]),
+      );
+      expect(
+        await p.mensaje(recibido(2), { party: Party.COMPANY, userId: 'adm-1' }),
+      ).not.toHaveProperty('actions');
+      expect(p.base.primerMensajeDelAsistente).not.toHaveBeenCalled();
+      expect(await p.mensaje(mensaje({ seq: 2 }), cliente)).not.toHaveProperty(
+        'actions',
+      );
+      const apagado = presentador({ customerChatEnabled: false });
+      apagado.base.primerMensajeDelAsistente.mockResolvedValue(
+        new Map([['conv-1', 2]]),
+      );
+      expect(await apagado.mensaje(recibido(2), cliente)).not.toHaveProperty(
+        'actions',
+      );
+    });
   });
 });

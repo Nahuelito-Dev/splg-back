@@ -3,6 +3,8 @@ import { Channel, Party } from '../domain/chat.enums';
 import {
   BandejaReadModel,
   condicionDeNoLeidoEnLaBandeja,
+  lecturaVisibleDeLaPunta,
+  seqVisibleHasta,
 } from './bandeja-read-model';
 
 /** Base que anota cada consulta con sus parámetros y devuelve lo que se le diga. */
@@ -46,14 +48,28 @@ describe('BandejaReadModel: mensajes atados (canEdit, D-C22)', () => {
 describe('BandejaReadModel: resumen de la bandeja (insignias)', () => {
   it('de las abiertas de esa empresa y esos canales, con lo sin leer de quien pide', async () => {
     const { consultas, lectura } = base([
-      { unassigned: '3', mine: '2', awaiting: '1', unread: '4' },
+      {
+        unassigned: '3',
+        mine: '2',
+        awaiting: '1',
+        unread: '4',
+        attention: '5',
+        mentions: '2',
+      },
     ]);
     const r = await lectura.resumen(
       'dist-a',
       [Channel.STAFF_CUSTOMER],
       personal,
     );
-    expect(r).toEqual({ unassigned: 3, mine: 2, awaitingHuman: 1, unread: 4 });
+    expect(r).toEqual({
+      unassigned: 3,
+      mine: 2,
+      awaitingHuman: 1,
+      unread: 4,
+      attention: 5,
+      mentions: 2,
+    });
     expect(consultas).toHaveLength(1);
     const { sql, params } = consultas[0];
     expect(params).toEqual([
@@ -74,11 +90,41 @@ describe('BandejaReadModel: resumen de la bandeja (insignias)', () => {
     );
   });
 
+  it('`unread` no cuenta las asignadas a otra persona; `attention` es sin asignar ∪ esperando ∪ sin leer, una vez por conversación; `mentions`, las sin leer de quien pide en esa empresa y esos canales', async () => {
+    const { consultas, lectura } = base([]);
+    await lectura.resumen('dist-a', [Channel.STAFF_CUSTOMER], personal);
+    const { sql } = consultas[0];
+    const sinLeer =
+      `(c."assigned_to_user_id" IS NULL OR c."assigned_to_user_id" = $3) AND EXISTS ( ` +
+      `SELECT 1 FROM "message" m WHERE m."conversation_id" = c."conversation_id" AND ` +
+      condicionDeNoLeidoEnLaBandeja('$4').replace(/\s+/g, ' ');
+    expect(sql).toContain(`count(*) FILTER (WHERE ${sinLeer})) AS unread`);
+    expect(sql).toContain(
+      `count(*) FILTER (WHERE c."assigned_to_user_id" IS NULL OR c."awaiting_human_since" IS NOT NULL OR (${sinLeer}))) AS attention`,
+    );
+    expect(sql).toContain(
+      `WHERE mm."distributor_id" = $1 AND mm."mentioned_user_id" = $3 AND mm."read_at" IS NULL AND cm."channel" = ANY($2::text[])`,
+    );
+  });
+
+  it('las notas internas nunca cuentan como sin leer (ni para la otra punta)', () => {
+    expect(condicionDeNoLeidoEnLaBandeja('$3')).toContain(
+      `m."visibility" = 'all'`,
+    );
+  });
+
   it('sin fila, todo en cero', async () => {
     const { lectura } = base([]);
     expect(
       await lectura.resumen('dist-a', [Channel.STAFF_DRIVER], personal),
-    ).toEqual({ unassigned: 0, mine: 0, awaitingHuman: 0, unread: 0 });
+    ).toEqual({
+      unassigned: 0,
+      mine: 0,
+      awaitingHuman: 0,
+      unread: 0,
+      attention: 0,
+      mentions: 0,
+    });
   });
 
   it('el contador de cada conversación y el resumen cuentan lo mismo como «sin leer»', async () => {
@@ -133,5 +179,89 @@ describe('BandejaReadModel: el personal de la empresa (para asignar)', () => {
     expect(sql).toContain(`a."distributor_id" = $1`);
     expect(sql).toContain(`u."deletedAt" IS NULL AND u."blocked" = false`);
     expect(sql).toContain(`sr."deletedAt" IS NULL`);
+  });
+});
+
+describe('BandejaReadModel: notas internas (4a) en la lista y en las menciones', () => {
+  it('el último mensaje de cada conversación es el último visible: una nota nunca', async () => {
+    const condiciones: string[] = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const f of ['distinctOn', 'orderBy', 'addOrderBy']) {
+      qb[f] = jest.fn(() => qb);
+    }
+    qb.where = jest.fn((c: string) => (condiciones.push(c), qb));
+    qb.andWhere = jest.fn((c: string) => (condiciones.push(c), qb));
+    qb.getMany = jest.fn(() => Promise.resolve([]));
+    const ds = {
+      getRepository: () => ({ createQueryBuilder: () => qb }),
+    } as unknown as DataSource;
+    await new BandejaReadModel(ds).ultimos(['conv-1']);
+    expect(condiciones).toContain("m.visibility = 'all'");
+  });
+
+  it('menciones: por nota, con el nombre de cada mencionado; sin notas no consulta', async () => {
+    const vacio = base();
+    expect(await vacio.lectura.menciones([])).toEqual(new Map());
+    expect(vacio.consultas).toHaveLength(0);
+    const { lectura, consultas } = base([
+      { message_id: 'n-1', user_id: 'adm-2', full_name: 'Juan' },
+      { message_id: 'n-1', user_id: 'adm-3', full_name: null },
+    ]);
+    expect(await lectura.menciones(['n-1', 'n-1'])).toEqual(
+      new Map([
+        [
+          'n-1',
+          [
+            { userId: 'adm-2', fullName: 'Juan' },
+            { userId: 'adm-3', fullName: 'Sin nombre' },
+          ],
+        ],
+      ]),
+    );
+    expect(consultas[0].params).toEqual([['n-1']]);
+  });
+
+  it('menciones sin leer: sólo las de esa persona y sin leer, por conversación', async () => {
+    const { lectura, consultas } = base([
+      { conversation_id: 'conv-1', n: '2' },
+    ]);
+    expect(await lectura.mencionesSinLeer(['conv-1'], 'adm-2')).toEqual(
+      new Map([['conv-1', 2]]),
+    );
+    expect(consultas[0].sql).toContain('"mentioned_user_id" = $2');
+    expect(consultas[0].sql).toContain('"read_at" IS NULL');
+    expect(consultas[0].params).toEqual([['conv-1'], 'adm-2']);
+  });
+});
+
+describe('el «leído» de la otra punta, sobre mensajes visibles (4a)', () => {
+  it('lecturaDeLaOtraParte cuenta hasta el último visible que no pasa de lo leído', async () => {
+    const { lectura, consultas } = base([
+      { conversation_id: 'conv-1', last_read_seq: '4' },
+    ]);
+    expect(
+      await lectura.lecturaDeLaOtraParte(['conv-1'], Party.CUSTOMER),
+    ).toEqual(new Map([['conv-1', 4]]));
+    expect(consultas[0].sql).toContain(
+      lecturaVisibleDeLaPunta('p').replace(/\s+/g, ' '),
+    );
+    const expresion = lecturaVisibleDeLaPunta('p');
+    expect(expresion).toContain(`v."visibility" = 'all'`);
+    expect(expresion).toContain(`v."seq" <= p."last_read_seq"`);
+  });
+
+  it('seqVisibleHasta: el último visible hasta ese número; sin ninguno, 0', async () => {
+    const query = jest.fn(() => Promise.resolve([{ seq: '4' }]));
+    expect(await seqVisibleHasta({ query } as never, 'conv-1', 5)).toBe(4);
+    expect(
+      (query.mock.calls[0] as unknown as [string, unknown[]])[0],
+    ).toContain(`"visibility" = 'all'`);
+    expect(
+      await seqVisibleHasta(
+        { query: jest.fn(() => Promise.resolve([{ seq: null }])) } as never,
+        'conv-1',
+        5,
+      ),
+    ).toBe(0);
   });
 });

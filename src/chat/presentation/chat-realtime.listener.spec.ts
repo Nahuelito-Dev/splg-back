@@ -109,11 +109,13 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
         contexto: (o: Observador) => Promise.resolve(contexto(o)),
       } as unknown as ChatViewsService,
       {
-        query: () =>
-          Promise.resolve([
-            { distributor_id: 'dist-a' },
-            { distributor_id: 'dist-b' },
-          ]),
+        query: (sql: string) =>
+          Promise.resolve(
+            // El último visible hasta lo leído: el 6 (el 7 es una nota del ticket).
+            sql.includes('max("seq")')
+              ? [{ seq: '6' }]
+              : [{ distributor_id: 'dist-a' }, { distributor_id: 'dist-b' }],
+          ),
         getRepository: () => ({
           findOne: ({ where }: { where: { conversationId: string } }) =>
             Promise.resolve(
@@ -227,6 +229,25 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
     expect(aConversacion()).toEqual([['chat-1', 'platform', 'chat:read']]);
   });
 
+  it('el «leído» de la plataforma hasta una nota interna del ticket: la empresa ve el último visible antes', async () => {
+    await listener.lectura({
+      conversationId: 'hilo-1',
+      distributorId: 'dist-a',
+      channel: Channel.PLATFORM_TICKET,
+      party: Party.PLATFORM,
+      lastReadSeq: 7,
+      userId: 'super',
+      personal: false,
+      deLaParte: true,
+    });
+    expect(gateway.emitirAConversacion).toHaveBeenCalledWith(
+      'hilo-1',
+      'company',
+      'chat:read',
+      { conversationId: 'hilo-1', party: Party.PLATFORM, lastReadSeq: 6 },
+    );
+  });
+
   it('B4: el «leído» llega a las otras pestañas de quien leyó, aunque la punta no suba', async () => {
     await listener.lectura({
       conversationId: 'chat-1',
@@ -279,18 +300,31 @@ describe('ChatRealtimeListener: cada punta recibe lo suyo (§7.3)', () => {
     );
   });
 
+  it('«escribiendo…» de la plataforma en una nota interna del ticket: a la empresa no le llega', async () => {
+    await listener.escribiendo({
+      conversationId: 'hilo-1',
+      userId: 'super',
+      distributorId: null,
+      esPlataforma: true,
+      internal: true,
+    });
+    expect(gateway.emitirAConversacion).not.toHaveBeenCalled();
+  });
+
   it('«escribiendo…» de un admin sobre una conversación de otra empresa no se reenvía a nadie', async () => {
     await listener.escribiendo({
       conversationId: 'chat-1',
       userId: 'admin-b',
       distributorId: 'dist-b',
       esPlataforma: false,
+      internal: false,
     });
     await listener.escribiendo({
       conversationId: 'chat-1',
       userId: 'admin-a',
       distributorId: 'dist-a',
       esPlataforma: false,
+      internal: false,
     });
     // Sólo el de A, sólo a la mitad de la plataforma de esa conversación.
     expect(aConversacion()).toEqual([['chat-1', 'platform', 'chat:typing']]);
@@ -358,6 +392,7 @@ describe('B1: «escribiendo…» sólo en conversaciones abiertas de C1', () => 
       userId: 'admin-a',
       distributorId: 'dist-a',
       esPlataforma: false,
+      internal: false,
     });
     expect(gateway.emitirAlSoporteDePlataforma).not.toHaveBeenCalled();
     expect(gateway.emitirAConversacion).not.toHaveBeenCalled();

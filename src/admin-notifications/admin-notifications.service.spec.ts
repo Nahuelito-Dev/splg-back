@@ -42,6 +42,7 @@ function fila(
     emailedAt: null,
     createdAt: new Date(createdAt),
     traceId: null,
+    recipientUserId: null,
   };
 }
 
@@ -192,6 +193,29 @@ describe('AdminNotificationsService', () => {
       await expect(service.registrar(evento())).rejects.toThrow('base caída');
     });
 
+    it('guarda el destinatario del aviso para una persona (o nulo, para todos)', async () => {
+      await service.registrar(evento());
+      expect(avisos.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ recipientUserId: null }),
+      );
+      await service.registrar(
+        new NotificarAdminEvent(
+          'd1',
+          'chat_mention',
+          'Te mencionaron',
+          'Nota',
+          { entity: 'conversation', id: 'c-1' },
+          false,
+          'chat-mention:m:u2',
+          null,
+          'u2',
+        ),
+      );
+      expect(avisos.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ recipientUserId: 'u2' }),
+      );
+    });
+
     it('sin destino guarda los dos campos del link en null', async () => {
       await service.registrar(evento({ link: null }));
 
@@ -248,6 +272,45 @@ describe('AdminNotificationsService', () => {
       ]);
       expect(res.items[0].link).toEqual({ entity: 'claim', id: 'c-1' });
     });
+
+    it('los avisos para una persona (mención en el chat, 4a): los ve sólo ella; los de todos, todos', async () => {
+      const qb = qbFalso({});
+      avisos.createQueryBuilder.mockReturnValue(qb);
+
+      await service.listar('u1', 'd1', { limit: 20, offset: 0 });
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(n.recipientUserId IS NULL OR n.recipientUserId = :destinatario)',
+        { destinatario: 'u1' },
+      );
+    });
+
+    it.each([
+      [
+        'contarSinLeer',
+        (x: AdminNotificationsService) => x.contarSinLeer('u2', 'd1'),
+      ],
+      [
+        'marcarLeido',
+        (x: AdminNotificationsService) =>
+          x.marcarLeido('u2', 'd1', 'n-1').catch(() => undefined),
+      ],
+      [
+        'marcarTodosLeidos',
+        (x: AdminNotificationsService) => x.marcarTodosLeidos('u2', 'd1'),
+      ],
+    ])(
+      '%s también deja afuera los avisos para otra persona',
+      async (_caso, fn) => {
+        const qb = qbFalso({});
+        avisos.createQueryBuilder.mockReturnValue(qb);
+        await fn(service);
+        expect(qb.andWhere).toHaveBeenCalledWith(
+          '(n.recipientUserId IS NULL OR n.recipientUserId = :destinatario)',
+          { destinatario: 'u2' },
+        );
+      },
+    );
 
     it('las lecturas que se piden son las del usuario que consulta', async () => {
       avisos.createQueryBuilder.mockReturnValue(

@@ -19,6 +19,7 @@ const RUTA_DEL_PANEL: Readonly<Record<string, (id: string) => string>> = {
   'car-insurance': (id) =>
     `cars/details/${encodeURIComponent(id)}?tab=insurance`,
   'support-session': (id) => `support-access?session=${encodeURIComponent(id)}`,
+  conversation: (id) => `messages/${encodeURIComponent(id)}`,
 };
 
 /** Ruta del panel (sin dominio) a la que lleva el aviso, o `null` si no apunta a nada. */

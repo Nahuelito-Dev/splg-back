@@ -168,6 +168,12 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     ['assistant_trace', 'conversation_id', 'conversation'],
     ['assistant_trace', 'trigger_message_id', 'message'],
     ['assistant_trace', 'reply_message_id', 'message'],
+    // Menciones en las notas internas de la bandeja (4a)
+    ['message_mention', 'message_id', 'message'],
+    ['message_mention', 'conversation_id', 'conversation'],
+    // Encuesta de satisfacción al cerrar (4b)
+    ['conversation_rating', 'conversation_id', 'conversation'],
+    ['conversation_rating', 'request_message_id', 'message'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

@@ -16,7 +16,7 @@ import { Message } from '../entities/message.entity';
 import { type ActorDeLaBandeja, BandejaAcceso } from './bandeja-acceso';
 import type { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
 import { AsistenteDelChat } from './asistente-del-chat';
-import { BandejaService } from './bandeja.service';
+import { BandejaService, recalcularVistaPrevia } from './bandeja.service';
 import type { ChatViewsService } from './chat-views.service';
 import { RespuestasFijas } from './respuestas-fijas';
 import {
@@ -35,6 +35,10 @@ import type { CompanyTemplatesService } from './company-templates.service';
 import type { ConversationFactory } from './conversation-factory';
 import type { ConversacionVigente } from './conversacion-vigente';
 import type { MessageWriter } from './message-writer';
+import type {
+  OpenMyConversationDto,
+  SendCustomerActionDto,
+} from '../presentation/dto/bandeja-input.dto';
 
 const D = 'dist-a';
 const ahora = new Date('2026-11-16T15:00:00Z'); // lunes 12:00 en Buenos Aires
@@ -969,5 +973,306 @@ describe('Corrección 1: C2 por pedido del chofer, cupo, chat de clientes apagad
     expect(await caso({}, { reclamo: false, citado: true })).toBe(
       'MESSAGE_ALREADY_QUOTED',
     );
+  });
+});
+
+describe('BandejaService: leer marca las menciones vistas (4a)', () => {
+  function armarLectura() {
+    const query = jest.fn(() => Promise.resolve([[], 0]));
+    const dataSource = { query } as unknown as DataSource;
+    const c = conversacion();
+    const acceso = { buscar: jest.fn(() => Promise.resolve(c)) };
+    const hilos = { leer: jest.fn(() => Promise.resolve()) };
+    const servicio = new BandejaService(
+      dataSource,
+      acceso as unknown as BandejaAcceso,
+      {} as MessageWriter,
+      {} as ConversationFactory,
+      hilos as unknown as ChatThreadsService,
+      {} as CompanyChatSettingsService,
+      {} as CompanyTemplatesService,
+      {} as ChatRateLimit,
+      {} as ChatEvents,
+      {} as ConversacionVigente,
+      {} as RespuestasFijas,
+      {} as AsistenteDelChat,
+    );
+    return { servicio, query, hilos, c };
+  }
+
+  it('el personal que lee hasta un mensaje deja leídas sus menciones hasta ahí, en su empresa', async () => {
+    const t = armarLectura();
+    const yo: ActorDeLaBandeja = {
+      party: Party.COMPANY,
+      userId: 'adm-2',
+      distributorId: D,
+      canales: [Channel.STAFF_CUSTOMER],
+      permisos: ['mensajes.clientes'],
+    };
+    await t.servicio.leer(yo, t.c.conversationId, 7);
+    expect(t.hilos.leer).toHaveBeenCalledWith(
+      t.c,
+      { party: Party.COMPANY, userId: 'adm-2' },
+      7,
+    );
+    const [sql, params] = t.query.mock.calls[0] as unknown as [
+      string,
+      unknown[],
+    ];
+    expect(sql).toContain('UPDATE "message_mention"');
+    expect(params).toEqual([t.c.conversationId, 'adm-2', D, 7]);
+  });
+
+  it('el cliente que lee no toca menciones', async () => {
+    const t = armarLectura();
+    await t.servicio.leer(
+      {
+        party: Party.CUSTOMER,
+        userId: 'cli-1',
+        distributorId: D,
+        canales: [Channel.STAFF_CUSTOMER],
+        permisos: [],
+      },
+      t.c.conversationId,
+      7,
+    );
+    expect(t.hilos.leer).toHaveBeenCalled();
+    expect(t.query).not.toHaveBeenCalled();
+  });
+});
+
+describe('recalcularVistaPrevia (4a)', () => {
+  it('sale del último mensaje visible: editar una nota no deja la vista previa vacía ni muestra la nota', async () => {
+    const consultas: Array<[string, unknown[]]> = [];
+    const manager = {
+      query: jest.fn((sql: string, params: unknown[]) => {
+        consultas.push([sql, params]);
+        return Promise.resolve(
+          sql.startsWith('SELECT')
+            ? [{ body: 'Hola Ana', visibility: MessageVisibility.ALL }]
+            : [],
+        );
+      }),
+    } as unknown as EntityManager;
+    await recalcularVistaPrevia(manager, 'conv-1');
+    expect(consultas[0][0]).toContain(`"visibility" = 'all'`);
+    expect(consultas[1][1]).toEqual(['conv-1', 'Hola Ana']);
+  });
+});
+
+describe('BandejaService: botones de acción del cliente (4e)', () => {
+  const tocar = (
+    servicio: BandejaService,
+    key: SendCustomerActionDto['key'],
+    actor: ActorDeLaBandeja = cliente,
+  ) =>
+    servicio.accion(
+      actor,
+      'conv-1',
+      { clientMessageId: '0d6f0c34-8b7e-4c1a-9f3b-5a2e7d9c1b20', key },
+      ahora,
+    );
+  const sinFijas = (sql: string) =>
+    sql.includes('AS fuera')
+      ? [{ fuera: false, recibido: false, empresa: false }]
+      : [{ persona: 'Ana', empresa: 'Gas Norte' }];
+
+  it('`message`: manda el texto predefinido como mensaje del cliente, con su clientMessageId; no pide persona', async () => {
+    const t = armar({ conversacion: conversacion(), consultas: sinFijas });
+    const r = await tocar(t.servicio, 'where_is_my_order');
+    expect(r.created).toBe(true);
+    expect(t.escribir.mock.calls[0][1]).toMatchObject({
+      senderParty: Party.CUSTOMER,
+      senderUserId: 'cli-1',
+      clientMessageId: '0d6f0c34-8b7e-4c1a-9f3b-5a2e7d9c1b20',
+      body: '¿Dónde está mi pedido?',
+    });
+    expect(
+      t.consultas.some((q) => q.includes('SET "awaiting_human_since" = $2')),
+    ).toBe(false);
+  });
+
+  it('`talk_to_person`: manda el mensaje y la deja esperando persona dentro del envío; el asistente con IA no la toma y salen las fijas', async () => {
+    const t = armar({
+      conversacion: conversacion(),
+      ajustes: { ackEnabled: true },
+      ia: true,
+      consultas: sinFijas,
+    });
+    await tocar(t.servicio, 'talk_to_person');
+    expect(t.escribir.mock.calls[0][1]).toMatchObject({
+      body: 'Quiero hablar con una persona.',
+    });
+    const i = t.consultas.findIndex((q) =>
+      q.includes('SET "awaiting_human_since" = $2'),
+    );
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(t.parametros[i]).toEqual(['conv-1', ahora]);
+    expect(t.consultas[i]).toContain('"assigned_to_user_id" IS NULL');
+    // Con la IA prendida, igual sale el aviso de recibido: ya espera a una persona.
+    expect(t.escribir).toHaveBeenCalledTimes(2);
+    expect(t.escribir.mock.calls[1][1]).toMatchObject({
+      systemCode: SystemCode.RECEIVED_ACK,
+    });
+    expect(t.publicados[0].conversaciones).toEqual([
+      expect.objectContaining({ change: 'status' }),
+    ]);
+  });
+
+  it('`talk_to_person` en una ya asignada: no la pone a esperar', async () => {
+    const t = armar({
+      conversacion: conversacion({ assignedToUserId: 'adm-1' }),
+      consultas: sinFijas,
+    });
+    await tocar(t.servicio, 'talk_to_person');
+    expect(
+      t.consultas.some((q) => q.includes('SET "awaiting_human_since" = $2')),
+    ).toBe(false);
+  });
+
+  it.each<
+    [string, Partial<ChatCompanySettings>, SendCustomerActionDto['key'], string]
+  >([
+    ['la de la app → 400', {}, 'repeat_last_order', 'ACTION_IS_APP_ONLY'],
+    [
+      'una que la empresa no muestra → 400',
+      { customerActions: ['where_is_my_order'] },
+      'payment_methods',
+      'ACTION_NOT_AVAILABLE',
+    ],
+    [
+      'con el chat de clientes apagado → 403',
+      { customerChatEnabled: false },
+      'where_is_my_order',
+      'CUSTOMER_CHAT_DISABLED',
+    ],
+  ])('%s, sin escribir nada', async (_caso, ajustes, key, code) => {
+    const t = armar({ conversacion: conversacion(), ajustes });
+    expect(await codigo(tocar(t.servicio, key))).toBe(code);
+    expect(t.escribir).not.toHaveBeenCalled();
+  });
+
+  it('el chofer → 403 CUSTOMER_ONLY', async () => {
+    const t = armar({ conversacion: conversacion() });
+    expect(await codigo(tocar(t.servicio, 'where_is_my_order', chofer))).toBe(
+      'CUSTOMER_ONLY',
+    );
+  });
+
+  it('la lista para un chat nuevo: las de la empresa, en orden; con el chat apagado, ninguna; el chofer, 403', async () => {
+    const t = armar({
+      ajustes: { customerActions: ['talk_to_person', 'payment_methods'] },
+    });
+    expect((await t.servicio.acciones(cliente)).map((a) => a.key)).toEqual([
+      'payment_methods',
+      'talk_to_person',
+    ]);
+    const apagado = armar({ ajustes: { customerChatEnabled: false } });
+    expect(await apagado.servicio.acciones(cliente)).toEqual([]);
+    expect(await codigo(t.servicio.acciones(chofer))).toBe('CUSTOMER_ONLY');
+  });
+});
+
+describe('BandejaService: abrir el chat tocando un botón (4e)', () => {
+  const consultas = (sql: string) => {
+    if (sql.includes('"customer_distributor"')) return [{ uno: 1 }];
+    if (sql.includes('AS fuera')) {
+      return [{ fuera: false, recibido: false, empresa: false }];
+    }
+    return [{ persona: 'Ana', empresa: 'Gas Norte' }];
+  };
+  const abrirCon = (
+    servicio: BandejaService,
+    key: SendCustomerActionDto['key'],
+    actor: ActorDeLaBandeja = cliente,
+  ) =>
+    servicio.abrirDeLaPersona(
+      actor,
+      {
+        subjectType: SubjectType.GENERAL,
+        firstAction: { clientMessageId: 'cm-a', key },
+      },
+      ahora,
+    );
+
+  it('`talk_to_person`: el primer mensaje es el texto del botón y la conversación queda esperando persona; con la IA prendida igual salen las fijas', async () => {
+    const t = armar({
+      conversacion: conversacion(),
+      ajustes: { ackEnabled: true },
+      ia: true,
+      consultas,
+    });
+    await abrirCon(t.servicio, 'talk_to_person');
+    expect(t.escribir.mock.calls[0][1]).toMatchObject({
+      senderParty: Party.CUSTOMER,
+      clientMessageId: 'cm-a',
+      body: 'Quiero hablar con una persona.',
+    });
+    expect(
+      t.consultas.some((q) => q.includes('SET "awaiting_human_since" = $2')),
+    ).toBe(true);
+    expect(t.escribir.mock.calls[1][1]).toMatchObject({
+      systemCode: SystemCode.RECEIVED_ACK,
+    });
+  });
+
+  it('`where_is_my_order`: manda el texto y no pide persona', async () => {
+    const t = armar({ conversacion: conversacion(), consultas });
+    await abrirCon(t.servicio, 'where_is_my_order');
+    expect(t.escribir.mock.calls[0][1]).toMatchObject({
+      body: '¿Dónde está mi pedido?',
+    });
+    expect(
+      t.consultas.some((q) => q.includes('SET "awaiting_human_since" = $2')),
+    ).toBe(false);
+  });
+
+  it.each<
+    [string, Partial<ChatCompanySettings>, SendCustomerActionDto['key'], string]
+  >([
+    ['la de la app → 400', {}, 'repeat_last_order', 'ACTION_IS_APP_ONLY'],
+    [
+      'una que la empresa no muestra → 400',
+      { customerActions: ['where_is_my_order'] },
+      'talk_to_person',
+      'ACTION_NOT_AVAILABLE',
+    ],
+    [
+      'con el chat apagado → 403',
+      { customerChatEnabled: false },
+      'where_is_my_order',
+      'CUSTOMER_CHAT_DISABLED',
+    ],
+  ])('%s, sin crear ni escribir nada', async (_caso, ajustes, key, code) => {
+    const t = armar({ conversacion: conversacion(), ajustes, consultas });
+    expect(await codigo(abrirCon(t.servicio, key))).toBe(code);
+    expect(t.crear).not.toHaveBeenCalled();
+    expect(t.escribir).not.toHaveBeenCalled();
+  });
+
+  it('el chofer no abre con un botón → 403 CUSTOMER_ONLY', async () => {
+    const t = armar({ consultas });
+    expect(
+      await codigo(abrirCon(t.servicio, 'where_is_my_order', chofer)),
+    ).toBe('CUSTOMER_ONLY');
+  });
+
+  it('ni mensaje ni botón, o los dos → 400', async () => {
+    const t = armar({ consultas });
+    for (const dto of [
+      { subjectType: SubjectType.GENERAL } as OpenMyConversationDto,
+      {
+        subjectType: SubjectType.GENERAL,
+        firstMessage: { clientMessageId: 'c', body: 'Hola' },
+        firstAction: {
+          clientMessageId: 'cm-a',
+          key: 'where_is_my_order' as const,
+        },
+      } as OpenMyConversationDto,
+    ]) {
+      expect(await codigo(t.servicio.abrirDeLaPersona(cliente, dto))).toBe(
+        '400',
+      );
+    }
   });
 });

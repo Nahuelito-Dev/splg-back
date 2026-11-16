@@ -1,4 +1,10 @@
-import { Channel, MessageKind, MessageVisibility, Party } from './chat.enums';
+import {
+  Channel,
+  esCanalDeLaBandeja,
+  MessageKind,
+  MessageVisibility,
+  Party,
+} from './chat.enums';
 import {
   CitaInvalidaError,
   NotaInternaNoPermitidaError,
@@ -13,9 +19,43 @@ export interface MensajeAValidar {
 }
 
 /**
+ * Nota interna admitida (también `CHK_message_visibilidad` y el trigger
+ * `TRG_message_canal`): la plataforma en el hilo de un ticket (D-C8); en la
+ * bandeja de la empresa (C3, C2), el texto del personal y la nota de
+ * derivación del asistente con IA (mensaje de sistema `handoff_note`, sólo C3).
+ */
+export function notaInternaAdmitida(
+  canal: Channel,
+  mensaje: Pick<MensajeAValidar, 'party' | 'kind'>,
+): boolean {
+  if (canal === Channel.PLATFORM_TICKET) {
+    return (
+      mensaje.party === Party.PLATFORM && mensaje.kind === MessageKind.TEXT
+    );
+  }
+  if (!esCanalDeLaBandeja(canal)) return false;
+  if (mensaje.party === Party.COMPANY) return mensaje.kind === MessageKind.TEXT;
+  return (
+    canal === Channel.STAFF_CUSTOMER &&
+    mensaje.party === Party.SYSTEM &&
+    mensaje.kind === MessageKind.SYSTEM
+  );
+}
+
+/**
+ * Quién ve las notas internas de un canal: la plataforma las de sus tickets;
+ * el personal de la empresa las de su bandeja. Nunca el cliente ni el chofer,
+ * ni la empresa las de la plataforma.
+ */
+export function veNotasInternas(party: Party, canal: Channel): boolean {
+  if (party === Party.PLATFORM) return true;
+  return party === Party.COMPANY && esCanalDeLaBandeja(canal);
+}
+
+/**
  * Reglas del mensaje según el canal (también en la base: CHECK y trigger de
- * `message`). Las notas internas sólo las deja la plataforma y sólo en el hilo
- * de un ticket (D-C8); la cita de mensajes sólo va en un ticket.
+ * `message`). Las notas internas, las de `notaInternaAdmitida`; la cita de
+ * mensajes sólo va en un ticket.
  */
 export function assertMensajeAdmitido(
   canal: Channel,
@@ -24,10 +64,11 @@ export function assertMensajeAdmitido(
   if (!puntaEscribeEnElCanal(canal, mensaje.party)) {
     throw new PuntaFueraDeSuCanalError();
   }
-  if (mensaje.visibility === MessageVisibility.INTERNAL) {
-    const admitida =
-      canal === Channel.PLATFORM_TICKET && mensaje.party === Party.PLATFORM;
-    if (!admitida) throw new NotaInternaNoPermitidaError();
+  if (
+    mensaje.visibility === MessageVisibility.INTERNAL &&
+    !notaInternaAdmitida(canal, mensaje)
+  ) {
+    throw new NotaInternaNoPermitidaError();
   }
   if (
     mensaje.kind === MessageKind.QUOTED_EXCERPT &&

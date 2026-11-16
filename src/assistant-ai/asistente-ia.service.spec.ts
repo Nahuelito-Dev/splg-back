@@ -21,6 +21,7 @@ import {
   MessageVisibility,
   Party,
   SubjectType,
+  SystemCode,
 } from '../chat/domain/chat.enums';
 import { ConversacionCerradaError } from '../chat/domain/chat.errors';
 import type { ChatCompanySettings } from '../chat/entities/chat-company-settings.entity';
@@ -34,6 +35,7 @@ import {
 import type { RedisService } from '../redis/redis.service';
 import {
   MotivoDeDerivacion,
+  MOTIVOS_EN_CASTELLANO,
   type RespuestaDelModelo,
   TOPE_DEL_RESCATE,
   TOPE_DEL_RESCATE_POR_EMPRESA,
@@ -73,10 +75,32 @@ const RESPUESTA: RespuestaDelModelo = {
   uso: USO,
   herramientas: ['horarios_y_zonas'],
 };
+/** La nota interna de la derivación (4c): sólo para el equipo. */
+const nota = (
+  motivo: MotivoDeDerivacion,
+  modelo: string | null,
+  summary: string | null = null,
+) =>
+  expect.objectContaining({
+    senderParty: Party.SYSTEM,
+    senderUserId: null,
+    kind: MessageKind.SYSTEM,
+    visibility: MessageVisibility.INTERNAL,
+    systemCode: SystemCode.HANDOFF_NOTE,
+    payload: {
+      ai: { model: modelo, handoff: true },
+      handoff: {
+        reason: motivo,
+        reasonLabel: MOTIVOS_EN_CASTELLANO[motivo],
+        summary,
+      },
+    },
+  }) as unknown;
+
 const derivacion = (
   motivo: MotivoDeDerivacion,
   modelo: string | null = 'claude-haiku-5-5',
-): RespuestaDelModelo => ({
+): Extract<RespuestaDelModelo, { tipo: 'derivar' }> => ({
   tipo: 'derivar',
   motivo,
   modelo,
@@ -355,7 +379,14 @@ function armar(o: Opciones = {}) {
   const faqs = {
     listar: jest.fn(() =>
       Promise.resolve({
-        items: [{ question: '¿Horario?', answer: 'De 8 a 12.', position: 1 }],
+        items: [
+          {
+            faqId: 'faq-1',
+            question: '¿Horario?',
+            answer: 'De 8 a 12.',
+            position: 1,
+          },
+        ],
         version: 3,
       }),
     ),
@@ -459,7 +490,7 @@ describe('AsistenteIaService', () => {
           body: 'Abrimos de 8 a 12.',
           payload: {
             senderLabel: 'Gasito de Florchi Gas',
-            ai: { model: 'claude-haiku-5-5' },
+            ai: { model: 'claude-haiku-5-5', sources: [] },
           },
           systemCode: null,
           templateKey: PLANTILLA_DEL_ASISTENTE,
@@ -530,7 +561,7 @@ describe('AsistenteIaService', () => {
       });
       expect(t.escritos[0].payload).toEqual({
         senderLabel: 'Asistente de OrixTech',
-        ai: { model: 'claude-haiku-5-5' },
+        ai: { model: 'claude-haiku-5-5', sources: [] },
       });
       expect(t.acceso.habilitado).not.toHaveBeenCalled();
     });
@@ -820,6 +851,116 @@ describe('AsistenteIaService', () => {
     });
   });
 
+  describe('fuentes de la respuesta (4d) y nota de derivación (4c)', () => {
+    it('la respuesta lleva en `ai.sources` las preguntas frecuentes que usó (por su número en el prompt) y las herramientas con el pedido', async () => {
+      const t = armar({
+        resultado: {
+          ...RESPUESTA,
+          herramientas: ['estado_de_mi_pedido', 'precios_vigentes'],
+          // 2 es «¿Pagos?» (la base se numera por posición); 9 no existe.
+          preguntas: [2, 9],
+          fuentes: [
+            { tool: 'estado_de_mi_pedido', pedido: 'A1B2C3' },
+            { tool: 'precios_vigentes' },
+          ],
+        },
+      });
+      t.faqs.listar.mockResolvedValueOnce({
+        items: [
+          {
+            faqId: 'faq-b',
+            question: '¿Pagos?',
+            answer: 'Efectivo.',
+            position: 2,
+          },
+          {
+            faqId: 'faq-a',
+            question: '¿Horario?',
+            answer: 'De 8 a 12.',
+            position: 1,
+          },
+        ],
+        version: 4,
+      });
+      await t.atender();
+      expect(t.escritos[0].payload).toEqual({
+        senderLabel: 'Gasito de Florchi Gas',
+        ai: {
+          model: 'claude-haiku-5-5',
+          sources: [
+            { type: 'faq', faqId: 'faq-b', question: '¿Pagos?' },
+            {
+              type: 'tool',
+              tool: 'estado_de_mi_pedido',
+              orderNumber: 'A1B2C3',
+            },
+            { type: 'tool', tool: 'precios_vigentes' },
+          ],
+        },
+      });
+      // Al modelo le llegan numeradas en ese orden, sin los ids.
+      const [consulta] = t.consultar.mock.calls[0];
+      const base = consulta.system[1].text;
+      expect(base.indexOf('¿Horario?')).toBeLessThan(base.indexOf('¿Pagos?'));
+      expect(base).not.toContain('faq-');
+    });
+
+    it('al derivar con los clientes deja una nota interna con el resumen del modelo y el motivo (con su detalle), después del aviso', async () => {
+      const t = armar({
+        resultado: {
+          ...derivacion(MotivoDeDerivacion.REQUESTED),
+          resumen: 'Pide 2×10 kg y pregunta por la demora del pedido A1B2C3.',
+          detalle: 'quiere hablar con alguien',
+        },
+      });
+      await t.atender();
+      expect(t.escritos).toEqual([
+        expect.objectContaining({ templateKey: PLANTILLA_DE_DERIVACION }),
+        nota(
+          MotivoDeDerivacion.REQUESTED,
+          'claude-haiku-5-5',
+          'Pide 2×10 kg y pregunta por la demora del pedido A1B2C3.',
+        ),
+      ]);
+      expect(t.escritos[1].body).toBe(
+        'Resumen: Pide 2×10 kg y pregunta por la demora del pedido A1B2C3.\nMotivo: El asistente no pudo resolverlo o la persona pidió hablar con alguien (quiere hablar con alguien)',
+      );
+      // La nota sale por el socket (el listener la manda sólo al panel).
+      expect(t.publicados[0].mensajes.map((m) => m.message.visibility)).toEqual(
+        [MessageVisibility.ALL, MessageVisibility.INTERNAL],
+      );
+      // La traza apunta al aviso que ve el cliente, no a la nota.
+      expect(t.trazas[0]).toMatchObject({ replyMessageId: 'resp-1' });
+    });
+
+    it('si el modelo no corrió, la nota lleva sólo el motivo aunque venga un resumen', async () => {
+      const t = armar({
+        resultado: {
+          ...derivacion(MotivoDeDerivacion.MONTHLY_LIMIT, null),
+          resumen: 'no debería salir',
+          detalle: 'tampoco',
+        },
+      });
+      await t.atender();
+      expect(t.escritos[1].body).toBe(
+        'Motivo: Se llegó al tope mensual del asistente',
+      );
+    });
+
+    it('en el soporte (C1) no hay nota interna: sólo el aviso de derivación', async () => {
+      const t = armar({
+        canal: Channel.PLATFORM_CHAT,
+        resultado: {
+          ...derivacion(MotivoDeDerivacion.REQUESTED),
+          resumen: 'Pregunta por la facturación',
+        },
+      });
+      await t.atender();
+      expect(t.escritos).toHaveLength(1);
+      expect(t.escritos[0].visibility).toBe(MessageVisibility.ALL);
+    });
+  });
+
   describe('derivar', () => {
     it('la IA derivó en horario: el texto de derivación de la empresa con variables, espera a una persona y avisa al equipo', async () => {
       const t = armar({ resultado: derivacion(MotivoDeDerivacion.REFUSAL) });
@@ -834,6 +975,7 @@ describe('AsistenteIaService', () => {
           },
           templateKey: PLANTILLA_DE_DERIVACION,
         }),
+        nota(MotivoDeDerivacion.REFUSAL, 'claude-haiku-5-5'),
       ]);
       expect(t.actualizaciones).toEqual([[CONV, AHORA]]);
       expect(t.trazas).toEqual([
@@ -923,6 +1065,7 @@ describe('AsistenteIaService', () => {
           templateKey: 'fuera_de_horario',
           body: 'Ahora estamos fuera de horario. Te respondemos el lunes 16/11 a las 09:00.',
         }),
+        nota(MotivoDeDerivacion.TIMEOUT, null),
       ]);
       expect(t.actualizaciones).toEqual([[CONV, AHORA]]);
       expect(t.trazas).toEqual([
@@ -942,6 +1085,7 @@ describe('AsistenteIaService', () => {
       await t.atender();
       expect(t.escritos).toEqual([
         expect.objectContaining({ templateKey: PLANTILLA_DE_DERIVACION }),
+        nota(MotivoDeDerivacion.API_ERROR, null),
       ]);
     });
 
@@ -1093,6 +1237,7 @@ describe('AsistenteIaService', () => {
           kind: MessageKind.AUTO_REPLY,
           templateKey: 'fuera_de_horario',
         }),
+        nota(MotivoDeDerivacion.NOT_PROCESSED, null),
       ]);
       expect(t.actualizaciones).toEqual([[CONV, AHORA]]);
       expect(t.trazas).toEqual([
@@ -1112,7 +1257,8 @@ describe('AsistenteIaService', () => {
         q.includes('JOIN "message" m'),
       ) as unknown as [string, Date[]];
       for (const condicion of [
-        'm."seq" = c."last_message_seq"',
+        // El último visible: una nota interna después no lo esconde.
+        `v."visibility" = 'all'`,
         'c."assigned_to_user_id" IS NULL',
         'c."awaiting_human_since" IS NULL',
         `t."outcome" <> 'discarded'`,
@@ -1132,6 +1278,7 @@ describe('AsistenteIaService', () => {
       expect(await t.rescatar()).toBe(1);
       expect(t.escritos).toEqual([
         expect.objectContaining({ templateKey: PLANTILLA_DE_DERIVACION }),
+        nota(MotivoDeDerivacion.NOT_PROCESSED, null),
       ]);
     });
 
@@ -1146,7 +1293,8 @@ describe('AsistenteIaService', () => {
       expect(await t.rescatar()).toBe(0);
       await t.atender();
       expect(t.consultar).not.toHaveBeenCalled();
-      expect(t.escritos).toHaveLength(1);
+      // La fija y la nota interna de la primera corrida; nada más.
+      expect(t.escritos).toHaveLength(2);
       expect(t.trazas).toHaveLength(1);
     });
 

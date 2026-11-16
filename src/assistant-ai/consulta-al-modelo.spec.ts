@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { MotivoDeDerivacion } from './asistente-ia.dominio';
+import {
+  FORMATO_DE_LA_RESPUESTA,
+  MotivoDeDerivacion,
+} from './asistente-ia.dominio';
 import {
   type ClienteDelAsistente,
   ConsultaAlAsistente,
@@ -46,6 +49,9 @@ function respuesta(
 }
 
 const texto = (t: string) => ({ type: 'text', text: t, citations: null });
+/** El último turno: la salida estructurada `{ respuesta, preguntas }` (4d). */
+const final = (t: string, preguntas: number[] = []) =>
+  texto(JSON.stringify({ respuesta: t, preguntas }));
 const herramienta = (id: string, name: string, input: unknown = {}) => ({
   type: 'tool_use',
   id,
@@ -95,7 +101,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     const { servicio, create, consulta } = armar(
       respuesta(
         'end_turn',
-        [texto('Abrimos a las **9**.')],
+        [final('Abrimos a las **9**.')],
         uso(50, 10, 400, 0),
       ),
     );
@@ -111,12 +117,15 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
         cacheCreationTokens: 0,
       },
       herramientas: [],
+      preguntas: [],
+      fuentes: [],
     });
     const [params, opciones] = create.mock.calls[0] as Llamada;
     expect(params).toMatchObject({
       model: 'claude-haiku-5-5',
       max_tokens: 1024,
-      output_config: { effort: 'low' },
+      // 4d: la respuesta final con salida estructurada (texto y preguntas usadas).
+      output_config: { effort: 'low', format: FORMATO_DE_LA_RESPUESTA },
       tool_choice: { type: 'auto' },
       system: consulta.system,
       messages: consulta.mensajes,
@@ -124,6 +133,8 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     for (const prohibido of ['temperature', 'top_p', 'top_k', 'thinking']) {
       expect(params).not.toHaveProperty(prohibido);
     }
+    // Sin prefill: el último turno que se manda es de la persona.
+    expect(params.messages[params.messages.length - 1].role).toBe('user');
     expect(params.tools?.every((t) => (t as Anthropic.Tool).strict)).toBe(true);
     expect(
       params.tools?.every(
@@ -148,7 +159,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
       ),
       respuesta(
         'end_turn',
-        [texto('Tu pedido está en camino.')],
+        [final('Tu pedido está en camino.')],
         uso(80, 15, 500, 0),
       ),
     );
@@ -205,7 +216,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
       const { servicio, ejecutar, consulta } = armar(
         respuesta('tool_use', [herramienta('tu_1', 'precios_vigentes')]),
         respuesta('end_turn', [
-          texto('La de 10 kg sale $ 15.000 y llevando 3, $13.500,00 cada una.'),
+          final('La de 10 kg sale $ 15.000 y llevando 3, $13.500,00 cada una.'),
         ]),
       );
       ejecutar.mockResolvedValueOnce({
@@ -230,7 +241,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     ])(
       'un importe que no salió de una herramienta (%s): deriva',
       async (_caso, t) => {
-        const { servicio, consulta } = armar(respuesta('end_turn', [texto(t)]));
+        const { servicio, consulta } = armar(respuesta('end_turn', [final(t)]));
         expect(await servicio.consultar(consulta)).toMatchObject({
           tipo: 'derivar',
           motivo: MotivoDeDerivacion.UNVERIFIED_AMOUNT,
@@ -241,7 +252,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     it('un importe distinto del que devolvió la herramienta: deriva', async () => {
       const { servicio, ejecutar, consulta } = armar(
         respuesta('tool_use', [herramienta('tu_1', 'precios_vigentes')]),
-        respuesta('end_turn', [texto('Sale $ 14.000.')]),
+        respuesta('end_turn', [final('Sale $ 14.000.')]),
       );
       ejecutar.mockResolvedValueOnce({
         datos: [{ precio: '$ 15.000,00' }],
@@ -259,7 +270,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
           herramienta('tu_1', 'precios_vigentes'),
           herramienta('tu_2', 'estado_de_mi_pedido'),
         ]),
-        respuesta('end_turn', [texto('Sale $ 15.000 y tu pedido $ 9.999.')]),
+        respuesta('end_turn', [final('Sale $ 15.000 y tu pedido $ 9.999.')]),
       );
       ejecutar
         .mockResolvedValueOnce({
@@ -277,7 +288,7 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
   it('una herramienta que tira vuelve al modelo como error y la respuesta sigue', async () => {
     const { servicio, ejecutar, create, consulta } = armar(
       respuesta('tool_use', [herramienta('tu_1', 'medios_de_pago')]),
-      respuesta('end_turn', [texto('Efectivo.')]),
+      respuesta('end_turn', [final('Efectivo.')]),
     );
     ejecutar.mockRejectedValueOnce(new Error('se cayó la base'));
     const r = await servicio.consultar(consulta);
@@ -310,6 +321,118 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     expect(ejecutar).not.toHaveBeenCalled();
   });
 
+  it('pasar_a_persona trae el resumen y el motivo para el equipo (4c), limpios y recortados, en la misma consulta', async () => {
+    const { servicio, create, consulta } = armar(
+      respuesta('tool_use', [
+        herramienta('tu_1', 'pasar_a_persona', {
+          motivo: '  pide **hablar** con alguien ',
+          resumen:
+            'Pide 2×10 kg.\n\n  Pregunta por la demora del pedido A1B2C3.',
+        }),
+      ]),
+    );
+    expect(await servicio.consultar(consulta)).toMatchObject({
+      tipo: 'derivar',
+      motivo: MotivoDeDerivacion.REQUESTED,
+      resumen: 'Pide 2×10 kg.\nPregunta por la demora del pedido A1B2C3.',
+      detalle: 'pide hablar con alguien',
+    });
+    // Sin una segunda llamada para el resumen.
+    expect(create).toHaveBeenCalledTimes(1);
+    const pasar = (
+      (create.mock.calls[0] as Llamada)[0].tools as Anthropic.Tool[]
+    ).find((t) => t.name === 'pasar_a_persona');
+    expect(pasar?.strict).toBe(true);
+    expect(pasar?.input_schema.required).toEqual(['motivo', 'resumen']);
+  });
+
+  it('pasar_a_persona con un resumen con HTML o vacío: deriva sin resumen (la nota lleva el motivo)', async () => {
+    const { servicio, consulta } = armar(
+      respuesta('tool_use', [
+        herramienta('tu_1', 'pasar_a_persona', {
+          motivo: '',
+          resumen: '<b>hola</b>',
+        }),
+      ]),
+    );
+    expect(await servicio.consultar(consulta)).toMatchObject({
+      tipo: 'derivar',
+      resumen: null,
+      detalle: null,
+    });
+  });
+
+  it('fuentes (4d): las preguntas frecuentes que dijo usar (enteros positivos, sin repetir) y las herramientas que dieron datos, con sus pedidos', async () => {
+    const { servicio, ejecutar, consulta } = armar(
+      respuesta('tool_use', [
+        herramienta('tu_1', 'estado_de_mi_pedido'),
+        herramienta('tu_2', 'precios_vigentes'),
+        herramienta('tu_3', 'medios_de_pago'),
+      ]),
+      respuesta('tool_use', [herramienta('tu_4', 'estado_de_mi_pedido')]),
+      respuesta('end_turn', [
+        texto(
+          JSON.stringify({
+            respuesta: 'Tu pedido está en camino.',
+            preguntas: [2, 2, 0, -1, 1.5, 3],
+          }),
+        ),
+      ]),
+    );
+    ejecutar
+      .mockResolvedValueOnce({
+        datos: [{ pedido: 'A1B2C3' }, { pedido: 'D4E5F6' }],
+        error: false,
+        pedidos: ['A1B2C3', 'D4E5F6'],
+      })
+      .mockResolvedValueOnce({ datos: [], error: false })
+      .mockResolvedValueOnce({ datos: { error: 'No' }, error: true })
+      .mockResolvedValueOnce({
+        datos: [{ pedido: 'A1B2C3' }],
+        error: false,
+        pedidos: ['A1B2C3'],
+      });
+    expect(await servicio.consultar(consulta)).toMatchObject({
+      tipo: 'respuesta',
+      preguntas: [2, 3],
+      // La que falló no es fuente; el mismo pedido dos veces, una sola.
+      fuentes: [
+        { tool: 'estado_de_mi_pedido', pedido: 'A1B2C3' },
+        { tool: 'estado_de_mi_pedido', pedido: 'D4E5F6' },
+        { tool: 'precios_vigentes' },
+      ],
+    });
+  });
+
+  it.each([
+    ['texto suelto (no es la salida estructurada)', 'Abrimos a las 9.'],
+    ['JSON sin respuesta', JSON.stringify({ preguntas: [] })],
+    [
+      'respuesta que no es texto',
+      JSON.stringify({ respuesta: 3, preguntas: [] }),
+    ],
+    ['una lista', '[]'],
+  ])(
+    'salida final inválida (%s): deriva invalid_text',
+    async (_caso, crudo) => {
+      const { servicio, consulta } = armar(
+        respuesta('end_turn', [texto(crudo)]),
+      );
+      expect(await servicio.consultar(consulta)).toMatchObject({
+        tipo: 'derivar',
+        motivo: MotivoDeDerivacion.INVALID_TEXT,
+      });
+    },
+  );
+
+  it('respuesta vacía dentro de la salida estructurada: deriva no_text', async () => {
+    const { servicio, consulta } = armar(respuesta('end_turn', [final('   ')]));
+    expect(await servicio.consultar(consulta)).toMatchObject({
+      tipo: 'derivar',
+      motivo: MotivoDeDerivacion.NO_TEXT,
+    });
+  });
+
   it('más de 3 vueltas de herramientas: deriva (4 consultas como máximo)', async () => {
     const vuelta = () =>
       respuesta('tool_use', [herramienta('tu', 'horarios_y_zonas')]);
@@ -337,12 +460,12 @@ describe('ConsultaAlAsistente (cliente de Anthropic simulado)', () => {
     ],
     [
       'sin texto',
-      respuesta('end_turn', [texto('  ')]),
+      respuesta('end_turn', [final('  ')]),
       MotivoDeDerivacion.NO_TEXT,
     ],
     [
       'texto con HTML',
-      respuesta('end_turn', [texto('<b>Hola</b>')]),
+      respuesta('end_turn', [final('<b>Hola</b>')]),
       MotivoDeDerivacion.INVALID_TEXT,
     ],
     [

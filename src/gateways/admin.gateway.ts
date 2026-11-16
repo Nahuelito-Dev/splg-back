@@ -59,7 +59,9 @@ import {
  * a `chat:clientes:<distributorId>` y con `mensajes.choferes` a
  * `chat:choferes:<distributorId>` (listas y contadores); el super admin nunca.
  * Las emisiones del panel al servidor son `chat:join`, `chat:leave` y
- * `chat:typing`.
+ * `chat:typing` (`{ conversationId, internal? }`: con `internal: true` quien
+ * escribe está redactando una nota interna y el «escribiendo…» NO se reenvía a
+ * la otra punta, 4a).
  *
  * El join lo decide el SERVIDOR a partir de la identidad resuelta del token
  * (`SocketIdentityService`), nunca el cliente: el panel no manda nada especial
@@ -109,6 +111,16 @@ const SALA_DENEGADA: RespuestaDeSala = {
   message: 'No existe esa conversación',
 };
 
+/** El panel avisa que escribe una nota interna (4a): `internal: true`. */
+function esNotaInterna(cuerpo: unknown): boolean {
+  return (
+    typeof cuerpo === 'object' &&
+    cuerpo !== null &&
+    'internal' in cuerpo &&
+    cuerpo.internal === true
+  );
+}
+
 function idDelCuerpo(cuerpo: unknown): string | null {
   const id =
     typeof cuerpo === 'object' && cuerpo !== null && 'conversationId' in cuerpo
@@ -124,6 +136,11 @@ export interface EscribiendoDelPanel {
   /** La del admin; nula para el administrador general. */
   distributorId: string | null;
   esPlataforma: boolean;
+  /**
+   * Está escribiendo una nota interna (4a): no se le avisa a la otra punta
+   * (el cliente, el chofer o, en un ticket, la empresa).
+   */
+  internal: boolean;
 }
 
 @WebSocketGateway({
@@ -359,6 +376,7 @@ export class AdminGateway implements OnGatewayConnection, OnGatewayDisconnect {
       userId: identidad.userId,
       distributorId: esPlataforma ? null : identidad.distributorId,
       esPlataforma,
+      internal: esNotaInterna(cuerpo),
     };
     this.events.emit(EVENTO_ESCRIBIENDO_DEL_PANEL, pedido);
   }

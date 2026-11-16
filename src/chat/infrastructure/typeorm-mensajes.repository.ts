@@ -41,16 +41,22 @@ export class TypeormMensajesRepository extends MensajesRepositorio {
     manager: EntityManager,
     conversation: Conversation,
     vistaPrevia: string | null,
+    visible = true,
   ): Promise<number> {
     const filas: unknown = await manager.query(
       `UPDATE "conversation"
           SET "last_message_seq" = "last_message_seq" + 1,
-              "last_message_at" = now(),
+              "last_message_at" = CASE WHEN $4 THEN now() ELSE "last_message_at" END,
               "last_message_preview" = COALESCE($3, "last_message_preview"),
-              "updated_at" = now()
+              "updated_at" = CASE WHEN $4 THEN now() ELSE "updated_at" END
         WHERE "conversation_id" = $1 AND "distributor_id" = $2
         RETURNING "last_message_seq" AS seq`,
-      [conversation.conversationId, conversation.distributorId, vistaPrevia],
+      [
+        conversation.conversationId,
+        conversation.distributorId,
+        vistaPrevia,
+        visible,
+      ],
     );
     return Number(primeraFila(filas).seq);
   }

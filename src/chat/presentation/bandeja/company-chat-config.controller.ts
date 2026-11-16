@@ -33,6 +33,7 @@ import {
   CompanyChatSettingsService,
   horarioDe,
   textoDeDerivacion,
+  textoDeLaEncuesta,
   textoDeRecibido,
   textoFueraDeHorario,
 } from '../../application/company-chat-settings.service';
@@ -90,6 +91,10 @@ function ajustesADto(
     ackMessage: a.ackMessage,
     effectiveAckMessage: textoDeRecibido(a),
     firstResponseTargetMinutes: a.firstResponseTargetMinutes,
+    csatEnabled: a.csatEnabled,
+    csatMessage: a.csatMessage,
+    effectiveCsatMessage: textoDeLaEncuesta(a),
+    customerActions: a.customerActions,
     ...estado(a),
   };
 }

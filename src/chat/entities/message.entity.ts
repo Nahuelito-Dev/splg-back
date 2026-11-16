@@ -38,12 +38,33 @@ export type PayloadDelMensaje =
    * la conversación a una persona.
    */
   | { senderLabel: string; ai: PayloadDeLaIa }
+  /** Pedido de la encuesta al cerrar (`csat_request`, 4b). */
+  | { ratingId: string; expiresAt: string; scale: number }
+  /** Nota de derivación del asistente (`handoff_note`, interna, 4c). */
+  | { ai: PayloadDeLaIa; handoff: PayloadDeLaDerivacion }
   | Record<string, never>;
 
 export interface PayloadDeLaIa {
   model: string | null;
   confidence?: 'alta' | 'media' | 'baja';
   handoff?: boolean;
+  /** Las fuentes de la respuesta (4d): sólo las ve el personal. */
+  sources?: FuenteDeLaRespuesta[];
+}
+
+/** De dónde salió una respuesta del asistente con IA (4d). */
+export type FuenteDeLaRespuesta =
+  | { type: 'faq'; faqId: string; question: string }
+  | { type: 'tool'; tool: string; orderNumber?: string };
+
+/** Por qué el asistente pasó la conversación a una persona, y el resumen (4c). */
+export interface PayloadDeLaDerivacion {
+  /** El motivo, como en `assistant_trace.reason`. */
+  reason: string;
+  /** El motivo en castellano. */
+  reasonLabel: string;
+  /** Lo que resumió el modelo; nulo si no corrió o no lo dio. */
+  summary: string | null;
 }
 
 /**
@@ -115,7 +136,7 @@ export interface PayloadDeLaIa {
 )
 @Check(
   'CHK_message_visibilidad',
-  `"visibility" IN ('all', 'internal') AND ("visibility" = 'all' OR ("sender_party" = 'platform' AND "kind" = 'text'))`,
+  `"visibility" IN ('all', 'internal') AND ("visibility" = 'all' OR ("kind" = 'text' AND "sender_party" IN ('platform', 'company')) OR ("kind" = 'system' AND "sender_party" = 'system' AND "system_code" = 'handoff_note'))`,
 )
 @Check(
   'CHK_message_texto',

@@ -47,8 +47,13 @@ const PASAR: Anthropic.Tool = {
         type: 'string',
         description: 'Por qué la pasás, en pocas palabras',
       },
+      resumen: {
+        type: 'string',
+        description:
+          'Para el equipo (la persona no lo ve), en 2 o 3 líneas: qué pide, qué ya le contestaste y qué falta. Sin teléfonos, documentos ni direcciones.',
+      },
     },
-    required: ['motivo'],
+    required: ['motivo', 'resumen'],
     additionalProperties: false,
   },
 };
@@ -117,6 +122,8 @@ export interface ContextoDeLasHerramientas {
 export interface ResultadoDeHerramienta {
   datos: unknown;
   error: boolean;
+  /** Los pedidos que devolvió (número corto), para citarlos como fuente (4d). No va al modelo. */
+  pedidos?: string[];
 }
 
 const ESTADOS: Readonly<Record<OrderStatus, string>> = {
@@ -277,6 +284,7 @@ export class HerramientasDelAsistente {
         total: pesos(o.totalAmount),
       })),
       error: false,
+      pedidos: filas.map((o) => idCortoDePedido(o.orderId)),
     };
   }
 

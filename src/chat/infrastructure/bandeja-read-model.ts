@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
 import { idCortoDePedido } from '../../common/events/aviso-al-admin';
+import { ConversationRating } from '../entities/conversation-rating.entity';
 import { Message } from '../entities/message.entity';
 import type { Lector } from './chat-read-model';
 import { nombreVisibleDeLaEmpresa } from './nombre-visible-de-la-empresa';
@@ -19,6 +20,14 @@ export interface ResumenDeLaBandeja {
   mine: number;
   awaitingHuman: number;
   unread: number;
+  attention: number;
+  mentions: number;
+}
+
+/** Una mención en una nota, con quién la escribió. */
+export interface MencionDeLaNota {
+  userId: string;
+  fullName: string;
 }
 
 /** Alguien del personal vigente de la empresa, con lo que dice su rol. */
@@ -33,11 +42,44 @@ export interface PersonaDelPersonal {
 }
 
 /**
+ * Hasta dónde leyó una punta (alias `p` de `conversation_party`), contado
+ * sólo en mensajes visibles: el último `seq` visible que no pasa de lo que
+ * leyó. Si leyó hasta una nota interna, la otra punta ve el visible anterior,
+ * así el «leído» no delata que hubo notas (4a). La comparten la bandeja y el
+ * chat con la plataforma.
+ */
+export function lecturaVisibleDeLaPunta(alias = 'p'): string {
+  return `COALESCE((SELECT max(v."seq") FROM "message" v
+                     WHERE v."conversation_id" = ${alias}."conversation_id"
+                       AND v."visibility" = 'all'
+                       AND v."seq" <= ${alias}."last_read_seq"), 0)`;
+}
+
+/**
+ * El último `seq` visible que no pasa de `seq` (0 si no hay): lo que se le
+ * avisa a la otra punta por el socket cuando quien atiende lee (el mismo
+ * criterio que `lecturaVisibleDeLaPunta`).
+ */
+export async function seqVisibleHasta(
+  dataSource: Pick<DataSource, 'query'>,
+  conversationId: string,
+  seq: number,
+): Promise<number> {
+  const [fila]: Array<{ seq: string | number | null }> = await dataSource.query(
+    `SELECT max("seq") AS "seq" FROM "message"
+      WHERE "conversation_id" = $1 AND "visibility" = 'all' AND "seq" <= $2`,
+    [conversationId, seq],
+  );
+  return Number(fila?.seq ?? 0);
+}
+
+/**
  * Sin leer en la bandeja, para quien está en la punta `$p` (alias `m` del
  * mensaje y `r` de su lectura): lo de la otra punta posterior a su lectura,
- * sin los avisos del sistema ni los borrados; para la empresa tampoco las
- * respuestas automáticas (las mandó el sistema en su nombre). La comparten el
- * contador de cada conversación y el resumen de la bandeja.
+ * sin los avisos del sistema, los borrados ni las notas internas (la otra
+ * punta no las ve; las del equipo son de su misma punta); para la empresa
+ * tampoco las respuestas automáticas (las mandó el sistema en su nombre). La
+ * comparten el contador de cada conversación y el resumen de la bandeja.
  */
 export function condicionDeNoLeidoEnLaBandeja(
   parametroDeLaPunta: string,
@@ -45,6 +87,7 @@ export function condicionDeNoLeidoEnLaBandeja(
   const p = parametroDeLaPunta;
   return `m."deleted_at" IS NULL
             AND m."withdrawn_at" IS NULL
+            AND m."visibility" = 'all'
             AND m."seq" > COALESCE(r."last_read_seq", 0)
             AND m."sender_party" <> ${p}
             AND m."kind" <> 'system'
@@ -142,7 +185,10 @@ export class BandejaReadModel {
     return new Map(filas.map((f) => [f.conversation_id, Number(f.n)]));
   }
 
-  /** Hasta dónde leyó la otra punta (la que no es la de quien mira) en cada conversación. */
+  /**
+   * Hasta dónde leyó la otra punta (la que no es la de quien mira) en cada
+   * conversación, en mensajes visibles (`lecturaVisibleDeLaPunta`).
+   */
   async lecturaDeLaOtraParte(
     conversationIds: string[],
     party: string,
@@ -150,8 +196,9 @@ export class BandejaReadModel {
     if (conversationIds.length === 0) return new Map();
     const filas: Array<{ conversation_id: string; last_read_seq: string }> =
       await this.dataSource.query(
-        `SELECT "conversation_id", "last_read_seq" FROM "conversation_party"
-          WHERE "conversation_id" = ANY($1::uuid[]) AND "party" <> $2`,
+        `SELECT p."conversation_id", ${lecturaVisibleDeLaPunta('p')} AS "last_read_seq"
+           FROM "conversation_party" p
+          WHERE p."conversation_id" = ANY($1::uuid[]) AND p."party" <> $2`,
         [conversationIds, party],
       );
     return new Map(
@@ -176,7 +223,11 @@ export class BandejaReadModel {
     );
   }
 
-  /** El último mensaje de cada conversación (en la bandeja no hay notas internas). */
+  /**
+   * El último mensaje visible de cada conversación: las notas internas nunca
+   * (ni para el personal: la vista previa de la lista es la de la charla con
+   * la persona, y el cliente o el chofer no pueden enterarse de que hubo una).
+   */
   async ultimos(conversationIds: string[]): Promise<Map<string, Message>> {
     if (conversationIds.length === 0) return new Map();
     const filas = await this.dataSource
@@ -184,10 +235,99 @@ export class BandejaReadModel {
       .createQueryBuilder('m')
       .distinctOn(['m.conversationId'])
       .where('m.conversationId IN (:...ids)', { ids: conversationIds })
+      .andWhere("m.visibility = 'all'")
       .orderBy('m.conversationId')
       .addOrderBy('m.seq', 'DESC')
       .getMany();
     return new Map(filas.map((m) => [m.conversationId, m]));
+  }
+
+  /** A quiénes menciona cada nota interna, por `messageId` (sólo para el personal). */
+  async menciones(
+    messageIds: readonly string[],
+  ): Promise<Map<string, MencionDeLaNota[]>> {
+    const ids = [...new Set(messageIds)];
+    if (ids.length === 0) return new Map();
+    const filas: Array<{
+      message_id: string;
+      user_id: string;
+      full_name: string | null;
+    }> = await this.dataSource.query(
+      `SELECT mm."message_id", mm."mentioned_user_id" AS user_id, u."full_name"
+         FROM "message_mention" mm
+         JOIN "user" u ON u."user_id" = mm."mentioned_user_id"
+        WHERE mm."message_id" = ANY($1::uuid[])
+        ORDER BY u."full_name" ASC NULLS LAST, mm."mentioned_user_id" ASC`,
+      [ids],
+    );
+    const porNota = new Map<string, MencionDeLaNota[]>();
+    for (const f of filas) {
+      const lista = porNota.get(f.message_id) ?? [];
+      lista.push({ userId: f.user_id, fullName: f.full_name ?? 'Sin nombre' });
+      porNota.set(f.message_id, lista);
+    }
+    return porNota;
+  }
+
+  /**
+   * La encuesta del último cierre de cada conversación (4b). Las
+   * conversaciones ya vienen filtradas por la empresa y por quien pide.
+   */
+  async encuestas(
+    conversationIds: string[],
+  ): Promise<Map<string, ConversationRating>> {
+    if (conversationIds.length === 0) return new Map();
+    const filas = await this.dataSource
+      .getRepository(ConversationRating)
+      .createQueryBuilder('r')
+      .distinctOn(['r.conversationId'])
+      .where('r.conversationId IN (:...ids)', { ids: conversationIds })
+      .orderBy('r.conversationId')
+      .addOrderBy('r.requestedAt', 'DESC')
+      .getMany();
+    return new Map(filas.map((r) => [r.conversationId, r]));
+  }
+
+  /**
+   * El `seq` del primer mensaje del asistente de cada conversación (respuesta
+   * automática o aviso de recibido, visible): ahí van los botones de acción
+   * del cliente (4e).
+   */
+  async primerMensajeDelAsistente(
+    conversationIds: readonly string[],
+  ): Promise<Map<string, number>> {
+    const ids = [...new Set(conversationIds)];
+    if (ids.length === 0) return new Map();
+    const filas: Array<{ conversation_id: string; seq: string }> =
+      await this.dataSource.query(
+        `SELECT "conversation_id", min("seq") AS seq FROM "message"
+          WHERE "conversation_id" = ANY($1::uuid[]) AND "sender_party" = 'system'
+            AND "visibility" = 'all'
+            AND ("kind" = 'auto_reply' OR "system_code" = 'received_ack')
+          GROUP BY "conversation_id"`,
+        [ids],
+      );
+    return new Map(filas.map((f) => [f.conversation_id, Number(f.seq)]));
+  }
+
+  /**
+   * Menciones sin leer a esa persona en cada conversación (las conversaciones
+   * ya vienen filtradas por la empresa y los canales de quien pide).
+   */
+  async mencionesSinLeer(
+    conversationIds: string[],
+    userId: string,
+  ): Promise<Map<string, number>> {
+    if (conversationIds.length === 0) return new Map();
+    const filas: Array<{ conversation_id: string; n: string }> =
+      await this.dataSource.query(
+        `SELECT "conversation_id", count(*) AS n FROM "message_mention"
+          WHERE "conversation_id" = ANY($1::uuid[]) AND "mentioned_user_id" = $2
+            AND "read_at" IS NULL
+          GROUP BY "conversation_id"`,
+        [conversationIds, userId],
+      );
+    return new Map(filas.map((f) => [f.conversation_id, Number(f.n)]));
   }
 
   /** Los mensajes a los que responden otros, por `conversationId:seq`. */
@@ -259,22 +399,35 @@ export class BandejaReadModel {
   /**
    * El resumen de la bandeja para las insignias, en una sola consulta: de las
    * abiertas de esos canales de la empresa, sin asignar, asignadas a quien
-   * pide, esperando a una persona (el asistente las derivó) y con algo sin leer
-   * para quien pide (la misma regla que `noLeidos`).
+   * pide, esperando a una persona (el asistente las derivó), con algo sin leer
+   * para quien pide (la misma regla que `noLeidos`, sin las asignadas a otra
+   * persona: ésas las atiende ella), las que piden atención (sin asignar ∪
+   * esperando persona ∪ sin leer, contadas una vez) y las menciones sin leer
+   * a quien pide (en notas de conversaciones de esos canales, abiertas o no).
    */
   async resumen(
     distributorId: string,
     canales: readonly string[],
     quien: Lector,
   ): Promise<ResumenDeLaBandeja> {
+    const sinLeer = `(c."assigned_to_user_id" IS NULL OR c."assigned_to_user_id" = $3)
+                 AND EXISTS (
+                SELECT 1 FROM "message" m
+                 WHERE m."conversation_id" = c."conversation_id"
+                   AND ${condicionDeNoLeidoEnLaBandeja('$4')})`;
     const [fila]: Array<Record<string, string>> = await this.dataSource.query(
       `SELECT count(*) FILTER (WHERE c."assigned_to_user_id" IS NULL) AS unassigned,
               count(*) FILTER (WHERE c."assigned_to_user_id" = $3) AS mine,
               count(*) FILTER (WHERE c."awaiting_human_since" IS NOT NULL) AS awaiting,
-              count(*) FILTER (WHERE EXISTS (
-                SELECT 1 FROM "message" m
-                 WHERE m."conversation_id" = c."conversation_id"
-                   AND ${condicionDeNoLeidoEnLaBandeja('$4')})) AS unread
+              count(*) FILTER (WHERE ${sinLeer}) AS unread,
+              count(*) FILTER (WHERE c."assigned_to_user_id" IS NULL
+                                  OR c."awaiting_human_since" IS NOT NULL
+                                  OR (${sinLeer})) AS attention,
+              (SELECT count(*) FROM "message_mention" mm
+                 JOIN "conversation" cm ON cm."conversation_id" = mm."conversation_id"
+                WHERE mm."distributor_id" = $1 AND mm."mentioned_user_id" = $3
+                  AND mm."read_at" IS NULL AND cm."channel" = ANY($2::text[])
+                  AND cm."deleted_at" IS NULL) AS mentions
          FROM "conversation" c
          LEFT JOIN "conversation_read_state" r
            ON r."conversation_id" = c."conversation_id" AND r."user_id" = $3
@@ -287,6 +440,8 @@ export class BandejaReadModel {
       mine: Number(fila?.mine ?? 0),
       awaitingHuman: Number(fila?.awaiting ?? 0),
       unread: Number(fila?.unread ?? 0),
+      attention: Number(fila?.attention ?? 0),
+      mentions: Number(fila?.mentions ?? 0),
     };
   }
 

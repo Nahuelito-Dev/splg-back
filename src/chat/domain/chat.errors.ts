@@ -55,11 +55,23 @@ export class CitaInvalidaError extends BadRequestDomainError {
   }
 }
 
-/** Nota interna fuera del hilo de un ticket, o de alguien que no es la plataforma (D-C8). */
+/** Nota interna donde no va: sólo la plataforma en un ticket (D-C8) o el personal en su bandeja. */
 export class NotaInternaNoPermitidaError extends BadRequestDomainError {
   override readonly code = CODIGOS_DE_ERROR.INTERNAL_NOTE_NOT_ALLOWED;
   constructor() {
-    super('Las notas internas sólo se pueden dejar en un ticket.');
+    super(
+      'Las notas internas sólo las deja el equipo: en un ticket o en la bandeja de mensajes.',
+    );
+  }
+}
+
+/** Mencionar en una nota a alguien que no es del personal que atiende ese canal (4a). */
+export class MencionNoPermitidaError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.MENTION_NOT_ALLOWED;
+  constructor() {
+    super(
+      'Sólo podés mencionar a alguien del equipo que atienda estos mensajes.',
+    );
   }
 }
 
@@ -222,5 +234,57 @@ export class ChatNoEscribibleError extends ConflictDomainError {
   override readonly code = CODIGOS_DE_ERROR.CHAT_NOT_WRITABLE;
   constructor() {
     super('Ya no se puede escribir en este chat.');
+  }
+}
+
+/** No hay encuesta para responder en esa conversación (4b). */
+export class CalificacionNoDisponibleError extends NotFoundDomainError {
+  override readonly code = CODIGOS_DE_ERROR.RATING_NOT_FOUND;
+  constructor() {
+    super('No hay una encuesta para responder en esta conversación.');
+  }
+}
+
+/** La encuesta ya se respondió: una respuesta por cierre (4b). */
+export class CalificacionYaRespondidaError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.RATING_ALREADY_ANSWERED;
+  constructor() {
+    super('Ya calificaste esta conversación.');
+  }
+}
+
+/** La encuesta de ese cierre se anuló: la conversación se reabrió (4b). */
+export class CalificacionAnuladaError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.RATING_CANCELLED;
+  constructor() {
+    super(
+      'La conversación se volvió a abrir: esta encuesta ya no se puede responder.',
+    );
+  }
+}
+
+/** La encuesta venció (4b). */
+export class CalificacionVencidaError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.RATING_EXPIRED;
+  constructor(horas: number) {
+    super(
+      `La encuesta venció: se puede responder hasta ${horas} horas después de cerrada la conversación.`,
+    );
+  }
+}
+
+/** La empresa no muestra esa acción en el chat (4e). */
+export class AccionNoDisponibleError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ACTION_NOT_AVAILABLE;
+  constructor() {
+    super('Esa opción no está disponible en el chat de la distribuidora.');
+  }
+}
+
+/** La acción la hace la app (repetir el pedido), no el chat (4e). */
+export class AccionSoloDeLaAppError extends BadRequestDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ACTION_IS_APP_ONLY;
+  constructor() {
+    super('Esa opción se hace desde la app, no desde el chat.');
   }
 }

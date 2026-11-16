@@ -53,6 +53,15 @@ export class AdminNotificationsListener {
 
   private empujarAlPanel(aviso: AdminNotification): void {
     try {
+      // Un aviso para una persona: sólo a sus conexiones, nunca a la sala de la empresa.
+      if (aviso.recipientUserId) {
+        this.gateway.emitirAUsuario(
+          aviso.recipientUserId,
+          EVENTO_AVISO_EN_VIVO,
+          AdminNotificationMapper.toLiveDto(aviso),
+        );
+        return;
+      }
       this.gateway.notifyAdmins(
         EVENTO_AVISO_EN_VIVO,
         AdminNotificationMapper.toLiveDto(aviso),
@@ -67,10 +76,11 @@ export class AdminNotificationsListener {
 
   /**
    * Un correo por admin activo; si uno falla se registra y no se reintenta. Los
-   * avisos de la plataforma no van por correo: quedan en su bandeja.
+   * avisos de la plataforma y los dirigidos a una persona no van por correo:
+   * quedan en la bandeja.
    */
   private async enviarCorreos(aviso: AdminNotification): Promise<void> {
-    if (!aviso.distributorId) return;
+    if (!aviso.distributorId || aviso.recipientUserId) return;
     const destinatarios = await this.admins.emailsDeAdminsActivos(
       aviso.distributorId,
     );

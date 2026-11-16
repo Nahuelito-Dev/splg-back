@@ -1,3 +1,4 @@
+import { lecturaVisibleDeLaPunta } from './bandeja-read-model';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In } from 'typeorm';
@@ -98,8 +99,9 @@ export class ChatReadModel {
     if (conversationIds.length === 0) return new Map();
     const filas: Array<{ conversation_id: string; last_read_seq: string }> =
       await this.dataSource.query(
-        `SELECT "conversation_id", "last_read_seq" FROM "conversation_party"
-          WHERE "conversation_id" = ANY($1::uuid[]) AND "party" = $2`,
+        `SELECT p."conversation_id", ${lecturaVisibleDeLaPunta('p')} AS "last_read_seq"
+           FROM "conversation_party" p
+          WHERE p."conversation_id" = ANY($1::uuid[]) AND p."party" = $2`,
         [conversationIds, otra],
       );
     return new Map(

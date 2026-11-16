@@ -50,7 +50,11 @@ const m = Object.assign(new Message(), {
   createdAt: new Date('2026-11-16T12:00:00Z'),
 });
 
-function armar(conversacionDeLaBase: Conversation | null = c3) {
+function armar(
+  conversacionDeLaBase: Conversation | null = c3,
+  /** El último `seq` visible hasta lo leído; sin él, lo leído (no hay notas). */
+  visibleHasta?: number,
+) {
   const panel = {
     emitirAConversacion: jest.fn(),
     emitirALaBandeja: jest.fn(),
@@ -78,6 +82,9 @@ function armar(conversacionDeLaBase: Conversation | null = c3) {
     getRepository: () => ({
       findOne: jest.fn().mockResolvedValue(conversacionDeLaBase),
     }),
+    query: jest.fn((_sql: string, [, seq]: [string, number]) =>
+      Promise.resolve([{ seq: visibleHasta ?? seq }]),
+    ),
   } as unknown as DataSource;
   const listener = new BandejaRealtimeListener(
     panel as unknown as AdminGateway,
@@ -90,6 +97,103 @@ function armar(conversacionDeLaBase: Conversation | null = c3) {
 }
 
 describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
+  describe('notas internas (4a): sólo al panel', () => {
+    it('el «leído» del personal hasta una nota: la persona ve el último visible antes; las pestañas del admin, lo que leyó', async () => {
+      const { listener, panel, clientes } = armar(c3, 4);
+      await listener.lectura({
+        conversationId: 'conv-1',
+        distributorId: 'dist-a',
+        channel: Channel.STAFF_CUSTOMER,
+        party: Party.COMPANY,
+        lastReadSeq: 5,
+        userId: 'adm-1',
+        personal: true,
+        deLaParte: true,
+      });
+      expect(clientes.emitirAConversacion).toHaveBeenCalledWith(
+        'conv-1',
+        'chat:read',
+        { conversationId: 'conv-1', party: Party.COMPANY, lastReadSeq: 4 },
+      );
+      expect(panel.emitirAUsuario).toHaveBeenCalledWith('adm-1', 'chat:read', {
+        conversationId: 'conv-1',
+        party: Party.COMPANY,
+        lastReadSeq: 5,
+      });
+    });
+
+    const nota = Object.assign(new Message(), {
+      ...m,
+      visibility: MessageVisibility.INTERNAL,
+      body: '@Juan fijate',
+    });
+
+    it.each([
+      ['C3', c3],
+      ['C2', c2],
+    ])(
+      '%s: la nota va a la sala del panel y a su lista; a la persona, nada',
+      async (_caso, conversacion) => {
+        const { listener, panel, clientes, choferes } = armar(conversacion);
+        await listener.mensaje({
+          conversation: conversacion,
+          message: Object.assign(new Message(), {
+            ...nota,
+            conversationId: conversacion.conversationId,
+          }),
+        });
+        expect(panel.emitirAConversacion).toHaveBeenCalledWith(
+          conversacion.conversationId,
+          'company',
+          'chat:message',
+          expect.objectContaining({ message: { seq: 2, para: Party.COMPANY } }),
+        );
+        expect(panel.emitirALaBandeja).toHaveBeenCalledWith(
+          'dist-a',
+          conversacion.channel,
+          'chat:inbox',
+          expect.objectContaining({
+            lastMessage: expect.objectContaining({
+              internal: true,
+              preview: null,
+            }) as unknown,
+          }),
+        );
+        for (const gw of [clientes, choferes]) {
+          expect(gw.emitirAConversacion).not.toHaveBeenCalled();
+          expect(gw.emitirAUsuario).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it('editar una nota (la última): sólo al panel', async () => {
+      const { listener, panel, clientes } = armar();
+      await listener.edicion({ conversation: c3, message: nota });
+      expect(panel.emitirAConversacion).toHaveBeenCalledWith(
+        'conv-1',
+        'company',
+        'chat:message-edited',
+        expect.anything(),
+      );
+      expect(clientes.emitirAConversacion).not.toHaveBeenCalled();
+      expect(clientes.emitirAUsuario).not.toHaveBeenCalled();
+    });
+
+    it('un mensaje visible sigue llegando a la persona (el aviso de la lista dice que no es interno)', async () => {
+      const { listener, panel, clientes } = armar();
+      await listener.mensaje({ conversation: c3, message: m });
+      expect(clientes.emitirAConversacion).toHaveBeenCalled();
+      expect(panel.emitirALaBandeja).toHaveBeenCalledWith(
+        'dist-a',
+        Channel.STAFF_CUSTOMER,
+        'chat:inbox',
+        expect.objectContaining({
+          lastMessage: expect.objectContaining({ internal: false }) as unknown,
+        }),
+      );
+    });
+  });
+
   it('mensaje de C3: cada punta su versión en la sala; a la lista del panel con vista previa; al cliente sólo el puntero', async () => {
     const { listener, panel, clientes, choferes } = armar();
     await listener.mensaje({ conversation: c3, message: m });
@@ -228,6 +332,7 @@ describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
       userId: 'adm-1',
       distributorId: 'dist-a',
       esPlataforma: false,
+      internal: false,
     });
     const [, , carga] = clientes.emitirAConversacion.mock.calls[0] as [
       string,
@@ -245,8 +350,22 @@ describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
       userId: 'adm-b',
       distributorId: 'dist-b',
       esPlataforma: false,
+      internal: false,
     });
     expect(otra.clientes.emitirAConversacion).not.toHaveBeenCalled();
+  });
+
+  it('«escribiendo…» de una nota interna (4a): a la persona no le llega', async () => {
+    const { listener, clientes, choferes } = armar();
+    await listener.escribiendoDelPanel({
+      conversationId: 'conv-1',
+      userId: 'adm-1',
+      distributorId: 'dist-a',
+      esPlataforma: false,
+      internal: true,
+    });
+    expect(clientes.emitirAConversacion).not.toHaveBeenCalled();
+    expect(choferes.emitirAConversacion).not.toHaveBeenCalled();
   });
 
   it('«escribiendo…» de la app: sólo si la conversación es de quien escribe', async () => {

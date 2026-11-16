@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { ConversationStatus, esCanalDeLaBandeja } from '../domain/chat.enums';
+import {
+  ConversationStatus,
+  esCanalDeLaBandeja,
+  MessageVisibility,
+} from '../domain/chat.enums';
 import {
   ConversacionCerradaError,
   ConversacionNoEncontradaError,
@@ -30,7 +34,8 @@ export interface MensajeEscrito {
  *  2. Si ese autor ya mandó ese `clientMessageId`, devuelve el mismo mensaje
  *     sin gastar un número (también si la conversación ya se cerró).
  *  3. Conversación cerrada → 409.
- *  4. Si responde a otro mensaje, que sea de esta conversación (D-C25).
+ *  4. Si responde a otro mensaje, que sea de esta conversación (D-C25) y,
+ *     si lo ve la otra punta, que no sea una nota interna.
  *  5. Suma uno al contador y escribe el mensaje con ese número. Si la
  *     transacción se revierte, el contador vuelve atrás con ella: no quedan
  *     huecos.
@@ -88,16 +93,26 @@ export class MessageWriter {
         conversation.conversationId,
         nuevo.replyToSeq,
       );
+      // Un mensaje que ve la otra punta no responde a una nota interna: la
+      // delataría (su número y que la escribió la empresa).
+      if (
+        citado?.visibility === MessageVisibility.INTERNAL &&
+        nuevo.visibility === MessageVisibility.ALL
+      ) {
+        throw new RespuestaInvalidaError();
+      }
       replyToPreview =
         citado && !citado.withdrawnAt && !citado.redactedAt
           ? vistaPrevia(citado.body, citado.visibility)
           : null;
     }
 
+    const visible = nuevo.visibility === MessageVisibility.ALL;
     const seq = await this.repo.siguienteSeq(
       manager,
       conversation,
       vistaPrevia(nuevo.body, nuevo.visibility),
+      visible,
     );
     const message = await this.repo.insertar(manager, {
       ...nuevo,
@@ -105,7 +120,7 @@ export class MessageWriter {
       seq,
     });
     conversation.lastMessageSeq = seq;
-    conversation.lastMessageAt = message.createdAt;
+    if (visible) conversation.lastMessageAt = message.createdAt;
     return { message, created: true, conversation };
   }
 }

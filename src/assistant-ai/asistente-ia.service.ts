@@ -21,6 +21,8 @@ import {
   MessageKind,
   MessageVisibility,
   Party,
+  PLANTILLA_DEL_ASISTENTE_IA,
+  SystemCode,
 } from '../chat/domain/chat.enums';
 import { ConversacionCerradaError } from '../chat/domain/chat.errors';
 import { estaAbierto, proximaApertura } from '../chat/domain/horario';
@@ -30,7 +32,11 @@ import {
 } from '../chat/domain/horario-de-la-empresa';
 import type { ChatCompanySettings } from '../chat/entities/chat-company-settings.entity';
 import { Conversation } from '../chat/entities/conversation.entity';
-import { Message } from '../chat/entities/message.entity';
+import {
+  type FuenteDeLaRespuesta,
+  Message,
+  type PayloadDeLaIa,
+} from '../chat/entities/message.entity';
 import type { PlatformSupportSettings } from '../chat/entities/platform-support-settings.entity';
 import { codigoSqlDelError } from '../common/errors/db-exceptions';
 import { errorMessage } from '../common/errors/error-message';
@@ -44,6 +50,7 @@ import {
   HORAS_QUE_MIRA_EL_RESCATE,
   MENSAJES_DE_CONTEXTO,
   MotivoDeDerivacion,
+  MOTIVOS_EN_CASTELLANO,
   SEGUNDOS_PARA_RESCATAR,
   TOPE_DEL_RESCATE,
   TOPE_DEL_RESCATE_POR_EMPRESA,
@@ -52,6 +59,7 @@ import {
   type RespuestaDelModelo,
   SIN_USO,
   type TokensDelMes,
+  textoDeLaNotaDeDerivacion,
   tokensQueCuentan,
   topeAlcanzado,
   type TopesDelAsistente,
@@ -64,6 +72,8 @@ import {
   armarSystem,
   type CanalDelAsistente,
   type MensajeDelHilo,
+  ordenarBase,
+  type PreguntaDeLaBase,
 } from './prompt';
 
 const UNICO_VIOLADO = '23505';
@@ -74,7 +84,7 @@ const TTL_DEL_LOCK_MS = 30_000;
 const ESPERA_DEL_LOCK_MS = 40_000;
 
 /** Clave de la respuesta del asistente y de su derivación en el mensaje. */
-export const PLANTILLA_DEL_ASISTENTE = 'asistente_ia';
+export const PLANTILLA_DEL_ASISTENTE = PLANTILLA_DEL_ASISTENTE_IA;
 export const PLANTILLA_DE_DERIVACION = 'asistente_derivacion';
 
 /** El mensaje de la otra punta que dispara al asistente. */
@@ -109,6 +119,33 @@ export function perfilSiCorresponde(
       conversation.channel === Channel.PLATFORM_CHAT ? 'soporte' : 'clientes',
     pregunta: puntas.pregunta,
   };
+}
+
+/**
+ * Las fuentes de una respuesta (4d), para el equipo: las preguntas frecuentes
+ * que el modelo dijo usar (por su número en el prompt; uno fuera de la base
+ * se ignora) y las herramientas que dieron datos, con el pedido.
+ */
+export function fuentesDeLaRespuesta(
+  resultado: Extract<RespuestaDelModelo, { tipo: 'respuesta' }>,
+  base: readonly PreguntaDeLaBase[],
+): FuenteDeLaRespuesta[] {
+  const ordenadas = ordenarBase(base);
+  const fuentes: FuenteDeLaRespuesta[] = [];
+  for (const n of resultado.preguntas ?? []) {
+    const p = ordenadas[n - 1];
+    if (p?.faqId) {
+      fuentes.push({ type: 'faq', faqId: p.faqId, question: p.question });
+    }
+  }
+  for (const f of resultado.fuentes ?? []) {
+    fuentes.push(
+      f.pedido
+        ? { type: 'tool', tool: f.tool, orderNumber: f.pedido }
+        : { type: 'tool', tool: f.tool },
+    );
+  }
+  return fuentes;
 }
 
 /** Firma, textos, horario y topes de quien atiende. */
@@ -191,7 +228,8 @@ export class AsistenteIaService {
   /**
    * Rescate (lo corre `AsistenteIaRescateCron` cada minuto): los mensajes de
    * la otra punta de hace más de 60 s (y menos de 24 h) que siguen siendo el
-   * último de su conversación abierta, sin nadie que la atienda ni espera de
+   * último visible de su conversación abierta (una nota interna del equipo
+   * no cuenta: no le contesta al cliente), sin nadie que la atienda ni espera de
    * persona, sin respuesta publicada del asistente y con la IA prendida. El
    * envío no les mandó la fija porque la IA se encargaba y su trabajo no
    * corrió (el proceso se cayó, no tomó el lock). A cada uno: la fija que
@@ -228,7 +266,9 @@ export class AsistenteIaService {
                 row_number() OVER (PARTITION BY c."distributor_id", c."channel" ORDER BY m."created_at", m."message_id") AS "turno"
            FROM "conversation" c
            JOIN "message" m ON m."conversation_id" = c."conversation_id"
-                           AND m."seq" = c."last_message_seq"
+                           AND m."seq" = (SELECT max(v."seq") FROM "message" v
+                                           WHERE v."conversation_id" = c."conversation_id"
+                                             AND v."visibility" = 'all')
            LEFT JOIN "chat_company_settings" s ON s."distributor_id" = c."distributor_id"
           WHERE c."status" = 'open' AND c."deleted_at" IS NULL
             AND c."assigned_to_user_id" IS NULL AND c."awaiting_human_since" IS NULL
@@ -379,6 +419,7 @@ export class AsistenteIaService {
       await this.tokensDelMes(c, perfil),
     );
     let resultado: RespuestaDelModelo;
+    let base: PreguntaDeLaBase[] = [];
     if (tope) {
       resultado = {
         tipo: 'derivar',
@@ -396,6 +437,12 @@ export class AsistenteIaService {
       const { items } = await this.base.listar(
         perfil.canal === 'soporte' ? null : c.distributorId,
       );
+      base = items.map((f) => ({
+        faqId: f.faqId,
+        question: f.question,
+        answer: f.answer,
+        position: f.position,
+      }));
       const momento = ahora();
       const ajustes = atencion.ajustes;
       resultado = await this.consulta.consultar({
@@ -405,7 +452,7 @@ export class AsistenteIaService {
             nombreDelAsistente: atencion.senderLabel,
             nombreDeQuienAtiende: atencion.nombreDeQuienAtiende,
           },
-          items,
+          base,
         ),
         mensajes,
         herramientas: herramientasDelCanal(perfil.canal),
@@ -428,7 +475,16 @@ export class AsistenteIaService {
               ),
       });
     }
-    await this.publicar(c, m, perfil, atencion, resultado, inicio, ahora());
+    await this.publicar(
+      c,
+      m,
+      perfil,
+      atencion,
+      resultado,
+      inicio,
+      ahora(),
+      base,
+    );
   }
 
   /** Ya hay una respuesta o derivación publicada para ese mensaje. */
@@ -519,6 +575,7 @@ export class AsistenteIaService {
     resultado: RespuestaDelModelo,
     inicio: number,
     ahora: Date,
+    base: readonly PreguntaDeLaBase[] = [],
   ): Promise<boolean> {
     const deriva = resultado.tipo === 'derivar';
     const efectos = new Efectos();
@@ -561,6 +618,7 @@ export class AsistenteIaService {
               resultado.texto,
               {
                 model: resultado.modelo,
+                sources: fuentesDeLaRespuesta(resultado, base),
               },
               PLANTILLA_DEL_ASISTENTE,
               efectos,
@@ -636,7 +694,7 @@ export class AsistenteIaService {
     c: Conversation,
     atencion: Atencion,
     body: string,
-    ai: { model: string | null; handoff?: boolean },
+    ai: PayloadDeLaIa,
     templateKey: string,
     efectos: Efectos,
   ): Promise<string> {
@@ -694,6 +752,11 @@ export class AsistenteIaService {
         efectos,
       );
     }
+    // Con los clientes (C3), el contexto para quien la tome: una nota interna
+    // con el resumen del modelo (si corrió y lo dio) y el motivo (4c).
+    if (perfil.canal === 'clientes') {
+      await this.notaDeDerivacion(manager, c, resultado, efectos);
+    }
     await manager.query(
       `UPDATE "conversation" SET "awaiting_human_since" = $2
         WHERE "conversation_id" = $1 AND "awaiting_human_since" IS NULL`,
@@ -702,6 +765,41 @@ export class AsistenteIaService {
     c.awaitingHumanSince = ahora;
     efectos.conversacion(c, 'status');
     return replyMessageId;
+  }
+
+  /**
+   * La nota interna de la derivación (4c): sólo la ve el personal; el
+   * resumen sólo si el modelo corrió y lo dio (si no, el motivo solo).
+   */
+  private async notaDeDerivacion(
+    manager: EntityManager,
+    c: Conversation,
+    resultado: Extract<RespuestaDelModelo, { tipo: 'derivar' }>,
+    efectos: Efectos,
+  ): Promise<void> {
+    const resumen = resultado.modelo ? (resultado.resumen ?? null) : null;
+    const detalle = resultado.modelo ? (resultado.detalle ?? null) : null;
+    const r = await this.writer.escribir(manager, {
+      conversationId: c.conversationId,
+      distributorId: c.distributorId,
+      senderParty: Party.SYSTEM,
+      senderUserId: null,
+      clientMessageId: null,
+      kind: MessageKind.SYSTEM,
+      visibility: MessageVisibility.INTERNAL,
+      body: textoDeLaNotaDeDerivacion(resultado.motivo, resumen, detalle),
+      payload: {
+        ai: { model: resultado.modelo, handoff: true },
+        handoff: {
+          reason: resultado.motivo,
+          reasonLabel: MOTIVOS_EN_CASTELLANO[resultado.motivo],
+          summary: resumen,
+        },
+      },
+      systemCode: SystemCode.HANDOFF_NOTE,
+      templateKey: null,
+    });
+    efectos.mensaje(r.conversation, r.message);
   }
 
   /**

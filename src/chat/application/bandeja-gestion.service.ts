@@ -34,6 +34,10 @@ import type {
 } from '../presentation/dto/bandeja-input.dto';
 import { type ActorDeLaBandeja, BandejaAcceso } from './bandeja-acceso';
 import {
+  anularEncuestasPendientes,
+  BandejaEncuestaService,
+} from './bandeja-encuesta.service';
+import {
   choferesAjenos,
   noExisteLaPersonaDelPersonal,
   sinPermiso,
@@ -71,6 +75,7 @@ export class BandejaGestionService {
     private readonly claims: ClaimsService,
     private readonly cupos: ChatRateLimit,
     private readonly eventos: ChatEvents,
+    private readonly encuesta: BandejaEncuestaService,
   ) {}
 
   /** La bandeja del personal: sólo los canales que atiende (uno que no atiende → 403). */
@@ -121,6 +126,17 @@ export class BandejaGestionService {
              WHERE u."user_id" = COALESCE(c.customer_user_id, c.driver_user_id)
                AND u."full_name" ILIKE :q))`,
         { q: `%${escaparLike(query.q)}%` },
+      );
+    }
+    if (query.mentioned) {
+      // «Me mencionaron»: notas de esta empresa que mencionan a quien pide.
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM "message_mention" mm
+                  WHERE mm."conversation_id" = c.conversation_id
+                    AND mm."distributor_id" = :distributorId
+                    AND mm."mentioned_user_id" = :mencionado
+                    ${query.mentioned === 'unread' ? 'AND mm."read_at" IS NULL' : ''})`,
+        { mencionado: actor.userId },
       );
     }
     filtrarPorEspera(qb, query.awaiting);
@@ -222,10 +238,15 @@ export class BandejaGestionService {
     return c;
   }
 
-  /** Cerrar a mano. Queda en lectura; un mensaje nuevo abre otra (o se reabre). */
+  /**
+   * Cerrar a mano. Queda en lectura; un mensaje nuevo abre otra (o se
+   * reabre). Con un cliente, sale la encuesta de satisfacción (4b) si la
+   * empresa la tiene prendida.
+   */
   async cerrar(
     actor: ActorDeLaBandeja,
     conversationId: string,
+    ahora: Date = new Date(),
   ): Promise<Conversation> {
     const efectos = new Efectos();
     const c = await this.dataSource.transaction(async (manager) => {
@@ -240,12 +261,19 @@ export class BandejaGestionService {
         deSistema(c, SystemCode.CLOSED_MANUAL),
       );
       efectos.mensaje(r.conversation, r.message);
+      // Con un cliente, la encuesta de satisfacción de este cierre (4b).
+      await this.encuesta.pedirAlCerrar(
+        manager,
+        r.conversation,
+        efectos,
+        ahora,
+      );
       const repo = manager.getRepository(Conversation);
       const actual = await repo.findOneByOrFail({
         conversationId: c.conversationId,
       });
       actual.status = ConversationStatus.CLOSED;
-      actual.closedAt = new Date();
+      actual.closedAt = ahora;
       actual.closedReason = ConversationClosedReason.MANUAL;
       actual.closedByUserId = actor.userId;
       // Cerrada, ya no espera a una persona (el asistente con IA la había derivado).
@@ -289,6 +317,13 @@ export class BandejaGestionService {
         }
         throw error;
       }
+      // La encuesta pendiente de ese cierre ya no se responde (4b).
+      await anularEncuestasPendientes(
+        manager,
+        abierta.conversationId,
+        abierta.distributorId,
+        new Date(),
+      );
       const r = await this.writer.escribir(
         manager,
         deSistema(abierta, SystemCode.REOPENED),

@@ -12,20 +12,29 @@ import {
   Channel,
   ConversationStatus,
   MessageKind,
+  MessageVisibility,
   Party,
 } from '../domain/chat.enums';
 import { minutosHabiles } from '../domain/horario-de-la-empresa';
 import { vistaPrevia } from '../domain/reglas-del-mensaje';
 import type { ChatCompanySettings } from '../entities/chat-company-settings.entity';
 import type { Conversation } from '../entities/conversation.entity';
+import type { ConversationRating } from '../entities/conversation-rating.entity';
+import { accionesHabilitadas } from '../domain/acciones-del-cliente';
+import { estadoDeLaEncuesta } from '../domain/encuesta';
 import type { Message } from '../entities/message.entity';
 import {
   BandejaReadModel,
+  type MencionDeLaNota,
   type PedidoDeLaConversacion,
 } from '../infrastructure/bandeja-read-model';
 import type { Lector } from '../infrastructure/chat-read-model';
+import { payloadPara } from './payload-del-mensaje';
+
+export { payloadPara };
 import type {
   InboxConversationDto,
+  InboxCsatDto,
   InboxMessageDto,
 } from './dto/bandeja-response.dto';
 
@@ -51,6 +60,33 @@ export interface ContextoDeLaBandeja {
   ajustes: Map<string, ChatCompanySettings>;
   /** De los mensajes que quien mira podría editar, los que quedaron atados (pedido, reclamo, ticket o citados). */
   atados: Set<string>;
+  /** Sólo para el personal: a quiénes menciona cada nota interna. */
+  menciones: Map<string, MencionDeLaNota[]>;
+  /** Sólo para el personal: menciones sin leer a quien mira, por conversación. */
+  mencionesSinLeer: Map<string, number>;
+  /** La encuesta del último cierre de cada conversación con un cliente (4b). */
+  encuestas: Map<string, ConversationRating>;
+  /** Sólo para el cliente: el `seq` del primer mensaje del asistente de cada conversación (4e). */
+  primerDelAsistente: Map<string, number>;
+}
+
+/** La encuesta de un cierre como la ven el personal y el cliente (4b). */
+export function encuestaADto(
+  e: ConversationRating,
+  ahora: Date,
+  personal: boolean,
+): InboxCsatDto {
+  return {
+    ratingId: e.ratingId,
+    status: estadoDeLaEncuesta(e, ahora),
+    score: e.score,
+    comment: e.comment,
+    // Quién atendió es para el tablero del equipo, no para el cliente.
+    ...(personal ? { servedBy: e.servedBy } : {}),
+    requestedAt: e.requestedAt.toISOString(),
+    expiresAt: e.expiresAt.toISOString(),
+    answeredAt: e.answeredAt?.toISOString() ?? null,
+  };
 }
 
 /** La firma con que se mandó el mensaje del asistente (`payload.senderLabel`); nula en los anteriores. */
@@ -109,6 +145,10 @@ export class BandejaPresenter {
       primerEntrante,
       pedidos,
       atados,
+      menciones,
+      mencionesSinLeer,
+      encuestas,
+      primerDelAsistente,
     ] = await Promise.all([
       this.lectura.noLeidos(ids, quien),
       this.lectura.lecturaPropia(ids, quien.userId),
@@ -127,6 +167,28 @@ export class BandejaPresenter {
           .filter((m) => editablePorPlazo(m, quien, ahora))
           .map((m) => m.messageId),
       ),
+      quien.party === Party.COMPANY
+        ? this.lectura.menciones(
+            mensajes
+              .filter((m) => m.visibility === MessageVisibility.INTERNAL)
+              .map((m) => m.messageId),
+          )
+        : Promise.resolve(new Map<string, MencionDeLaNota[]>()),
+      quien.party === Party.COMPANY
+        ? this.lectura.mencionesSinLeer(ids, quien.userId)
+        : Promise.resolve(new Map<string, number>()),
+      quien.party === Party.DRIVER
+        ? Promise.resolve(new Map<string, ConversationRating>())
+        : this.lectura.encuestas(
+            conversaciones
+              .filter((c) => c.channel === Channel.STAFF_CUSTOMER)
+              .map((c) => c.conversationId),
+          ),
+      quien.party === Party.CUSTOMER
+        ? this.lectura.primerMensajeDelAsistente(
+            mensajes.filter(esRespuestaAutomatica).map((m) => m.conversationId),
+          )
+        : Promise.resolve(new Map<string, number>()),
     ]);
     const usuarios = new Set<string>();
     for (const c of conversaciones) {
@@ -176,6 +238,10 @@ export class BandejaPresenter {
       primerEntrante,
       ajustes: new Map(ajustes),
       atados,
+      menciones,
+      mencionesSinLeer,
+      encuestas,
+      primerDelAsistente,
     };
   }
 
@@ -267,6 +333,10 @@ export class BandejaPresenter {
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     };
+    if (c.channel === Channel.STAFF_CUSTOMER) {
+      const e = ctx.encuestas.get(c.conversationId);
+      dto.csat = e ? encuestaADto(e, ctx.ahora, esPersonal(ctx)) : null;
+    }
     if (esPersonal(ctx)) {
       dto.customer = c.channel === Channel.STAFF_CUSTOMER ? persona : null;
       dto.driver = c.channel === Channel.STAFF_DRIVER ? persona : null;
@@ -279,6 +349,7 @@ export class BandejaPresenter {
       dto.linkedClaimId = c.linkedClaimId;
       dto.firstResponseAt = c.firstResponseAt?.toISOString() ?? null;
       dto.awaitingHumanSince = c.awaitingHumanSince?.toISOString() ?? null;
+      dto.unreadMentions = ctx.mencionesSinLeer.get(c.conversationId) ?? 0;
       const entrante = ctx.primerEntrante.get(c.conversationId);
       dto.firstResponseBusinessMinutes =
         entrante && c.firstResponseAt && ajustes
@@ -298,7 +369,8 @@ export class BandejaPresenter {
         ? ctx.respondidos.get(`${m.conversationId}:${m.replyToSeq}`)
         : undefined;
     const automatico = esRespuestaAutomatica(m);
-    return {
+    const interna = m.visibility === MessageVisibility.INTERNAL;
+    const dto: InboxMessageDto = {
       id: m.messageId,
       conversationId: m.conversationId,
       seq: m.seq,
@@ -312,6 +384,7 @@ export class BandejaPresenter {
         editablePorPlazo(m, ctx.quien, ctx.ahora) &&
         !ctx.atados.has(m.messageId),
       kind: m.kind,
+      internal: interna,
       body: sinTexto ? null : m.body,
       templateKey: m.templateKey,
       systemCode: m.systemCode,
@@ -323,7 +396,12 @@ export class BandejaPresenter {
             ctx.marcas.get(m.distributorId) ?? '',
           ))
         : null,
-      payload: sinTexto ? null : (m.payload as Record<string, unknown> | null),
+      payload: sinTexto
+        ? null
+        : payloadPara(
+            m.payload as Record<string, unknown> | null,
+            esPersonal(ctx),
+          ),
       replyTo: respondido
         ? {
             seq: respondido.seq,
@@ -340,6 +418,22 @@ export class BandejaPresenter {
       redacted: redactado,
       createdAt: m.createdAt.toISOString(),
     };
+    if (interna && esPersonal(ctx)) {
+      dto.mentions = ctx.menciones.get(m.messageId) ?? [];
+    }
+    // 4e: al cliente, los botones de acción en el primer mensaje del asistente.
+    const ajustes = ctx.ajustes.get(m.distributorId);
+    if (
+      ctx.quien.party === Party.CUSTOMER &&
+      automatico &&
+      ajustes?.customerChatEnabled !== false &&
+      ctx.primerDelAsistente.get(m.conversationId) === m.seq
+    ) {
+      dto.actions = accionesHabilitadas(ajustes?.customerActions ?? []).map(
+        ({ key, label, kind, text }) => ({ key, label, kind, text }),
+      );
+    }
+    return dto;
   }
 
   /** El personal ve quién escribió; el cliente y el chofer, la marca de la empresa (D-C5). */

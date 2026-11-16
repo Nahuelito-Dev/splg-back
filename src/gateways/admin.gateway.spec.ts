@@ -272,6 +272,7 @@ describe('AdminGateway', () => {
         userId: 'u2',
         distributorId: null,
         esPlataforma: true,
+        internal: false,
       });
     });
 

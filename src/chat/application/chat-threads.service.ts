@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { Channel, MessageVisibility, Party } from '../domain/chat.enums';
+import { Channel, MessageVisibility } from '../domain/chat.enums';
+import { veNotasInternas } from '../domain/reglas-del-mensaje';
 import { ConversacionNoEncontradaError } from '../domain/chat.errors';
 import { Conversation } from '../entities/conversation.entity';
 import { Message } from '../entities/message.entity';
@@ -20,7 +21,9 @@ export interface HiloBuscado {
 /**
  * Lectura de los hilos (chat e hilo del ticket): páginas de mensajes por
  * `seq` y la marca de «leído». Una conversación de otra empresa o de otro
- * canal es 404; la empresa nunca recibe notas internas.
+ * canal es 404. Las notas internas, sólo para quien las ve
+ * (`veNotasInternas`): la empresa nunca recibe las de la plataforma, y el
+ * cliente y el chofer nunca reciben las del personal.
  */
 @Injectable()
 export class ChatThreadsService {
@@ -61,7 +64,7 @@ export class ChatThreadsService {
       .andWhere('m.distributorId = :dist', {
         dist: conversation.distributorId,
       });
-    if (quien.party !== Party.PLATFORM) {
+    if (!veNotasInternas(quien.party, conversation.channel)) {
       qb.andWhere('m.visibility = :todos', { todos: MessageVisibility.ALL });
     }
     const limite = query.limit;

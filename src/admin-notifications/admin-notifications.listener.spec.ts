@@ -26,6 +26,7 @@ function aviso(parcial: Partial<AdminNotification> = {}): AdminNotification {
     emailedAt: null,
     createdAt: new Date('2026-10-28T12:00:00Z'),
     traceId: null,
+    recipientUserId: null,
     ...parcial,
   };
 }
@@ -44,7 +45,7 @@ function evento(email = false): NotificarAdminEvent {
 
 describe('AdminNotificationsListener', () => {
   let bandeja: { registrar: jest.Mock; marcarCorreoEnviado: jest.Mock };
-  let gateway: { notifyAdmins: jest.Mock };
+  let gateway: { notifyAdmins: jest.Mock; emitirAUsuario: jest.Mock };
   let admins: { emailsDeAdminsActivos: jest.Mock };
   let emailSender: { send: jest.Mock };
   let marcas: { deDistribuidora: jest.Mock };
@@ -55,7 +56,7 @@ describe('AdminNotificationsListener', () => {
       registrar: jest.fn().mockResolvedValue(aviso()),
       marcarCorreoEnviado: jest.fn().mockResolvedValue(undefined),
     };
-    gateway = { notifyAdmins: jest.fn() };
+    gateway = { notifyAdmins: jest.fn(), emitirAUsuario: jest.fn() };
     admins = {
       emailsDeAdminsActivos: jest.fn().mockResolvedValue(['a@x.com']),
     };
@@ -92,6 +93,23 @@ describe('AdminNotificationsListener', () => {
       }),
       'd1',
     );
+  });
+
+  it('un aviso para una persona (mención en el chat, 4a) va sólo a sus conexiones y nunca por correo', async () => {
+    bandeja.registrar.mockResolvedValue(
+      aviso({ recipientUserId: 'adm-2', email: true }),
+    );
+
+    await listener.handle(evento(true));
+
+    expect(gateway.emitirAUsuario).toHaveBeenCalledWith(
+      'adm-2',
+      EVENTO_AVISO_EN_VIVO,
+      expect.objectContaining({ id: 'n-1', distributorId: 'd1' }),
+    );
+    expect(gateway.notifyAdmins).not.toHaveBeenCalled();
+    expect(admins.emailsDeAdminsActivos).not.toHaveBeenCalled();
+    expect(emailSender.send).not.toHaveBeenCalled();
   });
 
   it('un aviso de la plataforma va a la sala de la plataforma y no por correo a ninguna empresa', async () => {

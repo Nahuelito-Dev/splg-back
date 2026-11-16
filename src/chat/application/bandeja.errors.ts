@@ -35,6 +35,16 @@ export function borradoNoPermitido(): ForbiddenException {
   );
 }
 
+/** Las acciones del chat (4e) y la encuesta (4b) son del cliente: el chofer no. */
+export function soloDelCliente(): ForbiddenException {
+  return conCodigo(
+    ForbiddenException,
+    403,
+    'Estas opciones son sólo para los clientes.',
+    CODIGOS_DE_ERROR.CUSTOMER_ONLY,
+  );
+}
+
 /** Un canal o una acción que el rol del personal no tiene. */
 export function sinPermiso(...permisos: Permiso[]): ForbiddenException {
   return conCodigo(

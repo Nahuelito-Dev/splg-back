@@ -22,6 +22,14 @@ describe('aviso por correo', () => {
     ).toBe('employees/details/e1?tab=documents');
   });
 
+  it('4a: el aviso de una mención en el chat lleva a la conversación en la bandeja', () => {
+    expect(
+      rutaDelPanelDelAviso(
+        aviso({ linkEntity: 'conversation', linkId: 'c/1' }),
+      ),
+    ).toBe('messages/c%2F1');
+  });
+
   it('M5: el aviso del envase sin devolver lleva al legajo del caso de recupero', () => {
     expect(
       rutaDelPanelDelAviso(

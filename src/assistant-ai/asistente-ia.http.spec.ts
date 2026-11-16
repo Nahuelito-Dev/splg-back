@@ -1,3 +1,4 @@
+import { BandejaEncuestaService } from '../chat/application/bandeja-encuesta.service';
 import {
   CanActivate,
   ExecutionContext,
@@ -223,6 +224,7 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
         { provide: CompanyTemplatesService, useValue: {} },
         { provide: MessageTemplatesService, useValue: {} },
         { provide: BandejaService, useValue: bandeja },
+        { provide: BandejaEncuestaService, useValue: {} },
         { provide: BandejaGestionService, useValue: {} },
         { provide: TicketQueriesService, useValue: consultas },
         { provide: PlatformChatService, useValue: {} },
@@ -669,6 +671,12 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
             senderLabel: 'Asistente de Gas del Sur',
             ai: { model: 'claude-haiku-5-5', handoff: true },
           },
+        }),
+        // 4c: la nota interna con el motivo, sólo para el equipo.
+        expect.objectContaining({
+          kind: MessageKind.SYSTEM,
+          visibility: 'internal',
+          systemCode: 'handoff_note',
         }),
       ]);
       expect(real.esperando).toEqual([CONV]);

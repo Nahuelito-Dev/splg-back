@@ -10,6 +10,8 @@ import { AsistenteDelChat } from './application/asistente-del-chat';
 import { BandejaAcceso } from './application/bandeja-acceso';
 import { RespuestasFijas } from './application/respuestas-fijas';
 import { BandejaEquipoService } from './application/bandeja-equipo.service';
+import { BandejaNotasService } from './application/bandeja-notas.service';
+import { BandejaEncuestaService } from './application/bandeja-encuesta.service';
 import { BandejaGestionService } from './application/bandeja-gestion.service';
 import { BandejaSugerenciasService } from './application/bandeja-sugerencias.service';
 import { BandejaService } from './application/bandeja.service';
@@ -18,6 +20,8 @@ import { CompanyChatSettingsService } from './application/company-chat-settings.
 import { CompanyTemplatesService } from './application/company-templates.service';
 import { ChatCompanySettings } from './entities/chat-company-settings.entity';
 import { MessageEdit } from './entities/message-edit.entity';
+import { MessageMention } from './entities/message-mention.entity';
+import { ConversationRating } from './entities/conversation-rating.entity';
 import { BandejaReadModel } from './infrastructure/bandeja-read-model';
 import { BandejaPresenter } from './presentation/bandeja.presenter';
 import { BandejaRealtimeListener } from './presentation/bandeja-realtime.listener';
@@ -88,6 +92,8 @@ import {
       MessageTemplate,
       PlatformSupportSettings,
       MessageEdit,
+      MessageMention,
+      ConversationRating,
       ChatCompanySettings,
     ]),
     GatewaysModule,
@@ -145,6 +151,8 @@ import {
     BandejaService,
     BandejaGestionService,
     BandejaEquipoService,
+    BandejaNotasService,
+    BandejaEncuestaService,
     BandejaSugerenciasService,
     CompanyChatSettingsService,
     CompanyTemplatesService,

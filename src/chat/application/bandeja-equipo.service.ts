@@ -4,6 +4,7 @@ import { EntityPhotoService } from '../../s3/entity-photo.service';
 import { atiendeElCanal, type CanalDeLaBandeja } from '../domain/bandeja';
 import {
   BandejaReadModel,
+  type PersonaDelPersonal,
   type ResumenDeLaBandeja,
 } from '../infrastructure/bandeja-read-model';
 import {
@@ -54,13 +55,9 @@ export class BandejaEquipoService {
     conversationId: string,
   ): Promise<PersonaParaAsignar[]> {
     const c = await this.acceso.buscar(actor, conversationId);
-    const canal = c.channel as CanalDeLaBandeja;
-    const equipo = await this.lectura.personalDeLaEmpresa(actor.distributorId);
-    const atienden = equipo.filter((p) =>
-      atiendeElCanal(
-        { todos: p.todos, permisos: permisosEfectivos(p.permisos) },
-        canal,
-      ),
+    const atienden = await this.quienesAtienden(
+      actor.distributorId,
+      c.channel as CanalDeLaBandeja,
     );
     return Promise.all(
       atienden.map(async (p) => {
@@ -71,6 +68,23 @@ export class BandejaEquipoService {
           ...(photoUrl ? { photoUrl } : {}),
         };
       }),
+    );
+  }
+
+  /**
+   * El personal vigente de la empresa que atiende ese canal: a quién se le
+   * puede asignar una conversación y a quién se puede mencionar en una nota.
+   */
+  async quienesAtienden(
+    distributorId: string,
+    canal: CanalDeLaBandeja,
+  ): Promise<PersonaDelPersonal[]> {
+    const equipo = await this.lectura.personalDeLaEmpresa(distributorId);
+    return equipo.filter((p) =>
+      atiendeElCanal(
+        { todos: p.todos, permisos: permisosEfectivos(p.permisos) },
+        canal,
+      ),
     );
   }
 }

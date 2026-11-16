@@ -64,6 +64,7 @@ export class AdminNotificationsService {
       email: evento.email,
       emailedAt: null,
       traceId: evento.traceId,
+      recipientUserId: evento.recipientUserId,
     });
     try {
       return await this.avisos.save(aviso);
@@ -84,7 +85,7 @@ export class AdminNotificationsService {
     distributorId: string | null,
     query: QueryAdminNotificationsDto,
   ): Promise<AdminNotificationListResponseDto> {
-    const qb = this.delAlcance(distributorId);
+    const qb = this.delAlcance(distributorId, userId);
     if (query.unread !== undefined) {
       this.filtrarLeidos(qb, userId, query.unread ? 'sin_leer' : 'leidos');
     }
@@ -116,7 +117,7 @@ export class AdminNotificationsService {
     userId: string,
     distributorId: string | null,
   ): Promise<UnreadCountResponseDto> {
-    const qb = this.delAlcance(distributorId);
+    const qb = this.delAlcance(distributorId, userId);
     this.filtrarLeidos(qb, userId, 'sin_leer');
     return { count: await qb.getCount() };
   }
@@ -127,7 +128,7 @@ export class AdminNotificationsService {
     distributorId: string | null,
     notificationId: string,
   ): Promise<AdminNotificationResponseDto> {
-    const aviso = await this.delAlcance(distributorId)
+    const aviso = await this.delAlcance(distributorId, userId)
       .andWhere('n.notificationId = :notificationId', { notificationId })
       .getOne();
     if (!aviso) throw new NotFoundException('No existe ese aviso');
@@ -155,7 +156,9 @@ export class AdminNotificationsService {
     userId: string,
     distributorId: string | null,
   ): Promise<ReadAllResponseDto> {
-    const qb = this.delAlcance(distributorId).select('n.notificationId');
+    const qb = this.delAlcance(distributorId, userId).select(
+      'n.notificationId',
+    );
     this.filtrarLeidos(qb, userId, 'sin_leer');
     const pendientes = await qb.getMany();
     if (pendientes.length === 0) return { updated: 0 };
@@ -177,8 +180,13 @@ export class AdminNotificationsService {
     return { updated: marcados };
   }
 
+  /**
+   * Los avisos que ve quien pide: los de su empresa (o los de la plataforma)
+   * para todos y los dirigidos a él. Los dirigidos a otra persona, nunca.
+   */
   private delAlcance(
     distributorId: string | null,
+    userId: string,
   ): SelectQueryBuilder<AdminNotification> {
     const qb = this.avisos.createQueryBuilder('n');
     if (distributorId) {
@@ -186,6 +194,10 @@ export class AdminNotificationsService {
     } else {
       qb.where('n.distributorId IS NULL');
     }
+    qb.andWhere(
+      '(n.recipientUserId IS NULL OR n.recipientUserId = :destinatario)',
+      { destinatario: userId },
+    );
     return qb;
   }
 

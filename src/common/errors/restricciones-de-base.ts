@@ -382,6 +382,8 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El aviso necesita tipo, título y clave que no estén vacíos',
   CHK_admin_notification_destino:
     'El destino del aviso lleva entidad e id, o ninguno de los dos',
+  CHK_admin_notification_destinatario:
+    'Un aviso para una persona tiene que ser de una distribuidora',
 
   // Seguros de los vehículos
   CHK_insurer_cuit: 'El CUIT de la aseguradora no es válido',
@@ -515,7 +517,7 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
   CHK_message_autor: 'Un mensaje lo escribe una persona, salvo los del sistema',
   CHK_message_tipo: 'El tipo de mensaje no es válido para quien lo escribe',
   CHK_message_visibilidad:
-    'Sólo la plataforma deja notas internas, y sólo de texto',
+    'Las notas internas son de texto y las deja el equipo (o el asistente al pasar la conversación)',
   CHK_message_texto: 'El mensaje tiene que tener entre 1 y 2000 caracteres',
   CHK_message_texto_obligatorio: 'El mensaje no puede estar vacío',
   CHK_message_sistema: 'Un mensaje del sistema necesita su código',
@@ -546,6 +548,30 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'El texto anterior tiene que tener entre 1 y 2000 caracteres',
   CHK_message_edit_inmutable:
     'El historial de ediciones no se edita ni se borra: sólo se redacta',
+  UQ_message_mention_persona: 'Esa persona ya está mencionada en la nota',
+  CHK_message_mention_lectura:
+    'La mención no se puede leer antes de que exista',
+  CHK_message_mention_nota:
+    'Sólo se menciona a alguien en una nota interna de la bandeja',
+  UQ_conversation_rating_pedido: 'Ese cierre ya tiene su encuesta',
+  CHK_conversation_rating_puntaje: 'La calificación va de 1 a 5',
+  CHK_conversation_rating_respuesta:
+    'La encuesta se responde con una calificación (y, si querés, un comentario)',
+  CHK_conversation_rating_comentario:
+    'El comentario tiene que tener entre 1 y 280 caracteres',
+  CHK_conversation_rating_plazo: 'La encuesta se responde dentro de su plazo',
+  CHK_conversation_rating_atendio: 'Quién atendió la conversación no es válido',
+  CHK_conversation_rating_unica: 'La encuesta ya se respondió o se anuló',
+  CHK_conversation_rating_anulada:
+    'Sólo se anula una encuesta sin responder, después de pedida',
+  CHK_conversation_rating_conversacion:
+    'La encuesta es de una conversación con un cliente, y la responde ese cliente',
+  CHK_chat_company_settings_encuesta:
+    'El texto de la encuesta tiene que tener entre 1 y 500 caracteres',
+  CHK_chat_company_settings_acciones:
+    'Los botones del chat tienen que ser del catálogo',
+  CHK_message_mention_personal:
+    'Sólo podés mencionar a alguien del equipo de la distribuidora',
   CHK_message_template_canal:
     'El canal de una respuesta guardada es el de los clientes o el de los choferes',
   CHK_chat_company_settings_horario:

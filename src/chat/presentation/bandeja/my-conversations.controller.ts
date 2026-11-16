@@ -36,14 +36,19 @@ import { RequiereModulo } from '../../../platform/access/requiere-modulo.decorat
 import { BandejaAcceso, lectorDe } from '../../application/bandeja-acceso';
 import { BandejaGestionService } from '../../application/bandeja-gestion.service';
 import { BandejaService } from '../../application/bandeja.service';
-import { BandejaPresenter } from '../bandeja.presenter';
+import { BandejaEncuestaService } from '../../application/bandeja-encuesta.service';
+import { BandejaPresenter, encuestaADto } from '../bandeja.presenter';
 import {
   EditMessageDto,
   OpenMyConversationDto,
   QueryMyConversationsDto,
+  RateConversationDto,
+  SendCustomerActionDto,
   SendInboxMessageDto,
 } from '../dto/bandeja-input.dto';
 import {
+  ConversationRatingResponseDto,
+  CustomerActionListResponseDto,
   InboxConversationDto,
   InboxMessageDto,
   InboxMessageListResponseDto,
@@ -72,6 +77,7 @@ export class MyConversationsController {
     private readonly bandeja: BandejaService,
     private readonly gestion: BandejaGestionService,
     private readonly presentar: BandejaPresenter,
+    private readonly encuesta: BandejaEncuestaService,
   ) {}
 
   @Get()
@@ -139,6 +145,36 @@ export class MyConversationsController {
     return {
       conversation: await this.presentar.conversacion(r.conversation, lector),
       message: await this.presentar.mensaje(r.message, lector),
+    };
+  }
+
+  @Get('actions')
+  @ApiOperation({
+    summary: 'Botones de acción del chat (cliente)',
+    description:
+      'Para mostrar al abrir un chat nuevo: los que muestra la empresa del `X-Distributor` («¿Dónde está mi pedido?», «Repetir mi último pedido», «Medios de pago», «Hablar con una persona»), en orden. `kind: app` lo abre la app (el chat no crea pedidos). Lista vacía si la empresa no muestra ninguno o no atiende por chat. También llegan en `actions` del primer mensaje del asistente de cada conversación.',
+  })
+  @ApiOkResponse({ type: CustomerActionListResponseDto })
+  @ApiBadRequestResponse({
+    description: 'El cliente sin `X-Distributor` (`MISSING_DISTRIBUTOR`)',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'La cuenta no es de un cliente o un chofer; el chofer (`CUSTOMER_ONLY`); o la empresa no tiene habilitados los mensajes (`MODULE_DISABLED`)',
+  })
+  async acciones(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+  ): Promise<CustomerActionListResponseDto> {
+    const actor = this.acceso.deLaPersona(user, distributorId);
+    const items = await this.bandeja.acciones(actor);
+    return {
+      items: items.map(({ key, label, kind, text }) => ({
+        key,
+        label,
+        kind,
+        text,
+      })),
     };
   }
 
@@ -282,6 +318,83 @@ export class MyConversationsController {
     const actor = this.acceso.deLaPersona(user, distributorId);
     const m = await this.bandeja.borrar(actor, id, messageId);
     return this.presentar.mensaje(m, lectorDe(actor));
+  }
+
+  @Post(':id/actions')
+  @ApiOperation({
+    summary: 'Tocar un botón de acción (cliente)',
+    description:
+      'Manda el mensaje predefinido de la acción como un mensaje del cliente (lo atiende el asistente o el equipo como siempre). `talk_to_person` además pasa la conversación a una persona (el asistente no contesta). Las de la app (`repeat_last_order`) no se mandan: 400. Reintentar con el mismo `clientMessageId` devuelve el mensaje ya guardado (200).',
+  })
+  @ApiCreatedResponse({ type: InboxMessageDto })
+  @ApiOkResponse({ type: InboxMessageDto, description: 'Reintento: ya estaba' })
+  @ApiBadRequestResponse({
+    description:
+      'Id que no es uuid, `key` desconocida o sin `clientMessageId`; la empresa no muestra esa acción (`ACTION_NOT_AVAILABLE`); la abre la app (`ACTION_IS_APP_ONLY`); el cliente sin `X-Distributor`',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'La cuenta no es de un cliente o un chofer; el chofer (`CUSTOMER_ONLY`); la empresa apagó el chat con los clientes (`CUSTOMER_CHAT_DISABLED`); o no tiene habilitados los mensajes (`MODULE_DISABLED`)',
+  })
+  @ApiNotFoundResponse({ description: NO_EXISTE })
+  @ApiConflictResponse({
+    description:
+      'La conversación está cerrada (`CONVERSATION_CLOSED`) o ya no se puede escribir (`CHAT_NOT_WRITABLE`)',
+  })
+  @ApiTooManyRequestsResponse({ description: RAPIDO })
+  async accion(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendCustomerActionDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<InboxMessageDto> {
+    const actor = this.acceso.deLaPersona(user, distributorId);
+    const r = await this.bandeja.accion(actor, id, dto);
+    res.status(r.created ? HttpStatus.CREATED : HttpStatus.OK);
+    return this.presentar.mensaje(r.message, lectorDe(actor));
+  }
+
+  @Post(':id/rating')
+  @ApiOperation({
+    summary: 'Calificar la conversación (cliente)',
+    description:
+      'La respuesta a ESA encuesta (`ratingId` del `payload` de su mensaje `csat_request`; cada cierre tiene la suya): 1 a 5 y un comentario opcional. Una sola vez, con la conversación cerrada y hasta 48 h después del cierre; si la empresa la reabrió, esa encuesta quedó anulada. Reintentar con la misma respuesta devuelve la guardada (200). Si en vez de calificar el cliente escribe, abre otra conversación como siempre. Al cliente no le llega `servedBy`.',
+  })
+  @ApiCreatedResponse({ type: ConversationRatingResponseDto })
+  @ApiOkResponse({
+    type: ConversationRatingResponseDto,
+    description: 'Reintento con la misma respuesta: ya estaba',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Id que no es uuid, falta `ratingId` o no es uuid, `score` fuera de 1–5 o no entero, comentario vacío o de más de 280; el cliente sin `X-Distributor`',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'La cuenta no es de un cliente o un chofer; el chofer (`CUSTOMER_ONLY`); o la empresa no tiene habilitados los mensajes (`MODULE_DISABLED`)',
+  })
+  @ApiNotFoundResponse({
+    description: `${NO_EXISTE}; o esa encuesta no es de esta conversación o de quien pide (\`RATING_NOT_FOUND\`)`,
+  })
+  @ApiConflictResponse({
+    description:
+      'Ya la calificó con otra respuesta (`RATING_ALREADY_ANSWERED`), se anuló porque la conversación se reabrió o está abierta (`RATING_CANCELLED`), o venció (`RATING_EXPIRED`)',
+  })
+  async calificar(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RateConversationDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<ConversationRatingResponseDto> {
+    const actor = this.acceso.deLaPersona(user, distributorId);
+    const r = await this.encuesta.responder(actor, id, dto);
+    res.status(r.created ? HttpStatus.CREATED : HttpStatus.OK);
+    return {
+      conversationId: r.rating.conversationId,
+      ...encuestaADto(r.rating, new Date(), false),
+    };
   }
 
   @Post(':id/read')

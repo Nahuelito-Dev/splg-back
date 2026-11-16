@@ -51,12 +51,17 @@ export abstract class MensajesRepositorio {
 
   /**
    * Suma uno al contador de la conversación (bloqueada por quien llama) y
-   * devuelve el número asignado. La vista previa sólo cambia si viene.
+   * devuelve el número asignado. La vista previa sólo cambia si viene. Una
+   * nota interna (`visible` falso) no mueve `last_message_at` ni `updated_at`:
+   * la otra punta no ve la conversación subir en su lista ni volver en su
+   * `updatedSince` por algo que no puede leer. El panel se entera de la nota
+   * por el socket y por `afterSeq`.
    */
   abstract siguienteSeq(
     manager: EntityManager,
     conversation: Conversation,
     vistaPrevia: string | null,
+    visible?: boolean,
   ): Promise<number>;
 
   /** Un mensaje de la conversación por su número (para la vista previa de la cita). */

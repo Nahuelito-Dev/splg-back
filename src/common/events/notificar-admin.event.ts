@@ -36,5 +36,11 @@ export class NotificarAdminEvent {
      * traza ya no es la de quien lo emitió.
      */
     readonly traceId: string | null = ContextoDeTraza.traceIdActual(),
+    /**
+     * Sólo para esa persona del personal de la empresa (una mención en una
+     * nota interna del chat): los demás admins no lo ven. `null`: para todos.
+     * Un aviso para una persona no va por correo.
+     */
+    readonly recipientUserId: string | null = null,
   ) {}
 }

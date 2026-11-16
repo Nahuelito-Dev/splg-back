@@ -6,11 +6,13 @@ import {
   MessageKind,
   MessageVisibility,
   Party,
+  SystemCode,
 } from '../domain/chat.enums';
 import {
   ConversacionCerradaError,
   ConversacionNoEncontradaError,
   NotaInternaNoPermitidaError,
+  RespuestaInvalidaError,
 } from '../domain/chat.errors';
 import type { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
@@ -28,6 +30,8 @@ import { MensajesRepositorio, NuevoMensaje } from './mensajes.port';
 class BaseEnMemoria extends MensajesRepositorio {
   readonly conversaciones = new Map<string, Conversation>();
   readonly mensajes: Message[] = [];
+  /** Lo que pidió cada envío a `siguienteSeq`: si el mensaje lo ve la otra punta. */
+  readonly visibles: boolean[] = [];
   private readonly cerrojos = new Map<string, Promise<void>>();
   private readonly liberar = new Map<EntityManager, Array<() => void>>();
   private readonly deshacer = new Map<EntityManager, Array<() => void>>();
@@ -101,7 +105,10 @@ class BaseEnMemoria extends MensajesRepositorio {
   async siguienteSeq(
     manager: EntityManager,
     conversation: Conversation,
+    _vistaPrevia: string | null,
+    visible = true,
   ): Promise<number> {
+    this.visibles.push(visible);
     const fila = this.conversaciones.get(conversation.conversationId)!;
     const leido = fila.lastMessageSeq;
     await tic();
@@ -279,5 +286,98 @@ describe('MessageWriter: numeración e idempotencia (§7.4)', () => {
       }),
     );
     expect(r.message).toMatchObject({ seq: 1, visibility: 'internal' });
+  });
+});
+
+describe('MessageWriter: notas internas de la bandeja (4a)', () => {
+  let base: BaseEnMemoria;
+  let writer: MessageWriter;
+  const enviar = (n: NuevoMensaje) =>
+    base.transaccion((m) => writer.escribir(m, n));
+
+  beforeEach(() => {
+    base = new BaseEnMemoria();
+    base.conversaciones.set(
+      'c3',
+      conversacion('c3', { channel: Channel.STAFF_CUSTOMER }),
+    );
+    base.conversaciones.set(
+      'c2',
+      conversacion('c2', { channel: Channel.STAFF_DRIVER }),
+    );
+    writer = new MessageWriter(base);
+  });
+
+  it.each([Channel.STAFF_CUSTOMER, Channel.STAFF_DRIVER])(
+    'el personal deja una nota en la bandeja (%s): no mueve la lista de la otra punta',
+    async (canal) => {
+      const id = canal === Channel.STAFF_CUSTOMER ? 'c3' : 'c2';
+      const r = await enviar(
+        texto(id, { visibility: MessageVisibility.INTERNAL }),
+      );
+      expect(r.message).toMatchObject({ seq: 1, visibility: 'internal' });
+      expect(base.visibles).toEqual([false]);
+    },
+  );
+
+  it('un mensaje visible sí mueve la lista', async () => {
+    await enviar(texto('c3'));
+    expect(base.visibles).toEqual([true]);
+  });
+
+  it.each<[string, string, Partial<NuevoMensaje>]>([
+    ['del cliente', 'c3', { senderParty: Party.CUSTOMER, senderUserId: 'cli' }],
+    ['del chofer', 'c2', { senderParty: Party.DRIVER, senderUserId: 'cho' }],
+    [
+      'del sistema que no es la nota de derivación (auto_reply)',
+      'c3',
+      {
+        senderParty: Party.SYSTEM,
+        senderUserId: null,
+        kind: MessageKind.AUTO_REPLY,
+      },
+    ],
+  ])(
+    'una nota %s no se admite (400) y no gasta número',
+    async (_caso, id, extra) => {
+      await expect(
+        enviar(texto(id, { visibility: MessageVisibility.INTERNAL, ...extra })),
+      ).rejects.toBeInstanceOf(NotaInternaNoPermitidaError);
+      expect(base.conversaciones.get(id)!.lastMessageSeq).toBe(0);
+    },
+  );
+
+  it('la nota de derivación del asistente va en C3 y no en C2', async () => {
+    const nota = (id: string) =>
+      texto(id, {
+        senderParty: Party.SYSTEM,
+        senderUserId: null,
+        clientMessageId: null,
+        kind: MessageKind.SYSTEM,
+        systemCode: SystemCode.HANDOFF_NOTE,
+        visibility: MessageVisibility.INTERNAL,
+      });
+    expect((await enviar(nota('c3'))).message.seq).toBe(1);
+    await expect(enviar(nota('c2'))).rejects.toBeInstanceOf(
+      NotaInternaNoPermitidaError,
+    );
+  });
+
+  it('la empresa no deja notas en su chat con la plataforma (C1)', async () => {
+    base.conversaciones.set('c1', conversacion('c1'));
+    await expect(
+      enviar(texto('c1', { visibility: MessageVisibility.INTERNAL })),
+    ).rejects.toBeInstanceOf(NotaInternaNoPermitidaError);
+  });
+
+  it('un mensaje que ve la otra punta no responde a una nota: 400 y no gasta número', async () => {
+    await enviar(texto('c3', { visibility: MessageVisibility.INTERNAL }));
+    await expect(enviar(texto('c3', { replyToSeq: 1 }))).rejects.toBeInstanceOf(
+      RespuestaInvalidaError,
+    );
+    expect(base.conversaciones.get('c3')!.lastMessageSeq).toBe(1);
+    // Sí responde a un mensaje visible.
+    await enviar(texto('c3'));
+    expect((await enviar(texto('c3', { replyToSeq: 2 }))).message.seq).toBe(3);
   });
 });

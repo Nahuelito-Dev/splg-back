@@ -30,11 +30,13 @@ import {
   ConversationStatus,
   esCanalDeLaBandeja,
   MessageKind,
+  MessageVisibility,
   Party,
 } from '../domain/chat.enums';
 import { vistaPrevia } from '../domain/reglas-del-mensaje';
 import { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
+import { seqVisibleHasta } from '../infrastructure/bandeja-read-model';
 import type { Lector } from '../infrastructure/chat-read-model';
 import { BandejaPresenter } from './bandeja.presenter';
 import {
@@ -70,7 +72,9 @@ type CanalDeLaBandeja = Channel.STAFF_CUSTOMER | Channel.STAFF_DRIVER;
  *    `X-Distributor`). A todas sus conexiones (`usuario:<id>`), el puntero
  *    `chat:inbox` sin texto.
  *
- * Del otro lado del personal se ve la empresa, nunca el operador (D-C5). Es un
+ * Del otro lado del personal se ve la empresa, nunca el operador (D-C5). Las
+ * notas internas (4a) van sólo al panel: ni el mensaje, ni el puntero, ni el
+ * aviso de la lista llegan a la sala o a las conexiones de la persona. Es un
  * aviso: la verdad está en la base (`afterSeq`).
  */
 @Injectable()
@@ -212,14 +216,29 @@ export class BandejaRealtimeListener {
       const c = await this.dataSource
         .getRepository(Conversation)
         .findOne({ where: { conversationId: evento.conversationId } });
-      if (c) this.aLaPersona(c, EVENTO_SOCKET_LEIDO, payload);
+      // A la persona, el «leído» sobre lo que ella ve: si el personal leyó
+      // hasta una nota interna, el último visible antes (4a).
+      if (c) {
+        this.aLaPersona(c, EVENTO_SOCKET_LEIDO, {
+          ...payload,
+          lastReadSeq: await seqVisibleHasta(
+            this.dataSource,
+            c.conversationId,
+            evento.lastReadSeq,
+          ),
+        });
+      }
     });
   }
 
-  /** «Escribiendo…» del personal: al cliente o al chofer, sin decir quién (D-C5). */
+  /**
+   * «Escribiendo…» del personal: al cliente o al chofer, sin decir quién
+   * (D-C5). Si redacta una nota interna (`internal`, 4a), no se reenvía: la
+   * persona no se entera de que escriben algo que no va a ver.
+   */
   @OnEvent(EVENTO_ESCRIBIENDO_DEL_PANEL, { async: true })
   async escribiendoDelPanel(pedido: EscribiendoDelPanel): Promise<void> {
-    if (pedido.esPlataforma) return;
+    if (pedido.esPlataforma || pedido.internal) return;
     await this.seguro(EVENTO_SOCKET_ESCRIBIENDO, async () => {
       const c = await this.abiertaDeLaBandeja(pedido.conversationId);
       if (!c || c.distributorId !== pedido.distributorId) return;
@@ -270,6 +289,8 @@ export class BandejaRealtimeListener {
       ...base,
       message: await this.presentar.mensaje(m, sala(Party.COMPANY)),
     });
+    // Una nota interna es sólo del personal: a la sala de la persona, nada.
+    if (m.visibility === MessageVisibility.INTERNAL) return;
     // D-C10 (§7.2): al cliente, sólo el puntero; lo pide por HTTP con su
     // `X-Distributor`. Al chofer (de una sola empresa), el mensaje.
     if (c.channel === Channel.STAFF_CUSTOMER) {
@@ -309,9 +330,12 @@ export class BandejaRealtimeListener {
               m.kind === MessageKind.SYSTEM || m.redactedAt || m.withdrawnAt
                 ? null
                 : vistaPrevia(m.body, m.visibility),
+            internal: m.visibility === MessageVisibility.INTERNAL,
           }
         : null,
     });
+    // Una nota interna: la persona no se entera de que hubo algo.
+    if (m?.visibility === MessageVisibility.INTERNAL) return;
     const puntero = {
       conversationId: c.conversationId,
       distributorId: c.distributorId,

@@ -68,6 +68,7 @@ function aviso(p: Partial<AdminNotification>): AdminNotification {
     email: false,
     emailedAt: null,
     traceId: 'prueba-o1',
+    recipientUserId: null,
     createdAt: new Date('2026-11-14T12:00:00.500Z'),
     ...p,
   };

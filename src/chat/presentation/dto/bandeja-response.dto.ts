@@ -8,6 +8,7 @@ import {
   SubjectType,
   SystemCode,
 } from '../../domain/chat.enums';
+import { CLAVES_DE_ACCION } from '../../domain/acciones-del-cliente';
 import { ChatHoursDto } from './support-settings.dto';
 
 const CANALES = [Channel.STAFF_CUSTOMER, Channel.STAFF_DRIVER];
@@ -45,6 +46,116 @@ export class InboxLastMessageDto {
   @ApiProperty({ type: String, nullable: true }) preview!: string | null;
   @ApiProperty({ format: 'date-time' }) at!: string;
   @ApiProperty({ enum: Party }) party!: Party;
+}
+
+/** Un botón de acción del chat para el cliente (4e). */
+export class InboxActionDto {
+  @ApiProperty({ enum: CLAVES_DE_ACCION, example: 'where_is_my_order' })
+  key!: string;
+  @ApiProperty({ example: '¿Dónde está mi pedido?' }) label!: string;
+  @ApiProperty({
+    enum: ['message', 'handoff', 'app'],
+    description:
+      '`message`: con un toque la app llama a `POST /v2/me/conversations/:id/actions` (manda el mensaje predefinido); `handoff`: igual, y la conversación pasa a una persona; `app`: la abre la app (p. ej. repetir el último pedido arma el pedido en su pantalla), el chat no la ejecuta',
+  })
+  kind!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '¿Dónde está mi pedido?',
+    description:
+      'El mensaje que se manda al tocarlo (la app lo puede mostrar como burbuja enviada); `null` en las de la app',
+  })
+  text!: string | null;
+}
+
+export class CustomerActionListResponseDto {
+  @ApiProperty({
+    type: [InboxActionDto],
+    description:
+      'Las que muestra la empresa, en el orden del catálogo; vacía si no muestra ninguna o si no atiende por chat',
+  })
+  items!: InboxActionDto[];
+}
+
+/** La encuesta de satisfacción de un cierre (4b). */
+export class InboxCsatDto {
+  @ApiProperty({ format: 'uuid' }) ratingId!: string;
+  @ApiProperty({
+    enum: ['pending', 'answered', 'expired', 'cancelled'],
+    description:
+      'Pendiente (se puede responder), respondida, vencida (48 h) o anulada (la conversación se reabrió antes de que la respondieran)',
+  })
+  status!: 'pending' | 'answered' | 'expired' | 'cancelled';
+  @ApiProperty({ type: Number, nullable: true, minimum: 1, maximum: 5 })
+  score!: number | null;
+  @ApiProperty({ type: String, nullable: true }) comment!: string | null;
+  @ApiPropertyOptional({
+    enum: ['assistant', 'team', 'none'],
+    description:
+      'Sólo para el personal: quién atendió el tramo calificado (desde la apertura o la reapertura): el equipo (alguien escribió), el asistente con IA (sólo él) o nadie',
+  })
+  servedBy?: 'assistant' | 'team' | 'none';
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  answeredAt!: string | null;
+}
+
+export class ConversationRatingResponseDto extends InboxCsatDto {
+  @ApiProperty({ format: 'uuid' }) conversationId!: string;
+}
+
+export class CsatGroupDto {
+  @ApiProperty({ description: 'Encuestas respondidas' }) answered!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 4.5,
+    description: 'Promedio de 1 a 5; `null` sin respuestas',
+  })
+  average!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 0.8,
+    description: 'CSAT: proporción de 4 y 5 sobre las respondidas (0 a 1)',
+  })
+  csat!: number | null;
+}
+
+/** Resumen de la encuesta en un período (4b): lo que lee el tablero (B4). */
+export class CsatSummaryResponseDto {
+  @ApiProperty({ format: 'date-time' }) from!: string;
+  @ApiProperty({ format: 'date-time' }) to!: string;
+  @ApiProperty({
+    description: 'Encuestas pedidas (cierres con encuesta), sin las anuladas',
+  })
+  requested!: number;
+  @ApiProperty() answered!: number;
+  @ApiProperty({ description: 'Vencidas sin responder (sin las anuladas)' })
+  expired!: number;
+  @ApiProperty({
+    description:
+      'Anuladas: la conversación se reabrió antes de que las respondieran. No cuentan como pedidas ni como vencidas',
+  })
+  cancelled!: number;
+  @ApiProperty({ type: Number, nullable: true }) average!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) csat!: number | null;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    example: { '1': 0, '2': 1, '3': 2, '4': 5, '5': 12 },
+    description: 'Cantidad de respuestas por puntaje',
+  })
+  byScore!: Record<string, number>;
+  @ApiProperty({
+    type: CsatGroupDto,
+    description: 'Atendidas sólo por el asistente con IA',
+  })
+  assistant!: CsatGroupDto;
+  @ApiProperty({ type: CsatGroupDto, description: 'Atendidas por el equipo' })
+  team!: CsatGroupDto;
 }
 
 /** Una conversación de la bandeja (C3 con un cliente, C2 con un chofer). */
@@ -112,7 +223,24 @@ export class InboxConversationDto {
       'Sólo para el personal: minutos hábiles (horario de atención, sin días sin atención) entre el primer mensaje del cliente o del chofer y la primera respuesta; `null` si todavía no hubo las dos cosas',
   })
   firstResponseBusinessMinutes?: number | null;
-  @ApiProperty({ type: InboxLastMessageDto, nullable: true })
+  @ApiPropertyOptional({
+    description:
+      'Sólo para el personal: menciones sin leer a quien pide en las notas internas de esta conversación («Me mencionaron»)',
+  })
+  unreadMentions?: number;
+  @ApiPropertyOptional({
+    type: InboxCsatDto,
+    nullable: true,
+    description:
+      'Sólo en las conversaciones con un cliente (C3), para el personal y para el cliente: la encuesta del último cierre; `null` si no hubo',
+  })
+  csat?: InboxCsatDto | null;
+  @ApiProperty({
+    type: InboxLastMessageDto,
+    nullable: true,
+    description:
+      'El último mensaje visible para las dos puntas (nunca una nota interna)',
+  })
   lastMessage!: InboxLastMessageDto | null;
   @ApiProperty({ description: 'Sin leer para quien pide' })
   unreadCount!: number;
@@ -155,6 +283,12 @@ export class InboxSenderDto {
   userId?: string;
 }
 
+/** Alguien del personal mencionado en una nota interna. */
+export class InboxMentionDto {
+  @ApiProperty({ format: 'uuid' }) userId!: string;
+  @ApiProperty({ example: 'Juan Pérez' }) fullName!: string;
+}
+
 export class InboxMessageDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) conversationId!: string;
@@ -176,6 +310,23 @@ export class InboxMessageDto {
   })
   canEdit!: boolean;
   @ApiProperty({ enum: MessageKind }) kind!: MessageKind;
+  @ApiProperty({
+    description:
+      'Nota interna: sólo la ve el personal de la empresa (al cliente y al chofer nunca les llega). La del personal es `kind: text`; la del asistente con IA al derivar, `kind: system` con `systemCode: handoff_note` y el resumen y el motivo en `body`',
+  })
+  internal!: boolean;
+  @ApiPropertyOptional({
+    type: [InboxMentionDto],
+    description:
+      'Sólo para el personal, en las notas internas: a quiénes menciona',
+  })
+  mentions?: InboxMentionDto[];
+  @ApiPropertyOptional({
+    type: [InboxActionDto],
+    description:
+      'Sólo para el cliente, en el primer mensaje del asistente de la conversación: los botones de acción que muestra la empresa (4e)',
+  })
+  actions?: InboxActionDto[];
   @ApiProperty({
     type: String,
     nullable: true,
@@ -208,7 +359,7 @@ export class InboxMessageDto {
     additionalProperties: true,
     nullable: true,
     description:
-      '`claim_created`: `{ claimId }`; respuesta fuera de horario: `{ until, senderLabel }` (fin del período cerrado y firma); aviso de recibido: `{ senderLabel }`',
+      "`claim_created`: `{ claimId }`; respuesta fuera de horario: `{ until, senderLabel }` (fin del período cerrado y firma); aviso de recibido: `{ senderLabel }`; encuesta (`csat_request`): `{ ratingId, expiresAt, scale: 5 }`; respuesta del asistente con IA: `{ senderLabel, ai: { model, handoff?, sources? } }`, donde `ai.sources` (sólo para el personal: al cliente nunca le llega) son las fuentes de la respuesta, `[{ type: 'faq', faqId, question } | { type: 'tool', tool, orderNumber? }]`; nota de derivación (`handoff_note`, sólo el personal): `{ ai: { model, handoff: true }, handoff: { reason, reasonLabel, summary } }` (`summary` nulo si el modelo no corrió)",
   })
   payload!: Record<string, unknown> | null;
   @ApiProperty({ type: InboxReplyToDto, nullable: true })
@@ -269,9 +420,26 @@ export class InboxSummaryDto {
   @ApiProperty({
     example: 4,
     description:
-      'Abiertas con algún mensaje sin leer para quien pide (cuenta conversaciones, no mensajes): lo del cliente o el chofer posterior a su lectura, sin avisos del sistema, respuestas automáticas ni mensajes borrados',
+      'Abiertas con algún mensaje sin leer para quien pide (cuenta conversaciones, no mensajes): lo del cliente o el chofer posterior a su lectura, sin avisos del sistema, respuestas automáticas, notas internas ni mensajes borrados. No cuenta las asignadas a otra persona (ésas las atiende ella).',
   })
   unread!: number;
+  @ApiProperty({
+    example: 5,
+    description:
+      'Abiertas que piden atención, contadas una vez: sin asignar, esperando a una persona o con algo sin leer (la regla de `unread`). Es la insignia del menú «Mensajes».',
+  })
+  attention!: number;
+  @ApiProperty({
+    example: 1,
+    description:
+      'Menciones sin leer a quien pide en notas internas de los canales que atiende (vista «Me mencionaron»)',
+  })
+  mentions!: number;
+}
+
+export class MentionsReadResponseDto {
+  @ApiProperty({ example: 2, description: 'Menciones que se marcaron leídas' })
+  updated!: number;
 }
 
 /** Alguien del personal a quien se le puede asignar la conversación. */
@@ -377,6 +545,22 @@ export class ChatSettingsResponseDto {
   @ApiProperty({ type: String, nullable: true }) ackMessage!: string | null;
   @ApiProperty() effectiveAckMessage!: string;
   @ApiProperty() firstResponseTargetMinutes!: number;
+  @ApiProperty({
+    description: 'Encuesta de satisfacción al cerrar con un cliente',
+  })
+  csatEnabled!: boolean;
+  @ApiProperty({ type: String, nullable: true }) csatMessage!: string | null;
+  @ApiProperty({
+    description:
+      'El texto del pedido de calificación que se usa (el propio o el de omisión), con sus variables sin completar',
+  })
+  effectiveCsatMessage!: string;
+  @ApiProperty({
+    type: [String],
+    enum: CLAVES_DE_ACCION,
+    description: 'Los botones de acción que ve el cliente en el chat',
+  })
+  customerActions!: string[];
   @ApiProperty({
     description: 'Si la empresa atiende ahora (horario y días sin atención)',
   })

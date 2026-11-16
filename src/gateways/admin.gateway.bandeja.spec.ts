@@ -169,6 +169,28 @@ describe('AdminGateway: salas de la bandeja (CH3)', () => {
     expect(events.emit).not.toHaveBeenCalled();
   });
 
+  it('«escribiendo…» de una nota interna (4a): sale marcado `internal`; sin marca o con otra cosa, no', async () => {
+    permisos.deUsuario.mockResolvedValue({ permisos: ['mensajes.clientes'] });
+    const c = cliente();
+    await gateway.handleJoin(
+      { conversationId: conv },
+      c as unknown as SocketDeSplg,
+    );
+    for (const [cuerpo, internal] of [
+      [{ conversationId: conv, internal: true }, true],
+      [{ conversationId: conv }, false],
+      [{ conversationId: conv, internal: 'true' }, false],
+    ] as const) {
+      events.emit.mockClear();
+      c.data.ultimoEscribiendo = 0;
+      await gateway.handleTyping(cuerpo, c as unknown as SocketDeSplg);
+      expect(events.emit).toHaveBeenCalledWith(
+        'panel.escribiendo',
+        expect.objectContaining({ conversationId: conv, internal }),
+      );
+    }
+  });
+
   it('si pierde `mensajes.clientes` con la conexión abierta, sale de la lista y de las salas C3', async () => {
     permisos.deUsuario.mockResolvedValue({
       permisos: ['mensajes.clientes', 'mensajes.choferes'],

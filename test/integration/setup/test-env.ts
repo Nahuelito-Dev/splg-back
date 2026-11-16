@@ -64,6 +64,11 @@ import { sentenciasDeSoporte } from '../../../src/migrations/sql/sesiones-de-sop
 import { sentenciasDeMensajeria } from '../../../src/migrations/sql/mensajeria';
 import { sentenciasDeLaBandeja } from '../../../src/migrations/sql/bandeja-de-la-empresa';
 import { sentenciasDeMensajesRetirados } from '../../../src/migrations/sql/mensajes-retirados';
+import { sentenciasDeNotasInternas } from '../../../src/migrations/sql/notas-internas-de-la-bandeja';
+import {
+  sentenciasDeLaEncuesta,
+  sentenciasDeLaEncuestaAnulable,
+} from '../../../src/migrations/sql/encuesta-del-chat';
 import { sentenciasDelPedidoPorChofer } from '../../../src/migrations/sql/conversacion-del-chofer-por-pedido';
 
 /** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
@@ -332,6 +337,9 @@ async function instalarTriggersDeLaBase(dataSource: DataSource) {
     ...sentenciasDeLaBandeja(),
     ...sentenciasDeMensajesRetirados(),
     ...sentenciasDelPedidoPorChofer(),
+    ...sentenciasDeNotasInternas(),
+    ...sentenciasDeLaEncuesta(),
+    ...sentenciasDeLaEncuestaAnulable(),
   ]) {
     await dataSource.query(sql);
   }

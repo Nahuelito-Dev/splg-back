@@ -151,6 +151,12 @@ export function tokensQueCuentan(u: UsoDelModelo): number {
   );
 }
 
+/** Una herramienta que dio datos a la respuesta (4d), con el pedido si fue uno. */
+export interface FuenteDeHerramienta {
+  tool: string;
+  pedido?: string;
+}
+
 /** Lo que sale de la consulta al modelo. */
 export type RespuestaDelModelo =
   | {
@@ -159,6 +165,10 @@ export type RespuestaDelModelo =
       modelo: string;
       uso: UsoDelModelo;
       herramientas: string[];
+      /** Números (desde 1) de las preguntas frecuentes que dijo usar el modelo (4d). */
+      preguntas?: number[];
+      /** Las herramientas que devolvieron datos en esta consulta (4d). */
+      fuentes?: FuenteDeHerramienta[];
     }
   | {
       tipo: 'derivar';
@@ -166,7 +176,127 @@ export type RespuestaDelModelo =
       modelo: string | null;
       uso: UsoDelModelo;
       herramientas: string[];
+      /** El resumen para el equipo que dio el modelo al llamar `pasar_a_persona` (4c). */
+      resumen?: string | null;
+      /** Por qué la pasó, en palabras del modelo (`pasar_a_persona.motivo`). */
+      detalle?: string | null;
     };
+
+/**
+ * La salida estructurada de la respuesta final (4d): el texto para la persona
+ * y los números de las preguntas frecuentes que usó. Las herramientas siguen
+ * siendo las mismas (estrictas); esto sólo da forma al último turno.
+ */
+export const FORMATO_DE_LA_RESPUESTA = {
+  type: 'json_schema' as const,
+  schema: {
+    type: 'object',
+    properties: {
+      respuesta: { type: 'string' },
+      preguntas: { type: 'array', items: { type: 'integer' } },
+    },
+    required: ['respuesta', 'preguntas'],
+    additionalProperties: false,
+  },
+};
+
+/**
+ * Lee la salida estructurada del último turno. `null` si no es el JSON
+ * pedido. Las preguntas se quedan con los enteros positivos, sin repetir.
+ */
+export function leerRespuestaEstructurada(
+  crudo: string,
+): { respuesta: string; preguntas: number[] } | null {
+  let valor: unknown;
+  try {
+    valor = JSON.parse(crudo);
+  } catch {
+    return null;
+  }
+  if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) {
+    return null;
+  }
+  const { respuesta, preguntas } = valor as Record<string, unknown>;
+  if (typeof respuesta !== 'string') return null;
+  const numeros = Array.isArray(preguntas)
+    ? preguntas.filter(
+        (n): n is number =>
+          typeof n === 'number' && Number.isInteger(n) && n >= 1,
+      )
+    : [];
+  return { respuesta, preguntas: [...new Set(numeros)] };
+}
+
+/** Largo del resumen y del motivo que deja el asistente en la nota (4c). */
+export const LARGO_DEL_RESUMEN = 600;
+export const LARGO_DEL_DETALLE = 200;
+
+/**
+ * Un texto del modelo para el equipo (resumen, motivo): sin HTML ni Markdown
+ * de énfasis, sin espacios de más y recortado. `null` si queda vacío o trae
+ * HTML (se deja sin resumen; la nota igual lleva el motivo).
+ */
+export function textoParaElEquipo(
+  crudo: unknown,
+  largo: number,
+): string | null {
+  if (typeof crudo !== 'string') return null;
+  const texto = crudo
+    .replace(/\*\*|__/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+  if (texto.length === 0 || ETIQUETA_O_ENTIDAD_HTML.test(texto)) return null;
+  const letras = [...texto];
+  return letras.length > largo
+    ? `${letras.slice(0, largo - 1).join('')}…`
+    : texto;
+}
+
+/** El motivo de la derivación en castellano, para la nota del equipo (4c). */
+export const MOTIVOS_EN_CASTELLANO: Readonly<
+  Record<MotivoDeDerivacion, string>
+> = {
+  [MotivoDeDerivacion.REQUESTED]:
+    'El asistente no pudo resolverlo o la persona pidió hablar con alguien',
+  [MotivoDeDerivacion.REFUSAL]: 'El asistente no quiso responder',
+  [MotivoDeDerivacion.MAX_TOKENS]:
+    'La respuesta del asistente no servía para mandar',
+  [MotivoDeDerivacion.NO_TEXT]:
+    'La respuesta del asistente no servía para mandar',
+  [MotivoDeDerivacion.INVALID_TEXT]:
+    'La respuesta del asistente no servía para mandar',
+  [MotivoDeDerivacion.TOOL_ROUNDS]: 'El asistente no llegó a una respuesta',
+  [MotivoDeDerivacion.TIMEOUT]: 'El asistente tardó demasiado en responder',
+  [MotivoDeDerivacion.RATE_LIMITED]: 'Falla del servicio del asistente',
+  [MotivoDeDerivacion.API_ERROR]: 'Falla del servicio del asistente',
+  [MotivoDeDerivacion.UNAVAILABLE]: 'El asistente no está disponible',
+  [MotivoDeDerivacion.REPLY_LIMIT]:
+    'Se llegó al tope de respuestas del asistente en esta conversación',
+  [MotivoDeDerivacion.MONTHLY_LIMIT]: 'Se llegó al tope mensual del asistente',
+  [MotivoDeDerivacion.UNVERIFIED_AMOUNT]:
+    'La respuesta mencionaba un importe que no se pudo verificar',
+  [MotivoDeDerivacion.NOT_PROCESSED]:
+    'El asistente no llegó a atender el mensaje',
+};
+
+/**
+ * El texto de la nota interna que deja el asistente al derivar (4c): el
+ * resumen (si el modelo corrió y lo dio) y el motivo, con el detalle del
+ * modelo si lo hay.
+ */
+export function textoDeLaNotaDeDerivacion(
+  motivo: MotivoDeDerivacion,
+  resumen: string | null,
+  detalle: string | null,
+): string {
+  const porQue = detalle
+    ? `${MOTIVOS_EN_CASTELLANO[motivo]} (${detalle})`
+    : MOTIVOS_EN_CASTELLANO[motivo];
+  return resumen
+    ? `Resumen: ${resumen}\nMotivo: ${porQue}`
+    : `Motivo: ${porQue}`;
+}
 
 /** Largo máximo de un mensaje (CHECK `CHK_message_texto`). */
 export const LARGO_MAXIMO_DEL_MENSAJE = 2000;

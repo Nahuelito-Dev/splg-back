@@ -11,6 +11,7 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsDate,
   IsDefined,
   IsEnum,
   IsIn,
@@ -36,6 +37,12 @@ import {
   nombreDelAsistenteValido,
   TOPE_DE_CHOFERES_POR_ENVIO,
 } from '../../domain/bandeja';
+import { TOPE_DE_MENCIONES } from '../../domain/notas-internas';
+import {
+  CLAVES_DE_ACCION,
+  type ClaveDeAccion,
+} from '../../domain/acciones-del-cliente';
+import { LARGO_DEL_COMENTARIO } from '../../domain/encuesta';
 import {
   Channel,
   ConversationStatus,
@@ -127,6 +134,59 @@ export class SendStaffMessageDto extends OmitType(SendInboxMessageDto, [
   templateId?: string;
 }
 
+/**
+ * Una nota interna del personal en la bandeja (4a): sólo la ve el personal de
+ * la empresa. `mentions` son los ids de usuario de las personas mencionadas
+ * (el panel arma el `@Nombre` en el texto); tienen que atender este canal.
+ */
+export class SendInternalNoteDto {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'Lo genera quien escribe. El mismo id repetido devuelve la nota ya guardada (200) sin duplicarla ni volver a avisar.',
+  })
+  @IsUUID('4')
+  clientMessageId!: string;
+
+  @ApiProperty({
+    minLength: 1,
+    maxLength: 2000,
+    example: '@Juan fijate si el chofer pasó por la casa',
+  })
+  @Recortar()
+  @IsString()
+  @Length(1, 2000)
+  body!: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    maxItems: TOPE_DE_MENCIONES,
+    uniqueItems: true,
+    description: `Ids de usuario de las personas del personal que se mencionan (hasta ${TOPE_DE_MENCIONES}, sin repetir). Cada una tiene que atender el canal de la conversación (la misma regla que \`assignees\`); si no → 400 \`MENTION_NOT_ALLOWED\`.`,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(TOPE_DE_MENCIONES)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  mentions?: string[];
+}
+
+/** Marcar leídas las menciones a quien pide en una conversación. */
+export class MarkMentionsReadDto {
+  @ApiPropertyOptional({
+    minimum: 1,
+    description:
+      'Hasta la nota con ese `seq` (inclusive); sin él, todas las de la conversación',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  upToSeq?: number;
+}
+
 /** Editar el texto de un mensaje propio (D-C22), hasta 15 minutos después de enviarlo. */
 export class EditMessageDto {
   @ApiProperty({ minLength: 1, maxLength: 2000 })
@@ -134,6 +194,21 @@ export class EditMessageDto {
   @IsString()
   @Length(1, 2000)
   body!: string;
+}
+
+/** Tocar un botón de acción del chat (4e). */
+export class SendCustomerActionDto {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'Lo genera la app. El mismo id repetido devuelve el mensaje ya guardado (200).',
+  })
+  @IsUUID('4')
+  clientMessageId!: string;
+
+  @ApiProperty({ enum: CLAVES_DE_ACCION })
+  @IsIn(CLAVES_DE_ACCION)
+  key!: ClaveDeAccion;
 }
 
 /** Abrir (o seguir) una conversación desde la app del cliente o del chofer. */
@@ -154,11 +229,38 @@ export class OpenMyConversationDto {
   @IsUUID('4', { message: 'Elegí el pedido' })
   orderId?: string;
 
-  @ApiProperty({ type: SendInboxMessageDto })
-  @IsDefined({ message: 'Falta el primer mensaje' })
+  @ApiPropertyOptional({
+    type: SendInboxMessageDto,
+    description:
+      'El primer mensaje. Va esto o `firstAction`, uno de los dos (ninguno o los dos → 400).',
+  })
+  @ValidateIf(
+    (o: OpenMyConversationDto) =>
+      o.firstMessage !== undefined || o.firstAction === undefined,
+  )
+  @IsDefined({ message: 'Escribí el primer mensaje o tocá una opción' })
   @ValidateNested()
   @Type(() => SendInboxMessageDto)
-  firstMessage!: SendInboxMessageDto;
+  firstMessage?: SendInboxMessageDto;
+
+  @ApiPropertyOptional({
+    type: SendCustomerActionDto,
+    description:
+      'Sólo el cliente (4e): abrir el chat tocando un botón de acción (`GET /v2/me/conversations/actions`). Se manda su texto predefinido como primer mensaje; `talk_to_person` además la deja esperando a una persona (el asistente no la toma). La de la app → 400 `ACTION_IS_APP_ONLY`; una que la empresa no muestra → 400 `ACTION_NOT_AVAILABLE`; el chofer → 403 `CUSTOMER_ONLY`. No va junto con `firstMessage`.',
+  })
+  @ValidateIf((o: OpenMyConversationDto) => o.firstAction !== undefined)
+  @ValidateBy({
+    name: 'unoSolo',
+    validator: {
+      validate: (_v: unknown, a) =>
+        (a?.object as OpenMyConversationDto).firstMessage === undefined,
+      defaultMessage: () =>
+        'Escribí el primer mensaje o tocá una opción, no las dos cosas',
+    },
+  })
+  @ValidateNested()
+  @Type(() => SendCustomerActionDto)
+  firstAction?: SendCustomerActionDto;
 }
 
 /** Abrir (o seguir) una conversación desde el panel, con un cliente o con un chofer. */
@@ -325,6 +427,15 @@ export class QueryInboxDto extends ChatPaginationDto {
   @IsBoolean()
   awaiting?: boolean;
 
+  @ApiPropertyOptional({
+    enum: ['me', 'unread'],
+    description:
+      'Vista «Me mencionaron»: `me`, las conversaciones con alguna nota que menciona a quien pide; `unread`, sólo las que tienen alguna mención sin leer.',
+  })
+  @IsOptional()
+  @IsIn(['me', 'unread'])
+  mentioned?: 'me' | 'unread';
+
   @ApiPropertyOptional({ format: 'uuid', description: 'Usuario del cliente' })
   @IsOptional()
   @IsUUID('4')
@@ -478,6 +589,42 @@ export class UpdateChatSettingsDto {
   ackMessage?: string | null;
 
   @ApiPropertyOptional({
+    description:
+      'Encuesta de satisfacción (1 a 5) al cerrar una conversación con un cliente (prendida por omisión)',
+  })
+  @ValidateIf((o: UpdateChatSettingsDto) => o.csatEnabled !== undefined)
+  @IsBoolean()
+  csatEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    description:
+      'Texto del pedido de calificación, con variables; `null`: «¿Cómo te atendimos en {{empresa.nombre}}? Tocá de 1 a 5 para calificar la conversación.»',
+  })
+  @IsOptional()
+  @Recortar()
+  @ValidateIf((o: UpdateChatSettingsDto) => o.csatMessage !== null)
+  @IsString()
+  @Length(1, 500)
+  csatMessage?: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: CLAVES_DE_ACCION,
+    uniqueItems: true,
+    description:
+      'Los botones de acción que ve el cliente en el chat, sin repetir: `where_is_my_order`, `repeat_last_order` (la abre la app), `payment_methods`, `talk_to_person`. Vacía: ninguno.',
+  })
+  @ValidateIf((o: UpdateChatSettingsDto) => o.customerActions !== undefined)
+  @IsArray()
+  @ArrayMaxSize(CLAVES_DE_ACCION.length)
+  @ArrayUnique()
+  @IsIn(CLAVES_DE_ACCION, { each: true })
+  customerActions?: ClaveDeAccion[];
+
+  @ApiPropertyOptional({
     minimum: 5,
     maximum: 1440,
     description: 'Objetivo propio de primera respuesta, en minutos hábiles',
@@ -608,4 +755,64 @@ export class QueryCompanyTemplatesDto {
   @ABooleano()
   @IsBoolean()
   active?: boolean;
+}
+
+/** La respuesta del cliente a la encuesta de satisfacción (4b): un toque y, si quiere, un comentario. */
+export class RateConversationDto {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'La encuesta que se responde: el `ratingId` del `payload` de su mensaje `csat_request` (cada cierre tiene la suya). De otra conversación o de otra persona → 404.',
+  })
+  @IsUUID('4')
+  ratingId!: string;
+
+  @ApiProperty({ minimum: 1, maximum: 5, example: 5 })
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  score!: number;
+
+  @ApiPropertyOptional({
+    minLength: 1,
+    maxLength: LARGO_DEL_COMENTARIO,
+    example: 'Muy rápido, gracias',
+  })
+  @IsOptional()
+  @Recortar()
+  @IsString()
+  @Length(1, LARGO_DEL_COMENTARIO)
+  comment?: string;
+}
+
+/** El período del resumen de la encuesta (4b, lectura para B4). */
+export class QueryCsatDto {
+  @ApiPropertyOptional({
+    format: 'date-time',
+    description:
+      'Desde (por pedido de la encuesta); sin él, los últimos 30 días',
+  })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  from?: Date;
+
+  @ApiPropertyOptional({
+    format: 'date-time',
+    description: 'Hasta; sin él, ahora. No puede ser anterior a `from` (400).',
+  })
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  @ValidateBy({
+    name: 'hastaDespuesDeDesde',
+    validator: {
+      validate: (v: unknown, a) => {
+        const desde = (a?.object as QueryCsatDto).from;
+        return !(v instanceof Date && desde instanceof Date) || desde <= v;
+      },
+      defaultMessage: () => '«Desde» no puede ser posterior a «hasta»',
+    },
+  })
+  to?: Date;
 }

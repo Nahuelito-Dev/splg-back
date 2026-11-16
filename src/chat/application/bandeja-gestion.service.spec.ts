@@ -16,6 +16,10 @@ import {
 } from './bandeja-gestion.service';
 import type { ChatEvents, Efectos } from './chat.events';
 import type { ChatRateLimit } from './chat-rate-limit';
+import {
+  type BandejaEncuestaService,
+  SQL_PARA_ANULAR,
+} from './bandeja-encuesta.service';
 import type { ConversationFactory } from './conversation-factory';
 import type { MessageWriter } from './message-writer';
 
@@ -118,6 +122,7 @@ function armar(
     .mockResolvedValue(conversacion({ conversationId: 'conv-nueva' }));
   const publicados: Efectos[] = [];
   const cupos = { mensaje: jest.fn() };
+  const encuesta = { pedirAlCerrar: jest.fn(() => Promise.resolve(true)) };
   const servicio = new BandejaGestionService(
     dataSource,
     acceso,
@@ -136,9 +141,12 @@ function armar(
     claims as unknown as ClaimsService,
     cupos as unknown as ChatRateLimit,
     { publicar: (e: Efectos) => publicados.push(e) } as unknown as ChatEvents,
+    encuesta as unknown as BandejaEncuestaService,
   );
   return {
     servicio,
+    encuesta,
+    query,
     transaction,
     guardados,
     claims,
@@ -241,6 +249,68 @@ describe('BandejaGestionService: la cola de las que esperan a una persona (B3)',
       await armar({ qb }).servicio.listar(personal, { ...pagina, awaiting });
       expect(llamadas).toContainEqual(['andWhere', condicion]);
     }
+  });
+});
+
+describe('BandejaGestionService: «Me mencionaron» (4a)', () => {
+  const qbQueAnota = () => {
+    const llamadas: unknown[][] = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const m of [
+      'where',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+      'take',
+      'skip',
+    ]) {
+      qb[m] = jest.fn((...args: unknown[]) => {
+        llamadas.push([m, ...args]);
+        return qb;
+      });
+    }
+    qb.getManyAndCount = jest.fn(() => Promise.resolve([[], 0]));
+    return { qb, llamadas };
+  };
+  const mencion = (llamadas: unknown[][]) =>
+    llamadas.find(
+      ([m, sql]) => m === 'andWhere' && String(sql).includes('message_mention'),
+    ) as [string, string, Record<string, unknown>] | undefined;
+
+  it('`mentioned=me`: las que tienen una nota de ESTA empresa que menciona a quien pide (leída o no)', async () => {
+    const { qb, llamadas } = qbQueAnota();
+    await armar({ qb }).servicio.listar(personal, {
+      limit: 20,
+      offset: 0,
+      mentioned: 'me',
+    });
+    const [, sql, params] = mencion(llamadas)!;
+    expect(sql).toContain('mm."distributor_id" = :distributorId');
+    expect(sql).toContain('mm."mentioned_user_id" = :mencionado');
+    expect(sql).not.toContain('read_at');
+    expect(params).toEqual({ mencionado: personal.userId });
+    // La empresa del filtro es la de quien pide (el `where` de siempre).
+    expect(llamadas).toContainEqual([
+      'where',
+      'c.distributorId = :distributorId',
+      { distributorId: personal.distributorId },
+    ]);
+  });
+
+  it('`mentioned=unread`: sólo con menciones sin leer; sin el filtro, no se mira', async () => {
+    const sinLeer = qbQueAnota();
+    await armar({ qb: sinLeer.qb }).servicio.listar(personal, {
+      limit: 20,
+      offset: 0,
+      mentioned: 'unread',
+    });
+    expect(mencion(sinLeer.llamadas)![1]).toContain('mm."read_at" IS NULL');
+    const todas = qbQueAnota();
+    await armar({ qb: todas.qb }).servicio.listar(personal, {
+      limit: 20,
+      offset: 0,
+    });
+    expect(mencion(todas.llamadas)).toBeUndefined();
   });
 });
 
@@ -522,6 +592,62 @@ describe('BandejaGestionService: cerrar y reabrir', () => {
       status: ConversationStatus.OPEN,
       awaitingHumanSince: null,
     });
+  });
+
+  it('cerrar pide la encuesta (4b) dentro del cierre, con la conversación todavía abierta y antes de guardarla cerrada', async () => {
+    const t = armar();
+    const ahora = new Date('2026-11-15T15:00:00Z');
+    let estadoAlPedir: ConversationStatus | undefined;
+    t.encuesta.pedirAlCerrar.mockImplementationOnce(((
+      _m: unknown,
+      c: Conversation,
+    ) => {
+      estadoAlPedir = c.status;
+      expect(t.guardados).toEqual([]);
+      return Promise.resolve(true);
+    }) as never);
+    await t.servicio.cerrar(personal, 'conv-1', ahora);
+    expect(t.encuesta.pedirAlCerrar).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ conversationId: 'conv-1' }),
+      expect.anything(),
+      ahora,
+    );
+    expect(estadoAlPedir).toBe(ConversationStatus.OPEN);
+    expect(t.guardados[0]).toMatchObject({
+      status: ConversationStatus.CLOSED,
+      closedAt: ahora,
+    });
+  });
+
+  it('cerrar una ya cerrada no pide encuesta', async () => {
+    const t = armar({
+      conversacion: conversacion({ status: ConversationStatus.CLOSED }),
+    });
+    await codigo(t.servicio.cerrar(personal, 'conv-1'));
+    expect(t.encuesta.pedirAlCerrar).not.toHaveBeenCalled();
+  });
+
+  it('reabrir anula la encuesta pendiente de ese cierre (4b), en la misma transacción y antes del aviso de reapertura', async () => {
+    const t = armar({
+      conversacion: conversacion({ status: ConversationStatus.CLOSED }),
+    });
+    await t.servicio.reabrir(personal, 'conv-1');
+    const anular = t.query.mock.calls.find(([sql]) => sql === SQL_PARA_ANULAR);
+    expect(anular?.[1]).toEqual(['conv-1', 'dist-a', expect.any(Date)]);
+    const iAnular =
+      t.query.mock.invocationCallOrder[
+        t.query.mock.calls.findIndex(([sql]) => sql === SQL_PARA_ANULAR)
+      ];
+    expect(iAnular).toBeLessThan(t.escribir.mock.invocationCallOrder[0]);
+  });
+
+  it('reabrir una abierta no anula nada', async () => {
+    const t = armar();
+    await t.servicio.reabrir(personal, 'conv-1');
+    expect(t.query.mock.calls.some(([sql]) => sql === SQL_PARA_ANULAR)).toBe(
+      false,
+    );
   });
 
   it('reabrir una abierta la deja igual', async () => {
