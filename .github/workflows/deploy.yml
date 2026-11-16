@@ -1,69 +1,99 @@
-name: CI + Deploy → Render (SPLG)
+name: Deploy API
 
+# Despliega la API en el servidor de producción (Orix) cuando el Release automático de main
+# termina bien, o a mano desde Actions > Deploy API > Run workflow.
+#
+# El runner entra a la tailnet con una clave efímera (tag:ci) y se conecta por SSH con una
+# clave que en el servidor sólo puede correr ~/splg/desplegar.sh: le manda un git bundle con
+# el commit y el script hace respaldo → imagen → migraciones → API nueva → health, y vuelve a
+# la imagen anterior si el health no responde.
+#
+# Secretos: TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, DEPLOY_SSH_KEY, TELEGRAM_BOT_TOKEN,
+# TELEGRAM_CHAT_ID. Variables: ORIX_HOST, ORIX_KNOWN_HOSTS, API_PUBLICA.
 on:
-  push:
-    branches: ["main"]
+  workflow_run:
+    workflows: ['Release automatico']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Rama, tag o commit a desplegar'
+        default: main
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-deploy:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
-      # 1. Bajar el código
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # 2. Obtener datos del commit para Slack
-      - name: Get Commit Info
-        id: vars
-        run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
-          echo "date=$(date '+%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
-          echo "message=$(git log -1 --pretty=format:'%s' | sed 's/\"/\\\\\"/g')" >> $GITHUB_OUTPUT
-          echo "files=$(git diff-tree --no-commit-id --name-only -r HEAD | head -n 5 | tr '\n' ' ')" >> $GITHUB_OUTPUT
-
-      # 3. Notificar inicio a Slack
-      - name: Notify Slack START
-        run: |
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"🚧 Deploy iniciado en Render para *SPLG API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
-          ${{ secrets.SLACK_WEBHOOK_URL }}
-
-      # 4. Configurar Node.js (NestJS va bien con la 18 o 20)
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          node-version: 20
-          cache: "npm"
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
 
-      # 5. Instalar dependencias
-      - name: Install dependencies
-        run: npm ci
-
-      # 6. Build de NestJS (Compila TypeScript a JS en /dist)
-      # Esto verifica que no haya errores de sintaxis antes de decirle a Render que despliegue
-      - name: Build Application
-        run: npm run build
-
-      # 7. Disparar el Deploy en Render (Solo si el build anterior pasó)
-      - name: Trigger Render Deploy
-        if: github.ref == 'refs/heads/main'
+      - name: Datos del commit
+        id: c
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "corto=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      # 8. Notificar Éxito
-      - name: Notify Slack SUCCESS
-        if: success()
+      - name: Aviso de inicio
         run: |
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"🚀 Deploy completado en Render para *SPLG API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n💬 Mensaje: ${{ steps.vars.outputs.message }}\n📂 Archivos: ${{ steps.vars.outputs.files }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\n📅 Hora: ${{ steps.vars.outputs.date }}\"}" \
-          ${{ secrets.SLACK_WEBHOOK_URL }}
+          [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
+          curl -s -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=🚀 Deploy API iniciado · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}) por ${{ github.actor }}"
 
-      # 9. Notificar Fallo
-      - name: Notify Slack FAILURE
-        if: failure()
+      - name: Entrar a la tailnet
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Clave SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          ORIX_KNOWN_HOSTS: ${{ vars.ORIX_KNOWN_HOSTS }}
         run: |
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"❌ Deploy falló en Render para *SPLG API*\n👤 Autor: ${{ steps.vars.outputs.author }}\n🔢 Commit: ${{ steps.vars.outputs.sha_short }}\"}" \
-          ${{ secrets.SLACK_WEBHOOK_URL }}
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$ORIX_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Desplegar en el servidor
+        run: |
+          git branch -f desplegar HEAD
+          git bundle create /tmp/api.bundle refs/heads/desplegar
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "labs-wagners@${{ vars.ORIX_HOST }}" "desplegar ${{ steps.c.outputs.sha }}" < /tmp/api.bundle
+
+      - name: Health público
+        run: |
+          for _ in $(seq 1 20); do
+            c=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "${{ vars.API_PUBLICA }}/api/health" || true)
+            [ "$c" = 200 ] && exit 0
+            sleep 6
+          done
+          echo "La API pública no respondió 200 (último: $c)"; exit 1
+
+      - name: Aviso de resultado
+        if: always()
+        run: |
+          [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
+          if [ "${{ job.status }}" = success ]; then t="✅ Deploy API ok · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}) en producción"
+          else t="🔴 Deploy API falló · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}). Ver: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; fi
+          curl -s -o /dev/null "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$t" -d disable_web_page_preview=true
