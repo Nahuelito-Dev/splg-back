@@ -117,15 +117,19 @@ export class RouteSheetWatchService {
    * avisan dos veces). El sistema no la marca solo: lo decide el chofer.
    */
   private async esperasVencidas(nowMs: number): Promise<number> {
-    const filas: Array<{
-      batchId: string;
-      orderId: string;
-      distributorId: string;
-      driverUserId: string | null;
-      token: string | null;
-      arrivedAt: Date;
-      waitMinutes: number;
-    }> = await this.dataSource.query(
+    // Un UPDATE con RETURNING devuelve [filas, cantidad] (TypeORM sobre Postgres).
+    const [filas]: [
+      Array<{
+        batchId: string;
+        orderId: string;
+        distributorId: string;
+        driverUserId: string | null;
+        token: string | null;
+        arrivedAt: Date;
+        waitMinutes: number;
+      }>,
+      number,
+    ] = await this.dataSource.query(
       `UPDATE "route_batch_stop" s
           SET "wait_alerted_at" = $1::timestamptz
          FROM "route_batch" b
@@ -179,11 +183,15 @@ export class RouteSheetWatchService {
    * hoja (cancelado, liberado o de otro chofer): salen con su motivo.
    */
   private async reconciliar(): Promise<ParadaEnCursoCambiada[]> {
-    const filas: Array<{
-      batchId: string;
-      orderId: string;
-      cause: 'cancelled' | 'released' | 'reassigned';
-    }> = await this.dataSource.query(
+    // Un UPDATE con RETURNING devuelve [filas, cantidad] (TypeORM sobre Postgres).
+    const [filas]: [
+      Array<{
+        batchId: string;
+        orderId: string;
+        cause: 'cancelled' | 'released' | 'reassigned';
+      }>,
+      number,
+    ] = await this.dataSource.query(
       `UPDATE "route_batch_stop" s
           SET "active" = false, "removed_at" = now(),
               "removed_reason" = (CASE

@@ -190,7 +190,8 @@ export class RouteSheetEtaService {
       // El recálculo suelta el cerrojo antes de avisar. Reclamamos el aviso
       // comparando la última franja que acabamos de leer: si otro recálculo ya
       // la movió, éste perdió la carrera y no duplica el push.
-      const reclamadas: Array<{ orderId: string }> =
+      // Un UPDATE con RETURNING devuelve [filas, cantidad] (TypeORM sobre Postgres).
+      const [reclamadas]: [Array<{ orderId: string }>, number] =
         await this.dataSource.query(
           `UPDATE "route_batch_stop"
             SET "notified_window_start" = $6,
@@ -383,7 +384,8 @@ export class RouteSheetEtaService {
       // los push al cliente): se reclama sólo si esa franja no se le avisó ya, y
       // con el pedido todavía vigente. Una reconfirmación con la misma hora no
       // repite el push; con otra hora, sí.
-      const reclamadas: Array<{ orderId: string }> =
+      // Un UPDATE con RETURNING devuelve [filas, cantidad] (TypeORM sobre Postgres).
+      const [reclamadas]: [Array<{ orderId: string }>, number] =
         await this.dataSource.query(
           `UPDATE "route_batch_stop" s
             SET "notified_window_start" = $3, "notified_window_end" = $4, "notified_at" = $5

@@ -151,17 +151,20 @@ export class RouteSheetStopReleaseSubscriber
     );
     if (!causa) return;
     const baja = MOTIVO_EN_CURSO[causa];
+    // Un UPDATE con RETURNING devuelve [filas, cantidad]; un SELECT, las filas.
     const filas: Array<{ batchId: string }> = baja
-      ? await event.manager.query(
-          `UPDATE "route_batch_stop" s
+      ? (
+          await event.manager.query<[Array<{ batchId: string }>, number]>(
+            `UPDATE "route_batch_stop" s
               SET "active" = false, "removed_reason" = $2, "removed_at" = now()
              FROM "route_batch" b
             WHERE b."batch_id" = s."batch_id" AND s."order_id" = $1 AND s."active"
               AND b."kind" = 'planned' AND b."status" = 'assigned'
               AND ($3::uuid IS NULL OR b."delivery_id" IS DISTINCT FROM $3::uuid)
           RETURNING s."batch_id" AS "batchId"`,
-          [orderId, baja, causa === 'reassigned' ? order.deliveryId : null],
-        )
+            [orderId, baja, causa === 'reassigned' ? order.deliveryId : null],
+          )
+        )[0]
       : await event.manager.query(
           `SELECT s."batch_id" AS "batchId" FROM "route_batch_stop" s
              JOIN "route_batch" b ON b."batch_id" = s."batch_id"

@@ -29,11 +29,14 @@ function armar(
           : [{ distributorId: o.distribuidora ?? DIST }],
       );
     }
+    // Como el driver de Postgres de TypeORM: un UPDATE … RETURNING da [filas, cantidad].
     if (sql.includes('"wait_alerted_at" = $1')) {
-      return Promise.resolve(o.vencidas ?? []);
+      const filas = o.vencidas ?? [];
+      return Promise.resolve([filas, filas.length]);
     }
     if (sql.includes('UPDATE "route_batch_stop"')) {
-      return Promise.resolve(o.sacadas ?? []);
+      const filas = o.sacadas ?? [];
+      return Promise.resolve([filas, filas.length]);
     }
     if (sql.includes('NOT EXISTS')) return Promise.resolve(o.terminadas ?? []);
     if (sql.includes(`"status" = 'confirmed'`)) {

@@ -74,8 +74,9 @@ function armar(
     }
     if (sql.includes('IS DISTINCT FROM $3')) {
       const id = params[1] as string;
+      // UPDATE … RETURNING: [filas, cantidad].
       return Promise.resolve(
-        (o.yaAvisados ?? []).includes(id) ? [] : [{ orderId: id }],
+        (o.yaAvisados ?? []).includes(id) ? [[], 0] : [[{ orderId: id }], 1],
       );
     }
     if (sql.includes('FROM "delivery" WHERE')) {
@@ -83,9 +84,10 @@ function armar(
     }
     if (sql.includes('notified_window_start')) {
       if (sql.startsWith('UPDATE')) {
-        if (avisoReclamado) return Promise.resolve([]);
+        // Como el driver de Postgres de TypeORM: un UPDATE … RETURNING da [filas, cantidad].
+        if (avisoReclamado) return Promise.resolve([[], 0]);
         avisoReclamado = true;
-        return Promise.resolve([{ orderId: 'o1' }]);
+        return Promise.resolve([[{ orderId: 'o1' }], 1]);
       }
       return Promise.resolve(
         o.notificados ?? [

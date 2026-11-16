@@ -66,8 +66,13 @@ describe('RouteSheetStopReleaseSubscriber', () => {
       ds as unknown as DataSource,
       events as unknown as EventEmitter2,
     );
-    const query = jest.fn<Promise<unknown[]>, [string, unknown[]]>(() =>
-      Promise.resolve(devuelve),
+    // Como el driver de Postgres de TypeORM: un UPDATE … RETURNING da [filas, cantidad].
+    const query = jest.fn<Promise<unknown[]>, [string, unknown[]]>((sql) =>
+      Promise.resolve(
+        sql.trimStart().startsWith('UPDATE')
+          ? [devuelve, devuelve.length]
+          : devuelve,
+      ),
     );
     const qr = { isTransactionActive: true } as unknown as QueryRunner;
     const evento = (
