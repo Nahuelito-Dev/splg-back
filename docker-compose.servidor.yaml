@@ -21,8 +21,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      # Sólo arrancado, no sano: clamd tarda minutos en cargar las firmas y la API no
+      # tiene que esperarlo (los archivos quedan pendientes y el escaneo se reintenta).
       clamav:
-        condition: service_healthy
+        condition: service_started
 
   db:
     image: postgis/postgis:14-3.4
