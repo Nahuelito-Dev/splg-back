@@ -240,6 +240,8 @@ const ATADAS: Record<string, string> = {
   'POST /v2/conversations/:id/read': 'chat',
   'POST /v2/conversations/:id/claim': 'chat',
   'GET /v2/chat/settings': 'chat',
+  // Métricas de la bandeja (B4).
+  'GET /v2/chat/metrics': 'chat',
   'PUT /v2/chat/settings': 'chat',
   'GET /v2/chat/business-hours': 'chat',
   'PUT /v2/chat/business-hours': 'chat',

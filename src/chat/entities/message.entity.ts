@@ -107,6 +107,8 @@ export interface PayloadDeLaDerivacion {
   { name: 'FK_message_respuesta', onDelete: 'NO ACTION' },
 )
 @Index('IDX_message_distribuidora_fecha', ['distributorId', 'createdAt'])
+// Métricas de la plataforma (B4): los mensajes de un período de todas las empresas.
+@Index('IDX_message_fecha', ['createdAt'])
 @Check(
   'CHK_message_respuesta',
   `"reply_to_seq" IS NULL OR ("reply_to_seq" >= 1 AND "reply_to_seq" < "seq")`,

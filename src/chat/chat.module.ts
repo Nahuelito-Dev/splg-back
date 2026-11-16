@@ -18,6 +18,13 @@ import { InboxAttachmentsController } from './presentation/adjuntos/inbox-attach
 import { MyAttachmentsController } from './presentation/adjuntos/my-attachments.controller';
 import { PlatformSupportAttachmentsController } from './presentation/adjuntos/platform-support-attachments.controller';
 import { BandejaAcceso } from './application/bandeja-acceso';
+import { ChatMetricsService } from './application/chat-metrics.service';
+import { PlatformChatMetricsService } from './application/platform-chat-metrics.service';
+import { MetricasReadModel } from './infrastructure/metricas-read-model';
+import {
+  CompanyChatMetricsController,
+  PlatformChatMetricsController,
+} from './presentation/metricas/chat-metrics.controller';
 import { RespuestasFijas } from './application/respuestas-fijas';
 import { BandejaEquipoService } from './application/bandeja-equipo.service';
 import { BandejaNotasService } from './application/bandeja-notas.service';
@@ -131,6 +138,9 @@ import {
     MyAttachmentsController,
     CompanySupportAttachmentsController,
     PlatformSupportAttachmentsController,
+    // Métricas del chat y del asistente (B4).
+    CompanyChatMetricsController,
+    PlatformChatMetricsController,
   ],
   providers: [
     { provide: MensajesRepositorio, useClass: TypeormMensajesRepository },
@@ -182,6 +192,9 @@ import {
     AdjuntosDelChat,
     BandejaAdjuntos,
     SoporteAdjuntos,
+    MetricasReadModel,
+    ChatMetricsService,
+    PlatformChatMetricsService,
   ],
   // El asistente con IA (`assistant-ai`) escribe y avisa por los mismos caminos.
   exports: [

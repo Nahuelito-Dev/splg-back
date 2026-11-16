@@ -151,6 +151,8 @@ const PLATAFORMA = [
   'PUT /v2/platform/companies/:id/modules/:key',
   // Mensajería (CH1): chat con las empresas, tickets y configuración del soporte.
   'GET /v2/platform/chats',
+  // Métricas del soporte y del chat por empresa (B4).
+  'GET /v2/platform/chat/metrics',
   'GET /v2/platform/chats/:id',
   'GET /v2/platform/chats/:id/messages',
   'POST /v2/platform/chats',
