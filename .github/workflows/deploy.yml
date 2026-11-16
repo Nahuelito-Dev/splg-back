@@ -65,6 +65,17 @@ jobs:
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "text=🚀 Deploy API iniciado · v${{ steps.c.outputs.version }} (${{ steps.c.outputs.corto }}) por ${{ github.actor }}"
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Reglas (el mismo gate que Checks)
+        env:
+          TZ: UTC
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run verify
+
       - name: Entrar a la tailnet
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
         with:
