@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import type { Server } from 'http';
 import request from 'supertest';
 import { montarDocumentacion, soloRutasVersionadas } from './documentacion';
-import type { OpenAPIObject } from '@nestjs/swagger';
+import { SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
 
 const RUTAS_DE_DOCUMENTACION = ['/docs', '/docs-json', '/docs-yaml'];
 
@@ -68,6 +68,34 @@ describe('montarDocumentacion', () => {
         .auth('doc', 'x')
         .expect(200);
       expect((res.body as { openapi: string }).openapi).toBeDefined();
+    });
+  });
+
+  describe('armado del documento', () => {
+    it('no lo arma al montar ni al arrancar: lo arma una sola vez, en el primer pedido', async () => {
+      const armar = jest.spyOn(SwaggerModule, 'createDocument');
+      app = await crearApp();
+      montarDocumentacion(app, { SWAGGER_USER: 'doc', SWAGGER_PASSWORD: 'x' });
+      await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
+      expect(armar).not.toHaveBeenCalled();
+
+      const json = await request(servidor())
+        .get('/docs-json')
+        .auth('doc', 'x')
+        .expect(200);
+      expect((json.body as OpenAPIObject).openapi).toBeDefined();
+      await request(servidor()).get('/docs-json').auth('doc', 'x').expect(200);
+      await request(servidor()).get('/docs-yaml').auth('doc', 'x').expect(200);
+      expect(armar).toHaveBeenCalledTimes(1);
+    });
+
+    it('un pedido sin credenciales no lo arma', async () => {
+      const armar = jest.spyOn(SwaggerModule, 'createDocument');
+      app = await crearApp();
+      montarDocumentacion(app, { SWAGGER_USER: 'doc', SWAGGER_PASSWORD: 'x' });
+      await app.listen(0, '127.0.0.1'); // una sola vez y en loopback, adonde se conecta supertest: si no, falla al azar con carga
+      await request(servidor()).get('/docs-json').expect(401);
+      expect(armar).not.toHaveBeenCalled();
     });
   });
 
