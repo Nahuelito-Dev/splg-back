@@ -127,6 +127,34 @@ export const JoiValidationSchema = Joi.object({
     .min(1)
     .max(604800)
     .optional(),
+  // Antivirus de los adjuntos del chat (ClamAV, `clamd` por TCP). En
+  // producción es obligatorio, salvo que se apague a propósito con
+  // `CLAMAV_DISABLED=true` (los PDF y documentos se dan por limpios). Fuera de
+  // producción, sin host no se escanea (desarrollo: sólo base y Redis).
+  CLAMAV_DISABLED: Joi.boolean().empty('').default(false),
+  CLAMAV_HOST: Joi.string()
+    .empty('')
+    .hostname()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.when('CLAMAV_DISABLED', {
+        is: true,
+        then: Joi.optional(),
+        otherwise: Joi.required(),
+      }),
+      otherwise: Joi.optional(),
+    })
+    .messages({
+      'any.required':
+        'CLAMAV_HOST es obligatorio en producción (o CLAMAV_DISABLED=true para no escanear los archivos del chat)',
+    }),
+  CLAMAV_PORT: Joi.number().empty('').port().optional(),
+  CLAMAV_TIMEOUT_MS: Joi.number()
+    .empty('')
+    .integer()
+    .min(1000)
+    .max(300000)
+    .optional(),
   // Tope de filas por exporte (GET /api/v2/exports/:recurso). Si se pasa, 400.
   EXPORT_MAX_ROWS: Joi.number().integer().min(1).max(500000).default(50000),
   //GOOGLE_MAPS_API_KEY: Joi.string().required(),

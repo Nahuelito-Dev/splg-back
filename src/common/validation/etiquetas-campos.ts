@@ -13,6 +13,7 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   assigned: 'Asignado a',
   assignedTo: 'Asignado a',
   beforeSeq: 'Hasta el mensaje',
+  caption: 'Epígrafe',
   chatAckEnabled: 'Aviso automático de recibido',
   chatAckMessage: 'Texto del aviso automático de recibido',
   chatHours: 'Horario del chat',

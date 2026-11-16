@@ -13,6 +13,12 @@ export const EVENTO_LECTURA = 'chat.lectura';
 export const EVENTO_TICKET = 'chat.ticket';
 export const EVENTO_MENSAJE_EDITADO = 'chat.mensaje.editado';
 export const EVENTO_MENSAJE_BORRADO = 'chat.mensaje.borrado';
+/**
+ * Un mensaje que no cambió de texto pero sí lo que se muestra de él (el
+ * escaneo de su adjunto terminó, CH7): se vuelve a mandar `chat:message` a
+ * las salas de la conversación; las listas no se tocan (no es un mensaje nuevo).
+ */
+export const EVENTO_MENSAJE_ACTUALIZADO = 'chat.mensaje.actualizado';
 
 export type CambioDeConversacion =
   | 'created'
@@ -67,6 +73,7 @@ export class Efectos {
   readonly tickets: TicketCambiado[] = [];
   readonly ediciones: MensajeEditado[] = [];
   readonly borrados: MensajeEditado[] = [];
+  readonly actualizaciones: MensajeEditado[] = [];
 
   mensaje(conversation: Conversation, message: Message): this {
     this.mensajes.push({ conversation, message });
@@ -86,6 +93,12 @@ export class Efectos {
   /** Un mensaje que su autor borró (D-C23): las dos puntas lo muestran borrado. */
   borrado(conversation: Conversation, message: Message): this {
     this.borrados.push({ conversation, message });
+    return this;
+  }
+
+  /** El adjunto del mensaje terminó de escanearse (CH7): las salas lo vuelven a recibir. */
+  actualizacion(conversation: Conversation, message: Message): this {
+    this.actualizaciones.push({ conversation, message });
     return this;
   }
 
@@ -110,6 +123,9 @@ export class ChatEvents {
     for (const t of efectos.tickets) this.emitir(EVENTO_TICKET, t);
     for (const e of efectos.ediciones) this.emitir(EVENTO_MENSAJE_EDITADO, e);
     for (const b of efectos.borrados) this.emitir(EVENTO_MENSAJE_BORRADO, b);
+    for (const a of efectos.actualizaciones) {
+      this.emitir(EVENTO_MENSAJE_ACTUALIZADO, a);
+    }
   }
 
   lectura(evento: LecturaRegistrada): void {

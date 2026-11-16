@@ -12,7 +12,7 @@ import {
 } from '../domain/chat.errors';
 import {
   assertMensajeAdmitido,
-  vistaPrevia,
+  vistaPreviaDelMensaje,
 } from '../domain/reglas-del-mensaje';
 import type { Conversation } from '../entities/conversation.entity';
 import type { Message } from '../entities/message.entity';
@@ -103,7 +103,7 @@ export class MessageWriter {
       }
       replyToPreview =
         citado && !citado.withdrawnAt && !citado.redactedAt
-          ? vistaPrevia(citado.body, citado.visibility)
+          ? vistaPreviaDelMensaje(citado)
           : null;
     }
 
@@ -111,7 +111,7 @@ export class MessageWriter {
     const seq = await this.repo.siguienteSeq(
       manager,
       conversation,
-      vistaPrevia(nuevo.body, nuevo.visibility),
+      vistaPreviaDelMensaje(nuevo),
       visible,
     );
     const message = await this.repo.insertar(manager, {

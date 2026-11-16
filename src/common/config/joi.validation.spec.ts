@@ -76,3 +76,34 @@ describe('JoiValidationSchema · S3', () => {
     expect(error).toBeDefined();
   });
 });
+
+describe('JoiValidationSchema · antivirus del chat', () => {
+  const S3 = { AWS_S3_BUCKET: 'splg', AWS_REGION: 'sa-east-1' };
+
+  it('en producción sin CLAMAV_HOST la app no arranca, y dice cómo apagarlo', () => {
+    const { error } = validar({
+      ...S3,
+      NODE_ENV: 'production',
+      CLAMAV_HOST: '',
+    });
+    expect(error?.message).toContain(
+      'CLAMAV_HOST es obligatorio en producción',
+    );
+    expect(error?.message).toContain('CLAMAV_DISABLED=true');
+  });
+
+  it('en producción alcanza el host o el apagado explícito', () => {
+    expect(
+      validar({ ...S3, NODE_ENV: 'production', CLAMAV_HOST: 'clamav' }).error,
+    ).toBeUndefined();
+    expect(
+      validar({ ...S3, NODE_ENV: 'production', CLAMAV_DISABLED: 'true' }).error,
+    ).toBeUndefined();
+  });
+
+  it('fuera de producción el host es opcional', () => {
+    const { error, value } = validar({ ...S3, NODE_ENV: 'development' });
+    expect(error).toBeUndefined();
+    expect(value.CLAMAV_DISABLED).toBe(false);
+  });
+});

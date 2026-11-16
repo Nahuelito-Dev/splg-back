@@ -83,6 +83,8 @@ export enum MessageKind {
   SYSTEM = 'system',
   AUTO_REPLY = 'auto_reply',
   QUOTED_EXCERPT = 'quoted_excerpt',
+  /** Un archivo o una foto (CH7, §9): uno por mensaje; `body` es su epígrafe (≤ 500). */
+  ATTACHMENT = 'attachment',
 }
 
 export enum MessageVisibility {

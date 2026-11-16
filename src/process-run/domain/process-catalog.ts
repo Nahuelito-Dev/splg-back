@@ -44,6 +44,7 @@ export enum ProcessName {
   SUPPORT_SESSION_EXPIRY = 'support_session_expiry',
   SUPPORT_HOUSEKEEPING = 'support_housekeeping',
   ASSISTANT_AI_SWEEP = 'assistant_ai_sweep',
+  CHAT_ATTACHMENT_SCAN = 'chat_attachment_scan',
 }
 
 export enum ProcessRunStatus {
@@ -291,6 +292,11 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
   [ProcessName.ASSISTANT_AI_SWEEP]: {
     module: null,
     title: 'Asistente con IA: mensajes que quedaron sin atender',
+    periodSeconds: MIN,
+  },
+  [ProcessName.CHAT_ATTACHMENT_SCAN]: {
+    module: null,
+    title: 'Chat: antivirus de los archivos que quedaron pendientes',
     periodSeconds: MIN,
   },
   [ProcessName.PROCESS_RUN_PURGE]: {

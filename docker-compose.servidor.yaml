@@ -11,6 +11,9 @@ services:
       DB_HOST: db
       REDIS_HOST: redis
       PORT: 3000
+      # Antivirus de los adjuntos del chat (servicio `clamav`, abajo).
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -18,6 +21,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      clamav:
+        condition: service_healthy
 
   db:
     image: postgis/postgis:14-3.4
@@ -40,3 +45,21 @@ services:
     image: redis:alpine
     container_name: splg-redis
     restart: unless-stopped
+
+  # Antivirus de los adjuntos del chat (PDF y documentos). Sin puertos
+  # publicados: sólo lo alcanza la API por la red interna del compose. Necesita
+  # salida a internet para bajar las firmas (freshclam) y ~1,5 GB de RAM.
+  clamav:
+    image: clamav/clamav:stable
+    container_name: splg-clamav
+    restart: unless-stopped
+    volumes:
+      - ./clamav:/var/lib/clamav
+    # clamd tarda unos minutos en cargar las firmas la primera vez: la API
+    # arranca cuando responde (clamdcheck.sh viene en la imagen oficial).
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 300s

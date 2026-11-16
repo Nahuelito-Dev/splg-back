@@ -168,6 +168,11 @@ const PLATAFORMA = [
   'POST /v2/platform/tickets/:id/excerpts',
   'POST /v2/platform/tickets/:id/messages',
   'POST /v2/platform/tickets/:id/read',
+  // Adjuntos del soporte (CH7).
+  'GET /v2/platform/chats/:id/messages/:messageId/attachment',
+  'GET /v2/platform/tickets/:id/messages/:messageId/attachment',
+  'POST /v2/platform/chats/:id/attachments',
+  'POST /v2/platform/tickets/:id/attachments',
   'GET /v2/platform/support-settings',
   'GET /v2/platform/support/summary',
   'PUT /v2/platform/support-settings',

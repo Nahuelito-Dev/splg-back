@@ -287,6 +287,19 @@ describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
     expect(panel.emitirAConversacion).not.toHaveBeenCalled();
   });
 
+  it('escaneo del adjunto terminado (CH7): las salas reciben `chat:message` de nuevo, las listas no', async () => {
+    const { listener, panel, clientes } = armar();
+    await listener.actualizacion({ conversation: c3, message: m });
+    expect(
+      (panel.emitirAConversacion.mock.calls as unknown[][]).map((c) => c[2]),
+    ).toEqual(['chat:message']);
+    expect(
+      (clientes.emitirAConversacion.mock.calls as unknown[][]).map((c) => c[1]),
+    ).toEqual(['chat:message']);
+    expect(panel.emitirALaBandeja).not.toHaveBeenCalled();
+    expect(clientes.emitirAUsuario).not.toHaveBeenCalled();
+  });
+
   it('edición y borrado: a las dos salas con su evento', async () => {
     const { listener, panel, clientes } = armar();
     await listener.edicion({ conversation: c3, message: m });

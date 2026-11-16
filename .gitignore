@@ -1,6 +1,8 @@
 # --- BASE DE DATOS LOCAL (POSTGRES) ---
 # Ignora la carpeta de datos de postgres que tenés en la raíz
 /postgres/
+# Firmas del antivirus del servidor (servicio clamav de docker-compose.servidor.yaml)
+/clamav/
 postgres/
 # Ignora logs del ORM que se ven en tu captura
 ormlogs.log

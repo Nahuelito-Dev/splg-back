@@ -2242,11 +2242,59 @@
     },
     {
       "table": "attachment",
+      "column": "message_id",
+      "property": "messageId",
+      "secret": false,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "attachment",
+      "column": "scan_status",
+      "property": "scanStatus",
+      "secret": false,
+      "kind": "text",
+      "position": 11
+    },
+    {
+      "table": "attachment",
+      "column": "scan_attempts",
+      "property": "scanAttempts",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "attachment",
+      "column": "scanned_at",
+      "property": "scannedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 13
+    },
+    {
+      "table": "attachment",
+      "column": "width",
+      "property": "width",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "attachment",
+      "column": "height",
+      "property": "height",
+      "secret": false,
+      "kind": "text",
+      "position": 15
+    },
+    {
+      "table": "attachment",
       "column": "deleted_at",
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 10
+      "position": 16
     },
     {
       "table": "car",

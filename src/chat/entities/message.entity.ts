@@ -29,6 +29,8 @@ export type PayloadDelMensaje =
   | { ticketId: string; number: string; from: string; to: string }
   | { userId: string | null }
   | { claimId: string }
+  /** Adjunto (CH7): si es una foto o un archivo, para la vista previa sin leer el adjunto. */
+  | { media: 'photo' | 'file' }
   /** Respuesta del asistente (fuera de horario, aviso de recibido): `senderLabel` es su firma al mandarla. */
   | { until: string; senderLabel?: string }
   | { senderLabel: string }
@@ -132,7 +134,11 @@ export interface PayloadDeLaDerivacion {
 )
 @Check(
   'CHK_message_tipo',
-  `"kind" IN ('text', 'system', 'auto_reply', 'quoted_excerpt') AND ("kind" IN ('system', 'auto_reply')) = ("sender_party" = 'system')`,
+  `"kind" IN ('text', 'system', 'auto_reply', 'quoted_excerpt', 'attachment') AND ("kind" IN ('system', 'auto_reply')) = ("sender_party" = 'system')`,
+)
+@Check(
+  'CHK_message_adjunto',
+  `"kind" <> 'attachment' OR ("client_message_id" IS NOT NULL AND ("body" IS NULL OR char_length("body") <= 500) AND ("redacted_at" IS NOT NULL OR coalesce("payload" ->> 'media', '') IN ('photo', 'file')))`,
 )
 @Check(
   'CHK_message_visibilidad',

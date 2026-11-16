@@ -32,6 +32,8 @@ class BaseEnMemoria extends MensajesRepositorio {
   readonly mensajes: Message[] = [];
   /** Lo que pidió cada envío a `siguienteSeq`: si el mensaje lo ve la otra punta. */
   readonly visibles: boolean[] = [];
+  /** La vista previa que pidió guardar cada envío en la conversación. */
+  readonly vistasPrevias: Array<string | null> = [];
   private readonly cerrojos = new Map<string, Promise<void>>();
   private readonly liberar = new Map<EntityManager, Array<() => void>>();
   private readonly deshacer = new Map<EntityManager, Array<() => void>>();
@@ -105,10 +107,11 @@ class BaseEnMemoria extends MensajesRepositorio {
   async siguienteSeq(
     manager: EntityManager,
     conversation: Conversation,
-    _vistaPrevia: string | null,
+    vistaPrevia: string | null,
     visible = true,
   ): Promise<number> {
     this.visibles.push(visible);
+    this.vistasPrevias.push(vistaPrevia);
     const fila = this.conversaciones.get(conversation.conversationId)!;
     const leido = fila.lastMessageSeq;
     await tic();
@@ -379,5 +382,37 @@ describe('MessageWriter: notas internas de la bandeja (4a)', () => {
     // Sí responde a un mensaje visible.
     await enviar(texto('c3'));
     expect((await enviar(texto('c3', { replyToSeq: 2 }))).message.seq).toBe(3);
+  });
+});
+
+describe('MessageWriter: adjuntos (CH7)', () => {
+  it('un adjunto guarda «📎 Foto»/«📎 Archivo» como vista previa, no su epígrafe; responderle lo cita igual', async () => {
+    const base = new BaseEnMemoria();
+    base.conversaciones.set(
+      'c3',
+      conversacion('c3', { channel: Channel.STAFF_CUSTOMER }),
+    );
+    const writer = new MessageWriter(base);
+    const enviar = (n: NuevoMensaje) =>
+      base.transaccion((m) => writer.escribir(m, n));
+    const foto = await enviar(
+      texto('c3', {
+        kind: MessageKind.ATTACHMENT,
+        body: 'La puerta de casa',
+        payload: { media: 'photo' },
+      }),
+    );
+    await enviar(
+      texto('c3', {
+        kind: MessageKind.ATTACHMENT,
+        body: null,
+        payload: { media: 'file' },
+      }),
+    );
+    expect(base.vistasPrevias).toEqual(['📎 Foto', '📎 Archivo']);
+    const respuesta = await enviar(
+      texto('c3', { replyToSeq: foto.message.seq }),
+    );
+    expect(respuesta.message.replyToPreview).toBe('📎 Foto');
   });
 });

@@ -7,6 +7,16 @@ import { S3Module } from '../s3/s3.module';
 import { ClaimsModule } from '../claims/claims.module';
 import { EmailModule } from '../email/email.module';
 import { AsistenteDelChat } from './application/asistente-del-chat';
+import { ESCANER_DE_ARCHIVOS } from '../attachment/escaner/escaner.provider';
+import { AdjuntosDelChat } from './application/adjuntos-del-chat.service';
+import { BandejaAdjuntos } from './application/bandeja-adjuntos.service';
+import { EscaneoDeAdjuntos } from './application/escaneo-de-adjuntos';
+import { EscaneoDeAdjuntosCron } from './application/escaneo-de-adjuntos.cron';
+import { SoporteAdjuntos } from './application/soporte-adjuntos.service';
+import { CompanySupportAttachmentsController } from './presentation/adjuntos/company-support-attachments.controller';
+import { InboxAttachmentsController } from './presentation/adjuntos/inbox-attachments.controller';
+import { MyAttachmentsController } from './presentation/adjuntos/my-attachments.controller';
+import { PlatformSupportAttachmentsController } from './presentation/adjuntos/platform-support-attachments.controller';
 import { BandejaAcceso } from './application/bandeja-acceso';
 import { RespuestasFijas } from './application/respuestas-fijas';
 import { BandejaEquipoService } from './application/bandeja-equipo.service';
@@ -101,7 +111,8 @@ import {
     AdminModule,
     // Crear un reclamo desde una conversación con un cliente (C3).
     ClaimsModule,
-    // Las fotos de perfil del personal para asignar (URL firmada).
+    // Las fotos de perfil del personal para asignar (URL firmada) y los
+    // adjuntos del chat (CH7).
     S3Module,
   ],
   controllers: [
@@ -115,6 +126,11 @@ import {
     CompanyInboxController,
     CompanyChatConfigController,
     MyConversationsController,
+    // Adjuntos y escaneo (CH7).
+    InboxAttachmentsController,
+    MyAttachmentsController,
+    CompanySupportAttachmentsController,
+    PlatformSupportAttachmentsController,
   ],
   providers: [
     { provide: MensajesRepositorio, useClass: TypeormMensajesRepository },
@@ -160,6 +176,12 @@ import {
     ConversacionVigente,
     RespuestasFijas,
     AsistenteDelChat,
+    ESCANER_DE_ARCHIVOS,
+    EscaneoDeAdjuntos,
+    EscaneoDeAdjuntosCron,
+    AdjuntosDelChat,
+    BandejaAdjuntos,
+    SoporteAdjuntos,
   ],
   // El asistente con IA (`assistant-ai`) escribe y avisa por los mismos caminos.
   exports: [

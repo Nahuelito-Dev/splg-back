@@ -174,6 +174,8 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     // Encuesta de satisfacción al cerrar (4b)
     ['conversation_rating', 'conversation_id', 'conversation'],
     ['conversation_rating', 'request_message_id', 'message'],
+    // Adjuntos del chat (CH7)
+    ['attachment', 'message_id', 'message'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

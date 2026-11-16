@@ -288,3 +288,26 @@ export class AccionSoloDeLaAppError extends BadRequestDomainError {
     super('Esa opción se hace desde la app, no desde el chat.');
   }
 }
+
+/** El mensaje no tiene un adjunto que quien pide pueda ver: no existe, es de otra conversación o empresa, se redactó o se bloqueó por virus. */
+export class AdjuntoNoEncontradoError extends NotFoundDomainError {
+  constructor() {
+    super('No existe ese archivo');
+  }
+}
+
+/** El antivirus todavía no revisó el archivo (§9.3). */
+export class AdjuntoEnEscaneoError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ATTACHMENT_SCAN_PENDING;
+  constructor() {
+    super('Estamos verificando el archivo.');
+  }
+}
+
+/** El antivirus no pudo revisar el archivo: sólo lo baja el personal (§9.3). */
+export class AdjuntoSinVerificarError extends ConflictDomainError {
+  override readonly code = CODIGOS_DE_ERROR.ATTACHMENT_SCAN_FAILED;
+  constructor() {
+    super('No pudimos verificar este archivo, así que no se puede abrir.');
+  }
+}

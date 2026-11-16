@@ -55,6 +55,7 @@ export const OWNER_TYPES_SOLO_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
     AttachmentOwnerType.TRAFFIC_FINE_PAYMENT,
     AttachmentOwnerType.MP_RECONCILIATION,
     AttachmentOwnerType.CAR_DOCUMENT,
+    AttachmentOwnerType.CHAT_MESSAGE,
   ];
 
 /** El endpoint de cada uno de esos dueños, para el mensaje de 400. */
@@ -67,6 +68,7 @@ const ENDPOINT_DEL_DUENO: Readonly<
   [AttachmentOwnerType.MP_RECONCILIATION]:
     'POST /api/v2/mercadopago/reconciliations',
   [AttachmentOwnerType.CAR_DOCUMENT]: 'POST /api/v2/cars/:id/documents',
+  [AttachmentOwnerType.CHAT_MESSAGE]: 'POST …/conversations/:id/attachments',
 };
 
 /** Mensaje de 400 del endpoint genérico para esos dueños. */
@@ -82,13 +84,15 @@ export function mensajeSoloPorSuEndpoint(
  * los GET genéricos de `/attachments` (que piden `catalogo.ver`) no los muestran.
  */
 export const OWNER_TYPES_LECTURA_POR_SU_ENDPOINT: readonly AttachmentOwnerType[] =
-  [AttachmentOwnerType.CAR_DOCUMENT];
+  [AttachmentOwnerType.CAR_DOCUMENT, AttachmentOwnerType.CHAT_MESSAGE];
 
 /** Dónde se ven los adjuntos de esos dueños, para el mensaje de 400. */
 const ENDPOINT_DE_LECTURA_DEL_DUENO: Readonly<
   Partial<Record<AttachmentOwnerType, string>>
 > = {
   [AttachmentOwnerType.CAR_DOCUMENT]: 'GET /api/v2/cars/:id/documents',
+  [AttachmentOwnerType.CHAT_MESSAGE]:
+    'GET …/conversations/:id/messages/:messageId/attachment',
 };
 
 /** Mensaje de 400 de los GET genéricos para esos dueños. */

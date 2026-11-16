@@ -666,6 +666,37 @@ describe('AttachmentService', () => {
     });
   });
 
+  describe('adjuntos del chat: el genérico no los lista, no los firma ni los da de baja (CH7)', () => {
+    const delChat = {
+      attachmentId: 'a1',
+      ownerType: AttachmentOwnerType.CHAT_MESSAGE,
+      ownerId: 'msg-1',
+      storageKey: 'd/d1/chat/c/x.pdf',
+      originalName: 'x.pdf',
+      mimeType: 'application/pdf',
+      uploadedByUserId: 'u-admin',
+    };
+
+    it('la descarga genérica es 400: no saltea el escaneo ni el permiso del canal', async () => {
+      attachments.findOne.mockResolvedValue(delChat);
+      await expect(
+        service.getSignedDownload('a1', 'd1', ADMIN),
+      ).rejects.toThrow(/messages\/:messageId\/attachment/);
+      expect(storage.getSignedDownload).not.toHaveBeenCalled();
+    });
+
+    it('el listado y la baja genéricos son 400', async () => {
+      await expect(
+        service.list(AttachmentOwnerType.CHAT_MESSAGE, 'msg-1', 'd1', ADMIN),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      attachments.findOne.mockResolvedValue(delChat);
+      await expect(service.remove('a1', 'd1', ADMIN)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(attachments.softRemove).not.toHaveBeenCalled();
+    });
+  });
+
   describe('documentos del vehículo: se leen y se dan de baja por su endpoint', () => {
     const doc = {
       attachmentId: 'a1',

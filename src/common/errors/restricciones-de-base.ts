@@ -625,6 +625,37 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Los plazos de cierre de los tickets no son válidos',
   CHK_platform_support_settings_objetivos:
     'Los objetivos de respuesta van de 5 minutos a 30 días',
+  // Adjuntos del chat (CH7).
+  CHK_message_adjunto:
+    'Un mensaje con adjunto lleva un epígrafe de hasta 500 caracteres y dice si es una foto o un archivo',
+  CHK_message_sin_adjunto: 'Un mensaje de adjunto se guarda con su archivo',
+  CHK_attachment_escaneo_estado:
+    'El estado del escaneo del archivo no es válido',
+  CHK_attachment_chat_mensaje:
+    'El adjunto de un mensaje del chat tiene que ser de ese mensaje',
+  CHK_attachment_chat_escaneo:
+    'Sólo los archivos del chat pasan por el antivirus',
+  CHK_attachment_foto_limpia:
+    'Una foto del chat se guarda ya limpia (sin metadatos)',
+  CHK_attachment_chat_tipo:
+    'Ese tipo de archivo no se puede mandar por el chat',
+  CHK_attachment_chat_tamano:
+    'El archivo del chat tiene que pesar entre 1 byte y 10 MB',
+  CHK_attachment_medidas:
+    'Las medidas son sólo de las fotos y tienen que ser positivas',
+  CHK_attachment_escaneado:
+    'La fecha del escaneo es de un archivo ya revisado por el antivirus',
+  CHK_attachment_mensaje_del_chat:
+    'El adjunto del chat es de un mensaje de adjunto de quien lo sube',
+  CHK_attachment_escaneo_inicial:
+    'Un archivo del chat queda pendiente hasta que lo revise el antivirus',
+  CHK_attachment_escaneo_transicion:
+    'El escaneo de un archivo pasa de pendiente o fallido a limpio, infectado o fallido; limpio e infectado son finales',
+  UQ_attachment_mensaje: 'Ese mensaje ya tiene su adjunto',
+  CHK_attachment_escaneo_intentos:
+    'Los intentos de escaneo van de 0 a 50 y son sólo de los archivos del chat',
+  CHK_attachment_intentos_no_bajan:
+    'Los intentos de escaneo de un archivo no bajan',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */
@@ -635,7 +666,7 @@ const FK_DE_DISTRIBUIDORA = /^FK_[a-z0-9_]+_distribuidora$/;
  * (transición inválida, saldo que no cierra con el libro): 409 y no 400.
  */
 const CONFLICTO_DE_ESTADO =
-  /_(transicion_de_estado|saldo_contra_libro|cobro_mayor_a_la_deuda)$/;
+  /_(transicion_de_estado|saldo_contra_libro|cobro_mayor_a_la_deuda|escaneo_transicion)$/;
 
 export function esConflictoDeEstado(restriccion: string | undefined): boolean {
   return restriccion !== undefined && CONFLICTO_DE_ESTADO.test(restriccion);
