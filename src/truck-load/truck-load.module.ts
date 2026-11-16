@@ -1,0 +1,66 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { CarModule } from '../car/car.module';
+import { DeliveryModule } from '../delivery/delivery.module';
+import { DocumentSequenceModule } from '../document-sequence/document-sequence.module';
+import { EmployeeModule } from '../employee/employee.module';
+import { TruckLoadGatePort } from '../order/domain/ports/truck-load-gate.port';
+import { OrderLookupModule } from '../order/lookup/order-lookup.module';
+import { S3Module } from '../s3/s3.module';
+import { StockModule } from '../stock/stock.module';
+import { CancelTruckLoadUseCase } from './application/cancel-truck-load.use-case';
+import { CloseTruckLoadUseCase } from './application/close-truck-load.use-case';
+import { DepartTruckLoadUseCase } from './application/depart-truck-load.use-case';
+import { OpenTruckLoadUseCase } from './application/open-truck-load.use-case';
+import { ReloadTruckLoadUseCase } from './application/reload-truck-load.use-case';
+import { ReturnTruckLoadUseCase } from './application/return-truck-load.use-case';
+import { StockControlSettingsService } from './application/stock-control-settings.service';
+import { TruckLoadAccessService } from './application/truck-load-access.service';
+import { TruckLoadGateService } from './application/truck-load-gate.service';
+import { TruckLoadLookupService } from './application/truck-load-lookup.service';
+import { TruckLoadPhotoService } from './application/truck-load-photo.service';
+import { TruckLoadQueryService } from './application/truck-load-query.service';
+import { UpdateTruckLoadItemsUseCase } from './application/update-truck-load-items.use-case';
+import { TruckLoadItem } from './entities/truck-load-item.entity';
+import { TruckLoad } from './entities/truck-load.entity';
+import { TruckLoadController } from './presentation/truck-load.controller';
+import { TruckLoadPhotoController } from './presentation/truck-load-photo.controller';
+
+/**
+ * Carga y rendición del camión (M-C, parte 3). Toda salida y entrada de
+ * garrafas pasa por `StockLedgerPort`; este módulo guarda el documento
+ * (`truck_load` y sus renglones) y las reglas de la jornada. Exporta el puerto
+ * con el que el despacho consulta si el chofer tiene carga abierta (D5).
+ */
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([TruckLoad, TruckLoadItem]),
+    StockModule, // ledger, ubicaciones, depósitos, saldos y libro
+    CarModule, // el camión en uso por el chofer
+    DeliveryModule, // el chofer
+    EmployeeModule, // el ayudante (legajo)
+    DocumentSequenceModule, // número de la carga
+    OrderLookupModule, // pedidos entregados y su cobro
+    S3Module, // foto de la carga
+  ],
+  controllers: [TruckLoadController, TruckLoadPhotoController],
+  providers: [
+    StockControlSettingsService,
+    TruckLoadAccessService,
+    TruckLoadQueryService,
+    TruckLoadPhotoService,
+    OpenTruckLoadUseCase,
+    UpdateTruckLoadItemsUseCase,
+    DepartTruckLoadUseCase,
+    ReloadTruckLoadUseCase,
+    ReturnTruckLoadUseCase,
+    CloseTruckLoadUseCase,
+    CancelTruckLoadUseCase,
+    TruckLoadGateService,
+    TruckLoadLookupService,
+    { provide: TruckLoadGatePort, useExisting: TruckLoadGateService },
+  ],
+  // La hoja de ruta lee la carga abierta del chofer al iniciar (F34).
+  exports: [TruckLoadGatePort, TruckLoadLookupService],
+})
+export class TruckLoadModule {}

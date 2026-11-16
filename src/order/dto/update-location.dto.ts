@@ -3,10 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Body de `PATCH /orders/:id/location`. El chofer reporta su posición actual
- * mientras hace la entrega. `lat`/`lng` viajan como string (igual que las
- * columnas `deliveryLatitude`/`deliveryLongitude` de `Order`, que son
- * `decimal` hidratados como string) — no se cambia el tipo, solo se valida
- * que representen coordenadas reales dentro de rango.
+ * mientras hace la entrega; va al radar (Redis GEO), no al pedido. `lat`/`lng`
+ * viajan como string, como siempre, y se valida que estén dentro de rango.
  */
 export class UpdateLocationDto {
   @ApiProperty({
@@ -14,12 +12,12 @@ export class UpdateLocationDto {
     example: '-34.603722',
   })
   @IsLatitude({ message: 'lat debe ser una latitud válida' })
-  lat: string;
+  lat!: string;
 
   @ApiProperty({
     description: 'Longitud actual del repartidor',
     example: '-58.381592',
   })
   @IsLongitude({ message: 'lng debe ser una longitud válida' })
-  lng: string;
+  lng!: string;
 }

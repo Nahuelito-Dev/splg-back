@@ -70,6 +70,6 @@ describe('Redlock distributed lock (e2e)', () => {
     const acquired = results.filter((r) => r !== null);
     expect(acquired.length).toBe(1);
 
-    await acquired[0]!.release();
+    await acquired[0].release();
   });
 });

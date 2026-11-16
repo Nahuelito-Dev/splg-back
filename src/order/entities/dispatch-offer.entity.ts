@@ -6,9 +6,12 @@ import {
   JoinColumn,
   CreateDateColumn,
   Index,
+  Check,
+  ForeignKey,
 } from 'typeorm';
 import { Order } from './order.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
+import { User } from '../../users/entities/user.entity';
 
 /**
  * Estado de una oferta de pedido a UN chofer.
@@ -16,12 +19,17 @@ import { Distributor } from '../../distributor/entities/distributor.entity';
  *  - ACCEPTED : el chofer la tomó (el pedido pasa a ACCEPTED).
  *  - REJECTED : el chofer la rechazó → se ofrece al siguiente.
  *  - EXPIRED  : venció sin respuesta → se ofrece al siguiente.
+ *  - SUPERSEDED: se retiró porque el pedido se editó, o porque se resolvió por
+ *    otra vía (asignación manual del admin, otro chofer lo tomó del pool); no
+ *    cuenta como intento del chofer (ni vencida ni bloqueo): puede recibir la
+ *    oferta nueva.
  */
 export enum DispatchOfferStatus {
   OFFERED = 'offered',
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
   EXPIRED = 'expired',
+  SUPERSEDED = 'superseded',
 }
 
 /**
@@ -31,32 +39,62 @@ export enum DispatchOfferStatus {
  * pasar al siguiente sin re-ofrecer a los ya contactados, y (3) auditar el
  * proceso para disputas/analytics. Reemplaza el broadcast a todos sin estado.
  */
+@Check('CHK_order_dispatch_offer_vencimiento', `"expiresAt" > "offeredAt"`)
+@Index('UQ_order_dispatch_offer_viva', { synchronize: false })
+@Index('UQ_order_dispatch_offer_aceptada', { synchronize: false })
+@ForeignKey(
+  () => Order,
+  ['order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  {
+    name: 'FK_order_dispatch_offer_order_distribuidora',
+    onDelete: 'NO ACTION',
+  },
+)
 @Entity('order_dispatch_offer')
 // Composites para las queries del despacho:
 //  - hasActiveOffer/closeActiveOffer (por pedido + estado)
-@Index('idx_offer_order_status', ['order_id', 'status'])
+@Index('idx_offer_order_status', ['orderId', 'status'])
 //  - findExpired del cron (estado OFFERED vencido)
 @Index('idx_offer_status_expires', ['status', 'expiresAt'])
 export class DispatchOffer {
   @PrimaryGeneratedColumn('uuid', { name: 'offer_id' })
-  offer_id: string;
+  offerId!: string;
 
   /** Tenant dueño del despacho (denormalizado desde la orden). */
   @Index()
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId?: string;
+
+  @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'distributor_id' })
+  distributor?: Distributor;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: Order;
+  order!: Order;
 
   @Index()
-  @Column({ type: 'uuid' })
-  order_id: string;
+  @Column({
+    name: 'order_id',
+    type: 'uuid',
+  })
+  orderId!: string;
 
   /** ID del chofer al que se ofreció = `user_id` (el mismo que usa el GEO/WS). */
-  @Column({ type: 'uuid' })
-  driver_id: string;
+  @Column({
+    name: 'driver_id',
+    type: 'uuid',
+  })
+  driverId!: string;
+
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'driver_id' })
+  driver?: User;
 
   @Index()
   @Column({
@@ -64,7 +102,7 @@ export class DispatchOffer {
     enum: DispatchOfferStatus,
     default: DispatchOfferStatus.OFFERED,
   })
-  status: DispatchOfferStatus;
+  status!: DispatchOfferStatus;
 
   /**
    * Momento hasta el cual la oferta es válida (offered_at + TTL). timestamptz
@@ -73,8 +111,8 @@ export class DispatchOffer {
    */
   @Index()
   @Column({ type: 'timestamptz' })
-  expiresAt: Date;
+  expiresAt!: Date;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  offeredAt: Date;
+  offeredAt!: Date;
 }

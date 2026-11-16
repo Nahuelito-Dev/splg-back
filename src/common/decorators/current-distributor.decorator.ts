@@ -4,6 +4,23 @@ import {
   ExecutionContext,
   InternalServerErrorException,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { CODIGOS_DE_ERROR, conCodigo } from '../errors/con-codigo';
+import { RoleType } from '../constants/role-type.enum';
+
+/** Respuesta 400 cuando una escritura exige distribuidora y no hay. */
+export const MENSAJE_FALTA_DISTRIBUIDORA =
+  'Falta la distribuidora: enviá el header X-Distributor (slug o id)';
+
+/** El 400 de «falta la distribuidora», con el `code` que reconocen el panel y las apps. */
+export function faltaLaDistribuidora(): BadRequestException {
+  return conCodigo(
+    BadRequestException,
+    400,
+    MENSAJE_FALTA_DISTRIBUIDORA,
+    CODIGOS_DE_ERROR.MISSING_DISTRIBUTOR,
+  );
+}
 
 /**
  * Inyecta el `distributor_id` (tenant) efectivo de la request, resuelto por
@@ -19,10 +36,20 @@ import {
  * Con `{ required: true }` lanza 400 si no hay tenant en contexto (útil en
  * escrituras que SIEMPRE deben pertenecer a una distribuidora, como crear un
  * pedido: el cliente debe elegir la distribuidora vía `X-Distributor`).
+ *
+ * Con `{ required: 'staff' }` lo exige a todos los roles menos al cliente: es
+ * para las escrituras que abren cliente y personal a la vez. El admin y el
+ * chofer siempre traen su distribuidora (la del perfil); el que queda sin ella
+ * es el super admin sin `X-Distributor`, que de otro modo operaría por UUID
+ * sobre datos de cualquier distribuidora. El cliente no necesita tenant porque
+ * sólo toca lo suyo (el dueño lo controla cada caso de uso).
  */
 export const CurrentDistributor = createParamDecorator(
-  (opts: { required?: boolean } | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
+  (
+    opts: { required?: boolean | 'staff' } | undefined,
+    ctx: ExecutionContext,
+  ) => {
+    const request = ctx.switchToHttp().getRequest<Request>();
 
     // `distributorId` puede no existir en la request si el guard no corrió.
     if (!('distributorId' in request)) {
@@ -31,12 +58,15 @@ export const CurrentDistributor = createParamDecorator(
       );
     }
 
-    const distributorId: string | null = request.distributorId;
+    const distributorId = request.distributorId ?? null;
 
-    if (opts?.required && !distributorId) {
-      throw new BadRequestException(
-        'Falta la distribuidora: enviá el header X-Distributor (slug o id)',
-      );
+    const exige =
+      opts?.required === 'staff'
+        ? request.user?.role !== RoleType.CUSTOMER
+        : Boolean(opts?.required);
+
+    if (exige && !distributorId) {
+      throw faltaLaDistribuidora();
     }
 
     return distributorId;

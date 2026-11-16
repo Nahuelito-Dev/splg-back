@@ -1,21 +1,58 @@
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger, VersioningType, VERSION_NEUTRAL } from '@nestjs/common';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import basicAuth from 'express-basic-auth';
+import { montarDocumentacion } from './common/config/documentacion';
 
-import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
+import { crearValidationPipe } from './common/validation/validation-pipe';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { origenesPermitidos } from './common/config/cors-origins';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
+import { LoggerConTraza } from './common/traza/logger-con-traza';
 
-const morgan = require('morgan');
+import morgan from 'morgan';
+import { cuerpoParaLog } from './common/utils/cuerpo-para-log';
+import type { Request, Response } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // El logger antepone la traza en curso (`[t:<8>]`) a cada línea: los logs de
+  // un request y de la corrida que dispara se encuentran por el mismo id.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: new LoggerConTraza(),
+  });
   const logger = new Logger('Bootstrap');
 
+  // SIGTERM/SIGINT cierran la app ordenadamente: se deja de aceptar conexiones, se
+  // espera a que terminen las requests en vuelo (un webhook de pago a medio procesar)
+  // y recién ahí se cierran la base y Redis. Sin esto el proceso muere de golpe.
+  app.enableShutdownHooks();
+
+  // Detras de un proxy (nginx, balanceador, Cloudflare) Express devuelve la IP
+  // del proxy en req.ip, no la del usuario, salvo que se le diga cuantos saltos
+  // confiar. Sin esto, el rate limiting por IP cuenta a todos juntos.
+  //
+  // Se configura por entorno y viene apagado: en local no hay proxy, y confiar
+  // en el header sin proxy delante permitiria falsearlo para saltear el limite.
+  const saltosDeProxy = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+  if (saltosDeProxy > 0) {
+    app.set('trust proxy', saltosDeProxy);
+    logger.log(
+      `Se confia en ${saltosDeProxy} salto(s) de proxy para resolver la IP`,
+    );
+  }
+
   app.setGlobalPrefix('api');
+
+  // Versionado por URI. Todo lo que no declara versión es la v1 y responde en
+  // /api/v1/... y también en /api/... (NEUTRAL), para no romper a quien todavía
+  // llama sin número. La v1 quedó congelada el 24/10/2026: un endpoint nuevo o
+  // con contrato cambiado se marca con @Version('2') y los dos conviven
+  // (/api/v1/auth/login y /api/v2/auth/login).
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: [VERSION_NEUTRAL, '1'],
+  });
 
   // Autenticación (AuthGuard) y autorización (RolesGuard) se registran como
   // guards GLOBALES vía APP_GUARD en AppModule. Siempre activos, en todos los
@@ -34,22 +71,11 @@ async function bootstrap() {
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
-  app.useGlobalInterceptors(new TimeoutInterceptor());
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  app.useGlobalPipes(crearValidationPipe());
 
   // CORS restringido a una allowlist desde env (CORS_ORIGINS, separada por comas).
   // Sin allowlist configurada: sin orígenes cross-site (política segura por defecto).
-  const corsOrigins = (process.env.CORS_ORIGINS ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const corsOrigins = origenesPermitidos();
 
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : false,
@@ -63,45 +89,26 @@ async function bootstrap() {
       // Multi-tenant: el panel super_admin y las apps eligen distribuidora con
       // este header; sin permitirlo, el preflight CORS bloquea la request.
       'X-Distributor',
+      // Modo soporte: el super admin manda su sesión de soporte en cada
+      // consulta a una empresa.
+      'X-Support-Session',
       // Observabilidad: si el front propaga un request-id propio (ej. para
       // correlacionar con Sentry/logs propios), el preflight debe permitirlo.
       'X-Request-Id',
     ],
     // El request-id que genera/normaliza el backend viaja en la respuesta;
     // sin exponerlo, el JS del front no puede leerlo en un request cross-site.
-    exposedHeaders: ['X-Request-Id'],
+    // X-Total-Count: el total de los listados paginados que devuelven un array
+    // (clientes, choferes), para que el panel pagine sin adivinar.
+    exposedHeaders: ['X-Request-Id', 'X-Total-Count'],
   });
 
-  morgan.token(
-    'reqId',
-    (req: any) => req.requestId ?? req.headers?.['x-request-id'] ?? '-',
-  );
-
-  morgan.token('body', (req: any) => {
-    try {
-      if (!req.body) return '{}';
-
-      const body = { ...req.body };
-
-      const sensitiveFields = [
-        'password',
-        'passwordConfirmation',
-        'token',
-        'access_token',
-        'creditCard',
-      ];
-
-      sensitiveFields.forEach((field) => {
-        if (body[field]) {
-          body[field] = '******';
-        }
-      });
-
-      return JSON.stringify(body);
-    } catch (error) {
-      return '{}';
-    }
+  morgan.token<Request, Response>('reqId', (req) => {
+    const header = req.headers['x-request-id'];
+    return req.requestId ?? (typeof header === 'string' ? header : '-');
   });
+
+  morgan.token<Request, Response>('body', (req) => cuerpoParaLog(req.body));
 
   morgan.token('date', () => {
     return new Date().toLocaleString('es-AR', {
@@ -120,45 +127,14 @@ async function bootstrap() {
     ),
   );
 
-  const swaggerUser = process.env.SWAGGER_USER;
-  const swaggerPass = process.env.SWAGGER_PASSWORD;
-
-  if (swaggerUser && swaggerPass) {
-    app.use(
-      ['/docs', '/docs-json'],
-      basicAuth({
-        challenge: true,
-        users: {
-          [swaggerUser]: swaggerPass,
-        },
-      }),
-    );
-    logger.log('🔐 Swagger protegido con Basic Auth');
-  } else {
-    logger.warn('⚠️ SWAGGER_USER o SWAGGER_PASSWORD no configurados.');
-  }
-
-  const config = new DocumentBuilder()
-    .setTitle('Gas Delivery API')
-    .setDescription('API privada para sistema de delivery de gas')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      filter: true,
-    },
-  });
+  montarDocumentacion(app);
 
   // Adapter Redis para Socket.io: imprescindible para escalar a MÁS DE UNA
   // instancia. Sin esto, las rooms (driver_<id>, customer_<id>) viven solo en
   // la memoria del pod que aceptó el socket, y un emit en el pod A no llega al
   // cliente conectado al pod B (despacho/tracking se rompen en silencio).
   const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis();
+  redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
   const port = process.env.PORT || 3000;
@@ -166,4 +142,4 @@ async function bootstrap() {
   logger.log(`🚀 App running on port ${port}`);
 }
 
-bootstrap();
+void bootstrap();

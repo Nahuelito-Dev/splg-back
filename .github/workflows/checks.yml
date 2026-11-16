@@ -1,34 +1,92 @@
-name: 🛡️ Guardián del Código (PR Checks)
+name: Checks
 
-# Se activa SOLO cuando se abre un Pull Request hacia main
+# Gate de cada PR a develop o main y de cada push a develop:
+#  - verify: el mismo gate que se corre en local (npm run verify).
+#  - integracion: e2e con testcontainers (Postgres/PostGIS, Redis, MinIO) contra el Docker del runner.
+#    En cada PR corre un subconjunto de humo (~2 min); la suite completa (61 suites, ~100 min) es
+#    manual: Actions > Checks > Run workflow > completa. La suite completa hoy no está en verde
+#    (suites con patente/CUIT de prueba inválidos contra CHK_car_patente / CHK_distributor_cuit).
+# Si alguno falla, no se integra. No corre en cambios que sólo tocan documentación.
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [develop, main]
+    paths-ignore:
+      - '**.md'
+      - 'postman/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/release.yml'
+  push:
+    branches: [develop]
+    paths-ignore:
+      - '**.md'
+      - 'postman/**'
+  workflow_dispatch:
+    inputs:
+      completa:
+        description: 'Correr toda la suite de integración (lenta, ~100 min)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # El runner corre en UTC a propósito: la distribuidora trabaja en hora argentina (UTC-3) y el
+  # código no puede depender de la zona del proceso. En UTC se destapan los bugs de día calendario
+  # (`new Date(y, m, d)`, `setHours`, `toISOString().slice(0, 10)`) que en la Mac de desarrollo
+  # (America/Argentina/Buenos_Aires) pasan sin querer. Ver src/common/utils/dias-argentina.ts.
+  TZ: UTC
 
 jobs:
-  validate-code:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      # 1. Bajar el código
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # 2. Configurar Node.js (Usamos la 20 igual que en deploy)
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
+      - run: npm ci
+      # Con 530 suites y cobertura, Jest pasa los 2 GB de heap que Node 20 da por omisión
+      # y el runner corta con «JavaScript heap out of memory» (pasa desde el 10/11). En la
+      # Mac no se ve porque el heap por omisión es mayor.
+      - run: npm run verify
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
-      # 3. Instalar dependencias
-      - name: Install dependencies
-        run: npm ci
-
-      # 4. Verificar compilación (Build)
-      # Si esto falla, GitHub bloqueará el botón de "Merge"
-      - name: Verificar Build (NestJS)
-        run: npm run build
-
-      # (Opcional) Aquí podrías agregar tests si los tuvieras:
-      # - name: Correr Tests
-      #   run: npm run test
+  integracion:
+    # Tests lentos (Docker). Corre en PR y en el push a develop.
+    # `needs: verify` evita gastar minutos de Docker si el gate básico ya está en rojo.
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.completa && 150 || 20 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Las imágenes que levantan los testcontainers se bajan en paralelo antes de arrancar Jest
+      # (el runner ya trae Docker; así el timeout de cada suite no incluye la descarga).
+      - name: Bajar imágenes de los testcontainers
+        run: |
+          for img in postgis/postgis:14-3.4 postgres:16-alpine redis:7-alpine cgr.dev/chainguard/minio:latest; do
+            docker pull -q "$img" &
+          done
+          wait
+      - name: Integración (humo en PR; completa sólo manual)
+        run: |
+          if [ "${{ inputs.completa }}" = "true" ]; then
+            npm run test:integration
+          else
+            npx jest --config ./test/jest-e2e.json --testPathPatterns='integration/(health|orders-stock-concurrency|redlock|orders-idempotency|stock)\.e2e-spec\.ts$'
+          fi
+        env:
+          # Ryuk (limpieza de testcontainers) funciona en los runners de GitHub; no se desactiva.
+          TESTCONTAINERS_RYUK_DISABLED: 'false'

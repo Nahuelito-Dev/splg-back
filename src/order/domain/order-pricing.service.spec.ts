@@ -1,6 +1,5 @@
 import Decimal from 'decimal.js';
 import { OrderPricingService, VolumePromotion } from './order-pricing.service';
-import { PaymentMethod } from '../entities/order.entity';
 
 /**
  * Dominio PURO de precios: sin I/O ni mocks. Cubre las reglas del SRS:
@@ -13,6 +12,19 @@ describe('OrderPricingService', () => {
 
   beforeEach(() => {
     pricing = new OrderPricingService();
+  });
+
+  describe('priceItem — porcentaje aplicado', () => {
+    it('informa el porcentaje de la promoción de mayor umbral alcanzada, o null', () => {
+      const promos = [
+        { quantity: 2, discountPercentage: 5 },
+        { quantity: 4, discountPercentage: 12 },
+      ];
+      expect(pricing.priceItem(1000, promos, 1).discountPercentage).toBeNull();
+      expect(pricing.priceItem(1000, promos, 3).discountPercentage).toBe(5);
+      expect(pricing.priceItem(1000, promos, 4).discountPercentage).toBe(12);
+      expect(pricing.priceItem(1000, null, 4).discountPercentage).toBeNull();
+    });
   });
 
   describe('priceItem — sin promociones', () => {
@@ -29,7 +41,9 @@ describe('OrderPricingService', () => {
     });
 
     it('trata undefined/[] de promociones como sin descuento', () => {
-      expect(pricing.priceItem(500, undefined, 1).subtotal.toNumber()).toBe(500);
+      expect(pricing.priceItem(500, undefined, 1).subtotal.toNumber()).toBe(
+        500,
+      );
       expect(pricing.priceItem(500, [], 1).subtotal.toNumber()).toBe(500);
     });
   });
@@ -70,28 +84,25 @@ describe('OrderPricingService', () => {
   });
 
   describe('applyPaymentSurcharge', () => {
-    it('suma +10% cuando el método es TRANSFER', () => {
-      const total = pricing.applyPaymentSurcharge(
-        new Decimal(1000),
-        PaymentMethod.TRANSFER,
-      );
-      expect(total.toNumber()).toBe(1100);
+    it.each([
+      [1000, 10, 1100],
+      [1000, 0, 1000],
+      [1000, 7.5, 1075],
+      [1000, 30, 1300],
+      [1000, 0.01, 1000.1],
+      [333.33, 12.34, 374.462922],
+    ])('%s con %s %% da %s', (base, porcentaje, esperado) => {
+      expect(
+        pricing.applyPaymentSurcharge(new Decimal(base), porcentaje).toNumber(),
+      ).toBe(esperado);
     });
 
-    it('no toca el total en CASH', () => {
-      const total = pricing.applyPaymentSurcharge(
-        new Decimal(1000),
-        PaymentMethod.CASH,
-      );
-      expect(total.toNumber()).toBe(1000);
-    });
-
-    it('suma +10% cuando el método es MERCADOPAGO (pago online)', () => {
-      const total = pricing.applyPaymentSurcharge(
-        new Decimal(1000),
-        PaymentMethod.MERCADOPAGO,
-      );
-      expect(total.toNumber()).toBe(1100);
+    it('acepta el porcentaje como Decimal', () => {
+      expect(
+        pricing
+          .applyPaymentSurcharge(new Decimal(2000), new Decimal('7.5'))
+          .toNumber(),
+      ).toBe(2150);
     });
   });
 
@@ -102,10 +113,7 @@ describe('OrderPricingService', () => {
         [{ quantity: 2, discountPercentage: 10 }],
         3,
       );
-      const total = pricing.applyPaymentSurcharge(
-        subtotal,
-        PaymentMethod.TRANSFER,
-      );
+      const total = pricing.applyPaymentSurcharge(subtotal, 10);
       // unit 900 × 3 = 2700 ; ×1.1 = 2970
       expect(total.toNumber()).toBe(2970);
     });
@@ -114,6 +122,19 @@ describe('OrderPricingService', () => {
       // precio que en float daría 0.30000000000000004
       const { subtotal } = pricing.priceItem('0.1', null, 3);
       expect(subtotal.toString()).toBe('0.3');
+    });
+  });
+
+  describe('priceItem — centavos', () => {
+    it('el subtotal es cantidad × precio unitario ya redondeado a centavos', () => {
+      // 10,53 con 5% de descuento = 10,0035 → 10,00; 3 × 10,00 = 30,00 (no 30,01).
+      const { unitPrice, subtotal } = pricing.priceItem(
+        '10.53',
+        [{ quantity: 1, discountPercentage: 5 }],
+        3,
+      );
+      expect(unitPrice.toNumber()).toBe(10);
+      expect(subtotal.toNumber()).toBe(30);
     });
   });
 });

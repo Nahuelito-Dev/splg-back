@@ -6,7 +6,12 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   Index,
+  Check,
 } from 'typeorm';
+import {
+  ALIAS_BANCARIO_SQL,
+  cbuValidoSql,
+} from '../../common/utils/datos-bancarios';
 
 export enum DistributorStatus {
   ACTIVE = 'active',
@@ -22,52 +27,127 @@ export enum DistributorStatus {
  * El `super_admin` (operador de la plataforma) es cross-tenant; el `admin` de
  * una distribuidora sólo ve/opera lo suyo.
  */
+@Check('CHK_distributor_cuit', `"tax_id" IS NULL OR "tax_id" ~ '^[0-9]{11}$'`)
+@Check('CHK_distributor_slug', `"slug" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)
+@Check('CHK_distributor_cbu', cbuValidoSql('"bank_cbu"'))
+@Check(
+  'CHK_distributor_alias',
+  `"bank_alias" IS NULL OR "bank_alias" ~ '${ALIAS_BANCARIO_SQL}'`,
+)
+@Check(
+  'CHK_distributor_titular',
+  `"bank_holder" IS NULL OR char_length(btrim("bank_holder")) >= 2`,
+)
 @Entity('distributor')
 export class Distributor {
   @PrimaryGeneratedColumn('uuid', { name: 'distributor_id' })
-  distributor_id: string;
+  distributorId!: string;
 
   @Column({ type: 'varchar', length: 120 })
-  name: string;
+  name!: string;
 
   /** Identificador legible/estable para resolver el tenant (header/subdominio). */
   @Index({ unique: true })
   @Column({ type: 'varchar', length: 60, unique: true })
-  slug: string;
+  slug!: string;
 
-  @Column({ type: 'varchar', length: 160, nullable: true })
-  legal_name?: string;
+  @Column({
+    name: 'legal_name',
+    type: 'varchar',
+    length: 160,
+    nullable: true,
+  })
+  legalName!: string | null;
 
   /** CUIT / identificación fiscal. */
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  tax_id?: string;
+  @Column({
+    name: 'tax_id',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  taxId!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  email?: string;
+  email!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  phone?: string;
+  phone!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  logo_url?: string;
+  /** CBU (22 dígitos) para cobrar por transferencia. */
+  @Column({ name: 'bank_cbu', type: 'varchar', length: 22, nullable: true })
+  bankCbu!: string | null;
+
+  /** Alias bancario (6 a 20: letras, números, punto y guion). */
+  @Column({ name: 'bank_alias', type: 'varchar', length: 20, nullable: true })
+  bankAlias!: string | null;
+
+  /** Titular de la cuenta. */
+  @Column({ name: 'bank_holder', type: 'varchar', length: 120, nullable: true })
+  bankHolder!: string | null;
+
+  @Column({
+    name: 'logo_url',
+    type: 'varchar',
+    nullable: true,
+  })
+  logoUrl!: string | null;
+
+  /** Key de el logo en el bucket (`distributors/{distribuidora}/logo/{uuid}.{ext}`). */
+  @Column({ name: 'logo_key', type: 'varchar', length: 512, nullable: true })
+  logoKey!: string | null;
+
+  /** URL firmada; la completa `EntityPhotoService.firmar`. No es una columna. */
+  photoSignedUrl?: string | null;
 
   @Column({
     type: 'enum',
     enum: DistributorStatus,
     default: DistributorStatus.ACTIVE,
   })
-  status: DistributorStatus;
+  status!: DistributorStatus;
+
+  /**
+   * Política de soporte de la empresa (modo soporte, D1): si el administrador
+   * general puede abrir un acceso de emergencia sin aprobación previa.
+   */
+  @Column({
+    name: 'support_emergency_allowed',
+    type: 'boolean',
+    default: true,
+  })
+  supportEmergencyAllowed!: boolean;
+
+  /** Si los pedidos de acceso de soporte se aprueban solos (apagado por defecto). */
+  @Column({ name: 'support_auto_approve', type: 'boolean', default: false })
+  supportAutoApprove!: boolean;
+
+  /**
+   * Empresa propia de la plataforma (de prueba): el administrador general la
+   * opera directo, con lectura y escritura, sin sesión de soporte. Sólo él la
+   * marca o la desmarca (`PUT /v2/platform/companies/:id/owned-by-platform`).
+   */
+  @Column({ name: 'owned_by_platform', type: 'boolean', default: false })
+  ownedByPlatform!: boolean;
+
+  /**
+   * Origen inmutable de una empresa de prueba. Sólo la siembra de la
+   * plataforma lo establece al crearla; una empresa de un cliente nunca puede
+   * pasar a ser propia por una acción posterior del super admin.
+   */
+  @Column({ name: 'created_by_platform', type: 'boolean', default: false })
+  createdByPlatform!: boolean;
 
   /** Plan de suscripción SaaS (para facturación futura). */
   @Column({ type: 'varchar', nullable: true })
-  plan?: string;
+  plan!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @DeleteDateColumn({ type: 'timestamptz', nullable: true })
-  deletedAt?: Date;
+  deletedAt!: Date | null;
 }

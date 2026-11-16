@@ -1,10 +1,18 @@
-// src/payments/payments.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CashModule } from '../cash/cash.module';
+import { OrderLookupModule } from '../order/lookup/order-lookup.module';
 import { Payment } from './entities/payment.entity';
+import { PaymentNotificationInbox } from './entities/payment-notification-inbox.entity';
+import { PaymentNotificationInboxService } from './application/payment-notification-inbox.service';
+import { PaymentRefund } from './entities/payment-refund.entity';
 import { PaymentGatewayPort } from './domain/ports/payment-gateway.port';
 import { MercadoPagoAdapter } from './infrastructure/mercadopago.adapter';
 import { PaymentsService } from './application/payments.service';
+import { RefundsService } from './application/refunds.service';
+import { RefundsController } from './presentation/refunds.controller';
+import { MyRefundsController } from './presentation/my-refunds.controller';
+import { MercadoPagoWebhookController } from './presentation/mercadopago-webhook.controller';
 
 /**
  * Módulo de pagos, independiente de `order`: expone `PaymentsService`
@@ -14,13 +22,30 @@ import { PaymentsService } from './application/payments.service';
  * para evitar un ciclo de módulos.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Payment])],
+  // `OrderLookupModule` no depende de nadie: sólo lee el estado del pedido.
+  imports: [
+    TypeOrmModule.forFeature([
+      Payment,
+      PaymentRefund,
+      PaymentNotificationInbox,
+    ]),
+    OrderLookupModule,
+    CashModule, // los cobros y devoluciones de Mercado Pago entran y salen de una caja
+  ],
+  // El webhook valida la firma y publica PagoNotificadoEvent; order lo escucha.
+  controllers: [
+    MercadoPagoWebhookController,
+    RefundsController,
+    MyRefundsController,
+  ],
   providers: [
     PaymentsService,
+    RefundsService,
+    PaymentNotificationInboxService,
     // Puerto de pasarela de pago → adapter MercadoPago (Checkout Pro). Sumar
     // un gateway nuevo = agregar un adapter + resolverlo acá (o por config).
     { provide: PaymentGatewayPort, useClass: MercadoPagoAdapter },
   ],
-  exports: [PaymentsService],
+  exports: [PaymentsService, RefundsService, PaymentGatewayPort],
 })
 export class PaymentsModule {}

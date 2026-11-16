@@ -1,0 +1,567 @@
+/**
+ * Ciclo de adjuntos genéricos contra la API con Postgres real: subir ->
+ * listar -> descargar -> borrar, el aislamiento entre distribuidoras, los
+ * límites del archivo y lo que puede tocar un chofer. Los dueños son los
+ * reales: `employee` (Personal), `purchase_receipt` (Compras) y `fuel_load`
+ * (Flota).
+ */
+import { randomUUID } from 'crypto';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import request from 'supertest';
+import { JPG_REAL } from './setup/imagenes';
+import { DataSource } from 'typeorm';
+import {
+  TestEnv,
+  createTestApp,
+  truncateAllTables,
+  telefonoDePrueba,
+  patenteDePrueba,
+  cuitDePrueba,
+} from './setup/test-env';
+import { BUCKET_DE_PRUEBA, TestMinio, startMinio } from './setup/minio';
+import { AttachmentOwnerRegistry } from '../../src/attachment/attachment-owner.registry';
+import {
+  Attachment,
+  AttachmentOwnerType,
+} from '../../src/attachment/entities/attachment.entity';
+import { Car, FuelType } from '../../src/car/entities/car.entity';
+import {
+  FuelLoad,
+  FuelPaymentMethod,
+} from '../../src/fleet-expense/entities/fuel-load.entity';
+import { Distributor } from '../../src/distributor/entities/distributor.entity';
+import { Role } from '../../src/role/entities/role.entity';
+import { User } from '../../src/users/entities/user.entity';
+import { Admin } from '../../src/admin/entities/admin.entity';
+import { PurchaseReceipt } from '../../src/purchase/entities/purchase-receipt.entity';
+import { Supplier } from '../../src/purchase/entities/supplier.entity';
+import { Warehouse } from '../../src/stock/entities/warehouse.entity';
+import {
+  SupplierDocumentType,
+  SupplierKind,
+} from '../../src/purchase/domain/purchase.enums';
+import { Delivery } from '../../src/delivery/entities/delivery.entity';
+import {
+  Employee,
+  EmployeeDocumentType,
+  EmploymentType,
+} from '../../src/employee/entities/employee.entity';
+import {
+  JobPosition,
+  JobPositionCategory,
+} from '../../src/employee/entities/job-position.entity';
+
+describe('Adjuntos genéricos (e2e)', () => {
+  let minio: TestMinio;
+  let env: TestEnv;
+  let dataSource: DataSource;
+
+  beforeAll(async () => {
+    minio = await startMinio();
+    env = await createTestApp({ s3: minio.env });
+    dataSource = env.app.get(DataSource);
+  }, 240000);
+
+  afterAll(async () => {
+    await env?.cleanup();
+    await minio?.stop();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(env.app);
+  });
+
+  /** Pide el enlace (`?modo=url`) y baja el archivo desde la URL firmada de S3. */
+  async function descargar(headers: Record<string, string>, id: string) {
+    const enlace = await request(env.app.getHttpServer())
+      .get(`/attachments/${id}/download`)
+      .query({ modo: 'url' })
+      .set(headers)
+      .expect(200);
+    const { url } = enlace.body as { url: string };
+    const res = await fetch(url);
+    return {
+      status: res.status,
+      headers: res.headers,
+      body: Buffer.from(await res.arrayBuffer()),
+    };
+  }
+
+  async function rol(type: string): Promise<Role> {
+    const roles = dataSource.getRepository(Role);
+    return (
+      (await roles.findOne({ where: { type } })) ??
+      (await roles.save({ type } as Partial<Role>))
+    );
+  }
+
+  async function seedDistribuidora() {
+    const sufijo = randomUUID().slice(0, 8);
+    return dataSource.getRepository(Distributor).save({
+      name: `Distribuidora ${sufijo}`,
+      slug: `dist-${sufijo}`,
+    } as Partial<Distributor>);
+  }
+
+  async function seedEmpleado(distributorId: string): Promise<string> {
+    const puesto = await dataSource.getRepository(JobPosition).save({
+      distributorId,
+      name: 'Puesto de prueba',
+      category: JobPositionCategory.OTHER,
+    } as Partial<JobPosition>);
+    const empleado = await dataSource.getRepository(Employee).save({
+      distributorId,
+      positionId: puesto.positionId,
+      fileNumber: '0001',
+      firstName: 'Ana',
+      lastName: 'Pérez',
+      documentType: EmployeeDocumentType.DNI,
+      documentNumber: randomUUID().slice(0, 8),
+      hireDate: '2026-03-01',
+      employmentType: EmploymentType.PERMANENT,
+    } as Partial<Employee>);
+    return empleado.employeeId;
+  }
+
+  async function seedUsuario(
+    tipo: 'admin' | 'delivery',
+    distributorId: string,
+  ) {
+    const sufijo = randomUUID().slice(0, 8);
+    const email = `${tipo}.${sufijo}@splg.local`;
+    const user = await dataSource.getRepository(User).save({
+      email,
+      fullName: `Test ${tipo}`,
+      phoneNumber: telefonoDePrueba(),
+      roleId: (await rol(tipo)).roleId,
+    } as Partial<User>);
+    if (tipo === 'admin') {
+      await dataSource
+        .getRepository(Admin)
+        .save({ userId: user.userId, distributorId } as Partial<Admin>);
+    } else {
+      await dataSource
+        .getRepository(Delivery)
+        .save({ userId: user.userId, distributorId } as Partial<Delivery>);
+    }
+    return {
+      user,
+      headers: {
+        Authorization: `Bearer ${email}`,
+        'X-Client-Source': tipo === 'admin' ? 'panel-app' : 'delivery-app',
+      },
+    };
+  }
+
+  /** Una carga de combustible real, registrada por `userId`: el dueño `fuel_load`. */
+  async function seedCarga(
+    distributorId: string,
+    userId: string,
+  ): Promise<string> {
+    const auto = await dataSource.getRepository(Car).save({
+      distributorId,
+      userId,
+      carPatent: patenteDePrueba(),
+    } as Partial<Car>);
+    const carga = await dataSource.getRepository(FuelLoad).save({
+      distributorId,
+      carId: auto.carId,
+      loadedAt: new Date(),
+      fuelType: FuelType.DIESEL,
+      liters: 40,
+      unitPrice: 1000,
+      totalAmount: 40000,
+      odometerKm: 1000,
+      paymentMethod: FuelPaymentMethod.CARD,
+      createdByUserId: userId,
+    } as Partial<FuelLoad>);
+    return carga.fuelLoadId;
+  }
+
+  const PDF = Buffer.from('%PDF-1.4 contenido de prueba');
+
+  function subir(
+    headers: Record<string, string>,
+    tipo: string,
+    id: string,
+    over: {
+      nombre?: string;
+      mime?: string;
+      buffer?: Buffer;
+      label?: string;
+    } = {},
+  ) {
+    const req = request(env.app.getHttpServer())
+      .post(`/attachments/${tipo}/${id}`)
+      .set(headers);
+    if (over.label !== undefined) req.field('label', over.label);
+    return req.attach('file', over.buffer ?? PDF, {
+      filename: over.nombre ?? 'dni.pdf',
+      contentType: over.mime ?? 'application/pdf',
+    });
+  }
+
+  async function escenario() {
+    const d1 = await seedDistribuidora();
+    const d2 = await seedDistribuidora();
+    const admin1 = await seedUsuario('admin', d1.distributorId);
+    const admin2 = await seedUsuario('admin', d2.distributorId);
+    const empleado = await seedEmpleado(d1.distributorId);
+    return { d1, d2, admin1, admin2, empleado };
+  }
+
+  it('ciclo completo: subir, listar, descargar y borrar', async () => {
+    const { admin1, empleado } = await escenario();
+
+    const creado = await subir(admin1.headers, 'employee', empleado, {
+      nombre: 'póliza 2026.pdf',
+      label: 'Póliza 2026',
+    }).expect(201);
+    expect(creado.body).toMatchObject({
+      ownerType: 'employee',
+      ownerId: empleado,
+      label: 'Póliza 2026',
+      originalName: 'póliza 2026.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: PDF.length,
+      uploadedByUserId: admin1.user.userId,
+    });
+    expect(creado.body).not.toHaveProperty('storageKey');
+    const id = (creado.body as { attachmentId: string }).attachmentId;
+
+    const listado = await request(env.app.getHttpServer())
+      .get(`/attachments/employee/${empleado}`)
+      .set(admin1.headers)
+      .expect(200);
+    expect((listado.body as unknown[]).length).toBe(1);
+
+    const descarga = await descargar(admin1.headers, id);
+    expect(descarga.status).toBe(200);
+    expect(descarga.headers.get('content-type')).toContain('application/pdf');
+    expect(descarga.headers.get('content-disposition')).toContain(
+      "filename*=UTF-8''p%C3%B3liza%202026.pdf",
+    );
+    expect(descarga.body.equals(PDF)).toBe(true);
+
+    await request(env.app.getHttpServer())
+      .delete(`/attachments/${id}`)
+      .set(admin1.headers)
+      .expect(204);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/${id}/download`)
+      .set(admin1.headers)
+      .expect(404);
+
+    // Baja lógica: no se lista ni se baja, pero el registro y el archivo siguen.
+    const despues = await request(env.app.getHttpServer())
+      .get(`/attachments/employee/${empleado}`)
+      .set(admin1.headers)
+      .expect(200);
+    expect(despues.body).toEqual([]);
+    const repo = dataSource.getRepository(Attachment);
+    expect(await repo.count()).toBe(0);
+    const fila = await repo.findOne({
+      where: { attachmentId: id },
+      withDeleted: true,
+    });
+    expect(fila?.deletedAt).toBeInstanceOf(Date);
+    await expect(
+      minio.client.send(
+        new HeadObjectCommand({
+          Bucket: BUCKET_DE_PRUEBA,
+          Key: fila?.storageKey ?? 'no-hay',
+        }),
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('otra distribuidora no puede subir, listar, descargar ni borrar: 404', async () => {
+    const { admin1, admin2, empleado } = await escenario();
+    const creado = await subir(admin1.headers, 'employee', empleado).expect(
+      201,
+    );
+    const id = (creado.body as { attachmentId: string }).attachmentId;
+
+    await subir(admin2.headers, 'employee', empleado).expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/employee/${empleado}`)
+      .set(admin2.headers)
+      .expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/${id}/download`)
+      .set(admin2.headers)
+      .expect(404);
+    await request(env.app.getHttpServer())
+      .delete(`/attachments/${id}`)
+      .set(admin2.headers)
+      .expect(404);
+
+    expect(await dataSource.getRepository(Attachment).count()).toBe(1);
+  });
+
+  it('un dueño inexistente es 404 y no deja nada guardado', async () => {
+    const { admin1 } = await escenario();
+    await subir(admin1.headers, 'employee', randomUUID()).expect(404);
+    expect(await dataSource.getRepository(Attachment).count()).toBe(0);
+  });
+
+  it('un tipo sin resolver registrado es 400 claro', async () => {
+    const { admin1 } = await escenario();
+    // Hoy todos los tipos tienen su resolver: se simula uno que todavía no lo registró.
+    const registro = env.app.get(AttachmentOwnerRegistry);
+    const original = registro.find.bind(registro);
+    const sinMultas = jest
+      .spyOn(registro, 'find')
+      .mockImplementation((tipo) =>
+        tipo === AttachmentOwnerType.TRAFFIC_FINE ? undefined : original(tipo),
+      );
+    try {
+      const res = await subir(
+        admin1.headers,
+        'traffic_fine',
+        randomUUID(),
+      ).expect(400);
+      expect(JSON.stringify(res.body)).toContain('multa');
+    } finally {
+      sinMultas.mockRestore();
+    }
+  });
+
+  it('un tipo que no existe es 400 y un id que no es uuid es 400', async () => {
+    const { admin1, empleado } = await escenario();
+    await subir(admin1.headers, 'marciano', empleado).expect(400);
+    await subir(admin1.headers, 'employee', 'no-es-uuid').expect(400);
+  });
+
+  it('rechaza mime no permitido (415), más de 10 MB (413) y falta de archivo (400)', async () => {
+    const { admin1, empleado } = await escenario();
+    await subir(admin1.headers, 'employee', empleado, {
+      mime: 'application/msword',
+      nombre: 'a.doc',
+    }).expect(415);
+    await subir(admin1.headers, 'employee', empleado, {
+      buffer: Buffer.alloc(10 * 1024 * 1024 + 1),
+    }).expect(413);
+    await request(env.app.getHttpServer())
+      .post(`/attachments/employee/${empleado}`)
+      .set(admin1.headers)
+      .expect(400);
+    expect(await dataSource.getRepository(Attachment).count()).toBe(0);
+  });
+
+  it('la foto del remito de una recepción de compra: sube por el back, se lee sólo por URL firmada y es de su distribuidora', async () => {
+    const { d1, admin1, admin2 } = await escenario();
+    const proveedor = await dataSource.getRepository(Supplier).save({
+      distributorId: d1.distributorId,
+      businessName: 'Gas del Litoral',
+      cuit: cuitDePrueba(),
+      kind: SupplierKind.FILLING_PLANT,
+    } as Partial<Supplier>);
+    const deposito = await dataSource.getRepository(Warehouse).save({
+      distributorId: d1.distributorId,
+      name: 'Central',
+      code: 'CENTRAL',
+    } as Partial<Warehouse>);
+    const recepcion = await dataSource.getRepository(PurchaseReceipt).save({
+      distributorId: d1.distributorId,
+      number: 1,
+      supplierId: proveedor.supplierId,
+      warehouseId: deposito.warehouseId,
+      supplierDocumentType: SupplierDocumentType.DELIVERY_NOTE,
+      supplierDocumentNumber: '0001-00000001',
+      receivedAt: new Date(),
+      receivedByUserId: admin1.user.userId,
+      totalAmount: 1000,
+      batchId: randomUUID(),
+    } as Partial<PurchaseReceipt>);
+    const id = recepcion.receiptId;
+    const FOTO = JPG_REAL;
+
+    const creado = await subir(admin1.headers, 'purchase_receipt', id, {
+      nombre: 'remito.jpg',
+      mime: 'image/jpeg',
+      buffer: FOTO,
+      label: 'Remito del proveedor',
+    }).expect(201);
+    expect(creado.body).toMatchObject({
+      ownerType: 'purchase_receipt',
+      ownerId: id,
+      label: 'Remito del proveedor',
+    });
+    expect(creado.body).not.toHaveProperty('storageKey');
+    const adjuntoId = (creado.body as { attachmentId: string }).attachmentId;
+
+    const fila = await dataSource
+      .getRepository(Attachment)
+      .findOneByOrFail({ attachmentId: adjuntoId });
+    const cifrado = await minio.client.send(
+      new HeadObjectCommand({
+        Bucket: BUCKET_DE_PRUEBA,
+        Key: fila.storageKey,
+      }),
+    );
+    expect(cifrado.ServerSideEncryption).toBe('AES256');
+
+    const descarga = await descargar(admin1.headers, adjuntoId);
+    expect(descarga.status).toBe(200);
+    // Se guarda recodificada (sin metadata): sigue siendo un JPEG.
+    expect(descarga.body.subarray(0, 3).equals(FOTO.subarray(0, 3))).toBe(true);
+
+    // otra distribuidora: no existe (404); sin credencial: 401; chofer: 403
+    await subir(admin2.headers, 'purchase_receipt', id, {
+      nombre: 'remito.jpg',
+      mime: 'image/jpeg',
+      buffer: FOTO,
+    }).expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/purchase_receipt/${id}`)
+      .set(admin2.headers)
+      .expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/${adjuntoId}/download`)
+      .set(admin2.headers)
+      .expect(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/purchase_receipt/${id}`)
+      .expect(401);
+    const chofer = await seedUsuario('delivery', d1.distributorId);
+    await subir(chofer.headers, 'purchase_receipt', id, {
+      nombre: 'remito.jpg',
+      mime: 'image/jpeg',
+      buffer: FOTO,
+    }).expect(403);
+    expect(await dataSource.getRepository(Attachment).count()).toBe(1);
+  });
+
+  it('la subida queda en la auditoría', async () => {
+    const { admin1, empleado } = await escenario();
+    await subir(admin1.headers, 'employee', empleado).expect(201);
+    // El asiento se guarda sin demorar la respuesta.
+    let filas: Array<{ resource: string; result: string }> = [];
+    for (let i = 0; i < 20 && filas.length === 0; i++) {
+      filas = await dataSource.query(
+        `SELECT resource, result FROM audit_log WHERE resource = 'attachments'`,
+      );
+      if (filas.length === 0) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(filas[0]).toMatchObject({
+      resource: 'attachments',
+      result: 'success',
+    });
+  });
+
+  it('el contenido tiene que coincidir con el tipo declarado: un HTML como image/png es 415', async () => {
+    const { admin1, empleado } = await escenario();
+    await subir(admin1.headers, 'employee', empleado, {
+      mime: 'image/png',
+      nombre: 'x.png',
+      buffer: Buffer.from('<html><script>alert(1)</script></html>'),
+    }).expect(415);
+    expect(await dataSource.getRepository(Attachment).count()).toBe(0);
+  });
+
+  it('un nombre larguísimo se recorta y no rompe (nunca 500)', async () => {
+    const { admin1, empleado } = await escenario();
+    const res = await subir(admin1.headers, 'employee', empleado, {
+      nombre: `${'n'.repeat(400)}.pdf`,
+    }).expect(201);
+    const nombre = (res.body as { originalName: string }).originalName;
+    expect(nombre).toHaveLength(255);
+    expect(nombre.endsWith('.pdf')).toBe(true);
+  });
+
+  it('el nombre con apóstrofe y paréntesis sale bien codificado en la descarga', async () => {
+    const { admin1, empleado } = await escenario();
+    const creado = await subir(admin1.headers, 'employee', empleado, {
+      nombre: "o'brien (1).pdf",
+    }).expect(201);
+    const id = (creado.body as { attachmentId: string }).attachmentId;
+    const res = await descargar(admin1.headers, id);
+    expect(res.headers.get('content-disposition')).toContain(
+      "filename*=UTF-8''o%27brien%20%281%29.pdf",
+    );
+  });
+
+  it('con el dueño borrado el admin igual puede bajar y borrar el adjunto', async () => {
+    const { admin1, empleado } = await escenario();
+    const creado = await subir(admin1.headers, 'employee', empleado).expect(
+      201,
+    );
+    const id = (creado.body as { attachmentId: string }).attachmentId;
+
+    // El resolver deja de encontrarlo: el legajo se dio de baja.
+    await dataSource
+      .getRepository(Employee)
+      .softDelete({ employeeId: empleado });
+    await request(env.app.getHttpServer())
+      .get(`/attachments/employee/${empleado}`)
+      .set(admin1.headers)
+      .expect(404);
+    expect((await descargar(admin1.headers, id)).status).toBe(200);
+    await request(env.app.getHttpServer())
+      .delete(`/attachments/${id}`)
+      .set(admin1.headers)
+      .expect(204);
+  });
+
+  it('si el archivo falta en el bucket, la URL firmada responde 404 y el proceso sigue vivo', async () => {
+    const { admin1, empleado } = await escenario();
+    const creado = await subir(admin1.headers, 'employee', empleado).expect(
+      201,
+    );
+    const id = (creado.body as { attachmentId: string }).attachmentId;
+    const fila = await dataSource
+      .getRepository(Attachment)
+      .findOneByOrFail({ attachmentId: id });
+    await minio.client.send(
+      new DeleteObjectCommand({
+        Bucket: BUCKET_DE_PRUEBA,
+        Key: fila.storageKey,
+      }),
+    );
+
+    expect((await descargar(admin1.headers, id)).status).toBe(404);
+    await request(env.app.getHttpServer())
+      .get(`/attachments/employee/${empleado}`)
+      .set(admin1.headers)
+      .expect(200);
+  });
+
+  describe('chofer', () => {
+    it('accede a los adjuntos de su carga, no a los de otro chofer ni a legajos', async () => {
+      const { d1, admin1, empleado } = await escenario();
+      const chofer = await seedUsuario('delivery', d1.distributorId);
+      const otro = await seedUsuario('delivery', d1.distributorId);
+      const suya = await seedCarga(d1.distributorId, chofer.user.userId);
+      const ajena = await seedCarga(d1.distributorId, otro.user.userId);
+
+      const creado = await subir(chofer.headers, 'fuel_load', suya).expect(201);
+      const id = (creado.body as { attachmentId: string }).attachmentId;
+      await request(env.app.getHttpServer())
+        .get(`/attachments/fuel_load/${suya}`)
+        .set(chofer.headers)
+        .expect(200);
+
+      await subir(chofer.headers, 'fuel_load', ajena).expect(404);
+      await request(env.app.getHttpServer())
+        .get(`/attachments/${id}/download`)
+        .set(otro.headers)
+        .expect(404);
+      await request(env.app.getHttpServer())
+        .delete(`/attachments/${id}`)
+        .set(otro.headers)
+        .expect(404);
+      await subir(chofer.headers, 'employee', empleado).expect(403);
+
+      // El admin ve el adjunto del chofer; el chofer sólo borra lo suyo.
+      await request(env.app.getHttpServer())
+        .get(`/attachments/fuel_load/${suya}`)
+        .set(admin1.headers)
+        .expect(200);
+      await request(env.app.getHttpServer())
+        .delete(`/attachments/${id}`)
+        .set(chofer.headers)
+        .expect(204);
+    });
+  });
+});

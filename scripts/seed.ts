@@ -11,17 +11,30 @@
  * endpoint, etc.). Un solo comando deja el sistema listo para probar con tokens
  * reales. Corre en el contexto de la app (mismos servicios que producción).
  */
+import './lib/marcar-script';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { RoleService } from '../src/role/role.service';
 import { UsersService } from '../src/users/users.service';
-import { AdminService } from '../src/admin/admin.service';
 import { DistributorService } from '../src/distributor/distributor.service';
+import { RegistroService } from '../src/registro/registro.service';
+import type { RolRegistrable } from '../src/registro/politica-de-registro';
 import { Distributor } from '../src/distributor/entities/distributor.entity';
+import { CUENTAS_CON_LOGIN } from './lib/cuentas-demo';
+import { assignStaffToDistributor } from './lib/staff-demo';
+import { resguardoDeProduccion } from './lib/resguardo-de-produccion';
+import { sembrarFisico } from './lib/stock-demo';
 
 const PASSWORD = 'Test1234'; // Firebase exige >= 6 caracteres.
+
+/** Nombre de persona de cada cuenta con login (la fuente es `lib/cuentas-demo.ts`). */
+const nombreReal = (email: string): string => {
+  const c = CUENTAS_CON_LOGIN.find((x) => x.email === email);
+  if (!c) throw new Error(`Falta ${email} en CUENTAS_CON_LOGIN`);
+  return c.fullName;
+};
 
 /** Tablas scopeadas por tenant (para el backfill de datos pre-multitenant). */
 const SCOPED_TABLES = [
@@ -31,7 +44,6 @@ const SCOPED_TABLES = [
   'time_slot',
   'claims',
   'delivery',
-  'admin',
 ];
 
 interface TestUser {
@@ -45,32 +57,32 @@ const TEST_USERS: TestUser[] = [
   {
     role: 'super_admin',
     email: 'superadmin@splg.com',
-    full_name: 'Super Admin',
+    full_name: nombreReal('superadmin@splg.com'),
     phone_number: '+5493815550001',
   },
   {
     role: 'admin',
     email: 'admin@splg.com',
-    full_name: 'Admin Jeny',
+    full_name: nombreReal('admin@splg.com'),
     phone_number: '+5493815550002',
   },
   {
     role: 'customer',
     email: 'cliente@splg.com',
-    full_name: 'Cliente Prueba',
+    full_name: nombreReal('cliente@splg.com'),
     phone_number: '+5493815550003',
   },
   {
     role: 'delivery',
     email: 'chofer@splg.com',
-    full_name: 'Chofer Prueba',
+    full_name: nombreReal('chofer@splg.com'),
     phone_number: '+5493815550004',
   },
 ];
 
 /**
  * Staff de la 2da distribuidora demo (Gas Andino), para probar el aislamiento
- * multi-tenant: su admin/chofer NO deben ver los datos de Jeny Gas y viceversa.
+ * multi-tenant: su admin/chofer NO deben ver los datos de Distribuidora Demo y viceversa.
  * El customer es global (una identidad puede pedir a cualquier distribuidora
  * vía header X-Distributor), por eso no se duplica.
  */
@@ -78,18 +90,19 @@ const DEMO_STAFF: TestUser[] = [
   {
     role: 'admin',
     email: 'admin@gasandino.com',
-    full_name: 'Admin Andino',
+    full_name: nombreReal('admin@gasandino.com'),
     phone_number: '+5493815550012',
   },
   {
     role: 'delivery',
     email: 'chofer@gasandino.com',
-    full_name: 'Chofer Andino',
+    full_name: nombreReal('chofer@gasandino.com'),
     phone_number: '+5493815550014',
   },
 ];
 
 async function bootstrap() {
+  resguardoDeProduccion();
   const logger = new Logger('Seed');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['warn', 'error'],
@@ -97,8 +110,8 @@ async function bootstrap() {
 
   const roleService = app.get(RoleService);
   const usersService = app.get(UsersService);
-  const adminService = app.get(AdminService);
   const distributorService = app.get(DistributorService);
+  const registro = app.get(RegistroService);
   const dataSource = app.get(DataSource);
 
   const results: Array<{ email: string; role: string; status: string }> = [];
@@ -108,48 +121,62 @@ async function bootstrap() {
     await roleService.seedRoles();
     logger.log('✅ Roles sembrados (customer, delivery, admin, super_admin)');
 
-    const roleIdByType: Record<string, string> = {};
-    for (const type of ['admin', 'super_admin']) {
-      const role = await roleService.findByType(type);
-      if (!role) throw new Error(`Rol '${type}' no encontrado tras el seed`);
-      roleIdByType[type] = role.role_id;
-    }
-
-    // 2) Usuarios de prueba ────────────────────────────────────────────────
-    for (const u of TEST_USERS) {
-      results.push(
-        await ensureUser(u, usersService, adminService, roleIdByType),
-      );
-    }
-
-    // 3) Multi-tenant: distribuidora default + backfill ────────────────────
-    // Distribuidora principal = tenant al que pertenece TODO lo pre-existente.
-    const jenyGas = await ensureDistributor(distributorService, {
-      name: 'Jeny Gas',
-      slug: 'jeny-gas',
-      legal_name: 'Jeny Gas S.R.L.',
-      tax_id: '30-11111111-1',
+    // 2) Multi-tenant: distribuidora default ───────────────────────────────
+    // Se crea ANTES que los usuarios: delivery.distributor_id es NOT NULL, asi
+    // que el chofer necesita su tenant ya existente al momento del alta.
+    const distribuidoraDemo = await ensureDistributor(distributorService, {
+      name: 'Distribuidora Demo',
+      slug: 'demo',
+      legalName: 'Distribuidora Demo S.R.L.',
+      taxId: '30-11111111-1',
       email: 'contacto@splg.com',
       phone: '+543764000001',
     });
-    logger.log(`✅ Distribuidora default: ${jenyGas.name} (${jenyGas.slug})`);
+    logger.log(
+      `✅ Distribuidora default: ${distribuidoraDemo.name} (${distribuidoraDemo.slug})`,
+    );
 
+    // 3) Usuarios de prueba ────────────────────────────────────────────────
+    for (const u of TEST_USERS) {
+      results.push(
+        await ensureUser(
+          u,
+          usersService,
+          registro,
+          distribuidoraDemo.distributorId,
+        ),
+      );
+    }
+
+    // 4) Backfill de datos pre-multi-tenant ────────────────────────────────
     // Backfill: todas las filas scopeadas sin tenant → distribuidora default.
     // Corre ANTES de crear la 2da distribuidora para no pisar su staff.
     for (const table of SCOPED_TABLES) {
       await dataSource.query(
         `UPDATE ${table} SET distributor_id = $1 WHERE distributor_id IS NULL`,
-        [jenyGas.distributor_id],
+        [distribuidoraDemo.distributorId],
       );
     }
-    logger.log('✅ Backfill: datos pre-existentes asignados a la distribuidora default');
+    // En admin, null es un valor válido: es el super admin, que no pertenece a
+    // ninguna distribuidora. Sólo se completan los admins de empresa (H-76).
+    await dataSource.query(
+      `UPDATE admin SET distributor_id = $1
+         WHERE distributor_id IS NULL
+           AND user_id IN (SELECT u.user_id FROM "user" u
+                             JOIN role r ON r.role_id = u.role_id
+                            WHERE r.type = 'admin')`,
+      [distribuidoraDemo.distributorId],
+    );
+    logger.log(
+      '✅ Backfill: datos pre-existentes asignados a la distribuidora default',
+    );
 
     // 4) 2da distribuidora demo (Gas Andino) con staff + catálogo propios ──
     const gasAndino = await ensureDistributor(distributorService, {
       name: 'Gas Andino',
       slug: 'gas-andino',
-      legal_name: 'Gas Andino S.A.',
-      tax_id: '30-22222222-2',
+      legalName: 'Gas Andino S.A.',
+      taxId: '30-22222222-2',
       email: 'contacto@gasandino.com',
       phone: '+543764000002',
     });
@@ -157,19 +184,23 @@ async function bootstrap() {
 
     for (const u of DEMO_STAFF) {
       results.push(
-        await ensureUser(u, usersService, adminService, roleIdByType),
+        await ensureUser(u, usersService, registro, gasAndino.distributorId),
       );
       await assignStaffToDistributor(
         dataSource,
         u.email,
         u.role,
-        gasAndino.distributor_id,
+        gasAndino.distributorId,
       );
     }
 
     // Catálogo propio de la distribuidora demo (idempotente: sólo si no tiene).
-    await ensureDemoCatalog(dataSource, gasAndino.distributor_id);
-    logger.log('✅ Staff + catálogo de Gas Andino listos (aislados de Jeny Gas)');
+    await ensureDemoCatalog(dataSource, gasAndino.distributorId);
+    // Su stock vendible inicial es físico: por el ledger, en el depósito central.
+    await sembrarFisico(dataSource, gasAndino.distributorId);
+    logger.log(
+      '✅ Staff + catálogo de Gas Andino listos (aislados de Distribuidora Demo)',
+    );
   } finally {
     printSummary(results);
     await app.close();
@@ -183,38 +214,28 @@ async function bootstrap() {
 async function ensureUser(
   u: TestUser,
   usersService: UsersService,
-  adminService: AdminService,
-  roleIdByType: Record<string, string>,
+  registro: RegistroService,
+  distributorId: string,
 ): Promise<{ email: string; role: string; status: string }> {
   if (await userExists(usersService, u.email)) {
     return { email: u.email, role: u.role, status: 'ya existía ⏭️' };
   }
   try {
-    if (u.role === 'customer') {
-      await usersService.createCustomerWithUser({
+    const rol = u.role as RolRegistrable;
+    await registro.registrar(
+      {
         email: u.email,
         password: PASSWORD,
         full_name: u.full_name,
         phone_number: u.phone_number,
-      });
-    } else if (u.role === 'delivery') {
-      await usersService.createDeliveryWithUser({
-        email: u.email,
-        password: PASSWORD,
-        full_name: u.full_name,
-        phone_number: u.phone_number,
+        rol,
+        // La política la ignora para clientes y super admins.
+        distributorId,
         validated: true,
         isActive: true,
-      } as any);
-    } else {
-      await adminService.registerAdmin({
-        email: u.email,
-        password: PASSWORD,
-        full_name: u.full_name,
-        phone_number: u.phone_number,
-        role_id: roleIdByType[u.role],
-      });
-    }
+      },
+      { tipo: 'sistema' },
+    );
     return { email: u.email, role: u.role, status: 'creado ✅' };
   } catch (error) {
     return {
@@ -237,36 +258,25 @@ async function ensureDistributor(
   }
 }
 
-/**
- * Asigna el perfil de staff (admin o delivery) de `email` a una distribuidora.
- * Idempotente: sobrescribe el distributor_id del perfil.
- */
-async function assignStaffToDistributor(
-  dataSource: DataSource,
-  email: string,
-  role: 'admin' | 'super_admin' | 'customer' | 'delivery',
-  distributorId: string,
-): Promise<void> {
-  const table = role === 'delivery' ? 'delivery' : 'admin';
-  await dataSource.query(
-    `UPDATE ${table} SET distributor_id = $1
-       WHERE user_id = (SELECT user_id FROM "user" WHERE email = $2)`,
-    [distributorId, email],
-  );
-}
-
 /** Siembra un catálogo mínimo para la distribuidora demo (si no tiene). */
 async function ensureDemoCatalog(
   dataSource: DataSource,
   distributorId: string,
 ): Promise<void> {
-  await dataSource.query(
-    `INSERT INTO gas_cylinder (type, weight, price, stock, description, "isActive", promotions, distributor_id)
-     SELECT 'Garrafa 10kg Andino', 10, 11000, 40, 'Garrafa 10kg de Gas Andino', true,
-            '[{"quantity":3,"discountPercentage":10}]'::jsonb, $1
-     WHERE NOT EXISTS (SELECT 1 FROM gas_cylinder WHERE distributor_id = $1)`,
+  const creado: { gas_cylinder_id: string }[] = await dataSource.query(
+    `INSERT INTO gas_cylinder (type, weight, price, stock, description, "isActive", distributor_id)
+     SELECT 'Garrafa 10kg Andino', 10, 11000, 40, 'Garrafa 10kg de Gas Andino', true, $1
+     WHERE NOT EXISTS (SELECT 1 FROM gas_cylinder WHERE distributor_id = $1)
+     RETURNING gas_cylinder_id`,
     [distributorId],
   );
+  if (creado[0]) {
+    await dataSource.query(
+      `INSERT INTO gas_cylinder_promotion (gas_cylinder_id, quantity, discount_percentage)
+       VALUES ($1, 3, 10)`,
+      [creado[0].gas_cylinder_id],
+    );
+  }
 }
 
 async function userExists(

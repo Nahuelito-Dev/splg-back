@@ -17,4 +17,32 @@ export class NotificationAdapter extends NotificationPort {
   sendOrderConfirmation(customerId: string, orderId: string, token?: string) {
     return this.notifications.sendOrderConfirmation(customerId, orderId, token);
   }
+
+  sendArrivalPushToCustomer(
+    customerId: string,
+    orderId: string,
+    driverName: string,
+  ) {
+    return this.notifications.sendArrivalPushToCustomer(
+      customerId,
+      orderId,
+      driverName,
+    );
+  }
+
+  sendPaymentApprovedPush(customerId: string, orderId: string, esSena = false) {
+    return this.notifications.sendPaymentApprovedPush(
+      customerId,
+      orderId,
+      esSena,
+    );
+  }
+
+  sendOrderNoticePush(
+    customerId: string,
+    orderId: string,
+    aviso: { title: string; body: string; event: string },
+  ) {
+    return this.notifications.sendOrderNoticePush(customerId, orderId, aviso);
+  }
 }

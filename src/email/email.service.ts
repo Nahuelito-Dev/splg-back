@@ -1,16 +1,34 @@
 import {
   Injectable,
   BadRequestException,
-  forwardRef,
-  Inject,
+  HttpException,
   Logger,
 } from '@nestjs/common';
+import { leerConfiguracionDePlataforma } from '../common/config/plataforma.config';
 import { auth } from 'firebase-admin';
 import { FirebaseAuthPort } from '../firebase/ports/firebase-auth.port';
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../redis/redis.service';
 import { EmailSenderPort } from './ports/email-sender.port';
-import { EmailTemplateProvider } from './email-template.provider';
+import {
+  DatosDePlantilla,
+  EmailTemplateProvider,
+} from './email-template.provider';
+import {
+  EmailCambiadoResponseDto,
+  PruebaDeEmailResponseDto,
+} from './dto/email-response.dto';
+import {
+  errorCode,
+  errorMessage,
+  errorStatus,
+} from '../common/errors/error-message';
+import { EnlacesDeLaApp } from './enlaces-de-la-app';
+import { marcaDePlataforma } from './layout/marca-de-correo';
+
+/** Respuesta del pedido de reseteo, exista o no la cuenta. */
+const MENSAJE_DE_RESETEO =
+  'Si el correo existe, te enviamos un enlace para restablecer la contraseña';
 
 /**
  * Orquestador de emails transaccionales (reset de password, cambio de
@@ -37,12 +55,12 @@ export class EmailService {
   private readonly TRACKING_WINDOW_SEC = 60 * 60;
 
   constructor(
-    @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     private readonly firebaseAuth: FirebaseAuthPort,
     private readonly redisService: RedisService,
     private readonly emailSender: EmailSenderPort,
     private readonly templates: EmailTemplateProvider,
+    private readonly enlaces: EnlacesDeLaApp,
   ) {}
 
   private async checkRateLimit(
@@ -57,7 +75,7 @@ export class EmailService {
 
     if (count > this.MAX_REQUESTS_PER_WINDOW) {
       throw new BadRequestException(
-        `Too many ${operation} attempts. Please try again later.`,
+        'Demasiados intentos: probá de nuevo más tarde',
       );
     }
   }
@@ -76,7 +94,7 @@ export class EmailService {
 
     try {
       const link = await this.firebaseAuth.generatePasswordResetLink(email, {
-        url: 'https://taolistic-courses.firebaseapp.com/__/auth/action',
+        url: this.enlaces.accionDeCuenta,
         handleCodeInApp: true,
       });
 
@@ -84,29 +102,32 @@ export class EmailService {
 
       return link;
     } catch (error) {
-      if (error.message.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
+      if (errorMessage(error).includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
         if (cached) {
           return cached;
         }
 
         throw new BadRequestException(
-          'Too many password reset attempts. Please try again in a few minutes.',
+          'Demasiados intentos de recuperar la contraseña: probá de nuevo en unos minutos',
         );
       }
 
+      // El detalle de Firebase queda en el log: al llamante no le sirve y
+      // describe la configuración del proyecto (H-67).
+      this.logger.error(
+        `No se pudo generar el link de reseteo: ${errorMessage(error)}`,
+      );
       throw new BadRequestException(
-        `Error generating reset link: ${error.message}`,
+        'No se pudo generar el enlace de recuperación',
       );
     }
   }
 
-  private async verifyIdToken(
-    idToken: string,
-  ): Promise<auth.DecodedIdToken> {
+  private async verifyIdToken(idToken: string): Promise<auth.DecodedIdToken> {
     try {
       return await this.firebaseAuth.verifyIdToken(idToken);
-    } catch (error) {
-      throw new BadRequestException('Invalid token');
+    } catch {
+      throw new BadRequestException('Token inválido');
     }
   }
 
@@ -114,7 +135,13 @@ export class EmailService {
     try {
       await this.firebaseAuth.updateUser(uid, { email: newEmail });
     } catch (error) {
-      throw new BadRequestException(`Error updating email: ${error.message}`);
+      if (errorCode(error) === 'auth/email-already-exists') {
+        throw new BadRequestException('El correo nuevo ya está en uso');
+      }
+      this.logger.error(
+        `No se pudo actualizar el correo en Firebase: ${errorMessage(error)}`,
+      );
+      throw new BadRequestException('No se pudo actualizar el correo');
     }
   }
 
@@ -127,23 +154,27 @@ export class EmailService {
 
       await this.sendEmail({
         to: email,
-        subject: `Reset your password for Yeni Gass`,
         template: 'password-reset',
         data: {
           resetLink,
           email,
-          appName: 'Yeni Gass',
         },
       });
 
-      return { message: 'Password reset email sent successfully' };
+      return { message: MENSAJE_DE_RESETEO };
     } catch (error) {
-      if (error.status === 404) {
-        return {
-          message: 'If the email exists, a password reset link has been sent',
-        };
+      // Mismo mensaje exista o no la cuenta: no se revela qué correos tienen
+      // cuenta (H-68).
+      if (errorStatus(error) === 404) {
+        return { message: MENSAJE_DE_RESETEO };
       }
-      throw new BadRequestException(error.message);
+      if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `No se pudo enviar el correo de recuperación: ${errorMessage(error)}`,
+      );
+      throw new BadRequestException(
+        'No se pudo enviar el correo de recuperación',
+      );
     }
   }
 
@@ -151,43 +182,49 @@ export class EmailService {
     currentEmail: string,
     newEmail: string,
     idToken: string,
-  ): Promise<{ message: string; newEmail: string }> {
+  ): Promise<EmailCambiadoResponseDto> {
     try {
       const decodedToken = await this.verifyIdToken(idToken);
 
       if (decodedToken.email !== currentEmail) {
-        throw new BadRequestException('Token does not match current email');
+        throw new BadRequestException(
+          'El token no corresponde al correo actual',
+        );
       }
 
       try {
         await this.usersService.findOneByEmail(newEmail);
-        throw new BadRequestException('New email already exists');
+        throw new BadRequestException('El correo nuevo ya está en uso');
       } catch (error) {
-        if (error.status !== 404) throw error;
+        if (errorStatus(error) !== 404) throw error;
       }
 
       const user = await this.usersService.findOneByEmail(currentEmail);
 
       await this.updateUserEmail(decodedToken.uid, newEmail);
 
-      await this.usersService.update(user.user_id, {
-        email: newEmail,
-        email_verified: false,
-      });
+      await this.usersService.cambiarEmail(user.userId, newEmail);
 
       await this.sendEmailChangeNotifications(
         currentEmail,
         newEmail,
-        user.full_name,
+        user.fullName,
       );
 
       return {
-        message:
-          'Email changed successfully. Please verify your new email address.',
+        message: 'Correo actualizado: verificá tu nueva dirección',
         newEmail,
       };
     } catch (error) {
-      throw new BadRequestException(error.message);
+      if (error instanceof HttpException) {
+        // El usuario que no existe se informa como dato inválido, igual que siempre.
+        if (error.getStatus() === 404) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      this.logger.error(`No se pudo cambiar el correo: ${errorMessage(error)}`);
+      throw new BadRequestException('No se pudo cambiar el correo');
     }
   }
 
@@ -196,95 +233,75 @@ export class EmailService {
     newEmail: string,
     displayName?: string,
   ): Promise<void> {
-    try {
-      await this.sendEmail({
-        to: newEmail,
-        subject: `Verify your email for Yeni Gass`,
-        template: 'email-verification',
-        data: {
-          displayName: displayName || 'User',
-          appName: 'Yeni Gass',
-        },
-      });
+    await this.sendEmail({
+      to: newEmail,
+      template: 'email-verification',
+      data: {
+        displayName: displayName || 'Usuario',
+      },
+    });
 
-      await this.sendEmail({
-        to: oldEmail,
-        subject: `Your sign-in email was changed for Yeni Gass`,
-        template: 'email-change-notification',
-        data: {
-          displayName: displayName || 'User',
-          newEmail,
-          appName: 'Yeni Gass',
-        },
-      });
-    } catch (error) {
-      throw error;
-    }
+    await this.sendEmail({
+      to: oldEmail,
+      template: 'email-change-notification',
+      data: {
+        displayName: displayName || 'Usuario',
+        newEmail,
+      },
+    });
   }
 
+  /** El asunto, el HTML y el texto plano los arma la plantilla con la marca de la plataforma. */
   private async sendEmail(emailData: {
     to: string;
-    subject: string;
     template: string;
-    data: any;
+    data: DatosDePlantilla;
+    /** Sólo si el asunto no es el de la plantilla (la prueba del servicio). */
+    subject?: string;
   }): Promise<void> {
     try {
-      const html = this.templates.render(emailData.template, emailData.data);
+      const correo = this.templates.renderCorreo(
+        emailData.template,
+        emailData.data,
+      );
 
       await this.emailSender.send({
         to: emailData.to,
-        subject: emailData.subject,
-        html,
+        subject: emailData.subject ?? correo.asunto,
+        html: correo.html,
+        text: correo.text,
       });
     } catch (error) {
       // Best-effort: el envío de email nunca debe tumbar el flujo que lo
       // dispara (registro, cambio de contraseña, etc). Solo dejamos rastro.
       this.logger.warn(
-        `No se pudo enviar el email "${emailData.subject}" a ${emailData.to}: ${error instanceof Error ? error.message : error}`,
+        `No se pudo enviar el correo "${emailData.template}" a ${emailData.to}: ${errorMessage(error)}`,
       );
     }
   }
 
-  async sendWelcomeEmail(email: string): Promise<void> {
+  async sendWelcomeEmail(email: string, displayName: string): Promise<void> {
     try {
-      let displayName = 'User';
-      try {
-        const user = await this.usersService.findOneByEmail(email);
-        displayName = user.full_name || 'User';
-      } catch (error) {
-        // Best-effort: si no se encuentra el usuario igual mandamos el
-        // welcome email con un displayName genérico.
-        this.logger.warn(
-          `No se pudo resolver el nombre del usuario ${email} para el welcome email: ${error instanceof Error ? error.message : error}`,
-        );
-      }
-
       await this.sendEmail({
         to: email,
-        subject: `Welcome to Yeni Gass`,
         template: 'welcome',
         data: {
           displayName,
-          appName: 'Yeni Gass',
-          supportEmail: 'support@wagnerlabs.dev',
+          supportEmail:
+            leerConfiguracionDePlataforma(process.env).supportEmail ??
+            undefined,
         },
       });
     } catch (error) {
-      // Best-effort: el welcome email nunca debe interrumpir el flujo que lo
-      // dispara (createCustomerWithUser). Solo dejamos rastro.
+      // Best-effort: el alta ya está confirmada; un correo que no sale sólo
+      // deja rastro.
       this.logger.warn(
-        `Falló el envío del welcome email a ${email}: ${error instanceof Error ? error.message : error}`,
+        `Falló el envío del welcome email a ${email}: ${errorMessage(error)}`,
       );
     }
   }
 
-  async testEmailService(email: string): Promise<{
-    success: boolean;
-    message: string;
-    cacheStats?: any;
-    emailSent?: boolean;
-    resendStatus?: string;
-  }> {
+  async testEmailService(email: string): Promise<PruebaDeEmailResponseDto> {
     try {
       const resetLink1 = await this.generatePasswordResetLink(email);
       const resetLink2 = await this.generatePasswordResetLink(email);
@@ -295,23 +312,25 @@ export class EmailService {
       try {
         await this.sendEmail({
           to: email,
-          subject: `Test Email from Yeni Gass`,
+          subject: `Correo de prueba de ${marcaDePlataforma().nombre}`,
           template: 'email-verification',
           data: {
-            displayName: 'Test User',
-            appName: 'Yeni Gass',
+            displayName: 'Usuario de prueba',
           },
         });
 
         emailSent = true;
         resendStatus = 'sent';
       } catch (emailError) {
-        resendStatus = `failed: ${emailError.message}`;
+        this.logger.warn(
+          `El servicio de correo falló en la prueba: ${errorMessage(emailError)}`,
+        );
+        resendStatus = `failed: ${errorMessage(emailError)}`;
       }
 
       return {
         success: true,
-        message: 'Email service is working correctly',
+        message: 'El servicio de correo funciona correctamente',
         emailSent,
         resendStatus,
         cacheStats: {
@@ -320,9 +339,12 @@ export class EmailService {
         },
       };
     } catch (error) {
+      this.logger.error(
+        `Falló la prueba del servicio de correo: ${errorMessage(error)}`,
+      );
       return {
         success: false,
-        message: `Email service test failed: ${error.message}`,
+        message: 'El servicio de correo falló',
       };
     }
   }

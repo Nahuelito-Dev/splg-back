@@ -1,0 +1,42 @@
+# Despliegue en el servidor: back + base + Redis. El back escucha sólo en la
+# máquina y lo publica Tailscale Funnel. La base se abre únicamente hacia la
+# tailnet (DB_BIND = IP de Tailscale del servidor) para trabajar desde la Mac.
+services:
+  api:
+    build: .
+    container_name: splg-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+      PORT: 3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: postgis/postgis:14-3.4
+    container_name: splg-bd
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_BIND:-127.0.0.1}:5432:5432"
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:alpine
+    container_name: splg-redis
+    restart: unless-stopped

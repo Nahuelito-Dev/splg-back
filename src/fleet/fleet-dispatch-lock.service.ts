@@ -1,0 +1,584 @@
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
+import {
+  MaintenanceTask,
+  MaintenanceTaskStatus,
+} from './entities/maintenance-task.entity';
+import { FleetStatus } from '../car/entities/car.entity';
+import { VehicleAssignmentService } from '../car/vehicle-assignment.service';
+import { DeliveryService } from '../delivery/delivery.service';
+import { EmployeeService } from '../employee/employee.service';
+import { EmployeeStatus } from '../employee/entities/employee.entity';
+import { LeaveService } from '../leave/leave.service';
+import {
+  diaArgentino,
+  finDelDiaArgentino,
+  inicioDelDiaArgentino,
+} from '../common/utils/dias-argentina';
+import {
+  describirVencimiento,
+  tareasQueInhabilitan,
+  HabilitacionRelevante,
+} from './domain/fleet-lock.util';
+import { calcularEstadoDeVencimiento } from './domain/expiration-status';
+import {
+  MaintenancePlanningCase,
+  PlanningCaseStatus,
+} from './entities/maintenance-planning-case.entity';
+
+const ESTADOS_CERRADOS = [
+  MaintenanceTaskStatus.DONE,
+  MaintenanceTaskStatus.CANCELLED,
+];
+
+/** Sin fecha ni chofer: el motivo "no tiene un vehículo asignado" no viene de ninguna tarea. */
+const MOTIVO_SIN_VEHICULO = 'no tiene un vehículo asignado';
+const MOTIVO_VEHICULO_FUERA_DE_SERVICIO = 'su vehículo está fuera de servicio';
+const MOTIVO_VEHICULO_EN_TALLER =
+  'su vehículo tiene el taller programado en este horario';
+
+/** CU-246: motivos laborales que no vienen de ninguna tarea. */
+export const MOTIVO_LEGAJO_EGRESADO = 'su legajo está egresado';
+export const MOTIVO_DE_LICENCIA =
+  'tiene una licencia aprobada que cubre el día de hoy';
+
+/** Una tarea abierta junto con su estado de vencimiento, para filtrarla con `tareasQueInhabilitan`. */
+interface TareaConEstado extends HabilitacionRelevante {
+  task: MaintenanceTask;
+}
+
+/** Por qué un chofer o un vehículo no puede salir un día dado (la hoja de ruta de ese día). */
+export interface HabilitacionDelDia {
+  /** `user_id` del chofer → motivos. Sólo los que no pueden. */
+  choferes: Map<string, string[]>;
+  /** `car_id` → motivos. Sólo los que no pueden. */
+  vehiculos: Map<string, string[]>;
+}
+
+export const MOTIVO_VEHICULO_TALLER_EL_DIA =
+  'tiene el taller programado ese día';
+export const MOTIVO_LICENCIA_EL_DIA =
+  'tiene una licencia aprobada que cubre ese día';
+
+/** Snapshot del vehículo en uso de un chofer, para guardar en el pedido al aceptarlo. */
+export interface VehiculoEnUsoSnapshot {
+  carId: string;
+  patent: string | null;
+  brand: string | null;
+  model: string | null;
+}
+
+/** Lo que `tareasInhabilitantesPorChofer` necesita devolver a sus dos callers públicos. */
+interface InhabilitacionesPorChofer {
+  /** `user_id` → tareas (licencia propia y/o del vehículo en uso) que inhabilitan. */
+  porTarea: Map<string, MaintenanceTask[]>;
+  /** `user_id` de los que no tienen NINGÚN vehículo en uso (inhabilita igual, sin tarea de por medio). */
+  sinVehiculo: Set<string>;
+  /** `user_id` → motivos laborales sin tarea de por medio: legajo egresado, licencia aprobada de hoy (CU-246). */
+  laborales: Map<string, string[]>;
+}
+
+/**
+ * El gate único de bloqueo de flota para el despacho (CU-136 a CU-138, más
+ * la decisión de nahue del 30/09 de "vehículo en uso"): un chofer con la
+ * licencia vencida, sin un vehículo asignado, o cuyo vehículo EN USO tenga
+ * el seguro/VTV vencidos, no recibe ofertas ni puede asignarse a un pedido.
+ * Ya no importa qué otros autos tenga a su nombre (`car.user_id`): sólo el
+ * que está usando de verdad (punto 5 de la revisión anterior, resuelto).
+ *
+ * Lo usan los TRES caminos que le dan un pedido a un chofer, con la MISMA
+ * regla (nunca duplicada):
+ * - `OrderService.assignDelivery` (asignación manual del admin) y
+ *   `UpdateOrderStatusUseCase` (`PATCH /orders/:id/status` con
+ *   `status=accepted`, admin con `deliveryId` o el propio chofer desde el
+ *   pool) llaman a `assertChoferHabilitado`: si algo está vencido, 400 con
+ *   el detalle. Los dos también llaman a `vehiculoEnUsoDelChofer` para
+ *   guardar el snapshot del vehículo en el pedido.
+ * - `DispatchOrchestratorService` (despacho automático) llama a
+ *   `choferesInhabilitados` para filtrar, en lote, la lista de candidatos
+ *   de cada intento de oferta.
+ *
+ * Extraído de `FleetTaskService` (que sólo expone las fachadas de sólo
+ * lectura `/cars/:id/documents` y `/delivery/:id/documents`) para no mezclar
+ * dos responsabilidades en un mismo servicio.
+ */
+@Injectable()
+export class FleetDispatchLockService {
+  constructor(
+    @InjectRepository(MaintenanceTask)
+    private readonly tasks: Repository<MaintenanceTask>,
+    private readonly vehicleAssignments: VehicleAssignmentService,
+    private readonly deliveryService: DeliveryService,
+    private readonly employees: EmployeeService,
+    private readonly leaves: LeaveService,
+    // Agenda del taller (CU-105, M2): la ventana confirmada bloquea el despacho.
+    @Optional()
+    @InjectRepository(MaintenancePlanningCase)
+    private readonly cases?: Repository<MaintenancePlanningCase>,
+  ) {}
+
+  /**
+   * Despacho (CU-012/CU-013/CU-016): de esos choferes (`user_id`, el mismo
+   * que usan el radar y las ofertas), cuáles están INHABILITADOS — por su
+   * propia licencia (CU-138), por no tener un vehículo en uso, o por el
+   * vehículo que tienen en uso (CU-136/137). Una sola consulta en lote
+   * (`tareasInhabilitantesPorChofer`): nada de un round-trip por candidato
+   * del radio de búsqueda.
+   */
+  async choferesInhabilitados(
+    driverUserIds: string[],
+    distributorId?: string | null,
+  ): Promise<Set<string>> {
+    const { porTarea, sinVehiculo, laborales } =
+      await this.tareasInhabilitantesPorChofer(driverUserIds, distributorId);
+    return new Set([...porTarea.keys(), ...sinVehiculo, ...laborales.keys()]);
+  }
+
+  /**
+   * Despacho express (CU-149): de esos choferes (`user_id`), cuáles tienen EN
+   * USO una moto. La habilitación (licencia, documentos del vehículo) la sigue
+   * decidiendo `choferesInhabilitados`.
+   */
+  choferesEnMoto(
+    driverUserIds: string[],
+    distributorId?: string | null,
+  ): Promise<Set<string>> {
+    return this.vehicleAssignments.choferesEnMoto(driverUserIds, distributorId);
+  }
+
+  /**
+   * Un pedido express sólo lo lleva un chofer en moto (CU-149): 400 si el
+   * vehículo que el chofer tiene en uso no es una moto. Lo llaman los dos
+   * caminos que le dan un pedido a un chofer (aceptar y asignar a mano).
+   */
+  async assertEnMoto(
+    driverUserId: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const enMoto = await this.choferesEnMoto([driverUserId], distributorId);
+    if (!enMoto.has(driverUserId)) {
+      throw new BadRequestException(
+        'Un pedido express sólo lo puede llevar un chofer con una moto en uso',
+      );
+    }
+  }
+
+  /**
+   * Qué está vencido en el chofer, en castellano y con fecha (o que no
+   * tiene vehículo asignado). Vacío si el chofer está en condiciones. Lo
+   * usa `assertChoferHabilitado` (abajo) para armar el 400; expuesto
+   * también por si algún caller sólo necesita el detalle sin que se le
+   * corte el flujo con una excepción.
+   */
+  async motivosDeInhabilitacion(
+    driverUserId: string,
+    distributorId?: string | null,
+  ): Promise<string[]> {
+    const { porTarea, sinVehiculo, laborales } =
+      await this.tareasInhabilitantesPorChofer([driverUserId], distributorId);
+    const motivos = [
+      ...(laborales.get(driverUserId) ?? []),
+      ...(porTarea.get(driverUserId) ?? []).map((t) =>
+        describirVencimiento(t.plan.name, t.dueAt),
+      ),
+    ];
+    if (sinVehiculo.has(driverUserId)) {
+      motivos.push(MOTIVO_SIN_VEHICULO);
+    }
+    return motivos;
+  }
+
+  /**
+   * El gate único de asignación de flota. Lo llaman los tres caminos que le
+   * dan un pedido a un chofer (ver el comentario de la clase): si el chofer
+   * tiene algo vencido o no tiene vehículo, 400 con el detalle en
+   * castellano; si no, no hace nada.
+   */
+  async assertChoferHabilitado(
+    driverUserId: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const motivos = await this.motivosDeInhabilitacion(
+      driverUserId,
+      distributorId,
+    );
+    if (motivos.length > 0) {
+      throw new BadRequestException(
+        `No se puede asignar: ${motivos.join('; ')}.`,
+      );
+    }
+  }
+
+  /**
+   * Habilitación de choferes y vehículos para un DÍA (la hoja de ruta de ese
+   * día, F34), en vez de «ahora» como el despacho:
+   *  - chofer: legajo egresado, licencia aprobada que cubre ese día, y sus
+   *    habilitaciones bloqueantes (licencia de conducir) vencidas a ese día;
+   *  - vehículo: sus habilitaciones bloqueantes (seguro, VTV) vencidas a ese
+   *    día y una ventana de taller confirmada que se cruza con ese día.
+   * No exige «vehículo en uso»: la hoja trae el suyo. El vencimiento se mide al
+   * empezar el día (o ahora, si el día ya empezó): lo que vence durante el día
+   * todavía vale ese día. El despacho en vivo sigue usando
+   * `choferesInhabilitados` / `assertChoferHabilitado` (sin cambios).
+   */
+  async habilitacionAlDia(
+    driverUserIds: string[],
+    carIds: string[],
+    distributorId: string,
+    fecha: string,
+  ): Promise<HabilitacionDelDia> {
+    const choferes = new Map<string, string[]>();
+    const vehiculos = new Map<string, string[]>();
+    const inicio = inicioDelDiaArgentino(fecha);
+    const fin = finDelDiaArgentino(fecha);
+    if (!inicio || !fin) return { choferes, vehiculos };
+    const ahora = new Date();
+    const referencia = ahora > inicio ? ahora : inicio;
+    const agregar = (m: Map<string, string[]>, id: string, motivo: string) =>
+      m.set(id, [...(m.get(id) ?? []), motivo]);
+
+    const deliveries =
+      driverUserIds.length > 0
+        ? await this.deliveryService.findDeliveryIdsByUserIds(
+            driverUserIds,
+            distributorId,
+          )
+        : [];
+    const legajos =
+      deliveries.length > 0
+        ? await this.employees.findByUserIds(
+            deliveries.map((d) => d.userId),
+            distributorId,
+          )
+        : [];
+    const deLicencia = await this.leaves.empleadosDeLicenciaEn(
+      legajos.map((l) => l.employeeId),
+      fecha,
+    );
+    const tareas = await this.tareasAbiertasDe(
+      deliveries.map((d) => d.deliveryId),
+      carIds,
+      legajos.map((l) => l.employeeId),
+      distributorId,
+    );
+    const { porDelivery, porCar, porEmployee } = this.agruparPorSujeto(tareas);
+    const vencidas = (lista: MaintenanceTask[]) =>
+      this.filtrarInhabilitantes(lista, referencia).map((t) =>
+        describirVencimiento(t.plan.name, t.dueAt),
+      );
+
+    const legajoPorCuenta = new Map(
+      legajos.flatMap((l) => (l.userId ? [[l.userId, l] as const] : [])),
+    );
+    for (const d of deliveries) {
+      const legajo = legajoPorCuenta.get(d.userId);
+      if (legajo && legajo.status !== EmployeeStatus.ACTIVE) {
+        agregar(choferes, d.userId, MOTIVO_LEGAJO_EGRESADO);
+      }
+      if (legajo && deLicencia.has(legajo.employeeId)) {
+        agregar(choferes, d.userId, MOTIVO_LICENCIA_EL_DIA);
+      }
+      for (const m of [
+        ...vencidas(porDelivery.get(d.deliveryId) ?? []),
+        ...vencidas(legajo ? (porEmployee.get(legajo.employeeId) ?? []) : []),
+      ]) {
+        agregar(choferes, d.userId, m);
+      }
+    }
+
+    const enTaller = await this.carIdsEnTallerEntre(carIds, inicio, fin);
+    for (const carId of carIds) {
+      for (const m of vencidas(porCar.get(carId) ?? [])) {
+        agregar(vehiculos, carId, m);
+      }
+      if (enTaller.has(carId)) {
+        agregar(vehiculos, carId, MOTIVO_VEHICULO_TALLER_EL_DIA);
+      }
+    }
+    return { choferes, vehiculos };
+  }
+
+  /**
+   * El vehículo en uso del chofer (marca, modelo, patente), o `null` si no
+   * tiene. Lo llaman `OrderService.assignDelivery` y
+   * `UpdateOrderStatusUseCase` DESPUÉS de `assertChoferHabilitado`, para
+   * guardar el snapshot en el pedido — a esa altura el chofer ya pasó el
+   * gate, así que si tiene vehículo, éste no viene inhabilitado.
+   */
+  async vehiculoEnUsoDelChofer(
+    driverUserId: string,
+    distributorId?: string | null,
+  ): Promise<VehiculoEnUsoSnapshot | null> {
+    const [delivery] = await this.deliveryService.findDeliveryIdsByUserIds(
+      [driverUserId],
+      distributorId,
+    );
+    if (!delivery) return null;
+
+    const [vehiculo] =
+      await this.vehicleAssignments.findVehiculosEnUsoPorDeliveryIds(
+        [delivery.deliveryId],
+        distributorId,
+      );
+    if (!vehiculo) return null;
+
+    return {
+      carId: vehiculo.carId,
+      patent: vehiculo.patent,
+      brand: vehiculo.brand,
+      model: vehiculo.model,
+    };
+  }
+
+  /**
+   * El corazón de las anteriores: para cada chofer (`user_id`), las tareas
+   * ABIERTAS que lo inhabilitan (las de su licencia, las de su legajo o las
+   * del vehículo que tiene EN USO), quiénes no tienen ningún vehículo en uso
+   * y los motivos laborales (CU-246): legajo egresado o licencia aprobada que
+   * cubre hoy. Cinco consultas en total, sin importar cuántos choferes se
+   * pidan: las deliveries, los vehículos en uso, los legajos, las licencias
+   * de hoy y las tareas abiertas de todos esos sujetos a la vez. Un chofer sin
+   * legajo conserva el comportamiento anterior.
+   */
+  private async tareasInhabilitantesPorChofer(
+    driverUserIds: string[],
+    distributorId?: string | null,
+  ): Promise<InhabilitacionesPorChofer> {
+    const porTarea = new Map<string, MaintenanceTask[]>();
+    const sinVehiculo = new Set<string>();
+    const laborales = new Map<string, string[]>();
+    const vacio = { porTarea, sinVehiculo, laborales };
+    if (driverUserIds.length === 0) return vacio;
+
+    const deliveries = await this.deliveryService.findDeliveryIdsByUserIds(
+      driverUserIds,
+      distributorId,
+    );
+    if (deliveries.length === 0) return vacio;
+
+    const vehiculos =
+      await this.vehicleAssignments.findVehiculosEnUsoPorDeliveryIds(
+        deliveries.map((d) => d.deliveryId),
+        distributorId,
+      );
+    const carIdPorDelivery = new Map(
+      vehiculos.map((v) => [v.deliveryId, v.carId]),
+    );
+    // Un siniestro que lo dejó fuera de servicio con el chofer en plena entrega
+    // mantiene la asignación (CU-201): no recibe pedidos nuevos hasta resolverlo.
+    const fueraDeServicio = new Set(
+      vehiculos
+        .filter((v) => v.fleetStatus === FleetStatus.GROUNDED)
+        .map((v) => v.deliveryId),
+    );
+
+    const enTaller = await this.carIdsEnTaller(vehiculos.map((v) => v.carId));
+    const enTallerPorDelivery = new Set(
+      vehiculos.filter((v) => enTaller.has(v.carId)).map((v) => v.deliveryId),
+    );
+
+    const legajos = await this.employees.findByUserIds(
+      deliveries.map((d) => d.userId),
+      distributorId,
+    );
+    const legajoPorCuenta = new Map(
+      legajos.flatMap((l) => (l.userId ? [[l.userId, l] as const] : [])),
+    );
+    const deLicencia = await this.leaves.empleadosDeLicenciaEn(
+      legajos.map((l) => l.employeeId),
+      diaArgentino(),
+    );
+
+    const tareasAbiertas = await this.tareasAbiertasDe(
+      deliveries.map((d) => d.deliveryId),
+      vehiculos.map((v) => v.carId),
+      legajos.map((l) => l.employeeId),
+      distributorId,
+    );
+    const { porDelivery, porCar, porEmployee } =
+      this.agruparPorSujeto(tareasAbiertas);
+
+    for (const d of deliveries) {
+      const legajo = legajoPorCuenta.get(d.userId);
+      const motivosLaborales: string[] = [];
+      if (fueraDeServicio.has(d.deliveryId)) {
+        motivosLaborales.push(MOTIVO_VEHICULO_FUERA_DE_SERVICIO);
+      }
+      if (enTallerPorDelivery.has(d.deliveryId)) {
+        motivosLaborales.push(MOTIVO_VEHICULO_EN_TALLER);
+      }
+      if (legajo) {
+        if (legajo.status !== EmployeeStatus.ACTIVE) {
+          motivosLaborales.push(MOTIVO_LEGAJO_EGRESADO);
+        }
+        if (deLicencia.has(legajo.employeeId)) {
+          motivosLaborales.push(MOTIVO_DE_LICENCIA);
+        }
+      }
+      if (motivosLaborales.length > 0)
+        laborales.set(d.userId, motivosLaborales);
+
+      const inhabilitantesLicencia = [
+        ...this.filtrarInhabilitantes(porDelivery.get(d.deliveryId) ?? []),
+        ...this.filtrarInhabilitantes(
+          legajo ? (porEmployee.get(legajo.employeeId) ?? []) : [],
+        ),
+      ];
+      const carId = carIdPorDelivery.get(d.deliveryId);
+
+      if (!carId) {
+        // Sin vehículo en uso: inhabilita por sí solo, aparte de cualquier
+        // tarea de la licencia (que igual se suma si la tiene).
+        sinVehiculo.add(d.userId);
+        if (inhabilitantesLicencia.length > 0) {
+          porTarea.set(d.userId, inhabilitantesLicencia);
+        }
+        continue;
+      }
+
+      const inhabilitantesVehiculo = this.filtrarInhabilitantes(
+        porCar.get(carId) ?? [],
+      );
+      const todas = [...inhabilitantesLicencia, ...inhabilitantesVehiculo];
+      if (todas.length > 0) {
+        porTarea.set(d.userId, todas);
+      }
+    }
+
+    return vacio;
+  }
+
+  /**
+   * Los vehículos con una ventana de taller confirmada que está corriendo
+   * ahora (CU-105, paso 8: se bloquea la agenda del vehículo). La ventana
+   * deja de bloquear sola al terminar, o antes si la tarea se cierra o se cancela.
+   */
+  private async carIdsEnTaller(carIds: string[]): Promise<Set<string>> {
+    if (!this.cases || carIds.length === 0) return new Set();
+    const ahora = new Date();
+    const filas = await this.cases
+      .createQueryBuilder('c')
+      .innerJoin(MaintenanceTask, 't', 't.task_id = c.task_id')
+      .select('c.car_id', 'carId')
+      .where('c.status = :confirmado', {
+        confirmado: PlanningCaseStatus.CONFIRMED,
+      })
+      .andWhere('c.car_id IN (:...carIds)', { carIds })
+      .andWhere('c.chosen_start <= :ahora AND c.chosen_end > :ahora', { ahora })
+      .andWhere('t.status NOT IN (:...cerrados)', {
+        cerrados: ESTADOS_CERRADOS,
+      })
+      .getRawMany<{ carId: string }>();
+    return new Set(filas.map((f) => f.carId));
+  }
+
+  /** Los vehículos con una ventana de taller confirmada que se cruza con `[desde, hasta)`. */
+  private async carIdsEnTallerEntre(
+    carIds: string[],
+    desde: Date,
+    hasta: Date,
+  ): Promise<Set<string>> {
+    if (!this.cases || carIds.length === 0) return new Set();
+    const filas = await this.cases
+      .createQueryBuilder('c')
+      .innerJoin(MaintenanceTask, 't', 't.task_id = c.task_id')
+      .select('c.car_id', 'carId')
+      .where('c.status = :confirmado', {
+        confirmado: PlanningCaseStatus.CONFIRMED,
+      })
+      .andWhere('c.car_id IN (:...carIds)', { carIds })
+      .andWhere('c.chosen_start < :hasta AND c.chosen_end > :desde', {
+        desde,
+        hasta,
+      })
+      .andWhere('t.status NOT IN (:...cerrados)', {
+        cerrados: ESTADOS_CERRADOS,
+      })
+      .getRawMany<{ carId: string }>();
+    return new Set(filas.map((f) => f.carId));
+  }
+
+  /** Las tareas abiertas (no `done` ni `cancelled`) de esas deliveries, autos y/o legajos, en una sola consulta. */
+  private async tareasAbiertasDe(
+    deliveryIds: string[],
+    carIds: string[],
+    employeeIds: string[],
+    distributorId?: string | null,
+  ): Promise<MaintenanceTask[]> {
+    const filtroDeDistribuidora = distributorId ? { distributorId } : {};
+    const condiciones: FindOptionsWhere<MaintenanceTask>[] = [];
+    if (deliveryIds.length > 0) {
+      condiciones.push({
+        deliveryId: In(deliveryIds),
+        status: Not(In(ESTADOS_CERRADOS)),
+        ...filtroDeDistribuidora,
+      });
+    }
+    if (carIds.length > 0) {
+      condiciones.push({
+        carId: In(carIds),
+        status: Not(In(ESTADOS_CERRADOS)),
+        ...filtroDeDistribuidora,
+      });
+    }
+    if (employeeIds.length > 0) {
+      condiciones.push({
+        employeeId: In(employeeIds),
+        status: Not(In(ESTADOS_CERRADOS)),
+        ...filtroDeDistribuidora,
+      });
+    }
+    if (condiciones.length === 0) return [];
+
+    return this.tasks.find({ where: condiciones, relations: ['plan'] });
+  }
+
+  /** Agrupa tareas por `delivery_id`, `car_id` y `employee_id` (una tarea sólo tiene uno de los tres). */
+  private agruparPorSujeto(tareas: MaintenanceTask[]): {
+    porDelivery: Map<string, MaintenanceTask[]>;
+    porCar: Map<string, MaintenanceTask[]>;
+    porEmployee: Map<string, MaintenanceTask[]>;
+  } {
+    const porDelivery = new Map<string, MaintenanceTask[]>();
+    const porCar = new Map<string, MaintenanceTask[]>();
+    const porEmployee = new Map<string, MaintenanceTask[]>();
+
+    for (const task of tareas) {
+      if (task.deliveryId) {
+        const lista = porDelivery.get(task.deliveryId) ?? [];
+        lista.push(task);
+        porDelivery.set(task.deliveryId, lista);
+      }
+      if (task.carId) {
+        const lista = porCar.get(task.carId) ?? [];
+        lista.push(task);
+        porCar.set(task.carId, lista);
+      }
+      if (task.employeeId) {
+        const lista = porEmployee.get(task.employeeId) ?? [];
+        lista.push(task);
+        porEmployee.set(task.employeeId, lista);
+      }
+    }
+
+    return { porDelivery, porCar, porEmployee };
+  }
+
+  /** De esas tareas, las que efectivamente inhabilitan (bloqueante + vencida). */
+  private filtrarInhabilitantes(
+    tareas: MaintenanceTask[],
+    referencia?: Date,
+  ): MaintenanceTask[] {
+    const conEstado: TareaConEstado[] = tareas.map((t) => ({
+      task: t,
+      criticality: t.plan.criticality,
+      expirationStatus: calcularEstadoDeVencimiento(
+        t.dueAt,
+        t.plan.leadTimeDays,
+        referencia,
+      ),
+    }));
+    return tareasQueInhabilitan(conEstado).map((c) => c.task);
+  }
+}

@@ -8,14 +8,14 @@ import { ApiProperty } from '@nestjs/swagger';
 export class ChangeEmailDto {
   @ApiProperty({ example: 'old@example.com' })
   @IsEmail({}, { message: 'currentEmail debe ser un correo válido' })
-  currentEmail: string;
+  currentEmail!: string;
 
   @ApiProperty({ example: 'new@example.com' })
   @IsEmail({}, { message: 'newEmail debe ser un correo válido' })
-  newEmail: string;
+  newEmail!: string;
 
   @ApiProperty({ description: 'Firebase ID token del usuario autenticado' })
   @IsString()
   @IsNotEmpty()
-  idToken: string;
+  idToken!: string;
 }

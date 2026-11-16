@@ -14,18 +14,25 @@ export const EnvConfiguration = () => ({
   mp_success_url: process.env.MP_SUCCESS_URL,
   mp_failure_url: process.env.MP_FAILURE_URL,
   mp_pending_url: process.env.MP_PENDING_URL,
-  //aws_region: process.env.AWS_REGION,
-  //aws_access_key_id: process.env.AWS_ACCESS_KEY_ID,
-  //aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,
-  //aws_public_bucket_name: process.env.AWS_PUBLIC_BUCKET_NAME,
+  credentials_encryption_key: process.env.CREDENTIALS_ENCRYPTION_KEY,
+  // Archivos en Amazon S3 (flota, adjuntos, foto del reclamo). Se consumen
+  // directo vía ConfigService.get('AWS_...') en S3Service (ver s3.config.ts),
+  // pero se dejan acá también para consistencia con el resto de la config.
+  aws_region: process.env.AWS_REGION,
+  aws_s3_bucket: process.env.AWS_S3_BUCKET,
+  aws_access_key_id: process.env.AWS_ACCESS_KEY_ID,
+  aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,
+  aws_s3_endpoint: process.env.AWS_S3_ENDPOINT,
+  aws_s3_force_path_style: process.env.AWS_S3_FORCE_PATH_STYLE,
+  aws_s3_signed_url_ttl_seconds: process.env.AWS_S3_SIGNED_URL_TTL_SECONDS,
   //google_maps_api_key: process.env.GOOGLE_MAPS_API_KEY,
   //mercado_pago_marketplace_api_key:
-    //process.env.MERCADO_PAGO_MARKETPLACE_API_KEY,
+  //process.env.MERCADO_PAGO_MARKETPLACE_API_KEY,
   //mercado_pago_marketplace_client_id:
-    //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_ID,
+  //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_ID,
   //mercado_pago_marketplace_client_secret:
-    //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_SECRET,
+  //process.env.MERCADO_PAGO_MARKETPLACE_CLIENT_SECRET,
   //mercado_pago_marketplace_redirect_uri:
-    //process.env.MERCADO_PAGO_MARKETPLACE_REDIRECT_URI,
+  //process.env.MERCADO_PAGO_MARKETPLACE_REDIRECT_URI,
   //market_place_id: process.env.MARKET_PLACE_ID,
 });

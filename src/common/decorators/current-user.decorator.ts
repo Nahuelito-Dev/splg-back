@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { RoleType } from '../constants/role-type.enum';
+import type { Request } from 'express';
 
 /**
  * Identidad del usuario autenticado, tal como la deja `AuthGuard` en
@@ -19,11 +20,22 @@ export interface AuthenticatedUser {
   /**
    * Tenant (distribuidora) efectivo de la request. Multi-tenant:
    *  - admin/delivery: su distribuidora, derivada del perfil (server-trusted).
-   *  - customer/super_admin: la del header `X-Distributor` si se envió.
-   *  - super_admin sin header: `null` = cross-tenant (ve todas).
+   *  - customer: la del header `X-Distributor` si se envió.
+   *  - super_admin: la de su sesión de soporte (`X-Support-Session`), o la
+   *    del `X-Distributor` sólo si es una empresa propia de la plataforma; si
+   *    no, `null` (plataforma).
    * Lo resuelve `AuthGuard`; nunca se lee del body.
    */
   distributor_id?: string | null;
+  /**
+   * Sesión de soporte con la que el super admin hace la request, si la hay. Con
+   * ella ve la empresa como la ve un admin, en sólo lectura.
+   */
+  support_session_id?: string | null;
+  /** El super admin opera una empresa propia con el rol efectivo ADMIN. */
+  actuaComoEmpresaPropia?: boolean;
+  /** Rol autenticado original; se usa para no perder el actor de auditoría. */
+  actor_real_role?: RoleType;
 }
 
 /**
@@ -37,7 +49,7 @@ export interface AuthenticatedUser {
  */
 export const CurrentUser = createParamDecorator(
   (data: keyof AuthenticatedUser | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
+    const request = ctx.switchToHttp().getRequest<Request>();
     const user: AuthenticatedUser | undefined = request.user;
 
     if (!user) {

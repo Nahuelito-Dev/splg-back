@@ -12,7 +12,19 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "seed": "ts-node --files scripts/seed.ts",
+    "auditoria:mapa": "ts-node --files scripts/auditoria-mapa.ts",
+    "seed:demo": "ts-node --files scripts/seed-demo.ts",
+    "seed:empresa-propia": "ts-node --files scripts/seed-empresa-propia.ts",
+    "cuentas:demo": "ts-node --files scripts/cuentas-demo.ts",
+    "envases:saldo-inicial": "ts-node --files scripts/cuenta-de-envases-inicial.ts",
+    "s3:diagnostico": "ts-node --files scripts/diagnostico-bucket.ts",
+    "email:preview": "ts-node --files scripts/email-preview.ts",
+    "email:muestras": "ts-node --files scripts/email-muestras.ts",
+    "fotos:demo": "ts-node --files scripts/completar-fotos-demo.ts",
+    "fotos:reales": "ts-node --files scripts/fotos-reales-demo.ts",
+    "crear-superadmin": "node dist/cli/crear-superadmin.js",
+    "crear-superadmin:dev": "ts-node --files src/cli/crear-superadmin.ts",
     "typeorm": "typeorm-ts-node-commonjs -d src/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
@@ -20,28 +32,39 @@
     "migration:show": "npm run typeorm -- migration:show",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:tz": "TZ=UTC jest src/order/order.service.stats.spec.ts src/common/utils/dias-argentina.spec.ts src/reports",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:integration": "jest --config ./test/jest-e2e.json --testPathPattern=integration/.*\\.e2e-spec\\.ts$",
-    "test:integration:health": "jest --config ./test/jest-e2e.json --testPathPattern=health\\.e2e-spec\\.ts$",
-    "test:integration:concurrency": "jest --config ./test/jest-e2e.json --testPathPattern=orders-stock-concurrency\\.e2e-spec\\.ts$",
-    "test:integration:redlock": "jest --config ./test/jest-e2e.json --testPathPattern=redlock\\.e2e-spec\\.ts$",
-    "test:integration:idempotency": "jest --config ./test/jest-e2e.json --testPathPattern=orders-idempotency\\.e2e-spec\\.ts$",
-    "test:perf:orders": "ts-node test/performance/orders-load.ts"
+    "test:cov": "jest --ci --coverage",
+    "test:debug": "node --inspect-brk -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:integration": "jest --config ./test/jest-e2e.json --testPathPatterns=integration/.*\\.e2e-spec\\.ts$",
+    "test:integration:health": "jest --config ./test/jest-e2e.json --testPathPatterns=health\\.e2e-spec\\.ts$",
+    "test:integration:concurrency": "jest --config ./test/jest-e2e.json --testPathPatterns=orders-stock-concurrency\\.e2e-spec\\.ts$",
+    "test:integration:redlock": "jest --config ./test/jest-e2e.json --testPathPatterns=redlock\\.e2e-spec\\.ts$",
+    "test:integration:idempotency": "jest --config ./test/jest-e2e.json --testPathPatterns=orders-idempotency\\.e2e-spec\\.ts$",
+    "test:integration:vehicle": "jest --config ./test/jest-e2e.json --testPathPatterns=vehicle-assignment-concurrency\\.e2e-spec\\.ts$",
+    "test:perf:orders": "ts-node test/performance/orders-load.ts",
+    "postman:generar": "node scripts/postman/generar-coleccion.js",
+    "postman:guardar-ejemplos": "node scripts/postman/guardar-ejemplos.js",
+    "postman:probar": "node scripts/postman/probar.js",
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify": "npm run typecheck && npm run lint:check && jest --ci --coverage && npm run test:perf && nest build",
+    "test:perf": "jest --ci --runInBand --testPathIgnorePatterns /node_modules/ --testRegex '.*\\.perf\\.spec\\.ts$'"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
+    "@aws-sdk/client-s3": "^3.1141.0",
+    "@aws-sdk/s3-request-presigner": "^3.1141.0",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/event-emitter": "^3.1.0",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.11",
     "@nestjs/schedule": "^6.0.1",
-    "@nestjs/serve-static": "^5.0.3",
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.5.0",
@@ -53,6 +76,7 @@
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",
     "decimal.js": "^10.6.0",
+    "exceljs": "^4.4.0",
     "express-basic-auth": "^1.2.1",
     "firebase": "^12.4.0",
     "firebase-admin": "^13.5.0",
@@ -60,14 +84,17 @@
     "joi": "^18.0.1",
     "mercadopago": "^3.2.0",
     "morgan": "^1.10.1",
+    "pdfkit": "^0.20.2",
     "pg": "^8.16.3",
     "redlock": "^5.0.0-beta.2",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.1.2",
     "rxjs": "^7.8.1",
+    "sharp": "^0.35.5",
     "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^0.3.27"
+    "typeorm": "^0.3.27",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -81,11 +108,15 @@
     "@types/cache-manager": "^4.0.6",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.7",
+    "@types/pdfkit": "^0.17.7",
     "@types/supertest": "^6.0.2",
     "autocannon": "^8.0.0",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-jest": "^28.14.0",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "jest": "^30.0.0",
@@ -112,9 +143,398 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!main.ts",
+      "!data-source.ts",
+      "!migrations/**",
+      "!**/index.ts",
+      "!**/*.perf.spec.ts"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "clearMocks": true,
+    "restoreMocks": true,
+    "errorOnDeprecated": true,
+    "coverageThreshold": {
+      "global": {
+        "statements": 0,
+        "branches": 0,
+        "functions": 0,
+        "lines": 0
+      },
+      "./src/admin-notifications/": {
+        "statements": 90,
+        "branches": 83,
+        "functions": 89,
+        "lines": 91
+      },
+      "./src/admin/": {
+        "statements": 84,
+        "branches": 76,
+        "functions": 60,
+        "lines": 85
+      },
+      "./src/assistant/": {
+        "statements": 99,
+        "branches": 85,
+        "functions": 100,
+        "lines": 100
+      },
+      "./src/assistant-ai/": {
+        "statements": 99,
+        "branches": 90,
+        "functions": 98,
+        "lines": 99
+      },
+      "./src/attachment/": {
+        "statements": 58,
+        "branches": 53,
+        "functions": 54,
+        "lines": 57
+      },
+      "./src/attendance/": {
+        "statements": 85,
+        "branches": 77,
+        "functions": 70,
+        "lines": 85
+      },
+      "./src/audit/": {
+        "statements": 35,
+        "branches": 30,
+        "functions": 32,
+        "lines": 36
+      },
+      "./src/auth/": {
+        "statements": 75,
+        "branches": 54,
+        "functions": 79,
+        "lines": 76
+      },
+      "./src/car/": {
+        "statements": 62,
+        "branches": 52,
+        "functions": 47,
+        "lines": 63
+      },
+      "./src/cart/": {
+        "statements": 92,
+        "branches": 81,
+        "functions": 85,
+        "lines": 92
+      },
+      "./src/cash/": {
+        "statements": 53,
+        "branches": 52,
+        "functions": 14,
+        "lines": 54
+      },
+      "./src/claims/": {
+        "statements": 87,
+        "branches": 77,
+        "functions": 76,
+        "lines": 88
+      },
+      "./src/cli/": {
+        "statements": 0,
+        "branches": 0,
+        "functions": 0,
+        "lines": 0
+      },
+      "./src/commission/": {
+        "statements": 51,
+        "branches": 48,
+        "functions": 11,
+        "lines": 53
+      },
+      "./src/common/": {
+        "statements": 77,
+        "branches": 60,
+        "functions": 78,
+        "lines": 78
+      },
+      "./src/coverage-zone/": {
+        "statements": 55,
+        "branches": 51,
+        "functions": 53,
+        "lines": 56
+      },
+      "./src/customer-account/": {
+        "statements": 49,
+        "branches": 44,
+        "functions": 20,
+        "lines": 49
+      },
+      "./src/customer/": {
+        "statements": 64,
+        "branches": 50,
+        "functions": 50,
+        "lines": 65
+      },
+      "./src/cylinder/": {
+        "statements": 56,
+        "branches": 47,
+        "functions": 38,
+        "lines": 57
+      },
+      "./src/delivery/": {
+        "statements": 64,
+        "branches": 59,
+        "functions": 33,
+        "lines": 66
+      },
+      "./src/distributor/": {
+        "statements": 81,
+        "branches": 73,
+        "functions": 50,
+        "lines": 82
+      },
+      "./src/document-sequence/": {
+        "statements": 52,
+        "branches": 60,
+        "functions": 66,
+        "lines": 56
+      },
+      "./src/driver-settlement/": {
+        "statements": 45,
+        "branches": 42,
+        "functions": 8,
+        "lines": 46
+      },
+      "./src/email/": {
+        "statements": 46,
+        "branches": 31,
+        "functions": 52,
+        "lines": 47
+      },
+      "./src/employee/": {
+        "statements": 43,
+        "branches": 37,
+        "functions": 42,
+        "lines": 43
+      },
+      "./src/exports/": {
+        "statements": 64,
+        "branches": 74,
+        "functions": 44,
+        "lines": 65
+      },
+      "./src/finance/": {
+        "statements": 48,
+        "branches": 45,
+        "functions": 0,
+        "lines": 48
+      },
+      "./src/firebase/": {
+        "statements": 34,
+        "branches": 33,
+        "functions": 26,
+        "lines": 34
+      },
+      "./src/fleet/": {
+        "statements": 56,
+        "branches": 50,
+        "functions": 56,
+        "lines": 57
+      },
+      "./src/fleet-expense/": {
+        "statements": 86,
+        "branches": 71,
+        "functions": 64,
+        "lines": 86
+      },
+      "./src/gascylinder/": {
+        "statements": 74,
+        "branches": 67,
+        "functions": 49,
+        "lines": 75
+      },
+      "./src/gateways/": {
+        "statements": 41,
+        "branches": 42,
+        "functions": 39,
+        "lines": 41
+      },
+      "./src/health/": {
+        "statements": 63,
+        "branches": 67,
+        "functions": 50,
+        "lines": 62
+      },
+      "./src/import/": {
+        "statements": 95,
+        "branches": 87,
+        "functions": 94,
+        "lines": 95
+      },
+      "./src/incident/": {
+        "statements": 73,
+        "branches": 70,
+        "functions": 52,
+        "lines": 74
+      },
+      "./src/insurance/": {
+        "statements": 94,
+        "branches": 78,
+        "functions": 83,
+        "lines": 94
+      },
+      "./src/leave/": {
+        "statements": 86,
+        "branches": 76,
+        "functions": 69,
+        "lines": 86
+      },
+      "./src/mp-reconciliation/": {
+        "statements": 90,
+        "branches": 75,
+        "functions": 85,
+        "lines": 90
+      },
+      "./src/notifications/": {
+        "statements": 33,
+        "branches": 34,
+        "functions": 33,
+        "lines": 33
+      },
+      "./src/order/": {
+        "statements": 70,
+        "branches": 63,
+        "functions": 50,
+        "lines": 70
+      },
+      "./src/payments/": {
+        "statements": 73,
+        "branches": 67,
+        "functions": 68,
+        "lines": 74
+      },
+      "./src/pdf/": {
+        "statements": 94,
+        "branches": 75,
+        "functions": 95,
+        "lines": 94
+      },
+      "./src/personnel/": {
+        "statements": 65,
+        "branches": 53,
+        "functions": 60,
+        "lines": 68
+      },
+      "./src/platform/": {
+        "statements": 100,
+        "branches": 75,
+        "functions": 100,
+        "lines": 100
+      },
+      "./src/process-run/": {
+        "statements": 94,
+        "branches": 78,
+        "functions": 92,
+        "lines": 95
+      },
+      "./src/purchase/": {
+        "statements": 76,
+        "branches": 69,
+        "functions": 56,
+        "lines": 77
+      },
+      "./src/rating/": {
+        "statements": 61,
+        "branches": 50,
+        "functions": 40,
+        "lines": 62
+      },
+      "./src/redis/": {
+        "statements": 13,
+        "branches": 23,
+        "functions": 0,
+        "lines": 11
+      },
+      "./src/registro/": {
+        "statements": 62,
+        "branches": 54,
+        "functions": 52,
+        "lines": 64
+      },
+      "./src/repurchase-forecast/": {
+        "statements": 99,
+        "branches": 84,
+        "functions": 100,
+        "lines": 100
+      },
+      "./src/repurchase/": {
+        "statements": 91,
+        "branches": 84,
+        "functions": 100,
+        "lines": 92
+      },
+      "./src/reports/": {
+        "statements": 86,
+        "branches": 78,
+        "functions": 81,
+        "lines": 87
+      },
+      "./src/role/": {
+        "statements": 57,
+        "branches": 24,
+        "functions": 42,
+        "lines": 59
+      },
+      "./src/route-batch/": {
+        "statements": 92,
+        "branches": 76,
+        "functions": 98,
+        "lines": 94
+      },
+      "./src/s3/": {
+        "statements": 94,
+        "branches": 87,
+        "functions": 97,
+        "lines": 95
+      },
+      "./src/stock/": {
+        "statements": 68,
+        "branches": 54,
+        "functions": 57,
+        "lines": 70
+      },
+      "./src/support/": {
+        "statements": 94,
+        "branches": 80,
+        "functions": 89,
+        "lines": 96
+      },
+      "./src/time-slot/": {
+        "statements": 48,
+        "branches": 46,
+        "functions": 46,
+        "lines": 48
+      },
+      "./src/truck-load/": {
+        "statements": 44,
+        "branches": 31,
+        "functions": 43,
+        "lines": 44
+      },
+      "./src/user-address/": {
+        "statements": 48,
+        "branches": 36,
+        "functions": 35,
+        "lines": 49
+      },
+      "./src/users/": {
+        "statements": 72,
+        "branches": 75,
+        "functions": 39,
+        "lines": 73
+      }
+    },
+    "setupFiles": [
+      "<rootDir>/../test/jest-sin-keep-alive.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "\\.perf\\.spec\\.ts$"
+    ]
   }
 }

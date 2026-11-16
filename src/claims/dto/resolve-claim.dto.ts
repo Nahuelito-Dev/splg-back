@@ -1,6 +1,11 @@
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { IsIn, MaxLength } from 'class-validator';
+import { LARGO_DESCRIPCION } from '../../common/constants/largos-de-texto';
+import { TextoNoVacio } from '../../common/decorators/texto-no-vacio.decorator';
 import { ApiProperty } from '@nestjs/swagger';
 import { ClaimStatus } from '../entities/claim.entity';
+
+/** Destinos de `resolve`: sólo cierres. Tomar el reclamo es `take`. */
+const ESTADOS_FINALES = [ClaimStatus.RESOLVED, ClaimStatus.REJECTED];
 
 /**
  * Body de `PATCH /claims/:id/resolve`. Valida que `status` sea un estado real de
@@ -8,18 +13,20 @@ import { ClaimStatus } from '../entities/claim.entity';
  * vacío. Reemplaza el tipo inline sin validación.
  */
 export class ResolveClaimDto {
-  @ApiProperty({ description: 'Texto de resolución del reclamo' })
-  @IsString()
-  @IsNotEmpty()
-  resolution: string;
+  @ApiProperty({
+    description: 'Texto de resolución del reclamo',
+    maxLength: LARGO_DESCRIPCION,
+  })
+  @TextoNoVacio()
+  @MaxLength(LARGO_DESCRIPCION)
+  resolution!: string;
 
   @ApiProperty({
-    description: 'Nuevo estado del reclamo',
-    enum: ClaimStatus,
+    description:
+      'Estado final del reclamo. Pasarlo a "en proceso" es `PATCH /claims/:id/take`.',
+    enum: ESTADOS_FINALES,
     example: ClaimStatus.RESOLVED,
   })
-  @IsEnum(ClaimStatus, {
-    message: `status debe ser uno de: ${Object.values(ClaimStatus).join(', ')}`,
-  })
-  status: ClaimStatus;
+  @IsIn(ESTADOS_FINALES)
+  status!: ClaimStatus.RESOLVED | ClaimStatus.REJECTED;
 }

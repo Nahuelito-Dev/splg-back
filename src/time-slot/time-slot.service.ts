@@ -1,230 +1,430 @@
 import {
-    BadRequestException,
-    Injectable,
-    NotFoundException,
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
+import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import {
+  diaArgentino,
+  minutosDelDiaArgentino,
+} from '../common/utils/dias-argentina';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, FindOptionsWhere, Not, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 import { TimeSlot } from './entities/time-slot.entity';
 import { CreateTimeSlotDto } from './dto/create-time-slot.dto';
+import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 import { DistributorService } from '../distributor/distributor.service';
-import { Order, OrderStatus } from '../order/entities/order.entity';
+import { OrderLookupService } from '../order/lookup/order-lookup.service';
+import { SlotAvailabilityDto } from './dto/time-slot-response.dto';
 
 const UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Disponibilidad de una franja para una fecha: capacidad, reservados, libres. */
-export interface SlotAvailability {
-    timeSlotId: string;
-    name: string;
-    startTime: string;
-    endTime: string;
-    capacity: number;
-    booked: number;
-    remaining: number;
+/** Minutos desde medianoche de un "HH:MM" o "HH:MM:SS". */
+function aMinutos(hora: string): number {
+  const [h, m] = hora.split(':');
+  return Number(h) * 60 + Number(m);
 }
+
+/**
+ * La franja de HOY (día argentino) ya terminó: su hora de fin pasó en hora
+ * argentina. Una franja de otro día nunca está terminada.
+ */
+function franjaTerminada(
+  slot: Pick<TimeSlot, 'endTime'>,
+  fecha: string,
+  ahora: Date = new Date(),
+): boolean {
+  return (
+    fecha === diaArgentino(ahora) &&
+    aMinutos(slot.endTime) <= minutosDelDiaArgentino(ahora)
+  );
+}
+
+const MENSAJE_FRANJA_TERMINADA = 'La franja ya terminó, elegí otra';
+
+const MENSAJE_HORARIO = 'La hora de inicio tiene que ser anterior a la de fin';
+
+/** Dos franjas se pisan si comparten algún minuto (el borde compartido no cuenta). */
+export function seSolapanFranjas(
+  a: Pick<TimeSlot, 'startTime' | 'endTime'>,
+  b: Pick<TimeSlot, 'startTime' | 'endTime'>,
+): boolean {
+  return (
+    aMinutos(a.startTime) < aMinutos(b.endTime) &&
+    aMinutos(b.startTime) < aMinutos(a.endTime)
+  );
+}
+
+const sinHoraSegundos = (hora: string): string => hora.slice(0, 5);
+
+export type SlotAvailability = SlotAvailabilityDto;
 
 @Injectable()
 export class TimeSlotService {
-    constructor(
-        @InjectRepository(TimeSlot)
-        private readonly timeSlotRepository: Repository<TimeSlot>,
-        @InjectRepository(Order)
-        private readonly orderRepository: Repository<Order>,
-        private readonly distributorService: DistributorService,
-    ) { }
+  private readonly logger = new Logger(TimeSlotService.name);
 
-    /**
-     * Resuelve un `distributor_id` a partir de un slug o uuid (o null si no se
-     * pasó nada). Usado por los endpoints públicos, donde el tenant llega por
-     * query `?distributor=` (el guard no corre en rutas @Public).
-     */
-    async resolveDistributor(slugOrId?: string): Promise<string | null> {
-        if (!slugOrId) return null;
-        const distributor = UUID_RE.test(slugOrId)
-            ? await this.distributorService.assertActive(slugOrId)
-            : await this.distributorService.findBySlug(slugOrId);
-        return distributor.distributor_id;
+  constructor(
+    @InjectRepository(TimeSlot)
+    private readonly timeSlotRepository: Repository<TimeSlot>,
+    private readonly orders: OrderLookupService,
+    private readonly distributorService: DistributorService,
+  ) {}
+
+  /**
+   * Resuelve un `distributor_id` a partir de un slug o uuid (o null si no se
+   * pasó nada). Usado por los endpoints públicos, donde el tenant llega por
+   * query `?distributor=` (el guard no corre en rutas @Public).
+   */
+  async resolveDistributor(slugOrId?: string): Promise<string | null> {
+    if (!slugOrId) return null;
+    const distributor = UUID_RE.test(slugOrId)
+      ? await this.distributorService.assertActive(slugOrId)
+      : await this.distributorService.findBySlug(slugOrId);
+    return distributor.distributorId;
+  }
+
+  async create(
+    createTimeSlotDto: CreateTimeSlotDto,
+    distributorId: string,
+  ): Promise<TimeSlot> {
+    if (
+      aMinutos(createTimeSlotDto.startTime) >=
+      aMinutos(createTimeSlotDto.endTime)
+    ) {
+      throw new BadRequestException(MENSAJE_HORARIO);
     }
+    return this.timeSlotRepository.manager.transaction(async (manager) => {
+      await this.bloquearFranjasDe(manager, distributorId);
+      await this.asegurarSinChoques(manager, distributorId, {
+        timeSlotId: null,
+        name: createTimeSlotDto.name,
+        startTime: createTimeSlotDto.startTime,
+        endTime: createTimeSlotDto.endTime,
+      });
+      const timeSlot = manager.create(TimeSlot, {
+        ...createTimeSlotDto,
+        distributorId,
+      });
+      try {
+        return await manager.save(timeSlot);
+      } catch (error) {
+        return traducirErrorDeBase(error, this.logger, 'franjas horarias');
+      }
+    });
+  }
 
-    async create(createTimeSlotDto: CreateTimeSlotDto, distributorId: string) {
-        const timeSlot = this.timeSlotRepository.create({
-            ...createTimeSlotDto,
-            distributor_id: distributorId,
+  /**
+   * Serializa las altas y cambios de franjas de una distribuidora: el control de
+   * choques lee y después escribe, y dos al mismo tiempo no se verían.
+   */
+  private async bloquearFranjasDe(
+    manager: EntityManager,
+    distributorId: string,
+  ): Promise<void> {
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `time_slot:${distributorId}`,
+    ]);
+  }
+
+  /**
+   * Una franja activa no puede repetir el nombre de otra activa ni pisar su
+   * horario (409). La base lo garantiza igual (`UQ_time_slot_nombre_activa`,
+   * `EXC_time_slot_solapada`); esto devuelve el motivo.
+   */
+  private async asegurarSinChoques(
+    manager: EntityManager,
+    distributorId: string,
+    franja: {
+      timeSlotId: string | null;
+      name: string;
+      startTime: string;
+      endTime: string;
+    },
+  ): Promise<void> {
+    const otras = (
+      await manager.find(TimeSlot, { where: { distributorId, isActive: true } })
+    ).filter((otra) => otra.timeSlotId !== franja.timeSlotId);
+    const mismoNombre = otras.find(
+      (otra) =>
+        otra.name.trim().toLowerCase() === franja.name.trim().toLowerCase(),
+    );
+    if (mismoNombre) {
+      throw new ConflictException(
+        `Ya existe una franja activa con el nombre «${mismoNombre.name}»`,
+      );
+    }
+    const choque = otras.find((otra) => seSolapanFranjas(otra, franja));
+    if (choque) {
+      throw new ConflictException(
+        `La franja se solapa con «${choque.name}» (${sinHoraSegundos(choque.startTime)} a ${sinHoraSegundos(choque.endTime)}): ajustá el horario o desactivá esa franja`,
+      );
+    }
+  }
+
+  /**
+   * Lista las franjas activas (con `includeInactive`, también las dadas de
+   * baja). Prioridad de tenant:
+   *  - `distributorSlug` (query `?distributor=`, lo usa la app cliente por slug),
+   *  - si no, `distributorId` (el tenant del admin autenticado, @CurrentDistributor).
+   * Solo un super_admin sin ninguno de los dos ve las de todas las empresas.
+   */
+  async findAll(
+    distributorSlug?: string,
+    distributorId?: string | null,
+    includeInactive = false,
+  ): Promise<TimeSlot[]> {
+    const effective = distributorSlug
+      ? await this.resolveDistributor(distributorSlug)
+      : (distributorId ?? null);
+
+    const where: FindOptionsWhere<TimeSlot> = includeInactive
+      ? {}
+      : { isActive: true };
+    if (effective) where.distributorId = effective;
+
+    return await this.timeSlotRepository.find({
+      where,
+      order: { startTime: 'ASC' },
+    });
+  }
+
+  /**
+   * `distributorId` opcional: si viene, la franja debe pertenecer a ese
+   * tenant (evita que un admin lea/borre franjas de otra distribuidora).
+   */
+  async findOne(id: string, distributorId?: string | null): Promise<TimeSlot> {
+    const where: FindOptionsWhere<TimeSlot> = { timeSlotId: id };
+    if (distributorId) where.distributorId = distributorId;
+
+    const timeSlot = await this.timeSlotRepository.findOne({ where });
+    if (!timeSlot) throw new NotFoundException('Franja horaria no encontrada');
+    return timeSlot;
+  }
+
+  /**
+   * Edita una franja del tenant. Sólo toca los campos que vienen; el rango
+   * resultante (con lo que ya tenía la franja) tiene que ser inicio < fin.
+   * `isActive: true` la reactiva.
+   */
+  async update(
+    id: string,
+    dto: UpdateTimeSlotDto,
+    distributorId: string,
+  ): Promise<TimeSlot> {
+    // Mismo lock que `assertSlotAvailableTx`: una reserva en curso y una baja
+    // de capacidad se serializan, y el conteo ve lo último que se agendó.
+    return this.timeSlotRepository.manager.transaction(async (manager) => {
+      const timeSlot = await manager.findOne(TimeSlot, {
+        where: { timeSlotId: id, distributorId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!timeSlot)
+        throw new NotFoundException('Franja horaria no encontrada');
+
+      const startTime = dto.startTime ?? timeSlot.startTime;
+      const endTime = dto.endTime ?? timeSlot.endTime;
+      if (aMinutos(startTime) >= aMinutos(endTime)) {
+        throw new BadRequestException(MENSAJE_HORARIO);
+      }
+      const name = dto.name ?? timeSlot.name;
+      const quedaActiva = dto.isActive ?? timeSlot.isActive;
+      if (quedaActiva) {
+        await this.bloquearFranjasDe(manager, distributorId);
+        await this.asegurarSinChoques(manager, distributorId, {
+          timeSlotId: id,
+          name,
+          startTime,
+          endTime,
         });
-        return await this.timeSlotRepository.save(timeSlot);
-    }
-
-    /**
-     * Lista las franjas activas. Prioridad de tenant:
-     *  - `distributorSlug` (query `?distributor=`, lo usa la app cliente por slug),
-     *  - si no, `distributorId` (el tenant del admin autenticado, @CurrentDistributor).
-     * Solo un super_admin sin ninguno de los dos ve las de todas las empresas.
-     */
-    async findAll(distributorSlug?: string, distributorId?: string | null) {
-        const effective = distributorSlug
-            ? await this.resolveDistributor(distributorSlug)
-            : distributorId ?? null;
-
-        const where: FindOptionsWhere<TimeSlot> = { isActive: true };
-        if (effective) where.distributor_id = effective;
-
-        return await this.timeSlotRepository.find({
-            where,
-            order: { startTime: 'ASC' },
-        });
-    }
-
-    /**
-     * `distributorId` opcional: si viene, la franja debe pertenecer a ese
-     * tenant (evita que un admin lea/borre franjas de otra distribuidora).
-     */
-    async findOne(id: string, distributorId?: string | null) {
-        const where: FindOptionsWhere<TimeSlot> = { time_slot_id: id };
-        if (distributorId) where.distributor_id = distributorId;
-
-        const timeSlot = await this.timeSlotRepository.findOne({ where });
-        if (!timeSlot) throw new NotFoundException('Time slot not found');
-        return timeSlot;
-    }
-
-    async remove(id: string, distributorId: string) {
-        const timeSlot = await this.findOne(id, distributorId);
-        timeSlot.isActive = false;
-        return await this.timeSlotRepository.save(timeSlot);
-    }
-
-    /** Pedidos ya agendados a una franja en una fecha (no cancelados). */
-    private countBooked(
-        timeSlotId: string,
-        date: string,
-        distributorId?: string | null,
-    ): Promise<number> {
-        const where: FindOptionsWhere<Order> = {
-            time_slot_id: timeSlotId,
-            scheduled_date: date,
-            status: Not(OrderStatus.CANCELLED),
-        };
-        if (distributorId) where.distributor_id = distributorId;
-        return this.orderRepository.count({ where });
-    }
-
-    /**
-     * Disponibilidad de todas las franjas activas de una distribuidora para una
-     * fecha: capacidad, reservados y cupos libres. Base del agendamiento (el
-     * cliente elige día + franja con cupo). Soporta same-day (fecha = hoy).
-     */
-    async getAvailability(
-        date: string,
-        distributor?: string,
-    ): Promise<SlotAvailability[]> {
-        const distributorId = await this.resolveDistributor(distributor);
-        const where: FindOptionsWhere<TimeSlot> = { isActive: true };
-        if (distributorId) where.distributor_id = distributorId;
-
-        const slots = await this.timeSlotRepository.find({
-            where,
-            order: { startTime: 'ASC' },
-        });
-
-        const result: SlotAvailability[] = [];
-        for (const slot of slots) {
-            const booked = await this.countBooked(
-                slot.time_slot_id,
-                date,
-                distributorId,
-            );
-            result.push({
-                timeSlotId: slot.time_slot_id,
-                name: slot.name,
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                capacity: slot.capacity,
-                booked,
-                remaining: Math.max(0, slot.capacity - booked),
-            });
+      }
+      if (dto.capacity !== undefined && dto.capacity < timeSlot.capacity) {
+        const hoy = diaArgentino();
+        const agendados = await this.orders.maxBookedFrom(id, hoy, manager);
+        if (dto.capacity < agendados) {
+          throw new ConflictException(
+            `La franja ya tiene ${agendados} pedidos agendados en un mismo día: la capacidad no puede ser menor`,
+          );
         }
-        return result;
+      }
+      Object.assign(timeSlot, {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.startTime !== undefined && { startTime: dto.startTime }),
+        ...(dto.endTime !== undefined && { endTime: dto.endTime }),
+        ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      });
+      try {
+        return await manager.save(timeSlot);
+      } catch (error) {
+        return traducirErrorDeBase(error, this.logger, 'franjas horarias');
+      }
+    });
+  }
+
+  async remove(id: string, distributorId: string): Promise<TimeSlot> {
+    const timeSlot = await this.findOne(id, distributorId);
+    timeSlot.isActive = false;
+    return await this.timeSlotRepository.save(timeSlot);
+  }
+
+  /** Pedidos ya agendados a una franja en una fecha (no cancelados). */
+  private countBooked(
+    timeSlotId: string,
+    date: string,
+    distributorId?: string | null,
+  ): Promise<number> {
+    return this.orders.countBooked(timeSlotId, date, distributorId);
+  }
+
+  /**
+   * Disponibilidad de todas las franjas activas de una distribuidora para una
+   * fecha: capacidad, reservados y cupos libres. Base del agendamiento (el
+   * cliente elige día + franja con cupo). Soporta same-day (fecha = hoy).
+   */
+  async getAvailability(
+    date: string,
+    distributor?: string,
+  ): Promise<SlotAvailability[]> {
+    const distributorId = await this.resolveDistributor(distributor);
+    const where: FindOptionsWhere<TimeSlot> = { isActive: true };
+    if (distributorId) where.distributorId = distributorId;
+
+    const slots = await this.timeSlotRepository.find({
+      where,
+      order: { startTime: 'ASC' },
+    });
+
+    const result: SlotAvailability[] = [];
+    for (const slot of slots) {
+      const booked = await this.countBooked(
+        slot.timeSlotId,
+        date,
+        distributorId,
+      );
+      result.push({
+        timeSlotId: slot.timeSlotId,
+        name: slot.name,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        capacity: slot.capacity,
+        booked,
+        // Una franja de hoy que ya terminó no se puede elegir: sin cupos.
+        remaining: franjaTerminada(slot, date)
+          ? 0
+          : Math.max(0, slot.capacity - booked),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Valida que una franja tenga cupo para una fecha antes de agendar un pedido.
+   * Lanza 400 si la franja no existe/está inactiva, la fecha es pasada, o no
+   * quedan cupos. La usa CreateOrderUseCase cuando el pedido trae scheduledDate.
+   */
+  async assertSlotAvailable(
+    timeSlotId: string,
+    date: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const slot = await this.timeSlotRepository.findOne({
+      where: {
+        timeSlotId,
+        isActive: true,
+        ...(distributorId ? { distributorId } : {}),
+      },
+    });
+    if (!slot) {
+      throw new BadRequestException('Franja horaria inválida o inactiva');
     }
 
-    /**
-     * Valida que una franja tenga cupo para una fecha antes de agendar un pedido.
-     * Lanza 400 si la franja no existe/está inactiva, la fecha es pasada, o no
-     * quedan cupos. La usa CreateOrderUseCase cuando el pedido trae scheduledDate.
-     */
-    async assertSlotAvailable(
-        timeSlotId: string,
-        date: string,
-        distributorId?: string | null,
-    ): Promise<void> {
-        const slot = await this.timeSlotRepository.findOne({
-            where: {
-                time_slot_id: timeSlotId,
-                isActive: true,
-                ...(distributorId ? { distributor_id: distributorId } : {}),
-            },
-        });
-        if (!slot) {
-            throw new BadRequestException('Franja horaria inválida o inactiva');
-        }
-
-        // No agendar en el pasado (compara sólo la fecha, permite same-day = hoy).
-        const today = new Date().toISOString().slice(0, 10);
-        if (date < today) {
-            throw new BadRequestException('No se puede agendar en una fecha pasada');
-        }
-
-        const booked = await this.countBooked(timeSlotId, date, distributorId);
-        if (booked >= slot.capacity) {
-            throw new BadRequestException(
-                `La franja "${slot.name}" del ${date} está completa`,
-            );
-        }
+    // No agendar en el pasado (compara sólo la fecha, permite same-day = hoy).
+    const today = diaArgentino();
+    if (date < today) {
+      throw new BadRequestException('No se puede agendar en una fecha pasada');
+    }
+    if (franjaTerminada(slot, date)) {
+      throw new BadRequestException(MENSAJE_FRANJA_TERMINADA);
     }
 
-    /**
-     * Igual que `assertSlotAvailable` pero DENTRO de una transacción y con lock
-     * pesimista sobre la fila de la franja. Serializa las reservas concurrentes
-     * de la MISMA franja+fecha: la 2ª transacción espera a que la 1ª commitee
-     * (liberando el lock) antes de contar, así el conteo ve el pedido recién
-     * insertado y no se supera `capacity` bajo carga. Debe llamarse con el
-     * `EntityManager` de la transacción que también inserta el pedido, para que
-     * el lock se sostenga hasta el commit.
-     */
-    async assertSlotAvailableTx(
-        manager: EntityManager,
-        timeSlotId: string,
-        date: string,
-        distributorId?: string | null,
-    ): Promise<void> {
-        const slot = await manager.findOne(TimeSlot, {
-            where: {
-                time_slot_id: timeSlotId,
-                isActive: true,
-                ...(distributorId ? { distributor_id: distributorId } : {}),
-            },
-            lock: { mode: 'pessimistic_write' },
-        });
-        if (!slot) {
-            throw new BadRequestException('Franja horaria inválida o inactiva');
-        }
-
-        const today = new Date().toISOString().slice(0, 10);
-        if (date < today) {
-            throw new BadRequestException('No se puede agendar en una fecha pasada');
-        }
-
-        const where: FindOptionsWhere<Order> = {
-            time_slot_id: timeSlotId,
-            scheduled_date: date,
-            status: Not(OrderStatus.CANCELLED),
-        };
-        if (distributorId) where.distributor_id = distributorId;
-        const booked = await manager.count(Order, { where });
-        if (booked >= slot.capacity) {
-            throw new BadRequestException(
-                `La franja "${slot.name}" del ${date} está completa`,
-            );
-        }
+    const booked = await this.countBooked(timeSlotId, date, distributorId);
+    if (booked >= slot.capacity) {
+      throw new BadRequestException(
+        `La franja "${slot.name}" del ${date} está completa`,
+      );
     }
+  }
+
+  /**
+   * La franja existe, está activa y es de la distribuidora (400 si no). Para
+   * cuando se guarda una franja sin fecha: no hay cupo que contar, pero la
+   * referencia tiene que ser válida (ni de otro tenant ni inexistente).
+   */
+  async assertSlotUsableTx(
+    manager: EntityManager,
+    timeSlotId: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const slot = await manager.findOne(TimeSlot, {
+      where: {
+        timeSlotId,
+        isActive: true,
+        ...(distributorId ? { distributorId } : {}),
+      },
+    });
+    if (!slot) {
+      throw new BadRequestException('Franja horaria inválida o inactiva');
+    }
+  }
+
+  /**
+   * Igual que `assertSlotAvailable` pero DENTRO de una transacción y con lock
+   * pesimista sobre la fila de la franja. Serializa las reservas concurrentes
+   * de la MISMA franja+fecha: la 2ª transacción espera a que la 1ª commitee
+   * (liberando el lock) antes de contar, así el conteo ve el pedido recién
+   * insertado y no se supera `capacity` bajo carga. Debe llamarse con el
+   * `EntityManager` de la transacción que también inserta el pedido, para que
+   * el lock se sostenga hasta el commit.
+   */
+  async assertSlotAvailableTx(
+    manager: EntityManager,
+    timeSlotId: string,
+    date: string,
+    distributorId?: string | null,
+  ): Promise<void> {
+    const slot = await manager.findOne(TimeSlot, {
+      where: {
+        timeSlotId,
+        isActive: true,
+        ...(distributorId ? { distributorId } : {}),
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!slot) {
+      throw new BadRequestException('Franja horaria inválida o inactiva');
+    }
+
+    const today = diaArgentino();
+    if (date < today) {
+      throw new BadRequestException('No se puede agendar en una fecha pasada');
+    }
+    if (franjaTerminada(slot, date)) {
+      throw new BadRequestException(MENSAJE_FRANJA_TERMINADA);
+    }
+
+    const booked = await this.orders.countBooked(
+      timeSlotId,
+      date,
+      distributorId,
+      manager,
+    );
+    if (booked >= slot.capacity) {
+      throw new BadRequestException(
+        `La franja "${slot.name}" del ${date} está completa`,
+      );
+    }
+  }
 }

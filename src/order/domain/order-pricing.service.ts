@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
-import { PaymentMethod } from '../entities/order.entity';
 
-/** Promoción por volumen tal como se guarda en GasCylinder.promotions (JSONB). */
+/** Promoción por volumen de un producto (tabla gas_cylinder_promotion). */
 export interface VolumePromotion {
   quantity: number;
   discountPercentage: number;
@@ -12,6 +11,8 @@ export interface VolumePromotion {
 export interface ItemPricing {
   unitPrice: Decimal;
   subtotal: Decimal;
+  /** Porcentaje de la promoción aplicada; null si se cobra a precio de lista. */
+  discountPercentage: number | null;
 }
 
 /**
@@ -22,15 +23,11 @@ export interface ItemPricing {
  * Reglas (según SRS):
  *  - Descuento por volumen: se aplica la promo de mayor umbral que la cantidad
  *    alcance (ej: compra 10 con promos [5→10%, 10→20%] ⇒ 20%).
- *  - Recargo 10% si el método de pago es TRANSFER.
+ *  - Recargo por medio de pago: el % es un parámetro de la distribuidora.
  *  - Todo en Decimal.js (nunca float) — requisito de confiabilidad NFR-08.
  */
 @Injectable()
 export class OrderPricingService {
-  /** Recargo multiplicativo para pagos por transferencia (+10%). */
-  /** Recargo +10% para pagos online (MercadoPago y Transferencia). Efectivo 0%. */
-  private static readonly ONLINE_SURCHARGE_FACTOR = new Decimal('1.1');
-
   /**
    * Precio unitario (con la mejor promo aplicable) y subtotal de un ítem.
    * @param basePrice precio de lista de la garrafa (fuente: DB, nunca el cliente)
@@ -50,22 +47,24 @@ export class OrderPricingService {
       unitPrice = unitPrice.times(discountFactor);
     }
 
+    // El renglón guarda los dos a 2 decimales: el subtotal sale del precio ya
+    // redondeado, así cantidad × precio guardado coincide siempre con el subtotal.
+    unitPrice = unitPrice.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const subtotal = unitPrice.times(new Decimal(quantity));
-    return { unitPrice, subtotal };
+    return {
+      unitPrice,
+      subtotal,
+      discountPercentage: promo?.discountPercentage ?? null,
+    };
   }
 
   /**
-   * Aplica el recargo del método de pago sobre el total. MercadoPago y
-   * Transferencia = +10% (pagos online); Efectivo = sin recargo.
+   * Aplica el recargo del medio de pago sobre el total. El porcentaje lo define
+   * cada distribuidora por medio de pago (0 a 30 %, hasta 2 decimales): acá
+   * llega ya resuelto. Sin redondear: quien guarda el monto lo redondea.
    */
-  applyPaymentSurcharge(total: Decimal, method: PaymentMethod): Decimal {
-    if (
-      method === PaymentMethod.MERCADOPAGO ||
-      method === PaymentMethod.TRANSFER
-    ) {
-      return total.times(OrderPricingService.ONLINE_SURCHARGE_FACTOR);
-    }
-    return total;
+  applyPaymentSurcharge(total: Decimal, percentage: number | Decimal): Decimal {
+    return total.times(new Decimal(1).plus(new Decimal(percentage).div(100)));
   }
 
   /** La promo de mayor `quantity` que la cantidad pedida alcanza (o null). */

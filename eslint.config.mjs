@@ -2,6 +2,7 @@
 import eslint from '@eslint/js';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
+import jestPlugin from 'eslint-plugin-jest';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -26,9 +27,37 @@ export default tseslint.config(
   },
   {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn'
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+    },
+  },
+  {
+    files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+    ...jestPlugin.configs['flat/recommended'],
+    rules: {
+      ...jestPlugin.configs['flat/recommended'].rules,
+      'jest/no-focused-tests': 'error',
+      'jest/no-disabled-tests': 'error',
+      'jest/expect-expect': [
+        'error',
+        // cuentan como aserción el `.expect(...)` de supertest, `desempata` y `rechazaPor`, que hacen `expect` adentro
+        {
+          assertFunctionNames: [
+            'expect',
+            '**.expect',
+            'desempata',
+            'rechazaPor',
+          ],
+        },
+      ],
+      'jest/no-identical-title': 'error',
+      'jest/valid-expect': 'error',
+      'jest/no-conditional-expect': 'error',
+      'jest/no-standalone-expect': 'error',
+      'jest/no-done-callback': 'error',
+      'jest/no-export': 'error',
+      'jest/no-commented-out-tests': 'error',
     },
   },
 );

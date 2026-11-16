@@ -1,11 +1,14 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { auth } from 'firebase-admin';
+import {
+  errorCode,
+  errorMessage as mensajeDe,
+} from '../../common/errors/error-message';
 
 /**
- * Datos para crear un usuario de Firebase Auth (email/password). Opcionales
- * (igual que `auth.CreateRequest` del SDK) para aceptar tanto los DTOs de
- * registro (todos requeridos en la práctica) como `CreateUserDto` (todos
- * opcionales, lo usa `UsersService.createFirebaseUser`).
+ * Datos para crear un usuario de Firebase Auth (email/password). Opcionales,
+ * igual que `auth.CreateRequest` del SDK; el alta (`RegistroService`) los
+ * manda todos.
  */
 export interface CreateFirebaseUserProps {
   email?: string;
@@ -13,6 +16,18 @@ export interface CreateFirebaseUserProps {
   full_name?: string;
   phone_number?: string;
 }
+
+const logger = new Logger('FirebaseAuthPort');
+
+const MENSAJES_DE_ALTA_EN_FIREBASE: Record<string, string> = {
+  'auth/invalid-password':
+    'La contraseña es muy débil: usá al menos 6 caracteres',
+  'auth/email-already-exists': 'Ese correo ya está registrado',
+  'auth/phone-number-already-exists': 'El teléfono ya está en uso',
+  'auth/invalid-email': 'El formato del correo no es válido',
+  'auth/invalid-phone-number':
+    'El formato del teléfono no es válido: usá el formato E.164, por ejemplo +5493764000000',
+};
 
 /**
  * PUERTO de autenticación de Firebase (Admin SDK). Los services de dominio
@@ -25,12 +40,10 @@ export interface CreateFirebaseUserProps {
  * idiomático para puertos (las interfaces no existen en runtime). Ver
  * FirebaseAuthAdapter (infrastructure) para la implementación concreta.
  *
- * `createUserSafe`/`deleteUserByEmailSafe` son métodos CONCRETOS (no
- * abstractos): consolidan acá el mapeo de errores que antes estaba duplicado,
- * idéntico, en `UsersService`, `CustomersService` y `DeliveryService`
- * (`createFirebaseUser`/`cleanupFirebaseUser`, ver ARQUITECTURA-REVIEW.md
- * punto 4). Se apoyan en `createUser`/`getUserByEmail`/`deleteUser` (los
- * abstractos), así que valen para cualquier adapter.
+ * `createUserSafe`/`deleteUserSafe` son métodos CONCRETOS (no abstractos):
+ * consolidan acá el mapeo de errores y la compensación, y se apoyan en
+ * `createUser`/`deleteUser` (los abstractos), así que valen para cualquier
+ * adapter.
  */
 export abstract class FirebaseAuthPort {
   /** Verifica y decodifica un ID token de Firebase. Usado por el AuthGuard en CADA request autenticado. */
@@ -75,19 +88,13 @@ export abstract class FirebaseAuthPort {
         phoneNumber: props.phone_number,
       });
     } catch (error) {
-      const firebaseError = error as any;
+      const code = errorCode(error);
 
-      let errorMessage = `Error creating Firebase user: ${firebaseError.message}`;
-
-      if (firebaseError.code === 'auth/weak-password') {
-        errorMessage = 'Password is too weak. Use at least 6 characters.';
-      } else if (firebaseError.code === 'auth/email-already-exists') {
-        errorMessage = 'Email already exists in Firebase.';
-      } else if (firebaseError.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email format.';
-      } else if (firebaseError.code === 'auth/invalid-phone-number') {
-        errorMessage =
-          'Invalid phone number format. Use E.164 format: +1234567890';
+      const errorMessage =
+        MENSAJES_DE_ALTA_EN_FIREBASE[code ?? ''] ??
+        'No se pudo crear la cuenta';
+      if (!(code && code in MENSAJES_DE_ALTA_EN_FIREBASE)) {
+        logger.error(`Alta en Firebase rechazada: ${mensajeDe(error)}`);
       }
 
       throw new BadRequestException(errorMessage);
@@ -95,19 +102,18 @@ export abstract class FirebaseAuthPort {
   }
 
   /**
-   * Borra un usuario de Firebase Auth por email. Best-effort: es un rollback
-   * de compensación (el registro en DB ya se revirtió); si Firebase falla acá
-   * solo puede quedar un usuario huérfano en Firebase — nunca lanza, solo
-   * loguea con el `logger` del caller (para que el log salga con el contexto
-   * del service, como antes).
+   * Borra una cuenta de Firebase por su `uid`, sin lanzar: lo peor que queda
+   * es un usuario huérfano en Firebase. Lo usan la compensación del alta, con
+   * el uid que devolvió su propio `createUser`, y la baja de un usuario, con
+   * su `firebase_uid`. No existe el borrado por correo: se llevaba puesta la
+   * cuenta de quien ya estaba registrado (H-70).
    */
-  async deleteUserByEmailSafe(email: string, logger: Logger): Promise<void> {
+  async deleteUserSafe(uid: string, logger: Logger): Promise<void> {
     try {
-      const userRecord = await this.getUserByEmail(email);
-      await this.deleteUser(userRecord.uid);
+      await this.deleteUser(uid);
     } catch (error) {
       logger.warn(
-        `No se pudo limpiar el usuario Firebase de ${email}: ${error instanceof Error ? error.message : error}`,
+        `No se pudo limpiar el usuario Firebase ${uid}: ${mensajeDe(error)}`,
       );
     }
   }

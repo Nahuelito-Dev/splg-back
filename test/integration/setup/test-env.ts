@@ -9,57 +9,263 @@
  * `INestApplication` aislado. Al final llama `cleanup()` que para
  * contenedores y libera puertos.
  */
+import type { Server } from 'http';
+import { HttpAdapterHost } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
+import {
+  InjectionToken,
+  INestApplication,
+  Type,
+  VERSION_NEUTRAL,
+  VersioningType,
+} from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { generateKeyPairSync, randomInt, randomUUID } from 'crypto';
+import { FirebaseAuthPort } from '../../../src/firebase/ports/firebase-auth.port';
+import { Distributor } from '../../../src/distributor/entities/distributor.entity';
+import { Role } from '../../../src/role/entities/role.entity';
+import { User } from '../../../src/users/entities/user.entity';
+import { Customer } from '../../../src/customer/entities/customer.entity';
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
-import { AppModule } from '../../../src/app.module';
+import {
+  CREAR_FUNCION_ESTADO_DEL_PAGO,
+  CREAR_FUNCION_HISTORIAL_DEL_PAGO,
+  CREAR_TRIGGER_ESTADO_DEL_PAGO,
+  CREAR_TRIGGER_HISTORIAL_DEL_PAGO,
+  REEMPLAZAR_FUNCION_ESTADO_DEL_PAGO,
+} from '../../../src/migrations/sql/estado-del-pago';
+import {
+  CREAR_FUNCIONES_DE_AUDITORIA,
+  CREAR_ROL_DE_MANTENIMIENTO,
+  CREAR_TABLAS_DEL_MAPA,
+} from '../../../src/migrations/sql/auditoria-de-datos';
+import mapaDeAuditoria from '../../../src/audit/data/auditoria-mapa.datos.json';
+import { sentenciasDeReglasDeDatos } from '../../../src/migrations/sql/reglas-de-datos';
+import { CREAR_PROCEDIMIENTOS_DE_CONCILIACION } from '../../../src/migrations/sql/procedimientos-de-conciliacion';
+import { sentenciasDeSaldos } from '../../../src/migrations/sql/saldo-contra-libro';
+import { sentenciasDeTransiciones } from '../../../src/migrations/sql/transiciones-de-estado';
+import { sentenciasDelLote } from '../../../src/migrations/sql/transicion-lote-de-recorrido';
+import {
+  CREAR_ES_CUIL_VALIDO,
+  CREAR_ES_CUIT_VALIDO,
+} from '../../../src/migrations/sql/funciones-cuit';
+import {
+  AUDIT_ACTION_TYPE_NAMES,
+  AuditActionType,
+} from '../../../src/audit/entities/audit-action-type.entity';
+import { crearValidationPipe } from '../../../src/common/validation/validation-pipe';
+import { sentenciasDeRolesDelPersonal } from '../../../src/migrations/sql/roles-del-personal';
+import { sentenciasDeSoporte } from '../../../src/migrations/sql/sesiones-de-soporte';
+import { sentenciasDeMensajeria } from '../../../src/migrations/sql/mensajeria';
+import { sentenciasDeLaBandeja } from '../../../src/migrations/sql/bandeja-de-la-empresa';
+import { sentenciasDeMensajesRetirados } from '../../../src/migrations/sql/mensajes-retirados';
+import { sentenciasDeNotasInternas } from '../../../src/migrations/sql/notas-internas-de-la-bandeja';
+import {
+  sentenciasDeLaEncuesta,
+  sentenciasDeLaEncuestaAnulable,
+} from '../../../src/migrations/sql/encuesta-del-chat';
+import { sentenciasDelPedidoPorChofer } from '../../../src/migrations/sql/conversacion-del-chofer-por-pedido';
+
+/** La app NestJS tipada con su servidor HTTP real, para que `getHttpServer()`
+ * devuelva algo que `supertest` acepta sin pasar por `any`. */
+export type TestApp = INestApplication<Server>;
 
 export interface TestEnv {
-  app: INestApplication;
+  app: TestApp;
   pgContainer: StartedPostgreSqlContainer;
   redisContainer: StartedRedisContainer;
   cleanup: () => Promise<void>;
 }
 
-export async function createTestApp(): Promise<TestEnv> {
-  // 1. Postgres efímero
-  const pgContainer = await new PostgreSqlContainer('postgres:16-alpine')
+/**
+ * Imagen de Postgres con PostGIS (la app crea la extensión). Se puede cambiar
+ * con `TEST_POSTGIS_IMAGE`.
+ */
+const IMAGEN_POSTGIS =
+  process.env.TEST_POSTGIS_IMAGE ?? 'postgis/postgis:14-3.4';
+
+/** Clave privada descartable: Firebase Admin la parsea al iniciar, no la usa. */
+function clavePrivadaDescartable(): string {
+  const { privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  });
+  return privateKey.replace(/\n/g, '\\n');
+}
+
+/**
+ * Teléfono único para los seeds: 10 dígitos al azar (no derivados del sufijo
+ * del correo, que tiene pocos dígitos y choca con el UNIQUE de `phone_number`).
+ */
+export function telefonoDePrueba(): string {
+  return `+549${String(randomInt(0, 10_000_000_000)).padStart(10, '0')}`;
+}
+
+const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function letrasAlAzar(cantidad: number): string {
+  return Array.from({ length: cantidad }, () => LETRAS[randomInt(0, 26)]).join(
+    '',
+  );
+}
+
+/**
+ * Patente única con el formato Mercosur `AB123CD`, el que exige
+ * `CHK_car_patente` (~4,5 × 10⁸ combinaciones: no choca con
+ * `UQ_car_patente_distribuidora_vigente` dentro de una suite).
+ */
+export function patenteDePrueba(): string {
+  return `${letrasAlAzar(2)}${String(randomInt(0, 1000)).padStart(3, '0')}${letrasAlAzar(2)}`;
+}
+
+/**
+ * CUIT de persona jurídica (prefijo 30) con dígito verificador válido: cumple
+ * `CHK_distributor_cuit` y también `es_cuit_valido` de la base.
+ */
+export function cuitDePrueba(): string {
+  const factores = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  for (;;) {
+    const base = `30${String(randomInt(0, 100_000_000)).padStart(8, '0')}`;
+    const suma = factores.reduce((acc, f, i) => acc + f * Number(base[i]), 0);
+    const resto = suma % 11;
+    const verificador = resto === 0 ? 0 : 11 - resto;
+    if (verificador < 10) return `${base}${verificador}`;
+  }
+}
+
+/**
+ * S3 por defecto de las suites que no prueban archivos: la app exige bucket y
+ * región para arrancar, y el endpoint apunta a un puerto donde no escucha
+ * nadie, así que ningún test llega a AWS por accidente. Las suites que sí
+ * suben archivos pasan el entorno de su MinIO (`startMinio().env`).
+ */
+const S3_SIN_SERVICIO: Record<string, string> = {
+  AWS_REGION: 'us-east-1',
+  AWS_S3_BUCKET: 'splg-test-sin-s3',
+  AWS_ACCESS_KEY_ID: 'sin-s3',
+  AWS_SECRET_ACCESS_KEY: 'sin-s3',
+  AWS_S3_ENDPOINT: 'http://127.0.0.1:1',
+  AWS_S3_FORCE_PATH_STYLE: 'true',
+};
+
+export async function createTestApp(
+  opciones: {
+    s3?: Record<string, string>;
+    overrides?: Array<{ token: InjectionToken; value: unknown }>;
+    /** Controllers sólo de la prueba (p. ej. uno con `@Permiso` para el guard). */
+    controllers?: Type<unknown>[];
+  } = {},
+): Promise<TestEnv> {
+  // 1. Postgres (con PostGIS) y Redis efímeros
+  const pgContainer = await new PostgreSqlContainer(IMAGEN_POSTGIS)
     .withDatabase('splg_test')
     .withUsername('test')
     .withPassword('test')
+    // El esquema sale de las entidades (DB_SYNC): los CHECK de CUIT/CUIL usan
+    // funciones que sólo crea una migración, y las exclusiones piden btree_gist.
+    // Un script de inicio las deja listas antes de que la app sincronice.
+    .withCopyContentToContainer([
+      {
+        content: [
+          'CREATE EXTENSION IF NOT EXISTS btree_gist;',
+          `${CREAR_ES_CUIT_VALIDO};`,
+          `${CREAR_ES_CUIL_VALIDO};`,
+        ].join('\n'),
+        target: '/docker-entrypoint-initdb.d/00-funciones-de-la-base.sql',
+      },
+    ])
     .start();
-
-  // 2. Redis efímero
   const redisContainer = await new RedisContainer('redis:7-alpine').start();
 
-  // 3. Variables de entorno apuntando a los containers
-  process.env.DB_HOST = pgContainer.getHost();
-  process.env.DB_PORT = String(pgContainer.getPort());
-  process.env.DB_USERNAME = pgContainer.getUsername();
-  process.env.DB_PASSWORD = pgContainer.getPassword();
-  process.env.DB_NAME = pgContainer.getDatabase();
-  process.env.DB_SSL = 'false';
-  process.env.REDIS_HOST = redisContainer.getHost();
-  process.env.REDIS_PORT = String(redisContainer.getPort());
-  process.env.STAGE = 'test';
-  process.env.JWT_SECRET = 'test-secret-do-not-use-in-prod';
-  process.env.PORT = '0'; // puerto random asignado por supertest
+  // 2. El entorno de la app es EXACTAMENTE el de los contenedores. Se pisa
+  // todo lo que importa del entorno de desarrollo, y `STAGE=test` hace que
+  // `ConfigModule` no lea el `.env` (ver `app.module.ts`).
+  Object.assign(process.env, {
+    STAGE: 'test',
+    NODE_ENV: 'test',
+    DB_HOST: pgContainer.getHost(),
+    DB_PORT: String(pgContainer.getPort()),
+    DB_USERNAME: pgContainer.getUsername(),
+    DB_PASSWORD: pgContainer.getPassword(),
+    DB_NAME: pgContainer.getDatabase(),
+    DB_SSL: 'false',
+    DB_SYNC: 'true',
+    DB_POOL_SIZE: '40',
+    DB_LOGGING: 'false',
+    REDIS_HOST: redisContainer.getHost(),
+    REDIS_PORT: String(redisContainer.getPort()),
+    JWT_SECRET: 'test-secret-do-not-use-in-prod',
+    PORT: '0',
+    // El proceso de Jest (ts-jest, Nest, testcontainers) pasa el umbral de
+    // memoria de producción: no es lo que valida el test de health.
+    HEALTH_MEMORY_RSS_THRESHOLD_MB: '4096',
+    FIREBASE_PROJECT_ID: 'splg-test',
+    FIREBASE_CLIENT_EMAIL: 'test@splg-test.iam.gserviceaccount.com',
+    FIREBASE_PRIVATE_KEY: clavePrivadaDescartable(),
+    ...S3_SIN_SERVICIO,
+    ...opciones.s3,
+  });
 
-  // 4. Arranca NestJS
-  const moduleFixture: TestingModule = await Test.createTestingModule({
+  // 3. Recién ahora se importa la app: `ConfigModule.forRoot` valida el
+  // entorno al cargar el módulo, así que tiene que ver el de arriba.
+  // `require` y no `import()`: con `module: nodenext` un `import()` dinámico
+  // sale como ESM nativo, que Jest no carga.
+  const { AppModule } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('../../../src/app.module') as typeof import('../../../src/app.module');
+  let moduleBuilder = Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+    controllers: opciones.controllers ?? [],
+  });
+  for (const override of opciones.overrides ?? []) {
+    moduleBuilder = moduleBuilder
+      .overrideProvider(override.token)
+      .useValue(override.value);
+  }
+  const moduleFixture: TestingModule = await moduleBuilder.compile();
 
-  const app = moduleFixture.createNestApplication();
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  await app.init();
-
+  const app = moduleFixture.createNestApplication<TestApp>();
+  // Igual que `main.ts` (sin el prefijo `/api`): lo que no declara versión es
+  // neutral y lo marcado con `@Version('2')` responde en `/v2/...`.
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: [VERSION_NEUTRAL, '1'],
+  });
+  // Igual que `main.ts`: los errores de dominio se traducen a HTTP.
+  app.useGlobalFilters(
+    new GlobalExceptionFilter(app.get(HttpAdapterHost).httpAdapter),
+  );
+  app.useGlobalPipes(crearValidationPipe());
   const cleanup = async () => {
     await app.close();
     await redisContainer.stop();
     await pgContainer.stop();
   };
+  // El token de prueba es el correo del usuario: sin llamar a Firebase.
+  jest
+    .spyOn(app.get(FirebaseAuthPort), 'verifyIdToken')
+    .mockImplementation((token) =>
+      Promise.resolve({ email: token, uid: token, sub: token } as never),
+    );
+  try {
+    asegurarBaseDescartable(app.get(DataSource), pgContainer);
+    await instalarTriggersDeLaBase(app.get(DataSource));
+    await app.init();
+    await sembrarCatalogoDeAuditoria(app.get(DataSource));
+    // Escucha en loopback con puerto propio: si no, supertest hace un
+    // `listen(0)` por request y a veces le toca un puerto que otro proceso
+    // ya usa en 127.0.0.1.
+    await app.listen(0, '127.0.0.1');
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
 
   return { app, pgContainer, redisContainer, cleanup };
 }
@@ -68,10 +274,182 @@ export async function createTestApp(): Promise<TestEnv> {
  * Helper para que cada suite haga un reset rápido de la BD entre tests
  * sin tener que reiniciar el container completo.
  */
-export async function truncateAllTables(app: INestApplication): Promise<void> {
-  const dataSource = app.get('DataSource' as any);
+const BASE_DE_PRUEBA = 'splg_test';
+
+/**
+ * Corta la suite si la app no quedó conectada a la base del contenedor: un
+ * error de configuración no puede terminar escribiendo (o vaciando) la base
+ * de desarrollo compartida.
+ */
+function asegurarBaseDescartable(
+  dataSource: DataSource,
+  contenedor?: StartedPostgreSqlContainer,
+): void {
+  const opciones = dataSource.options as {
+    host?: string;
+    port?: number;
+    database?: string;
+  };
+  const base = opciones.database;
+  if (base !== BASE_DE_PRUEBA) {
+    throw new Error(
+      `Los tests de integración tienen que correr contra "${BASE_DE_PRUEBA}" y la app está conectada a "${String(base)}"`,
+    );
+  }
+  if (
+    contenedor &&
+    (opciones.host !== contenedor.getHost() ||
+      Number(opciones.port) !== contenedor.getPort())
+  ) {
+    throw new Error(
+      `La app de test no está conectada al contenedor efímero (${String(opciones.host)}:${String(opciones.port)} en vez de ${contenedor.getHost()}:${contenedor.getPort()})`,
+    );
+  }
+}
+
+/**
+ * El esquema sincronizado desde las entidades no trae los triggers que crean las
+ * migraciones: se instalan acá, desde las mismas definiciones (tanda V1: el
+ * estado de un pago no retrocede; tanda V2: transiciones de estado, saldos contra
+ * el libro y reglas de datos). Los fixtures que necesiten escribir un estado o un
+ * saldo directo lo hacen con `conBypass` (`setup/bypass.ts`).
+ */
+async function instalarTriggersDeLaBase(dataSource: DataSource) {
+  await dataSource.query(CREAR_FUNCION_ESTADO_DEL_PAGO);
+  await dataSource.query(CREAR_TRIGGER_ESTADO_DEL_PAGO);
+  await dataSource.query(REEMPLAZAR_FUNCION_ESTADO_DEL_PAGO);
+  await dataSource.query(CREAR_FUNCION_HISTORIAL_DEL_PAGO);
+  await dataSource.query(CREAR_TRIGGER_HISTORIAL_DEL_PAGO);
+  for (const sql of [
+    ...sentenciasDeTransiciones(),
+    ...sentenciasDelLote(),
+    ...sentenciasDeSaldos(),
+    ...sentenciasDeReglasDeDatos(),
+    ...CREAR_PROCEDIMIENTOS_DE_CONCILIACION,
+    // Roles del personal (F37): únicos parciales, rol de sistema por
+    // distribuidora y rol de personal de cada admin.
+    ...sentenciasDeRolesDelPersonal(),
+    // Modo soporte: únicos parciales de las sesiones y registro de sólo agregar.
+    ...sentenciasDeSoporte(),
+    // Mensajería (CH1): únicos parciales, secuencia de tickets, partes,
+    // mensajes inmutables, canales y transiciones del ticket.
+    ...sentenciasDeMensajeria(),
+    ...sentenciasDeLaBandeja(),
+    ...sentenciasDeMensajesRetirados(),
+    ...sentenciasDelPedidoPorChofer(),
+    ...sentenciasDeNotasInternas(),
+    ...sentenciasDeLaEncuesta(),
+    ...sentenciasDeLaEncuestaAnulable(),
+  ]) {
+    await dataSource.query(sql);
+  }
+  // Auditoría de datos (F25): el esquema sincronizado no trae el mapa ni los
+  // triggers; salen de las mismas definiciones que usa la migración.
+  for (const sql of [
+    CREAR_ROL_DE_MANTENIMIENTO,
+    ...CREAR_TABLAS_DEL_MAPA,
+    ...CREAR_FUNCIONES_DE_AUDITORIA,
+  ]) {
+    await dataSource.query(sql);
+  }
+  await dataSource.query('SELECT auditoria_aplicar_mapa($1::jsonb)', [
+    JSON.stringify(mapaDeAuditoria),
+  ]);
+}
+
+/**
+ * El catálogo TipoAccionAuditoria lo siembra la migración; con `DB_SYNC` el
+ * esquema sale de las entidades y hay que sembrarlo. Sin él, toda auditoría
+ * falla por la clave foránea.
+ */
+async function sembrarCatalogoDeAuditoria(dataSource: DataSource) {
+  await dataSource.getRepository(AuditActionType).upsert(
+    Object.entries(AUDIT_ACTION_TYPE_NAMES).map(([id, name]) => ({
+      actionTypeId: Number(id),
+      name,
+    })),
+    ['actionTypeId'],
+  );
+}
+
+export async function truncateAllTables(app: TestApp): Promise<void> {
+  // `app.get('DataSource' as any)` (el token en string) no resuelve: Nest
+  // registra el provider con la CLASE `DataSource` como token, no con el
+  // nombre. Con el import real sí lo encuentra.
+  const dataSource = app.get(DataSource);
+  asegurarBaseDescartable(dataSource);
   const entities = dataSource.entityMetadatas;
   // TRUNCATE CASCADE limpia todas las tablas respetando FKs.
-  const tables = entities.map((e: any) => `"${e.tableName}"`).join(', ');
-  await dataSource.query(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`);
+  // El catálogo de acciones de auditoría es dato de referencia: no se vacía.
+  const tables = entities
+    .filter((e) => e.tableName !== 'audit_action_type')
+    .map((e) => `"${e.tableName}"`)
+    .join(', ');
+  // Un esquema migrado bloquea el TRUNCATE de la auditoría; acá, en el
+  // contenedor de prueba, se deshabilita para poder vaciar todo entre tests.
+  await dataSource.query(`
+    DO $$ BEGIN
+      IF to_regclass('public.audit') IS NOT NULL
+         AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'audit_sin_truncate') THEN
+        ALTER TABLE "audit" DISABLE TRIGGER audit_sin_truncate;
+        ALTER TABLE "audit_detail" DISABLE TRIGGER audit_detail_sin_truncate;
+      END IF;
+    END $$`);
+  // Tras un pedido quedan tareas en segundo plano (auditoría, notificaciones,
+  // despacho) escribiendo: pueden chocar con el TRUNCATE. Se reintenta.
+  for (let intento = 1; ; intento++) {
+    try {
+      await dataSource.query(
+        `TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`,
+      );
+      return;
+    } catch (error) {
+      const codigo = (error as { code?: string }).code;
+      if (intento >= 10 || (codigo !== '40P01' && codigo !== '55P03')) {
+        throw error;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+}
+
+/**
+ * Una distribuidora y un cliente que pasan el `AuthGuard` (rol `customer`):
+ * `headers` va en cada request (el token es el correo, ver `createTestApp`).
+ */
+export async function sembrarClienteAutenticado(app: TestApp): Promise<{
+  distributor: Distributor;
+  user: User;
+  headers: Record<string, string>;
+}> {
+  const dataSource = app.get(DataSource);
+  const sufijo = randomUUID().slice(0, 8);
+  const distributor = await dataSource.getRepository(Distributor).save({
+    name: `Distribuidora ${sufijo}`,
+    slug: `dist-${sufijo}`,
+  } as Partial<Distributor>);
+  const roles = dataSource.getRepository(Role);
+  const rol =
+    (await roles.findOne({ where: { type: 'customer' } })) ??
+    (await roles.save({ type: 'customer' } as Partial<Role>));
+  const email = `cliente.${sufijo}@splg.local`;
+  const user = await dataSource.getRepository(User).save({
+    email,
+    fullName: 'Test Customer',
+    phoneNumber: telefonoDePrueba(),
+    roleId: rol.roleId,
+  } as Partial<User>);
+  await dataSource.getRepository(Customer).save({
+    userId: user.userId,
+    notificationToken: 'fake-fcm',
+  } as Partial<Customer>);
+  return {
+    distributor,
+    user,
+    headers: {
+      Authorization: `Bearer ${email}`,
+      'X-Client-Source': 'customer-app',
+      'X-Distributor': distributor.slug,
+    },
+  };
 }

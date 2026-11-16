@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -13,5 +13,18 @@ export class ConfirmDeliveryDto {
   })
   @IsString()
   @IsNotEmpty()
-  code: string;
+  code!: string;
+
+  @ApiProperty({
+    required: false,
+    minLength: 10,
+    maxLength: 500,
+    description:
+      'Motivo de la entrega. Obligatorio (10 a 500 caracteres) si confirma un ' +
+      'admin/super_admin; para el cliente no se pide y se ignora.',
+    example: 'El cliente no tiene celular: confirmó por teléfono',
+  })
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

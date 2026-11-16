@@ -10,6 +10,10 @@ import { InvalidOrderTransitionError } from './errors/invalid-order-transition.e
  *  - ACCEPTED    → ON_THE_WAY (chofer sale) | PENDING (chofer cancela → re-dispatch)
  *                  | CANCELLED (cliente/admin)
  *  - ON_THE_WAY  → DELIVERED (chofer confirma) | CANCELLED (solo admin)
+ *                  | PENDING (se libera) | ACCEPTED (hoja de ruta: no se pudo
+ *                  entregar y la parada vuelve al final de la cola del MISMO
+ *                  chofer; sólo por la ejecución de la hoja, no por el
+ *                  endpoint genérico de estado)
  *  - DELIVERED / CANCELLED = terminales.
  *
  * NOTA: los estados ARRIVED y SIN_COBERTURA aún no existen en el enum; cuando se
@@ -26,11 +30,14 @@ export const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, OrderStatus[]>> = {
     OrderStatus.CANCELLED,
   ],
   // ON_THE_WAY → DELIVERED (entrega) | CANCELLED (admin) | PENDING (el chofer no
-  // puede completar la entrega en curso → vuelve al pool para re-despacho).
+  // puede completar la entrega en curso → vuelve al pool para re-despacho) |
+  // ACCEPTED (hoja de ruta, F34: no se entregó en el primer intento y la parada
+  // vuelve al final de la cola del mismo chofer).
   [OrderStatus.ON_THE_WAY]: [
     OrderStatus.DELIVERED,
     OrderStatus.CANCELLED,
     OrderStatus.PENDING,
+    OrderStatus.ACCEPTED,
   ],
   [OrderStatus.DELIVERED]: [],
   [OrderStatus.CANCELLED]: [],

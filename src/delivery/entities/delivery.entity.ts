@@ -8,14 +8,23 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Index,
+  Point,
+  Check,
+  Unique,
 } from 'typeorm';
+import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
 import { User } from '../../users/entities/user.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 
+@Check(
+  'CHK_delivery_calificacion',
+  `"calification" IS NULL OR "calification" BETWEEN 0 AND 5`,
+)
+@Unique('UQ_delivery_id_distribuidora', ['deliveryId', 'distributorId'])
 @Entity('delivery')
 export class Delivery {
   @PrimaryGeneratedColumn('uuid', { name: 'delivery_id' })
-  delivery_id: string;
+  deliveryId!: string;
 
   /** Distribuidora para la que trabaja el chofer. Nullable hasta backfill. */
   @Index()
@@ -23,45 +32,102 @@ export class Delivery {
   @JoinColumn({ name: 'distributor_id' })
   distributor?: Distributor;
 
-  @Column({ type: 'uuid', nullable: false })
-  distributor_id?: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+    nullable: false,
+  })
+  distributorId!: string;
 
-  @OneToOne(() => User, (user) => user.delivery, { onDelete: 'CASCADE' })
+  @OneToOne(() => User, (user) => user.delivery, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user!: User;
 
   // Indexado: el radar/dispatch y varios findOne buscan al chofer por user_id.
   @Index()
-  @Column({ type: 'uuid' })
-  user_id: string;
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+  })
+  userId!: string;
 
   @Column({ type: 'double precision', nullable: true })
   calification?: number;
 
-  @Column({ type: 'text', nullable: true })
-  latLng?: string;
+  /** Última ubicación conocida (antes texto "lat,lng" en latLng). */
+  @Index({ spatial: true })
+  @Column({
+    type: 'geometry',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+  })
+  location!: Point | null;
 
-  @Column({ type: 'text', nullable: true })
-  actual_location?: string;
+  @Column({
+    name: 'actual_location',
+    type: 'text',
+    nullable: true,
+  })
+  actualLocation?: string;
 
   @Column({ type: 'real', nullable: true })
   cancelledCharge?: number;
 
   @Column({ type: 'boolean', default: false })
-  validated: boolean;
+  validated!: boolean;
 
+  /**
+   * Habilitación ADMINISTRATIVA: la pone/saca un admin con
+   * `PATCH /delivery/:id/status`. Un chofer deshabilitado no puede ponerse en
+   * línea aunque lo intente desde su app.
+   *
+   * Reemplaza a la vieja columna `isActive`, que mezclaba esto con la
+   * presencia del chofer (ver `isAvailable`): un chofer deshabilitado podía
+   * "conectarse" desde su app y volver a recibir pedidos. La columna
+   * `isActive` sigue existiendo en la base (no se borra ni se renombra: la
+   * sigue usando el proceso viejo mientras conviven ambos) pero este código
+   * ya no la lee ni la escribe.
+   */
   @Column({ type: 'boolean', default: true })
-  isActive: boolean;
+  isEnabled!: boolean;
+
+  /**
+   * Presencia: true mientras el chofer está "en línea" en su app
+   * (`PATCH /delivery/user/:userId/availability`). Sale de línea al
+   * desconectarse, al deshabilitarlo un admin, o al cerrar la app (el gateway
+   * de sockets lo saca del radar al desconectar).
+   */
+  @Column({ type: 'boolean', default: false })
+  isAvailable!: boolean;
+
+  /**
+   * @deprecated Mezclaba habilitación y presencia (ver `isEnabled` e
+   * `isAvailable`). La columna sigue en la base porque el proceso viejo
+   * (`:3100`, sin este cambio) todavía la lee y la escribe mientras conviven
+   * las dos versiones; se mapea acá SOLO para que `migration:generate` no la
+   * vea como una columna huérfana y proponga borrarla. Este código no la lee
+   * ni la escribe: usar `isEnabled`/`isAvailable`.
+   */
+  @Column({ type: 'boolean', default: true })
+  isActive!: boolean;
 
   /** Token FCM del dispositivo del chofer, para push de ofertas/estado. */
-  @Column({ type: 'text', nullable: true })
-  notification_token?: string;
+  @Column({
+    name: 'notification_token',
+    type: 'text',
+    nullable: true,
+  })
+  notificationToken?: string;
 
-  @Column({ type: 'text', nullable: true })
-  isTraveling?: string;
-
-  @Column({ type: 'double precision', default: 0 })
-  balance: number;
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  balance!: number;
 
   @CreateDateColumn({ type: 'timestamptz', nullable: true })
   createdAt?: Date;

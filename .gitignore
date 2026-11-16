@@ -26,6 +26,9 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# --- Carpeta local heredada de las versiones con disco (ya no se usa; sólo evita subir restos) ---
+/storage-local/
+
 # --- ENTORNO Y SECRETOS ---
 .env
 .env.local
@@ -54,7 +57,17 @@ serviceAccountKey.json
 # --- OTROS ---
 .temp/
 .tmp/
+# Vista previa de los correos (npm run email:preview)
+/tmp/
 pids
 *.pid
 *.seed
-*.pid.lock.env.bak*
+*.pid.lock
+.env.bak*
+postman/__pycache__/
+postman/ids.txt
+postman/openapi.json
+scripts/alineacion/newman-*.json
+
+# --- DATOS LOCALES DE MINIO (S3 de desarrollo) ---
+/minio-data/

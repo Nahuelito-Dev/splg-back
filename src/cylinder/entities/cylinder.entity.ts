@@ -8,9 +8,14 @@ import {
   UpdateDateColumn,
   Index,
   Unique,
+  Check,
+  ForeignKey,
 } from 'typeorm';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import { columnNumericTransformer } from '../../common/transformers/column-numeric.transformer';
+import { GasCylinder } from '../../gascylinder/entities/gascylinder.entity';
+import { User } from '../../users/entities/user.entity';
+import { Order } from '../../order/entities/order.entity';
 
 /**
  * Estado del ciclo de vida FÍSICO del envase. No confundir con `OrderStatus`
@@ -23,6 +28,8 @@ export enum CylinderState {
   DISPATCHED = 'dispatched',
   WITH_CUSTOMER = 'with_customer',
   EMPTY_RETURNED = 'empty_returned',
+  /** Dado de baja: estado terminal, ya no vuelve a circular. */
+  RETIRED = 'retired',
 }
 
 /**
@@ -32,28 +39,63 @@ export enum CylinderState {
  * POR distribuidora, no global (dos empresas pueden tener garrafas con el
  * mismo número de serie de fábrica).
  */
+@Check('CHK_cylinder_garantia', `"deposit" >= 0`)
+@Check(
+  'CHK_cylinder_cliente_segun_estado',
+  `("state" = 'with_customer') = ("current_customer_id" IS NOT NULL)`,
+)
+@Check(
+  'CHK_cylinder_vencimiento',
+  `"expires_at" IS NULL OR "manufactured_at" IS NULL OR "expires_at" >= "manufactured_at"`,
+)
+@Check('CHK_cylinder_serial', `btrim("serial") <> ''`)
+@Index('UQ_cylinder_serial_normalizado', { synchronize: false })
+@ForeignKey(
+  () => GasCylinder,
+  ['gas_cylinder_id', 'distributor_id'],
+  ['gas_cylinder_id', 'distributor_id'],
+  { name: 'FK_cylinder_gas_cylinder_distribuidora', onDelete: 'NO ACTION' },
+)
+@ForeignKey(
+  () => Order,
+  ['current_order_id', 'distributor_id'],
+  ['order_id', 'distributor_id'],
+  { name: 'FK_cylinder_current_order_distribuidora', onDelete: 'NO ACTION' },
+)
+@Unique('UQ_cylinder_id_distribuidora', ['cylinderId', 'distributorId'])
 @Entity('cylinder')
-@Unique(['distributor_id', 'serial'])
+@Unique(['distributorId', 'serial'])
 export class Cylinder {
   @PrimaryGeneratedColumn('uuid', { name: 'cylinder_id' })
-  cylinder_id: string;
+  cylinderId!: string;
 
   @Index()
   @ManyToOne(() => Distributor, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'distributor_id' })
-  distributor: Distributor;
+  distributor!: Distributor;
 
-  @Column({ type: 'uuid' })
-  distributor_id: string;
+  @Column({
+    name: 'distributor_id',
+    type: 'uuid',
+  })
+  distributorId!: string;
 
   /** Número de serie físico grabado en el envase. Único por distribuidora. */
   @Index()
   @Column({ type: 'varchar' })
-  serial: string;
+  serial!: string;
 
   /** Tipo de producto al que corresponde (ej. "Garrafa 10kg"), sin relación para simplificar. */
-  @Column({ type: 'uuid', nullable: true })
-  gas_cylinder_id?: string;
+  @Column({
+    name: 'gas_cylinder_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  gasCylinderId!: string | null;
+
+  @ManyToOne(() => GasCylinder, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'gas_cylinder_id' })
+  gasCylinder?: GasCylinder;
 
   @Index()
   @Column({
@@ -61,11 +103,19 @@ export class Cylinder {
     enum: CylinderState,
     default: CylinderState.IN_DEPOT,
   })
-  state: CylinderState;
+  state!: CylinderState;
 
   /** Cliente que tiene actualmente el envase (User user_id), solo seteado en WITH_CUSTOMER. */
-  @Column({ type: 'uuid', nullable: true })
-  current_customer_id?: string | null;
+  @Column({
+    name: 'current_customer_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  currentCustomerId!: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'current_customer_id' })
+  currentCustomer?: User;
 
   /**
    * Pedido en el que el envase salió despachado. Se setea al asignarlo a un
@@ -74,16 +124,49 @@ export class Cylinder {
    * como referencia del último pedido en el que se entregó.
    */
   @Index()
-  @Column({ type: 'uuid', nullable: true })
-  current_order_id?: string | null;
+  @Column({
+    name: 'current_order_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  currentOrderId!: string | null;
+
+  @ManyToOne(() => Order, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'current_order_id' })
+  currentOrder?: Order;
 
   /** Monto de garantía/depósito cobrado por el envase. */
-  @Column({ type: 'decimal', precision: 10, scale: 2, transformer: columnNumericTransformer, default: 0 })
-  deposit: number;
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    transformer: columnNumericTransformer,
+    default: 0,
+  })
+  deposit!: number;
+
+  /** Key de la foto principal en el bucket (`cylinders/{distribuidora}/{id}/{uuid}.{ext}`). */
+  @Column({ name: 'photo_key', type: 'varchar', length: 512, nullable: true })
+  photoKey!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
+
+  @Column({ name: 'manufactured_at', type: 'timestamptz', nullable: true })
+  manufacturedAt!: Date | null;
+
+  @Column({ name: 'last_inspection_at', type: 'timestamptz', nullable: true })
+  lastInspectionAt!: Date | null;
+
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
+  expiresAt!: Date | null;
+
+  /**
+   * Fecha del último movimiento. No es una columna: la calcula el listado
+   * (`CylinderService.findAll`) y queda `undefined` en el resto de las lecturas.
+   */
+  lastMovementAt?: Date | null;
 }

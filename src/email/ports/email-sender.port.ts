@@ -12,6 +12,8 @@ export interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
+  /** Versión en texto plano (la arma `armarCorreo`); opcional para no romper a quien sólo manda HTML. */
+  text?: string;
 }
 
 export abstract class EmailSenderPort {

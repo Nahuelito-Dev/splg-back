@@ -1,15 +1,22 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, EntityManager, IsNull, Not } from 'typeorm';
 import { Admin } from './entities/admin.entity';
-import { Role } from '../role/entities/role.entity';
+import { Distributor } from '../distributor/entities/distributor.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CreateAdminDto } from './dto/create-admin.dto';
-import { UsersService } from '../users/users.service';
-import { RegisterAdminDto } from './dto/register-admin.dto';
-import * as AdminRegistrationHelper from './helpers/admin-registration.helper';
-import { UpdateAdminDto } from './dto/update-admin.dto';
 import { isUUID } from 'class-validator';
+import { UsersService } from '../users/users.service';
+import { RoleService } from '../role/role.service';
+import { normalizarEmail } from '../common/utils/email.util';
+import { UpdateAdminDto } from './dto/update-admin.dto';
+import { MessageResponseDto } from '../common/dtos/message-response.dto';
 
 @Injectable()
 export class AdminService {
@@ -18,155 +25,266 @@ export class AdminService {
   constructor(
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
     private readonly usersService: UsersService,
+    private readonly roleService: RoleService,
   ) {}
 
-  /** True si el role_id corresponde al rol super_admin (para evitar escalada). */
-  async isSuperAdminRole(roleId: string): Promise<boolean> {
-    const role = await this.roleRepository.findOne({
-      where: { role_id: roleId },
+  /**
+   * El perfil de administrador de un usuario recién creado, dentro de la
+   * transacción del alta (RegistroService). `distributorId` en null sólo
+   * para el super administrador.
+   */
+  async crearPerfil(
+    manager: EntityManager,
+    userId: string,
+    distributorId: string | null,
+  ): Promise<void> {
+    const repo = manager.getRepository(Admin);
+    await repo.save(repo.create({ userId, distributorId }));
+  }
+
+  /** Si ya hay algún super administrador (el comando de arranque crea el primero). */
+  async existeSuperAdmin(): Promise<boolean> {
+    const cantidad = await this.adminRepository.count({
+      where: { user: { role: { type: RoleType.SUPER_ADMIN } } },
     });
-    return role?.type === RoleType.SUPER_ADMIN;
-  }
-
-  // ✅ CORREGIR el tipo del parámetro
-  async registerAdmin(registerAdminDto: RegisterAdminDto) {
-    this.logger.log('🚀 [CREATE] Iniciando creación de Admin');
-
-    // 1. Validar unicidad
-    await AdminRegistrationHelper.validateUniqueness(
-      registerAdminDto,
-      this.usersService,
-    );
-
-    // 2. Crear en Firebase
-    const firebaseUser = await AdminRegistrationHelper.createUserInFirebase(
-      registerAdminDto,
-      this.usersService,
-    );
-
-    // 3. Crear en base de datos local
-    const user = await AdminRegistrationHelper.createUserInDatabase(
-      registerAdminDto,
-      firebaseUser.uid,
-      this.usersService,
-    );
-
-    // 4. Crear entidad Admin (user_id se obtiene del user creado). El
-    // distributor_id define el tenant del admin (null = super_admin cross-tenant).
-    const adminData: CreateAdminDto = {
-      user_id: user.user_id, // ✅ Se obtiene del user recién creado
-      role_id: registerAdminDto.role_id,
-      distributor_id: registerAdminDto.distributorId,
-    };
-
-    const admin = await this.create(adminData);
-
-    this.logger.log(`✅ Admin creado exitosamente: ${admin.admin_id}`);
-    return {
-      message: 'Admin registered successfully',
-      admin,
-      user,
-    };
-  }
-
-  async create(createAdminDto: CreateAdminDto) {
-    const admin = this.adminRepository.create(createAdminDto);
-    return await this.adminRepository.save(admin);
+    return cantidad > 0;
   }
 
   /**
-   * Lista admins. Scopeado por tenant: si viene `distributorId` (admin de
+   * Alta directa de un perfil de administrador sobre un usuario existente
+   * (sólo el super administrador). El perfil tiene que coincidir con el rol
+   * del usuario: sin esta regla, a un cliente o un chofer se le colgaba un
+   * perfil de admin de una empresa y pasaba a "pertenecer" a ella.
+   */
+  async create(
+    createAdminDto: CreateAdminDto,
+    distribuidoraElegida: string | null = null,
+  ): Promise<Admin> {
+    const { user_id, distributor_id } = createAdminDto;
+    const usuario = await this.usersService.findById(user_id);
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    const rol = usuario.roleId
+      ? await this.roleService.findOne(usuario.roleId)
+      : null;
+    // `role.type` es texto libre en la base; se compara contra el valor del enum.
+    const esAdminDeEmpresa = rol?.type === String(RoleType.ADMIN);
+    const esSuperAdmin = rol?.type === String(RoleType.SUPER_ADMIN);
+    if (!esAdminDeEmpresa && !esSuperAdmin) {
+      throw new BadRequestException(
+        'Sólo un usuario administrador o super administrador tiene perfil de administrador',
+      );
+    }
+    if (esAdminDeEmpresa !== Boolean(distributor_id)) {
+      throw new BadRequestException(
+        'Un admin de empresa lleva distribuidora y el super administrador no',
+      );
+    }
+    // Alta de plataforma (el super admin fuera de soporte no tiene empresa en
+    // contexto: el modo soporte es de sólo lectura): la empresa es la del
+    // cuerpo, y tiene que existir y estar vigente. Con una empresa en contexto,
+    // tiene que coincidir con ella.
+    if (esAdminDeEmpresa) {
+      if (!distribuidoraElegida) {
+        const existe = await this.adminRepository.manager.exists(Distributor, {
+          where: { distributorId: distributor_id },
+        });
+        if (!existe) {
+          throw new NotFoundException('Distribuidora no encontrada');
+        }
+      } else if (distributor_id !== distribuidoraElegida) {
+        throw new BadRequestException(
+          'La distribuidora del perfil no coincide con la elegida (X-Distributor)',
+        );
+      }
+    }
+    if (await this.adminRepository.exists({ where: { userId: user_id } })) {
+      throw new ConflictException(
+        'El usuario ya tiene perfil de administrador',
+      );
+    }
+    const admin = this.adminRepository.create({
+      userId: user_id,
+      distributorId: distributor_id ?? null,
+    });
+    const guardado = await this.adminRepository.save(admin);
+    // El rol de personal lo pone la base al insertar (rol de sistema): se relee
+    // para que la respuesta lo traiga como en GET /admin.
+    return (
+      (await this.adminRepository.findOne({
+        where: { adminId: guardado.adminId },
+        relations: ['staffRole'],
+      })) ?? guardado
+    );
+  }
+
+  /**
+   * Lista admins (los dados de baja no aparecen). Scopeado por tenant: si viene `distributorId` (admin de
    * distribuidora, o super_admin con "ver como") devuelve solo los de esa
    * empresa; sin él (super_admin cross-tenant) devuelve todos.
    */
-  async findAll(distributorId?: string | null) {
+  async findAll(distributorId?: string | null): Promise<Admin[]> {
     return await this.adminRepository.find({
-      where: distributorId ? { distributor_id: distributorId } : {},
-      relations: ['user', 'role', 'distributor'],
+      where: {
+        ...(distributorId ? { distributorId } : {}),
+        user: { userId: Not(IsNull()) },
+      },
+      relations: ['user', 'user.role', 'distributor', 'staffRole'],
     });
   }
 
-  async findOne(id: string) {
+  /**
+   * Correos de los administradores en actividad de una distribuidora: perfil de
+   * admin de ella, usuario no bloqueado ni dado de baja y con correo cargado.
+   * El super admin no entra: no es de ninguna distribuidora.
+   */
+  async emailsDeAdminsActivos(distributorId: string): Promise<string[]> {
+    const admins = await this.adminRepository
+      .createQueryBuilder('a')
+      .innerJoinAndSelect('a.user', 'u')
+      .innerJoin('u.role', 'r')
+      .where('a.distributorId = :distributorId', { distributorId })
+      .andWhere('u.blocked = false')
+      .andWhere('u.deletedAt IS NULL')
+      .andWhere('u.email IS NOT NULL')
+      .andWhere('r.type = :tipo', { tipo: RoleType.ADMIN })
+      .getMany();
+    return [
+      ...new Set(admins.flatMap((a) => (a.user.email ? [a.user.email] : []))),
+    ];
+  }
+
+  async findOne(id: string): Promise<Admin> {
     const admin = await this.adminRepository.findOne({
-      where: { admin_id: id },
-      relations: ['user', 'role'],
+      where: { adminId: id },
+      relations: ['user', 'user.role', 'staffRole'],
     });
 
     if (!admin) {
-      throw new NotFoundException(`Admin with ID: ${id} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
 
     return admin;
   }
 
-  // ✅ MÉTODO REQUERIDO: Buscar admin por email del usuario
+  /**
+   * Ficha del administrador (con usuario, rol y distribuidora). Con
+   * distribuidora en contexto sólo encuentra a los de ella: los de otra, los
+   * super admin y los dados de baja responden 404.
+   */
+  async findDetail(
+    id: string,
+    distributorId: string | null = null,
+  ): Promise<Admin> {
+    const admin = await this.adminRepository.findOne({
+      where: {
+        adminId: id,
+        ...(distributorId ? { distributorId } : {}),
+        user: { userId: Not(IsNull()) },
+      },
+      relations: ['user', 'user.role', 'distributor', 'staffRole'],
+    });
+    if (!admin) {
+      throw new NotFoundException('Administrador no encontrado');
+    }
+    return admin;
+  }
+
+  /**
+   * ¿La distribuidora del administrador está dada de baja? Se lee aparte, con
+   * `withDeleted` sólo sobre la distribuidora: el administrador en sí se sigue
+   * buscando entre los vigentes (uno ya dado de baja es 404).
+   */
+  async esDeUnaDistribuidoraEliminada(admin: Admin): Promise<boolean> {
+    if (!admin.distributorId) return false;
+    const distribuidora = await this.adminRepository.manager.findOne(
+      Distributor,
+      {
+        where: { distributorId: admin.distributorId },
+        withDeleted: true,
+        select: { distributorId: true, deletedAt: true },
+      },
+    );
+    return Boolean(distribuidora?.deletedAt);
+  }
+
   async findOneByEmail(email: string): Promise<Admin> {
     const admin = await this.adminRepository
       .createQueryBuilder('admin')
       .leftJoinAndSelect('admin.user', 'user')
-      .leftJoinAndSelect('admin.role', 'role')
-      .where('user.email = :email', { email })
+      .leftJoinAndSelect('user.role', 'role')
+      .where('LOWER(user.email) = :email', { email: normalizarEmail(email) })
       .getOne();
 
     if (!admin) {
-      throw new NotFoundException(`Admin with email: ${email} not found`);
+      throw new NotFoundException('Administrador no encontrado');
     }
 
     return admin;
   }
 
-  async findAdminByTerm(term: string) {
+  /**
+   * Con distribuidora en contexto sólo encuentra a los admins de ella: los de
+   * otra, y los super admin, responden 404.
+   */
+  async findAdminByTerm(
+    term: string,
+    distributorId: string | null = null,
+  ): Promise<Admin> {
     this.logger.debug(`🔍 Buscando admin con term: ${term}`);
 
     const queryBuilder = this.adminRepository
       .createQueryBuilder('admin')
-      .leftJoinAndSelect('admin.user', 'user') // ✅ CORRECTO
-      .leftJoinAndSelect('admin.role', 'role'); // ✅ CORRECTO
+      .leftJoinAndSelect('admin.user', 'user')
+      .leftJoinAndSelect('user.role', 'role');
 
     const admin = isUUID(term)
       ? await queryBuilder
-          .where('admin.admin_id = :admin_id', { admin_id: term })
+          .where('admin.adminId = :admin_id', { admin_id: term })
           .getOne()
       : await queryBuilder
-          .where('user.email = :email', { email: term }) // ✅ CORRECTO - busca en user.email
+          .where('LOWER(user.email) = :email', {
+            email: normalizarEmail(term),
+          })
           .getOne();
 
-    this.logger.debug(`🔍 Resultado de búsqueda: ${JSON.stringify(admin)}`);
-
-    if (!admin) throw new NotFoundException(`Admin with ${term} not found`);
-
-    const result = {
-      admin_id: admin.admin_id,
-      email: admin.user?.email, // ✅ Del User
-      displayName: admin.user?.full_name, // ✅ Del User
-      fullName: admin.user?.full_name, // ✅ Del User
-      rol: admin.role?.type, // ✅ Del Role
-      uid: admin.user?.firebase_uid, // ✅ Del User
-    };
-
-    this.logger.debug(`🔍 Datos formateados: ${JSON.stringify(result)}`);
-    return result;
-  }
-
-  async update(id: string, updateAdminDto: UpdateAdminDto) {
-    const admin = await this.adminRepository.preload({
-      admin_id: id,
-      ...updateAdminDto,
-    });
-
-    if (!admin) {
-      throw new NotFoundException(`Admin with ID: ${id} not found`);
+    if (!admin || (distributorId && admin.distributorId !== distributorId)) {
+      throw new NotFoundException('Administrador no encontrado');
     }
 
-    return await this.adminRepository.save(admin);
+    return admin;
   }
 
-  async remove(id: string) {
-    const admin = await this.findOne(id);
-    await this.adminRepository.delete(id);
-    return { message: 'Admin deleted successfully' };
+  /**
+   * Edita los datos de la persona del administrador (nombre y teléfono). El
+   * correo no: es su identidad de acceso y cambia por `POST /email/change-email`.
+   * Con distribuidora en contexto sólo encuentra a los de ella (404).
+   */
+  async update(
+    id: string,
+    dto: UpdateAdminDto,
+    distributorId: string | null,
+  ): Promise<Admin> {
+    const admin = await this.findDetail(id, distributorId);
+    await this.usersService.update(admin.userId, {
+      full_name: dto.fullName,
+      phone_number: dto.phoneNumber,
+    });
+    return this.findDetail(id, distributorId);
+  }
+
+  /**
+   * Baja lógica del administrador: es la baja del usuario (`UsersService.remove`:
+   * `deletedAt`, cuenta de acceso deshabilitada, nada se borra), con su regla
+   * de no dejar a la distribuidora ni a la plataforma sin administrador activo (409).
+   */
+  async remove(
+    id: string,
+    distributorId: string | null,
+  ): Promise<MessageResponseDto> {
+    const admin = await this.findDetail(id, distributorId);
+    return this.usersService.remove(admin.userId);
   }
 }

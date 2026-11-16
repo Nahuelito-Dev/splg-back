@@ -1,0 +1,119 @@
+import Decimal from 'decimal.js';
+import {
+  CashBoxKind,
+  CashDirection,
+  CashReferenceType,
+  CategoryDirection,
+} from './cash.enums';
+
+/** Saldo de la caja después de aplicar un movimiento (exacto, sin flotantes). */
+export function saldoDespuesDe(
+  saldo: Decimal.Value,
+  direccion: CashDirection,
+  importe: Decimal.Value,
+): Decimal {
+  const base = new Decimal(saldo);
+  return direccion === CashDirection.IN
+    ? base.plus(importe)
+    : base.minus(importe);
+}
+
+/** Una caja de efectivo no puede quedar en negativo; banco y billetera sí. */
+export function dejaSaldoNegativoEnEfectivo(
+  tipo: CashBoxKind,
+  saldoResultante: Decimal.Value,
+): boolean {
+  return tipo === CashBoxKind.CASH && new Decimal(saldoResultante).isNegative();
+}
+
+/** La categoría tiene que ser del mismo sentido que el movimiento. */
+export function categoriaCoincideConElSentido(
+  direccion: CashDirection,
+  categoria: CategoryDirection,
+): boolean {
+  return direccion === CashDirection.IN
+    ? categoria === CategoryDirection.INCOME
+    : categoria === CategoryDirection.EXPENSE;
+}
+
+export function sentidoOpuesto(direccion: CashDirection): CashDirection {
+  return direccion === CashDirection.IN ? CashDirection.OUT : CashDirection.IN;
+}
+
+/**
+ * Arqueo: lo esperado es la apertura más lo que se movió en la sesión (las
+ * entradas suman y las salidas restan); la diferencia es lo contado menos lo
+ * esperado (negativa: faltante; positiva: sobrante).
+ */
+export function arqueo(
+  apertura: Decimal.Value,
+  entradas: Decimal.Value,
+  salidas: Decimal.Value,
+  contado: Decimal.Value,
+): { esperado: Decimal; diferencia: Decimal } {
+  const esperado = new Decimal(apertura).plus(entradas).minus(salidas);
+  return { esperado, diferencia: new Decimal(contado).minus(esperado) };
+}
+
+/** Una caja nueva de efectivo exige sesión por omisión; banco y billetera no. */
+export function requiereSesionPorOmision(tipo: CashBoxKind): boolean {
+  return tipo === CashBoxKind.CASH;
+}
+
+/**
+ * Sólo los movimientos manuales se anulan con un contraasiento suelto: los
+ * demás nacen de un documento (rendición, cobro, liquidación…) que tiene su
+ * propia corrección, y anularlos a mano dejaría la caja y el documento en
+ * desacuerdo. `null` si se puede anular; si no, por dónde se corrige.
+ */
+export function motivoDeNoAnulable(tipo: CashReferenceType): string | null {
+  switch (tipo) {
+    case CashReferenceType.MANUAL:
+      return null;
+    case CashReferenceType.BOX_TRANSFER:
+      return 'Es una pata de una transferencia entre cajas: anulá la transferencia completa (POST /cash-movements/:id/reverse-transfer)';
+    case CashReferenceType.DRIVER_LIQUIDATION:
+      return 'Es el pago de una liquidación de comisiones: se corrige anulando el pago de la liquidación (PATCH /driver-liquidations/:id/unpay)';
+    case CashReferenceType.CUSTOMER_PAYMENT:
+      return 'Es el cobro de una cuenta corriente: se corrige con un ajuste en la cuenta corriente del cliente';
+    case CashReferenceType.DRIVER_SETTLEMENT:
+      return 'Es el efectivo de una rendición aprobada: una aprobada no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.SESSION_OPENING:
+    case CashReferenceType.SESSION_CLOSING:
+      return 'Es un ajuste de apertura o de arqueo de una sesión de caja: se corrige con la sesión siguiente o con un movimiento manual que lo explique';
+    case CashReferenceType.PURCHASE_RECEIPT:
+      return 'Es el pago en efectivo de una compra a la planta: se corrige marcando la recepción como impaga (PATCH /purchase-receipts/:id/payment-status), que asienta el contraasiento';
+    case CashReferenceType.FUEL_LOAD:
+      return 'Es el pago en efectivo de una carga de combustible: se corrige anulando la carga (DELETE /fleet/fuel-loads/:id), que asienta el contraasiento';
+    case CashReferenceType.TRAFFIC_FINE:
+      return 'Es el pago en efectivo de una multa: una multa pagada no se anula ni se edita; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.ORDER_PAYMENT:
+      return 'Es el cobro en efectivo de un pedido. Si la caja fue la equivocada, se corrige con una transferencia entre cajas (CU-310); el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
+    case CashReferenceType.INSURANCE_INSTALLMENT:
+      return 'Es el pago de una cuota de seguro: una cuota paga no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.MAINTENANCE_TASK:
+      return 'Es el pago de un servicio de la flota: una tarea paga no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.TIRE:
+      return 'Es el pago de la compra de un neumático: un neumático pago no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.VEHICLE_ACCIDENT:
+      return 'Es lo que pagó la empresa por un siniestro: un pago registrado no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.INSURANCE_REIMBURSEMENT:
+      return 'Es el reintegro que pagó el seguro por un siniestro: un reintegro registrado no se reabre; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.PAYMENT:
+      return 'Es un cobro aprobado de Mercado Pago: se corrige con la devolución del pago al cliente, que asienta su egreso';
+    case CashReferenceType.PAYMENT_FEE:
+      return 'Es la comisión que retuvo Mercado Pago de un cobro: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.PAYMENT_REFUND:
+      return 'Es la devolución de un cobro de Mercado Pago al cliente: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.PAYMENT_EXTERNAL_REFUND:
+      return 'Es una devolución o contracargo que hizo Mercado Pago: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.ORDER_DEPOSIT:
+      return 'Es la seña de una reserva: si la caja fue la equivocada, se corrige con una transferencia entre cajas; el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
+    case CashReferenceType.ORDER_TRANSFER:
+      return 'Es una transferencia confirmada de un pedido: si la caja fue la equivocada, se corrige con una transferencia entre cajas; el importe no se corrige desde caja: registrá un ajuste o egreso manual con motivo';
+    case CashReferenceType.MP_RECONCILIATION:
+      return 'Es un ajuste asentado desde una conciliación con Mercado Pago: no se anula; el desvío se corrige con un movimiento manual que lo explique';
+    case CashReferenceType.REVERSAL:
+      return 'Es una anulación: no se anula. Si estuvo mal, registrá un movimiento nuevo';
+  }
+}

@@ -2,57 +2,84 @@
 import {
   IsUUID,
   IsString,
+  IsInt,
   IsNumber,
   IsOptional,
+  Max,
   IsEnum,
+  ArrayNotEmpty,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsDateString,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
-import { PaymentMethod } from '../entities/order.entity';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OrderDeliveryMode, PaymentMethod } from '../entities/order.entity';
+import { SetOrderReceiverDto } from './set-order-receiver.dto';
 
 export class OrderItemDto {
   @ApiProperty({ description: 'ID de la garrafa' })
   @IsUUID()
-  gasCylinderId: string;
+  gasCylinderId!: string;
 
-  @ApiProperty({ description: 'Cantidad' })
-  @IsNumber()
-  quantity: number;
+  @ApiProperty({ description: 'Cantidad (entero, mínimo 1)', minimum: 1 })
+  @IsInt()
+  @Min(1)
+  quantity!: number;
 
   @ApiProperty({ description: 'Precio unitario' })
   @IsNumber()
-  unitPrice: number;
+  unitPrice!: number;
 }
 
 export class CreateOrderDto {
   @ApiProperty({ description: 'ID del cliente' })
   @IsUUID()
-  customerId: string;
+  customerId!: string;
 
   @ApiProperty({ description: 'ID de la dirección de entrega' })
   @IsUUID()
-  addressId: string;
+  addressId!: string;
 
-  @ApiProperty({ description: 'Ítems del pedido', type: [OrderItemDto] })
+  @ApiProperty({
+    description:
+      'Ítems del pedido. Obligatorio salvo con `fromCart: true`, que los toma del carrito (con ambos, 400)',
+    type: [OrderItemDto],
+    required: false,
+  })
+  @ValidateIf(
+    (o: CreateOrderDto) => o.fromCart !== true || o.items !== undefined,
+  )
   @IsArray()
+  @ArrayNotEmpty({ message: 'El pedido necesita al menos un renglón' })
+  @ArrayUnique((item: OrderItemDto) => item.gasCylinderId, {
+    message:
+      'items no puede repetir la misma garrafa (sumá las cantidades en un solo renglón)',
+  })
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
-  items: OrderItemDto[];
+  items?: OrderItemDto[];
+
+  @ApiProperty({
+    description:
+      'Checkout del carrito (CU-126): los ítems salen del carrito del cliente en la distribuidora del header `X-Distributor`, se cobra el precio vigente del catálogo y el carrito se vacía en la misma transacción que el pedido. Sin `items` en el cuerpo. Sólo el cliente; carrito vacío o con productos dados de baja es 400.',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  fromCart?: boolean;
 
   @ApiProperty({
     description: 'Método de pago',
     enum: PaymentMethod,
     example: PaymentMethod.CASH,
   })
-  @IsEnum(PaymentMethod, {
-    message: `paymentMethod debe ser uno de: ${Object.values(PaymentMethod).join(', ')}`,
-  })
-  paymentMethod: PaymentMethod;
+  @IsEnum(PaymentMethod)
+  paymentMethod!: PaymentMethod;
 
   @ApiProperty({ description: 'Notas adicionales', required: false })
   @IsOptional()
@@ -64,7 +91,10 @@ export class CreateOrderDto {
   @IsString()
   notificationToken?: string;
 
-  @ApiProperty({ description: 'ID del turno de entrega (TimeSlot)', required: false })
+  @ApiProperty({
+    description: 'ID del turno de entrega (TimeSlot)',
+    required: false,
+  })
   @IsOptional()
   @IsUUID()
   timeSlotId?: string;
@@ -92,11 +122,47 @@ export class CreateOrderDto {
   isReservation?: boolean;
 
   @ApiProperty({
-    description: 'Monto de la seña de la reserva (obligatorio si isReservation).',
+    description:
+      'Monto de la seña de la reserva. Con MercadoPago es obligatorio y mayor a cero (se cobra online y activa la reserva): 400 si falta o es 0. Con otros medios, omitirlo equivale a 0. No puede superar el total del pedido (con recargos): 400 «La seña ($X) no puede superar el total del pedido ($Y)».',
     required: false,
   })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   depositAmount?: number;
+
+  @ApiPropertyOptional({
+    type: SetOrderReceiverDto,
+    description:
+      'Quién va a recibir el pedido (CU-128): mismas reglas que `PATCH /orders/:id/receiver`.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SetOrderReceiverDto)
+  receiver?: SetOrderReceiverDto;
+
+  @ApiProperty({
+    description:
+      'Modalidad de entrega (CU-148). `standard` (por omisión) es el reparto común; ' +
+      '`express` sale a un chofer en moto con el recargo express de la distribuidora. ' +
+      'Se vuelve a evaluar al crear el pedido: si no hay cobertura, horario o una moto ' +
+      'disponible responde 409 con `reason`. No se combina con reserva, franja ni fecha agendada.',
+    enum: OrderDeliveryMode,
+    required: false,
+    example: OrderDeliveryMode.STANDARD,
+  })
+  @IsOptional()
+  @IsEnum(OrderDeliveryMode)
+  deliveryMode?: OrderDeliveryMode;
+
+  @ApiPropertyOptional({
+    description:
+      'Total que el cliente vio en la cotización (`total` de `POST /orders/quote`). Si viene y el total que calcula el alta es otro (cambió una promoción, el recargo por medio de pago, la zona…), responde 409 «Cambió el precio: revisá el total y confirmá de nuevo» y no crea nada. Omitido, el alta no compara.',
+    example: 55781,
+  })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  expectedTotal?: number;
 }

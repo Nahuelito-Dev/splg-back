@@ -2,57 +2,116 @@ import {
   Body,
   Controller,
   HttpCode,
+  HttpException,
   HttpStatus,
   Post,
   Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { AuthService, MENSAJE_CREDENCIALES } from './auth.service';
+import { LoginDto, SesionIniciadaDto, TokenValidoResponseDto } from './dto';
 import { Public } from '../common/decorators/isPublic.decorator';
-import type { Response, Request } from 'express'; // ← AGREGAR Request
+import {
+  CanalDeIngreso,
+  SesionAuditService,
+} from '../audit/data/sesion-audit.service';
+import { errorCode } from '../common/errors/error-message';
+import { Alcance } from '../common/decorators/alcance.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly sesiones: SesionAuditService,
+  ) {}
 
   @Post()
-  checkToken() {
+  @Alcance('ambos')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Validar el token de sesión',
+    description:
+      'Si la petición llega acá, el guard ya validó el token y la cuenta.',
+  })
+  @ApiCreatedResponse({ type: TokenValidoResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o vencido' })
+  checkToken(): TokenValidoResponseDto {
     return this.authService.checkIfTokenValid();
   }
 
-  // Login = superficie de fuerza bruta / credential stuffing: límite MUCHO
-  // más estricto que el global (100/min) para frenar intentos automatizados
-  // sin afectar a un usuario real reintentando una contraseña.
+  // El cupo estricto de acceso NO va por IP: lo lleva el throttler 'cuenta'
+  // (8/min por cuenta, ver AppThrottlerGuard). Acá queda el cupo por IP del
+  // throttler por defecto, que es el techo amplio contra un host que pruebe
+  // muchas cuentas. Ponerle 8 por IP volvería a bloquear entre sí a los
+  // usuarios que comparten IP pública.
   @Public()
-  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async Login(@Body() dto: LoginDto) {
-    return await this.authService.login(dto);
+  @ApiOperation({ summary: 'Iniciar sesión desde las apps' })
+  @ApiOkResponse({ type: SesionIniciadaDto })
+  @ApiUnauthorizedResponse({
+    description:
+      'Email o contraseña incorrectos (misma respuesta para un usuario inexistente y para una contraseña equivocada) o cuenta dada de baja (Firebase la rechaza antes de mirar la clave: misma respuesta, no revela que existe). Con la clave correcta, una cuenta bloqueada recibe `La cuenta no está habilitada`',
+  })
+  @ApiBadRequestResponse({
+    description: 'Falta el correo o la contraseña, o no son válidos',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Demasiados intentos fallidos' })
+  @ApiServiceUnavailableResponse({
+    description:
+      'El proveedor de acceso no responde: probar de nuevo en unos minutos',
+  })
+  login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+  ): Promise<SesionIniciadaDto> {
+    return this.auditado(dto, req, 'app', () => this.authService.login(dto));
   }
 
+  // Mismo criterio de cupo que el login de las apps.
   @Public()
-  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login/dashboard')
   @HttpCode(HttpStatus.OK)
-  async DashboardLogin(
+  @ApiOperation({ summary: 'Iniciar sesión en el panel' })
+  @ApiOkResponse({ type: SesionIniciadaDto })
+  @ApiUnauthorizedResponse({
+    description:
+      'Email o contraseña incorrectos, cuenta no habilitada o no es de un administrador',
+  })
+  @ApiBadRequestResponse({
+    description: 'Falta el correo o la contraseña, o no son válidos',
+  })
+  @ApiTooManyRequestsResponse({ description: 'Demasiados intentos fallidos' })
+  @ApiServiceUnavailableResponse({
+    description:
+      'El proveedor de acceso no responde: probar de nuevo en unos minutos',
+  })
+  async dashboardLogin(
     @Body() dto: LoginDto,
-    @Res({ passthrough: true }) res: Response,
     @Req() req: Request,
-  ) {
-    const requestSource = req.headers['x-client-source'] as string;
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SesionIniciadaDto> {
+    const sesion = await this.auditado(dto, req, 'panel', async () => {
+      const iniciada = await this.authService.login(dto);
+      await this.authService.loginDashboard(iniciada.accessToken);
+      return iniciada;
+    });
 
-    const creds = await this.authService.login(dto, requestSource);
-
-    const accessToken = (creds.user as any).stsTokenManager.accessToken;
-
-    await this.authService.loginDashboard(accessToken);
-
-    res.cookie('token', accessToken, {
+    res.cookie('token', sesion.accessToken, {
       httpOnly: true,
       secure: true,
       sameSite: 'strict',
@@ -60,6 +119,49 @@ export class AuthController {
       maxAge: 1000 * 60 * 60,
     });
 
-    return creds;
+    return sesion;
   }
+
+  /** Corre el ingreso y deja asentado en la auditoría si salió bien o falló. */
+  private async auditado(
+    dto: LoginDto,
+    req: Request,
+    canal: CanalDeIngreso,
+    ingresar: () => Promise<SesionIniciadaDto>,
+  ): Promise<SesionIniciadaDto> {
+    const cabecera = req.headers['x-client-source'];
+    const evento = {
+      email: dto.email,
+      canal,
+      origen: typeof cabecera === 'string' ? cabecera : null,
+      ip: typeof req.ip === 'string' ? req.ip : null,
+    };
+    try {
+      const sesion = await ingresar();
+      await this.sesiones.registrarIngreso({ ...evento, ok: true });
+      return sesion;
+    } catch (error) {
+      await this.sesiones.registrarIngreso({
+        ...evento,
+        ok: false,
+        motivo: motivoDelRechazo(error),
+      });
+      throw error;
+    }
+  }
+}
+
+/** Texto fijo del porqué: nunca el mensaje de Firebase ni datos de la cuenta. */
+function motivoDelRechazo(error: unknown): string {
+  if (error instanceof UnauthorizedException) {
+    const mensaje = error.message;
+    if (mensaje === MENSAJE_CREDENCIALES) return 'credenciales incorrectas';
+    if (mensaje === 'Administrador no encontrado')
+      return 'la cuenta no es de un administrador';
+    return 'cuenta no habilitada';
+  }
+  if (error instanceof HttpException && error.getStatus() === 429) {
+    return 'demasiados intentos';
+  }
+  return errorCode(error) ?? 'servicio no disponible';
 }

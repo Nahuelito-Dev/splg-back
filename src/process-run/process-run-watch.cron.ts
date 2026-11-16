@@ -1,0 +1,169 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { pedirAvisoAlAdmin } from '../common/events/aviso-al-admin';
+import { diaArgentino, ZONA_ARGENTINA } from '../common/utils/dias-argentina';
+import { DistributorService } from '../distributor/distributor.service';
+import { DistributorStatus } from '../distributor/entities/distributor.entity';
+import {
+  CATALOGO,
+  periodoEsperadoSeg,
+  ProcessHealth,
+  ProcessName,
+  ProcessRunStatus,
+} from './domain/process-catalog';
+import { FACTOR_DE_ATRASO, SALUD_CON_ALERTA } from './domain/process-health';
+import { ProcessRun } from './entities/process-run.entity';
+import { ConRegistro } from './process-run.recorder';
+import { ProcessRunService } from './process-run.service';
+import { sanitizarError } from './domain/sanitizar-error';
+
+export const RETENCION_POR_DEFECTO_DIAS = 30;
+/** Una corrida `running` más vieja que esto se cierra como fallida: el proceso murió sin terminarla. */
+const ABANDONO_HORAS = 24;
+
+const TEXTO: Partial<Record<ProcessHealth, string>> = {
+  [ProcessHealth.LATE]: 'no corrió a tiempo',
+  [ProcessHealth.FAILED]: 'terminó con error',
+  [ProcessHealth.STUCK]: 'quedó trabado',
+  [ProcessHealth.NEVER]: 'todavía no corrió',
+};
+
+/**
+ * Vigila los procesos automáticos (F31): cada cinco minutos avisa a la
+ * plataforma (bandeja del administrador general) de los que están atrasados,
+ * fallaron o quedaron colgados, y
+ * una vez por día purga el historial viejo sin perder la última corrida de
+ * cada proceso. El aviso no se repite en el día (dedupe por proceso, estado y día).
+ */
+@Injectable()
+export class ProcessRunWatchCron {
+  private readonly logger = new Logger(ProcessRunWatchCron.name);
+
+  constructor(
+    @InjectRepository(ProcessRun)
+    private readonly runs: Repository<ProcessRun>,
+    private readonly service: ProcessRunService,
+    private readonly distributors: DistributorService,
+    private readonly events: EventEmitter2,
+    private readonly config: ConfigService,
+  ) {}
+
+  @Cron('0 */5 * * * *')
+  @ConRegistro(ProcessName.PROCESS_RUN_WATCH)
+  async vigilar(
+    ahora: Date = new Date(),
+  ): Promise<{ alerts: number; closed: number }> {
+    const closed = await this.cerrarAbandonadas(ahora);
+    const estados = await this.service.estados(null, ahora);
+    // El nombre de cada empresa, para el texto del aviso (una sola consulta).
+    const nombres = new Map(
+      (await this.distributors.findAll()).map((d) => [d.distributorId, d]),
+    );
+    const dia = diaArgentino(ahora);
+    const desde = await this.primeraCorrida();
+    let alerts = 0;
+    for (const e of estados) {
+      // La vigilancia no se avisa a sí misma: si no corre, nadie la ve.
+      if (e.proceso === ProcessName.PROCESS_RUN_WATCH) continue;
+      if (!this.merecedoDeAviso(e.salud, e.proceso, desde, ahora)) continue;
+      // El monitoreo es de la plataforma: un proceso atrasado, fallido o
+      // trabado es un problema técnico, que se avisa a la bandeja de la
+      // plataforma (sala `platform`), no a la empresa. Lo que pide una acción
+      // del negocio (vencimientos de flota, multas, recompra) lo avisa cada
+      // proceso a su empresa, no este monitoreo. De una empresa suspendida o
+      // dada de baja no se avisa: sus procesos no corren a propósito.
+      const empresa = e.distributorId ? nombres.get(e.distributorId) : null;
+      if (
+        e.distributorId &&
+        (!empresa || empresa.status !== DistributorStatus.ACTIVE)
+      ) {
+        continue;
+      }
+      const titulo = CATALOGO[e.proceso].title;
+      const deQuien = empresa ? ` de ${empresa.name}` : '';
+      pedirAvisoAlAdmin(this.events, this.logger, {
+        distributorId: null,
+        kind: 'process_run_alert',
+        title: `Proceso automático: ${titulo}${deQuien}`,
+        body: `«${titulo}»${deQuien} ${TEXTO[e.salud]}.${e.ultima?.error ? ` Último error: ${sanitizarError(e.ultima.error)}` : ''}`,
+        link: { entity: 'process-run', id: e.proceso },
+        dedupeKey: `process-run:${e.proceso}:${e.distributorId ?? 'global'}:${e.salud}:${dia}`,
+      });
+      alerts += 1;
+    }
+    return { alerts, closed };
+  }
+
+  /**
+   * `failed`, `late` y `stuck` avisan siempre. `never` sólo cuando el monitoreo ya
+   * lleva más de 1,5 períodos del proceso (si no, el primer día tras activarlo
+   * avisaría de todos los procesos que todavía no les tocó correr).
+   */
+  private merecedoDeAviso(
+    salud: ProcessHealth,
+    proceso: ProcessName,
+    desde: Date | null,
+    ahora: Date,
+  ): boolean {
+    if (SALUD_CON_ALERTA.has(salud)) return true;
+    if (salud !== ProcessHealth.NEVER || !desde) return false;
+    return (
+      ahora.getTime() - desde.getTime() >
+      FACTOR_DE_ATRASO * periodoEsperadoSeg(proceso) * 1000
+    );
+  }
+
+  /** La corrida más vieja que se conserva: desde cuándo se está monitoreando. */
+  private async primeraCorrida(): Promise<Date | null> {
+    const fila = await this.runs
+      .createQueryBuilder('r')
+      .select('MIN(r.startedAt)', 'desde')
+      .getRawOne<{ desde: Date | null }>();
+    return fila?.desde ? new Date(fila.desde) : null;
+  }
+
+  /** Las `running` de más de un día son de un proceso que murió: quedan como fallidas. */
+  private async cerrarAbandonadas(ahora: Date): Promise<number> {
+    const corte = new Date(ahora.getTime() - ABANDONO_HORAS * 3600_000);
+    const r = await this.runs
+      .createQueryBuilder()
+      .update()
+      .set({
+        status: ProcessRunStatus.FAILED,
+        error: 'El proceso se cortó sin terminar la corrida',
+        finishedAt: () => 'GREATEST(now(), "started_at")',
+      })
+      .where('status = :s AND started_at < :corte', {
+        s: ProcessRunStatus.RUNNING,
+        corte,
+      })
+      .execute();
+    return r.affected ?? 0;
+  }
+
+  @Cron('0 10 4 * * *', { timeZone: ZONA_ARGENTINA })
+  @ConRegistro(ProcessName.PROCESS_RUN_PURGE)
+  async purgar(ahora: Date = new Date()): Promise<{ purged: number }> {
+    const dias = this.config.get<number>(
+      'PROCESS_RUN_RETENTION_DAYS',
+      RETENCION_POR_DEFECTO_DIAS,
+    );
+    const corte = new Date(ahora.getTime() - dias * 24 * 3600_000);
+    // Se conserva la más nueva de cada (proceso, distribuidora): es el «último estado».
+    const [, purged]: [unknown, number] = await this.runs.query(
+      `DELETE FROM "process_run" r
+        WHERE r."started_at" < $1
+          AND EXISTS (
+            SELECT 1 FROM "process_run" n
+             WHERE n."process" = r."process"
+               AND n."distributor_id" IS NOT DISTINCT FROM r."distributor_id"
+               AND n."started_at" > r."started_at")`,
+      [corte],
+    );
+    return { purged: Number(purged) };
+  }
+}

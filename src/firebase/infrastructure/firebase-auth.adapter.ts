@@ -30,10 +30,7 @@ export class FirebaseAuthAdapter extends FirebaseAuthPort {
     return this.adminApp.auth().deleteUser(uid);
   }
 
-  updateUser(
-    uid: string,
-    props: auth.UpdateRequest,
-  ): Promise<auth.UserRecord> {
+  updateUser(uid: string, props: auth.UpdateRequest): Promise<auth.UserRecord> {
     return this.adminApp.auth().updateUser(uid, props);
   }
 
@@ -41,9 +38,8 @@ export class FirebaseAuthAdapter extends FirebaseAuthPort {
     email: string,
     actionCodeSettings?: auth.ActionCodeSettings,
   ): Promise<string> {
-    return this.adminApp.auth().generatePasswordResetLink(
-      email,
-      actionCodeSettings,
-    );
+    return this.adminApp
+      .auth()
+      .generatePasswordResetLink(email, actionCodeSettings);
   }
 }

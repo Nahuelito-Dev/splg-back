@@ -30,6 +30,29 @@ export class RealtimeDispatchAdapter extends RealtimeDispatchPort {
     return this.redisService.getNearbyDrivers(lat, lng, radiusKm);
   }
 
+  reportDriverLocation(
+    driverUserId: string,
+    lat: number,
+    lng: number,
+  ): Promise<void> {
+    return this.redisService.updateDriverLocation(driverUserId, lat, lng);
+  }
+
+  async lastDriverLocation(
+    driverUserId: string,
+    orderId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null> {
+    const activo = await this.redisService.getDriverActiveOrder(driverUserId);
+    if (activo?.orderId !== orderId) return null;
+    return this.redisService.getDriverLastLocation(driverUserId);
+  }
+
+  async lastKnownPosition(
+    driverUserId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null> {
+    return this.redisService.getDriverLastLocation(driverUserId);
+  }
+
   notifyDriverNewOrder(driverId: string, payload: unknown): void {
     this.driversGateway.notifyNewOrder(driverId, payload);
   }
@@ -38,23 +61,44 @@ export class RealtimeDispatchAdapter extends RealtimeDispatchPort {
     this.driversGateway.notifyOrderCancelled(driverId, payload);
   }
 
+  notifyDriverOrderAddressChanged(
+    driverUserId: string,
+    payload: unknown,
+  ): void {
+    this.driversGateway.notifyOrderAddressChanged(driverUserId, payload);
+  }
+
+  notifyDriverDeliveryCode(
+    driverUserId: string,
+    event: 'order:delivery-code-failed' | 'order:delivery-code-blocked',
+    payload: unknown,
+  ): void {
+    this.driversGateway.notifyDeliveryCode(driverUserId, event, payload);
+  }
+
   notifyCustomer(customerId: string, event: string, payload: unknown): void {
     this.customersGateway.notifyCustomer(customerId, event, payload);
   }
 
-  notifyAdmins(event: string, payload: unknown): void {
-    this.adminGateway.notifyAdmins(event, payload);
+  notifyAdmins(
+    event: string,
+    payload: unknown,
+    distributorId?: string | null,
+  ): void {
+    this.adminGateway.notifyAdmins(event, payload, distributorId);
   }
 
   startTracking(
     driverUserId: string,
     orderId: string,
     customerId: string,
+    distributorId?: string | null,
   ): void {
     // Fire-and-forget: el tracking es best-effort, no bloquea el cambio de estado.
     void this.redisService.setDriverActiveOrder(driverUserId, {
       orderId,
       customerId,
+      distributorId,
     });
   }
 

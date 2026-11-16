@@ -3,12 +3,23 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IncidentService } from './incident.service';
 import { IncidentController } from './incident.controller';
 import { Incident } from './entities/incident.entity';
-import { Order } from '../order/entities/order.entity';
+import { IncidentPhotoService } from './incident-photo.service';
+import { OrderModule } from '../order/order.module';
+import { GatewaysModule } from '../gateways/gateways.module';
+import { UnpaidCashController } from './unpaid-cash.controller';
+import { UnpaidCashService } from './unpaid-cash.service';
+import { S3Module } from '../s3/s3.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Incident, Order])],
-  controllers: [IncidentController],
-  providers: [IncidentService],
+  // OrderService: la incidencia hereda la distribuidora del pedido.
+  imports: [
+    TypeOrmModule.forFeature([Incident]),
+    OrderModule,
+    S3Module,
+    GatewaysModule, // aviso en vivo a los admins
+  ],
+  controllers: [IncidentController, UnpaidCashController],
+  providers: [IncidentService, IncidentPhotoService, UnpaidCashService],
   exports: [IncidentService],
 })
 export class IncidentModule {}

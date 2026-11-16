@@ -1,4 +1,10 @@
-import { Order } from '../../entities/order.entity';
+import { Order, OrderStatus, PaymentStatus } from '../../entities/order.entity';
+import type { PedidoEnCursoDeChofer } from '../chofer-por-terminar';
+
+/** Pedido en curso con el `delivery_id` del chofer que lo lleva. */
+export interface PedidoEnCursoPorChofer extends PedidoEnCursoDeChofer {
+  deliveryId: string;
+}
 
 /** Resultado paginado uniforme de las consultas de pedidos. */
 export interface PaginatedOrders {
@@ -6,6 +12,25 @@ export interface PaginatedOrders {
   total: number;
   limit: number;
   offset: number;
+}
+
+/**
+ * Filtros de `GET /orders` para el panel. `term` busca por nombre, email o
+ * teléfono del cliente, y por los últimos caracteres del id del pedido.
+ * `from`/`to` son fechas locales (YYYY-MM-DD), `to` inclusivo.
+ */
+export interface OrderListFilters {
+  term?: string;
+  status?: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  from?: string;
+  to?: string;
+  /** Entregados entre estos días (hora argentina, `deliveredTo` inclusivo). */
+  deliveredFrom?: string;
+  deliveredTo?: string;
+  /** Orden del listado; sin él, los más nuevos primero. */
+  sort?: 'createdAt' | 'deliveredAt';
+  order?: 'asc' | 'desc';
 }
 
 /**
@@ -19,13 +44,23 @@ export interface PaginatedOrders {
  * agregados. Este puerto cubre lecturas y guardado simple de un pedido.
  */
 export abstract class OrderRepositoryPort {
+  /** Pedido por id, sin relaciones. */
+  abstract findById(id: string): Promise<Order | null>;
+
   /** Pedido por id con TODAS las relaciones (customer, delivery, items, etc.). */
   abstract findByIdFull(id: string): Promise<Order | null>;
+
+  /** Los pedidos en camino del cliente, con su código de entrega (para saber si un QR es de otro pedido suyo). */
+  abstract findOnTheWayByCustomer(
+    customerId: string,
+    distributorId: string,
+  ): Promise<Pick<Order, 'orderId' | 'deliveryCode'>[]>;
 
   abstract findAllPaginated(
     limit: number,
     offset: number,
     distributorId?: string | null,
+    filters?: OrderListFilters,
   ): Promise<PaginatedOrders>;
 
   /**
@@ -33,10 +68,15 @@ export abstract class OrderRepositoryPort {
    * Con `distributorId` se restringe al pool de esa distribuidora: un chofer
    * NO debe ver pedidos disponibles de otro tenant.
    */
+  /** Distribuidoras con algún pedido pendiente sin chofer (para el ciclo del despacho). */
+  abstract findDistributorsWithAvailable(): Promise<string[]>;
+
   abstract findAvailable(
     limit: number,
     offset: number,
     distributorId?: string | null,
+    /** Los pedidos express no están en el pool del chofer salvo que se pidan. */
+    incluirExpress?: boolean,
   ): Promise<PaginatedOrders>;
 
   abstract findByCustomer(
@@ -52,6 +92,43 @@ export abstract class OrderRepositoryPort {
     offset: number,
     distributorId?: string | null,
   ): Promise<PaginatedOrders>;
+
+  /**
+   * El pedido en curso de un chofer, con todas sus relaciones: el que lleva en
+   * camino o, si no, el aceptado más antiguo; y si no tiene ninguno, el
+   * entregado en efectivo desde `desde` cuyo cobro sigue pendiente. `null` si
+   * no tiene nada de eso. Sin límite de antigüedad para los activos. Un cobro
+   * pendiente nunca tapa a un activo: con uno en camino y otro aceptado en espera
+   * (CU-013), el aceptado aparece recién al entregar el primero.
+   */
+  abstract findCurrentOfDelivery(
+    deliveryId: string,
+    distributorId: string,
+    desde: Date,
+  ): Promise<Order | null>;
+
+  /**
+   * Los pedidos aceptados o en camino de esos choferes (`delivery_id`), cada
+   * uno con su punto de entrega. Un chofer sin ninguno no aparece.
+   */
+  abstract findInProgressOfDeliveries(
+    deliveryIds: string[],
+  ): Promise<PedidoEnCursoPorChofer[]>;
+
+  /**
+   * Suma un código de entrega incorrecto al pedido (atómico, en la base) y
+   * devuelve cuántos lleva.
+   */
+  abstract registerWrongDeliveryCode(orderId: string): Promise<number>;
+
+  /**
+   * Cambia el código de entrega de un pedido EN CAMINO y vuelve los intentos a
+   * 0, auditándolo. Devuelve false si el pedido ya no está en camino.
+   */
+  abstract replaceDeliveryCode(
+    orderId: string,
+    newCode: string,
+  ): Promise<boolean>;
 
   /** Guarda (crea o actualiza) un pedido ya materializado. */
   abstract save(order: Order): Promise<Order>;
