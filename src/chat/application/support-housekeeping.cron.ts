@@ -6,7 +6,9 @@ import { errorMessage } from '../../common/errors/error-message';
 import { ProcessName } from '../../process-run/domain/process-catalog';
 import {
   marcarSaltada,
+  registrarElementoBien,
   registrarErrorAtrapado,
+  registrarFallaDeElemento,
 } from '../../process-run/process-run.context';
 import { ConRegistro } from '../../process-run/process-run.recorder';
 import { RedisService } from '../../redis/redis.service';
@@ -96,35 +98,42 @@ export class SupportHousekeepingCron {
         { status: TicketStatus.RESOLVED },
       ],
     });
+    // Cada ticket por su lado: el que falla se registra (la corrida queda
+    // parcial), se reintenta en la próxima y no frena los de otras empresas.
     for (const t of enEspera) {
-      const decision = vencimientoDelTicket(
-        t.status,
-        t.statusChangedAt,
-        ahora,
-        plazos,
-      );
-      if (decision === 'close') {
-        const cerrado = await this.tickets.cerrarVencido(
-          t.ticketId,
-          (actual) =>
-            vencimientoDelTicket(
-              actual.status,
-              actual.statusChangedAt,
-              ahora,
-              plazos,
-            ) === 'close',
+      try {
+        const decision = vencimientoDelTicket(
+          t.status,
+          t.statusChangedAt,
+          ahora,
+          plazos,
         );
-        if (cerrado) resultado.ticketsClosed += 1;
-      } else if (decision === 'warn') {
-        const quedan = Math.max(
-          1,
-          Math.ceil(
-            plazos.waitingCloseDays -
-              (ahora.getTime() - t.statusChangedAt.getTime()) / DIA_MS,
-          ),
-        );
-        this.avisos.porCerrarse(t, quedan);
-        resultado.warned += 1;
+        if (decision === 'close') {
+          const cerrado = await this.tickets.cerrarVencido(
+            t.ticketId,
+            (actual) =>
+              vencimientoDelTicket(
+                actual.status,
+                actual.statusChangedAt,
+                ahora,
+                plazos,
+              ) === 'close',
+          );
+          if (cerrado) resultado.ticketsClosed += 1;
+        } else if (decision === 'warn') {
+          const quedan = Math.max(
+            1,
+            Math.ceil(
+              plazos.waitingCloseDays -
+                (ahora.getTime() - t.statusChangedAt.getTime()) / DIA_MS,
+            ),
+          );
+          this.avisos.porCerrarse(t, quedan);
+          resultado.warned += 1;
+        }
+        registrarElementoBien(`ticket:${t.ticketId}`);
+      } catch (error) {
+        this.fallo('el vencimiento del ticket', 'ticket', t, error);
       }
     }
 
@@ -136,12 +145,35 @@ export class SupportHousekeepingCron {
       .andWhere('t.status <> :cerrado', { cerrado: TicketStatus.CLOSED })
       .getMany();
     for (const t of vencidos) {
-      this.avisos.sinPrimeraRespuesta(
-        t,
-        await nombreDeLaEmpresa(this.dataSource.manager, t.distributorId),
-      );
-      resultado.overdue += 1;
+      try {
+        this.avisos.sinPrimeraRespuesta(
+          t,
+          await nombreDeLaEmpresa(this.dataSource.manager, t.distributorId),
+        );
+        resultado.overdue += 1;
+        registrarElementoBien(`ticket-sin-respuesta:${t.ticketId}`);
+      } catch (error) {
+        this.fallo(
+          'el aviso de ticket sin primera respuesta',
+          'ticket-sin-respuesta',
+          t,
+          error,
+        );
+      }
     }
     return resultado;
+  }
+
+  /** Un ticket que falló: al log y al monitoreo de procesos (corrida parcial). */
+  private fallo(
+    que: string,
+    clase: string,
+    t: SupportTicket,
+    error: unknown,
+  ): void {
+    registrarFallaDeElemento(`${clase}:${t.ticketId}`, error);
+    this.logger.error(
+      `Mantenimiento del soporte: falló ${que} ${t.ticketId} de la distribuidora ${t.distributorId}: ${errorMessage(error)}`,
+    );
   }
 }

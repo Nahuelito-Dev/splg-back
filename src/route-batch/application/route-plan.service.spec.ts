@@ -6,6 +6,10 @@ import {
   RoutePlanStatus,
 } from '../../order/entities/route-plan.entity';
 import { RouteBatchStatus } from '../domain/route-batch.enums';
+import {
+  dentroDeCorrida,
+  nuevaCorrida,
+} from '../../process-run/process-run.context';
 import { RoutePlanService } from './route-plan.service';
 import { RouteSheetLifecycleService } from './route-sheet-lifecycle.service';
 import { noConfirmable, versionVieja } from './route-sheet.exceptions';
@@ -350,15 +354,42 @@ describe('RoutePlanService', () => {
       expect(where.planDate.value).toBe('2026-11-14');
     });
 
-    it('un error que no es HTTP se propaga', async () => {
-      const { svc, plans, ds } = armar();
-      plans.find.mockResolvedValueOnce([plan()]);
-      (ds.transaction as jest.Mock).mockRejectedValueOnce(
-        new Error('sin conexión'),
+    it('un error que no es HTTP en un día de A no frena los de B: queda en el monitoreo y A sigue abierto para la próxima', async () => {
+      const { svc, plans, ds, manager } = armar();
+      plans.find.mockResolvedValue([
+        plan({ planId: 'a', distributorId: 'dist-a' }),
+        plan({ planId: 'b', distributorId: 'dist-b' }),
+      ]);
+      // El día de A falla siempre con un error que no es HTTP.
+      manager.findOne.mockImplementation(
+        (_e: unknown, o: { where: { distributorId: string } }) =>
+          o.where.distributorId === 'dist-a'
+            ? Promise.reject(new Error('sin conexión'))
+            : Promise.resolve(plan({ distributorId: 'dist-b' })),
       );
-      await expect(svc.cerrarDiasVencidos(new Date())).rejects.toThrow(
-        'sin conexión',
-      );
+      const corrida = nuevaCorrida();
+      expect(
+        await dentroDeCorrida(corrida, () =>
+          svc.cerrarDiasVencidos(new Date('2026-11-14T03:00:00Z')),
+        ),
+      ).toBe(1);
+      expect(corrida).toMatchObject({
+        errors: 1,
+        fatal: null,
+        lastError: 'sin conexión',
+      });
+      expect([...corrida.elementos.fallidos.keys()]).toEqual([
+        `dia:dist-a:${DIA}`,
+      ]);
+      // La próxima corrida lo vuelve a buscar (sigue abierto) y lo reintenta.
+      await svc.cerrarDiasVencidos(new Date('2026-11-14T03:05:00Z'));
+      expect(ds.transaction).toHaveBeenCalledTimes(4);
+      expect(
+        manager.findOne.mock.calls.map(
+          ([, o]) =>
+            (o as { where: { distributorId: string } }).where.distributorId,
+        ),
+      ).toEqual(['dist-a', 'dist-b', 'dist-a', 'dist-b']);
     });
   });
 });

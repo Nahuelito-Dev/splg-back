@@ -35,6 +35,8 @@ export function ajustesADto(
     assistantAiEnabled: a.assistantAiEnabled,
     assistantRepliesPerConversation: a.assistantRepliesPerConversation,
     assistantMonthlyTokenLimit: a.assistantMonthlyTokenLimit,
+    assistantMonthlyTokenLimitPerCompany:
+      a.assistantMonthlyTokenLimitPerCompany,
     assistantMonthlyCostEstimateUsd: costoMensualEstimadoUsd(
       a.assistantMonthlyTokenLimit,
     ),

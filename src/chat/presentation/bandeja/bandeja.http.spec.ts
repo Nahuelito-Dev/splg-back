@@ -1276,10 +1276,15 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         .mockResolvedValueOnce(11),
     };
     const cupos = new ChatRateLimit(redis as never);
-    await expect(cupos.mensaje('u1', UUID, 'conv-1')).rejects.toMatchObject({
-      status: 429,
-    });
-    // El id no queda marcado: el reintento vuelve a contar.
-    expect(redis.del).toHaveBeenCalledWith(`chat:cupo:cmid:u1:${UUID}`);
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u1',
+        clientMessageId: UUID,
+        conversacion: 'conv-1',
+      }),
+    ).rejects.toMatchObject({ status: 429 });
+    // El id no queda marcado (la marca lleva la empresa): el reintento vuelve a contar.
+    expect(redis.del).toHaveBeenCalledWith(`chat:cupo:cmid:dist-a:u1:${UUID}`);
   });
 });

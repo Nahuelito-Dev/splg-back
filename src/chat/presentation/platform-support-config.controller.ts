@@ -76,7 +76,7 @@ export class PlatformSupportConfigController {
   @ApiOkResponse({ type: SupportSettingsResponseDto })
   @ApiBadRequestResponse({
     description:
-      'Valor fuera de rango (también los topes del asistente con IA: 1–50 respuestas por conversación, 10.000–1.000.000.000 tokens por mes), zona horaria desconocida, franjas solapadas o aviso que no llega antes del cierre',
+      'Valor fuera de rango (también los topes del asistente con IA: 1–50 respuestas por conversación, 10.000–1.000.000.000 tokens por mes, en total y por empresa), cupo por empresa mayor que el total del soporte, zona horaria desconocida, franjas solapadas o aviso que no llega antes del cierre',
   })
   async actualizar(
     @CurrentUser('user_id') userId: string,

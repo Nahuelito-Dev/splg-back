@@ -10,6 +10,10 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { CarService } from '../car/car.service';
 import { ProposalStatus } from '../common/enums/proposal-status.enum';
 import { errorMessage } from '../common/errors/error-message';
+import {
+  registrarElementoBien,
+  registrarFallaDeElemento,
+} from '../process-run/process-run.context';
 import { ConfigurableProcess } from '../distributor/entities/module-config.entity';
 import { ValoresDeProceso } from '../distributor/process-config';
 import {
@@ -1292,19 +1296,29 @@ export class RouteBatchService {
                              AND o."status" NOT IN ('delivered', 'cancelled'))`,
     );
     let completados = 0;
+    // Cada lote por su lado: el que falla queda asignado (se reintenta en la
+    // próxima corrida) y no frena los de las demás distribuidoras.
     for (const { batchId } of filas) {
-      const hecho = await this.dataSource.transaction(async (manager) => {
-        const lote = await this.bloquearLote(manager, batchId);
-        if (lote.status !== RouteBatchStatus.ASSIGNED) return false;
-        await manager.update(RouteBatchStop, { batchId }, { active: false });
-        await manager.update(
-          RouteBatch,
-          { batchId },
-          { status: RouteBatchStatus.COMPLETED, closedAt: ahora },
+      try {
+        const hecho = await this.dataSource.transaction(async (manager) => {
+          const lote = await this.bloquearLote(manager, batchId);
+          if (lote.status !== RouteBatchStatus.ASSIGNED) return false;
+          await manager.update(RouteBatchStop, { batchId }, { active: false });
+          await manager.update(
+            RouteBatch,
+            { batchId },
+            { status: RouteBatchStatus.COMPLETED, closedAt: ahora },
+          );
+          return true;
+        });
+        if (hecho) completados += 1;
+        registrarElementoBien(`lote:${batchId}`);
+      } catch (error) {
+        registrarFallaDeElemento(`lote:${batchId}`, error);
+        this.logger.error(
+          `Lote ${batchId}: no se pudo completar: ${errorMessage(error)}`,
         );
-        return true;
-      });
-      if (hecho) completados += 1;
+      }
     }
     return completados;
   }

@@ -405,7 +405,11 @@ export class BandejaGestionService {
     if (new Set(validos.map((v) => v.user_id)).size !== dto.driverIds.length) {
       throw choferesAjenos();
     }
-    await this.cupos.mensaje(actor.userId, dto.clientBatchId);
+    await this.cupos.mensaje({
+      ambito: actor.distributorId,
+      userId: actor.userId,
+      clientMessageId: dto.clientBatchId,
+    });
     const efectos = new Efectos();
     const r = await this.dataSource.transaction(async (manager) => {
       const porChofer = new Map<string, string>();

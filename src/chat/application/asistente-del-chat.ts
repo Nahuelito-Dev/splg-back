@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
+import { errorMessage } from '../../common/errors/error-message';
 import { AccesoDeLaEmpresa } from '../../platform/access/acceso-de-la-empresa.service';
+import {
+  registrarElementoBien,
+  registrarFallaDeElemento,
+} from '../../process-run/process-run.context';
 import {
   type FilaDelHilo,
   MINUTOS_DE_SILENCIO_TRAS_UNA_PERSONA,
@@ -27,6 +32,8 @@ export interface Disparador {
  */
 @Injectable()
 export class AsistenteDelChat {
+  private readonly logger = new Logger(AsistenteDelChat.name);
+
   constructor(
     private readonly acceso: AccesoDeLaEmpresa,
     private readonly ajustes: CompanyChatSettingsService,
@@ -57,7 +64,10 @@ export class AsistenteDelChat {
    * plan): al volver a habilitarla, el asistente no se pone a contestar solo
    * sin que el admin lo prenda. Quitarla a mano ya lo apaga en la misma
    * operación (`ModulosDeLaEmpresaRepository.guardarExcepcion`). Lo corre el
-   * rescate cada minuto; la auditoría lo asienta como del sistema.
+   * rescate cada minuto; la auditoría lo asienta como del sistema. Cada
+   * empresa por su lado: la que falla (el acceso no se puede calcular, la
+   * fila no se puede actualizar) queda en el log y en el monitoreo y se
+   * reintenta en la próxima corrida, sin frenar a las demás ni al rescate.
    */
   async apagarDondeNoEstaHabilitado(manager: EntityManager): Promise<number> {
     const prendidas: Array<{ distributor_id: string }> = await manager.query(
@@ -65,14 +75,23 @@ export class AsistenteDelChat {
     );
     let apagadas = 0;
     for (const { distributor_id } of prendidas) {
-      if (await this.acceso.habilitado(distributor_id, 'assistant')) continue;
-      await manager.query(
-        `UPDATE "chat_company_settings"
-            SET "assistant_ai_enabled" = false, "updated_at" = now(), "updated_by_user_id" = NULL
-          WHERE "distributor_id" = $1 AND "assistant_ai_enabled"`,
-        [distributor_id],
-      );
-      apagadas += 1;
+      try {
+        if (!(await this.acceso.habilitado(distributor_id, 'assistant'))) {
+          await manager.query(
+            `UPDATE "chat_company_settings"
+                SET "assistant_ai_enabled" = false, "updated_at" = now(), "updated_by_user_id" = NULL
+              WHERE "distributor_id" = $1 AND "assistant_ai_enabled"`,
+            [distributor_id],
+          );
+          apagadas += 1;
+        }
+        registrarElementoBien(`empresa:${distributor_id}`);
+      } catch (error) {
+        registrarFallaDeElemento(`empresa:${distributor_id}`, error);
+        this.logger.error(
+          `Asistente con IA: no se pudo revisar si la distribuidora ${distributor_id} sigue con la función: ${errorMessage(error)}`,
+        );
+      }
     }
     return apagadas;
   }

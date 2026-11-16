@@ -457,6 +457,8 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
         assistantAiEnabled: false,
         assistantRepliesPerConversation: 10,
         assistantMonthlyTokenLimit: 2000000,
+        // Por omisión, igual al total: no recorta a nadie.
+        assistantMonthlyTokenLimitPerCompany: 2000000,
         assistantMonthlyCostEstimateUsd: { min: 0.24, max: 1 },
       });
     });
@@ -464,6 +466,7 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
     it('200 PUT: el costo estimado sigue al tope nuevo', async () => {
       const r = await pedir('put', RUTA, SUPER, {
         assistantMonthlyTokenLimit: 10000,
+        assistantMonthlyTokenLimitPerCompany: 10000,
       }).expect(200);
       expect(r.body).toMatchObject({
         assistantMonthlyCostEstimateUsd: { min: 0.0012, max: 0.005 },
@@ -478,10 +481,12 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
           assistantAiEnabled: true,
           assistantRepliesPerConversation: 1,
           assistantMonthlyTokenLimit: 10000,
+          assistantMonthlyTokenLimitPerCompany: 10000,
         },
         {
           assistantRepliesPerConversation: 50,
           assistantMonthlyTokenLimit: 1000000000,
+          assistantMonthlyTokenLimitPerCompany: 1000000000,
         },
       ]) {
         const r = await pedir('put', RUTA, SUPER, cuerpo).expect(200);
@@ -491,6 +496,7 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
         assistantAiEnabled: true,
         assistantRepliesPerConversation: 50,
         assistantMonthlyTokenLimit: 1000000000,
+        assistantMonthlyTokenLimitPerCompany: 1000000000,
       });
     });
 
@@ -506,6 +512,11 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
         { assistantMonthlyTokenLimit: 9999 },
         { assistantMonthlyTokenLimit: 1000000001 },
         { assistantMonthlyTokenLimit: 'mucho' },
+        { assistantMonthlyTokenLimitPerCompany: null },
+        { assistantMonthlyTokenLimitPerCompany: 9999 },
+        { assistantMonthlyTokenLimitPerCompany: 1000000001 },
+        { assistantMonthlyTokenLimitPerCompany: 15000.5 },
+        { assistantMonthlyTokenLimitPerCompany: 'mucho' },
         { assistantModel: 'claude-opus-5-5' },
       ]) {
         expect((await resultado(pedir('put', RUTA, SUPER, cuerpo)))[0]).toBe(
@@ -513,6 +524,41 @@ describe('Asistente con IA: matriz HTTP (v2)', () => {
         );
       }
       expect(base.transaction).not.toHaveBeenCalled();
+    });
+
+    it('400: el cupo por empresa no supera el total (en el mismo pedido, contra lo guardado y al bajar el total)', async () => {
+      const mensaje =
+        'El cupo de tokens por mes de cada distribuidora en el soporte no puede superar el tope total de tokens por mes del soporte';
+      // Los dos en el mismo pedido los frena el DTO, sin llegar al servicio.
+      const enElPedido = await pedir('put', RUTA, SUPER, {
+        assistantMonthlyTokenLimit: 100000,
+        assistantMonthlyTokenLimitPerCompany: 100001,
+      }).expect(400);
+      expect(JSON.stringify(enElPedido.body)).toContain(mensaje);
+      expect(base.transaction).not.toHaveBeenCalled();
+      for (const cuerpo of [
+        // El total guardado es 2.000.000.
+        { assistantMonthlyTokenLimitPerCompany: 2000001 },
+        // El cupo guardado es 2.000.000.
+        { assistantMonthlyTokenLimit: 1999999 },
+      ]) {
+        const r = await pedir('put', RUTA, SUPER, cuerpo).expect(400);
+        expect(JSON.stringify(r.body)).toContain(mensaje);
+      }
+      expect(base.filas.get(PlatformSupportSettings)).toMatchObject({
+        assistantMonthlyTokenLimit: 2000000,
+        assistantMonthlyTokenLimitPerCompany: 2000000,
+      });
+    });
+
+    it('400 del cupo por empresa: el mensaje nombra el campo en castellano', async () => {
+      const r = await pedir('put', RUTA, SUPER, {
+        assistantMonthlyTokenLimitPerCompany: 9999,
+      }).expect(400);
+      expect(JSON.stringify(r.body)).toContain(
+        'Tokens por mes del asistente con IA para cada distribuidora en el soporte',
+      );
+      expect(JSON.stringify(r.body)).not.toMatch(/m[oó]dulo|plan\b/i);
     });
 
     it('401 sin token', async () => {

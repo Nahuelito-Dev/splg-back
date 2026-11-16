@@ -117,6 +117,7 @@ function armar(
     .fn()
     .mockResolvedValue(conversacion({ conversationId: 'conv-nueva' }));
   const publicados: Efectos[] = [];
+  const cupos = { mensaje: jest.fn() };
   const servicio = new BandejaGestionService(
     dataSource,
     acceso,
@@ -133,7 +134,7 @@ function armar(
     { escribir } as unknown as MessageWriter,
     { crear } as unknown as ConversationFactory,
     claims as unknown as ClaimsService,
-    { mensaje: jest.fn() } as unknown as ChatRateLimit,
+    cupos as unknown as ChatRateLimit,
     { publicar: (e: Efectos) => publicados.push(e) } as unknown as ChatEvents,
   );
   return {
@@ -144,6 +145,7 @@ function armar(
     escribir,
     crear,
     publicados,
+    cupos,
   };
 }
 
@@ -328,7 +330,7 @@ describe('BandejaGestionService: mensaje a varios choferes (§4.4)', () => {
   });
 
   it('todos de la empresa: uno por chofer en su general, con id de mensaje que sale del lote', async () => {
-    const { servicio, escribir, crear } = armar({
+    const { servicio, escribir, crear, cupos } = armar({
       consultas: (sql) =>
         sql.includes('FROM "delivery"')
           ? [{ user_id: 'cho-1' }, { user_id: 'cho-2' }]
@@ -341,6 +343,12 @@ describe('BandejaGestionService: mensaje a varios choferes (§4.4)', () => {
     });
     expect(r.sent).toBe(2);
     expect(crear).toHaveBeenCalledTimes(2);
+    // La marca del lote lleva la empresa: el mismo lote en otra no es reintento.
+    expect(cupos.mensaje).toHaveBeenCalledWith({
+      ambito: D,
+      userId: 'adm-1',
+      clientMessageId: 'lote-1',
+    });
     const ids = escribir.mock.calls.map(
       ([, n]) => (n as { clientMessageId: string }).clientMessageId,
     );

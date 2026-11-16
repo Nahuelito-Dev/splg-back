@@ -62,17 +62,34 @@ describe('asistente con IA: reglas', () => {
   });
 
   describe('topes', () => {
-    const topes = { respuestasPorConversacion: 10, tokensPorMes: 1000 };
+    const topes = {
+      respuestasPorConversacion: 10,
+      tokensPorMes: 1000,
+      tokensPorMesPorEmpresa: null,
+    };
+    const usados = (total: number, deLaEmpresa = 0) => ({ total, deLaEmpresa });
 
     it('sin pasarse, ninguno', () => {
-      expect(topeAlcanzado(topes, 9, 999)).toBeNull();
+      expect(topeAlcanzado(topes, 9, usados(999))).toBeNull();
     });
 
     it('al llegar a las respuestas por conversación o a los tokens del mes', () => {
-      expect(topeAlcanzado(topes, 10, 0)).toBe(MotivoDeDerivacion.REPLY_LIMIT);
-      expect(topeAlcanzado(topes, 0, 1000)).toBe(
+      expect(topeAlcanzado(topes, 10, usados(0))).toBe(
+        MotivoDeDerivacion.REPLY_LIMIT,
+      );
+      expect(topeAlcanzado(topes, 0, usados(1000))).toBe(
         MotivoDeDerivacion.MONTHLY_LIMIT,
       );
+    });
+
+    it('en el soporte, también al llegar al cupo de la empresa aunque la plataforma tenga margen', () => {
+      const soporte = { ...topes, tokensPorMesPorEmpresa: 300 };
+      expect(topeAlcanzado(soporte, 0, usados(500, 299))).toBeNull();
+      expect(topeAlcanzado(soporte, 0, usados(500, 300))).toBe(
+        MotivoDeDerivacion.MONTHLY_LIMIT,
+      );
+      // Sin cupo por empresa (C3), lo de la empresa no se mira dos veces.
+      expect(topeAlcanzado(topes, 0, usados(500, 5000))).toBeNull();
     });
   });
 

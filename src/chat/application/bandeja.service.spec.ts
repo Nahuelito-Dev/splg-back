@@ -887,12 +887,50 @@ describe('Corrección 1: C2 por pedido del chofer, cupo, chat de clientes apagad
       subjectType: SubjectType.GENERAL,
       firstMessage: { clientMessageId: 'c', body: 'Hola' },
     });
-    expect(cupos.mensaje).toHaveBeenCalledWith('cli-1', 'c', 'conv-nueva');
+    expect(cupos.mensaje).toHaveBeenCalledWith({
+      ambito: D,
+      userId: 'cli-1',
+      clientMessageId: 'c',
+      conversacion: 'conv-nueva',
+    });
     await servicio.enviar(cliente, 'conv-1', {
       clientMessageId: 'd',
       body: 'x',
     });
-    expect(cupos.mensaje).toHaveBeenLastCalledWith('cli-1', 'd', 'conv-1');
+    expect(cupos.mensaje).toHaveBeenLastCalledWith({
+      ambito: D,
+      userId: 'cli-1',
+      clientMessageId: 'd',
+      conversacion: 'conv-1',
+    });
+  });
+
+  it('la marca de reintento lleva la empresa: el mismo cliente y el mismo id en otra distribuidora piden cupo aparte', async () => {
+    const { servicio, cupos } = armar({ conversacion: conversacion() });
+    const dto = { clientMessageId: 'mismo', body: 'x' };
+    await servicio.enviar(cliente, 'conv-1', dto);
+    await servicio.enviar(
+      { ...cliente, distributorId: 'dist-otra' },
+      'conv-1',
+      dto,
+    );
+    expect(
+      cupos.mensaje.mock.calls.map(([p]) => (p as { ambito: string }).ambito),
+    ).toEqual([D, 'dist-otra']);
+  });
+
+  it('el personal también pide cupo con su empresa (al abrir y al escribir)', async () => {
+    const { servicio, cupos } = armar({ conversacion: conversacion() });
+    await servicio.enviar(personal, 'conv-1', {
+      clientMessageId: 'e',
+      body: 'x',
+    });
+    expect(cupos.mensaje).toHaveBeenLastCalledWith({
+      ambito: D,
+      userId: 'adm-1',
+      clientMessageId: 'e',
+      conversacion: undefined,
+    });
   });
 
   it('con el chat de clientes apagado el cliente tampoco edita ni borra → 403', async () => {

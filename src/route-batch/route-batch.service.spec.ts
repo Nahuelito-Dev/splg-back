@@ -17,6 +17,10 @@ import {
 } from '../order/entities/route-batch.entity';
 import { RouteBatchOffer } from '../order/entities/route-batch-offer.entity';
 import { RouteBatchStop } from '../order/entities/route-batch-stop.entity';
+import {
+  dentroDeCorrida,
+  nuevaCorrida,
+} from '../process-run/process-run.context';
 import { RouteBatchService } from './route-batch.service';
 
 /**
@@ -1286,6 +1290,48 @@ describe('RouteBatchService · rechazar y vencer (pasos 9 a 11)', () => {
     expect((await m.service.vencerOfertas(ahora)).completed).toBe(1);
     expect(m.lotes[0].status).toBe(RouteBatchStatus.COMPLETED);
     expect(m.paradas.every((s) => !s.active)).toBe(true);
+  });
+
+  it('un lote de A que falla siempre al completarse no frena el de B: queda en el monitoreo y A sigue asignado', async () => {
+    const { m, batchId } = await conLoteOfrecido([chofer(1)]);
+    await m.service.aceptar('u1', batchId);
+    m.pedidos.get('p1')!.status = OrderStatus.DELIVERED;
+    m.pedidos.get('p2')!.status = OrderStatus.DELIVERED;
+    // Un lote de otra distribuidora, asignado y sin pedidos en curso, que va
+    // primero y no se puede completar nunca.
+    m.lotes.unshift(
+      Object.assign(new RouteBatch(), {
+        ...m.lotes[0],
+        batchId: 'lote-roto',
+        distributorId: 'dist-otra',
+      }),
+    );
+    const update = m.mocks.manager.update.getMockImplementation()!;
+    m.mocks.manager.update.mockImplementation(
+      (entidad: unknown, where: Record<string, unknown>, cambios: object) =>
+        where.batchId === 'lote-roto'
+          ? Promise.reject(new Error('fila rota'))
+          : update(entidad, where, cambios),
+    );
+    const corrida = nuevaCorrida();
+
+    const r = await dentroDeCorrida(corrida, () =>
+      m.service.vencerOfertas(ahora),
+    );
+
+    expect(r.completed).toBe(1);
+    expect(m.lotes.find((l) => l.batchId === batchId)!.status).toBe(
+      RouteBatchStatus.COMPLETED,
+    );
+    expect(m.lotes.find((l) => l.batchId === 'lote-roto')!.status).toBe(
+      RouteBatchStatus.ASSIGNED,
+    );
+    expect(corrida).toMatchObject({
+      errors: 1,
+      fatal: null,
+      lastError: 'fila rota',
+    });
+    expect([...corrida.elementos.fallidos.keys()]).toEqual(['lote:lote-roto']);
   });
 
   it('una hoja de ruta en curso no la completa M4 (la cierra su ejecución)', async () => {

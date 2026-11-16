@@ -27,10 +27,16 @@ import type { ChatCompanySettings } from '../chat/entities/chat-company-settings
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Message } from '../chat/entities/message.entity';
 import type { AccesoDeLaEmpresa } from '../platform/access/acceso-de-la-empresa.service';
+import {
+  dentroDeCorrida,
+  nuevaCorrida,
+} from '../process-run/process-run.context';
 import type { RedisService } from '../redis/redis.service';
 import {
   MotivoDeDerivacion,
   type RespuestaDelModelo,
+  TOPE_DEL_RESCATE,
+  TOPE_DEL_RESCATE_POR_EMPRESA,
 } from './asistente-ia.dominio';
 import {
   AsistenteIaService,
@@ -131,6 +137,8 @@ interface Opciones {
   filasAlPublicar?: Fila[];
   trazas?: Traza[];
   tokensDelMes?: string | null;
+  /** En el soporte, los tokens del mes de la empresa que pregunta. */
+  tokensDeLaEmpresa?: string | null;
   empresaPrendida?: boolean;
   moduloHabilitado?: boolean;
   chatDeClientes?: boolean;
@@ -255,7 +263,11 @@ function armar(o: Opciones = {}) {
       }
       if (sql.includes('sum(')) {
         return Promise.resolve([
-          { n: o.tokensDelMes === undefined ? '0' : o.tokensDelMes },
+          {
+            n: o.tokensDelMes === undefined ? '0' : o.tokensDelMes,
+            empresa:
+              o.tokensDeLaEmpresa === undefined ? '0' : o.tokensDeLaEmpresa,
+          },
         ]);
       }
       if (sql.includes('JOIN "message" m')) {
@@ -272,6 +284,7 @@ function armar(o: Opciones = {}) {
           !ultima.retirado &&
           ultima.created_at < (params[0] as Date) &&
           ultima.created_at >= (params[1] as Date) &&
+          (c1 ? params[2] === true : ajustes.assistantAiEnabled) &&
           !trazas.some(
             (t) =>
               t.triggerMessageId === ultima.message_id &&
@@ -314,7 +327,9 @@ function armar(o: Opciones = {}) {
     ),
   };
   const acceso = {
-    habilitado: jest.fn(() => Promise.resolve(o.moduloHabilitado ?? true)),
+    habilitado: jest.fn<Promise<boolean>, [string]>(() =>
+      Promise.resolve(o.moduloHabilitado ?? true),
+    ),
   };
   const ajustes = Object.assign(ajustesDeLaBandejaPorDefecto(EMPRESA), {
     assistantAiEnabled: o.empresaPrendida ?? true,
@@ -332,6 +347,7 @@ function armar(o: Opciones = {}) {
     assistantAiEnabled: o.soportePrendido ?? true,
     assistantRepliesPerConversation: 10,
     assistantMonthlyTokenLimit: 100_000,
+    assistantMonthlyTokenLimitPerCompany: 20_000,
     chatHours: o.horario ?? [],
   });
   const ajustesDelSoporte = { leer: jest.fn(() => Promise.resolve(soporte)) };
@@ -404,6 +420,7 @@ function armar(o: Opciones = {}) {
       body: '¿A qué hora abren?',
     }) as Message;
   return {
+    servicio,
     rescatar: (cuando: Date = AHORA) => servicio.rescatarSinAtender(cuando),
     atender: (n = seq) =>
       servicio.atender(
@@ -986,13 +1003,13 @@ describe('AsistenteIaService', () => {
       },
     );
 
-    it('el tope mensual suma la empresa en C3 y todo el soporte en C1, desde el inicio del mes argentino', async () => {
+    it('el tope mensual suma la empresa en C3 y todo el soporte en C1 (y aparte la empresa), desde el inicio del mes argentino', async () => {
       const c3 = armar({ tokensDelMes: null });
       await c3.atender();
       const [sql3, params3] = c3.dataSource.query.mock.calls.find(([s]) =>
         s.includes('sum('),
       ) as unknown as [string, unknown[]];
-      expect(sql3).toContain('"distributor_id" = $2');
+      expect(sql3).toContain('AND "distributor_id" = $2');
       expect(sql3).toContain(
         `date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
       );
@@ -1002,13 +1019,54 @@ describe('AsistenteIaService', () => {
       const [sql1, params1] = c1.dataSource.query.mock.calls.find(([s]) =>
         s.includes('sum('),
       ) as unknown as [string, unknown[]];
-      expect(sql1).not.toContain('"distributor_id" = $2');
-      expect(params1).toEqual([Channel.PLATFORM_CHAT]);
+      // El total es de todo el soporte; lo de la empresa va aparte, con FILTER.
+      expect(sql1).not.toContain('AND "distributor_id" = $2');
+      expect(sql1).toContain('FILTER (WHERE "distributor_id" = $2)');
+      expect(params1).toEqual([Channel.PLATFORM_CHAT, EMPRESA]);
       const [sqlTope] = c3.dataSource.query.mock.calls.find(([s]) =>
         s.includes('count(*)'),
       ) as unknown as [string];
       expect(sqlTope).toContain('"model" IS NOT NULL');
       expect(sqlTope).not.toContain('outcome');
+    });
+  });
+
+  describe('cupo de cada empresa en el soporte (C1)', () => {
+    it('la empresa que agotó su cupo recibe la fija y la derivación aunque la plataforma tenga margen', async () => {
+      const t = armar({
+        canal: Channel.PLATFORM_CHAT,
+        tokensDelMes: '30000',
+        tokensDeLaEmpresa: '20000',
+      });
+      await t.atender();
+      expect(t.consultar).not.toHaveBeenCalled();
+      expect(t.trazas.at(-1)).toEqual(
+        expect.objectContaining({
+          outcome: 'handed_off',
+          reason: MotivoDeDerivacion.MONTHLY_LIMIT,
+          model: null,
+        }),
+      );
+      expect(t.actualizaciones).toHaveLength(1);
+    });
+
+    it('otra empresa, con el mismo total del soporte y su cupo libre, sigue con la IA', async () => {
+      const t = armar({
+        canal: Channel.PLATFORM_CHAT,
+        tokensDelMes: '30000',
+        tokensDeLaEmpresa: '19999',
+      });
+      await t.atender();
+      expect(t.consultar).toHaveBeenCalledTimes(1);
+      expect(t.trazas.at(-1)).toEqual(
+        expect.objectContaining({ outcome: 'answered' }),
+      );
+    });
+
+    it('en C3 el cupo del soporte no aplica: la empresa sólo tiene su tope mensual', async () => {
+      const t = armar({ tokensDelMes: '30000', tokensDeLaEmpresa: '99999' });
+      await t.atender();
+      expect(t.consultar).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1065,6 +1123,7 @@ describe('AsistenteIaService', () => {
       expect(params).toEqual([
         new Date(AHORA.getTime() - 60_000),
         new Date(AHORA.getTime() - 24 * 3_600_000),
+        true,
       ]);
     });
 
@@ -1176,6 +1235,226 @@ describe('AsistenteIaService', () => {
         expect.stringContaining('UPDATE "chat_company_settings"'),
         [EMPRESA],
       );
+    });
+
+    describe('una empresa no tapa a las demás', () => {
+      interface Pendiente {
+        conversation_id: string;
+        message_id: string;
+        distributor_id: string;
+        channel: Channel;
+        created_at: Date;
+        /** Interruptor de la IA de la empresa (C3). */
+        ia: boolean;
+        /** Chat de clientes de la empresa (C3). */
+        chatDeClientes: boolean;
+      }
+      /**
+       * La base del rescate como la ve el SQL: el doble aplica cada condición
+       * sólo si la consulta la tiene (filtro de la IA, del chat de clientes y
+       * del soporte; partición; tope por turno; orden por turno), así el test
+       * falla si se quita cualquiera. El SQL real se prueba contra Postgres
+       * con `.orq/prueba-rescate/` (tablas temporales, ROLLBACK).
+       */
+      const candidatosSegun = (
+        sql: string,
+        params: unknown[],
+        pendientes: Pendiente[],
+      ) => {
+        const c3 = (f: Pendiente) => f.channel === Channel.STAFF_CUSTOMER;
+        let filas = [...pendientes].sort(
+          (a, b) =>
+            a.created_at.getTime() - b.created_at.getTime() ||
+            a.message_id.localeCompare(b.message_id),
+        );
+        if (sql.includes('s."assistant_ai_enabled"')) {
+          filas = filas.filter((f) => !c3(f) || f.ia);
+        }
+        if (sql.includes('s."customer_chat_enabled"')) {
+          filas = filas.filter((f) => !c3(f) || f.chatDeClientes);
+        }
+        if (sql.includes('$3::boolean')) {
+          filas = filas.filter((f) => c3(f) || params[2] === true);
+        }
+        const particion = /PARTITION BY (.+?) ORDER BY/.exec(sql)?.[1] ?? null;
+        const clave = (f: Pendiente) =>
+          [
+            particion?.includes('c."distributor_id"') ? f.distributor_id : '',
+            particion?.includes('c."channel"') ? f.channel : '',
+          ].join('|');
+        const turnos = new Map<string, number>();
+        let conTurno = filas.map((f) => {
+          const turno = (turnos.get(clave(f)) ?? 0) + 1;
+          turnos.set(clave(f), turno);
+          return { f, turno };
+        });
+        if (particion && sql.includes('"turno" <=')) {
+          conTurno = conTurno.filter(
+            ({ turno }) => turno <= TOPE_DEL_RESCATE_POR_EMPRESA,
+          );
+        }
+        if (particion && sql.includes('ORDER BY "turno"')) {
+          conTurno = [...conTurno].sort(
+            (a, b) =>
+              a.turno - b.turno ||
+              a.f.created_at.getTime() - b.f.created_at.getTime(),
+          );
+        }
+        return conTurno.slice(0, TOPE_DEL_RESCATE).map(({ f }) => ({
+          conversation_id: f.conversation_id,
+          message_id: f.message_id,
+        }));
+      };
+      const pendientesDe = (
+        empresa: string,
+        cuantos: number,
+        ia: boolean,
+        desdeMin: number,
+        channel = Channel.STAFF_CUSTOMER,
+        chatDeClientes = true,
+      ): Pendiente[] =>
+        Array.from({ length: cuantos }, (_, i) => ({
+          conversation_id: `${empresa}-${channel}-conv-${i}`,
+          message_id: `${empresa}-${channel}-msg-${i}`,
+          distributor_id: empresa,
+          channel,
+          created_at: hace(desdeMin - i * 0.01),
+          ia,
+          chatDeClientes,
+        }));
+      const B = 'dist-b-staff_customer-conv-0';
+      const correr = async (
+        pendientes: Pendiente[],
+        soportePrendido = true,
+      ) => {
+        const t = armar({ soportePrendido });
+        const original = t.dataSource.query.getMockImplementation();
+        t.dataSource.query.mockImplementation(
+          (sql: string, params: unknown[] = []) =>
+            sql.includes('JOIN "message" m')
+              ? Promise.resolve(candidatosSegun(sql, params, pendientes))
+              : original!(sql, params),
+        );
+        const rescatados = jest
+          .spyOn(
+            t.servicio as unknown as {
+              rescatar: (c: string, m: string, a: Date) => Promise<boolean>;
+            },
+            'rescatar',
+          )
+          .mockResolvedValue(true);
+        await t.rescatar();
+        return rescatados.mock.calls.map(([conv]) => conv);
+      };
+
+      it('A sin IA con 150 pendientes más viejos y B con IA con 1: B se rescata en la primera corrida', async () => {
+        const tomados = await correr([
+          ...pendientesDe('dist-a', 150, false, 600),
+          ...pendientesDe('dist-b', 1, true, 2),
+        ]);
+        expect(tomados).toContain(B);
+        expect(tomados.some((c) => c.startsWith('dist-a'))).toBe(false);
+      });
+
+      it('una empresa con la IA prendida pero el chat de clientes apagado tampoco ocupa la corrida', async () => {
+        const tomados = await correr([
+          ...pendientesDe(
+            'dist-c',
+            150,
+            true,
+            600,
+            Channel.STAFF_CUSTOMER,
+            false,
+          ),
+          ...pendientesDe('dist-b', 1, true, 2),
+        ]);
+        expect(tomados).toEqual([B]);
+      });
+
+      it('la corrida va por turnos: con 6 empresas de 30 pendientes más viejos, la de 1 entra en la primera vuelta', async () => {
+        const tomados = await correr([
+          ...['d1', 'd2', 'd3', 'd4', 'd5', 'd6'].flatMap((d, i) =>
+            pendientesDe(d, 30, true, 600 - i),
+          ),
+          ...pendientesDe('dist-b', 1, true, 2),
+        ]);
+        expect(tomados).toHaveLength(TOPE_DEL_RESCATE);
+        expect(tomados).toContain(B);
+      });
+
+      it('el chat de una empresa con sus clientes no tapa su chat con el soporte (reparto por empresa y canal)', async () => {
+        const tomados = await correr([
+          ...pendientesDe('dist-f', 30, true, 600),
+          ...pendientesDe('dist-f', 1, true, 2, Channel.PLATFORM_CHAT),
+        ]);
+        expect(tomados).toContain('dist-f-platform_chat-conv-0');
+        expect(
+          tomados.filter((c) => c.startsWith('dist-f-staff_customer')),
+        ).toHaveLength(TOPE_DEL_RESCATE_POR_EMPRESA);
+      });
+
+      it('A con IA y 150 pendientes no acapara la corrida: B (1) entra y A queda con su tope por empresa', async () => {
+        const tomados = await correr([
+          ...pendientesDe('dist-a', 150, true, 600),
+          ...pendientesDe('dist-b', 1, true, 2),
+        ]);
+        expect(tomados).toContain(B);
+        expect(tomados.filter((c) => c.startsWith('dist-a'))).toHaveLength(
+          TOPE_DEL_RESCATE_POR_EMPRESA,
+        );
+      });
+
+      it('el soporte con la IA apagada no ocupa la corrida', async () => {
+        const t = armar({ soportePrendido: false });
+        await t.rescatar();
+        const [sql, params] = t.dataSource.query.mock.calls.find(([q]) =>
+          q.includes('JOIN "message" m'),
+        ) as unknown as [string, unknown[]];
+        expect(params[2]).toBe(false);
+        expect(
+          candidatosSegun(sql, params, [
+            ...pendientesDe('dist-a', 150, true, 600, Channel.PLATFORM_CHAT),
+            ...pendientesDe('dist-b', 1, true, 2),
+          ]),
+        ).toEqual([
+          { conversation_id: B, message_id: 'dist-b-staff_customer-msg-0' },
+        ]);
+      });
+    });
+
+    it('una empresa que falla al revisar si sigue con la función no frena a las demás ni al rescate: queda en el monitoreo', async () => {
+      const t = perdido({
+        empresasPrendidas: ['dist-rota', 'dist-sin-funcion'],
+        horario: CERRADA,
+      });
+      t.acceso.habilitado.mockImplementation((id: string) =>
+        id === 'dist-rota'
+          ? Promise.reject(new Error('acceso caído'))
+          : Promise.resolve(id !== 'dist-sin-funcion'),
+      );
+      const corrida = nuevaCorrida();
+      expect(await dentroDeCorrida(corrida, () => t.rescatar())).toBe(1);
+      expect(t.manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE "chat_company_settings"'),
+        ['dist-sin-funcion'],
+      );
+      expect(corrida).toMatchObject({
+        errors: 1,
+        fatal: null,
+        lastError: 'acceso caído',
+      });
+      expect([...corrida.elementos.fallidos.keys()]).toEqual([
+        'empresa:dist-rota',
+      ]);
+    });
+
+    it('si una conversación falla, sigue con las demás y no tira (y queda en el monitoreo)', async () => {
+      const t0 = perdido({ falloAlEscribir: new Error('se cayó la base') });
+      const corrida = nuevaCorrida();
+      await expect(dentroDeCorrida(corrida, () => t0.rescatar())).resolves.toBe(
+        0,
+      );
+      expect([...corrida.elementos.fallidos.keys()]).toEqual(['mensaje:msg-5']);
     });
 
     it('si una conversación falla, sigue con las demás y no tira', async () => {

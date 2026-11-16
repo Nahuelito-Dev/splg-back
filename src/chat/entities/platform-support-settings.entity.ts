@@ -46,6 +46,10 @@ import type { FranjaDeAtencion } from '../domain/horario';
   'CHK_platform_support_settings_asistente',
   `"assistant_replies_per_conversation" BETWEEN 1 AND 50 AND "assistant_monthly_token_limit" BETWEEN 10000 AND 1000000000`,
 )
+@Check(
+  'CHK_platform_support_settings_cupo_por_empresa',
+  `"assistant_monthly_token_limit_per_company" BETWEEN 10000 AND 1000000000 AND "assistant_monthly_token_limit_per_company" <= "assistant_monthly_token_limit"`,
+)
 export class PlatformSupportSettings {
   @PrimaryColumn({
     name: 'settings_id',
@@ -101,6 +105,20 @@ export class PlatformSupportSettings {
     default: 2000000,
   })
   assistantMonthlyTokenLimit!: number;
+
+  /**
+   * Cupo mensual de tokens del asistente con IA de cada empresa en el
+   * soporte (C1), dentro del tope de la plataforma: al pasarlo, esa empresa
+   * recibe sólo la capa fija y derivar; las demás siguen con la IA. Nunca
+   * más que el total (`CHK_platform_support_settings_cupo_por_empresa`); por
+   * omisión, igual al total por omisión (no recorta a nadie).
+   */
+  @Column({
+    name: 'assistant_monthly_token_limit_per_company',
+    type: 'integer',
+    default: 2000000,
+  })
+  assistantMonthlyTokenLimitPerCompany!: number;
 
   @Column({ name: 'chat_inactivity_hours', type: 'smallint', default: 24 })
   chatInactivityHours!: number;

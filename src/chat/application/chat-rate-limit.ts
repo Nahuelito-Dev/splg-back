@@ -6,6 +6,23 @@ import { RedisService } from '../../redis/redis.service';
 /** Valor de la marca de un `clientMessageId` que ya entró en el cupo. */
 const MARCA_ACEPTADA = 'ok';
 
+/** Un mensaje que pide cupo. */
+export interface PedidoDeCupo {
+  /**
+   * La empresa a la que va el mensaje. Obligatoria: la marca del
+   * `clientMessageId` la lleva, así el mismo id de una persona en dos empresas
+   * (un cliente de dos distribuidoras, la plataforma escribiéndoles a dos) son
+   * dos mensajes y cada uno cuenta. Si quien escribe todavía no sabe la
+   * empresa (la plataforma respondiendo un chat o un ticket puntual), es ese
+   * chat o ese ticket (`chat:<id>`, `ticket:<id>`), que es de una sola.
+   */
+  ambito: string;
+  userId: string;
+  clientMessageId?: string;
+  /** El cliente y el chofer, además, cuentan por conversación o tema. */
+  conversacion?: string;
+}
+
 /** Mensajes por minuto y por persona (§7.7). */
 export const MENSAJES_POR_MINUTO = 30;
 /** Mensajes por minuto de un cliente o un chofer en una misma conversación (§7.7). */
@@ -38,15 +55,17 @@ export class ChatRateLimit {
    * de un mensaje que YA pasó el cupo (el envío idempotente lo devuelve sin
    * crear otro) no lo vuelve a consumir. La marca del id se pone recién
    * cuando el mensaje entra en el cupo: si da 429, se quita, y el reintento
-   * vuelve a contar (si no, reintentar tras un 429 esquivaría el tope).
+   * vuelve a contar (si no, reintentar tras un 429 esquivaría el tope). La
+   * marca lleva la empresa (`ambito`, ver `PedidoDeCupo`).
    */
-  async mensaje(
-    userId: string,
-    clientMessageId?: string,
-    conversacion?: string,
-  ): Promise<void> {
+  async mensaje({
+    ambito,
+    userId,
+    clientMessageId,
+    conversacion,
+  }: PedidoDeCupo): Promise<void> {
     const marca = clientMessageId
-      ? `chat:cupo:cmid:${userId}:${clientMessageId}`
+      ? `chat:cupo:cmid:${ambito}:${userId}:${clientMessageId}`
       : null;
     if (marca) {
       // La marca tiene dos estados: «1» (en curso: otro pedido con el mismo id

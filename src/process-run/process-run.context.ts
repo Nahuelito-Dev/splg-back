@@ -17,6 +17,16 @@ export interface CorridaEnCurso {
    * el proceso no recorre empresas.
    */
   companies: Record<string, number> | null;
+  /**
+   * Los elementos que el proceso recorre (un ticket, un chat, un día, un
+   * lote, una empresa) con su clave: los que fallaron en esta corrida (con
+   * el error) y los que salieron bien. Con eso `RachasDeFallas` lleva cuántas
+   * corridas seguidas lleva fallando cada uno.
+   */
+  elementos: {
+    fallidos: Map<string, string>;
+    bien: Set<string>;
+  };
 }
 
 /** Los estados por empresa que suma `companies`, siempre presentes en el resumen. */
@@ -40,6 +50,7 @@ export function nuevaCorrida(): CorridaEnCurso {
     fatal: null,
     lastError: null,
     companies: null,
+    elementos: { fallidos: new Map(), bien: new Set() },
   };
 }
 
@@ -65,6 +76,25 @@ export function registrarErrorAtrapado(error: unknown, fatal = false): void {
   actual.errors += 1;
   actual.lastError = mensaje;
   if (fatal) actual.fatal = mensaje;
+}
+
+/**
+ * Falló un elemento de los que recorre el proceso (el resto sigue): cuenta
+ * como error atrapado (la corrida queda `partial`) y suma a la racha de ese
+ * elemento. A las 3 corridas seguidas fallando, `RachasDeFallas` avisa una
+ * vez a la plataforma. `elemento` es una clave estable (`ticket:<id>`).
+ */
+export function registrarFallaDeElemento(
+  elemento: string,
+  error: unknown,
+): void {
+  registrarErrorAtrapado(error);
+  corrida.getStore()?.elementos.fallidos.set(elemento, errorMessage(error));
+}
+
+/** El elemento salió bien: si venía fallando, su racha se corta. */
+export function registrarElementoBien(elemento: string): void {
+  corrida.getStore()?.elementos.bien.add(elemento);
 }
 
 /**

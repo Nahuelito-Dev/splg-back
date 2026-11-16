@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   DataSource,
@@ -7,8 +7,13 @@ import {
   LessThanOrEqual,
   Repository,
 } from 'typeorm';
+import { errorMessage } from '../../common/errors/error-message';
 import { diaArgentino } from '../../common/utils/dias-argentina';
 import { ConfigurableProcess } from '../../distributor/entities/module-config.entity';
+import {
+  registrarElementoBien,
+  registrarFallaDeElemento,
+} from '../../process-run/process-run.context';
 import { ProcessConfigService } from '../../distributor/process-config.service';
 import {
   RouteBatch,
@@ -51,6 +56,8 @@ export interface ResultadoConfirmarTodas {
  */
 @Injectable()
 export class RoutePlanService {
+  private readonly logger = new Logger(RoutePlanService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(RoutePlan) private readonly plans: Repository<RoutePlan>,
@@ -273,7 +280,12 @@ export class RoutePlanService {
     return resultado;
   }
 
-  /** Red del cierre: los días de hoy o anteriores todavía abiertos se cierran solos (00:00). */
+  /**
+   * Red del cierre: los días de hoy o anteriores todavía abiertos se cierran
+   * solos (00:00). Cada día por su lado: uno que falla (error que no es HTTP)
+   * queda abierto, se registra en el monitoreo y se reintenta en la próxima
+   * corrida, sin frenar los días de las demás distribuidoras.
+   */
   async cerrarDiasVencidos(ahora: Date): Promise<number> {
     const abiertos = await this.plans.find({
       where: {
@@ -287,9 +299,20 @@ export class RoutePlanService {
       try {
         await this.cerrar(plan.distributorId, plan.planDate, null);
         cerrados += 1;
+        registrarElementoBien(`dia:${plan.distributorId}:${plan.planDate}`);
       } catch (error) {
         // Otro proceso lo cerró en el medio: no es un error.
-        if (!(error instanceof HttpException)) throw error;
+        if (error instanceof HttpException) {
+          registrarElementoBien(`dia:${plan.distributorId}:${plan.planDate}`);
+          continue;
+        }
+        registrarFallaDeElemento(
+          `dia:${plan.distributorId}:${plan.planDate}`,
+          error,
+        );
+        this.logger.error(
+          `Cierre de días: falló el ${plan.planDate} de la distribuidora ${plan.distributorId}: ${errorMessage(error)}`,
+        );
       }
     }
     return cerrados;

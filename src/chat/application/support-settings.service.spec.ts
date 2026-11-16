@@ -3,6 +3,7 @@ import { PlatformSupportSettings } from '../entities/platform-support-settings.e
 import { UpdateSupportSettingsDto } from '../presentation/dto/support-settings.dto';
 import {
   configuracionPorDefecto,
+  CUPO_MAYOR_QUE_EL_TOTAL,
   SupportSettingsService,
 } from './support-settings.service';
 
@@ -38,6 +39,7 @@ describe('SupportSettingsService: el asistente con IA del soporte y sus topes (B
       assistantAiEnabled: false,
       assistantRepliesPerConversation: 10,
       assistantMonthlyTokenLimit: 2_000_000,
+      assistantMonthlyTokenLimitPerCompany: 2_000_000,
     });
   });
 
@@ -45,6 +47,7 @@ describe('SupportSettingsService: el asistente con IA del soporte y sus topes (B
     const actual = Object.assign(configuracionPorDefecto(), {
       chatHours: [{ weekday: 1, opensAt: '09:00', closesAt: '18:00' }],
       assistantMonthlyTokenLimit: 500_000,
+      assistantMonthlyTokenLimitPerCompany: 200_000,
     });
     const { servicio, guardados } = armar(actual);
     await servicio.actualizar(
@@ -67,6 +70,9 @@ describe('SupportSettingsService: el asistente con IA del soporte y sus topes (B
     [{ assistantRepliesPerConversation: 2.5 }],
     [{ assistantMonthlyTokenLimit: 9_999 }],
     [{ assistantMonthlyTokenLimit: 1_000_000_001 }],
+    [{ assistantMonthlyTokenLimitPerCompany: 9_999 }],
+    [{ assistantMonthlyTokenLimitPerCompany: 1_000_000_001 }],
+    [{ assistantMonthlyTokenLimitPerCompany: 15_000.5 }],
   ])(
     'segunda capa: un tope fuera de rango (%o) es 400 y no se guarda (por si llega sin pasar por el DTO)',
     async (campos) => {
@@ -77,4 +83,57 @@ describe('SupportSettingsService: el asistente con IA del soporte y sus topes (B
       expect(guardados).toEqual([]);
     },
   );
+
+  it.each([
+    [
+      'el cupo por empresa supera el total que viene en el mismo pedido',
+      {},
+      {
+        assistantMonthlyTokenLimit: 100_000,
+        assistantMonthlyTokenLimitPerCompany: 100_001,
+      },
+    ],
+    [
+      'el cupo por empresa supera el total guardado',
+      { assistantMonthlyTokenLimit: 100_000 },
+      { assistantMonthlyTokenLimitPerCompany: 100_001 },
+    ],
+    [
+      'se baja el total por debajo del cupo guardado',
+      {
+        assistantMonthlyTokenLimit: 500_000,
+        assistantMonthlyTokenLimitPerCompany: 300_000,
+      },
+      { assistantMonthlyTokenLimit: 299_999 },
+    ],
+  ])(
+    'segunda capa: %s → 400 en castellano y no se guarda',
+    async (_caso, guardado, campos) => {
+      const { servicio, guardados } = armar(
+        Object.assign(configuracionPorDefecto(), guardado),
+      );
+      await expect(
+        servicio.actualizar('plat-1', dto(campos)),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: CUPO_MAYOR_QUE_EL_TOTAL,
+      });
+      expect(guardados).toEqual([]);
+    },
+  );
+
+  it('el cupo igual al total vale (y bajar los dos juntos también)', async () => {
+    const { servicio, guardados } = armar();
+    await servicio.actualizar(
+      'plat-1',
+      dto({
+        assistantMonthlyTokenLimit: 50_000,
+        assistantMonthlyTokenLimitPerCompany: 50_000,
+      }),
+    );
+    expect(guardados[0]).toMatchObject({
+      assistantMonthlyTokenLimit: 50_000,
+      assistantMonthlyTokenLimitPerCompany: 50_000,
+    });
+  });
 });

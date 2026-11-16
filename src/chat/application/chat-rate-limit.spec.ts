@@ -32,16 +32,32 @@ describe('ChatRateLimit', () => {
   it('reintentar el mismo mensaje no consume cupo: nunca da 429', async () => {
     const cupos = new ChatRateLimit(redisFalso() as unknown as RedisService);
     for (let i = 0; i < MENSAJES_POR_MINUTO * 2; i++) {
-      await expect(cupos.mensaje('u-1', 'cmid-1')).resolves.toBeUndefined();
+      await expect(
+        cupos.mensaje({
+          ambito: 'dist-a',
+          userId: 'u-1',
+          clientMessageId: 'cmid-1',
+        }),
+      ).resolves.toBeUndefined();
     }
   });
 
   it('mensajes distintos sí lo consumen: el que pasa el tope es 429', async () => {
     const cupos = new ChatRateLimit(redisFalso() as unknown as RedisService);
     for (let i = 0; i < MENSAJES_POR_MINUTO; i++) {
-      await cupos.mensaje('u-1', `cmid-${i}`);
+      await cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: `cmid-${i}`,
+      });
     }
-    await expect(cupos.mensaje('u-1', 'cmid-extra')).rejects.toMatchObject({
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: 'cmid-extra',
+      }),
+    ).rejects.toMatchObject({
       status: 429,
     });
   });
@@ -49,20 +65,46 @@ describe('ChatRateLimit', () => {
   it('el cupo es por persona', async () => {
     const cupos = new ChatRateLimit(redisFalso() as unknown as RedisService);
     for (let i = 0; i < MENSAJES_POR_MINUTO; i++) {
-      await cupos.mensaje('u-1', `cmid-${i}`);
+      await cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: `cmid-${i}`,
+      });
     }
-    await expect(cupos.mensaje('u-2', 'cmid-0')).resolves.toBeUndefined();
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-2',
+        clientMessageId: 'cmid-0',
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it('reintentar un mensaje que dio 429 vuelve a contar: no esquiva el tope', async () => {
     const cupos = new ChatRateLimit(redisFalso() as unknown as RedisService);
     for (let i = 0; i < MENSAJES_POR_MINUTO; i++) {
-      await cupos.mensaje('u-1', `cmid-${i}`);
+      await cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: `cmid-${i}`,
+      });
     }
-    await expect(cupos.mensaje('u-1', 'cmid-extra')).rejects.toMatchObject({
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: 'cmid-extra',
+      }),
+    ).rejects.toMatchObject({
       status: 429,
     });
-    await expect(cupos.mensaje('u-1', 'cmid-extra')).rejects.toMatchObject({
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: 'cmid-extra',
+      }),
+    ).rejects.toMatchObject({
       status: 429,
     });
   });
@@ -71,19 +113,62 @@ describe('ChatRateLimit', () => {
     const redis = redisFalso();
     const cupos = new ChatRateLimit(redis as unknown as RedisService);
     // El primero quedó «en curso» (marcado y todavía sin confirmar).
-    await redis.setIfAbsent('chat:cupo:cmid:u-1:cmid-x');
-    await expect(cupos.mensaje('u-1', 'cmid-x')).rejects.toMatchObject({
-      status: 429,
-    });
+    await redis.setIfAbsent('chat:cupo:cmid:dist-a:u-1:cmid-x');
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-a',
+        userId: 'u-1',
+        clientMessageId: 'cmid-x',
+      }),
+    ).rejects.toMatchObject({ status: 429 });
   });
 
   it('con la marca aceptada, el reintento pasa sin consumir cupo', async () => {
     const redis = redisFalso();
     const cupos = new ChatRateLimit(redis as unknown as RedisService);
-    await cupos.mensaje('u-1', 'cmid-y');
-    expect(await redis.get('chat:cupo:cmid:u-1:cmid-y')).toBe('ok');
+    await cupos.mensaje({
+      ambito: 'dist-a',
+      userId: 'u-1',
+      clientMessageId: 'cmid-y',
+    });
+    expect(await redis.get('chat:cupo:cmid:dist-a:u-1:cmid-y')).toBe('ok');
     const antes = redis.incrWithExpire.mock.calls.length;
-    await cupos.mensaje('u-1', 'cmid-y');
+    await cupos.mensaje({
+      ambito: 'dist-a',
+      userId: 'u-1',
+      clientMessageId: 'cmid-y',
+    });
     expect(redis.incrWithExpire.mock.calls.length).toBe(antes);
+  });
+
+  it('la marca lleva la empresa: el mismo id en otra empresa es otro mensaje y cuenta', async () => {
+    const redis = redisFalso();
+    const cupos = new ChatRateLimit(redis as unknown as RedisService);
+    await cupos.mensaje({
+      ambito: 'dist-a',
+      userId: 'u-1',
+      clientMessageId: 'cmid-z',
+    });
+    const antes = redis.incrWithExpire.mock.calls.length;
+    await cupos.mensaje({
+      ambito: 'dist-b',
+      userId: 'u-1',
+      clientMessageId: 'cmid-z',
+    });
+    expect(redis.incrWithExpire.mock.calls.length).toBe(antes + 1);
+    expect(await redis.get('chat:cupo:cmid:dist-b:u-1:cmid-z')).toBe('ok');
+  });
+
+  it('un envío en curso en una empresa no frena el mismo id en otra', async () => {
+    const redis = redisFalso();
+    const cupos = new ChatRateLimit(redis as unknown as RedisService);
+    await redis.setIfAbsent('chat:cupo:cmid:dist-a:u-1:cmid-w');
+    await expect(
+      cupos.mensaje({
+        ambito: 'dist-b',
+        userId: 'u-1',
+        clientMessageId: 'cmid-w',
+      }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
+import { errorMessage } from '../../common/errors/error-message';
+import {
+  registrarElementoBien,
+  registrarFallaDeElemento,
+} from '../../process-run/process-run.context';
 import {
   Channel,
   ConversationClosedReason,
@@ -37,6 +42,8 @@ export {
  */
 @Injectable()
 export class PlatformChatService {
+  private readonly logger = new Logger(PlatformChatService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly writer: MessageWriter,
@@ -83,7 +90,11 @@ export class PlatformChatService {
     dto: SendMessageDto,
     ahora: Date = new Date(),
   ): Promise<MensajeEscrito> {
-    await this.cupos.mensaje(userId, dto.clientMessageId);
+    await this.cupos.mensaje({
+      ambito: distributorId,
+      userId,
+      clientMessageId: dto.clientMessageId,
+    });
     return this.enviarAlChatDeLaEmpresa(
       distributorId,
       Party.COMPANY,
@@ -100,7 +111,11 @@ export class PlatformChatService {
     dto: SendMessageDto,
   ): Promise<MensajeEscrito> {
     await assertEmpresaVigente(this.dataSource.manager, distributorId);
-    await this.cupos.mensaje(userId, dto.clientMessageId);
+    await this.cupos.mensaje({
+      ambito: distributorId,
+      userId,
+      clientMessageId: dto.clientMessageId,
+    });
     return this.enviarAlChatDeLaEmpresa(
       distributorId,
       Party.PLATFORM,
@@ -116,7 +131,11 @@ export class PlatformChatService {
     userId: string,
     dto: SendMessageDto,
   ): Promise<MensajeEscrito> {
-    await this.cupos.mensaje(userId, dto.clientMessageId);
+    await this.cupos.mensaje({
+      ambito: `chat:${chatId}`,
+      userId,
+      clientMessageId: dto.clientMessageId,
+    });
     const efectos = new Efectos();
     const escrito = await this.dataSource.transaction(async (manager) => {
       const chat = await this.chatDeLaPlataforma(manager, chatId);
@@ -171,42 +190,61 @@ export class PlatformChatService {
    */
   async cerrarInactivos(ahora: Date, horas: number): Promise<number> {
     const limite = new Date(ahora.getTime() - horas * 60 * 60 * 1000);
-    const candidatos: Array<{ id: string }> = await this.dataSource.query(
-      `SELECT "conversation_id" AS id FROM "conversation"
-        WHERE "channel" = 'platform_chat' AND "status" = 'open' AND "deleted_at" IS NULL
-          AND COALESCE("last_message_at", "created_at") < $1`,
-      [limite],
-    );
+    const candidatos: Array<{ id: string; empresa: string }> =
+      await this.dataSource.query(
+        `SELECT "conversation_id" AS id, "distributor_id" AS empresa FROM "conversation"
+          WHERE "channel" = 'platform_chat' AND "status" = 'open' AND "deleted_at" IS NULL
+            AND COALESCE("last_message_at", "created_at") < $1`,
+        [limite],
+      );
     let cerrados = 0;
-    for (const { id } of candidatos) {
-      const efectos = new Efectos();
-      const cerrado = await this.dataSource.transaction(async (manager) => {
-        const c = await manager.getRepository(Conversation).findOne({
-          where: { conversationId: id },
-          lock: { mode: 'pessimistic_write' },
-        });
-        const ultimo = c ? (c.lastMessageAt ?? c.createdAt) : null;
-        if (
-          !c ||
-          c.status !== ConversationStatus.OPEN ||
-          !ultimo ||
-          ultimo.getTime() >= limite.getTime()
-        ) {
-          return false;
-        }
-        await this.cerrarDentro(
-          manager,
-          c,
-          ConversationClosedReason.INACTIVITY,
-          null,
-          efectos,
+    // Cada chat por su lado: el que falla queda abierto (se reintenta en la
+    // próxima corrida) y no frena el cierre de los de las demás empresas.
+    for (const { id, empresa } of candidatos) {
+      try {
+        if (await this.cerrarSiSigueInactivo(id, limite)) cerrados += 1;
+        registrarElementoBien(`chat:${id}`);
+      } catch (error) {
+        registrarFallaDeElemento(`chat:${id}`, error);
+        this.logger.error(
+          `Cierre de chats inactivos: falló el chat ${id} de la distribuidora ${empresa}: ${errorMessage(error)}`,
         );
-        return true;
-      });
-      if (cerrado) cerrados += 1;
-      this.eventos.publicar(efectos);
+      }
     }
     return cerrados;
+  }
+
+  /** Cierra el chat si, con la fila bloqueada, sigue abierto y sin mensajes desde el límite. */
+  private async cerrarSiSigueInactivo(
+    id: string,
+    limite: Date,
+  ): Promise<boolean> {
+    const efectos = new Efectos();
+    const cerrado = await this.dataSource.transaction(async (manager) => {
+      const c = await manager.getRepository(Conversation).findOne({
+        where: { conversationId: id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const ultimo = c ? (c.lastMessageAt ?? c.createdAt) : null;
+      if (
+        !c ||
+        c.status !== ConversationStatus.OPEN ||
+        !ultimo ||
+        ultimo.getTime() >= limite.getTime()
+      ) {
+        return false;
+      }
+      await this.cerrarDentro(
+        manager,
+        c,
+        ConversationClosedReason.INACTIVITY,
+        null,
+        efectos,
+      );
+      return true;
+    });
+    this.eventos.publicar(efectos);
+    return cerrado;
   }
 
   private async enviarAlChatDeLaEmpresa(

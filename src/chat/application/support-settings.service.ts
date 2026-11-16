@@ -25,6 +25,7 @@ export function configuracionPorDefecto(): PlatformSupportSettings {
     assistantAiEnabled: false,
     assistantRepliesPerConversation: 10,
     assistantMonthlyTokenLimit: 2_000_000,
+    assistantMonthlyTokenLimitPerCompany: 2_000_000,
     chatInactivityHours: 24,
     resolvedCloseDays: 7,
     waitingCloseDays: 7,
@@ -53,6 +54,10 @@ export function plazosDe(c: PlatformSupportSettings): PlazosDelTicket {
     resolvedCloseDays: c.resolvedCloseDays,
   };
 }
+
+/** El cupo de cada empresa en el soporte vive dentro del total del soporte. */
+export const CUPO_MAYOR_QUE_EL_TOTAL =
+  'El cupo de tokens por mes de cada distribuidora en el soporte no puede superar el tope total de tokens por mes del soporte';
 
 const enRango = (n: number, min: number, max: number): boolean =>
   Number.isInteger(n) && n >= min && n <= max;
@@ -109,11 +114,23 @@ export class SupportSettingsService {
       // Segunda capa de los topes del asistente (la tercera es el CHECK de la base).
       if (
         !enRango(nueva.assistantRepliesPerConversation, 1, 50) ||
-        !enRango(nueva.assistantMonthlyTokenLimit, 10_000, 1_000_000_000)
+        !enRango(nueva.assistantMonthlyTokenLimit, 10_000, 1_000_000_000) ||
+        !enRango(
+          nueva.assistantMonthlyTokenLimitPerCompany,
+          10_000,
+          1_000_000_000,
+        )
       ) {
         throw new BadRequestException(
-          'Los topes del asistente están fuera de rango: de 1 a 50 respuestas por conversación y de 10.000 a 1.000.000.000 tokens por mes',
+          'Los topes del asistente están fuera de rango: de 1 a 50 respuestas por conversación y de 10.000 a 1.000.000.000 tokens por mes (en total y por empresa)',
         );
+      }
+      // Con lo guardado: bajar el total por debajo del cupo vigente también rebota.
+      if (
+        nueva.assistantMonthlyTokenLimitPerCompany >
+        nueva.assistantMonthlyTokenLimit
+      ) {
+        throw new BadRequestException(CUPO_MAYOR_QUE_EL_TOTAL);
       }
       if (nueva.waitingWarnDays >= nueva.waitingCloseDays) {
         throw new BadRequestException(

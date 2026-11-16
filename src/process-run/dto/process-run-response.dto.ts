@@ -45,7 +45,7 @@ export class ProcessRunResponseDto {
     additionalProperties: { type: 'number' },
     example: { processed: 3, errors: 0 },
     description:
-      'Lo que generó la corrida (casos, avisos, ofertas...), según el proceso',
+      'Lo que generó la corrida (casos, avisos, ofertas...), según el proceso. `errors`: elementos que fallaron en esta corrida (la deja `partial`; se reintentan en la próxima). `persistentFailures` (sólo si hay): de esos, los que vienen fallando hace 3 corridas seguidas o más; al llegar a 3 se avisa una vez a la plataforma.',
   })
   counters!: Record<string, number>;
 

@@ -8682,11 +8682,19 @@
     },
     {
       "table": "platform_support_settings",
+      "column": "assistant_monthly_token_limit_per_company",
+      "property": "assistantMonthlyTokenLimitPerCompany",
+      "secret": true,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "platform_support_settings",
       "column": "chat_inactivity_hours",
       "property": "chatInactivityHours",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "platform_support_settings",
@@ -8694,7 +8702,7 @@
       "property": "resolvedCloseDays",
       "secret": false,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "platform_support_settings",
@@ -8702,7 +8710,7 @@
       "property": "waitingCloseDays",
       "secret": false,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "platform_support_settings",
@@ -8710,7 +8718,7 @@
       "property": "waitingWarnDays",
       "secret": false,
       "kind": "text",
-      "position": 11
+      "position": 12
     },
     {
       "table": "platform_support_settings",
@@ -8718,7 +8726,7 @@
       "property": "targetUrgentMinutes",
       "secret": false,
       "kind": "text",
-      "position": 12
+      "position": 13
     },
     {
       "table": "platform_support_settings",
@@ -8726,7 +8734,7 @@
       "property": "targetHighMinutes",
       "secret": false,
       "kind": "text",
-      "position": 13
+      "position": 14
     },
     {
       "table": "platform_support_settings",
@@ -8734,7 +8742,7 @@
       "property": "targetNormalMinutes",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
     },
     {
       "table": "platform_support_settings",
@@ -8742,7 +8750,7 @@
       "property": "targetLowMinutes",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 16
     },
     {
       "table": "platform_support_settings",
@@ -8750,7 +8758,7 @@
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 17
     },
     {
       "table": "purchase_order",

@@ -165,11 +165,14 @@ export class BandejaService {
     if (actor.party === Party.CUSTOMER)
       await this.assertClientesPrendido(actor);
     await this.vigente.assertSePuedeEscribir(conversacion);
-    await this.cupos.mensaje(
-      actor.userId,
-      dto.clientMessageId,
-      esDelPersonal(actor) ? undefined : conversacion.conversationId,
-    );
+    await this.cupos.mensaje({
+      ambito: actor.distributorId,
+      userId: actor.userId,
+      clientMessageId: dto.clientMessageId,
+      conversacion: esDelPersonal(actor)
+        ? undefined
+        : conversacion.conversationId,
+    });
     const efectos = new Efectos();
     const escrito = await this.dataSource.transaction((manager) =>
       this.escribirDentro(manager, actor, conversacion, dto, efectos, ahora),
@@ -353,7 +356,11 @@ export class BandejaService {
     ahora: Date,
   ): Promise<ConversacionAbierta> {
     if (esDelPersonal(actor)) {
-      await this.cupos.mensaje(actor.userId, primer.clientMessageId);
+      await this.cupos.mensaje({
+        ambito: actor.distributorId,
+        userId: actor.userId,
+        clientMessageId: primer.clientMessageId,
+      });
     }
     const efectos = new Efectos();
     const r = await this.dataSource.transaction(async (manager) => {
@@ -380,11 +387,12 @@ export class BandejaService {
       // misma clave que al escribir en ella después). Si se pasa, la
       // conversación recién creada vuelve atrás con la transacción.
       if (!esDelPersonal(actor)) {
-        await this.cupos.mensaje(
-          actor.userId,
-          primer.clientMessageId,
-          c.conversationId,
-        );
+        await this.cupos.mensaje({
+          ambito: actor.distributorId,
+          userId: actor.userId,
+          clientMessageId: primer.clientMessageId,
+          conversacion: c.conversationId,
+        });
       }
       const escrito = await this.escribirDentro(
         manager,

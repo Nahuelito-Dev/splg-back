@@ -34,6 +34,10 @@ import { Message } from '../chat/entities/message.entity';
 import type { PlatformSupportSettings } from '../chat/entities/platform-support-settings.entity';
 import { codigoSqlDelError } from '../common/errors/db-exceptions';
 import { errorMessage } from '../common/errors/error-message';
+import {
+  registrarElementoBien,
+  registrarFallaDeElemento,
+} from '../process-run/process-run.context';
 import { RedisService } from '../redis/redis.service';
 import {
   DERIVACIONES_SIN_IA,
@@ -42,10 +46,12 @@ import {
   MotivoDeDerivacion,
   SEGUNDOS_PARA_RESCATAR,
   TOPE_DEL_RESCATE,
+  TOPE_DEL_RESCATE_POR_EMPRESA,
   MotivoDeDescarte,
   ResultadoDelAsistente,
   type RespuestaDelModelo,
   SIN_USO,
+  type TokensDelMes,
   tokensQueCuentan,
   topeAlcanzado,
   type TopesDelAsistente,
@@ -194,6 +200,15 @@ export class AsistenteIaService {
    * conversación bloqueada y el único parcial del disparador no deja publicar
    * dos veces. Antes, apaga el interruptor de las empresas que perdieron la
    * función (vencimiento de la excepción). Devuelve cuántos derivó.
+   *
+   * Aislado entre empresas: la consulta trae sólo conversaciones con la IA
+   * prendida (en C3, el interruptor y el chat de clientes de la empresa, que
+   * tras el apagado de arriba implica la función habilitada; en C1, el del
+   * soporte), así los pendientes de una empresa sin IA no ocupan la corrida;
+   * y reparte la corrida por turnos entre empresas y canales (el chat de una
+   * empresa con sus clientes y su chat con el soporte no se tapan), con un
+   * tope por empresa y canal, así una con muchos pendientes no deja esperando
+   * a las demás.
    */
   async rescatarSinAtender(ahora: Date = new Date()): Promise<number> {
     const apagadas = await this.chat.apagarDondeNoEstaHabilitado(
@@ -204,12 +219,17 @@ export class AsistenteIaService {
         `Rescate del asistente: se apagó el asistente de ${apagadas} empresa(s) que ya no tienen la función`,
       );
     }
+    const soportePrendido = (await this.ajustesDelSoporte.leer())
+      .assistantAiEnabled;
     const candidatos: Array<{ conversation_id: string; message_id: string }> =
       await this.dataSource.query(
-        `SELECT c."conversation_id", m."message_id"
+        `SELECT "conversation_id", "message_id" FROM (
+         SELECT c."conversation_id", m."message_id", m."created_at",
+                row_number() OVER (PARTITION BY c."distributor_id", c."channel" ORDER BY m."created_at", m."message_id") AS "turno"
            FROM "conversation" c
            JOIN "message" m ON m."conversation_id" = c."conversation_id"
                            AND m."seq" = c."last_message_seq"
+           LEFT JOIN "chat_company_settings" s ON s."distributor_id" = c."distributor_id"
           WHERE c."status" = 'open' AND c."deleted_at" IS NULL
             AND c."assigned_to_user_id" IS NULL AND c."awaiting_human_since" IS NULL
             AND c."channel" IN ('staff_customer', 'platform_chat')
@@ -217,14 +237,21 @@ export class AsistenteIaService {
             AND m."sender_party" = CASE c."channel" WHEN 'staff_customer' THEN 'customer' ELSE 'company' END
             AND m."withdrawn_at" IS NULL AND m."redacted_at" IS NULL AND m."deleted_at" IS NULL
             AND m."created_at" < $1 AND m."created_at" >= $2
+            AND CASE c."channel"
+                  WHEN 'staff_customer' THEN COALESCE(s."assistant_ai_enabled" AND s."customer_chat_enabled", false)
+                  ELSE $3::boolean
+                END
             AND NOT EXISTS (SELECT 1 FROM "assistant_trace" t
                              WHERE t."trigger_message_id" = m."message_id"
                                AND t."outcome" <> '${ResultadoDelAsistente.DISCARDED}')
-          ORDER BY m."created_at"
+         ) x
+          WHERE "turno" <= ${TOPE_DEL_RESCATE_POR_EMPRESA}
+          ORDER BY "turno", "created_at", "message_id"
           LIMIT ${TOPE_DEL_RESCATE}`,
         [
           new Date(ahora.getTime() - SEGUNDOS_PARA_RESCATAR * 1000),
           new Date(ahora.getTime() - HORAS_QUE_MIRA_EL_RESCATE * 3_600_000),
+          soportePrendido,
         ],
       );
     let derivados = 0;
@@ -233,7 +260,9 @@ export class AsistenteIaService {
         if (await this.rescatar(conversation_id, message_id, ahora)) {
           derivados += 1;
         }
+        registrarElementoBien(`mensaje:${message_id}`);
       } catch (error) {
+        registrarFallaDeElemento(`mensaje:${message_id}`, error);
         this.logger.error(
           `Rescate del asistente: falló la conversación ${conversation_id}: ${errorMessage(error)}`,
         );
@@ -289,6 +318,10 @@ export class AsistenteIaService {
     const topes: TopesDelAsistente = {
       respuestasPorConversacion: soporte.assistantRepliesPerConversation,
       tokensPorMes: soporte.assistantMonthlyTokenLimit,
+      tokensPorMesPorEmpresa:
+        perfil.canal === 'soporte'
+          ? soporte.assistantMonthlyTokenLimitPerCompany
+          : null,
     };
     if (perfil.canal === 'soporte') {
       const plataforma = this.vistas.nombreDeLaPlataforma();
@@ -426,22 +459,29 @@ export class AsistenteIaService {
   /**
    * Tokens del mes (calendario de Argentina), descartadas incluidas: los de
    * la empresa con sus clientes (C3) o los del soporte de la plataforma (C1,
-   * de todas las empresas: lo paga la plataforma).
+   * de todas las empresas: lo paga la plataforma) y, aparte, los de la
+   * empresa que pregunta en el soporte (su cupo).
    */
   private async tokensDelMes(
     c: Conversation,
     perfil: PerfilDelCanal,
-  ): Promise<number> {
+  ): Promise<TokensDelMes> {
     const soporte = perfil.canal === 'soporte';
-    const [fila]: Array<{ n: string | null }> = await this.dataSource.query(
-      `SELECT sum("input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens")::bigint AS n
-         FROM "assistant_trace"
-        WHERE "channel" = $1 ${soporte ? '' : 'AND "distributor_id" = $2'}
-          AND "created_at" >= (date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')
-                               AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
-      soporte ? [c.channel] : [c.channel, c.distributorId],
-    );
-    return Number(fila?.n ?? 0);
+    const [fila]: Array<{ n: string | null; empresa: string | null }> =
+      await this.dataSource.query(
+        `SELECT sum("input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens")::bigint AS n,
+                sum("input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens")
+                  FILTER (WHERE "distributor_id" = $2)::bigint AS empresa
+           FROM "assistant_trace"
+          WHERE "channel" = $1 ${soporte ? '' : 'AND "distributor_id" = $2'}
+            AND "created_at" >= (date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                                 AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
+        [c.channel, c.distributorId],
+      );
+    return {
+      total: Number(fila?.n ?? 0),
+      deLaEmpresa: soporte ? Number(fila?.empresa ?? 0) : 0,
+    };
   }
 
   /** Los últimos mensajes visibles con texto de ESA conversación, del más viejo al más nuevo. */

@@ -92,6 +92,12 @@ export const SEGUNDOS_PARA_RESCATAR = 60;
 export const HORAS_QUE_MIRA_EL_RESCATE = 24;
 /** Mensajes por corrida del rescate. */
 export const TOPE_DEL_RESCATE = 100;
+/**
+ * Mensajes de una misma empresa en un mismo canal (C3 o C1) por corrida del
+ * rescate: una empresa con muchos pendientes no ocupa la corrida entera (el
+ * resto, en las siguientes).
+ */
+export const TOPE_DEL_RESCATE_POR_EMPRESA = 20;
 
 /**
  * Por qué se descartó una consulta ya hecha: los de `motivoParaCallarse`
@@ -215,19 +221,39 @@ export function correspondeAtender(s: SituacionDelAsistente): boolean {
 /** Topes del asistente (§6). */
 export interface TopesDelAsistente {
   respuestasPorConversacion: number;
+  /** Tokens del mes: los de la empresa con sus clientes (C3) o los de todo el soporte (C1). */
   tokensPorMes: number;
+  /**
+   * Sólo en el soporte (C1): el cupo de cada empresa dentro del total de la
+   * plataforma, para que una empresa no se lo gaste a las demás. `null` en C3.
+   */
+  tokensPorMesPorEmpresa: number | null;
+}
+
+/** Tokens del mes que cuentan para los topes. */
+export interface TokensDelMes {
+  /** Los de la empresa en C3; los de todo el soporte en C1. */
+  total: number;
+  /** En C1, los de la empresa que pregunta; 0 en C3 (ya es `total`). */
+  deLaEmpresa: number;
 }
 
 /** El tope que se pasó, si alguno: al pasarlo sólo queda la capa fija y derivar. */
 export function topeAlcanzado(
   topes: TopesDelAsistente,
   respuestasEnLaConversacion: number,
-  tokensDelMes: number,
+  tokensDelMes: TokensDelMes,
 ): MotivoDeDerivacion | null {
   if (respuestasEnLaConversacion >= topes.respuestasPorConversacion) {
     return MotivoDeDerivacion.REPLY_LIMIT;
   }
-  if (tokensDelMes >= topes.tokensPorMes) {
+  if (tokensDelMes.total >= topes.tokensPorMes) {
+    return MotivoDeDerivacion.MONTHLY_LIMIT;
+  }
+  if (
+    topes.tokensPorMesPorEmpresa !== null &&
+    tokensDelMes.deLaEmpresa >= topes.tokensPorMesPorEmpresa
+  ) {
     return MotivoDeDerivacion.MONTHLY_LIMIT;
   }
   return null;

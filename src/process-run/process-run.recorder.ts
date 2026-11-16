@@ -20,6 +20,7 @@ import {
 } from './process-run.context';
 import { sanitizarError } from './domain/sanitizar-error';
 import { ProcessRun } from './entities/process-run.entity';
+import { RachasDeFallas, type ResultadoDeRachas } from './rachas-de-fallas';
 
 export interface ResultadoDeCorrida {
   counters: Record<string, number>;
@@ -105,6 +106,22 @@ export function resolverCierre(
 }
 
 /**
+ * Suma al cierre los elementos que vienen fallando hace varias corridas
+ * (`persistentFailures`): la corrida ya es `partial` por sus errores, el
+ * contador dice cuántos de esos son persistentes.
+ */
+export function conPersistentes(
+  cierre: CierreDeCorrida,
+  rachas: ResultadoDeRachas,
+): CierreDeCorrida {
+  if (rachas.persistentes === 0) return cierre;
+  return {
+    ...cierre,
+    counters: { ...cierre.counters, persistentFailures: rachas.persistentes },
+  };
+}
+
+/**
  * El registrador único de corridas (F31). Envuelve la ejecución de un proceso
  * sin cambiar su lógica ni su resultado: lo que el proceso devuelve o lanza
  * sale igual. Si el propio registro falla (base caída, tabla sin migrar) se
@@ -185,14 +202,17 @@ export class ProcessRunRecorder implements OnModuleInit {
       ultima !== undefined &&
       inicio.getTime() - ultima < cadaMs
     ) {
-      // Proceso de alta frecuencia: no se registra cada tic, pero un error sí.
+      // Proceso de alta frecuencia: no se registra cada tic, pero un error sí
+      // (y las rachas de fallas por elemento se siguen igual).
       try {
         const valor = await correr();
+        await this.rachas(proceso, distributorId, estado);
         if (estado.fatal) {
           await this.registrarFalloSuelto(clave, apertura, estado.fatal);
         }
         return valor;
       } catch (error) {
+        await this.rachas(proceso, distributorId, estado);
         await this.registrarFalloSuelto(clave, apertura, error);
         throw error;
       }
@@ -202,13 +222,17 @@ export class ProcessRunRecorder implements OnModuleInit {
     const registrada = await this.abrir(apertura);
     try {
       const valor = await correr();
-      const cierre = resolverCierre(valor, estado);
+      const cierre = conPersistentes(
+        resolverCierre(valor, estado),
+        await this.rachas(proceso, distributorId, estado),
+      );
       await this.cerrar(registrada, proceso, cierre, estado.companies);
       if (cierre.status === ProcessRunStatus.SKIPPED && cadaMs > 0) {
         await this.soltarMuestreo(clave, ultima, registrada, inicio, cadaMs);
       }
       return valor;
     } catch (error) {
+      await this.rachas(proceso, distributorId, estado);
       await this.cerrar(
         registrada,
         proceso,
@@ -256,6 +280,18 @@ export class ProcessRunRecorder implements OnModuleInit {
         `No se pudo descartar el registro salteado ${runId}: ${errorMessage(error)}`,
       );
     }
+  }
+
+  /** Las rachas de fallas por elemento (nunca tira: `RachasDeFallas` atrapa lo suyo). */
+  private rachas(
+    proceso: ProcessName,
+    distributorId: string | null,
+    estado: CorridaEnCurso,
+  ): Promise<ResultadoDeRachas> {
+    const rachas = RachasDeFallas.instalada();
+    return rachas
+      ? rachas.seguir(proceso, distributorId, estado)
+      : Promise.resolve({ persistentes: 0, avisados: 0 });
   }
 
   private async abrir(apertura: Apertura): Promise<string | null> {

@@ -58,7 +58,11 @@ export class TicketActivityService {
     dto: SendMessageDto,
     visibility: MessageVisibility = MessageVisibility.ALL,
   ): Promise<MensajeEscrito & { ticket: SupportTicket }> {
-    await this.cupos.mensaje(actor.userId, dto.clientMessageId);
+    await this.cupos.mensaje({
+      ambito: actor.distributorId ?? `ticket:${ticketId}`,
+      userId: actor.userId,
+      clientMessageId: dto.clientMessageId,
+    });
     const efectos = new Efectos();
     const r = await this.dataSource.transaction(async (manager) => {
       const ticket = await bloquearTicket(

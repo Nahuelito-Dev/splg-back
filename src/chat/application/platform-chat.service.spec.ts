@@ -1,5 +1,9 @@
 import type { DataSource } from 'typeorm';
 import {
+  dentroDeCorrida,
+  nuevaCorrida,
+} from '../../process-run/process-run.context';
+import {
   Channel,
   ConversationStatus,
   MessageKind,
@@ -70,17 +74,19 @@ function armar(cambios: Partial<Conversation> = {}, iaSeEncarga = false) {
   const asistente = {
     seEncarga: jest.fn(() => Promise.resolve(iaSeEncarga)),
   };
+  const cupos = { mensaje: jest.fn() };
   const servicio = new PlatformChatService(
     dataSource as unknown as DataSource,
     { escribir } as unknown as MessageWriter,
     {} as ConversationFactory,
-    { mensaje: jest.fn() } as unknown as ChatRateLimit,
+    cupos as unknown as ChatRateLimit,
     eventos as unknown as ChatEvents,
     fijas as unknown as RespuestasFijas,
     asistente as unknown as AsistenteDelChat,
   );
   return {
     servicio,
+    cupos,
     guardados,
     eventos,
     consultas,
@@ -159,5 +165,111 @@ describe('PlatformChatService con el asistente con IA del soporte (B3)', () => {
         }
       ).senderParty,
     ).toBe(Party.COMPANY);
+  });
+});
+
+describe('PlatformChatService: la marca de reintento lleva la empresa', () => {
+  it('la empresa y la plataforma escribiéndole a una empresa: la empresa; respondiendo un chat puntual: ese chat', async () => {
+    const t = armar({ awaitingHumanSince: null });
+    const dto = { clientMessageId: UUID, body: 'Hola' };
+    await t.servicio.enviarComoEmpresa('dist-a', 'adm-1', dto);
+    expect(t.cupos.mensaje).toHaveBeenLastCalledWith({
+      ambito: 'dist-a',
+      userId: 'adm-1',
+      clientMessageId: UUID,
+    });
+    await t.servicio.responder('chat-1', 'plat-1', dto);
+    expect(t.cupos.mensaje).toHaveBeenLastCalledWith({
+      ambito: 'chat:chat-1',
+      userId: 'plat-1',
+      clientMessageId: UUID,
+    });
+  });
+});
+
+describe('PlatformChatService.cerrarInactivos: una empresa no frena a las demás', () => {
+  const AHORA = new Date('2026-11-15T12:00:00Z');
+  const VIEJO = new Date('2026-11-13T12:00:00Z');
+
+  it('el chat de A que falla siempre no impide cerrar el de B; queda en el monitoreo y A se reintenta', async () => {
+    const chats: Record<string, Conversation> = {
+      'a-chat': Object.assign(new Conversation(), {
+        conversationId: 'a-chat',
+        distributorId: 'dist-a',
+        channel: Channel.PLATFORM_CHAT,
+        status: ConversationStatus.OPEN,
+        lastMessageAt: VIEJO,
+        createdAt: VIEJO,
+      }),
+      'b-chat': Object.assign(new Conversation(), {
+        conversationId: 'b-chat',
+        distributorId: 'dist-b',
+        channel: Channel.PLATFORM_CHAT,
+        status: ConversationStatus.OPEN,
+        lastMessageAt: VIEJO,
+        createdAt: VIEJO,
+      }),
+    };
+    const cerrados: string[] = [];
+    const repo = {
+      findOne: jest.fn(({ where }: { where: { conversationId: string } }) =>
+        where.conversationId === 'a-chat'
+          ? Promise.reject(new Error('fila de A rota'))
+          : Promise.resolve(chats[where.conversationId]),
+      ),
+      findOneByOrFail: jest.fn(
+        ({ conversationId }: { conversationId: string }) =>
+          Promise.resolve(chats[conversationId]),
+      ),
+      save: jest.fn((c: Conversation) => {
+        cerrados.push(c.conversationId);
+        return Promise.resolve(c);
+      }),
+    };
+    const manager = { getRepository: () => repo };
+    const dataSource = {
+      query: jest.fn(() =>
+        Promise.resolve([
+          { id: 'a-chat', empresa: 'dist-a' },
+          { id: 'b-chat', empresa: 'dist-b' },
+        ]),
+      ),
+      transaction: jest.fn((cb: (m: typeof manager) => Promise<unknown>) =>
+        cb(manager),
+      ),
+    };
+    const escribir = jest.fn((_m: unknown, nuevo: { conversationId: string }) =>
+      Promise.resolve({
+        message: Object.assign(new Message(), { messageId: 'sys-1' }),
+        created: true,
+        conversation: chats[nuevo.conversationId],
+      }),
+    );
+    const eventos = { publicar: jest.fn() };
+    const servicio = new PlatformChatService(
+      dataSource as unknown as DataSource,
+      { escribir } as unknown as MessageWriter,
+      {} as ConversationFactory,
+      { mensaje: jest.fn() } as unknown as ChatRateLimit,
+      eventos as unknown as ChatEvents,
+      {} as RespuestasFijas,
+      {} as AsistenteDelChat,
+    );
+    const corrida = nuevaCorrida();
+
+    const n = await dentroDeCorrida(corrida, () =>
+      servicio.cerrarInactivos(AHORA, 24),
+    );
+
+    expect(n).toBe(1);
+    expect(cerrados).toEqual(['b-chat']);
+    expect(chats['a-chat'].status).toBe(ConversationStatus.OPEN);
+    expect(corrida).toMatchObject({
+      errors: 1,
+      fatal: null,
+      lastError: 'fila de A rota',
+    });
+    expect([...corrida.elementos.fallidos.keys()]).toEqual(['chat:a-chat']);
+    expect([...corrida.elementos.bien]).toEqual(['chat:b-chat']);
   });
 });

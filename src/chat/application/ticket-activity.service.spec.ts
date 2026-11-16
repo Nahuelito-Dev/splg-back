@@ -64,6 +64,7 @@ describe('TicketActivityService: respuestas, notas internas y estados', () => {
   let guardados: SupportTicket[];
   let avisos: { respuestaDeLaPlataforma: jest.Mock; resuelto: jest.Mock };
   let service: TicketActivityService;
+  let cupos: { mensaje: jest.Mock };
 
   beforeEach(() => {
     actual = ticket();
@@ -116,6 +117,7 @@ describe('TicketActivityService: respuestas, notas internas y estados', () => {
       }),
     } as unknown as MessageWriter;
     avisos = { respuestaDeLaPlataforma: jest.fn(), resuelto: jest.fn() };
+    cupos = { mensaje: jest.fn(() => Promise.resolve()) };
     service = new TicketActivityService(
       dataSource,
       writer,
@@ -127,7 +129,7 @@ describe('TicketActivityService: respuestas, notas internas y estados', () => {
         esMiembroDeLaPlataforma: (id: string) =>
           Promise.resolve(id === 'super-2'),
       } as unknown as ChatReadModel,
-      { mensaje: () => Promise.resolve() } as unknown as ChatRateLimit,
+      cupos as unknown as ChatRateLimit,
       { publicar: jest.fn() } as unknown as ChatEvents,
       avisos as unknown as ChatNotices,
     );
@@ -148,6 +150,21 @@ describe('TicketActivityService: respuestas, notas internas y estados', () => {
     body: 'Hola',
   };
   const sistema = () => escritos.filter((e) => e.systemCode !== null);
+
+  it('la marca de reintento lleva la empresa (o el ticket, si responde la plataforma)', async () => {
+    await service.responder(empresa, 't1', dto);
+    expect(cupos.mensaje).toHaveBeenLastCalledWith({
+      ambito: EMPRESA,
+      userId: 'admin-a',
+      clientMessageId: dto.clientMessageId,
+    });
+    await service.responder(plataforma, 't1', dto);
+    expect(cupos.mensaje).toHaveBeenLastCalledWith({
+      ambito: 'ticket:t1',
+      userId: 'super-1',
+      clientMessageId: dto.clientMessageId,
+    });
+  });
 
   it('la empresa responde a uno que la esperaba: vuelve a open y queda el mensaje de sistema', async () => {
     actual = ticket({ status: TicketStatus.WAITING_COMPANY });

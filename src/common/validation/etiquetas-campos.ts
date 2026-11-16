@@ -48,6 +48,8 @@ export const ETIQUETAS_CAMPOS: Readonly<Record<string, string>> = {
   assistantRepliesPerConversation:
     'Respuestas del asistente con IA por conversación',
   assistantMonthlyTokenLimit: 'Tokens por mes del asistente con IA',
+  assistantMonthlyTokenLimitPerCompany:
+    'Tokens por mes del asistente con IA para cada distribuidora en el soporte',
   channel: 'Canal',
   clientBatchId: 'Identificador del envío',
   customerChatEnabled: 'Chat con los clientes',

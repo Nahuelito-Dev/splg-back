@@ -17,10 +17,41 @@ import {
   Matches,
   Max,
   Min,
+  registerDecorator,
   ValidateIf,
   ValidateNested,
+  type ValidationArguments,
+  type ValidationOptions,
 } from 'class-validator';
 import { MessageTemplateScope } from '../../domain/chat.enums';
+import { CUPO_MAYOR_QUE_EL_TOTAL } from '../../application/support-settings.service';
+
+/**
+ * Primera capa del cupo por empresa: si en el mismo pedido vienen el cupo y
+ * el total, el cupo no lo supera. Si viene uno solo, lo compara el servicio
+ * con lo guardado (segunda capa) y la base con el CHECK (tercera).
+ */
+function NoSuperaElTotal(opciones?: ValidationOptions) {
+  return function (objeto: object, propiedad: string) {
+    registerDecorator({
+      name: 'noSuperaElTotal',
+      target: objeto.constructor,
+      propertyName: propiedad,
+      options: opciones,
+      validator: {
+        validate: (valor: unknown, args: ValidationArguments) => {
+          const total = (args.object as UpdateSupportSettingsDto)
+            .assistantMonthlyTokenLimit;
+          if (typeof valor !== 'number' || typeof total !== 'number') {
+            return true;
+          }
+          return valor <= total;
+        },
+        defaultMessage: () => CUPO_MAYOR_QUE_EL_TOTAL,
+      },
+    });
+  };
+}
 
 const Recortar = () =>
   Transform(({ value }: { value: unknown }) =>
@@ -134,6 +165,24 @@ export class UpdateSupportSettingsDto {
   assistantMonthlyTokenLimit?: number;
 
   @ApiPropertyOptional({
+    minimum: 10000,
+    maximum: 1000000000,
+    description:
+      'Cupo de tokens por mes del asistente con IA de cada empresa en el soporte (entrada, salida y caché). No puede superar `assistantMonthlyTokenLimit` (400 si no, también si se baja el total por debajo del cupo guardado). Al llegar, esa empresa recibe sólo las respuestas automáticas fijas y pasa a una persona; las demás siguen con el asistente.',
+  })
+  // `null` no es «no cambiar»: es inválido (la columna no admite nulo).
+  @ValidateIf(
+    (o: UpdateSupportSettingsDto) =>
+      o.assistantMonthlyTokenLimitPerCompany !== undefined,
+  )
+  @Type(() => Number)
+  @IsInt()
+  @Min(10000)
+  @Max(1000000000)
+  @NoSuperaElTotal()
+  assistantMonthlyTokenLimitPerCompany?: number;
+
+  @ApiPropertyOptional({
     minimum: 1,
     maximum: 168,
     description: 'Horas sin mensajes para cerrar el chat',
@@ -245,6 +294,13 @@ export class SupportSettingsResponseDto {
       'Tope de tokens por mes del asistente con IA, por empresa y para el soporte',
   })
   assistantMonthlyTokenLimit!: number;
+  @ApiProperty({
+    minimum: 10000,
+    maximum: 1000000000,
+    description:
+      'Cupo de tokens por mes del asistente con IA de cada empresa en el soporte; nunca mayor que `assistantMonthlyTokenLimit`',
+  })
+  assistantMonthlyTokenLimitPerCompany!: number;
   @ApiProperty({
     type: AssistantCostEstimateDto,
     description:

@@ -8,6 +8,7 @@ import { ProcessRunRecorder } from './process-run.recorder';
 import { ProcessRunService } from './process-run.service';
 import { ProcessRunWatchCron } from './process-run-watch.cron';
 import { EmpresasParaProceso } from './empresas-para-proceso';
+import { RachasDeFallas } from './rachas-de-fallas';
 
 /**
  * Monitoreo de los procesos automáticos (F31). Global para que el registrador
@@ -27,6 +28,7 @@ import { EmpresasParaProceso } from './empresas-para-proceso';
     ProcessRunService,
     ProcessRunWatchCron,
     EmpresasParaProceso,
+    RachasDeFallas,
   ],
   exports: [ProcessRunRecorder, ProcessRunService, EmpresasParaProceso],
 })
