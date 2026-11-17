@@ -6,6 +6,7 @@ import {
   SQL_CONVERSACIONES,
   SQL_EN_VIVO,
   SQL_ESPERANDO,
+  SQL_ETIQUETAS_DEL_PERIODO,
   SQL_PLANTILLAS,
   SQL_RESUELTAS_SIN_PERSONA,
   SQL_TICKETS,
@@ -32,7 +33,12 @@ function conBase(respuestas: unknown[][]) {
 
 describe('MetricasReadModel', () => {
   it('lo de una empresa filtra siempre por su `distributor_id` (primer parámetro)', () => {
-    for (const sql of [SQL_CONVERSACIONES, SQL_EN_VIVO, SQL_PLANTILLAS]) {
+    for (const sql of [
+      SQL_CONVERSACIONES,
+      SQL_EN_VIVO,
+      SQL_PLANTILLAS,
+      SQL_ETIQUETAS_DEL_PERIODO,
+    ]) {
       expect(sql).toMatch(/"distributor_id" = \$1/);
     }
     // Las que sirven a la plataforma: la empresa pedida o todas (nula).
@@ -60,11 +66,54 @@ describe('MetricasReadModel', () => {
       SQL_CHATS,
       SQL_ESPERANDO,
       SQL_USO_POR_EMPRESA,
+      SQL_ETIQUETAS_DEL_PERIODO,
     ]) {
       expect(sql).not.toMatch(
         /"body"|"preview"|"last_message_preview"|"comment"/,
       );
     }
+  });
+
+  it('etiquetas del período (7c): las vigentes de la empresa; el vínculo y la conversación, de la misma empresa y del período', async () => {
+    const sql = SQL_ETIQUETAS_DEL_PERIODO;
+    expect(sql).toContain('l."distributor_id" = $1 AND l."deleted_at" IS NULL');
+    expect(sql).toContain('k."distributor_id" = l."distributor_id"');
+    expect(sql).toContain('k."deleted_at" IS NULL');
+    expect(sql).toContain('c."distributor_id" = k."distributor_id"');
+    expect(sql).toContain('c."created_at" >= $2 AND c."created_at" < $3');
+    const { query, lectura } = conBase([
+      [
+        {
+          label_id: 'e-1',
+          name: 'Envíos',
+          color: 'orange',
+          conversation_id: 'c-1',
+        },
+        {
+          label_id: 'e-2',
+          name: 'Pagos',
+          color: 'blue',
+          conversation_id: null,
+        },
+      ],
+    ]);
+    expect(
+      await lectura.etiquetasDelPeriodo(A, [Channel.STAFF_CUSTOMER], RANGO),
+    ).toEqual([
+      {
+        labelId: 'e-1',
+        name: 'Envíos',
+        color: 'orange',
+        conversationId: 'c-1',
+      },
+      { labelId: 'e-2', name: 'Pagos', color: 'blue', conversationId: null },
+    ]);
+    expect(query).toHaveBeenCalledWith(SQL_ETIQUETAS_DEL_PERIODO, [
+      A,
+      RANGO.desde,
+      RANGO.hasta,
+      [Channel.STAFF_CUSTOMER],
+    ]);
   });
 
   it('conversaciones del período: parámetros y fechas', async () => {

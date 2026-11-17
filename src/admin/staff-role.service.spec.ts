@@ -90,6 +90,10 @@ describe('StaffRoleService', () => {
     gestores: number[];
     adminsPorRol: number;
     admin: Partial<Admin> | null;
+    /** El rol que el administrador tiene hoy (lo busca el control de «no bajar a quien tiene más»). */
+    rolActual: StaffRole | null;
+    /** El perfil de admin de la cuenta destino (regla sobre cuentas). */
+    perfilDestino: Partial<Admin> | null;
   };
   let consultas: string[];
   let guardados: StaffRole[];
@@ -108,6 +112,8 @@ describe('StaffRoleService', () => {
       gestores: [1, 1],
       adminsPorRol: 0,
       admin: { adminId: 'a-1', userId: 'u-9', staffRoleId: 'r-0' },
+      rolActual: null,
+      perfilDestino: null,
     };
     consultas = [];
     guardados = [];
@@ -139,7 +145,14 @@ describe('StaffRoleService', () => {
       getOne: jest.fn(() => Promise.resolve(estado.admin)),
     };
     const repoRol = {
-      findOne: jest.fn(() => Promise.resolve(estado.rol)),
+      findOne: jest.fn((opciones: { where: { staffRoleId: string } }) =>
+        Promise.resolve(
+          estado.rolActual &&
+            opciones.where.staffRoleId === estado.rolActual.staffRoleId
+            ? estado.rolActual
+            : estado.rol,
+        ),
+      ),
       find: jest.fn(() => Promise.resolve(estado.rol ? [estado.rol] : [])),
       create: jest.fn((v: Partial<StaffRole>) => rol({ ...v })),
       save: jest.fn((r: StaffRole) => {
@@ -154,6 +167,7 @@ describe('StaffRoleService', () => {
     };
     const repoAdmin = {
       createQueryBuilder: jest.fn(() => qbAdmin),
+      findOne: jest.fn(() => Promise.resolve(estado.perfilDestino)),
       find: jest.fn(() =>
         Promise.resolve([{ userId: 'u-7' }, { userId: 'u-8' }]),
       ),
@@ -439,6 +453,521 @@ describe('StaffRoleService', () => {
         .asignar('a-1', 'r-1', D, SUPER)
         .catch((e: unknown) => e);
       expect(cuerpo(error)).toMatchObject({ code: 'LAST_ROLES_MANAGER' });
+    });
+  });
+
+  describe('nadie le cambia el rol a quien tiene más permisos', () => {
+    const codigo = (p: Promise<unknown>) =>
+      p.then(
+        () => 'pasó',
+        (e: unknown) => String(cuerpo(e).code),
+      );
+
+    beforeEach(() => {
+      delActor = {
+        todos: false,
+        permisos: [
+          'pedidos.ver',
+          'stock.gestionar',
+          'administradores.gestionar',
+        ],
+        rolId: 'r-actor',
+      };
+      estado.rol = rol({ staffRoleId: 'r-1', permissions: ['pedidos.ver'] });
+    });
+
+    it('si el rol actual tiene un permiso que el actor no tiene, es 403 nombrándolo y no escribe', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver', 'caja.anular'],
+      });
+      const error = await service
+        .asignar('a-1', 'r-1', D, ADMIN)
+        .catch((e: unknown) => e);
+      expect(cuerpo(error)).toMatchObject({
+        code: 'STAFF_ROLE_TARGET_OUTRANKS',
+        message: expect.stringContaining('«caja.anular»') as string,
+      });
+      expect(actualizaciones).toEqual([]);
+    });
+
+    it('al que tiene el rol de sistema sólo lo cambia quien tiene todos los permisos', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        isSystem: true,
+        permissions: [],
+      });
+      await expect(
+        codigo(service.asignar('a-1', 'r-1', D, ADMIN)),
+      ).resolves.toBe('STAFF_ROLE_TARGET_OUTRANKS');
+      await expect(
+        codigo(service.asignar('a-1', 'r-1', D, SUPER)),
+      ).resolves.toBe('pasó');
+    });
+
+    it('si el actor tiene todo lo del rol actual, pasa', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['stock.gestionar'],
+      });
+      await expect(
+        codigo(service.asignar('a-1', 'r-1', D, ADMIN)),
+      ).resolves.toBe('pasó');
+      expect(actualizaciones).toEqual([
+        [{ adminId: 'a-1' }, { staffRoleId: 'r-1' }],
+      ]);
+    });
+
+    it('sin cambio de rol no controla nada ni escribe (no da un 403 engañoso)', async () => {
+      estado.admin = { adminId: 'a-1', userId: 'u-9', staffRoleId: 'r-1' };
+      estado.rol = rol({ staffRoleId: 'r-1', isSystem: true, permissions: [] });
+      await expect(
+        codigo(service.asignar('a-1', 'r-1', D, ADMIN)),
+      ).resolves.toBe('pasó');
+      expect(actualizaciones).toEqual([]);
+    });
+  });
+
+  describe('alta de un admin: el rol del personal', () => {
+    const codigo = (p: Promise<unknown>) =>
+      p.then(
+        (v) => `pasó:${String(v)}`,
+        (e: unknown) => String(cuerpo(e).code),
+      );
+
+    it('sin administradores.gestionar es 403', async () => {
+      delActor = {
+        todos: false,
+        permisos: ['clientes.gestionar'],
+        rolId: 'r-actor',
+      };
+      await expect(
+        codigo(service.rolParaElAlta(ADMIN, D, undefined)),
+      ).resolves.toBe('PERMISSION_DENIED');
+    });
+
+    it('sin rol elegido: el de sistema sólo lo da quien tiene todos (400 si no)', async () => {
+      delActor = {
+        todos: false,
+        permisos: ['administradores.gestionar'],
+        rolId: 'r-actor',
+      };
+      await expect(
+        codigo(service.rolParaElAlta(ADMIN, D, undefined)),
+      ).resolves.toBe('STAFF_ROLE_REQUIRED');
+      await expect(
+        codigo(service.rolParaElAlta(SUPER, D, undefined)),
+      ).resolves.toBe('pasó:null');
+    });
+
+    it('con un rol que el actor puede dar, lo devuelve; si no, 403', async () => {
+      delActor = {
+        todos: false,
+        permisos: ['administradores.gestionar', 'pedidos.ver'],
+        rolId: 'r-actor',
+      };
+      estado.rol = rol({ staffRoleId: 'r-1', permissions: ['pedidos.ver'] });
+      await expect(
+        codigo(service.rolParaElAlta(ADMIN, D, 'r-1')),
+      ).resolves.toBe('pasó:r-1');
+      estado.rol = rol({ staffRoleId: 'r-1', permissions: ['caja.anular'] });
+      await expect(
+        codigo(service.rolParaElAlta(ADMIN, D, 'r-1')),
+      ).resolves.toBe('STAFF_ROLE_PERMISSION_NOT_HELD');
+    });
+  });
+
+  describe('el alta de un admin se re-valida en la transacción, con el cerrojo de los roles', () => {
+    const codigo = (p: Promise<unknown>) =>
+      p.then(
+        () => 'pasó',
+        (e: unknown) => String(cuerpo(e).code),
+      );
+
+    it('toma el cerrojo de la distribuidora antes de volver a decidir', async () => {
+      const manager = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      await service.confirmarRolDelAlta(manager, SUPER, D, null);
+      expect(consultas.filter((c) => c.includes('pg_advisory'))).toHaveLength(
+        2,
+      );
+      expect(deUsuario).toHaveBeenCalledWith(
+        'su',
+        RoleType.SUPER_ADMIN,
+        manager,
+        false,
+      );
+    });
+
+    it('si al actor le sacaron administradores.gestionar en el medio, es 403', async () => {
+      const manager = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      delActor = { todos: false, permisos: ['pedidos.ver'], rolId: 'r-actor' };
+      await expect(
+        codigo(service.confirmarRolDelAlta(manager, ADMIN, D, 'r-1')),
+      ).resolves.toBe('PERMISSION_DENIED');
+    });
+
+    it('si el rol elegido ahora tiene un permiso que el actor no tiene, es 403', async () => {
+      const manager = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      delActor = {
+        todos: false,
+        permisos: ['administradores.gestionar', 'pedidos.ver'],
+        rolId: 'r-actor',
+      };
+      estado.rol = rol({ staffRoleId: 'r-1', permissions: ['caja.anular'] });
+      await expect(
+        codigo(service.confirmarRolDelAlta(manager, ADMIN, D, 'r-1')),
+      ).resolves.toBe('STAFF_ROLE_PERMISSION_NOT_HELD');
+    });
+
+    it('si el rol elegido se dio de baja en el medio, es 404', async () => {
+      const manager = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      estado.rol = null;
+      await expect(
+        service.confirmarRolDelAlta(manager, ADMIN, D, 'r-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('nadie sube ni baja a quien tiene más permisos: cuentas de otros', () => {
+    const codigo = (p: Promise<unknown>) =>
+      p.then(
+        () => 'pasó',
+        (e: unknown) => String(cuerpo(e).code),
+      );
+    const otroAdmin = { userId: 'u-9', rol: RoleType.ADMIN };
+    const chofer = { userId: 'u-c', rol: RoleType.DELIVERY };
+    const cliente = { userId: 'u-k', rol: RoleType.CUSTOMER };
+
+    beforeEach(() => {
+      delActor = {
+        todos: false,
+        permisos: ['administradores.gestionar', 'pedidos.ver'],
+        rolId: 'r-actor',
+      };
+      estado.perfilDestino = {
+        userId: 'u-9',
+        distributorId: D,
+        staffRoleId: 'r-0',
+      };
+    });
+
+    it('sobre un admin con un permiso que el actor no tiene, es 403 STAFF_ROLE_TARGET_OUTRANKS nombrándolo', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver', 'caja.anular'],
+      });
+      const error = await service
+        .assertPuedeAdministrarA(ADMIN, otroAdmin, D)
+        .catch((e: unknown) => e);
+      expect(cuerpo(error)).toMatchObject({
+        code: 'STAFF_ROLE_TARGET_OUTRANKS',
+        message: expect.stringContaining('«caja.anular»') as string,
+      });
+    });
+
+    it('sobre un admin con el rol de sistema, sólo quien tiene todos', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        isSystem: true,
+        permissions: [],
+      });
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, otroAdmin, D)),
+      ).resolves.toBe('STAFF_ROLE_TARGET_OUTRANKS');
+      delActor.todos = true;
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, otroAdmin, D)),
+      ).resolves.toBe('pasó');
+    });
+
+    it('dentro de la transacción, toma el cerrojo de roles antes de leer el rol del destino', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver'],
+      });
+      const afuera = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      const orden: string[] = [];
+      const tx = {
+        getRepository: (clase: unknown) => {
+          const repo = afuera.getRepository(clase as never) as unknown as {
+            findOne: (o: unknown) => Promise<unknown>;
+          };
+          return clase === Admin
+            ? {
+                ...repo,
+                findOne: (o: unknown) => {
+                  orden.push('perfil');
+                  return repo.findOne(o);
+                },
+              }
+            : repo;
+        },
+        query: jest.fn((sql: string) => {
+          if (sql.includes('pg_advisory')) orden.push('cerrojo');
+          return Promise.resolve([]);
+        }),
+      } as unknown as EntityManager;
+      await service.assertPuedeAdministrarA(ADMIN, otroAdmin, D, {
+        manager: tx,
+      });
+      expect(orden.indexOf('cerrojo')).toBeGreaterThanOrEqual(0);
+      expect(orden.indexOf('perfil')).toBeGreaterThan(orden.indexOf('cerrojo'));
+    });
+
+    it('sobre un admin cuyo rol el actor cubre, pasa', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver'],
+      });
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, otroAdmin, D)),
+      ).resolves.toBe('pasó');
+    });
+
+    it('sobre un admin sin administradores.gestionar es 403 PERMISSION_DENIED, aunque lo cubra', async () => {
+      delActor.permisos = ['pedidos.ver', 'personal.gestionar'];
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver'],
+      });
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, otroAdmin, D)),
+      ).resolves.toBe('PERMISSION_DENIED');
+    });
+
+    it('la contraseña de otro admin no la cambia nadie más que el super admin, ni con todos los permisos', async () => {
+      delActor.todos = true;
+      const opciones = { cambiaContraseña: true };
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, otroAdmin, D, opciones)),
+      ).resolves.toBe('ADMIN_PASSWORD_NOT_CHANGEABLE');
+      await expect(
+        codigo(service.assertPuedeAdministrarA(SUPER, otroAdmin, D, opciones)),
+      ).resolves.toBe('pasó');
+      // La empresa propia es el super admin operando su empresa.
+      await expect(
+        codigo(
+          service.assertPuedeAdministrarA(
+            { ...ADMIN, actuaComoEmpresaPropia: true },
+            otroAdmin,
+            D,
+            opciones,
+          ),
+        ),
+      ).resolves.toBe('pasó');
+    });
+
+    it('la contraseña de un chofer sí, con personal.gestionar', async () => {
+      delActor.permisos = ['personal.gestionar'];
+      await expect(
+        codigo(
+          service.assertPuedeAdministrarA(ADMIN, chofer, D, {
+            cambiaContraseña: true,
+          }),
+        ),
+      ).resolves.toBe('pasó');
+    });
+
+    it('un chofer pide personal.gestionar y un cliente clientes.gestionar', async () => {
+      delActor.permisos = ['clientes.gestionar'];
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, chofer, D)),
+      ).resolves.toBe('PERMISSION_DENIED');
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, cliente, D)),
+      ).resolves.toBe('pasó');
+      delActor.permisos = ['personal.gestionar'];
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, chofer, D)),
+      ).resolves.toBe('pasó');
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, cliente, D)),
+      ).resolves.toBe('PERMISSION_DENIED');
+    });
+
+    it('el super admin pasa siempre (también sobre el rol de sistema)', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        isSystem: true,
+        permissions: [],
+      });
+      await expect(
+        codigo(service.assertPuedeAdministrarA(SUPER, otroAdmin, D)),
+      ).resolves.toBe('pasó');
+    });
+
+    it('la cuenta propia no pasa por la regla', async () => {
+      delActor.permisos = [];
+      await expect(
+        codigo(
+          service.assertPuedeAdministrarA(
+            ADMIN,
+            { userId: 'U-ACTOR', rol: RoleType.ADMIN },
+            D,
+            { cambiaContraseña: true },
+          ),
+        ),
+      ).resolves.toBe('pasó');
+    });
+
+    it('un super admin como destino, para quien no tiene todos, es 404', async () => {
+      await expect(
+        service.assertPuedeAdministrarA(
+          ADMIN,
+          { userId: 'su-2', rol: RoleType.SUPER_ADMIN },
+          D,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('dentro de la transacción que escribe, sobre un admin: el cerrojo de roles antes de leer los permisos', async () => {
+      const manager = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      const { query } = manager as unknown as { query: jest.Mock };
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver', 'caja.anular'],
+      });
+      await expect(
+        codigo(
+          service.assertPuedeAdministrarA(ADMIN, otroAdmin, D, { manager }),
+        ),
+      ).resolves.toBe('STAFF_ROLE_TARGET_OUTRANKS');
+      expect(consultas.filter((c) => c.includes('pg_advisory'))).toHaveLength(
+        2,
+      );
+      expect(deUsuario).toHaveBeenCalledWith(
+        'u-actor',
+        RoleType.ADMIN,
+        manager,
+        false,
+      );
+      expect(query.mock.invocationCallOrder[0]).toBeLessThan(
+        deUsuario.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('usa el manager de la transacción que escribe, no el de afuera', async () => {
+      const afuera = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      const enTx: string[] = [];
+      const tx = {
+        getRepository: afuera.getRepository.bind(afuera),
+        query: jest.fn((sql: string) => {
+          enTx.push(sql);
+          return Promise.resolve([]);
+        }),
+      } as unknown as EntityManager;
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver'],
+      });
+      await service.assertPuedeAdministrarA(ADMIN, otroAdmin, D, {
+        manager: tx,
+      });
+      expect(enTx.filter((c) => c.includes('pg_advisory'))).toHaveLength(2);
+      expect(consultas).toEqual([]);
+      expect(deUsuario).toHaveBeenCalledWith(
+        'u-actor',
+        RoleType.ADMIN,
+        tx,
+        false,
+      );
+    });
+
+    it('fuera de una transacción (el control previo) no toma cerrojos', async () => {
+      estado.rolActual = rol({
+        staffRoleId: 'r-0',
+        permissions: ['pedidos.ver'],
+      });
+      await service.assertPuedeAdministrarA(ADMIN, otroAdmin, D);
+      expect(consultas).toEqual([]);
+    });
+
+    it('sobre un chofer no toma el cerrojo de roles (su regla no depende de rangos)', async () => {
+      const manager = (
+        service as unknown as { dataSource: { manager: EntityManager } }
+      ).dataSource.manager;
+      delActor.permisos = ['personal.gestionar'];
+      await service.assertPuedeAdministrarA(ADMIN, chofer, D, { manager });
+      expect(consultas).toEqual([]);
+    });
+
+    it('un admin sin rol de personal no tiene nada que proteger', async () => {
+      estado.perfilDestino = {
+        userId: 'u-9',
+        distributorId: D,
+        staffRoleId: null,
+      };
+      await expect(
+        codigo(service.assertPuedeAdministrarA(ADMIN, otroAdmin, D)),
+      ).resolves.toBe('pasó');
+    });
+  });
+
+  describe('alta de clientes y choferes: el permiso de cada uno', () => {
+    it('cliente pide clientes.gestionar y chofer personal.gestionar', async () => {
+      delActor = {
+        todos: false,
+        permisos: ['clientes.gestionar'],
+        rolId: 'r-actor',
+      };
+      await expect(
+        service.assertPuedeDarDeAlta(ADMIN, RoleType.CUSTOMER),
+      ).resolves.toBeUndefined();
+      const error = await service
+        .assertPuedeDarDeAlta(ADMIN, RoleType.DELIVERY)
+        .catch((e: unknown) => e);
+      expect(cuerpo(error)).toMatchObject({ code: 'PERMISSION_DENIED' });
+    });
+  });
+
+  describe('editar un rol no le saca a sus administradores lo que el actor no tiene', () => {
+    beforeEach(() => {
+      delActor = {
+        todos: false,
+        permisos: ['stock.gestionar', 'roles.gestionar'],
+        rolId: 'r-actor',
+      };
+      estado.rol = rol({
+        staffRoleId: 'r-1',
+        permissions: ['stock.gestionar', 'caja.anular'],
+      });
+    });
+
+    it('con administradores asignados, sacar un permiso que el actor no tiene es 403', async () => {
+      estado.adminsPorRol = 2;
+      const error = await service
+        .update('r-1', { permissions: ['stock.gestionar'] }, D, ADMIN)
+        .catch((e: unknown) => e);
+      expect(cuerpo(error)).toMatchObject({
+        code: 'STAFF_ROLE_TARGET_OUTRANKS',
+        message: expect.stringContaining('«caja.anular»') as string,
+      });
+      expect(guardados).toEqual([]);
+    });
+
+    it('sin administradores asignados se puede', async () => {
+      estado.adminsPorRol = 0;
+      await service.update(
+        'r-1',
+        { permissions: ['stock.gestionar'] },
+        D,
+        ADMIN,
+      );
+      expect(guardados).toHaveLength(1);
     });
   });
 

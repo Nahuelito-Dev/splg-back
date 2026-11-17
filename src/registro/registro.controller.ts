@@ -4,6 +4,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOperation,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -83,21 +84,39 @@ export class RegistroController {
   }
 
   @Post('users')
-  @Permiso('clientes.gestionar')
+  // Alguno de los tres para entrar; el servicio exige el del rol que se crea.
+  @Permiso(
+    'clientes.gestionar',
+    'personal.gestionar',
+    'administradores.gestionar',
+  )
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiTags('Users')
   @ApiOperation({
     summary: 'Dar de alta un usuario de cualquier rol (CU-003, CU-031, CU-086)',
     description:
-      'Un admin crea clientes, choferes y admins de su distribuidora; un ' +
+      'Un admin crea clientes (`clientes.gestionar`), choferes (`personal.gestionar`) y admins ' +
+      '(`administradores.gestionar`, con `staffRoleId`: ver el campo) de su distribuidora; un ' +
       'super admin, cualquier rol en cualquier distribuidora.',
   })
   @ApiCreatedResponse({ type: UserResponseDto })
   @ApiBadRequestResponse({
-    description: 'Datos inválidos o falta la distribuidora',
+    description:
+      'Datos inválidos o falta la distribuidora; `staffRoleId` en un alta que no es de administrador ' +
+      '(`STAFF_ROLE_ONLY_FOR_ADMINS`); un administrador sin `staffRoleId` cuando quien pide no tiene todos los ' +
+      'permisos: el rol de sistema sólo lo da quien los tiene (`STAFF_ROLE_REQUIRED`)',
   })
   @ApiForbiddenResponse({
-    description: 'El rol o la distribuidora no le corresponden',
+    description:
+      'El rol o la distribuidora no le corresponden; falta el permiso del rol que se crea: cliente ' +
+      '`clientes.gestionar`, chofer `personal.gestionar`, administrador `administradores.gestionar` ' +
+      '(`PERMISSION_DENIED`); o el rol del personal elegido tiene permisos que quien pide no tiene, o es el de ' +
+      'sistema y no los tiene todos (`STAFF_ROLE_PERMISSION_NOT_HELD`). Se vuelve a controlar dentro de la ' +
+      'transacción del alta: si cambió en el medio, el alta se revierte',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'El rol del personal (`staffRoleId`) no existe, es de otra distribuidora o está dado de baja',
   })
   @ApiConflictResponse({ description: 'Email o teléfono ya en uso' })
   async registrar(

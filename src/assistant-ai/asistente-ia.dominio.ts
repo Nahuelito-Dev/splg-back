@@ -73,6 +73,62 @@ export enum MotivoDeDerivacion {
 }
 
 /**
+ * Por qué el modelo llamó a `pasar_a_persona` (su campo `causa`, de una lista
+ * cerrada): distingue lo que el asistente no sabía (`no_info`,
+ * `low_confidence`) de lo que igual va a una persona (lo pidió, es un
+ * reclamo). Se guarda en la traza (`handoff_cause`) sólo con `requested`.
+ */
+export enum CausaDeDerivacion {
+  NO_INFO = 'no_info',
+  LOW_CONFIDENCE = 'low_confidence',
+  CUSTOMER_ASKED = 'customer_asked',
+  COMPLAINT = 'complaint',
+  OTHER = 'other',
+}
+
+export const CAUSAS_DE_DERIVACION = Object.values(CausaDeDerivacion);
+
+/** La causa que mandó el modelo; cualquier otra cosa es `other`. */
+export function causaDeDerivacion(crudo: unknown): CausaDeDerivacion {
+  return (
+    CAUSAS_DE_DERIVACION.find((c) => c === crudo) ?? CausaDeDerivacion.OTHER
+  );
+}
+
+/** La causa en castellano, para quien prueba. */
+export const CAUSAS_EN_CASTELLANO: Readonly<Record<CausaDeDerivacion, string>> =
+  {
+    [CausaDeDerivacion.NO_INFO]: 'No tenía la información',
+    [CausaDeDerivacion.LOW_CONFIDENCE]: 'No estaba seguro de la respuesta',
+    [CausaDeDerivacion.CUSTOMER_ASKED]: 'La persona pidió hablar con alguien',
+    [CausaDeDerivacion.COMPLAINT]: 'Es un reclamo o hay que hacer algo',
+    [CausaDeDerivacion.OTHER]: 'Otro motivo',
+  };
+
+/**
+ * Frases con que el asistente diría que hizo algo que no hace: registrar,
+ * anotar, agendar o derivar la consulta, avisar al equipo o que alguien lo
+ * va a contactar. El asistente sólo contesta; pasar a una persona es
+ * `pasar_a_persona` (y el aviso lo da el sistema). Sin tildes ni mayúsculas.
+ */
+const PROMESA_DE_UNA_ACCION =
+  /\b(?:qued[oa]|queda|quedara|va a quedar) (?:registrad|anotad|agendad|derivad)|\b(?:registre|registramos|anote|anotamos|agende|agendamos|derive|derivamos|avise|avisamos|tome nota|tomamos nota)\b|\bte (?:paso|pasamos|derivo|derivamos|comunico|comunicamos) con\b|\bte (?:va|van) a (?:contactar|llamar|escribir|responder)\b/;
+
+/**
+ * `true` si la respuesta dice que registró, derivó o avisó algo: no se
+ * publica (se deriva de verdad), porque la persona se quedaría esperando
+ * algo que no pasa.
+ */
+export function prometeUnaAccion(texto: string): boolean {
+  const plano = texto
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return PROMESA_DE_UNA_ACCION.test(plano);
+}
+
+/**
  * Derivaciones en las que la IA no corrió (tope o falla de la API): salen las
  * respuestas fijas como si el asistente estuviera apagado, y se deriva.
  */
@@ -180,6 +236,8 @@ export type RespuestaDelModelo =
       resumen?: string | null;
       /** Por qué la pasó, en palabras del modelo (`pasar_a_persona.motivo`). */
       detalle?: string | null;
+      /** La causa de la lista cerrada (`pasar_a_persona.causa`); sólo con `requested`. */
+      causa?: CausaDeDerivacion | null;
     };
 
 /**

@@ -5,6 +5,7 @@ import {
   CatalogoDePreguntasDeEjemplo1795000000112,
   MAPA_DEL_CATALOGO,
 } from '../../migrations/1795000000112-CatalogoDePreguntasDeEjemplo';
+import { ProbadorDelAsistente1795000000136 } from '../../migrations/1795000000136-ProbadorDelAsistente';
 import { CLAVE, CLAVE_EN_LA_BASE, HTML, HTML_EN_LA_BASE } from '../texto-plano';
 import { AssistantFaqTemplate } from './assistant-faq-template.entity';
 import { AssistantFaq } from './assistant-faq.entity';
@@ -31,6 +32,8 @@ const sentencias = () =>
   sentenciasDe((r) => new BaseDeConocimientoDelAsistente1795000000110().up(r));
 const subida112 = () =>
   sentenciasDe((r) => new CatalogoDePreguntasDeEjemplo1795000000112().up(r));
+const subida136 = () =>
+  sentenciasDe((r) => new ProbadorDelAsistente1795000000136().up(r));
 const bajada112 = () =>
   sentenciasDe((r) => new CatalogoDePreguntasDeEjemplo1795000000112().down(r));
 
@@ -43,11 +46,22 @@ const checksDe = (crear: string | undefined): string[] =>
 const checksDeLaEntidad = (entidad: object) =>
   getMetadataArgsStorage().checks.filter((c) => c.target === entidad);
 
-describe('restricciones de la base de conocimiento (migraciones 110 y 112, y entidades)', () => {
+describe('restricciones de la base de conocimiento (migraciones 110, 112 y 136, y entidades)', () => {
   it('las migraciones dejan exactamente los CHECK que declaran las entidades', async () => {
     const sql = [...(await sentencias()), ...(await subida112())].map(
       ([s]) => s,
     );
+    // La 136 rehace la de la respuesta (borradores): manda la suya.
+    const rehechos = new Map(
+      (await subida136()).flatMap(([s]) =>
+        [
+          ...s.matchAll(
+            /ADD CONSTRAINT "(CHK_assistant_faq_[A-Za-z0-9_]+)" CHECK \((.*)\)$/g,
+          ),
+        ].map((m) => [m[1], m[2]] as const),
+      ),
+    );
+    expect([...rehechos.keys()]).toEqual(['CHK_assistant_faq_respuesta']);
     // Sólo lo que la 112 quita de las tablas del asistente (la 110 rehace otros CHECK de módulos).
     const quitados = (await subida112()).flatMap(([s]) =>
       [...s.matchAll(/DROP CONSTRAINT "(CHK_[A-Za-z0-9_]+)"/g)].map(
@@ -64,9 +78,11 @@ describe('restricciones de la base de conocimiento (migraciones 110 y 112, y ent
       const checks = checksDeLaEntidad(entidad);
       expect(checks.length).toBeGreaterThan(0);
       for (const c of checks) {
-        expect(crear).toContain(
-          `CONSTRAINT "${c.name}" CHECK (${c.expression})`,
-        );
+        const rehecho = rehechos.get(c.name ?? '');
+        expect(
+          rehecho ??
+            crear?.includes(`CONSTRAINT "${c.name}" CHECK (${c.expression})`),
+        ).toBe(rehecho === undefined ? true : c.expression);
       }
       expect(
         checksDe(crear)
@@ -80,16 +96,18 @@ describe('restricciones de la base de conocimiento (migraciones 110 y 112, y ent
     const expresion = (entidad: object, sufijo: string) =>
       checksDeLaEntidad(entidad).find((c) => c.name?.endsWith(sufijo))
         ?.expression;
-    for (const sufijo of [
-      '_pregunta',
-      '_respuesta',
-      '_sin_html',
-      '_posicion',
-    ]) {
+    for (const sufijo of ['_pregunta', '_sin_html', '_posicion']) {
       expect(expresion(AssistantFaqTemplate, sufijo)).toBe(
         expresion(AssistantFaq, sufijo),
       );
     }
+    // La base admite borradores (respuesta vacía); el catálogo, no.
+    expect(expresion(AssistantFaqTemplate, '_respuesta')).toBe(
+      `char_length(btrim("answer")) BETWEEN 1 AND 1500`,
+    );
+    expect(expresion(AssistantFaq, '_respuesta')).toBe(
+      `char_length(btrim("answer")) <= 1500`,
+    );
     expect(expresion(AssistantFaqTemplate, '_clave')).toBe(
       `"key" ~ '${CLAVE_EN_LA_BASE}'`,
     );

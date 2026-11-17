@@ -1,6 +1,7 @@
 import { ClassSerializerInterceptor, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -22,12 +23,14 @@ import { SupportModule } from './support/support.module';
 import { ChatModule } from './chat/chat.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { AsistenteIaModule } from './assistant-ai/asistente-ia.module';
+import { AssistantLabModule } from './assistant-lab/assistant-lab.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformAccessModule } from './platform/access/platform-access.module';
 import { ModuloGuard } from './platform/access/modulo.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
+import { AutoridadSobreCuentasModule } from './admin/autoridad-sobre-cuentas.module';
 import { RegistroModule } from './registro/registro.module';
 import { AuthModule } from './auth/auth.module';
 import { CarModule } from './car/car.module';
@@ -75,6 +78,7 @@ import { StockModule } from './stock/stock.module';
 import { TimeoutInterceptor } from './common/interceptors/timeout.interceptors';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { ContextoDeSentryInterceptor } from './common/sentry/contexto-de-sentry.interceptor';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { enteroPositivoDeEnv } from './common/config/entero-positivo';
 import { EnvConfiguration } from './common/config/env.config';
@@ -99,6 +103,9 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
 
 @Module({
   imports: [
+    // Sentry (errores, trazas y logs; ver common/config/sentry.config.ts): sin
+    // `SENTRY_DSN` el SDK no se inicializa y esto no manda nada.
+    SentryModule.forRoot(),
     ConfigModule.forRoot({
       load: [EnvConfiguration, plataformaConfig],
       validationSchema: JoiValidationSchema,
@@ -239,6 +246,8 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     FirebaseModule,
     UsersModule,
     AdminModule,
+    // Regla sobre cuentas de otros para `users` (puerto, sin ciclo).
+    AutoridadSobreCuentasModule,
     RegistroModule,
     AuthModule,
     CarModule,
@@ -298,8 +307,10 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     ChatModule,
     PlatformModule,
     ObservabilityModule,
+    // TEMPORAL: ruta de prueba de Sentry, sólo en development y test.
     AssistantModule,
     AsistenteIaModule,
+    AssistantLabModule,
   ],
   providers: [
     // Guards globales. El ORDEN importa: ThrottlerGuard corta temprano (barato,
@@ -342,6 +353,12 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
       // duración TOTAL del request (envuelve también al timeout/idempotency).
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    {
+      // Contexto de Sentry (usuario, empresa, cliente, request id): después de
+      // los guards, que son los que resuelven el usuario y la empresa.
+      provide: APP_INTERCEPTOR,
+      useClass: ContextoDeSentryInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

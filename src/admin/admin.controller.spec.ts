@@ -5,6 +5,7 @@ import request from 'supertest';
 import type { Server } from 'http';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { StaffRoleService } from './staff-role.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { crearValidationPipe } from '../common/validation/validation-pipe';
 
@@ -27,7 +28,13 @@ describe('AdminController · GET /admin', () => {
     admins = { findAll: jest.fn().mockResolvedValue([]) };
     const modulo = await Test.createTestingModule({
       controllers: [AdminController],
-      providers: [{ provide: AdminService, useValue: admins }],
+      providers: [
+        { provide: AdminService, useValue: admins },
+        {
+          provide: StaffRoleService,
+          useValue: { assertPuedeAdministrarA: () => Promise.resolve() },
+        },
+      ],
     }).compile();
     app = modulo.createNestApplication<INestApplication<Server>>();
     app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -145,7 +152,13 @@ describe('AdminController · PATCH y DELETE /admin/:id', () => {
     };
     const modulo = await Test.createTestingModule({
       controllers: [AdminController],
-      providers: [{ provide: AdminService, useValue: admins }],
+      providers: [
+        { provide: AdminService, useValue: admins },
+        {
+          provide: StaffRoleService,
+          useValue: { assertPuedeAdministrarA: () => Promise.resolve() },
+        },
+      ],
     }).compile();
     app = modulo.createNestApplication<INestApplication<Server>>();
     app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -176,9 +189,14 @@ describe('AdminController · PATCH y DELETE /admin/:id', () => {
       ID,
       { fullName: 'Ana' },
       EMPRESA_A,
+      expect.any(Function),
     );
     await request(app.getHttpServer()).delete(`/admin/${ID}`).expect(200);
-    expect(admins.remove).toHaveBeenCalledWith(ID, EMPRESA_A);
+    expect(admins.remove).toHaveBeenCalledWith(
+      ID,
+      EMPRESA_A,
+      expect.any(Function),
+    );
   });
 
   it('un admin de empresa no se edita ni se da de baja a sí mismo (403)', async () => {

@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { AssistantFaqService } from '../assistant/assistant-faq.service';
+import {
+  AssistantFaqService,
+  esBorrador,
+} from '../assistant/assistant-faq.service';
 import { AsistenteDelChat } from '../chat/application/asistente-del-chat';
 import { ChatEvents, Efectos } from '../chat/application/chat.events';
 import { ChatViewsService } from '../chat/application/chat-views.service';
@@ -46,6 +49,7 @@ import {
 } from '../process-run/process-run.context';
 import { RedisService } from '../redis/redis.service';
 import {
+  type CausaDeDerivacion,
   DERIVACIONES_SIN_IA,
   HORAS_QUE_MIRA_EL_RESCATE,
   MENSAJES_DE_CONTEXTO,
@@ -65,6 +69,7 @@ import {
   type TopesDelAsistente,
 } from './asistente-ia.dominio';
 import { ConsultaAlAsistente } from './consulta-al-modelo';
+import { AssistantTestUsage } from './entities/assistant-test-usage.entity';
 import { AssistantTrace } from './entities/assistant-trace.entity';
 import { herramientasDelCanal, HerramientasDelAsistente } from './herramientas';
 import {
@@ -77,6 +82,24 @@ import {
 } from './prompt';
 
 const UNICO_VIOLADO = '23505';
+
+/** Desde el primer día del mes en Argentina (el corte de los topes mensuales). */
+const DESDE_EL_INICIO_DEL_MES = `"created_at" >= (date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+                                 AT TIME ZONE 'America/Argentina/Buenos_Aires')`;
+
+/**
+ * Sub-tope de las pruebas (probador y lote de regresión): esta parte del
+ * tope mensual de tokens, contada sólo sobre lo que gastaron las pruebas.
+ * Las pruebas igual suman al tope mensual único (`tokensDelMes`).
+ */
+export const PROPORCION_DEL_CUPO_DE_PRUEBAS = 0.1;
+
+/** Se llegó al cupo mensual de pruebas: no se consulta al modelo. */
+export class TopeDePruebasAlcanzado extends Error {
+  constructor(readonly tope: number) {
+    super('Se llegó al cupo mensual de pruebas del asistente');
+  }
+}
 
 /** Lock de Redis: una respuesta en curso por conversación. */
 const TTL_DEL_LOCK_MS = 30_000;
@@ -148,6 +171,56 @@ export function fuentesDeLaRespuesta(
   return fuentes;
 }
 
+/** Lo que se gasta probando el asistente: el probador o el lote de regresión. */
+export type TipoDePrueba = 'preview' | 'regression';
+
+/** Una pregunta suelta para el probador. */
+export interface PruebaDelAsistente {
+  /** A los clientes de una empresa (C3) o el soporte de la plataforma (C1). */
+  canal: CanalDelAsistente;
+  /** La empresa en C3; se ignora en C1 (la base es la de la plataforma). */
+  distributorId: string | null;
+  /** El cliente (`user_id`) como el que pregunta en C3; nulo: un cliente anónimo. */
+  customerUserId: string | null;
+  pregunta: string;
+  tipo: TipoDePrueba;
+  /** Quién la corrió (queda en el uso). */
+  actorUserId: string | null;
+}
+
+/** Lo que contestaría el asistente, sin publicar nada. */
+export interface ResultadoDeLaPrueba {
+  resultado: RespuestaDelModelo;
+  fuentes: FuenteDeLaRespuesta[];
+  /** Si hoy contestaría en una conversación real (función, interruptor y chat de clientes). */
+  prendido: boolean;
+}
+
+/** Todo lo que necesita `responder`, venga de una conversación o del probador. */
+interface PedidoDeRespuesta {
+  perfil: PerfilDelCanal;
+  channel: string;
+  /** La empresa de la conversación (también en C1); nulo en el probador de la plataforma. */
+  distributorId: string | null;
+  customerUserId: string | null;
+  orderId: string | null;
+  /** Nulo en el probador: no hay conversación ni tope por conversación. */
+  conversationId: string | null;
+  atencion: Atencion;
+  hilo: () => Promise<MensajeDelHilo[]>;
+  ahora: () => Date;
+}
+
+/** La causa que va a la traza: sólo cuando el modelo pidió pasar a una persona. */
+export function causaDeLaTraza(
+  resultado: RespuestaDelModelo,
+): CausaDeDerivacion | null {
+  return resultado.tipo === 'derivar' &&
+    resultado.motivo === MotivoDeDerivacion.REQUESTED
+    ? (resultado.causa ?? null)
+    : null;
+}
+
 /** Firma, textos, horario y topes de quien atiende. */
 interface Atencion {
   ajustes: ChatCompanySettings | null;
@@ -206,7 +279,7 @@ export class AsistenteIaService {
     if (!perfil) return;
     try {
       if (!(await this.chat.prendido(c))) return;
-      const atencion = await this.atencion(c, perfil);
+      const atencion = await this.atencion(c.distributorId, perfil);
       const r = await this.redis.withLock(
         `asistente:${c.conversationId}`,
         TTL_DEL_LOCK_MS,
@@ -325,7 +398,7 @@ export class AsistenteIaService {
     if (!c || !m) return false;
     const perfil = perfilSiCorresponde(c, m);
     if (!perfil || !(await this.chat.prendido(c))) return false;
-    const atencion = await this.atencion(c, perfil);
+    const atencion = await this.atencion(c.distributorId, perfil);
     // Sin esperar: si un trabajo tiene la conversación, todavía la está atendiendo.
     const r = await this.redis.withLock(
       `asistente:${c.conversationId}`,
@@ -351,7 +424,7 @@ export class AsistenteIaService {
   }
 
   private async atencion(
-    c: Conversation,
+    distributorId: string,
     perfil: PerfilDelCanal,
   ): Promise<Atencion> {
     const soporte = await this.ajustesDelSoporte.leer();
@@ -373,11 +446,10 @@ export class AsistenteIaService {
         topes,
       };
     }
-    const ajustes = await this.ajustesDeLaEmpresa.leer(c.distributorId);
+    const ajustes = await this.ajustesDeLaEmpresa.leer(distributorId);
     // El nombre con que la conocen sus clientes (marca vigente o legal), como B1.
-    const empresa = await this.ajustesDeLaEmpresa.nombreDeLaEmpresa(
-      c.distributorId,
-    );
+    const empresa =
+      await this.ajustesDeLaEmpresa.nombreDeLaEmpresa(distributorId);
     return {
       ajustes,
       soporte,
@@ -413,68 +485,19 @@ export class AsistenteIaService {
     ) {
       return;
     }
-    const tope = topeAlcanzado(
-      atencion.topes,
-      await this.consultasEnLaConversacion(c.conversationId),
-      await this.tokensDelMes(c, perfil),
-    );
-    let resultado: RespuestaDelModelo;
-    let base: PreguntaDeLaBase[] = [];
-    if (tope) {
-      resultado = {
-        tipo: 'derivar',
-        motivo: tope,
-        modelo: null,
-        uso: SIN_USO,
-        herramientas: [],
-      };
-    } else {
-      const mensajes = armarMensajes(
-        await this.hilo(c.conversationId),
-        perfil.pregunta,
-      );
-      if (mensajes.length === 0) return;
-      const { items } = await this.base.listar(
-        perfil.canal === 'soporte' ? null : c.distributorId,
-      );
-      base = items.map((f) => ({
-        faqId: f.faqId,
-        question: f.question,
-        answer: f.answer,
-        position: f.position,
-      }));
-      const momento = ahora();
-      const ajustes = atencion.ajustes;
-      resultado = await this.consulta.consultar({
-        system: armarSystem(
-          {
-            canal: perfil.canal,
-            nombreDelAsistente: atencion.senderLabel,
-            nombreDeQuienAtiende: atencion.nombreDeQuienAtiende,
-          },
-          base,
-        ),
-        mensajes,
-        herramientas: herramientasDelCanal(perfil.canal),
-        ejecutar: (nombre, input) =>
-          perfil.canal === 'soporte' || !ajustes
-            ? Promise.resolve({
-                datos: { error: 'Esa herramienta no está disponible acá' },
-                error: true,
-              })
-            : this.herramientas.ejecutar(
-                {
-                  distributorId: c.distributorId,
-                  customerUserId: c.customerUserId,
-                  orderId: c.orderId,
-                  ajustes,
-                  ahora: momento,
-                },
-                nombre,
-                input,
-              ),
-      });
-    }
+    const respuesta = await this.responder({
+      perfil,
+      channel: c.channel,
+      distributorId: c.distributorId,
+      customerUserId: c.customerUserId,
+      orderId: c.orderId,
+      conversationId: c.conversationId,
+      atencion,
+      hilo: () => this.hilo(c.conversationId),
+      ahora,
+    });
+    if (!respuesta) return;
+    const { resultado, base } = respuesta;
     await this.publicar(
       c,
       m,
@@ -485,6 +508,176 @@ export class AsistenteIaService {
       ahora(),
       base,
     );
+  }
+
+  /**
+   * El camino de la respuesta, el mismo para una conversación real y para el
+   * probador: los topes (el de la conversación sólo si hay una), el hilo, la
+   * base de conocimiento (sin los borradores, que todavía no tienen
+   * respuesta) y la consulta al modelo con las herramientas de sólo lectura
+   * de quien pregunta. `null` si no hay nada que contestar (el último
+   * mensaje no es de quien pregunta).
+   */
+  private async responder(p: PedidoDeRespuesta): Promise<{
+    resultado: RespuestaDelModelo;
+    base: PreguntaDeLaBase[];
+  } | null> {
+    const tope = topeAlcanzado(
+      p.atencion.topes,
+      p.conversationId === null
+        ? 0
+        : await this.consultasEnLaConversacion(p.conversationId),
+      await this.tokensDelMes(p.channel, p.distributorId, p.perfil),
+    );
+    if (tope) {
+      return {
+        resultado: {
+          tipo: 'derivar',
+          motivo: tope,
+          modelo: null,
+          uso: SIN_USO,
+          herramientas: [],
+        },
+        base: [],
+      };
+    }
+    const mensajes = armarMensajes(await p.hilo(), p.perfil.pregunta);
+    if (mensajes.length === 0) return null;
+    const { items } = await this.base.listar(
+      p.perfil.canal === 'soporte' ? null : p.distributorId,
+    );
+    const base: PreguntaDeLaBase[] = items
+      .filter((f) => !esBorrador(f))
+      .map((f) => ({
+        faqId: f.faqId,
+        question: f.question,
+        answer: f.answer,
+        position: f.position,
+      }));
+    const momento = p.ahora();
+    const ajustes = p.atencion.ajustes;
+    const resultado = await this.consulta.consultar({
+      system: armarSystem(
+        {
+          canal: p.perfil.canal,
+          nombreDelAsistente: p.atencion.senderLabel,
+          nombreDeQuienAtiende: p.atencion.nombreDeQuienAtiende,
+        },
+        base,
+      ),
+      mensajes,
+      herramientas: herramientasDelCanal(p.perfil.canal),
+      ejecutar: (nombre, input) =>
+        p.perfil.canal === 'soporte' || !ajustes
+          ? Promise.resolve({
+              datos: { error: 'Esa herramienta no está disponible acá' },
+              error: true,
+            })
+          : this.herramientas.ejecutar(
+              {
+                distributorId: ajustes.distributorId,
+                customerUserId: p.customerUserId,
+                orderId: p.orderId,
+                ajustes,
+                ahora: momento,
+              },
+              nombre,
+              input,
+            ),
+    });
+    return { resultado, base };
+  }
+
+  /**
+   * Probador del asistente: contesta una pregunta suelta por el mismo camino
+   * que una conversación real (`responder`), sin crear conversación ni
+   * mensaje, sin avisar a nadie y sin tocar `assistant_trace` (no cuenta en
+   * las métricas). Respeta los topes como una conversación real (si las
+   * conversaciones agotaron el mensual, deriva igual que ellas) y además el
+   * sub-tope de pruebas (`PROPORCION_DEL_CUPO_DE_PRUEBAS` del mensual, contado
+   * sobre `assistant_test_usage`): pasado, tira `TopeDePruebasAlcanzado` sin
+   * consultar. Lo que gasta queda en `assistant_test_usage` y suma al tope
+   * mensual único, el mismo de las conversaciones. En
+   * C3 contesta como el cliente `customerUserId` (sus pedidos) o como uno
+   * anónimo; en C1, con la base de la plataforma. Corre aunque el asistente
+   * esté apagado (para probarlo antes de prenderlo): `prendido` dice si hoy
+   * contestaría en una conversación real.
+   */
+  async probar(
+    prueba: PruebaDelAsistente,
+    ahora: () => Date = () => new Date(),
+  ): Promise<ResultadoDeLaPrueba> {
+    const inicio = Date.now();
+    const soporte = prueba.canal === 'soporte';
+    const perfil: PerfilDelCanal = {
+      canal: prueba.canal,
+      pregunta: soporte ? Party.COMPANY : Party.CUSTOMER,
+    };
+    const channel = soporte ? Channel.PLATFORM_CHAT : Channel.STAFF_CUSTOMER;
+    const distributorId = soporte ? null : prueba.distributorId;
+    const atencion = await this.atencion(distributorId ?? '', perfil);
+    const tope = Math.floor(
+      atencion.topes.tokensPorMes * PROPORCION_DEL_CUPO_DE_PRUEBAS,
+    );
+    if ((await this.tokensDePruebaDelMes(channel, distributorId)) >= tope) {
+      throw new TopeDePruebasAlcanzado(tope);
+    }
+    const respuesta = await this.responder({
+      perfil,
+      channel,
+      distributorId,
+      customerUserId: soporte ? null : prueba.customerUserId,
+      orderId: null,
+      conversationId: null,
+      atencion,
+      hilo: () =>
+        Promise.resolve([
+          {
+            senderParty: perfil.pregunta,
+            kind: MessageKind.TEXT,
+            body: prueba.pregunta,
+          },
+        ]),
+      ahora,
+    });
+    const resultado: RespuestaDelModelo = respuesta?.resultado ?? {
+      tipo: 'derivar',
+      motivo: MotivoDeDerivacion.NO_TEXT,
+      modelo: null,
+      uso: SIN_USO,
+      herramientas: [],
+    };
+    if (resultado.modelo !== null) {
+      const deriva = resultado.tipo === 'derivar';
+      await this.dataSource.getRepository(AssistantTestUsage).insert({
+        distributorId,
+        channel,
+        kind: prueba.tipo,
+        model: resultado.modelo,
+        outcome: deriva
+          ? ResultadoDelAsistente.HANDED_OFF
+          : ResultadoDelAsistente.ANSWERED,
+        reason: deriva ? resultado.motivo : null,
+        inputTokens: resultado.uso.inputTokens,
+        outputTokens: resultado.uso.outputTokens,
+        cacheReadTokens: resultado.uso.cacheReadTokens,
+        cacheCreationTokens: resultado.uso.cacheCreationTokens,
+        toolsUsed: resultado.herramientas,
+        latencyMs: Math.max(0, Date.now() - inicio),
+        createdBy: prueba.actorUserId,
+      });
+    }
+    return {
+      resultado,
+      fuentes:
+        resultado.tipo === 'respuesta' && respuesta
+          ? fuentesDeLaRespuesta(resultado, respuesta.base)
+          : [],
+      prendido: await this.chat.prendido({
+        channel,
+        distributorId: distributorId ?? '',
+      }),
+    };
   }
 
   /** Ya hay una respuesta o derivación publicada para ese mensaje. */
@@ -513,31 +706,55 @@ export class AsistenteIaService {
   }
 
   /**
-   * Tokens del mes (calendario de Argentina), descartadas incluidas: los de
-   * la empresa con sus clientes (C3) o los del soporte de la plataforma (C1,
-   * de todas las empresas: lo paga la plataforma) y, aparte, los de la
-   * empresa que pregunta en el soporte (su cupo).
+   * Tokens del mes (calendario de Argentina), descartadas incluidas, contra
+   * un solo tope mensual que incluye las pruebas (nunca se pasa del 100 %):
+   * en C3, las conversaciones de la empresa con sus clientes más sus pruebas;
+   * en C1, todo el soporte de la plataforma (de todas las empresas: lo paga la
+   * plataforma) más las pruebas de la plataforma. Aparte, los de la empresa
+   * que pregunta en el soporte (su cupo: sólo sus conversaciones). Las pruebas
+   * además tienen su sub-tope (`tokensDePruebaDelMes`).
    */
   private async tokensDelMes(
-    c: Conversation,
+    channel: string,
+    distributorId: string | null,
     perfil: PerfilDelCanal,
   ): Promise<TokensDelMes> {
     const soporte = perfil.canal === 'soporte';
+    const deLaEmpresa = soporte ? '' : 'AND "distributor_id" = $2';
+    const tokens = `"input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens"`;
     const [fila]: Array<{ n: string | null; empresa: string | null }> =
       await this.dataSource.query(
-        `SELECT sum("input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens")::bigint AS n,
-                sum("input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens")
-                  FILTER (WHERE "distributor_id" = $2)::bigint AS empresa
-           FROM "assistant_trace"
-          WHERE "channel" = $1 ${soporte ? '' : 'AND "distributor_id" = $2'}
-            AND "created_at" >= (date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')
-                                 AT TIME ZONE 'America/Argentina/Buenos_Aires')`,
-        [c.channel, c.distributorId],
+        `SELECT sum("tokens")::bigint AS n,
+                sum("tokens") FILTER (WHERE "distributor_id" = $2)::bigint AS empresa
+           FROM (SELECT "distributor_id", ${tokens} AS "tokens" FROM "assistant_trace"
+                  WHERE "channel" = $1 ${deLaEmpresa} AND ${DESDE_EL_INICIO_DEL_MES}
+                 UNION ALL
+                 SELECT "distributor_id", ${tokens} AS "tokens" FROM "assistant_test_usage"
+                  WHERE "channel" = $1 ${deLaEmpresa} AND ${DESDE_EL_INICIO_DEL_MES}) u`,
+        [channel, distributorId],
       );
     return {
       total: Number(fila?.n ?? 0),
       deLaEmpresa: soporte ? Number(fila?.empresa ?? 0) : 0,
     };
+  }
+
+  /**
+   * Tokens del mes gastados en pruebas (probador y lote) por la empresa en C3
+   * o por la plataforma en C1 (sin empresa): `assistant_test_usage` sola.
+   */
+  private async tokensDePruebaDelMes(
+    channel: string,
+    distributorId: string | null,
+  ): Promise<number> {
+    const [fila]: Array<{ n: string | null }> = await this.dataSource.query(
+      `SELECT sum("input_tokens" + "output_tokens" + "cache_read_tokens" + "cache_creation_tokens")::bigint AS n
+         FROM "assistant_test_usage"
+        WHERE "channel" = $1 AND "distributor_id" IS NOT DISTINCT FROM $2::uuid
+          AND ${DESDE_EL_INICIO_DEL_MES}`,
+      [channel, distributorId],
+    );
+    return Number(fila?.n ?? 0);
   }
 
   /** Los últimos mensajes visibles con texto de ESA conversación, del más viejo al más nuevo. */
@@ -630,6 +847,7 @@ export class AsistenteIaService {
             ? ResultadoDelAsistente.HANDED_OFF
             : ResultadoDelAsistente.ANSWERED,
           reason: deriva ? resultado.motivo : null,
+          handoffCause: causaDeLaTraza(resultado),
         });
         return { publicado: true, replyMessageId };
       });

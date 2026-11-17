@@ -4,6 +4,17 @@ import { CylinderRecoveryService } from './cylinder-recovery.service';
 import { PARAMETROS } from './recovery-test-kit';
 import { empresasDePrueba } from '../../process-run/testing/empresas-de-prueba';
 
+const memoriaRedis = () => {
+  const m = new Map<string, string>();
+  return {
+    get: jest.fn((k: string) => Promise.resolve(m.get(k) ?? null)),
+    setex: jest.fn((k: string, _t: number, v: string) => {
+      m.set(k, v);
+      return Promise.resolve();
+    }),
+  };
+};
+
 describe('CylinderRecoveryCron', () => {
   let recovery: {
     distribuidorasConEnvasesAfuera: jest.Mock;
@@ -39,7 +50,7 @@ describe('CylinderRecoveryCron', () => {
     sinRecupero = new Set();
     cron = new CylinderRecoveryCron(
       recovery as unknown as CylinderRecoveryService,
-      redis as unknown as RedisService,
+      { ...redis, ...memoriaRedis() } as unknown as RedisService,
       empresasDePrueba({
         distribuidoras: { findAll: () => Promise.resolve([]) },
         habilitado: (id, modulo) =>
@@ -110,5 +121,41 @@ describe('CylinderRecoveryCron', () => {
     expect(await cron.recuperarLasQueTocan(A_LAS_4)).toBe(1);
     expect(recovery.ejecutar).toHaveBeenCalledTimes(1);
     expect(recovery.ejecutar).toHaveBeenCalledWith('d2', A_LAS_4);
+  });
+
+  describe('corrida diaria recuperable', () => {
+    const exacta = A_LAS_4;
+    const unaHoraDespues = new Date(exacta.getTime() + 3_600_000);
+    const unaHoraAntes = new Date(exacta.getTime() - 3_600_000);
+    const diaSiguiente = new Date(exacta.getTime() + 24 * 3_600_000);
+
+    it('a la hora exacta corre', async () => {
+      recovery.parametros.mockResolvedValue({ ...PARAMETROS, runHour: 4 });
+      expect(await cron.recuperarLasQueTocan(exacta)).toBe(2);
+    });
+
+    it('una hora después sin corrida previa hoy recupera', async () => {
+      recovery.parametros.mockResolvedValue({ ...PARAMETROS, runHour: 4 });
+      expect(await cron.recuperarLasQueTocan(unaHoraDespues)).toBe(2);
+    });
+
+    it('una hora después con corrida hoy no corre', async () => {
+      recovery.parametros.mockResolvedValue({ ...PARAMETROS, runHour: 4 });
+      await cron.recuperarLasQueTocan(exacta);
+      recovery.ejecutar.mockClear();
+      expect(await cron.recuperarLasQueTocan(unaHoraDespues)).toBe(0);
+      expect(recovery.ejecutar).not.toHaveBeenCalled();
+    });
+
+    it('antes de la hora no corre', async () => {
+      recovery.parametros.mockResolvedValue({ ...PARAMETROS, runHour: 4 });
+      expect(await cron.recuperarLasQueTocan(unaHoraAntes)).toBe(0);
+    });
+
+    it('al día siguiente vuelve a correr', async () => {
+      recovery.parametros.mockResolvedValue({ ...PARAMETROS, runHour: 4 });
+      await cron.recuperarLasQueTocan(exacta);
+      expect(await cron.recuperarLasQueTocan(diaSiguiente)).toBe(2);
+    });
   });
 });

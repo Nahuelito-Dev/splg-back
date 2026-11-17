@@ -54,6 +54,13 @@ export const EVENTO_SOCKET_MENSAJE_EDITADO = 'chat:message-edited';
 /** Un mensaje que su autor borró (D-C23): llega sin texto (`deleted: true`). */
 export const EVENTO_SOCKET_MENSAJE_BORRADO = 'chat:message-deleted';
 
+/**
+ * «Ana está respondiendo» (8b): alguien del equipo escribe (también una nota
+ * interna) y el resto del equipo que tiene abierta la conversación se entera,
+ * para no responder dos a la vez. Nunca a quien escribe ni al cliente o al chofer.
+ */
+export const EVENTO_SOCKET_EQUIPO_ESCRIBIENDO = 'chat:staff-typing';
+
 /** En una sala no hay una persona: la lectura y el «sin leer» no aplican. */
 const NADIE = '00000000-0000-0000-0000-000000000000';
 
@@ -163,6 +170,14 @@ export class BandejaRealtimeListener {
         EVENTO_SOCKET_CONVERSACION,
         { ...base, conversation: empresa },
       );
+      // Las etiquetas son del equipo (7c): la persona no se entera.
+      if (change === 'labels') {
+        this.avisarALasListas(conversation, change, null, {
+          soloPanel: true,
+          labels: empresa.labels ?? [],
+        });
+        return;
+      }
       // Al cliente, el puntero (D-C10); al chofer, la ficha.
       this.aLaPersona(
         conversation,
@@ -247,18 +262,36 @@ export class BandejaRealtimeListener {
   /**
    * «Escribiendo…» del personal: al cliente o al chofer, sin decir quién
    * (D-C5). Si redacta una nota interna (`internal`, 4a), no se reenvía: la
-   * persona no se entera de que escriben algo que no va a ver.
+   * persona no se entera de que escriben algo que no va a ver. Al resto del
+   * equipo que tiene abierta la conversación, en cambio, sí y con quién
+   * (`chat:staff-typing`, 8b), también con una nota interna.
    */
   @OnEvent(EVENTO_ESCRIBIENDO_DEL_PANEL, { async: true })
   async escribiendoDelPanel(pedido: EscribiendoDelPanel): Promise<void> {
-    if (pedido.esPlataforma || pedido.internal) return;
+    if (pedido.esPlataforma) return;
     await this.seguro(EVENTO_SOCKET_ESCRIBIENDO, async () => {
       const c = await this.abiertaDeLaBandeja(pedido.conversationId);
       if (!c || c.distributorId !== pedido.distributorId) return;
+      const until = hasta();
+      // Al resto del equipo con la conversación abierta, con quién (8b).
+      this.panel.emitirAConversacionMenosA(
+        c.conversationId,
+        'company',
+        pedido.userId,
+        EVENTO_SOCKET_EQUIPO_ESCRIBIENDO,
+        {
+          conversationId: c.conversationId,
+          userId: pedido.userId,
+          name: await this.nombreDe(pedido.userId),
+          internal: pedido.internal,
+          until,
+        },
+      );
+      if (pedido.internal) return;
       this.aLaPersona(c, EVENTO_SOCKET_ESCRIBIENDO, {
         conversationId: c.conversationId,
         party: Party.COMPANY,
-        until: hasta(),
+        until,
       });
     });
   }
@@ -324,6 +357,7 @@ export class BandejaRealtimeListener {
     c: Conversation,
     change: string,
     m: Message | null,
+    extra: { soloPanel?: boolean; labels?: unknown[] } = {},
   ): void {
     const canal = c.channel as CanalDeLaBandeja;
     this.panel.emitirALaBandeja(c.distributorId, canal, EVENTO_SOCKET_BANDEJA, {
@@ -346,9 +380,10 @@ export class BandejaRealtimeListener {
             internal: m.visibility === MessageVisibility.INTERNAL,
           }
         : null,
+      ...(extra.labels ? { labels: extra.labels } : {}),
     });
-    // Una nota interna: la persona no se entera de que hubo algo.
-    if (m?.visibility === MessageVisibility.INTERNAL) return;
+    // Una nota interna o un cambio de etiquetas: la persona no se entera de que hubo algo.
+    if (extra.soloPanel || m?.visibility === MessageVisibility.INTERNAL) return;
     const puntero = {
       conversationId: c.conversationId,
       distributorId: c.distributorId,
@@ -378,6 +413,16 @@ export class BandejaRealtimeListener {
     } else {
       this.choferes.emitirAConversacion(c.conversationId, evento, payload);
     }
+  }
+
+  /** El nombre de alguien del equipo, como lo ve el resto del equipo. */
+  private async nombreDe(userId: string): Promise<string> {
+    const [fila]: Array<{ full_name: string | null }> =
+      await this.dataSource.query(
+        `SELECT "full_name" FROM "user" WHERE "user_id" = $1`,
+        [userId],
+      );
+    return fila?.full_name ?? 'Alguien del equipo';
   }
 
   private async abiertaDeLaBandeja(

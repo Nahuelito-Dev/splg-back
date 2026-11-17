@@ -153,3 +153,18 @@ describe('prompt del asistente', () => {
     });
   });
 });
+
+describe('prompt · ronda 1', () => {
+  it('sin la información, pasar_a_persona con su causa; nunca dice que registró o derivó algo', () => {
+    for (const canal of ['clientes', 'soporte'] as const) {
+      const t = instrucciones({
+        canal,
+        nombreDelAsistente: 'Gasito',
+        nombreDeQuienAtiende: 'Florchi Gas',
+      });
+      expect(t).toContain('Si no tenés la información');
+      expect(t).toContain('llamá a pasar_a_persona con su causa');
+      expect(t).toContain('nunca digas que la consulta quedó registrada');
+    }
+  });
+});

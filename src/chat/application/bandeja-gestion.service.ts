@@ -139,6 +139,19 @@ export class BandejaGestionService {
         { mencionado: actor.userId },
       );
     }
+    if (query.labelId) {
+      // Por etiqueta (7c): vigente, de esta empresa y puesta en la conversación.
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM "conversation_label_link" k
+                   JOIN "conversation_label" l ON l."label_id" = k."label_id"
+                                              AND l."distributor_id" = k."distributor_id"
+                  WHERE k."conversation_id" = c.conversation_id
+                    AND k."distributor_id" = :distributorId
+                    AND k."label_id" = :etiqueta
+                    AND k."deleted_at" IS NULL AND l."deleted_at" IS NULL)`,
+        { etiqueta: query.labelId },
+      );
+    }
     filtrarPorEspera(qb, query.awaiting);
     primeroLasQueEsperan(qb, query.assigned === 'none');
     const [items, total] = await qb
@@ -226,16 +239,38 @@ export class BandejaGestionService {
           c.channel as CanalDeLaBandeja,
         );
       }
-      if (c.assignedToUserId === userId) return c;
-      c.assignedToUserId = userId;
-      // Alguien la tomó: deja de esperar a una persona (el asistente con IA la derivó).
-      if (userId !== null) c.awaitingHumanSince = null;
-      const guardada = await manager.getRepository(Conversation).save(c);
-      efectos.conversacion(guardada, 'assigned');
-      return guardada;
+      return this.asignarDentro(manager, c, userId, efectos);
     });
     this.eventos.publicar(efectos);
     return c;
+  }
+
+  /**
+   * El paso común de la asignación a mano y la automática (8b), dentro de la
+   * transacción de quien llama, con la conversación abierta, bloqueada y la
+   * persona ya validada: queda asignada (o en la cola), deja de esperar a una
+   * persona y sale el mismo aviso (`assigned`). La automática queda marcada
+   * (`assignedAutomatically`); una a mano o devolverla a la cola la desmarca.
+   */
+  async asignarDentro(
+    manager: EntityManager,
+    c: Conversation,
+    userId: string | null,
+    efectos: Efectos,
+    automatica = false,
+  ): Promise<Conversation> {
+    if (c.assignedToUserId === userId) return c;
+    const anterior = c.assignedToUserId;
+    c.assignedToUserId = userId;
+    c.assignedAutomatically = automatica && userId !== null;
+    // Alguien la tomó: deja de esperar a una persona (y su motivo).
+    if (userId !== null) {
+      c.awaitingHumanSince = null;
+      c.awaitingHumanReason = null;
+    }
+    const guardada = await manager.getRepository(Conversation).save(c);
+    efectos.conversacion(guardada, 'assigned', anterior);
+    return guardada;
   }
 
   /**
@@ -256,34 +291,60 @@ export class BandejaGestionService {
       if (c.status !== ConversationStatus.OPEN) {
         throw new ConversacionCerradaError();
       }
-      const r = await this.writer.escribir(
+      return this.cerrarDentro(
         manager,
-        deSistema(c, SystemCode.CLOSED_MANUAL),
-      );
-      efectos.mensaje(r.conversation, r.message);
-      // Con un cliente, la encuesta de satisfacción de este cierre (4b).
-      await this.encuesta.pedirAlCerrar(
-        manager,
-        r.conversation,
+        c,
+        ConversationClosedReason.MANUAL,
+        actor.userId,
         efectos,
         ahora,
       );
-      const repo = manager.getRepository(Conversation);
-      const actual = await repo.findOneByOrFail({
-        conversationId: c.conversationId,
-      });
-      actual.status = ConversationStatus.CLOSED;
-      actual.closedAt = ahora;
-      actual.closedReason = ConversationClosedReason.MANUAL;
-      actual.closedByUserId = actor.userId;
-      // Cerrada, ya no espera a una persona (el asistente con IA la había derivado).
-      actual.awaitingHumanSince = null;
-      const cerrada = await repo.save(actual);
-      efectos.conversacion(cerrada, 'closed');
-      return cerrada;
     });
     this.eventos.publicar(efectos);
     return c;
+  }
+
+  /**
+   * El cierre, dentro de la transacción de quien llama y con la conversación
+   * abierta y bloqueada: el mensaje de sistema del motivo, la encuesta (4b,
+   * con un cliente y si la empresa la tiene prendida) y el estado. A mano
+   * (`manual`, con quién) o por inactividad (`inactivity`, sin persona).
+   */
+  async cerrarDentro(
+    manager: EntityManager,
+    c: Conversation,
+    motivo:
+      | ConversationClosedReason.MANUAL
+      | ConversationClosedReason.INACTIVITY,
+    userId: string | null,
+    efectos: Efectos,
+    ahora: Date,
+  ): Promise<Conversation> {
+    const r = await this.writer.escribir(
+      manager,
+      deSistema(
+        c,
+        motivo === ConversationClosedReason.INACTIVITY
+          ? SystemCode.CLOSED_INACTIVITY
+          : SystemCode.CLOSED_MANUAL,
+      ),
+    );
+    efectos.mensaje(r.conversation, r.message);
+    // Con un cliente, la encuesta de satisfacción de este cierre (4b).
+    await this.encuesta.pedirAlCerrar(manager, r.conversation, efectos, ahora);
+    const repo = manager.getRepository(Conversation);
+    const actual = await repo.findOneByOrFail({
+      conversationId: c.conversationId,
+    });
+    actual.status = ConversationStatus.CLOSED;
+    actual.closedAt = ahora;
+    actual.closedReason = motivo;
+    actual.closedByUserId = userId;
+    // Cerrada, ya no espera a una persona (el asistente con IA la había derivado).
+    actual.awaitingHumanSince = null;
+    const cerrada = await repo.save(actual);
+    efectos.conversacion(cerrada, 'closed');
+    return cerrada;
   }
 
   /**
@@ -565,6 +626,14 @@ function deSistema(c: Conversation, codigo: SystemCode) {
 }
 
 /**
+ * La versión del uuid de los mensajes de un lote (`idDelMensajeDelLote`). Los
+ * `clientMessageId` que mandan el panel y las apps son uuid v4 (lo exige el
+ * DTO): así se reconoce un mensaje masivo a choferes en la base, por ejemplo
+ * para que no arranque el cierre por inactividad.
+ */
+export const VERSION_DEL_ID_DEL_LOTE = '5';
+
+/**
  * El `clientMessageId` de cada mensaje de un lote: un uuid que sale del lote y
  * del chofer (sha-256 con la forma de un uuid), así el mismo lote repetido no
  * duplica.
@@ -572,7 +641,7 @@ function deSistema(c: Conversation, codigo: SystemCode) {
 export function idDelMensajeDelLote(lote: string, chofer: string): string {
   const h = createHash('sha256').update(`${lote}:${chofer}`).digest('hex');
   const variante = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16);
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variante}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${VERSION_DEL_ID_DEL_LOTE}${h.slice(13, 16)}-${variante}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
 function escaparLike(texto: string): string {

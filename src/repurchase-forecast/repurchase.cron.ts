@@ -1,15 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { errorMessage } from '../common/errors/error-message';
-import {
-  minutosDelDiaArgentino,
-  ZONA_ARGENTINA,
-} from '../common/utils/dias-argentina';
+import { ZONA_ARGENTINA } from '../common/utils/dias-argentina';
 import { DistributorService } from '../distributor/distributor.service';
 import { DistributorStatus } from '../distributor/entities/distributor.entity';
 import { RedisService } from '../redis/redis.service';
 import { RepurchaseEstimatorService } from './repurchase-estimator.service';
 import { RepurchaseForecastService } from './repurchase-forecast.service';
+import {
+  marcarCorridaDeHoy,
+  tocaCorrerHoy,
+  ultimaCorridaDeLaEmpresa,
+} from '../common/utils/corrida-diaria';
 import { ConRegistro } from '../process-run/process-run.recorder';
 import {
   marcarSaltada,
@@ -96,7 +98,6 @@ export class RepurchaseCron {
    * vigentes vencen solas (`vencer`).
    */
   async anticiparLasQueTocan(ahora: Date): Promise<number> {
-    const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
     const { empresas } = await this.empresas.recorrer(
       {
         proceso: ProcessName.REPURCHASE_ANTICIPATE,
@@ -105,10 +106,28 @@ export class RepurchaseCron {
       },
       async (distributorId, empresa) => {
         const params = await this.estimator.parametros(distributorId);
-        if (!params.enabled || params.runHour !== hora) return false;
+        if (
+          !params.enabled ||
+          !tocaCorrerHoy(
+            ahora,
+            params.runHour,
+            await ultimaCorridaDeLaEmpresa(
+              this.redis,
+              ProcessName.REPURCHASE_ANTICIPATE,
+              distributorId,
+            ),
+          )
+        )
+          return false;
         // Sin caché, justo antes de invitar (§6.3).
         if (!(await empresa.sigueHabilitada())) return false;
         await this.forecast.ejecutar(distributorId, ahora);
+        await marcarCorridaDeHoy(
+          this.redis,
+          ProcessName.REPURCHASE_ANTICIPATE,
+          distributorId,
+          ahora,
+        );
         return true;
       },
     );

@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { RedisService } from '../../redis/redis.service';
 import { errorMessage } from '../../common/errors/error-message';
-import {
-  minutosDelDiaArgentino,
-  ZONA_ARGENTINA,
-} from '../../common/utils/dias-argentina';
+import { ZONA_ARGENTINA } from '../../common/utils/dias-argentina';
 import { CylinderRecoveryService } from './cylinder-recovery.service';
+import {
+  marcarCorridaDeHoy,
+  tocaCorrerHoy,
+  ultimaCorridaDeLaEmpresa,
+} from '../../common/utils/corrida-diaria';
 import { ConRegistro } from '../../process-run/process-run.recorder';
 import {
   marcarSaltada,
@@ -64,7 +66,6 @@ export class CylinderRecoveryCron {
    * escalan; las ofertas de retiro vigentes siguen.
    */
   async recuperarLasQueTocan(ahora: Date): Promise<number> {
-    const hora = Math.floor(minutosDelDiaArgentino(ahora) / 60);
     const { empresas } = await this.empresas.recorrer(
       {
         proceso: ProcessName.CYLINDER_RECOVERY,
@@ -74,10 +75,28 @@ export class CylinderRecoveryCron {
       },
       async (distributorId, empresa) => {
         const params = await this.recovery.parametros(distributorId);
-        if (!params.enabled || params.runHour !== hora) return false;
+        if (
+          !params.enabled ||
+          !tocaCorrerHoy(
+            ahora,
+            params.runHour,
+            await ultimaCorridaDeLaEmpresa(
+              this.redis,
+              ProcessName.CYLINDER_RECOVERY,
+              distributorId,
+            ),
+          )
+        )
+          return false;
         // Sin caché, justo antes de abrir casos y ofertas (§6.3).
         if (!(await empresa.sigueHabilitada())) return false;
         const r = await this.recovery.ejecutar(distributorId, ahora);
+        await marcarCorridaDeHoy(
+          this.redis,
+          ProcessName.CYLINDER_RECOVERY,
+          distributorId,
+          ahora,
+        );
         this.logger.log(
           `Recupero ${distributorId}: ${r.abiertos} caso(s) nuevo(s), ${r.avisos} aviso(s), ${r.ofertas} oferta(s), ${r.escalados} escalado(s), ${r.perdidos} perdido(s), ${r.cerradosPorDevolucion} devuelto(s), ${r.cerradosPorCuenta} cubierto(s) por la cuenta, ${r.revisionManual} para revisión manual`,
         );

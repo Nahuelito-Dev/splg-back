@@ -57,6 +57,7 @@ function armar(
 ) {
   const panel = {
     emitirAConversacion: jest.fn(),
+    emitirAConversacionMenosA: jest.fn(),
     emitirALaBandeja: jest.fn(),
     emitirAUsuario: jest.fn(),
     emitirAlSoporteDeEmpresa: jest.fn(),
@@ -82,8 +83,12 @@ function armar(
     getRepository: () => ({
       findOne: jest.fn().mockResolvedValue(conversacionDeLaBase),
     }),
-    query: jest.fn((_sql: string, [, seq]: [string, number]) =>
-      Promise.resolve([{ seq: visibleHasta ?? seq }]),
+    query: jest.fn((sql: string, [, seq]: [string, number]) =>
+      Promise.resolve(
+        sql.includes('full_name')
+          ? [{ full_name: 'Ana Pérez' }]
+          : [{ seq: visibleHasta ?? seq }],
+      ),
     ),
   } as unknown as DataSource;
   const listener = new BandejaRealtimeListener(
@@ -93,7 +98,7 @@ function armar(
     presentar as unknown as BandejaPresenter,
     dataSource,
   );
-  return { listener, panel, clientes, choferes };
+  return { listener, panel, clientes, choferes, presentar };
 }
 
 describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
@@ -235,6 +240,34 @@ describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
     expect(panel.emitirAlSoporteDeEmpresa).not.toHaveBeenCalled();
     expect(panel.emitirAlSoporteDePlataforma).not.toHaveBeenCalled();
     expect(choferes.emitirAConversacion).not.toHaveBeenCalled();
+  });
+
+  it('etiquetas (7c): la conversación al panel y `chat:inbox` con las etiquetas; al cliente y al chofer, nada', async () => {
+    for (const c of [c3, c2]) {
+      const { listener, panel, clientes, choferes, presentar } = armar(c);
+      const etiquetas = [{ id: 'et-1', name: 'Envíos', color: 'orange' }];
+      presentar.conversacion.mockResolvedValue({
+        para: Party.COMPANY,
+        labels: etiquetas,
+      } as never);
+      await listener.conversacion({ conversation: c, change: 'labels' });
+      expect(panel.emitirAConversacion).toHaveBeenCalledWith(
+        c.conversationId,
+        'company',
+        'chat:conversation',
+        expect.objectContaining({ change: 'labels' }),
+      );
+      expect(panel.emitirALaBandeja).toHaveBeenCalledWith(
+        'dist-a',
+        c.channel,
+        'chat:inbox',
+        expect.objectContaining({ change: 'labels', labels: etiquetas }),
+      );
+      for (const persona of [clientes, choferes]) {
+        expect(persona.emitirAConversacion).not.toHaveBeenCalled();
+        expect(persona.emitirAUsuario).not.toHaveBeenCalled();
+      }
+    }
   });
 
   it('mensaje de C2: a la lista de choferes y al chofer', async () => {
@@ -379,6 +412,97 @@ describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
     });
     expect(clientes.emitirAConversacion).not.toHaveBeenCalled();
     expect(choferes.emitirAConversacion).not.toHaveBeenCalled();
+  });
+
+  describe('«Ana está respondiendo» (8b): chat:staff-typing al resto del equipo', () => {
+    it('a la sala del panel de la conversación, sin las conexiones de quien escribe, con su nombre', async () => {
+      const { listener, panel } = armar();
+      await listener.escribiendoDelPanel({
+        conversationId: 'conv-1',
+        userId: 'adm-1',
+        distributorId: 'dist-a',
+        esPlataforma: false,
+        internal: false,
+      });
+      expect(panel.emitirAConversacionMenosA).toHaveBeenCalledTimes(1);
+      const [conv, punta, menos, evento, carga] = panel
+        .emitirAConversacionMenosA.mock.calls[0] as [
+        string,
+        string,
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      expect([conv, punta, menos, evento]).toEqual([
+        'conv-1',
+        'company',
+        'adm-1',
+        'chat:staff-typing',
+      ]);
+      expect(carga).toEqual({
+        conversationId: 'conv-1',
+        userId: 'adm-1',
+        name: 'Ana Pérez',
+        internal: false,
+        until: expect.any(String) as unknown,
+      });
+      // Nunca por la sala común (le llegaría a quien escribe).
+      expect(panel.emitirAConversacion).not.toHaveBeenCalled();
+    });
+
+    it('también con una nota interna (al equipo sí; al cliente nada)', async () => {
+      const { listener, panel, clientes, choferes } = armar();
+      await listener.escribiendoDelPanel({
+        conversationId: 'conv-1',
+        userId: 'adm-1',
+        distributorId: 'dist-a',
+        esPlataforma: false,
+        internal: true,
+      });
+      expect(panel.emitirAConversacionMenosA).toHaveBeenCalledWith(
+        'conv-1',
+        'company',
+        'adm-1',
+        'chat:staff-typing',
+        expect.objectContaining({ internal: true }),
+      );
+      expect(clientes.emitirAConversacion).not.toHaveBeenCalled();
+      expect(choferes.emitirAConversacion).not.toHaveBeenCalled();
+    });
+
+    it('nunca va al cliente o al chofer: a ellos sólo el «escribiendo…» sin quién', async () => {
+      const { listener, clientes } = armar();
+      await listener.escribiendoDelPanel({
+        conversationId: 'conv-1',
+        userId: 'adm-1',
+        distributorId: 'dist-a',
+        esPlataforma: false,
+        internal: false,
+      });
+      const eventos = clientes.emitirAConversacion.mock.calls.map(
+        (c: unknown[]) => c[1],
+      );
+      expect(eventos).toEqual(['chat:typing']);
+    });
+
+    it('de otra empresa o de la plataforma, nada', async () => {
+      const { listener, panel } = armar();
+      await listener.escribiendoDelPanel({
+        conversationId: 'conv-1',
+        userId: 'adm-b',
+        distributorId: 'dist-b',
+        esPlataforma: false,
+        internal: false,
+      });
+      await listener.escribiendoDelPanel({
+        conversationId: 'conv-1',
+        userId: 'sa-1',
+        distributorId: null,
+        esPlataforma: true,
+        internal: false,
+      });
+      expect(panel.emitirAConversacionMenosA).not.toHaveBeenCalled();
+    });
   });
 
   it('«escribiendo…» de la app: sólo si la conversación es de quien escribe', async () => {

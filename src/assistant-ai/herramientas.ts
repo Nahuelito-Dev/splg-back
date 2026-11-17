@@ -20,6 +20,7 @@ import { GasCylinderMapper } from '../gascylinder/gascylinder.mapper';
 import { GasCylinderService } from '../gascylinder/gascylinder.service';
 import { Order, OrderStatus } from '../order/entities/order.entity';
 import { TimeSlot } from '../time-slot/entities/time-slot.entity';
+import { CAUSAS_DE_DERIVACION } from './asistente-ia.dominio';
 import type { CanalDelAsistente } from './prompt';
 
 /** Nombres de las herramientas (§4.2). Todas de sólo lectura salvo `pasar_a_persona`, que sólo avisa. */
@@ -38,11 +39,17 @@ const SIN_PARAMETROS: Anthropic.Tool.InputSchema = {
 const PASAR: Anthropic.Tool = {
   name: PASAR_A_PERSONA,
   description:
-    'Pasa la conversación a una persona del equipo. Usala cuando no puedas resolver la consulta con la base de conocimiento o las otras herramientas, cuando te pidan hablar con alguien, haya un reclamo o haya que hacer algo (cancelar, cambiar, cobrar, devolver).',
+    'Pasa la conversación a una persona del equipo. Usala cuando no tengas la información en la base de conocimiento o en las otras herramientas, cuando no estés seguro de la respuesta, cuando te pidan hablar con alguien, haya un reclamo o haya que hacer algo (cancelar, cambiar, cobrar, devolver). Es la única forma de que alguien del equipo se entere.',
   strict: true,
   input_schema: {
     type: 'object',
     properties: {
+      causa: {
+        type: 'string',
+        enum: CAUSAS_DE_DERIVACION,
+        description:
+          'no_info: la base y las herramientas no tienen la información; low_confidence: no estás seguro de la respuesta; customer_asked: la persona pidió hablar con alguien; complaint: es un reclamo o hay que hacer algo; other: otra cosa',
+      },
       motivo: {
         type: 'string',
         description: 'Por qué la pasás, en pocas palabras',
@@ -53,7 +60,7 @@ const PASAR: Anthropic.Tool = {
           'Para el equipo (la persona no lo ve), en 2 o 3 líneas: qué pide, qué ya le contestaste y qué falta. Sin teléfonos, documentos ni direcciones.',
       },
     },
-    required: ['motivo', 'resumen'],
+    required: ['causa', 'motivo', 'resumen'],
     additionalProperties: false,
   },
 };

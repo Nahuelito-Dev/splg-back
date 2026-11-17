@@ -1,9 +1,14 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { errorMessage } from '../common/errors/error-message';
+import { reportarErrorAtrapado } from '../common/sentry/reportar-a-sentry';
 import { RunTrigger } from './domain/process-catalog';
 
 /** Lo que una corrida en curso le cuenta al registrador sin cambiar lo que devuelve. */
 export interface CorridaEnCurso {
+  /** El proceso que corre (`ProcessName`), para etiquetar lo que se manda a Sentry. */
+  proceso: string | null;
+  /** La empresa de la corrida, si es por empresa. */
+  distributorId: string | null;
   /** La corrida no hizo nada porque otra instancia tenía el cerrojo. */
   skipped: boolean;
   /** Errores atrapados dentro de la corrida (el proceso sigue). */
@@ -43,8 +48,13 @@ export const ESTADOS_DE_EMPRESA = [
 const corrida = new AsyncLocalStorage<CorridaEnCurso>();
 const disparo = new AsyncLocalStorage<RunTrigger>();
 
-export function nuevaCorrida(): CorridaEnCurso {
+export function nuevaCorrida(
+  proceso: string | null = null,
+  distributorId: string | null = null,
+): CorridaEnCurso {
   return {
+    proceso,
+    distributorId,
     skipped: false,
     errors: 0,
     fatal: null,
@@ -67,10 +77,17 @@ export function marcarSaltada(): void {
 /**
  * Un proceso que atrapa su error (y lo loguea) avisa al registrador. `fatal`:
  * la corrida entera quedó cortada (`failed`); si no, falló una parte y el resto
- * siguió (`partial`).
+ * siguió (`partial`). El error también va a Sentry, con el proceso como tag
+ * (dentro o fuera de una corrida registrada), salvo que en HTTP sea un 4xx o
+ * que el mismo error ya haya salido hace menos de 10 minutos.
  */
 export function registrarErrorAtrapado(error: unknown, fatal = false): void {
   const actual = corrida.getStore();
+  reportarErrorAtrapado(error, {
+    proceso: actual?.proceso ?? null,
+    distribuidora: actual?.distributorId ?? null,
+    fatal,
+  });
   if (!actual) return;
   const mensaje = errorMessage(error);
   actual.errors += 1;

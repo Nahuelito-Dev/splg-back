@@ -23,6 +23,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { EmployeeService } from './employee.service';
@@ -51,6 +52,7 @@ import { Auth } from '../common/decorators/auth.decorator';
 import { RoleType } from '../common/constants/role-type.enum';
 import { CurrentDistributor } from '../common/decorators/current-distributor.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
 import { DownloadQueryDto } from '../s3/dto/download-link.dto';
 import {
@@ -276,19 +278,27 @@ export class EmployeeController {
   @ApiNotFoundResponse({ description: 'Empleado no encontrado' })
   @ApiConflictResponse({
     description:
-      'Ya está egresado, o el chofer tiene pedidos en curso, una carga de camión abierta o una rendición pendiente',
+      'Ya está egresado, o el chofer tiene pedidos en curso, una carga de camión abierta o una rendición pendiente; ' +
+      'o la cuenta es de un administrador y es el último activo de la distribuidora, o el último que puede gestionar ' +
+      'los roles y permisos (`LAST_ROLES_MANAGER`)',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Sin `personal.gestionar` (`PERMISSION_DENIED`). Si la cuenta del legajo es de un administrador, además ' +
+      '`administradores.gestionar` (`PERMISSION_DENIED`) y todos los permisos de su rol; el rol de sistema pide ' +
+      'todos (`STAFF_ROLE_TARGET_OUTRANKS`)',
   })
   async terminateEmployee(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TerminateEmployeeDto,
     @CurrentDistributor({ required: true }) distributorId: string,
-    @CurrentUser('user_id') actorUserId: string,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<EmployeeResponseDto> {
     const { empleado, deliveryId } = await this.terminate.execute(
       id,
       dto,
       distributorId,
-      actorUserId,
+      actor,
     );
     return this.toDto(empleado, deliveryId);
   }

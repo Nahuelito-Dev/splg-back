@@ -98,10 +98,74 @@
       "orderColumn": null
     },
     {
+      "table": "assistant_regression_case",
+      "entity": "AssistantRegressionCase",
+      "pk": [
+        "case_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_regression_run",
+      "entity": "AssistantRegressionRun",
+      "pk": [
+        "run_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_test_usage",
+      "entity": "AssistantTestUsage",
+      "pk": [
+        "usage_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "assistant_trace",
       "entity": "AssistantTrace",
       "pk": [
         "trace_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "entity": "AssistantUnansweredResolution",
+      "pk": [
+        "resolution_id"
       ],
       "deleteColumn": null,
       "distributorMode": "column",
@@ -226,6 +290,23 @@
       "orderColumn": null
     },
     {
+      "table": "chat_agent_settings",
+      "entity": "ChatAgentSettings",
+      "pk": [
+        "distributor_id",
+        "user_id"
+      ],
+      "deleteColumn": null,
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "chat_company_settings",
       "entity": "ChatCompanySettings",
       "pk": [
@@ -294,6 +375,38 @@
       "entity": "Conversation",
       "pk": [
         "conversation_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "conversation_label",
+      "entity": "ConversationLabel",
+      "pk": [
+        "label_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "conversation_label_link",
+      "entity": "ConversationLabelLink",
+      "pk": [
+        "link_id"
       ],
       "deleteColumn": "deleted_at",
       "distributorMode": "column",
@@ -2041,6 +2154,238 @@
       "position": 3
     },
     {
+      "table": "assistant_regression_case",
+      "column": "case_id",
+      "property": "caseId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "question",
+      "property": "question",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "expected",
+      "property": "expected",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "must_mention",
+      "property": "mustMention",
+      "secret": false,
+      "kind": "json",
+      "position": 4
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "created_by",
+      "property": "createdBy",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "updated_by",
+      "property": "updatedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_regression_case",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "run_id",
+      "property": "runId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "total",
+      "property": "total",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "started_by",
+      "property": "startedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "started_at",
+      "property": "startedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
+      "table": "assistant_regression_run",
+      "column": "finished_at",
+      "property": "finishedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 6
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "usage_id",
+      "property": "usageId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "kind",
+      "property": "kind",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "model",
+      "property": "model",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "outcome",
+      "property": "outcome",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "reason",
+      "property": "reason",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "input_tokens",
+      "property": "inputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 7
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "output_tokens",
+      "property": "outputTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "cache_read_tokens",
+      "property": "cacheReadTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 9
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "cache_creation_tokens",
+      "property": "cacheCreationTokens",
+      "secret": true,
+      "kind": "text",
+      "position": 10
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "tools_used",
+      "property": "toolsUsed",
+      "secret": false,
+      "kind": "json",
+      "position": 11
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "latency_ms",
+      "property": "latencyMs",
+      "secret": false,
+      "kind": "text",
+      "position": 12
+    },
+    {
+      "table": "assistant_test_usage",
+      "column": "created_by",
+      "property": "createdBy",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
       "table": "assistant_trace",
       "column": "trace_id",
       "property": "traceId",
@@ -2106,11 +2451,19 @@
     },
     {
       "table": "assistant_trace",
+      "column": "handoff_cause",
+      "property": "handoffCause",
+      "secret": false,
+      "kind": "text",
+      "position": 8
+    },
+    {
+      "table": "assistant_trace",
       "column": "model",
       "property": "model",
       "secret": false,
       "kind": "text",
-      "position": 8
+      "position": 9
     },
     {
       "table": "assistant_trace",
@@ -2118,7 +2471,7 @@
       "property": "inputTokens",
       "secret": true,
       "kind": "text",
-      "position": 9
+      "position": 10
     },
     {
       "table": "assistant_trace",
@@ -2126,7 +2479,7 @@
       "property": "outputTokens",
       "secret": true,
       "kind": "text",
-      "position": 10
+      "position": 11
     },
     {
       "table": "assistant_trace",
@@ -2134,7 +2487,7 @@
       "property": "cacheReadTokens",
       "secret": true,
       "kind": "text",
-      "position": 11
+      "position": 12
     },
     {
       "table": "assistant_trace",
@@ -2142,7 +2495,7 @@
       "property": "cacheCreationTokens",
       "secret": true,
       "kind": "text",
-      "position": 12
+      "position": 13
     },
     {
       "table": "assistant_trace",
@@ -2150,7 +2503,7 @@
       "property": "toolsUsed",
       "secret": false,
       "kind": "json",
-      "position": 13
+      "position": 14
     },
     {
       "table": "assistant_trace",
@@ -2158,7 +2511,71 @@
       "property": "latencyMs",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 15
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "resolution_id",
+      "property": "resolutionId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "channel",
+      "property": "channel",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "question_key",
+      "property": "questionKey",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "faq_id",
+      "property": "faqId",
+      "secret": false,
+      "kind": "text",
+      "position": 5
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "resolved_by",
+      "property": "resolvedBy",
+      "secret": false,
+      "kind": "text",
+      "position": 6
+    },
+    {
+      "table": "assistant_unanswered_resolution",
+      "column": "resolved_at",
+      "property": "resolvedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 7
     },
     {
       "table": "attachment",
@@ -2817,6 +3234,54 @@
       "position": 12
     },
     {
+      "table": "chat_agent_settings",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "user_id",
+      "property": "userId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "status",
+      "property": "status",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "status_changed_at",
+      "property": "statusChangedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 3
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "max_open_override",
+      "property": "maxOpenOverride",
+      "secret": false,
+      "kind": "text",
+      "position": 4
+    },
+    {
+      "table": "chat_agent_settings",
+      "column": "last_assigned_at",
+      "property": "lastAssignedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 5
+    },
+    {
       "table": "chat_company_settings",
       "column": "distributor_id",
       "property": "distributorId",
@@ -2946,11 +3411,59 @@
     },
     {
       "table": "chat_company_settings",
+      "column": "expected_reply_enabled",
+      "property": "expectedReplyEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "inactivity_close_minutes",
+      "property": "inactivityCloseMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "inactivity_warning_minutes",
+      "property": "inactivityWarningMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "inactivity_enabled_at",
+      "property": "inactivityEnabledAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 19
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "auto_assign_enabled",
+      "property": "autoAssignEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 20
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "auto_assign_max_open",
+      "property": "autoAssignMaxOpen",
+      "secret": false,
+      "kind": "text",
+      "position": 21
+    },
+    {
+      "table": "chat_company_settings",
       "column": "updated_by_user_id",
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 22
     },
     {
       "table": "claims",
@@ -3322,11 +3835,27 @@
     },
     {
       "table": "conversation",
+      "column": "awaiting_human_reason",
+      "property": "awaitingHumanReason",
+      "secret": false,
+      "kind": "text",
+      "position": 13
+    },
+    {
+      "table": "conversation",
+      "column": "assigned_automatically",
+      "property": "assignedAutomatically",
+      "secret": false,
+      "kind": "text",
+      "position": 14
+    },
+    {
+      "table": "conversation",
       "column": "closed_at",
       "property": "closedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 13
+      "position": 15
     },
     {
       "table": "conversation",
@@ -3334,7 +3863,7 @@
       "property": "closedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 14
+      "position": 16
     },
     {
       "table": "conversation",
@@ -3342,7 +3871,7 @@
       "property": "closedReason",
       "secret": false,
       "kind": "text",
-      "position": 15
+      "position": 17
     },
     {
       "table": "conversation",
@@ -3350,7 +3879,7 @@
       "property": "createdByUserId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 18
     },
     {
       "table": "conversation",
@@ -3358,7 +3887,87 @@
       "property": "deletedAt",
       "secret": false,
       "kind": "timestamp",
-      "position": 17
+      "position": 19
+    },
+    {
+      "table": "conversation_label",
+      "column": "label_id",
+      "property": "labelId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "conversation_label",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "conversation_label",
+      "column": "name",
+      "property": "name",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "conversation_label",
+      "column": "color",
+      "property": "color",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "conversation_label",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "link_id",
+      "property": "linkId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "label_id",
+      "property": "labelId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
     },
     {
       "table": "conversation_party",

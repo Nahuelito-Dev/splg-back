@@ -1,3 +1,4 @@
+import type { AutorizarEnTransaccion } from '../common/permisos/autoridad-sobre-cuentas';
 import {
   BadRequestException,
   ConflictException,
@@ -38,9 +39,17 @@ export class AdminService {
     manager: EntityManager,
     userId: string,
     distributorId: string | null,
+    staffRoleId: string | null = null,
   ): Promise<void> {
     const repo = manager.getRepository(Admin);
-    await repo.save(repo.create({ userId, distributorId }));
+    // Sin rol, la base le pone el de sistema (`admin_con_rol_de_personal`).
+    await repo.save(
+      repo.create({
+        userId,
+        distributorId,
+        ...(staffRoleId ? { staffRoleId } : {}),
+      }),
+    );
   }
 
   /** Si ya hay algún super administrador (el comando de arranque crea el primero). */
@@ -266,12 +275,17 @@ export class AdminService {
     id: string,
     dto: UpdateAdminDto,
     distributorId: string | null,
+    autorizar?: AutorizarEnTransaccion,
   ): Promise<Admin> {
     const admin = await this.findDetail(id, distributorId);
-    await this.usersService.update(admin.userId, {
-      full_name: dto.fullName,
-      phone_number: dto.phoneNumber,
-    });
+    await this.usersService.update(
+      admin.userId,
+      {
+        full_name: dto.fullName,
+        phone_number: dto.phoneNumber,
+      },
+      autorizar,
+    );
     return this.findDetail(id, distributorId);
   }
 
@@ -283,8 +297,9 @@ export class AdminService {
   async remove(
     id: string,
     distributorId: string | null,
+    autorizar?: AutorizarEnTransaccion,
   ): Promise<MessageResponseDto> {
     const admin = await this.findDetail(id, distributorId);
-    return this.usersService.remove(admin.userId);
+    return this.usersService.remove(admin.userId, { autorizar });
   }
 }

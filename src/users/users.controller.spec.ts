@@ -6,6 +6,7 @@ import { UserPhotoService } from './user-photo.service';
 import { User } from './entities/user.entity';
 import { RoleType } from '../common/constants/role-type.enum';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { AutoridadSobreCuentas } from '../common/permisos/autoridad-sobre-cuentas';
 
 /**
  * Quién ve y quién administra una cuenta (H-62, H-65, H-66, H-73, H-76): cada
@@ -37,6 +38,7 @@ describe('UsersController — alcance', () => {
     role,
   });
   const fila = { userId: 'otro', blocked: false } as User;
+  let autoridad: { assertPuedeAdministrarA: jest.Mock };
 
   beforeEach(() => {
     service = {
@@ -55,9 +57,13 @@ describe('UsersController — alcance', () => {
       quitar: jest.fn().mockResolvedValue({ userId: 'x' }),
       enlace: jest.fn().mockResolvedValue({ kind: 'none' }),
     };
+    autoridad = {
+      assertPuedeAdministrarA: jest.fn().mockResolvedValue(undefined),
+    };
     controller = new UsersController(
       service as unknown as UsersService,
       photo as unknown as UserPhotoService,
+      autoridad as unknown as AutoridadSobreCuentas,
     );
   });
 
@@ -232,10 +238,11 @@ describe('UsersController — alcance', () => {
       usuario(RoleType.CUSTOMER),
       null,
     );
-    expect(service.update).toHaveBeenCalledWith('yo', {
-      full_name: 'Ana',
-      phone_number: '+5493764000000',
-    });
+    expect(service.update).toHaveBeenCalledWith(
+      'yo',
+      { full_name: 'Ana', phone_number: '+5493764000000' },
+      undefined,
+    );
   });
 
   describe('foto de perfil', () => {
@@ -324,5 +331,112 @@ describe('UsersController — alcance', () => {
     await expect(
       controller.uploadPhoto('otro', archivo, yo, 'dA'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe('nadie sube ni baja a quien tiene más permisos (regla sobre cuentas de otros)', () => {
+    const rechazo = () =>
+      new ForbiddenException({
+        statusCode: 403,
+        message: 'No',
+        code: 'STAFF_ROLE_TARGET_OUTRANKS',
+      });
+
+    beforeEach(() => {
+      service.findAlcance.mockResolvedValue({
+        rol: RoleType.ADMIN,
+        distributorId: 'd1',
+      });
+    });
+
+    it('PATCH sobre otro admin consulta la regla con la contraseña, y si la regla dice que no, no escribe', async () => {
+      const yo = usuario(RoleType.ADMIN);
+      autoridad.assertPuedeAdministrarA.mockRejectedValue(rechazo());
+      await expect(
+        controller.update('otro', { password: 'NuevaClave1' }, yo, 'd1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(autoridad.assertPuedeAdministrarA).toHaveBeenCalledWith(
+        yo,
+        { userId: 'otro', rol: RoleType.ADMIN },
+        'd1',
+        { cambiaContraseña: true },
+      );
+      expect(service.update).not.toHaveBeenCalled();
+    });
+
+    it('PATCH sin contraseña avisa que no la cambia', async () => {
+      const yo = usuario(RoleType.ADMIN);
+      await controller.update('otro', { full_name: 'Otro' }, yo, 'd1');
+      expect(autoridad.assertPuedeAdministrarA).toHaveBeenCalledWith(
+        yo,
+        { userId: 'otro', rol: RoleType.ADMIN },
+        'd1',
+        { cambiaContraseña: false },
+      );
+      expect(service.update).toHaveBeenCalled();
+    });
+
+    it('la baja y el bloqueo de un admin pasan por la regla', async () => {
+      const yo = usuario(RoleType.ADMIN);
+      autoridad.assertPuedeAdministrarA.mockRejectedValue(rechazo());
+      await expect(controller.remove('otro', yo, 'd1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(
+        controller.blockUser('otro', { block: true }, yo, 'd1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(service.remove).not.toHaveBeenCalled();
+      expect(service.toggleBlockUser).not.toHaveBeenCalled();
+    });
+
+    it('un chofer también pasa por la regla (pide personal.gestionar)', async () => {
+      service.findAlcance.mockResolvedValue({
+        rol: RoleType.DELIVERY,
+        distributorId: 'd1',
+      });
+      const yo = usuario(RoleType.ADMIN);
+      await controller.remove('otro', yo, 'd1');
+      expect(autoridad.assertPuedeAdministrarA).toHaveBeenCalledWith(
+        yo,
+        { userId: 'otro', rol: RoleType.DELIVERY },
+        'd1',
+        {},
+      );
+      // La misma regla viaja a la transacción de la baja, con su manager.
+      const [, opciones] = service.remove.mock.calls[0] as [
+        string,
+        { autorizar: (m: unknown) => Promise<void> },
+      ];
+      const tx = { transaccion: true };
+      await opciones.autorizar(tx);
+      expect(autoridad.assertPuedeAdministrarA).toHaveBeenLastCalledWith(
+        yo,
+        { userId: 'otro', rol: RoleType.DELIVERY },
+        'd1',
+        { manager: tx },
+      );
+    });
+
+    it('la foto de otro admin también', async () => {
+      autoridad.assertPuedeAdministrarA.mockRejectedValue(rechazo());
+      await expect(
+        controller.removePhoto('otro', usuario(RoleType.ADMIN), 'd1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(photo.quitar).not.toHaveBeenCalled();
+    });
+
+    it('el super admin pasa siempre: no consulta la regla', async () => {
+      await controller.update(
+        'otro',
+        { password: 'NuevaClave1' },
+        usuario(RoleType.SUPER_ADMIN),
+        'd1',
+      );
+      expect(autoridad.assertPuedeAdministrarA).not.toHaveBeenCalled();
+      expect(service.update).toHaveBeenCalledWith(
+        'otro',
+        { password: 'NuevaClave1' },
+        undefined,
+      );
+    });
   });
 });

@@ -68,6 +68,21 @@ import {
 } from './dto/usuarios-response.dto';
 import { Permiso } from '../common/decorators/permiso.decorator';
 import { Alcance } from '../common/decorators/alcance.decorator';
+import {
+  AutoridadSobreCuentas,
+  type AutorizarEnTransaccion,
+  type OpcionesSobreCuentas,
+} from '../common/permisos/autoridad-sobre-cuentas';
+
+/**
+ * Lo que responde la regla sobre la cuenta de otro (`AutoridadSobreCuentas`),
+ * para el Swagger de cada endpoint que la aplica.
+ */
+const REGLA_SOBRE_CUENTAS_403 =
+  'Sobre la cuenta de otro: un chofer pide `personal.gestionar`, un cliente `clientes.gestionar` y un ' +
+  'administrador `administradores.gestionar` (`PERMISSION_DENIED`); además, un administrador con permisos que ' +
+  'quien pide no tiene (o con el rol de sistema, si quien pide no los tiene todos) no se modifica, bloquea ni da ' +
+  'de baja (`STAFF_ROLE_TARGET_OUTRANKS`). El super admin pasa siempre.';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -76,6 +91,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly userPhoto: UserPhotoService,
+    private readonly autoridad: AutoridadSobreCuentas,
   ) {}
 
   /** El DTO del usuario con `photoUrl` como URL firmada vigente. */
@@ -234,7 +250,12 @@ export class UsersController {
   }
 
   @Put(':id/photo')
-  @Permiso('clientes.gestionar')
+  // Alguno de los tres para entrar; la regla pide el del rol de la cuenta.
+  @Permiso(
+    'clientes.gestionar',
+    'personal.gestionar',
+    'administradores.gestionar',
+  )
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiSubirFoto(
     'Subir o reemplazar la foto de perfil de un usuario',
@@ -243,7 +264,9 @@ export class UsersController {
       'distribuidora); la de un cliente es de su propia cuenta o del ' +
       'administrador general (403 para el admin de empresa).',
   )
-  @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
+  @ApiForbiddenResponse({
+    description: `Es la cuenta de un cliente (para un admin de empresa). ${REGLA_SOBRE_CUENTAS_403}`,
+  })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @SubirFotoInterceptor()
   async uploadPhoto(
@@ -259,7 +282,11 @@ export class UsersController {
   }
 
   @Delete(':id/photo')
-  @Permiso('clientes.gestionar')
+  @Permiso(
+    'clientes.gestionar',
+    'personal.gestionar',
+    'administradores.gestionar',
+  )
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sacar la foto de perfil de un usuario',
@@ -269,7 +296,9 @@ export class UsersController {
   })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: UserResponseDto })
-  @ApiForbiddenResponse({ description: 'Es la cuenta de un cliente' })
+  @ApiForbiddenResponse({
+    description: `Es la cuenta de un cliente (para un admin de empresa). ${REGLA_SOBRE_CUENTAS_403}`,
+  })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   async removePhoto(
@@ -383,12 +412,25 @@ export class UsersController {
   // Identidad de plataforma (D7): sin sesión, sólo super admins y clientes
   // (`assertPuedeAdministrar`); con sesión de soporte, sólo lectura.
   @Alcance('ambos')
-  @ApiOperation({ summary: 'Update user by ID' })
+  // Sin `@Permiso`: cada uno edita su propia cuenta (cliente, chofer o admin).
+  // Sobre la de otro, la regla de `AutoridadSobreCuentas` pide el permiso del
+  // rol de esa cuenta.
+  @ApiOperation({
+    summary: 'Update user by ID',
+    description:
+      'Cada uno edita su nombre y teléfono. Un administrador edita además la cuenta de otro (nombre, teléfono, ' +
+      'bloqueo y contraseña) con el permiso del rol de esa cuenta: chofer `personal.gestionar`, administrador ' +
+      '`administradores.gestionar` y todos los permisos de su rol. La contraseña de otro administrador sólo la ' +
+      'cambia el super admin (403 `ADMIN_PASSWORD_NOT_CHANGEABLE`): la cambia él con el enlace de ' +
+      '`POST /email/password-reset`.',
+  })
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiForbiddenResponse({
     description:
-      'No es su cuenta, pide contraseña o bloqueo sin ser admin, o es la cuenta de un cliente',
+      'No es su cuenta, pide contraseña o bloqueo sin ser admin, se bloquea a sí mismo, o es la cuenta de un ' +
+      'cliente (para un admin de empresa). La contraseña de otro administrador, sin ser super admin ' +
+      `(\`ADMIN_PASSWORD_NOT_CHANGEABLE\`). ${REGLA_SOBRE_CUENTAS_403}`,
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
@@ -414,11 +456,14 @@ export class UsersController {
       throw new ForbiddenException('No podés modificar a otro usuario');
     }
 
+    let autorizar: AutorizarEnTransaccion | undefined;
     if (isAdmin) {
       if (updateUserDto.blocked === true && esElMismoUsuario(id, user)) {
         throw new ForbiddenException('No podés bloquearte a vos mismo');
       }
-      await this.assertPuedeAdministrar(id, user, distributorId);
+      autorizar = await this.assertPuedeAdministrar(id, user, distributorId, {
+        cambiaContraseña: updateUserDto.password !== undefined,
+      });
     }
 
     // Contraseña y bloqueo son de administración: rechazarlos en lugar de
@@ -437,7 +482,7 @@ export class UsersController {
       ? updateUserDto
       : this.pickSelfEditableFields(updateUserDto);
 
-    return this.toDto(await this.usersService.update(id, payload));
+    return this.toDto(await this.usersService.update(id, payload, autorizar));
   }
 
   /**
@@ -490,7 +535,8 @@ export class UsersController {
     userId: string,
     user: AuthenticatedUser,
     distributorId: string | null,
-  ): Promise<void> {
+    opciones: OpcionesSobreCuentas = {},
+  ): Promise<AutorizarEnTransaccion | undefined> {
     // Fuera de soporte, la plataforma sólo administra cuentas de plataforma y
     // admins de empresa. Clientes y choferes son datos operativos.
     if (user.role === RoleType.SUPER_ADMIN && !distributorId) {
@@ -503,7 +549,7 @@ export class UsersController {
       }
     }
     await this.assertDeSuDistribuidora(userId, distributorId);
-    if (user.role !== RoleType.ADMIN) return;
+    if (user.role !== RoleType.ADMIN) return undefined;
     const destino = await this.usersService.findAlcance(userId);
     // Un super admin no es de ninguna distribuidora (H-62, H-76).
     if (destino.rol === RoleType.SUPER_ADMIN) {
@@ -514,6 +560,21 @@ export class UsersController {
         'La cuenta de un cliente la administra el administrador general',
       );
     }
+    // Nadie sube ni baja a quien tiene más permisos (17/11). Se controla acá
+    // (corta antes de tocar Firebase) y se repite dentro de la transacción que
+    // escribe, con el cerrojo de los roles de la empresa.
+    const cuenta = { userId, rol: destino.rol };
+    await this.autoridad.assertPuedeAdministrarA(
+      user,
+      cuenta,
+      distributorId,
+      opciones,
+    );
+    return (manager) =>
+      this.autoridad.assertPuedeAdministrarA(user, cuenta, distributorId, {
+        ...opciones,
+        manager,
+      });
   }
 
   /** Campos que un usuario puede cambiar de su propio perfil. */
@@ -529,7 +590,12 @@ export class UsersController {
   // Identidad de plataforma (D7): sin sesión, sólo super admins y clientes
   // (`assertPuedeAdministrar`); con sesión de soporte, sólo lectura.
   @Alcance('ambos')
-  @Permiso('clientes.gestionar')
+  // Alguno de los tres para entrar; la regla pide el del rol de la cuenta.
+  @Permiso(
+    'clientes.gestionar',
+    'personal.gestionar',
+    'administradores.gestionar',
+  )
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Dar de baja un usuario (baja lógica)',
@@ -543,7 +609,7 @@ export class UsersController {
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiBadRequestResponse({ description: 'El id no es un UUID' })
   @ApiForbiddenResponse({
-    description: 'Es la cuenta de un cliente, o la propia',
+    description: `Es la cuenta de un cliente (para un admin de empresa), o la propia. ${REGLA_SOBRE_CUENTAS_403}`,
   })
   @ApiNotFoundResponse({ description: 'No existe o es de otra distribuidora' })
   @ApiConflictResponse({
@@ -559,15 +625,24 @@ export class UsersController {
     if (esElMismoUsuario(id, user)) {
       throw new ForbiddenException('No podés darte de baja a vos mismo');
     }
-    await this.assertPuedeAdministrar(id, user, distributorId);
-    return await this.usersService.remove(id);
+    const autorizar = await this.assertPuedeAdministrar(
+      id,
+      user,
+      distributorId,
+    );
+    return await this.usersService.remove(id, { autorizar });
   }
 
   @Patch(':id/block')
   // Identidad de plataforma (D7): sin sesión, sólo super admins y clientes
   // (`assertPuedeAdministrar`); con sesión de soporte, sólo lectura.
   @Alcance('ambos')
-  @Permiso('clientes.gestionar')
+  // Alguno de los tres para entrar; la regla pide el del rol de la cuenta.
+  @Permiso(
+    'clientes.gestionar',
+    'personal.gestionar',
+    'administradores.gestionar',
+  )
   @Auth(RoleType.ADMIN, RoleType.SUPER_ADMIN)
   @ApiOperation({
     summary: 'ADMIN: Bloquear/Desbloquear usuario',
@@ -578,7 +653,7 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'User UUID' })
   @ApiOkResponse({ type: BloqueoDeUsuarioDto })
   @ApiForbiddenResponse({
-    description: 'Es la cuenta de un cliente, o la propia (al bloquear)',
+    description: `Es la cuenta de un cliente (para un admin de empresa), o la propia (al bloquear). ${REGLA_SOBRE_CUENTAS_403}`,
   })
   @ApiConflictResponse({
     description:
@@ -598,7 +673,11 @@ export class UsersController {
     if (dto.block && esElMismoUsuario(id, user)) {
       throw new ForbiddenException('No podés bloquearte a vos mismo');
     }
-    await this.assertPuedeAdministrar(id, user, distributorId);
-    return this.usersService.toggleBlockUser(id, dto.block);
+    const autorizar = await this.assertPuedeAdministrar(
+      id,
+      user,
+      distributorId,
+    );
+    return this.usersService.toggleBlockUser(id, dto.block, autorizar);
   }
 }

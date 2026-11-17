@@ -109,6 +109,11 @@ const PLATAFORMA = [
   'POST /v2/platform/assistant/templates',
   'PATCH /v2/platform/assistant/templates/:id',
   'DELETE /v2/platform/assistant/templates/:id',
+  // Probador y preguntas sin respuesta del asistente del soporte (7b).
+  'POST /v2/platform/assistant/preview',
+  'GET /v2/platform/assistant/unanswered',
+  'POST /v2/platform/assistant/unanswered/:id/faq',
+  'POST /v2/platform/assistant/unanswered/:id/dismiss',
   'DELETE /distributor/:id',
   'DELETE /role/:id',
   'DELETE /v2/support-sessions/:id',
@@ -133,6 +138,7 @@ const PLATAFORMA = [
   'GET /v2/process-runs/summary',
   // Monitor O1: la traza de punta a punta (DISENO-OBSERVABILIDAD §7.5).
   'GET /v2/platform/traces/:traceId',
+  // TEMPORAL: prueba de Sentry, fuera de producción (se borra con observability/debug).
   'PUT /v2/platform/companies/:id/scheduled-tasks',
   'GET /v2/support-sessions',
   'GET /v2/support-sessions/:id',

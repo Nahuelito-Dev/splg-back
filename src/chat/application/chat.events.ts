@@ -20,12 +20,24 @@ export const EVENTO_MENSAJE_BORRADO = 'chat.mensaje.borrado';
  */
 export const EVENTO_MENSAJE_ACTUALIZADO = 'chat.mensaje.actualizado';
 
+/**
+ * Cambiaron los ajustes de la asignación automática de una empresa (se
+ * prendió o cambió el tope, 8b): se reparte la cola.
+ */
+export const EVENTO_AJUSTES_DE_ASIGNACION = 'chat.asignacion.ajustes';
+
+export interface AjustesDeAsignacionCambiados {
+  distributorId: string;
+}
+
 export type CambioDeConversacion =
   | 'created'
   | 'assigned'
   | 'closed'
   | 'reopened'
-  | 'status';
+  | 'status'
+  /** Le pusieron o sacaron etiquetas (7c): sólo el panel se entera. */
+  | 'labels';
 
 export interface MensajeCreado {
   conversation: Conversation;
@@ -35,6 +47,11 @@ export interface MensajeCreado {
 export interface ConversacionCambiada {
   conversation: Conversation;
   change: CambioDeConversacion;
+  /**
+   * En `assigned`: a quién estaba asignada antes (le bajó la carga, para la
+   * asignación automática, 8b). No va al socket.
+   */
+  previousAssignedToUserId?: string | null;
 }
 
 export interface LecturaRegistrada {
@@ -80,8 +97,16 @@ export class Efectos {
     return this;
   }
 
-  conversacion(conversation: Conversation, change: CambioDeConversacion): this {
-    this.conversaciones.push({ conversation, change });
+  conversacion(
+    conversation: Conversation,
+    change: CambioDeConversacion,
+    previousAssignedToUserId?: string | null,
+  ): this {
+    this.conversaciones.push(
+      previousAssignedToUserId === undefined
+        ? { conversation, change }
+        : { conversation, change, previousAssignedToUserId },
+    );
     return this;
   }
 

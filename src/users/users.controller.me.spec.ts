@@ -6,6 +6,7 @@ import request from 'supertest';
 import type { Server } from 'http';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { AutoridadSobreCuentas } from '../common/permisos/autoridad-sobre-cuentas';
 import { UserPhotoService } from './user-photo.service';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { RoleType } from '../common/constants/role-type.enum';
@@ -34,6 +35,7 @@ describe('UsersController · DELETE /users/me', () => {
       providers: [
         { provide: UsersService, useValue: users },
         { provide: UserPhotoService, useValue: {} },
+        { provide: AutoridadSobreCuentas, useValue: {} },
         { provide: APP_GUARD, useClass: RolesGuard },
       ],
     }).compile();

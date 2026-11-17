@@ -107,3 +107,44 @@ describe('JoiValidationSchema · antivirus del chat', () => {
     expect(value.CLAMAV_DISABLED).toBe(false);
   });
 });
+
+describe('JoiValidationSchema · Sentry', () => {
+  // Lo mínimo para arrancar (S3 es obligatorio); encima, lo de Sentry.
+  const conS3 = (extra: Record<string, string>) =>
+    validar({ AWS_S3_BUCKET: 'splg', AWS_REGION: 'sa-east-1', ...extra });
+
+  it('todas vacías u omitidas: la app arranca sin Sentry', () => {
+    expect(conS3({}).error).toBeUndefined();
+    expect(
+      conS3({
+        SENTRY_DSN: '',
+        SENTRY_ENVIRONMENT: '',
+        SENTRY_RELEASE: '',
+        SENTRY_TRACES_SAMPLE_RATE: '',
+        SENTRY_MONITOR_CRONS: '',
+      }).error,
+    ).toBeUndefined();
+  });
+
+  it('valores válidos', () => {
+    expect(
+      conS3({
+        SENTRY_DSN: 'https://clave@o1.ingest.sentry.io/2',
+        SENTRY_ENVIRONMENT: 'production',
+        SENTRY_RELEASE: 'splg-server@2.1.0',
+        SENTRY_TRACES_SAMPLE_RATE: '0.1',
+        SENTRY_MONITOR_CRONS: 'true',
+      }).error,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ['SENTRY_DSN', 'no es una url'],
+    ['SENTRY_ENVIRONMENT', 'con espacio'],
+    ['SENTRY_ENVIRONMENT', 'con/barra'],
+    ['SENTRY_TRACES_SAMPLE_RATE', '1.5'],
+    ['SENTRY_MONITOR_CRONS', 'quizas'],
+  ])('%s=«%s» no arranca', (variable, valor) => {
+    expect(conS3({ [variable]: valor }).error?.message).toContain(variable);
+  });
+});

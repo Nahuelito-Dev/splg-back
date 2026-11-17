@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Res,
 } from '@nestjs/common';
@@ -41,6 +42,10 @@ import { BandejaNotasService } from '../../application/bandeja-notas.service';
 import { BandejaEncuestaService } from '../../application/bandeja-encuesta.service';
 import { BandejaSugerenciasService } from '../../application/bandeja-sugerencias.service';
 import { BandejaService } from '../../application/bandeja.service';
+import { ChatLabelsService } from '../../application/chat-labels.service';
+import { TiempoEsperadoService } from '../../application/tiempo-esperado.service';
+import type { CanalDeLaBandeja } from '../../domain/bandeja';
+import { tiempoEsperadoADto } from '../tiempo-esperado.mapper';
 import { BandejaPresenter } from '../bandeja.presenter';
 import {
   AssignConversationDto,
@@ -53,6 +58,7 @@ import {
   QueryInboxDto,
   SendInternalNoteDto,
   SendStaffMessageDto,
+  SetConversationLabelsDto,
 } from '../dto/bandeja-input.dto';
 import {
   BroadcastResponseDto,
@@ -98,6 +104,8 @@ export class CompanyInboxController {
     private readonly equipo: BandejaEquipoService,
     private readonly notas: BandejaNotasService,
     private readonly encuesta: BandejaEncuestaService,
+    private readonly etiquetas: ChatLabelsService,
+    private readonly esperado: TiempoEsperadoService,
   ) {}
 
   @Get()
@@ -240,7 +248,11 @@ export class CompanyInboxController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Una conversación de la bandeja' })
+  @ApiOperation({
+    summary: 'Una conversación de la bandeja',
+    description:
+      'Con sus etiquetas y el tiempo de respuesta esperado que ve hoy el cliente o el chofer de ese canal (`expectedReply`).',
+  })
   @ApiOkResponse({ type: InboxConversationDto })
   @ApiBadRequestResponse({ description: 'Id que no es uuid' })
   @ApiNotFoundResponse({ description: NO_EXISTE })
@@ -251,7 +263,11 @@ export class CompanyInboxController {
   ): Promise<InboxConversationDto> {
     const actor = await this.acceso.delPersonal(user, distributorId);
     const c = await this.bandeja.conversacion(actor, id);
-    return this.presentar.conversacion(c, lectorDe(actor));
+    const [dto, esperado] = await Promise.all([
+      this.presentar.conversacion(c, lectorDe(actor)),
+      this.esperado.delCanal(distributorId, c.channel as CanalDeLaBandeja),
+    ]);
+    return { ...dto, expectedReply: tiempoEsperadoADto(esperado) };
   }
 
   @Get(':id/suggestions')
@@ -533,6 +549,32 @@ export class CompanyInboxController {
   ): Promise<void> {
     const actor = await this.acceso.delPersonal(user, distributorId);
     await this.bandeja.leer(actor, id, dto.seq);
+  }
+
+  @Put(':id/labels')
+  @ApiOperation({
+    summary: 'Poner o sacar etiquetas',
+    description:
+      'Deja en la conversación exactamente las etiquetas de `labelIds` (hasta 5; vacía: le saca todas). También en una cerrada. Con los permisos del canal. Mandar las mismas no cambia nada. Queda en la auditoría y la bandeja recibe `chat:inbox` con `change: labels` y las etiquetas (sólo el panel: el cliente y el chofer no se enteran).',
+  })
+  @ApiOkResponse({ type: InboxConversationDto })
+  @ApiBadRequestResponse({
+    description:
+      'Id que no es uuid, falta `labelIds` o no es una lista, más de 5, repetidas o ids que no son uuid',
+  })
+  @ApiForbiddenResponse({ description: SIN_CANAL_NI_MODULO })
+  @ApiNotFoundResponse({
+    description: `${NO_EXISTE}; o alguna etiqueta no existe, está dada de baja o es de otra empresa (\`CHAT_LABEL_NOT_FOUND\`)`,
+  })
+  async etiquetar(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentDistributor({ required: true }) distributorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetConversationLabelsDto,
+  ): Promise<InboxConversationDto> {
+    const actor = await this.acceso.delPersonal(user, distributorId);
+    const c = await this.etiquetas.ponerEnConversacion(actor, id, dto.labelIds);
+    return this.presentar.conversacion(c, lectorDe(actor));
   }
 
   @Post(':id/claim')

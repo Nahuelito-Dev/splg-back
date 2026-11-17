@@ -86,6 +86,16 @@ export const PROPIEDADES_EXCLUIDAS: Readonly<
   // lectura (§10.3).
   Conversation: ['lastMessageSeq', 'lastMessageAt', 'lastMessagePreview'],
   ConversationParty: ['lastReadSeq', 'lastDeliveredSeq'],
+  // Lote de regresión del asistente (7b): el avance de una corrida se guarda
+  // caso a caso (hasta 100 escrituras con la lista entera de resultados y
+  // el latido); quedan el alta, el estado y el cierre.
+  AssistantRegressionRun: [
+    'results',
+    'passed',
+    'failed',
+    'errored',
+    'updatedAt',
+  ],
 };
 
 /**

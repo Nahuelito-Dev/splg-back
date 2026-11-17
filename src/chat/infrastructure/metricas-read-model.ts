@@ -22,6 +22,7 @@ export interface Rango {
 
 /** Una conversación de la bandeja creada en el período. */
 export interface ConversacionDelPeriodo {
+  conversationId: string;
   channel: Channel;
   status: ConversationStatus;
   createdAt: Date;
@@ -30,6 +31,13 @@ export interface ConversacionDelPeriodo {
   firstResponseAt: Date | null;
   closedAt: Date | null;
   closedReason: string | null;
+}
+
+export interface EtiquetaDelPeriodo {
+  labelId: string;
+  name: string;
+  color: string;
+  conversationId: string | null;
 }
 
 export interface EnVivoPorCanal {
@@ -110,6 +118,7 @@ export class MetricasReadModel {
     r: Rango,
   ): Promise<ConversacionDelPeriodo[]> {
     const filas: Array<{
+      conversation_id: string;
       channel: Channel;
       status: ConversationStatus;
       created_at: Date;
@@ -124,6 +133,7 @@ export class MetricasReadModel {
       [...canales],
     ]);
     return filas.map((f) => ({
+      conversationId: f.conversation_id,
       channel: f.channel,
       status: f.status,
       createdAt: new Date(f.created_at),
@@ -131,6 +141,35 @@ export class MetricasReadModel {
       firstResponseAt: fecha(f.first_response_at),
       closedAt: fecha(f.closed_at),
       closedReason: f.closed_reason,
+    }));
+  }
+
+  /**
+   * Las etiquetas vigentes de la empresa y, de cada una, las conversaciones
+   * de esos canales creadas en el período que la tienen puesta (7c). Una
+   * etiqueta sin conversaciones viene con `conversationId` nulo.
+   */
+  async etiquetasDelPeriodo(
+    distributorId: string,
+    canales: readonly string[],
+    r: Rango,
+  ): Promise<EtiquetaDelPeriodo[]> {
+    const filas: Array<{
+      label_id: string;
+      name: string;
+      color: string;
+      conversation_id: string | null;
+    }> = await this.dataSource.query(SQL_ETIQUETAS_DEL_PERIODO, [
+      distributorId,
+      r.desde,
+      r.hasta,
+      [...canales],
+    ]);
+    return filas.map((f) => ({
+      labelId: f.label_id,
+      name: f.name,
+      color: f.color,
+      conversationId: f.conversation_id,
     }));
   }
 
@@ -347,7 +386,7 @@ export class MetricasReadModel {
 /** Mensajes visibles de una persona (no notas ni sistema). */
 const DE_PERSONA = `m."visibility" = 'all' AND m."kind" IN ('text', 'attachment')`;
 
-export const SQL_CONVERSACIONES = `SELECT c."channel", c."status", c."created_at", c."first_response_at",
+export const SQL_CONVERSACIONES = `SELECT c."conversation_id", c."channel", c."status", c."created_at", c."first_response_at",
        c."closed_at", c."closed_reason",
        (SELECT min(m."created_at") FROM "message" m
          WHERE m."conversation_id" = c."conversation_id"
@@ -358,6 +397,20 @@ export const SQL_CONVERSACIONES = `SELECT c."channel", c."status", c."created_at
  WHERE c."distributor_id" = $1 AND c."channel" = ANY($4::varchar[])
    AND c."created_at" >= $2 AND c."created_at" < $3
    AND c."deleted_at" IS NULL`;
+
+export const SQL_ETIQUETAS_DEL_PERIODO = `SELECT l."label_id", l."name", l."color", k."conversation_id"
+  FROM "conversation_label" l
+  LEFT JOIN "conversation_label_link" k
+         ON k."label_id" = l."label_id" AND k."distributor_id" = l."distributor_id"
+        AND k."deleted_at" IS NULL
+        AND EXISTS (SELECT 1 FROM "conversation" c
+                     WHERE c."conversation_id" = k."conversation_id"
+                       AND c."distributor_id" = k."distributor_id"
+                       AND c."channel" = ANY($4::varchar[])
+                       AND c."created_at" >= $2 AND c."created_at" < $3
+                       AND c."deleted_at" IS NULL)
+ WHERE l."distributor_id" = $1 AND l."deleted_at" IS NULL
+ ORDER BY lower(l."name"), l."label_id"`;
 
 export const SQL_EN_VIVO = `SELECT c."channel",
        count(*) AS "open",

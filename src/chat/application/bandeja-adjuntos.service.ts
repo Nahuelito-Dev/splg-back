@@ -10,7 +10,10 @@ import {
   esDelPersonal,
 } from './bandeja-acceso';
 import { chatDeClientesApagado } from './bandeja.errors';
-import { primeraRespuestaDeLaEmpresa } from './bandeja.service';
+import {
+  esperarPersonaParaAsignar,
+  primeraRespuestaDeLaEmpresa,
+} from './bandeja.service';
 import { CompanyChatSettingsService } from './company-chat-settings.service';
 import { ConversacionVigente } from './conversacion-vigente';
 import { MessageWriter } from './message-writer';
@@ -63,6 +66,15 @@ export class BandejaAdjuntos {
         if (actor.party === Party.COMPANY) {
           await primeraRespuestaDeLaEmpresa(manager, r.conversation);
           await dejaDeEsperarPersona(manager, r.conversation);
+        } else {
+          // El adjunto no lo atiende el asistente: con la asignación
+          // automática prendida, queda esperando a una persona (8b).
+          await esperarPersonaParaAsignar(
+            manager,
+            r.conversation,
+            efectos,
+            new Date(),
+          );
         }
         return r;
       },

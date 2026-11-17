@@ -24,6 +24,9 @@ import {
   SubjectType,
 } from '../domain/chat.enums';
 
+/** Por qué una conversación espera a una persona (8b). */
+export type MotivoDeEspera = 'handoff' | 'auto_assign';
+
 /**
  * Una conversación (diseño §6.2). Siempre de una distribuidora, también la de
  * la plataforma (es *con* esa empresa). Canales: el chat con la plataforma
@@ -73,6 +76,10 @@ import {
 @Index('IDX_conversation_metricas', ['distributorId', 'channel', 'createdAt'])
 @Index('IDX_conversation_cola', ['distributorId', 'assignedToUserId'], {
   where: `"status" = 'open'`,
+})
+// La cola de la asignación automática (8b): las que esperan a una persona, la más vieja primero.
+@Index('IDX_conversation_esperando', ['distributorId', 'awaitingHumanSince'], {
+  where: `"status" = 'open' AND "assigned_to_user_id" IS NULL AND "awaiting_human_since" IS NOT NULL`,
 })
 @Index('IDX_conversation_del_cliente', [
   'customerUserId',
@@ -124,7 +131,15 @@ import {
 @Check('CHK_conversation_secuencia', `"last_message_seq" >= 0`)
 @Check(
   'CHK_conversation_esperando_persona',
-  `"awaiting_human_since" IS NULL OR "channel" IN ('platform_chat', 'staff_customer')`,
+  `"awaiting_human_since" IS NULL OR "channel" IN ('platform_chat', 'staff_customer', 'staff_driver')`,
+)
+@Check(
+  'CHK_conversation_motivo_de_espera',
+  `("awaiting_human_since" IS NULL) = ("awaiting_human_reason" IS NULL) AND ("awaiting_human_reason" IS NULL OR "awaiting_human_reason" IN ('handoff', 'auto_assign'))`,
+)
+@Check(
+  'CHK_conversation_asignada_sola',
+  `NOT "assigned_automatically" OR ("assigned_to_user_id" IS NOT NULL AND "channel" IN ('staff_customer', 'staff_driver'))`,
 )
 export class Conversation {
   @PrimaryGeneratedColumn('uuid', {
@@ -231,12 +246,41 @@ export class Conversation {
   firstResponseAt!: Date | null;
 
   /**
-   * El asistente con IA la pasó a una persona (DISENO-CH-BOT §4.1.4): desde
-   * cuándo espera que alguien del equipo la tome. Mientras tanto el asistente
-   * no vuelve a contestar. Se limpia cuando alguien la toma. Sólo C3 y C1.
+   * Desde cuándo espera que alguien del equipo la tome: el asistente con IA
+   * la pasó a una persona (DISENO-CH-BOT §4.1.4), el cliente lo pidió con
+   * «hablar con una persona» o, con la asignación automática prendida (8b),
+   * el cliente o el chofer escribió y nadie la atiende. Mientras tanto el
+   * asistente no vuelve a contestar. Se limpia cuando alguien la toma.
    */
   @Column({ name: 'awaiting_human_since', type: 'timestamptz', nullable: true })
   awaitingHumanSince!: Date | null;
+
+  /**
+   * Por qué espera a una persona: `handoff` (la derivó el asistente o el
+   * cliente pidió una persona) o `auto_assign` (la marcó la asignación
+   * automática al escribir el cliente o el chofer; se limpia si se apaga la
+   * función). Nula si no espera. Si se marca la espera sin motivo, la base
+   * pone `handoff`, y al limpiarla limpia el motivo
+   * (`TRG_conversation_motivo_de_espera`).
+   */
+  @Column({
+    name: 'awaiting_human_reason',
+    type: 'varchar',
+    length: 15,
+    nullable: true,
+  })
+  awaitingHumanReason!: MotivoDeEspera | null;
+
+  /**
+   * La tomó la asignación automática (8b) y nadie la cambió desde entonces;
+   * una asignación a mano o devolverla a la cola la vuelve a `false`.
+   */
+  @Column({
+    name: 'assigned_automatically',
+    type: 'boolean',
+    default: false,
+  })
+  assignedAutomatically!: boolean;
 
   @Column({ name: 'closed_at', type: 'timestamptz', nullable: true })
   closedAt!: Date | null;

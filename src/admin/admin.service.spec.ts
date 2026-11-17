@@ -271,10 +271,11 @@ describe('AdminService', () => {
         { fullName: 'Ana', phoneNumber: '+5493764000000' },
         'd1',
       );
-      expect(users.update).toHaveBeenCalledWith('u1', {
-        full_name: 'Ana',
-        phone_number: '+5493764000000',
-      });
+      expect(users.update).toHaveBeenCalledWith(
+        'u1',
+        { full_name: 'Ana', phone_number: '+5493764000000' },
+        undefined,
+      );
       expect(
         (admins.findOne.mock.calls[0] as [{ where: object }])[0].where,
       ).toMatchObject({ adminId: 'a1', distributorId: 'd1' });
@@ -294,7 +295,9 @@ describe('AdminService', () => {
       await expect(service.remove('a1', 'd1')).resolves.toEqual({
         message: 'ok',
       });
-      expect(users.remove).toHaveBeenCalledWith('u1');
+      expect(users.remove).toHaveBeenCalledWith('u1', {
+        autorizar: undefined,
+      });
     });
 
     it('baja de un admin inexistente o de otra empresa: 404 y no toca al usuario', async () => {

@@ -265,3 +265,39 @@ describe('el «leído» de la otra punta, sobre mensajes visibles (4a)', () => {
     ).toBe(0);
   });
 });
+
+describe('BandejaReadModel: etiquetas de las conversaciones (7c)', () => {
+  it('sin conversaciones no consulta', async () => {
+    const { consultas, lectura } = base();
+    expect(await lectura.etiquetas([])).toEqual(new Map());
+    expect(consultas).toHaveLength(0);
+  });
+
+  it('las vigentes (vínculo y etiqueta), de la misma empresa que el vínculo, agrupadas por conversación', async () => {
+    const { consultas, lectura } = base([
+      {
+        conversation_id: 'c-1',
+        label_id: 'e-1',
+        name: 'Envíos',
+        color: 'orange',
+      },
+      { conversation_id: 'c-1', label_id: 'e-2', name: 'Pagos', color: 'blue' },
+      {
+        conversation_id: 'c-2',
+        label_id: 'e-1',
+        name: 'Envíos',
+        color: 'orange',
+      },
+    ]);
+    const r = await lectura.etiquetas(['c-1', 'c-2']);
+    expect(r.get('c-1')?.map((e) => e.name)).toEqual(['Envíos', 'Pagos']);
+    expect(r.get('c-2')).toEqual([
+      { id: 'e-1', name: 'Envíos', color: 'orange' },
+    ]);
+    const [{ sql, params }] = consultas;
+    expect(params).toEqual([['c-1', 'c-2']]);
+    expect(sql).toContain('l."distributor_id" = k."distributor_id"');
+    expect(sql).toContain('k."deleted_at" IS NULL');
+    expect(sql).toContain('l."deleted_at" IS NULL');
+  });
+});

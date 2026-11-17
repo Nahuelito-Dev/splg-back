@@ -457,8 +457,9 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Ya hay una pregunta frecuente igual en la base',
   CHK_assistant_faq_pregunta:
     'La pregunta tiene que tener entre 5 y 200 caracteres',
-  CHK_assistant_faq_respuesta:
-    'La respuesta tiene que tener entre 1 y 1500 caracteres',
+  CHK_assistant_faq_respuesta: 'La respuesta puede tener hasta 1500 caracteres',
+  UQ_assistant_faq_id_distribuidora:
+    'La pregunta frecuente ya existe en la empresa',
   CHK_assistant_faq_posicion:
     'La posición de la pregunta frecuente empieza en 1',
   CHK_assistant_faq_sin_html:
@@ -469,6 +470,45 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Las preguntas de la plataforma tienen que tener su clave',
   CHK_assistant_faq_plantilla:
     'Sólo las preguntas de la plataforma se ofrecen como plantilla',
+  // Probador, preguntas sin respuesta y lote de regresión del asistente (7b)
+  CHK_assistant_test_usage_canal:
+    'El uso de una prueba del asistente es de una distribuidora con sus clientes o del soporte de la plataforma',
+  CHK_assistant_test_usage_tipo:
+    'El uso de una prueba del asistente es del probador o del lote de casos',
+  CHK_assistant_test_usage_resultado:
+    'Una prueba del asistente respondió o pasó a una persona, con su motivo',
+  CHK_assistant_test_usage_motivo:
+    'El motivo de la derivación de la prueba no es válido',
+  CHK_assistant_test_usage_tokens:
+    'Los tokens y la demora de una prueba no pueden ser negativos',
+  CHK_assistant_test_usage_herramientas:
+    'Las herramientas de una prueba van en una lista',
+  UQ_assistant_unanswered_resolution_grupo:
+    'Esas preguntas sin respuesta ya se resolvieron o descartaron',
+  CHK_assistant_unanswered_resolution_canal:
+    'Las preguntas sin respuesta son de una distribuidora con sus clientes o del soporte de la plataforma',
+  CHK_assistant_unanswered_resolution_estado:
+    'Unas preguntas sin respuesta se resuelven con una pregunta frecuente o se descartan',
+  CHK_assistant_unanswered_resolution_grupo:
+    'El identificador de las preguntas sin respuesta no es válido',
+  UQ_assistant_regression_case_pregunta_vigente:
+    'Ya hay un caso de prueba con esa misma pregunta',
+  CHK_assistant_regression_case_pregunta:
+    'La pregunta del caso de prueba tiene que tener entre 2 y 500 caracteres',
+  CHK_assistant_regression_case_esperado:
+    'Lo esperado de un caso de prueba es que responda o que pase a una persona',
+  CHK_assistant_regression_case_menciones:
+    'Un caso de prueba pide hasta 10 menciones, y sólo si se espera que responda',
+  UQ_assistant_regression_run_en_curso:
+    'Ya hay una prueba de los casos en curso',
+  CHK_assistant_regression_run_estado:
+    'Una prueba de los casos terminada tiene que tener cuándo terminó',
+  CHK_assistant_regression_run_conteos:
+    'Los resultados de la prueba de los casos no cuadran con el total',
+  CHK_assistant_trace_causa:
+    'La causa de la derivación sólo va cuando el asistente pidió pasar a una persona, y tiene que ser una de las permitidas',
+  CHK_assistant_regression_run_resultados:
+    'Los resultados de la prueba de los casos van en una lista',
   // Catálogo de preguntas de ejemplo para distribuidoras (CH-BOT D-B7)
   UQ_assistant_faq_template_clave_vigente:
     'Ya hay una pregunta de ejemplo con esa clave',
@@ -656,6 +696,30 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Los intentos de escaneo van de 0 a 50 y son sólo de los archivos del chat',
   CHK_attachment_intentos_no_bajan:
     'Los intentos de escaneo de un archivo no bajan',
+  CHK_conversation_label_nombre:
+    'El nombre de la etiqueta tiene que tener entre 1 y 30 caracteres, en una sola línea',
+  CHK_conversation_label_color: 'Elegí un color de la lista',
+  UQ_conversation_label_nombre: 'Ya hay una etiqueta con ese nombre',
+  CHK_conversation_label_tope:
+    'Ya hay 50 etiquetas: da de baja alguna para crear otra',
+  UQ_conversation_label_link_vigente: 'La conversación ya tiene esa etiqueta',
+  CHK_conversation_label_link_tope: 'Una conversación lleva hasta 5 etiquetas',
+  CHK_conversation_label_link_vigente:
+    'Sólo se ponen etiquetas vigentes en conversaciones de la bandeja',
+  CHK_chat_company_settings_inactividad:
+    'El cierre por inactividad va de 30 minutos a 7 días y el aviso, de 5 minutos a 24 horas antes del cierre',
+  // Asignación automática de la bandeja (8b).
+  CHK_chat_company_settings_asignacion:
+    'El tope de conversaciones abiertas por persona va de 1 a 50',
+  CHK_chat_agent_settings_estado: 'El estado es «en línea» o «ausente»',
+  CHK_chat_agent_settings_tope:
+    'El tope propio de conversaciones abiertas va de 1 a 50',
+  CHK_conversation_asignada_sola:
+    'Sólo una conversación de la bandeja asignada a alguien puede figurar como asignada automáticamente',
+  CHK_conversation_motivo_de_espera:
+    'Una conversación que espera a una persona lleva el motivo (derivada o por la asignación automática), y una que no espera, ninguno',
+  UQ_admin_id_distribuidora:
+    'Esa persona ya es del personal de la distribuidora',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

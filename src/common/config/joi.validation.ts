@@ -157,6 +157,21 @@ export const JoiValidationSchema = Joi.object({
     .optional(),
   // Tope de filas por exporte (GET /api/v2/exports/:recurso). Si se pasa, 400.
   EXPORT_MAX_ROWS: Joi.number().integer().min(1).max(500000).default(50000),
+  // Sentry (ver common/config/sentry.config.ts). Sin DSN no se manda nada.
+  SENTRY_DSN: Joi.string().uri().empty('').optional(),
+  // Entorno que muestra Sentry; sin él, NODE_ENV. Sin espacios ni barras.
+  SENTRY_ENVIRONMENT: Joi.string()
+    .trim()
+    .max(64)
+    .pattern(/^[^\s/]+$/)
+    .empty('')
+    .optional(),
+  // Versión que muestra Sentry; sin ella, splg-server@<versión de package.json>.
+  SENTRY_RELEASE: Joi.string().trim().max(200).empty('').optional(),
+  // Proporción de requests con traza (0 a 1); sin ella, 1 en development y 0.1 en el resto.
+  SENTRY_TRACES_SAMPLE_RATE: Joi.number().min(0).max(1).empty('').optional(),
+  // Monitores de Sentry para cada @Cron (se cobran por monitor). Apagado por defecto.
+  SENTRY_MONITOR_CRONS: Joi.boolean().empty('').optional(),
   //GOOGLE_MAPS_API_KEY: Joi.string().required(),
   //MERCADO_PAGO_MARKETPLACE_API_KEY: Joi.string().required(),
   // MERCADO_PAGO_MARKETPLACE_CLIENT_ID: Joi.string().required(),

@@ -467,6 +467,8 @@ describe('BandejaService: responder automáticamente al cliente (§8.4)', () => 
           if (sql.includes('AS fuera')) {
             return [{ fuera: false, recibido: false, empresa: false }];
           }
+          // La de la asignación automática (8b): no es del nombre.
+          if (sql.includes('FOR SHARE')) return [];
           consultasDeLaEmpresa.push(sql);
           return [{ persona: 'Ana Pérez', empresa: 'Florchi Gas' }];
         },
@@ -1130,7 +1132,8 @@ describe('BandejaService: botones de acción del cliente (4e)', () => {
       q.includes('SET "awaiting_human_since" = $2'),
     );
     expect(i).toBeGreaterThanOrEqual(0);
-    expect(t.parametros[i]).toEqual(['conv-1', ahora]);
+    // Pedir una persona es una derivación: motivo `handoff` (8b).
+    expect(t.parametros[i]).toEqual(['conv-1', ahora, 'handoff']);
     expect(t.consultas[i]).toContain('"assigned_to_user_id" IS NULL');
     // Con la IA prendida, igual sale el aviso de recibido: ya espera a una persona.
     expect(t.escribir).toHaveBeenCalledTimes(2);
@@ -1297,5 +1300,184 @@ describe('BandejaService: abrir el chat tocando un botón (4e)', () => {
         '400',
       );
     }
+  });
+});
+
+describe('BandejaService: con la asignación automática, escribir deja esperando a una persona (8b)', () => {
+  const ESPERA = 'SET "awaiting_human_since" = $2';
+  /** Los ajustes de la empresa, leídos con `FOR SHARE` en la transacción del mensaje. */
+  const prendida = (sql: string) =>
+    sql.includes('FOR SHARE') ? [{ auto_assign_enabled: true }] : [];
+  const delChofer = () =>
+    conversacion({
+      channel: Channel.STAFF_DRIVER,
+      customerUserId: null,
+      driverUserId: 'cho-1',
+    });
+  const esperoDesde = (m: ReturnType<typeof armar>) => {
+    const i = m.consultas.findIndex((q) => q.includes(ESPERA));
+    return i === -1 ? null : m.parametros[i];
+  };
+
+  it('el cliente escribe, no hay asistente y nadie la tiene: espera desde ahora y avisa el cambio', async () => {
+    const c = conversacion();
+    const m = armar({ conversacion: c, consultas: prendida });
+    await m.servicio.enviar(
+      cliente,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    // Con motivo `auto_assign`: se limpia si se apaga la función.
+    expect(esperoDesde(m)).toEqual(['conv-1', ahora, 'auto_assign']);
+    expect(c.awaitingHumanSince).toEqual(ahora);
+    expect(c.awaitingHumanReason).toBe('auto_assign');
+    expect(m.publicados[0].conversaciones.map((x) => x.change)).toContain(
+      'status',
+    );
+  });
+
+  it('el chofer escribe (C2 no tiene asistente): también', async () => {
+    const m = armar({
+      conversacion: delChofer(),
+      consultas: prendida,
+    });
+    await m.servicio.enviar(
+      chofer,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Llegué' },
+      ahora,
+    );
+    expect(esperoDesde(m)).toEqual(['conv-1', ahora, 'auto_assign']);
+  });
+
+  it('con la función apagada nada cambia (ni el cliente ni el chofer)', async () => {
+    const delCliente = armar({ conversacion: conversacion() });
+    await delCliente.servicio.enviar(
+      cliente,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(esperoDesde(delCliente)).toBeNull();
+    const deChofer = armar({ conversacion: delChofer() });
+    await deChofer.servicio.enviar(
+      chofer,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(esperoDesde(deChofer)).toBeNull();
+  });
+
+  it('si la tiene alguien, o ya espera, no se toca', async () => {
+    const asignada = armar({
+      conversacion: conversacion({ assignedToUserId: 'adm-1' }),
+      consultas: prendida,
+    });
+    await asignada.servicio.enviar(
+      cliente,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(esperoDesde(asignada)).toBeNull();
+    const yaEspera = armar({
+      conversacion: conversacion({ awaitingHumanSince: hace(10) }),
+      consultas: prendida,
+    });
+    await yaEspera.servicio.enviar(
+      cliente,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(esperoDesde(yaEspera)).toBeNull();
+  });
+
+  it('si la atiende el asistente con IA, no espera a una persona (la deriva él si hace falta)', async () => {
+    const m = armar({
+      conversacion: conversacion(),
+      ajustes: { customerChatEnabled: true },
+      ia: true,
+      // El hilo trae el mensaje que disparó (el que escribe el envío, seq 9).
+      consultas: (sql) =>
+        sql.includes('"de_la_ia"')
+          ? [
+              {
+                seq: '9',
+                message_id: 'msg-1',
+                sender_party: Party.CUSTOMER,
+                kind: 'text',
+                de_la_ia: false,
+                created_at: ahora.toISOString(),
+                retirado: false,
+              },
+            ]
+          : prendida(sql),
+    });
+    await m.servicio.enviar(
+      cliente,
+      'conv-1',
+      { clientMessageId: 'c', body: '¿Tienen garrafas de 10 kg?' },
+      ahora,
+    );
+    expect(esperoDesde(m)).toBeNull();
+  });
+
+  it('el equipo escribe: no la deja esperando', async () => {
+    const m = armar({
+      conversacion: conversacion(),
+      consultas: prendida,
+    });
+    await m.servicio.enviar(
+      personal,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(esperoDesde(m)).toBeNull();
+  });
+
+  it('la función apagada en la base (lo que ve el `FOR SHARE`) no marca, aunque los ajustes en memoria digan otra cosa', async () => {
+    const m = armar({
+      conversacion: conversacion(),
+      ajustes: { autoAssignEnabled: true },
+      consultas: (sql) =>
+        sql.includes('FOR SHARE') ? [{ auto_assign_enabled: false }] : [],
+    });
+    await m.servicio.enviar(
+      cliente,
+      'conv-1',
+      { clientMessageId: 'c', body: 'Hola' },
+      ahora,
+    );
+    expect(esperoDesde(m)).toBeNull();
+    const lectura = m.consultas.find((q) => q.includes('FOR SHARE'));
+    expect(lectura).toMatch(/FROM "chat_company_settings"/);
+  });
+
+  it('«hablar con una persona» sobre una que ya esperaba por la asignación pasa a `handoff` (no se borra al apagar) y conserva su lugar', async () => {
+    const desde = hace(20);
+    const c = conversacion({
+      awaitingHumanSince: desde,
+      awaitingHumanReason: 'auto_assign',
+    });
+    const m = armar({ conversacion: c, consultas: prendida });
+    await m.servicio.accion(
+      cliente,
+      'conv-1',
+      { key: 'talk_to_person', clientMessageId: 'c' },
+      ahora,
+    );
+    const i = m.consultas.findIndex((q) =>
+      q.includes(`SET "awaiting_human_reason" = 'handoff'`),
+    );
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(m.consultas[i]).toMatch(/"awaiting_human_reason" = 'auto_assign'/);
+    expect(m.parametros[i]).toEqual(['conv-1']);
+    expect(c.awaitingHumanReason).toBe('handoff');
+    expect(c.awaitingHumanSince).toBe(desde);
+    expect(esperoDesde(m)).toBeNull();
   });
 });

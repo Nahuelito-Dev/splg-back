@@ -2,7 +2,7 @@ import type { Attachment } from '../../attachment/entities/attachment.entity';
 import { adjuntosDeLosMensajes } from './adjuntos-de-los-mensajes';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In } from 'typeorm';
+import { DataSource, type EntityManager, In } from 'typeorm';
 import { idCortoDePedido } from '../../common/events/aviso-al-admin';
 import { ConversationRating } from '../entities/conversation-rating.entity';
 import { Message } from '../entities/message.entity';
@@ -25,6 +25,21 @@ export interface ResumenDeLaBandeja {
   attention: number;
   mentions: number;
 }
+
+/** Una etiqueta puesta en una conversación, como la ve el personal. */
+export interface EtiquetaDeLaConversacion {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export const SQL_ETIQUETAS_DE_LAS_CONVERSACIONES = `SELECT k."conversation_id", l."label_id", l."name", l."color"
+  FROM "conversation_label_link" k
+  JOIN "conversation_label" l ON l."label_id" = k."label_id"
+                             AND l."distributor_id" = k."distributor_id"
+ WHERE k."conversation_id" = ANY($1::uuid[]) AND k."deleted_at" IS NULL
+   AND l."deleted_at" IS NULL
+ ORDER BY k."conversation_id", lower(l."name"), l."label_id"`;
 
 /** Una mención en una nota, con quién la escribió. */
 export interface MencionDeLaNota {
@@ -337,6 +352,32 @@ export class BandejaReadModel {
     return new Map(filas.map((f) => [f.conversation_id, Number(f.n)]));
   }
 
+  /**
+   * Las etiquetas vigentes puestas en cada conversación (tanda 7c), por
+   * nombre. Sólo las de la empresa de cada conversación (el vínculo y la
+   * etiqueta comparten `distributor_id` por la FK compuesta).
+   */
+  async etiquetas(
+    conversationIds: string[],
+  ): Promise<Map<string, EtiquetaDeLaConversacion[]>> {
+    if (conversationIds.length === 0) return new Map();
+    const filas: Array<{
+      conversation_id: string;
+      label_id: string;
+      name: string;
+      color: string;
+    }> = await this.dataSource.query(SQL_ETIQUETAS_DE_LAS_CONVERSACIONES, [
+      conversationIds,
+    ]);
+    const r = new Map<string, EtiquetaDeLaConversacion[]>();
+    for (const f of filas) {
+      const de = r.get(f.conversation_id) ?? [];
+      de.push({ id: f.label_id, name: f.name, color: f.color });
+      r.set(f.conversation_id, de);
+    }
+    return r;
+  }
+
   /** Los mensajes a los que responden otros, por `conversationId:seq`. */
   async respondidos(
     mensajes: readonly Message[],
@@ -457,8 +498,14 @@ export class BandejaReadModel {
    * de personal vigente: lo que hace falta para saber quién atiende un canal.
    * Sólo de esa empresa.
    */
+  /**
+   * El personal vigente de la empresa. Dentro de una transacción (el reparto
+   * de la asignación automática, 8b) se pasa su `manager`: así no pide una
+   * segunda conexión del pool mientras tiene el cerrojo.
+   */
   async personalDeLaEmpresa(
     distributorId: string,
+    consulta: Pick<EntityManager, 'query'> = this.dataSource,
   ): Promise<PersonaDelPersonal[]> {
     const filas: Array<{
       user_id: string;
@@ -466,7 +513,7 @@ export class BandejaReadModel {
       photo_key: string | null;
       is_system: boolean;
       permissions: string[] | null;
-    }> = await this.dataSource.query(
+    }> = await consulta.query(
       `SELECT u."user_id", u."full_name", u."photo_key", sr."is_system", sr."permissions"
          FROM "admin" a
          JOIN "user" u ON u."user_id" = a."user_id"

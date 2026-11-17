@@ -3,9 +3,11 @@ import type { StaffPermissionsService } from '../../admin/staff-permissions.serv
 import type { ClaimsService } from '../../claims/claims.service';
 import {
   Channel,
+  ConversationClosedReason,
   ConversationStatus,
   Party,
   SubjectType,
+  SystemCode,
 } from '../domain/chat.enums';
 import { Conversation } from '../entities/conversation.entity';
 import type { BandejaReadModel } from '../infrastructure/bandeja-read-model';
@@ -14,7 +16,7 @@ import {
   BandejaGestionService,
   idDelMensajeDelLote,
 } from './bandeja-gestion.service';
-import type { ChatEvents, Efectos } from './chat.events';
+import { type ChatEvents, Efectos } from './chat.events';
 import type { ChatRateLimit } from './chat-rate-limit';
 import {
   type BandejaEncuestaService,
@@ -145,6 +147,7 @@ function armar(
   );
   return {
     servicio,
+    manager,
     encuesta,
     query,
     transaction,
@@ -314,6 +317,53 @@ describe('BandejaGestionService: «Me mencionaron» (4a)', () => {
   });
 });
 
+describe('BandejaGestionService: filtro por etiqueta (7c)', () => {
+  const qbQueAnota = () => {
+    const llamadas: unknown[][] = [];
+    const qb: Record<string, jest.Mock> = {};
+    for (const m of [
+      'where',
+      'andWhere',
+      'orderBy',
+      'addOrderBy',
+      'take',
+      'skip',
+    ]) {
+      qb[m] = jest.fn((...args: unknown[]) => {
+        llamadas.push([m, ...args]);
+        return qb;
+      });
+    }
+    qb.getManyAndCount = jest.fn(() => Promise.resolve([[], 0]));
+    return { qb, llamadas };
+  };
+  const filtro = (llamadas: unknown[][]) =>
+    llamadas.find(
+      ([m, sql]) =>
+        m === 'andWhere' && String(sql).includes('conversation_label_link'),
+    ) as [string, string, Record<string, unknown>] | undefined;
+
+  it('`labelId`: sólo las que tienen esa etiqueta vigente de ESTA empresa', async () => {
+    const { qb, llamadas } = qbQueAnota();
+    await armar({ qb }).servicio.listar(personal, {
+      limit: 20,
+      offset: 0,
+      labelId: 'et-1',
+    });
+    const [, sql, params] = filtro(llamadas)!;
+    expect(sql).toContain('k."distributor_id" = :distributorId');
+    expect(sql).toContain('k."deleted_at" IS NULL AND l."deleted_at" IS NULL');
+    expect(sql).toContain('l."distributor_id" = k."distributor_id"');
+    expect(params).toEqual({ etiqueta: 'et-1' });
+  });
+
+  it('sin `labelId`, no filtra por etiqueta', async () => {
+    const { qb, llamadas } = qbQueAnota();
+    await armar({ qb }).servicio.listar(personal, { limit: 20, offset: 0 });
+    expect(filtro(llamadas)).toBeUndefined();
+  });
+});
+
 describe('BandejaGestionService: asignar', () => {
   it('a un admin de otra empresa → 404 (no se confirma que exista)', async () => {
     const { servicio, guardados } = armar({ esAdminDeLaEmpresa: false });
@@ -366,6 +416,65 @@ describe('BandejaGestionService: asignar', () => {
     expect(await codigo(servicio.asignar(personal, 'conv-1', 'adm-3'))).toBe(
       'CONVERSATION_CLOSED',
     );
+  });
+  it('la asignación automática (8b) va por el mismo paso: marcada, sin espera y con el aviso de siempre', async () => {
+    const { servicio, manager, guardados } = armar();
+    const efectos = new Efectos();
+    await servicio.asignarDentro(
+      manager,
+      conversacion({ awaitingHumanSince: new Date() }),
+      'adm-3',
+      efectos,
+      true,
+    );
+    expect(guardados[0]).toMatchObject({
+      assignedToUserId: 'adm-3',
+      assignedAutomatically: true,
+      awaitingHumanSince: null,
+    });
+    expect(efectos.conversaciones).toEqual([
+      expect.objectContaining({
+        change: 'assigned',
+        previousAssignedToUserId: null,
+      }),
+    ]);
+  });
+
+  it('a mano desmarca la automática y dice a quién la tenía (le libera lugar)', async () => {
+    const { servicio, guardados, publicados } = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        assignedAutomatically: true,
+      }),
+    });
+    await servicio.asignar(personal, 'conv-1', 'adm-4');
+    expect(guardados[0]).toMatchObject({
+      assignedToUserId: 'adm-4',
+      assignedAutomatically: false,
+    });
+    expect(publicados[0].conversaciones[0].previousAssignedToUserId).toBe(
+      'adm-3',
+    );
+    const cola = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        assignedAutomatically: true,
+      }),
+    });
+    await cola.servicio.asignar(personal, 'conv-1', null);
+    expect(cola.guardados[0].assignedAutomatically).toBe(false);
+  });
+
+  it('a la misma persona no cambia nada (ni la marca)', async () => {
+    const { servicio, guardados, publicados } = armar({
+      conversacion: conversacion({
+        assignedToUserId: 'adm-3',
+        assignedAutomatically: true,
+      }),
+    });
+    await servicio.asignar(personal, 'conv-1', 'adm-3');
+    expect(guardados).toEqual([]);
+    expect(publicados[0].conversaciones).toEqual([]);
   });
 });
 
@@ -617,6 +726,45 @@ describe('BandejaGestionService: cerrar y reabrir', () => {
     expect(t.guardados[0]).toMatchObject({
       status: ConversationStatus.CLOSED,
       closedAt: ahora,
+    });
+  });
+
+  it('cierre por inactividad (7c): mensaje `closed_inactivity`, motivo `inactivity`, sin persona y con la encuesta', async () => {
+    const t = armar({
+      conversacion: conversacion({ awaitingHumanSince: null }),
+    });
+    const ahora = new Date('2026-11-16T15:00:00Z');
+    await t.servicio.cerrarDentro(
+      t.manager,
+      conversacion(),
+      ConversationClosedReason.INACTIVITY,
+      null,
+      new Efectos(),
+      ahora,
+    );
+    expect(t.escribir).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ systemCode: SystemCode.CLOSED_INACTIVITY }),
+    );
+    expect(t.encuesta.pedirAlCerrar).toHaveBeenCalledTimes(1);
+    expect(t.guardados[0]).toMatchObject({
+      status: ConversationStatus.CLOSED,
+      closedAt: ahora,
+      closedReason: ConversationClosedReason.INACTIVITY,
+      closedByUserId: null,
+    });
+  });
+
+  it('cerrar a mano sigue con `closed_manual`, motivo `manual` y quién cerró', async () => {
+    const t = armar();
+    await t.servicio.cerrar(personal, 'conv-1');
+    expect(t.escribir).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ systemCode: SystemCode.CLOSED_MANUAL }),
+    );
+    expect(t.guardados[0]).toMatchObject({
+      closedReason: ConversationClosedReason.MANUAL,
+      closedByUserId: personal.userId,
     });
   });
 

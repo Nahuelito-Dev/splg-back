@@ -24,6 +24,7 @@ const AHORA = ar('2026-11-17T12:00');
 const conversacion = (
   c: Partial<ConversacionDelPeriodo>,
 ): ConversacionDelPeriodo => ({
+  conversationId: 'c-1',
   channel: Channel.STAFF_CUSTOMER,
   createdAt: ar('2026-11-16T08:00'),
   firstIncomingAt: ar('2026-11-16T08:00'),
@@ -46,18 +47,21 @@ function lecturaFalsa() {
   const conversaciones = [
     // Cliente: 10 min hábiles, a tiempo; cerrada a los 90 min.
     conversacion({
+      conversationId: 'c-1',
       firstResponseAt: ar('2026-11-16T08:10'),
       closedAt: ar('2026-11-16T09:30'),
       closedReason: ConversationClosedReason.MANUAL,
     }),
     // Cliente: viernes 11:50 → lunes 8:50 = 60 hábiles, fuera del objetivo de 30.
     conversacion({
+      conversationId: 'c-2',
       createdAt: ar('2026-11-13T11:50'),
       firstIncomingAt: ar('2026-11-13T11:50'),
       firstResponseAt: ar('2026-11-16T08:50'),
     }),
     // Chofer: sin respuesta desde el martes 10:00 (120 hábiles a las 12) → fuera.
     conversacion({
+      conversationId: 'c-3',
       channel: Channel.STAFF_DRIVER,
       createdAt: ar('2026-11-17T10:00'),
       firstIncomingAt: ar('2026-11-17T10:00'),
@@ -66,6 +70,7 @@ function lecturaFalsa() {
     // escribiera (sin `first_response_at`): no es «sin respuesta» ni fuera
     // del objetivo; va aparte. Cerrada a los 20 minutos.
     conversacion({
+      conversationId: 'c-4',
       createdAt: ar('2026-11-16T09:00'),
       firstIncomingAt: ar('2026-11-16T09:00'),
       closedAt: ar('2026-11-16T09:20'),
@@ -74,6 +79,7 @@ function lecturaFalsa() {
     // Chofer: la abrió la empresa y nadie contestó: no hay espera; cerrada
     // porque el pedido pasó a otro chofer (no es una resolución).
     conversacion({
+      conversationId: 'c-5',
       channel: Channel.STAFF_DRIVER,
       firstIncomingAt: null,
       closedAt: ar('2026-11-16T09:00'),
@@ -90,6 +96,48 @@ function lecturaFalsa() {
             [],
           ),
         ),
+    ),
+    // Etiquetas (7c): «Envíos» en las dos de clientes respondidas, «Choferes»
+    // en la que espera y una de otro canal; «Pagos» sin conversaciones.
+    etiquetasDelPeriodo: jest.fn((id: string) =>
+      Promise.resolve(
+        deA(
+          id,
+          [
+            {
+              labelId: 'e-1',
+              name: 'Envíos',
+              color: 'orange',
+              conversationId: 'c-1',
+            },
+            {
+              labelId: 'e-1',
+              name: 'Envíos',
+              color: 'orange',
+              conversationId: 'c-2',
+            },
+            {
+              labelId: 'e-2',
+              name: 'Choferes',
+              color: 'blue',
+              conversationId: 'c-3',
+            },
+            {
+              labelId: 'e-2',
+              name: 'Choferes',
+              color: 'blue',
+              conversationId: 'otra',
+            },
+            {
+              labelId: 'e-3',
+              name: 'Pagos',
+              color: 'green',
+              conversationId: null,
+            },
+          ],
+          [],
+        ),
+      ),
     ),
     enVivo: jest.fn((id: string, canales: readonly string[]) =>
       Promise.resolve(
@@ -240,6 +288,21 @@ describe('ChatMetricsService (métricas de la empresa)', () => {
       Channel.STAFF_CUSTOMER,
       Channel.STAFF_DRIVER,
     ]);
+    // Corte por etiqueta: conversaciones del período y su TPR (las de otro
+    // canal o fuera del período no cuentan).
+    expect(
+      m.byLabel.map((e) => [
+        e.label.name,
+        e.conversations,
+        e.firstResponse.responded,
+        e.firstResponse.unanswered,
+        e.firstResponse.medianMinutes,
+      ]),
+    ).toEqual([
+      ['Envíos', 2, 2, 0, 35],
+      ['Choferes', 1, 0, 1, null],
+      ['Pagos', 0, 0, 0, null],
+    ]);
     const [clientes, choferes] = m.byChannel;
     expect(clientes.firstResponse).toEqual({
       responded: 2,
@@ -337,8 +400,10 @@ describe('ChatMetricsService (métricas de la empresa)', () => {
       lectura.usoDePlantillas.mock.calls,
       lectura.encuestas.mock.calls,
       ajustes.leer.mock.calls,
+      lectura.etiquetasDelPeriodo.mock.calls,
     ].map((llamadas) => llamadas.map((c: unknown[]) => c[0]));
-    expect(primeros).toEqual([[B], [B], [B], [B], [B]]);
+    expect(primeros).toEqual([[B], [B], [B], [B], [B], [B]]);
+    expect(m.byLabel).toEqual([]);
     expect(ajustes.asistenteConIaDisponible).toHaveBeenCalledWith(B);
     expect(lectura.trazasDelAsistente.mock.calls.every((c) => c[2] === B)).toBe(
       true,

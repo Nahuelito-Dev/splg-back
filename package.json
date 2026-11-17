@@ -70,6 +70,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.1.11",
+    "@sentry/nestjs": "^11.13.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "cache-manager": "^7.2.4",
     "class-transformer": "^0.5.1",
@@ -184,6 +185,12 @@
         "statements": 99,
         "branches": 90,
         "functions": 98,
+        "lines": 99
+      },
+      "./src/assistant-lab/": {
+        "statements": 99,
+        "branches": 86,
+        "functions": 96,
         "lines": 99
       },
       "./src/attachment/": {

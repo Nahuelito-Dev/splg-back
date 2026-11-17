@@ -26,6 +26,7 @@ import { estadoDeLaEncuesta } from '../domain/encuesta';
 import type { Message } from '../entities/message.entity';
 import {
   BandejaReadModel,
+  type EtiquetaDeLaConversacion,
   type MencionDeLaNota,
   type PedidoDeLaConversacion,
 } from '../infrastructure/bandeja-read-model';
@@ -72,6 +73,8 @@ export interface ContextoDeLaBandeja {
   primerDelAsistente: Map<string, number>;
   /** El adjunto de cada mensaje de adjunto (CH7), por `messageId`. */
   adjuntos: Map<string, Attachment>;
+  /** Sólo para el personal: las etiquetas vigentes de cada conversación (7c). */
+  etiquetas: Map<string, EtiquetaDeLaConversacion[]>;
 }
 
 /** La encuesta de un cierre como la ven el personal y el cliente (4b). */
@@ -154,6 +157,7 @@ export class BandejaPresenter {
       encuestas,
       primerDelAsistente,
       adjuntos,
+      etiquetas,
     ] = await Promise.all([
       this.lectura.noLeidos(ids, quien),
       this.lectura.lecturaPropia(ids, quien.userId),
@@ -195,6 +199,9 @@ export class BandejaPresenter {
           )
         : Promise.resolve(new Map<string, number>()),
       this.lectura.adjuntos(mensajes),
+      quien.party === Party.COMPANY
+        ? this.lectura.etiquetas(ids)
+        : Promise.resolve(new Map<string, EtiquetaDeLaConversacion[]>()),
     ]);
     const usuarios = new Set<string>();
     for (const c of conversaciones) {
@@ -249,6 +256,7 @@ export class BandejaPresenter {
       encuestas,
       primerDelAsistente,
       adjuntos,
+      etiquetas,
     };
   }
 
@@ -353,10 +361,16 @@ export class BandejaPresenter {
             fullName: ctx.nombres.get(c.assignedToUserId) ?? 'Sin nombre',
           }
         : null;
+      dto.assignedAutomatically = c.assignedAutomatically === true;
       dto.linkedClaimId = c.linkedClaimId;
       dto.firstResponseAt = c.firstResponseAt?.toISOString() ?? null;
       dto.awaitingHumanSince = c.awaitingHumanSince?.toISOString() ?? null;
       dto.unreadMentions = ctx.mencionesSinLeer.get(c.conversationId) ?? 0;
+      dto.labels = (ctx.etiquetas.get(c.conversationId) ?? []).map((l) => ({
+        id: l.id,
+        name: l.name,
+        color: l.color,
+      }));
       const entrante = ctx.primerEntrante.get(c.conversationId);
       dto.firstResponseBusinessMinutes =
         entrante && c.firstResponseAt && ajustes

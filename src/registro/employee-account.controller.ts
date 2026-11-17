@@ -38,7 +38,11 @@ export class EmployeeAccountController {
     private readonly photo: EmployeePhotoService,
   ) {}
 
-  @Permiso('administradores.gestionar')
+  // Hoy sólo se otorgan cuentas de chofer (`puedeOtorgarseCuenta`), y la de
+  // un chofer pide `personal.gestionar`. Si algún día se otorgan cuentas de
+  // admin, el alta (`RegistroService`) ya exige `administradores.gestionar` y
+  // poder darle su rol: habrá que sumar ese permiso acá.
+  @Permiso('personal.gestionar')
   @Post(':id/account')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -46,7 +50,7 @@ export class EmployeeAccountController {
       'Otorgar una cuenta de acceso a un empleado, con el rol que le corresponde a su puesto (CU-182)',
     description:
       'Sólo los empleados de categoría driver tienen cuenta (rol chofer, con su perfil de reparto). ' +
-      'Cualquier otra categoría responde 400.',
+      'Cualquier otra categoría responde 400. Pide `personal.gestionar` (403 `PERMISSION_DENIED`).',
   })
   @ApiParam({ name: 'id', description: 'Empleado UUID' })
   @ApiOkResponse({ type: EmployeeResponseDto })

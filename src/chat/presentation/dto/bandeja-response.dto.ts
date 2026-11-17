@@ -9,6 +9,7 @@ import {
   SystemCode,
 } from '../../domain/chat.enums';
 import { CLAVES_DE_ACCION } from '../../domain/acciones-del-cliente';
+import { COLORES_DE_ETIQUETA } from '../../domain/etiquetas';
 import { ChatHoursDto } from './support-settings.dto';
 import { ChatAttachmentDto } from './chat-attachment.dto';
 
@@ -160,6 +161,68 @@ export class CsatSummaryResponseDto {
 }
 
 /** Una conversación de la bandeja (C3 con un cliente, C2 con un chofer). */
+/** Una etiqueta de la bandeja (7c), como la ve el personal en cada conversación. */
+export class InboxLabelDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ example: 'Reclamo de envío', maxLength: 30 }) name!: string;
+  @ApiProperty({ enum: COLORES_DE_ETIQUETA, example: 'orange' })
+  color!: string;
+}
+
+/** Una etiqueta de la empresa (ABM). */
+export class ChatLabelResponseDto extends InboxLabelDto {
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class ChatLabelListResponseDto {
+  @ApiProperty({
+    type: [ChatLabelResponseDto],
+    description: 'Las vigentes, por nombre (hasta 50)',
+  })
+  items!: ChatLabelResponseDto[];
+}
+
+/** El tiempo de respuesta esperado (7c): lo que ve el cliente o el chofer antes de escribir. */
+export class ExpectedReplyResponseDto {
+  @ApiProperty({
+    description:
+      'La empresa lo muestra (si no, los demás campos vienen vacíos y la app no muestra nada)',
+  })
+  enabled!: boolean;
+  @ApiProperty({ description: 'La empresa atiende ahora' }) openNow!: boolean;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 15,
+    description:
+      'Minutos que se prometen, redondeados para mostrar (en horario); `null` fuera de horario o apagado',
+  })
+  minutes!: number | null;
+  @ApiProperty({
+    enum: ['history', 'target', 'waiting'],
+    nullable: true,
+    description:
+      '`history`: mediana, en minutos hábiles, de la primera respuesta de las conversaciones del canal de los últimos 14 días junto con lo que llevan esperando las que esperan ahora (con 10 o más entre las dos); `target`: el objetivo de la empresa (con menos); `waiting`: con menos, pero las que esperan ya llevan más que el objetivo (se muestra lo que llevan)',
+  })
+  basis!: 'history' | 'target' | 'waiting' | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Fuera de horario: cuándo vuelve a atender',
+  })
+  nextOpenAt!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Solemos responder en ~15 min',
+    description:
+      'Listo para mostrar: «Solemos responder en ~N min» (o «~N h») en horario, «Ahora estamos fuera de horario. Te respondemos mañana a las 08:00.» fuera; `null` si está apagado',
+  })
+  text!: string | null;
+}
+
 export class InboxConversationDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) distributorId!: string;
@@ -195,6 +258,11 @@ export class InboxConversationDto {
   })
   assignedTo?: InboxAssigneeDto | null;
   @ApiPropertyOptional({
+    description:
+      'Sólo para el personal: la asignó la asignación automática (8b) y nadie la cambió desde entonces; una asignación a mano o devolverla a la cola la vuelve a `false`',
+  })
+  assignedAutomatically?: boolean;
+  @ApiPropertyOptional({
     type: String,
     format: 'uuid',
     nullable: true,
@@ -214,7 +282,7 @@ export class InboxConversationDto {
     format: 'date-time',
     nullable: true,
     description:
-      'Sólo para el personal: desde cuándo espera a una persona porque el asistente con IA se la pasó (C3); `null` si no espera. Se limpia cuando alguien la toma.',
+      'Sólo para el personal: desde cuándo espera a una persona (el asistente con IA se la pasó, el cliente pidió una persona o, con la asignación automática prendida, el cliente o el chofer escribió y nadie la atiende); `null` si no espera. Se limpia cuando alguien la toma.',
   })
   awaitingHumanSince?: string | null;
   @ApiPropertyOptional({
@@ -229,6 +297,18 @@ export class InboxConversationDto {
       'Sólo para el personal: menciones sin leer a quien pide en las notas internas de esta conversación («Me mencionaron»)',
   })
   unreadMentions?: number;
+  @ApiPropertyOptional({
+    type: [InboxLabelDto],
+    description:
+      'Sólo para el personal: las etiquetas de la conversación (hasta 5, por nombre). Al cliente y al chofer nunca les llegan.',
+  })
+  labels?: InboxLabelDto[];
+  @ApiPropertyOptional({
+    type: ExpectedReplyResponseDto,
+    description:
+      'Sólo en el detalle de la bandeja (`GET /v2/conversations/:id`): el tiempo de respuesta esperado que ve hoy el cliente o el chofer en ese canal',
+  })
+  expectedReply?: ExpectedReplyResponseDto;
   @ApiPropertyOptional({
     type: InboxCsatDto,
     nullable: true,
@@ -570,6 +650,45 @@ export class ChatSettingsResponseDto {
   })
   customerActions!: string[];
   @ApiProperty({
+    description:
+      'Se muestra al cliente y al chofer el tiempo de respuesta esperado',
+  })
+  expectedReplyEnabled!: boolean;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Minutos sin respuesta del cliente o del chofer para cerrar sola la conversación; `null`: no se cierra sola',
+  })
+  inactivityCloseMinutes!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Minutos antes del cierre en que se avisa; `null`: cierra sin avisar',
+  })
+  inactivityWarningMinutes!: number | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Desde cuándo rigen los plazos de inactividad (se prendió o se cambió el cierre o el aviso): lo anterior no cuenta; `null` si está apagado',
+  })
+  inactivityEnabledAt!: string | null;
+  @ApiProperty({
+    description:
+      'Asignación automática (8b): la conversación que queda esperando a una persona se le da sola a alguien del equipo en línea con lugar (apagada por omisión)',
+  })
+  autoAssignEnabled!: boolean;
+  @ApiProperty({
+    minimum: 1,
+    maximum: 50,
+    description:
+      'Tope de conversaciones abiertas por persona para la asignación automática (5 por omisión); cada persona puede tener el suyo',
+  })
+  autoAssignMaxOpen!: number;
+  @ApiProperty({
     description: 'Si la empresa atiende ahora (horario y días sin atención)',
   })
   openNow!: boolean;
@@ -640,4 +759,70 @@ export class CompanyTemplateResponseDto {
 export class CompanyTemplateListResponseDto {
   @ApiProperty({ type: [CompanyTemplateResponseDto] })
   items!: CompanyTemplateResponseDto[];
+}
+
+const ESTADOS_DEL_AGENTE = ['online', 'away'];
+
+/** El estado propio en la bandeja (8b). */
+export class ChatStatusResponseDto {
+  @ApiProperty({
+    enum: ESTADOS_DEL_AGENTE,
+    description:
+      'Lo que eligió la persona: `online` (recibe conversaciones) o `away`. Sin elegir nunca, `away`.',
+  })
+  status!: 'online' | 'away';
+  @ApiProperty({
+    description:
+      'Tiene el panel abierto ahora (alguna pestaña conectada al tiempo real)',
+  })
+  connected!: boolean;
+  @ApiProperty({
+    description:
+      'Puede recibir conversaciones ahora: `online`, conectada al panel (o desconectada hace menos de 2 minutos) y dentro del horario de atención de la empresa',
+  })
+  available!: boolean;
+  @ApiProperty({
+    minimum: 1,
+    maximum: 50,
+    description:
+      'El tope que le rige: el propio o, si no tiene, el de la empresa',
+  })
+  maxOpen!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    minimum: 1,
+    maximum: 50,
+    description: 'El tope propio; `null`: el de la empresa',
+  })
+  maxOpenOverride!: number | null;
+  @ApiProperty({
+    description:
+      'Conversaciones abiertas asignadas a la persona, de los dos canales (a mano o solas)',
+  })
+  openAssigned!: number;
+  @ApiProperty({
+    enum: CANALES,
+    isArray: true,
+    description: 'Los canales que atiende (por los permisos de su rol)',
+  })
+  channels!: Array<'staff_customer' | 'staff_driver'>;
+}
+
+/** Una persona del equipo en el tablero de la bandeja (8b). Sin email ni teléfono. */
+export class ChatAgentDto extends ChatStatusResponseDto {
+  @ApiProperty({ format: 'uuid' }) userId!: string;
+  @ApiProperty({ example: 'Ana Pérez' }) name!: string;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'La última vez que recibió una conversación por asignación automática; `null` si nunca',
+  })
+  lastAssignedAt!: string | null;
+}
+
+export class ChatAgentListResponseDto {
+  @ApiProperty({ type: [ChatAgentDto] }) items!: ChatAgentDto[];
 }

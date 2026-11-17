@@ -41,6 +41,8 @@ import {
   CompanyChatSettingsService,
 } from '../../application/company-chat-settings.service';
 import { CompanyTemplatesService } from '../../application/company-templates.service';
+import { ChatLabelsService } from '../../application/chat-labels.service';
+import { TiempoEsperadoService } from '../../application/tiempo-esperado.service';
 import { Channel, Party } from '../../domain/chat.enums';
 import {
   AccionNoDisponibleError,
@@ -167,6 +169,19 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
     darDeBaja: jest.fn().mockResolvedValue(undefined),
   };
 
+  const esperado = {
+    delCanal: jest.fn(() =>
+      Promise.resolve({
+        enabled: true,
+        openNow: true,
+        minutes: 15,
+        basis: 'target',
+        nextOpenAt: null,
+        text: 'Solemos responder en ~15 min',
+      }),
+    ),
+  };
+
   beforeAll(async () => {
     const staff = {
       deUsuario: jest.fn(() =>
@@ -198,6 +213,8 @@ describe('Bandeja de la empresa: matriz HTTP (v2)', () => {
         { provide: BandejaEncuestaService, useValue: encuesta },
         { provide: CompanyChatSettingsService, useValue: ajustes },
         { provide: CompanyTemplatesService, useValue: plantillas },
+        { provide: ChatLabelsService, useValue: {} },
+        { provide: TiempoEsperadoService, useValue: esperado },
         Reflector,
         { provide: APP_GUARD, useClass: AuthDePrueba },
         { provide: APP_GUARD, useClass: RolesGuard },

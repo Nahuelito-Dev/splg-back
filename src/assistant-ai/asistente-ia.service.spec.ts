@@ -34,6 +34,7 @@ import {
 } from '../process-run/process-run.context';
 import type { RedisService } from '../redis/redis.service';
 import {
+  CausaDeDerivacion,
   MotivoDeDerivacion,
   MOTIVOS_EN_CASTELLANO,
   type RespuestaDelModelo,
@@ -42,14 +43,18 @@ import {
 } from './asistente-ia.dominio';
 import {
   AsistenteIaService,
+  causaDeLaTraza,
   perfilSiCorresponde,
   PLANTILLA_DE_DERIVACION,
   PLANTILLA_DEL_ASISTENTE,
+  type PruebaDelAsistente,
+  TopeDePruebasAlcanzado,
 } from './asistente-ia.service';
 import type {
   ConsultaAlAsistente,
   ConsultaAlModelo,
 } from './consulta-al-modelo';
+import { AssistantTestUsage } from './entities/assistant-test-usage.entity';
 import { AssistantTrace } from './entities/assistant-trace.entity';
 import type { HerramientasDelAsistente } from './herramientas';
 
@@ -163,6 +168,8 @@ interface Opciones {
   tokensDelMes?: string | null;
   /** En el soporte, los tokens del mes de la empresa que pregunta. */
   tokensDeLaEmpresa?: string | null;
+  /** Lo gastado en pruebas este mes (`assistant_test_usage`). */
+  tokensDePrueba?: string | null;
   empresaPrendida?: boolean;
   moduloHabilitado?: boolean;
   chatDeClientes?: boolean;
@@ -219,13 +226,21 @@ function armar(o: Opciones = {}) {
     trazas.push(t);
     return Promise.resolve({});
   });
+  /** Lo que gastan las pruebas (probador y lote de regresión, 7b). */
+  const usos: Array<Record<string, unknown>> = [];
+  const insertarUso = jest.fn((u: Record<string, unknown>) => {
+    usos.push(u);
+    return Promise.resolve({});
+  });
   const manager = {
     getRepository: jest.fn((e: unknown) =>
       e === AssistantTrace
         ? { insert: insertar }
-        : e === Message
-          ? { findOne: jest.fn(() => Promise.resolve(mensaje())) }
-          : { findOne: jest.fn(() => Promise.resolve(conversacionActual())) },
+        : e === AssistantTestUsage
+          ? { insert: insertarUso }
+          : e === Message
+            ? { findOne: jest.fn(() => Promise.resolve(mensaje())) }
+            : { findOne: jest.fn(() => Promise.resolve(conversacionActual())) },
     ),
     query: jest.fn((sql: string, params: unknown[] = []) => {
       if (
@@ -285,10 +300,25 @@ function armar(o: Opciones = {}) {
           },
         ]);
       }
+      // El sub-tope de las pruebas: sólo assistant_test_usage.
+      if (sql.includes('IS NOT DISTINCT FROM')) {
+        return Promise.resolve([
+          { n: o.tokensDePrueba === undefined ? '0' : o.tokensDePrueba },
+        ]);
+      }
+      // El tope mensual: las conversaciones (`tokensDelMes`) y, si el SQL las
+      // suma, las pruebas (`tokensDePrueba`), como la base.
       if (sql.includes('sum(')) {
+        const conversaciones = Number(o.tokensDelMes ?? 0);
+        const pruebas = sql.includes('FROM "assistant_test_usage"')
+          ? Number(o.tokensDePrueba ?? 0)
+          : 0;
         return Promise.resolve([
           {
-            n: o.tokensDelMes === undefined ? '0' : o.tokensDelMes,
+            n:
+              o.tokensDelMes === null && pruebas === 0
+                ? null
+                : String(conversaciones + pruebas),
             empresa:
               o.tokensDeLaEmpresa === undefined ? '0' : o.tokensDeLaEmpresa,
           },
@@ -470,6 +500,24 @@ function armar(o: Opciones = {}) {
     herramientas,
     trazas,
     actualizaciones,
+    usos,
+    ajustes,
+    probar: (
+      pregunta = '¿A qué hora abren?',
+      extra: Partial<PruebaDelAsistente> = {},
+    ) =>
+      servicio.probar(
+        {
+          canal: 'clientes',
+          distributorId: EMPRESA,
+          customerUserId: CLIENTE,
+          pregunta,
+          tipo: 'preview',
+          actorUserId: 'admin-1',
+          ...extra,
+        },
+        () => AHORA,
+      ),
   };
 }
 
@@ -1609,5 +1657,399 @@ describe('AsistenteIaService', () => {
       const t = perdido({ falloAlEscribir: new Error('se cayó la base') });
       await expect(t.rescatar()).resolves.toBe(0);
     });
+  });
+});
+
+describe('AsistenteIaService · probador (7b)', () => {
+  /** La consulta sin la función que corre las herramientas (no se compara por identidad). */
+  const sinEjecutar = (c: ConsultaAlModelo) => ({
+    system: c.system,
+    mensajes: c.mensajes,
+    herramientas: c.herramientas,
+  });
+  /** Las llamadas a las herramientas (el doble no declara parámetros). */
+  const llamadasA = (h: { ejecutar: jest.Mock }) =>
+    h.ejecutar.mock.calls as unknown as Array<
+      [Record<string, unknown>, string, unknown]
+    >;
+  const BASE_CON_BORRADOR = {
+    items: [
+      {
+        faqId: 'faq-1',
+        question: '¿Horario?',
+        answer: 'De 8 a 12.',
+        position: 1,
+      },
+      {
+        faqId: 'faq-2',
+        question: '¿Llegan a Garupá?',
+        answer: '',
+        position: 2,
+      },
+    ],
+    version: 5,
+  };
+
+  describe('mismo camino que una conversación real', () => {
+    it('C3: para la misma pregunta, la misma consulta al modelo, las mismas herramientas y las mismas fuentes', async () => {
+      const resultado: RespuestaDelModelo = {
+        ...RESPUESTA,
+        preguntas: [1],
+        fuentes: [{ tool: 'estado_de_mi_pedido', pedido: 'A1B2C3' }],
+      };
+      const real = armar({
+        resultado,
+        filas: [fila(5, Party.CUSTOMER, AHORA)],
+      });
+      await real.atender();
+      const prueba = armar({ resultado });
+      const r = await prueba.probar('¿A qué hora abren?');
+
+      const [consultaReal] = real.consultar.mock.calls[0];
+      const [consultaDePrueba] = prueba.consultar.mock.calls[0];
+      expect(sinEjecutar(consultaDePrueba)).toEqual(sinEjecutar(consultaReal));
+      // Las herramientas leen lo mismo: la empresa, el cliente y el momento.
+      await consultaReal.ejecutar('estado_de_mi_pedido', {});
+      await consultaDePrueba.ejecutar('estado_de_mi_pedido', {});
+      expect(llamadasA(prueba.herramientas)[0]).toEqual(
+        llamadasA(real.herramientas)[0],
+      );
+      expect(llamadasA(prueba.herramientas)[0][0]).toMatchObject({
+        distributorId: EMPRESA,
+        customerUserId: CLIENTE,
+        orderId: null,
+        ahora: AHORA,
+      });
+      expect(r.resultado).toEqual(resultado);
+      expect(r.fuentes).toEqual(
+        (real.escritos[0].payload as { ai: { sources: unknown[] } }).ai.sources,
+      );
+      expect(r.fuentes).toEqual([
+        { type: 'faq', faqId: 'faq-1', question: '¿Horario?' },
+        { type: 'tool', tool: 'estado_de_mi_pedido', orderNumber: 'A1B2C3' },
+      ]);
+      expect(r.prendido).toBe(true);
+    });
+
+    it('C1 (soporte, sin empresa en el probador): la misma consulta, con la base de la plataforma y sin herramientas de clientes', async () => {
+      const real = armar({
+        canal: Channel.PLATFORM_CHAT,
+        filas: [fila(5, Party.COMPANY, AHORA)],
+      });
+      await real.atender();
+      const prueba = armar({ canal: Channel.PLATFORM_CHAT });
+      const r = await prueba.probar('¿A qué hora abren?', {
+        canal: 'soporte',
+        distributorId: null,
+        customerUserId: null,
+      });
+      const [consultaReal] = real.consultar.mock.calls[0];
+      const [consultaDePrueba] = prueba.consultar.mock.calls[0];
+      expect(sinEjecutar(consultaDePrueba)).toEqual(sinEjecutar(consultaReal));
+      expect(consultaDePrueba.herramientas.map((h) => h.name)).toEqual([
+        'pasar_a_persona',
+      ]);
+      expect(consultaDePrueba.system[0].text).toContain('soporte de OrixTech');
+      expect(real.faqs.listar).toHaveBeenCalledWith(null);
+      expect(prueba.faqs.listar).toHaveBeenCalledWith(null);
+      for (const consulta of [consultaReal, consultaDePrueba]) {
+        await expect(
+          consulta.ejecutar('precios_vigentes', {}),
+        ).resolves.toEqual({
+          datos: { error: 'Esa herramienta no está disponible acá' },
+          error: true,
+        });
+      }
+      expect(prueba.herramientas.ejecutar).not.toHaveBeenCalled();
+      // El tope del soporte es el de todo el soporte; en el probador, sin empresa.
+      const [, params] = prueba.dataSource.query.mock.calls.find(
+        ([s]) => s.includes('sum(') && s.includes('FROM "assistant_trace"'),
+      ) as unknown as [string, unknown[]];
+      expect(params).toEqual([Channel.PLATFORM_CHAT, null]);
+      expect(prueba.usos).toEqual([
+        expect.objectContaining({
+          distributorId: null,
+          channel: Channel.PLATFORM_CHAT,
+        }),
+      ]);
+      expect(r.prendido).toBe(true);
+    });
+
+    it('con el tope mensual de las conversaciones agotado: las dos derivan igual (monthly_limit), sin consultar ni gastar', async () => {
+      const real = armar({ tokensDelMes: '100000', horario: CERRADA });
+      await real.atender();
+      const prueba = armar({ tokensDelMes: '100000' });
+      const r = await prueba.probar();
+      expect(real.consultar).not.toHaveBeenCalled();
+      expect(prueba.consultar).not.toHaveBeenCalled();
+      expect(real.trazas.at(-1)).toMatchObject({
+        outcome: 'handed_off',
+        reason: MotivoDeDerivacion.MONTHLY_LIMIT,
+      });
+      expect(r.resultado).toMatchObject({
+        tipo: 'derivar',
+        motivo: MotivoDeDerivacion.MONTHLY_LIMIT,
+        modelo: null,
+      });
+      expect(prueba.usos).toEqual([]);
+    });
+
+    it('con borradores en la base: ninguna de las dos los manda al modelo, y la consulta es la misma', async () => {
+      const real = armar({ filas: [fila(5, Party.CUSTOMER, AHORA)] });
+      real.faqs.listar.mockResolvedValue(BASE_CON_BORRADOR);
+      await real.atender();
+      const prueba = armar();
+      prueba.faqs.listar.mockResolvedValue(BASE_CON_BORRADOR);
+      await prueba.probar();
+      const [consultaReal] = real.consultar.mock.calls[0];
+      const [consultaDePrueba] = prueba.consultar.mock.calls[0];
+      expect(sinEjecutar(consultaDePrueba)).toEqual(sinEjecutar(consultaReal));
+      expect(consultaReal.system[1].text).toContain('¿Horario?');
+      expect(consultaReal.system[1].text).not.toContain('Garupá');
+    });
+  });
+
+  it('no crea conversación ni mensaje, no deja traza (no cuenta en las métricas), no avisa a nadie ni toma el lock; sí anota el uso como prueba', async () => {
+    const t = armar();
+    await t.probar();
+    expect(t.escritos).toEqual([]);
+    expect(t.trazas).toEqual([]);
+    expect(t.publicados).toEqual([]);
+    expect(t.eventos.publicar).not.toHaveBeenCalled();
+    expect(t.redis.withLock).not.toHaveBeenCalled();
+    expect(t.dataSource.transaction).not.toHaveBeenCalled();
+    expect(t.actualizaciones).toEqual([]);
+    expect(t.usos).toEqual([
+      expect.objectContaining({
+        distributorId: EMPRESA,
+        channel: Channel.STAFF_CUSTOMER,
+        kind: 'preview',
+        model: 'claude-haiku-5-5',
+        outcome: 'answered',
+        reason: null,
+        inputTokens: 120,
+        outputTokens: 30,
+        cacheReadTokens: 900,
+        cacheCreationTokens: 0,
+        toolsUsed: ['horarios_y_zonas'],
+        createdBy: 'admin-1',
+      }),
+    ]);
+  });
+
+  it('una derivación de la IA queda como uso con su motivo; el tipo de prueba (lote) se respeta', async () => {
+    const t = armar({ resultado: derivacion(MotivoDeDerivacion.REQUESTED) });
+    const r = await t.probar('¿Me devuelven la plata?', {
+      tipo: 'regression',
+    });
+    expect(r.resultado).toMatchObject({
+      tipo: 'derivar',
+      motivo: 'requested',
+    });
+    expect(r.fuentes).toEqual([]);
+    expect(t.usos).toEqual([
+      expect.objectContaining({
+        kind: 'regression',
+        outcome: 'handed_off',
+        reason: 'requested',
+      }),
+    ]);
+  });
+
+  describe('cupo de pruebas (10 % del mensual, sólo sobre las pruebas)', () => {
+    it('agotado: tira sin consultar ni gastar; se cuenta sólo sobre assistant_test_usage de la empresa', async () => {
+      const t = armar({ tokensDePrueba: '10000' });
+      await expect(t.probar()).rejects.toBeInstanceOf(TopeDePruebasAlcanzado);
+      await expect(t.probar()).rejects.toMatchObject({ tope: 10_000 });
+      expect(t.consultar).not.toHaveBeenCalled();
+      expect(t.usos).toEqual([]);
+      const [sql, params] = t.dataSource.query.mock.calls.find(([s]) =>
+        s.includes('IS NOT DISTINCT FROM'),
+      ) as unknown as [string, unknown[]];
+      expect(sql).not.toContain('assistant_trace');
+      expect(sql).toContain('IS NOT DISTINCT FROM $2');
+      expect(params).toEqual([Channel.STAFF_CUSTOMER, EMPRESA]);
+    });
+
+    it('con margen, prueba', async () => {
+      const t = armar({ tokensDePrueba: '9999' });
+      await t.probar();
+      expect(t.consultar).toHaveBeenCalledTimes(1);
+    });
+
+    it('en el soporte (C1): el cupo de pruebas de la plataforma, sin empresa', async () => {
+      const t = armar({
+        canal: Channel.PLATFORM_CHAT,
+        tokensDePrueba: '10000',
+      });
+      await expect(
+        t.probar('¿Y?', { canal: 'soporte', distributorId: null }),
+      ).rejects.toBeInstanceOf(TopeDePruebasAlcanzado);
+      const [, params] = t.dataSource.query.mock.calls.find(([s]) =>
+        s.includes('IS NOT DISTINCT FROM'),
+      ) as unknown as [string, unknown[]];
+      expect(params).toEqual([Channel.PLATFORM_CHAT, null]);
+    });
+
+    it('un solo tope mensual: el de una conversación real cuenta las pruebas (95.000 de conversaciones + 5.000 de pruebas = el tope): deriva sin consultar', async () => {
+      const t = armar({
+        tokensDelMes: '95000',
+        tokensDePrueba: '5000',
+        horario: CERRADA,
+      });
+      await t.atender();
+      expect(t.consultar).not.toHaveBeenCalled();
+      expect(t.trazas.at(-1)).toMatchObject({
+        outcome: 'handed_off',
+        reason: MotivoDeDerivacion.MONTHLY_LIMIT,
+      });
+      const [sql, params] = t.dataSource.query.mock.calls.find(
+        ([s]) => s.includes('sum(') && s.includes('FROM "assistant_trace"'),
+      ) as unknown as [string, unknown[]];
+      expect(sql).toContain('UNION ALL');
+      expect(sql).toContain('FROM "assistant_test_usage"');
+      // Mismo alcance en las dos: la empresa en C3.
+      expect(sql.match(/AND "distributor_id" = \$2/g)).toHaveLength(2);
+      expect(params).toEqual([Channel.STAFF_CUSTOMER, EMPRESA]);
+    });
+
+    it('con margen en el tope único (94.999 + 5.000), la conversación consulta', async () => {
+      const t = armar({ tokensDelMes: '94999', tokensDePrueba: '5000' });
+      await t.atender();
+      expect(t.consultar).toHaveBeenCalledTimes(1);
+    });
+
+    it('el probador también compara conversaciones + pruebas con el tope único', async () => {
+      const t = armar({ tokensDelMes: '95000', tokensDePrueba: '5000' });
+      const r = await t.probar();
+      expect(t.consultar).not.toHaveBeenCalled();
+      expect(r.resultado).toMatchObject({
+        motivo: MotivoDeDerivacion.MONTHLY_LIMIT,
+      });
+    });
+
+    it('en C1 el tope único es todo el soporte más las pruebas de la plataforma (sin filtrar por empresa); el cupo de la empresa, sólo sus conversaciones', async () => {
+      const t = armar({ canal: Channel.PLATFORM_CHAT });
+      await t.atender();
+      const [sql, params] = t.dataSource.query.mock.calls.find(
+        ([s]) => s.includes('sum(') && s.includes('FROM "assistant_trace"'),
+      ) as unknown as [string, unknown[]];
+      expect(sql).toContain('FROM "assistant_test_usage"');
+      expect(sql).not.toContain('AND "distributor_id" = $2');
+      expect(sql).toContain('FILTER (WHERE "distributor_id" = $2)');
+      expect(params).toEqual([Channel.PLATFORM_CHAT, EMPRESA]);
+    });
+  });
+
+  it('una pregunta en blanco no consulta: deriva sin uso', async () => {
+    const t = armar();
+    const r = await t.probar('   ');
+    expect(t.consultar).not.toHaveBeenCalled();
+    expect(r.resultado).toMatchObject({
+      tipo: 'derivar',
+      motivo: MotivoDeDerivacion.NO_TEXT,
+      modelo: null,
+    });
+    expect(t.usos).toEqual([]);
+  });
+
+  it('dice si hoy contestaría: con el asistente apagado igual prueba', async () => {
+    const t = armar({ empresaPrendida: false });
+    const r = await t.probar();
+    expect(t.consultar).toHaveBeenCalledTimes(1);
+    expect(r.prendido).toBe(false);
+  });
+
+  it('un cliente anónimo: las herramientas leen sin cliente', async () => {
+    const t = armar();
+    await t.probar('¿Dónde está mi pedido?', { customerUserId: null });
+    const [consulta] = t.consultar.mock.calls[0];
+    await consulta.ejecutar('estado_de_mi_pedido', {});
+    expect(llamadasA(t.herramientas)[0][0]).toMatchObject({
+      customerUserId: null,
+      orderId: null,
+    });
+  });
+
+  it('sin momento explícito usa el reloj (como la conversación real)', async () => {
+    const t = armar();
+    const r = await t.servicio.probar({
+      canal: 'clientes',
+      distributorId: EMPRESA,
+      customerUserId: null,
+      pregunta: '¿Abren?',
+      tipo: 'preview',
+      actorUserId: null,
+    });
+    expect(r.resultado.tipo).toBe('respuesta');
+  });
+
+  it('conversación real: si el hilo no termina en quien pregunta, no consulta ni publica (el mismo corte que el probador)', async () => {
+    const t = armar();
+    const original = t.dataSource.query.getMockImplementation()!;
+    t.dataSource.query.mockImplementation((sql: string, params?: unknown[]) =>
+      sql.includes('"body" FROM "message"')
+        ? Promise.resolve([
+            {
+              sender_party: Party.COMPANY,
+              kind: MessageKind.TEXT,
+              body: 'Hola',
+            },
+          ])
+        : original(sql, params),
+    );
+    await t.atender();
+    expect(t.consultar).not.toHaveBeenCalled();
+    expect(t.escritos).toEqual([]);
+    expect(t.trazas).toEqual([]);
+  });
+});
+
+describe('AsistenteIaService · causa de la derivación en la traza (ronda 1)', () => {
+  it.each([[CausaDeDerivacion.NO_INFO], [CausaDeDerivacion.CUSTOMER_ASKED]])(
+    'pasar a una persona (%s): la traza guarda la causa',
+    async (causa) => {
+      const t = armar({
+        resultado: { ...derivacion(MotivoDeDerivacion.REQUESTED), causa },
+      });
+      await t.atender();
+      expect(t.trazas.at(-1)).toMatchObject({
+        outcome: 'handed_off',
+        reason: 'requested',
+        handoffCause: causa,
+      });
+    },
+  );
+
+  it('sin causa, o con otro motivo, la causa queda nula', async () => {
+    const sinCausa = armar({
+      resultado: derivacion(MotivoDeDerivacion.REQUESTED),
+    });
+    await sinCausa.atender();
+    expect(sinCausa.trazas.at(-1)).toMatchObject({ handoffCause: null });
+    const otro = armar({
+      resultado: {
+        ...derivacion(MotivoDeDerivacion.TOOL_ROUNDS),
+        causa: CausaDeDerivacion.NO_INFO,
+      },
+    });
+    await otro.atender();
+    expect(otro.trazas.at(-1)).toMatchObject({
+      reason: 'tool_rounds',
+      handoffCause: null,
+    });
+    const respondio = armar();
+    await respondio.atender();
+    expect(respondio.trazas.at(-1)).toMatchObject({ handoffCause: null });
+  });
+
+  it('causaDeLaTraza: sólo con requested', () => {
+    expect(causaDeLaTraza(RESPUESTA)).toBeNull();
+    expect(
+      causaDeLaTraza({
+        ...derivacion(MotivoDeDerivacion.REQUESTED),
+        causa: CausaDeDerivacion.LOW_CONFIDENCE,
+      }),
+    ).toBe(CausaDeDerivacion.LOW_CONFIDENCE);
   });
 });

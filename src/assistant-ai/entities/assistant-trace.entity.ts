@@ -13,6 +13,8 @@ import { Conversation } from '../../chat/entities/conversation.entity';
 import { Message } from '../../chat/entities/message.entity';
 import { Distributor } from '../../distributor/entities/distributor.entity';
 import {
+  CAUSAS_DE_DERIVACION,
+  type CausaDeDerivacion,
   MOTIVOS_DE_LA_TRAZA,
   ResultadoDelAsistente,
   type MotivoDeDerivacion,
@@ -88,6 +90,10 @@ const enLista = (valores: readonly string[]): string =>
   `"reason" IS NULL OR "reason" IN (${enLista(MOTIVOS_DE_LA_TRAZA)})`,
 )
 @Check(
+  'CHK_assistant_trace_causa',
+  `"handoff_cause" IS NULL OR ("reason" = 'requested' AND "handoff_cause" IN (${enLista(CAUSAS_DE_DERIVACION)}))`,
+)
+@Check(
   'CHK_assistant_trace_tokens',
   `"input_tokens" >= 0 AND "output_tokens" >= 0 AND "cache_read_tokens" >= 0 AND "cache_creation_tokens" >= 0 AND "latency_ms" >= 0`,
 )
@@ -133,6 +139,20 @@ export class AssistantTrace {
   /** Por qué derivó o por qué se descartó; nulo si respondió. */
   @Column({ type: 'varchar', length: 20, nullable: true })
   reason!: MotivoDeDerivacion | MotivoDeDescarte | null;
+
+  /**
+   * Con `requested`: la causa que dio el modelo al llamar `pasar_a_persona`
+   * (no tenía la información, no estaba seguro, lo pidió la persona, reclamo
+   * u otra). Nula en el resto. Las preguntas sin respuesta cuentan `no_info`
+   * y `low_confidence`.
+   */
+  @Column({
+    name: 'handoff_cause',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+  })
+  handoffCause!: CausaDeDerivacion | null;
 
   /** El modelo que respondió (nulo si no se llegó a consultar: tope, sin clave). */
   @Column({ type: 'varchar', length: 60, nullable: true })

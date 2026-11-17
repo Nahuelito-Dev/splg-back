@@ -25,6 +25,7 @@ function conversaciones(): ConversacionDelPeriodo[] {
     const desde = new Date(AHORA.getTime() - 360 * DIA + i * 60_000);
     const tipo = i % 4;
     return {
+      conversationId: `c-${i}`,
       channel: i % 2 === 0 ? Channel.STAFF_CUSTOMER : Channel.STAFF_DRIVER,
       status: tipo === 3 ? ConversationStatus.CLOSED : ConversationStatus.OPEN,
       createdAt: desde,
@@ -45,6 +46,7 @@ describe('ChatMetricsService: tiempo', () => {
       enVivo: jest.fn(() => Promise.resolve([])),
       usoDePlantillas: jest.fn(() => Promise.resolve([])),
       encuestas: jest.fn(() => Promise.resolve([])),
+      etiquetasDelPeriodo: jest.fn(() => Promise.resolve([])),
     };
     const ajustes = {
       leer: jest.fn(() =>

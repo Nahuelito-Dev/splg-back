@@ -103,7 +103,19 @@ export class AssistantFaqResponseDto {
   key!: string | null;
 
   @ApiProperty() question!: string;
-  @ApiProperty() answer!: string;
+
+  @ApiProperty({
+    description:
+      'Vacía en un borrador (creado desde las preguntas sin respuesta): la persona la escribe con `PATCH`.',
+  })
+  answer!: string;
+
+  @ApiProperty({
+    example: false,
+    description:
+      'Borrador: todavía no tiene respuesta y el asistente no la usa. Deja de serlo al cargarle la respuesta.',
+  })
+  isDraft!: boolean;
 
   @ApiProperty({
     example: 1,
