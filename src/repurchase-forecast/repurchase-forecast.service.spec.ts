@@ -144,6 +144,8 @@ describe('RepurchaseForecastService', () => {
         distributorId: 'd1',
         userId: 'u1',
         addressId: 'a1',
+        estimateKgPerDay: 1,
+        estimateOrdersUsed: 3,
         timeSlotId: null,
         paymentMethod: PaymentMethod.CASH,
         projectedDepletionAt: new Date(AHORA.getTime() + 2 * DIA),

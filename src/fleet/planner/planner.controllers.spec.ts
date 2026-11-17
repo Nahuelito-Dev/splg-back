@@ -41,6 +41,7 @@ describe('controladores del planificador', () => {
       listarCasos: jest.fn().mockResolvedValue([[], 0]),
       contarPorEstado: jest.fn().mockResolvedValue({ negotiating: 0 }),
       vencimientos: jest.fn().mockResolvedValue([]),
+      acierto: jest.fn(),
       parametrosVigentes: jest.fn().mockResolvedValue({ params: {} }),
       cambiarParametros: jest.fn().mockResolvedValue({ params: {} }),
       ejecutar: jest.fn().mockResolvedValue({
@@ -179,6 +180,29 @@ describe('controladores del planificador', () => {
       { topNWindows: 4 },
       'u1',
     );
+  });
+
+  it('el acierto del período se pide con la distribuidora', async () => {
+    const accuracy = {
+      measured: 1,
+      meanAbsoluteErrorDays: 2,
+      withinMarginRate: 1,
+      marginDays: 7,
+      meanBiasDays: 2,
+    };
+    planner.acierto.mockResolvedValue({
+      accuracy,
+      desde: new Date('2026-10-01T03:00:00Z'),
+      hasta: new Date('2026-11-01T03:00:00Z'),
+    });
+    const r = await admin.acierto({ from: '2026-10-01' }, 'd1');
+    expect(planner.acierto).toHaveBeenCalledWith(
+      'd1',
+      '2026-10-01',
+      undefined,
+      expect.any(Date),
+    );
+    expect(r.accuracy).toEqual(accuracy);
   });
 
   it('el detalle de un caso viene con el cuadro', async () => {

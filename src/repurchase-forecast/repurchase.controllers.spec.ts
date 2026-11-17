@@ -159,6 +159,13 @@ describe('RepurchaseAdminController', () => {
         },
         acceptedRevenue: 100,
       },
+      accuracy: {
+        measured: 2,
+        meanAbsoluteErrorDays: 1.5,
+        withinMarginRate: 1,
+        marginDays: 3,
+        meanBiasDays: -0.5,
+      },
       desde: new Date('2026-10-01T03:00:00Z'),
       hasta: new Date('2026-11-01T03:00:00Z'),
     });
@@ -170,6 +177,7 @@ describe('RepurchaseAdminController', () => {
       expect.any(Date),
     );
     expect(r).toMatchObject({ sent: 1, accepted: 1, conversionRate: 1 });
+    expect(r.accuracy).toMatchObject({ measured: 2, meanBiasDays: -0.5 });
   });
 
   it('run: corre la anticipación de la distribuidora, simulada si se pide', async () => {

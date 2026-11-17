@@ -269,6 +269,62 @@ describe('MaintenancePlannerService', () => {
     );
   });
 
+  describe('acierto', () => {
+    const hecha = (primera: string, hecha_: string) =>
+      ({
+        firstPredictedDueAt: new Date(primera),
+        performedAt: new Date(hecha_),
+      }) as MaintenanceTask;
+    const conTareas = (filas: MaintenanceTask[]) => {
+      const qb: Record<string, jest.Mock> = {};
+      for (const m of ['select', 'where', 'andWhere']) {
+        qb[m] = jest.fn().mockReturnValue(qb);
+      }
+      qb.getMany = jest.fn().mockResolvedValue(filas);
+      Object.assign(tasks, { createQueryBuilder: () => qb });
+      return qb;
+    };
+
+    it('mide la primera proyección contra el día en que se hizo el trabajo', async () => {
+      conTareas([
+        hecha('2026-10-10T15:00:00Z', '2026-10-13T15:00:00Z'),
+        hecha('2026-10-20T15:00:00Z', '2026-10-18T15:00:00Z'),
+        hecha('2026-10-25T15:00:00Z', '2026-11-10T15:00:00Z'),
+      ]);
+      const r = await servicio.acierto(
+        'd1',
+        undefined,
+        undefined,
+        new Date('2026-11-17T15:00:00Z'),
+      );
+      expect(r.accuracy).toEqual({
+        measured: 3,
+        meanAbsoluteErrorDays: 7,
+        withinMarginRate: 0.67,
+        marginDays: 7,
+        meanBiasDays: 5.67,
+      });
+    });
+
+    it('sin tareas cerradas con proyección no hay medidas', async () => {
+      conTareas([]);
+      const r = await servicio.acierto(
+        'd1',
+        '2026-10-01',
+        '2026-10-31',
+        new Date('2026-11-17T15:00:00Z'),
+      );
+      expect(r.accuracy.measured).toBe(0);
+      expect(r.accuracy.meanAbsoluteErrorDays).toBeNull();
+    });
+
+    it('rechaza un período inválido', async () => {
+      await expect(
+        servicio.acierto('d1', '2026-13-01', undefined, new Date()),
+      ).rejects.toThrow('YYYY-MM-DD');
+    });
+  });
+
   describe('ejecutar', () => {
     it('propone al chofer la ventana de menor demanda y avisa', async () => {
       const t = tarea({ dueAt: dias(6) }); // 05/11: ventanas del 31/10 al 04/11

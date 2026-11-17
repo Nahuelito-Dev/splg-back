@@ -1,3 +1,4 @@
+import { AciertoDePrediccion } from '../common/utils/acierto-de-prediccion';
 import Decimal from 'decimal.js';
 import { OrderPricingService } from '../order/domain/order-pricing.service';
 import { OrderMapper } from '../order/order.mapper';
@@ -154,6 +155,7 @@ export class RepurchaseMapper {
     resumen: ResumenDeInvitaciones,
     desde: Date,
     hasta: Date,
+    accuracy: AciertoDePrediccion,
   ): RepurchaseStatsResponseDto {
     const c = resumen.counts;
     const resueltas =
@@ -177,6 +179,7 @@ export class RepurchaseMapper {
               .toDecimalPlaces(4)
               .toNumber(),
       acceptedRevenue: resumen.acceptedRevenue,
+      accuracy,
     };
   }
 

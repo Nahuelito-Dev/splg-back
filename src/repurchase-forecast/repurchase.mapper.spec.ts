@@ -66,6 +66,14 @@ const detalle = (): DetalleDeInvitacion => ({
   cotizacion: null,
 });
 
+const SIN_ACIERTO = {
+  measured: 0,
+  meanAbsoluteErrorDays: null,
+  withinMarginRate: null,
+  marginDays: 3,
+  meanBiasDays: null,
+};
+
 describe('RepurchaseMapper', () => {
   describe('invitation', () => {
     it('muestra el pedido precargado a precios de hoy', () => {
@@ -260,6 +268,7 @@ describe('RepurchaseMapper', () => {
         ),
         AHORA,
         AHORA,
+        SIN_ACIERTO,
       );
       expect(s).toMatchObject({
         sent: 9,
@@ -273,10 +282,21 @@ describe('RepurchaseMapper', () => {
       });
     });
 
+    it('incluye el bloque de acierto tal cual lo calculó el servicio', () => {
+      const accuracy = { ...SIN_ACIERTO, measured: 2, meanBiasDays: 1.5 };
+      expect(
+        RepurchaseMapper.stats(resumen({}), AHORA, AHORA, accuracy).accuracy,
+      ).toEqual(accuracy);
+    });
+
     it('sin resueltas no hay tasa', () => {
       expect(
-        RepurchaseMapper.stats(resumen({ pending: 2 }), AHORA, AHORA)
-          .conversionRate,
+        RepurchaseMapper.stats(
+          resumen({ pending: 2 }),
+          AHORA,
+          AHORA,
+          SIN_ACIERTO,
+        ).conversionRate,
       ).toBeNull();
     });
   });

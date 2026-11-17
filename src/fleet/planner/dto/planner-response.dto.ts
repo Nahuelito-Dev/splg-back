@@ -1,3 +1,4 @@
+import { PredictionAccuracyDto } from '../../../common/dto/prediction-accuracy.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   PlanningCaseStatus,
@@ -320,4 +321,15 @@ export class DriverMaintenanceSettingsResponseDto {
   horizonDays!: number;
   @ApiProperty({ description: 'Horas de vigencia de una propuesta' })
   proposalTtlHours!: number;
+}
+
+export class PlannerAccuracyResponseDto {
+  @ApiProperty({ type: String, format: 'date-time' }) from!: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) to!: Date;
+  @ApiProperty({
+    type: PredictionAccuracyDto,
+    description:
+      'Primera fecha proyectada del vencimiento por kilometraje contra la fecha en que se hizo el trabajo, en las tareas cerradas del período',
+  })
+  accuracy!: PredictionAccuracyDto;
 }

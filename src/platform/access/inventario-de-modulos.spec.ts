@@ -190,6 +190,7 @@ const ATADAS: Record<string, string> = {
   'GET /v2/fleet/maintenance-planner/settings': 'fleet_planner',
   'PATCH /v2/fleet/maintenance-planner/settings': 'fleet_planner',
   'POST /v2/fleet/maintenance-planner/run': 'fleet_planner',
+  'GET /v2/fleet/maintenance-planner/accuracy': 'fleet_planner',
   'GET /v2/fleet/maintenance-planner/cases/:id': 'fleet_planner',
   'POST /v2/fleet/maintenance-planner/cases/:id/confirm': 'fleet_planner',
   'POST /v2/fleet/maintenance-planner/cases/:id/cancel': 'fleet_planner',

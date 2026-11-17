@@ -168,7 +168,10 @@ describe('DispatchOfferTypeormRepository.recordDriverHeldOrder', () => {
     await repo.recordDriverHeldOrder('o', 'd');
     expect(orm.update).toHaveBeenCalledWith(
       { orderId: 'o', driverId: 'd', status: DispatchOfferStatus.OFFERED },
-      { status: DispatchOfferStatus.ACCEPTED },
+      {
+        status: DispatchOfferStatus.ACCEPTED,
+        respondedAt: expect.any(Date) as Date,
+      },
     );
     expect(orm.save).not.toHaveBeenCalled();
   });
@@ -304,7 +307,10 @@ describe('DispatchOfferTypeormRepository: cierres de ofertas', () => {
         driverId: 'chofer-b',
         status: DispatchOfferStatus.OFFERED,
       });
-      expect(llamadas[1][1]).toEqual({ status: DispatchOfferStatus.ACCEPTED });
+      expect(llamadas[1][1]).toEqual({
+        status: DispatchOfferStatus.ACCEPTED,
+        respondedAt: expect.any(Date) as Date,
+      });
     });
 
     it('la constancia nueva vence después de ofrecerse (expiresAt > offeredAt)', async () => {
@@ -461,5 +467,43 @@ describe('DispatchOfferTypeormRepository.isHeldForBatching', () => {
   it('es falso si no hay nada que retener (M4 apagado, inmediato o ya dentro del margen)', async () => {
     const { repo } = repoCon([]);
     expect(await repo.isHeldForBatching('ord-1')).toBe(false);
+  });
+});
+
+describe('DispatchOfferTypeormRepository: cuándo respondió el chofer', () => {
+  const cierre = async (status: DispatchOfferStatus) => {
+    const orm = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    const repo = new DispatchOfferTypeormRepository(
+      orm as unknown as Repository<DispatchOffer>,
+    );
+    await repo.closeActiveOffer('o-1', 'd-1', status);
+    const llamadas = orm.update.mock.calls as unknown[][];
+    return llamadas[0][1] as Partial<DispatchOffer>;
+  };
+
+  it('al aceptar y al rechazar guarda respondedAt', async () => {
+    for (const status of [
+      DispatchOfferStatus.ACCEPTED,
+      DispatchOfferStatus.REJECTED,
+    ]) {
+      const cambios = await cierre(status);
+      expect(cambios.status).toBe(status);
+      expect(cambios.respondedAt).toBeInstanceOf(Date);
+    }
+  });
+
+  it('un cierre que no es respuesta del chofer no la guarda', async () => {
+    const cambios = await cierre(DispatchOfferStatus.SUPERSEDED);
+    expect(cambios).toEqual({ status: DispatchOfferStatus.SUPERSEDED });
+  });
+
+  it('el vencimiento no tiene respuesta', async () => {
+    const orm = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    await new DispatchOfferTypeormRepository(
+      orm as unknown as Repository<DispatchOffer>,
+    ).updateStatus('of-1', DispatchOfferStatus.EXPIRED);
+    expect((orm.update.mock.calls as unknown[][])[0][1]).toEqual({
+      status: DispatchOfferStatus.EXPIRED,
+    });
   });
 });

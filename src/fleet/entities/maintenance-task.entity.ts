@@ -126,6 +126,14 @@ export class MaintenanceTask {
   @Column({ name: 'predicted_due_at', type: 'timestamptz', nullable: true })
   predictedDueAt!: Date | null;
 
+  /** La primera fecha proyectada del vencimiento por kilometraje; no se pisa, para medir el acierto al cerrar la tarea. */
+  @Column({
+    name: 'first_predicted_due_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  firstPredictedDueAt!: Date | null;
+
   @Column({ name: 'scheduled_at', type: 'timestamptz', nullable: true })
   scheduledAt!: Date | null;
 

@@ -1,3 +1,4 @@
+import { PredictionAccuracyDto } from '../../common/dto/prediction-accuracy.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderResponseDto } from '../../order/dto/order-response.dto';
 import { PaymentMethod } from '../../order/entities/order.entity';
@@ -188,6 +189,12 @@ export class RepurchaseStatsResponseDto {
       'Total de los pedidos que crearon las aceptadas (sin los cancelados)',
   })
   acceptedRevenue!: number;
+  @ApiProperty({
+    type: PredictionAccuracyDto,
+    description:
+      'Acierto de la fecha proyectada de recompra contra la primera compra entregada después de la invitación',
+  })
+  accuracy!: PredictionAccuracyDto;
 }
 
 export class RepurchaseOpenInvitationRefDto {

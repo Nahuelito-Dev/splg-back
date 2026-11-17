@@ -27,6 +27,8 @@ export interface NuevaInvitacion {
   timeSlotId: string | null;
   paymentMethod: PaymentMethod;
   projectedDepletionAt: Date;
+  estimateKgPerDay: number | null;
+  estimateOrdersUsed: number | null;
   estimateSource: RepurchaseEstimateSource;
   suggestedItems: SuggestedItem[];
   expiresAt: Date;
@@ -312,6 +314,38 @@ export class RepurchaseInvitationService {
       .andWhere('ord.status != :cancelado', { cancelado: 'cancelled' })
       .getRawOne<{ total: string }>();
     return { counts, acceptedRevenue: Number(ingresos?.total ?? 0) };
+  }
+
+  /**
+   * Cuándo compró de verdad cada cliente al que se le invitó en el período: la
+   * primera entrega posterior a la invitación, la haya aceptado o no. Las
+   * abiertas y las que todavía no tuvieron una compra después no entran.
+   */
+  async comprasPosteriores(
+    distributorId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<Array<{ predicha: Date; real: Date }>> {
+    const filas = await this.repo.query<
+      Array<{ predicha: Date; real: Date | null }>
+    >(
+      `SELECT inv."projected_depletion_at" AS predicha,
+              (SELECT MIN(o."deliveredAt") FROM "order" o
+                WHERE o."customer_id" = inv."user_id"
+                  AND o."distributor_id" = inv."distributor_id"
+                  AND o."status" = 'delivered'
+                  AND o."deliveredAt" >= inv."created_at") AS real
+         FROM "repurchase_invitation" inv
+        WHERE inv."distributor_id" = $1
+          AND inv."status" <> 'pending'
+          AND inv."created_at" >= $2 AND inv."created_at" < $3`,
+      [distributorId, desde, hasta],
+    );
+    return filas.flatMap((f) =>
+      f.real
+        ? [{ predicha: new Date(f.predicha), real: new Date(f.real) }]
+        : [],
+    );
   }
 
   /** Las abiertas de la distribuidora para los clientes dados: se ven en el listado de próximas recompras. */

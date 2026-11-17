@@ -56,6 +56,10 @@ export interface SuggestedItem {
   `jsonb_typeof("suggested_items") = 'array' AND jsonb_array_length("suggested_items") > 0`,
 )
 @Check(
+  'CHK_repurchase_invitation_parametros',
+  `("estimate_kg_per_day" IS NULL OR "estimate_kg_per_day" > 0) AND ("estimate_orders_used" IS NULL OR "estimate_orders_used" >= 0)`,
+)
+@Check(
   'CHK_repurchase_invitation_fuente',
   `"estimate_source" IN ('history', 'declared')`,
 )
@@ -126,6 +130,14 @@ export class RepurchaseInvitation {
     nullable: false,
   })
   projectedDepletionAt!: Date;
+
+  /** Kilos por día con los que se proyectó (promedio de sus compras ajustado por temporada); nulo en las invitaciones anteriores a la medición. */
+  @Column({ name: 'estimate_kg_per_day', type: 'float', nullable: true })
+  estimateKgPerDay!: number | null;
+
+  /** Compras del cliente que entraron en la estimación; nulo en las invitaciones anteriores a la medición. */
+  @Column({ name: 'estimate_orders_used', type: 'integer', nullable: true })
+  estimateOrdersUsed!: number | null;
 
   /** Con qué se estimó: sus compras o el consumo que declaró. */
   @Column({

@@ -229,13 +229,16 @@ export class DispatchOfferTypeormRepository extends DispatchOfferRepositoryPort 
     driverId: string,
     status: DispatchOfferStatus,
   ): Promise<boolean> {
+    const respondio =
+      status === DispatchOfferStatus.ACCEPTED ||
+      status === DispatchOfferStatus.REJECTED;
     const result = await this.repo.update(
       {
         orderId,
         driverId,
         status: ESTADO_ABIERTO,
       },
-      { status },
+      respondio ? { status, respondedAt: new Date() } : { status },
     );
     return (result.affected ?? 0) > 0;
   }

@@ -186,11 +186,15 @@ export class MaintenanceForecastService {
           : actual !== null &&
             Math.abs(nueva.getTime() - actual.getTime()) < 86_400_000;
       if (igual) continue;
+      const primera = task.firstPredictedDueAt ?? nueva;
       await this.tasks.update(
         { taskId: task.taskId },
-        { predictedDueAt: nueva },
+        primera === (task.firstPredictedDueAt ?? null)
+          ? { predictedDueAt: nueva }
+          : { predictedDueAt: nueva, firstPredictedDueAt: primera },
       );
       task.predictedDueAt = nueva;
+      task.firstPredictedDueAt = primera;
       cambiadas += 1;
     }
     return cambiadas;

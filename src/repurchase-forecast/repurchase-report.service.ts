@@ -8,6 +8,11 @@ import {
   rangoDeDiasArgentinos,
   sumarDias,
 } from '../common/utils/dias-argentina';
+import {
+  AciertoDePrediccion,
+  errorEnDias,
+  resumirAcierto,
+} from '../common/utils/acierto-de-prediccion';
 import { RepurchaseInvitation } from './entities/repurchase-invitation.entity';
 import {
   EvaluacionDeCliente,
@@ -22,6 +27,8 @@ import { QueryRepurchaseInvitationsDto } from './dto/repurchase-request.dto';
 
 const MS_POR_DIA = 86_400_000;
 const DIAS_POR_OMISION = 90;
+/** Una compra dentro de estos días de la fecha proyectada cuenta como acierto. */
+export const MARGEN_DE_ACIERTO_DIAS = 3;
 
 export interface ProximasRecompras {
   filas: Array<{
@@ -119,10 +126,24 @@ export class RepurchaseReportService {
     from: string | undefined,
     to: string | undefined,
     ahora: Date,
-  ): Promise<{ resumen: ResumenDeInvitaciones; desde: Date; hasta: Date }> {
+  ): Promise<{
+    resumen: ResumenDeInvitaciones;
+    accuracy: AciertoDePrediccion;
+    desde: Date;
+    hasta: Date;
+  }> {
     const { desde, hasta } = this.rango(from, to, ahora);
+    const compras = await this.invitaciones.comprasPosteriores(
+      distributorId,
+      desde,
+      hasta,
+    );
     return {
       resumen: await this.invitaciones.resumen(distributorId, desde, hasta),
+      accuracy: resumirAcierto(
+        compras.map((c) => errorEnDias(c.predicha, c.real)),
+        MARGEN_DE_ACIERTO_DIAS,
+      ),
       desde,
       hasta,
     };

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsISO8601,
   IsInt,
@@ -131,6 +132,24 @@ export class QueryPlanningCasesDto extends PaginationDto {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   pending?: boolean;
+}
+
+export class QueryPlannerAccuracyDto {
+  @ApiPropertyOptional({
+    example: '2026-06-01',
+    description: 'Desde este día (por omisión, 180 días atrás)',
+  })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-11-17',
+    description: 'Hasta este día inclusive (por omisión, hoy)',
+  })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
 }
 
 export class QueryPlannerForecastDto {
