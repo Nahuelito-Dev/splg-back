@@ -75,6 +75,7 @@ function lecturaFalsa() {
           id,
           [
             {
+              conversationId: 'conv-a',
               channel: Channel.STAFF_CUSTOMER,
               status: ConversationStatus.OPEN,
               createdAt: creada,
@@ -82,6 +83,28 @@ function lecturaFalsa() {
               firstResponseAt: respondida,
               closedAt: null,
               closedReason: null,
+            },
+          ],
+          [],
+        ),
+      ),
+    ),
+    etiquetasDelPeriodo: jest.fn((id: string) =>
+      Promise.resolve(
+        deA(
+          id,
+          [
+            {
+              labelId: 'et-a',
+              name: 'Envíos',
+              color: 'orange',
+              conversationId: 'conv-a',
+            },
+            {
+              labelId: 'et-b',
+              name: 'Pagos',
+              color: 'blue',
+              conversationId: null,
             },
           ],
           [],
@@ -285,6 +308,7 @@ describe('Métricas del chat: matriz HTTP (v2)', () => {
           'assistant',
           'automaticReplies',
           'byChannel',
+          'byLabel',
           'channel',
           'conversations',
           'daily',
@@ -436,6 +460,31 @@ describe('Métricas del chat: matriz HTTP (v2)', () => {
         deB.quickReplies.total,
         deB.satisfaction.answered,
       ]).toEqual([0, 0, 0, 0]);
+      // El corte por etiqueta (7c): A ve las suyas con su TPR; B, ninguna.
+      expect(
+        (
+          deA as unknown as {
+            byLabel: Array<{
+              label: { name: string };
+              conversations: number;
+              firstResponse: { medianMinutes: number | null };
+            }>;
+          }
+        ).byLabel.map((e) => [
+          e.label.name,
+          e.conversations,
+          e.firstResponse.medianMinutes,
+        ]),
+      ).toEqual([
+        ['Envíos', 1, 12],
+        ['Pagos', 0, null],
+      ]);
+      expect((deB as unknown as { byLabel: unknown[] }).byLabel).toEqual([]);
+      expect(lectura.etiquetasDelPeriodo).toHaveBeenLastCalledWith(
+        B,
+        expect.anything(),
+        expect.anything(),
+      );
       expect(lectura.conversacionesDelPeriodo).toHaveBeenLastCalledWith(
         B,
         expect.anything(),

@@ -11,6 +11,7 @@ import {
 import { ACCIONES_POR_DEFECTO } from '../domain/acciones-del-cliente';
 import { ENCUESTA_POR_DEFECTO } from '../domain/encuesta';
 import { franjasValidas } from '../domain/horario';
+import { plazosValidos } from '../domain/inactividad';
 import {
   feriadosValidos,
   type HorarioDeLaEmpresa,
@@ -42,6 +43,10 @@ export function ajustesDeLaBandejaPorDefecto(
     ackEnabled: false,
     ackMessage: null,
     firstResponseTargetMinutes: 30,
+    expectedReplyEnabled: true,
+    inactivityCloseMinutes: null,
+    inactivityWarningMinutes: null,
+    inactivityEnabledAt: null,
     csatEnabled: true,
     csatMessage: null,
     customerActions: [...ACCIONES_POR_DEFECTO],
@@ -70,6 +75,63 @@ export function textoDeLaEncuesta(a: ChatCompanySettings): string {
 /** Lo que dice el asistente al pasar la conversación a una persona: el de la empresa o el de omisión. */
 export function textoDeDerivacion(a: ChatCompanySettings): string {
   return a.handoffMessage ?? DERIVACION_POR_DEFECTO;
+}
+
+/**
+ * Los plazos de inactividad que quedan con este cambio: lo que no viene queda
+ * como estaba, y apagar el cierre apaga también el aviso. 400 si el aviso no
+ * es anterior al cierre o se pide sin cierre.
+ */
+export function plazosDeInactividad(
+  actual: Pick<
+    ChatCompanySettings,
+    | 'inactivityCloseMinutes'
+    | 'inactivityWarningMinutes'
+    | 'inactivityEnabledAt'
+  >,
+  dto: Pick<
+    UpdateChatSettingsDto,
+    'inactivityCloseMinutes' | 'inactivityWarningMinutes'
+  >,
+  ahora: Date,
+): Pick<
+  ChatCompanySettings,
+  'inactivityCloseMinutes' | 'inactivityWarningMinutes' | 'inactivityEnabledAt'
+> {
+  const cierre =
+    dto.inactivityCloseMinutes !== undefined
+      ? dto.inactivityCloseMinutes
+      : actual.inactivityCloseMinutes;
+  const aviso =
+    dto.inactivityWarningMinutes !== undefined
+      ? dto.inactivityWarningMinutes
+      : cierre === null
+        ? null
+        : actual.inactivityWarningMinutes;
+  if (cierre === null && aviso !== null) {
+    throw new BadRequestException(
+      'Para avisar antes de cerrar, primero elegí en cuántos minutos se cierra la conversación',
+    );
+  }
+  if (!plazosValidos({ cerrarMinutos: cierre, avisarMinutos: aviso })) {
+    throw new BadRequestException(
+      'El aviso tiene que salir antes del cierre: menos minutos que el cierre por inactividad',
+    );
+  }
+  // Rigen desde ahora si se prende o cambian; si quedan igual, desde antes.
+  const cambio =
+    cierre !== actual.inactivityCloseMinutes ||
+    aviso !== actual.inactivityWarningMinutes;
+  return {
+    inactivityCloseMinutes: cierre,
+    inactivityWarningMinutes: aviso,
+    inactivityEnabledAt:
+      cierre === null
+        ? null
+        : cambio || actual.inactivityEnabledAt === null
+          ? ahora
+          : actual.inactivityEnabledAt,
+  };
 }
 
 export function zonaValida(zona: string): boolean {
@@ -115,6 +177,7 @@ export class CompanyChatSettingsService {
     distributorId: string,
     userId: string,
     dto: UpdateChatSettingsDto,
+    ahora: Date = new Date(),
   ): Promise<ChatCompanySettings> {
     for (const texto of [
       dto.outOfHoursMessage,
@@ -142,7 +205,22 @@ export class CompanyChatSettingsService {
         assistantAiEnabled: undefined,
       });
     }
-    return this.guardar(distributorId, userId, cambios);
+    const tocaInactividad =
+      dto.inactivityCloseMinutes !== undefined ||
+      dto.inactivityWarningMinutes !== undefined;
+    return this.guardar(
+      distributorId,
+      userId,
+      cambios,
+      tocaInactividad
+        ? (actual) => plazosDeInactividad(actual, dto, ahora)
+        : undefined,
+    );
+  }
+
+  /** La empresa tiene habilitados los mensajes (módulo `chat`). */
+  chatDisponible(distributorId: string): Promise<boolean> {
+    return this.acceso.habilitado(distributorId, 'chat');
   }
 
   /** El nombre con que la conocen sus clientes (el de su marca, si lo tiene), para firmar con el nombre del asistente. */
@@ -194,6 +272,7 @@ export class CompanyChatSettingsService {
     distributorId: string,
     userId: string,
     cambios: Partial<ChatCompanySettings>,
+    ajustar?: (actual: ChatCompanySettings) => Partial<ChatCompanySettings>,
   ): Promise<ChatCompanySettings> {
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(ChatCompanySettings);
@@ -212,8 +291,13 @@ export class CompanyChatSettingsService {
       const vinieron = Object.fromEntries(
         Object.entries(cambios).filter(([, valor]) => valor !== undefined),
       );
+      // Lo que depende de lo guardado (los plazos de inactividad se validan
+      // juntos), con la fila bloqueada.
+      const ajustados = ajustar ? ajustar(actual) : {};
       return repo.save(
-        Object.assign(actual, vinieron, { updatedByUserId: userId }),
+        Object.assign(actual, vinieron, ajustados, {
+          updatedByUserId: userId,
+        }),
       );
     });
   }

@@ -370,6 +370,38 @@
       "orderColumn": null
     },
     {
+      "table": "conversation_label",
+      "entity": "ConversationLabel",
+      "pk": [
+        "label_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
+      "table": "conversation_label_link",
+      "entity": "ConversationLabelLink",
+      "pk": [
+        "link_id"
+      ],
+      "deleteColumn": "deleted_at",
+      "distributorMode": "column",
+      "distributorColumn": "distributor_id",
+      "parentTable": null,
+      "parentFkColumn": null,
+      "parentPkColumn": null,
+      "parentDistributorColumn": null,
+      "orderProperty": null,
+      "orderColumn": null
+    },
+    {
       "table": "conversation_party",
       "entity": "ConversationParty",
       "pk": [
@@ -3314,11 +3346,43 @@
     },
     {
       "table": "chat_company_settings",
+      "column": "expected_reply_enabled",
+      "property": "expectedReplyEnabled",
+      "secret": false,
+      "kind": "text",
+      "position": 16
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "inactivity_close_minutes",
+      "property": "inactivityCloseMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 17
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "inactivity_warning_minutes",
+      "property": "inactivityWarningMinutes",
+      "secret": false,
+      "kind": "text",
+      "position": 18
+    },
+    {
+      "table": "chat_company_settings",
+      "column": "inactivity_enabled_at",
+      "property": "inactivityEnabledAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 19
+    },
+    {
+      "table": "chat_company_settings",
       "column": "updated_by_user_id",
       "property": "updatedByUserId",
       "secret": false,
       "kind": "text",
-      "position": 16
+      "position": 20
     },
     {
       "table": "claims",
@@ -3727,6 +3791,86 @@
       "secret": false,
       "kind": "timestamp",
       "position": 17
+    },
+    {
+      "table": "conversation_label",
+      "column": "label_id",
+      "property": "labelId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "conversation_label",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "conversation_label",
+      "column": "name",
+      "property": "name",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "conversation_label",
+      "column": "color",
+      "property": "color",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "conversation_label",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "link_id",
+      "property": "linkId",
+      "secret": false,
+      "kind": "text",
+      "position": 0
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "conversation_id",
+      "property": "conversationId",
+      "secret": false,
+      "kind": "text",
+      "position": 1
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "label_id",
+      "property": "labelId",
+      "secret": false,
+      "kind": "text",
+      "position": 2
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "distributor_id",
+      "property": "distributorId",
+      "secret": false,
+      "kind": "text",
+      "position": 3
+    },
+    {
+      "table": "conversation_label_link",
+      "column": "deleted_at",
+      "property": "deletedAt",
+      "secret": false,
+      "kind": "timestamp",
+      "position": 4
     },
     {
       "table": "conversation_party",

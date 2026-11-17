@@ -25,6 +25,7 @@ import {
 } from '../domain/metricas';
 import {
   type ConversacionDelPeriodo,
+  type EtiquetaDelPeriodo,
   MetricasReadModel,
   type Rango,
 } from '../infrastructure/metricas-read-model';
@@ -73,6 +74,13 @@ export interface SatisfaccionDelChat {
   team: GrupoDeLaEncuesta;
 }
 
+/** Una etiqueta en las métricas (7c): sus conversaciones del período y su TPR. */
+export interface MetricasDeUnaEtiqueta {
+  label: { id: string; name: string; color: string };
+  conversations: number;
+  firstResponse: ResumenDeRespuesta;
+}
+
 export interface MetricasDelChat {
   from: string;
   to: string;
@@ -83,6 +91,7 @@ export interface MetricasDelChat {
   resolution: ResolucionDelChat;
   live: EnVivo;
   byChannel: MetricasDeUnCanal[];
+  byLabel: MetricasDeUnaEtiqueta[];
   assistant: (MetricasDelAsistente & { enabled: boolean }) | null;
   automaticReplies: { total: number; byKey: ClaveContada[] };
   quickReplies: { total: number; byKey: ClaveContada[] };
@@ -134,6 +143,36 @@ function resolucion(conversaciones: readonly ConversacionDelPeriodo[]) {
     .filter(esResolucion)
     .map((c) => minutosCorridos(c.createdAt, c.closedAt));
   return { closed: minutos.length, medianMinutes: mediana(minutos) };
+}
+
+/**
+ * El corte por etiqueta: cada etiqueta vigente (también sin conversaciones)
+ * con las del período que la tienen y su TPR, con las medidas ya hechas.
+ */
+export function porEtiqueta(
+  filas: readonly EtiquetaDelPeriodo[],
+  conversaciones: readonly ConversacionMedida[],
+  objetivo: number,
+): MetricasDeUnaEtiqueta[] {
+  const porId = new Map(conversaciones.map((x) => [x.c.conversationId, x]));
+  const etiquetas = new Map<
+    string,
+    { label: MetricasDeUnaEtiqueta['label']; de: ConversacionMedida[] }
+  >();
+  for (const f of filas) {
+    const e = etiquetas.get(f.labelId) ?? {
+      label: { id: f.labelId, name: f.name, color: f.color },
+      de: [],
+    };
+    const x = f.conversationId ? porId.get(f.conversationId) : undefined;
+    if (x) e.de.push(x);
+    etiquetas.set(f.labelId, e);
+  }
+  return [...etiquetas.values()].map(({ label, de }) => ({
+    label,
+    conversations: de.length,
+    firstResponse: resumirMedidas(medidasDe(de), objetivo),
+  }));
 }
 
 const VIVO_VACIO: EnVivo = {
@@ -209,7 +248,7 @@ export class ChatMetricsService {
       };
     });
 
-    const [asistente, satisfaccion] = await Promise.all([
+    const [asistente, satisfaccion, etiquetas] = await Promise.all([
       asistenteDisponible
         ? this.asistente(distributorId, rango).then((a) => ({
             enabled: ajustes.assistantAiEnabled,
@@ -219,6 +258,7 @@ export class ChatMetricsService {
       conClientes
         ? this.satisfaccion(distributorId, rango, ahora)
         : Promise.resolve(null),
+      this.lectura.etiquetasDelPeriodo(distributorId, canales, rango),
     ]);
 
     return {
@@ -239,6 +279,7 @@ export class ChatMetricsService {
         { ...VIVO_VACIO },
       ),
       byChannel,
+      byLabel: porEtiqueta(etiquetas, conversaciones, objetivo),
       assistant: asistente,
       automaticReplies: porClave(plantillas.filter((p) => p.kind === 'auto')),
       quickReplies: porClave(plantillas.filter((p) => p.kind === 'quick')),

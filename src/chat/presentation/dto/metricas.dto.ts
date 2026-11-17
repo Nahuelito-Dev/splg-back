@@ -155,6 +155,27 @@ export class ChatChannelMetricsDto {
   live!: ChatLiveDto;
 }
 
+/** Una etiqueta de la bandeja en las métricas (7c). */
+export class ChatLabelRefDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ example: 'Reclamo de envío' }) name!: string;
+  @ApiProperty({ example: 'orange' }) color!: string;
+}
+
+export class ChatLabelMetricsDto {
+  @ApiProperty({ type: ChatLabelRefDto }) label!: ChatLabelRefDto;
+  @ApiProperty({
+    description:
+      'Conversaciones creadas en el período (de los canales consultados) con la etiqueta puesta hoy',
+  })
+  conversations!: number;
+  @ApiProperty({
+    type: FirstResponseStatsDto,
+    description: 'Su tiempo de primera respuesta (mediana en minutos hábiles)',
+  })
+  firstResponse!: FirstResponseStatsDto;
+}
+
 export class HandoffReasonDto {
   @ApiProperty({ example: 'requested' }) reason!: string;
   @ApiProperty({
@@ -296,6 +317,12 @@ export class ChatMetricsResponseDto {
   live!: ChatLiveDto;
   @ApiProperty({ type: [ChatChannelMetricsDto] })
   byChannel!: ChatChannelMetricsDto[];
+  @ApiProperty({
+    type: [ChatLabelMetricsDto],
+    description:
+      'Corte por etiqueta: cada etiqueta vigente de la empresa (también las que no tienen conversaciones en el período), por nombre',
+  })
+  byLabel!: ChatLabelMetricsDto[];
   @ApiProperty({
     type: CompanyAssistantMetricsDto,
     nullable: true,

@@ -18,6 +18,7 @@ export type ClaveForaneaDeDistribuidora = readonly [
 /** Clave primaria de cada tabla padre. */
 export const CLAVE_DEL_PADRE: Readonly<Record<string, string>> = {
   conversation: 'conversation_id',
+  conversation_label: 'label_id',
   message: 'message_id',
   support_ticket: 'ticket_id',
   cash_box: 'cash_box_id',
@@ -181,6 +182,9 @@ export const CLAVES_CRUZADAS_POSTERIORES: readonly ClaveForaneaDeDistribuidora[]
     // de la misma base. Las de la plataforma (`distributor_id` nulo) las
     // cubre la FK simple.
     ['assistant_unanswered_resolution', 'faq_id', 'assistant_faq'],
+    // Etiquetas de la bandeja (7c)
+    ['conversation_label_link', 'conversation_id', 'conversation'],
+    ['conversation_label_link', 'label_id', 'conversation_label'],
   ];
 
 export const nombreDeLaClave = (hijo: string, columna: string): string =>

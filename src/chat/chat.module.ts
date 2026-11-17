@@ -36,6 +36,14 @@ import { ConversacionVigente } from './application/conversacion-vigente';
 import { CompanyChatSettingsService } from './application/company-chat-settings.service';
 import { CompanyTemplatesService } from './application/company-templates.service';
 import { ChatCompanySettings } from './entities/chat-company-settings.entity';
+import { ConversationLabel } from './entities/conversation-label.entity';
+import { ConversationLabelLink } from './entities/conversation-label-link.entity';
+import { ChatLabelsService } from './application/chat-labels.service';
+import { TiempoEsperadoService } from './application/tiempo-esperado.service';
+import { CierrePorInactividad } from './application/cierre-por-inactividad';
+import { CierrePorInactividadCron } from './application/cierre-por-inactividad.cron';
+import { CompanyChatLabelsController } from './presentation/bandeja/company-chat-labels.controller';
+import { MyExpectedReplyController } from './presentation/bandeja/my-expected-reply.controller';
 import { MessageEdit } from './entities/message-edit.entity';
 import { MessageMention } from './entities/message-mention.entity';
 import { ConversationRating } from './entities/conversation-rating.entity';
@@ -112,6 +120,8 @@ import {
       MessageMention,
       ConversationRating,
       ChatCompanySettings,
+      ConversationLabel,
+      ConversationLabelLink,
     ]),
     GatewaysModule,
     EmailModule,
@@ -132,6 +142,10 @@ import {
     PlatformSupportSummaryController,
     CompanyInboxController,
     CompanyChatConfigController,
+    CompanyChatLabelsController,
+    // Antes que `MyConversationsController`: `me/conversations/:id` no tiene
+    // que quedarse con `me/conversations/expected-reply`.
+    MyExpectedReplyController,
     MyConversationsController,
     // Adjuntos y escaneo (CH7).
     InboxAttachmentsController,
@@ -175,6 +189,11 @@ import {
     BandejaReadModel,
     BandejaPresenter,
     BandejaService,
+    // Etiquetas, tiempo de respuesta esperado y cierre por inactividad (7c).
+    ChatLabelsService,
+    TiempoEsperadoService,
+    CierrePorInactividad,
+    CierrePorInactividadCron,
     BandejaGestionService,
     BandejaEquipoService,
     BandejaNotasService,

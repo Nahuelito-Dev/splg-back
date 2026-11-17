@@ -261,6 +261,13 @@ const ATADAS: Record<string, string> = {
   'POST /v2/chat/templates': 'chat',
   'PATCH /v2/chat/templates/:id': 'chat',
   'DELETE /v2/chat/templates/:id': 'chat',
+  // Etiquetas, tiempo de respuesta esperado (7c).
+  'GET /v2/chat/labels': 'chat',
+  'POST /v2/chat/labels': 'chat',
+  'PATCH /v2/chat/labels/:id': 'chat',
+  'DELETE /v2/chat/labels/:id': 'chat',
+  'PUT /v2/conversations/:id/labels': 'chat',
+  'GET /v2/me/conversations/expected-reply': 'chat',
   'GET /v2/me/conversations': 'chat',
   'POST /v2/me/conversations': 'chat',
   'GET /v2/me/conversations/:id': 'chat',

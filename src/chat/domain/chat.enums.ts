@@ -127,6 +127,12 @@ export enum SystemCode {
    * el texto en `body` y `{ ratingId, expiresAt, scale }` en `payload`.
    */
   CSAT_REQUEST = 'csat_request',
+  /**
+   * Aviso de cierre por inactividad (tanda 7c): «Si no tenés más consultas,
+   * cerramos la conversación en N min.» El texto en `body`, `{ minutes,
+   * closesAt }` en `payload`.
+   */
+  INACTIVITY_WARNING = 'inactivity_warning',
 }
 
 export enum TicketStatus {

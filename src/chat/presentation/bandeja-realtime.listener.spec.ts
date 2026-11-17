@@ -93,7 +93,7 @@ function armar(
     presentar as unknown as BandejaPresenter,
     dataSource,
   );
-  return { listener, panel, clientes, choferes };
+  return { listener, panel, clientes, choferes, presentar };
 }
 
 describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
@@ -235,6 +235,34 @@ describe('BandejaRealtimeListener (D-C28, D-C10, D-C5)', () => {
     expect(panel.emitirAlSoporteDeEmpresa).not.toHaveBeenCalled();
     expect(panel.emitirAlSoporteDePlataforma).not.toHaveBeenCalled();
     expect(choferes.emitirAConversacion).not.toHaveBeenCalled();
+  });
+
+  it('etiquetas (7c): la conversación al panel y `chat:inbox` con las etiquetas; al cliente y al chofer, nada', async () => {
+    for (const c of [c3, c2]) {
+      const { listener, panel, clientes, choferes, presentar } = armar(c);
+      const etiquetas = [{ id: 'et-1', name: 'Envíos', color: 'orange' }];
+      presentar.conversacion.mockResolvedValue({
+        para: Party.COMPANY,
+        labels: etiquetas,
+      } as never);
+      await listener.conversacion({ conversation: c, change: 'labels' });
+      expect(panel.emitirAConversacion).toHaveBeenCalledWith(
+        c.conversationId,
+        'company',
+        'chat:conversation',
+        expect.objectContaining({ change: 'labels' }),
+      );
+      expect(panel.emitirALaBandeja).toHaveBeenCalledWith(
+        'dist-a',
+        c.channel,
+        'chat:inbox',
+        expect.objectContaining({ change: 'labels', labels: etiquetas }),
+      );
+      for (const persona of [clientes, choferes]) {
+        expect(persona.emitirAConversacion).not.toHaveBeenCalled();
+        expect(persona.emitirAUsuario).not.toHaveBeenCalled();
+      }
+    }
   });
 
   it('mensaje de C2: a la lista de choferes y al chofer', async () => {

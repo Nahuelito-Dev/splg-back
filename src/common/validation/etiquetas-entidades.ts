@@ -40,6 +40,8 @@ export const ETIQUETAS_ENTIDADES: Readonly<Record<string, string>> = {
   MessageEdit: 'Edición de un mensaje',
   MessageMention: 'Mención en una nota interna',
   ConversationRating: 'Encuesta de satisfacción de una conversación',
+  ConversationLabel: 'Etiqueta de la bandeja',
+  ConversationLabelLink: 'Etiqueta puesta en una conversación',
   ChatCompanySettings: 'Configuración de los mensajes de la empresa',
   PlatformSupportSettings: 'Configuración del soporte de la plataforma',
   SupportTicket: 'Ticket de soporte',

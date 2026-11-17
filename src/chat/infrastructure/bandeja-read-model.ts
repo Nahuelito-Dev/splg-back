@@ -26,6 +26,21 @@ export interface ResumenDeLaBandeja {
   mentions: number;
 }
 
+/** Una etiqueta puesta en una conversación, como la ve el personal. */
+export interface EtiquetaDeLaConversacion {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export const SQL_ETIQUETAS_DE_LAS_CONVERSACIONES = `SELECT k."conversation_id", l."label_id", l."name", l."color"
+  FROM "conversation_label_link" k
+  JOIN "conversation_label" l ON l."label_id" = k."label_id"
+                             AND l."distributor_id" = k."distributor_id"
+ WHERE k."conversation_id" = ANY($1::uuid[]) AND k."deleted_at" IS NULL
+   AND l."deleted_at" IS NULL
+ ORDER BY k."conversation_id", lower(l."name"), l."label_id"`;
+
 /** Una mención en una nota, con quién la escribió. */
 export interface MencionDeLaNota {
   userId: string;
@@ -335,6 +350,32 @@ export class BandejaReadModel {
         [conversationIds, userId],
       );
     return new Map(filas.map((f) => [f.conversation_id, Number(f.n)]));
+  }
+
+  /**
+   * Las etiquetas vigentes puestas en cada conversación (tanda 7c), por
+   * nombre. Sólo las de la empresa de cada conversación (el vínculo y la
+   * etiqueta comparten `distributor_id` por la FK compuesta).
+   */
+  async etiquetas(
+    conversationIds: string[],
+  ): Promise<Map<string, EtiquetaDeLaConversacion[]>> {
+    if (conversationIds.length === 0) return new Map();
+    const filas: Array<{
+      conversation_id: string;
+      label_id: string;
+      name: string;
+      color: string;
+    }> = await this.dataSource.query(SQL_ETIQUETAS_DE_LAS_CONVERSACIONES, [
+      conversationIds,
+    ]);
+    const r = new Map<string, EtiquetaDeLaConversacion[]>();
+    for (const f of filas) {
+      const de = r.get(f.conversation_id) ?? [];
+      de.push({ id: f.label_id, name: f.name, color: f.color });
+      r.set(f.conversation_id, de);
+    }
+    return r;
   }
 
   /** Los mensajes a los que responden otros, por `conversationId:seq`. */

@@ -241,3 +241,144 @@ describe('CompanyChatSettingsService: prendido sin la función (B3)', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('CompanyChatSettingsService: cierre por inactividad (7c)', () => {
+  it('guarda cierre y aviso juntos, validados contra lo guardado', async () => {
+    const { servicio } = armar();
+    const a = await servicio.actualizar(D, 'adm-1', {
+      inactivityCloseMinutes: 120,
+      inactivityWarningMinutes: 15,
+      expectedReplyEnabled: false,
+    });
+    expect([
+      a.inactivityCloseMinutes,
+      a.inactivityWarningMinutes,
+      a.expectedReplyEnabled,
+    ]).toEqual([120, 15, false]);
+  });
+
+  it('el aviso solo se valida contra el cierre ya guardado', async () => {
+    const conCierre = armar([], false, { inactivityCloseMinutes: 60 });
+    await expect(
+      conCierre.servicio.actualizar(D, 'adm-1', {
+        inactivityWarningMinutes: 60,
+      }),
+    ).rejects.toThrow('El aviso tiene que salir antes del cierre');
+    const a = await conCierre.servicio.actualizar(D, 'adm-1', {
+      inactivityWarningMinutes: 10,
+    });
+    expect([a.inactivityCloseMinutes, a.inactivityWarningMinutes]).toEqual([
+      60, 10,
+    ]);
+  });
+
+  it('aviso sin cierre: 400', async () => {
+    const { servicio, guardados } = armar();
+    await expect(
+      servicio.actualizar(D, 'adm-1', { inactivityWarningMinutes: 10 }),
+    ).rejects.toThrow('primero elegí en cuántos minutos se cierra');
+    expect(guardados).toHaveLength(0);
+  });
+
+  it('apagar el cierre apaga también el aviso', async () => {
+    const { servicio } = armar([], false, {
+      inactivityCloseMinutes: 60,
+      inactivityWarningMinutes: 10,
+    });
+    const a = await servicio.actualizar(D, 'adm-1', {
+      inactivityCloseMinutes: null,
+    });
+    expect([a.inactivityCloseMinutes, a.inactivityWarningMinutes]).toEqual([
+      null,
+      null,
+    ]);
+  });
+
+  it('bajar el cierre por debajo del aviso guardado: 400', async () => {
+    const { servicio } = armar([], false, {
+      inactivityCloseMinutes: 120,
+      inactivityWarningMinutes: 60,
+    });
+    await expect(
+      servicio.actualizar(D, 'adm-1', { inactivityCloseMinutes: 45 }),
+    ).rejects.toThrow('El aviso tiene que salir antes del cierre');
+  });
+
+  it('sin tocar la inactividad, no se valida ni cambia', async () => {
+    const { servicio } = armar([], false, {
+      inactivityCloseMinutes: 60,
+      inactivityWarningMinutes: 10,
+    });
+    const a = await servicio.actualizar(D, 'adm-1', { ackEnabled: true });
+    expect([a.inactivityCloseMinutes, a.inactivityWarningMinutes]).toEqual([
+      60, 10,
+    ]);
+  });
+});
+
+describe('CompanyChatSettingsService: desde cuándo rigen los plazos de inactividad (7c)', () => {
+  const ANTES = new Date('2026-11-10T12:00:00Z');
+  const AHORA = new Date('2026-11-16T12:00:00Z');
+
+  it('al prenderlo rigen desde ahora', async () => {
+    const { servicio } = armar();
+    const a = await servicio.actualizar(
+      D,
+      'adm-1',
+      { inactivityCloseMinutes: 60 },
+      AHORA,
+    );
+    expect(a.inactivityEnabledAt).toEqual(AHORA);
+  });
+
+  it('cambiar el cierre o el aviso los hace regir desde ahora (un aviso anterior deja de valer)', async () => {
+    for (const cambio of [
+      { inactivityCloseMinutes: 90 },
+      { inactivityWarningMinutes: 20 },
+      { inactivityWarningMinutes: null },
+    ]) {
+      const { servicio } = armar([], false, {
+        inactivityCloseMinutes: 60,
+        inactivityWarningMinutes: 10,
+        inactivityEnabledAt: ANTES,
+      });
+      const a = await servicio.actualizar(D, 'adm-1', cambio, AHORA);
+      expect(a.inactivityEnabledAt).toEqual(AHORA);
+    }
+  });
+
+  it('mandar los mismos valores no los reinicia', async () => {
+    const { servicio } = armar([], false, {
+      inactivityCloseMinutes: 60,
+      inactivityWarningMinutes: 10,
+      inactivityEnabledAt: ANTES,
+    });
+    const a = await servicio.actualizar(
+      D,
+      'adm-1',
+      { inactivityCloseMinutes: 60, inactivityWarningMinutes: 10 },
+      AHORA,
+    );
+    expect(a.inactivityEnabledAt).toEqual(ANTES);
+  });
+
+  it('apagarlo la deja nula', async () => {
+    const { servicio } = armar([], false, {
+      inactivityCloseMinutes: 60,
+      inactivityEnabledAt: ANTES,
+    });
+    const a = await servicio.actualizar(
+      D,
+      'adm-1',
+      { inactivityCloseMinutes: null },
+      AHORA,
+    );
+    expect(a.inactivityEnabledAt).toBeNull();
+  });
+
+  it('el módulo de mensajes, por la plataforma', async () => {
+    const { servicio, acceso } = armar([], true);
+    expect(await servicio.chatDisponible(D)).toBe(true);
+    expect(acceso.habilitado).toHaveBeenCalledWith(D, 'chat');
+  });
+});

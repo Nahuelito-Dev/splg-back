@@ -39,7 +39,7 @@ export class CompanyChatMetricsController {
   @ApiOperation({
     summary: 'Métricas de los mensajes con clientes y choferes',
     description:
-      'De la empresa de quien pide, en el período (por la creación de cada conversación; sin fechas, los últimos 30 días): tiempo de primera respuesta (mediana y p90 en minutos hábiles de su horario de atención y feriados) y cumplimiento de su objetivo, por canal; tiempo de resolución; abiertas, sin asignar y sin respuesta en vivo; el asistente con IA si la empresa lo tiene (resueltas sin persona, derivaciones y motivos, respuestas); respuestas automáticas y rápidas por clave; la encuesta al cerrar y una serie diaria. Sin datos: ceros y `null`.',
+      'De la empresa de quien pide, en el período (por la creación de cada conversación; sin fechas, los últimos 30 días): tiempo de primera respuesta (mediana y p90 en minutos hábiles de su horario de atención y feriados) y cumplimiento de su objetivo, por canal; tiempo de resolución; abiertas, sin asignar y sin respuesta en vivo; el asistente con IA si la empresa lo tiene (resueltas sin persona, derivaciones y motivos, respuestas); respuestas automáticas y rápidas por clave; la encuesta al cerrar; el corte por etiqueta (`byLabel`: conversaciones y primera respuesta de cada etiqueta vigente) y una serie diaria. Sin datos: ceros y `null`.',
   })
   @ApiOkResponse({ type: ChatMetricsResponseDto })
   @ApiBadRequestResponse({

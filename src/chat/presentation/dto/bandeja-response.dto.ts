@@ -9,6 +9,7 @@ import {
   SystemCode,
 } from '../../domain/chat.enums';
 import { CLAVES_DE_ACCION } from '../../domain/acciones-del-cliente';
+import { COLORES_DE_ETIQUETA } from '../../domain/etiquetas';
 import { ChatHoursDto } from './support-settings.dto';
 import { ChatAttachmentDto } from './chat-attachment.dto';
 
@@ -160,6 +161,68 @@ export class CsatSummaryResponseDto {
 }
 
 /** Una conversación de la bandeja (C3 con un cliente, C2 con un chofer). */
+/** Una etiqueta de la bandeja (7c), como la ve el personal en cada conversación. */
+export class InboxLabelDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ example: 'Reclamo de envío', maxLength: 30 }) name!: string;
+  @ApiProperty({ enum: COLORES_DE_ETIQUETA, example: 'orange' })
+  color!: string;
+}
+
+/** Una etiqueta de la empresa (ABM). */
+export class ChatLabelResponseDto extends InboxLabelDto {
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export class ChatLabelListResponseDto {
+  @ApiProperty({
+    type: [ChatLabelResponseDto],
+    description: 'Las vigentes, por nombre (hasta 50)',
+  })
+  items!: ChatLabelResponseDto[];
+}
+
+/** El tiempo de respuesta esperado (7c): lo que ve el cliente o el chofer antes de escribir. */
+export class ExpectedReplyResponseDto {
+  @ApiProperty({
+    description:
+      'La empresa lo muestra (si no, los demás campos vienen vacíos y la app no muestra nada)',
+  })
+  enabled!: boolean;
+  @ApiProperty({ description: 'La empresa atiende ahora' }) openNow!: boolean;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 15,
+    description:
+      'Minutos que se prometen, redondeados para mostrar (en horario); `null` fuera de horario o apagado',
+  })
+  minutes!: number | null;
+  @ApiProperty({
+    enum: ['history', 'target', 'waiting'],
+    nullable: true,
+    description:
+      '`history`: mediana, en minutos hábiles, de la primera respuesta de las conversaciones del canal de los últimos 14 días junto con lo que llevan esperando las que esperan ahora (con 10 o más entre las dos); `target`: el objetivo de la empresa (con menos); `waiting`: con menos, pero las que esperan ya llevan más que el objetivo (se muestra lo que llevan)',
+  })
+  basis!: 'history' | 'target' | 'waiting' | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Fuera de horario: cuándo vuelve a atender',
+  })
+  nextOpenAt!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Solemos responder en ~15 min',
+    description:
+      'Listo para mostrar: «Solemos responder en ~N min» (o «~N h») en horario, «Ahora estamos fuera de horario. Te respondemos mañana a las 08:00.» fuera; `null` si está apagado',
+  })
+  text!: string | null;
+}
+
 export class InboxConversationDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) distributorId!: string;
@@ -229,6 +292,18 @@ export class InboxConversationDto {
       'Sólo para el personal: menciones sin leer a quien pide en las notas internas de esta conversación («Me mencionaron»)',
   })
   unreadMentions?: number;
+  @ApiPropertyOptional({
+    type: [InboxLabelDto],
+    description:
+      'Sólo para el personal: las etiquetas de la conversación (hasta 5, por nombre). Al cliente y al chofer nunca les llegan.',
+  })
+  labels?: InboxLabelDto[];
+  @ApiPropertyOptional({
+    type: ExpectedReplyResponseDto,
+    description:
+      'Sólo en el detalle de la bandeja (`GET /v2/conversations/:id`): el tiempo de respuesta esperado que ve hoy el cliente o el chofer en ese canal',
+  })
+  expectedReply?: ExpectedReplyResponseDto;
   @ApiPropertyOptional({
     type: InboxCsatDto,
     nullable: true,
@@ -569,6 +644,33 @@ export class ChatSettingsResponseDto {
     description: 'Los botones de acción que ve el cliente en el chat',
   })
   customerActions!: string[];
+  @ApiProperty({
+    description:
+      'Se muestra al cliente y al chofer el tiempo de respuesta esperado',
+  })
+  expectedReplyEnabled!: boolean;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Minutos sin respuesta del cliente o del chofer para cerrar sola la conversación; `null`: no se cierra sola',
+  })
+  inactivityCloseMinutes!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Minutos antes del cierre en que se avisa; `null`: cierra sin avisar',
+  })
+  inactivityWarningMinutes!: number | null;
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'Desde cuándo rigen los plazos de inactividad (se prendió o se cambió el cierre o el aviso): lo anterior no cuenta; `null` si está apagado',
+  })
+  inactivityEnabledAt!: string | null;
   @ApiProperty({
     description: 'Si la empresa atiende ahora (horario y días sin atención)',
   })

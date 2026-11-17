@@ -119,6 +119,7 @@ function presentador(
     encuestas: jest.fn().mockResolvedValue(new Map()),
     primerMensajeDelAsistente: jest.fn().mockResolvedValue(new Map()),
     adjuntos: jest.fn().mockResolvedValue(new Map()),
+    etiquetas: jest.fn().mockResolvedValue(new Map()),
   };
   const ajustes = {
     leer: jest.fn().mockResolvedValue({
@@ -425,6 +426,7 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       encuestas: jest.fn().mockResolvedValue(new Map()),
       primerMensajeDelAsistente: jest.fn().mockResolvedValue(new Map()),
       adjuntos: jest.fn().mockResolvedValue(new Map()),
+      etiquetas: jest.fn().mockResolvedValue(new Map()),
     };
     const p = new BandejaPresenter(
       lectura as unknown as BandejaReadModel,
@@ -588,6 +590,27 @@ describe('BandejaPresenter: lo que ve cada punta', () => {
       const c = await p.conversacion(conversacion(), personal);
       expect(c.unreadMentions).toBe(1);
       expect(p.base.mencionesSinLeer).toHaveBeenCalledWith(['conv-1'], 'adm-1');
+    });
+
+    it('etiquetas (7c): el personal ve las de cada conversación; al cliente no le llegan ni se consultan', async () => {
+      const p = presentador();
+      const etiquetas = [{ id: 'et-1', name: 'Envíos', color: 'orange' }];
+      p.base.etiquetas.mockResolvedValue(new Map([['conv-1', etiquetas]]));
+      const delPersonal = await p.conversacion(conversacion(), personal);
+      expect(delPersonal.labels).toEqual(etiquetas);
+      expect(p.base.etiquetas).toHaveBeenCalledWith(['conv-1']);
+      p.base.etiquetas.mockClear();
+      const delCliente = await p.conversacion(conversacion(), {
+        party: Party.CUSTOMER,
+        userId: 'cli-1',
+      });
+      expect(delCliente).not.toHaveProperty('labels');
+      expect(p.base.etiquetas).not.toHaveBeenCalled();
+      const sinEtiquetas = await presentador().conversacion(
+        conversacion(),
+        personal,
+      );
+      expect(sinEtiquetas.labels).toEqual([]);
     });
 
     it('las fuentes de la respuesta del asistente (ai.sources) le llegan al personal y nunca al cliente', async () => {

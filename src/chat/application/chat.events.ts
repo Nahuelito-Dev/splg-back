@@ -25,7 +25,9 @@ export type CambioDeConversacion =
   | 'assigned'
   | 'closed'
   | 'reopened'
-  | 'status';
+  | 'status'
+  /** Le pusieron o sacaron etiquetas (7c): sólo el panel se entera. */
+  | 'labels';
 
 export interface MensajeCreado {
   conversation: Conversation;

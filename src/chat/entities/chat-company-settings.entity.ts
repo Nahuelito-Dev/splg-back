@@ -55,6 +55,10 @@ import type { FranjaDeAtencion } from '../domain/horario';
   'CHK_chat_company_settings_objetivo',
   `"first_response_target_minutes" BETWEEN 5 AND 1440`,
 )
+@Check(
+  'CHK_chat_company_settings_inactividad',
+  `("inactivity_close_minutes" IS NULL OR "inactivity_close_minutes" BETWEEN 30 AND 10080) AND ("inactivity_warning_minutes" IS NULL OR ("inactivity_close_minutes" IS NOT NULL AND "inactivity_warning_minutes" BETWEEN 5 AND 1440 AND "inactivity_warning_minutes" < "inactivity_close_minutes")) AND ("inactivity_close_minutes" IS NULL) = ("inactivity_enabled_at" IS NULL)`,
+)
 export class ChatCompanySettings {
   @PrimaryColumn({
     name: 'distributor_id',
@@ -180,6 +184,49 @@ export class ChatCompanySettings {
     default: 30,
   })
   firstResponseTargetMinutes!: number;
+
+  /**
+   * Mostrar al cliente y al chofer el tiempo de respuesta esperado («Solemos
+   * responder en ~N min», tanda 7c). Prendido por omisión.
+   */
+  @Column({ name: 'expected_reply_enabled', type: 'boolean', default: true })
+  expectedReplyEnabled!: boolean;
+
+  /**
+   * Cerrar sola la conversación cuando la última respuesta es del equipo o del
+   * asistente y la persona no contesta en estos minutos (30 a 10080). Nulo:
+   * apagado (por omisión).
+   */
+  @Column({
+    name: 'inactivity_close_minutes',
+    type: 'integer',
+    nullable: true,
+  })
+  inactivityCloseMinutes!: number | null;
+
+  /**
+   * Minutos antes del cierre en que se avisa «Si no tenés más consultas,
+   * cerramos la conversación en N min» (5 a 1440, menos que el cierre). Nulo:
+   * cierra sin avisar.
+   */
+  @Column({
+    name: 'inactivity_warning_minutes',
+    type: 'integer',
+    nullable: true,
+  })
+  inactivityWarningMinutes!: number | null;
+
+  /**
+   * Desde cuándo rigen los plazos de inactividad (se prendió el cierre o se
+   * cambió el cierre o el aviso). Lo anterior no cuenta: prenderlo no cierra
+   * el atraso de golpe y un aviso anterior no vale. Nulo si está apagado.
+   */
+  @Column({
+    name: 'inactivity_enabled_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  inactivityEnabledAt!: Date | null;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;

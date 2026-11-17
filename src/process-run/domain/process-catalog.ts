@@ -45,6 +45,7 @@ export enum ProcessName {
   SUPPORT_HOUSEKEEPING = 'support_housekeeping',
   ASSISTANT_AI_SWEEP = 'assistant_ai_sweep',
   CHAT_ATTACHMENT_SCAN = 'chat_attachment_scan',
+  CHAT_INACTIVITY_CLOSE = 'chat_inactivity_close',
 }
 
 export enum ProcessRunStatus {
@@ -298,6 +299,12 @@ export const CATALOGO: Readonly<Record<ProcessName, ProcessCatalogEntry>> = {
     module: null,
     title: 'Chat: antivirus de los archivos que quedaron pendientes',
     periodSeconds: MIN,
+  },
+  [ProcessName.CHAT_INACTIVITY_CLOSE]: {
+    module: null,
+    title:
+      'Chat: aviso y cierre de las conversaciones sin respuesta del cliente o del chofer',
+    periodSeconds: 5 * MIN,
   },
   [ProcessName.PROCESS_RUN_PURGE]: {
     module: null,

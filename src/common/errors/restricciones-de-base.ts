@@ -696,6 +696,18 @@ export const MENSAJES_DE_RESTRICCIONES: Readonly<Record<string, string>> = {
     'Los intentos de escaneo van de 0 a 50 y son sólo de los archivos del chat',
   CHK_attachment_intentos_no_bajan:
     'Los intentos de escaneo de un archivo no bajan',
+  CHK_conversation_label_nombre:
+    'El nombre de la etiqueta tiene que tener entre 1 y 30 caracteres, en una sola línea',
+  CHK_conversation_label_color: 'Elegí un color de la lista',
+  UQ_conversation_label_nombre: 'Ya hay una etiqueta con ese nombre',
+  CHK_conversation_label_tope:
+    'Ya hay 50 etiquetas: da de baja alguna para crear otra',
+  UQ_conversation_label_link_vigente: 'La conversación ya tiene esa etiqueta',
+  CHK_conversation_label_link_tope: 'Una conversación lleva hasta 5 etiquetas',
+  CHK_conversation_label_link_vigente:
+    'Sólo se ponen etiquetas vigentes en conversaciones de la bandeja',
+  CHK_chat_company_settings_inactividad:
+    'El cierre por inactividad va de 30 minutos a 7 días y el aviso, de 5 minutos a 24 horas antes del cierre',
 };
 
 /** Las claves foráneas compuestas (id, distribuidora) se nombran `FK_<tabla>_<columna>_distribuidora`. */

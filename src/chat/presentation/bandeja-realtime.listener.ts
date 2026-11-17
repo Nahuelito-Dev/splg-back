@@ -163,6 +163,14 @@ export class BandejaRealtimeListener {
         EVENTO_SOCKET_CONVERSACION,
         { ...base, conversation: empresa },
       );
+      // Las etiquetas son del equipo (7c): la persona no se entera.
+      if (change === 'labels') {
+        this.avisarALasListas(conversation, change, null, {
+          soloPanel: true,
+          labels: empresa.labels ?? [],
+        });
+        return;
+      }
       // Al cliente, el puntero (D-C10); al chofer, la ficha.
       this.aLaPersona(
         conversation,
@@ -324,6 +332,7 @@ export class BandejaRealtimeListener {
     c: Conversation,
     change: string,
     m: Message | null,
+    extra: { soloPanel?: boolean; labels?: unknown[] } = {},
   ): void {
     const canal = c.channel as CanalDeLaBandeja;
     this.panel.emitirALaBandeja(c.distributorId, canal, EVENTO_SOCKET_BANDEJA, {
@@ -346,9 +355,10 @@ export class BandejaRealtimeListener {
             internal: m.visibility === MessageVisibility.INTERNAL,
           }
         : null,
+      ...(extra.labels ? { labels: extra.labels } : {}),
     });
-    // Una nota interna: la persona no se entera de que hubo algo.
-    if (m?.visibility === MessageVisibility.INTERNAL) return;
+    // Una nota interna o un cambio de etiquetas: la persona no se entera de que hubo algo.
+    if (extra.soloPanel || m?.visibility === MessageVisibility.INTERNAL) return;
     const puntero = {
       conversationId: c.conversationId,
       distributorId: c.distributorId,

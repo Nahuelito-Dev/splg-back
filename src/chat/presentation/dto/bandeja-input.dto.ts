@@ -39,6 +39,19 @@ import {
 } from '../../domain/bandeja';
 import { TOPE_DE_MENCIONES } from '../../domain/notas-internas';
 import {
+  COLORES_DE_ETIQUETA,
+  type ColorDeEtiqueta,
+  LARGO_DEL_NOMBRE_DE_ETIQUETA,
+  nombreDeEtiquetaValido,
+  TOPE_DE_ETIQUETAS_POR_CONVERSACION,
+} from '../../domain/etiquetas';
+import {
+  MINUTOS_DE_AVISO_MAXIMOS,
+  MINUTOS_DE_AVISO_MINIMOS,
+  MINUTOS_DE_INACTIVIDAD_MAXIMOS,
+  MINUTOS_DE_INACTIVIDAD_MINIMOS,
+} from '../../domain/inactividad';
+import {
   CLAVES_DE_ACCION,
   type ClaveDeAccion,
 } from '../../domain/acciones-del-cliente';
@@ -469,6 +482,15 @@ export class QueryInboxDto extends ChatPaginationDto {
   @IsOptional()
   @Type(() => Date)
   updatedSince?: Date;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Sólo las que tienen esa etiqueta (vigente). Una etiqueta de otra empresa no trae nada.',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'Elegí una etiqueta de la lista' })
+  labelId?: string;
 }
 
 /** Filtros de «mis conversaciones» de la app. */
@@ -635,6 +657,58 @@ export class UpdateChatSettingsDto {
   @Min(5)
   @Max(1440)
   firstResponseTargetMinutes?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Mostrar al cliente y al chofer el tiempo de respuesta esperado («Solemos responder en ~N min»; prendido por omisión)',
+  })
+  @ValidateIf(
+    (o: UpdateChatSettingsDto) => o.expectedReplyEnabled !== undefined,
+  )
+  @IsBoolean()
+  expectedReplyEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: MINUTOS_DE_INACTIVIDAD_MINIMOS,
+    maximum: MINUTOS_DE_INACTIVIDAD_MAXIMOS,
+    description:
+      'Cerrar sola la conversación si la última respuesta es del equipo o del asistente y el cliente o el chofer no contesta en estos minutos (30 a 10080). `null`: no se cierra sola (por omisión). Apagarlo apaga también el aviso.',
+  })
+  @IsOptional()
+  @ValidateIf((o: UpdateChatSettingsDto) => o.inactivityCloseMinutes !== null)
+  @IsInt({
+    message: 'Los minutos para cerrar por inactividad van en número entero',
+  })
+  @Min(MINUTOS_DE_INACTIVIDAD_MINIMOS, {
+    message:
+      'El cierre por inactividad va de 30 minutos a 7 días (10080 minutos)',
+  })
+  @Max(MINUTOS_DE_INACTIVIDAD_MAXIMOS, {
+    message:
+      'El cierre por inactividad va de 30 minutos a 7 días (10080 minutos)',
+  })
+  inactivityCloseMinutes?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: MINUTOS_DE_AVISO_MINIMOS,
+    maximum: MINUTOS_DE_AVISO_MAXIMOS,
+    description:
+      'Minutos antes del cierre en que se avisa «Si no tenés más consultas, cerramos la conversación en N min» (5 a 1440 y menos que `inactivityCloseMinutes`). `null`: cierra sin avisar.',
+  })
+  @IsOptional()
+  @ValidateIf((o: UpdateChatSettingsDto) => o.inactivityWarningMinutes !== null)
+  @IsInt({ message: 'Los minutos del aviso van en número entero' })
+  @Min(MINUTOS_DE_AVISO_MINIMOS, {
+    message: 'El aviso va de 5 minutos a 24 horas antes del cierre',
+  })
+  @Max(MINUTOS_DE_AVISO_MAXIMOS, {
+    message: 'El aviso va de 5 minutos a 24 horas antes del cierre',
+  })
+  inactivityWarningMinutes?: number | null;
 }
 
 /** Un día sin atención (feriado, inventario). */
@@ -815,4 +889,82 @@ export class QueryCsatDto {
     },
   })
   to?: Date;
+}
+
+const NOMBRE_DE_ETIQUETA_INVALIDO =
+  'El nombre de la etiqueta tiene que tener entre 1 y 30 caracteres, en una sola línea';
+
+/** Una etiqueta nueva de la bandeja (7c). */
+export class CreateChatLabelDto {
+  @ApiProperty({
+    minLength: 1,
+    maxLength: LARGO_DEL_NOMBRE_DE_ETIQUETA,
+    example: 'Reclamo de envío',
+    description:
+      'De 1 a 30 caracteres en una sola línea (los espacios de más se recortan). Único entre las vigentes de la empresa sin distinguir mayúsculas ni tildes.',
+  })
+  @IsString({ message: NOMBRE_DE_ETIQUETA_INVALIDO })
+  @ValidateBy({
+    name: 'nombreDeEtiqueta',
+    validator: {
+      validate: (v: unknown) =>
+        typeof v === 'string' && nombreDeEtiquetaValido(v),
+      defaultMessage: () => NOMBRE_DE_ETIQUETA_INVALIDO,
+    },
+  })
+  name!: string;
+
+  @ApiProperty({ enum: COLORES_DE_ETIQUETA, example: 'orange' })
+  @IsIn(COLORES_DE_ETIQUETA, { message: 'Elegí un color de la lista' })
+  color!: ColorDeEtiqueta;
+}
+
+/**
+ * Cambiar una etiqueta: lo que no viene queda como estaba. `null` no es «no
+ * cambiar»: es inválido (las columnas no admiten nulo), por eso `ValidateIf`
+ * y no `IsOptional`.
+ */
+export class UpdateChatLabelDto {
+  @ApiPropertyOptional({
+    minLength: 1,
+    maxLength: LARGO_DEL_NOMBRE_DE_ETIQUETA,
+    example: 'Reclamo de envío',
+  })
+  @ValidateIf((o: UpdateChatLabelDto) => o.name !== undefined)
+  @IsString({ message: NOMBRE_DE_ETIQUETA_INVALIDO })
+  @ValidateBy({
+    name: 'nombreDeEtiqueta',
+    validator: {
+      validate: (v: unknown) =>
+        typeof v === 'string' && nombreDeEtiquetaValido(v),
+      defaultMessage: () => NOMBRE_DE_ETIQUETA_INVALIDO,
+    },
+  })
+  name?: string;
+
+  @ApiPropertyOptional({ enum: COLORES_DE_ETIQUETA, example: 'orange' })
+  @ValidateIf((o: UpdateChatLabelDto) => o.color !== undefined)
+  @IsIn(COLORES_DE_ETIQUETA, { message: 'Elegí un color de la lista' })
+  color?: ColorDeEtiqueta;
+}
+
+/** Las etiquetas que quedan puestas en una conversación (reemplaza las que tenía). */
+export class SetConversationLabelsDto {
+  @ApiProperty({
+    type: [String],
+    format: 'uuid',
+    maxItems: TOPE_DE_ETIQUETAS_POR_CONVERSACION,
+    uniqueItems: true,
+    description:
+      'Las etiquetas vigentes de la empresa que quedan puestas, sin repetir (hasta 5). Vacía: le saca todas.',
+  })
+  @IsArray({
+    message: 'Mandá la lista de etiquetas (vacía para sacarlas todas)',
+  })
+  @ArrayMaxSize(TOPE_DE_ETIQUETAS_POR_CONVERSACION, {
+    message: 'Una conversación lleva hasta 5 etiquetas',
+  })
+  @ArrayUnique({ message: 'Hay etiquetas repetidas' })
+  @IsUUID('4', { each: true, message: 'Elegí etiquetas de la lista' })
+  labelIds!: string[];
 }

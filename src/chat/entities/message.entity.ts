@@ -44,6 +44,8 @@ export type PayloadDelMensaje =
   | { ratingId: string; expiresAt: string; scale: number }
   /** Nota de derivación del asistente (`handoff_note`, interna, 4c). */
   | { ai: PayloadDeLaIa; handoff: PayloadDeLaDerivacion }
+  /** Aviso de cierre por inactividad (`inactivity_warning`, 7c). */
+  | { minutes: number; closesAt: string }
   | Record<string, never>;
 
 export interface PayloadDeLaIa {
