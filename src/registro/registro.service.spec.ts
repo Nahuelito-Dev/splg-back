@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RegistroService } from './registro.service';
@@ -9,6 +13,7 @@ import { RoleService } from '../role/role.service';
 import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminService } from '../admin/admin.service';
+import { StaffRoleService } from '../admin/staff-role.service';
 import { EmployeeService } from '../employee/employee.service';
 import { ConsumptionService } from '../repurchase/consumption.service';
 import { DistributorService } from '../distributor/distributor.service';
@@ -47,6 +52,11 @@ describe('RegistroService', () => {
   };
   let deliveries: { crearPerfil: jest.Mock };
   let admins: { crearPerfil: jest.Mock };
+  let staffRoles: {
+    rolParaElAlta: jest.Mock;
+    confirmarRolDelAlta: jest.Mock;
+    assertPuedeDarDeAlta: jest.Mock;
+  };
   let distributors: { assertActive: jest.Mock };
   let employees: { crearParaUsuario: jest.Mock; vincularUsuario: jest.Mock };
   let eventos: { emit: jest.Mock };
@@ -74,6 +84,11 @@ describe('RegistroService', () => {
     };
     deliveries = { crearPerfil: jest.fn() };
     admins = { crearPerfil: jest.fn() };
+    staffRoles = {
+      rolParaElAlta: jest.fn(() => Promise.resolve('r-9')),
+      confirmarRolDelAlta: jest.fn(() => Promise.resolve()),
+      assertPuedeDarDeAlta: jest.fn(() => Promise.resolve()),
+    };
     distributors = { assertActive: jest.fn() };
     employees = { crearParaUsuario: jest.fn(), vincularUsuario: jest.fn() };
     eventos = { emit: jest.fn() };
@@ -89,6 +104,7 @@ describe('RegistroService', () => {
       customers as unknown as CustomersService,
       deliveries as unknown as DeliveryService,
       admins as unknown as AdminService,
+      staffRoles as unknown as StaffRoleService,
       distributors as unknown as DistributorService,
       employees as unknown as EmployeeService,
       eventos as unknown as EventEmitter2,
@@ -215,6 +231,119 @@ describe('RegistroService', () => {
       'd1',
       expect.any(Object),
     );
+  });
+
+  describe('alta de un admin de distribuidora: el rol del personal', () => {
+    const adminActor: Solicitante = {
+      tipo: 'usuario',
+      usuario: {
+        user_id: 'admin-1',
+        role: RoleType.ADMIN,
+        distributor_id: 'd1',
+      } as AuthenticatedUser,
+    };
+
+    it('lo decide el servicio de roles con lo que trae el alta y va al perfil', async () => {
+      await service.registrar(
+        alta({ rol: RoleType.ADMIN, staffRoleId: 'r-2' }),
+        adminActor,
+      );
+      expect(staffRoles.rolParaElAlta).toHaveBeenCalledWith(
+        adminActor.tipo === 'usuario' ? adminActor.usuario : null,
+        'd1',
+        'r-2',
+      );
+      expect(admins.crearPerfil).toHaveBeenCalledWith(
+        manager,
+        'u1',
+        'd1',
+        'r-9',
+      );
+    });
+
+    it('si el actor no puede dar ese rol (o no puede dar altas de admins), no se crea la cuenta', async () => {
+      staffRoles.rolParaElAlta.mockRejectedValue(new ForbiddenException());
+      await expect(
+        service.registrar(alta({ rol: RoleType.ADMIN }), adminActor),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(firebase.createUserSafe).not.toHaveBeenCalled();
+      expect(admins.crearPerfil).not.toHaveBeenCalled();
+    });
+
+    it('un cliente o un chofer piden el permiso de ese alta (si falta, no se crea la cuenta)', async () => {
+      staffRoles.assertPuedeDarDeAlta.mockRejectedValue(
+        new ForbiddenException(),
+      );
+      await expect(
+        service.registrar(alta({ rol: RoleType.DELIVERY }), adminActor),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(staffRoles.assertPuedeDarDeAlta).toHaveBeenCalledWith(
+        adminActor.tipo === 'usuario' ? adminActor.usuario : null,
+        RoleType.DELIVERY,
+      );
+      expect(firebase.createUserSafe).not.toHaveBeenCalled();
+    });
+
+    it('un rol del personal para algo que no es admin es 400 STAFF_ROLE_ONLY_FOR_ADMINS', async () => {
+      const error: unknown = await service
+        .registrar(
+          alta({ rol: RoleType.DELIVERY, staffRoleId: 'r-2' }),
+          adminActor,
+        )
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'STAFF_ROLE_ONLY_FOR_ADMINS',
+      });
+      expect(firebase.createUserSafe).not.toHaveBeenCalled();
+    });
+
+    it('el rol se vuelve a decidir dentro de la transacción, antes de escribir nada', async () => {
+      const orden: string[] = [];
+      staffRoles.confirmarRolDelAlta.mockImplementation(() => {
+        orden.push('confirmar');
+        return Promise.resolve();
+      });
+      users.crearEnTransaccion.mockImplementation(() => {
+        orden.push('usuario');
+        return Promise.resolve({ userId: 'u1' });
+      });
+      await service.registrar(
+        alta({ rol: RoleType.ADMIN, staffRoleId: 'r-2' }),
+        adminActor,
+      );
+      expect(staffRoles.confirmarRolDelAlta).toHaveBeenCalledWith(
+        manager,
+        adminActor.tipo === 'usuario' ? adminActor.usuario : null,
+        'd1',
+        'r-9',
+      );
+      expect(orden).toEqual(['confirmar', 'usuario']);
+    });
+
+    it('carrera: si en la transacción el actor ya no puede dar el rol, se revierte y se borra la cuenta de Firebase', async () => {
+      staffRoles.confirmarRolDelAlta.mockRejectedValue(
+        new ForbiddenException(),
+      );
+      await expect(
+        service.registrar(
+          alta({ rol: RoleType.ADMIN, staffRoleId: 'r-2' }),
+          adminActor,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(users.crearEnTransaccion).not.toHaveBeenCalled();
+      expect(admins.crearPerfil).not.toHaveBeenCalled();
+      expect(firebase.deleteUserSafe).toHaveBeenCalledWith(
+        'uid-nuevo',
+        expect.anything(),
+      );
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('un cliente o un chofer no pasan por la re-validación del rol', async () => {
+      await service.registrar(alta({ rol: RoleType.DELIVERY }), adminActor);
+      expect(staffRoles.confirmarRolDelAlta).not.toHaveBeenCalled();
+    });
   });
 
   it('un super admin va al perfil de admin sin distribuidora', async () => {

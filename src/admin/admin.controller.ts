@@ -1,3 +1,4 @@
+import type { AutorizarEnTransaccion } from '../common/permisos/autoridad-sobre-cuentas';
 import {
   Body,
   Controller,
@@ -25,6 +26,7 @@ import {
   ApiConflictResponse,
 } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { StaffRoleService } from './staff-role.service';
 import { AdminMapper } from './admin.mapper';
 import { UpdateAdminDto } from './dto/update-admin.dto';
 import { MessageResponseDto } from '../common/dtos/message-response.dto';
@@ -55,7 +57,10 @@ import { Alcance } from '../common/decorators/alcance.decorator';
 @ApiBearerAuth()
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly staffRoles: StaffRoleService,
+  ) {}
 
   @Post()
   @Auth(RoleType.SUPER_ADMIN)
@@ -166,7 +171,9 @@ export class AdminController {
       '`POST /email/change-email`; el bloqueo por `PATCH /users/:id/block`. ' +
       'El super admin edita a cualquiera; un admin de empresa sólo a los ' +
       'de su distribuidora, nunca a sí mismo (sus datos van por ' +
-      '`PATCH /users/:id`) ni a un super admin.',
+      '`PATCH /users/:id`) ni a un super admin, y sólo si tiene todos los ' +
+      'permisos del rol de personal de ese administrador (el de sistema pide ' +
+      'todos): nadie sube ni baja a quien tiene más permisos.',
   })
   @ApiOkResponse({ type: AdminResponseDto })
   @ApiBadRequestResponse({
@@ -174,7 +181,8 @@ export class AdminController {
       'Datos inválidos (p. ej.: Teléfono: tiene que estar en formato E.164; Se envió un dato que no corresponde: Correo electrónico)',
   })
   @ApiForbiddenResponse({
-    description: 'Un admin de empresa se editó a sí mismo',
+    description:
+      'Un admin de empresa se editó a sí mismo, o el administrador tiene permisos que quien pide no tiene, o el rol de sistema y quien pide no los tiene todos (`STAFF_ROLE_TARGET_OUTRANKS`)',
   })
   @ApiNotFoundResponse({
     description:
@@ -187,9 +195,13 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<AdminResponseDto> {
-    await this.assertPuedeAdministrar(id, user, distributorId);
+    const { autorizar } = await this.assertPuedeAdministrar(
+      id,
+      user,
+      distributorId,
+    );
     return AdminMapper.toDto(
-      await this.adminService.update(id, dto, distributorId),
+      await this.adminService.update(id, dto, distributorId, autorizar),
     );
   }
 
@@ -207,7 +219,9 @@ export class AdminController {
       'baja al último administrador activo de una distribuidora ni al último ' +
       'super administrador. El administrador de una distribuidora dada de ' +
       'baja lo da de baja el super admin sin `X-Distributor` (con ella en el ' +
-      'header responde 401), y ahí no se exige que quede otro administrador.',
+      'header responde 401), y ahí no se exige que quede otro administrador. ' +
+      'Un admin de empresa sólo da de baja a quien no tiene permisos que él ' +
+      'no tenga (el rol de sistema pide todos).',
   })
   @ApiOkResponse({ type: MessageResponseDto })
   @ApiBadRequestResponse({
@@ -215,7 +229,8 @@ export class AdminController {
       'El id no es un UUID, o super admin sin `X-Distributor` sobre un administrador de una distribuidora vigente',
   })
   @ApiForbiddenResponse({
-    description: 'Se dio de baja a sí mismo (también el super admin)',
+    description:
+      'Se dio de baja a sí mismo (también el super admin), o el administrador tiene permisos que quien pide no tiene, o el rol de sistema y quien pide no los tiene todos (`STAFF_ROLE_TARGET_OUTRANKS`)',
   })
   @ApiNotFoundResponse({
     description:
@@ -230,19 +245,23 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentDistributor() distributorId: string | null,
   ): Promise<MessageResponseDto> {
-    const destino = await this.assertPuedeAdministrar(id, user, distributorId, {
-      sinDistribuidoraSiEstaEliminada: true,
-    });
+    const { destino, autorizar } = await this.assertPuedeAdministrar(
+      id,
+      user,
+      distributorId,
+      { sinDistribuidoraSiEstaEliminada: true },
+    );
     if (esElMismoUsuario(destino.userId, user)) {
       throw new ForbiddenException('No podés darte de baja a vos mismo');
     }
-    return this.adminService.remove(id, distributorId);
+    return this.adminService.remove(id, distributorId, autorizar);
   }
 
   /**
    * El super admin administra a cualquiera. Un admin de empresa sólo a los de
    * su distribuidora (el contexto acota la búsqueda: otra responde 404), nunca
-   * a un super admin (404, no se revela) ni a sí mismo (403).
+   * a un super admin (404, no se revela) ni a sí mismo (403), ni a quien
+   * tiene permisos que él no tiene (403, `StaffRoleService`).
    *
    * `sinDistribuidoraSiEstaEliminada` (la baja): el super admin, sin
    * `X-Distributor`, opera sobre el admin de una distribuidora dada de baja
@@ -253,7 +272,7 @@ export class AdminController {
     user: AuthenticatedUser,
     distributorId: string | null,
     opciones: { sinDistribuidoraSiEstaEliminada?: boolean } = {},
-  ): Promise<Admin> {
+  ): Promise<{ destino: Admin; autorizar?: AutorizarEnTransaccion }> {
     const destino = await this.adminService.findDetail(id, distributorId);
     if (user.role === RoleType.SUPER_ADMIN) {
       // Sin distribuidora sólo se opera sobre otro super admin (que no es de
@@ -268,7 +287,7 @@ export class AdminController {
       ) {
         throw faltaLaDistribuidora();
       }
-      return destino;
+      return { destino };
     }
     if (destino.user?.role?.type === String(RoleType.SUPER_ADMIN)) {
       throw new NotFoundException('Administrador no encontrado');
@@ -278,6 +297,16 @@ export class AdminController {
         'No podés modificar ni dar de baja tu propio perfil de administrador',
       );
     }
-    return destino;
+    // Nadie sube ni baja a quien tiene más permisos (17/11): acá y de nuevo
+    // dentro de la transacción que escribe, con el cerrojo de roles.
+    const cuenta = { userId: destino.userId, rol: destino.user?.role?.type };
+    await this.staffRoles.assertPuedeAdministrarA(user, cuenta, distributorId);
+    return {
+      destino,
+      autorizar: (manager) =>
+        this.staffRoles.assertPuedeAdministrarA(user, cuenta, distributorId, {
+          manager,
+        }),
+    };
   }
 }

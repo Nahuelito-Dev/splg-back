@@ -129,6 +129,15 @@ export class RegistrarUsuarioDto extends RegistrarClienteDto {
   employeeId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Sólo para un admin de distribuidora: el rol del personal con que nace. Quien da de alta tiene que poder darlo (`STAFF_ROLE_PERMISSION_NOT_HELD`). Sin él, el admin nace con el rol de sistema, y eso sólo lo puede hacer quien tiene todos los permisos (si no, 400 `STAFF_ROLE_REQUIRED`). Dar de alta un admin pide `administradores.gestionar`',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  staffRoleId?: string;
+
+  @ApiPropertyOptional({
     type: LegajoDeChoferDto,
     description:
       'Chofer: datos del legajo que se crea con la cuenta, en la misma transacción',

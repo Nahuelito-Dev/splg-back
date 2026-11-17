@@ -30,6 +30,7 @@ import { PlatformAccessModule } from './platform/access/platform-access.module';
 import { ModuloGuard } from './platform/access/modulo.guard';
 import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
+import { AutoridadSobreCuentasModule } from './admin/autoridad-sobre-cuentas.module';
 import { RegistroModule } from './registro/registro.module';
 import { AuthModule } from './auth/auth.module';
 import { CarModule } from './car/car.module';
@@ -245,6 +246,8 @@ import { ReceiptReaderModule } from './receipt-reader/receipt-reader.module';
     FirebaseModule,
     UsersModule,
     AdminModule,
+    // Regla sobre cuentas de otros para `users` (puerto, sin ciclo).
+    AutoridadSobreCuentasModule,
     RegistroModule,
     AuthModule,
     CarModule,

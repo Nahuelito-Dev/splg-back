@@ -156,9 +156,13 @@ export class CustomersController {
   }
 
   @Patch(':id')
+  // Sólo restringe al personal (el `PermissionGuard` mira a los `admin`): el
+  // cliente sigue editando lo suyo y el super admin pasa.
+  @Permiso('clientes.gestionar')
   @ApiOperation({ summary: 'Update customer by ID' })
   @ApiForbiddenResponse({
-    description: 'Es de otro cliente',
+    description:
+      'Es de otro cliente; o es un administrador sin `clientes.gestionar` (`PERMISSION_DENIED`)',
   })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
@@ -185,8 +189,12 @@ export class CustomersController {
   }
 
   @Patch(':id/location')
+  @Permiso('clientes.gestionar')
   @ApiOperation({ summary: 'Update customer location' })
-  @ApiForbiddenResponse({ description: 'Es de otro cliente' })
+  @ApiForbiddenResponse({
+    description:
+      'Es de otro cliente; o es un administrador sin `clientes.gestionar` (`PERMISSION_DENIED`)',
+  })
   @ApiParam({ name: 'id', description: 'Customer UUID' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Cliente no encontrado' })

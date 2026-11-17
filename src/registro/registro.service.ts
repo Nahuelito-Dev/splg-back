@@ -13,12 +13,14 @@ import { RoleService } from '../role/role.service';
 import { CustomersService } from '../customer/customer.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { AdminService } from '../admin/admin.service';
+import { StaffRoleService } from '../admin/staff-role.service';
 import { EmployeeService } from '../employee/employee.service';
 import { ConsumptionService } from '../repurchase/consumption.service';
 import type { ConsumoDeclarado } from '../customer/customer.service';
 import { DistributorService } from '../distributor/distributor.service';
 import { RoleType } from '../common/constants/role-type.enum';
 import { traducirErrorDeBase } from '../common/errors/db-exceptions';
+import { CODIGOS_DE_ERROR, conCodigo } from '../common/errors/con-codigo';
 import { normalizarEmail } from '../common/utils/email.util';
 import { RegistrarUsuarioDto } from './dto/registrar-usuario.dto';
 import {
@@ -59,6 +61,7 @@ export class RegistroService {
     private readonly customers: CustomersService,
     private readonly deliveries: DeliveryService,
     private readonly admins: AdminService,
+    private readonly staffRoles: StaffRoleService,
     private readonly distributors: DistributorService,
     private readonly employees: EmployeeService,
     private readonly eventos: EventEmitter2,
@@ -106,6 +109,31 @@ export class RegistroService {
       );
     }
 
+    // El rol del personal de un admin se decide antes de crear la cuenta:
+    // dar de alta un admin no puede servir para darle más de lo que uno tiene.
+    if (datos.staffRoleId && alta.rol !== RoleType.ADMIN) {
+      throw conCodigo(
+        BadRequestException,
+        400,
+        'El rol del personal sólo vale para administradores de distribuidora',
+        CODIGOS_DE_ERROR.STAFF_ROLE_ONLY_FOR_ADMINS,
+      );
+    }
+    if (
+      solicitante.tipo === 'usuario' &&
+      (alta.rol === RoleType.CUSTOMER || alta.rol === RoleType.DELIVERY)
+    ) {
+      await this.staffRoles.assertPuedeDarDeAlta(solicitante.usuario, alta.rol);
+    }
+    const rolDelPersonal =
+      alta.rol === RoleType.ADMIN && solicitante.tipo === 'usuario'
+        ? await this.staffRoles.rolParaElAlta(
+            solicitante.usuario,
+            this.distribuidoraDe(alta),
+            datos.staffRoleId,
+          )
+        : (datos.staffRoleId ?? null);
+
     // CU-143: se valida antes de crear la cuenta en Firebase, para no
     // crearla y borrarla si el consumo declarado es inválido.
     const consumo =
@@ -126,6 +154,17 @@ export class RegistroService {
     let userId: string;
     try {
       userId = await this.dataSource.transaction(async (manager) => {
+        // El rol del personal se volvió a decidir con el cerrojo de los roles
+        // tomado: lo controlado arriba pudo cambiar mientras se creaba la
+        // cuenta de Firebase (permisos del actor, rol dado de baja o editado).
+        if (alta.rol === RoleType.ADMIN && solicitante.tipo === 'usuario') {
+          await this.staffRoles.confirmarRolDelAlta(
+            manager,
+            solicitante.usuario,
+            this.distribuidoraDe(alta),
+            rolDelPersonal,
+          );
+        }
         const user = await this.users.crearEnTransaccion(manager, {
           email,
           fullName: datos.full_name,
@@ -133,7 +172,14 @@ export class RegistroService {
           firebaseUid: cuenta.uid,
           roleId: rol.roleId,
         });
-        await this.crearPerfil(manager, user.userId, alta, datos, consumo);
+        await this.crearPerfil(
+          manager,
+          user.userId,
+          alta,
+          datos,
+          consumo,
+          rolDelPersonal,
+        );
         if (vinculo && solicitante.tipo === 'usuario') {
           await this.customers.vincularConDistribuidora(
             manager,
@@ -183,6 +229,7 @@ export class RegistroService {
     alta: AltaAutorizada,
     datos: RegistrarUsuarioDto,
     consumo?: ConsumoDeclarado,
+    rolDelPersonal: string | null = null,
   ): Promise<void> {
     switch (alta.rol) {
       case RoleType.CUSTOMER:
@@ -213,7 +260,12 @@ export class RegistroService {
       }
       case RoleType.ADMIN: {
         const distributorId = this.distribuidoraDe(alta);
-        await this.admins.crearPerfil(manager, userId, distributorId);
+        await this.admins.crearPerfil(
+          manager,
+          userId,
+          distributorId,
+          rolDelPersonal,
+        );
         await this.legajoDelUsuario(
           manager,
           userId,

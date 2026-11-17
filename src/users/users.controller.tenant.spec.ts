@@ -33,13 +33,19 @@ describe('UsersController · distribuidora en las escrituras sobre otra cuenta',
       remove: jest.fn().mockResolvedValue({ message: 'ok' }),
       toggleBlockUser: jest.fn().mockResolvedValue({ blocked: true }),
     };
-    controller = new UsersController(users as never, {} as never);
+    controller = new UsersController(
+      users as never,
+      {} as never,
+      {
+        assertPuedeAdministrarA: jest.fn().mockResolvedValue(undefined),
+      } as never,
+    );
   });
 
   it('super admin sin distribuidora da de baja a un admin de empresa', async () => {
     alcance(RoleType.ADMIN);
     await controller.remove('x', superAdmin, null);
-    expect(users.remove).toHaveBeenCalledWith('x');
+    expect(users.remove).toHaveBeenCalledWith('x', { autorizar: undefined });
   });
 
   it('super admin sin distribuidora no da de baja a un chofer', async () => {
@@ -62,7 +68,7 @@ describe('UsersController · distribuidora en las escrituras sobre otra cuenta',
     alcance(RoleType.DELIVERY);
     await controller.remove('x', superAdmin, 'd1');
     expect(users.perteneceA).toHaveBeenCalledWith('x', 'd1');
-    expect(users.remove).toHaveBeenCalledWith('x');
+    expect(users.remove).toHaveBeenCalledWith('x', { autorizar: undefined });
   });
 
   it('con la distribuidora de otro: 404', async () => {
@@ -75,7 +81,9 @@ describe('UsersController · distribuidora en las escrituras sobre otra cuenta',
   it('sobre otro super admin no hace falta distribuidora', async () => {
     alcance(RoleType.SUPER_ADMIN);
     await controller.remove('otra-cuenta', superAdmin, null);
-    expect(users.remove).toHaveBeenCalledWith('otra-cuenta');
+    expect(users.remove).toHaveBeenCalledWith('otra-cuenta', {
+      autorizar: undefined,
+    });
   });
 
   it('un cliente no existe para las mutaciones de la plataforma', async () => {
@@ -89,6 +97,8 @@ describe('UsersController · distribuidora en las escrituras sobre otra cuenta',
   it('el admin de empresa trae siempre su distribuidora: no cambia', async () => {
     alcance(RoleType.DELIVERY);
     await controller.remove('x', admin, 'd1');
-    expect(users.remove).toHaveBeenCalledWith('x');
+    expect(users.remove).toHaveBeenCalledWith('x', {
+      autorizar: expect.any(Function) as unknown,
+    });
   });
 });

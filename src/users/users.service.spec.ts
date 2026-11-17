@@ -1,6 +1,11 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
@@ -402,6 +407,45 @@ describe('UsersService', () => {
     expect(firebase.updateUser).not.toHaveBeenCalled();
   });
 
+  describe('update: la contraseña se cambia al final de la transacción', () => {
+    const conTransaccion = () => {
+      const qr = {
+        connect: jest.fn(),
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        rollbackTransaction: jest.fn(),
+        release: jest.fn(),
+        manager: { save: jest.fn(), findOne: jest.fn() },
+      };
+      (
+        dataSource as unknown as { createQueryRunner: () => unknown }
+      ).createQueryRunner = () => qr;
+      return qr;
+    };
+
+    it('con los controles pasados, la cambia antes del commit', async () => {
+      users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      const qr = conTransaccion();
+      await service.update('u1', { password: 'Nueva1234' });
+      expect(firebase.updateUser).toHaveBeenCalledWith(
+        'fb1',
+        expect.objectContaining({ password: 'Nueva1234' }),
+      );
+      expect(qr.commitTransaction).toHaveBeenCalled();
+    });
+
+    it('si un control de la transacción falla, no queda cambiada', async () => {
+      users.preload.mockResolvedValue({ userId: 'u1', firebaseUid: 'fb1' });
+      const qr = conTransaccion();
+      const autorizar = jest.fn(() => Promise.reject(new ForbiddenException()));
+      await expect(
+        service.update('u1', { password: 'Nueva1234' }, autorizar),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(firebase.updateUser).not.toHaveBeenCalled();
+      expect(qr.rollbackTransaction).toHaveBeenCalled();
+    });
+  });
+
   describe('update: teléfono único', () => {
     it('un teléfono que ya tiene otro usuario (aunque esté dado de baja) es 409 y no guarda', async () => {
       users.findOne.mockResolvedValue({ userId: 'otro' });
@@ -663,6 +707,131 @@ describe('UsersService', () => {
       m.query.mockClear();
       await service.toggleBlockUser('u1', false);
       expect(m.query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('la regla sobre la cuenta de otro corre dentro de la transacción que escribe', () => {
+    const admin = {
+      userId: 'u1',
+      email: 'a@splg.com',
+      blocked: false,
+      firebaseUid: 'fb',
+      role: { type: RoleType.ADMIN },
+      admins: [{ distributorId: 'd1' }],
+    };
+    const rechaza = () =>
+      jest.fn((m: unknown) => {
+        orden.push(m === manager ? 'regla-en-tx' : 'regla-fuera');
+        return Promise.reject(new ForbiddenException());
+      });
+    let orden: string[];
+
+    beforeEach(() => {
+      orden = [];
+      manager.query.mockImplementation((sql: string) => {
+        orden.push(sql.includes('pg_advisory') ? 'lock' : 'consulta');
+        return Promise.resolve(
+          sql.includes('count(*)')
+            ? [{ n: '1' }]
+            : sql.includes('SELECT blocked')
+              ? [{ blocked: false }]
+              : [],
+        );
+      });
+      users.findOne.mockResolvedValue(admin);
+    });
+
+    it('baja: primero la regla, con el manager de la transacción; si dice que no, no da de baja', async () => {
+      const autorizar = rechaza();
+      await expect(service.remove('u1', { autorizar })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(orden[0]).toBe('regla-en-tx');
+      expect(manager.softRemove).not.toHaveBeenCalled();
+      expect(firebase.deleteUserSafe).not.toHaveBeenCalled();
+    });
+
+    it('bloqueo: primero la regla; si dice que no, no guarda ni corta conexiones', async () => {
+      const m = {
+        query: manager.query,
+        findOneByOrFail: jest.fn().mockResolvedValue({ userId: 'u1' }),
+        save: jest.fn(),
+      };
+      dataSource.transaction.mockImplementation(
+        (fn: (x: unknown) => Promise<unknown>) => fn(m),
+      );
+      const autorizar = jest.fn(() => Promise.reject(new ForbiddenException()));
+      await expect(
+        service.toggleBlockUser('u1', true, autorizar),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(autorizar).toHaveBeenCalledWith(m);
+      expect(m.save).not.toHaveBeenCalled();
+      expect(eventos.emit).not.toHaveBeenCalled();
+    });
+
+    it('edición: la regla corre en la transacción y, si dice que no, no guarda', async () => {
+      users.preload.mockResolvedValue({ ...admin, fullName: 'Otro' });
+      const qr = {
+        connect: jest.fn(),
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        rollbackTransaction: jest.fn(),
+        release: jest.fn(),
+        manager: { save: jest.fn(), findOne: jest.fn() },
+      };
+      (
+        dataSource as unknown as { createQueryRunner: () => unknown }
+      ).createQueryRunner = () => qr;
+      const autorizar = jest.fn(() => Promise.reject(new ForbiddenException()));
+      await expect(
+        service.update('u1', { full_name: 'Otro' }, autorizar),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(autorizar).toHaveBeenCalledWith(qr.manager);
+      expect(qr.manager.save).not.toHaveBeenCalled();
+      expect(qr.rollbackTransaction).toHaveBeenCalled();
+      expect(qr.commitTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('bloquearEnTransaccion (egreso de un empleado)', () => {
+    const conAdmin = (otros: number) => {
+      const m = {
+        findOne: jest.fn().mockResolvedValue({
+          userId: 'u1',
+          blocked: false,
+          role: { type: RoleType.ADMIN },
+          admins: [{ distributorId: 'd1' }],
+        }),
+        query: jest.fn((sql: string) =>
+          Promise.resolve(
+            sql.includes('count(*)')
+              ? [{ n: String(otros) }]
+              : sql.includes('SELECT blocked')
+                ? [{ blocked: false }]
+                : [],
+          ),
+        ),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+      return m;
+    };
+
+    it('el último administrador activo de la empresa no se bloquea por el egreso (409)', async () => {
+      const m = conAdmin(0);
+      await expect(
+        service.bloquearEnTransaccion(m as unknown as EntityManager, 'u1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(m.update).not.toHaveBeenCalled();
+    });
+
+    it('con otro administrador activo, bloquea', async () => {
+      const m = conAdmin(1);
+      await service.bloquearEnTransaccion(m as unknown as EntityManager, 'u1');
+      expect(m.update).toHaveBeenCalledWith(
+        User,
+        { userId: 'u1' },
+        { blocked: true },
+      );
     });
   });
 });

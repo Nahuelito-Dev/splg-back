@@ -32,6 +32,6 @@ import {
   ],
   providers: [AdminService, StaffRoleService, StaffPermissionsService],
   // StaffPermissionsService lo usa el `PermissionGuard` global (app.module).
-  exports: [AdminService, StaffPermissionsService],
+  exports: [AdminService, StaffPermissionsService, StaffRoleService],
 })
 export class AdminModule {}

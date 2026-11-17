@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { RoleType } from '../common/constants/role-type.enum';
 import { MENSAJE_FALTA_DISTRIBUIDORA } from '../common/decorators/current-distributor.decorator';
@@ -20,6 +20,7 @@ describe('AdminController · distribuidora en las escrituras', () => {
     esDeUnaDistribuidoraEliminada: jest.Mock;
   };
   let controller: AdminController;
+  let autoridad: { assertPuedeAdministrarA: jest.Mock };
 
   const destino = (rol: RoleType) =>
     service.findDetail.mockResolvedValue({
@@ -34,7 +35,10 @@ describe('AdminController · distribuidora en las escrituras', () => {
       remove: jest.fn().mockResolvedValue({ message: 'ok' }),
       esDeUnaDistribuidoraEliminada: jest.fn().mockResolvedValue(false),
     };
-    controller = new AdminController(service as never);
+    autoridad = {
+      assertPuedeAdministrarA: jest.fn().mockResolvedValue(undefined),
+    };
+    controller = new AdminController(service as never, autoridad as never);
   });
 
   it('super admin sin distribuidora no edita ni da de baja a un admin de empresa: 400', async () => {
@@ -53,7 +57,7 @@ describe('AdminController · distribuidora en las escrituras', () => {
     destino(RoleType.ADMIN);
     service.esDeUnaDistribuidoraEliminada.mockResolvedValue(true);
     await controller.remove('a1', superAdmin, null);
-    expect(service.remove).toHaveBeenCalledWith('a1', null);
+    expect(service.remove).toHaveBeenCalledWith('a1', null, undefined);
     // Editarlo sigue pidiendo la distribuidora.
     await expect(
       controller.update('a1', { fullName: 'Nuevo nombre' }, superAdmin, null),
@@ -63,12 +67,60 @@ describe('AdminController · distribuidora en las escrituras', () => {
   it('con la distribuidora en contexto sí', async () => {
     destino(RoleType.ADMIN);
     await controller.remove('a1', superAdmin, 'd1');
-    expect(service.remove).toHaveBeenCalledWith('a1', 'd1');
+    expect(service.remove).toHaveBeenCalledWith('a1', 'd1', undefined);
   });
 
   it('sobre otro super admin no hace falta', async () => {
     destino(RoleType.SUPER_ADMIN);
     await controller.remove('a1', superAdmin, null);
-    expect(service.remove).toHaveBeenCalledWith('a1', null);
+    expect(service.remove).toHaveBeenCalledWith('a1', null, undefined);
+  });
+
+  it('un admin de empresa edita o da de baja a otro admin sólo si la regla lo deja (nadie baja a quien tiene más)', async () => {
+    const admin = {
+      user_id: 'adm',
+      role: RoleType.ADMIN,
+    } as AuthenticatedUser;
+    destino(RoleType.ADMIN);
+    autoridad.assertPuedeAdministrarA.mockRejectedValue(
+      new ForbiddenException(),
+    );
+    await expect(
+      controller.update('a1', { fullName: 'Nuevo nombre' }, admin, 'd1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(controller.remove('a1', admin, 'd1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(autoridad.assertPuedeAdministrarA).toHaveBeenCalledWith(
+      admin,
+      { userId: 'u-destino', rol: RoleType.ADMIN },
+      'd1',
+    );
+    expect(service.update).not.toHaveBeenCalled();
+    expect(service.remove).not.toHaveBeenCalled();
+  });
+
+  it('si la regla lo deja, da de baja', async () => {
+    const admin = {
+      user_id: 'adm',
+      role: RoleType.ADMIN,
+    } as AuthenticatedUser;
+    destino(RoleType.ADMIN);
+    await controller.remove('a1', admin, 'd1');
+    // La regla viaja a la transacción de la baja: la que llega se aplica
+    // con el manager de esa transacción.
+    const [, , autorizar] = service.remove.mock.calls[0] as [
+      string,
+      string,
+      (m: unknown) => Promise<void>,
+    ];
+    const tx = { transaccion: true };
+    await autorizar(tx);
+    expect(autoridad.assertPuedeAdministrarA).toHaveBeenLastCalledWith(
+      admin,
+      { userId: 'u-destino', rol: RoleType.ADMIN },
+      'd1',
+      { manager: tx },
+    );
   });
 });

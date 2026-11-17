@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   BadRequestException,
   ConflictException,
   Injectable,
@@ -16,6 +17,12 @@ import { VehicleAssignmentService } from '../../car/vehicle-assignment.service';
 import { OrderLookupService } from '../../order/lookup/order-lookup.service';
 import { bloquearChoferVigente } from '../../common/locks/chofer-lock';
 import { withTransactionRetry } from '../../common/utils/with-transaction-retry';
+import { RoleType } from '../../common/constants/role-type.enum';
+import { bloquearGestoresDeRoles } from '../../common/permisos/gestores-de-roles';
+import {
+  AutoridadSobreCuentas,
+  type ActorSobreCuentas,
+} from '../../common/permisos/autoridad-sobre-cuentas';
 
 /**
  * Registrar el egreso de un empleado (CU-181), todo en UNA transacción:
@@ -26,6 +33,12 @@ import { withTransactionRetry } from '../../common/utils/with-transaction-retry'
  * Orden de locks global: usuario/chofer (`bloquearChoferes`) ANTES que el
  * legajo. Es el de `UsersService.remove`, que bloquea al chofer y recién en su
  * evento toca el legajo; invertirlo daba deadlock (40P01).
+ *
+ * Si la cuenta del legajo es de un administrador, el egreso es también su
+ * bloqueo: pasa por la regla sobre cuentas de otros (`administradores.gestionar`
+ * y cubrir los permisos de su rol) y por las del último administrador activo y
+ * `LAST_ROLES_MANAGER` (`UsersService.bloquearEnTransaccion`). Los locks de la
+ * empresa (bajas y roles) van antes que el legajo, el orden de `users.remove`.
  */
 @Injectable()
 export class TerminateEmployeeUseCase {
@@ -37,13 +50,14 @@ export class TerminateEmployeeUseCase {
     private readonly vehicleAssignments: VehicleAssignmentService,
     private readonly orders: OrderLookupService,
     private readonly rules: EmployeeRulesRegistry,
+    private readonly autoridad: AutoridadSobreCuentas,
   ) {}
 
   async execute(
     id: string,
     dto: TerminateEmployeeDto,
     distributorId: string,
-    actorUserId: string,
+    actor: ActorSobreCuentas,
   ): Promise<{ empleado: EmployeeConPuesto; deliveryId: string | null }> {
     let usuarioBloqueado: string | null = null;
     const userIdDelChofer = await withTransactionRetry(
@@ -53,6 +67,29 @@ export class TerminateEmployeeUseCase {
           // primero y el legajo después. Se lee el legajo sin lock sólo para
           // saber qué chofer bloquear.
           const previo = await this.employees.findOne(id, distributorId);
+          // Igual que `/users/:id/block`: nadie se bloquea a sí mismo por acá.
+          if (
+            previo.userId &&
+            previo.userId.toLowerCase() === actor.user_id.toLowerCase()
+          ) {
+            throw new ForbiddenException(
+              'No podés dar de egreso tu propio legajo: pedíselo a otro administrador',
+            );
+          }
+          if (previo.userId) {
+            const rol = (await this.users.findRoleTypes([previo.userId])).get(
+              previo.userId,
+            );
+            if (rol === String(RoleType.ADMIN)) {
+              await bloquearGestoresDeRoles(manager, distributorId);
+              await this.autoridad.assertPuedeAdministrarA(
+                actor,
+                { userId: previo.userId, rol },
+                distributorId,
+                { manager },
+              );
+            }
+          }
           const chofer = previo.userId
             ? await this.deliveries.findByUserIdEnTransaccion(
                 manager,
@@ -124,7 +161,7 @@ export class TerminateEmployeeUseCase {
               {
                 motivo:
                   'Liberado automáticamente: egreso del legajo del chofer.',
-                actorUserId,
+                actorUserId: actor.user_id,
               },
             );
           }

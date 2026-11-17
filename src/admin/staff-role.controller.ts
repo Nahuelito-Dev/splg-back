@@ -195,7 +195,7 @@ export class AdminStaffRoleController {
 
   @ApiForbiddenResponse({
     description:
-      'Cuenta que no es del panel, administrador sin `administradores.gestionar` (`PERMISSION_DENIED`), se quiere cambiar el propio rol (`STAFF_ROLE_SELF_ASSIGN`) o el rol tiene permisos que quien asigna no tiene, como el de sistema (`STAFF_ROLE_PERMISSION_NOT_HELD`)',
+      'Cuenta que no es del panel, administrador sin `administradores.gestionar` (`PERMISSION_DENIED`), se quiere cambiar el propio rol (`STAFF_ROLE_SELF_ASSIGN`), el rol nuevo tiene permisos que quien asigna no tiene, como el de sistema (`STAFF_ROLE_PERMISSION_NOT_HELD`), o el rol que la persona tiene hoy tiene permisos que quien asigna no tiene: nadie le cambia el rol a quien tiene más (`STAFF_ROLE_TARGET_OUTRANKS`). Asignar el mismo rol que ya tiene no controla nada y devuelve 200',
   })
   @Put(':id/staff-role')
   @Permiso('administradores.gestionar')

@@ -1,3 +1,4 @@
+import type { AutorizarEnTransaccion } from '../common/permisos/autoridad-sobre-cuentas';
 import {
   assertQuedaQuienGestioneRoles,
   bloquearGestoresDeRoles,
@@ -257,7 +258,18 @@ export class UsersService {
     });
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+  /**
+   * `autorizar`: la regla sobre la cuenta de otro (quién pide puede editarla),
+   * repetida como primera operación de la transacción que escribe. La
+   * contraseña se cambia antes en Firebase, que no es transaccional: ver
+   * `ENTREGA` de la tanda de seguridad (sobre otro admin sólo la cambia el
+   * super admin, que no depende de rangos).
+   */
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    autorizar?: AutorizarEnTransaccion,
+  ): Promise<User> {
     const { password } = updateUserDto;
     // El teléfono es único (también entre las cuentas dadas de baja).
     if (updateUserDto.phone_number !== undefined) {
@@ -286,13 +298,10 @@ export class UsersService {
     // La contraseña vive en el proveedor de identidad, no en la base: antes se
     // descartaba en silencio y el panel informaba un cambio que no ocurría
     // (H-75).
-    if (password) {
-      if (!user.firebaseUid) {
-        throw new ConflictException(
-          'El usuario no tiene cuenta de acceso: no se le puede cambiar la contraseña',
-        );
-      }
-      await this.cambiarContraseña(user.firebaseUid, password);
+    if (password && !user.firebaseUid) {
+      throw new ConflictException(
+        'El usuario no tiene cuenta de acceso: no se le puede cambiar la contraseña',
+      );
     }
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -300,6 +309,7 @@ export class UsersService {
     await queryRunner.startTransaction();
 
     try {
+      if (autorizar) await autorizar(queryRunner.manager);
       // Bloquear por acá es lo mismo que por `toggleBlockUser`: misma regla.
       if (updateUserDto.blocked === true) {
         const objetivo = await queryRunner.manager.findOne(User, {
@@ -314,6 +324,12 @@ export class UsersService {
         }
       }
       await queryRunner.manager.save(user);
+      // La contraseña se cambia al final, con los controles ya pasados y lo
+      // demás guardado: si algo falla antes, no queda cambiada. Si falla
+      // Firebase, se revierte la base.
+      if (password && user.firebaseUid) {
+        await this.cambiarContraseña(user.firebaseUid, password);
+      }
       await queryRunner.commitTransaction();
       await queryRunner.release();
       if (updateUserDto.blocked === true) {
@@ -397,7 +413,11 @@ export class UsersService {
    */
   async remove(
     id: string,
-    opciones: { rechazarConPedidosEnCurso?: boolean } = {},
+    opciones: {
+      rechazarConPedidosEnCurso?: boolean;
+      /** La regla sobre la cuenta de otro, dentro de la transacción de la baja. */
+      autorizar?: AutorizarEnTransaccion;
+    } = {},
   ): Promise<MessageResponseDto> {
     const user = await this.userRepository.findOne({
       where: { userId: id },
@@ -412,6 +432,9 @@ export class UsersService {
     await withTransactionRetry(
       () =>
         this.dataSource.transaction(async (manager) => {
+          // Antes que cualquier otro lock: sobre un admin toma los de la
+          // empresa en el orden de siempre (bajas y después roles).
+          if (opciones.autorizar) await opciones.autorizar(manager);
           // La cuenta del cliente se bloquea ANTES que cualquier otra fila:
           // un pedido que se está creando termina antes del conteo, y el que
           // llega después ve la baja (`cuenta-lock`). Si otra baja propia
@@ -705,6 +728,13 @@ export class UsersService {
     manager: EntityManager,
     userId: string,
   ): Promise<void> {
+    // La misma regla que el bloqueo por `/users`: no se deja a la empresa sin
+    // administrador activo ni sin quien gestione los roles (409).
+    const objetivo = await manager.findOne(User, {
+      where: { userId },
+      relations: ['role', 'admins'],
+    });
+    if (objetivo) await this.asegurarQueQuedaAdministrador(manager, objetivo);
     const { affected } = await manager.update(
       User,
       { userId },
@@ -735,6 +765,7 @@ export class UsersService {
   async toggleBlockUser(
     id: string,
     shouldBlock: boolean,
+    autorizar?: AutorizarEnTransaccion,
   ): Promise<BloqueoDeUsuarioDto> {
     const user = await this.userRepository.findOne({
       where: { userId: id },
@@ -743,6 +774,7 @@ export class UsersService {
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     await this.dataSource.transaction(async (manager) => {
+      if (autorizar) await autorizar(manager);
       if (shouldBlock) await this.asegurarQueQuedaAdministrador(manager, user);
       // `save` y no `update`: sólo así el cambio queda en la auditoría de datos.
       const actual = await manager.findOneByOrFail(User, {
